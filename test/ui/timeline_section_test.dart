@@ -5,6 +5,8 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show SectionBandZone, sectionBandLabelWithin;
 import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
@@ -39,6 +41,72 @@ void main() {
         timelineSectionForLayerKind(LayerKind.camera),
         TimelineSection.camera,
       );
+    });
+
+    // ㉑ (user, 2026-08-12): 「스토리보드에서만 트랜지션 섹션이 `CI`처럼
+    // 잘려 보인다」. The band there is ONE 30px row, and the tag is set at
+    // 9pt/1.15 = 10.35px per glyph cell — so three cells need 31px and the
+    // renderer's ellipsis rule replaced the tail with a rotated `…`.
+    group('a band too short for its tag wears the tag initial', () {
+      // The numbers the band actually paints with, so a type change that
+      // breaks the fit shows up here rather than on the user's screen.
+      const cell = SectionBandZone.fontSize * SectionBandZone.lineHeight;
+
+      test('the whole word stays while it fits', () {
+        // The timeline's camera run is two rows or more.
+        expect(
+          sectionBandLabelWithin('CAM', extent: 43, cellExtent: cell),
+          'CAM',
+        );
+        // Exactly three cells is a fit, not an overflow.
+        expect(
+          sectionBandLabelWithin('CAM', extent: 3 * cell, cellExtent: cell),
+          'CAM',
+        );
+        expect(
+          sectionBandLabelWithin('ACTION', extent: 6 * cell, cellExtent: cell),
+          'ACTION',
+        );
+      });
+
+      test('one storyboard row shows C, and never C plus an ellipsis', () {
+        // 30px row less the band's bottom hairline.
+        final shown = sectionBandLabelWithin(
+          'CAM',
+          extent: 29,
+          cellExtent: cell,
+        );
+        expect(shown, 'C');
+        expect(shown, isNot(contains('…')));
+      });
+
+      test('SE fits the same row, so it is NOT abbreviated', () {
+        // The control: the rule is about the space, not about the panel.
+        // Two cells need 20.7px and the row has 29.
+        expect(sectionBandLabelWithin('SE', extent: 29, cellExtent: cell), 'SE');
+      });
+
+      test('an unbounded or empty band changes nothing', () {
+        expect(
+          sectionBandLabelWithin(
+            'CAM',
+            extent: double.infinity,
+            cellExtent: cell,
+          ),
+          'CAM',
+        );
+        expect(sectionBandLabelWithin('', extent: 29, cellExtent: cell), '');
+        expect(
+          sectionBandLabelWithin('CAM', extent: 29, cellExtent: 0),
+          'CAM',
+        );
+      });
+
+      test('a band with no room for even one cell still names itself', () {
+        // Zero capacity is where the renderer draws NOTHING at all; an
+        // initial under a clip is the better failure.
+        expect(sectionBandLabelWithin('CAM', extent: 4, cellExtent: cell), 'C');
+      });
     });
 
     test('sectioned order pins camera last, keeping in-section order', () {

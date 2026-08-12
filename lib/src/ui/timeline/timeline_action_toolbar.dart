@@ -841,46 +841,40 @@ class TimelineActionToolbar extends StatelessWidget {
     // border now, so a box around all four of them was a frame around
     // frames — and the command bar it sits in already has an edge.
     //
-    // 🆕The scroller is BARRED again (유저, 2026-08-10: 「버튼 사라지기
-    // 시작하면 생기는 스크롤바」). R4 retired the bar here when this was a
-    // 30px row of loose buttons, where a lane laid across it took the bottom
-    // third of every target; the pills are 28px inside a 36px row now, and
-    // the app's bar exists only WHILE it overflows and costs no layout — so
-    // the case that retired it no longer holds. See [UnbarredScrollable].
-    return Padding(
+    // 🆕The INSET and the overflow scroller are the BAR's
+    // ([TimelineCommandBar.leadingInset]) — ⑫. They used to be here, which
+    // works only while this widget IS the whole left side: the storyboard
+    // puts two more groups beside it, padded that row, and so paid the inset
+    // twice and nested one horizontal scroller inside another.
+    //
+    // ⛔The bake is NOT here either. It used to wrap the whole bar, which
+    // meant one button's state changing re-baked every button on the row.
+    // Each [_StaticCommandGroup] bakes ITSELF now, so the groups are ZONES:
+    // siblings, each with its own dirty bit, each re-baking only for its own
+    // reason. The wrapper had to come off rather than stay as an outer
+    // layer, because a bake inside a bake is the one thing that freezes.
+    return Row(
       key: const ValueKey<String>('timeline-action-toolbar'),
-      padding: const EdgeInsets.symmetric(horizontal: 2),
-      // ⛔The bake is NOT here. It used to wrap the whole bar, which meant
-      // one button's state changing re-baked every button on the row. Each
-      // [_StaticCommandGroup] bakes ITSELF now, so the groups are ZONES:
-      // siblings, each with its own dirty bit, each re-baking only for its
-      // own reason. The wrapper had to come off rather than stay as an outer
-      // layer, because a bake inside a bake is the one thing that freezes.
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 컷 · 레이어 · 프레임 · FX — the four nouns, in the order the
-            // data nests (유저 확정). Keyed on the language for the same
-            // reason as the others: every name cell prints a word.
-            _StaticCommandGroup(
-              rebuildKey: AppText.settings.value.programLanguage,
-              builder: (context) => CutCommandGroup(session: session),
-            ),
-            const SizedBox(width: 6),
-            _layerPill(),
-            const SizedBox(width: 6),
-            _framePill(),
-            const SizedBox(width: 6),
-            // 유저 확정: 프레임 알약 옆. It follows the nouns because it is
-            // not one — everything in it acts on the selection.
-            _sharedPill(),
-            const SizedBox(width: 6),
-            _fxPill(),
-          ],
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 컷 · 레이어 · 프레임 · FX — the four nouns, in the order the data
+        // nests (유저 확정). Keyed on the language for the same reason as
+        // the others: every name cell prints a word.
+        _StaticCommandGroup(
+          rebuildKey: AppText.settings.value.programLanguage,
+          builder: (context) => CutCommandGroup(session: session),
         ),
-      ),
+        const SizedBox(width: 6),
+        _layerPill(),
+        const SizedBox(width: 6),
+        _framePill(),
+        const SizedBox(width: 6),
+        // 유저 확정: 프레임 알약 옆. It follows the nouns because it is not
+        // one — everything in it acts on the selection.
+        _sharedPill(),
+        const SizedBox(width: 6),
+        _fxPill(),
+      ],
     );
   }
 }

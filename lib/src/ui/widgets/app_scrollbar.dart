@@ -8,6 +8,25 @@ import 'app_scrollbar_lane.dart';
 /// the vocabulary too.
 export 'app_scrollbar_lane.dart';
 
+/// Where the thumb sits ACROSS its lane.
+enum AppScrollbarThumbSeat {
+  /// Down the middle. For a RESERVED lane — the timeline rails, the canvas
+  /// panbars — where the lane is part of the grid and the thumb is what
+  /// fills it.
+  centered,
+
+  /// On the lane's far edge: the bottom of a horizontal lane, the right of
+  /// a vertical one.
+  ///
+  /// ㉔ (user, 2026-08-12): 「넘칠 때 뜨는 스크롤바의 아래 패딩을 없애고
+  /// 영역 바닥에 딱 붙인다 (…) 겹치는 건 문제없음」. An OVERLAY lane is
+  /// pointer reach laid over content, not geometry — so its 12px say
+  /// nothing about where the bar belongs, and centring a 4px thumb in them
+  /// left 4px of air under a bar the user reads as sitting on the edge of
+  /// the area.
+  endEdge,
+}
+
 /// How a press on the lane (outside the thumb) behaves.
 enum AppScrollbarLanePress {
   /// Press/tap centers the thumb at the pointer, then drags relatively
@@ -114,6 +133,7 @@ class AppScrollbar extends StatefulWidget {
     this.onChangeEnd,
     this.lanePress = AppScrollbarLanePress.jumpToPointer,
     this.minThumbExtent = 28,
+    this.thumbSeat = AppScrollbarThumbSeat.centered,
     this.thumbKey,
     this.laneKey,
   });
@@ -126,6 +146,12 @@ class AppScrollbar extends StatefulWidget {
   final VoidCallback? onChangeEnd;
   final AppScrollbarLanePress lanePress;
   final double minThumbExtent;
+
+  /// See [AppScrollbarThumbSeat]. Centred by default — that is what every
+  /// reserved lane wants, and it is what all of them got before ㉔ named
+  /// the overlay case.
+  final AppScrollbarThumbSeat thumbSeat;
+
   final Key? thumbKey;
   final Key? laneKey;
 
@@ -229,7 +255,17 @@ class _AppScrollbarState extends State<AppScrollbar> {
                     bottom: horizontal ? 0 : null,
                     width: horizontal ? geometry.thumbExtent : null,
                     height: horizontal ? null : geometry.thumbExtent,
-                    child: Center(
+                    child: Align(
+                      // The lane's thickness is reach; where in it the
+                      // thumb sits is the seat (㉔).
+                      alignment: switch ((widget.thumbSeat, horizontal)) {
+                        (AppScrollbarThumbSeat.centered, _) =>
+                          Alignment.center,
+                        (AppScrollbarThumbSeat.endEdge, true) =>
+                          Alignment.bottomCenter,
+                        (AppScrollbarThumbSeat.endEdge, false) =>
+                          Alignment.centerRight,
+                      },
                       child: AnimatedContainer(
                         key: widget.thumbKey,
                         duration: _stateAnimation,
@@ -326,6 +362,7 @@ class AppControllerScrollbar extends StatefulWidget {
     required this.axis,
     this.lanePress = AppScrollbarLanePress.jumpToPointer,
     this.minThumbExtent = 28,
+    this.thumbSeat = AppScrollbarThumbSeat.centered,
     this.fallbackViewportExtent,
     this.fallbackContentExtent,
     this.thumbKey,
@@ -336,6 +373,10 @@ class AppControllerScrollbar extends StatefulWidget {
   final Axis axis;
   final AppScrollbarLanePress lanePress;
   final double minThumbExtent;
+
+  /// See [AppScrollbarThumbSeat].
+  final AppScrollbarThumbSeat thumbSeat;
+
   final double? fallbackViewportExtent;
   final double? fallbackContentExtent;
   final Key? thumbKey;
@@ -397,6 +438,7 @@ class _AppControllerScrollbarState extends State<AppControllerScrollbar> {
           contentExtent: contentExtent,
           lanePress: widget.lanePress,
           minThumbExtent: widget.minThumbExtent,
+          thumbSeat: widget.thumbSeat,
           thumbKey: widget.thumbKey,
           laneKey: widget.laneKey,
           onOffsetChanged: _jumpTo,

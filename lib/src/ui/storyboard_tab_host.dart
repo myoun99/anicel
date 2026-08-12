@@ -398,68 +398,60 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// copy of it: transport + cut group left, the shared view cluster right.
   Widget _commandBar(BuildContext context) {
     return TimelineCommandBar(
-      // Barred like the timeline's (유저, 2026-08-10: 「버튼 사라지기
-      // 시작하면 생기는 스크롤바」) — the app's overflow bar exists only
-      // while it overflows and costs no layout when it does not.
-      leading: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // ⛔The TRANSPORT and the camera-view toggle left this bar
-                  // (유저 확정, 2026-08-10): they are the 문턱's now, mounted
-                  // by the workspace through `EditorPanelTab.sillTrailing`
-                  // (see [FramePanelSillControls]). What stays here is what
-                  // reaches into THIS panel's own contents.
-                  //
-                  // ★THE SAME FOUR PILLS the timeline mounts — literally the
-                  // same widget (유저: 스토리보드 레이어의 프레임을 조절해야
-                  // 하고 레이어도 만들고 지워야 한다). 컷 · 레이어 · 프레임 ·
-                  // FX, in the order the data nests, and every verb on them
-                  // works here: the instance editor is a free function now,
-                  // so `Edit Instance` opens on this panel too.
-                  TimelineActionToolbar(
-                    session: _session,
-                    onAddLayer: _session.addLayer,
-                    onRenameLayer: () => unawaited(
-                      renameActiveLayerWithDialog(context, _session),
-                    ),
-                    onDeleteLayer: () => unawaited(
-                      deleteActiveLayerWithDialog(context, _session),
-                    ),
-                    // ⑬: the same dispatch Edit Instance takes. Standing on
-                    // the transition row, `＋` makes a span — that row's only
-                    // creation verb, and the one the rail's own `＋` carried
-                    // before #926 retired it.
-                    onCreateInstance: _createInstanceHere,
-                    // This panel reads left-to-right like the horizontal
-                    // timeline, so its dialogs' miniatures do too.
-                    onEditInstance: _editInstanceHere,
-                    resolveCanEditInstance: _canEditTransitionInstanceHere,
-                    // Which rail is asking: with nothing selected the frame
-                    // pill's shove aims at the row THIS rail is standing on
-                    // (a cut row shoves cuts, an S row shoves sounds), which
-                    // is not the session's active-layer fallback.
-                    currentRow: _session.selectedRow,
-                  ),
-                  const SizedBox(width: 6),
-                  // The V row's fx (user 2026-08-08): a chain over the whole
-                  // composited cut, authored from this panel.
-                  TrackFxCommandGroup(session: _session),
-                  const SizedBox(width: 4),
-                  // V ROW HEIGHT — one pair for every V track, because there
-                  // is one height (user's rule). Steppers rather than a
-                  // slider: this panel is worked on an iPad, and the
-                  // push/pull pair beside it already reads that way.
-                  _TrackLaneHeightButtons(
-                    height: widget.trackLaneHeight,
-                    onChanged: widget.onTrackLaneHeightChanged,
-                  ),
-                ],
-              ),
-            ),
+      // ⑫: the inset and the overflow scroller are the BAR's. This row used
+      // to bring its own — on top of the toolbar's — which is what put an
+      // extra 2px in front of the cut button here and nowhere else.
+      leading: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ⛔The TRANSPORT and the camera-view toggle left this bar (유저
+          // 확정, 2026-08-10): they are the 문턱's now, mounted by the
+          // workspace through `EditorPanelTab.sillTrailing` (see
+          // [FramePanelSillControls]). What stays here is what reaches into
+          // THIS panel's own contents.
+          //
+          // ★THE SAME FOUR PILLS the timeline mounts — literally the same
+          // widget (유저: 스토리보드 레이어의 프레임을 조절해야 하고 레이어도
+          // 만들고 지워야 한다). 컷 · 레이어 · 프레임 · FX, in the order the
+          // data nests, and every verb on them works here: the instance
+          // editor is a free function now, so `Edit Instance` opens on this
+          // panel too.
+          TimelineActionToolbar(
+            session: _session,
+            onAddLayer: _session.addLayer,
+            onRenameLayer: () =>
+                unawaited(renameActiveLayerWithDialog(context, _session)),
+            onDeleteLayer: () =>
+                unawaited(deleteActiveLayerWithDialog(context, _session)),
+            // ⑬: the same dispatch Edit Instance takes. Standing on the
+            // transition row, `＋` makes a span — that row's only creation
+            // verb, and the one the rail's own `＋` carried before #926
+            // retired it.
+            onCreateInstance: _createInstanceHere,
+            // This panel reads left-to-right like the horizontal timeline,
+            // so its dialogs' miniatures do too.
+            onEditInstance: _editInstanceHere,
+            resolveCanEditInstance: _canEditTransitionInstanceHere,
+            // Which rail is asking: with nothing selected the frame pill's
+            // shove aims at the row THIS rail is standing on (a cut row
+            // shoves cuts, an S row shoves sounds), which is not the
+            // session's active-layer fallback.
+            currentRow: _session.selectedRow,
+          ),
+          const SizedBox(width: 6),
+          // The V row's fx (user 2026-08-08): a chain over the whole
+          // composited cut, authored from this panel.
+          TrackFxCommandGroup(session: _session),
+          const SizedBox(width: 4),
+          // V ROW HEIGHT — one pair for every V track, because there is one
+          // height (user's rule). Steppers rather than a slider: this panel
+          // is worked on an iPad, and the push/pull pair beside it already
+          // reads that way.
+          _TrackLaneHeightButtons(
+            height: widget.trackLaneHeight,
+            onChanged: widget.onTrackLaneHeightChanged,
+          ),
+        ],
       ),
       cluster: TimelineViewCluster(
         frameCursor: _session.editingFrameCursor,

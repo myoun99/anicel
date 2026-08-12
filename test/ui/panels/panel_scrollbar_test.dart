@@ -12,6 +12,8 @@ void main() {
       WidgetTester tester, {
       required ScrollController controller,
       required double contentHeight,
+      Axis axis = Axis.vertical,
+      double contentWidth = double.infinity,
     }) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -23,10 +25,11 @@ void main() {
               child: PanelScrollbar(
                 controller: controller,
                 child: SingleChildScrollView(
+                  scrollDirection: axis,
                   controller: controller,
                   child: SizedBox(
                     key: const ValueKey<String>('panel-content'),
-                    width: double.infinity,
+                    width: contentWidth,
                     height: contentHeight,
                   ),
                 ),
@@ -85,6 +88,47 @@ void main() {
         tester.getSize(find.byType(AppControllerScrollbar)),
         const Size(AppScrollbarLane.narrow, viewportHeight),
       );
+    });
+
+    // ㉔ (user, 2026-08-12): 「넘칠 때 뜨는 스크롤바의 아래 패딩을 없애고
+    // 영역 바닥에 딱 붙인다 (…) 겹치는 건 문제없음」. The lane was already
+    // flush; the THUMB sat centred in it, so a 12px lane left 4px of air on
+    // the outside of a 4px bar.
+    testWidgets('the thumb rides the edge the lane is pinned to, with no '
+        'air outside it', (tester) async {
+      final controller = ScrollController();
+      addTearDown(controller.dispose);
+
+      await pumpPanel(tester, controller: controller, contentHeight: 500);
+
+      final lane = tester.getRect(find.byType(AppControllerScrollbar));
+      final thumb = tester.getRect(find.byType(AnimatedContainer));
+      expect(
+        thumb.right,
+        lane.right,
+        reason: 'a vertical bar sits on the RIGHT edge of its area',
+      );
+      // And it did not become a fat bar to get there.
+      expect(thumb.width, lessThan(lane.width));
+    });
+
+    testWidgets('a horizontal bar sits on the BOTTOM edge', (tester) async {
+      final controller = ScrollController();
+      addTearDown(controller.dispose);
+
+      await pumpPanel(
+        tester,
+        controller: controller,
+        axis: Axis.horizontal,
+        contentWidth: 500,
+        contentHeight: double.infinity,
+      );
+
+      final lane = tester.getRect(find.byType(AppControllerScrollbar));
+      final thumb = tester.getRect(find.byType(AnimatedContainer));
+      expect(thumb.bottom, lane.bottom);
+      expect(lane.bottom, viewportHeight, reason: 'the area\'s own bottom');
+      expect(thumb.height, lessThan(lane.height));
     });
   });
 }
