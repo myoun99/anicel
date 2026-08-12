@@ -149,6 +149,9 @@ class _PanelScrollbarState extends State<PanelScrollbar> {
               child: AppControllerScrollbar(
                 controller: widget.controller,
                 axis: axis,
+                // ㉔: flush with the edge it is pinned to. This lane is
+                // reach, not geometry — see [AppScrollbarThumbSeat.endEdge].
+                thumbSeat: AppScrollbarThumbSeat.endEdge,
               ),
             ),
         ],

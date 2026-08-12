@@ -469,7 +469,22 @@ class StoryboardPanel extends StatefulWidget {
   // one, the other must be free to stay put. The repetition is the point;
   // do not "clean it up" into a shared constant.
   static const double _trackLabelWidth = 434;
-  static const double _rulerHeight = 24;
+
+  /// The frame ruler's height — and, since the seconds corner is the strip
+  /// beside it, that button's too.
+  ///
+  /// ㉓ (user, 2026-08-12): 「스토리보드의 「초 표시」 버튼 위치/패딩이
+  /// 타임라인과 미묘하게 다르다. 이런 기본규격은 제발 통일하자.
+  /// **하드코딩한거냐?**」 — it was: a literal 24 here against the
+  /// timeline's ruler, which has always taken its header row's own height.
+  /// Four pixels shorter put the icon's centre two above the timeline's,
+  /// which is exactly the kind of difference you feel and cannot name.
+  ///
+  /// ⚠️Unlike [_trackLabelWidth] — the same NUMBER on purpose and
+  /// deliberately NOT one source — this one IS the band, so it is written
+  /// as the band. The rail widths may diverge (different columns); a strip
+  /// and the strip beside it in the same row may not.
+  static const double _rulerHeight = _headerBandHeight;
 
   /// The V rows' height, and the range the adjustment moves it through.
   ///
@@ -495,15 +510,13 @@ class StoryboardPanel extends StatefulWidget {
   /// value (UI-R10 #21 3-row unification).
   static const double _bottomScrollbarRailHeight = 16;
 
-  /// The header band above the track rows.
+  /// The header band above the track rows — a `Row` of the seconds corner,
+  /// the ruler and [TimelineLayerControlsHeader].
   ///
-  /// DERIVED, not measured. The band is a `Row` of the seconds corner, the
-  /// [_rulerHeight] ruler, and [TimelineLayerControlsHeader] — and that
-  /// last one is a `Container(height: metrics.layerRowHeight)`, the tallest
-  /// of the three, so it is what actually sets the band. Writing 28 here as
-  /// "the ruler plus four" would be an alias that breaks silently the day
-  /// [_rulerHeight] is raised past it, which is the bug class this floor
-  /// exists to close.
+  /// The LEGEND is what sets it: it is a `Container(height:
+  /// metrics.layerRowHeight)` and nothing in the row may exceed it. Since ㉓
+  /// the other two take the same number rather than sitting short inside it,
+  /// so the band is now one height rather than the tallest of three.
   static const double _headerBandHeight = timelineLayerRowHeight;
 
   /// The shortest this panel is laid out at, ITS OWN chrome only — the host
@@ -1390,6 +1403,68 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       }
     }
     return const [];
+  }
+
+  /// ㉒ (user, 2026-08-12): the legend's twirl-all — the one control the
+  /// storyboard's legend was missing, because the header only draws it when
+  /// a host hands it BOTH verbs and this host handed it neither.
+  ///
+  /// The rows have always twirled; what was absent was the bulk verb over
+  /// them. So this is the timeline's [_expandAllLanes] transposed onto the
+  /// rows THIS rail draws — an S row per SE slot and a V row per track —
+  /// rather than a new idea about expansion.
+  bool get _anyLanesExpanded =>
+      widget.expandedSeAudioRows.isNotEmpty ||
+      widget.expandedTransformTracks.isNotEmpty;
+
+  /// Whether the rail can twirl at all: a display-only mount (no hooks) has
+  /// nothing for the legend button to act on, so it does not draw one.
+  bool get _hasLaneTwirls =>
+      widget.onToggleSeRowLane != null || widget.onToggleTrackLane != null;
+
+  /// The rows the legend button opens. The `contains` guards look redundant
+  /// — the button only says EXPAND while nothing is open — but they are what
+  /// makes the verb an expansion rather than a per-row toggle, and the
+  /// nested group set can leave a rail mixed. A blind sweep would close the
+  /// one row you had opened by hand while it opened its neighbours.
+  void _expandAllLanes() {
+    final toggleSe = widget.onToggleSeRowLane;
+    final toggleTrack = widget.onToggleTrackLane;
+    for (final track in widget.project.tracks) {
+      if (toggleSe != null) {
+        for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
+          if (!widget.expandedSeAudioRows.contains(
+            StoryboardPanel.seRowKey(track, slot),
+          )) {
+            toggleSe(track, slot);
+          }
+        }
+      }
+      if (toggleTrack != null &&
+          !widget.expandedTransformTracks.contains(track.id.value)) {
+        toggleTrack(track);
+      }
+    }
+  }
+
+  void _collapseAllLanes() {
+    final toggleSe = widget.onToggleSeRowLane;
+    final toggleTrack = widget.onToggleTrackLane;
+    for (final track in widget.project.tracks) {
+      if (toggleSe != null) {
+        for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
+          if (widget.expandedSeAudioRows.contains(
+            StoryboardPanel.seRowKey(track, slot),
+          )) {
+            toggleSe(track, slot);
+          }
+        }
+      }
+      if (toggleTrack != null &&
+          widget.expandedTransformTracks.contains(track.id.value)) {
+        toggleTrack(track);
+      }
+    }
   }
 
   Set<LayerMark> _legendMarksInUse() => {
@@ -2906,6 +2981,15 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                             ? null
                             : _legendDisplayedLayerIds,
                         displayedOpacity: widget.legendOpacityValue,
+                        // ㉒: the lane column's header verb, same as the
+                        // timeline's.
+                        anyLanesExpanded: _anyLanesExpanded,
+                        onExpandAllLanes: _hasLaneTwirls
+                            ? _expandAllLanes
+                            : null,
+                        onCollapseAllLanes: _hasLaneTwirls
+                            ? _collapseAllLanes
+                            : null,
                       ),
                     ),
                   ),

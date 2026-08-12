@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_command_bar.dart';
+import 'package:anicel/src/ui/widgets/command_pill.dart' show CommandPill;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
@@ -148,6 +149,70 @@ void main() {
             rectOf(tester, 'storyboard-horizontal-scrollbar').height,
         reason: 'the header band the floor reserves is the one drawn',
       );
+    });
+  });
+
+  // ⑫·㉓ (user, 2026-08-12): 「타임라인과 스토리보드의 버튼 패딩이 다르다 —
+  // 스토리보드는 컷 버튼 앞에 여백이 있는 느낌」 / 「이런 기본규격은 제발
+  // 통일하자. 하드코딩한거냐?」. Both were literals that only agreed while
+  // one panel mounted the shared widget the way the other did.
+  group('the two bars are the same bar', () {
+    testWidgets('⑫ the first pill starts the same distance in on both '
+        'panels', (tester) async {
+      Future<double> inset(
+        Widget Function(EditorSessionManager session) build,
+      ) async {
+        await pumpAt(tester, build, height: 600);
+        final bar = tester.getRect(find.byType(TimelineCommandBar));
+        // The cut pill is the first thing on either bar.
+        final pill = tester.getRect(find.byType(CommandPill).first);
+        return pill.left - bar.left;
+      }
+
+      final timelineInset = await inset(timeline);
+      final storyboardInset = await inset(storyboard);
+
+      expect(
+        storyboardInset,
+        timelineInset,
+        reason: 'the storyboard paid the leading inset twice — its own row '
+            'padded what the toolbar had already padded',
+      );
+      expect(
+        timelineInset,
+        TimelineCommandBar.padding.left + TimelineCommandBar.leadingInset,
+        reason: 'and the inset is the BAR\'s, so it is these two numbers',
+      );
+    });
+
+    testWidgets('㉓ the seconds toggle is the same box on both panels', (
+      tester,
+    ) async {
+      await pumpAt(tester, timeline, height: 600);
+      final timelineToggle = tester
+          .getRect(
+            find.byKey(
+              const ValueKey<String>('timeline-time-display-toggle-button'),
+            ),
+          )
+          .size;
+
+      await pumpAt(tester, storyboard, height: 600);
+      final storyboardToggle = tester
+          .getRect(
+            find.byKey(
+              const ValueKey<String>('storyboard-time-display-toggle-button'),
+            ),
+          )
+          .size;
+
+      expect(
+        storyboardToggle,
+        timelineToggle,
+        reason: 'it was 4px shorter here — the storyboard ruler\'s own '
+            'literal 24 rather than the header row it sits in',
+      );
+      expect(timelineToggle.height, timelineLayerRowHeight);
     });
   });
 

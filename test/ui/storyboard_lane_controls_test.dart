@@ -13,6 +13,8 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/ui/text/vertical_writing_text.dart'
+    show VerticalWritingText;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show PropertyLaneEditCallbacks;
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_policy.dart'
@@ -170,6 +172,98 @@ Future<void> _pumpPanel(
 // the row's fx chain now, and an effect group opens by its own header.
 
 void main() {
+  // ㉒ (user, 2026-08-12): 「스토리보드 레전드에 fx 펼치기 버튼이 없다 ⇒
+  // 타임라인과 통일」. The rows always twirled; the LEGEND's bulk verb over
+  // them was missing, because the shared header only draws that button when
+  // a host hands it both verbs — and this host handed it neither.
+  testWidgets('the legend twirls every row open and shut, like the '
+      'timeline\'s', (tester) async {
+    await _pumpPanel(tester, project: _project());
+
+    const laneToggle = ValueKey<String>('legend-lanes-toggle');
+    const seLane = ValueKey<String>('storyboard-audio-lane-row-0-1');
+
+    // The V row's own state is read off its chevron: its lanes are its fx
+    // chain, and a track with no effects opens onto nothing to find.
+    bool vRowOpen() =>
+        tester
+            .widget<Icon>(
+              find.descendant(
+                of: find.byKey(
+                  const ValueKey<String>(
+                    'storyboard-track-lane-toggle-lane-track',
+                  ),
+                ),
+                matching: find.byType(Icon),
+              ),
+            )
+            .icon ==
+        Icons.arrow_drop_down;
+
+    expect(find.byKey(laneToggle), findsOneWidget);
+    expect(find.byKey(seLane), findsNothing);
+    expect(vRowOpen(), isFalse);
+
+    // ONE tap opens BOTH kinds of row — an S row and the V row. A verb that
+    // reached only one of them would look right on whichever row the tester
+    // happened to check.
+    await tester.tap(find.byKey(laneToggle));
+    await tester.pumpAndSettle();
+    expect(find.byKey(seLane), findsOneWidget);
+    expect(vRowOpen(), isTrue);
+
+    // The same button is the CLOSING verb once anything is open (the icon
+    // flips with `anyLanesExpanded`), so a second tap shuts what the first
+    // opened rather than toggling each row back to where it started.
+    await tester.tap(find.byKey(laneToggle));
+    await tester.pumpAndSettle();
+    expect(find.byKey(seLane), findsNothing);
+    expect(vRowOpen(), isFalse);
+  });
+
+  testWidgets('one open row makes the legend button the CLOSING verb, and '
+      'it shuts the rest with it', (tester) async {
+    // The mixed state: with a single S row twirled open by hand, the button
+    // must not re-toggle row by row — that would open the V row and close
+    // the S row in the same tap, which is what a blind sweep does.
+    await _pumpPanel(tester, project: _project());
+
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('storyboard-se-lane-toggle-lane-track-1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-audio-lane-row-0-1')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey<String>('legend-lanes-toggle')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-audio-lane-row-0-1')),
+      findsNothing,
+    );
+    expect(
+      tester
+          .widget<Icon>(
+            find.descendant(
+              of: find.byKey(
+                const ValueKey<String>(
+                  'storyboard-track-lane-toggle-lane-track',
+                ),
+              ),
+              matching: find.byType(Icon),
+            ),
+          )
+          .icon,
+      Icons.arrow_right,
+      reason: 'a collapse verb never opens anything',
+    );
+  });
+
   testWidgets('the V row\'s chevron opens its fx chain and NO Transform group '
       '— a track row does not own one', (tester) async {
     await _pumpPanel(tester, project: _project());
@@ -812,6 +906,46 @@ void main() {
       );
       expect(vZone.top, lessThanOrEqualTo(vRow.top + 1));
       expect(vZone.bottom, greaterThanOrEqualTo(vRow.bottom - 1));
+    });
+
+    // ㉑ (user, 2026-08-12). The WIRED half of the rule: the law itself is
+    // covered in timeline_section_test, but only a pumped panel proves the
+    // band measures ITS OWN box — a fit computed against the wrong height
+    // would pass every pure test and still ship `C⋮`.
+    testWidgets('the one-row transition band shortens CAM to C, while the '
+        'SE band beside it keeps SE', (tester) async {
+      await _pumpPanel(tester, project: _project(seLayers: twoSeRows));
+
+      String bandText(String keyValue) => tester
+          .widget<VerticalWritingText>(
+            find.descendant(
+              of: find.byKey(ValueKey<String>(keyValue)),
+              matching: find.byType(VerticalWritingText),
+            ),
+          )
+          .text;
+
+      expect(bandText('storyboard-section-zone-lane-track-transition'), 'C');
+      expect(bandText('storyboard-section-zone-lane-track-se'), 'SE');
+
+      // The REGION still announces the whole word: shortening is a drawing
+      // decision, and a reader that said 'C' would be reading geometry.
+      expect(
+        find.descendant(
+          of: find.byKey(
+            const ValueKey<String>(
+              'storyboard-section-zone-lane-track-transition',
+            ),
+          ),
+          // The widget, not the semantics tree: `bySemanticsLabel` needs the
+          // binding turned on, and what is being asserted here is what the
+          // band DECLARES, which is exactly this property.
+          matching: find.byWidgetPredicate(
+            (widget) => widget is Semantics && widget.properties.label == 'CAM',
+          ),
+        ),
+        findsOneWidget,
+      );
     });
   });
 }

@@ -9,6 +9,10 @@ import '../../models/layer_mark.dart';
 import '../theme/app_theme.dart';
 import '../widgets/panel_flyout.dart';
 import '../text/app_strings.dart';
+// The fit math the band shares with the renderer (㉑): the cells a label
+// costs and the cells a span holds.
+import '../text/vertical_writing.dart'
+    show verticalTextCapacityCells, verticalTextCells, verticalTextSpanCount;
 import '../text/vertical_writing_text.dart';
 
 /// Layer-label chip controls shared by both timeline orientations
@@ -97,6 +101,13 @@ class SectionBandZone extends StatelessWidget {
   /// per-group Positioned.fill mounting).
   final double? extent;
 
+  /// The tag's type. Named because the FIT math and the painter have to read
+  /// the same two numbers — [sectionBandLabelWithin] decides whether the
+  /// whole word fits, and a band that decided with a different font size
+  /// than it draws with would abbreviate the wrong labels.
+  static const double fontSize = 9;
+  static const double lineHeight = 1.15;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -121,36 +132,102 @@ class SectionBandZone extends StatelessWidget {
       // it a boundary — and taking the tap away took the heading's
       // semantics with it. A label is a label whether or not you can press
       // it, so the boundary is stated here now.
+      //
+      // It announces the WHOLE word even when the band is too short to draw
+      // it (㉑): shortening is a drawing decision, and a reader that said
+      // 'C' would be reading the geometry instead of the section.
       child: Semantics(
         container: true,
         label: label,
         child: ExcludeSemantics(
-          child: Center(
-            child: ClipRect(
-              child: VerticalWritingText(
-                text: label,
-                // ACTION / SE / CAM stand UP (user, 2026-08-08). Lying down
-                // is the Japanese standard and it is what the printed sheet
-                // keeps, but this band is a three-letter tag you glance at,
-                // and glancing at it meant tilting your head.
-                latinForm: VerticalLatinForm.upright,
-                style: TextStyle(
-                  fontSize: 9,
-                  // Dropped with the turn: letter spacing is a HORIZONTAL
-                  // notion and the renderer zeroes it anyway (the leading
-                  // comes from the cell extent), so carrying it here only
-                  // said something untrue about the label.
-                  fontWeight: FontWeight.bold,
-                  height: 1.15,
-                  color: colorScheme.onSurfaceVariant,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // The scaled size, because that is what the column is set in:
+              // an accessibility scaler makes CAM need MORE room, and a fit
+              // computed at 9pt would keep promising a word that no longer
+              // fits.
+              final scaled = MediaQuery.textScalerOf(context).scale(fontSize);
+              final shown = sectionBandLabelWithin(
+                label,
+                extent: constraints.maxHeight,
+                cellExtent: scaled * lineHeight,
+              );
+              return Center(
+                child: ClipRect(
+                  child: VerticalWritingText(
+                    text: shown,
+                    // ACTION / SE / CAM stand UP (user, 2026-08-08). Lying
+                    // down is the Japanese standard and it is what the
+                    // printed sheet keeps, but this band is a three-letter
+                    // tag you glance at, and glancing at it meant tilting
+                    // your head.
+                    latinForm: VerticalLatinForm.upright,
+                    lineHeight: lineHeight,
+                    style: TextStyle(
+                      fontSize: fontSize,
+                      // Dropped with the turn: letter spacing is a
+                      // HORIZONTAL notion and the renderer zeroes it anyway
+                      // (the leading comes from the cell extent), so
+                      // carrying it here only said something untrue about
+                      // the label.
+                      fontWeight: FontWeight.bold,
+                      height: lineHeight,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ),
       ),
     );
   }
+}
+
+/// The tag a band [extent] tall can actually show: the whole word, or — when
+/// it does not fit — the word's INITIAL.
+///
+/// ㉑ (user, 2026-08-12): the storyboard's transition section is one 30px row
+/// tall, and `CAM` set in that column came out as a `C` over a rotated
+/// ellipsis — 「`CI`처럼 잘려 보인다」. The label was not the bug and the panel
+/// was not either: three glyph cells at 9pt/1.15 need 31px and the band has
+/// 29, so it ellipsised exactly as [VerticalTextOverflow.ellipsis] promises.
+///
+/// ★An ellipsis earns its place when it stands for text you could go and
+/// READ — a layer name, a blend mode. Standing for the rest of a three-letter
+/// tag it stands for nothing: there is no wider band to see `CAM` in, and the
+/// `⋮` it draws is a letter-shaped smudge. An abbreviation that will not fit
+/// abbreviates further, and one letter is where that ends.
+///
+/// Deliberately NOT the general text rule (`Background` still wants `Backg…`,
+/// not `B`): this is the rule for a fixed tag out of a closed set, where the
+/// first letter still tells the sections apart. It fires ONLY where the label
+/// is being cut today, so no band that reads correctly now can change.
+String sectionBandLabelWithin(
+  String label, {
+  required double extent,
+  required double cellExtent,
+}) {
+  if (label.isEmpty || !extent.isFinite || cellExtent <= 0) {
+    return label;
+  }
+  final cells = verticalTextCells(
+    label,
+    latinForm: VerticalLatinForm.upright,
+  );
+  final needed = verticalTextSpanCount(cells);
+  final capacity = verticalTextCapacityCells(
+    mainExtent: extent,
+    naturalCellExtent: cellExtent,
+  );
+  if (capacity >= needed) {
+    return label;
+  }
+  // Grapheme clusters, not code units: the tag is Latin today but the rule
+  // has to survive being translated, and half of a combining pair is not an
+  // initial.
+  return label.characters.first;
 }
 
 const double layerTimesheetSlotWidth = 20;

@@ -27,8 +27,25 @@ class TimelineCommandBar extends StatelessWidget {
 
   static const EdgeInsets padding = EdgeInsets.fromLTRB(8, 4, 8, 4);
 
+  /// The gap between the bar's edge and the first pill, on TOP of [padding].
+  ///
+  /// It belongs to the bar rather than to whatever is handed in, which is
+  /// ⑫ (user, 2026-08-12: 「타임라인과 스토리보드의 버튼 패딩이 다르다 —
+  /// 스토리보드는 컷 버튼 앞에 여백이 있는 느낌」). It was: the action
+  /// toolbar carried this padding itself, so the timeline — which mounts the
+  /// toolbar AS its leading — got it once, and the storyboard — which puts
+  /// the toolbar in a row with two more groups and padded that row too —
+  /// got it twice.
+  static const double leadingInset = 2;
+
   /// The host's own controls (transport, actions, cut group). Null leaves
   /// the left side empty and still pins the cluster right.
+  ///
+  /// Handed in as a plain ROW: the bar pads it and gives it the overflow
+  /// scroller. That was the other half of ⑫ — a `leading` that scrolled
+  /// itself put a horizontal scroller inside this one, and the inner box
+  /// wins the drag, so the storyboard's trailing groups could not be
+  /// scrolled to at all.
   final Widget? leading;
 
   final Widget cluster;
@@ -42,7 +59,23 @@ class TimelineCommandBar extends StatelessWidget {
         padding: padding,
         child: Row(
           children: [
-            if (leading != null) Expanded(child: leading) else const Spacer(),
+            if (leading != null)
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: leadingInset,
+                  ),
+                  // BARRED (유저, 2026-08-10: 「버튼 사라지기 시작하면 생기는
+                  // 스크롤바」): the app's bar exists only while the row
+                  // overflows and costs no layout when it does not.
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: leading,
+                  ),
+                ),
+              )
+            else
+              const Spacer(),
             const SizedBox(width: 8),
             cluster,
           ],
