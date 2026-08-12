@@ -427,6 +427,40 @@ AnicelZipLayout writeAnicelArchiveFile({
   return AnicelZipLayout(entries: written, centralDirectoryOffset: offset);
 }
 
+/// Identifies the .anicel at [path] well enough to refuse a recovery
+/// overlay that was not built against it.
+///
+/// A recovery snapshot holds only what changed since the last save, so it
+/// is meaningless — worse, quietly wrong — laid over a different base. The
+/// stamp is the file's length plus a CRC-32 of its central directory and
+/// EOCD, which is a TAIL-ONLY read: a multi-gigabyte project must not be
+/// hashed whole to answer "is this the file I was built from".
+///
+/// Content-derived rather than a counter, so it cannot be made to agree by
+/// copying, restoring or re-syncing a project — the failure mode a
+/// generation number has is that two different files can carry the same
+/// one. The central directory names every entry with its offset, length
+/// and CRC, so any change to the archive moves it.
+///
+/// Returns null when the file cannot be read or has no valid tail; the
+/// caller treats that as "no base to check against".
+String? anicelBaseStamp(String path) {
+  try {
+    final raf = File(path).openSync();
+    try {
+      final length = raf.lengthSync();
+      final layout = parseAnicelZipLayoutFile(path);
+      raf.setPositionSync(layout.centralDirectoryOffset);
+      final tail = raf.readSync(length - layout.centralDirectoryOffset);
+      return '$length:${anicelCrc32(tail).toRadixString(16)}';
+    } finally {
+      raf.closeSync();
+    }
+  } on Object {
+    return null;
+  }
+}
+
 /// A STORE'd local file header + its name. [length] is both sizes: no
 /// compression happens at the ZIP layer.
 Uint8List _localHeaderBytes(String name, int length, int crc) {
