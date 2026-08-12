@@ -1810,6 +1810,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                                               mode,
                                                   selectionCommands: widget
                                                       .canvasSelectionCommands,
+                                                  cutPieceSlot: _cutPieceSlot,
                                                   language: widget
                                                       .session
                                                       .languageSettings

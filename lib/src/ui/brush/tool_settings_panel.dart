@@ -14,6 +14,8 @@ import 'brush_settings_panel.dart';
 import 'brush_tool_state.dart';
 import 'guide_panels.dart';
 import 'canvas_selection_commands.dart';
+import '../../models/cut_piece.dart';
+import '../../services/cut_piece_slot.dart';
 import '../theme/app_theme.dart';
 import '../text/app_strings.dart';
 
@@ -42,6 +44,10 @@ class ToolSettingsPanel extends StatelessWidget {
     this.guides,
     this.selectedGuideId,
     this.onGuidesCommitted,
+    this.cutPieceSlot,
+    this.onCutPasteAbove,
+    this.onCutPasteBelow,
+    this.onRegisterCutPieceAsTip,
   });
 
   /// The active cut's guides, and which one the tool is editing. Null
@@ -78,6 +84,18 @@ class ToolSettingsPanel extends StatelessWidget {
   /// The mounted selection layer's imperative channel — the Move tool's
   /// numeric inputs read and write the live transform through it.
   final CanvasSelectionCommands? selectionCommands;
+
+  /// The piece the cut tool is holding — the stamp tile's knobs pose it.
+  final CutPieceSlot? cutPieceSlot;
+
+  /// Drop the held piece back at the coordinates it was cut from, over or
+  /// behind what is already there. Null = the host cannot paste (no cel).
+  final VoidCallback? onCutPasteAbove;
+  final VoidCallback? onCutPasteBelow;
+
+  /// Promote the held piece into the brush tip library. Explicit on
+  /// purpose: cutting must never grow the library by itself.
+  final VoidCallback? onRegisterCutPieceAsTip;
 
   /// R28 #6: where the eyedropper reads from (PS/CSP's 참조원). Null
   /// handler = the picker shows but cannot be changed (hosts that do not
@@ -123,9 +141,13 @@ class ToolSettingsPanel extends StatelessWidget {
         // grab is hard-edged by law — 2치 보존 — and it makes no selection,
         // so there is no combine mode either), and the stamp tile's knobs
         // land here in the next slice.
-        CanvasTool.cutRect ||
-        CanvasTool.cutLasso ||
-        CanvasTool.cutStamp => const _CutToolSettingsPlaceholder(),
+        CanvasTool.cutRect || CanvasTool.cutLasso => const _CutGrabSettings(),
+        CanvasTool.cutStamp => _CutStampSettings(
+          slot: cutPieceSlot,
+          onPasteAbove: onCutPasteAbove,
+          onPasteBelow: onCutPasteBelow,
+          onRegisterAsTip: onRegisterCutPieceAsTip,
+        ),
         CanvasTool.move => _MoveSettings(
           selectionCommands: selectionCommands,
           resampleMode: transformResampleMode,
@@ -143,16 +165,20 @@ class ToolSettingsPanel extends StatelessWidget {
   }
 }
 
-/// Stands in until the stamp tile's knobs land (piece preview, paste
-/// above/below, the two flips, size %, reset, register as tip).
-class _CutToolSettingsPlaceholder extends StatelessWidget {
-  const _CutToolSettingsPlaceholder();
+/// The two GRAB tiles have nothing to set.
+///
+/// Not an oversight: the grab makes no selection, so there is no combine
+/// mode to offer, and its mask is hard-edged by law (2치 보존) rather than
+/// by a default someone could nudge. The soft-edge knobs that would
+/// otherwise belong here already live on the Select tool.
+class _CutGrabSettings extends StatelessWidget {
+  const _CutGrabSettings();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      key: const ValueKey<String>('tool-settings-cut'),
+      key: const ValueKey<String>('tool-settings-cut-grab'),
       padding: const EdgeInsets.all(12),
       child: Align(
         alignment: Alignment.topLeft,
@@ -164,6 +190,153 @@ class _CutToolSettingsPlaceholder extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The STAMP tile's knobs.
+///
+/// Deliberately short: spacing, jitter and the rest of the brush
+/// parameters are NOT here (유저 확정 — "스페이싱 같은 거 없애고 … 그건 그냥
+/// 팁으로 등록해서 뭐 할 때만 띄우는 게 낫겠다"). The law that falls out is
+/// **a held piece stays simple, brush parameters belong to a registered
+/// tip** — the same split Photoshop draws between a clipboard piece and a
+/// Define Brush Preset.
+class _CutStampSettings extends StatelessWidget {
+  const _CutStampSettings({
+    required this.slot,
+    required this.onPasteAbove,
+    required this.onPasteBelow,
+    required this.onRegisterAsTip,
+  });
+
+  final CutPieceSlot? slot;
+  final VoidCallback? onPasteAbove;
+  final VoidCallback? onPasteBelow;
+  final VoidCallback? onRegisterAsTip;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final holder = slot;
+    if (holder == null) {
+      return const SizedBox.shrink(
+        key: ValueKey<String>('tool-settings-cut-stamp'),
+      );
+    }
+    return ListenableBuilder(
+      listenable: holder,
+      builder: (context, _) {
+        final piece = holder.piece;
+        if (piece == null) {
+          return Padding(
+            key: const ValueKey<String>('tool-settings-cut-stamp'),
+            padding: const EdgeInsets.all(12),
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Text(
+                'Nothing held yet.\n'
+                'Cut a piece with the rectangle or lasso tile first.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          );
+        }
+        return ListView(
+          key: const ValueKey<String>('tool-settings-cut-stamp'),
+          padding: const EdgeInsets.all(12),
+          children: [
+            Text(
+              'Holding ${piece.image.width}×${piece.image.height} px',
+              style: theme.textTheme.labelMedium,
+            ),
+            const SizedBox(height: 12),
+            Text('Paste at original position', style: theme.textTheme.labelSmall),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    key: const ValueKey<String>('cut-paste-above-button'),
+                    onPressed: onPasteAbove,
+                    child: const Text('Above'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    key: const ValueKey<String>('cut-paste-below-button'),
+                    onPressed: onPasteBelow,
+                    child: const Text('Below'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Flip is a flag applied at stamp time, never baked into the
+            // held bytes: baking would destroy the original, and flipping
+            // is a byte re-order that keeps the 1:1 contract intact.
+            SwitchListTile(
+              key: const ValueKey<String>('cut-flip-horizontal-switch'),
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Flip horizontal'),
+              value: piece.flipHorizontal,
+              onChanged: (value) =>
+                  holder.updatePose(flipHorizontal: value),
+            ),
+            SwitchListTile(
+              key: const ValueKey<String>('cut-flip-vertical-switch'),
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Flip vertical'),
+              value: piece.flipVertical,
+              onChanged: (value) => holder.updatePose(flipVertical: value),
+            ),
+            const SizedBox(height: 8),
+            // Percent, not pixels: with pixels "original" is 300 for one
+            // piece and 40 for the next, so the number would have to be
+            // remembered. And NOT the top strip's brush size — sharing it
+            // would multiply the piece by whatever pen width was last
+            // used, the same failure the locked 100% opacity avoids.
+            Text(
+              'Size ${piece.scalePercent}%',
+              style: theme.textTheme.labelSmall,
+            ),
+            Slider(
+              key: const ValueKey<String>('cut-scale-slider'),
+              min: CutPiece.minScalePercent.toDouble(),
+              max: 400,
+              value: piece.scalePercent.clamp(1, 400).toDouble(),
+              onChanged: (value) =>
+                  holder.updatePose(scalePercent: value.round()),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                // Reset clears size AND both flips, which is why there is
+                // no separate "original size" button: those two knobs are
+                // everything this panel poses.
+                OutlinedButton(
+                  key: const ValueKey<String>('cut-reset-button'),
+                  onPressed: piece.isPosed ? holder.resetPose : null,
+                  child: const Text('Reset'),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    key: const ValueKey<String>('cut-register-tip-button'),
+                    onPressed: onRegisterAsTip,
+                    child: const Text('Register as Tip…'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
     );
   }
 }
