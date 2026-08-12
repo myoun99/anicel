@@ -125,6 +125,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.fitFocusRect,
     this.floorCover = EdgeInsets.zero,
     this.floorRailBand,
+    this.floorBottomOverlaySpan = 0,
     this.autoFrame,
     this.contentStrokeActive,
     this.sampleColorAt,
@@ -305,6 +306,11 @@ class BrushCanvasPanel extends StatefulWidget {
   /// steps aside for a panel nowhere near it reads as floating (유저, R3
   /// #5).
   final CanvasFloorBand? floorRailBand;
+
+  /// ⑩: what floats over the floor's BOTTOM edge without framing the
+  /// artwork — the collapsed row. The horizontal panbar steps up by it, and
+  /// nothing else does, because nothing else was being buried.
+  final double floorBottomOverlaySpan;
 
   /// Playback-follow reframing: when the request's token changes between
   /// updates the panel reframes onto its rect (see
@@ -1310,6 +1316,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               // The capsules float INSIDE what the panels left over.
               cover: widget.floorCover,
               railBand: widget.floorRailBand,
+              bottomOverlaySpan: widget.floorBottomOverlaySpan,
               strokeActive: _strokeActive || _selectionDragActive,
               contentStrokeActive: widget.contentStrokeActive,
               child: LayoutBuilder(
@@ -2865,6 +2872,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     required this.rightStripBar,
     required this.horizontalStripBar,
     required this.cover,
+    this.bottomOverlaySpan = 0,
     this.railBand,
     this.strokeActive = false,
     this.contentStrokeActive,
@@ -2894,6 +2902,10 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// pieces you reach for hug the part you can still see. Zero for a panel
   /// nothing is covering.
   final EdgeInsets cover;
+
+  /// ⑩: what lies ON the artwork at the bottom edge (the collapsed row).
+  /// The horizontal bar steps up by it; framing does not.
+  final double bottomOverlaySpan;
 
   /// The vertical band the rail on the right edge occupies — see
   /// [BrushCanvasPanel.floorRailBand].
@@ -3045,7 +3057,14 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                   Positioned(
                     left: _capsuleMargin,
                     right: _capsuleMargin,
-                    bottom: insets.bottom + _capsuleMargin,
+                    // ⑩: …and above whatever lies ON the artwork at that
+                    // edge. The collapsed row frames nothing, so it is not
+                    // in `insets` — but it is exactly where this bar was,
+                    // which is what the user saw.
+                    bottom:
+                        insets.bottom +
+                        bottomOverlaySpan +
+                        _capsuleMargin,
                     child: Align(
                       alignment: Alignment.bottomCenter,
                       child: _capsule(

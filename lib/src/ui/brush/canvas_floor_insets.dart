@@ -33,6 +33,7 @@ class CanvasFloorInsets extends InheritedWidget {
     required this.insets,
     this.leftRailBand,
     this.rightRailBand,
+    this.bottomOverlaySpan = 0,
     required super.child,
   });
 
@@ -52,6 +53,20 @@ class CanvasFloorInsets extends InheritedWidget {
   final CanvasFloorBand? leftRailBand;
   final CanvasFloorBand? rightRailBand;
 
+  /// ⑩ (user, 2026-08-12): 「캔버스 패널 가로 스크롤바가 간편 오버레이와
+  /// 겹치니 스크롤바를 더 위로」.
+  ///
+  /// How much floats over the floor's BOTTOM edge without framing the
+  /// artwork — the collapsed row, which is drawn on the drawing with no
+  /// ground of its own.
+  ///
+  /// ⚠️Deliberately NOT part of [insets]. That one deflates the window the
+  /// artist looks through, and adding this to it would shift the picture
+  /// every time the panel folded. A control that must not be buried asks
+  /// this instead — the same distinction [leftRailBand] draws for the side
+  /// columns: where something IS, versus what the framing owes it.
+  final double bottomOverlaySpan;
+
   /// The cover for the floor [context] sits on, or null when it is not the
   /// floor at all.
   static CanvasFloorInsets? maybeOf(BuildContext context) =>
@@ -61,7 +76,8 @@ class CanvasFloorInsets extends InheritedWidget {
   bool updateShouldNotify(CanvasFloorInsets oldWidget) =>
       oldWidget.insets != insets ||
       oldWidget.leftRailBand != leftRailBand ||
-      oldWidget.rightRailBand != rightRailBand;
+      oldWidget.rightRailBand != rightRailBand ||
+      oldWidget.bottomOverlaySpan != bottomOverlaySpan;
 }
 
 /// The stage's outer two surfaces, published ONCE for every canvas panel in
