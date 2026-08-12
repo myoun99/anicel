@@ -287,7 +287,12 @@ class _HomePageState extends State<HomePage> {
       return;
     }
     _autosave = ProjectAutosaveService(
-      isDirty: () => _session.hasUnsavedChanges,
+      // Stands down while a manual save runs: a tick that lands after the
+      // save's sidecar retirement leaves one behind for a project that was
+      // saved and closed cleanly, and the next open then offers to recover
+      // it — which is the exact signal this round exists to keep honest.
+      isDirty: () =>
+          _session.hasUnsavedChanges && !_session.autosaveShouldStandDown,
       writeSnapshot: _session.writeAutosaveSnapshot,
       // Only called once needsProjectFile says a real file exists.
       autosavePath: () => _session.autosaveSidecarPath!,

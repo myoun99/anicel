@@ -96,13 +96,17 @@ class ProjectAutosaveService {
   /// and (for the declined case) keeps firing at every open until the
   /// next manual save.
   ///
-  /// SYNC on purpose. An in-flight async delete can be overtaken by the
-  /// next autosave tick and eat the sidecar it just wrote; finishing
-  /// before anything else runs on the isolate removes that window rather
-  /// than narrowing it. It also keeps the exit and open flows testable —
-  /// async `dart:io` inside `testWidgets` never completes (fake zone), and
-  /// the neighbouring reads ([sidecarIsNewer], `newestExistingSidecarFor`)
-  /// are sync for the same reason. One small file, at save or exit.
+  /// SYNC on purpose — but be precise about what that buys. It settles
+  /// DELETE-versus-write: nothing can interleave between the existence
+  /// check and the unlink. It does NOT settle write-versus-delete, where a
+  /// tick that started earlier finishes its own write after the retirement
+  /// has already run; that window is an isolate wide and the session's
+  /// save-in-flight flag is what closes it.
+  ///
+  /// Sync also keeps the exit and open flows testable — async `dart:io`
+  /// inside `testWidgets` never completes (fake zone) — and matches the
+  /// neighbouring reads ([sidecarIsNewer], `newestExistingSidecarFor`),
+  /// which are sync for the same reason. One small file, at save or exit.
   static void retireSidecarsFor(String projectFilePath) {
     for (final candidate in AppSave.sidecarCandidatesFor(projectFilePath)) {
       _deleteSidecar(candidate);

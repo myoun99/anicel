@@ -15573,6 +15573,31 @@ class EditorSessionManager extends ChangeNotifier {
   Future<void> saveProjectToFile(String filePath) async {
     // A text bake in flight must land before the store snapshots — the
     // archive's parameters and raster must never disagree.
+    // Raised for the WHOLE save, retirement included. An autosave tick that
+    // starts inside a save renames its own temp onto the sidecar path
+    // AFTER the retirement ran, and the session is clean by then — so the
+    // exit gate returns early, nothing retires it, and the next open offers
+    // recovery for a project that was closed cleanly. Making the delete
+    // synchronous did not close this: sync ordering settles delete-versus-
+    // write, and this is write-versus-delete, which is an isolate wide.
+    _saveInFlight = true;
+    try {
+      await _writeProjectToFile(filePath);
+    } finally {
+      _saveInFlight = false;
+    }
+  }
+
+  /// True while a manual save is running, so the autosave tick stands down
+  /// instead of racing it. Read through [autosaveShouldStandDown].
+  bool _saveInFlight = false;
+
+  /// Whether an autosave tick should do nothing right now — a save is
+  /// mid-flight, so anything the tick writes would land beside a
+  /// retirement that has already run.
+  bool get autosaveShouldStandDown => _saveInFlight;
+
+  Future<void> _writeProjectToFile(String filePath) async {
     await _flushTextCelBakes();
     // Captured BEFORE the save moves the project path: a Save As has to
     // retire the sidecars of the file it was saved FROM as well.
@@ -15588,6 +15613,9 @@ class EditorSessionManager extends ChangeNotifier {
     );
     _projectFilePath = filePath;
     _hasUnsavedChanges = false;
+    // The recovered work now lives in the project file, so the sidecar is
+    // ordinary again and the retirement below is free to take it.
+    _recoveredFromSidecar = null;
     if (adoptedTakePaths.isNotEmpty) {
       // With the project path set, conforms resolve into the new
       // `.assets` container — refresh the moved takes there.
@@ -15603,6 +15631,15 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The sidecar this session was RECOVERED from, while its contents still
+  /// live nowhere else. Null in every ordinary session.
+  ///
+  /// Recovery loads the sidecar's bytes and mints every cel ref into it,
+  /// then clears the RAM tiers — so from that moment the sidecar is the
+  /// only home those pixels have. A manual save moves them into the
+  /// project file and clears this.
+  String? _recoveredFromSidecar;
+
   /// The user threw this session's unsaved work away (closed without
   /// saving). Its sidecar has to go with it: "저장 안 하고 닫기 = 버리기"
   /// is only literally true if the next open cannot offer to resurrect
@@ -15610,9 +15647,20 @@ class EditorSessionManager extends ChangeNotifier {
   ///
   /// A never-saved project has no sidecar to retire (its dirty ticks ask
   /// for a real file instead of writing one).
+  ///
+  /// 🚨A RECOVERED session is the exception, and the reason is that the
+  /// sidecar is not this session's discard to make. It holds the PREVIOUS
+  /// session's crash work, it is the only copy of it (recovery drops every
+  /// RAM tier and points every ref inside it), and a recovered session
+  /// arrives already dirty with zero edits — so the exit gate fires and
+  /// offers Close as the primary button before the user has touched
+  /// anything. Retiring here deletes hours of crash work at one tap on a
+  /// prompt that says nothing about it. Keeping it means the next open
+  /// offers recovery again, which is what it did before this round; the
+  /// user discards it by saving, not by closing.
   void discardAutosaveSidecar() {
     final path = _projectFilePath;
-    if (path == null) {
+    if (path == null || _recoveredFromSidecar != null) {
       return;
     }
     ProjectAutosaveService.retireSidecarsFor(path);
@@ -15684,6 +15732,12 @@ class EditorSessionManager extends ChangeNotifier {
     _voiceRecordShelfPaths.clear();
     _voiceRecordShelfDirectory = null;
     _projectFilePath = recoverAs ?? filePath;
+    // Remembered because [filePath] IS the sidecar on a recovery, every ref
+    // now points inside it, and the RAM tiers were just cleared — so until
+    // a save moves those pixels into the project file, deleting it is
+    // deleting the work. Reset on an ordinary open so a later session never
+    // inherits another one's exception.
+    _recoveredFromSidecar = recoverAs == null ? null : filePath;
     _warmAudioConforms();
     // A recovered session stays dirty: its content differs from the real
     // file until the user saves.
