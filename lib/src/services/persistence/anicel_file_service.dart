@@ -132,6 +132,7 @@ class AnicelFileService {
     List<BrushFrameStore> auxCelStores = const [],
     required String filePath,
     required String baseFilePath,
+    bool Function()? isStale,
   }) async {
     final stores = [brushFrameStore, ...auxCelStores];
     final snapshots = [for (final store in stores) store.bakedSnapshotForSave()];
@@ -154,6 +155,18 @@ class AnicelFileService {
       }
     }
     final stamp = anicelBaseStamp(baseFilePath);
+    if (stamp == null) {
+      // No stamp, no overlay. A snapshot that cannot name its base is
+      // worse than none in both directions: the reader compares
+      // `stamp != anicelBaseStamp(base)`, so null on both sides passes and
+      // merges a delta nobody checked; and a base that was merely
+      // unreadable at this moment — a cloud file locking, an Apple
+      // security scope momentarily gone — would write a null stamp that
+      // never matches again, which makes the project refuse to open and
+      // then loses the overlay to the decline path. Skipping is the
+      // honest answer; the next trigger tries again.
+      return;
+    }
     final saveDirectory = _parentDirectory(baseFilePath);
     final temp = File('$filePath.tmp-${DateTime.now().microsecondsSinceEpoch}');
     await temp.parent.create(recursive: true);
@@ -197,7 +210,43 @@ class AnicelFileService {
       }
       rethrow;
     }
+    // Re-asked at the LAST moment, not only on entry. A manual save can
+    // start and finish while this is in the isolate, and it retires the
+    // snapshot on its way out — renaming onto that path afterwards
+    // recreates one for a project that was just saved cleanly, stamped
+    // against the base as it was BEFORE the save. The next open would then
+    // offer to recover it and throw on the mismatch, which is a project
+    // that refuses to open.
+    if (isStale?.call() ?? false) {
+      if (temp.existsSync()) {
+        temp.deleteSync();
+      }
+      return;
+    }
     temp.renameSync(filePath);
+    _sweepStaleTemps(temp.parent, keep: temp.path);
+  }
+
+  /// Removes `.tmp-<micros>` leftovers beside a snapshot.
+  ///
+  /// The write runs as the app is being killed, so a torn attempt is a
+  /// normal outcome rather than an exceptional one — and the catch above
+  /// only covers a throw, not a process that stops existing. Nothing
+  /// enumerates this folder otherwise (the candidate paths are literal),
+  /// and the user cannot see it to tidy it, so the next successful write
+  /// takes the bodies with it.
+  static void _sweepStaleTemps(Directory folder, {required String keep}) {
+    try {
+      for (final entity in folder.listSync()) {
+        if (entity is File &&
+            entity.path != keep &&
+            entity.path.contains('.tmp-')) {
+          entity.deleteSync();
+        }
+      }
+    } on Object {
+      // Housekeeping never fails a save.
+    }
   }
 
   Future<void> save({
@@ -652,7 +701,12 @@ class AnicelFileService {
       final stampJson =
           jsonDecode(utf8.decode(raf.readSync(stampEntry.length)))
               as Map<String, dynamic>;
-      if (stampJson['base'] != anicelBaseStamp(basePath)) {
+      final recorded = stampJson['base'];
+      final actual = anicelBaseStamp(basePath);
+      // `recorded == null` cannot happen from this app — the writer
+      // refuses to make one — but a hand-edited or truncated snapshot can
+      // carry it, and `null != null` would wave that through unchecked.
+      if (recorded is! String || actual == null || recorded != actual) {
         // Refused rather than merged: a delta over the wrong base gives a
         // project that opens, looks right, and is not.
         throw const FormatException(

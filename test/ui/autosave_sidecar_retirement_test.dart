@@ -200,6 +200,30 @@ void main() {
       expect(otherSidecar.existsSync(), isFalse);
     });
 
+    test('closing WITHOUT saving stops the snapshot too, not just deletes '
+        'the one already there', () async {
+      // Deleting without stopping the trigger is a race the trigger wins.
+      // Close retires the snapshot, and then the shutdown around it
+      // delivers the same lifecycle callbacks as any other — the session
+      // is still dirty, so a fresh snapshot renames straight over the
+      // retirement and the next open hands the discarded work back.
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      await s.saveProjectToFile(projectPath);
+      s.createCut();
+      expect(s.hasUnsavedChanges, isTrue);
+
+      s.discardAutosaveSidecar();
+
+      expect(
+        s.autosaveShouldStandDown,
+        isTrue,
+        reason: 'the exit lifecycle is still to come',
+      );
+      // And the writer refuses even if something calls it directly.
+      await s.writeAutosaveSnapshot(s.autosaveSidecarPath!);
+      expect(File(s.autosaveSidecarPath!).existsSync(), isFalse);
+    });
+
     test('an autosave tick stands down while a manual save runs', () async {
       // A tick that lands after the save's retirement leaves a sidecar for
       // a project that was saved and closed cleanly, and the next open then
