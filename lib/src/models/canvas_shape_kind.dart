@@ -17,6 +17,10 @@ enum CanvasShapeKind {
   /// Drag two opposite corners; the outline is the box between them.
   rect,
 
+  /// Drag two opposite corners; the outline is the ellipse inscribed in
+  /// the box between them.
+  ellipse,
+
   /// Freehand — the outline follows the pointer and closes on release.
   lasso,
 }

@@ -2384,6 +2384,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// until it has said which kind of drag it is.
   bool get _tracesPointerPath => switch (widget.shapeKind) {
     CanvasShapeKind.rect => false,
+    CanvasShapeKind.ellipse => false,
     CanvasShapeKind.lasso => true,
   };
 
@@ -2399,21 +2400,32 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         }
         return CanvasSelectionShape(_lassoPoints);
       case CanvasShapeKind.rect:
+      case CanvasShapeKind.ellipse:
         final start = _marqueeStart;
         final current = _marqueeCurrent;
         if (start == null || current == null) {
           return null;
         }
+        // A click (or a drag too small to have meant one) is degenerate for
+        // both box shapes — an ellipse in a 1px box is not a thinner
+        // ellipse, it is nothing.
         if ((current.x - start.x).abs() < 2 &&
             (current.y - start.y).abs() < 2) {
           return null;
         }
-        return CanvasSelectionShape.rect(
-          left: start.x,
-          top: start.y,
-          right: current.x,
-          bottom: current.y,
-        );
+        return widget.shapeKind == CanvasShapeKind.ellipse
+            ? CanvasSelectionShape.ellipse(
+                left: start.x,
+                top: start.y,
+                right: current.x,
+                bottom: current.y,
+              )
+            : CanvasSelectionShape.rect(
+                left: start.x,
+                top: start.y,
+                right: current.x,
+                bottom: current.y,
+              );
     }
   }
 

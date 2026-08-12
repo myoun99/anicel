@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
@@ -28,6 +30,101 @@ void main() {
       expect(shape.containsPoint(CanvasPoint(x: 20, y: 20)), isTrue);
       expect(shape.containsPoint(CanvasPoint(x: 5, y: 20)), isFalse);
       expect(shape.containsPoint(CanvasPoint(x: 20, y: 35)), isFalse);
+    });
+
+    test('the ellipse holds its axes and drops its corners', () {
+      final shape = CanvasSelectionShape.ellipse(
+        left: 0,
+        top: 0,
+        right: 100,
+        bottom: 60,
+      );
+      // Inside along both axes, right out to just short of the rim.
+      expect(shape.containsPoint(CanvasPoint(x: 50, y: 30)), isTrue);
+      expect(shape.containsPoint(CanvasPoint(x: 2, y: 30)), isTrue);
+      expect(shape.containsPoint(CanvasPoint(x: 98, y: 30)), isTrue);
+      expect(shape.containsPoint(CanvasPoint(x: 50, y: 2)), isTrue);
+      expect(shape.containsPoint(CanvasPoint(x: 50, y: 58)), isTrue);
+      // The box's corners are what makes it an ellipse rather than a box.
+      expect(shape.containsPoint(CanvasPoint(x: 2, y: 2)), isFalse);
+      expect(shape.containsPoint(CanvasPoint(x: 98, y: 58)), isFalse);
+      // And outside is outside.
+      expect(shape.containsPoint(CanvasPoint(x: -5, y: 30)), isFalse);
+      expect(shape.containsPoint(CanvasPoint(x: 50, y: 65)), isFalse);
+    });
+
+    test('the ellipse reads the same however the drag ran', () {
+      // Corner order is the user's drag direction, which must not change
+      // the shape it names.
+      final downRight = CanvasSelectionShape.ellipse(
+        left: 10,
+        top: 20,
+        right: 90,
+        bottom: 70,
+      );
+      final upLeft = CanvasSelectionShape.ellipse(
+        left: 90,
+        top: 70,
+        right: 10,
+        bottom: 20,
+      );
+      for (final point in [
+        CanvasPoint(x: 50, y: 45),
+        CanvasPoint(x: 12, y: 22),
+        CanvasPoint(x: 88, y: 68),
+        CanvasPoint(x: 50, y: 21),
+      ]) {
+        expect(
+          upLeft.containsPoint(point),
+          downRight.containsPoint(point),
+          reason: '$point',
+        );
+      }
+    });
+
+    test('side count follows the RADIUS, not the zoom', () {
+      // A small ellipse must not pay for a large one's smoothness, and a
+      // large one must not be visibly faceted. The rule is sag < 0.5 canvas
+      // px, so the count climbs with the radius and then stops.
+      final tiny = CanvasSelectionShape.ellipse(
+        left: 0,
+        top: 0,
+        right: 8,
+        bottom: 8,
+      );
+      final big = CanvasSelectionShape.ellipse(
+        left: 0,
+        top: 0,
+        right: 2000,
+        bottom: 2000,
+      );
+      final huge = CanvasSelectionShape.ellipse(
+        left: 0,
+        top: 0,
+        right: 200000,
+        bottom: 200000,
+      );
+      expect(tiny.points.length, greaterThanOrEqualTo(12));
+      expect(tiny.points.length, lessThan(big.points.length));
+      expect(huge.points.length, lessThanOrEqualTo(512));
+
+      // The promise itself: no vertex-to-vertex chord sags more than half a
+      // pixel away from the circle it is cutting.
+      const radius = 1000.0;
+      final circle = CanvasSelectionShape.ellipse(
+        left: 0,
+        top: 0,
+        right: 2 * radius,
+        bottom: 2 * radius,
+      );
+      for (var i = 0; i < circle.points.length; i += 1) {
+        final a = circle.points[i];
+        final b = circle.points[(i + 1) % circle.points.length];
+        final midX = (a.x + b.x) / 2 - radius;
+        final midY = (a.y + b.y) / 2 - radius;
+        final sag = radius - math.sqrt(midX * midX + midY * midY);
+        expect(sag, lessThanOrEqualTo(0.5), reason: 'chord $i');
+      }
     });
 
     test('a concave lasso polygon selects by even-odd containment', () {

@@ -11,6 +11,7 @@ import 'brush_tool_state.dart';
 const List<({CanvasShapeKind kind, IconData icon, String label})>
 _shapeTiles = [
   (kind: CanvasShapeKind.rect, icon: Icons.crop_square, label: 'Rectangle'),
+  (kind: CanvasShapeKind.ellipse, icon: Icons.circle_outlined, label: 'Ellipse'),
   (kind: CanvasShapeKind.lasso, icon: Icons.gesture, label: 'Lasso'),
 ];
 

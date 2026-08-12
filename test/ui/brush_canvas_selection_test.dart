@@ -2280,6 +2280,31 @@ void main() {
     expect(inkAt(env.coordinator, 28, 30), 0);
   });
 
+  testWidgets('the ellipse shape drags out a round region, not a box', (
+    tester,
+  ) async {
+    // The wiring, not the geometry: the shape kind has to reach the drag
+    // surface and pick the other factory. A box drag that came back square
+    // would pass every pure-function test next door.
+    final env = await pumpSelectionPanel(
+      tester,
+      shapeKind: CanvasShapeKind.ellipse,
+    );
+    await dragOnLayer(tester, const Offset(10, 10), const Offset(90, 90));
+
+    final region = env.commands.region!;
+    expect(
+      region.containsPoint(CanvasPoint(x: 50, y: 50)),
+      isTrue,
+      reason: 'the middle is inside',
+    );
+    expect(
+      region.containsPoint(CanvasPoint(x: 13, y: 13)),
+      isFalse,
+      reason: 'the box corner is not — that is what makes it an ellipse',
+    );
+  });
+
   testWidgets('R26 #15: NO frame under the playhead still selects — the '
       'region is view state; only pixel ops need a cel', (tester) async {
     final commands = CanvasSelectionCommands();
