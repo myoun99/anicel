@@ -13,6 +13,7 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/stroke.dart';
 import 'package:anicel/src/models/stroke_id.dart';
 import 'package:anicel/src/models/stroke_point.dart';
@@ -151,6 +152,142 @@ void main() {
         expect(project.tracks.single.cuts, [cutA]);
       },
     );
+
+    // A run behaviour is a SPEC; the cells it covers are ghost exposures
+    // derived from it. Every path that EDITS a timeline re-derives, but
+    // the paths that bring a cut or a layer in from OUTSIDE did not — so
+    // an imported hold recorded its spec, printed `H` on the property
+    // tag, and covered nothing. Both doors derive now, which is what
+    // keeps the next importer and the next edge mode out of the same
+    // hole.
+    group('a cut or layer arriving from outside gets its edges applied', () {
+      Layer edgeLayer({
+        required String id,
+        required TimelineRunEdgeMode mode,
+        int drawings = 1,
+      }) {
+        final cels = [
+          for (var i = 0; i < drawings; i += 1) FrameId('$id-cel-$i'),
+        ];
+        return Layer(
+          id: LayerId(id),
+          name: id,
+          kind: LayerKind.animation,
+          frames: [for (final cel in cels) _frame(id: cel.value)],
+          timeline: {
+            for (var i = 0; i < cels.length; i += 1)
+              i: TimelineExposure.drawing(cels[i], length: 1),
+          },
+          runBehaviors: [
+            TimelineRunBehavior(
+              anchorFrameId: cels.last,
+              side: TimelineRunEdgeSide.end,
+              mode: mode,
+            ),
+          ],
+        );
+      }
+
+      Layer placed(ProjectRepository repository, String layerId) =>
+          repository.requireProject().tracks.single.cuts.single.layers
+              .firstWhere((layer) => layer.id == LayerId(layerId));
+
+      int coveredEnd(Layer layer) => layer.timeline.entries
+          .map((entry) => entry.key + entry.value.length!)
+          .reduce((a, b) => a > b ? a : b);
+
+      ProjectRepository repositoryWithTrack() => ProjectRepository(
+        initialProject: _project(
+          id: 'project-1',
+          name: 'Project',
+          tracks: [_track(id: 'track-1', name: 'Video')],
+        ),
+      );
+
+      test('insertCut fills a held run to the cut end', () {
+        final repository = repositoryWithTrack();
+        repository.insertCut(
+          trackId: const TrackId('track-1'),
+          cut: _cut(
+            id: 'cut-1',
+            name: 'Cut 1',
+            layers: [edgeLayer(id: 'held', mode: TimelineRunEdgeMode.hold)],
+          ),
+        );
+
+        final layer = placed(repository, 'held');
+        final ghosts = layer.timeline.values.where((entry) => entry.ghost);
+        expect(ghosts, isNotEmpty, reason: 'a hold has to fill something');
+        expect(coveredEnd(layer), 24, reason: 'ghosts reach the cut end');
+        expect(
+          ghosts.map((entry) => entry.frameId).toSet(),
+          {const FrameId('held-cel-0')},
+          reason: 'a hold repeats its LAST drawing and only that one',
+        );
+      });
+
+      test('insertCut cycles a repeated run instead of holding its tail', () {
+        // Hold and repeat differ only in WHICH cel the ghosts name, so a
+        // derivation that filled with the last drawing for both would
+        // pass the coverage check above and still be wrong.
+        final repository = repositoryWithTrack();
+        repository.insertCut(
+          trackId: const TrackId('track-1'),
+          cut: _cut(
+            id: 'cut-1',
+            name: 'Cut 1',
+            layers: [
+              edgeLayer(
+                id: 'looped',
+                mode: TimelineRunEdgeMode.repeat,
+                drawings: 3,
+              ),
+            ],
+          ),
+        );
+
+        final layer = placed(repository, 'looped');
+        final ghosts = [
+          for (final entry in layer.timeline.entries)
+            if (entry.value.ghost) entry.value.frameId,
+        ];
+        expect(coveredEnd(layer), 24);
+        expect(ghosts.take(3), [
+          const FrameId('looped-cel-0'),
+          const FrameId('looped-cel-1'),
+          const FrameId('looped-cel-2'),
+        ], reason: 'the cycle restarts at the pattern head');
+      });
+
+      test('insertLayer fills against the cut it lands in', () {
+        final repository = repositoryWithTrack();
+        repository.insertCut(
+          trackId: const TrackId('track-1'),
+          cut: _cut(id: 'cut-1', name: 'Cut 1'),
+        );
+
+        repository.insertLayer(
+          cutId: const CutId('cut-1'),
+          layer: edgeLayer(id: 'held', mode: TimelineRunEdgeMode.hold),
+        );
+
+        expect(coveredEnd(placed(repository, 'held')), 24);
+      });
+
+      test('a layer with no edge is passed through untouched', () {
+        // The derivation must be free for the ordinary layer: the grid's
+        // memo gates compare by identity, so inventing a new instance on
+        // every insert would repaint rows that did not change.
+        final plain = _layer(id: 'plain', name: 'Plain');
+        final repository = repositoryWithTrack();
+        repository.insertCut(
+          trackId: const TrackId('track-1'),
+          cut: _cut(id: 'cut-1', name: 'Cut 1', layers: [plain]),
+        );
+
+        expect(identical(placed(repository, 'plain'), plain), isTrue);
+      });
+    });
 
     test('throws when inserting a cut into a missing track', () {
       final repository = ProjectRepository(

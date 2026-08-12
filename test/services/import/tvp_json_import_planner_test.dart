@@ -124,6 +124,27 @@ void main() {
       );
     });
 
+    test('a plan carries the SPEC and derives no ghosts — filling the cells '
+        'is the repository door\'s job', () {
+      // Where this belongs is the whole lesson of the bug it fixes. A run
+      // behaviour does not cover anything by itself; the ghosts come from
+      // `rederiveRunBehaviors`, and the paths that bring a cut in from
+      // outside used not to run it — so an imported hold printed `H` on
+      // the property tag while the cells after it read empty.
+      //
+      // The fix went to `ProjectRepository.insertCut`, so a plan STILL
+      // has no ghosts and that is correct. Deriving here as well would
+      // put the same rule in two places and invite them to drift.
+      final plan = planFixture('edge_behaviors');
+      for (final layer in plan.cut.layers) {
+        expect(
+          layer.timeline.values.any((entry) => entry.ghost),
+          isFalse,
+          reason: '${layer.name} is a plan, not a placed cut',
+        );
+      }
+    });
+
     test('a layer covering the whole clip still carries its hold — the '
         'behaviour is live, so lengthening the cut must keep holding', () {
       final plan = planFixture('edge_behaviors');

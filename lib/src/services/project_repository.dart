@@ -229,13 +229,16 @@ class ProjectRepository {
   }
 
   void insertCut({required TrackId trackId, required Cut cut, int? index}) {
+    // A cut built elsewhere — an importer's plan, a duplicate — arrives
+    // with run-edge SPECS and no ghosts. See [_withDerivedRunEdges].
+    final derived = _withDerivedRunEdges(cut);
     updateProject((project) {
       final next = updateTrackById(project, trackId, (track) {
         final cuts = [...track.cuts];
         if (index == null) {
-          cuts.add(cut);
+          cuts.add(derived);
         } else {
-          cuts.insert(index, cut);
+          cuts.insert(index, derived);
         }
         return track.copyWith(cuts: cuts);
       });
@@ -367,21 +370,40 @@ class ProjectRepository {
     });
   }
 
+  /// Every layer of [cut] with its run-edge ghosts derived from [cut]'s
+  /// own length.
+  ///
+  /// A run behaviour is a SPEC — *this run holds*, *this run repeats* —
+  /// and the cells it covers are ghost exposures synthesized from it by
+  /// [rederiveRunBehaviors]. The two are only ever in step because
+  /// something re-derives, and every path that EDITS a timeline does.
+  ///
+  /// The paths that bring a cut or a layer in from OUTSIDE did not, which
+  /// is a whole class of bug rather than one: an imported hold recorded
+  /// its spec, printed `H` on the property tag, and covered nothing. It
+  /// lives here rather than in each importer on purpose — the next
+  /// importer, and the next [TimelineRunEdgeMode], are then covered by
+  /// construction instead of by whoever writes them remembering to ask.
+  ///
+  /// Free when there is nothing to derive: [rederiveRunBehaviors] returns
+  /// the same layer instance for a layer with no specs and no ghosts, so
+  /// the grid's memo gates see no change.
+  static Cut _withDerivedRunEdges(Cut cut) => cut.copyWith(
+    layers: [
+      for (final layer in cut.layers)
+        rederiveRunBehaviors(layer, cutFrameCount: cut.duration),
+    ],
+  );
+
   void updateCutDuration({required CutId cutId, required int duration}) {
     updateProject((project) {
       final next = updateCutAnywhere(
         project,
         cutId,
         // Hold/repeat run edges fill ghosts TO THE CUT END, so a duration
-        // change re-derives every layer here — the only rederive trigger
-        // that is not a layer edit (identity for layers without specs).
-        (cut) => cut.copyWith(
-          duration: duration,
-          layers: [
-            for (final layer in cut.layers)
-              rederiveRunBehaviors(layer, cutFrameCount: duration),
-          ],
-        ),
+        // change re-derives every layer — the only rederive trigger that
+        // is not a layer edit.
+        (cut) => _withDerivedRunEdges(cut.copyWith(duration: duration)),
       );
       if (next == null) {
         throw StateError('Cut not found: $cutId');
@@ -697,11 +719,17 @@ class ProjectRepository {
   void insertLayer({required CutId cutId, required Layer layer, int? index}) {
     updateProject((project) {
       final next = updateCutAnywhere(project, cutId, (cut) {
+        // The cut is only known here, and its length is what the ghosts
+        // fill to. See [_withDerivedRunEdges].
+        final derived = rederiveRunBehaviors(
+          layer,
+          cutFrameCount: cut.duration,
+        );
         final layers = [...cut.layers];
         if (index == null) {
-          layers.add(layer);
+          layers.add(derived);
         } else {
-          layers.insert(index.clamp(0, layers.length).toInt(), layer);
+          layers.insert(index.clamp(0, layers.length).toInt(), derived);
         }
         return cut.copyWith(layers: layers);
       });
