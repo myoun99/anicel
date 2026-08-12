@@ -18,6 +18,7 @@ import '../text/app_strings.dart';
 import 'media_asset_drag_data.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/drag_value_label.dart';
+import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
 
 /// What the media viewer is looking at. Owned by the workspace (the
@@ -477,40 +478,41 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     setState(() {});
   }
 
-  static void _noDrag(double units) {}
-
   /// Every widget key in this panel, built from [MediaViewerTabHost.viewerId]
   /// — the ONE place the prefix is applied, so a second viewer cannot end
   /// up sharing a key with the first.
   String _key(String suffix) => '${widget.viewerId}-$suffix';
 
-  List<Widget> _bottomBarLeading(int pageIndex, int pageCount) {
+  /// The page cluster, STACKED for the left strip (유저 확정 ⑥) — and empty
+  /// unless there is more than one page, because a still image has no pages
+  /// to turn and a strip standing there for it would be a permanent
+  /// disabled promise.
+  ///
+  /// ⚠️Up/down rather than left/right: the strip reads vertically, so a
+  /// chevron pointing sideways would point at nothing.
+  List<Widget> _pageStrip(int pageIndex, int pageCount) {
+    if (pageCount <= 1) {
+      return const <Widget>[];
+    }
     final strings = AppText.strings;
-    final paged = pageCount > 1;
     return [
       AppIconButton(
         keyValue: _key('previous-page-button'),
         tooltip: strings.cnPreviousPage,
-        icon: const Icon(Icons.chevron_left),
-        onPressed: paged && pageIndex > 0
-            ? () => _turnToPage(pageIndex - 1)
-            : null,
+        icon: const Icon(Icons.keyboard_arrow_up),
+        size: AppIconButtonSize.strip,
+        onPressed: pageIndex > 0 ? () => _turnToPage(pageIndex - 1) : null,
       ),
       DragValueLabel(
         keyValue: _key('page-readout'),
         inputKeyValue: _key('page-input'),
-        text: '${pageCount == 0 ? 0 : pageIndex + 1} / $pageCount',
+        text: '${pageIndex + 1} / $pageCount',
         tooltip: strings.sheetPageDrag,
-        width: 48,
-        textStyle: const TextStyle(fontSize: 11),
+        width: 30,
+        textStyle: const TextStyle(fontSize: 9),
         unitsPerPixel: 1 / 8,
-        onDragDelta: paged
-            ? (units) => _turnToPage(pageIndex + units.round())
-            : _noDrag,
+        onDragDelta: (units) => _turnToPage(pageIndex + units.round()),
         onEditSubmit: (text) {
-          if (!paged) {
-            return;
-          }
           final parsed = int.tryParse(text.split('/').first.trim());
           if (parsed != null) {
             _turnToPage(parsed - 1);
@@ -520,8 +522,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       AppIconButton(
         keyValue: _key('next-page-button'),
         tooltip: strings.cnNextPage,
-        icon: const Icon(Icons.chevron_right),
-        onPressed: paged && pageIndex < pageCount - 1
+        icon: const Icon(Icons.keyboard_arrow_down),
+        size: AppIconButtonSize.strip,
+        onPressed: pageIndex < pageCount - 1
             ? () => _turnToPage(pageIndex + 1)
             : null,
       ),
@@ -586,6 +589,10 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
               rect: Rect.fromLTWH(0, 0, docSize.width, docSize.height),
             )
           : null,
+      // 유저 확정 2026-08-13 (⑤): opening a file is the one verb that stays
+      // on the pill. Register and swap are a session's worth of taps
+      // between them, and every control that stays costs the pill 44px of
+      // budget it then takes from the page navigation on a narrow rail.
       bottomBarLeading: [
         if (widget.onRequestPicked != null)
           AppIconButton(
@@ -595,28 +602,33 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
             size: AppIconButtonSize.strip,
             onPressed: _pickLooseFile,
           ),
+      ],
+      pageStrip: _pageStrip(pageIndex, pageCount),
+      bottomBarSettings: [
+        // Both keep their retired button's key string — the flyout's own
+        // convention, so every test that pressed them gains a menu-open
+        // tap and nothing else.
         if (widget.onRegisterAsset != null)
-          AppIconButton(
+          PanelFlyoutItem(
             keyValue: _key('register-asset-button'),
-            tooltip: strings.mediaViewerRegisterAsset,
-            icon: const Icon(Icons.playlist_add_outlined),
-            size: AppIconButtonSize.strip,
-            onPressed: _canRegister ? _registerCurrent : null,
+            label: strings.mediaViewerRegisterAsset,
+            icon: Icons.playlist_add_outlined,
+            enabled: _canRegister,
+            onSelected: _registerCurrent,
           ),
         if (widget.onSwapViewers != null)
-          AppIconButton(
+          PanelFlyoutItem(
             keyValue: _key('swap-button'),
-            tooltip: strings.mediaViewerSwap,
-            icon: const Icon(Icons.swap_horiz),
-            size: AppIconButtonSize.strip,
-            onPressed: widget.onSwapViewers,
+            label: strings.mediaViewerSwap,
+            icon: Icons.swap_horiz,
+            onSelected: widget.onSwapViewers,
           ),
-        ..._bottomBarLeading(pageIndex, pageCount),
       ],
-      // The register button's enabled state rides this token too — it
+      // The register command's enabled state rides this token too — it
       // changes with the file, which is exactly when the answer to "is
-      // this one in the pool" can change.
-      bottomBarLeadingToken: (pageIndex, pageCount, _canRegister),
+      // this one in the pool" can change. ⚠️It has to: the list captures
+      // the entries when the BAR is built, not when the list opens.
+      bottomBarHostToken: (pageIndex, pageCount, _canRegister),
       fitFocusRect: message == null
           ? Rect.fromLTWH(0, 0, docSize.width, docSize.height)
           : null,

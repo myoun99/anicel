@@ -139,7 +139,10 @@ void main() {
         },
       ),
     );
-    expect(_pageTextIn(tester, _subViewer()), '0 / 0');
+    // Empty reads as EMPTY, not as '0 / 0' — 유저 확정 ⑥ (2026-08-13) gave
+    // the page cluster its own capsule and a condition to appear under, so
+    // a viewer with nothing in it has nothing to turn and shows no strip.
+    expect(_pageTextIn(tester, _subViewer()), '');
     expect(find.byType(Dialog), findsNothing);
     expect(find.byType(SnackBar), findsNothing);
   });

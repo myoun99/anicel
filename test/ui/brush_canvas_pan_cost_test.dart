@@ -149,6 +149,11 @@ void main() {
     // The other half of the contract, and the reason this is not just
     // "delete the viewport from the token": the pill prints the zoom, so a
     // zoom must invalidate it. A memo that never breaks is a stale bar.
+    //
+    // The zoom arrives through the READOUT now — the ± steps went with
+    // 유저 확정 2026-08-13 (줌은 드래그 숫자 하나) — which makes this test say
+    // what its name always claimed: the thing being typed into is the thing
+    // that must not be served stale.
     final overlay = ActiveStrokeOverlayModel();
     addTearDown(overlay.dispose);
     final panelBuilds = <int>[0];
@@ -162,10 +167,19 @@ void main() {
 
     final before = pillBody(tester);
     await tester.tap(
-      find.byKey(const ValueKey<String>('canvas-viewport-zoom-in')),
+      find.byKey(const ValueKey<String>('canvas-viewport-zoom-label')),
     );
     await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('canvas-viewport-zoom-input')),
+      '250',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
 
+    // LIVENESS — an entry that never committed would leave the token where
+    // it was and prove nothing about the memo.
+    expect(find.text('250%'), findsOneWidget);
     expect(
       identical(pillBody(tester), before),
       isFalse,

@@ -2,6 +2,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../helpers/canvas_pill.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_defaults.dart';
@@ -12,6 +14,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import 'brush_canvas_test_helpers.dart';
@@ -265,17 +268,30 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey<String>('canvas-viewport-zoom-out')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('canvas-viewport-zoom-in')),
-        findsOneWidget,
-      );
-      expect(
         find.byKey(const ValueKey<String>('canvas-viewport-fit')),
         findsOneWidget,
       );
+      // The pill shows the READOUT and Fit, and nothing else about the view
+      // (유저 확정 2026-08-13). The − and + steps are gone — the readout is
+      // already a drag and a tap to type — and 1:1 is one tap away, behind
+      // the gear.
+      expect(
+        find.byKey(const ValueKey<String>('canvas-viewport-zoom-out')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('canvas-viewport-zoom-in')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('canvas-viewport-reset')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('canvas-viewport-settings')),
+        findsOneWidget,
+      );
+      await openViewSettings(tester);
       expect(
         find.byKey(const ValueKey<String>('canvas-viewport-reset')),
         findsOneWidget,
@@ -283,8 +299,8 @@ void main() {
     },
   );
 
-  testWidgets('narrow bottom bar keeps fit/reset/zoom reachable and never '
-      'overflows (rotate/flip drop out)', (tester) async {
+  testWidgets('a narrow pill keeps Fit and the gear, and never overflows '
+      '(the readout is what sheds)', (tester) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
@@ -312,35 +328,37 @@ void main() {
     );
     await tester.pump();
 
-    // Essentials stay in the tree even in the narrowest panel.
+    // The two that may never shed: Fit, because no gesture replaces it, and
+    // the gear, because it is the only way to what is behind it.
     expect(
       find.byKey(const ValueKey<String>('canvas-viewport-fit')),
       findsOneWidget,
     );
     expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-settings')),
+      findsOneWidget,
+    );
+    // …and everything the pill used to squeeze in beside them is one tap
+    // away instead of fighting for the width.
+    await openViewSettings(tester);
+    expect(
       find.byKey(const ValueKey<String>('canvas-viewport-reset')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('canvas-viewport-zoom-out')),
+      find.byKey(const ValueKey<String>('canvas-settings-view-row')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey<String>('canvas-viewport-zoom-in')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('canvas-viewport-zoom-label')),
-      findsOneWidget,
-    );
-    // Secondary rotate/flip give up their space instead of overflowing.
+    // Rotate and flip are IN the list at this width — they used to give up
+    // their space instead of overflowing, and now there is no width where
+    // they have to, because they never compete for the pill's.
     expect(
       find.byKey(const ValueKey<String>('canvas-viewport-rotate-ccw')),
-      findsNothing,
+      findsOneWidget,
     );
     expect(
       find.byKey(const ValueKey<String>('canvas-viewport-flip')),
-      findsNothing,
+      findsOneWidget,
     );
 
     expect(tester.takeException(), isNull);
@@ -377,7 +395,7 @@ void main() {
                 floorCover: EdgeInsets.zero,
                 allowViewRotation: false,
                 bottomBarLeading: leading,
-                bottomBarLeadingToken: width,
+                bottomBarHostToken: width,
               ),
             ),
           ),
@@ -450,6 +468,114 @@ void main() {
       findsNothing,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('nothing the pill shows escapes the capsule, at any width', (
+    tester,
+  ) async {
+    // 🐛The pill sheds clusters at thresholds it computes from the width it
+    // is given, and every one of those thresholds has to budget the host's
+    // own controls too. A threshold that under-budgets does not overflow
+    // loudly — the capsule CLIPS, so the button is still in the tree, still
+    // found by `find.byKey`, and simply cannot be seen or pressed. That is
+    // how Fit spent a release outside the clip in a 206..250px band.
+    //
+    // The gear inherited the hazard when it arrived (유저 확정 2026-08-13):
+    // it never sheds, so a budget that does not count it promises room the
+    // pill has already spent. This sweep is what turned `_essentialBudget`
+    // from a number someone added up into a number someone measured — put
+    // it back to its pre-gear 60 and the gear leaves the capsule in a
+    // 152..172px band with three host controls, 228..248px with six.
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1200, 500));
+
+    Future<void> pumpAt(double width, int leadingCount) async {
+      final frameKeys = BrushCanvasFixture.createFrameKeys();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: width,
+                height: 420,
+                child: BrushCanvasPanel(
+                  coordinator: BrushCanvasFixture.createCoordinator(
+                    frameKeys: frameKeys,
+                  ),
+                  availableFrameKeys: frameKeys,
+                  cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+                  floorCover: EdgeInsets.zero,
+                  paperColor: 0xFFFFFFFF,
+                  onPaperColorChanged: (_) {},
+                  // Six is what the media viewer asked for before ⑤ and ⑥
+                  // took its register, swap and page controls off the pill.
+                  bottomBarLeading: [
+                    for (var i = 0; i < leadingCount; i += 1)
+                      AppIconButton(
+                        keyValue: 'probe-leading-$i',
+                        tooltip: 'probe $i',
+                        icon: const Icon(Icons.circle),
+                        onPressed: () {},
+                      ),
+                  ],
+                  bottomBarHostToken: leadingCount,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    /// Mounted, but not fully inside the capsule that clips it.
+    List<String> escapees(int leadingCount) {
+      final capsule = find.byKey(const ValueKey<String>('canvas-view-pill'));
+      // The pill never stands down, so its absence is itself a failure.
+      expect(capsule, findsOneWidget);
+      final box = tester.getRect(capsule);
+      final out = <String>[];
+      for (final key in <String>[
+        'canvas-viewport-fit',
+        'canvas-viewport-settings',
+        'canvas-viewport-zoom-label',
+        for (var i = 0; i < leadingCount; i += 1) 'probe-leading-$i',
+      ]) {
+        final finder = find.byKey(ValueKey<String>(key));
+        if (finder.evaluate().isEmpty) {
+          continue; // shed, which is the correct way to not fit
+        }
+        final rect = tester.getRect(finder);
+        if (rect.left < box.left - 0.5 || rect.right > box.right + 0.5) {
+          out.add(key);
+        }
+      }
+      return out;
+    }
+
+    for (final leadingCount in <int>[0, 3, 6]) {
+      final bad = <String>[];
+      // 1px through the band where clusters actually shed — a coarser step
+      // walked straight past a width that overflowed by 2px — and coarse
+      // above it, where nothing sheds and only the arithmetic is on trial.
+      for (var width = 120.0; width <= 620.0; width += width < 340 ? 1 : 8) {
+        await pumpAt(width, leadingCount);
+        for (final key in escapees(leadingCount)) {
+          bad.add('${width.toInt()}px: $key');
+        }
+        final exception = tester.takeException();
+        if (exception != null) {
+          bad.add('${width.toInt()}px: $exception');
+        }
+      }
+      expect(
+        bad,
+        isEmpty,
+        reason:
+            'with $leadingCount host controls, the pill pushed something '
+            'outside its own clip',
+      );
+    }
   });
 
   testWidgets('keeps inner drawing canvas at Cut canvas size', (tester) async {
@@ -567,10 +693,9 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('canvas-viewport-fit')));
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('canvas-viewport-reset')),
-    );
-    await tester.pump();
+    // 1:1 is a COMMAND in the settings list, so pressing it closes the list
+    // — one tap to open, one to press, exactly like the browser's row menu.
+    await tapInViewSettings(tester, 'canvas-viewport-reset');
 
     final canvas = tester.widget<InteractiveBrushEditCanvasView>(
       find.byType(InteractiveBrushEditCanvasView),

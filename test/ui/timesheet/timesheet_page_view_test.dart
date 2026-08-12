@@ -182,20 +182,18 @@ void main() {
     bool enabled(WidgetTester tester, Key key) =>
         tester.widget<IconButton>(find.byKey(key)).onPressed != null;
 
-    testWidgets('the bottom bar carries the sheet cluster left of the '
-        'panbar, in the user order: data / page-mode / ◀ / n-N / ▶', (
-      tester,
-    ) async {
+    testWidgets('the MODES stay in the pill and the PAGES stand on the left '
+        'edge, above / n-N / below', (tester) async {
+      // 유저 확정 ⑥ (2026-08-13) split what used to be one row. The two mode
+      // toggles are things you press while reading and stayed in the pill;
+      // turning pages moved to a capsule of its own on the left edge,
+      // because three controls at 44px of the pill's shedding budget were
+      // most of what a rail-width sheet had to spend — and what it spent
+      // them on was losing the lot.
       await pumpHost(tester);
 
       final xs = <Key, double>{
-        for (final key in [
-          _dataModeKey,
-          _pageModeKey,
-          _prevKey,
-          _pageLabelKey,
-          _nextKey,
-        ])
+        for (final key in [_dataModeKey, _pageModeKey])
           key: tester.getCenter(find.byKey(key)).dx,
       };
       // R2 #13: the panbar is its own capsule on the top edge now, so what
@@ -206,10 +204,22 @@ void main() {
           .dx;
 
       expect(xs[_dataModeKey]!, lessThan(xs[_pageModeKey]!));
-      expect(xs[_pageModeKey]!, lessThan(xs[_prevKey]!));
-      expect(xs[_prevKey]!, lessThan(xs[_pageLabelKey]!));
-      expect(xs[_pageLabelKey]!, lessThan(xs[_nextKey]!));
-      expect(xs[_nextKey]!, lessThan(fitX));
+      expect(xs[_pageModeKey]!, lessThan(fitX));
+
+      // The page cluster reads DOWNWARD in its own capsule, and the whole
+      // capsule sits left of the pill it left.
+      final ys = <Key, double>{
+        for (final key in [_prevKey, _pageLabelKey, _nextKey])
+          key: tester.getCenter(find.byKey(key)).dy,
+      };
+      expect(ys[_prevKey]!, lessThan(ys[_pageLabelKey]!));
+      expect(ys[_pageLabelKey]!, lessThan(ys[_nextKey]!));
+      expect(
+        tester.getRect(find.byKey(const ValueKey<String>('canvas-page-strip'))).right,
+        lessThan(
+          tester.getRect(find.byKey(const ValueKey<String>('canvas-view-pill'))).left,
+        ),
+      );
 
       // The status strip is gone entirely (R2 #13) and its commands came
       // with the page cluster into the one pill.

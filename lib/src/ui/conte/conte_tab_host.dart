@@ -260,34 +260,34 @@ class _ConteTabHostState extends State<ConteTabHost> {
     ];
   }
 
-  /// The page cluster in the panel's bottom bar — the timesheet's ◀ n/N ▶
-  /// grammar, drag/type on the readout included.
-  List<Widget> _bottomBarLeading(int pageIndex, int pageCount) {
-    final paged = pageCount > 1;
+  /// The page cluster, on the panel's LEFT edge (유저 확정 ⑥ 2026-08-13) —
+  /// the timesheet's ◀ n/N ▶ grammar stood upright, drag/type on the
+  /// readout included. Empty below two pages: nothing to turn.
+  List<Widget> _pageStrip(int pageIndex, int pageCount) {
+    if (pageCount <= 1) {
+      return const <Widget>[];
+    }
     return [
       AppIconButton(
         keyValue: 'conte-previous-page-button',
         tooltip: AppText.strings.cnPreviousPage,
-        icon: const Icon(Icons.chevron_left),
-        onPressed: paged && pageIndex > 0
+        icon: const Icon(Icons.keyboard_arrow_up),
+        size: AppIconButtonSize.strip,
+        onPressed: pageIndex > 0
             ? () => _turnToPage(pageIndex - 1, pageCount)
             : null,
       ),
       DragValueLabel(
         keyValue: 'conte-page-readout',
         inputKeyValue: 'conte-page-input',
-        text: '${pageCount == 0 ? 0 : pageIndex + 1} / $pageCount',
+        text: '${pageIndex + 1} / $pageCount',
         tooltip: AppText.strings.sheetPageDrag,
-        width: 48,
-        textStyle: const TextStyle(fontSize: 11),
+        width: 30,
+        textStyle: const TextStyle(fontSize: 9),
         unitsPerPixel: 1 / 8,
-        onDragDelta: paged
-            ? (units) => _turnToPage(pageIndex + units.round(), pageCount)
-            : _noDrag,
+        onDragDelta: (units) =>
+            _turnToPage(pageIndex + units.round(), pageCount),
         onEditSubmit: (text) {
-          if (!paged) {
-            return;
-          }
           final parsed = int.tryParse(text.split('/').first.trim());
           if (parsed != null) {
             _turnToPage(parsed - 1, pageCount);
@@ -297,15 +297,14 @@ class _ConteTabHostState extends State<ConteTabHost> {
       AppIconButton(
         keyValue: 'conte-next-page-button',
         tooltip: AppText.strings.cnNextPage,
-        icon: const Icon(Icons.chevron_right),
-        onPressed: paged && pageIndex < pageCount - 1
+        icon: const Icon(Icons.keyboard_arrow_down),
+        size: AppIconButtonSize.strip,
+        onPressed: pageIndex < pageCount - 1
             ? () => _turnToPage(pageIndex + 1, pageCount)
             : null,
       ),
     ];
   }
-
-  static void _noDrag(double units) {}
 
   @override
   Widget build(BuildContext context) {
@@ -348,11 +347,9 @@ class _ConteTabHostState extends State<ConteTabHost> {
       onViewportChanged: widget.onViewportChanged,
       // The paper never rotates (the timesheet's rule).
       allowViewRotation: false,
-      bottomBarLeading: [
-        ..._panelActions(),
-        ..._bottomBarLeading(pageIndex, pageCount),
-      ],
-      bottomBarLeadingToken: (pageIndex, pageCount, widget.inkEnabled),
+      bottomBarLeading: _panelActions(),
+      pageStrip: _pageStrip(pageIndex, pageCount),
+      bottomBarHostToken: (pageIndex, pageCount, widget.inkEnabled),
       fitFocusRect: metrics == null
           ? null
           : Rect.fromLTWH(0, 0, metrics.pageWidth, metrics.pageHeight),

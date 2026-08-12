@@ -294,22 +294,16 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     ];
   }
 
-  /// R26 #41 — the sheet's bottom-bar cluster, sitting at the far left of
-  /// the panel's bottom bar, immediately before the horizontal panbar:
+  /// R26 #41 — the sheet's two MODE toggles, at the far left of the pill:
   ///
-  ///   [notation/data] [page/continuous] [◀] [n/N] [▶] │ ═══ panbar ═══
+  ///   [notation/data] [page/continuous] │ ═══ the view controls ═══
   ///
-  /// The page readout is the app's shared drag readout ([DragValueLabel],
-  /// UI-R18 #21) — drag it to flip through the sheets, double-tap to type
-  /// a page number. In continuous view there is one strip and no pages, so
-  /// the three navigation controls stay MOUNTED but disabled (a bar that
-  /// changes width with the view toggle reads as a layout jump).
-  /// [layout] is null in the GAP state (no cut): the mode toggles still
-  /// work, the page cluster has nothing to turn.
+  /// ⛔The page cluster used to follow them here. It moved to the panel's
+  /// left edge (유저 확정 ⑥ 2026-08-13, [_pageStrip]) because three controls
+  /// at 44px of budget each were most of what the pill had to spend, and a
+  /// rail-width sheet was shedding the lot — turning pages and reading the
+  /// page competing for the same row.
   List<Widget> _bottomBarLeading(TimesheetDocumentLayout? layout) {
-    final pageCount = layout?.document.pages.length ?? 0;
-    final page = layout == null ? 0 : _visiblePage(layout);
-    final paged = !widget.continuous && pageCount > 1;
     return [
       // Notation ↔ DATA sheet (UI-R24 #1): data prints the export-source
       // labels (ghost chains verbatim, exactly what XDTS/TDTS write) so
@@ -334,10 +328,29 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         isSelected: !widget.continuous,
         onPressed: () => widget.onContinuousChanged(!widget.continuous),
       ),
+    ];
+  }
+
+  /// Turning the sheet's pages, on the panel's LEFT edge (유저 확정 ⑥
+  /// 2026-08-13) rather than in the pill.
+  ///
+  /// ⚠️It stays MOUNTED-but-disabled in continuous view, as it always has:
+  /// a cluster that vanished with the view toggle read as a layout jump.
+  /// What it will not do is stand there for a sheet that HAS no second
+  /// page — that is not a mode, it is nothing to turn.
+  List<Widget> _pageStrip(TimesheetDocumentLayout? layout) {
+    final pageCount = layout?.document.pages.length ?? 0;
+    if (pageCount <= 1) {
+      return const <Widget>[];
+    }
+    final page = layout == null ? 0 : _visiblePage(layout);
+    final paged = !widget.continuous;
+    return [
       AppIconButton(
         keyValue: 'timesheet-page-prev-button',
         tooltip: AppText.strings.sheetPreviousPage,
-        icon: const Icon(Icons.chevron_left),
+        icon: const Icon(Icons.keyboard_arrow_up),
+        size: AppIconButtonSize.strip,
         onPressed: paged && page > 0 ? () => _turnToPage(page - 1) : null,
       ),
       DragValueLabel(
@@ -345,10 +358,10 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         inputKeyValue: 'timesheet-page-input',
         text: layout?.pageLabel(page) ?? '-',
         tooltip: AppText.strings.sheetPageDrag,
-        width: 40,
-        textStyle: const TextStyle(fontSize: 11),
-        // One page per 8px of drag: the readout is 40px wide, so a
-        // 1px-per-page rate flipped whole documents on a twitch.
+        width: 30,
+        textStyle: const TextStyle(fontSize: 9),
+        // One page per 8px of drag: a 1px-per-page rate flipped whole
+        // documents on a twitch.
         unitsPerPixel: 1 / 8,
         onDragDelta: paged
             ? (units) => _turnToPage(page + units.round())
@@ -368,7 +381,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
       AppIconButton(
         keyValue: 'timesheet-page-next-button',
         tooltip: AppText.strings.sheetNextPage,
-        icon: const Icon(Icons.chevron_right),
+        icon: const Icon(Icons.keyboard_arrow_down),
+        size: AppIconButtonSize.strip,
         onPressed: paged && page < pageCount - 1
             ? () => _turnToPage(page + 1)
             : null,
@@ -418,7 +432,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
               ..._panelActions(),
               ..._bottomBarLeading(null),
             ],
-            bottomBarLeadingToken: (
+            pageStrip: _pageStrip(null),
+            bottomBarHostToken: (
               widget.continuous,
               _dataSheet,
               widget.inkEnabled,
@@ -505,7 +520,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                       ..._panelActions(),
                       ..._bottomBarLeading(layout),
                     ],
-                    bottomBarLeadingToken: (
+                    pageStrip: _pageStrip(layout),
+                    bottomBarHostToken: (
                       widget.continuous,
                       _dataSheet,
                       widget.inkEnabled,

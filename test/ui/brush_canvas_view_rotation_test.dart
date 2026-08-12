@@ -1,6 +1,8 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../helpers/canvas_pill.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/viewport_point.dart';
@@ -56,18 +58,60 @@ void main() {
     return commands;
   }
 
+  /// Rotate and flip live in the pill's settings list now (유저 확정
+  /// 2026-08-13). They are ROWS there, so pressing one leaves the list
+  /// open — opening it when it is already open would close it, so this
+  /// only opens when the control is not on screen yet.
   Future<void> tapToolbarButton(WidgetTester tester, String key) async {
     final finder = find.byKey(ValueKey<String>(key));
+    if (!tester.any(finder)) {
+      await openViewSettings(tester);
+    }
     await tester.ensureVisible(finder);
     await tester.pumpAndSettle();
     await tester.tap(finder);
     await tester.pumpAndSettle();
   }
 
+  testWidgets('the angle readout still takes a DRAG inside the settings '
+      'list', (tester) async {
+    // 🚩The hazard this repo keeps meeting: a scrollable ancestor claims a
+    // drag in the gesture arena before the control under the finger ever
+    // sees it, and the control just stops working with no error at all
+    // (see [[ui-round-r6]] ①/⑤). The settings list is a popup MENU, which
+    // is scrollable — so moving the angle readout into it put the readout's
+    // 1°/px drag on exactly that ground.
+    //
+    // Measured here rather than assumed: the readout keeps the drag, and
+    // the row redraws while the list is open, which is the whole point of
+    // [PanelFlyoutRow] carrying a listenable.
+    await pumpPanel(tester);
+    await openViewSettings(tester);
+
+    final label = find.byKey(
+      const ValueKey<String>('canvas-viewport-rotation-label'),
+    );
+    expect(label, findsOneWidget);
+    expect(find.text('0°'), findsOneWidget, reason: 'starts straight');
+
+    await tester.drag(label, const Offset(40, 0));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('0°'),
+      findsNothing,
+      reason: 'the menu must not have swallowed the drag',
+    );
+  });
+
   testWidgets('the rotate/flip buttons carry the STATE ACCENT ink '
       '(UI-R21 #1): rotated left accents the left button, right the '
       'right, flips accent while active', (tester) async {
     await pumpPanel(tester);
+    // Rotate and flip live in the settings list now, and a knob does not
+    // close it — so the whole accent sequence runs with it open, which is
+    // also how a person uses it (straighten, look, flip, look).
+    await openViewSettings(tester);
     Color? inkOf(String key) => tester
         .widget<IconButton>(find.byKey(ValueKey<String>(key)))
         .style

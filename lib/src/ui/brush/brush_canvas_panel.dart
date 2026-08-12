@@ -68,6 +68,7 @@ import '../widgets/app_icon_button.dart';
 import '../widgets/app_scrollbar.dart';
 import '../widgets/superellipse_clip.dart';
 import '../widgets/drag_value_label.dart';
+import '../widgets/panel_flyout.dart';
 import '../text/app_strings.dart';
 
 /// A playback-follow reframe request for [BrushCanvasPanel.autoFrame]:
@@ -158,7 +159,9 @@ class BrushCanvasPanel extends StatefulWidget {
     this.allowViewRotation = true,
     this.toolCursorsEnabled = true,
     this.bottomBarLeading = const <Widget>[],
-    this.bottomBarLeadingToken,
+    this.bottomBarSettings = const <PanelFlyoutEntry>[],
+    this.pageStrip = const <Widget>[],
+    this.bottomBarHostToken,
   }) : assert(
          coordinator != null || contentOverride != null,
          'Without a coordinator the panel needs a content override.',
@@ -210,11 +213,47 @@ class BrushCanvasPanel extends StatefulWidget {
   /// offers is in it.
   final List<Widget> bottomBarLeading;
 
-  /// Equality token for [bottomBarLeading] — the bottom bar is memoized by
-  /// its inputs (R13-3) and widget instances are rebuilt per host build,
-  /// so the host names what its leading controls actually DEPEND on. Null
-  /// with a non-empty leading list means "rebuild the bar every time".
-  final Object? bottomBarLeadingToken;
+  /// What this host adds to the pill's SETTINGS list — the verbs it owns
+  /// that a hand does not reach for constantly (유저 확정 2026-08-13: the
+  /// viewer's "register in the media pool" and "swap the two viewers").
+  ///
+  /// ★It is the same list the pill fills with 1:1, rotate/flip and the
+  /// surface colours, and deliberately so: a panel that grew a settings
+  /// surface of its own would undo the round that pulled every popup into
+  /// one shell ([[ui-round-r6]]). The host's entries come FIRST — they are
+  /// about the document, and the pill's are about looking at it.
+  ///
+  /// ⚠️A list is built once when it OPENS. An entry whose appearance can
+  /// change while it is open has to be a [PanelFlyoutRow] carrying its own
+  /// listenable; a plain [PanelFlyoutItem] is a snapshot, which is right
+  /// for a command and wrong for a knob.
+  final List<PanelFlyoutEntry> bottomBarSettings;
+
+  /// Turning the pages of whatever this panel is showing, stacked in a
+  /// capsule on the LEFT edge (유저 확정 2026-08-13 ⑥: 페이지 넘기기는 왼쪽
+  /// 세로, 그리고 필요한 파일에서만).
+  ///
+  /// ★It is not in the pill because it was the pill's largest tenant —
+  /// three controls, 132px of the shedding budget — so a rail-width panel
+  /// was made to choose between turning pages and looking at the page. On
+  /// an edge of its own it competes with nothing.
+  ///
+  /// Empty means no strip at all: a still image has no pages to turn, and
+  /// a disabled cluster on a permanent capsule is a promise the panel
+  /// cannot keep.
+  final List<Widget> pageStrip;
+
+  /// Equality token for [bottomBarLeading] AND [bottomBarSettings] — the
+  /// bottom bar is memoized by its inputs (R13-3) and widget instances are
+  /// rebuilt per host build, so the host names what its own controls
+  /// actually DEPEND on. Null with a non-empty contribution means "rebuild
+  /// the bar every time".
+  ///
+  /// ⚠️This covers the settings entries too, and it has to: those entries
+  /// are CAPTURED in the trigger's closure, so a bar the memo served stale
+  /// opens a list showing stale state (a register command still enabled
+  /// for a file that has since joined the pool).
+  final Object? bottomBarHostToken;
 
   /// Optional layer stacked over the canvas inside the editor viewport,
   /// receiving the live viewport so it can transform canvas coordinates
@@ -452,7 +491,24 @@ final ValueNotifier<TransformToolOptions> _defaultTransformOptions =
 
 class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     with SingleTickerProviderStateMixin {
-  late CanvasViewport _viewport = widget.viewport ?? CanvasViewport();
+  /// The live view, as a NOTIFIER rather than a plain field.
+  ///
+  /// The panel rebuilds itself with `setState`, which is enough for
+  /// everything drawn inside it — but the settings list is an overlay
+  /// route built once when it opens, so nothing in there would ever see a
+  /// rotation land or a flip toggle. A knob that does not show its own
+  /// state is a knob nobody can read.
+  ///
+  /// The getter/setter pair below is what keeps this cheap: every
+  /// `_viewport = x` in this file still reads as an assignment and now
+  /// also publishes, so no call site had to learn about it.
+  late final ValueNotifier<CanvasViewport> _viewportNotifier = ValueNotifier(
+    widget.viewport ?? CanvasViewport(),
+  );
+
+  CanvasViewport get _viewport => _viewportNotifier.value;
+  set _viewport(CanvasViewport value) => _viewportNotifier.value = value;
+
   CanvasViewport? _lastWidgetViewport;
   Size? _editorViewportSize;
 
@@ -665,6 +721,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   @override
   void dispose() {
+    _viewportNotifier.dispose();
     // A mid-stroke teardown must release the session's warm hold — a
     // leaked hold would gate prerendering forever. Same for a mid-drag
     // selection interaction (R15-⑤: a leaked hold would block seeks).
@@ -1156,15 +1213,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   _panbarsToken;
   ({
     double zoom,
-    double rotationDegrees,
-    bool flipHorizontal,
-    bool flipVertical,
     CanvasSize canvasSize,
     bool rotation,
     int paper,
     int pasteboard,
     int backdrop,
-    Object? leading,
+    Object? host,
   })?
   _pillToken;
   Widget? _memoRightStripBar;
@@ -1179,40 +1233,57 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       canvasSize: widget.canvasSize,
     );
     final pillToken = (
-      // ⛔NOT the whole viewport. The pill reads exactly four things off it
-      // — the zoom it prints, the rotation it prints, and the two flip
-      // toggles it lights — and a PAN moves none of them. Carrying the
-      // whole object meant `_setViewport`'s per-`PointerMove` `setState`
-      // threw the pill away on every frame of every pan and rebuilt
+      // ⛔NOT the whole viewport — and since 2026-08-13 not "everything the
+      // pill shows" either, because most of what it showed now lives one
+      // tap away in the settings list. The rule that replaced it is
+      // narrower and holds in both places: THIS TOKEN CARRIES WHAT THE BAR
+      // CAPTURES, AND NOTHING IT READS THROUGH A SIGNAL.
+      //
+      // Rotation and the two flips left with the controls that lit them.
+      // Their row is a [PanelFlyoutRow] over `liveViewport`: it rebuilds on
+      // that notifier while the list is open, and reads `liveViewport.value`
+      // when the list opens. A copy here would be a slower way of asking
+      // the same object. (Measured: dragging the rotation readout inside
+      // the open list moves the angle with this token untouched.)
+      //
+      // The three surface colours did NOT follow them out, and the
+      // difference IS the rule. They arrive as widget fields, so the list's
+      // entries close over whatever they were when the bar was last built.
+      // Measured by mutation — drop `paper` from this token, change the
+      // paper while the list is CLOSED, and it opens on yesterday's colour.
+      // That is the same stale swatch, and the same picker seeded with the
+      // stale value, that put them in this token to begin with.
+      // ⚠️Neither does the token help while the list is OPEN: that is a
+      // `showMenu` route holding entries it already built. Also measured.
+      //
+      // ⚠️A pan moves nothing that is left, which is the point: `_setViewport`
+      // runs a panel `setState` per `PointerMove`, so carrying the whole
+      // viewport threw the pill away on every frame of every pan and rebuilt
       // thirteen icon buttons with their tooltips, overlay portals, ink and
       // gesture detectors (유저, R4 후속).
       //
       // ★This is the SAME defect the note below already records about the
       // panel title, one field over: the cure had been applied to the field
-      // that got caught rather than to the rule. The rule is stated at the
-      // end of that note and it is the one to keep — everything the pill
-      // SHOWS is in this token, and nothing it does not.
+      // that got caught rather than to the rule.
       //
       // ⚠️So the bar can be handed a stale `viewport` object while the memo
-      // holds. That is safe only because the four fields below are the only
-      // ones it touches; adding a fifth read without adding it here brings
+      // holds. That is safe only because `zoom` is now the ONLY thing it
+      // reads off it; a second read added without adding it here brings
       // back a stale readout.
       zoom: _viewport.zoom,
-      rotationDegrees: _viewport.rotationDegrees,
-      flipHorizontal: _viewport.flipHorizontal,
-      flipVertical: _viewport.flipVertical,
       canvasSize: widget.canvasSize,
       rotation: widget.allowViewRotation,
-      // The swatches the pill CARRIES. They were missing, so the pill
+      // The swatches the SETTINGS LIST carries (they were in the pill until
+      // 2026-08-13). They were missing from this token once, and the pill
       // went on painting yesterday's paper colour until an unrelated pan or
       // resize happened to invalidate the memo — and tapping the swatch
-      // opened the picker seeded with the stale value. The rule for this
-      // token is the same in both directions: everything the pill SHOWS is
-      // in it, and nothing it does not.
+      // opened the picker seeded with the stale value. Moving them behind
+      // the gear did not retire that lesson, it only moved where the stale
+      // value would show up.
       paper: widget.paperColor,
       pasteboard: _stagePasteboardArgb,
       backdrop: _stageBackdropArgb,
-      leading: widget.bottomBarLeadingToken,
+      host: widget.bottomBarHostToken,
       // ⛔ The panel TITLE is deliberately absent — and now unreachable, so
       // it cannot come back by accident (R2 #12 took the readout off every
       // canvas panel). Keeping the history because the shape of the bug is
@@ -1229,10 +1300,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // in a real cut every cel is named, and the label — so the bar —
       // changed on EVERY flip step.
     );
-    // A leading list without a token can't be memoized (see
-    // [bottomBarLeadingToken]) — rebuild rather than serve a stale bar.
+    // A host contribution without a token can't be memoized (see
+    // [bottomBarHostToken]) — rebuild rather than serve a stale bar.
     final memoizable =
-        widget.bottomBarLeading.isEmpty || widget.bottomBarLeadingToken != null;
+        (widget.bottomBarLeading.isEmpty && widget.bottomBarSettings.isEmpty) ||
+        widget.bottomBarHostToken != null;
     if (panbarsToken != _panbarsToken || _memoRightStripBar == null) {
       _panbarsToken = panbarsToken;
       _memoRightStripBar = CanvasViewportVerticalScrollbar(
@@ -1256,7 +1328,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _pillToken = pillToken;
     _memoBottomBar = _CanvasViewportBottomBar(
       leading: widget.bottomBarLeading,
+      hostSettings: widget.bottomBarSettings,
       viewport: _viewport,
+      liveViewport: _viewportNotifier,
       canvasSize: widget.canvasSize,
       paperColor: widget.paperColor,
       onPaperColorChanged: widget.onPaperColorChanged,
@@ -1266,8 +1340,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       onBackdropColorChanged: widget.onBackdropColorChanged,
       onViewportChanged: _setViewportDuringPanbarDrag,
       onViewportChangeEnd: _syncViewportParent,
-      onZoomIn: _zoomInFromBar,
-      onZoomOut: _zoomOutFromBar,
       onZoomSet: _setZoomFromLabel,
       onFit: _fitToView,
       onReset: _resetView,
@@ -1298,8 +1370,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   // Named handlers (not closures) so the memoized bars capture stable
   // callbacks — a fresh closure per build would defeat nothing here, but
   // stale-capture bugs are impossible with tear-offs.
-  void _zoomInFromBar() => _zoomAroundCenter(1.25);
-  void _zoomOutFromBar() => _zoomAroundCenter(0.8);
   void _rotateCcwFromBar() => _rotateAroundCenter(-15);
   void _rotateCwFromBar() => _rotateAroundCenter(15);
 
@@ -1338,6 +1408,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               rightStripBar: _memoizedRightStripBar(),
               horizontalStripBar: _memoizedHorizontalStripBar(),
               bottomBar: _memoizedBottomBar(),
+              pageStrip: widget.pageStrip,
               // The capsules float INSIDE what the panels left over.
               cover: widget.floorCover,
               railBand: widget.floorRailBand,
@@ -2158,12 +2229,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     widget.onViewportChanged?.call(_viewport);
   }
 
-  void _zoomAroundCenter(double factor) {
-    _zoomToAroundCenter(_viewport.zoom * factor);
-  }
-
-  /// Absolute-zoom twin of [_zoomAroundCenter] (the zoom label's inline
-  /// percent entry commits through here).
+  /// The only way the bar sets a zoom now (유저 확정 2026-08-13: 확대/축소
+  /// 버튼 없앰). The step twin that took a FACTOR went with the ± buttons —
+  /// the readout's drag is 1%/px and its tap types a percent, and both of
+  /// those are absolute.
   void _setZoomFromLabel(double zoom) {
     _zoomToAroundCenter(zoom);
   }
@@ -2958,6 +3027,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     required this.rightStripBar,
     required this.horizontalStripBar,
     required this.cover,
+    this.pageStrip = const <Widget>[],
     this.bottomOverlaySpan = 0,
     this.railBand,
     this.strokeActive = false,
@@ -2970,6 +3040,9 @@ class _CanvasEditorPanelShell extends StatelessWidget {
 
   /// The horizontal panbar, its own capsule on the top edge.
   final Widget horizontalStripBar;
+
+  /// See [BrushCanvasPanel.pageStrip] — empty means no capsule at all.
+  final List<Widget> pageStrip;
 
   /// The floor's controls fade while a stroke is in progress.
   ///
@@ -3007,6 +3080,12 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// 14px tall against the pill's 52, not the gap. The gap itself moved
   /// 8 → 6.
   static const double _capsuleMargin = 6;
+
+  /// How wide the page strip's capsule stands (유저 확정 ⑥). Wide enough for
+  /// the shared icon button's 26px minimum and the page readout stacked
+  /// under it, narrow enough to read as an EDGE ornament rather than a
+  /// second rail.
+  static const double _pageStripWidth = 32;
 
   /// What a scrollbar capsule spans, as a share of the edge it rides —
   /// clamped, because the point of a capsule is that it says where you are
@@ -3186,6 +3265,31 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                 strokeActive: strokeActive,
                 contentStrokeActive: contentStrokeActive,
                 children: [
+                  // THE PAGE STRIP, at the LEFT CENTRE (유저 확정 ⑥).
+                  //
+                  // Same axis law the two bars follow: ALONG the edge it
+                  // rides it holds the window's centre, and ACROSS that
+                  // edge it sits on the edge. A rail opening on the right
+                  // is not a reason for the page you are turning to walk
+                  // left.
+                  if (pageStrip.isNotEmpty)
+                    Positioned(
+                      left: _capsuleMargin,
+                      top: _capsuleMargin,
+                      bottom: _capsuleMargin,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: _capsule(
+                          colorScheme,
+                          keyValue: 'canvas-page-strip',
+                          width: _pageStripWidth,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: pageStrip,
+                          ),
+                        ),
+                      ),
+                    ),
                   // THE PILL, at the TOP CENTRE (유저, R3 #6).
                   //
                   // ⛔It used to take the top corner away from the tool strip
@@ -3337,10 +3441,11 @@ class _FloatingCanvasControls extends StatelessWidget {
 class _CanvasViewportBottomBar extends StatelessWidget {
   static const double height = 28;
 
-  /// At/above this width the bar shows every view control (fit, 1:1,
-  /// rotate, flip). Below it the secondary rotate/flip controls drop out so
-  /// the essentials stay reachable (rotation is still on R/Shift+R/H).
-  static const double _wideLayoutMinWidth = 360;
+  /// ⛔`_wideLayoutMinWidth` and `_pillColorMinWidth` are GONE (유저 확정
+  /// 2026-08-13). They were the widths at which the pill let itself show
+  /// the rotate/flip pair and the three surface swatches, and both now
+  /// live in the settings list at every width — so the pill has one fewer
+  /// way to be a different shape than it was a moment ago.
 
   /// What one host control in [leading] adds to that threshold: the widest
   /// control in the shared vocabulary (a [DragValueLabel] readout) plus
@@ -3349,11 +3454,29 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   /// scroll a little sooner, while under-budgeting OVERFLOWS.
   static const double _leadingControlBudget = 44;
 
-  /// What Fit plus the pill's own padding and one divider costs — the
-  /// floor under which even the host's controls have to go, so that the
-  /// one control the pill may never drop always has room. Measured: 26 for
-  /// the button, 13 for the divider, 8 for the pill's ends, and slack.
-  static const double _essentialBudget = 60;
+  /// What the pill costs with NOTHING of the host's in it — the floor
+  /// under which the host's controls have to go, so the two things that
+  /// may never drop always have room. Measured: 26 for Fit, 28 for the
+  /// gear and its hit padding, 13 for the divider between them, 8 for the
+  /// pill's ends, and slack.
+  ///
+  /// ⚠️It went from 60 to 88 when the gear arrived. It has to: the gear
+  /// never sheds, so anything that does not count it is promising space
+  /// the pill has already spent — which is exactly how Fit ended up
+  /// outside the capsule's clip in a 206..250px band once before.
+  ///
+  /// 🚨MEASURED, not reasoned, and the number is deliberately TIGHT. This
+  /// constant decides whether the HOST's controls have to go, and that
+  /// decision wants the opposite error from [_leadingControlBudget]: every
+  /// pixel of slack here is a band of widths where a panel silently loses
+  /// its page navigation. A reasoned 95 cost 7px of exactly that.
+  ///
+  /// The sweep that produced 88 is a test ("nothing the pill shows escapes
+  /// the capsule, at any width"), walking 120..620px with 0/3/6 host
+  /// controls. At 85 the pill overflows by 2px at 176px wide; at the
+  /// pre-gear 60 the GEAR leaves the capsule in a 152..172px band with
+  /// three host controls and a 228..248px band with six.
+  static const double _essentialBudget = 88;
 
   /// The LEAST a host control can cost — the shared icon button's own
   /// minimum. [_leadingControlBudget] is its opposite and both are right,
@@ -3365,11 +3488,6 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   /// timesheet's whole cluster away at its default width.
   static const double _leadingControlFloor = 26;
 
-  /// Below this the pill drops the paper/pasteboard swatches. They are the
-  /// least urgent thing it carries — a colour you set once per project,
-  /// against controls you press dozens of times an hour — and they are
-  /// still in the project settings.
-  static const double _pillColorMinWidth = 470;
 
   /// Below this the pill drops the zoom readout and the two zoom steps,
   /// and below it MINUS the host's own controls it drops those too. It
@@ -3379,6 +3497,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
 
   const _CanvasViewportBottomBar({
     this.leading = const <Widget>[],
+    this.hostSettings = const <PanelFlyoutEntry>[],
     required this.viewport,
     required this.canvasSize,
     required this.paperColor,
@@ -3389,8 +3508,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required this.onBackdropColorChanged,
     required this.onViewportChanged,
     required this.onViewportChangeEnd,
-    required this.onZoomIn,
-    required this.onZoomOut,
+    required this.liveViewport,
     required this.onZoomSet,
     required this.onFit,
     required this.onReset,
@@ -3404,6 +3522,12 @@ class _CanvasViewportBottomBar extends StatelessWidget {
 
   /// R26 #41: host controls at the head of the pill.
   final List<Widget> leading;
+
+  /// What the host puts in the gear rather than in the pill — see
+  /// [BrushCanvasPanel.bottomBarSettings]. These cost the pill NOTHING:
+  /// the gear is one button whether the list behind it holds three rows or
+  /// ten, which is the whole reason a verb moves here.
+  final List<PanelFlyoutEntry> hostSettings;
 
   final CanvasViewport viewport;
 
@@ -3424,10 +3548,13 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   final int backdropColor;
   final ValueChanged<int>? onBackdropColorChanged;
 
+  /// The SAME view as [viewport], as a signal the settings list can hold.
+  /// The field is what this bar draws with; the listenable is what the
+  /// overlay route redraws on.
+  final ValueListenable<CanvasViewport> liveViewport;
+
   final ValueChanged<CanvasViewport> onViewportChanged;
   final VoidCallback onViewportChangeEnd;
-  final VoidCallback onZoomIn;
-  final VoidCallback onZoomOut;
   final ValueChanged<double> onZoomSet;
   final VoidCallback onFit;
   final VoidCallback onReset;
@@ -3445,8 +3572,8 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     // Normalized for display: multi-turn accumulation shows as its
     // visible angle.
-    final rotationDegrees = (((viewport.rotationDegrees + 180) % 360) - 180)
-        .round();
+    int rotationDegreesOf(CanvasViewport v) =>
+        (((v.rotationDegrees + 180) % 360) - 180).round();
 
     Widget divider() => Container(
       width: 1,
@@ -3459,91 +3586,87 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     // ALWAYS-ON angle readout (drag = 1°/px, double-tap = type), rotate-
     // right, straighten, flip-H, flip-V. Rotate buttons accent by the
     // rotation SIGN (#18); flips accent while active (#19).
-    final viewControls = <Widget>[
-      if (onRotateCcw != null)
-        _barIconButton(
-          keyValue: 'canvas-viewport-rotate-ccw',
-          tooltip: AppText.strings.viewRotateLeft,
-          icon: const Icon(Icons.rotate_left),
-          onPressed: onRotateCcw,
-          isSelected: rotationDegrees < 0,
-        ),
-      if (onRotateByDrag != null)
-        DragValueLabel(
-          keyValue: 'canvas-viewport-rotation-label',
-          text: '$rotationDegrees°',
-          tooltip: AppText.strings.viewAngleDrag,
-          width: 40,
-          textStyle: const TextStyle(fontSize: 11),
-          onDragDelta: onRotateByDrag!,
-          onEditSubmit: (text) {
-            final parsed = double.tryParse(text);
-            if (parsed != null && onRotateByDrag != null) {
-              onRotateByDrag!(parsed - viewport.rotationDegrees);
-            }
-          },
-        ),
-      if (onRotateCw != null)
-        _barIconButton(
-          keyValue: 'canvas-viewport-rotate-cw',
-          tooltip: AppText.strings.viewRotateRight,
-          icon: const Icon(Icons.rotate_right),
-          onPressed: onRotateCw,
-          isSelected: rotationDegrees > 0,
-        ),
-      if (onRotateReset != null)
-        _barIconButton(
-          keyValue: 'canvas-viewport-rotate-reset',
-          tooltip: AppText.strings.viewStraighten,
-          icon: const Icon(Icons.refresh),
-          onPressed: onRotateReset,
-        ),
-      if (onFlipHorizontal != null)
-        _barIconButton(
-          keyValue: 'canvas-viewport-flip',
-          tooltip: AppText.strings.viewFlipHorizontal,
-          icon: const Icon(Icons.flip),
-          onPressed: onFlipHorizontal,
-          isSelected: viewport.flipHorizontal,
-        ),
-      if (onFlipVertical != null)
-        _barIconButton(
-          keyValue: 'canvas-viewport-flip-vertical',
-          tooltip: AppText.strings.viewFlipVertical,
-          icon: const RotatedBox(quarterTurns: 1, child: Icon(Icons.flip)),
-          onPressed: onFlipVertical,
-          isSelected: viewport.flipVertical,
-        ),
-    ];
+    // Built PER VIEWPORT, not once: these live in the settings list, which
+    // is an overlay route the panel's own rebuilds never reach. Handing
+    // them the live view is what lets the accent follow the rotation
+    // while the list is open — see [PanelFlyoutRow.builder].
+    final hasViewControls =
+        onRotateCcw != null ||
+        onRotateByDrag != null ||
+        onRotateCw != null ||
+        onRotateReset != null ||
+        onFlipHorizontal != null ||
+        onFlipVertical != null;
 
-    // ZOOM cluster (UI-R18 #17/#20, left→right): fit, 1:1, −, the zoom
-    // readout (drag = 1%/px, double-tap = type), +.
-    final zoomCluster = <Widget>[
-      _barIconButton(
-        keyValue: 'canvas-viewport-fit',
-        tooltip: AppText.strings.viewFitToView,
-        icon: const Icon(Icons.fit_screen),
-        onPressed: onFit,
-      ),
-      _barIconButton(
-        keyValue: 'canvas-viewport-reset',
-        tooltip: AppText.strings.viewResetView,
-        icon: const Text(
-          '1:1',
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            height: 1,
+    List<Widget> viewControlsFor(CanvasViewport viewport) {
+      final rotationDegrees = rotationDegreesOf(viewport);
+      return <Widget>[
+        if (onRotateCcw != null)
+          _barIconButton(
+            keyValue: 'canvas-viewport-rotate-ccw',
+            tooltip: AppText.strings.viewRotateLeft,
+            icon: const Icon(Icons.rotate_left),
+            onPressed: onRotateCcw,
+            isSelected: rotationDegrees < 0,
           ),
-        ),
-        onPressed: onReset,
-      ),
-      _barIconButton(
-        keyValue: 'canvas-viewport-zoom-out',
-        tooltip: AppText.strings.viewZoomOut,
-        icon: const Icon(Icons.zoom_out),
-        onPressed: onZoomOut,
-      ),
+        if (onRotateByDrag != null)
+          DragValueLabel(
+            keyValue: 'canvas-viewport-rotation-label',
+            text: '$rotationDegrees°',
+            tooltip: AppText.strings.viewAngleDrag,
+            width: 40,
+            textStyle: const TextStyle(fontSize: 11),
+            onDragDelta: onRotateByDrag!,
+            onEditSubmit: (text) {
+              final parsed = double.tryParse(text);
+              if (parsed != null && onRotateByDrag != null) {
+                onRotateByDrag!(parsed - viewport.rotationDegrees);
+              }
+            },
+          ),
+        if (onRotateCw != null)
+          _barIconButton(
+            keyValue: 'canvas-viewport-rotate-cw',
+            tooltip: AppText.strings.viewRotateRight,
+            icon: const Icon(Icons.rotate_right),
+            onPressed: onRotateCw,
+            isSelected: rotationDegrees > 0,
+          ),
+        if (onRotateReset != null)
+          _barIconButton(
+            keyValue: 'canvas-viewport-rotate-reset',
+            tooltip: AppText.strings.viewStraighten,
+            icon: const Icon(Icons.refresh),
+            onPressed: onRotateReset,
+          ),
+        if (onFlipHorizontal != null)
+          _barIconButton(
+            keyValue: 'canvas-viewport-flip',
+            tooltip: AppText.strings.viewFlipHorizontal,
+            icon: const Icon(Icons.flip),
+            onPressed: onFlipHorizontal,
+            isSelected: viewport.flipHorizontal,
+          ),
+        if (onFlipVertical != null)
+          _barIconButton(
+            keyValue: 'canvas-viewport-flip-vertical',
+            tooltip: AppText.strings.viewFlipVertical,
+            icon: const RotatedBox(quarterTurns: 1, child: Icon(Icons.flip)),
+            onPressed: onFlipVertical,
+            isSelected: viewport.flipVertical,
+          ),
+      ];
+    }
+
+    // THE ZOOM READOUT and FIT — 유저 확정 2026-08-13, and the whole of
+    // what the pill shows about the view.
+    //
+    // The − and + steps are GONE rather than moved: the readout is already
+    // a drag (1%/px) and a double-tap to type, the wheel zooms, and two
+    // buttons that only repeat what a drag does were paying 88px of the
+    // pill's width for it. 1:1 moved into the settings list, where a thing
+    // pressed once a session belongs.
+    final viewCluster = <Widget>[
       DragValueLabel(
         keyValue: 'canvas-viewport-zoom-label',
         inputKeyValue: 'canvas-viewport-zoom-input',
@@ -3562,18 +3685,18 @@ class _CanvasViewportBottomBar extends StatelessWidget {
         },
       ),
       _barIconButton(
-        keyValue: 'canvas-viewport-zoom-in',
-        tooltip: AppText.strings.viewZoomIn,
-        icon: const Icon(Icons.zoom_in),
-        onPressed: onZoomIn,
+        keyValue: 'canvas-viewport-fit',
+        tooltip: AppText.strings.viewFitToView,
+        icon: const Icon(Icons.fit_screen),
+        onPressed: onFit,
       ),
     ];
 
-    /// What survives in a panel too narrow for the readout and the two
-    /// zoom steps. Fit is the one control with no gesture that replaces
-    /// it — a runaway view is walked back with Fit or with the panbars,
-    /// and the panbars are only useful once you can see the paper.
-    final essentialCluster = <Widget>[zoomCluster.first];
+    /// What survives in a panel too narrow even for the readout. Fit is
+    /// the one control with no gesture that replaces it — a runaway view
+    /// is walked back with Fit or with the panbars, and the panbars are
+    /// only useful once you can see the paper.
+    final essentialCluster = <Widget>[viewCluster.last];
 
     // R28 #9: the surface colors sit immediately right of the scrollbar
     // ("색 바꾸는 버튼 위치는 밑의 가로스크롤바의 바로오른쪽에"). Both use the
@@ -3616,8 +3739,64 @@ class _CanvasViewportBottomBar extends StatelessWidget {
           onChanged: (argb) => onBackdrop(0xFF000000 | argb),
         ),
       ],
-      if (onPaper != null || onPasteboard != null || onBackdrop != null)
-        const SizedBox(width: 2),
+    ];
+
+    // THE SETTINGS LIST (유저 확정 2026-08-13): everything the pill used to
+    // show at a width it could not always pay for. The rule the user gave
+    // is "공통적으로 쓰는 것만 노출하고 나머지는 설정" — so what is left in
+    // the pill is what a drawing hand reaches for, and what moved here is
+    // what a session touches once.
+    //
+    // It builds on the app's ONE popup shell rather than a surface of its
+    // own; see [PanelFlyoutRow] for why that is not a detail.
+    final settingsEntries = <PanelFlyoutEntry>[
+      // The host's own verbs first: they are about the DOCUMENT, and
+      // everything below is about looking at it.
+      if (hostSettings.isNotEmpty) ...[
+        ...hostSettings,
+        const PanelFlyoutDivider(),
+      ],
+      // Keeps the retired button's key string, which is the flyout's own
+      // convention — every test that pressed 1:1 gains a menu-open tap and
+      // nothing else.
+      PanelFlyoutItem(
+        keyValue: 'canvas-viewport-reset',
+        label: AppText.strings.viewResetView,
+        icon: Icons.crop_free,
+        onSelected: onReset,
+      ),
+      // Asked as a PREDICATE, not by building the row and measuring it: the
+      // row is six tooltipped buttons and this runs on every bar build, so
+      // "is there anything to show" was costing a throwaway widget list.
+      if (hasViewControls) ...[
+        const PanelFlyoutDivider(),
+        PanelFlyoutRow(
+          keyValue: 'canvas-settings-view-row',
+          listenable: liveViewport,
+          builder: (_) => Row(
+            mainAxisSize: MainAxisSize.min,
+            children: viewControlsFor(liveViewport.value),
+          ),
+        ),
+      ],
+      if (colorControls.isNotEmpty) ...[
+        const PanelFlyoutDivider(),
+        PanelFlyoutRow(
+          keyValue: 'canvas-settings-color-row',
+          builder: (_) =>
+              Row(mainAxisSize: MainAxisSize.min, children: colorControls),
+        ),
+      ],
+    ];
+
+    final settingsCluster = <Widget>[
+      PanelFlyoutTrigger(
+        key: const ValueKey<String>('canvas-viewport-settings'),
+        tooltip: AppText.strings.panelSettings,
+        padding: const EdgeInsets.all(6),
+        entriesBuilder: () => settingsEntries,
+        child: const Icon(Icons.tune, size: 16),
+      ),
     ];
 
     // Non-empty clusters joined by hairlines — so a host that supplies no
@@ -3655,8 +3834,6 @@ class _CanvasViewportBottomBar extends StatelessWidget {
           // over-budgeting sheds a little early, under-budgeting OVERFLOWS
           // onto the artwork, which is what a narrow rail did.
           final owed = leading.length * _leadingControlBudget;
-          final roomy = room >= _pillColorMinWidth + owed;
-          final wide = room >= _wideLayoutMinWidth + owed;
           final cramped = room < pillMinWidth + owed;
           // Last of all the host's controls go too — but Fit never does.
           // With the docked bar gone this is its only home, and a panel
@@ -3677,9 +3854,12 @@ class _CanvasViewportBottomBar extends StatelessWidget {
               const SizedBox(width: 4),
               ...joined([
                 if (!bare) leading,
-                cramped ? essentialCluster : zoomCluster,
-                if (wide) viewControls,
-                if (roomy) colorControls,
+                cramped ? essentialCluster : viewCluster,
+                // The gear NEVER sheds. It is the only way to what is
+                // inside it, so a width that dropped it would take the
+                // rotate, the flip and the surface colours with it and
+                // say nothing about where they went.
+                settingsCluster,
               ]),
               const SizedBox(width: 4),
             ],
