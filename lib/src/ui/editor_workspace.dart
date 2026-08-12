@@ -26,6 +26,7 @@ import '../services/brush_tip_library_service.dart';
 import '../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
+import '../services/persistence/folder_grant.dart' show FolderPicker;
 import '../models/brush_tip_entry.dart';
 import '../services/cut_piece_slot.dart';
 import '../services/cut_piece_tip.dart';
@@ -1579,11 +1580,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           onViewportChanged: (viewport) => slot.viewport.value = viewport,
           onSwapViewers: () => _swapViewers(fromTabId: tabId),
           // 유저 확정 ⑱: the promote button calls the SAME import every
-          // other entrance calls. Whether an import copies into
-          // `.assets/` or falls back to a reference is the import's
-          // policy and not this panel's — a viewer-only exception here
-          // would be a third import surface that nobody remembers to fix.
-          onRegisterAsset: (path) => widget.session.importMediaFiles([path]),
+          // other entrance calls, and takes the SAME copy-or-reference
+          // default the import window opens on — a viewer-only policy
+          // here would be a third import surface nobody remembers to fix.
+          //
+          // ⚠️That default is the platform's, not a preference: where a
+          // reference does not survive a restart (Apple's grants) it
+          // copies, and elsewhere it references. #957/#961 own that rule;
+          // this reads it rather than restating it.
+          onRegisterAsset: (path) => widget.session.importMediaFiles(
+            [path],
+            copyIntoProject: FolderPicker.referencesExpire,
+          ),
           isPathRegistered: (path) =>
               widget.session.repository.currentProject?.mediaAssetByPath(
                 path,
