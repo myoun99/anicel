@@ -37,6 +37,7 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // and forgets to remove it would hand its fake to every file after it.
   // Cleared here rather than trusted to each suite's tearDown.
   FolderPicker.debugFolderPicker = null;
+  FolderPicker.debugOperatingSystem = null;
   // Same hazard, same fix: the flow's platform seam decides whether a pick
   // has to clear Android's storage grant first.
   debugOperatingSystemOverride = null;
