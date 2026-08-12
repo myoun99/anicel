@@ -23,6 +23,7 @@ import '../services/brush_tip_library_service.dart';
 import '../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
+import '../services/cut_piece_slot.dart';
 import '../services/resample/resample_kernel.dart' show ResampleMode;
 import '../services/color_palette_file_service.dart' show ColorPaletteState;
 import 'brush/brush_preset_library.dart';
@@ -515,6 +516,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// The last CUT variant used — the rail's single Cut button re-activates
   /// this, exactly as the Select button does with its own.
   CanvasTool _lastCutVariant = CanvasTool.cutRect;
+
+  /// The one piece the cut tool is holding.
+  ///
+  /// Owned here rather than by the session because the piece has to
+  /// outlive a project change (유저: "다른 프로젝트에 붙여넣고 싶을 수 있으니")
+  /// — it holds a raw pixel copy, so nothing about it belongs to the
+  /// project it was taken from. Only quitting loses it.
+  final CutPieceSlot _cutPieceSlot = CutPieceSlot();
 
   void _rememberSelectionVariant() {
     final tool = _brushTool.value.tool;
@@ -1600,6 +1609,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             onBrushToolStateChanged: (state) => _brushTool.value = state,
             canvasViewCommands: widget.canvasViewCommands,
             canvasSelectionCommands: widget.canvasSelectionCommands,
+            cutPieceSlot: _cutPieceSlot,
             cameraViewEnabled: _cameraViewEnabled,
             cameraDimOpacity: _cameraDimOpacity,
             expandedLaneLayerIds: _expandedLaneLayerIds,

@@ -54,6 +54,7 @@ class CanvasSelectionLayer extends StatefulWidget {
     required this.canvasSize,
     required this.frameToken,
     this.onShapeCommitted,
+    this.onCutShape,
     this.selectionCommands,
     this.onDragActiveChanged,
     this.onLiftRequested,
@@ -161,6 +162,16 @@ class CanvasSelectionLayer extends StatefulWidget {
   )?
   onShapeCommitted;
 
+  /// A finished CUT outline. Raised instead of [onShapeCommitted] while a
+  /// cut variant is armed — the host lifts the pixels under it into the cut
+  /// slot, and the committed selection is not touched at all.
+  ///
+  /// Deliberately not routed through [onShapeCommitted] with a flag: a cut
+  /// is not a selection change, so it must not reach the selection history
+  /// either. Ctrl+Z after a cut should undo whatever the user last DREW,
+  /// not silently swallow one press.
+  final ValueChanged<CanvasSelectionShape>? onCutShape;
+
   final CanvasSelectionCommands? selectionCommands;
 
   /// Raised while a selection drag is in progress (the panel holds
@@ -216,7 +227,36 @@ class CanvasSelectionLayer extends StatefulWidget {
 /// The layer's interaction mode: the marquee tools DRAW regions, the MOVE
 /// tool drags the selected content (R11-⑧: selection and move are
 /// separate tools — a marquee drag never moves strokes anymore).
-enum CanvasSelectionTool { rect, lasso, move }
+enum CanvasSelectionTool {
+  rect,
+  lasso,
+  move,
+
+  /// The CUT tool's rectangle variant. It draws the same marquee as [rect]
+  /// and then does something else with it entirely: the outline is handed
+  /// to [CanvasSelectionLayer.onCutShape] and the committed region is left
+  /// exactly as the drag found it.
+  ///
+  /// Riding this layer rather than a second one of its own is deliberate —
+  /// the marquee/lasso geometry, the viewport mapping and the pointer
+  /// arbitration here are the trickiest input code in the app, and a
+  /// parallel copy would be the kind that drifts.
+  cutRect,
+
+  /// The CUT tool's lasso variant.
+  cutLasso,
+}
+
+/// Whether [tool] draws a freehand outline rather than a box.
+bool canvasSelectionToolIsLasso(CanvasSelectionTool tool) =>
+    tool == CanvasSelectionTool.lasso ||
+    tool == CanvasSelectionTool.cutLasso;
+
+/// Whether [tool] hands its finished outline to the cut slot instead of
+/// folding it into the selection.
+bool canvasSelectionToolCuts(CanvasSelectionTool tool) =>
+    tool == CanvasSelectionTool.cutRect ||
+    tool == CanvasSelectionTool.cutLasso;
 
 enum _DragMode { none, marquee, move, transform }
 
@@ -1998,7 +2038,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _activePointer = event.pointer;
       setState(() {
         _dragMode = _DragMode.marquee;
-        _shapeBeforeMarquee = _region;
+        // Nothing to stash while cutting: the drag never touches the
+        // region, so there is nothing for a cancel to put back.
+        _shapeBeforeMarquee = canvasSelectionToolCuts(widget.tool)
+            ? null
+            : _region;
         _marqueeStart = canvasPoint;
         _marqueeCurrent = canvasPoint;
         _lassoPoints = [canvasPoint];
@@ -2019,7 +2063,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         setState(() {
           final canvasPoint = _toCanvas(event.localPosition);
           _marqueeCurrent = canvasPoint;
-          if (widget.tool == CanvasSelectionTool.lasso) {
+          if (canvasSelectionToolIsLasso(widget.tool)) {
             _lassoPoints = [..._lassoPoints, canvasPoint];
           }
         });
@@ -2280,6 +2324,19 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   void _finishMarquee() {
+    // The CUT variants stop here: the outline goes to the slot and the
+    // selection is left alone. 유저 확정: "잘라내기는 잘라내기만이야. 그러니
+    // 선택으로 남지 않아" — so there is no combine mode to apply, no
+    // history entry to record (a cut is not a selection change), and no
+    // stashed shape to consume.
+    if (canvasSelectionToolCuts(widget.tool)) {
+      _shapeBeforeMarquee = null;
+      final drawn = _marqueeShape();
+      if (drawn != null) {
+        widget.onCutShape?.call(drawn);
+      }
+      return;
+    }
     final before = _shapeBeforeMarquee;
     _shapeBeforeMarquee = null;
     // R26 #16: the drawn polygon FOLDS into the region under the active
@@ -2326,7 +2383,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// The in-progress or final marquee polygon; null while degenerate.
   CanvasSelectionShape? _marqueeShape() {
-    if (widget.tool == CanvasSelectionTool.lasso) {
+    if (canvasSelectionToolIsLasso(widget.tool)) {
       if (_lassoPoints.length < 3) {
         return null;
       }
@@ -2773,7 +2830,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                       : null,
                   lassoTrail:
                       _dragMode == _DragMode.marquee &&
-                          widget.tool == CanvasSelectionTool.lasso
+                          canvasSelectionToolIsLasso(widget.tool)
                       ? _lassoPoints
                       : const [],
                   transformChrome: chrome,

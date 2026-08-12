@@ -35,6 +35,8 @@ import '../canvas/canvas_viewport_gesture_layer.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../canvas/flip_hud_overlay.dart';
 import 'canvas_floor_insets.dart';
+import '../../services/cut_piece_lift.dart';
+import '../../services/cut_piece_slot.dart';
 import '../../models/project.dart'
     show defaultProjectBackdropArgb, defaultProjectPasteboardMargin;
 import '../../models/project_background.dart';
@@ -144,6 +146,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.transformResampleMode,
     this.viewCommands,
     this.selectionCommands,
+    this.cutPieceSlot,
     this.onStrokeInputActiveChanged,
     this.onSelectionInteractionChanged,
     this.allowViewRotation = true,
@@ -395,6 +398,10 @@ class BrushCanvasPanel extends StatefulWidget {
   /// The app-level selection channel (P9: Ctrl+D, arrow nudges), bound by
   /// the selection layer while a selection tool is active.
   final CanvasSelectionCommands? selectionCommands;
+
+  /// Where a finished cut lands. Null in hosts that do not offer the tool
+  /// (the cut variants are then inert rather than crashing).
+  final CutPieceSlot? cutPieceSlot;
 
   /// Stroke lifecycle for the host (R13-3): true at pen-down, false at
   /// stroke end/cancel — the session holds prerender warming while a
@@ -1654,6 +1661,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                               CanvasTool.move =>
                                                                 CanvasSelectionTool
                                                                     .move,
+                                                              CanvasTool
+                                                                  .cutRect =>
+                                                                CanvasSelectionTool
+                                                                    .cutRect,
+                                                              CanvasTool
+                                                                  .cutLasso =>
+                                                                CanvasSelectionTool
+                                                                    .cutLasso,
                                                               _ =>
                                                                 CanvasSelectionTool
                                                                     .rect,
@@ -1667,6 +1682,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                                 CanvasTool.move,
                                                             onShapeCommitted:
                                                                 _recordSelectionChange,
+                                                            onCutShape:
+                                                                _cutPieceFromShape,
                                                             viewport: _viewport,
                                                             canvasSize: widget
                                                                 .canvasSize,
@@ -2196,6 +2213,36 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _contentBoundsCached = bounds;
     return bounds;
   }
+
+  /// A finished cut outline: lift the pixels under it into the slot.
+  ///
+  /// Reads the ACTIVE LAYER's committed surface and nothing else — no
+  /// composite, no layer transform, no effects (유저 확정: "트랜스폼이나 이런
+  /// 거 반영 안 한 진짜 순수 픽셀"). That is also why the piece can carry
+  /// plain cel coordinates: the read and the eventual write are in the same
+  /// space, so a posed layer cannot make them disagree.
+  ///
+  /// The surface is never written here. Cutting copies.
+  void _cutPieceFromShape(CanvasSelectionShape shape) {
+    final slot = widget.cutPieceSlot;
+    final coordinator = widget._editableCoordinator;
+    if (slot == null || coordinator == null) {
+      return;
+    }
+    final piece = buildCutPiece(
+      region: CanvasSelectionRegion.shape(shape),
+      surface: coordinator.currentSurfaceOf(coordinator.activeFrameKey),
+      pieceId: 'cut-${_cutPieceSequence += 1}',
+    );
+    // Null = the outline covered no paint. Leave the slot alone rather
+    // than blanking it: it survives frames, cuts and projects, so one
+    // stray scrape must not be able to throw away what is in it.
+    if (piece != null) {
+      slot.hold(piece);
+    }
+  }
+
+  int _cutPieceSequence = 0;
 
   BitmapSurface? _contentBoundsSurface;
   ({int left, int top, int rightExclusive, int bottomExclusive})?
