@@ -19,11 +19,12 @@
 # Two branches can both be CLEAN and both be up to date and still break each
 # other on merge, and the first you hear of it is a red master.
 #
+# Exit code is the verdict: 0 merge it, 1 do not, 2 could not tell,
+# 3 behind master but only in files this PR never touched — your call.
+#
 # Usage:
 #   bash tool/merge_check.sh          # the PR for the current branch
 #   bash tool/merge_check.sh 964      # a specific PR
-#
-# Exit code is the verdict: 0 = merge it, 1 = do not.
 
 set -uo pipefail
 
@@ -89,13 +90,42 @@ fi
 
 total=$(printf '%s' "$checks" | tr ',' '\n' | grep -c .)
 bad=$(printf '%s' "$checks" | tr ',' '\n' | grep -cv '^SUCCESS$')
-# gh prints an API error BODY to stdout, so a 404 here arrives as JSON, not
-# as an empty string — and an unchecked `behind` would print that JSON where
-# a number belongs. Anything non-numeric is "we could not tell".
-behind=$("$GH" api "repos/$REPO/compare/master...$branch" --jq '.behind_by' 2>/dev/null)
+# Compared the other way round on purpose: base=branch, head=master makes
+# `ahead_by` the number of commits this branch is BEHIND, and hands back the
+# files THOSE commits touched in the same response. One call, two answers.
+#
+# Being behind is not one situation but two, and they deserve different
+# advice. Master moving in files you never touched is routine — in a repo
+# with several branches in flight it happens during every CI round, and
+# rebasing for it is a treadmill. Master moving in files you also changed is
+# the one that earned this script.
+#
+# gh prints an API error BODY to stdout, so a 404 arrives as JSON rather
+# than as an empty string; anything non-numeric is "we could not tell".
+cmp=$("$GH" api "repos/$REPO/compare/$branch...master" \
+  --jq '"\(.ahead_by)\t\([.files[].filename] | join(","))"' 2>/dev/null)
+behind=$(printf '%s' "$cmp" | cut -f1)
+theirfiles=$(printf '%s' "$cmp" | cut -f2)
 case "$behind" in
-  '' | *[!0-9]*) behind="?" ;;
+  '' | *[!0-9]*) behind="?"; theirfiles="" ;;
 esac
+
+# The compare API returns at most 300 files. Past that we cannot claim the
+# intersection is empty, so we do not.
+their_count=$(printf '%s' "$theirfiles" | tr ',' '\n' | grep -c .)
+truncated=no
+[ "$their_count" -ge 300 ] && truncated=yes
+
+collided=$(printf '%s\n' "$theirfiles" | awk -F',' -v mine="$myfiles" '
+  BEGIN {
+    n = split(mine, m, ",")
+    for (i = 1; i <= n; i++) have[m[i]] = 1
+  }
+  {
+    c = split($0, f, ",")
+    for (i = 1; i <= c; i++) if (f[i] in have) print f[i]
+  }' | sort -u)
+collided_count=$(printf '%s' "$collided" | grep -c . || true)
 
 # Every other open PR's files, in ONE call rather than one call per PR. A
 # shared file is not proof of a conflict — it is the only cheap signal that
@@ -124,7 +154,16 @@ overlaps=$(printf '%s\n' "$others" | awk -F'\t' -v me="$PR" -v mine="$myfiles" '
 echo "PR #$PR  ($branch)  in $REPO"
 echo "  mergeable state : $state"
 echo "  checks          : $total total, $bad not SUCCESS"
-echo "  behind master   : $behind commit(s)"
+if [ "$behind" = "0" ] || [ "$behind" = "?" ]; then
+  echo "  behind master   : $behind commit(s)"
+elif [ "$collided_count" -eq 0 ] && [ "$truncated" = "no" ]; then
+  echo "  behind master   : $behind commit(s), touching $their_count file(s)," \
+    "none of them yours"
+else
+  echo "  behind master   : $behind commit(s), touching $their_count file(s)," \
+    "$collided_count of them yours"
+  printf '%s\n' "$collided" | sed 's/^/                      /' | head -5
+fi
 if [ -n "$overlaps" ]; then
   echo "  open PRs touching the same files:"
   printf '%s\n' "$overlaps"
@@ -143,6 +182,23 @@ if [ "$state" = "CLEAN" ] && [ "$bad" -eq 0 ] && [ "$behind" = "0" ]; then
   exit 0
 fi
 
+# Behind in files you never touched, with everything else clean, is the one
+# failure that is usually not a failure — and in a repo where master moves
+# several times per CI round, treating it as one means rebasing forever.
+# It gets its own exit code so a caller can tell the two apart, and a
+# paragraph rather than an order, because the call is a human's.
+if [ "$state" != "DIRTY" ] && [ "$bad" -eq 0 ] && [ "$behind" != "0" ] \
+  && [ "$behind" != "?" ] && [ "$collided_count" -eq 0 ] && [ "$truncated" = "no" ]; then
+  echo "YOUR CALL:"
+  echo "  - $behind commit(s) landed on master while this ran, but none of"
+  echo "    them touched a file this PR touches, so the green above is"
+  echo "    probably still true."
+  echo "  - Probably, not certainly: a change can break you through an API"
+  echo "    you call in a file you never edited. If this PR calls into"
+  echo "    anything those commits rewrote, rebase instead."
+  exit 3
+fi
+
 echo "DO NOT MERGE:"
 case "$state" in
   CLEAN) ;;
@@ -158,6 +214,14 @@ case "$state" in
     ;;
 esac
 [ "$bad" -ne 0 ] && echo "  - $bad check(s) are not SUCCESS."
-[ "$behind" != "0" ] && echo "  - $behind commit(s) behind master: the green above was earned against"
-[ "$behind" != "0" ] && echo "    a master that no longer exists. Rebase and let CI run again."
+if [ "$behind" != "0" ] && [ "$behind" != "?" ]; then
+  if [ "$collided_count" -gt 0 ]; then
+    echo "  - $behind commit(s) behind master, and they changed" \
+      "$collided_count file(s)"
+    echo "    this PR also changed. The green above was earned against a"
+    echo "    master that no longer exists. Rebase and let CI run again."
+  else
+    echo "  - $behind commit(s) behind master. Rebase and let CI run again."
+  fi
+fi
 exit 1
