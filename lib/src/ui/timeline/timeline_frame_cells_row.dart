@@ -43,6 +43,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     required this.exposureStateForLayer,
     this.frameNameForLayer,
     this.celContent,
+    this.coverageIdentity,
     required this.onSelectLayer,
     required this.onSelectFrame,
     this.onActivateCell,
@@ -105,6 +106,10 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// R26 #44: the unworked-block tint's fact source (see
   /// [TimelineCelContentSource]); null = no tint.
   final TimelineCelContentSource? celContent;
+
+  /// ㉘: what this row's coverage follows when it is not the layer — see
+  /// [TimelineRowCellsPainter.coverageIdentity].
+  final Object? coverageIdentity;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
 
@@ -362,6 +367,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
               : exposureStateForLayer,
           frameNameForLayer: frameNameForLayer,
           celContent: celContent,
+          // ㉘: what this row's coverage follows when it is not the layer.
+          coverageIdentity: coverageIdentity,
           onSelectLayer: onSelectLayer,
           onSelectFrame: onSelectFrame,
           onActivateCell: layerKindOpensCellEditorOnDoubleTap(layer.kind)

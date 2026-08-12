@@ -187,6 +187,7 @@ class TimelineGridTileStore {
       _entries.remove(key)?.image.dispose();
       _entries[key] = _TileEntry(
         layer: request.painter.layer,
+        coverageIdentity: request.painter.coverageIdentity,
         frameCellExtent: request.painter.frameCellExtent,
         crossAxisExtent: request.painter.crossAxisExtent,
         colorScheme: request.painter.colorScheme,
@@ -507,6 +508,7 @@ class _TileRequest {
 class _TileEntry {
   const _TileEntry({
     required this.layer,
+    required this.coverageIdentity,
     required this.frameCellExtent,
     required this.crossAxisExtent,
     required this.colorScheme,
@@ -521,6 +523,12 @@ class _TileEntry {
   });
 
   final Object layer;
+
+  /// ㉘: what the row's coverage follows when it is not the layer — a
+  /// camera row's keys live on `cut.camera`, so a tile baked before a key
+  /// was added kept matching forever and served the old picture back.
+  final Object? coverageIdentity;
+
   final double frameCellExtent;
   final double crossAxisExtent;
   final Object colorScheme;
@@ -551,6 +559,7 @@ class _TileEntry {
     // tiles any more (the out-of-cut wash became its own overlay), so a
     // cut-length drag re-rasters nothing.
     return identical(layer, painter.layer) &&
+        coverageIdentity == painter.coverageIdentity &&
         frameCellExtent == painter.frameCellExtent &&
         crossAxisExtent == painter.crossAxisExtent &&
         identical(colorScheme, painter.colorScheme) &&

@@ -385,6 +385,11 @@ class _TimelineFrameRowsScrollBodyState
       exposureStateForLayer: widget.exposureStateForLayer,
       frameNameForLayer: widget.frameNameForLayer,
       celContent: widget.celContent,
+      // ㉘: the same value the row MEMO keys on. It had to reach the
+      // painter too — the memo only decides whether to rebuild the row,
+      // and a rebuilt row whose painter says "nothing changed" repaints
+      // nothing and re-uses the tile it baked before the key existed.
+      coverageIdentity: _auxiliaryIdentityFor(baseLayer),
       onSelectLayer: widget.onSelectLayer,
       onSelectFrame: widget.onSelectFrame,
       onActivateCell: widget.onActivateCell,

@@ -82,6 +82,7 @@ class TimelineRowCellsPainter extends CustomPainter {
     this.tileStore,
     this.devicePixelRatio = 1.0,
     this.celContent,
+    this.coverageIdentity,
   }) : super(
          repaint: Listenable.merge([
            geometry,
@@ -90,6 +91,23 @@ class TimelineRowCellsPainter extends CustomPainter {
            ?celContent?.revision,
          ]),
        );
+
+  /// What this row's COVERAGE follows, when that is not the layer itself.
+  ///
+  /// ㉘ (user, 2026-08-12): 「카메라 행에 프레임을 추가하면 즉시 갱신이 안
+  /// 된다 — 다른 레이어로 이동해야 보인다」. The camera row's cells mirror
+  /// `cut.camera`, not the camera LAYER, so adding a key left every field
+  /// [shouldRepaint] compares untouched: same layer instance, same
+  /// `exposureStateForLayer` tear-off, same cel revision. The row rebuilt
+  /// and the painter honestly answered "nothing changed" — and the baked
+  /// substrate tile said the same, so even a forced repaint would have
+  /// served the old picture.
+  ///
+  /// ★A row that draws coverage it does not OWN has to say what it is
+  /// following. The rails already knew this value — it is the row memo's
+  /// auxiliary identity ([TimelineRowMemoAux]) — so nothing new is invented
+  /// here; it just had to reach the painter as well as the memo.
+  final Object? coverageIdentity;
 
   /// R26 #44: the unworked-block tint's fact AND its event. Null = no tint.
   final TimelineCelContentSource? celContent;
@@ -698,6 +716,10 @@ class TimelineRowCellsPainter extends CustomPainter {
       // both read as "changed" and this painter re-recorded on every
       // rebuild it saw (the churn that hid in the rulers, F2).
       !identical(oldDelegate.layer, layer) ||
+      // ㉘: and what the row's coverage follows, for the rows whose
+      // coverage is not on their layer. Value-compared like the rest —
+      // a TransformTrack with one more key is a different value.
+      oldDelegate.coverageIdentity != coverageIdentity ||
       oldDelegate.crossAxisExtent != crossAxisExtent ||
       oldDelegate.axis != axis ||
       !identical(oldDelegate.windowBucket, windowBucket) ||
@@ -767,6 +789,7 @@ Widget timelineRowCellsPaintArea({
   bool Function(int frameIndex)? suppressPointerDownSelect,
   ValueListenable<int>? windowBucket,
   double viewportMainExtent = 0,
+  Object? coverageIdentity,
 }) {
   final painter = TimelineRowCellsPainter(
     layer: layer,
@@ -775,6 +798,7 @@ Widget timelineRowCellsPaintArea({
     exposureStateForLayer: exposureStateForLayer,
     frameNameForLayer: frameNameForLayer,
     celContent: celContent,
+    coverageIdentity: coverageIdentity,
     colorScheme: Theme.of(context).colorScheme,
     baseTextStyle: DefaultTextStyle.of(context).style,
     axis: axis,
