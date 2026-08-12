@@ -3,6 +3,9 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_stamp_image.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
@@ -190,6 +193,135 @@ void main() {
           '${differences.join("; ")}',
     );
   }
+
+  test('a windowed dab is the window of the whole dab — bytes AND where it '
+      'sits', () {
+    if (dllPath == null) {
+      markTestSkipped(nativeEngineMissingSkipReason);
+      return;
+    }
+    QaNativeEngine.debugResetForTests();
+    debugQaEngineLibraryPathOverride = dllPath;
+    QaNativeEngine.debugForceDartFallback = false;
+
+    // The bytes are the parity sweep's business; this is about the DAB
+    // around them. A window drawn at the whole rect's centre would be off
+    // by half the difference in size — visible, and invisible to a test
+    // that only compares pixels.
+    const width = 200;
+    const height = 160;
+    final dab = BrushDab(
+      center: CanvasPoint(x: width / 2, y: height / 2),
+      color: 0xFF000000,
+      size: 1,
+      opacity: 1,
+      flow: 1,
+      hardness: 1,
+      tipShape: BrushTipShape.square,
+      pressure: 1,
+      sequence: 0,
+      stamp: BrushStampImage(
+        id: 'window',
+        width: width,
+        height: height,
+        rgba: lineArt(width, height),
+      ),
+    );
+    final affine = SelectionAffine(
+      pivot: CanvasPoint(x: width / 2, y: height / 2),
+      sx: 1.4,
+      sy: 1.4,
+      rotationDegrees: 21,
+    );
+
+    // A visible rect that cuts the result down on every side.
+    final full = transformStampDab(dab, affine);
+    final whole = full.stamp!;
+    final fullLeft = full.center.x - whole.width / 2;
+    final fullTop = full.center.y - whole.height / 2;
+    final visible = (
+      left: fullLeft + 37,
+      top: fullTop + 23,
+      right: fullLeft + whole.width - 41,
+      bottom: fullTop + whole.height - 29,
+    );
+    final windowed = transformStampDab(dab, affine, visible: visible);
+    final windowStamp = windowed.stamp!;
+
+    expect(
+      windowStamp.width < whole.width && windowStamp.height < whole.height,
+      isTrue,
+      reason: 'the window really is smaller, or this test proves nothing',
+    );
+
+    // Where it sits: the window's top-left in canvas space must be the
+    // whole rect's top-left plus the offset asked for.
+    final windowLeft = windowed.center.x - windowStamp.width / 2;
+    final windowTop = windowed.center.y - windowStamp.height / 2;
+    final offsetX = (windowLeft - fullLeft).round();
+    final offsetY = (windowTop - fullTop).round();
+    expect(offsetX, 37);
+    expect(offsetY, 23);
+
+    // And the bytes are that window of the whole, exactly.
+    var mismatched = 0;
+    for (var row = 0; row < windowStamp.height; row += 1) {
+      final wholeBase = ((offsetY + row) * whole.width + offsetX) * 4;
+      final windowBase = row * windowStamp.width * 4;
+      for (var byte = 0; byte < windowStamp.width * 4; byte += 1) {
+        if (whole.rgba[wholeBase + byte] !=
+            windowStamp.rgba[windowBase + byte]) {
+          mismatched += 1;
+        }
+      }
+    }
+    expect(mismatched, 0);
+  });
+
+  test('asking for a visible rect that covers everything returns the WHOLE '
+      'dab, so small selections keep the commit-reuse path', () {
+    if (dllPath == null) {
+      markTestSkipped(nativeEngineMissingSkipReason);
+      return;
+    }
+    QaNativeEngine.debugResetForTests();
+    debugQaEngineLibraryPathOverride = dllPath;
+    QaNativeEngine.debugForceDartFallback = false;
+
+    const width = 64;
+    const height = 48;
+    final dab = BrushDab(
+      center: CanvasPoint(x: width / 2, y: height / 2),
+      color: 0xFF000000,
+      size: 1,
+      opacity: 1,
+      flow: 1,
+      hardness: 1,
+      tipShape: BrushTipShape.square,
+      pressure: 1,
+      sequence: 0,
+      stamp: BrushStampImage(
+        id: 'small',
+        width: width,
+        height: height,
+        rgba: lineArt(width, height),
+      ),
+    );
+    final affine = SelectionAffine(
+      pivot: CanvasPoint(x: width / 2, y: height / 2),
+      sx: 1.1,
+      sy: 1.1,
+      rotationDegrees: 9,
+    );
+    final whole = transformStampDab(dab, affine).stamp!;
+    final generous = transformStampDab(
+      dab,
+      affine,
+      visible: (left: -9999, top: -9999, right: 9999, bottom: 9999),
+    ).stamp!;
+    expect(generous.width, whole.width);
+    expect(generous.height, whole.height);
+  });
 
   test('a clipped resample that keeps the destination GRID: native vs the '
       'Dart reference', () {
