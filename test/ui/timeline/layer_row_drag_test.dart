@@ -303,12 +303,15 @@ void main() {
     expect(_order(session), ['a', 'b', 'c']);
 
     // The sheet lists the stack RAW, so 'a' is the LEFTMOST column and
-    // rightward is toward 'b'. One column width commits one step.
+    // rightward is toward 'b'. ④: the landing is the boundary the pointer
+    // is nearest, so from a grab in this column's middle it takes one and a
+    // half columns to stand on the next one — the rail's rule transposed,
+    // which is the whole point of the two surfaces sharing this drag.
     final header = find.byKey(const ValueKey<String>('xsheet-layer-header-a'));
     await tester.ensureVisible(header);
     await tester.pumpAndSettle();
     final width = tester.getSize(header).width;
-    await tester.drag(header, Offset(width, 0));
+    await tester.drag(header, Offset(width * 1.5, 0));
     await tester.pumpAndSettle();
 
     expect(_order(session), ['b', 'a', 'c']);
@@ -426,11 +429,49 @@ void main() {
 
     final mounted = _layerOf(session, 'a');
     expect(mounted.attachedToLayerId, const LayerId('b'));
-    expect(mounted.attachedPlacement, AttachedPlacement.above);
+    expect(
+      mounted.attachedPlacement,
+      AttachedPlacement.below,
+      reason: '⑤: A came from UNDER B, so it rides under B — the side is a '
+          'fact about the picture, and carrying a row up onto its new base '
+          'used to flip it over that base',
+    );
 
     session.undo();
     await tester.pumpAndSettle();
     expect(_layerOf(session, 'a').attachedToLayerId, isNull);
+  });
+
+  testWidgets('⑤ the mirror: a row carried DOWN onto a base rides ABOVE it', (
+    tester,
+  ) async {
+    // The other half of the same law, and the half that used to be right by
+    // accident — every drop mounted `above`, so only the upward case ever
+    // looked wrong.
+    await _pump(tester);
+    final session = _sessionOf(tester);
+
+    // Rail top-down: Camera, C, B, A. 'c' is above 'b' in the model, so
+    // dragging its row DOWN onto B's is the descent.
+    final row = _railRow('c');
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    final gesture = await tester.startGesture(tester.getCenter(row));
+    await tester.pump(const Duration(milliseconds: 16));
+    await gesture.moveBy(const Offset(0, 28));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-row-swallow-b')),
+      findsOneWidget,
+    );
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final mounted = _layerOf(session, 'c');
+    expect(mounted.attachedToLayerId, const LayerId('b'));
+    expect(mounted.attachedPlacement, AttachedPlacement.above);
   });
 
   testWidgets('dragging an attach row clear of its group detaches it', (

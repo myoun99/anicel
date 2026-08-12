@@ -187,11 +187,27 @@ LayerDropPlan? resolveLayerDropOnRow({
       forceJoinFolderId: targetId,
     );
   }
+  // ⑤ (user, 2026-08-12): 「어태치 장착 면은 두 행의 상대 위치가 정한다.
+  // 아래에서 위로 붙이면 아래쪽 어태치여야 하는데 지금은 무조건 위쪽
+  // 어태치가 된다」.
+  //
+  // A rider's side is a fact about the PICTURE — which of the two composites
+  // over the other — so it has to be the side the row was already on. It was
+  // written here as a constant `above`, which meant carrying a row up onto
+  // its new base silently flipped it over that base.
+  //
+  // The stack position follows the same answer rather than being decided
+  // separately: a below rider sits under its base, an above one over it, so
+  // one comparison settles both and they cannot disagree.
+  final fromBelow = run.start < targetIndex;
   return resolveLayerDrop(
     stack: stack,
     movingId: movingId,
-    insertAt: targetIndex + 1,
+    insertAt: fromBelow ? targetIndex : targetIndex + 1,
     forceMountBaseId: targetId,
+    forceMountPlacement: fromBelow
+        ? AttachedPlacement.below
+        : AttachedPlacement.above,
   );
 }
 
@@ -208,6 +224,12 @@ LayerDropPlan? resolveLayerDrop({
   /// R5 #15: the base the run mounts on, for the same reason — a base with
   /// no riders yet has no inside for a caret to land in.
   LayerId? forceMountBaseId,
+
+  /// ⑤: which side of that base's picture the rider takes. Only
+  /// [resolveLayerDropOnRow] passes it, and it reads the answer off the two
+  /// rows' relative position — a gap says its own side ([_slotInsideGroup]),
+  /// but a drop ON a row has no gap to ask.
+  AttachedPlacement forceMountPlacement = AttachedPlacement.above,
 }) {
   final run = layerDragRun(stack, movingId);
   if (run == null || insertAt < 0 || insertAt > stack.length) {
@@ -308,7 +330,7 @@ LayerDropPlan? resolveLayerDrop({
   final target = insideGroup ??
       (forceMountBaseId == null
           ? null
-          : (baseId: forceMountBaseId, placement: AttachedPlacement.above));
+          : (baseId: forceMountBaseId, placement: forceMountPlacement));
 
   ({LayerId layerId, LayerId baseId, AttachedPlacement placement})? mount;
   if (target != null) {
