@@ -861,6 +861,140 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       },
       setTransformValues: _setTransformValues,
       canEditTransform: _canEditTransform,
+      flipTransform: _flipTransform,
+      resetTransform: _resetTransform,
+      applyTransform: _applyTransform,
+    );
+  }
+
+  /// 좌우반전 / 상하반전: a sign flip on one scale axis.
+  ///
+  /// It is a scale and not a separate verb, which is why it needs no
+  /// special case in any mode: the offsets ride the same affine, so a
+  /// mirrored perspective box mirrors its warp with the picture.
+  void _flipTransform({required bool horizontal}) {
+    if (!_canEditTransform()) {
+      return;
+    }
+    if (_transform == null) {
+      _beginTransform();
+    }
+    final affine = _transform;
+    if (affine == null) {
+      return;
+    }
+    setState(() {
+      _transform = horizontal
+          ? affine.copyWith(sx: -affine.sx)
+          : affine.copyWith(sy: -affine.sy);
+    });
+    _scheduleFloatResample();
+    _syncAnts();
+  }
+
+  /// 리셋: every value (유저 확정 08-13 "리셋은 전부") — the affine AND the
+  /// warp. Resetting only the numbers would leave a box that reads 100%,
+  /// 0° and still looks bent.
+  void _resetTransform() {
+    final affine = _transform;
+    if (affine == null) {
+      return;
+    }
+    setState(() {
+      _transform = SelectionAffine(pivot: affine.pivot);
+      _cornerOffsets = _cornerOffsets == null ? null : _zeroOffsets(4);
+      _meshOffsets = _meshOffsets == null
+          ? null
+          : _zeroOffsets((_meshOffsetColumns + 1) * (_meshOffsetRows + 1));
+      _stashedCornerOffsets = null;
+      _stashedMeshOffsets = null;
+    });
+    _scheduleFloatResample();
+    _syncAnts();
+  }
+
+  /// 적용 / the system 확정 button, which are one verb with two doors.
+  ///
+  /// Transformed → commit. Untransformed → REPLAY the last committed
+  /// transform's values into the box and stop there, so the recalled
+  /// values can be seen and adjusted; a second press is what applies them
+  /// (유저 확정 08-13: "재현만. 두번째눌러야 적용").
+  void _applyTransform() {
+    if (!_canEditTransform()) {
+      return;
+    }
+    if (_transform != null && _boxIsTransformed) {
+      _commitTransform();
+      return;
+    }
+    final recall = widget.selectionCommands?.transformRecall;
+    if (recall == null || recall.isIdentity) {
+      return;
+    }
+    if (_transform == null) {
+      _beginTransform();
+    }
+    final affine = _transform;
+    if (affine == null) {
+      return;
+    }
+    setState(() {
+      _transform = affine.copyWith(
+        sx: recall.scale,
+        sy: recall.scale,
+        rotationDegrees: recall.rotationDegrees,
+        tx: recall.tx,
+        ty: recall.ty,
+      );
+      // Only the part the armed mode can hold. A recall carrying a mesh
+      // recorded on another grid has nowhere to put its interior points,
+      // so it lands as the affine alone rather than as a guess.
+      if (_cornerOffsets != null && recall.hasPerspective) {
+        _cornerOffsets = List.of(recall.cornerOffsets);
+      }
+      if (_meshOffsets != null &&
+          recall.hasMeshFor(
+            columns: _meshOffsetColumns,
+            rows: _meshOffsetRows,
+          )) {
+        _meshOffsets = List.of(recall.meshOffsets);
+      }
+    });
+    _scheduleFloatResample();
+    _syncAnts();
+  }
+
+  /// Whether the open box would change any pixel.
+  bool get _boxIsTransformed {
+    final affine = _transform;
+    if (affine == null) {
+      return false;
+    }
+    return !affine.isIdentity ||
+        !_offsetsAreZero(_cornerOffsets) ||
+        !_offsetsAreZero(_meshOffsets);
+  }
+
+  /// Records what a commit just applied, for the next 재현.
+  void _recordTransformRecall(SelectionAffine affine) {
+    final channel = widget.selectionCommands;
+    if (channel == null) {
+      return;
+    }
+    channel.transformRecall = TransformRecall(
+      tx: affine.tx,
+      ty: affine.ty,
+      rotationDegrees: affine.rotationDegrees,
+      // The ratio, not a size: a recall is replayed onto ANOTHER piece of
+      // artwork, and 유저 확정 08-13 is "어떤 크기의 소재든 같은 값을
+      // 변형주도록" — the same 120%, not the same number of pixels.
+      scale: affine.sx,
+      cornerOffsets: _cornerOffsets == null
+          ? const []
+          : List.of(_cornerOffsets!),
+      meshOffsets: _meshOffsets == null ? const [] : List.of(_meshOffsets!),
+      meshColumns: _meshOffsetColumns,
+      meshRows: _meshOffsetRows,
     );
   }
 
@@ -1619,6 +1753,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _syncAnts();
         return;
       }
+      _recordTransformRecall(affine);
       final boundary = _meshBoundary(meshPoints);
       _floatContentReplaced();
       setState(() {
@@ -1643,6 +1778,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _syncAnts();
         return;
       }
+      _recordTransformRecall(affine);
       final base = _stampRectCorners();
       final h = base == null ? null : solveHomography(base, warpCorners);
       _floatContentReplaced();
@@ -1660,6 +1796,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     if (!affine.isIdentity && pending != null) {
+      _recordTransformRecall(affine);
       _floatContentReplaced();
       setState(() {
         _pendingLiftStamp = _warpedFloat() ?? pending;

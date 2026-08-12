@@ -1038,6 +1038,70 @@ void main() {
     expect(env.commands.transformActive, isTrue);
   });
 
+  testWidgets('flip mirrors the box, and 리셋 clears the numbers AND the '
+      'warp', (tester) async {
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+
+    env.commands.flipTransform(horizontal: true);
+    await tester.pump();
+    expect(
+      env.commands.transformActive,
+      isTrue,
+      reason: 'with no box open, a flip opens one — like the numeric fields',
+    );
+    expect(env.commands.transformValues?.scale, -1);
+
+    env.commands.setTransformValues(
+      tx: 12,
+      ty: 0,
+      rotationDegrees: 30,
+      scale: 2,
+    );
+    await tester.pump();
+    env.commands.resetTransform();
+    await tester.pump();
+    final values = env.commands.transformValues;
+    expect(values?.tx, 0);
+    expect(values?.rotationDegrees, 0);
+    expect(values?.scale, 1);
+  });
+
+  testWidgets('적용 with nothing transformed REPLAYS the last committed '
+      'values, and does not commit them until pressed again', (tester) async {
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+
+    // Commit something worth remembering.
+    env.commands.setTransformValues(
+      tx: 10,
+      ty: 4,
+      rotationDegrees: 0,
+      scale: 1,
+    );
+    await tester.pump();
+    env.commands.commitTransform();
+    await tester.pump();
+    final entriesAfterFirst = env.history.undoCount;
+
+    // Now an untouched box. 적용 recalls rather than committing — the
+    // values land where they can be seen, and history does not move.
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.applyTransform();
+    await tester.pump();
+    expect(env.commands.transformValues?.tx, 10);
+    expect(env.commands.transformValues?.ty, 4);
+    expect(
+      env.history.undoCount,
+      entriesAfterFirst,
+      reason: '재현만 — the recall is not a commit',
+    );
+
+    // The second press is the one that applies.
+    env.commands.applyTransform();
+    await tester.pump();
+    expect(env.history.undoCount, entriesAfterFirst + 1);
+  });
+
   testWidgets('the ANCHOR is a setting, and Alt inverts it for one drag', (
     tester,
   ) async {
