@@ -408,6 +408,7 @@ void main() {
     'toolFillTip': (s) => s.toolFillTip,
     'toolSelectTip': (s) => s.toolSelectTip,
     'toolMoveTip': (s) => s.toolMoveTip,
+    'toolCutTip': (s) => s.toolCutTip,
     'brSize': (s) => s.brSize,
     'brOpacity': (s) => s.brOpacity,
     'brFlow': (s) => s.brFlow,
