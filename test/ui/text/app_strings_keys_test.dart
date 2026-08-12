@@ -309,6 +309,8 @@ void main() {
     'mediaRename': (s) => s.mediaRename,
     'mediaRelink': (s) => s.mediaRelink,
     'mediaRemove': (s) => s.mediaRemove,
+    'mediaRegisterInProject': (s) => s.mediaRegisterInProject,
+    'mediaAlreadyInProject': (s) => s.mediaAlreadyInProject,
     'mediaStillLinked': (s) => s.mediaStillLinked,
     'mediaOpenInViewer': (s) => s.mediaOpenInViewer,
     'mediaViewerEmpty': (s) => s.mediaViewerEmpty,
