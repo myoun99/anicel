@@ -24,7 +24,10 @@
 /// and fails if the two sides drift.
 library;
 
+import 'dart:io';
+
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart';
 
 import 'anicel_project_archive.dart';
 
@@ -83,20 +86,36 @@ abstract final class FileTypeGroups {
     uniformTypeIdentifiers: [anicelProjectUti],
   );
 
-  /// Brush packs (Photoshop `.abr`, Clip Studio `.sut`/`.sutg`).
+  /// Brush packs (Photoshop `.abr`, Clip Studio `.sut`/`.sutg`) — the one
+  /// group that cannot be the same on every Apple platform.
   ///
-  /// These fall back to `public.data` — i.e. no filtering on Apple platforms —
-  /// on purpose. Apple ships no type for any of them, and the honest choice
-  /// is between showing everything and showing NOTHING: a filter naming
-  /// identifiers the system has never heard of greys out every file in the
-  /// picker, including the brush the user came to fetch. Declaring imported
-  /// types under Adobe's and Celsys' reverse-DNS would be squatting on
-  /// identifiers neither vendor has published. The importer already rejects a
-  /// wrong file with a real message, so the loose filter costs nothing.
-  static const XTypeGroup brushes = XTypeGroup(
+  /// Apple ships no type for any of these formats, and declaring imported
+  /// ones under Adobe's and Celsys' reverse-DNS would be squatting on
+  /// identifiers neither vendor has published. On **iOS** that leaves a
+  /// choice between showing everything and showing NOTHING — the picker
+  /// filters on identifiers alone, so a group naming types the system has
+  /// never heard of greys out every file including the brush the user came
+  /// to fetch. `public.data` is the honest answer there, and the importer
+  /// rejects a wrong file with a real message.
+  ///
+  /// On **macOS** the same `public.data` is a mistake: `file_selector_macos`
+  /// passes extensions AND identifiers to the panel, which takes their
+  /// UNION, so the umbrella swallows the extension filter and the panel
+  /// offers every file on the disk. Dropping it leaves the extensions doing
+  /// exactly the job they do on Windows and Linux.
+  static XTypeGroup get brushes => brushesFor(Platform.operatingSystem);
+
+  /// The decision as a pure function of the OS name, so the shape both
+  /// Apple platforms get can be pinned from the Windows workstation this
+  /// app is written on (the same seam `FolderPicker.scopedForPlatform`
+  /// uses, and for the same reason: neither branch is reachable here).
+  @visibleForTesting
+  static XTypeGroup brushesFor(String operatingSystem) => XTypeGroup(
     label: 'Brushes (Photoshop, Clip Studio)',
     extensions: brushFileExtensions,
-    uniformTypeIdentifiers: [_utiData],
+    uniformTypeIdentifiers: operatingSystem == 'macos'
+        ? const []
+        : const [_utiData],
   );
 
   /// Still images — the brush tip importer.

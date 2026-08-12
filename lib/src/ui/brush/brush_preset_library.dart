@@ -28,7 +28,7 @@ typedef BrushFilePicker = Future<BrushFilePick?> Function();
 /// supported brush formats.
 Future<BrushFilePick?> _openBrushFileDialog() async {
   final file = await openFile(
-    acceptedTypeGroups: const [FileTypeGroups.brushes],
+    acceptedTypeGroups: [FileTypeGroups.brushes],
   );
   if (file == null) {
     return null;
