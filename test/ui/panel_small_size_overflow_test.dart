@@ -82,7 +82,8 @@ void main() {
     onRelinkAsset: (_, _) {},
     onRemoveAsset: (_) => true,
     onPromoteAsset: (_) => true,
-    fileExists: (_) => true,
+    // RELINK-2: nothing missing is the default now, which is what
+    // `fileExists: (_) => true` was saying.
   );
 
   Object? describeException(WidgetTester tester) {

@@ -56,6 +56,7 @@ import 'export/export_plan.dart';
 import 'import/import_dialog.dart';
 import 'media/media_asset_drag_data.dart';
 import 'media/media_browser_panel.dart';
+import 'media/media_relink_flow.dart';
 import 'media/media_viewer_tab_host.dart';
 import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
@@ -2286,6 +2287,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               onImportRequested: () => _openImportWindow(poolOnly: true),
               onRenameAsset: widget.session.renameMediaAsset,
               onRelinkAsset: widget.session.relinkMediaAsset,
+              // RELINK-2: the loss banner reads the session's cached
+              // answer rather than probing the disk per row.
+              missingPaths: widget.session.missingMediaPaths,
+              onRelinkMissing: () =>
+                  runMediaRelinkFlow(context, widget.session),
               onRemoveAsset: widget.session.removeMediaAsset,
               onPromoteAsset: widget.session.promoteMediaAssetIntoProject,
               onOpenAsset: (asset) => _openAssetInViewer(

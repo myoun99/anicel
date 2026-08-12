@@ -1869,6 +1869,54 @@ class CutCommandCoordinator {
     );
   }
 
+  /// RELINK-2: the batch form — several assets in ONE undo step.
+  ///
+  /// Not a loop over [relinkMediaAsset]: that pushes N history entries, and
+  /// a user who pointed the app at the wrong folder wants one ctrl-Z rather
+  /// than thirty. [CompositeCommand] already exists for exactly this.
+  ///
+  /// The same three guards apply per entry, plus one the single form cannot
+  /// need: **two assets may not claim the same destination.** The matcher
+  /// drops such collisions already, but the guard belongs here too — the
+  /// pool is keyed by path, so a second asset arriving at a taken path
+  /// would either be refused mid-batch (leaving half a relink in the undo
+  /// stack) or silently merge two entries into one.
+  void relinkMediaAssets(
+    Map<String, String> moves, {
+    String description = 'Relink media',
+  }) {
+    final project = repository.requireProject();
+    final claimed = <String>{};
+    final commands = <Command>[];
+    for (final entry in moves.entries) {
+      final oldPath = entry.key;
+      final newPath = entry.value;
+      if (oldPath == newPath ||
+          project.mediaAssetByPath(oldPath) == null ||
+          project.mediaAssetByPath(newPath) != null ||
+          !claimed.add(newPath)) {
+        continue;
+      }
+      commands.add(
+        RelinkMediaAssetCommand(
+          repository: repository,
+          oldPath: oldPath,
+          newPath: newPath,
+          description: description,
+        ),
+      );
+    }
+    if (commands.isEmpty) {
+      // Nothing survived the guards — no undo step for a no-op.
+      return;
+    }
+    historyManager.execute(
+      commands.length == 1
+          ? commands.single
+          : CompositeCommand(description: description, commands: commands),
+    );
+  }
+
   void updateLayerKind({
     required CutId cutId,
     required LayerId layerId,
