@@ -2647,9 +2647,29 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (widget.transformOptions.isUniform &&
         grabbed.x != anchorLocal.x &&
         grabbed.y != anchorLocal.y) {
-      final magnitude = math.max(sx.abs(), sy.abs());
-      sx = sx.isNegative ? -magnitude : magnitude;
-      sy = sy.isNegative ? -magnitude : magnitude;
+      // One scale for both axes, chosen as the least-squares projection of
+      // the pointer onto the anchor→handle diagonal: the s that puts the
+      // handle as close to the pointer as a uniform scale can.
+      //
+      // It used to take max(|sx|, |sy|), which is the LARGER axis rather
+      // than the closest fit — so a drag that was not exactly along the
+      // diagonal pulled the short axis up to the long one. That grows the
+      // box past where the hand is, and it grows the resample with it: the
+      // output area a pointer move costs is proportional to sx·sy, and the
+      // measured penalty was 1.11× ten degrees off the diagonal, 1.33× at
+      // twenty-five, 2× at fifty
+      // (`test/services/transform_drag_cost_benchmark_test.dart`).
+      //
+      // The projection is a weighted mean of the two axis scales instead
+      // of their max, so it always sits BETWEEN them: the box follows the
+      // hand, and the cost follows the box. Signs need no special case
+      // either — dragging past the anchor makes the projection negative
+      // on its own, which is the mirror it should be.
+      final gx = grabbed.x - anchorLocal.x;
+      final gy = grabbed.y - anchorLocal.y;
+      final projected = (vx * gx + vy * gy) / (gx * gx + gy * gy);
+      sx = projected;
+      sy = projected;
     }
     sx = _clampScale(sx);
     sy = _clampScale(sy);

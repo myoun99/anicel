@@ -2516,6 +2516,45 @@ void main() {
       expect(inkAt(env.coordinator, 80, 80), isNonZero);
     });
 
+    testWidgets('일반변형 follows the hand off the diagonal: the uniform '
+        'scale is the PROJECTION, not the larger axis', (tester) async {
+      // The test above drags exactly along the diagonal, where every rule
+      // for picking one scale from two agrees. This one does not, which is
+      // the only way to see which rule is running.
+      //
+      // Box (20,20)-(70,70), anchored at TL. Grabbing BR and pulling it
+      // sideways to (95,70) asks for 1.5× on x and 1.0× on y:
+      //
+      //   max(|sx|,|sy|)  → 1.5×, so the stroke's far end (60,60) lands
+      //                     at 20 + 40·1.5 = 80 — past the pointer on the
+      //                     axis the hand never moved along.
+      //   projection      → (75·50 + 50·50)/(50²+50²) = 1.25×, so it
+      //                     lands at 20 + 40·1.25 = 70.
+      //
+      // Following the hand is also 1.44× fewer pixels to resample here,
+      // which is the whole reason the rule changed.
+      final env = await pumpSelectionPanel(tester);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+
+      await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 70));
+      env.commands.commitTransform();
+      await tester.pump();
+
+      expect(
+        inkAt(env.coordinator, 70, 70),
+        isNonZero,
+        reason: 'the far end landed at the projected 1.25×',
+      );
+      expect(
+        inkAt(env.coordinator, 80, 80),
+        0,
+        reason:
+            'and NOT at the 1.5× the larger-axis rule would have given — '
+            'that is the box outrunning the hand',
+      );
+    });
+
     testWidgets('numeric transform input (tool settings) applies through '
         'the selection channel', (tester) async {
       final env = await pumpSelectionPanel(tester);
