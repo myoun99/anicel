@@ -249,16 +249,20 @@ class _HomePageState extends State<HomePage> {
     // through this channel — the toggle button was not the caller, so its
     // snackbar path never runs.
     _session.voiceRecordingNotice.addListener(_showVoiceRecordingNotice);
-    // R26 #13: the transform tool refuses to engage with nothing to
-    // transform — announced through the shared cursor notice, never a
-    // dialog, and the tool simply stays where it was. Installed on the
-    // notifier so EVERY entrance (library panel, shortcut, Ctrl+T, pen
-    // button) is covered by one guard.
+    // The shared refusal channel stays wired; nothing installs a guard
+    // any more.
+    //
+    // R26 #13 put one here: the transform tool refused to be SELECTED with
+    // nothing to transform. 유저 확정 08-13 (피드백 ⑦) moved that refusal
+    // onto the edit — "변형툴 선택은 허용으로 하고, 편집하려할때만
+    // 거부하도록" — and it refuses quietly there, because a notice per tap
+    // on an empty layer is a nag rather than an answer. The gate was also
+    // answering for the cel that was active at the moment of the switch,
+    // which went stale the instant the user moved to another layer
+    // (피드백 ⑥); the live predicate cannot.
     final toolNotifier = _brushTool;
     if (toolNotifier is PaintToolStateNotifier) {
-      toolNotifier
-        ..switchGuard = _refusalForTool
-        ..onSwitchRefused = cursorNotices.show;
+      toolNotifier.onSwitchRefused = cursorNotices.show;
     }
   }
 
@@ -270,25 +274,6 @@ class _HomePageState extends State<HomePage> {
     ScaffoldMessenger.maybeOf(
       context,
     )?.showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  /// The refusal message for switching to [tool], or null to allow it.
-  String? _refusalForTool(CanvasTool tool) {
-    if (tool != CanvasTool.move) {
-      return null;
-    }
-    final selection = _session.activeBrushEditorSelection;
-    final hasPicture =
-        selection != null &&
-        _session.brushFrameStore.celHasRenderableContent(
-          selection.toBrushFrameKey(),
-        );
-    if (hasPicture) {
-      return null;
-    }
-    return AppStrings.of(
-      _session.languageSettings.value.programLanguage,
-    ).noticeNothingToTransform;
   }
 
   /// SAVE-1: (re)builds the autosave service to the current policy —

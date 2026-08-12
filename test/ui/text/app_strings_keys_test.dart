@@ -24,7 +24,6 @@ void main() {
     'continuousLabel': (s) => s.continuousLabel,
     'noticeNoFrameHere': (s) => s.noticeNoFrameHere,
     'noticeLayerNotDrawable': (s) => s.noticeLayerNotDrawable,
-    'noticeNothingToTransform': (s) => s.noticeNothingToTransform,
     'noticeEditAttachOwner': (s) => s.noticeEditAttachOwner,
     'commonCancel': (s) => s.commonCancel,
     'commonApply': (s) => s.commonApply,

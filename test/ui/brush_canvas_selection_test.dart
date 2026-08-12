@@ -76,10 +76,13 @@ void main() {
       TransformToolOptions(mode: transformMode),
     );
     addTearDown(transformOptions.dispose);
-    // One committed stroke around canvas (30..60, 30..60).
-    coordinator.commitSourceStroke(
-      sourceDabs: sourceDabs ?? [dab(30, 30), dab(45, 45), dab(60, 60)],
-    );
+    // One committed stroke around canvas (30..60, 30..60). An EMPTY list
+    // means a blank cel — the coordinator refuses to commit nothing, and
+    // "nothing was committed" is exactly the state under test.
+    final dabs = sourceDabs ?? [dab(30, 30), dab(45, 45), dab(60, 60)];
+    if (dabs.isNotEmpty) {
+      coordinator.commitSourceStroke(sourceDabs: dabs);
+    }
 
     Future<void> pumpWith(CanvasTool tool) async {
       await tester.pumpWidget(
@@ -982,6 +985,57 @@ void main() {
       isNonZero,
       reason: 'one undo restores the pre-lift picture',
     );
+  });
+
+  testWidgets('an EMPTY cel takes the transform tool and refuses the EDIT: '
+      'quietly, and it says so through the channel', (tester) async {
+    // A cel whose only ink is off-canvas is still ink; `sourceDabs: []`
+    // is the empty one this needs.
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      sourceDabs: const [],
+    );
+
+    expect(
+      env.commands.canEditTransform,
+      isFalse,
+      reason: 'nothing to transform — but the TOOL is armed regardless',
+    );
+
+    // Every edit entrance is inert, and none of them says anything: the
+    // refusal is the flat control, not a notice per tap.
+    env.commands.beginTransform();
+    await tester.pump();
+    expect(env.commands.transformActive, isFalse);
+
+    env.commands.setTransformValues(
+      tx: 10,
+      ty: 10,
+      rotationDegrees: 0,
+      scale: 1,
+    );
+    await tester.pump();
+    expect(env.commands.transformActive, isFalse);
+    expect(env.commands.hasSelection, isFalse);
+    expect(env.history.undoCount, 0);
+  });
+
+  testWidgets('the gate follows the CEL, not the tool switch: ink makes the '
+      'same tool editable', (tester) async {
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    expect(
+      env.commands.canEditTransform,
+      isTrue,
+      reason: 'the fixture cel has a stroke in it',
+    );
+
+    // The old gate asked `celHasRenderableContent` — three map lookups
+    // that answer "does a cel exist", so a blank one passed and the lift
+    // then came back empty. The live predicate reads the INK bounds.
+    env.commands.beginTransform();
+    await tester.pump();
+    expect(env.commands.transformActive, isTrue);
   });
 
   testWidgets('the ANCHOR is a setting, and Alt inverts it for one drag', (

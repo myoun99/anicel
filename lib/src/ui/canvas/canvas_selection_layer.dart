@@ -860,7 +860,38 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         );
       },
       setTransformValues: _setTransformValues,
+      canEditTransform: _canEditTransform,
     );
+  }
+
+  /// Whether an edit would land on anything.
+  ///
+  /// 유저 확정 08-13 (피드백 ⑦): choosing the transform tool is always
+  /// allowed — the refusal moved off the tool switch and onto the edit, so
+  /// this is asked at the moment of the press, the numeric write or the
+  /// apply, and it is asked of the cel that is active RIGHT NOW rather
+  /// than the one that was active when the tool was picked (피드백 ⑥).
+  ///
+  /// It reads the INK bounds, not "does a cel exist". The existing
+  /// tool-switch gate asked `celHasRenderableContent`, which is three map
+  /// lookups and answers a different question: a cel that exists but is
+  /// blank passed it, and the lift then came back empty and rolled the
+  /// session back with nothing on screen to explain why.
+  ///
+  /// The provider memoizes on the surface instance, so asking every build
+  /// costs a comparison — which is what "갱신되도록. 렉없이" requires.
+  bool _canEditTransform() {
+    if (widget.onLiftRequested == null) {
+      return false;
+    }
+    // A session already open is its own answer: the pixels are in hand.
+    if (_transform != null || _movePending) {
+      return true;
+    }
+    final content = widget.contentBoundsProvider?.call();
+    return content != null &&
+        content.rightExclusive > content.left &&
+        content.bottomExclusive > content.top;
   }
 
   /// Numeric transform input (R17-U tool settings): opens the session if
@@ -872,6 +903,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     required double rotationDegrees,
     required double scale,
   }) {
+    if (!_canEditTransform()) {
+      return;
+    }
     if (_transform == null) {
       _beginTransform();
     }
@@ -1522,6 +1556,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// pixel model: the session lifts the shape's raster and the box
   /// manipulates the FLOAT; Enter resamples the stamp and confirms).
   void _beginTransform() {
+    // The quiet refusal (피드백 ⑦): with nothing to transform this simply
+    // does not happen. No snackbar — one per tap on an empty layer is a
+    // nag, and the flat controls already say it.
+    if (!_canEditTransform()) {
+      return;
+    }
     var region = _region;
     // R26 #13: the MOVE tool with no selection opens the box on the
     // WHOLE picture (the Ctrl+T-family entrances included).
