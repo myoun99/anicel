@@ -58,6 +58,7 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onCutShape,
     this.selectionCommands,
     this.onDragActiveChanged,
+    this.onTransformDragActiveChanged,
     this.onLiftRequested,
     this.onLiftLanded,
     this.onLiftConfirmed,
@@ -182,6 +183,12 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// Raised while a selection drag is in progress (the panel holds
   /// viewport gestures exactly like during a stroke).
   final ValueChanged<bool>? onDragActiveChanged;
+
+  /// Raised while a TRANSFORM handle drag is in progress, which is the one
+  /// case where touch must also stand down — see the touch branch of
+  /// [_handlePointerDown] for why an extra finger there is ignored rather
+  /// than obeyed.
+  final ValueChanged<bool>? onTransformDragActiveChanged;
 
   /// R14-④/R15-④ bitmap lift: called ONCE per selection shape when the
   /// Move tool first drags (or nudges) it. The host commits the shape's
@@ -759,7 +766,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     widget.selectionCommands?.removeListener(_adoptChannelRegion);
     widget.selectionCommands?.unbind();
     if (_dragMode != _DragMode.none) {
-      widget.onDragActiveChanged?.call(false);
+      _notifyDragActive(false);
     }
     // R16-①: unmounting with a pending move (tool switched to a
     // non-selection tool) CONFIRMS it. The history execute defers
@@ -908,9 +915,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _clearTransform();
     });
     if (deferDragNotify && wasDragging) {
-      final notify = widget.onDragActiveChanged;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        notify?.call(false);
+        if (mounted) {
+          _notifyDragActive(false);
+        }
       });
     }
     _syncAnts();
@@ -1642,6 +1650,23 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _syncAnts();
   }
 
+  /// The one door both drag-active signals leave by.
+  ///
+  /// The transform half is DERIVED from [_dragMode] rather than raised by
+  /// hand at each site, so a future drag kind cannot forget to lower it —
+  /// and a stuck touch lock is the kind of bug that only shows up as "the
+  /// canvas stopped panning" an hour later.
+  void _notifyDragActive(bool active) {
+    widget.onDragActiveChanged?.call(active);
+    final transform = active && _dragMode == _DragMode.transform;
+    if (transform != _reportedTransformDrag) {
+      _reportedTransformDrag = transform;
+      widget.onTransformDragActiveChanged?.call(transform);
+    }
+  }
+
+  bool _reportedTransformDrag = false;
+
   void _syncAnts() {
     final animate = _hasSelection || _dragMode == _DragMode.marquee;
     if (animate && !_ants.isAnimating) {
@@ -2018,8 +2043,17 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (_activePointer != null) {
       // A second TOUCH is the navigate signal (same rule as strokes):
       // cancel the selection drag and let the gesture layer take over.
+      //
+      // EXCEPT while a transform handle is being dragged, where the extra
+      // finger is IGNORED — neither cancel nor navigate. 유저 08-13, on
+      // "변형 도중 터치 들어오면 변형 멈춰버리는데": a palm landing must
+      // not throw away a transform in progress, and the alternative of
+      // giving the finger a meaning was rejected for the reason a palm
+      // gives it too — a mis-touch would then change the RESULT, which is
+      // invisible, instead of the drag, which is not.
       if (event.kind == PointerDeviceKind.touch &&
-          _dragMode != _DragMode.none) {
+          _dragMode != _DragMode.none &&
+          _dragMode != _DragMode.transform) {
         setState(() => _cancelDrag(notify: true));
         _syncAnts();
       }
@@ -2099,7 +2133,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           _warpDragStartOffsets = List.of(_meshOffsets ?? const []);
           _transformDragStartPointer = canvasPoint;
         });
-        widget.onDragActiveChanged?.call(true);
+        _notifyDragActive(true);
         return;
       }
       // 퍼스: the four corners move freely — no modifier, because the MODE
@@ -2121,7 +2155,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             _warpDragStartOffsets = List.of(_cornerOffsets ?? const []);
             _transformDragStartPointer = canvasPoint;
           });
-          widget.onDragActiveChanged?.call(true);
+          _notifyDragActive(true);
           return;
         }
         // A warped quad's inside is the quad, not the affine box the edge
@@ -2150,7 +2184,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           _transformLastAngle = _pointerAngleAbout(canvasPoint, openTransform);
         }
       });
-      widget.onDragActiveChanged?.call(true);
+      _notifyDragActive(true);
       return;
     }
     final region = _region;
@@ -2222,7 +2256,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _lassoPoints = [canvasPoint];
       });
     }
-    widget.onDragActiveChanged?.call(true);
+    _notifyDragActive(true);
     _syncAnts();
   }
 
@@ -2333,16 +2367,29 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   /// Solves the scale drag: the grabbed handle lands under the pointer
-  /// while the anchor — the OPPOSITE handle, or the center with Alt —
-  /// stays fixed (its motion folds into the translation). Shift locks the
-  /// aspect on corner handles.
+  /// while the ANCHOR stays fixed (its motion folds into the translation).
+  ///
+  /// Which point that is comes from the tool's [TransformAnchor] setting,
+  /// and Alt inverts it for this one drag. A hold alone could not be the
+  /// whole answer: the pen is already on the handle, so on a tablet
+  /// "hold Alt" means a second hand on the glass for the length of the
+  /// drag. The setting is the answer there and the hold is the desktop
+  /// habit on top of it.
+  ///
+  /// The aspect ratio is locked by the MODE, not by a modifier. 일반변형
+  /// preserves it by definition; non-uniform scaling lives on 퍼스's edge
+  /// handles. Shift used to lock it here and no longer does anything —
+  /// 유저 08-13, once 일반 became the default: "어차피 일반변형이 종횡비
+  /// 유지해서 수정자 기능 필요없을거같은데".
   SelectionAffine _solveScaleDrag(
     SelectionAffine start,
     _TransformHandle handle,
     CanvasPoint pointer,
   ) {
     final grabbed = _handleLocal(handle, _baseBoxWidth, _baseBoxHeight)!;
-    final centerPivot = HardwareKeyboard.instance.isAltPressed;
+    final centerPivot =
+        (widget.transformOptions.anchor == TransformAnchor.center) !=
+        HardwareKeyboard.instance.isAltPressed;
     final anchorLocal = centerPivot
         ? CanvasPoint(x: 0, y: 0)
         : CanvasPoint(x: -grabbed.x, y: -grabbed.y);
@@ -2369,7 +2416,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (grabbed.y != anchorLocal.y) {
       sy = vy / (grabbed.y - anchorLocal.y);
     }
-    if (HardwareKeyboard.instance.isShiftPressed &&
+    if (widget.transformOptions.isUniform &&
         grabbed.x != anchorLocal.x &&
         grabbed.y != anchorLocal.y) {
       final magnitude = math.max(sx.abs(), sy.abs());
@@ -2463,7 +2510,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _floatSurface = null;
     }
     if (notify && wasDragging) {
-      widget.onDragActiveChanged?.call(false);
+      _notifyDragActive(false);
     }
   }
 

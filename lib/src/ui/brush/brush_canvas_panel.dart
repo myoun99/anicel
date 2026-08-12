@@ -455,6 +455,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// viewport gestures exactly like a stroke.
   bool _selectionDragActive = false;
 
+  /// True while a transform HANDLE is being dragged. Narrower than
+  /// [_selectionDragActive] on purpose: it is the only state in which
+  /// touch is locked out of the viewport as well.
+  bool _transformDragActive = false;
+
   CanvasAutoFrameRequest? _pendingAutoFrame;
 
   /// True while Alt is held — the temporary eyedropper (R11-②): the cursor
@@ -1361,6 +1366,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                           _strokeActive ||
                           _selectionDragActive ||
                           contentStrokeIsActive,
+                      touchLocked: _transformDragActive,
                       // Nothing drawn in the viewport (canvas, playback
                       // frames, camera overlay) may paint outside the panel.
                       child: ClipRect(
@@ -1782,6 +1788,16 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                             selectionCommands:
                                                                 widget
                                                                     .selectionCommands,
+                                                            onTransformDragActiveChanged: (active) {
+                                                              if (_transformDragActive !=
+                                                                  active) {
+                                                                setState(
+                                                                  () =>
+                                                                      _transformDragActive =
+                                                                          active,
+                                                                );
+                                                              }
+                                                            },
                                                             onDragActiveChanged: (active) {
                                                               if (_selectionDragActive !=
                                                                   active) {

@@ -1,4 +1,5 @@
 import 'dart:ui' show ImageByteFormat, PictureRecorder;
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -980,6 +981,85 @@ void main() {
       inkAt(env.coordinator, 30, 30),
       isNonZero,
       reason: 'one undo restores the pre-lift picture',
+    );
+  });
+
+  testWidgets('the ANCHOR is a setting, and Alt inverts it for one drag', (
+    tester,
+  ) async {
+    // Centre-anchored: the box grows both ways, so the corner OPPOSITE the
+    // grabbed one moves too. With the default anchor it would stay put.
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+    env.transformOptions.value = env.transformOptions.value.copyWith(
+      anchor: TransformAnchor.center,
+    );
+    await tester.pump();
+
+    // BR (70,70) out to (95,95) is 2× about the centre (45,45), so the
+    // stroke's ends map 30→15 and 60→75. Anchored at the opposite corner
+    // the same drag would be 1.5× about (20,20), putting them at 35 and 80.
+    await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 95));
+    env.commands.commitTransform();
+    await tester.pump();
+    expect(
+      inkAt(env.coordinator, 75, 75),
+      isNonZero,
+      reason: 'the grabbed end went out to 75, not the 80 a corner anchor '
+          'would have given',
+    );
+    expect(
+      inkAt(env.coordinator, 15, 15),
+      isNonZero,
+      reason:
+          'and the far end came out to meet it — that is what "anchor at '
+          'the centre" means, and it used to need Alt held down',
+    );
+  });
+
+  testWidgets('a finger landing mid-transform is IGNORED: the drag survives '
+      'and the canvas does not pan', (tester) async {
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+
+    final origin = tester.getTopLeft(find.byKey(layerKey));
+    // Grab the BR corner with the pen and start scaling...
+    final pen = await tester.startGesture(
+      origin + const Offset(70, 70),
+      kind: PointerDeviceKind.stylus,
+    );
+    await tester.pump();
+    await pen.moveTo(origin + const Offset(85, 85));
+    await tester.pump();
+    expect(env.commands.transformActive, isTrue);
+
+    // ...then rest a palm on the glass. This used to cancel the drag and
+    // hand the gesture to the viewport (유저: "변형 도중 터치 들어오면
+    // 변형 멈춰버리는데").
+    final palm = await tester.startGesture(
+      origin + const Offset(20, 200),
+      kind: PointerDeviceKind.touch,
+    );
+    await tester.pump();
+    await pen.moveTo(origin + const Offset(95, 95));
+    await tester.pump();
+    await palm.up();
+    await pen.up();
+    await tester.pump();
+
+    expect(
+      env.commands.transformActive,
+      isTrue,
+      reason: 'the transform is still open — the finger changed nothing',
+    );
+    env.commands.commitTransform();
+    await tester.pump();
+    expect(
+      inkAt(env.coordinator, 80, 80),
+      isNonZero,
+      reason: 'the scale the pen was drawing landed in full',
     );
   });
 
