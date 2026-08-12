@@ -219,7 +219,7 @@ void main() {
       );
 
       final saving = s.saveProjectToFile(projectPath);
-      await autosave.tick();
+      await autosave.saveNow();
       await saving;
 
       expect(ticked, isFalse, reason: 'the tick fired inside the save');

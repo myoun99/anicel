@@ -244,7 +244,16 @@ class _HomePageState extends State<HomePage> {
     // the interval rebuild it; the settings notifier is the one source.
     _syncAutosaveService();
     AppSave.settings.addListener(_syncAutosaveService);
-    _lifecycle = AppLifecycleListener(onExitRequested: _handleExitRequested);
+    _lifecycle = AppLifecycleListener(
+      onExitRequested: _handleExitRequested,
+      // Every way the app can stop being in front of the user, because the
+      // platforms disagree about which of these they send and in what
+      // order — and on mobile the process may simply never wake up again.
+      onInactive: _snapshotForRecovery,
+      onHide: _snapshotForRecovery,
+      onPause: _snapshotForRecovery,
+      onDetach: _snapshotForRecovery,
+    );
     // REC1-B: takes the TRANSPORT finishes (stop pressed mid-take) report
     // through this channel — the toggle button was not the caller, so its
     // snackbar path never runs.
@@ -277,18 +286,16 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// SAVE-1: (re)builds the autosave service to the current policy —
-  /// disabled tears it down; an interval change restarts the timer.
-  /// FLUTTER_TEST never runs the timer (tests drive [tick] directly).
+  /// disabled tears it down. No timer any more: [_snapshotForRecovery]
+  /// decides WHEN, off the app lifecycle.
   void _syncAutosaveService() {
-    _autosave?.dispose();
     _autosave = null;
-    if (Platform.environment.containsKey('FLUTTER_TEST') ||
-        !AppSave.settings.value.autosaveEnabled) {
+    if (!AppSave.settings.value.autosaveEnabled) {
       return;
     }
     _autosave = ProjectAutosaveService(
-      // Stands down while a manual save runs: a tick that lands after the
-      // save's sidecar retirement leaves one behind for a project that was
+      // Stands down while a manual save runs: a snapshot that lands after
+      // the save's retirement leaves one behind for a project that was
       // saved and closed cleanly, and the next open then offers to recover
       // it — which is the exact signal this round exists to keep honest.
       isDirty: () =>
@@ -296,13 +303,26 @@ class _HomePageState extends State<HomePage> {
       writeSnapshot: _session.writeAutosaveSnapshot,
       // Only called once needsProjectFile says a real file exists.
       autosavePath: () => _session.autosaveSidecarPath!,
-      // PEN-12 #8: a NEVER-SAVED project autosaves nowhere — instead
-      // of piling sidecars into hidden app-data dirs, the first dirty
-      // tick asks the user to pick a real file (OpenToonz-style).
+      // PEN-12 #8: a NEVER-SAVED project snapshots nowhere — instead of
+      // piling files into hidden app-data dirs for a document with no
+      // identity yet, the first dirty pass asks the user to pick a real
+      // file (OpenToonz-style).
       needsProjectFile: () => _session.projectFilePath == null,
       onUnsavedProject: _promptUnsavedAutosave,
-      interval: AppSave.autosaveInterval,
-    )..start();
+    );
+  }
+
+  /// Snapshots the session because the app is about to stop being in front
+  /// of the user.
+  ///
+  /// This is the whole trigger now. A clock never knew when work was at
+  /// risk; leaving the app is the moment that does — and on mobile it is
+  /// the only warning there is, because the OS may never come back to ask
+  /// again. Fires on inactive/hidden/paused rather than one of them: which
+  /// of those a platform sends, and in what order, is not something to
+  /// depend on, and the service collapses the burst itself.
+  void _snapshotForRecovery() {
+    unawaited(_autosave?.saveNow());
   }
 
   @override
@@ -312,7 +332,6 @@ class _HomePageState extends State<HomePage> {
     _session.voiceRecordingNotice.removeListener(_showVoiceRecordingNotice);
     AppSave.settings.removeListener(_syncAutosaveService);
     _lifecycle?.dispose();
-    _autosave?.dispose();
     _session.dispose();
     _panelsMenu.dispose();
     _brushTool.dispose();
