@@ -151,6 +151,9 @@ class TimelineRowDragHooks {
     required this.onEffectUpdate,
     required this.onEnd,
     required this.onCancel,
+    this.isInRowSelection,
+    this.onSelectBegin,
+    this.onSelectEnd,
   });
 
   final ValueListenable<LayerRowDragState?> drag;
@@ -188,6 +191,33 @@ class TimelineRowDragHooks {
   final void Function(LayerId layerId, List<EffectId> displayEffects, int slot)
   onEffectUpdate;
 
+  /// ⑨ (user, 2026-08-12): 「첫 드래그가 선택(1개/여러 개), 그 다음이 드래그.
+  /// 타임라인 프레임과 **완전히 같은 순서**」.
+  ///
+  /// Whether a press on [subject] is already INSIDE the row selection. True
+  /// makes this drag the MOVE, exactly as a pan starting inside a cell
+  /// selection moves it; false makes it a fresh row SELECT.
+  ///
+  /// NULL is a third answer and it is load-bearing: "this subject does not
+  /// take part in row selection at all". An fx HEADER is the case — its
+  /// drag re-orders a chain, and reading `false` there would have turned
+  /// every chain drag into a selection of nothing. A null hook says the
+  /// same thing for a whole rail (no row selection here), so both the
+  /// per-subject and the per-surface answer are one field.
+  final bool? Function(LayerRowDragSubject subject)? isInRowSelection;
+
+  /// ⑨: the select drag's anchor, at the press.
+  ///
+  /// Its UPDATE is not here but on the widget
+  /// ([LayerRowDragTarget.onSelectCrossed]), for the same reason the caret's
+  /// is: the span is a slice of what the RAIL draws, so the host closes over
+  /// its own row list rather than every rail teaching this widget its order.
+  final void Function(LayerRowDragSubject subject)? onSelectBegin;
+
+  /// ⑨: the select drag's release. The span STAYS — this only closes the
+  /// anchor, so the next press decides afresh whether it is inside.
+  final VoidCallback? onSelectEnd;
+
   final VoidCallback onEnd;
   final VoidCallback onCancel;
 }
@@ -215,6 +245,7 @@ class LayerRowDragTarget extends StatelessWidget {
     required this.axis,
     required this.hooks,
     required this.onCrossed,
+    this.onSelectCrossed,
     required this.child,
     this.isLastRow = false,
     this.grabOffsetWithinRun = 0,
@@ -267,6 +298,13 @@ class LayerRowDragTarget extends StatelessWidget {
   /// draw one answer and commit the other.
   final void Function(int crossedRows, int? onRow) onCrossed;
 
+  /// ⑨: the SELECT drag's travel, in whole rows from the pressed row.
+  ///
+  /// Beside [onCrossed] rather than inside the hooks for the same reason
+  /// that one is: the host closes over the row list it drew, so this widget
+  /// never has to know which way its rail runs.
+  final void Function(int rowDelta)? onSelectCrossed;
+
   /// Whether this is the last row of the rail — only it can show the
   /// trailing caret, or two adjacent rows would both draw the same gap.
   final bool isLastRow;
@@ -286,6 +324,7 @@ class LayerRowDragTarget extends StatelessWidget {
       axis: axis,
       hooks: hooks,
       onCrossed: onCrossed,
+      onSelectCrossed: onSelectCrossed,
       isLastRow: isLastRow,
       grabOffsetWithinRun: grabOffsetWithinRun,
       child: child,
@@ -303,6 +342,7 @@ class _LayerRowDragBody extends StatefulWidget {
     required this.hooks,
     required this.onCrossed,
     required this.isLastRow,
+    this.onSelectCrossed,
     required this.child,
   });
 
@@ -313,6 +353,7 @@ class _LayerRowDragBody extends StatefulWidget {
   final Axis axis;
   final TimelineRowDragHooks hooks;
   final void Function(int crossedRows, int? onRow) onCrossed;
+  final void Function(int rowDelta)? onSelectCrossed;
   final bool isLastRow;
   final Widget child;
 
@@ -343,8 +384,38 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     _grabFraction = extent > 0
         ? ((widget.grabOffsetWithinRun + main) / extent).clamp(0.0, 1.0)
         : 0.5;
+    // ⑨: which of the two drags this is, decided ONCE at the press and not
+    // re-asked — the same reason the cells decide it at pointer-down
+    // (`suppressPointerDownSelect`). A drag that changed its mind halfway
+    // would be a row moving because the selection happened to grow under it.
+    final inSelection = widget.hooks.isInRowSelection?.call(widget.subject);
+    _selecting = inSelection == false;
+    if (_selecting) {
+      widget.hooks.onSelectBegin?.call(widget.subject);
+      return;
+    }
     widget.hooks.onBegin(widget.subject);
     widget.onCrossed(0, null);
+  }
+
+  /// ⑨: true while this drag is growing the row SELECTION rather than
+  /// moving rows.
+  bool _selecting = false;
+
+  /// The release, whichever drag this was. Cancel takes the same path: a
+  /// select has nothing to roll back (the span it drew IS the result), and
+  /// the move's own cancel is the hooks'.
+  void _end({bool cancelled = false}) {
+    if (_selecting) {
+      _selecting = false;
+      widget.hooks.onSelectEnd?.call();
+      return;
+    }
+    if (cancelled) {
+      widget.hooks.onCancel();
+      return;
+    }
+    widget.hooks.onEnd();
   }
 
   /// The row the pointer sits in and how far through it, measured from this
@@ -428,6 +499,13 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     // asymmetry [slotForSteps] documents; it is absorbed here instead of
     // being carried in the caller's arithmetic.
     final travelled = _travelled / widget.rowExtent;
+    // ⑨: a SELECT counts whole rows the pointer has entered — its span ends
+    // ON a row, where a move's caret ends BETWEEN two. Same travel, two
+    // readings, which is why this is not the caret's `steps`.
+    if (_selecting) {
+      widget.onSelectCrossed?.call((_grabFraction + travelled).floor());
+      return;
+    }
     final nearestGap = (_grabFraction + travelled).round();
     final steps = nearestGap > 1
         ? nearestGap - 1
@@ -504,8 +582,11 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
                 recognizer.onStart = (details) =>
                     _begin(details.localPosition);
                 recognizer.onUpdate = _update;
-                recognizer.onEnd = (_) => widget.hooks.onEnd();
-                recognizer.onCancel = widget.hooks.onCancel;
+                // ⑨: a SELECT drag ends its own way. Falling through to the
+                // move's end would run the DROP COMMIT for a gesture that
+                // never proposed a drop.
+                recognizer.onEnd = (_) => _end();
+                recognizer.onCancel = () => _end(cancelled: true);
               },
             ),
       },

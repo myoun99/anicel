@@ -56,6 +56,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     super.key,
     required this.layer,
     required this.active,
+    this.selected = false,
     required this.metrics,
     required this.onSelectLayer,
     required this.onToggleLayerVisibility,
@@ -89,6 +90,14 @@ class TimelineLayerControlsRow extends StatelessWidget {
 
   final Layer layer;
   final bool active;
+
+  /// ⑨: this row is in the rail's ROW SELECTION — what the row verbs act
+  /// on. It wears the SAME wash as [active] on purpose: both say "this is
+  /// what the verbs act on", which is the one statement colour has always
+  /// made here, and two rows already wear it at once (a layer plus the
+  /// property lane inside it).
+  final bool selected;
+
   final TimelineGridMetrics metrics;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
@@ -228,7 +237,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
         decoration: chromeless
             ? null
             : BoxDecoration(
-                color: active ? activeColor : colorScheme.surface,
+                color: active || selected ? activeColor : colorScheme.surface,
                 border: Border(
                   left: BorderSide(color: borderColor),
                   right: BorderSide(color: borderColor),

@@ -115,6 +115,8 @@ class LayerTimelineGrid extends StatefulWidget {
     this.laneRange,
     this.currentRowHooks,
     this.rowDragHooks,
+    this.onRowSelectionSpan,
+    this.selectedRowIds = const {},
     this.runEdit,
     this.isFrameCached,
     this.metrics = TimelineGridMetrics.defaults,
@@ -318,6 +320,19 @@ class LayerTimelineGrid extends StatefulWidget {
   /// The row-order drag: grabbing a rail row moves it. Null leaves the rows
   /// undraggable, which is what a passive host wants.
   final TimelineRowDragHooks? rowDragHooks;
+
+  /// ⑨: the row SELECT drag's span, in this rail's own DISPLAY rows.
+  ///
+  /// Separate from [rowDragHooks] because it carries the row list — the
+  /// same reason the caret's slot updates do, and the same list the cell
+  /// span already walks, so "visible means selectable" stays structural
+  /// rather than being re-derived per verb (뿌리 A).
+  final void Function(List<TimelineDisplayRow> rows, int rowDelta)?
+  onRowSelectionSpan;
+
+  /// ⑨: the rows currently in the selection, as layer ids — what the rail
+  /// washes and what the row verbs act on.
+  final Set<LayerId> selectedRowIds;
 
   /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
   final TimelineRunEditCallbacks? runEdit;
@@ -1165,6 +1180,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
               }
               hooks.onUpdate(widget.layers, slot);
             },
+      // ⑨: the SELECT half of the same drag. It counts in the rail's own
+      // DISPLAY rows (`_dragRows`) rather than in the layer list the caret
+      // uses — the span must be able to stop on a lane row, which the layer
+      // list does not contain.
+      onSelectCrossed: hooks?.onSelectBegin == null
+          ? null
+          : (rowDelta) => widget.onRowSelectionSpan?.call(_dragRows, rowDelta),
       child: child,
     );
   }
@@ -1355,6 +1377,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       layer: row.layer,
       wearsBaseComposite: attachRowWearsBaseComposite(row.layer, widget.layers),
       active: _layerRowIsActive(row.layer),
+      // ⑨: in the row selection the row verbs act on.
+      selected: widget.selectedRowIds.contains(row.layer.id),
       metrics: _metrics,
       onSelectLayer: widget.onSelectLayer,
       onToggleLayerVisibility: widget.onToggleLayerVisibility,
