@@ -1,12 +1,12 @@
 import 'dart:io';
 
 
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/media_asset.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../dialogs/app_prompt_dialog.dart';
+import '../dialogs/folder_pick_flow.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart' show AppColors;
 import '../widgets/panel_flyout.dart';
@@ -75,15 +75,21 @@ class MediaBrowserPanel extends StatelessWidget {
   /// Injectable existence probe; defaults to the real file system.
   final bool Function(String path)? fileExists;
 
-  static Future<String?> _pickAudioFile() async {
-    final file = await openFile(
+  /// PICK-5: through the grant flow rather than `file_selector`, which
+  /// copies the chosen file into a temporary directory on both mobile
+  /// platforms — relinking to a copy that the next cache sweep deletes is
+  /// worse than not relinking at all.
+  static Future<String?> _pickAudioFile(BuildContext context) async {
+    final paths = await pickFilesForUser(
+      context,
       acceptedTypeGroups: const [FileTypeGroups.poolMedia],
     );
-    return file?.path;
+    return paths.isEmpty ? null : paths.first;
   }
 
-  Future<void> _relink(String path) async {
-    final next = await (audioFilePicker ?? _pickAudioFile)();
+  Future<void> _relink(BuildContext context, String path) async {
+    final picker = audioFilePicker ?? () => _pickAudioFile(context);
+    final next = await picker();
     if (next == null) {
       return;
     }
@@ -321,7 +327,7 @@ class MediaBrowserPanel extends StatelessWidget {
               PanelFlyoutItem(
                 keyValue: 'media-asset-menu-relink',
                 label: AppText.strings.mediaRelink,
-                onSelected: () => _relink(asset.path),
+                onSelected: () => _relink(context, asset.path),
               ),
               // The other half of importing by reference: the moment the
               // user decides the project folder should own this file

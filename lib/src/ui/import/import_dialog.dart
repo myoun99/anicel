@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/import/cut_folder_parse.dart';
@@ -271,18 +270,17 @@ class _ImportDialogState extends State<ImportDialog> {
   Future<void> _pickFiles() async {
     final picker =
         widget.filePicker ??
-        () async {
+        () => pickFilesForUser(
+          context,
           // The POOL group, not the placeable one: this window is the
           // media browser's entrance now, and the browser registers
           // movies it cannot yet place. A movie picked while a placing
           // destination is selected is refused BY NAME in the table
           // below — which is the honest version of a picker that simply
           // did not list it.
-          final files = await openFiles(
-            acceptedTypeGroups: const [FileTypeGroups.poolMedia],
-          );
-          return [for (final file in files) file.path];
-        };
+          acceptedTypeGroups: const [FileTypeGroups.poolMedia],
+          allowMultiple: true,
+        );
     final paths = await picker();
     if (paths.isEmpty || !mounted) {
       return;

@@ -1,9 +1,11 @@
 import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/persistence/file_type_groups.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 
-/// PICK-2. Two things are worth saying about what this file covers.
+/// PICK-2/PICK-5. Two things are worth saying about what this file covers.
 ///
 /// The decode is tested as a PURE function rather than through
 /// `FolderPicker.pick`, because `pick` consults the channel only on the three
@@ -12,7 +14,7 @@ import 'package:anicel/src/services/persistence/folder_grant.dart';
 /// public entry point it would be tested on iPad and nowhere else, which is
 /// to say untested until the moment it matters.
 ///
-/// The seam test exists because the picker layer has almost no coverage at
+/// The seam tests exist because the picker layer has almost no coverage at
 /// all: of eight injectable pickers in this app, tests use two. A seam
 /// nothing exercises is not a seam.
 void main() {
@@ -24,6 +26,12 @@ void main() {
   // Apple's is attached to the item that was picked. Reading them as one
   // set would either hand iPad a link that dies overnight or make Android
   // copy everything for no reason.
+  //
+  // ⚠️PICK-5 history: this table was RIGHT about the platforms and wrong
+  // about reality, because nothing was recording a real Android path in the
+  // first place — `file_selector` copied the document into `getCacheDir()`
+  // and the app recorded the copy. The native picker is what makes the
+  // Android row true rather than merely intended.
   group('references expire on Apple and nowhere else', () {
     test('the table', () {
       expect(FolderPicker.referencesExpireForPlatform('ios'), isTrue);
@@ -45,72 +53,137 @@ void main() {
     });
   });
 
-  group('a native answer becomes a grant', () {
+  group('a native answer becomes grants', () {
     test('granted carries the path and the bookmark', () {
-      final grant = FolderPicker.decodeChannelAnswer({
+      final grants = FolderPicker.decodeChannelAnswer({
         'status': 'granted',
-        'path': '/Users/x/Drive/Work',
-        'bookmark': 'Ym9va21hcms=',
+        'items': [
+          {'path': '/Users/x/Drive/Work', 'bookmark': 'Ym9va21hcms='},
+        ],
       });
-      expect(grant.status, FolderPickStatus.granted);
-      expect(grant.isGranted, isTrue);
-      expect(grant.path, '/Users/x/Drive/Work');
-      expect(grant.bookmark, 'Ym9va21hcms=');
+      expect(grants, hasLength(1));
+      expect(grants.single.status, FolderPickStatus.granted);
+      expect(grants.single.isGranted, isTrue);
+      expect(grants.single.path, '/Users/x/Drive/Work');
+      expect(grants.single.bookmark, 'Ym9va21hcms=');
+    });
+
+    test('every picked item becomes its own grant', () {
+      // Multi-select is the whole reason the payload is a list. Reading only
+      // the first entry would import one file out of three and look like the
+      // picker ignoring the user.
+      final grants = FolderPicker.decodeChannelAnswer({
+        'status': 'granted',
+        'items': [
+          {'path': '/m/a.wav', 'bookmark': 'YQ=='},
+          {'path': '/m/b.wav', 'bookmark': 'Yg=='},
+          {'path': '/m/c.wav'},
+        ],
+      }, kind: GrantKind.file);
+      expect(grants.map((grant) => grant.path), [
+        '/m/a.wav',
+        '/m/b.wav',
+        '/m/c.wav',
+      ]);
+      expect(grants.map((grant) => grant.bookmark), ['YQ==', 'Yg==', null]);
+    });
+
+    test('a broken item is dropped and the rest survive', () {
+      // Four files picked, one of them unresolvable: importing three beats
+      // failing the batch, and a granted entry with no path must never
+      // become a grant every caller would have to guard.
+      final grants = FolderPicker.decodeChannelAnswer({
+        'status': 'granted',
+        'items': [
+          {'path': '/m/a.wav'},
+          {'path': ''},
+          {'path': 42},
+          'not a map',
+          {'path': '/m/d.wav'},
+        ],
+      });
+      expect(grants.map((grant) => grant.path), ['/m/a.wav', '/m/d.wav']);
+    });
+
+    test('the kind rides along', () {
+      // Not a default: the file picker has to be able to say so, because
+      // re-establishing a grant raises a DIFFERENT picker for each kind.
+      final file = FolderPicker.decodeChannelAnswer({
+        'status': 'granted',
+        'items': [
+          {'path': '/m/a.wav'},
+        ],
+      }, kind: GrantKind.file);
+      expect(file.single.kind, GrantKind.file);
+
+      final folder = FolderPicker.decodeChannelAnswer({
+        'status': 'granted',
+        'items': [
+          {'path': '/m'},
+        ],
+      }, kind: GrantKind.folder);
+      expect(folder.single.kind, GrantKind.folder);
     });
 
     test('a Windows path is normalised to forward slashes', () {
       // Every path the app stores and compares uses forward slashes; a
       // backslash here would produce a recent-items entry that never matches
       // the project it points at.
-      final grant = FolderPicker.decodeChannelAnswer({
+      final grants = FolderPicker.decodeChannelAnswer({
         'status': 'granted',
-        'path': r'C:\Users\x\Documents\Anicel',
+        'items': [
+          {'path': r'C:\Users\x\Documents\Anicel'},
+        ],
       });
-      expect(grant.path, 'C:/Users/x/Documents/Anicel');
+      expect(grants.single.path, 'C:/Users/x/Documents/Anicel');
     });
 
     test('granted without a bookmark is still granted', () {
       // Android's case: a real path is durable on its own, so there is
       // nothing to bookmark and its absence is not a failure.
-      final grant = FolderPicker.decodeChannelAnswer({
+      final grants = FolderPicker.decodeChannelAnswer({
         'status': 'granted',
-        'path': '/storage/emulated/0/Documents/Anicel',
+        'items': [
+          {'path': '/storage/emulated/0/Documents/Anicel', 'bookmark': null},
+        ],
       });
-      expect(grant.isGranted, isTrue);
-      expect(grant.bookmark, isNull);
+      expect(grants.single.isGranted, isTrue);
+      expect(grants.single.bookmark, isNull);
     });
 
     test('an empty bookmark string is treated as no bookmark', () {
-      final grant = FolderPicker.decodeChannelAnswer({
+      final grants = FolderPicker.decodeChannelAnswer({
         'status': 'granted',
-        'path': '/tmp/x',
-        'bookmark': '',
+        'items': [
+          {'path': '/tmp/x', 'bookmark': ''},
+        ],
       });
-      expect(grant.isGranted, isTrue);
-      expect(grant.bookmark, isNull);
+      expect(grants.single.isGranted, isTrue);
+      expect(grants.single.bookmark, isNull);
     });
 
     test('cancelled is not an error', () {
-      final grant = FolderPicker.decodeChannelAnswer({'status': 'cancelled'});
-      expect(grant.status, FolderPickStatus.cancelled);
-      expect(grant.path, isNull);
+      final grants = FolderPicker.decodeChannelAnswer({'status': 'cancelled'});
+      expect(grants.single.status, FolderPickStatus.cancelled);
+      expect(grants.single.path, isNull);
     });
 
     test('a location with no filesystem path says so distinctly', () {
       // Drive, an SD card, a USB stick on Android. This must NOT collapse
       // into cancelled: the user gets the sync-app guidance, and a silent
       // cancel would leave them tapping Open and nothing happening.
-      final grant = FolderPicker.decodeChannelAnswer({
+      final grants = FolderPicker.decodeChannelAnswer({
         'status': 'noFilesystemPath',
       });
-      expect(grant.status, FolderPickStatus.noFilesystemPath);
+      expect(grants.single.status, FolderPickStatus.noFilesystemPath);
     });
   });
 
   group('a broken answer is loud, not quietly a cancel', () {
+    // Never empty, so no caller has to invent a meaning for an empty list.
     test('a null answer is unavailable', () {
       expect(
-        FolderPicker.decodeChannelAnswer(null).status,
+        FolderPicker.decodeChannelAnswer(null).single.status,
         FolderPickStatus.unavailable,
       );
     });
@@ -119,44 +192,155 @@ void main() {
       // A native that grows a case Dart has not learned yet must not look
       // like a user who changed their mind.
       expect(
-        FolderPicker.decodeChannelAnswer({'status': 'somethingNew'}).status,
+        FolderPicker.decodeChannelAnswer({
+          'status': 'somethingNew',
+        }).single.status,
         FolderPickStatus.unavailable,
       );
     });
 
-    test('granted with no path is unavailable, not a grant', () {
-      // Otherwise every caller would have to guard a granted-but-null path.
+    test('granted with no items is unavailable, not a grant', () {
       expect(
-        FolderPicker.decodeChannelAnswer({'status': 'granted'}).status,
+        FolderPicker.decodeChannelAnswer({'status': 'granted'}).single.status,
         FolderPickStatus.unavailable,
       );
     });
 
-    test('granted with an empty path is unavailable', () {
+    test('granted with an items list that yields nothing is unavailable', () {
       expect(
         FolderPicker.decodeChannelAnswer({
           'status': 'granted',
-          'path': '',
-        }).status,
+          'items': [
+            {'path': ''},
+          ],
+        }).single.status,
         FolderPickStatus.unavailable,
       );
     });
 
-    test('granted with a non-string path is unavailable', () {
+    test('the pre-PICK-5 single-item shape is no longer a grant', () {
+      // The old payload put path/bookmark at the top level. A runner left
+      // speaking it must fail loudly here rather than silently importing
+      // nothing — the channel has no compiler to catch the drift.
       expect(
         FolderPicker.decodeChannelAnswer({
           'status': 'granted',
-          'path': 42,
-        }).status,
+          'path': '/Users/x/Drive/Work',
+        }).single.status,
         FolderPickStatus.unavailable,
       );
     });
   });
 
-  group('the test seam', () {
-    tearDown(() => FolderPicker.debugFolderPicker = null);
+  group('a grant covers a subtree', () {
+    const folder = FolderGrant.granted(
+      path: '/Users/x/Work',
+      kind: GrantKind.folder,
+    );
+    const file = FolderGrant.granted(
+      path: '/Users/x/Work/ref.mp4',
+      kind: GrantKind.file,
+    );
 
-    test('an installed picker replaces the platform one', () async {
+    test('a folder grant opens itself and everything under it', () {
+      expect(folder.covers('/Users/x/Work'), isTrue);
+      expect(folder.covers('/Users/x/Work/cut/A1.png'), isTrue);
+    });
+
+    test('a folder grant does not open a sibling with a shared prefix', () {
+      // The separator in the prefix test is what stops `/Users/x/Workshop`
+      // reading as inside `/Users/x/Work`.
+      expect(folder.covers('/Users/x/Workshop/A1.png'), isFalse);
+      expect(folder.covers('/Users/x/Other'), isFalse);
+    });
+
+    test('a file grant opens exactly itself', () {
+      // The same expression as the folder case: a file is a subtree of size
+      // one, so the prefix clause dies on its own and no branch on kind is
+      // needed.
+      expect(file.covers('/Users/x/Work/ref.mp4'), isTrue);
+      expect(file.covers('/Users/x/Work/other.mp4'), isFalse);
+      expect(file.covers('/Users/x/Work/ref.mp4/inner'), isTrue);
+    });
+
+    test('a backslash spelling is normalised before matching', () {
+      // A path may arrive in either spelling — the pool normalises on
+      // registration, a caller passing one through may not have. Both must
+      // read as the same path, or coverage would answer differently
+      // depending on who asked.
+      expect(folder.covers(r'\Users\x\Work\cut\A1.png'), isTrue);
+      expect(folder.covers(r'/Users/x/Work\cut\A1.png'), isTrue);
+      // Normalisation is not a licence to match a different tree.
+      expect(folder.covers(r'\Users\x\Workshop\A1.png'), isFalse);
+    });
+
+    test('a grant with no path covers nothing', () {
+      expect(const FolderGrant.cancelled().covers('/anything'), isFalse);
+    });
+  });
+
+  group('grant kinds survive a round trip', () {
+    test('each value decodes to itself', () {
+      for (final kind in GrantKind.values) {
+        expect(GrantKind.fromJson(kind.jsonValue), kind);
+      }
+    });
+
+    test('an unknown kind reads as folder', () {
+      // Every grant written before PICK-5 was a project folder and carries
+      // no kind at all.
+      expect(GrantKind.fromJson(null), GrantKind.folder);
+      expect(GrantKind.fromJson('something-else'), GrantKind.folder);
+    });
+  });
+
+  group('picker filters translate for Android', () {
+    test('every identifier the app filters on has a MIME partner', () {
+      // An unmapped identifier narrows the Android picker to nothing, and
+      // the failure looks like "the picker shows no files" rather than like
+      // a missing map entry. Asserted against the MAP rather than against
+      // the output, because the `*/*` fallback makes a missing entry and a
+      // deliberate `*/*` produce the same answer.
+      for (final uti in allPickerUtis) {
+        expect(
+          mimeForUti.containsKey(uti),
+          isTrue,
+          reason: '$uti has no MIME mapping',
+        );
+      }
+    });
+
+    test('the media group maps to the four broad MIME families', () {
+      expect(
+        FileTypeGroups.mimeTypesFor([FileTypeGroups.poolMedia])..sort(),
+        ['application/pdf', 'audio/*', 'image/*', 'video/*'],
+      );
+    });
+
+    test('an empty filter asks for everything rather than nothing', () {
+      // A picker asked for no MIME type at all greys out every file on some
+      // providers — which reads as a broken dialog.
+      expect(FileTypeGroups.mimeTypesFor(const []), const ['*/*']);
+    });
+
+    test('identifiers are de-duplicated across groups', () {
+      expect(
+        FileTypeGroups.utisFor([
+          FileTypeGroups.images,
+          FileTypeGroups.viewableMedia,
+        ])..sort(),
+        ['com.adobe.pdf', 'public.image'],
+      );
+    });
+  });
+
+  group('the test seam', () {
+    tearDown(() {
+      FolderPicker.debugFolderPicker = null;
+      FolderPicker.debugFilePicker = null;
+    });
+
+    test('an installed folder picker replaces the platform one', () async {
       var askedWith = '';
       FolderPicker.debugFolderPicker = ({String? initialDirectory}) async {
         askedWith = initialDirectory ?? '';
@@ -170,10 +354,34 @@ void main() {
     test('a cancel from the seam reads as cancelled', () async {
       FolderPicker.debugFolderPicker =
           ({String? initialDirectory}) async => const FolderGrant.cancelled();
-      expect(
-        (await FolderPicker.pick()).status,
-        FolderPickStatus.cancelled,
+      expect((await FolderPicker.pick()).status, FolderPickStatus.cancelled);
+    });
+
+    test('the file seam receives the filter and the multi-select flag',
+        () async {
+      // Two separate seams on purpose: a file installed into the folder hook
+      // would hand a folder grant to a caller expecting files.
+      List<XTypeGroup>? askedFor;
+      var askedMultiple = false;
+      FolderPicker.debugFilePicker =
+          ({
+            required List<XTypeGroup> acceptedTypeGroups,
+            required bool allowMultiple,
+          }) async {
+            askedFor = acceptedTypeGroups;
+            askedMultiple = allowMultiple;
+            return const [
+              FolderGrant.granted(path: '/m/a.wav', kind: GrantKind.file),
+            ];
+          };
+      final grants = await FolderPicker.pickFiles(
+        acceptedTypeGroups: [FileTypeGroups.poolMedia],
+        allowMultiple: true,
       );
+      expect(askedFor, [FileTypeGroups.poolMedia]);
+      expect(askedMultiple, isTrue);
+      expect(grants.single.path, '/m/a.wav');
+      expect(grants.single.kind, GrantKind.file);
     });
   });
 

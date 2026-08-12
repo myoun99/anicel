@@ -25,15 +25,15 @@ import UniformTypeIdentifiers
   /// locals: `UIDocumentPickerViewController` keeps only a weak reference to
   /// its delegate, the Flutter result outlives the call that created it, and
   /// a security scope stops the moment its URL is released.
-  private var folderPickerDelegate: FolderPickerDelegate?
-  private var pendingFolderResult: FlutterResult?
+  private var pickerDelegate: DocumentPickerDelegate?
+  private var pendingPickResult: FlutterResult?
 
-  /// Folders this process currently holds a security scope on, keyed by
-  /// path. Nothing removes entries: a scope is cheap, the app grants a
-  /// handful per session, and stopping one mid-session would pull the floor
-  /// out from under an open project's autosave — which writes a sidecar
-  /// beside the file every five minutes.
-  private var scopedFolders: [String: URL] = [:]
+  /// Items this process currently holds a security scope on, keyed by
+  /// path — FILES as well as folders since PICK-5. Nothing removes entries:
+  /// a scope is cheap, the app grants a handful per session, and stopping
+  /// one mid-session would pull the floor out from under an open project's
+  /// autosave — which writes a sidecar beside the file every five minutes.
+  private var scopedItems: [String: URL] = [:]
 
   override func application(
     _ application: UIApplication,
@@ -78,9 +78,15 @@ import UniformTypeIdentifiers
         result(nil)
       case "pickProjectFolder":
         self.pickProjectFolder(result: result)
-      case "resolveFolderBookmark":
+      case "pickFiles":
         let arguments = call.arguments as? [String: Any]
-        self.resolveFolderBookmark(
+        self.pickFiles(
+          utis: arguments?["utis"] as? [String] ?? [],
+          allowMultiple: arguments?["allowMultiple"] as? Bool ?? false,
+          result: result)
+      case "resolveBookmark":
+        let arguments = call.arguments as? [String: Any]
+        self.resolveBookmark(
           base64: arguments?["bookmark"] as? String, result: result)
       default:
         result(FlutterMethodNotImplemented)
@@ -88,7 +94,7 @@ import UniformTypeIdentifiers
     }
   }
 
-  // MARK: - PICK-2: folder grants
+  // MARK: - PICK-2/PICK-5: path grants
 
   /// Presents the system document picker in FOLDER mode.
   ///
@@ -97,23 +103,12 @@ import UniformTypeIdentifiers
   /// directory plus an autosave sidecar. Picking the file would grant the one
   /// item that cannot be saved.
   ///
-  /// This is also the only surface on iPadOS through which Google Drive and
-  /// Dropbox are reachable at all: they are File Provider extensions, and no
-  /// API lets a third-party app enumerate them.
+  /// This is also the only surface on iPadOS through which Dropbox and other
+  /// providers are reachable at all: they are File Provider extensions, and
+  /// no API lets a third-party app enumerate them. (Google Drive declines
+  /// folder mode outright — measured on iOS 26.5.2 — which is why file mode
+  /// below is the one that reaches it.)
   private func pickProjectFolder(result: @escaping FlutterResult) {
-    // REFUSE a second request rather than replacing the first. Replacing it
-    // would drop the only strong reference to delegate #1 — the picker's own
-    // `delegate` is weak — leaving picker #1 on screen, unable to report
-    // anything, and `topViewController()` would then try to present picker #2
-    // ON TOP of it. On the realistic trigger (a fast double-tap while #1 is
-    // still animating in) UIKit refuses the presentation, no callback ever
-    // fires, and the Dart future never completes for the life of the process.
-    if pendingFolderResult != nil {
-      result(["status": "cancelled"])
-      return
-    }
-    pendingFolderResult = result
-
     let picker: UIDocumentPickerViewController
     if #available(iOS 14.0, *) {
       picker = UIDocumentPickerViewController(
@@ -123,14 +118,72 @@ import UniformTypeIdentifiers
       picker = UIDocumentPickerViewController(
         documentTypes: ["public.folder"], in: .open)
     }
-    let delegate = FolderPickerDelegate(owner: self)
-    folderPickerDelegate = delegate
+    present(picker: picker, allowMultiple: false, result: result)
+  }
+
+  /// PICK-5: presents the picker in FILE mode, **in place**.
+  ///
+  /// The whole reason this exists rather than `file_selector`: that plugin
+  /// opens the picker in `.import` mode, which COPIES the chosen file into
+  /// the app sandbox and hands back the copy's path. A media asset imported
+  /// "by reference" would then reference a temporary duplicate — the
+  /// original is never touched, no bookmark can be minted for it (the app
+  /// never sees its URL), and the copy is swept when the OS reclaims tmp.
+  ///
+  /// `asCopy: false` is the whole fix: the file stays where the user put it,
+  /// the app receives its real URL, and a security-scoped bookmark can be
+  /// minted from that URL so the reference survives a relaunch.
+  private func pickFiles(
+    utis: [String], allowMultiple: Bool, result: @escaping FlutterResult
+  ) {
+    // An empty filter means "anything a document can be". `public.data` is
+    // the conformance every file answers to; without it iOS greys out the
+    // entire browser and the user cannot pick at all.
+    let identifiers = utis.isEmpty ? ["public.data"] : utis
+    let picker: UIDocumentPickerViewController
+    if #available(iOS 14.0, *) {
+      // An identifier the system does not know maps to nil rather than
+      // throwing — and a picker built from an EMPTY type list shows nothing,
+      // so the fallback matters more than it looks.
+      let types = identifiers.compactMap { UTType($0) }
+      picker = UIDocumentPickerViewController(
+        forOpeningContentTypes: types.isEmpty ? [UTType.data] : types,
+        asCopy: false)
+    } else {
+      picker = UIDocumentPickerViewController(documentTypes: identifiers, in: .open)
+    }
+    present(picker: picker, allowMultiple: allowMultiple, result: result)
+  }
+
+  /// The one place a picker reaches the screen. Shared so the folder and file
+  /// modes cannot drift apart on the two things that are easy to get wrong:
+  /// refusing a concurrent request, and reporting a presentation that never
+  /// took.
+  private func present(
+    picker: UIDocumentPickerViewController, allowMultiple: Bool,
+    result: @escaping FlutterResult
+  ) {
+    // REFUSE a second request rather than replacing the first. Replacing it
+    // would drop the only strong reference to delegate #1 — the picker's own
+    // `delegate` is weak — leaving picker #1 on screen, unable to report
+    // anything, and `topViewController()` would then try to present picker #2
+    // ON TOP of it. On the realistic trigger (a fast double-tap while #1 is
+    // still animating in) UIKit refuses the presentation, no callback ever
+    // fires, and the Dart future never completes for the life of the process.
+    if pendingPickResult != nil {
+      result(["status": "cancelled"])
+      return
+    }
+    pendingPickResult = result
+
+    let delegate = DocumentPickerDelegate(owner: self)
+    pickerDelegate = delegate
     picker.delegate = delegate
-    picker.allowsMultipleSelection = false
+    picker.allowsMultipleSelection = allowMultiple
 
     guard let presenter = topViewController(), presenter.presentedViewController == nil
     else {
-      finishFolderPick(["status": "unavailable"])
+      finishPick(["status": "unavailable"])
       return
     }
     // A non-nil completion so a presentation that never took is an ERROR
@@ -138,16 +191,16 @@ import UniformTypeIdentifiers
     // if the picker is not on screen by then, nothing else will report.
     presenter.present(picker, animated: true) { [weak self, weak picker] in
       guard let self, picker?.presentingViewController == nil else { return }
-      self.finishFolderPick(["status": "unavailable"])
+      self.finishPick(["status": "unavailable"])
     }
   }
 
   /// Called by the delegate. Central so both the pick and the cancel paths
   /// clear the same two properties.
-  fileprivate func finishFolderPick(_ payload: [String: Any?]) {
-    let pending = pendingFolderResult
-    pendingFolderResult = nil
-    folderPickerDelegate = nil
+  fileprivate func finishPick(_ payload: [String: Any?]) {
+    let pending = pendingPickResult
+    pendingPickResult = nil
+    pickerDelegate = nil
     pending?(payload)
   }
 
@@ -174,7 +227,7 @@ import UniformTypeIdentifiers
     // Recorded whether or not a scope was needed — holding the URL is what
     // keeps a real scope alive, and a picked (as opposed to resolved) URL
     // does not always report one.
-    scopedFolders[url.path] = url
+    scopedItems[url.path] = url
     var bookmark: String?
     do {
       // `.minimalBookmark` is the iOS spelling; `.withSecurityScope` is
@@ -184,19 +237,45 @@ import UniformTypeIdentifiers
         relativeTo: nil)
       bookmark = data.base64EncodedString()
     } catch {
-      // A folder with no bookmark still works for this session; only the
-      // recent-projects entry is poorer for it.
+      // An item with no bookmark still works for this session; only the
+      // stored grant is poorer for it.
       bookmark = nil
     }
-    return ["status": "granted", "path": url.path, "bookmark": bookmark]
+    // ONE shape for one and for many. A picker that can return several URLs
+    // and one that cannot would otherwise hand Dart two payload dialects,
+    // and the channel has no compiler to notice when one of the three
+    // platform runners is left speaking the old one.
+    return ["status": "granted", "items": [["path": url.path, "bookmark": bookmark]]]
   }
 
-  /// Reopens a folder from a stored bookmark.
+  /// The same, for a pick that may have returned several URLs.
+  ///
+  /// A URL that fails to grant is DROPPED rather than failing the batch: the
+  /// user picked five files and four of them work, so importing four beats
+  /// reporting nothing. All five failing is still `unavailable`.
+  fileprivate func grantPayload(for urls: [URL]) -> [String: Any?] {
+    if urls.isEmpty {
+      return ["status": "cancelled"]
+    }
+    var items: [[String: Any?]] = []
+    for url in urls {
+      let payload = grantPayload(for: url)
+      if let granted = payload["items"] as? [[String: Any?]] {
+        items.append(contentsOf: granted)
+      }
+    }
+    return items.isEmpty
+      ? ["status": "unavailable"] : ["status": "granted", "items": items]
+  }
+
+  /// Reopens a granted item from a stored bookmark — a file since PICK-5,
+  /// a folder before it. `URL(resolvingBookmarkData:)` does not distinguish
+  /// them, so neither does this.
   ///
   /// The resolved path may DIFFER from the one that was bookmarked — that is
-  /// the feature. A bookmark tracks the folder, so a project the user moved
+  /// the feature. A bookmark tracks the item, so a project the user moved
   /// or renamed is followed rather than lost.
-  private func resolveFolderBookmark(base64: String?, result: @escaping FlutterResult) {
+  private func resolveBookmark(base64: String?, result: @escaping FlutterResult) {
     guard let base64, let data = Data(base64Encoded: base64) else {
       result(["status": "unavailable"])
       return
@@ -296,7 +375,7 @@ import UniformTypeIdentifiers
 /// interaction. Needs one iPad pass — and the load-bearing question that pass
 /// answers is whether `dart:io` can write inside the granted scope, because
 /// the entire folder-grant design rests on it.
-private final class FolderPickerDelegate: NSObject, UIDocumentPickerDelegate {
+private final class DocumentPickerDelegate: NSObject, UIDocumentPickerDelegate {
   init(owner: AppDelegate) {
     self.owner = owner
   }
@@ -307,15 +386,13 @@ private final class FolderPickerDelegate: NSObject, UIDocumentPickerDelegate {
     _ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]
   ) {
     guard let owner else { return }
-    guard let url = urls.first else {
-      owner.finishFolderPick(["status": "cancelled"])
-      return
-    }
-    owner.finishFolderPick(owner.grantPayload(for: url))
+    // Every URL, not just the first: file mode allows multiple selection and
+    // dropping the rest here would look like the picker ignoring the user.
+    owner.finishPick(owner.grantPayload(for: urls))
   }
 
   func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-    owner?.finishFolderPick(["status": "cancelled"])
+    owner?.finishPick(["status": "cancelled"])
   }
 }
 
