@@ -61,6 +61,23 @@ CutId? _mainCanvasCutId(WidgetTester tester) {
 Future<void> _tapKey(WidgetTester tester, ValueKey<String> key) =>
     tapCommandButton(tester, key);
 
+/// ⑥ (2026-08-12): the `＋` makes an ANIMATION layer now, whatever is selected
+/// (유저: 「레이어 +버튼, 선택된 레이어 기준이아니라 애니메이션레이어 생성」).
+///
+/// The PLACEMENT rules these tests pin — S-numbering, insertion order, landing
+/// above the active row — did not change and are still worth holding. Asking
+/// for a particular KIND simply moved to the band above the `＋`, so that is
+/// where the tests ask from.
+Future<void> _addLayerOfKind(WidgetTester tester, String kind) async {
+  await _tapKey(
+    tester,
+    const ValueKey<String>('timeline-toolbar-add-layer-menu'),
+  );
+  await tester.pumpAndSettle();
+  await _tapKey(tester, ValueKey<String>('add-layer-kind-$kind'));
+  await tester.pumpAndSettle();
+}
+
 Layer _layer(ProjectRepository repository) {
   return repository.requireProject().tracks.single.cuts.single.layers.single;
 }
@@ -280,10 +297,7 @@ void main() {
       findsNothing,
     );
 
-    await _tapKey(
-      tester,
-      const ValueKey<String>('timeline-toolbar-add-layer-button'),
-    );
+    await _addLayerOfKind(tester, 'instruction');
 
     final layers = repository.requireProject().tracks.single.cuts.single.layers;
     expect(layers, hasLength(2));
@@ -307,10 +321,7 @@ void main() {
     // SE rows are TRACK-owned: the add lands on the track's SE list (the
     // cut's legacy fixture row stays untouched); the new row takes the
     // first free S-number.
-    await _tapKey(
-      tester,
-      const ValueKey<String>('timeline-toolbar-add-layer-button'),
-    );
+    await _addLayerOfKind(tester, 'se');
 
     var track = repository.requireProject().tracks.single;
     expect(track.cuts.single.layers, hasLength(1));
@@ -319,10 +330,7 @@ void main() {
     expect(track.seLayers[0].name, 'S1');
 
     // Adding again with the new S1 active skips to S2, inserted above it.
-    await _tapKey(
-      tester,
-      const ValueKey<String>('timeline-toolbar-add-layer-button'),
-    );
+    await _addLayerOfKind(tester, 'se');
     track = repository.requireProject().tracks.single;
     expect(track.seLayers.map((layer) => layer.name), ['S1', 'S2']);
   });
@@ -346,10 +354,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.descendant(of: s1Row, matching: find.text('S1')));
     await tester.pumpAndSettle();
-    await _tapKey(
-      tester,
-      const ValueKey<String>('timeline-toolbar-add-layer-button'),
-    );
+    await _addLayerOfKind(tester, 'se');
 
     final track = repository.requireProject().tracks.single;
     expect(track.seLayers.map((layer) => layer.name), ['S1', 'S3', 'S2']);

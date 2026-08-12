@@ -366,6 +366,21 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     unawaited(editActiveInstance(context, _session));
   }
 
+  /// ⑬ CREATE on this panel — the same fork as [_editInstanceHere].
+  ///
+  /// On the transition row the two verbs are one: `editTransitionSpanInstance`
+  /// creates on an empty frame and edits on a covered one, which is exactly
+  /// what the user asked for when the rail's own `＋` was retired (「그게아니라
+  /// 인스턴스편집버튼으로 작동하도록」). So `＋` here is not a second door — it
+  /// is the same door with a shorter walk.
+  void _createInstanceHere() {
+    if (_standingOnTransitionRow) {
+      unawaited(editTransitionSpanInstance(context, _session));
+      return;
+    }
+    createActiveInstance(_session);
+  }
+
   /// The enablement half: a span to edit, or an empty frame to create into.
   ///
   /// ⚠️The frame is the track-GLOBAL playhead. `hasActiveNonNegativeCell` and
@@ -414,7 +429,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onDeleteLayer: () => unawaited(
                       deleteActiveLayerWithDialog(context, _session),
                     ),
-                    onCreateInstance: () => createActiveInstance(_session),
+                    // ⑬: the same dispatch Edit Instance takes. Standing on
+                    // the transition row, `＋` makes a span — that row's only
+                    // creation verb, and the one the rail's own `＋` carried
+                    // before #926 retired it.
+                    onCreateInstance: _createInstanceHere,
                     // This panel reads left-to-right like the horizontal
                     // timeline, so its dialogs' miniatures do too.
                     onEditInstance: _editInstanceHere,
