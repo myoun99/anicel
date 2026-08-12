@@ -119,6 +119,13 @@ class ToolSettingsPanel extends StatelessWidget {
           selectionCommands: selectionCommands,
           language: language,
         ),
+        // The CUT variants: the two grab tiles have nothing to set (the
+        // grab is hard-edged by law — 2치 보존 — and it makes no selection,
+        // so there is no combine mode either), and the stamp tile's knobs
+        // land here in the next slice.
+        CanvasTool.cutRect ||
+        CanvasTool.cutLasso ||
+        CanvasTool.cutStamp => const _CutToolSettingsPlaceholder(),
         CanvasTool.move => _MoveSettings(
           selectionCommands: selectionCommands,
           resampleMode: transformResampleMode,
@@ -132,6 +139,31 @@ class ToolSettingsPanel extends StatelessWidget {
           onGuidesCommitted: onGuidesCommitted ?? (_) {},
         ),
       },
+    );
+  }
+}
+
+/// Stands in until the stamp tile's knobs land (piece preview, paste
+/// above/below, the two flips, size %, reset, register as tip).
+class _CutToolSettingsPlaceholder extends StatelessWidget {
+  const _CutToolSettingsPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      key: const ValueKey<String>('tool-settings-cut'),
+      padding: const EdgeInsets.all(12),
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: Text(
+          'Cut copies the pixels under the drag — the original stays.\n'
+          'Pick Stamp to place the piece you are holding.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
     );
   }
 }

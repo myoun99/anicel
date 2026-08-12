@@ -57,6 +57,41 @@ class ToolLibraryPanel extends StatelessWidget {
             ),
           ],
         );
+      // The CUT tool's three tiles. Same grammar as the selection tool
+      // above (one rail button, variants as tiles) — and here it does more
+      // than tidy the rail: with grabbing and stamping on separate tiles, a
+      // drag means exactly one thing inside each, so the tool needs no
+      // modifier key and works on a tablet.
+      case CanvasTool.cutRect:
+      case CanvasTool.cutLasso:
+      case CanvasTool.cutStamp:
+        return ListView(
+          key: const ValueKey<String>('tool-library-cut'),
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          children: [
+            _SubToolTile(
+              keyValue: 'sub-tool-cut-rect',
+              icon: Icons.crop_square,
+              label: 'Rectangle Cut',
+              selected: tool == CanvasTool.cutRect,
+              onTap: () => onToolChanged(CanvasTool.cutRect),
+            ),
+            _SubToolTile(
+              keyValue: 'sub-tool-cut-lasso',
+              icon: Icons.gesture,
+              label: 'Lasso Cut',
+              selected: tool == CanvasTool.cutLasso,
+              onTap: () => onToolChanged(CanvasTool.cutLasso),
+            ),
+            _SubToolTile(
+              keyValue: 'sub-tool-cut-stamp',
+              icon: Icons.approval_outlined,
+              label: 'Stamp',
+              selected: tool == CanvasTool.cutStamp,
+              onTap: () => onToolChanged(CanvasTool.cutStamp),
+            ),
+          ],
+        );
       case CanvasTool.move:
         return const _ToolNote(
           keyValue: 'tool-library-move',

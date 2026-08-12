@@ -2120,10 +2120,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       case CanvasTool.brush:
       case CanvasTool.eraser:
       // The selection/move tools mount their own drag layer, not the tap
-      // layer.
+      // layer. The CUT variants ride that same layer (canvasToolSelects),
+      // and the STAMP variant paints, so none of them want a tap handler
+      // here either.
       case CanvasTool.selectRect:
       case CanvasTool.lasso:
       case CanvasTool.move:
+      case CanvasTool.cutRect:
+      case CanvasTool.cutLasso:
+      case CanvasTool.cutStamp:
         return null;
       case CanvasTool.eyedropper:
         final sample = widget.sampleColorAt;
