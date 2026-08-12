@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/import/tvp_json_parse.dart';
@@ -182,8 +183,13 @@ void main() {
             reason: 'frame ${baked.frame} x');
         expect(resolved.center.y, closeTo(baked.y, 0.25),
             reason: 'frame ${baked.frame} y');
-        // The clip shoots the project's own frame, so scale IS the zoom.
-        expect(resolved.zoom, closeTo(baked.scale, 1e-4),
+        // The clip shoots the project's own frame, so the fit is 1 and
+        // the zoom is the scale INVERTED: `scale` resizes the camera
+        // rectangle, and a rectangle twice as wide sees twice as much at
+        // half the magnification. This used to read `closeTo(baked.scale)`
+        // — the implementation's belief restated as its own proof, which
+        // is why an inverted zoom move sat here unnoticed.
+        expect(resolved.zoom, closeTo(1 / baked.scale, 1e-4),
             reason: 'frame ${baked.frame} zoom');
         // NEGATED: TVPaint's negative angle is a clockwise camera, and
         // CameraPose turns the view clockwise on positive.
@@ -218,17 +224,20 @@ void main() {
       );
     });
 
-    test('a shaped curve keeps the keys it needs and no more', () {
+    test('a shaped curve keeps every frame it cannot straighten', () {
       final plan = planFixture('eased_camera');
-      // Eased, so most frames leave the straight line — but the three
-      // near-linear stretches between the authored keys still fold.
-      expect(
-        plan.cut.camera.keyframes.length,
-        13,
-        reason: 'the exact number is the point: it must not creep toward 24 '
-            '(the simplifier stopped working) nor toward 2 (the tolerance '
-            'got loose enough to flatten the easing)',
-      );
+      // 🚨This read 13 while the zoom was TVPaint's `scale` copied
+      // through. The zoom is `1 / scale` now — the correct reading, see
+      // `_cameraPoseFor` — and a reciprocal bends what used to be
+      // straight: the stretches that folded into one key no longer lie on
+      // a line within the tolerance, so this eased move keeps a key per
+      // frame.
+      //
+      // Correct, and worth knowing: an eased ZOOM lands denser on the
+      // timeline than an eased pan. Nothing else changes — a linear pan
+      // still folds to two keys (see the edge_behaviors group), which is
+      // what says the simplifier is alive.
+      expect(plan.cut.camera.keyframes.length, 24);
     });
 
     test('rotation and zoom follow the BAKED curve, not the authored key — '
@@ -247,7 +256,9 @@ void main() {
         frameIndex: 6,
       );
       expect(shown.rotationDegrees, closeTo(3.2856, 0.01));
-      expect(shown.zoom, closeTo(0.9193, 1e-3));
+      // The baked scale here is 0.9193 — a rectangle shrunk to 92%, which
+      // is a view magnified by its reciprocal.
+      expect(shown.zoom, closeTo(1 / 0.9193, 1e-3));
     });
   });
 
@@ -377,6 +388,74 @@ void main() {
         expect(layer.isVisible, isTrue, reason: layer.name);
         expect(layer.blendMode, LayerBlendMode.normal, reason: layer.name);
       }
+    });
+  });
+
+  // The one axis no fixture presses: a camera the animator RESIZED.
+  //
+  // Three fixtures carry `scale: 1.0`, where multiplying and dividing by
+  // it agree, and `eased_camera` only wanders between 0.80 and 1.05. The
+  // numbers here are from a real clip that broke: a 16:9 camera built at
+  // 960×540 and stretched out to a 2340×1654 layout sheet.
+  group('a camera the animator resized', () {
+    CutCamera cameraFrom({
+      required double sizeX,
+      required double sizeY,
+      required double scale,
+    }) {
+      final pose =
+          '{"frame":1,"x":1170.0,"y":827.0,"angle":0.0,"scale":$scale,'
+          '"sizeX":$sizeX,"sizeY":$sizeY}';
+      final json =
+          '{"version":{"major":5,"minor":1},"project":{"camera":'
+          '{"width":${sizeX.round()},"height":${sizeY.round()}},'
+          '"clip":{"name":"c","width":2340,"height":1654,"framerate":24.0,'
+          '"image-count":2,"camera":{"points":[$pose],'
+          '"positions":[$pose]},"layers":[]}}}';
+      return planTvpJsonImport(
+        parsed: parseTvpJson(json),
+        resolveFile: (relative) => relative,
+        mint: mint(),
+        cameraFrameSize: defaultProjectCameraSize,
+      ).cut.camera;
+    }
+
+    /// How much of the CLIP the camera sees, in clip pixels — the number
+    /// the animator can check against the frame they drew.
+    double framedWidth(CutCamera camera) =>
+        defaultProjectCameraSize.width / camera.keyframeAt(0)!.zoom;
+
+    test('a stretched camera frames what it was stretched to', () {
+      // 960 × 2.158795 = 2072.4 of a 2340-wide sheet: 89% of it, which is
+      // the frame drawn on the layout. Read as a 4.3× magnification it
+      // framed 445px — 19%, a thumbnail in the middle of the drawing.
+      final camera = cameraFrom(sizeX: 960, sizeY: 540, scale: 2.158795);
+      expect(framedWidth(camera), closeTo(960 * 2.158795, 0.5));
+      expect(
+        framedWidth(camera) / 2340,
+        closeTo(0.886, 0.005),
+        reason: 'the sheet is 2340 wide and the camera covers 89% of it',
+      );
+    });
+
+    test('scale moves the zoom the OTHER way', () {
+      // The direction on its own, so an inverted move cannot hide behind
+      // a right-looking magnitude: a bigger rectangle sees more.
+      final wide = cameraFrom(sizeX: 960, sizeY: 540, scale: 2.0);
+      final tight = cameraFrom(sizeX: 960, sizeY: 540, scale: 0.5);
+      final plain = cameraFrom(sizeX: 960, sizeY: 540, scale: 1.0);
+
+      expect(wide.keyframeAt(0)!.zoom, lessThan(plain.keyframeAt(0)!.zoom));
+      expect(tight.keyframeAt(0)!.zoom, greaterThan(plain.keyframeAt(0)!.zoom));
+      expect(framedWidth(wide), closeTo(framedWidth(plain) * 2, 0.5));
+      expect(framedWidth(tight), closeTo(framedWidth(plain) / 2, 0.5));
+    });
+
+    test('an untouched camera is unaffected — scale 1 is the identity', () {
+      // What every existing fixture exercises, kept explicit so the fix
+      // is visibly a no-op there.
+      final camera = cameraFrom(sizeX: 1920, sizeY: 1080, scale: 1.0);
+      expect(camera.keyframeAt(0)!.zoom, closeTo(1.0, 1e-9));
     });
   });
 

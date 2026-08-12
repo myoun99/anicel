@@ -324,14 +324,30 @@ CutCamera planTvpCamera({
 /// that half is a straight copy; the zoom is not, because TVPaint states
 /// its framing as the camera's SIZE in clip pixels while Anicel states it
 /// as canvas pixels per camera pixel against a PROJECT-wide frame.
+///
+/// 🚨`scale` DIVIDES. It is how much the camera RECTANGLE was resized on
+/// the clip, so a bigger rectangle sees more and magnifies less. Multiplying
+/// by it — which this did — inverts every zoom move and, on a camera the
+/// animator resized, misses the framing by `scale` squared.
+///
+/// The workflow that exposed it is ordinary: build the camera at a low
+/// resolution with the right aspect (960×540 for 16:9) and stretch it out
+/// to the layout paper. That writes `sizeX: 960, scale: 2.158795`, meaning
+/// a rectangle 2072px wide on a 2340px sheet — 89% of it. The old formula
+/// read the same numbers as a view zoomed in 4.3×, framing 19%, and the
+/// import put a thumbnail-sized camera in the middle of the drawing.
+///
+/// Three of this repo's four fixtures carry `scale: 1.0`, where multiply
+/// and divide agree, and the fourth only wanders between 0.80 and 1.05.
+/// The axis had never been pressed.
 CameraPose _cameraPoseFor(TvpCameraPose pose, CanvasSize frame) {
-  final spanX = pose.sizeX > 0 ? pose.sizeX : frame.width.toDouble();
-  final spanY = pose.sizeY > 0 ? pose.sizeY : frame.height.toDouble();
   final scale = pose.scale.isFinite && pose.scale > 0 ? pose.scale : 1.0;
+  final spanX = (pose.sizeX > 0 ? pose.sizeX : frame.width.toDouble()) * scale;
+  final spanY = (pose.sizeY > 0 ? pose.sizeY : frame.height.toDouble()) * scale;
   // Fit on the tighter axis when the two shooting frames disagree on
   // aspect: framing a little wider than TVPaint did is recoverable, a crop
   // through the drawing is not.
-  final zoom = scale * math.min(frame.width / spanX, frame.height / spanY);
+  final zoom = math.min(frame.width / spanX, frame.height / spanY);
   return CameraPose(
     center: CanvasPoint(x: pose.x, y: pose.y),
     zoom: zoom.isFinite && zoom > 0 ? zoom : 1.0,
