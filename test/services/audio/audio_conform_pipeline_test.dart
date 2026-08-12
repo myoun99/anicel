@@ -235,17 +235,15 @@ void main() {
 
     test('a source rewritten to the SAME LENGTH with different bytes is '
         'caught', () {
-      // The other direction of the same mistake: an original edited in
-      // place that kept its size and timestamp used to look fresh, and the
-      // stale conform played the old sound against the new drawing. Length
-      // alone cannot separate these — only the content can.
+      // Length alone cannot separate these, and the stat hint only says
+      // "look closer" — the content is what decides. Without that, the
+      // stale conform plays the old sound against the new drawing.
       final source = writeSource('swapped.wav');
       final conformPath = '${temp.path}/Conformed/swapped.wav.wav';
       pipelineFor().ensureConform(
         sourcePath: source,
         conformPath: conformPath,
       );
-      final before = File(source).lastModifiedSync();
 
       final other = writeSource('other.wav', rate: 44100);
       final swapped = File(other).readAsBytesSync();
@@ -255,7 +253,13 @@ void main() {
         reason: 'the fixture only proves anything at equal length',
       );
       File(source).writeAsBytesSync(swapped);
-      File(source).setLastModifiedSync(before);
+      // Advanced explicitly: a real edit lands minutes after the conform,
+      // but the two writes here are microseconds apart and can share a
+      // timestamp, which would leave the test measuring clock resolution
+      // instead of the reuse decision.
+      File(source).setLastModifiedSync(
+        File(source).lastModifiedSync().add(const Duration(minutes: 1)),
+      );
 
       expect(
         pipelineFor().ensureConform(
@@ -264,6 +268,77 @@ void main() {
         ).outcome,
         ConformOutcome.built,
       );
+    });
+
+    test('an edit that also RESTORES the timestamp slips through — the '
+        'accepted price of not reading every source on every open', () {
+      // Pinned rather than fixed, so nobody "corrects" it later without
+      // knowing what it costs. Reading the bytes unconditionally is the
+      // only way to catch this, and that is a full read of every original
+      // on every project open — on the devices where a large allocation
+      // gets the app killed. Writing a file moves its timestamp, so
+      // reaching this needs the timestamp deliberately put back.
+      final source = writeSource('restored.wav');
+      final conformPath = '${temp.path}/Conformed/restored.wav.wav';
+      pipelineFor().ensureConform(
+        sourcePath: source,
+        conformPath: conformPath,
+      );
+      final stamp = File(source).lastModifiedSync();
+
+      final other = writeSource('other2.wav', rate: 44100);
+      File(source).writeAsBytesSync(File(other).readAsBytesSync());
+      File(source).setLastModifiedSync(stamp);
+
+      expect(
+        pipelineFor().ensureConform(
+          sourcePath: source,
+          conformPath: conformPath,
+        ).outcome,
+        ConformOutcome.reused,
+        reason: 'the hint matched, so the bytes were never looked at',
+      );
+    });
+
+    test('the fingerprint covers the WHOLE file, not a prefix', () {
+      // A prefix hash would pass every other fixture here — the WAV header
+      // is where the small ones differ. Real audio diverges deep in the
+      // PCM, so a source re-recorded at the same length would keep playing
+      // the old conform forever.
+      final source = writeSource('deep.wav');
+      final bytes = File(source).readAsBytesSync();
+      final before = AudioConformPipeline.fingerprintOf(bytes);
+
+      final tail = Uint8List.fromList(bytes)
+        ..[bytes.length - 1] = bytes[bytes.length - 1] ^ 0xFF;
+      expect(
+        AudioConformPipeline.fingerprintOf(tail),
+        isNot(before),
+        reason: 'a change in the LAST byte has to move the fingerprint',
+      );
+
+      final middle = Uint8List.fromList(bytes)
+        ..[bytes.length ~/ 2] = bytes[bytes.length ~/ 2] ^ 0xFF;
+      expect(AudioConformPipeline.fingerprintOf(middle), isNot(before));
+    });
+
+    test('a source that is THERE but unreadable is transient, not missing', () {
+      // A cloud placeholder that has not hydrated reads as a failure while
+      // stat succeeds. Calling that "missing" spends one of the store's
+      // three attempts on a file that is fine, and three of them silence
+      // the clip for the rest of the session — silently, including in an
+      // export. A DIRECTORY at the source path reproduces the shape that
+      // matters: something is there, and reading it throws.
+      final source = '${temp.path}/placeholder.wav';
+      Directory(source).createSync(recursive: true);
+
+      final result = pipelineFor().ensureConform(
+        sourcePath: source,
+        conformPath: '${temp.path}/Conformed/placeholder.wav.wav',
+      );
+
+      expect(result.outcome, ConformOutcome.sourceUnreadable);
+      expect(result.isTransientFailure, isTrue);
     });
 
     test('the directory is created when it does not exist', () {
