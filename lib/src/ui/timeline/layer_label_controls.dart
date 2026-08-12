@@ -811,25 +811,24 @@ class LayerMarkChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<LayerMark>(
+    // R6 #4, the last of the five raw `PopupMenuButton`s: this one held out
+    // because its rows name COLOURS, and the shared list had no way to show
+    // one — see [PanelFlyoutItem.swatch]. Its own row height was 36, a sixth
+    // number in a menu system that was supposed to have one.
+    return PanelFlyoutTrigger(
       key: ValueKey<String>('$keyPrefix-layer-mark-$layerId'),
       tooltip: AppText.strings.tlLayerMark,
-      popUpAnimationStyle: instantMenuAnimation,
+      // ZERO, not the trigger's usual 8: the mark sits in a fixed
+      // `layerMarkSlotWidth` rail column, so padding here would not grow a
+      // hit area — it would push every slot after it out of the rail.
       padding: EdgeInsets.zero,
-      onSelected: (selected) => onMarkSelected(layerId, selected),
-      itemBuilder: (context) => [
+      entriesBuilder: () => [
         for (final option in LayerMark.values)
-          PopupMenuItem<LayerMark>(
-            key: ValueKey<String>('layer-mark-option-${option.jsonValue}'),
-            value: option,
-            height: 36,
-            child: Row(
-              children: [
-                _MarkSwatch(mark: option),
-                const SizedBox(width: 10),
-                Text(layerMarkDisplayName(option)),
-              ],
-            ),
+          PanelFlyoutItem(
+            keyValue: 'layer-mark-option-${option.jsonValue}',
+            label: layerMarkDisplayName(option),
+            swatch: layerMarkColor(option),
+            onSelected: () => onMarkSelected(layerId, option),
           ),
       ],
       child: Semantics(

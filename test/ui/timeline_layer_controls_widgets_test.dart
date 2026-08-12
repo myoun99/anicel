@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 void main() {
   group('TimelineLayerControlsHeader', () {
@@ -323,6 +324,38 @@ void main() {
 
       expect(markedLayerId, layer.id);
       expect(selectedMark, LayerMark.blue);
+    });
+
+    testWidgets('the mark picker opens the SHARED flyout — R6 #4, the last '
+        'raw PopupMenuButton and the only one whose rows name colours', (
+      tester,
+    ) async {
+      final layer = _layer();
+      await tester.pumpWidget(_row(layer: layer));
+
+      final chip = find.byKey(
+        ValueKey<String>('timeline-layer-mark-${layer.id}'),
+      );
+      expect(
+        chip,
+        findsOneWidget,
+        reason: 'the rail key survives the migration',
+      );
+      expect(tester.widget(chip), isA<PanelFlyoutTrigger>());
+
+      await tester.tap(chip);
+      await tester.pumpAndSettle();
+
+      // The row height is the shared list's, not Material's 48 and not the
+      // 36 this menu used to hand-write.
+      expect(
+        tester
+            .widget<PopupMenuItem<PanelFlyoutItem>>(
+              find.byKey(const ValueKey<String>('layer-mark-option-red')),
+            )
+            .height,
+        32,
+      );
     });
 
     testWidgets('every kind carries the timesheet toggle (unified layer '

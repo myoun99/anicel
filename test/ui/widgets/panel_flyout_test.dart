@@ -59,6 +59,63 @@ void main() {
     expect(find.byKey(const ValueKey<String>('flyout-item-a')), findsNothing);
   });
 
+  testWidgets('a swatch row keeps ITS OWN colour where a glyph would be '
+      'tinted — a list may ink a symbol, never a colour it is naming', (
+    tester,
+  ) async {
+    const swatch = Color(0xFFCC3344);
+    await tester.pumpWidget(
+      harness(
+        PanelFlyoutTrigger(
+          key: const ValueKey<String>('swatch-trigger'),
+          entriesBuilder: () => const [
+            PanelFlyoutItem(
+              keyValue: 'swatch-live',
+              label: 'Red',
+              swatch: swatch,
+            ),
+            PanelFlyoutItem(
+              keyValue: 'swatch-dimmed',
+              label: 'Red',
+              swatch: swatch,
+              enabled: false,
+            ),
+          ],
+          child: const Icon(Icons.circle, size: 16),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('swatch-trigger')));
+    await tester.pumpAndSettle();
+
+    Color swatchOf(String key) {
+      final box = tester.widget<Container>(
+        find.descendant(
+          of: find.byKey(ValueKey<String>(key)),
+          matching: find.byType(Container),
+        ),
+      );
+      return (box.decoration! as BoxDecoration).color!;
+    }
+
+    Color? labelOf(String key) => tester
+        .widget<Text>(
+          find.descendant(
+            of: find.byKey(ValueKey<String>(key)),
+            matching: find.byType(Text),
+          ),
+        )
+        .style
+        ?.color;
+
+    expect(swatchOf('swatch-live'), swatch);
+    // The disabled row DIMS — and the dimming reaches the label and stops
+    // there. A swatch drawn through the row's ink would name a colour the
+    // layer will not get.
+    expect(labelOf('swatch-dimmed'), isNot(labelOf('swatch-live')));
+    expect(swatchOf('swatch-dimmed'), swatch);
+  });
+
   testWidgets('PanelFlyoutTrigger opens the shared list from an arbitrary '
       'child — R6 #4: the four raw PopupMenuButtons had no other door', (
     tester,
