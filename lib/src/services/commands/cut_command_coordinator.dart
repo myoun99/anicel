@@ -1844,7 +1844,13 @@ class CutCommandCoordinator {
   /// Points the [oldPath] asset at [newPath], rewriting the pool entry and
   /// every referencing clip in ONE undo step; no-op when nothing changes
   /// or the pool does not know [oldPath].
-  void relinkMediaAsset({required String oldPath, required String newPath}) {
+  void relinkMediaAsset({
+    required String oldPath,
+    required String newPath,
+    bool recordSource = false,
+    String? sourceStamp,
+    String description = 'Relink media',
+  }) {
     final project = repository.requireProject();
     if (oldPath == newPath ||
         project.mediaAssetByPath(oldPath) == null ||
@@ -1856,6 +1862,9 @@ class CutCommandCoordinator {
         repository: repository,
         oldPath: oldPath,
         newPath: newPath,
+        recordSource: recordSource,
+        sourceStamp: sourceStamp,
+        description: description,
       ),
     );
   }

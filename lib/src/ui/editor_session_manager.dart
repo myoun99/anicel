@@ -8535,6 +8535,34 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Copies the [path] asset into `<project>.assets/Media/` and points the
+  /// project at the copy — the per-asset promotion out of the media
+  /// browser, and the answer to what a REFERENCE does when the user
+  /// decides they want the project folder to own it after all.
+  ///
+  /// One undo step: the pool entry, every referencing clip and the source
+  /// tracking move together. Returns false when there is nothing to
+  /// promote — already inside the project's media folder, no project file
+  /// to sit beside yet, or the source is gone — because all three of
+  /// those leave the copier returning the path it was handed, and a
+  /// promotion that changed nothing must not spend an undo step saying so.
+  bool promoteMediaAssetIntoProject(String path) {
+    final copied = _mediaPathFor(path, copyIntoProject: true);
+    if (copied == path) {
+      return false;
+    }
+    audioConformStore.invalidate(copied);
+    _cutCommandCoordinator.relinkMediaAsset(
+      oldPath: path,
+      newPath: copied,
+      recordSource: true,
+      sourceStamp: _mediaSourceStampFor(path),
+      description: 'Register media in project',
+    );
+    notifyListeners();
+    return true;
+  }
+
   /// Links the pool asset at [path] to the SE block of [layerId] starting
   /// at [blockStartFrame] (the browser's drag-drop target hook). The block
   /// carries the sound exactly like an import at that spot; unknown pool

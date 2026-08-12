@@ -596,6 +596,8 @@ class AppStrings {
   String get mediaRename => _s('mediaRename');
   String get mediaRelink => _s('mediaRelink');
   String get mediaRemove => _s('mediaRemove');
+  String get mediaRegisterInProject => _s('mediaRegisterInProject');
+  String get mediaAlreadyInProject => _s('mediaAlreadyInProject');
   String get mediaStillLinked => _s('mediaStillLinked');
   String get mediaOpenInViewer => _s('mediaOpenInViewer');
 
@@ -1210,6 +1212,10 @@ class AppStrings {
     'mediaRename': 'Rename media',
     'mediaRelink': 'Relink…',
     'mediaRemove': 'Remove',
+    'mediaRegisterInProject': 'Register in project',
+    'mediaAlreadyInProject':
+        'Nothing to copy — it already lives in the project, or the project '
+        'has not been saved anywhere yet.',
     'mediaStillLinked': 'Still linked on SE rows — remove its sounds first.',
     'mediaOpenInViewer': 'Open in Viewer',
     'mediaViewerEmpty':
@@ -1954,6 +1960,10 @@ class AppStrings {
     'mediaRename': 'メディア名を変更',
     'mediaRelink': '再リンク…',
     'mediaRemove': '削除',
+    'mediaRegisterInProject': 'プロジェクトに取り込む',
+    'mediaAlreadyInProject':
+        'コピーするものがありません — すでにプロジェクト内にあるか、'
+        'プロジェクトがまだ保存されていません。',
     'mediaStillLinked': 'SE行でまだ使われています — 先に音を外してください。',
     'mediaOpenInViewer': 'ビューアで開く',
     'mediaViewerEmpty':
@@ -2694,6 +2704,8 @@ class AppStrings {
     'mediaRename': '미디어 이름 변경',
     'mediaRelink': '다시 연결…',
     'mediaRemove': '제거',
+    'mediaRegisterInProject': '에셋 폴더에 등록',
+    'mediaAlreadyInProject': '복사할 것이 없습니다 — 이미 프로젝트 안에 있거나, 프로젝트가 아직 저장되지 않았습니다.',
     'mediaStillLinked': 'SE 행에서 아직 쓰이고 있습니다 — 소리를 먼저 빼세요.',
     'mediaOpenInViewer': '뷰어에서 열기',
     'mediaViewerEmpty':
@@ -3456,6 +3468,10 @@ class AppStrings {
     'mediaRename': 'Renommer le média',
     'mediaRelink': 'Relier…',
     'mediaRemove': 'Retirer',
+    'mediaRegisterInProject': 'Enregistrer dans le projet',
+    'mediaAlreadyInProject':
+        "Rien à copier — le fichier est déjà dans le projet, ou le projet "
+        "n'a pas encore été enregistré.",
     'mediaOpenInViewer': 'Ouvrir dans la visionneuse',
     'mediaViewerEmpty':
         'Rien à afficher.\nDouble-cliquez un fichier du navigateur de '
@@ -4182,6 +4198,8 @@ class AppStrings {
     'mediaRename': '重命名媒体',
     'mediaRelink': '重新链接…',
     'mediaRemove': '移除',
+    'mediaRegisterInProject': '登记到项目',
+    'mediaAlreadyInProject': '没有可复制的内容 — 它已在项目中，或项目尚未保存。',
     'mediaStillLinked': 'SE 行仍在使用 — 请先移除它的声音。',
     'mediaOpenInViewer': '在查看器中打开',
     'mediaViewerEmpty': '暂无可查看的内容。\n双击媒体浏览器中的文件，或用上方按钮打开文件。',

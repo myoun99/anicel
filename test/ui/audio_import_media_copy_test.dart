@@ -157,6 +157,53 @@ void main() {
     session.dispose();
   });
 
+  test('registering a reference in the project copies it, relinks the pool '
+      'and records where it came from — in ONE undo', () async {
+    final session = sessionWithFakeConforms();
+    await session.saveProjectToFile('${directory.path}/scene.anicel');
+    final root = directory.path.replaceAll('\\', '/');
+    final outside = File('${directory.path}/guide.wav')
+      ..writeAsBytesSync([4, 5, 6]);
+
+    session.importMediaFiles([outside.path], copyIntoProject: false);
+    expect(session.mediaAssets.single.path, '$root/guide.wav');
+
+    expect(session.promoteMediaAssetIntoProject('$root/guide.wav'), isTrue);
+
+    final promoted = session.mediaAssets.single;
+    expect(promoted.path, '$root/scene.assets/Media/guide.wav');
+    expect(File(promoted.path).readAsBytesSync(), [4, 5, 6]);
+    expect(promoted.sourcePath, '$root/guide.wav');
+    expect(
+      promoted.sourceStamp,
+      isNotNull,
+      reason: 'a copy carries the stamp its "original changed" badge needs',
+    );
+
+    session.undo();
+    expect(session.mediaAssets.single.path, '$root/guide.wav');
+    expect(
+      session.mediaAssets.single.sourcePath,
+      isNull,
+      reason: 'the promotion took the source tracking with it',
+    );
+    session.dispose();
+  });
+
+  test('promoting something already in the project changes nothing and '
+      'spends no undo step', () async {
+    final session = sessionWithFakeConforms();
+    await session.saveProjectToFile('${directory.path}/scene.anicel');
+    final source = File('${directory.path}/bgm.wav')
+      ..writeAsBytesSync([7, 7]);
+    session.importMediaFiles([source.path], copyIntoProject: true);
+    final inside = session.mediaAssets.single.path;
+
+    expect(session.promoteMediaAssetIntoProject(inside), isFalse);
+    expect(session.mediaAssets.single.path, inside);
+    session.dispose();
+  });
+
   test('the pool kind is detected either way — a referenced movie is still '
       'a movie', () async {
     final session = sessionWithFakeConforms();
