@@ -789,8 +789,6 @@ class AppStrings {
   String get brResetLibrary => _s('brResetLibrary');
   String get brExpand => _s('brExpand');
   String get brMeshWarp => _s('brMeshWarp');
-  String get brPreserveColours => _s('brPreserveColours');
-  String get brPreserveColoursHint => _s('brPreserveColoursHint');
   String get trModeNormal => _s('trModeNormal');
   String get trModePerspective => _s('trModePerspective');
   String get trFlipHorizontal => _s('trFlipHorizontal');
@@ -1401,8 +1399,6 @@ class AppStrings {
     'brResetLibrary': 'Reset brush library',
     'brExpand': 'Expand',
     'brMeshWarp': 'Mesh Warp',
-    'brPreserveColours': 'Preserve original colours',
-    'brPreserveColoursHint': 'No new in-between shades, but harder edges',
     'trModeNormal': 'Transform',
     'trModePerspective': 'Perspective',
     'trFlipHorizontal': 'Flip Horizontal',
@@ -2160,8 +2156,6 @@ class AppStrings {
     'brResetLibrary': 'ブラシライブラリをリセット',
     'brExpand': '展開',
     'brMeshWarp': 'メッシュワープ',
-    'brPreserveColours': '元の色を保持',
-    'brPreserveColoursHint': '中間色は増えませんが、エッジは硬くなります',
     'trModeNormal': '変形',
     'trModePerspective': 'パース変形',
     'trFlipHorizontal': '左右反転',
@@ -2911,8 +2905,6 @@ class AppStrings {
     'brResetLibrary': '브러시 라이브러리 초기화',
     'brExpand': '펼치기',
     'brMeshWarp': '메시 워프',
-    'brPreserveColours': '원본 색 보존',
-    'brPreserveColoursHint': '중간색이 생기지 않고, 가장자리는 거칠어집니다',
     'trModeNormal': '일반 변형',
     'trModePerspective': '퍼스 변형',
     'trFlipHorizontal': '좌우 반전',
@@ -3708,9 +3700,6 @@ class AppStrings {
     'brResetLibrary': 'Réinitialiser la bibliothèque',
     'brExpand': 'Déplier',
     'brMeshWarp': 'Déformation par grille',
-    'brPreserveColours': 'Conserver les couleurs d\'origine',
-    'brPreserveColoursHint':
-        'Aucune teinte intermédiaire, mais des bords plus durs',
     'commonReset': 'Réinitialiser',
     'commonFill': 'Remplir',
     'viewZoomIn': 'Zoom avant',
@@ -4427,8 +4416,6 @@ class AppStrings {
     'brResetLibrary': '重置画笔库',
     'brExpand': '展开',
     'brMeshWarp': '网格变形',
-    'brPreserveColours': '保留原始颜色',
-    'brPreserveColoursHint': '不产生中间色，但边缘更硬',
     'trModeNormal': '变形',
     'trModePerspective': '透视变形',
     'trFlipHorizontal': '水平翻转',
