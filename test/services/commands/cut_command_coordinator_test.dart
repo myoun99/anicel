@@ -1372,9 +1372,18 @@ void main() {
           activeCutId: cutA.id,
         );
 
+        // ⑱: the survivor keeps its FRAME, so it is no longer the same
+        // value — its leading gap now carries the deleted cut's frames.
+        // This oracle is about WHICH cuts remain, so it reads ids; the gap
+        // itself is pinned in delete_cut_command_test.
+        List<String> cutIds() => [
+          for (final cut in fixture.cutsFor(const TrackId('track-1')))
+            cut.id.value,
+        ];
+
         fixture.coordinator.deleteCut(cutId: cutA.id);
 
-        expect(fixture.cutsFor(const TrackId('track-1')), [cutB]);
+        expect(cutIds(), ['cut-2']);
         expect(fixture.editingSession.activeCutId, cutB.id);
         expect(fixture.historyManager.undoCount, 1);
 
@@ -1386,7 +1395,7 @@ void main() {
 
         fixture.historyManager.redo();
 
-        expect(fixture.cutsFor(const TrackId('track-1')), [cutB]);
+        expect(cutIds(), ['cut-2']);
         expect(fixture.editingSession.activeCutId, cutB.id);
         expect(fixture.historyManager.undoCount, 1);
       },

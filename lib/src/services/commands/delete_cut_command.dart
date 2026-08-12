@@ -38,6 +38,14 @@ class DeleteCutCommand implements Command {
   final List<(BrushFrameKey, BrushFrameKey)> _rekeys = [];
   bool _hasExecuted = false;
 
+  /// ⑱'s two undo anchors: the neighbour whose leading gap grew, and the
+  /// movie's trailing gap. Both are restored to the exact numbers they held,
+  /// never by subtracting back — an edit in between would make arithmetic
+  /// undo the wrong thing.
+  CutId? _absorbedByCutId;
+  int? _absorbedGapBefore;
+  int? _trailingFramesBefore;
+
   @override
   String get description => 'Delete cut $cutId';
 
@@ -51,9 +59,19 @@ class DeleteCutCommand implements Command {
         ? cutDeletionFallbackFor(project, deletingCutId: cutId)
         : null;
 
+    // ⑱: what the cut leaves behind. Measured BEFORE anything moves.
+    final hole = cutDeletionHoleFor(project, deletingCutId: cutId);
+    final contentEndBefore = projectContentEndFrame(project);
+    final absorbedByCutId = hole.absorbedByCutId;
+
     _previousActiveCutId = previousActiveCutId;
     _originalTrackId = location.trackId;
     _originalIndex = location.index;
+    _absorbedByCutId = absorbedByCutId;
+    _absorbedGapBefore = absorbedByCutId == null
+        ? null
+        : requireCut(project, absorbedByCutId).leadingGapFrames;
+    _trailingFramesBefore = project.trailingFrames;
     // 링크 정리 BEFORE the cut leaves: dead members must never linger in
     // the registry (mirror fan-outs would hit missing layers). A deleted
     // CANONICAL member promotes the first survivor — its cels re-key
@@ -71,6 +89,28 @@ class DeleteCutCommand implements Command {
       ),
     );
     _deletedCut = repository.removeCut(cutId: cutId);
+
+    // ⑱: the removal itself is a list operation, so the frames the cut held
+    // have to be handed to something or every cut after it slides earlier.
+    if (absorbedByCutId != null && hole.frames > 0) {
+      repository.updateCutLeadingGap(
+        cutId: absorbedByCutId,
+        leadingGapFrames: _absorbedGapBefore! + hole.frames,
+      );
+    }
+    // …and the movie's END LINE does not move either. Stated as "top the
+    // trailing gap up by however much the content shrank" rather than as a
+    // second branch of the case above: with a neighbour to absorb the hole
+    // the content end never moved, so this adds nothing — one rule covers
+    // the last cut of a track, the last track, and neither.
+    final contentEndAfter = projectContentEndFrame(repository.requireProject());
+    final shrink = contentEndBefore - contentEndAfter;
+    if (shrink > 0) {
+      repository.updateProject(
+        (current) =>
+            current.copyWith(trailingFrames: current.trailingFrames + shrink),
+      );
+    }
 
     if (!isDeletingActiveCut) {
       _hasExecuted = true;
@@ -110,6 +150,21 @@ class DeleteCutCommand implements Command {
       cut: deletedCut,
       index: originalIndex,
     );
+    // ⑱ backwards: the neighbour gives the hole back and the movie's tail
+    // returns to what it was.
+    final absorbedByCutId = _absorbedByCutId;
+    if (absorbedByCutId != null) {
+      repository.updateCutLeadingGap(
+        cutId: absorbedByCutId,
+        leadingGapFrames: _absorbedGapBefore!,
+      );
+    }
+    final trailingFramesBefore = _trailingFramesBefore;
+    if (trailingFramesBefore != null) {
+      repository.updateProject(
+        (current) => current.copyWith(trailingFrames: trailingFramesBefore),
+      );
+    }
     if (_rekeys.isNotEmpty) {
       brushFrameStore?.rekeyFrames([
         for (final (from, to) in _rekeys) (to, from),
