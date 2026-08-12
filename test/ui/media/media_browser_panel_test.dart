@@ -45,7 +45,14 @@ Future<void> _pump(
             },
             onOpenAsset: callbacks.opened.add,
             audioFilePicker: picker,
-            fileExists: callbacks.existingPaths.contains,
+            // RELINK-2: the panel no longer probes the disk — the session
+            // caches the answer and hands down the MISSING set. The suite
+            // still declares which paths exist, so the inversion happens
+            // here rather than in every test.
+            missingPaths: {
+              for (final asset in assets)
+                if (!callbacks.existingPaths.contains(asset.path)) asset.path,
+            },
           ),
         ),
       ),

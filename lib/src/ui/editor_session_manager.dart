@@ -8683,6 +8683,59 @@ class EditorSessionManager extends ChangeNotifier {
   void relinkMediaAsset(String oldPath, String newPath) {
     audioConformStore.invalidate(newPath);
     _cutCommandCoordinator.relinkMediaAsset(oldPath: oldPath, newPath: newPath);
+    refreshMediaExistence();
+    notifyListeners();
+  }
+
+  /// RELINK-2: the batch form — the media browser's "find them all under
+  /// this folder" pass, in one undo step.
+  ///
+  /// Conforms are invalidated for every destination for the same reason the
+  /// single form does it: the file behind the path changed, so a conform
+  /// fingerprinted against the old one is stale even though the pool entry
+  /// now looks correct.
+  void relinkMediaAssets(Map<String, String> moves) {
+    if (moves.isEmpty) {
+      return;
+    }
+    for (final newPath in moves.values) {
+      audioConformStore.invalidate(newPath);
+    }
+    _cutCommandCoordinator.relinkMediaAssets(moves);
+    refreshMediaExistence();
+    notifyListeners();
+  }
+
+  /// RELINK-2: pool paths that were not on disk as of the last refresh.
+  ///
+  /// CACHED rather than probed per row. The media browser used to call
+  /// `File.existsSync()` while building every row, and the loss banner
+  /// would have multiplied that — a banner has to count the WHOLE pool, so
+  /// one repaint became one disk hit per asset.
+  ///
+  /// Nothing polls. This is refreshed when the project opens, after
+  /// anything that moves files, and when the user asks — the three moments
+  /// where the answer can actually have changed.
+  Set<String> get missingMediaPaths => _missingMediaPaths;
+  Set<String> _missingMediaPaths = const <String>{};
+
+  /// Test seam for the existence probe. Widget tests must not depend on
+  /// what happens to exist on the machine running them.
+  @visibleForTesting
+  bool Function(String path)? debugMediaFileExists;
+
+  /// Re-probes the pool. Notifies only when the answer changed, so calling
+  /// it after an import that touched nothing missing is free.
+  void refreshMediaExistence() {
+    final probe = debugMediaFileExists ?? (String path) => File(path).existsSync();
+    final missing = <String>{
+      for (final asset in mediaAssets)
+        if (!probe(asset.path)) asset.path,
+    };
+    if (setEquals(missing, _missingMediaPaths)) {
+      return;
+    }
+    _missingMediaPaths = missing;
     notifyListeners();
   }
 
@@ -8710,6 +8763,7 @@ class EditorSessionManager extends ChangeNotifier {
       sourceStamp: _mediaSourceStampFor(path),
       description: 'Register media in project',
     );
+    refreshMediaExistence();
     notifyListeners();
     return true;
   }
@@ -15739,6 +15793,11 @@ class EditorSessionManager extends ChangeNotifier {
     // inherits another one's exception.
     _recoveredFromSidecar = recoverAs == null ? null : filePath;
     _warmAudioConforms();
+    // RELINK-2: the first of the three refresh moments. A project opened
+    // on a machine that does not have its referenced media has to SAY so —
+    // that is the whole point of the banner, and it is the one moment the
+    // user has not done anything to prompt it.
+    refreshMediaExistence();
     // A recovered session stays dirty: its content differs from the real
     // file until the user saves.
     _hasUnsavedChanges = recoverAs != null;

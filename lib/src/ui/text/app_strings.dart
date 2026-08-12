@@ -594,6 +594,18 @@ class AppStrings {
   String get mediaImportAudio => _s('mediaImportAudio');
   String get mediaRename => _s('mediaRename');
   String get mediaRelink => _s('mediaRelink');
+
+  /// RELINK-2: the loss banner. `{n}` is replaced with the count rather
+  /// than concatenated at the call site, because the number sits in a
+  /// different place in each language ("3 files not found" vs "못 찾은
+  /// 파일 3개").
+  String get mediaMissingCount => _s('mediaMissingCount');
+  String get mediaFindInFolder => _s('mediaFindInFolder');
+
+  /// The batch-relink preview. `{m}` of `{n}` — shown BEFORE anything is
+  /// applied, because a folder that matches almost nothing is the signal
+  /// that the wrong folder was picked.
+  String get mediaRelinkFound => _s('mediaRelinkFound');
   String get mediaRemove => _s('mediaRemove');
   String get mediaRegisterInProject => _s('mediaRegisterInProject');
   String get mediaAlreadyInProject => _s('mediaAlreadyInProject');
@@ -1220,6 +1232,9 @@ class AppStrings {
     'mediaImportAudio': 'Import audio',
     'mediaRename': 'Rename media',
     'mediaRelink': 'Relink…',
+    'mediaMissingCount': '{n} media files not found',
+    'mediaFindInFolder': 'Find in folder…',
+    'mediaRelinkFound': 'Found {m} of {n}. Relink them?',
     'mediaRemove': 'Remove',
     'mediaRegisterInProject': 'Register in project',
     'mediaAlreadyInProject':
@@ -1978,6 +1993,9 @@ class AppStrings {
     'mediaImportAudio': '音声を読み込み',
     'mediaRename': 'メディア名を変更',
     'mediaRelink': '再リンク…',
+    'mediaMissingCount': '見つからないファイル {n} 個',
+    'mediaFindInFolder': 'フォルダーから探す…',
+    'mediaRelinkFound': '{n} 件中 {m} 件が見つかりました。再リンクしますか？',
     'mediaRemove': '削除',
     'mediaRegisterInProject': 'プロジェクトに取り込む',
     'mediaAlreadyInProject':
@@ -2732,6 +2750,9 @@ class AppStrings {
     'mediaImportAudio': '오디오 불러오기',
     'mediaRename': '미디어 이름 변경',
     'mediaRelink': '다시 연결…',
+    'mediaMissingCount': '못 찾은 파일 {n}개',
+    'mediaFindInFolder': '폴더에서 찾기…',
+    'mediaRelinkFound': '{n}개 중 {m}개를 찾았습니다. 다시 연결할까요?',
     'mediaRemove': '제거',
     'mediaRegisterInProject': '에셋 폴더에 등록',
     'mediaAlreadyInProject': '복사할 것이 없습니다 — 이미 프로젝트 안에 있거나, 프로젝트가 아직 저장되지 않았습니다.',
@@ -3506,6 +3527,9 @@ class AppStrings {
     'mediaImportAudio': "Importer de l'audio",
     'mediaRename': 'Renommer le média',
     'mediaRelink': 'Relier…',
+    'mediaMissingCount': '{n} fichiers multimédias introuvables',
+    'mediaFindInFolder': 'Chercher dans un dossier…',
+    'mediaRelinkFound': '{m} sur {n} trouvés. Les relier ?',
     'mediaRemove': 'Retirer',
     'mediaRegisterInProject': 'Enregistrer dans le projet',
     'mediaAlreadyInProject':
@@ -4245,6 +4269,9 @@ class AppStrings {
     'mediaImportAudio': '导入音频',
     'mediaRename': '重命名媒体',
     'mediaRelink': '重新链接…',
+    'mediaMissingCount': '找不到 {n} 个媒体文件',
+    'mediaFindInFolder': '在文件夹中查找…',
+    'mediaRelinkFound': '在 {n} 个中找到 {m} 个。要重新链接吗？',
     'mediaRemove': '移除',
     'mediaRegisterInProject': '登记到项目',
     'mediaAlreadyInProject': '没有可复制的内容 — 它已在项目中，或项目尚未保存。',
