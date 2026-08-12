@@ -374,10 +374,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
           onActivateCell: layerKindOpensCellEditorOnDoubleTap(layer.kind)
               ? onActivateCell
               : null,
-          suppressPointerDownSelect: rangeGesture == null
-              ? null
-              : (frameIndex) =>
-                    rangeGesture.isInSelection(rowAddress, frameIndex),
         ),
         // NO extra section-divider overlay (R3 feedback #6): section
         // boundaries share the same single hairline as every row boundary;

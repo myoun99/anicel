@@ -1001,7 +1001,7 @@ class EditorSessionManager extends ChangeNotifier {
       rowSelection.value.contains(row);
 
   /// A press that lands OUTSIDE the current selection starts a fresh one —
-  /// the cells' rule, transposed (`suppressPointerDownSelect` there).
+  /// the cells' rule, transposed (their range gesture's `isInSelection`).
   void beginRowSelection(TimelineRowAddress anchor) {
     claimSelection(TimelineSelectionKind.rows);
     _rowSelectionAnchor = anchor;

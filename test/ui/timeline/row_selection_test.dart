@@ -178,6 +178,59 @@ void main() {
       await tester.pumpAndSettle();
       expect(s.rowSelection.value, isEmpty);
     });
+
+    testWidgets('㉟-a a CELL tap inside the frame selection drops it too', (
+      tester,
+    ) async {
+      // The cells used to hold this one back: a press inside the selection
+      // was assumed to be the start of a MOVE, so it neither re-seeked nor
+      // cleared (UI-R10 #12). ㉟ made the pick happen on the release, which
+      // a move drag never reaches — so the only press left for the guard to
+      // catch was a still tap, and 유저 08-12 says that one clears.
+      await tester.binding.setSurfaceSize(const Size(1280, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.byKey(const ValueKey<String>('dock-resize-bottom')),
+        const Offset(0, -400),
+      );
+      await tester.pumpAndSettle();
+
+      final s = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session;
+      final drawing = s.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.animation,
+      );
+      s.updateFrameRangeSelectionDrag(
+        layerId: drawing.id,
+        anchorIndex: 0,
+        headIndex: 8,
+      );
+      await tester.pumpAndSettle();
+      expect(s.frameRangeSelection.value, isNotNull, reason: 'the premise');
+
+      final cells = find.byKey(
+        ValueKey<String>('timeline-row-cells-${drawing.id}'),
+      );
+      await tester.ensureVisible(cells);
+      await tester.pumpAndSettle();
+      final rect = tester.getRect(cells);
+      // Near the row's start — well inside frames 0…8.
+      await tester.tapAt(Offset(rect.left + 6, rect.center.dy));
+      await tester.pumpAndSettle();
+
+      expect(
+        s.frameRangeSelection.value,
+        isNull,
+        reason:
+            '㊵-a: 「선택 안을 클릭해도 사라진다」 — the cells follow the rail '
+            'row instead of keeping their own exception',
+      );
+    });
   });
 
   group('what the row verbs then act on', () {
