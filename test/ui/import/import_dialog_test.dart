@@ -604,10 +604,20 @@ void main() {
 
     final a = cut.layers.firstWhere((layer) => layer.name == 'A');
     expect(a.frames, hasLength(2));
-    expect(a.timeline.keys, [0, 3]);
-    expect(a.timeline.values.map((entry) => entry.length), [3, 3]);
     expect(a.frames.map((frame) => frame.name), ['1', '2']);
     expect(a.runBehaviors.single.mode, TimelineRunEdgeMode.hold);
+    // The two AUTHORED blocks, and then the hold's ghost carrying the
+    // last drawing to the cut end. The behaviour used to arrive recorded
+    // and unapplied — the property tag printed H over empty cells — so
+    // the third key IS the fix showing through.
+    expect(a.timeline.keys, [0, 3, 6]);
+    expect(a.timeline.values.map((entry) => entry.length), [3, 3, 2]);
+    expect(a.timeline.values.map((entry) => entry.ghost), [false, false, true]);
+    expect(
+      a.timeline[6]!.frameId,
+      a.frames.last.id,
+      reason: 'a hold repeats the run\'s last drawing',
+    );
 
     final se = cut.layers.firstWhere((layer) => layer.name == 'SE');
     expect(

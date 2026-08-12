@@ -6225,7 +6225,14 @@ class EditorSessionManager extends ChangeNotifier {
       _layerSequence += 1;
       return defaultLayerIdForSequence(_layerSequence);
     },
-    nextFrameId: (layerId) => FrameId(_nextFrameId(layerId)),
+    // Through the MINT, not the formatter. `_nextFrameId` reads
+    // `_frameSequence` and does not advance it, so calling it directly
+    // leaves the wall clock as the only thing telling two cels apart —
+    // and an import mints a whole layer inside one clock tick. Every cel
+    // of that layer came out with the SAME id, which is not "cels that
+    // look alike": it is one drawing exposed N times. A 10-drawing layer
+    // arrived as one drawing.
+    nextFrameId: _mintFrameId,
     nextCutId: () {
       _importCutSequence += 1;
       final usedIds = {
@@ -9741,6 +9748,11 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// ⚠️Formats an id from the CURRENT sequence — it does not advance it.
+  /// Call [_mintFrameId] unless you have just incremented `_frameSequence`
+  /// yourself. The wall clock in here is decoration, not identity: its
+  /// resolution on Windows is coarser than a tight mint loop, so two ids
+  /// made in the same tick are equal, and equal frame ids are ONE drawing.
   String _nextFrameId(LayerId layerId) {
     final timestamp = DateTime.now().microsecondsSinceEpoch;
     return 'ui-frame-${layerId.value}-$timestamp-$_frameSequence';
