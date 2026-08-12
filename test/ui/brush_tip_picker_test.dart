@@ -136,6 +136,17 @@ void main() {
     );
   });
 
+  /// Closes the library window, which is when a pick APPLIES.
+  ///
+  /// The picker used to apply on the pick itself and close as it did. It
+  /// stopped, so that a chosen tip is on screen long enough for Rename and
+  /// Delete to have something to act on — so every "picking does X" test
+  /// now has to let the window go before it looks.
+  Future<void> dismissPicker(WidgetTester tester) async {
+    await tester.tapAt(const Offset(4, 4));
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('picking a tip puts it on the brush', (tester) async {
     final read = await pumpPanel(
       tester,
@@ -150,7 +161,10 @@ void main() {
       find.byKey(const ValueKey<String>('brush-tip-cell-tip-1')),
     );
     await tester.pumpAndSettle();
+    // Still open, and nothing applied yet.
+    expect(read().tipMask, isNull);
 
+    await dismissPicker(tester);
     expect(read().tipMask, _mask('tip-1'));
   });
 
@@ -170,6 +184,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey<String>('brush-tip-cell-none')));
     await tester.pumpAndSettle();
+    await dismissPicker(tester);
 
     expect(read().tipMask, isNull);
   });
@@ -209,6 +224,7 @@ void main() {
         find.byKey(const ValueKey<String>('brush-tip-cell-tip-1')),
       );
       await tester.pumpAndSettle();
+      await dismissPicker(tester);
     }
 
     expect(read().dualMask, _mask('tip-1'));
@@ -236,6 +252,7 @@ void main() {
       find.byKey(const ValueKey<String>('brush-tip-cell-tip-1')),
     );
     await tester.pumpAndSettle();
+    await dismissPicker(tester);
 
     expect(
       find.byKey(const ValueKey<String>('brush-tool-texture-density-slider')),
