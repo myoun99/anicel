@@ -816,12 +816,12 @@ Widget timelineRowCellsPaintArea({
     onSelectFrame(frameIndex);
   }
 
-  // Selection rides the raw pointer, never the arena — see the shared
+  // The pick rides the raw pointer, never the arena — see the shared
   // [InstantTapRegion], which R10 lifted out of the two copies the
-  // timeline had written of it (this one and TimelineFrameCell's). It
-  // carries the whole policy: pen/mouse act on the DOWN, a finger acts on
-  // the release if it did not travel (PEN-12 #6), and the timeline's own
-  // device gate decides which is which (UI-R23 feedback #2).
+  // timeline had written of it (this one and TimelineFrameCell's). ㉟ made
+  // the policy device-independent: EVERY device picks on the release, and a
+  // press that travelled is a drag that picks nothing
+  // ([AppInput.timelineCellPressSeeks] carries the why).
   return InstantTapRegion(
     pressSeeksFor: AppInput.timelineCellPressSeeks,
     // R26 #37: remember WHICH cell this press hit, whatever the device —
