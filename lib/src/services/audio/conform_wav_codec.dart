@@ -26,36 +26,50 @@ import 'dart:typed_data';
 
 /// What a conformed file records about the source it came from, so a
 /// replaced original is detected rather than silently played stale.
+///
+/// CONTENT, not metadata. This used to be `{length, lastModified}`, which
+/// answers "is this the same file on this disk" — a question that goes
+/// wrong in both directions. Copying a project made every conform look
+/// stale and rebuilt the lot for nothing, and an original edited in place
+/// that kept its size and timestamp looked fresh. Neither survives being
+/// carried to another machine, which is the case that matters once a
+/// project is a single file you hand someone.
+///
+/// The hash is CRC-32, the same one ZIP stores for every entry, chosen so
+/// that moving audio INSIDE the `.anicel` makes this free: the container
+/// has already computed it and keeps it in the entry header, so the
+/// fingerprint becomes a header read instead of a pass over the bytes.
 class ConformSourceFingerprint {
   const ConformSourceFingerprint({
     required this.sourceLength,
-    required this.sourceModifiedMicros,
+    required this.sourceCrc32,
   });
 
-  /// The original file's length in bytes.
+  /// The original file's length in bytes. Kept alongside the hash as a
+  /// cheap disambiguator — CRC-32 is 32 bits, and this is cache
+  /// validation, not integrity.
   final int sourceLength;
 
-  /// The original file's last-modified time, microseconds since epoch.
-  final int sourceModifiedMicros;
+  /// CRC-32 of the original's bytes.
+  final int sourceCrc32;
 
   bool matches(ConformSourceFingerprint other) =>
-      sourceLength == other.sourceLength &&
-      sourceModifiedMicros == other.sourceModifiedMicros;
+      sourceLength == other.sourceLength && sourceCrc32 == other.sourceCrc32;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is ConformSourceFingerprint &&
           other.sourceLength == sourceLength &&
-          other.sourceModifiedMicros == sourceModifiedMicros;
+          other.sourceCrc32 == sourceCrc32;
 
   @override
-  int get hashCode => Object.hash(sourceLength, sourceModifiedMicros);
+  int get hashCode => Object.hash(sourceLength, sourceCrc32);
 
   @override
   String toString() =>
       'ConformSourceFingerprint(length: $sourceLength, '
-      'modified: $sourceModifiedMicros)';
+      'crc32: $sourceCrc32)';
 }
 
 /// A decoded conform: interleaved samples plus what they mean.
@@ -144,7 +158,7 @@ Uint8List encodeConformWav({
           utf8.encode(
             jsonEncode({
               'sourceLength': fingerprint.sourceLength,
-              'sourceModifiedMicros': fingerprint.sourceModifiedMicros,
+              'sourceCrc32': fingerprint.sourceCrc32,
               // Unity speed stays out of the JSON: pre-④ conforms carry
               // no keys, and byte-identical output for the common case is
               // worth keeping.
@@ -268,7 +282,12 @@ ConformAudio decodeConformWav(Uint8List bytes) {
                   as Map<String, dynamic>;
           fingerprint = ConformSourceFingerprint(
             sourceLength: decoded['sourceLength'] as int,
-            sourceModifiedMicros: decoded['sourceModifiedMicros'] as int,
+            // A conform written before the fingerprint became content-based
+            // carries `sourceModifiedMicros` instead, and there is no way to
+            // derive one from the other. The cast throws, which lands in the
+            // catch below as "unknown" — and unknown already means stale, so
+            // those conforms rebuild once and never again.
+            sourceCrc32: decoded['sourceCrc32'] as int,
           );
           speedNumerator = (decoded['speedNumerator'] as int?) ?? 1;
           speedDenominator = (decoded['speedDenominator'] as int?) ?? 1;

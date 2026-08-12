@@ -8,7 +8,7 @@ import 'package:anicel/src/services/audio/conform_wav_codec.dart';
 void main() {
   const fingerprint = ConformSourceFingerprint(
     sourceLength: 123456,
-    sourceModifiedMicros: 1784000000000000,
+    sourceCrc32: 0x9AE0DAAF,
   );
 
   Float32List ramp(int count) {
@@ -116,13 +116,13 @@ void main() {
       );
       const edited = ConformSourceFingerprint(
         sourceLength: 123456,
-        sourceModifiedMicros: 1784000000000001, // touched
+        sourceCrc32: 0x9AE0DAB0, // same size, different bytes
       );
       expect(conformMatchesSource(decoded, edited), isFalse);
 
       const regrown = ConformSourceFingerprint(
-        sourceLength: 999999, // different bytes
-        sourceModifiedMicros: 1784000000000000,
+        sourceLength: 999999, // different length
+        sourceCrc32: 0x9AE0DAAF,
       );
       expect(conformMatchesSource(decoded, regrown), isFalse);
     });

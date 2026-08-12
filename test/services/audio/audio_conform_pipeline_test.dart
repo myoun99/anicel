@@ -198,7 +198,71 @@ void main() {
       expect(written.fingerprint, isNotNull);
       expect(
         written.fingerprint,
-        AudioConformPipeline.fingerprintOf(source),
+        AudioConformPipeline.fingerprintOf(File(source).readAsBytesSync()),
+      );
+    });
+
+    test('a source that only got a new TIMESTAMP still reuses its conform', () {
+      // The fingerprint used to be {length, lastModified}, which answers
+      // "is this the same file on this disk". Copying a project to another
+      // machine — or restoring one from a backup — hands every source a
+      // fresh timestamp and rebuilt the entire cache for nothing. A conform
+      // is 12x the size of its source, so that is the expensive answer to
+      // the wrong question.
+      final source = writeSource('touched.wav');
+      final conformPath = '${temp.path}/Conformed/touched.wav.wav';
+      expect(
+        pipelineFor().ensureConform(
+          sourcePath: source,
+          conformPath: conformPath,
+        ).outcome,
+        ConformOutcome.built,
+      );
+
+      File(source).setLastModifiedSync(
+        File(source).lastModifiedSync().add(const Duration(days: 30)),
+      );
+
+      expect(
+        pipelineFor().ensureConform(
+          sourcePath: source,
+          conformPath: conformPath,
+        ).outcome,
+        ConformOutcome.reused,
+        reason: 'the bytes never moved, so neither did the answer',
+      );
+    });
+
+    test('a source rewritten to the SAME LENGTH with different bytes is '
+        'caught', () {
+      // The other direction of the same mistake: an original edited in
+      // place that kept its size and timestamp used to look fresh, and the
+      // stale conform played the old sound against the new drawing. Length
+      // alone cannot separate these — only the content can.
+      final source = writeSource('swapped.wav');
+      final conformPath = '${temp.path}/Conformed/swapped.wav.wav';
+      pipelineFor().ensureConform(
+        sourcePath: source,
+        conformPath: conformPath,
+      );
+      final before = File(source).lastModifiedSync();
+
+      final other = writeSource('other.wav', rate: 44100);
+      final swapped = File(other).readAsBytesSync();
+      expect(
+        swapped.length,
+        File(source).lengthSync(),
+        reason: 'the fixture only proves anything at equal length',
+      );
+      File(source).writeAsBytesSync(swapped);
+      File(source).setLastModifiedSync(before);
+
+      expect(
+        pipelineFor().ensureConform(
+          sourcePath: source,
+          conformPath: conformPath,
+        ).outcome,
+        ConformOutcome.built,
       );
     });
 
