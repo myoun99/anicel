@@ -15607,16 +15607,26 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// Writes the current state to [path] WITHOUT touching the dirty flag or
-  /// the project path — the autosave service's snapshot writer. Creates
-  /// the parent folder (a custom sidecar directory may not exist yet).
+  /// the project path — the recovery service's snapshot writer.
+  ///
+  /// An OVERLAY on the saved project: only the cels edited since the last
+  /// manual save. This runs as the app is going away, with a few seconds
+  /// and no promise of coming back, so it has to cost what the user drew
+  /// rather than what the project weighs. Everything left out is already
+  /// in the project file, unchanged, which is also what the base stamp
+  /// inside the overlay is there to guarantee.
   Future<void> writeAutosaveSnapshot(String path) async {
+    final base = _projectFilePath;
+    if (base == null) {
+      return;
+    }
     await _flushTextCelBakes();
-    await File(path).parent.create(recursive: true);
-    await _anicelFileService.save(
+    await _anicelFileService.writeRecoveryOverlay(
       project: _repository.requireProject(),
       brushFrameStore: brushFrameStore,
       auxCelStores: [conteInkRowStore, conteInkPageStore, envelopeInkStore],
       filePath: path,
+      baseFilePath: base,
     );
   }
 
@@ -15725,8 +15735,15 @@ class EditorSessionManager extends ChangeNotifier {
   /// (loaded state has no history; the load→draw→undo path is pinned by
   /// test). [recoverAs] opens autosave SIDECAR bytes while keeping the
   /// real file as the project path (the recovery flow).
-  Future<void> openProjectFromFile(String filePath, {String? recoverAs}) async {
-    final result = await _anicelFileService.open(filePath: filePath);
+  Future<void> openProjectFromFile(
+    String filePath, {
+    String? recoverAs,
+    String? overlayPath,
+  }) async {
+    final result = await _anicelFileService.open(
+      filePath: filePath,
+      overlayPath: overlayPath,
+    );
     playback.stop();
     _repository.replaceProject(result.project);
     // R22-C: opens land every cel FILE-BACKED — pixels stay in the .anicel
@@ -15786,12 +15803,14 @@ class EditorSessionManager extends ChangeNotifier {
     _voiceRecordShelfPaths.clear();
     _voiceRecordShelfDirectory = null;
     _projectFilePath = recoverAs ?? filePath;
-    // Remembered because [filePath] IS the sidecar on a recovery, every ref
-    // now points inside it, and the RAM tiers were just cleared — so until
-    // a save moves those pixels into the project file, deleting it is
-    // deleting the work. Reset on an ordinary open so a later session never
-    // inherits another one's exception.
-    _recoveredFromSidecar = recoverAs == null ? null : filePath;
+    // Remembered because the recovered work lives ONLY in that file — an
+    // overlay holds the edited cels and every ref for them points inside
+    // it, and the RAM tiers were just cleared — so until a save moves
+    // those pixels into the project file, deleting it is deleting the
+    // work. (A snapshot from an older build is a whole archive opened as
+    // [filePath]; same reasoning, same field.) Reset on an ordinary open
+    // so a later session never inherits another one's exception.
+    _recoveredFromSidecar = overlayPath ?? (recoverAs == null ? null : filePath);
     _warmAudioConforms();
     // RELINK-2: the first of the three refresh moments. A project opened
     // on a machine that does not have its referenced media has to SAY so —
@@ -15800,7 +15819,7 @@ class EditorSessionManager extends ChangeNotifier {
     refreshMediaExistence();
     // A recovered session stays dirty: its content differs from the real
     // file until the user saves.
-    _hasUnsavedChanges = recoverAs != null;
+    _hasUnsavedChanges = recoverAs != null || overlayPath != null;
     _warmActiveCut();
     frameSeekCommitted.value += 1;
     notifyListeners();
