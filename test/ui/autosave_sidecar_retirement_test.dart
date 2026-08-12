@@ -131,8 +131,106 @@ void main() {
       ).discardAutosaveSidecar();
     });
 
-    test('Save As retires the sidecar of the file it was saved FROM, not '
-        'just the new one', () async {
+    test('Save As retires the OLD path\'s sidecar in EVERY candidate '
+        'location, not only the one the setting names now', () async {
+      // The previous spelling of this test set no sidecar directory, so
+      // "every candidate" collapsed to the single string it had already
+      // captured and the whole thing passed against the pre-change code.
+      // With a custom directory configured, the beside-the-file sidecar of
+      // the abandoned path is a location only the new code reaches.
+      final custom = Directory('${folder.path}/sidecars')..createSync();
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      await s.saveProjectToFile(projectPath);
+      final beside = File('$projectPath.autosave')..writeAsStringSync('old');
+      AppSave.settings.value = AppSaveSettings(
+        sidecarDirectory: custom.path.replaceAll('\\', '/'),
+      );
+      final inCustom = File(AppSave.sidecarPathFor(projectPath))
+        ..writeAsStringSync('newer');
+      expect(beside.path, isNot(inCustom.path));
+
+      await s.saveProjectToFile(
+        '${folder.path.replaceAll('\\', '/')}/Cut 13.anicel',
+      );
+
+      expect(inCustom.existsSync(), isFalse);
+      expect(
+        beside.existsSync(),
+        isFalse,
+        reason: 'the location the setting no longer names still holds work',
+      );
+    });
+
+    test('a RECOVERED session keeps its sidecar when closed without saving '
+        '— it is the previous session\'s only copy', () async {
+      // Recovery points every cel ref inside the sidecar and clears the RAM
+      // tiers, and it arrives dirty with zero edits — so the exit gate
+      // fires before the user has touched anything, with Close as the
+      // primary button. Retiring there deletes the crash work at one tap.
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      await s.saveProjectToFile(projectPath);
+      final sidecar = '$projectPath.autosave';
+      await s.writeAutosaveSnapshot(sidecar);
+
+      final recovered = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      await recovered.openProjectFromFile(sidecar, recoverAs: projectPath);
+      recovered.discardAutosaveSidecar();
+
+      expect(File(sidecar).existsSync(), isTrue);
+
+      // And saving DOES retire it: the work is in the project file now, so
+      // the exception ends with the reason for it.
+      await recovered.saveProjectToFile(projectPath);
+      expect(File(sidecar).existsSync(), isFalse);
+    });
+
+    test('an ordinary open does not inherit the recovery exception',
+        () async {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      await s.saveProjectToFile(projectPath);
+      final sidecar = '$projectPath.autosave';
+      await s.writeAutosaveSnapshot(sidecar);
+      await s.openProjectFromFile(sidecar, recoverAs: projectPath);
+      // …then opens something else the normal way.
+      final other = '${folder.path.replaceAll('\\', '/')}/Cut 99.anicel';
+      await s.saveProjectToFile(other);
+      await s.openProjectFromFile(other);
+      final otherSidecar = File('$other.autosave')..writeAsStringSync('x');
+
+      s.discardAutosaveSidecar();
+
+      expect(otherSidecar.existsSync(), isFalse);
+    });
+
+    test('an autosave tick stands down while a manual save runs', () async {
+      // A tick that lands after the save's retirement leaves a sidecar for
+      // a project that was saved and closed cleanly, and the next open then
+      // offers to recover it. Sync deletion does not close that window —
+      // it settles delete-versus-write, and this is write-versus-delete.
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      await s.saveProjectToFile(projectPath);
+      s.createCut(); // Any command raises the dirty flag.
+      var ticked = false;
+      final autosave = ProjectAutosaveService(
+        isDirty: () => s.hasUnsavedChanges && !s.autosaveShouldStandDown,
+        writeSnapshot: (path) async {
+          ticked = true;
+          await s.writeAutosaveSnapshot(path);
+        },
+        autosavePath: () => s.autosaveSidecarPath!,
+      );
+
+      final saving = s.saveProjectToFile(projectPath);
+      await autosave.tick();
+      await saving;
+
+      expect(ticked, isFalse, reason: 'the tick fired inside the save');
+      expect(File('$projectPath.autosave').existsSync(), isFalse);
+    });
+
+    test('a plain Save As still retires the old path\'s sidecar', () async {
       // Otherwise the ORIGINAL keeps a sidecar nobody will ever retire —
       // the work moved to a new file, so reopening the old one would offer
       // to restore a session that no longer belongs to it.
