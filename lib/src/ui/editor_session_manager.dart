@@ -2742,6 +2742,42 @@ class EditorSessionManager extends ChangeNotifier {
     frameIndex: _timelineController.currentFrameIndex,
   );
 
+  /// The camera pose the canvas should FRAME right now — not always the
+  /// ACTIVE cut's (㊲).
+  ///
+  /// "Which cut am I editing" and "which cut is under the playhead" are two
+  /// questions, and a live scrub makes them disagree ON PURPOSE: crossing a
+  /// boundary parks per move and leaves the active cut alone, because
+  /// switching it per move rebuilt every panel ([scrubGlobalFrame]). The
+  /// camera frame read the active cut through that, so a T.U that ended
+  /// zoomed kept framing the NEXT cut's pictures at the size the cut being
+  /// left had finished on — and dragging the other way showed no camera
+  /// work at all.
+  ///
+  /// Only a LIVE scrub asks the parked question: a committed parking means
+  /// there is no cut here (a gap, or the V-row eye's hidden picture), and
+  /// then there is nothing to frame. Null says exactly that.
+  CameraPose? get displayedCameraPose {
+    final parked = frameScrubActive.value ? _gapGlobalFrame : null;
+    if (parked == null) {
+      return activeCutOrNull == null ? null : cameraPoseAtCurrentFrame;
+    }
+    // 🚨[TrackFrameAxis.ownerOf] hands a gap frame to the PRECEDING cut on
+    // purpose (its over-end runway) — it is an addressing rule, not a
+    // containment test. [TrackFrameAxis.isGap] is the containment test, and
+    // it is the same pair [selectGlobalFrame] asks, so what the drag frames
+    // and what the release lands cannot disagree.
+    final axis = trackFrameAxis();
+    final owner = axis.isGap(parked) ? null : axis.ownerOf(parked);
+    if (owner == null) {
+      return null;
+    }
+    // The RENDER route's resolver (fx bypass honoured), because the picture
+    // under this rectangle came through it too: preview and camera frame
+    // must not disagree about the same cut.
+    return cameraPoseForCut(owner.cut, parked - owner.startFrame);
+  }
+
   bool get hasCameraKeyframeAtCurrentFrame =>
       activeCutOrNull?.camera.keyframeAt(
         _timelineController.currentFrameIndex,
@@ -15298,10 +15334,14 @@ class EditorSessionManager extends ChangeNotifier {
   /// Moves the playhead to [globalFrame] and takes NO cut active — the
   /// parked state, whatever sits at that frame.
   ///
-  /// A gap has always landed here because there is no cut to take. The
-  /// storyboard's SE rows land here too (feedback #7): pressing a sound
-  /// says where you are, not which cut you are editing, and the active cut
-  /// is meant to answer only to picking a cut on the row that HAS cuts.
+  /// A gap lands here because there is no cut to take — that is the whole
+  /// of it now. The storyboard's SE rows used to land here too (feedback
+  /// #7: pressing a sound says where you are, not which cut you are
+  /// editing), on the reading that the active cut answers only to picking a
+  /// cut on the row that HAS cuts. ⑭ retired that: one track means the
+  /// index names one cut, so a row press seeks like any other and only a
+  /// GAP still parks. Callers that park a frame a cut covers are declaring
+  /// a preview, not a landing — the live scrub is the one such caller.
   void parkGlobalFrame(int globalFrame) {
     if (editingInteractionBusy) {
       return;
