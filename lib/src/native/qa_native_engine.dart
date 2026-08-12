@@ -604,6 +604,8 @@ class QaNativeEngine {
     required Float64List inverse,
     required double radiusFloor,
     required int mode,
+    int clipX = 0,
+    int clipY = 0,
   }) {
     // Nine doubles or nothing. `setAll` under-fills in silence — it only
     // throws when the source is LONGER — so a short list would hand the
@@ -626,6 +628,8 @@ class QaNativeEngine {
         dstHeight: dstHeight,
         inverse: inverseNative,
         radiusFloor: radiusFloor,
+        clipX: clipX,
+        clipY: clipY,
         mode: mode,
       );
       if (result != 0) {
