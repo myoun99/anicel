@@ -32,6 +32,7 @@ class CanvasViewportGestureLayer extends StatefulWidget {
     required this.viewport,
     required this.onViewportChanged,
     this.strokeActive = false,
+    this.touchLocked = false,
     this.rotationEnabled = true,
     this.onInvokeAction,
     this.onBrushSizeDragStart,
@@ -66,6 +67,15 @@ class CanvasViewportGestureLayer extends StatefulWidget {
 
   /// True while the user is drawing; blocks new viewport gestures.
   final bool strokeActive;
+
+  /// True while a transform handle is being dragged: touch is inert, so a
+  /// palm landing mid-transform neither pans nor pinches.
+  ///
+  /// Separate from [strokeActive] because touch deliberately bypasses that
+  /// one — the second finger IS the cancel-and-navigate signal for a
+  /// stroke. A transform is the exception, and an exception needs its own
+  /// name or the next reader will delete it as a duplicate.
+  final bool touchLocked;
 
   /// False disables the two-finger/trackpad ROTATION gestures (P8) while
   /// pan/zoom keep working — for hosts whose content cannot rotate (the
@@ -146,6 +156,14 @@ class _CanvasViewportGestureLayerState
 
   void _handlePointerDown(PointerDownEvent event) {
     if (event.kind == PointerDeviceKind.touch) {
+      // The one place touch does NOT get to override a busy canvas. Two
+      // fingers cancel a stroke because a stroke can be redrawn; they may
+      // not cancel a transform, so the finger has to stop short of
+      // navigating too — otherwise the box would sit still while the view
+      // slid out from under it.
+      if (widget.touchLocked) {
+        return;
+      }
       _touchPositions[event.pointer] = event.localPosition;
       // PEN-12 #4: ONE touch engine — the old draw MODE's legacy pinch
       // path retired; a draw-assigned one-finger slot simply makes the

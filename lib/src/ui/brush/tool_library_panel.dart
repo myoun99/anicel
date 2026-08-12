@@ -1,6 +1,9 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../text/app_strings.dart';
 import 'brush_tool_state.dart';
+import 'transform_tool_options.dart';
 
 /// The TOOL LIBRARY panel (R11-④, CSP's sub-tool palette): its content
 /// follows the active tool. The brush and the eraser show the brush
@@ -15,10 +18,23 @@ class ToolLibraryPanel extends StatelessWidget {
     required this.onToolChanged,
     required this.brushLibrary,
     this.guideLibrary,
+    this.transformOptions,
+    this.onTransformOptionsChanged,
   });
 
   final CanvasTool tool;
   final ValueChanged<CanvasTool> onToolChanged;
+
+  /// The transform tool's settings; its three MODES are the tiles this
+  /// panel lists for [CanvasTool.move]. A null handler shows them
+  /// disabled, the convention every other host-owned setting uses here.
+  ///
+  /// A listenable rather than a value because the host rebuilds this panel
+  /// only when the TOOL or its preset changes — picking a mode is neither,
+  /// so the tiles subscribe for themselves and nothing else in the library
+  /// pays for it.
+  final ValueListenable<TransformToolOptions>? transformOptions;
+  final ValueChanged<TransformToolOptions>? onTransformOptionsChanged;
 
   /// The brush preset library content (built by the workspace, which owns
   /// the preset state) — shown for the painting tools.
@@ -92,12 +108,52 @@ class ToolLibraryPanel extends StatelessWidget {
             ),
           ],
         );
+      // The transform tool's three tiles, in TVPaint's order with 일반 as
+      // the default. They are not three tools — the mode is a setting, so
+      // that switching one mid-session widens or narrows the OPEN box
+      // instead of confirming it and starting again.
       case CanvasTool.move:
-        return const _ToolNote(
-          keyValue: 'tool-library-move',
-          note:
-              'Move drags the selected region\'s content.\n'
-              'Make a selection with the marquee or lasso first.',
+        final onOptions = onTransformOptionsChanged;
+        return ValueListenableBuilder<TransformToolOptions>(
+          valueListenable: transformOptions ?? _fallbackTransformOptions,
+          builder: (context, options, _) => ListView(
+            key: const ValueKey<String>('tool-library-transform'),
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            children: [
+              _SubToolTile(
+                keyValue: 'sub-tool-transform-normal',
+                icon: Icons.crop_free,
+                label: AppText.strings.trModeNormal,
+                selected: options.mode == TransformMode.normal,
+                onTap: onOptions == null
+                    ? null
+                    : () => onOptions(
+                        options.copyWith(mode: TransformMode.normal),
+                      ),
+              ),
+              _SubToolTile(
+                keyValue: 'sub-tool-transform-perspective',
+                icon: Icons.transform,
+                label: AppText.strings.trModePerspective,
+                selected: options.mode == TransformMode.perspective,
+                onTap: onOptions == null
+                    ? null
+                    : () => onOptions(
+                        options.copyWith(mode: TransformMode.perspective),
+                      ),
+              ),
+              _SubToolTile(
+                keyValue: 'sub-tool-transform-mesh',
+                icon: Icons.grid_4x4,
+                label: AppText.strings.brMeshWarp,
+                selected: options.mode == TransformMode.mesh,
+                onTap: onOptions == null
+                    ? null
+                    : () =>
+                          onOptions(options.copyWith(mode: TransformMode.mesh)),
+              ),
+            ],
+          ),
         );
       case CanvasTool.eyedropper:
         return const _ToolNote(
@@ -130,6 +186,12 @@ class ToolLibraryPanel extends StatelessWidget {
   }
 }
 
+/// The stand-in for hosts that do not own the transform settings (focused
+/// tests). Nothing ever writes it, so one instance for the process is
+/// correct and it is never disposed.
+final ValueNotifier<TransformToolOptions> _fallbackTransformOptions =
+    ValueNotifier(TransformToolOptions.defaults);
+
 class _SubToolTile extends StatelessWidget {
   const _SubToolTile({
     required this.keyValue,
@@ -143,7 +205,9 @@ class _SubToolTile extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool selected;
-  final VoidCallback onTap;
+
+  /// Null disables the tile — the host does not own this setting.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {

@@ -16,7 +16,6 @@ import '../../models/brush_frame_key.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_paint_clip.dart';
 import '../../services/canvas_selection_region.dart';
-import '../../services/resample/resample_kernel.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/drawing_guide.dart';
@@ -59,6 +58,7 @@ import 'brush_canvas_defaults.dart';
 import 'brush_tool_state.dart';
 import '../dev_profile.dart';
 import 'canvas_selection_commands.dart';
+import 'transform_tool_options.dart';
 import 'selection_shape_history_command.dart';
 import 'canvas_view_commands.dart';
 import 'canvas_viewport_pan_metrics.dart';
@@ -147,7 +147,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onAltColorPick,
     this.fillDabAt,
     this.selectionMaskOptions,
-    this.transformResampleMode,
+    this.transformOptions,
     this.viewCommands,
     this.selectionCommands,
     this.cutPieceSlot,
@@ -396,9 +396,9 @@ class BrushCanvasPanel extends StatefulWidget {
   /// Null/absent keeps the classic byte-preserving hard mask.
   final ValueListenable<SelectionMaskOptions>? selectionMaskOptions;
 
-  /// P3a: which resampler a Ctrl+T commit runs through. Null keeps the
-  /// smoothing default, which is what focused tests want.
-  final ValueListenable<ResampleMode>? transformResampleMode;
+  /// The transform tool's settings — mode, scale anchor, resampler, mesh
+  /// grid. Null keeps the defaults, which is what focused tests want.
+  final ValueListenable<TransformToolOptions>? transformOptions;
 
   /// The app-level rotate/flip shortcut channel (P8); the panel binds its
   /// viewport-center handlers while mounted.
@@ -435,12 +435,11 @@ class BrushCanvasPanel extends StatefulWidget {
   State<BrushCanvasPanel> createState() => _BrushCanvasPanelState();
 }
 
-/// The stand-in when no host owns the resample mode (focused tests). Const
-/// in spirit — nothing ever writes it, so one instance for the process is
-/// correct and it is never disposed.
-final ValueNotifier<ResampleMode> _defaultResampleMode = ValueNotifier(
-  ResampleMode.blend,
-);
+/// The stand-in when no host owns the transform settings (focused tests).
+/// Const in spirit — nothing ever writes it, so one instance for the
+/// process is correct and it is never disposed.
+final ValueNotifier<TransformToolOptions> _defaultTransformOptions =
+    ValueNotifier(TransformToolOptions.defaults);
 
 class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     with SingleTickerProviderStateMixin {
@@ -455,6 +454,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// True while a selection marquee/move drag is in progress (P9) — holds
   /// viewport gestures exactly like a stroke.
   bool _selectionDragActive = false;
+
+  /// True while a transform HANDLE is being dragged. Narrower than
+  /// [_selectionDragActive] on purpose: it is the only state in which
+  /// touch is locked out of the viewport as well.
+  bool _transformDragActive = false;
 
   CanvasAutoFrameRequest? _pendingAutoFrame;
 
@@ -1362,6 +1366,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                           _strokeActive ||
                           _selectionDragActive ||
                           contentStrokeIsActive,
+                      touchLocked: _transformDragActive,
                       // Nothing drawn in the viewport (canvas, playback
                       // frames, camera overlay) may paint outside the panel.
                       child: ClipRect(
@@ -1725,15 +1730,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                 // strokes cannot start below the layer.
                                                 if (selectionLayerActive)
                                                   Positioned.fill(
-                                                    child: ValueListenableBuilder<ResampleMode>(
+                                                    child: ValueListenableBuilder<TransformToolOptions>(
                                                       valueListenable:
                                                           widget
-                                                              .transformResampleMode ??
-                                                          _defaultResampleMode,
+                                                              .transformOptions ??
+                                                          _defaultTransformOptions,
                                                       builder:
                                                           (
                                                             context,
-                                                            transformResampleMode,
+                                                            transformOptions,
                                                             _,
                                                           ) => CanvasSelectionLayer(
                                                             tool: switch (widget
@@ -1783,6 +1788,16 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                             selectionCommands:
                                                                 widget
                                                                     .selectionCommands,
+                                                            onTransformDragActiveChanged: (active) {
+                                                              if (_transformDragActive !=
+                                                                  active) {
+                                                                setState(
+                                                                  () =>
+                                                                      _transformDragActive =
+                                                                          active,
+                                                                );
+                                                              }
+                                                            },
                                                             onDragActiveChanged: (active) {
                                                               if (_selectionDragActive !=
                                                                   active) {
@@ -1837,15 +1852,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                             onMoveSessionPendingChanged:
                                                                 widget
                                                                     .onSelectionInteractionChanged,
-                                                            // P3a: which resampler a
-                                                            // transform runs through. Read
-                                                            // through the listenable above,
-                                                            // so flipping the switch mid
-                                                            // session re-resamples the open
-                                                            // preview instead of waiting for
-                                                            // the next gesture.
-                                                            resampleMode:
-                                                                transformResampleMode,
+                                                            // The transform tool's whole knob
+                                                            // set. Read through the
+                                                            // listenable above, so changing
+                                                            // one mid session re-resamples
+                                                            // the open preview instead of
+                                                            // waiting for the next gesture.
+                                                            transformOptions:
+                                                                transformOptions,
                                                           ),
                                                     ),
                                                   ),

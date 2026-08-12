@@ -159,6 +159,25 @@ class SelectionAffine {
     );
   }
 
+  /// [apply] run backwards: the pre-image of a canvas point.
+  ///
+  /// The perspective and mesh modes hold their control points as
+  /// displacements in the box's OWN frame, so that rotating or scaling the
+  /// box carries the warp with it instead of leaving it behind. Turning a
+  /// pointer position into one of those displacements is this function.
+  ///
+  /// The scales cannot be zero — every writer clamps them away from it —
+  /// so there is no degenerate case to guard.
+  CanvasPoint applyInverse(CanvasPoint point) {
+    final ux = point.x - pivot.x - tx;
+    final uy = point.y - pivot.y - ty;
+    final cos = cosTheta;
+    final sin = sinTheta;
+    final lx = ux * cos + uy * sin;
+    final ly = -ux * sin + uy * cos;
+    return CanvasPoint(x: lx / sx + pivot.x, y: ly / sy + pivot.y);
+  }
+
   SelectionAffine copyWith({
     double? sx,
     double? sy,

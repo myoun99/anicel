@@ -14,6 +14,7 @@ import 'brush_settings_panel.dart';
 import 'brush_tool_state.dart';
 import 'guide_panels.dart';
 import 'canvas_selection_commands.dart';
+import 'transform_tool_options.dart';
 import '../../models/cut_piece.dart';
 import '../../services/cut_piece_slot.dart';
 import 'cut_piece_preview.dart';
@@ -34,8 +35,8 @@ class ToolSettingsPanel extends StatelessWidget {
     required this.onFillOptionsChanged,
     this.selectionMaskOptions = SelectionMaskOptions.none,
     this.onSelectionMaskOptionsChanged,
-    this.transformResampleMode = ResampleMode.blend,
-    this.onTransformResampleModeChanged,
+    this.transformOptions = TransformToolOptions.defaults,
+    this.onTransformOptionsChanged,
     this.selectionCommands,
     this.language = AppLanguage.en,
     this.eyedropperSource = CanvasColorSampleSource.display,
@@ -84,10 +85,11 @@ class ToolSettingsPanel extends StatelessWidget {
   final SelectionMaskOptions selectionMaskOptions;
   final ValueChanged<SelectionMaskOptions>? onSelectionMaskOptionsChanged;
 
-  /// P3a: the Move tool's resampler choice — the tent that smooths, or the
-  /// coverage argmax that keeps a two-value drawing two-valued.
-  final ResampleMode transformResampleMode;
-  final ValueChanged<ResampleMode>? onTransformResampleModeChanged;
+  /// The transform tool's knobs: mode, scale anchor, AA, mesh grid. A null
+  /// handler shows them disabled — the convention the eyedropper's source
+  /// picker uses for hosts that do not own the setting.
+  final TransformToolOptions transformOptions;
+  final ValueChanged<TransformToolOptions>? onTransformOptionsChanged;
 
   /// The mounted selection layer's imperative channel — the Move tool's
   /// numeric inputs read and write the live transform through it.
@@ -160,8 +162,8 @@ class ToolSettingsPanel extends StatelessWidget {
         ),
         CanvasTool.move => _MoveSettings(
           selectionCommands: selectionCommands,
-          resampleMode: transformResampleMode,
-          onResampleModeChanged: onTransformResampleModeChanged,
+          options: transformOptions,
+          onOptionsChanged: onTransformOptionsChanged,
         ),
         // Guides get their knobs HERE, like every other tool. There is no
         // guide panel of its own.
@@ -513,17 +515,17 @@ class _SelectionModeRow extends StatelessWidget {
 class _MoveSettings extends StatefulWidget {
   const _MoveSettings({
     required this.selectionCommands,
-    required this.resampleMode,
-    required this.onResampleModeChanged,
+    required this.options,
+    required this.onOptionsChanged,
   });
 
   final CanvasSelectionCommands? selectionCommands;
 
-  /// Which resampler a transform commit runs through. A null handler shows
-  /// the switch disabled — the convention the eyedropper's source picker
-  /// uses for hosts that do not own the setting.
-  final ResampleMode resampleMode;
-  final ValueChanged<ResampleMode>? onResampleModeChanged;
+  /// The transform tool's knobs. A null handler shows them disabled — the
+  /// convention the eyedropper's source picker uses for hosts that do not
+  /// own the setting.
+  final TransformToolOptions options;
+  final ValueChanged<TransformToolOptions>? onOptionsChanged;
 
   @override
   State<_MoveSettings> createState() => _MoveSettingsState();
@@ -732,23 +734,16 @@ class _MoveSettingsState extends State<_MoveSettings> {
           contentPadding: EdgeInsets.zero,
           title: Text(AppText.strings.brPreserveColours),
           subtitle: Text(AppText.strings.brPreserveColoursHint),
-          value: widget.resampleMode == ResampleMode.pick,
-          onChanged: widget.onResampleModeChanged == null
+          value: widget.options.resampleMode == ResampleMode.pick,
+          onChanged: widget.onOptionsChanged == null
               ? null
-              : (value) => widget.onResampleModeChanged!(
-                  value ? ResampleMode.pick : ResampleMode.blend,
+              : (value) => widget.onOptionsChanged!(
+                  widget.options.copyWith(
+                    resampleMode: value
+                        ? ResampleMode.pick
+                        : ResampleMode.blend,
+                  ),
                 ),
-        ),
-        const SizedBox(height: 8),
-        // R20-D3 mesh warp: opens the control grid on the selection —
-        // or, with none, on the whole picture (R26 #13). Enter commits
-        // the triangulated warp; Esc reverts. Perspective rides the
-        // Ctrl+corner gesture on the box itself (R20-D2).
-        OutlinedButton.icon(
-          key: const ValueKey<String>('move-mesh-warp-button'),
-          onPressed: () => widget.selectionCommands?.beginMeshTransform(),
-          icon: const Icon(Icons.grid_4x4, size: 16),
-          label: Text(AppText.strings.brMeshWarp),
         ),
       ],
     );

@@ -6,6 +6,7 @@ import 'package:anicel/src/services/resample/resample_kernel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
+import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 
 /// R26 #14: the Move/Transform settings' x/y/angle/scale are the shared
 /// DRAG VALUE readouts (the canvas bar's zoom/angle vocabulary) — a
@@ -18,6 +19,9 @@ void main() {
     ResampleMode resampleMode = ResampleMode.blend,
     ValueChanged<ResampleMode>? onResampleModeChanged,
   }) async {
+    // The panel now takes the whole knob set as one object; this suite
+    // only cares about the AA half, so it unwraps that one field back out.
+    final resampleHandler = onResampleModeChanged;
     final commands = CanvasSelectionCommands();
     commands.bind(
       hasSelection: () => false,
@@ -51,8 +55,12 @@ void main() {
               fillOptions: const FloodFillOptions(),
               onFillOptionsChanged: (_) {},
               selectionCommands: commands,
-              transformResampleMode: resampleMode,
-              onTransformResampleModeChanged: onResampleModeChanged,
+              transformOptions: TransformToolOptions(
+                resampleMode: resampleMode,
+              ),
+              onTransformOptionsChanged: resampleHandler == null
+                  ? null
+                  : (options) => resampleHandler(options.resampleMode),
             ),
           ),
         ),
@@ -165,17 +173,4 @@ void main() {
     );
   });
 
-  testWidgets('the Mesh Warp entrance stays enabled without a selection '
-      '(the whole picture is the target)', (tester) async {
-    final applied = <SelectionTransformValues>[];
-    await pumpMoveSettings(tester, applied: applied);
-
-    final button = tester.widget<OutlinedButton>(
-      find.ancestor(
-        of: find.text('Mesh Warp'),
-        matching: find.byType(OutlinedButton),
-      ),
-    );
-    expect(button.onPressed, isNotNull);
-  });
 }
