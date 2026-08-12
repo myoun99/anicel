@@ -26,6 +26,7 @@ import '../../services/canvas_selection_region.dart';
 import '../../services/resample/resample_kernel.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../brush/canvas_selection_commands.dart';
+import '../brush/transform_tool_options.dart';
 import 'selection_ants_painter.dart';
 import 'bitmap_surface_painter.dart';
 import 'provisional_tile_pictures.dart';
@@ -66,7 +67,7 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.contentBoundsProvider,
     this.committedRegionPendingTiles,
     this.composeCommittedRegionPictures,
-    this.resampleMode = ResampleMode.blend,
+    this.transformOptions = TransformToolOptions.defaults,
   });
 
   /// Offers the host the picture the screen is showing over the landing
@@ -120,13 +121,17 @@ class CanvasSelectionLayer extends StatefulWidget {
   final Set<TileCoord> Function(int left, int top, int right, int bottom)?
   committedRegionPendingTiles;
 
-  /// How a transform turns pixels into other pixels (P3a): the tent mean
-  /// that smooths, or the coverage argmax that copies source words through
-  /// untouched so a two-value drawing stays two-valued.
+  /// The transform tool's knobs: which of 일반/퍼스/메쉬 the box is in,
+  /// where a scale drag anchors, how the resample turns pixels into other
+  /// pixels (the tent mean that smooths, or the coverage argmax that
+  /// copies source words through untouched so a two-value drawing stays
+  /// two-valued), and the mesh grid size.
   ///
-  /// This is a property of the RESAMPLE, not a declaration about the
+  /// All of it is a property of the TOOL, not a declaration about the
   /// layer's content — nothing here inspects the picture to decide.
-  final ResampleMode resampleMode;
+  final TransformToolOptions transformOptions;
+
+  ResampleMode get _resampleMode => transformOptions.resampleMode;
 
   /// R26 #13 follow-up: the active cel's tight ink bounds (canvas
   /// coordinates, exclusive right/bottom) — the implicit whole-picture
@@ -659,7 +664,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // the drag-end notify reaches ancestor setState and must defer.
       _resetAll(deferDragNotify: true);
     }
-    if (oldWidget.resampleMode != widget.resampleMode) {
+    if (oldWidget._resampleMode != widget._resampleMode) {
       // P3a: flipping the switch with a box already open re-resamples on
       // the spot. Waiting for the next drag would show the old kernel's
       // picture and land the new one's.
@@ -1053,7 +1058,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // the right picture and the resampler has nothing to do.
       return null;
     }
-    return _ResampleKey(widget.resampleMode, stamp.rgba, shape.toString());
+    return _ResampleKey(widget._resampleMode, stamp.rgba, shape.toString());
   }
 
   /// The float through whatever warp is open — the ONE place the three
@@ -1070,16 +1075,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         columns: _meshColumns,
         rows: _meshRows,
         points: mesh,
-        mode: widget.resampleMode,
+        mode: widget._resampleMode,
       );
     }
     final quad = _warpCorners;
     if (quad != null) {
-      return transformStampDabQuad(pending, quad, mode: widget.resampleMode);
+      return transformStampDabQuad(pending, quad, mode: widget._resampleMode);
     }
     final affine = _transform;
     if (affine != null && !affine.isIdentity) {
-      return transformStampDab(pending, affine, mode: widget.resampleMode);
+      return transformStampDab(pending, affine, mode: widget._resampleMode);
     }
     return null;
   }

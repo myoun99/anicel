@@ -11,12 +11,12 @@ import '../services/canvas_color_sampler.dart';
 import '../services/canvas_flood_fill.dart';
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../services/cut_piece_slot.dart';
-import '../services/resample/resample_kernel.dart' show ResampleMode;
 import '../services/se_name_tag_plan.dart';
 import 'brush/brush_tool_state.dart';
 import 'dev_profile.dart';
 import 'input/app_input_settings.dart' show AppInput;
 import 'brush/canvas_selection_commands.dart';
+import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
 import 'canvas/viewport_canvas_transform.dart';
 import 'brush/main_canvas_brush_host.dart';
@@ -69,7 +69,7 @@ class EditorCanvasArea extends StatefulWidget {
     this.expandedLaneLayerIds,
     this.fillOptions,
     this.selectionMaskOptions,
-    this.transformResampleMode,
+    this.transformOptions,
     this.eyedropperSource,
     this.onInvokeAction,
     this.flipHud,
@@ -126,9 +126,9 @@ class EditorCanvasArea extends StatefulWidget {
   /// classic byte-preserving hard mask.
   final ValueListenable<SelectionMaskOptions>? selectionMaskOptions;
 
-  /// P3a: which resampler a transform commit runs through; null keeps the
-  /// smoothing default.
-  final ValueListenable<ResampleMode>? transformResampleMode;
+  /// The transform tool's settings (mode, scale anchor, resampler, mesh
+  /// grid); null keeps the defaults.
+  final ValueListenable<TransformToolOptions>? transformOptions;
 
   @override
   State<EditorCanvasArea> createState() => _EditorCanvasAreaState();
@@ -676,7 +676,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // P6 fill: the flood region as ONE mask dab; the panel commits it
               // through the stroke funnel onto the active layer's frame.
               selectionMaskOptions: widget.selectionMaskOptions,
-              transformResampleMode: widget.transformResampleMode,
+              transformOptions: widget.transformOptions,
               fillDabAt: (point, color) => buildFillDab(
                 cut: session.requireActiveCut,
                 frameIndex: session.currentFrameIndex,

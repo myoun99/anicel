@@ -30,7 +30,6 @@ import '../services/persistence/folder_grant.dart' show FolderPicker;
 import '../models/brush_tip_entry.dart';
 import '../services/cut_piece_slot.dart';
 import '../services/cut_piece_tip.dart';
-import '../services/resample/resample_kernel.dart' show ResampleMode;
 import '../services/color_palette_file_service.dart' show ColorPaletteState;
 import 'brush/brush_preset_library.dart';
 import 'brush/canvas_floor_insets.dart';
@@ -41,6 +40,7 @@ import 'brush/brush_preset_panel.dart';
 import 'brush/brush_tip_library.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/canvas_selection_commands.dart';
+import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
 import 'brush/paint_tool_state_notifier.dart';
 import 'brush/brush_canvas_defaults.dart';
@@ -733,8 +733,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// Blend is the default: smoothing is what a transform is expected to do
   /// everywhere else in the industry, and the argmax is the deliberate
   /// choice for two-value work.
-  final ValueNotifier<ResampleMode> _transformResampleMode = ValueNotifier(
-    ResampleMode.blend,
+  final ValueNotifier<TransformToolOptions> _transformOptions = ValueNotifier(
+    TransformToolOptions.defaults,
   );
 
   /// R28 #6: the eyedropper's reference source (Tool Settings knob). The
@@ -1733,7 +1733,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       _brushTool.dispose();
     }
     _fillOptions.dispose();
-    _transformResampleMode.dispose();
+    _transformOptions.dispose();
     _eyedropperSource.dispose();
     _cameraViewEnabled.dispose();
     _cameraDimOpacity.dispose();
@@ -2019,7 +2019,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             expandedLaneLayerIds: _expandedLaneLayerIds,
             fillOptions: _fillOptions,
             selectionMaskOptions: _selectionMaskOptions,
-            transformResampleMode: _transformResampleMode,
+            transformOptions: _transformOptions,
             eyedropperSource: _eyedropperSource,
             flipHud: widget.flipHud,
           ),
@@ -2141,9 +2141,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                         // keep-alive tuple above: that tuple decides when
                         // the kept-alive subtree is thrown away, not when
                         // it rebuilds.
-                        builder: (context) => ValueListenableBuilder<ResampleMode>(
-                          valueListenable: _transformResampleMode,
-                          builder: (context, resampleMode, _) =>
+                        builder: (context) => ValueListenableBuilder<TransformToolOptions>(
+                          valueListenable: _transformOptions,
+                          builder: (context, transformOptions, _) =>
                               ValueListenableBuilder<SelectionMaskOptions>(
                                 valueListenable: _selectionMaskOptions,
                                 builder: (context, maskOptions, _) =>
@@ -2205,13 +2205,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                                           _selectionMaskOptions
                                                                   .value =
                                                               options,
-                                                  transformResampleMode:
-                                                      resampleMode,
-                                                  onTransformResampleModeChanged:
-                                                      (mode) =>
-                                                          _transformResampleMode
+                                                  transformOptions:
+                                                      transformOptions,
+                                                  onTransformOptionsChanged:
+                                                      (options) =>
+                                                          _transformOptions
                                                                   .value =
-                                                              mode,
+                                                              options,
                                                   selectionCommands: widget
                                                       .canvasSelectionCommands,
                                                   cutPieceSlot: _cutPieceSlot,

@@ -792,6 +792,15 @@ class AppStrings {
   String get brMeshWarp => _s('brMeshWarp');
   String get brPreserveColours => _s('brPreserveColours');
   String get brPreserveColoursHint => _s('brPreserveColoursHint');
+  String get trModeNormal => _s('trModeNormal');
+  String get trModePerspective => _s('trModePerspective');
+  String get trFlipHorizontal => _s('trFlipHorizontal');
+  String get trFlipVertical => _s('trFlipVertical');
+  String get trAnchor => _s('trAnchor');
+  String get trAnchorOpposite => _s('trAnchorOpposite');
+  String get trAnchorCenter => _s('trAnchorCenter');
+  String get trMeshColumns => _s('trMeshColumns');
+  String get trMeshRows => _s('trMeshRows');
   String get commonReset => _s('commonReset');
   String get commonFill => _s('commonFill');
 
@@ -1396,6 +1405,15 @@ class AppStrings {
     'brMeshWarp': 'Mesh Warp',
     'brPreserveColours': 'Preserve original colours',
     'brPreserveColoursHint': 'No new in-between shades, but harder edges',
+    'trModeNormal': 'Transform',
+    'trModePerspective': 'Perspective',
+    'trFlipHorizontal': 'Flip Horizontal',
+    'trFlipVertical': 'Flip Vertical',
+    'trAnchor': 'Anchor',
+    'trAnchorOpposite': 'Opposite corner',
+    'trAnchorCenter': 'Center',
+    'trMeshColumns': 'Columns',
+    'trMeshRows': 'Rows',
     'commonReset': 'Reset',
     'commonFill': 'Fill',
     'viewZoomIn': 'Zoom In',
@@ -2147,6 +2165,15 @@ class AppStrings {
     'brMeshWarp': 'メッシュワープ',
     'brPreserveColours': '元の色を保持',
     'brPreserveColoursHint': '中間色は増えませんが、エッジは硬くなります',
+    'trModeNormal': '変形',
+    'trModePerspective': 'パース変形',
+    'trFlipHorizontal': '左右反転',
+    'trFlipVertical': '上下反転',
+    'trAnchor': '基準点',
+    'trAnchorOpposite': '対角',
+    'trAnchorCenter': '中心',
+    'trMeshColumns': '横のマス',
+    'trMeshRows': '縦のマス',
     'commonReset': 'リセット',
     'commonFill': '塗りつぶし',
     'viewZoomIn': 'ズームイン',
@@ -2890,6 +2917,15 @@ class AppStrings {
     'brMeshWarp': '메시 워프',
     'brPreserveColours': '원본 색 보존',
     'brPreserveColoursHint': '중간색이 생기지 않고, 가장자리는 거칠어집니다',
+    'trModeNormal': '일반 변형',
+    'trModePerspective': '퍼스 변형',
+    'trFlipHorizontal': '좌우 반전',
+    'trFlipVertical': '상하 반전',
+    'trAnchor': '기준점',
+    'trAnchorOpposite': '반대 모서리',
+    'trAnchorCenter': '중심',
+    'trMeshColumns': '가로 칸',
+    'trMeshRows': '세로 칸',
     'commonReset': '초기화',
     'commonFill': '채우기',
     'viewZoomIn': '확대',
@@ -3650,6 +3686,15 @@ class AppStrings {
     'brTransformPreserveColorsHint':
         'Transformer sans créer de couleurs '
         'intermédiaires',
+    'trModeNormal': 'Transformer',
+    'trModePerspective': 'Perspective',
+    'trFlipHorizontal': 'Miroir horizontal',
+    'trFlipVertical': 'Miroir vertical',
+    'trAnchor': 'Point de référence',
+    'trAnchorOpposite': 'Coin opposé',
+    'trAnchorCenter': 'Centre',
+    'trMeshColumns': 'Colonnes',
+    'trMeshRows': 'Lignes',
     'brFillBeyondCanvas': 'Remplir au-delà du canevas',
     'brOpenRegionsRefuse': 'Les zones ouvertes ne se remplissent pas',
     'brName': 'Nom',
@@ -4390,6 +4435,15 @@ class AppStrings {
     'brMeshWarp': '网格变形',
     'brPreserveColours': '保留原始颜色',
     'brPreserveColoursHint': '不产生中间色，但边缘更硬',
+    'trModeNormal': '变形',
+    'trModePerspective': '透视变形',
+    'trFlipHorizontal': '水平翻转',
+    'trFlipVertical': '垂直翻转',
+    'trAnchor': '基准点',
+    'trAnchorOpposite': '对角',
+    'trAnchorCenter': '中心',
+    'trMeshColumns': '列数',
+    'trMeshRows': '行数',
     'commonReset': '重置',
     'commonFill': '填充',
     'viewZoomIn': '放大',
