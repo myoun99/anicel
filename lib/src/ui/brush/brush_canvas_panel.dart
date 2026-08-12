@@ -39,6 +39,7 @@ import '../../models/brush_blend_mode.dart';
 import '../../services/cut_piece_lift.dart';
 import '../../services/cut_piece_slot.dart';
 import '../../services/cut_piece_stamp.dart';
+import 'cut_piece_preview.dart';
 import '../../models/project.dart'
     show defaultProjectBackdropArgb, defaultProjectPasteboardMargin;
 import '../../models/project_background.dart';
@@ -747,7 +748,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // disagreed, so this is hygiene rather than a fix — but it leaves ONE
     // sentence as the contract: the always-mounted census WRITES, everything
     // else READS.
-    if (_brushCursorActive || _fillCursorActive) {
+    if (_brushCursorActive ||
+        _fillCursorActive ||
+        // The stamp's piece preview reads the same census — one writer,
+        // every cursor a reader.
+        canvasToolStamps(widget.brushToolState.tool)) {
       // The frame this schedules is the one the whole raster program is
       // about: the pen moves over the canvas and, before the bakes, every
       // open panel was re-rastered for it. Naming it here is what lets
@@ -897,6 +902,34 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // `BrushCursorOverlay` already has the right shape inside
       // (`Positioned > IgnorePointer > RepaintBoundary > CustomPaint`), so
       // there is nothing to add here.
+      // The stamp wears the PIECE, for the same reason the brush wears its
+      // footprint: without it the only way to learn where a stamp lands is
+      // to drop it and undo. It matters more here — a stamp puts down a
+      // whole drawing, not a dot.
+      if (canvasToolStamps(widget.brushToolState.tool) &&
+          widget.cutPieceSlot != null)
+        ListenableBuilder(
+          listenable: widget.cutPieceSlot!,
+          builder: (context, _) {
+            final piece = widget.cutPieceSlot!.piece;
+            if (piece == null) {
+              return const SizedBox.shrink();
+            }
+            return ValueListenableBuilder<Offset?>(
+              valueListenable: _toolCursorHover,
+              builder: (context, position, _) {
+                if (position == null) {
+                  return const SizedBox.shrink();
+                }
+                return CutPieceCursorOverlay(
+                  position: position,
+                  viewport: _viewport,
+                  piece: piece,
+                );
+              },
+            );
+          },
+        ),
       if (_brushCursorActive)
         ValueListenableBuilder<Offset?>(
           valueListenable: _toolCursorHover,

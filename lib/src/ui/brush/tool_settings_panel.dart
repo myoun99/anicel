@@ -16,6 +16,7 @@ import 'guide_panels.dart';
 import 'canvas_selection_commands.dart';
 import '../../models/cut_piece.dart';
 import '../../services/cut_piece_slot.dart';
+import 'cut_piece_preview.dart';
 import '../theme/app_theme.dart';
 import '../text/app_strings.dart';
 
@@ -260,6 +261,18 @@ class _CutStampSettings extends StatelessWidget {
             Text(
               'Holding ${piece.image.width}×${piece.image.height} px',
               style: theme.textTheme.labelMedium,
+            ),
+            const SizedBox(height: 6),
+            // What you are holding, so finding out does not require
+            // stamping it somewhere and undoing.
+            SizedBox(
+              height: 88,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
+                ),
+                child: CutPiecePreview(piece: piece),
+              ),
             ),
             const SizedBox(height: 12),
             Text('Paste at original position', style: theme.textTheme.labelSmall),

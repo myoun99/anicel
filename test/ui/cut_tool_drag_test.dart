@@ -1,13 +1,18 @@
+import 'dart:typed_data';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_stamp_image.dart';
+import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
+import 'package:anicel/src/services/cut_piece_stamp.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
@@ -336,6 +341,122 @@ void main() {
           ) ??
           0,
       isNot(0),
+    );
+  });
+
+  testWidgets('what was held lands byte-for-byte, in the same place', (
+    tester,
+  ) async {
+    // 유저: "들고 있던 거랑 찍을 때랑 위치나 내용이 바이트 단위로 동일하게."
+    //
+    // The object-level contract is pinned next door (an unposed piece
+    // hands back the very same BrushStampImage). This is the end of the
+    // chain the user actually sees: cut, wipe the source, put it back, and
+    // the cel is what it was — every channel of every pixel.
+    final env = await pumpPanel(tester, tool: CanvasTool.cutRect);
+
+    List<int> footprint(int left, int top, int width, int height) {
+      final surface = env.coordinator.currentSurfaceOf(
+        env.coordinator.activeFrameKey,
+      );
+      return [
+        for (var y = top; y < top + height; y += 1)
+          for (var x = left; x < left + width; x += 1)
+            surfacePixelRgba(surface, x, y) ?? 0,
+      ];
+    }
+
+    await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+    final piece = env.slot.piece!;
+    final width = piece.image.width;
+    final height = piece.image.height;
+
+    // The oracle is the HELD BYTES, not the source surface. Those two are
+    // not the same thing: the piece's box can be a pixel wider than the
+    // mask that filled it, so a boundary pixel can carry ink on the cel and
+    // nothing in the piece. What the user asked to pin is that what was
+    // held is what lands.
+    final held = [
+      for (var index = 0; index < width * height; index += 1)
+        (piece.image.rgba[index * 4] << 24) |
+            (piece.image.rgba[index * 4 + 1] << 16) |
+            (piece.image.rgba[index * 4 + 2] << 8) |
+            piece.image.rgba[index * 4 + 3],
+    ];
+    expect(held.any((pixel) => pixel != 0), isTrue, reason: 'it holds ink');
+
+    // Stamped onto blank cel, off-canvas but well inside the pasteboard
+    // wall so nothing is clipped and nothing already drawn is underneath.
+    const landLeft = -120;
+    const landTop = -120;
+    env.coordinator.commitSourceStroke(
+      sourceDabs: [
+        buildCutStampDab(
+          piece: piece,
+          center: CanvasPoint(
+            x: landLeft + width / 2,
+            y: landTop + height / 2,
+          ),
+        ),
+      ],
+    );
+    await tester.pump();
+
+    expect(footprint(landLeft, landTop, width, height), held);
+  });
+
+  testWidgets('the cursor preview sits where the stamp would land', (
+    tester,
+  ) async {
+    // A preview that pointed somewhere other than the drop point would be
+    // worse than none — it would teach the wrong aim.
+    // The slot is filled directly rather than by cutting: this test is
+    // about the overlay, and a prior mouse gesture would collide with the
+    // hover pointer it needs.
+    final env = await pumpPanel(tester, tool: CanvasTool.cutStamp);
+    env.slot.hold(
+      CutPiece(
+        image: BrushStampImage(
+          id: 'p',
+          width: 20,
+          height: 12,
+          rgba: Uint8List(20 * 12 * 4)..fillRange(0, 20 * 12 * 4, 200),
+        ),
+        originLeft: 4,
+        originTop: 6,
+      ),
+    );
+    await tester.pump();
+
+    final panel = find.byType(BrushCanvasPanel);
+    final origin = tester.getTopLeft(panel);
+    const hover = Offset(120, 160);
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await gesture.addPointer(location: origin + hover);
+    await tester.pump();
+    await gesture.moveTo(origin + hover);
+    await tester.pump();
+
+    final overlay = find.byKey(
+      const ValueKey<String>('cut-piece-cursor-overlay'),
+    );
+    expect(overlay, findsOneWidget);
+    // Centre-anchored on the pointer, which is where a click drops it.
+    final box = tester.getRect(overlay);
+    expect(box.center.dx - origin.dx, closeTo(hover.dx, 1));
+    expect(box.center.dy - origin.dy, closeTo(hover.dy, 1));
+  });
+
+  testWidgets('no piece means no cursor preview', (tester) async {
+    final env = await pumpPanel(tester, tool: CanvasTool.cutStamp);
+    expect(env.slot.isEmpty, isTrue);
+    final origin = tester.getTopLeft(find.byType(BrushCanvasPanel));
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await gesture.addPointer(location: origin + const Offset(120, 160));
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('cut-piece-cursor-overlay')),
+      findsNothing,
     );
   });
 
