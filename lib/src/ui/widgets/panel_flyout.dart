@@ -30,12 +30,16 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
     required this.keyValue,
     required this.label,
     this.icon,
+    this.swatch,
     this.checked,
     this.selected = false,
     this.danger = false,
     this.enabled = true,
     this.onSelected,
-  });
+  }) : assert(
+         icon == null || swatch == null,
+         'a row has ONE leading mark: a glyph or a colour, not both',
+       );
 
   /// Widget key string — menu items that replaced toolbar buttons reuse the
   /// retired button's key string so tests only gain a menu-open tap.
@@ -43,6 +47,15 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
 
   final String label;
   final IconData? icon;
+
+  /// A filled circle in the leading slot, in ITS OWN colour — for rows whose
+  /// subject IS a colour (the layer mark picker).
+  ///
+  /// It cannot be expressed as [icon]: a glyph is inked by [_inkFor], which
+  /// is how a flyout says enabled / destructive / current, and a swatch that
+  /// obeyed that would stop being the colour it is naming. So the leading
+  /// slot takes either a glyph the list may tint or a colour it may not.
+  final Color? swatch;
 
   /// Trailing check when true; null means the item is not a toggle.
   ///
@@ -151,7 +164,20 @@ Future<void> showPanelFlyout(
             height: 32,
             child: Row(
               children: [
-                if (entry.icon != null) ...[
+                if (entry.swatch case final swatch?) ...[
+                  // 14 rather than the glyph's 16: the same circle the rail
+                  // draws for the same mark, so the list and the row it was
+                  // opened from show one size of dot.
+                  Container(
+                    width: 14,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: swatch,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ] else if (entry.icon != null) ...[
                   Icon(entry.icon, size: 16, color: _inkFor(entry)),
                   const SizedBox(width: 8),
                 ],
