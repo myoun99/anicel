@@ -147,6 +147,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onEyedropperPick,
     this.onAltColorPick,
     this.fillDabAt,
+    this.shapeFillDabFor,
     this.selectionMaskOptions,
     this.transformResampleMode,
     this.viewCommands,
@@ -392,6 +393,13 @@ class BrushCanvasPanel extends StatefulWidget {
   /// Builds the fill-region dab for a tap (P6); the panel commits it
   /// through the exact stroke funnel. Null disables the fill tool.
   final BrushDab? Function(CanvasPoint point, int color)? fillDabAt;
+
+  /// Builds the dab for a finished SHAPE FILL outline. Supplied by the
+  /// host for the same reason [fillDabAt] is — the fill's knobs live up
+  /// there, and the panel commits whatever comes back. Null disables the
+  /// shape fill.
+  final BrushDab? Function(CanvasSelectionShape shape, int color)?
+  shapeFillDabFor;
 
   /// R26 (C2): the Select tool's lift-time mask knobs — read at lift.
   /// Null/absent keeps the classic byte-preserving hard mask.
@@ -1758,6 +1766,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                               CanvasTool.cut =>
                                                                 CanvasSelectionTool
                                                                     .cut,
+                                                              CanvasTool
+                                                                  .fillShape =>
+                                                                CanvasSelectionTool
+                                                                    .fillShape,
                                                               _ =>
                                                                 CanvasSelectionTool
                                                                     .select,
@@ -1786,6 +1798,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                                 _recordSelectionChange,
                                                             onCutShape:
                                                                 _cutPieceFromShape,
+                                                            onFillShape:
+                                                                _fillDrawnShape,
                                                             viewport: _viewport,
                                                             canvasSize: widget
                                                                 .canvasSize,
@@ -2252,6 +2266,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       case CanvasTool.select:
       case CanvasTool.move:
       case CanvasTool.cut:
+      // The shape fill rides the same drag layer as select and cut — one
+      // outline, three things to do with it.
+      case CanvasTool.fillShape:
         return null;
       case CanvasTool.cutStamp:
         // Click = drop the held piece, centred here, committed at once.
@@ -2408,6 +2425,29 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       );
     }
     _lastStampCenter = centers.last;
+  }
+
+  /// Paint a finished shape-fill outline.
+  ///
+  /// Straight through the stroke funnel like the bucket's own dab, so the
+  /// live selection clips it, undo covers it and serialization is free —
+  /// the fill has landed this way since P6 and the shape fill is the same
+  /// dab from a different source.
+  void _fillDrawnShape(CanvasSelectionShape shape) {
+    final build = widget.shapeFillDabFor;
+    if (build == null || widget._editableCoordinator == null) {
+      return;
+    }
+    final dab = build(shape, widget.brushToolState.color);
+    if (dab == null) {
+      return;
+    }
+    _commitSourceStroke(
+      BrushStrokeCommitData(
+        sourceDabs: [dab],
+        blendMode: widget.brushToolState.activeBlendMode,
+      ),
+    );
   }
 
   /// Drop the held piece back where it was cut from.

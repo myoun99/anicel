@@ -9,6 +9,7 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
@@ -94,8 +95,17 @@ void main() {
               brushToolState: BrushToolState.defaults.copyWith(
                 tool: tool,
                 selectShape: shapeKind,
+                fillShape: shapeKind,
               ),
               selectionCommands: commands,
+              shapeFillDabFor: (shape, color) => buildShapeFillDab(
+                shape: shape,
+                color: color,
+                options: const FloodFillOptions(
+                  expandPx: 0,
+                  antiAlias: false,
+                ),
+              ),
               ),
             ),
           ),
@@ -2311,6 +2321,25 @@ void main() {
       region.containsPoint(CanvasPoint(x: 13, y: 13)),
       isFalse,
       reason: 'the box corner is not — that is what makes it an ellipse',
+    );
+  });
+
+  testWidgets('the shape fill paints the outline and leaves the selection '
+      'alone', (tester) async {
+    // The verb, end to end. 유저 확정: 잘라내기와 같은 법 — filling a shape
+    // you drew is not choosing it, so no region is created and Ctrl+Z
+    // undoes the FILL rather than a marquee nobody asked for.
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.fillShape);
+    expect(inkAt(env.coordinator, 70, 70), 0, reason: 'blank to begin with');
+
+    await dragOnLayer(tester, const Offset(60, 60), const Offset(90, 90));
+    await tester.pump();
+
+    expect(inkAt(env.coordinator, 70, 70), isNonZero, reason: 'it painted');
+    expect(
+      env.commands.region,
+      isNull,
+      reason: 'and made no selection doing it',
     );
   });
 

@@ -129,6 +129,31 @@ class ToolLibraryPanel extends StatelessWidget {
             ),
           ],
         );
+      // The FILL tool's tiles: the bucket, then every shape. Same grammar
+      // again — and the bucket stays a TOOL for the same reason the stamp
+      // does. It is a different verb (flood from a tap, respecting the
+      // line art) rather than a different outline, so a tap means exactly
+      // one thing inside each tile and no modifier is needed.
+      case CanvasTool.fill:
+      case CanvasTool.fillShape:
+        return ListView(
+          key: const ValueKey<String>('tool-library-fill'),
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          children: [
+            _SubToolTile(
+              keyValue: 'sub-tool-fill-bucket',
+              icon: Icons.format_color_fill,
+              label: 'Bucket',
+              selected: tool == CanvasTool.fill,
+              onTap: () => onToolChanged(CanvasTool.fill),
+            ),
+            ..._shapeTileWidgets(
+              verb: CanvasTool.fillShape,
+              keyPrefix: 'sub-tool-fill',
+              verbLabel: 'Fill',
+            ),
+          ],
+        );
       case CanvasTool.move:
         return const _ToolNote(
           keyValue: 'tool-library-move',
@@ -142,13 +167,6 @@ class ToolLibraryPanel extends StatelessWidget {
           note:
               'Eyedropper picks the visible color under the pointer.\n'
               'Hold Alt to pick temporarily while painting.',
-        );
-      case CanvasTool.fill:
-        return const _ToolNote(
-          keyValue: 'tool-library-fill',
-          note:
-              'Fill floods the tapped region with the current color.\n'
-              'Tolerance, expand and anti-alias live in Tool Settings.',
         );
       case CanvasTool.guide:
         // The cut's own guides, grouped by kind — the same shape the brush

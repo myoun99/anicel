@@ -840,14 +840,20 @@ class _BlendModeControl extends StatelessWidget {
       builder: (context, state, _) {
         final theme = Theme.of(context);
         final language = AppText.settings.value.programLanguage;
+        // Tools that composite nothing get NO control at all. It used to
+        // be shown for every one of them and the fill, the selection tools
+        // and move all ignored it — a dropdown that answered a question
+        // nobody downstream was asking.
+        if (!state.toolHasBlendMode) {
+          return const SizedBox(width: _groupWidth);
+        }
         // The ERASER tool locks it to 消去/Erase — the eraser IS the erase
         // blend — and that is not a blend CHOICE, so the flyout stands down.
         final toolLocked = state.tool == CanvasTool.eraser;
-        // The brush's own pin, if it has one; distinct from the eraser's.
-        final pinned = state.lockedBlendMode;
-        final mode = toolLocked
-            ? BrushBlendMode.erase
-            : state.effectiveBlendMode;
+        // The active tool's own pin, if it has one; distinct from the
+        // eraser's.
+        final pinned = state.activeBlendLock;
+        final mode = state.activeBlendMode;
         if (toolLocked) {
           return SizedBox(
             width: _groupWidth,
@@ -910,9 +916,12 @@ class _BlendModeControl extends StatelessWidget {
                       keyValue: 'brush-tool-blend-${candidate.name}',
                       label: candidate.labelFor(language),
                       checked: candidate == mode,
+                      // Writes to whichever tool is armed — the button
+                      // never names one (유저 확정: 블렌드모드 선택도 툴에
+                      // 산다).
                       onSelected: () =>
-                          brushTool.value = state.copyWith(
-                            brushBlendMode: candidate,
+                          brushTool.value = state.withActiveBlendMode(
+                            candidate,
                           ),
                     ),
                 ],
@@ -944,9 +953,9 @@ class _BlendModeControl extends StatelessWidget {
                 ),
                 // Locking captures whatever is showing, so the stroke does
                 // not change under you at the moment you pin it.
-                onPressed: () => brushTool.value = pinned == null
-                    ? state.copyWith(lockedBlendMode: mode)
-                    : state.copyWith(clearBlendLock: true),
+                onPressed: () => brushTool.value = state.withActiveBlendLock(
+                  pinned == null ? mode : null,
+                ),
               ),
             ),
           ],

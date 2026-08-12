@@ -189,6 +189,36 @@ void main() {
       );
     });
 
+    testWidgets('ONE Fill button for the bucket and the shapes', (
+      tester,
+    ) async {
+      for (final verb in [CanvasTool.fill, CanvasTool.fillShape]) {
+        await tester.pumpWidget(_panel(tool: verb));
+        expect(
+          tester
+              .widget<IconButton>(
+                find.byKey(const ValueKey<String>('tool-fill-button')),
+              )
+              .isSelected,
+          isTrue,
+          reason: '$verb',
+        );
+      }
+
+      // Pressing it from elsewhere lands on the bucket; pressing it while
+      // already on a shape tile leaves that tile alone.
+      final picked = <CanvasTool>[];
+      await tester.pumpWidget(
+        _panel(tool: CanvasTool.brush, onToolChanged: picked.add),
+      );
+      await tester.tap(find.byKey(const ValueKey<String>('tool-fill-button')));
+      await tester.pumpWidget(
+        _panel(tool: CanvasTool.fillShape, onToolChanged: picked.add),
+      );
+      await tester.tap(find.byKey(const ValueKey<String>('tool-fill-button')));
+      expect(picked, [CanvasTool.fill, CanvasTool.fillShape]);
+    });
+
     testWidgets('the rail never names a SHAPE', (tester) async {
       // The whole point of the split: the rail speaks verbs, and a new
       // outline must never have to add a rail button. Whatever the tool

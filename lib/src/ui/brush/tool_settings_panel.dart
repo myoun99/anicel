@@ -135,6 +135,17 @@ class ToolSettingsPanel extends StatelessWidget {
           options: fillOptions,
           onChanged: onFillOptionsChanged,
         ),
+        // 유저 확정 ⑥: a panel PER TILE, showing what actually applies.
+        // The bucket's knobs above are about reading the picture — where
+        // the flood may go — and a drawn outline never asks that question,
+        // so tolerance, gap close and pasteboard-fill are simply not here.
+        // Only the edge is shared, because only the edge is shared.
+        CanvasTool.fillShape => _ShapeFillSettings(
+          options: fillOptions,
+          onChanged: onFillOptionsChanged,
+          shapeKind: state.activeShapeKind,
+          selectionCommands: selectionCommands,
+        ),
         // R28 #6: the eyedropper has a REFERENCE SOURCE setting now.
         CanvasTool.eyedropper => _EyedropperSettings(
           source: eyedropperSource,
@@ -185,6 +196,52 @@ class ToolSettingsPanel extends StatelessWidget {
 /// mode to offer, and its mask is hard-edged by law (2치 보존) rather than
 /// by a default someone could nudge. The soft-edge knobs that would
 /// otherwise belong here already live on the Select tool.
+/// The SHAPE FILL tile's knobs.
+///
+/// Short on purpose. A drawn outline is filled whatever is inside it (유저
+/// 확정: 올가미 채우기는 A), so nothing here reads the picture — the
+/// bucket's tolerance, gap close and pasteboard boundary have no question
+/// to answer. What remains is the edge, which both tiles share because
+/// both end in a coverage mask.
+class _ShapeFillSettings extends StatelessWidget {
+  const _ShapeFillSettings({
+    required this.options,
+    required this.onChanged,
+    required this.shapeKind,
+    required this.selectionCommands,
+  });
+
+  final FloodFillOptions options;
+  final ValueChanged<FloodFillOptions> onChanged;
+  final CanvasShapeKind? shapeKind;
+  final CanvasSelectionCommands? selectionCommands;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListView(
+      key: const ValueKey<String>('tool-settings-fill-shape'),
+      padding: const EdgeInsets.all(12),
+      children: [
+        Text('Shape Fill', style: theme.textTheme.titleSmall),
+        _ClosePolygonButton(
+          shapeKind: shapeKind,
+          selectionCommands: selectionCommands,
+        ),
+        const SizedBox(height: 8),
+        SwitchListTile(
+          key: const ValueKey<String>('fill-shape-anti-alias-switch'),
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: Text(AppText.strings.brAntiAlias),
+          value: options.antiAlias,
+          onChanged: (value) => onChanged(options.copyWith(antiAlias: value)),
+        ),
+      ],
+    );
+  }
+}
+
 class _CutGrabSettings extends StatelessWidget {
   const _CutGrabSettings({
     required this.shapeKind,

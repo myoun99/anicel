@@ -27,6 +27,15 @@ enum CanvasTool {
   eyedropper,
   fill,
 
+  /// Drags out an outline and fills it with the current colour, whatever
+  /// is inside it. Which outline it drags is [BrushToolState.fillShape].
+  ///
+  /// Separate from [fill], which floods from a tap: they are two verbs, and
+  /// the tool library lists them side by side as the bucket and the
+  /// shapes. Photoshop and Clip Studio split them the same way — filling
+  /// an outline you drew is never the paint bucket in either.
+  fillShape,
+
   /// Drags out a region and folds it into the selection. Which outline it
   /// drags is [BrushToolState.selectShape].
   select,
@@ -79,7 +88,7 @@ bool canvasToolPaints(CanvasTool tool) =>
 /// selection tools mark nothing.
 bool canvasToolMarksCel(CanvasTool tool) =>
     canvasToolPaints(tool) ||
-    tool == CanvasTool.fill ||
+    canvasToolFills(tool) ||
     // The stamp drops pixels on the cel, so a press with it armed has to
     // count as drawing — the empty-cel guard this predicate feeds must not
     // let a stamp land on nothing.
@@ -97,13 +106,22 @@ bool canvasToolMarksCel(CanvasTool tool) =>
 bool canvasToolSelects(CanvasTool tool) =>
     tool == CanvasTool.select ||
     tool == CanvasTool.move ||
+    tool == CanvasTool.fillShape ||
     canvasToolCuts(tool);
 
 /// Whether [tool] drags an outline out of the canvas — the verbs that wear
 /// a [CanvasShapeKind]. MOVE does not: it drags a region that already
 /// exists rather than tracing a new one.
 bool canvasToolDragsShape(CanvasTool tool) =>
-    tool == CanvasTool.select || canvasToolCuts(tool);
+    tool == CanvasTool.select ||
+    tool == CanvasTool.fillShape ||
+    canvasToolCuts(tool);
+
+/// Whether [tool] is one of the FILL tool's tiles — what the rail's single
+/// Fill button lights up for. The bucket floods from a tap and the shape
+/// fill drags an outline; both are the fill.
+bool canvasToolFills(CanvasTool tool) =>
+    tool == CanvasTool.fill || tool == CanvasTool.fillShape;
 
 /// Editor-session state for the active brush tool options.
 ///
@@ -150,8 +168,11 @@ class BrushToolState {
     CanvasTool tool = CanvasTool.brush,
     CanvasShapeKind selectShape = CanvasShapeKind.rect,
     CanvasShapeKind cutShape = CanvasShapeKind.rect,
+    CanvasShapeKind fillShape = CanvasShapeKind.rect,
     double stabilizerStrength = 0.0,
     BrushBlendMode brushBlendMode = BrushBlendMode.color,
+    BrushBlendMode fillBlendMode = BrushBlendMode.color,
+    BrushBlendMode? fillBlendLock,
   }) {
     return BrushToolState.clamped(
       size: size,
@@ -185,8 +206,11 @@ class BrushToolState {
       tool: tool,
       selectShape: selectShape,
       cutShape: cutShape,
+      fillShape: fillShape,
       stabilizerStrength: stabilizerStrength,
       brushBlendMode: brushBlendMode,
+      fillBlendMode: fillBlendMode,
+      fillBlendLock: fillBlendLock,
     );
   }
 
@@ -195,8 +219,11 @@ class BrushToolState {
     this.tool = CanvasTool.brush,
     this.selectShape = CanvasShapeKind.rect,
     this.cutShape = CanvasShapeKind.rect,
+    this.fillShape = CanvasShapeKind.rect,
     this.stabilizerStrength = 0.0,
     this.brushBlendMode = BrushBlendMode.color,
+    this.fillBlendMode = BrushBlendMode.color,
+    this.fillBlendLock,
   });
 
   /// Builds tool state from a loose [BrushShape] and the three hand settings,
@@ -209,16 +236,22 @@ class BrushToolState {
     CanvasTool tool = CanvasTool.brush,
     CanvasShapeKind selectShape = CanvasShapeKind.rect,
     CanvasShapeKind cutShape = CanvasShapeKind.rect,
+    CanvasShapeKind fillShape = CanvasShapeKind.rect,
     double stabilizerStrength = 0.0,
     BrushBlendMode brushBlendMode = BrushBlendMode.color,
+    BrushBlendMode fillBlendMode = BrushBlendMode.color,
+    BrushBlendMode? fillBlendLock,
   }) {
     return BrushToolState._raw(
       shape: _clampShape(shape),
       tool: tool,
       selectShape: selectShape,
       cutShape: cutShape,
+      fillShape: fillShape,
       stabilizerStrength: clampStabilizerStrength(stabilizerStrength),
       brushBlendMode: brushBlendMode,
+      fillBlendMode: fillBlendMode,
+      fillBlendLock: fillBlendLock,
     );
   }
 
@@ -258,8 +291,11 @@ class BrushToolState {
     CanvasTool? tool,
     CanvasShapeKind? selectShape,
     CanvasShapeKind? cutShape,
+    CanvasShapeKind? fillShape,
     double? stabilizerStrength,
     BrushBlendMode? brushBlendMode,
+    BrushBlendMode? fillBlendMode,
+    BrushBlendMode? fillBlendLock,
   }) {
     return BrushToolState.fromShape(
       BrushShape(
@@ -299,8 +335,11 @@ class BrushToolState {
       tool: tool ?? CanvasTool.brush,
       selectShape: selectShape ?? CanvasShapeKind.rect,
       cutShape: cutShape ?? CanvasShapeKind.rect,
+      fillShape: fillShape ?? CanvasShapeKind.rect,
       stabilizerStrength: stabilizerStrength ?? 0.0,
       brushBlendMode: brushBlendMode ?? BrushBlendMode.color,
+      fillBlendMode: fillBlendMode ?? BrushBlendMode.color,
+      fillBlendLock: fillBlendLock,
     );
   }
 
@@ -445,12 +484,16 @@ class BrushToolState {
   /// The outline CUT drags out. See [selectShape].
   final CanvasShapeKind cutShape;
 
+  /// The outline SHAPE FILL drags out. See [selectShape].
+  final CanvasShapeKind fillShape;
+
   /// The outline the ACTIVE tool drags, or null for tools that do not drag
   /// one out (every painting tool, plus MOVE — it drags a region that
   /// already exists rather than tracing a new one).
   CanvasShapeKind? get activeShapeKind => switch (tool) {
     CanvasTool.select => selectShape,
     CanvasTool.cut => cutShape,
+    CanvasTool.fillShape => fillShape,
     _ => null,
   };
 
@@ -469,6 +512,7 @@ class BrushToolState {
   }) => switch (forTool) {
     CanvasTool.select => copyWith(tool: forTool, selectShape: kind),
     CanvasTool.cut => copyWith(tool: forTool, cutShape: kind),
+    CanvasTool.fillShape => copyWith(tool: forTool, fillShape: kind),
     _ => this,
   };
 
@@ -481,6 +525,56 @@ class BrushToolState {
   /// — and like [size] since R26 #10 — a HAND setting outside brush
   /// presets: picking another brush never flips it.
   final BrushBlendMode brushBlendMode;
+
+  /// The FILL's composite mode, kept apart from the brush's (유저 확정:
+  /// 잠금도 블렌드모드 선택도 툴에 산다).
+  ///
+  /// One shared field would mean painting shadows on multiply and then
+  /// reaching for the bucket fills on multiply too — a setting from
+  /// another tool arriving unannounced, which is the leak the cut tool had
+  /// to block on opacity. Two fields make it structural instead of
+  /// remembered.
+  final BrushBlendMode fillBlendMode;
+
+  /// The fill's blend PIN, or null when it is free.
+  ///
+  /// Same meaning as the brush's pin, different home: a brush pins through
+  /// its preset ([BrushShape.lockedBlendMode]) because the pin belongs to
+  /// the brush, and the fill has no preset to belong to, so it pins here.
+  /// What the padlock says is one thing either way — this tool's blend
+  /// does not change until you unlock it.
+  final BrushBlendMode? fillBlendLock;
+
+  /// The blend the ACTIVE tool actually composites with — a pin when there
+  /// is one, otherwise the mode that tool was last set to.
+  ///
+  /// The eraser is not a blend CHOICE: the tool IS the erase blend, and it
+  /// wins over both (R26 #9).
+  BrushBlendMode get activeBlendMode => switch (tool) {
+    CanvasTool.eraser => BrushBlendMode.erase,
+    // Both fill tiles share one blend: they are one tool wearing two ways
+    // of choosing an area (유저 확정: 채우기 툴 하나로 공유).
+    CanvasTool.fill || CanvasTool.fillShape => fillBlendLock ?? fillBlendMode,
+    _ => effectiveBlendMode,
+  };
+
+  /// The pin on the ACTIVE tool's blend, or null when it is free (or when
+  /// the tool composites nothing at all).
+  BrushBlendMode? get activeBlendLock => switch (tool) {
+    CanvasTool.fill || CanvasTool.fillShape => fillBlendLock,
+    _ => lockedBlendMode,
+  };
+
+  /// Whether the active tool composites at all — whether a blend control
+  /// is telling the truth while it is armed.
+  ///
+  /// This is why the strip's blend button used to lie: it was shown for
+  /// every tool, and the fill (and the selection tools, and move) ignored
+  /// it outright.
+  bool get toolHasBlendMode =>
+      tool == CanvasTool.brush ||
+      tool == CanvasTool.eraser ||
+      canvasToolFills(tool);
 
   /// Builds tool state from a preset's model-layer [BrushSettings], clamping
   /// every value into the panel's ranges.
@@ -513,9 +607,14 @@ class BrushToolState {
       tool: tool,
       selectShape: selectShape,
       cutShape: cutShape,
+      fillShape: fillShape,
       stabilizerStrength: stabilizerStrength,
       size: size,
       brushBlendMode: brushBlendMode,
+      // Another tool's blend has nothing to do with which brush is
+      // selected — it rides across for the same reason the shapes do.
+      fillBlendMode: fillBlendMode,
+      fillBlendLock: fillBlendLock,
       color: color,
     );
   }
@@ -529,9 +628,7 @@ class BrushToolState {
       shape,
       // The eraser tool IS the erase blend (locked); a brush whose blend
       // is erase rides the SAME dab flag and kernels.
-      erase:
-          tool == CanvasTool.eraser ||
-          (shape.lockedBlendMode ?? brushBlendMode) == BrushBlendMode.erase,
+      erase: activeBlendMode == BrushBlendMode.erase,
       // A brush that pins a blend wins over the hand setting while it is
       // selected; the hand setting itself is untouched, so leaving the brush
       // restores it. Erase still wins over both: it is the tool, not a blend
@@ -541,9 +638,7 @@ class BrushToolState {
       // 乗算 composite together on the same brush — they are different
       // stages, one loading the brush and one laying the stroke down — so
       // suppressing the blend was a deviation, not a safeguard.
-      blendMode: tool == CanvasTool.eraser
-          ? BrushBlendMode.erase
-          : (shape.lockedBlendMode ?? brushBlendMode),
+      blendMode: activeBlendMode,
       stabilizerStrength: stabilizerStrength,
     );
   }
@@ -586,8 +681,12 @@ class BrushToolState {
     CanvasTool? tool,
     CanvasShapeKind? selectShape,
     CanvasShapeKind? cutShape,
+    CanvasShapeKind? fillShape,
     double? stabilizerStrength,
     BrushBlendMode? brushBlendMode,
+    BrushBlendMode? fillBlendMode,
+    bool clearFillBlendLock = false,
+    BrushBlendMode? fillBlendLock,
   }) {
     return BrushToolState._raw(
       shape: _clampShape(
@@ -631,12 +730,43 @@ class BrushToolState {
       tool: tool ?? this.tool,
       selectShape: selectShape ?? this.selectShape,
       cutShape: cutShape ?? this.cutShape,
+      fillShape: fillShape ?? this.fillShape,
       stabilizerStrength: clampStabilizerStrength(
         stabilizerStrength ?? this.stabilizerStrength,
       ),
       brushBlendMode: brushBlendMode ?? this.brushBlendMode,
+      fillBlendMode: fillBlendMode ?? this.fillBlendMode,
+      fillBlendLock: clearFillBlendLock
+          ? null
+          : (fillBlendLock ?? this.fillBlendLock),
     );
   }
+
+  /// This state with the ACTIVE tool's blend set to [mode].
+  ///
+  /// One control writes to whichever field the armed tool owns, so the
+  /// strip's blend button never has to name a tool — and picking a mode
+  /// for one tool can never reach into another's.
+  BrushToolState withActiveBlendMode(BrushBlendMode mode) => switch (tool) {
+    CanvasTool.fill || CanvasTool.fillShape => copyWith(fillBlendMode: mode),
+    _ => copyWith(brushBlendMode: mode),
+  };
+
+  /// This state with the ACTIVE tool's blend pinned to [mode], or freed
+  /// when [mode] is null.
+  ///
+  /// The brush pins through its PRESET, which is where a brush's pin has
+  /// always belonged (유저: 프리셋 저장된 핀은 그대로 사용하고 싶음); the
+  /// fill has no preset, so it pins on the tool state. Same padlock, same
+  /// promise, different drawer.
+  BrushToolState withActiveBlendLock(BrushBlendMode? mode) => switch (tool) {
+    CanvasTool.fill || CanvasTool.fillShape => mode == null
+        ? copyWith(clearFillBlendLock: true)
+        : copyWith(fillBlendLock: mode),
+    _ => mode == null
+        ? copyWith(clearBlendLock: true)
+        : copyWith(lockedBlendMode: mode),
+  };
 
   /// The pressure curve driving [target], if any.
   BrushPressureCurve? pressureCurveFor(BrushPressureTarget target) =>
@@ -762,11 +892,14 @@ class BrushToolState {
           // the old one as selected.
           other.selectShape == selectShape &&
           other.cutShape == cutShape &&
+          other.fillShape == fillShape &&
           other.stabilizerStrength == stabilizerStrength &&
           // BB-3 audit fix: brushBlendMode was MISSING from ==/hashCode
           // since BB-1 — two states differing only in blend compared
           // equal, so listeners could skip rebuilding on a blend change.
-          other.brushBlendMode == brushBlendMode;
+          other.brushBlendMode == brushBlendMode &&
+          other.fillBlendMode == fillBlendMode &&
+          other.fillBlendLock == fillBlendLock;
 
   @override
   int get hashCode => Object.hash(
@@ -774,7 +907,10 @@ class BrushToolState {
     tool,
     selectShape,
     cutShape,
+    fillShape,
     stabilizerStrength,
     brushBlendMode,
+    fillBlendMode,
+    fillBlendLock,
   );
 }

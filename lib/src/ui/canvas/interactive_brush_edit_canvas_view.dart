@@ -1777,9 +1777,18 @@ class _InteractiveBrushEditCanvasViewState
 
   void _handleFillDab(BrushDab dab) {
     final stamp = dab.stamp;
+    final blend = widget.inputSettings.blendMode;
     _resetOverlay();
-    _overlayModel.erase = false;
-    _overlayModel.blendMode = BrushBlendMode.color; // fills never blend
+    // The fill composites like anything else now (유저 확정: 버킷에도
+    // 블렌드를 깐다) — 뒤에 그리기 puts colour UNDER the line art already
+    // on the cel, which is the whole reason to want it.
+    //
+    // Preview and commit read the SAME value, one line apart: the overlay
+    // pre-blends with the commit's own kernels (R27 #4), so agreeing here
+    // is all it takes for what is shown to be what lands. Setting one and
+    // not the other is the way this goes wrong.
+    _overlayModel.erase = blend == BrushBlendMode.erase;
+    _overlayModel.blendMode = blend;
     final surface = widget.sessionState.canvasState.currentSurface;
     if (stamp != null) {
       final stampLeft = (dab.center.x - stamp.width / 2).round();
@@ -1872,7 +1881,12 @@ class _InteractiveBrushEditCanvasViewState
     if (dab == null || !mounted) {
       return;
     }
-    widget.onSourceStrokeCommitted(BrushStrokeCommitData(sourceDabs: [dab]));
+    widget.onSourceStrokeCommitted(
+      BrushStrokeCommitData(
+        sourceDabs: [dab],
+        blendMode: widget.inputSettings.blendMode,
+      ),
+    );
     _beginSettling();
   }
 

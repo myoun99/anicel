@@ -697,6 +697,15 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                       ),
                     ),
               ),
+              // The SHAPE fill's dab. No cut, no frame, no surfaces: a
+              // drawn outline is filled whatever is under it, so it never
+              // reads the picture — which is why this line is short and
+              // the one above is not.
+              shapeFillDabFor: (shape, color) => buildShapeFillDab(
+                shape: shape,
+                color: color,
+                options: widget.fillOptions?.value ?? const FloodFillOptions(),
+              ),
               // Layers below/above the active one composite around the
               // interactive view from the layer image cache — this is what makes
               // the other layers (and their visibility/opacity) visible while

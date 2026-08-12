@@ -57,6 +57,7 @@ class CanvasSelectionLayer extends StatefulWidget {
     required this.frameToken,
     this.onShapeCommitted,
     this.onCutShape,
+    this.onFillShape,
     this.selectionCommands,
     this.onDragActiveChanged,
     this.onLiftRequested,
@@ -178,6 +179,12 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// not silently swallow one press.
   final ValueChanged<CanvasSelectionShape>? onCutShape;
 
+  /// A finished SHAPE FILL outline. Same arrangement as [onCutShape] and
+  /// for the same reason: the host paints the outline, and the committed
+  /// selection is not touched. The undo it leaves behind is the fill
+  /// itself, arriving through the stroke funnel like any other mark.
+  final ValueChanged<CanvasSelectionShape>? onFillShape;
+
   final CanvasSelectionCommands? selectionCommands;
 
   /// Raised while a selection drag is in progress (the panel holds
@@ -252,6 +259,11 @@ enum CanvasSelectionTool {
   /// arbitration here are the trickiest input code in the app, and a
   /// parallel copy would be the kind that drifts.
   cut,
+
+  /// Hands the finished outline to [CanvasSelectionLayer.onFillShape] to be
+  /// painted, and — like [cut] — leaves the selection alone. Filling a
+  /// shape you drew is not selecting it.
+  fillShape,
 }
 
 enum _DragMode { none, marquee, move, transform, vertexTap }
@@ -2071,7 +2083,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _dragMode = _DragMode.marquee;
         // Nothing to stash while cutting: the drag never touches the
         // region, so there is nothing for a cancel to put back.
-        _shapeBeforeMarquee = widget.tool == CanvasSelectionTool.cut
+        // Nothing to stash for the verbs that never touch the region: the
+        // drag leaves it alone, so a cancel has nothing to put back.
+        _shapeBeforeMarquee =
+            widget.tool == CanvasSelectionTool.cut ||
+                widget.tool == CanvasSelectionTool.fillShape
             ? null
             : _region;
         _marqueeStart = canvasPoint;
@@ -2430,14 +2446,21 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     CanvasSelectionShape? drawn, {
     required CanvasSelectionRegion? before,
   }) {
-    // The CUT verb stops here: the outline goes to the slot and the
-    // selection is left alone. 유저 확정: "잘라내기는 잘라내기만이야. 그러니
-    // 선택으로 남지 않아" — so there is no combine mode to apply, no
-    // history entry to record (a cut is not a selection change), and no
-    // stashed shape to consume.
+    // CUT and SHAPE FILL stop here: the outline goes to the slot or to the
+    // paint, and the selection is left alone. 유저 확정: "잘라내기는
+    // 잘라내기만이야. 그러니 선택으로 남지 않아" — the same law reads for
+    // the shape fill, which fills what you drew rather than choosing it.
+    // So there is no combine mode to apply, no history entry to record for
+    // the region, and no stashed shape to consume.
     if (widget.tool == CanvasSelectionTool.cut) {
       if (drawn != null) {
         widget.onCutShape?.call(drawn);
+      }
+      return;
+    }
+    if (widget.tool == CanvasSelectionTool.fillShape) {
+      if (drawn != null) {
+        widget.onFillShape?.call(drawn);
       }
       return;
     }

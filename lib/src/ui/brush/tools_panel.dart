@@ -113,12 +113,17 @@ class ToolsPanel extends StatelessWidget {
               onPressed: () => onToolChanged(CanvasTool.eyedropper),
             ),
             const SizedBox(height: 4),
+            // ONE Fill button for both tiles — the bucket and the shapes.
+            // Same rule the Select and Cut buttons follow: already on one
+            // of the tiles means stay there, otherwise land on the bucket.
             RailButton(
               keyValue: 'tool-fill-button',
               tooltip: AppText.strings.toolFillTip,
               icon: Icons.format_color_fill_outlined,
-              selected: tool == CanvasTool.fill,
-              onPressed: () => onToolChanged(CanvasTool.fill),
+              selected: canvasToolFills(tool),
+              onPressed: () => onToolChanged(
+                canvasToolFills(tool) ? tool : CanvasTool.fill,
+              ),
             ),
             const SizedBox(height: 4),
             RailButton(
