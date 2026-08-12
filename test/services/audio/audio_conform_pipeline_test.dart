@@ -280,15 +280,38 @@ void main() {
       // reaching this needs the timestamp deliberately put back.
       final source = writeSource('restored.wav');
       final conformPath = '${temp.path}/Conformed/restored.wav.wav';
+      // Stamped explicitly on BOTH sides rather than captured and put back:
+      // reading a timestamp and restoring it does not round-trip on every
+      // filesystem (it does on NTFS and does not on ext4), so a captured
+      // value would make this test measure timestamp precision instead of
+      // the reuse decision. Writing the same literal twice truncates the
+      // same way wherever it runs.
+      const stamp = 1767225600000000; // 2026-01-01T00:00:00Z, whole seconds
+      final stampedAt = DateTime.fromMicrosecondsSinceEpoch(
+        stamp,
+        isUtc: true,
+      );
+      File(source).setLastModifiedSync(stampedAt);
       pipelineFor().ensureConform(
         sourcePath: source,
         conformPath: conformPath,
       );
-      final stamp = File(source).lastModifiedSync();
+
+      final statBefore = AudioConformPipeline.statOf(source);
 
       final other = writeSource('other2.wav', rate: 44100);
       File(source).writeAsBytesSync(File(other).readAsBytesSync());
-      File(source).setLastModifiedSync(stamp);
+      File(source).setLastModifiedSync(stampedAt);
+
+      // The fixture's own precondition, asserted so a filesystem that
+      // stamps differently reports THAT rather than accusing the reuse
+      // decision. Without it, "the hint missed" and "the fixture never
+      // set up a hit" look identical from the failure message.
+      expect(
+        AudioConformPipeline.statOf(source),
+        statBefore,
+        reason: 'the edit had to leave the stat identical to mean anything',
+      );
 
       expect(
         pipelineFor().ensureConform(
