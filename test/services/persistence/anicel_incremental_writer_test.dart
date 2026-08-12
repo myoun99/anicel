@@ -188,6 +188,28 @@ void main() {
       }
     });
 
+    test('every entry carries a REAL CRC-32', () {
+      // Not covered by the decoder round-trip below: `ZipDecoder` defaults
+      // to `verify = false` and its check is commented out in archive
+      // 4.0.9, so `crc = 0` passed everything. The torn-tail recovery walks
+      // local headers and verifies the last complete entry against exactly
+      // this field — with zeros it would discard good data as corrupt.
+      final path = '${directory.path}/crc.anicel';
+      final payload = Uint8List.fromList(List<int>.generate(2048, (i) => i));
+      final layout = writeAnicelArchiveFile(
+        path: path,
+        entries: [(name: 'a.bin', bytes: payload)],
+      );
+
+      expect(layout.entries.single.crc32, anicelCrc32(payload));
+      expect(layout.entries.single.crc32, isNot(0));
+      // And the value the FILE carries, not just the returned layout.
+      expect(
+        parseAnicelZipLayoutFile(path).entryNamed('a.bin')!.crc32,
+        anicelCrc32(payload),
+      );
+    });
+
     test('what it writes is an ordinary ZIP a standard decoder reads', () {
       // Hand-rolled containers are exactly where "our parser agrees with
       // our writer" hides a broken file, so this reads it back with the
