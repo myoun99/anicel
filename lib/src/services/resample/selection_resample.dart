@@ -41,6 +41,8 @@ void resampleSelectionInto({
   required int dstHeight,
   required ResampleTransform transform,
   required ResampleMode mode,
+  int clipX = 0,
+  int clipY = 0,
 }) {
   final engine = QaNativeEngine.instance;
   if (engine != null &&
@@ -54,6 +56,8 @@ void resampleSelectionInto({
         inverse: resampleTransformElements(transform),
         radiusFloor: kSelectionResampleRadiusFloor,
         mode: resampleModeCode(mode),
+        clipX: clipX,
+        clipY: clipY,
       )) {
     return;
   }
@@ -67,6 +71,8 @@ void resampleSelectionInto({
     transform: transform,
     mode: mode,
     radiusFloor: kSelectionResampleRadiusFloor,
+    clipX: clipX,
+    clipY: clipY,
   );
 }
 

@@ -414,6 +414,8 @@ void resampleRgbaReferenceInto({
   double? radiusFloor,
   int rowStart = 0,
   int? rowEnd,
+  int clipX = 0,
+  int clipY = 0,
 }) {
   final endRow = math.min(rowEnd ?? dstHeight, dstHeight);
   if (dstWidth <= 0 || endRow <= rowStart) {
@@ -432,7 +434,7 @@ void resampleRgbaReferenceInto({
     final shiftX = -t.c.round();
     final shiftY = -t.f.round();
     for (var y = rowStart; y < endRow; y += 1) {
-      final sourceY = y - shiftY;
+      final sourceY = y + clipY - shiftY;
       final rowBase = y * dstWidth;
       if (sourceY < 0 || sourceY >= srcHeight) {
         for (var x = 0; x < dstWidth; x += 1) {
@@ -442,7 +444,7 @@ void resampleRgbaReferenceInto({
       }
       final srcRowBase = sourceY * srcWidth;
       for (var x = 0; x < dstWidth; x += 1) {
-        final sourceX = x - shiftX;
+        final sourceX = x + clipX - shiftX;
         dstWords[rowBase + x] = (sourceX < 0 || sourceX >= srcWidth)
             ? kResampleOutsideToken
             : srcWords[srcRowBase + sourceX];
@@ -563,10 +565,16 @@ void resampleRgbaReferenceInto({
   }
 
   for (var y = rowStart; y < endRow; y += 1) {
-    final centreOfY = y + 0.5;
+    // The ABSOLUTE destination row, formed once as an int so every reader
+    // below keeps the two-term sum it had. Adding the clip in doubles
+    // instead would make these three-term sums, and the C kernel's parity
+    // with this reference is expression identity, not value identity.
+    final absoluteY = y + clipY;
+    final centreOfY = absoluteY + 0.5;
     final rowBase = y * dstWidth;
     for (var x = 0; x < dstWidth; x += 1) {
-      final centreOfX = x + 0.5;
+      final absoluteX = x + clipX;
+      final centreOfX = absoluteX + 0.5;
 
       double u, v;
       if (t.isAffine) {
@@ -850,9 +858,9 @@ void resampleRgbaReferenceInto({
           final baseY = ny * kResampleRefineLimit;
           var votes = 0;
           for (var sy = 0; sy < ny; sy += 1) {
-            final sampleY = y + offsets[baseY + sy];
+            final sampleY = absoluteY + offsets[baseY + sy];
             for (var sx = 0; sx < nx; sx += 1) {
-              final sampleX = x + offsets[baseX + sx];
+              final sampleX = absoluteX + offsets[baseX + sx];
               double sampleU, sampleV;
               if (t.isAffine) {
                 sampleU = t.a * sampleX + t.b * sampleY + t.c - 0.5;

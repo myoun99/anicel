@@ -1,6 +1,3 @@
-@Tags(['benchmark'])
-library;
-
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -137,14 +134,20 @@ void main() {
             dst: clipped,
             dstWidth: w,
             dstHeight: h,
+            // The FULL rect's matrix, with the window's position handed
+            // over separately. Folding `ox` into `outLeft` instead is the
+            // arithmetically-equal-but-not-bitwise-equal version, and it
+            // is what made eight of these differ before ABI 26.
             transform: selectionAffineResampleTransform(
               affine: affine,
               srcLeft: srcLeft,
               srcTop: srcTop,
-              outLeft: out.left + ox,
-              outTop: out.top + oy,
+              outLeft: out.left,
+              outTop: out.top,
             ),
             mode: mode,
+            clipX: ox,
+            clipY: oy,
           );
 
           compared += 1;
@@ -176,28 +179,17 @@ void main() {
       'compared, $differing differ'
       '${differences.isEmpty ? "" : "  →  ${differences.join("; ")}"}',
     );
-  }
-
-  test('what else rides on a pointer move: the output buffer itself', () {
-    // Dart zero-fills a new Uint8List, and the kernel then overwrites
-    // every byte of it — so the fill is pure waste, repeated once per
-    // pointer move at the size of the output. Worth knowing the share
-    // before proposing to reuse the buffer.
-    const bytes = 3292 * 2632 * 4; // whole picture at ×1.25
-    final watch = Stopwatch()..start();
-    var sink = 0;
-    for (var i = 0; i < 8; i += 1) {
-      final buffer = Uint8List(bytes);
-      sink += buffer.length;
-    }
-    watch.stop();
-    debugPrint(
-      '[allocation] ${(bytes / 1e6).toStringAsFixed(1)} MB output buffer  '
-      '${(watch.elapsedMicroseconds / 8 / 1000).toStringAsFixed(1)} ms '
-      'per pointer move (allocate + zero-fill, then fully overwritten)',
+    expect(compared, greaterThan(0), reason: 'the sweep ran');
+    expect(
+      differing,
+      0,
+      reason:
+          'a window computed on its own must equal that window of the '
+          'whole, byte for byte — a preview that clips to the viewport is '
+          'only honest if it is the same picture the commit lands. '
+          '${differences.join("; ")}',
     );
-    expect(sink, greaterThan(0));
-  });
+  }
 
   test('a clipped resample that keeps the destination GRID: native vs the '
       'Dart reference', () {

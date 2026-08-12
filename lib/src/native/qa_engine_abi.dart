@@ -71,7 +71,22 @@ import 'dart:io';
 ///   never changed, app builds recompile the C, and a stale standalone
 ///   test binary fails the parity suite loudly rather than quietly
 ///   resampling differently.
-const int kQaEngineAbiVersion = 25;
+///
+/// - v26: `qa_resample_rgba` gained `clip_x` / `clip_y` — where the
+///   destination buffer sits inside the FULL output rect the matrix was
+///   built for. Zero is what every existing caller passes and means "the
+///   buffer IS the rect".
+///
+///   It exists so a preview can resample only the pixels on screen. That
+///   was tried before by recomputing the output rect, and abandoned
+///   because the results differed: the destination pixel grid is anchored
+///   to the rect's origin, so moving the origin moves every sample. The
+///   offset keeps the grid and moves only the INDEX, which makes a window
+///   bit-identical to the same window of the whole — the source position
+///   comes out of the same multiply-add on the same operands rather than
+///   out of an origin folded into `c`, and folding is where a position
+///   sitting exactly on a pixel boundary rounds the other way.
+const int kQaEngineAbiVersion = 26;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///
@@ -107,8 +122,7 @@ String? debugQaEngineLibraryPathOverride;
 /// Dart reference, a platform fallback, or an honest stand-down.
 DynamicLibrary? openQaEngineLibrary() {
   final library = _open(
-    debugQaEngineLibraryPathOverride ??
-        Platform.environment['QA_ENGINE_PATH'],
+    debugQaEngineLibraryPathOverride ?? Platform.environment['QA_ENGINE_PATH'],
   );
   if (library == null) {
     return null;

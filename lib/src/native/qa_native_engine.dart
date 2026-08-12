@@ -475,10 +475,12 @@ class QaNativeEngine {
     Pointer<Double> inverse,
     double radiusFloor,
     int mode,
+    int clipX,
+    int clipY,
   )
   _resampleRgba;
 
-  /// The shared image resampler (ABI 25). Semantics =
+  /// The shared image resampler (ABI 26). Semantics =
   /// `resampleRgbaReference` in
   /// `lib/src/services/resample/resample_kernel.dart`, byte parity pinned
   /// by `resample_parity_test.dart`.
@@ -486,6 +488,11 @@ class QaNativeEngine {
   /// [inverse] is nine doubles, row-major, destination-to-source, with the
   /// homogeneous row last. [mode] is 0 for the tent mean and 1 for the
   /// coverage argmax. Returns 0, or negative on bad arguments.
+  ///
+  /// [clipX]/[clipY] say where this destination buffer sits inside the
+  /// FULL output rect [inverse] was built for; 0/0 means it IS the rect.
+  /// A window keeps the whole rect's pixel grid, which is what makes it
+  /// bit-identical to that window of the whole.
   int resampleRgba({
     required Pointer<Uint8> src,
     required int srcWidth,
@@ -496,6 +503,8 @@ class QaNativeEngine {
     required Pointer<Double> inverse,
     required double radiusFloor,
     required int mode,
+    int clipX = 0,
+    int clipY = 0,
   }) {
     return _resampleRgba(
       src,
@@ -507,6 +516,8 @@ class QaNativeEngine {
       inverse,
       radiusFloor,
       mode,
+      clipX,
+      clipY,
     );
   }
 
@@ -536,6 +547,8 @@ class QaNativeEngine {
     required Float64List inverse,
     required double radiusFloor,
     required int mode,
+    int clipX = 0,
+    int clipY = 0,
   }) {
     if (inverse.length != 9) {
       return false;
@@ -563,6 +576,8 @@ class QaNativeEngine {
       inverse: _resampleInverse,
       radiusFloor: radiusFloor,
       mode: mode,
+      clipX: clipX,
+      clipY: clipY,
     );
     if (status != 0) {
       return false;
@@ -1092,6 +1107,8 @@ class QaNativeEngine {
               Pointer<Double>,
               Double,
               Int32,
+              Int32,
+              Int32,
             ),
             int Function(
               Pointer<Uint8>,
@@ -1102,6 +1119,8 @@ class QaNativeEngine {
               int,
               Pointer<Double>,
               double,
+              int,
+              int,
               int,
             )
           >('qa_resample_rgba');

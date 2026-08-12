@@ -3932,6 +3932,20 @@ typedef struct {
   int32_t is_integer_translation;
   double radius_floor;
   int32_t mode;
+  // Where this destination buffer sits inside the FULL output rect the
+  // transform was built for. Zero means "the buffer is the whole rect",
+  // which is every caller that does not clip.
+  //
+  // A window keeps the whole rect's pixel GRID: destination pixel (x, y)
+  // of the buffer is absolute pixel (x + clip_x, y + clip_y), and the
+  // matrix is the one the whole rect would use. That is what makes a
+  // window bit-identical to the same window of the whole — the source
+  // position below comes out of the same multiply-add on the same
+  // operands, rather than out of an origin folded into `c` (equal in
+  // arithmetic, not in doubles, and a position sitting exactly on a pixel
+  // boundary rounds the other way).
+  int32_t clip_x;
+  int32_t clip_y;
 } qa_resample_context;
 
 static void qa_resample_rows(
@@ -3951,7 +3965,7 @@ static void qa_resample_rows(
     const int64_t shift_x = -llround(ctx->c);
     const int64_t shift_y = -llround(ctx->f);
     for (int32_t y = row_start; y < row_end; y += 1) {
-      const int64_t source_y = (int64_t)y - shift_y;
+      const int64_t source_y = (int64_t)y + ctx->clip_y - shift_y;
       uint32_t* row = dst + (ptrdiff_t)y * dst_width;
       if (source_y < 0 || source_y >= src_height) {
         for (int32_t x = 0; x < dst_width; x += 1) {
@@ -3961,7 +3975,7 @@ static void qa_resample_rows(
       }
       const uint32_t* source_row = src + (ptrdiff_t)source_y * src_width;
       for (int32_t x = 0; x < dst_width; x += 1) {
-        const int64_t source_x = (int64_t)x - shift_x;
+        const int64_t source_x = (int64_t)x + ctx->clip_x - shift_x;
         row[x] = (source_x < 0 || source_x >= src_width)
                      ? 0u
                      : source_row[source_x];
@@ -4027,10 +4041,17 @@ static void qa_resample_rows(
   }
 
   for (int32_t y = row_start; y < row_end; y += 1) {
-    const double centre_of_y = (double)y + 0.5;
+    // The ABSOLUTE destination row, formed once in the integer domain so
+    // every reader below keeps the two-term double sum it had. Adding the
+    // clip in doubles instead would make these three-term sums, and this
+    // kernel's parity with the Dart reference is expression identity, not
+    // value identity - see the -ffp-contract note at the top of the file.
+    const int64_t absolute_y = (int64_t)y + ctx->clip_y;
+    const double centre_of_y = (double)absolute_y + 0.5;
     uint32_t* row = dst + (ptrdiff_t)y * dst_width;
     for (int32_t x = 0; x < dst_width; x += 1) {
-      const double centre_of_x = (double)x + 0.5;
+      const int64_t absolute_x = (int64_t)x + ctx->clip_x;
+      const double centre_of_x = (double)absolute_x + 0.5;
 
       double u;
       double v;
@@ -4266,9 +4287,10 @@ static void qa_resample_rows(
           const int32_t base_y = ny * offset_stride;
           int32_t votes = 0;
           for (int32_t sy = 0; sy < ny; sy += 1) {
-            const double sample_y = (double)y + offsets[base_y + sy];
+            const double sample_y = (double)absolute_y + offsets[base_y + sy];
             for (int32_t sx = 0; sx < nx; sx += 1) {
-              const double sample_x = (double)x + offsets[base_x + sx];
+              const double sample_x =
+                  (double)absolute_x + offsets[base_x + sx];
               double sample_u;
               double sample_v;
               if (ctx->is_affine) {
@@ -4468,7 +4490,9 @@ QA_EXPORT int32_t qa_resample_rgba(
     int32_t dst_height,
     const double* inverse,
     double radius_floor,
-    int32_t mode) {
+    int32_t mode,
+    int32_t clip_x,
+    int32_t clip_y) {
   if (src == NULL || dst == NULL || inverse == NULL) {
     return -1;
   }
@@ -4500,6 +4524,8 @@ QA_EXPORT int32_t qa_resample_rgba(
   ctx.i = inverse[8];
   ctx.radius_floor = radius_floor;
   ctx.mode = mode;
+  ctx.clip_x = clip_x;
+  ctx.clip_y = clip_y;
   ctx.is_affine = (ctx.g == 0.0 && ctx.h == 0.0 && ctx.i == 1.0) ? 1 : 0;
   // "Is a whole number" via trunc(), not llround(): llround is undefined
   // past the int64 range, where Dart's roundToDouble() is simply the
@@ -4529,4 +4555,7 @@ QA_EXPORT int32_t qa_resample_rgba(
 // v25: qa_resample_rgba - the shared image resampler (tent mean / coverage
 // argmax) behind the transform tool, FX transforms, import fit and screen
 // minification.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 25; }
+// v26: qa_resample_rgba gained clip_x/clip_y - where the destination
+// buffer sits inside the full output rect, so a caller can compute one
+// window of it bit-identically. Zero is the whole rect.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 26; }
