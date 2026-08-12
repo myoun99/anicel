@@ -2442,10 +2442,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (dab == null) {
       return;
     }
+    final blend = widget.brushToolState.activeBlendMode;
     _commitSourceStroke(
       BrushStrokeCommitData(
-        sourceDabs: [dab],
-        blendMode: widget.brushToolState.activeBlendMode,
+        // ERASE rides a flag on the DAB, not the blend mode: the
+        // materializer reads `dab.erase` per dab and the erase blend takes
+        // the plain path, so passing the mode alone would paint the shape
+        // instead of clearing it. This is what makes 사각형/올가미 지우개
+        // out of the erase entry in the blend list.
+        sourceDabs: [
+          blend == BrushBlendMode.erase ? dab.copyWith(erase: true) : dab,
+        ],
+        blendMode: blend,
       ),
     );
   }

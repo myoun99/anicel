@@ -3,9 +3,12 @@ import 'package:flutter/gestures.dart' show kMiddleMouseButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
+import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -33,6 +36,61 @@ void main() {
   );
 
   Widget app(Widget panel) => MaterialApp(home: Scaffold(body: panel));
+
+  int inkAt(BrushFrameEditingCoordinator coordinator, int x, int y) =>
+      surfacePixelRgba(
+        coordinator.currentSurfaceOf(coordinator.activeFrameKey),
+        x,
+        y,
+      ) ??
+      0;
+
+  testWidgets('the bucket on the erase blend REMOVES ink', (tester) async {
+    // The other half of 유저 확정 ③ (erase is in the blend list), and the
+    // half that is easy to leave behind: this path builds its commit in
+    // the interactive VIEW while the shape fill builds its own in the
+    // panel. Erase rides a flag on the DAB, so passing only the blend mode
+    // would paint the flooded region instead of clearing it — asserted on
+    // the raster, because a flag can be set and still not erase.
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+    );
+    coordinator.commitSourceStroke(
+      sourceDabs: [
+        for (var x = 0; x <= 12; x += 2)
+          fillDab(0xFF000000).copyWith(
+            center: CanvasPoint(x: x.toDouble(), y: 4),
+          ),
+      ],
+    );
+    expect(inkAt(coordinator, 4, 4), isNonZero, reason: 'ink to erase');
+
+    await tester.pumpWidget(
+      app(
+        BrushCanvasPanel(
+          coordinator: coordinator,
+          availableFrameKeys: frameKeys,
+          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+          brushToolState: BrushToolState.defaults.copyWith(
+            tool: CanvasTool.fill,
+            fillBlendMode: BrushBlendMode.erase,
+          ),
+          fillDabAt: (_, color) => fillDab(color),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tapAt(
+      tester.getTopLeft(
+            find.byKey(const ValueKey<String>('brush-canvas-view')),
+          ) +
+          const Offset(4, 4),
+    );
+    await tester.pumpAndSettle();
+
+    expect(inkAt(coordinator, 4, 4), 0, reason: 'the ink is gone');
+  });
 
   testWidgets('painting tools mount no tap layer', (tester) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();

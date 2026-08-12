@@ -7,6 +7,7 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
@@ -57,6 +58,7 @@ void main() {
     WidgetTester tester, {
     CanvasTool tool = CanvasTool.select,
     CanvasShapeKind shapeKind = CanvasShapeKind.rect,
+    BrushBlendMode blendMode = BrushBlendMode.color,
     // Extra committed ink, mounted with the fixture. `null` replaces the
     // in-canvas stroke entirely (a cel whose only ink is off-canvas).
     List<BrushDab>? sourceDabs,
@@ -96,6 +98,7 @@ void main() {
                 tool: tool,
                 selectShape: shapeKind,
                 fillShape: shapeKind,
+                fillBlendMode: blendMode,
               ),
               selectionCommands: commands,
               shapeFillDabFor: (shape, color) => buildShapeFillDab(
@@ -2341,6 +2344,25 @@ void main() {
       isNull,
       reason: 'and made no selection doing it',
     );
+  });
+
+  testWidgets('a shape fill on the erase blend REMOVES ink', (tester) async {
+    // 유저 확정 ③: erase is in the blend list, which makes the shapes into
+    // an eraser. Asserted on the raster, not on a flag: erase is carried
+    // per DAB and not by the blend mode at commit, so a fill handed only
+    // `blendMode: erase` takes the plain path and paints the region. That
+    // is exactly what this file caught.
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.fillShape,
+      blendMode: BrushBlendMode.erase,
+    );
+    expect(inkAt(env.coordinator, 45, 45), isNonZero, reason: 'ink to erase');
+
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await tester.pump();
+
+    expect(inkAt(env.coordinator, 45, 45), 0, reason: 'the ink is gone');
   });
 
   group('polygon', () {

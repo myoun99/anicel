@@ -1775,9 +1775,17 @@ class _InteractiveBrushEditCanvasViewState
   BrushDab? _pendingFillCommitDab;
   int _fillOverlayToken = 0;
 
-  void _handleFillDab(BrushDab dab) {
-    final stamp = dab.stamp;
+  void _handleFillDab(BrushDab rawDab) {
     final blend = widget.inputSettings.blendMode;
+    // ERASE is not carried by the blend mode at commit — it is a flag on
+    // the DAB, read per dab by the materializer. A fill arrives as one
+    // stamp dab built with no opinion about erasing, so handing the
+    // kernels `blendMode: erase` alone would take the plain path with the
+    // flag still false and PAINT the region instead of clearing it.
+    final dab = blend == BrushBlendMode.erase
+        ? rawDab.copyWith(erase: true)
+        : rawDab;
+    final stamp = dab.stamp;
     _resetOverlay();
     // The fill composites like anything else now (유저 확정: 버킷에도
     // 블렌드를 깐다) — 뒤에 그리기 puts colour UNDER the line art already
