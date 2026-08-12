@@ -96,7 +96,16 @@ Uint8List buildAnicelProjectJsonBytes({
   );
 }
 
-/// Builds the .anicel bytes whole (full save / compaction).
+/// Builds the .anicel bytes whole, IN MEMORY.
+///
+/// No longer how a SAVE writes: `writeAnicelArchiveFile` streams entry by
+/// entry so a full save never holds the project twice. This survives
+/// because it can hand back BYTES without a file — which is what fixtures
+/// want, and what `tool/cut_scale_project.dart` builds with.
+///
+/// ⚠️ Keep it byte-compatible with the streaming writer or fixtures stop
+/// standing in for what production writes. Both are pinned against
+/// `parseAnicelArchiveBytes`, which is what makes that checkable.
 Uint8List buildAnicelArchiveBytes({
   required Project project,
   required List<AnicelCelBlob> cels,

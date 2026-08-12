@@ -328,28 +328,9 @@ AnicelZipLayout appendAnicelEntries({
   final appended = <AnicelZipEntry>[];
   var writeOffset = layout.centralDirectoryOffset;
 
-  Uint8List localHeader(String name, Uint8List bytes, int crc) {
-    final nameBytes = Uint8List.fromList(name.codeUnits);
-    final header = ByteData(30);
-    header.setUint32(0, _localSignature, Endian.little);
-    header.setUint16(4, 20, Endian.little); // version needed
-    header.setUint16(6, 0, Endian.little); // flags
-    header.setUint16(8, 0, Endian.little); // method 0 = STORE
-    header.setUint32(10, 0, Endian.little); // dos time/date
-    header.setUint32(14, crc, Endian.little);
-    header.setUint32(18, bytes.length, Endian.little);
-    header.setUint32(22, bytes.length, Endian.little);
-    header.setUint16(26, nameBytes.length, Endian.little);
-    header.setUint16(28, 0, Endian.little);
-    final out = BytesBuilder(copy: false)
-      ..add(header.buffer.asUint8List())
-      ..add(nameBytes);
-    return out.takeBytes();
-  }
-
   for (final entry in newEntries.entries) {
     final crc = anicelCrc32(entry.value);
-    final header = localHeader(entry.key, entry.value, crc);
+    final header = _localHeaderBytes(entry.key, entry.value.length, crc);
     appended.add(
       AnicelZipEntry(
         name: entry.key,
@@ -367,9 +348,109 @@ AnicelZipLayout appendAnicelEntries({
 
   // Central directory over survivors + appended.
   final centralOffset = writeOffset;
-  final central = BytesBuilder(copy: false);
   final all = [...survivors, ...appended];
-  for (final entry in all) {
+  final centralBytes = _centralDirectoryBytes(all);
+  final eocd = _eocdBytes(
+    entryCount: all.length,
+    centralLength: centralBytes.length,
+    centralOffset: centralOffset,
+  );
+
+  // One sequential write: truncate at the old central directory, then
+  // locals + central + EOCD.
+  final raf = file.openSync(mode: FileMode.append);
+  try {
+    raf.truncateSync(layout.centralDirectoryOffset);
+    raf.setPositionSync(layout.centralDirectoryOffset);
+    raf.writeFromSync(builder.takeBytes());
+    raf.writeFromSync(centralBytes);
+    raf.writeFromSync(eocd);
+    raf.flushSync();
+  } finally {
+    raf.closeSync();
+  }
+
+  return AnicelZipLayout(entries: all, centralDirectoryOffset: centralOffset);
+}
+
+/// Writes a COMPLETE .anicel to [path], one entry at a time.
+///
+/// The full-save counterpart of [appendAnicelEntries], and it exists for
+/// memory rather than speed: building the archive as one `Uint8List` and
+/// handing it back from the save isolate held the whole project twice —
+/// once built, once copied across the port — before a byte reached the
+/// disk. On a tablet that is the allocation the OS kills the app over, and
+/// the save most likely to be running is the one that fires as the app
+/// goes to the background.
+///
+/// [entries] is pulled LAZILY, so a caller that resolves each cel as it is
+/// asked for keeps exactly one cel resident. Every entry is STORE'd — cel
+/// blobs carry their own deflate — so a length is known before its bytes
+/// are written and nothing needs a second pass.
+AnicelZipLayout writeAnicelArchiveFile({
+  required String path,
+  required Iterable<({String name, Uint8List bytes})> entries,
+}) {
+  final written = <AnicelZipEntry>[];
+  var offset = 0;
+  final raf = File(path).openSync(mode: FileMode.write);
+  try {
+    for (final entry in entries) {
+      final crc = anicelCrc32(entry.bytes);
+      final header = _localHeaderBytes(entry.name, entry.bytes.length, crc);
+      raf.writeFromSync(header);
+      raf.writeFromSync(entry.bytes);
+      written.add(
+        AnicelZipEntry(
+          name: entry.name,
+          localHeaderOffset: offset,
+          dataOffset: offset + header.length,
+          length: entry.bytes.length,
+          crc32: crc,
+        ),
+      );
+      offset += header.length + entry.bytes.length;
+    }
+    final centralBytes = _centralDirectoryBytes(written);
+    raf.writeFromSync(centralBytes);
+    raf.writeFromSync(
+      _eocdBytes(
+        entryCount: written.length,
+        centralLength: centralBytes.length,
+        centralOffset: offset,
+      ),
+    );
+    raf.flushSync();
+  } finally {
+    raf.closeSync();
+  }
+  return AnicelZipLayout(entries: written, centralDirectoryOffset: offset);
+}
+
+/// A STORE'd local file header + its name. [length] is both sizes: no
+/// compression happens at the ZIP layer.
+Uint8List _localHeaderBytes(String name, int length, int crc) {
+  final nameBytes = Uint8List.fromList(name.codeUnits);
+  final header = ByteData(30);
+  header.setUint32(0, _localSignature, Endian.little);
+  header.setUint16(4, 20, Endian.little); // version needed
+  header.setUint16(6, 0, Endian.little); // flags
+  header.setUint16(8, 0, Endian.little); // method 0 = STORE
+  header.setUint32(10, 0, Endian.little); // dos time/date
+  header.setUint32(14, crc, Endian.little);
+  header.setUint32(18, length, Endian.little);
+  header.setUint32(22, length, Endian.little);
+  header.setUint16(26, nameBytes.length, Endian.little);
+  header.setUint16(28, 0, Endian.little);
+  final out = BytesBuilder(copy: false)
+    ..add(header.buffer.asUint8List())
+    ..add(nameBytes);
+  return out.takeBytes();
+}
+
+Uint8List _centralDirectoryBytes(List<AnicelZipEntry> entries) {
+  final central = BytesBuilder(copy: false);
+  for (final entry in entries) {
     final nameBytes = Uint8List.fromList(entry.name.codeUnits);
     final record = ByteData(46);
     record.setUint32(0, _centralSignature, Endian.little);
@@ -387,27 +468,19 @@ AnicelZipLayout appendAnicelEntries({
       ..add(record.buffer.asUint8List())
       ..add(nameBytes);
   }
-  final centralBytes = central.takeBytes();
+  return central.takeBytes();
+}
+
+Uint8List _eocdBytes({
+  required int entryCount,
+  required int centralLength,
+  required int centralOffset,
+}) {
   final eocd = ByteData(22);
   eocd.setUint32(0, _eocdSignature, Endian.little);
-  eocd.setUint16(8, all.length, Endian.little);
-  eocd.setUint16(10, all.length, Endian.little);
-  eocd.setUint32(12, centralBytes.length, Endian.little);
+  eocd.setUint16(8, entryCount, Endian.little);
+  eocd.setUint16(10, entryCount, Endian.little);
+  eocd.setUint32(12, centralLength, Endian.little);
   eocd.setUint32(16, centralOffset, Endian.little);
-
-  // One sequential write: truncate at the old central directory, then
-  // locals + central + EOCD.
-  final raf = file.openSync(mode: FileMode.append);
-  try {
-    raf.truncateSync(layout.centralDirectoryOffset);
-    raf.setPositionSync(layout.centralDirectoryOffset);
-    raf.writeFromSync(builder.takeBytes());
-    raf.writeFromSync(centralBytes);
-    raf.writeFromSync(eocd.buffer.asUint8List());
-    raf.flushSync();
-  } finally {
-    raf.closeSync();
-  }
-
-  return AnicelZipLayout(entries: all, centralDirectoryOffset: centralOffset);
+  return eocd.buffer.asUint8List();
 }
