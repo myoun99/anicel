@@ -13,6 +13,7 @@ import 'timeline_shift_buttons.dart';
 import '../widgets/command_pill.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
+import 'layer_label_controls.dart' show layerKindIcon;
 import 'timeline_section_policy.dart';
 import '../theme/app_theme.dart';
 import '../text/app_strings.dart';
@@ -148,8 +149,13 @@ class TimelineActionToolbar extends StatelessWidget {
 
   final EditorSessionManager session;
 
-  /// The unified Add Layer entrance (same kind as the selection); the band
-  /// above it adds kind-explicitly via [EditorSessionManager.addLayerOfKind].
+  /// ⛔KEPT FOR ITS HOSTS, NO LONGER THE `＋`'s ACTION.
+  ///
+  /// ⑥ 유저 2026-08-12: 「레이어 +버튼, 선택된 레이어 기준이아니라 애니메이션
+  /// 레이어 생성.」 The `＋` makes an ANIMATION layer now — a button that made
+  /// a different kind depending on where you were standing could not be
+  /// pressed without first looking, which is the opposite of what a bar
+  /// button is for. The band above it still offers every kind explicitly.
   final VoidCallback onAddLayer;
 
   final VoidCallback onRenameLayer;
@@ -197,6 +203,18 @@ class TimelineActionToolbar extends StatelessWidget {
   /// kinds keep their old any-cell gate, SE needs an EMPTY cell (covered
   /// cells edit instead), camera/instruction key/upsert anywhere.
   bool get _canCreateInstance {
+    // ⑬ 유저 2026-08-12: 「스토리보드패널 트랜지션레이어 왜 프레임 추가버튼
+    // 불가능하지?」
+    //
+    // 🚨The host answers FIRST, for the same reason Edit Instance does: the
+    // storyboard rail's standing row is separate state from the cut's drawing
+    // target (user 2026-07-27), so a row that lives only on that rail — the
+    // transition row — is invisible to anything reading `activeLayer`. #925
+    // taught Edit Instance to ask; `＋` was left behind and went on greying
+    // out on the one row the user was standing on.
+    if (resolveCanEditInstance?.call() case true) {
+      return true;
+    }
     final layer = session.activeLayer;
     if (layer == null || !session.hasActiveNonNegativeCell) {
       return false;
@@ -236,67 +254,76 @@ class TimelineActionToolbar extends StatelessWidget {
     };
   }
 
+  /// The key suffix each kind's Add entry has always used — spelled out
+  /// rather than derived from `kind.name`, so a rename of the enum cannot
+  /// silently move a widget key the tests aim at.
+  static String _addLayerKeySuffix(LayerKind kind) => switch (kind) {
+    LayerKind.animation => 'animation',
+    LayerKind.storyboard => 'storyboard',
+    LayerKind.image => 'image',
+    LayerKind.text => 'text',
+    LayerKind.se => 'se',
+    LayerKind.instruction => 'instruction',
+    LayerKind.adjustment => 'adjustment',
+    LayerKind.folder => 'folder',
+    LayerKind.camera => 'camera',
+    LayerKind.transition => 'transition',
+  };
+
+  static String _addLayerLabel(LayerKind kind) => switch (kind) {
+    LayerKind.animation => AppText.strings.tlKindAnimation,
+    LayerKind.storyboard => AppText.strings.tlKindStoryboard,
+    LayerKind.image => AppText.strings.tlKindImage,
+    LayerKind.text => AppText.strings.tlKindText,
+    LayerKind.se => AppText.strings.tlKindSe,
+    LayerKind.instruction => AppText.strings.tlKindInstruction,
+    LayerKind.adjustment => AppText.strings.tlKindAdjustment,
+    LayerKind.folder => AppText.strings.tlKindFolder,
+    // Neither is offered by the Add menu — a cut owns exactly one camera and
+    // the transition row belongs to the track.
+    LayerKind.camera || LayerKind.transition => '',
+  };
+
   List<PanelFlyoutEntry> _addLayerEntries() {
     return [
       PanelFlyoutHeader(AppText.strings.tlAddLayerHeader),
-      PanelFlyoutItem(
-        keyValue: 'add-layer-kind-same',
-        label: AppText.strings.tlSameAsSelected,
-        icon: Icons.add,
-        onSelected: onAddLayer,
-      ),
-      const PanelFlyoutDivider(),
-      PanelFlyoutItem(
-        keyValue: 'add-layer-kind-animation',
-        label: AppText.strings.tlKindAnimation,
-        onSelected: () => session.addLayerOfKind(LayerKind.animation),
-      ),
-      PanelFlyoutItem(
-        keyValue: 'add-layer-kind-storyboard',
-        label: AppText.strings.tlKindStoryboard,
-        // R9 #7: one storyboard row per cut — the entry greys out once the
-        // cut has it, instead of accepting the tap and doing nothing.
-        enabled: session.canAddLayerOfKind(LayerKind.storyboard),
-        onSelected: () => session.addLayerOfKind(LayerKind.storyboard),
-      ),
-      PanelFlyoutItem(
-        keyValue: 'add-layer-kind-image',
-        label: AppText.strings.tlKindImage,
-        onSelected: () => session.addLayerOfKind(LayerKind.image),
-      ),
-      PanelFlyoutItem(
-        keyValue: 'add-layer-kind-text',
-        label: AppText.strings.tlKindText,
-        onSelected: () => session.addLayerOfKind(LayerKind.text),
-      ),
-      PanelFlyoutItem(
-        keyValue: 'add-layer-kind-se',
-        label: AppText.strings.tlKindSe,
-        onSelected: () => session.addLayerOfKind(LayerKind.se),
-      ),
-      PanelFlyoutItem(
-        keyValue: 'add-layer-kind-instruction',
-        label: AppText.strings.tlKindInstruction,
-        onSelected: () => session.addLayerOfKind(LayerKind.instruction),
-      ),
-      // R6b: the row that filters everything below it. It lands above the
-      // active layer like every other kind, which is what puts the rows it
-      // grades underneath it.
-      PanelFlyoutItem(
-        keyValue: 'add-layer-kind-adjustment',
-        label: AppText.strings.tlKindAdjustment,
-        icon: Icons.tune,
-        onSelected: () => session.addLayerOfKind(LayerKind.adjustment),
-      ),
-      // R5 #14: a FOLDER is something you add, empty, and then fill by
-      // dropping rows on it — the file-manager shape, replacing "group the
-      // active layer into a folder".
-      PanelFlyoutItem(
-        keyValue: 'add-layer-kind-folder',
-        label: AppText.strings.tlKindFolder,
-        icon: Icons.create_new_folder_outlined,
-        onSelected: () => session.addLayerOfKind(LayerKind.folder),
-      ),
+      // ⛔NO 「현재 선택한 레이어와 같은 종류」 entry (유저 2026-08-12:
+      // 「레이어 +에 있는 현재 선택한 레이어로 생성 삭제. 필요없음. 묻지마.」).
+      // The `＋` itself makes an animation layer now, so an entry meaning
+      // "whatever is selected" answered a question nothing asks.
+      //
+      // ★EVERY entry wears its kind's own icon, and they come from
+      // [layerKindIcon] rather than being chosen here (유저: 「레이어 생성,
+      // 아이콘이 있고없고 그러는데, 다 아이콘 앞에 붙임」). Three of these
+      // used to carry a hand-picked glyph and the rest carried none — which
+      // is how the list came to disagree with the rail it creates rows for.
+      // One table, so the menu and the row can never show different pictures
+      // of the same noun.
+      for (final kind in const [
+        LayerKind.animation,
+        LayerKind.storyboard,
+        LayerKind.image,
+        LayerKind.text,
+        LayerKind.se,
+        LayerKind.instruction,
+        // R6b: the row that filters everything below it. It lands above the
+        // active layer like every other kind, which is what puts the rows it
+        // grades underneath it.
+        LayerKind.adjustment,
+        // R5 #14: a FOLDER is something you add, empty, and then fill by
+        // dropping rows on it — the file-manager shape, replacing "group the
+        // active layer into a folder".
+        LayerKind.folder,
+      ])
+        PanelFlyoutItem(
+          keyValue: 'add-layer-kind-${_addLayerKeySuffix(kind)}',
+          label: _addLayerLabel(kind),
+          icon: layerKindIcon(kind),
+          // R9 #7: one storyboard row per cut — the entry greys out once the
+          // cut has it, instead of accepting the tap and doing nothing.
+          enabled: session.canAddLayerOfKind(kind),
+          onSelected: () => session.addLayerOfKind(kind),
+        ),
       // Attach layers (W5, UI-R20 #8 / UI-R21 #3): the same entrance the
       // Layer menu has — own cels riding the base's FX. FREE authors its
       // own timeline; SYNCED mirrors the base's exposures (ghost rows).
@@ -623,7 +650,10 @@ class TimelineActionToolbar extends StatelessWidget {
           icon: Icons.add,
           tooltip: AppText.strings.tlAddLayerHeader,
           accent: true,
-          onPressed: onAddLayer,
+          // ⑥: ONE kind, always — 유저 「선택된 레이어 기준이아니라 애니메이션
+          // 레이어 생성」. Placement is unchanged (above the selected row, and
+          // the top of the action section when that is not a legal home).
+          onPressed: () => session.addLayerOfKind(LayerKind.animation),
           entriesBuilder: _addLayerEntries,
         ),
         // ⚠️THE LAYER DELETE STAYS HERE UNTIL ⑨ LANDS.
