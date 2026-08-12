@@ -6091,15 +6091,21 @@ class EditorSessionManager extends ChangeNotifier {
   /// (start, length) and deleting the block silences it. Importing onto an
   /// empty cell creates the SE instance first (its own undo step), then
   /// links the sound (one more).
-  void addAudioClipToActiveSeLayer(String filePath) {
+  void addAudioClipToActiveSeLayer(
+    String filePath, {
+    required bool copyIntoProject,
+  }) {
     final layer = activeLayer;
     if (layer == null || layer.kind != LayerKind.se) {
       return;
     }
-    // Copy-on-import into the project's Media/ folder (falls back to the
-    // original path while unsaved), then conform from scratch — the file
-    // may have changed on disk since a previous import.
-    final effectivePath = importAudioFile(filePath);
+    // Copy or reference per the import's choice, then conform from
+    // scratch — the file may have changed on disk since a previous
+    // import.
+    final effectivePath = importAudioFile(
+      filePath,
+      copyIntoProject: copyIntoProject,
+    );
     final frameIndex = _timelineController.currentFrameIndex < 0
         ? 0
         : _timelineController.currentFrameIndex;
@@ -6132,17 +6138,26 @@ class EditorSessionManager extends ChangeNotifier {
 
   // --- Audio import: originals into the project's Media/ folder ------------
 
-  /// Brings [sourcePath] into the project: copies it into
-  /// `<project>.assets/Media/` (the Pro Tools/Logic copy-on-import
-  /// default — the project folder owns its sounds, so a Drive folder
-  /// opened on another machine has them) and kicks its conform. Returns
+  /// Brings [sourcePath] into the project and kicks its conform. Returns
   /// the path the project should reference from here on.
   ///
-  /// Falls back to referencing [sourcePath] directly when there is nowhere
-  /// to copy yet (never-saved project) or the copy fails — an import must
-  /// degrade to Premiere-style referencing, never refuse.
-  String importAudioFile(String sourcePath) {
-    final effectivePath = _copyIntoProjectMedia(sourcePath);
+  /// With [copyIntoProject] the file is copied into
+  /// `<project>.assets/Media/` (the Pro Tools/Logic rule — the project
+  /// folder owns its sounds, so a Drive folder opened on another machine
+  /// has them); without it the original stays where it is and the project
+  /// points at it.
+  ///
+  /// A copy falls back to referencing [sourcePath] directly when there is
+  /// nowhere to copy yet (never-saved project) or the copy fails — an
+  /// import must degrade to Premiere-style referencing, never refuse.
+  String importAudioFile(
+    String sourcePath, {
+    required bool copyIntoProject,
+  }) {
+    final effectivePath = _mediaPathFor(
+      sourcePath,
+      copyIntoProject: copyIntoProject,
+    );
     // Fresh conform + waveform budget: on a re-import the file may have
     // changed on disk. (A byte-identical reused copy re-fingerprints
     // against the existing conform and lands as `reused` without a
@@ -6152,28 +6167,37 @@ class EditorSessionManager extends ChangeNotifier {
     return effectivePath;
   }
 
-  /// The media browser's import: same copy-in as a timeline import, pool
-  /// only (no clip link). Non-audio kinds register with their detected
-  /// kind (R3b) — the batch stays one undo through [addMediaAssets].
-  void importMediaFiles(List<String> paths) {
+  /// The media browser's import: same copy-or-reference choice as a
+  /// timeline import, pool only (no clip link). Non-audio kinds register
+  /// with their detected kind (R3b) — the batch stays one undo through
+  /// [addMediaAssets].
+  void importMediaFiles(
+    List<String> paths, {
+    required bool copyIntoProject,
+  }) {
     final pool = mediaAssets;
     final known = {for (final asset in pool) asset.path};
     final added = <MediaAsset>[];
     for (final path in paths) {
-      final kind = mediaAssetKindForPath(path) ?? MediaAssetKind.image;
+      final source = _normalizedPath(path);
+      final kind = mediaAssetKindForPath(source) ?? MediaAssetKind.image;
       final effectivePath = kind == MediaAssetKind.audio
-          ? importAudioFile(path)
-          : _copyIntoProjectMedia(path);
+          ? importAudioFile(source, copyIntoProject: copyIntoProject)
+          : _mediaPathFor(source, copyIntoProject: copyIntoProject);
       if (!known.add(effectivePath)) {
         continue;
       }
+      // Both compared in the recorded spelling: a reference registers as
+      // its own original, and only a copy that ACTUALLY landed elsewhere
+      // carries the source it came from.
+      final isCopy = effectivePath != source;
       added.add(
         MediaAsset(
           path: effectivePath,
           name: mediaAssetDefaultName(effectivePath),
           kind: kind,
-          sourcePath: effectivePath == path ? null : path,
-          sourceStamp: _mediaSourceStampFor(path),
+          sourcePath: isCopy ? source : null,
+          sourceStamp: isCopy ? _mediaSourceStampFor(source) : null,
         ),
       );
     }
@@ -6230,6 +6254,7 @@ class EditorSessionManager extends ChangeNotifier {
   Future<bool> importImageFile({
     required String path,
     required ImportDestination destination,
+    required bool copyIntoProject,
     bool rasterize = false,
     MediaFitMode fit = MediaFitMode.contain,
     int? lengthFrames,
@@ -6263,9 +6288,12 @@ class EditorSessionManager extends ChangeNotifier {
         defaultCutCanvasSize;
     final project = _repository.requireProject();
     final mint = _importIdMint();
-    final storedPath = rasterize ? path : _copyIntoProjectMedia(path);
-    final sourceStamp = _mediaSourceStampFor(path);
-    final displayName = mediaAssetDefaultName(path);
+    final source = _normalizedPath(path);
+    final storedPath = rasterize
+        ? source
+        : _mediaPathFor(source, copyIntoProject: copyIntoProject);
+    final sourceStamp = _mediaSourceStampFor(source);
+    final displayName = mediaAssetDefaultName(source);
 
     final cutId = targetCut?.id ?? mint.nextCutId();
     final stillDuration = destination == ImportDestination.activeCutLayer
@@ -6284,7 +6312,7 @@ class EditorSessionManager extends ChangeNotifier {
         fit: fit,
         rasterize: rasterize,
         mint: mint,
-        sourcePath: storedPath == path ? null : path,
+        sourcePath: storedPath == source ? null : source,
         sourceStamp: sourceStamp,
       );
       layer = plan.layer;
@@ -6309,7 +6337,7 @@ class EditorSessionManager extends ChangeNotifier {
         rasterize: rasterize,
         mint: mint,
         referencePath: storedPath,
-        sourcePath: storedPath == path ? null : path,
+        sourcePath: storedPath == source ? null : source,
         sourceStamp: sourceStamp,
       );
       layer = plan.layer;
@@ -6397,6 +6425,7 @@ class EditorSessionManager extends ChangeNotifier {
   Future<bool> importPdfFile({
     required String path,
     required ImportDestination destination,
+    required bool copyIntoProject,
     bool rasterize = false,
     MediaFitMode fit = MediaFitMode.contain,
     void Function(int done, int total)? onRenderProgress,
@@ -6421,9 +6450,12 @@ class EditorSessionManager extends ChangeNotifier {
       }
       final project = _repository.requireProject();
       final mint = _importIdMint();
-      final storedPath = rasterize ? path : _copyIntoProjectMedia(path);
-      final sourceStamp = _mediaSourceStampFor(path);
-      final displayName = mediaAssetDefaultName(path);
+      final source = _normalizedPath(path);
+      final storedPath = rasterize
+          ? source
+          : _mediaPathFor(source, copyIntoProject: copyIntoProject);
+      final sourceStamp = _mediaSourceStampFor(source);
+      final displayName = mediaAssetDefaultName(source);
       final cutId = targetCut?.id ?? mint.nextCutId();
 
       final Layer layer;
@@ -6443,7 +6475,7 @@ class EditorSessionManager extends ChangeNotifier {
           fit: fit,
           rasterize: rasterize,
           mint: mint,
-          sourcePath: storedPath == path ? null : path,
+          sourcePath: storedPath == source ? null : source,
           sourceStamp: sourceStamp,
           assetKind: MediaAssetKind.pdf,
           pageCount: pageCount,
@@ -6463,7 +6495,7 @@ class EditorSessionManager extends ChangeNotifier {
           rasterize: rasterize,
           mint: mint,
           referencePath: storedPath,
-          sourcePath: storedPath == path ? null : path,
+          sourcePath: storedPath == source ? null : source,
           sourceStamp: sourceStamp,
           assetKind: MediaAssetKind.pdf,
           pageCount: pageCount,
@@ -6608,6 +6640,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// Returns the parse-and-plan warnings, or null when nothing imported.
   Future<List<String>?> importCutFolder({
     required String folderPath,
+    required bool copyIntoProject,
     CutFolderParseConfig config = const CutFolderParseConfig(),
     MediaFitMode fit = MediaFitMode.contain,
   }) async {
@@ -6656,14 +6689,24 @@ class EditorSessionManager extends ChangeNotifier {
       return plan.warnings;
     }
 
-    // References copy into the project's media folder like any import.
-    final copiedAssets = [
+    // A cut folder's reference registrations follow the import's
+    // copy-or-reference choice like any other file. This is the site that
+    // most wants the reference default: a delivery's 참고영상 is routinely
+    // bigger than everything else in the folder put together.
+    //
+    // Referencing keeps the planner's asset as it stands — source
+    // tracking is what a COPY carries so the "original changed" badge has
+    // two things to compare, and a reference is its own original.
+    final registeredAssets = [
       for (final asset in plan.assets)
-        asset.copyWith(
-          path: _copyIntoProjectMedia(asset.path),
-          sourcePath: asset.path,
-          sourceStamp: _mediaSourceStampFor(asset.path),
-        ),
+        if (!copyIntoProject)
+          asset
+        else
+          asset.copyWith(
+            path: _copyIntoProjectMedia(asset.path),
+            sourcePath: asset.path,
+            sourceStamp: _mediaSourceStampFor(asset.path),
+          ),
     ];
 
     _historyManager.execute(
@@ -6672,7 +6715,7 @@ class EditorSessionManager extends ChangeNotifier {
         editingSession: _editingSession,
         trackId: selectedTrackId,
         newCuts: [plan.cut],
-        assetAdditions: copiedAssets,
+        assetAdditions: registeredAssets,
         description: 'Import folder $folderName',
       ),
     );
@@ -8039,6 +8082,37 @@ class EditorSessionManager extends ChangeNotifier {
       return null; // The save must not die on a shelf move.
     }
   }
+
+  /// The path the project should record for [sourcePath] under this
+  /// import's copy/reference choice.
+  ///
+  /// REFERENCE is the default the import window offers, and it means
+  /// exactly what it says: nothing moves, nothing is duplicated, the
+  /// project points at the file where the user keeps it. A 3GB reference
+  /// movie used to be copied into `.assets/Media/` before anyone could
+  /// say otherwise.
+  ///
+  /// ⚠️On iOS and macOS a referenced path outside the project folder's
+  /// grant is readable now and refused after a relaunch — the reference
+  /// needs a security-scoped bookmark of its own. That is the picker
+  /// round's follow-up; the choice lands first so there is something for
+  /// the bookmark to belong to.
+  ///
+  /// Either answer comes back in the one spelling the project records
+  /// (see [_normalizedPath]).
+  String _mediaPathFor(String sourcePath, {required bool copyIntoProject}) =>
+      _normalizedPath(
+        copyIntoProject ? _copyIntoProjectMedia(sourcePath) : sourcePath,
+      );
+
+  /// One spelling for every path the project records: forward slashes.
+  ///
+  /// The media pool is keyed by path, so `C:\a\b.wav` and `C:/a/b.wav`
+  /// reaching it as written are two assets for one file — two rows, a
+  /// dedupe that does not, and a usage badge counting half the clips.
+  /// A copy comes back this way already; a reference, and a copy that
+  /// degraded to one, arrive spelled however the OS handed them over.
+  static String _normalizedPath(String path) => path.replaceAll('\\', '/');
 
   String _copyIntoProjectMedia(String sourcePath) {
     final projectPath = _projectFilePath;

@@ -77,6 +77,7 @@ void main() {
         path: path,
         destination: ImportDestination.newCut,
         lengthFrames: 12,
+        copyIntoProject: false,
       );
     });
     expect(imported, isTrue);
@@ -126,6 +127,7 @@ void main() {
         path: path,
         destination: ImportDestination.activeCutLayer,
         rasterize: true,
+        copyIntoProject: false,
       );
     });
     expect(imported, isTrue);
@@ -157,6 +159,7 @@ void main() {
       await s.importImageFile(
         path: path,
         destination: ImportDestination.activeCutLayer,
+        copyIntoProject: false,
       );
     });
     final layer = s.requireActiveCut.layers.firstWhere(
@@ -202,7 +205,10 @@ void main() {
       await writePng('$root${sep}A3.png', seed: 0xFF333333);
       await writePng('$root${sep}B1.png', seed: 0xFF444444);
       await writePng('$root${sep}_BG.png', seed: 0xFF555555);
-      return s.importCutFolder(folderPath: '${tempDir.path}$sep$root');
+      return s.importCutFolder(
+        folderPath: '${tempDir.path}$sep$root',
+        copyIntoProject: false,
+      );
     });
     expect(warnings, isNotNull);
 
@@ -264,6 +270,7 @@ void main() {
         path: file.path,
         destination: ImportDestination.newCut,
         onRenderProgress: (done, total) => progress.add((done, total)),
+        copyIntoProject: false,
       );
     });
     expect(imported, isTrue);
@@ -324,6 +331,7 @@ void main() {
         path: file.path,
         destination: ImportDestination.activeCutLayer,
         rasterize: true,
+        copyIntoProject: false,
       );
     });
     expect(imported, isTrue);
@@ -353,6 +361,7 @@ void main() {
       return s.importPdfFile(
         path: file.path,
         destination: ImportDestination.newCut,
+        copyIntoProject: false,
       );
     });
     expect(imported, isFalse);
@@ -377,6 +386,7 @@ void main() {
       await s.importCutFolder(
         folderPath: '${tempDir.path}$sep$root',
         config: const CutFolderParseConfig(includeProcessSubfolders: true),
+        copyIntoProject: false,
       );
     });
 

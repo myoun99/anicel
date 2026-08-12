@@ -114,14 +114,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(session.canImportAudioToActiveLayer, isTrue);
 
-    session.addAudioClipToActiveSeLayer(r'C:\sound\voice.wav');
+    session.addAudioClipToActiveSeLayer(
+      r'C:\sound\voice.wav',
+      copyIntoProject: false,
+    );
     await tester.pumpAndSettle();
 
     Layer seLayer() =>
         session.layers.firstWhere((layer) => layer.id == _seLayerId);
-    expect(seLayer().audioClips.single.filePath, r'C:\sound\voice.wav');
+    // Recorded in the project's one path spelling, whatever the OS handed
+    // in — the pool is keyed by path and cannot afford two spellings.
+    expect(seLayer().audioClips.single.filePath, 'C:/sound/voice.wav');
     // The pool learned the imported file (browse/reuse surface).
-    expect(session.mediaAssets.single.path, r'C:\sound\voice.wav');
+    expect(session.mediaAssets.single.path, 'C:/sound/voice.wav');
     expect(session.mediaAssets.single.name, 'voice.wav');
     // Frame-linked: importing onto the empty cell created an SE instance
     // at the playhead and linked the sound to ITS frame — the block is the
@@ -518,7 +523,10 @@ void main() {
       session.selectLayer(_seLayerId);
       session.selectFrameIndex(2);
       await tester.pumpAndSettle();
-      session.addAudioClipToActiveSeLayer(r'C:\sound\door-slam.wav');
+      session.addAudioClipToActiveSeLayer(
+        r'C:\sound\door-slam.wav',
+        copyIntoProject: false,
+      );
       await tester.pumpAndSettle();
       await tapCommandButton(
         tester,
@@ -555,7 +563,7 @@ void main() {
 
       // One undo puts the sound back: the unlink is a command, not a purge.
       session.undo();
-      expect(clipsOf(session).single.filePath, r'C:\sound\door-slam.wav');
+      expect(clipsOf(session).single.filePath, 'C:/sound/door-slam.wav');
       await tester.pumpAndSettle();
     });
 
