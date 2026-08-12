@@ -474,8 +474,6 @@ void main() {
     'brPaintAmount': (s) => s.brPaintAmount,
     'brPaintDensity': (s) => s.brPaintDensity,
     'brColorStretch': (s) => s.brColorStretch,
-    'brPreserveColours': (s) => s.brPreserveColours,
-    'brPreserveColoursHint': (s) => s.brPreserveColoursHint,
     'trModeNormal': (s) => s.trModeNormal,
     'trModePerspective': (s) => s.trModePerspective,
     'trFlipHorizontal': (s) => s.trFlipHorizontal,
