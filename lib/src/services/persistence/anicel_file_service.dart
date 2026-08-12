@@ -326,7 +326,45 @@ class AnicelFileService {
     // copied across the port — before anything reached the disk, and the
     // full-save path is exactly what a backgrounding tablet runs when it
     // has the least headroom to spare.
-    final refs = await Isolate.run(() {
+    // A throw inside the isolate leaves the temp behind — it is created the
+    // moment the write starts, before the first entry is even resolved.
+    // Nothing else in the app knows the name (the suffix is a timestamp),
+    // and a failing save RETRIES, so orphans would accumulate one per
+    // attempt at project size each. The old builder could not leak because
+    // it only touched the disk after the isolate returned.
+    final Map<BrushFrameKey, AnicelCelFileRef> refs;
+    try {
+      refs = await _writeArchiveInIsolate(
+        tempPath: tempPath,
+        filePath: filePath,
+        project: project,
+        saveDirectory: saveDirectory,
+        works: works,
+      );
+    } on Object {
+      if (temp.existsSync()) {
+        temp.deleteSync();
+      }
+      rethrow;
+    }
+
+    // SYNC rename: existing refs into the replaced file carry offsets of
+    // the OLD layout, so no event may run between the swap and the
+    // caller's adoptSavedFile — sync-to-return is microtask-tight.
+    temp.renameSync(filePath);
+    return refs;
+  }
+
+  /// The archive write itself, off the UI isolate. Returns only the refs —
+  /// the bytes never cross the port.
+  static Future<Map<BrushFrameKey, AnicelCelFileRef>> _writeArchiveInIsolate({
+    required String tempPath,
+    required String filePath,
+    required Project project,
+    required String saveDirectory,
+    required List<_CelWork> works,
+  }) {
+    return Isolate.run(() {
       // Scalars only. Holding the BLOB here to read its geometry later
       // would keep every cel resident and give back exactly the memory
       // this streams to avoid.
@@ -367,12 +405,6 @@ class AnicelFileService {
           ),
       };
     });
-
-    // SYNC rename: existing refs into the replaced file carry offsets of
-    // the OLD layout, so no event may run between the swap and the
-    // caller's adoptSavedFile — sync-to-return is microtask-tight.
-    temp.renameSync(filePath);
-    return refs;
   }
 
   Future<AnicelOpenResult> open({required String filePath}) async {
