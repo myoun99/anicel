@@ -77,7 +77,7 @@ void main() {
       ),
     ],
     isAssetReferenced: (_) => true,
-    onImportPaths: (_) {},
+    onImportRequested: () {},
     onRenameAsset: (_, _) {},
     onRelinkAsset: (_, _) {},
     onRemoveAsset: (_) => true,

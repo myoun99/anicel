@@ -24,7 +24,7 @@ class MediaBrowserPanel extends StatelessWidget {
     super.key,
     required this.assets,
     required this.isAssetReferenced,
-    required this.onImportPaths,
+    required this.onImportRequested,
     required this.onRenameAsset,
     required this.onRelinkAsset,
     required this.onRemoveAsset,
@@ -39,7 +39,12 @@ class MediaBrowserPanel extends StatelessWidget {
   /// guard messaging).
   final bool Function(String path) isAssetReferenced;
 
-  final void Function(List<String> paths) onImportPaths;
+  /// Opens the import window on the media pool.
+  ///
+  /// The ＋ used to open an OS picker and copy whatever came back — no
+  /// window, no choice, and a 3GB movie duplicated before anyone could
+  /// say otherwise. It now goes where every other import already went.
+  final VoidCallback onImportRequested;
   final void Function(String path, String name) onRenameAsset;
   final void Function(String oldPath, String newPath) onRelinkAsset;
 
@@ -61,14 +66,6 @@ class MediaBrowserPanel extends StatelessWidget {
       acceptedTypeGroups: const [FileTypeGroups.poolMedia],
     );
     return file?.path;
-  }
-
-  Future<void> _import() async {
-    final path = await (audioFilePicker ?? _pickAudioFile)();
-    if (path == null) {
-      return;
-    }
-    onImportPaths([path]);
   }
 
   Future<void> _relink(String path) async {
@@ -166,7 +163,7 @@ class MediaBrowserPanel extends StatelessWidget {
                   size: 18,
                   color: AppColors.addGlyph(enabled: true),
                 ),
-                onPressed: _import,
+                onPressed: onImportRequested,
               ),
               const Spacer(),
             ],

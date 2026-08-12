@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -175,6 +176,103 @@ void main() {
       isTrue,
       reason: 'the default is reference mode',
     );
+  });
+
+  /// The media browser's ＋ became a destination in this window rather
+  /// than a picker of its own, which is what makes the two import
+  /// entrances one. The browser accepted movies and the window refused
+  /// them; now the window does both, and which one it does is the
+  /// destination's business.
+  group('the media pool is a destination', () {
+    Future<String> writeMovie() async {
+      final file = File('${tempDir.path}${Platform.pathSeparator}ref.mp4');
+      await file.writeAsBytes(const [0, 0, 0, 24]);
+      return file.path;
+    }
+
+    Future<EditorSessionManager> pumpWindow(
+      WidgetTester tester,
+      String path, {
+      required bool poolOnly,
+    }) async {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ImportDialog(
+              session: s,
+              initialPaths: [path],
+              poolOnly: poolOnly,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      return s;
+    }
+
+    testWidgets('opened from the browser it starts on the pool, and a movie '
+        'registers there', (tester) async {
+      final path = await tester.runAsync(writeMovie);
+      final s = await pumpWindow(tester, path!, poolOnly: true);
+
+      expect(
+        find.textContaining('placement not available'),
+        findsNothing,
+        reason: 'nothing is being placed, so nothing can be unplaceable',
+      );
+      expect(
+        find.byKey(const ValueKey<String>('import-rasterize-toggle')),
+        findsNothing,
+        reason: 'rasterize is a question about a placed layer',
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('import-run-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(s.mediaAssets.single.path, path.replaceAll('\\', '/'));
+      expect(s.mediaAssets.single.kind, MediaAssetKind.video);
+    });
+
+    testWidgets('switched to a placing destination, the same movie is '
+        'refused BY NAME', (tester) async {
+      final path = await tester.runAsync(writeMovie);
+      final s = await pumpWindow(tester, path!, poolOnly: true);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('import-destination-cut')),
+      );
+      await tester.pump();
+      expect(find.textContaining('placement not available'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('import-run-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('placement is not available'), findsOneWidget);
+      expect(s.mediaAssets, isEmpty);
+    });
+
+    testWidgets('every other entrance still starts on a placement', (
+      tester,
+    ) async {
+      final path = await tester.runAsync(() => writePng('drop.png'));
+      await pumpWindow(tester, path!, poolOnly: false);
+
+      expect(
+        find.byKey(const ValueKey<String>('import-rasterize-toggle')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('import-destination-pool')),
+        findsOneWidget,
+        reason: 'the pool is on offer from here too — one window',
+      );
+    });
   });
 
   /// Copy-or-reference, end to end through the window.

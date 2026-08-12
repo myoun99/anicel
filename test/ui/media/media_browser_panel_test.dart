@@ -5,7 +5,7 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/ui/media/media_browser_panel.dart';
 
 class _Callbacks {
-  final imported = <String>[];
+  var importRequests = 0;
   final renamed = <(String, String)>[];
   final relinked = <(String, String)>[];
   final removed = <String>[];
@@ -29,7 +29,7 @@ Future<void> _pump(
           child: MediaBrowserPanel(
             assets: assets,
             isAssetReferenced: callbacks.referencedPaths.contains,
-            onImportPaths: callbacks.imported.addAll,
+            onImportRequested: () => callbacks.importRequests += 1,
             onRenameAsset: (path, name) => callbacks.renamed.add((path, name)),
             onRelinkAsset: (oldPath, newPath) =>
                 callbacks.relinked.add((oldPath, newPath)),
@@ -98,16 +98,19 @@ void main() {
     );
   });
 
-  testWidgets('import button pipes the picked file into the pool', (
+  testWidgets('the import button asks for the import WINDOW, not a picker', (
     tester,
   ) async {
+    // It used to open an OS picker here and copy whatever came back. The
+    // panel now asks its host to open the one import window, which is
+    // where copy-or-reference and multi-select live.
     final callbacks = _Callbacks();
     await _pump(tester, callbacks, picker: () async => foot);
 
     await tester.tap(find.byKey(const ValueKey<String>('media-import-button')));
     await tester.pumpAndSettle();
 
-    expect(callbacks.imported, [foot]);
+    expect(callbacks.importRequests, 1);
   });
 
   testWidgets('rename flows through the dialog', (tester) async {
