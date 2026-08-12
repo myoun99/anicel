@@ -84,7 +84,7 @@ void main() {
     }
   });
 
-  testWidgets('layer make/delete are here — and delete is OUTSIDE the menu', (
+  testWidgets('layer make is here, and the delete is the SHARED one', (
     tester,
   ) async {
     await pumpStoryboard(tester);
@@ -92,8 +92,15 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-toolbar-add-layer-button')),
       findsOneWidget,
     );
+    // ⑰/F: this panel mounts the same pills, so it inherited the same fold —
+    // the layer's own delete button is gone and the one that asks what is
+    // selected stands in the shared pill.
     expect(
       find.byKey(const ValueKey<String>('timeline-delete-layer-button')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('shared-delete-button')),
       findsOneWidget,
     );
   });

@@ -661,29 +661,23 @@ class TimelineActionToolbar extends StatelessWidget {
           onPressed: () => session.addLayerOfKind(LayerKind.animation),
           entriesBuilder: _addLayerEntries,
         ),
-        // ⚠️THE LAYER DELETE IS STILL HERE, AND THE CONDITION IT WAITED ON
-        // HAS PASSED — read this before deleting it.
+        // ⛔THE LAYER DELETE IS GONE FROM HERE — ⑰ is finished.
         //
-        // It stood here because ⑰'s shared delete asks WHAT IS SELECTED, and
-        // `DeleteSubject.layers` was a rung nothing could reach while rows
-        // had no selection. ⑨ (#952) built that selection, so the successor
-        // CAN do this button's job now: select the row, press the one delete
-        // — with the same confirmation, which is why `onDeleteRowSelection`
-        // exists beside it.
+        // It stood beside this `＋` on ONE stated condition: the shared
+        // delete asks WHAT IS SELECTED, and `DeleteSubject.layers` was a rung
+        // nothing could reach while rows had no selection. ⑨ (#952) built
+        // that selection and F carried the confirmation across
+        // (`onDeleteRowSelection`), so the successor does this button's whole
+        // job — including asking first. Deleting the predecessor is
+        // [[duplication-program]]'s last step, and it waited for the one
+        // condition that makes it safe rather than for nobody to notice.
         //
-        // What is left is not a code question but a TEST-CONTRACT one:
-        // `layer_delete_test.dart` writes the whole delete flow (enablement,
-        // dialog, cancel, confirm, undo/redo, the rail afterwards) against
-        // THIS key, and re-pointing it means re-stating each of those
-        // through a row selection. That is a change worth making on its own,
-        // not as a passenger.
-        _iconButton(
-          key: const ValueKey<String>('timeline-delete-layer-button'),
-          tooltip: AppText.strings.tlDeleteLayer,
-          icon: Icons.delete_outline,
-          danger: true,
-          onPressed: session.canDeleteActiveLayer ? onDeleteLayer : null,
-        ),
+        // Deleting a layer is now: select the row, press the one delete —
+        // 「딜리트 = 버튼 하나 … 레이어를 선택했으면 레이어 삭제」 (⑰).
+        //
+        // ⛔The CUT delete keeps its own button for the reason this one no
+        // longer needs one: cut SELECTION exists only on the storyboard's
+        // axis, so from here the shared pill can never be handed a cut.
       ],
     ),
   );
@@ -701,7 +695,21 @@ class TimelineActionToolbar extends StatelessWidget {
   /// noun, which is why the same word did different things depending on where
   /// you reached for it — and why nothing on the bar could delete a CUT while
   /// the cut menu was closed.
-  Widget _sharedPill() => _StaticCommandGroup(
+  /// ⚠️Subscribed to the ROW SELECTION, and it has to be.
+  ///
+  /// The subject this pill asks for is mostly session state that arrives with
+  /// a notify — but ⑨'s row selection is a [ValueNotifier] on purpose (it
+  /// grows per pointer move, and a notify per move would rebuild every panel).
+  /// Without this the pill's `deleteSubject` was only re-read when something
+  /// ELSE happened to notify, so selecting rows left the one delete greyed
+  /// out — the state was right and the button had not looked again (㉞'s
+  /// shape, one floor up).
+  Widget _sharedPill() => ValueListenableBuilder<List<TimelineRowAddress>>(
+    valueListenable: session.rowSelection,
+    builder: (context, _, _) => _sharedPillBody(),
+  );
+
+  Widget _sharedPillBody() => _StaticCommandGroup(
     rebuildKey: (session.deleteSubject, AppText.settings.value.programLanguage),
     builder: (context) => CommandPill(
       key: const ValueKey<String>('timeline-toolbar-shared-group'),
