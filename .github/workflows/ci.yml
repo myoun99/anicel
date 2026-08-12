@@ -179,15 +179,22 @@ jobs:
   # at 27m34s against every other job finishing by 13m44s. Windows is NOT
   # slower at running tests (508s of in-file execution against Linux's 527s)
   # — it is 2.6x slower at loading them, 3.08s per file against 1.17s, and
-  # it pays that 728 times. Four shards is where the measured round-robin
-  # imbalance (1.245x at N=4) still beats the per-job fixed cost.
+  # it pays that 728 times.
+  #
+  # Eight rather than four, because four was measured and found lumpy: the
+  # first sharded run split 6m08s / 7m14s / 8m45s / 9m46s, a 1.6x spread
+  # that made the slowest shard the whole round. Round-robin over a sorted
+  # list balances by file COUNT, not by cost, so finer slices are how the
+  # heavy files stop deciding the wall clock. Eight also divides 728 evenly
+  # (91 files each) and puts a shard's command line at ~4.1k characters,
+  # inside one batch — see the .bat note in the test-shard action.
   windows:
     name: Windows + native DLL (shard ${{ matrix.shard }})
     runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     env:
       QA_ENGINE_PATH: build/native_standalone/Release/qa_engine.dll
       QA_REQUIRE_NATIVE: '1'
@@ -210,5 +217,5 @@ jobs:
       - name: Run tests with the engine on PATH
         uses: ./.github/actions/test-shard
         with:
-          total: 4
+          total: 8
           index: ${{ matrix.shard }}
