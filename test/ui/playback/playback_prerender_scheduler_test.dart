@@ -99,6 +99,62 @@ void main() {
     return (store: store, composites: composites, coordinator: coordinator);
   }
 
+  /// A cut drawn on PAST its 尺: the timeline's runway takes frames like
+  /// any other, so the authored extent (7) outruns the duration (4).
+  Cut runwayCut() => Cut(
+    id: const CutId('cut'),
+    name: 'Cut',
+    duration: 4,
+    canvasSize: canvasSize,
+    layers: [
+      Layer(
+        id: const LayerId('layer'),
+        name: 'A',
+        frames: [
+          Frame(id: const FrameId('frame-a'), duration: 1, strokes: const []),
+        ],
+        timeline: {
+          0: TimelineExposure.drawing(const FrameId('frame-a'), length: 1),
+          6: TimelineExposure.drawing(const FrameId('frame-a'), length: 1),
+        },
+      ),
+    ],
+  );
+
+  testWidgets('the warm reaches a drawing OUT on the runway, past the cut\'s '
+      'own length', (tester) async {
+    await tester.runAsync(() async {
+      final f = fixture();
+      final scheduler = PlaybackPrerenderScheduler(
+        composites: f.composites,
+        resolveCut: (_) => runwayCut(),
+        idleDelay: Duration.zero,
+      );
+
+      scheduler.requestWarmCut(
+        cutId: const CutId('cut'),
+        quality: PlaybackQuality.quarter,
+        aroundFrameIndex: 0,
+      );
+      await scheduler.idle;
+
+      expect(
+        f.composites.validCompositeOrNull(
+          cut: runwayCut(),
+          frameIndex: 6,
+          quality: PlaybackQuality.quarter,
+        ),
+        isNotNull,
+        reason: 'a frame the warm never visits misses in the cache forever, '
+            'which is how a runway drawing stayed invisible while scrubbing '
+            'and appeared only on release',
+      );
+      expect(scheduler.progress.value.total, 7);
+      scheduler.dispose();
+      f.composites.dispose();
+    });
+  });
+
   testWidgets('warms every frame of the cut', (tester) async {
     await tester.runAsync(() async {
       final f = fixture();

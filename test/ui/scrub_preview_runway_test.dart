@@ -109,4 +109,71 @@ void main() {
 
     await drainWarming(tester);
   });
+
+  testWidgets('a drawing OUT on the runway paints while dragging — the paper '
+      'is for frames that hold nothing, not for frames past a number',
+      (tester) async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    final duration = session.activeCutOrNull!.duration;
+    final runwayFrame = duration + 3;
+
+    // ＋ works out here — the runway takes cels like any other frame — so a
+    // preview that painted paper by index alone would hide real artwork.
+    session.selectFrameIndex(runwayFrame);
+    session.createDrawingAtCurrentFrame();
+    await tester.runAsync(
+      () => session.cutFrameCompositeCache.prepareComposite(
+        cut: session.activeCutOrNull!,
+        frameIndex: runwayFrame,
+        quality: session.playbackQuality,
+      ),
+    );
+
+    final brushTool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
+    final cameraView = ValueNotifier<bool>(false);
+    final cameraDim = ValueNotifier<double>(0.5);
+    addTearDown(brushTool.dispose);
+    addTearDown(cameraView.dispose);
+    addTearDown(cameraDim.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: EditorCanvasArea(
+            session: session,
+            brushToolState: brushTool,
+            cameraViewEnabled: cameraView,
+            cameraDimOpacity: cameraDim,
+          ),
+        ),
+      ),
+    );
+
+    session.selectFrameIndex(0);
+    await tester.pump();
+    session.scrubFrameIndex(runwayFrame);
+    await tester.pump();
+
+    final previewFinder = find.byKey(
+      const ValueKey<String>('canvas-scrub-preview'),
+    );
+    expect(previewFinder, findsOneWidget);
+    final painter =
+        tester.widget<CustomPaint>(
+              find.descendant(
+                of: previewFinder,
+                matching: find.byType(CustomPaint),
+              ),
+            ).painter
+            as PlaybackFramePainter;
+    expect(
+      painter.image,
+      isNotNull,
+      reason: 'the drag shows what the release will show — a drawing',
+    );
+
+    await drainWarming(tester);
+  });
 }

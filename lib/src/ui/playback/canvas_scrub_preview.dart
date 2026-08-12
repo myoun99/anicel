@@ -155,21 +155,22 @@ class _CanvasScrubPreviewState extends State<CanvasScrubPreview> {
     // release then took away — the editing canvas reads the cursor
     // literally and finds nothing out there.
     //
-    // 🚨Removing the clamp is not enough on its own: the warm walks the
-    // CUT, so a runway lookup misses forever, and a miss means "still
-    // warming" to the held-frame policy below — it would go on showing
-    // whatever was last displayed. Past the end there is nothing to warm,
-    // so the miss is not "not yet", it is "nothing", and the paper says so.
+    // 🚨Removing the clamp is not enough on its own. The held-frame policy
+    // below reads a cache MISS as "still warming" and goes on painting the
+    // last image — the same lie through a different door. Out past the end
+    // a miss means "nothing is there", so the paper is the answer.
     // 「컷길이 넘은 부분이든 안쪽 부분이든 아무런 차이를 안 둔다」 (user
     // 2026-08-13).
+    //
+    // A HIT out there is a real drawing on the runway and paints like any
+    // other frame — the warm reaches the authored extent, not just the
+    // duration, exactly so this lookup can succeed.
     final pastCutEnd = frameIndex >= cut.duration;
-    final composite = pastCutEnd
-        ? null
-        : widget.compositeCache.validCompositeOrNull(
-            cut: cut,
-            frameIndex: frameIndex,
-            quality: widget.qualityOf(),
-          );
+    final composite = widget.compositeCache.validCompositeOrNull(
+      cut: cut,
+      frameIndex: frameIndex,
+      quality: widget.qualityOf(),
+    );
     if (composite != null && !identical(composite, _heldSource)) {
       _heldFrame?.dispose();
       _heldSource = composite;
@@ -179,7 +180,7 @@ class _CanvasScrubPreviewState extends State<CanvasScrubPreview> {
     return SizedBox.expand(
       child: CustomPaint(
         painter: PlaybackFramePainter(
-          image: pastCutEnd ? null : _heldFrame,
+          image: pastCutEnd && composite == null ? null : _heldFrame,
           canvasSize: cut.canvasSize,
           viewport: widget.viewport,
           paperBackground: widget.paperBackground,
