@@ -346,6 +346,22 @@ class AudioConformStore extends ChangeNotifier {
       }
       _closeStreamReader(sourcePath);
       _entries[sourcePath] = kept;
+    } else if (result.isTransientFailure) {
+      // Records the ATTEMPT TIME but not the attempt: a source that is
+      // there and merely not readable yet (a cloud placeholder still
+      // downloading) must not spend the budget — three of those and the
+      // clip renders silent for the rest of the session, in an export,
+      // with no error anywhere. Keeping the entry still throttles through
+      // `retryDelay`, so "retry forever" costs one attempt per delay
+      // rather than one per paint.
+      _failures[sourcePath] = _ConformFailure(
+        reason: result.error ?? 'source not readable yet',
+        attempts: _failures[sourcePath]?.attempts ?? 0,
+        lastAttemptAt: _now(),
+      );
+      _log(
+        '[AudioConformStore] conform deferred for $sourcePath: ${result.error}',
+      );
     } else {
       final attempts = (_failures[sourcePath]?.attempts ?? 0) + 1;
       _failures[sourcePath] = _ConformFailure(
