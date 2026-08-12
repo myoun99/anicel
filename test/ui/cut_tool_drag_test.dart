@@ -13,7 +13,6 @@ import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
-import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 
