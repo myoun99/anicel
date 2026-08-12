@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -248,6 +249,54 @@ void main() {
           0,
       0,
     );
+  });
+
+  testWidgets('paste at origin puts the piece back where it was cut', (
+    tester,
+  ) async {
+    final env = await pumpPanel(tester, tool: CanvasTool.cutRect);
+    await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+    expect(env.slot.isNotEmpty, isTrue);
+
+    // Erase the bar the piece came from, then paste it back.
+    final origin = env.slot.piece!;
+    env.coordinator.commitSourceStroke(
+      sourceDabs: [for (var x = 10; x <= 90; x += 2) dab(x.toDouble(), 40)],
+      blendMode: BrushBlendMode.erase,
+    );
+    await tester.pump();
+
+    env.slot.pasteAtOrigin(behind: false);
+    await tester.pump();
+
+    final surface = env.coordinator.currentSurfaceOf(
+      env.coordinator.activeFrameKey,
+    );
+    // Somewhere inside the piece's own footprint is painted again.
+    expect(
+      surfacePixelRgba(
+            surface,
+            origin.originLeft + origin.image.width ~/ 2,
+            origin.originTop + origin.image.height ~/ 2,
+          ) ??
+          0,
+      isNot(0),
+    );
+  });
+
+  testWidgets('the paste verb goes dead when the canvas unmounts', (
+    tester,
+  ) async {
+    // The button must stop working with the canvas rather than throw at a
+    // dead State.
+    final env = await pumpPanel(tester, tool: CanvasTool.cutRect);
+    await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+    expect(env.slot.canPasteAtOrigin, isTrue);
+
+    await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+    expect(env.slot.canPasteAtOrigin, isFalse);
+    // And the piece is still held — losing the canvas is not losing work.
+    expect(env.slot.isNotEmpty, isTrue);
   });
 
   testWidgets('a cut over blank cel leaves the held piece alone', (

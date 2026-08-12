@@ -61,6 +61,38 @@ BrushDab buildCutStampDab({
   );
 }
 
+/// A stamp of [piece] back at the coordinates it was cut from.
+///
+/// Deliberately UNPOSED — original size, no flip — even when the stamp
+/// tile is currently posing the piece. "Original position" and "original
+/// picture" are one idea: a paste that landed at the source coordinates
+/// but at 80% and mirrored would not reproduce anything. Photoshop draws
+/// the same line, where clipboard pastes are always 1:1 and only a
+/// registered brush tip scales.
+///
+/// The coordinates are CEL coordinates, which is what makes this land back
+/// on the artwork rather than on the screen: the read was raw cel pixels,
+/// so the write has to be in the same space, and a layer posed by a
+/// transform track cannot pull the two apart.
+BrushDab buildCutPasteDab(CutPiece piece) {
+  final image = piece.image;
+  return BrushDab(
+    center: CanvasPoint(
+      x: piece.originLeft + image.width / 2,
+      y: piece.originTop + image.height / 2,
+    ),
+    color: 0xFF000000,
+    size: math.max(image.width, image.height).toDouble(),
+    opacity: 1,
+    flow: 1,
+    hardness: 1,
+    tipShape: BrushTipShape.square,
+    pressure: 1,
+    sequence: 0,
+    stamp: image,
+  );
+}
+
 /// The centres a drag lays stamps on, from [from] to [to].
 ///
 /// Spacing is one whole piece — stamps touch and do not overlap. The user

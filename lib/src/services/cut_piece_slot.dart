@@ -67,6 +67,22 @@ class CutPieceSlot extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Installed by the mounted canvas panel, which is the only thing that
+  /// can reach a cel to write into. Null while no canvas is up.
+  ///
+  /// The same imperative-channel shape the selection commands already use:
+  /// the tool settings panel and the canvas live in different subtrees, and
+  /// threading a callback down and an action back up through both would be
+  /// more wiring than a slot the canvas fills in.
+  void Function({required bool behind})? pasteAtOriginHandler;
+
+  /// True when a canvas is mounted AND something is held — what the paste
+  /// buttons gate on.
+  bool get canPasteAtOrigin => pasteAtOriginHandler != null && isNotEmpty;
+
+  void pasteAtOrigin({required bool behind}) =>
+      pasteAtOriginHandler?.call(behind: behind);
+
   /// Empties the slot. Nothing in the shipped UI calls this yet: the piece
   /// is meant to sit there until the next cut replaces it, and a stray
   /// "scrape an empty area" must NOT wipe it — the slot is a long-term

@@ -35,6 +35,7 @@ import '../canvas/canvas_viewport_gesture_layer.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../canvas/flip_hud_overlay.dart';
 import 'canvas_floor_insets.dart';
+import '../../models/brush_blend_mode.dart';
 import '../../services/cut_piece_lift.dart';
 import '../../services/cut_piece_slot.dart';
 import '../../services/cut_piece_stamp.dart';
@@ -554,8 +555,22 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
     widget.selectionCommands?.addListener(_handleSelectionChannelChanged);
     _bindSelectionHistoryRecorder();
+    _bindCutPasteHandler();
     _syncIdleAnts();
   }
+
+  /// The tool settings panel lives in another subtree, so the slot carries
+  /// the verb and this panel — the only thing here that can reach a cel —
+  /// fills it in while it is mounted.
+  void _bindCutPasteHandler() {
+    // Held in a field rather than compared as a tear-off: two tear-offs of
+    // the same method are not reliably identical, and getting that wrong
+    // silently leaves a verb pointing at a disposed State.
+    _installedCutPasteHandler = pasteCutPieceAtOrigin;
+    widget.cutPieceSlot?.pasteAtOriginHandler = _installedCutPasteHandler;
+  }
+
+  void Function({required bool behind})? _installedCutPasteHandler;
 
   @override
   void didChangeDependencies() {
@@ -642,6 +657,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     widget.selectionCommands?.removeListener(_handleSelectionChannelChanged);
     widget.selectionCommands?.regionHistoryRecorder = null;
+    // Leave no verb pointing at a dead State: the buttons must go dead
+    // with the canvas rather than throw when pressed after it is gone.
+    if (identical(
+      widget.cutPieceSlot?.pasteAtOriginHandler,
+      _installedCutPasteHandler,
+    )) {
+      widget.cutPieceSlot?.pasteAtOriginHandler = null;
+    }
     _idleAnts.dispose();
     _eyedropperHover.dispose();
     _toolCursorHover.dispose();
@@ -2264,6 +2287,24 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   }
 
   int _cutPieceSequence = 0;
+
+  /// Drop the held piece back where it was cut from.
+  ///
+  /// [behind] is the "아래에 붙여넣기" half: 위/아래 is COMPOSITE ORDER, not
+  /// a layer row (유저 확정) — the pixels land in the same cel either way,
+  /// over what is there or under it.
+  void pasteCutPieceAtOrigin({required bool behind}) {
+    final piece = widget.cutPieceSlot?.piece;
+    if (piece == null || widget._editableCoordinator == null) {
+      return;
+    }
+    _commitSourceStroke(
+      BrushStrokeCommitData(
+        sourceDabs: [buildCutPasteDab(piece)],
+        blendMode: behind ? BrushBlendMode.behind : BrushBlendMode.color,
+      ),
+    );
+  }
 
   BitmapSurface? _contentBoundsSurface;
   ({int left, int top, int rightExclusive, int bottomExclusive})?

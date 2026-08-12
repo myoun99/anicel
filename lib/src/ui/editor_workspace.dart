@@ -1811,6 +1811,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                                   selectionCommands: widget
                                                       .canvasSelectionCommands,
                                                   cutPieceSlot: _cutPieceSlot,
+                                                  onCutPasteAbove: () =>
+                                                      _cutPieceSlot
+                                                          .pasteAtOrigin(
+                                                            behind: false,
+                                                          ),
+                                                  onCutPasteBelow: () =>
+                                                      _cutPieceSlot
+                                                          .pasteAtOrigin(
+                                                            behind: true,
+                                                          ),
                                                   language: widget
                                                       .session
                                                       .languageSettings
