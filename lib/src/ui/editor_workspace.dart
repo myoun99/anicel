@@ -512,10 +512,17 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// toolbar tool; the single Select button re-activates this).
   CanvasTool _lastSelectionVariant = CanvasTool.selectRect;
 
+  /// The last CUT variant used — the rail's single Cut button re-activates
+  /// this, exactly as the Select button does with its own.
+  CanvasTool _lastCutVariant = CanvasTool.cutRect;
+
   void _rememberSelectionVariant() {
     final tool = _brushTool.value.tool;
     if (tool == CanvasTool.selectRect || tool == CanvasTool.lasso) {
       _lastSelectionVariant = tool;
+    }
+    if (canvasToolUsesCutPiece(tool)) {
+      _lastCutVariant = tool;
     }
   }
 
@@ -1538,6 +1545,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 builder: (context, toolState) => ToolsPanel(
                   tool: toolState.tool,
                   selectionVariant: _lastSelectionVariant,
+                  cutVariant: _lastCutVariant,
                   onToolChanged: (tool) =>
                       _brushTool.value = _brushTool.value.copyWith(tool: tool),
                   // The between-strokes group. Its own listeners, so undoing

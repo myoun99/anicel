@@ -713,6 +713,7 @@ class AppStrings {
   String get toolFillTip => _s('toolFillTip');
   String get toolSelectTip => _s('toolSelectTip');
   String get toolMoveTip => _s('toolMoveTip');
+  String get toolCutTip => _s('toolCutTip');
   String get brSize => _s('brSize');
   String get brOpacity => _s('brOpacity');
   String get brFlow => _s('brFlow');
@@ -1305,6 +1306,7 @@ class AppStrings {
     'toolFillTip': 'Fill Tool',
     'toolSelectTip': 'Select Tool',
     'toolMoveTip': 'Move / Transform Tool',
+    'toolCutTip': 'Cut Tool',
     'brSize': 'Size',
     'brOpacity': 'Opacity',
     'brFlow': 'Flow',
@@ -2045,6 +2047,8 @@ class AppStrings {
     'toolFillTip': '塗りつぶしツール',
     'toolSelectTip': '選択ツール',
     'toolMoveTip': '移動 / 変形ツール',
+    // TVPaint's own term for this verb in Japanese studios.
+    'toolCutTip': '切り抜きツール',
     'brSize': 'サイズ',
     'brOpacity': '不透明度',
     'brFlow': '流量',
@@ -2778,6 +2782,7 @@ class AppStrings {
     'toolFillTip': '채우기 도구',
     'toolSelectTip': '선택 도구',
     'toolMoveTip': '이동 / 변형 도구',
+    'toolCutTip': '잘라내기 도구',
     'brSize': '크기',
     'brOpacity': '불투명도',
     'brFlow': '흐름',
@@ -3544,6 +3549,7 @@ class AppStrings {
     'toolFillTip': 'Outil remplissage',
     'toolSelectTip': 'Outil sélection',
     'toolMoveTip': 'Outil déplacer / transformer',
+    'toolCutTip': 'Outil découpe',
     'brSize': 'Taille',
     'brOpacity': 'Opacité',
     'brFlow': 'Débit',
@@ -4256,6 +4262,7 @@ class AppStrings {
     'toolFillTip': '填充工具',
     'toolSelectTip': '选择工具',
     'toolMoveTip': '移动 / 变换工具',
+    'toolCutTip': '裁剪工具',
     'brSize': '大小',
     'brOpacity': '不透明度',
     'brFlow': '流量',

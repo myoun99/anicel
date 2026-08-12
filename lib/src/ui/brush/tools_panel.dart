@@ -17,6 +17,7 @@ class ToolsPanel extends StatelessWidget {
     required this.tool,
     required this.onToolChanged,
     this.selectionVariant = CanvasTool.selectRect,
+    this.cutVariant = CanvasTool.cutRect,
     this.historyControls,
   });
 
@@ -36,6 +37,11 @@ class ToolsPanel extends StatelessWidget {
   /// rectangle/lasso are one toolbar tool — the variant lives in the tool
   /// settings; the host remembers the last-used one).
   final CanvasTool selectionVariant;
+
+  /// Which cut VARIANT the single Cut button activates — the same rule the
+  /// selection button follows, for the same reason: the variants are tiles
+  /// in the tool library, not separate rail entries.
+  final CanvasTool cutVariant;
 
   /// The edge dock width this panel is designed for.
   ///
@@ -159,10 +165,26 @@ class ToolsPanel extends StatelessWidget {
               selected: tool == CanvasTool.move,
               onPressed: () => onToolChanged(CanvasTool.move),
             ),
+            const SizedBox(height: 4),
+            // The CUT tool, one button for three tiles — same shape as the
+            // Select button above it. It grabs a COPY of the pixels under
+            // the drag and stamps them back elsewhere; the source is never
+            // removed.
+            RailButton(
+              keyValue: 'tool-cut-button',
+              tooltip: AppText.strings.toolCutTip,
+              // Scissors: the user's own word for this tool is 잘라내기, and
+              // the glyph should say that even though the source survives.
+              icon: Icons.content_cut,
+              selected: canvasToolUsesCutPiece(tool),
+              onPressed: () => onToolChanged(
+                canvasToolUsesCutPiece(tool) ? tool : cutVariant,
+              ),
+            ),
             // 유저 확정 (rail-and-strip): 「컬러 스와치는 레일에서 빠진다」 —
             // the top strip's colour button IS the swatch, so keeping one here
             // would be two places to read the same colour. The rail is
-            // history + onion + the six tools, and that is all.
+            // history + onion + the tools, and that is all.
           ],
         ),
       ),
