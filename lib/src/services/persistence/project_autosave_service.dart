@@ -105,10 +105,10 @@ class ProjectAutosaveService {
   ///
   /// Sync also keeps the exit and open flows testable — async `dart:io`
   /// inside `testWidgets` never completes (fake zone) — and matches the
-  /// neighbouring reads ([sidecarIsNewer], `newestExistingSidecarFor`),
+  /// neighbouring reads ([sidecarIsNewer], `newestExistingRecoveryFor`),
   /// which are sync for the same reason. One small file, at save or exit.
   static void retireSidecarsFor(String projectFilePath) {
-    for (final candidate in AppSave.sidecarCandidatesFor(projectFilePath)) {
+    for (final candidate in AppSave.recoveryCandidatesFor(projectFilePath)) {
       _deleteSidecar(candidate);
     }
   }

@@ -69,56 +69,6 @@ class AutosaveSettingsSection extends StatelessWidget {
               ],
             ),
             const Divider(height: 16),
-            SwitchListTile(
-              key: const ValueKey<String>('settings-sidecar-custom'),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: Text(AppText.strings.autosaveSidecarFolder),
-              subtitle: const Text(
-                'OFF (default): the sidecar sits beside the project file.\n'
-                'ON: every sidecar goes to one folder of your choosing — '
-                'for cloud-synced project folders that should not upload '
-                'a snapshot every interval.',
-              ),
-              value: settings.sidecarDirectory != null,
-              onChanged: (custom) => session.setSaveSettings(
-                settings.copyWith(sidecarDirectory: custom ? '' : null),
-              ),
-            ),
-            if (settings.sidecarDirectory != null)
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      settings.sidecarDirectory!.isEmpty
-                          ? 'No folder chosen yet'
-                          : settings.sidecarDirectory!,
-                      key: const ValueKey<String>('settings-sidecar-directory'),
-                      style: const TextStyle(fontSize: 12),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  TextButton(
-                    key: const ValueKey<String>('settings-sidecar-browse'),
-                    onPressed: () async {
-                      // PICK-2: this row is NOT platform-gated (its sibling
-                      // below is), so on iPad it was reaching a
-                      // `getDirectoryPath` that iOS never implemented — a
-                      // thrown UnimplementedError on every tap.
-                      final directory = await pickFolderForUser(context);
-                      if (directory != null) {
-                        session.setSaveSettings(
-                          AppSave.settings.value.copyWith(
-                            sidecarDirectory: directory,
-                          ),
-                        );
-                      }
-                    },
-                    child: Text(AppText.strings.autosaveChoose),
-                  ),
-                ],
-              ),
-            const Divider(height: 16),
             // REC1-B2: the take shelf. Mobile shows where takes land but
             // cannot move it (the app documents home is the only sane
             // place there); desktop may point it anywhere.

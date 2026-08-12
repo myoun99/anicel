@@ -15603,7 +15603,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// for a real file instead of writing into hidden app-data dirs).
   String? get autosaveSidecarPath {
     final path = _projectFilePath;
-    return path == null ? null : AppSave.sidecarPathFor(path);
+    return path == null ? null : AppSave.recoveryPathFor(path);
   }
 
   /// Writes the current state to [path] WITHOUT touching the dirty flag or

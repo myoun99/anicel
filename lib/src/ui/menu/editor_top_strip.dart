@@ -179,7 +179,7 @@ class EditorTopStrip extends StatelessWidget {
     // of these.
     final reopeningDirtySelf =
         session.projectFilePath == path && session.hasUnsavedChanges;
-    final sidecar = AppSave.newestExistingSidecarFor(path);
+    final sidecar = AppSave.newestExistingRecoveryFor(path);
     if (sidecar != null &&
         ProjectAutosaveService.sidecarIsNewer(
           filePath: path,

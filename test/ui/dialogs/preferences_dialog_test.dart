@@ -134,19 +134,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(AppSave.settings.value.autosaveIntervalMinutes, 12);
 
-    // The sidecar switch turns the custom folder on (empty until chosen)
-    // and back off to "beside the file".
-    await tester.tap(
+    // The sidecar-folder row is GONE: the recovery snapshot lives in the
+    // app's own support folder and there is nothing to point anywhere.
+    // Asserted rather than merely deleted, so re-adding a control for a
+    // location that no longer varies has to argue with a test.
+    expect(
       find.byKey(const ValueKey<String>('settings-sidecar-custom')),
+      findsNothing,
     );
-    await tester.pumpAndSettle();
-    expect(AppSave.settings.value.sidecarDirectory, '');
-    expect(find.text('No folder chosen yet'), findsOneWidget);
-    await tester.tap(
-      find.byKey(const ValueKey<String>('settings-sidecar-custom')),
+    expect(
+      find.byKey(const ValueKey<String>('settings-sidecar-browse')),
+      findsNothing,
     );
-    await tester.pumpAndSettle();
-    expect(AppSave.settings.value.sidecarDirectory, isNull);
 
     // REC1-B2: the recordings folder row shows the live shelf — the
     // default app folder, a custom choice, and the reset back.
