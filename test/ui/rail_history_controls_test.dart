@@ -67,4 +67,21 @@ void main() {
       );
     },
   );
+
+  // ㉜ (user, 2026-08-12): 「선택 해제 버튼이 없다」. The verb was already
+  // bound to Ctrl+D; this is the entrance and nothing else.
+  testWidgets('deselect joins them, dimmed until something is selected', (
+    tester,
+  ) async {
+    await pumpHome(tester);
+
+    final deselect = railButton('rail-deselect-button');
+    expect(deselect, findsOneWidget);
+    expect(
+      tester.widget<RailButton>(deselect).onPressed,
+      isNull,
+      reason: 'dimmed rather than hidden — a button that comes and goes is '
+          'one you have to look for',
+    );
+  });
 }

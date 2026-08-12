@@ -140,21 +140,26 @@ class CollapsedRowOverlay extends StatelessWidget {
     );
   }
 
-  /// A halo rather than a plate. The panel's fill is what was removed, so
-  /// legibility has to come from the glyphs themselves — over a bright sheet
-  /// a translucent light label simply is not there. ⛔Not a backdrop blur: a
-  /// live blur over the drawing surface is the class of cost the raster round
-  /// just finished removing.
-  static const List<Shadow> _halo = [
-    Shadow(color: Color(0xE6000000), blurRadius: 3),
-    Shadow(color: Color(0x99000000), blurRadius: 7),
-  ];
+  /// ⑩ 🚫NO HALO (유저 확정 2026-08-12): 「버튼 쪽 그림자(할로) 삭제.
+  /// **흰캔버스에서 안보이든말든 신경쓰지말고 그냥 없애.** 간편 오버레이에서
+  /// **다신 존재 안 하도록.** 입체감 없이 평면처럼 보이게 하고 싶은 거야」.
+  ///
+  /// It was two stacked shadows, argued for as legibility over a bright
+  /// sheet. The user has read that argument and declined it: FLAT is the
+  /// look, and being hard to read on white paper is the price they chose.
+  ///
+  /// ⛔Do not bring it back under another name — a plate, a scrim, a blur.
+  /// The instruction is about the LOOK, not about this particular shadow.
+  static const List<Shadow> _halo = [];
 
-  /// Wraps the real rail row so its icons and labels carry the halo without
-  /// the row knowing anything about lying on artwork.
+  /// Still the ONE place this overlay's ink is decided, so anything that
+  /// ever changes it changes here rather than in six call sites.
   Widget _haloed(BuildContext context, Widget child) => IconTheme.merge(
     data: const IconThemeData(shadows: _halo),
-    child: DefaultTextStyle.merge(style: const TextStyle(shadows: _halo), child: child),
+    child: DefaultTextStyle.merge(
+      style: const TextStyle(shadows: _halo),
+      child: child,
+    ),
   );
 
   Widget _rail(FlipHudRow row, ColorScheme colorScheme) {
@@ -377,7 +382,10 @@ class _CollapsedStripPainter extends CustomPainter {
           fontFamily: 'monospace',
           fontSize: 9.5,
           color: color,
-          shadows: const [Shadow(color: Color(0xCC000000), blurRadius: 3)],
+          // ⑩: flat here too — see [_halo]. The frame half had its own copy
+          // of the shadow, which is exactly how a look that was supposed to
+          // be gone survives a deletion.
+          shadows: CollapsedRowOverlay._halo,
         ),
       ),
       textDirection: TextDirection.ltr,

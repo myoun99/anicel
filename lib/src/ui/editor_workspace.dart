@@ -715,11 +715,17 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// translated for the shortcut dialog.
   Widget _railHistoryControls() {
     final session = widget.session;
+    final selection = widget.canvasSelectionCommands;
     return ListenableBuilder(
       listenable: Listenable.merge([
         session,
         session.historyManager,
         session.onionSkinLayerIds,
+        // ㉜: the deselect button's enablement is the SELECTION's news, and
+        // it arrives on that object's own channel — the selection layer
+        // mutates inside builds and gesture handlers, so its notify is
+        // microtask-deferred rather than riding a session notify.
+        ?selection,
       ]),
       builder: (context, _) {
         final strings = AppText.strings;
@@ -758,6 +764,29 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               selected: onionOn,
               onPressed: layer != null ? session.toggleOnionSkin : null,
             ),
+            // ㉜ (user, 2026-08-12): 「선택 해제 버튼이 없다」. The VERB was
+            // already here — `Ctrl+D` runs it — so this is the entrance and
+            // nothing else. It sits with undo/redo/onion because it is the
+            // same kind of thing: what a hand reaches for BETWEEN strokes.
+            //
+            // Its wording comes from the action registry by id, like its
+            // three neighbours, so the button and the shortcut dialog cannot
+            // end up calling it two different names.
+            if (selection != null) ...[
+              const SizedBox(height: 4),
+              RailButton(
+                keyValue: 'rail-deselect-button',
+                tooltip: strings.shortcutLabel(
+                  EditorActionIds.selectionDeselect,
+                  'Deselect',
+                ),
+                icon: Icons.deselect,
+                selected: false,
+                // Dimmed with nothing selected rather than hidden: a button
+                // that comes and goes is one you have to look for.
+                onPressed: selection.hasSelection ? selection.deselect : null,
+              ),
+            ],
           ],
         );
       },
@@ -3740,6 +3769,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                             Positioned.fill(
                               child: CanvasFloorInsets(
                                 insets: floorCover,
+                                // ⑩: the collapsed row lies ON the artwork
+                                // just past the region's edge. It frames
+                                // nothing, so it is not in `insets` — but a
+                                // bar on the bottom edge would be under it.
+                                bottomOverlaySpan:
+                                    hasBottomDock &&
+                                        _bottomDockCollapsed &&
+                                        !onTop
+                                    ? CollapsedRowOverlay.height
+                                    : 0,
                                 // WHERE each column actually is, not just how
                                 // wide it is. A rail panel is as tall as it was
                                 // left at, so a short one covers a band and not

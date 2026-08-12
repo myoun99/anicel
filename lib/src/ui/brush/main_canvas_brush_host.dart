@@ -340,6 +340,9 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       // provider, and nothing lies on it.
       floorCover: CanvasFloorInsets.maybeOf(context)?.insets ?? EdgeInsets.zero,
       floorRailBand: CanvasFloorInsets.maybeOf(context)?.rightRailBand,
+      // ⑩: what a control on the bottom edge has to clear.
+      floorBottomOverlaySpan:
+          CanvasFloorInsets.maybeOf(context)?.bottomOverlaySpan ?? 0,
       coordinator: coordinator,
       celEditable: hasEditableFrame,
       availableFrameKeys: _frameKeys,
