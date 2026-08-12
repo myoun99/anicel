@@ -13,17 +13,19 @@ void main() {
     AppSave.settings.value = const AppSaveSettings();
   });
 
-  test('defaults: autosave ON at 5 minutes', () {
+  test('defaults: autosave ON, and there is no cadence to set', () {
     const settings = AppSaveSettings();
     expect(settings.autosaveEnabled, isTrue);
-    expect(settings.autosaveIntervalMinutes, 5);
-    expect(AppSave.autosaveInterval, const Duration(minutes: 5));
+    // No interval field: the trigger is leaving the app, not a clock.
+    expect(settings.toJson().keys, unorderedEquals(<String>[
+      'autosaveEnabled',
+      'recordingsDirectory',
+    ]));
   });
 
   test('json roundtrip', () {
     const settings = AppSaveSettings(
       autosaveEnabled: false,
-      autosaveIntervalMinutes: 12,
       recordingsDirectory: '/tmp/takes',
     );
     expect(AppSaveSettings.fromJson(settings.toJson()), settings);
@@ -39,18 +41,20 @@ void main() {
     expect(settings.copyWith().recordingsDirectory, '/tmp/takes');
   });
 
-  test('a sidecarDirectory left by an older build is read and dropped', () {
-    // The location is not configurable any more. Carrying the key forward
-    // would let a path that names a folder nothing writes to survive in
-    // the settings file and confuse whoever reads it next.
+  test('settings an older build wrote are read and DROPPED, not carried',
+      () {
+    // Neither names anything now — the location is fixed and the trigger
+    // is not a clock — and a setting that outlives its feature is a value
+    // the next reader has to work out is dead.
     final revived = AppSaveSettings.fromJson(const {
       'autosaveEnabled': true,
-      'autosaveIntervalMinutes': 5,
+      'autosaveIntervalMinutes': 12,
       'sidecarDirectory': '/somewhere/old',
       'recordingsDirectory': null,
     });
     expect(revived, const AppSaveSettings());
     expect(revived.toJson().containsKey('sidecarDirectory'), isFalse);
+    expect(revived.toJson().containsKey('autosaveIntervalMinutes'), isFalse);
   });
 
   test('store roundtrip; missing/corrupt files yield null', () async {
@@ -60,7 +64,7 @@ void main() {
       filePath: '${directory.path}/save_settings.json',
     );
     expect(await store.load(), isNull);
-    const settings = AppSaveSettings(autosaveIntervalMinutes: 30);
+    const settings = AppSaveSettings(recordingsDirectory: '/takes');
     await store.save(settings);
     expect(await store.load(), settings);
 

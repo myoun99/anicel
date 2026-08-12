@@ -20,14 +20,13 @@ import 'app_support_path.dart';
 class AppSaveSettings {
   const AppSaveSettings({
     this.autosaveEnabled = true,
-    this.autosaveIntervalMinutes = 5,
     this.recordingsDirectory,
   });
 
+  /// Whether the app snapshots unsaved work for crash recovery at all.
+  /// There is no interval to go with it any more — the trigger is leaving
+  /// the app, not a clock.
   final bool autosaveEnabled;
-
-  /// Minutes between dirty-session snapshots (clamped ≥ 1 on use).
-  final int autosaveIntervalMinutes;
 
   /// Where a never-saved project's voice takes land; null/empty = the
   /// app documents `Recordings` folder.
@@ -37,12 +36,9 @@ class AppSaveSettings {
 
   AppSaveSettings copyWith({
     bool? autosaveEnabled,
-    int? autosaveIntervalMinutes,
     Object? recordingsDirectory = _unset,
   }) => AppSaveSettings(
     autosaveEnabled: autosaveEnabled ?? this.autosaveEnabled,
-    autosaveIntervalMinutes:
-        autosaveIntervalMinutes ?? this.autosaveIntervalMinutes,
     recordingsDirectory: identical(recordingsDirectory, _unset)
         ? this.recordingsDirectory
         : recordingsDirectory as String?,
@@ -50,19 +46,17 @@ class AppSaveSettings {
 
   Map<String, dynamic> toJson() => {
     'autosaveEnabled': autosaveEnabled,
-    'autosaveIntervalMinutes': autosaveIntervalMinutes,
     'recordingsDirectory': recordingsDirectory,
   };
 
-  /// A stored `sidecarDirectory` from an older build is READ AND DROPPED —
-  /// the location is not configurable any more, and carrying the key
-  /// forward would let a stale path outlive the feature that used it.
+  /// `sidecarDirectory` and `autosaveIntervalMinutes` left by an older
+  /// build are READ AND DROPPED. Neither names anything now — the location
+  /// is fixed and the trigger is not a clock — and carrying them forward
+  /// would let settings outlive the features that used them.
   static AppSaveSettings fromJson(Map<String, dynamic> json) {
     final recordings = json['recordingsDirectory'];
     return AppSaveSettings(
       autosaveEnabled: json['autosaveEnabled'] as bool? ?? true,
-      autosaveIntervalMinutes:
-          (json['autosaveIntervalMinutes'] as num?)?.round() ?? 5,
       recordingsDirectory: recordings is String && recordings.isNotEmpty
           ? recordings
           : null,
@@ -73,15 +67,10 @@ class AppSaveSettings {
   bool operator ==(Object other) =>
       other is AppSaveSettings &&
       other.autosaveEnabled == autosaveEnabled &&
-      other.autosaveIntervalMinutes == autosaveIntervalMinutes &&
       other.recordingsDirectory == recordingsDirectory;
 
   @override
-  int get hashCode => Object.hash(
-    autosaveEnabled,
-    autosaveIntervalMinutes,
-    recordingsDirectory,
-  );
+  int get hashCode => Object.hash(autosaveEnabled, recordingsDirectory);
 }
 
 /// The LIVE save policy (the [AppInput] idiom): the session restores and
@@ -89,9 +78,6 @@ class AppSaveSettings {
 abstract final class AppSave {
   static final ValueNotifier<AppSaveSettings> settings =
       ValueNotifier<AppSaveSettings>(const AppSaveSettings());
-
-  static Duration get autosaveInterval =>
-      Duration(minutes: settings.value.autosaveIntervalMinutes.clamp(1, 1440));
 
   /// Where [projectFilePath]'s crash-recovery snapshot lives: inside the
   /// app's own support folder, never beside the project.
