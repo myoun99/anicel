@@ -24,6 +24,7 @@ import '../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../services/cut_piece_slot.dart';
+import '../services/cut_piece_tip.dart';
 import '../services/resample/resample_kernel.dart' show ResampleMode;
 import '../services/color_palette_file_service.dart' show ColorPaletteState;
 import 'brush/brush_preset_library.dart';
@@ -524,6 +525,69 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// — it holds a raw pixel copy, so nothing about it belongs to the
   /// project it was taken from. Only quitting loses it.
   final CutPieceSlot _cutPieceSlot = CutPieceSlot();
+
+  int _registeredCutTipSequence = 0;
+
+  /// Promotes the held piece into the brush tip library.
+  ///
+  /// Explicit, and it asks for a name — which is the whole reason cutting
+  /// does NOT do this by itself. Photoshop and Clip Studio both make
+  /// library registration a separate named command, and TVPaint's Tool
+  /// History is the counter-example: it accumulates unnamed near-duplicates
+  /// automatically and its own users gave up on it as a store. The user's
+  /// objection to the first design was exactly that ("잘라낼 때마다 팁
+  /// 라이브러리 늘리는 거 딱히 마음에 안 드는데").
+  ///
+  /// One field, like Photoshop's. Our tip library has no groups to file
+  /// into — that is the preset library — so a second field would be asking
+  /// about a place that does not exist.
+  Future<void> _registerCutPieceAsTip() async {
+    final piece = _cutPieceSlot.piece;
+    if (piece == null) {
+      return;
+    }
+    _registeredCutTipSequence += 1;
+    final controller = TextEditingController(
+      text: 'Cut $_registeredCutTipSequence',
+    );
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const ValueKey<String>('register-cut-tip-dialog'),
+        title: const Text('Register as Tip'),
+        content: TextField(
+          key: const ValueKey<String>('register-cut-tip-name-field'),
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Name'),
+          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const ValueKey<String>('register-cut-tip-confirm'),
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: const Text('Register'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    final trimmed = name?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return;
+    }
+    final id = sanitizeBrushTipId(
+      nextUserBrushTipId(sequence: _registeredCutTipSequence),
+    );
+    await _tipLibrary.register(
+      cutPieceToTipMask(piece, id: id),
+      name: trimmed,
+    );
+  }
 
   void _rememberSelectionVariant() {
     final tool = _brushTool.value.tool;
@@ -1821,6 +1885,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                                           .pasteAtOrigin(
                                                             behind: true,
                                                           ),
+                                                  onRegisterCutPieceAsTip:
+                                                      _registerCutPieceAsTip,
                                                   language: widget
                                                       .session
                                                       .languageSettings
