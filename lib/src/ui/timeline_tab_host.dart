@@ -219,23 +219,23 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// standing on a property; the canvas refuses strokes until you step
   /// back onto a row that is a surface. The active layer is what you
   /// return TO — pressing the layer's own row is one tap away.
+  /// T4: through [EditorSessionManager.standOnRow], which is where 「어떤
+  /// 행이든 액티브 바꾸면 선택이 풀린다」 lives now. This used to clear the
+  /// LANE selection alone and reach for the session directly, so standing on
+  /// a property row left a cell or row selection standing — 유저 2026-08-13:
+  /// 「트랜스폼 멤버 행 액티브로하면 안풀림」.
   void _standOnLane(LayerId layerId, String laneId, int frameIndex) {
-    _session.clearLaneRangeSelection();
-    _session.selectLayer(layerId);
-    // R10 #19: and the LANE becomes the verb's subject, so Add keys this
-    // property instead of adding a cel. selectLayer above already moved
-    // the verb row to the layer, so this must come after it.
-    _session.selectRow(LaneRowAddress(layerId, laneId));
-    _session.selectFrameIndex(frameIndex);
+    _session.standOnRow(
+      LaneRowAddress(layerId, laneId),
+      frameIndex: frameIndex,
+    );
   }
 
   /// The LABEL half of the same rule: pressing a lane's name stands on it,
   /// exactly as the layer row's name selects its layer. No seek — a label
   /// names a ROW, and the frame stays where it was.
   void _standOnLaneRow(LayerId layerId, String laneId) {
-    _session.clearLaneRangeSelection();
-    _session.selectLayer(layerId);
-    _session.selectRow(LaneRowAddress(layerId, laneId));
+    _session.standOnRow(LaneRowAddress(layerId, laneId));
   }
 
   /// lane row under the pointer — member lanes only; headers and
@@ -703,15 +703,16 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // their paper; the token keys the row memo (cel pixels live
             // outside the Layer value).
             celContent: _celContent,
-            // A CLICK CLEARS (유저 확정): both surfaces route their row taps
-            // AND their cell presses through here, so one wrapping covers
-            // 「다른 레이어 클릭」, 「다른곳 클릭」 and 「선택된 내 물건 클릭」.
-            // A claimed pan never reaches it, which is what keeps the
-            // move-from-inside drag working.
-            onSelectLayer: (layerId) {
-              _session.clearAllSelections();
-              _session.selectLayer(layerId);
-            },
+            // A CLICK CLEARS (유저 확정) — and T4 moved that law OUT of this
+            // wrapper into [EditorSessionManager.standOnRow], because a
+            // wrapper only covers the doors that go through it. Standing on a
+            // property lane went straight to the session and kept its
+            // selection, and the next new door would have done the same.
+            //
+            // A claimed pan never reaches this callback, which is what keeps
+            // the move-from-inside drag working.
+            onSelectLayer: (layerId) =>
+                _session.standOnRow(LayerRowAddress(layerId)),
             // Ruler scrubs during playback SEEK the playback clock instead of
             // moving the (hidden) editing playhead.
             onSelectFrame: (frameIndex) {

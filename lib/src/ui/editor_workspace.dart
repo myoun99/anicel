@@ -3768,23 +3768,71 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       chromeless: true,
       layer: layer,
       active: true,
-      metrics: TimelineGridMetrics.defaults,
+      // 🚨THE TIMELINE'S OWN NUMBERS (유저 2026-08-13: 「레이어영역의
+      // 가로길이같은거 타임라인 그대로 가져와. 그래야 열의 규격이 맞을거니까」).
+      // This used to be `TimelineGridMetrics.defaults` while the panel drew
+      // with `defaults.copyWith(frameCellWidth: …)` — two metrics for one row,
+      // which is exactly the kind of second opinion mounting the real row was
+      // supposed to end.
+      metrics: _collapsedMetrics(),
       // The view state the rail reads, from the same places the timeline tab
       // reads it — not a second opinion, the same getters.
       fxState: session.layerFxState(layer.id),
       onionSkinEnabled: session.isLayerOnionSkinEnabled(layer.id),
       isLayerSoloed: session.soloedSeLayerIds.value.contains(layer.id),
       isLinked: session.isLayerLinked(layer.id),
-      hasLanes: true,
+      // A row HAS lanes when its lanes are not empty — the same question the
+      // panel asks. Hardcoding `true` gave a twirl to rows that have nothing
+      // to twirl.
+      hasLanes: timelineLanesForLayer(
+        layer: layer,
+        session: session,
+        expandedGroupKeys: _expandedLaneGroupKeys.value,
+      ).isNotEmpty,
       lanesExpanded: _expandedLaneLayerIds.value.contains(layer.id),
       blendLanguage: session.languageSettings.value.programLanguage,
+      // 🚨A NULL CALLBACK IS NOT "no handler", IT IS "NO COLUMN": this row
+      // reads `onToggleLayerOnionSkin != null` and friends as whether the
+      // slot exists at all. Leaving them out to mean "nothing can be pressed
+      // here" is what deleted the buttons the user came back about — 「없는
+      // 버튼이 많고 폭 규격이 안 맞는다」 — and it also shifted every column
+      // after them, which is the other half of the same report.
+      //
+      // Handing over live no-ops is safe rather than sloppy: the whole
+      // overlay sits inside an `IgnorePointer`, so nothing here can be
+      // pressed and no callback can ever run.
       onSelectLayer: (_) {},
       onToggleLayerVisibility: (_) {},
       onLayerOpacityChanged: (_, _) {},
       onToggleLayerTimesheet: (_) {},
       onLayerMarkSelected: (_, _) {},
+      onToggleLayerFx: (_) {},
+      onToggleLayerOnionSkin: (_) {},
+      onToggleLanes: (_) {},
+      onToggleLayerFillReference: (_) {},
+      onOpenLayerMixer: (_, _) {},
+      onLayerBlendModeSelected: (_, _) {},
     );
   }
+
+  /// The metrics BOTH halves of the collapsed row are built from.
+  ///
+  /// One object, because the two halves are one row: the rail's columns and
+  /// the frame cells beside them have to agree about how tall the row is and
+  /// how wide a frame is, and the only way to guarantee that is to ask once.
+  /// ⚠️The ROW HEIGHT is the overlay's, and it is the one number that may
+  /// differ: the strip is its own height by design, while every horizontal
+  /// measurement — rail width, section gutter, frame cell — comes from the
+  /// panel so the columns line up under it.
+  TimelineGridMetrics _collapsedMetrics() => TimelineGridMetrics(
+    minimumVisibleFrameCells: TimelineGridMetrics.defaults.minimumVisibleFrameCells,
+    layerControlsWidth: TimelineGridMetrics.defaults.layerControlsWidth,
+    frameCellWidth: _timelinePixelsPerFrame.value,
+    layerRowHeight: CollapsedRowOverlay.height,
+    verticalScrollbarWidth: TimelineGridMetrics.defaults.verticalScrollbarWidth,
+    sectionLabelGutterWidth:
+        TimelineGridMetrics.defaults.sectionLabelGutterWidth,
+  );
 
   /// ⑩ 구조 = 리빌드: everything that changes the collapsed row's SHAPE.
   ///
@@ -3854,10 +3902,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     if (layer == null) {
       return null;
     }
-    final metrics = TimelineGridMetrics(
-      frameCellWidth: _timelinePixelsPerFrame.value,
-      layerRowHeight: CollapsedRowOverlay.height,
-    );
+    final metrics = _collapsedMetrics();
     final lane = row is LaneRowAddress
         ? timelineLanesForLayer(
             layer: layer,
@@ -3890,6 +3935,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           TimelineFrameCellsRow(
             layer: layer,
             active: true,
+            // 🚨GROUND OFF. Mounting the real row (⑩ root C) brought the
+            // timeline's own ground with it, because only the RAIL half knew
+            // how to take one off — 유저 2026-08-13: 「원래 구상대로라면
+            // 프레임셀쪽은 바탕색은 싹 없애고 … 전체적으로 반투명하게 하기로
+            // 하지 않았나?」. It had been confirmed in 2026-08-10 and the fix
+            // for one half undid it for the other.
+            chromeless: true,
             playbackFrameCount: session.activeCutPlaybackFrameCount,
             geometry: geometry,
             crossAxisExtent: CollapsedRowOverlay.height,

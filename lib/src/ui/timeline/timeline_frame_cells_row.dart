@@ -60,7 +60,17 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.seSpillsIn = false,
     this.windowBucket,
     this.viewportMainExtent = 0,
+    this.chromeless = false,
   });
+
+  /// GROUND OFF — see [TimelineRowCellsPainter.chromeless] for the confirmed
+  /// look and for why the flag lives on the row instead of in its caller.
+  ///
+  /// The twin is [TimelineLayerControlsRow.chromeless]: the collapsed row
+  /// mounts BOTH halves of the real thing, and each half takes its ground off
+  /// the same way. That is the whole of ⑩'s root C — an overlay that owns no
+  /// drawing code cannot drift from what the panel shows.
+  final bool chromeless;
 
   final Layer layer;
   final bool active;
@@ -340,6 +350,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
           axis: axis,
           windowBucket: windowBucket,
           viewportMainExtent: viewportMainExtent,
+          chromeless: chromeless,
           // R26 #7 / R27 #3: each block prints ITS OWN length at its end
           // cell. It rides the cells painter as a FOREGROUND pass — above
           // the tiles, so the frames/seconds toggle stays a plain repaint

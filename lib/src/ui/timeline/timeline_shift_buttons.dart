@@ -12,11 +12,28 @@ import '../widgets/app_icon_button.dart';
 /// aimed at whatever is selected. The session picks the axis and the
 /// commit; the button only says which rail is asking, for the one case
 /// where nothing is selected at all.
-/// The pair gates on the SHIFT ANCHOR, which is the playhead — so it owns
-/// its own committed-seek subscription rather than making whatever mounts
-/// it rebuild. Two booleans re-derived per seek (measured at 3.7µs), and a
+/// The pair owns its own subscriptions rather than making whatever mounts it
+/// rebuild. Two booleans re-derived per signal (measured at 3.7µs), and a
 /// `setState` only when one of them flips: the alternative was the host
 /// rebuilding its whole command bar per arrow press (11ms of build).
+///
+/// 🚨T17 — it subscribes to TWO things, and the second one was missing.
+/// This class used to say the pair "gates on the SHIFT ANCHOR, which is the
+/// playhead", and subscribed to committed seeks alone. That was half the
+/// truth: [EditorSessionManager.canPullBlocks] also asks whether there is
+/// SLACK BEHIND the block — the arrangement — and an arrangement changes by
+/// EDITING, not by seeking. So pressing push opened a gap and pull stayed
+/// grey, holding the answer from the last committed seek; stepping one frame
+/// away and back "fixed" it, which is how the user found it.
+///
+/// The parent cannot cover this: the action toolbar is cached on
+/// `_deriveActionsToken`, and no push/pull dimension is in that token, so a
+/// notify that changed only the arrangement never reaches this widget as a
+/// rebuild either.
+///
+/// ★The law it broke is the one this codebase keeps re-learning: **what a
+/// predicate READS and what its widget SUBSCRIBES to have to be the same
+/// set**, or the button answers about a moment that has passed.
 class TimelineShiftButtons extends StatefulWidget {
   const TimelineShiftButtons({
     super.key,
@@ -46,7 +63,11 @@ class _TimelineShiftButtonsState extends State<TimelineShiftButtons> {
       widget.session.canPullBlocks(currentRow: widget.currentRow);
 
   /// Re-derives after a signal that does NOT come through a parent rebuild.
-  void _handleSeek() {
+  ///
+  /// The flip gate is what keeps the session subscription cheap: an edit that
+  /// leaves both answers alone (drawing a stroke, renaming a layer) costs the
+  /// two derivations and stops there.
+  void _reread() {
     final canPush = _derivedPush;
     final canPull = _derivedPull;
     if (canPush == _canPush && canPull == _canPull) {
@@ -58,20 +79,33 @@ class _TimelineShiftButtonsState extends State<TimelineShiftButtons> {
     });
   }
 
+  void _listen(EditorSessionManager session) {
+    // The ANCHOR moving (a seek is not a session notify) …
+    session.frameSeekCommitted.addListener(_reread);
+    // … and the ARRANGEMENT changing (T17). An edit notifies; a seek does not.
+    // Both are needed because the two predicates read both.
+    session.addListener(_reread);
+  }
+
+  void _unlisten(EditorSessionManager session) {
+    session.frameSeekCommitted.removeListener(_reread);
+    session.removeListener(_reread);
+  }
+
   @override
   void initState() {
     super.initState();
     _canPush = _derivedPush;
     _canPull = _derivedPull;
-    widget.session.frameSeekCommitted.addListener(_handleSeek);
+    _listen(widget.session);
   }
 
   @override
   void didUpdateWidget(covariant TimelineShiftButtons oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.session, widget.session)) {
-      oldWidget.session.frameSeekCommitted.removeListener(_handleSeek);
-      widget.session.frameSeekCommitted.addListener(_handleSeek);
+      _unlisten(oldWidget.session);
+      _listen(widget.session);
     }
     // Already rebuilding — assign, never setState.
     _canPush = _derivedPush;
@@ -80,7 +114,7 @@ class _TimelineShiftButtonsState extends State<TimelineShiftButtons> {
 
   @override
   void dispose() {
-    widget.session.frameSeekCommitted.removeListener(_handleSeek);
+    _unlisten(widget.session);
     super.dispose();
   }
 

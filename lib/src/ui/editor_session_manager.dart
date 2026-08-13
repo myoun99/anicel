@@ -1087,6 +1087,63 @@ class EditorSessionManager extends ChangeNotifier {
     clearRowSelection();
   }
 
+  /// 🚨T4 — STANDING ON A ROW, as one verb.
+  ///
+  /// 유저 2026-08-13: 「선택된게 풀리는거, **어떤 행이든 액티브 바꾸면
+  /// 풀리도록.** 지금 레이어 액티브 바꾸면 풀리는데 **트랜스폼 멤버 행
+  /// 액티브로하면 안풀림**」.
+  ///
+  /// ★The law was right and its ADDRESS was wrong. 「클릭하면 선택이
+  /// 사라진다」 was hung on the timeline host's `onSelectLayer` callback — a
+  /// wrapper — so it covered the doors that happened to go through that
+  /// wrapper and missed the ones that call the session directly. Standing on
+  /// a property lane was one of those, and it will not be the last: a wrapper
+  /// is a place, and every new door has to be told about it.
+  ///
+  /// A verb cannot be walked around. Every surface that means 「여기 서라」
+  /// says it here, and what standing DOES is decided once.
+  ///
+  /// [row] is the address stood on; [frameIndex] seeks as well, for the
+  /// surfaces where standing and seeking are one gesture (a lane band's
+  /// cells). A label press leaves it null — a label names a ROW, and the
+  /// frame stays where it was.
+  /// [takesLayerActive] is false on the STORYBOARD's rails, where the row you
+  /// stand on and the layer you draw on are separate states (유저
+  /// 2026-07-27). It is a parameter rather than a second verb because the
+  /// clearing law is the same on both panels — only the active layer differs,
+  /// and stating that difference once here beats restating the law at each
+  /// call site, which is the mistake T4 was.
+  void standOnRow(
+    TimelineRowAddress row, {
+    int? frameIndex,
+    bool takesLayerActive = true,
+  }) {
+    clearAllSelections();
+    switch (row) {
+      case LayerRowAddress(:final layerId):
+        if (takesLayerActive) {
+          selectLayer(layerId);
+        } else {
+          selectRow(row);
+        }
+      case LaneRowAddress(:final layerId):
+        // A LANE also becomes the verb's subject, so Add keys that property
+        // instead of adding a cel (R10 #19). `selectLayer` moves the verb row
+        // to the LAYER, which is why the lane is claimed after it — and why a
+        // layer row needs nothing more.
+        if (takesLayerActive) {
+          selectLayer(layerId);
+        }
+        selectRow(row);
+      case TrackRowAddress():
+        // A track row has no layer to make active either way.
+        selectRow(row);
+    }
+    if (frameIndex != null) {
+      selectFrameIndex(frameIndex);
+    }
+  }
+
   /// 🚨THE ONE-SELECTION LAW (유저 확정 2026-08-12): 「선택범위는 하나만
   /// 작동하도록. 프레임셀 선택범위 작동시키고 레이어쪽 선택범위 작동하면
   /// 기존 프레임셀쪽 사라지게. 반대도 마찬가지 (…) 즉 **선택한 상태라는건

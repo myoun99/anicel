@@ -937,7 +937,18 @@ class TimelineActionToolbar extends StatelessWidget {
     builder: (context) => CommandPill(
       head: PillNameCell(
         keyValue: 'timeline-effects-button',
-        icon: Icons.auto_fix_high_outlined,
+        // T15 (유저 2026-08-13): 「fx버튼, 지금 아이콘인데 다른거랑 통일해서
+        // fx라고 텍스트로 바꾸자. 레이어나 컷도 그렇잖아」 — a pill's head is
+        // its NOUN and the other three print theirs; this was the only
+        // wordless name on the bar.
+        //
+        // ⚠️NOT the rail's `fx` glyph: that italic accent lettering means
+        // "these effects are ON", and a name that also reported a state would
+        // be answering two questions with one word.
+        //
+        // Untranslated on purpose — 현장 용어 stays in the original, which is
+        // the same reason it needs no AppStrings key.
+        label: 'Fx',
         tooltip: AppText.strings.tlEffects,
         entriesBuilder: _effectEntries,
       ),
