@@ -224,8 +224,8 @@ void main() {
   });
 
   // The other half of importing by reference: the row where a user who
-  // referenced a file decides the project folder should own it after all.
-  group('register in project', () {
+  // referenced a file decides the project should own it after all.
+  group('keep inside the project file', () {
     Future<void> tapPromote(WidgetTester tester) async {
       await tester.tap(
         find.byKey(const ValueKey<String>('media-asset-menu-$foot')),
@@ -250,14 +250,16 @@ void main() {
       await tapPromote(tester);
 
       expect(callbacks.promoted, [foot]);
-      expect(find.textContaining('Nothing to copy'), findsNothing);
+      expect(find.textContaining('Nothing to take in'), findsNothing);
     });
 
     testWidgets('a refusal explains itself rather than looking broken', (
       tester,
     ) async {
-      // Already inside the project, or a project with nowhere to copy to
-      // yet. A menu item that silently does nothing reads as a bug.
+      // Already carried, or a movie — which is never carried whatever
+      // anyone picks. The item is offered on every row on purpose, so a
+      // refusal has to speak; a menu item that silently does nothing
+      // reads as a bug.
       final callbacks = _Callbacks()..promoteResult = false;
       await _pump(
         tester,
@@ -268,7 +270,7 @@ void main() {
       await tapPromote(tester);
 
       expect(callbacks.promoted, [foot]);
-      expect(find.textContaining('Nothing to copy'), findsOneWidget);
+      expect(find.textContaining('Nothing to take in'), findsOneWidget);
     });
   });
 }
