@@ -5,6 +5,7 @@ import '../panels/panel_collapsed_scope.dart';
 import '../../models/app_language.dart' show AppLanguage;
 import '../../models/camera_instruction.dart';
 import '../../models/layer_blend_mode.dart';
+import '../../models/timeline_row_address.dart';
 import '../../models/attached_layer_resolve.dart' show attachArrowPlacement;
 import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
@@ -89,7 +90,7 @@ class TimelinePanel extends StatefulWidget {
     this.currentRowHooks,
     this.rowDragHooks,
     this.onRowSelectionSpan,
-    this.selectedRowIds = const {},
+    this.selectedRows = const {},
     this.runEdit,
     this.isFrameCached,
     required this.orientation,
@@ -278,8 +279,12 @@ class TimelinePanel extends StatefulWidget {
   final void Function(List<TimelineDisplayRow> rows, int rowDelta)?
   onRowSelectionSpan;
 
-  /// ⑨: the rows currently selected, as layer ids.
-  final Set<LayerId> selectedRowIds;
+  /// ⑨: the rows currently selected, as ADDRESSES.
+  ///
+  /// 🚨T1 — this used to be a `Set<LayerId>`, which cannot spell a lane row
+  /// or an fx header. T5 made both selectable, so the loss ③ found inside the
+  /// span would have reappeared here: selected, and not drawn.
+  final Set<TimelineRowAddress> selectedRows;
 
   /// The run-edge [+]/[↻] handle hooks (UI-R8), both orientations; null
   /// hides the handles.
@@ -559,7 +564,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     currentRowHooks: widget.currentRowHooks,
                     rowDragHooks: widget.rowDragHooks,
                     onRowSelectionSpan: widget.onRowSelectionSpan,
-                    selectedRowIds: widget.selectedRowIds,
+                    selectedRows: widget.selectedRows,
                     runEdit: widget.runEdit,
                     isFrameCached: widget.isFrameCached,
                     metrics: horizontalMetrics,
@@ -641,7 +646,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     currentRowHooks: widget.currentRowHooks,
                     rowDragHooks: widget.rowDragHooks,
                     onRowSelectionSpan: widget.onRowSelectionSpan,
-                    selectedRowIds: widget.selectedRowIds,
+                    selectedRows: widget.selectedRows,
                     runEdit: widget.runEdit,
                     isFrameCached: widget.isFrameCached,
                     metrics: xsheetMetrics,

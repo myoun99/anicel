@@ -132,7 +132,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.laneRange,
     this.currentRowHooks,
     this.rowDragHooks,
-    this.selectedRowIds = const {},
+    this.selectedRows = const {},
     this.onRowSelectionSpan,
     this.runEdit,
     this.isFrameCached,
@@ -315,7 +315,7 @@ class XSheetTimelineGrid extends StatefulWidget {
   onRowSelectionSpan;
 
   /// ⑨: the columns currently selected, as layer ids.
-  final Set<LayerId> selectedRowIds;
+  final Set<TimelineRowAddress> selectedRows;
 
   /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
   final TimelineRunEditCallbacks? runEdit;
@@ -1762,13 +1762,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                             .id ==
                                                                         widget
                                                                             .activeLayerId,
-                                                                    // ⑨
+                                                                    // ⑨ · T1
                                                                     selected: widget
-                                                                        .selectedRowIds
+                                                                        .selectedRows
                                                                         .contains(
-                                                                          entries[index]
-                                                                              .layer
-                                                                              .id,
+                                                                          LayerRowAddress(
+                                                                            entries[index].layer.id,
+                                                                          ),
                                                                         ),
                                                                     metrics:
                                                                         _metrics,

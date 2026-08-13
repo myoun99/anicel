@@ -684,11 +684,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           ) => TimelinePanel(
             layers: _displayLayers(),
             activeLayerId: _session.activeLayerId,
-            // ⑨: the rows the row verbs act on, washed on both surfaces.
-            selectedRowIds: {
-              for (final row in _session.rowSelection.value)
-                if (row is LayerRowAddress) row.layerId,
-            },
+            // ⑨: the rows the row verbs act on, banded on both surfaces.
+            //
+            // 🚨T1: ADDRESSES, not layer ids. T5 made every row kind
+            // selectable, and a `Set<LayerId>` cannot spell a lane or an fx
+            // header — the same shape of loss ③ found in the span itself.
+            selectedRows: _session.rowSelection.value.toSet(),
             // Edit drags (comma/trim) preview through the scoped channel: a
             // step rebuilds the dragged row's gate + the cursor overlay only,
             // never this host (the release commit is the one session notify).

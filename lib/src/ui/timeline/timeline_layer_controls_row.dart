@@ -12,7 +12,7 @@ import '../widgets/field_slider.dart';
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
 import 'timeline_grid_metrics.dart';
-import 'timeline_selected_exposure_outline.dart' show TimelineSelectionRing;
+
 
 /// Whether two [Layer] snapshots would make [TimelineLayerControlsRow] look
 /// EXACTLY the same — the rail memo's gate.
@@ -534,23 +534,21 @@ class TimelineLayerControlsRow extends StatelessWidget {
     // layer, so it was always a second door to the same dialog; dissolve
     // is waiting on the layer-label drag system, and Delete on a folder
     // row already dissolves it.
-    if (!selected) {
-      return row;
-    }
-    // ㊴: the selection RING, over the row's own ground. Sized by the row
-    // (the Stack takes its one unpositioned child's size), so it traces the
-    // same box the wash would have filled — and an ACTIVE row inside the
-    // selection wears both, which is the point: they answer two questions.
-    return Stack(
-      children: [
-        row,
-        const Positioned.fill(
-          child: TimelineSelectionRing(
-            key: ValueKey<String>('timeline-row-selection-ring'),
-          ),
-        ),
-      ],
-    );
+    // 🚨T1 — the selection is NOT drawn here any more.
+    //
+    // ㊴ put a ring around each selected row, and 유저 2026-08-13 read the
+    // result back: 「외곽선이 레이어 하나마다 들어오는데, 그게아니라 프레임셀
+    // 처럼 연결된 레이어들 선택하면 **한 외곽선, 바탕**이 되도록. 그리고 지금
+    // **외곽선이 왼쪽 섹션부분의 선이 없음**」 — two symptoms, one cause. A
+    // per-row box seams every boundary inside one selection, and the only box
+    // a row can draw is its INNER container, which stops short of the section
+    // gutter where the band lives.
+    //
+    // ★So it moved to where the cells' band already was: an overlay across
+    // the rail ([TimelineRowSelectionBands]) — one shape per contiguous run,
+    // the full rail width. `selected` stays because the row still reports it
+    // to semantics and keys its memo on it.
+    return row;
   }
 
   /// The row's opacity slider, live-following the session's drag preview
