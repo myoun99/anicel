@@ -85,24 +85,23 @@ void main() {
   }
 
   group('the law itself', () {
-    test('retiring kills EVERY candidate location, not just the one the '
-        'CURRENT setting names', () {
-      // The sidecar-directory setting may have moved since a sidecar was
-      // written, and the stale one is exactly the one that would go on
-      // offering to restore discarded work.
-      final custom = Directory('${folder.path}/elsewhere')..createSync();
+    test('retiring kills EVERY candidate location, including where an '
+        'OLDER BUILD would have left one', () {
+      // The snapshot moved into app support, but a crash that happened on
+      // a previous build left one beside the project — and that is exactly
+      // the copy that would go on offering to restore discarded work if
+      // retirement only knew about the current spot.
       final beside = File('$projectPath.autosave')..writeAsStringSync('a');
-      AppSave.settings.value = AppSaveSettings(
-        sidecarDirectory: custom.path.replaceAll('\\', '/'),
-      );
-      final inCustom = File(AppSave.sidecarPathFor(projectPath))
+      final current = File(AppSave.recoveryPathFor(projectPath))
+        ..createSync(recursive: true)
         ..writeAsStringSync('b');
-      expect(beside.path, isNot(inCustom.path));
+      addTearDown(() => current.parent.deleteSync(recursive: true));
+      expect(beside.path, isNot(current.path));
 
       ProjectAutosaveService.retireSidecarsFor(projectPath);
 
-      expect(beside.existsSync(), isFalse, reason: 'the old location too');
-      expect(inCustom.existsSync(), isFalse);
+      expect(current.existsSync(), isFalse);
+      expect(beside.existsSync(), isFalse, reason: 'the legacy spot too');
     });
 
     test('retiring a project with no sidecar anywhere is silent', () {
@@ -131,33 +130,30 @@ void main() {
       ).discardAutosaveSidecar();
     });
 
-    test('Save As retires the OLD path\'s sidecar in EVERY candidate '
-        'location, not only the one the setting names now', () async {
-      // The previous spelling of this test set no sidecar directory, so
-      // "every candidate" collapsed to the single string it had already
-      // captured and the whole thing passed against the pre-change code.
-      // With a custom directory configured, the beside-the-file sidecar of
-      // the abandoned path is a location only the new code reaches.
-      final custom = Directory('${folder.path}/sidecars')..createSync();
+    test('Save As retires the OLD path\'s snapshot in EVERY candidate '
+        'location', () async {
+      // Both locations of the ABANDONED path: the current one in app
+      // support, and the beside-the-file spot an older build would have
+      // used. Neither is where the save is going, so only a retirement
+      // that looks at the path it came FROM reaches them.
       final s = EditorSessionManager(initialProject: createDefaultProject());
       await s.saveProjectToFile(projectPath);
       final beside = File('$projectPath.autosave')..writeAsStringSync('old');
-      AppSave.settings.value = AppSaveSettings(
-        sidecarDirectory: custom.path.replaceAll('\\', '/'),
-      );
-      final inCustom = File(AppSave.sidecarPathFor(projectPath))
+      final current = File(AppSave.recoveryPathFor(projectPath))
+        ..createSync(recursive: true)
         ..writeAsStringSync('newer');
-      expect(beside.path, isNot(inCustom.path));
+      addTearDown(() => current.parent.deleteSync(recursive: true));
+      expect(beside.path, isNot(current.path));
 
       await s.saveProjectToFile(
         '${folder.path.replaceAll('\\', '/')}/Cut 13.anicel',
       );
 
-      expect(inCustom.existsSync(), isFalse);
+      expect(current.existsSync(), isFalse);
       expect(
         beside.existsSync(),
         isFalse,
-        reason: 'the location the setting no longer names still holds work',
+        reason: 'a snapshot an older build left still holds work',
       );
     });
 
@@ -204,6 +200,30 @@ void main() {
       expect(otherSidecar.existsSync(), isFalse);
     });
 
+    test('closing WITHOUT saving stops the snapshot too, not just deletes '
+        'the one already there', () async {
+      // Deleting without stopping the trigger is a race the trigger wins.
+      // Close retires the snapshot, and then the shutdown around it
+      // delivers the same lifecycle callbacks as any other — the session
+      // is still dirty, so a fresh snapshot renames straight over the
+      // retirement and the next open hands the discarded work back.
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      await s.saveProjectToFile(projectPath);
+      s.createCut();
+      expect(s.hasUnsavedChanges, isTrue);
+
+      s.discardAutosaveSidecar();
+
+      expect(
+        s.autosaveShouldStandDown,
+        isTrue,
+        reason: 'the exit lifecycle is still to come',
+      );
+      // And the writer refuses even if something calls it directly.
+      await s.writeAutosaveSnapshot(s.autosaveSidecarPath!);
+      expect(File(s.autosaveSidecarPath!).existsSync(), isFalse);
+    });
+
     test('an autosave tick stands down while a manual save runs', () async {
       // A tick that lands after the save's retirement leaves a sidecar for
       // a project that was saved and closed cleanly, and the next open then
@@ -223,7 +243,7 @@ void main() {
       );
 
       final saving = s.saveProjectToFile(projectPath);
-      await autosave.tick();
+      await autosave.saveNow();
       await saving;
 
       expect(ticked, isFalse, reason: 'the tick fired inside the save');

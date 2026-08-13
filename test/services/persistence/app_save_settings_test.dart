@@ -4,27 +4,28 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/services/persistence/app_save_settings_store.dart';
 
-/// SAVE-1: the save/autosave policy — defaults, persistence, and the
-/// sidecar location resolution (beside the file vs the user's sidecar
-/// directory, with recovery checking every candidate).
+/// SAVE-1: the save/recovery policy — defaults, persistence, and where a
+/// recovery snapshot is looked for now that its location is no longer a
+/// setting (the app's own support folder, with the old beside-the-file
+/// spot still checked so a crash from a previous build is not stranded).
 void main() {
   tearDown(() {
     AppSave.settings.value = const AppSaveSettings();
   });
 
-  test('defaults: autosave ON at 5 minutes, sidecar beside the file', () {
+  test('defaults: autosave ON, and there is no cadence to set', () {
     const settings = AppSaveSettings();
     expect(settings.autosaveEnabled, isTrue);
-    expect(settings.autosaveIntervalMinutes, 5);
-    expect(settings.sidecarDirectory, isNull);
-    expect(AppSave.autosaveInterval, const Duration(minutes: 5));
+    // No interval field: the trigger is leaving the app, not a clock.
+    expect(settings.toJson().keys, unorderedEquals(<String>[
+      'autosaveEnabled',
+      'recordingsDirectory',
+    ]));
   });
 
-  test('json roundtrip incl. the null sidecar directory', () {
+  test('json roundtrip', () {
     const settings = AppSaveSettings(
       autosaveEnabled: false,
-      autosaveIntervalMinutes: 12,
-      sidecarDirectory: '/tmp/sidecars',
       recordingsDirectory: '/tmp/takes',
     );
     expect(AppSaveSettings.fromJson(settings.toJson()), settings);
@@ -32,14 +33,28 @@ void main() {
       AppSaveSettings.fromJson(const AppSaveSettings().toJson()),
       const AppSaveSettings(),
     );
-    // copyWith can EXPLICITLY clear the directories back to defaults.
-    expect(settings.copyWith(sidecarDirectory: null).sidecarDirectory, isNull);
-    expect(settings.copyWith().sidecarDirectory, '/tmp/sidecars');
+    // copyWith can EXPLICITLY clear the directory back to the default.
     expect(
       settings.copyWith(recordingsDirectory: null).recordingsDirectory,
       isNull,
     );
     expect(settings.copyWith().recordingsDirectory, '/tmp/takes');
+  });
+
+  test('settings an older build wrote are read and DROPPED, not carried',
+      () {
+    // Neither names anything now — the location is fixed and the trigger
+    // is not a clock — and a setting that outlives its feature is a value
+    // the next reader has to work out is dead.
+    final revived = AppSaveSettings.fromJson(const {
+      'autosaveEnabled': true,
+      'autosaveIntervalMinutes': 12,
+      'sidecarDirectory': '/somewhere/old',
+      'recordingsDirectory': null,
+    });
+    expect(revived, const AppSaveSettings());
+    expect(revived.toJson().containsKey('sidecarDirectory'), isFalse);
+    expect(revived.toJson().containsKey('autosaveIntervalMinutes'), isFalse);
   });
 
   test('store roundtrip; missing/corrupt files yield null', () async {
@@ -49,7 +64,7 @@ void main() {
       filePath: '${directory.path}/save_settings.json',
     );
     expect(await store.load(), isNull);
-    const settings = AppSaveSettings(autosaveIntervalMinutes: 30);
+    const settings = AppSaveSettings(recordingsDirectory: '/takes');
     await store.save(settings);
     expect(await store.load(), settings);
 
@@ -57,63 +72,70 @@ void main() {
     expect(await store.load(), isNull);
   });
 
-  test('sidecar resolution: beside by default; the custom directory gets '
-      'an origin-encoded name (no cross-folder collisions)', () {
-    expect(
-      AppSave.sidecarPathFor('/projects/scene.anicel'),
-      '/projects/scene.anicel.autosave',
-    );
+  test('the recovery snapshot lives in app support, never beside the '
+      'project, under an ORIGIN-encoded name', () {
+    // Origin-encoded because they all share one folder now: two projects
+    // both called `C-045.anicel` in different works would otherwise write
+    // over each other's crash work.
+    final a = AppSave.recoveryPathFor('/projects/a/scene.anicel');
+    final b = AppSave.recoveryPathFor('/projects/b/scene.anicel');
 
-    AppSave.settings.value = const AppSaveSettings(
-      sidecarDirectory: '/sidecars',
-    );
-    final a = AppSave.sidecarPathFor('/projects/a/scene.anicel');
-    final b = AppSave.sidecarPathFor('/projects/b/scene.anicel');
-    expect(a, startsWith('/sidecars/scene.anicel.'));
+    expect(a, isNot(startsWith('/projects/')));
     expect(a, endsWith('.autosave'));
+    expect(a, contains('scene.anicel.'));
     expect(a, isNot(b), reason: 'same basename, different folders');
     expect(
-      AppSave.sidecarPathFor('/projects/a/scene.anicel'),
+      AppSave.recoveryPathFor('/projects/a/scene.anicel'),
       a,
-      reason: 'the encoding is stable across calls/runs',
+      reason: 'the encoding is stable across calls and runs',
     );
-    // Windows separators normalize into the same encoding.
     expect(
-      AppSave.sidecarPathFor('\\projects\\a\\scene.anicel'),
+      AppSave.recoveryPathFor('\\projects\\a\\scene.anicel'),
       a,
       reason: 'backslash and slash forms are the same origin',
     );
-
-    expect(AppSave.sidecarCandidatesFor('/projects/a/scene.anicel'), [
-      '/projects/a/scene.anicel.autosave',
-      a,
-    ]);
   });
 
-  test('newestExistingSidecarFor picks the newest across candidate '
-      'locations', () async {
-    final directory = await Directory.systemTemp.createTemp('sidecar-loc');
+  test('the OLD beside-the-file spot is still searched, so a crash from a '
+      'previous build survives the update', () async {
+    final directory = await Directory.systemTemp.createTemp('recovery-loc');
     addTearDown(() => directory.delete(recursive: true));
     final projectPath = '${directory.path}/scene.anicel'.replaceAll('\\', '/');
-    final sidecarDir = '${directory.path}/sidecars'.replaceAll('\\', '/');
-    AppSave.settings.value = AppSaveSettings(sidecarDirectory: sidecarDir);
 
-    expect(AppSave.newestExistingSidecarFor(projectPath), isNull);
+    expect(AppSave.recoveryCandidatesFor(projectPath), [
+      AppSave.recoveryPathFor(projectPath),
+      '$projectPath.autosave',
+    ]);
+    expect(AppSave.newestExistingRecoveryFor(projectPath), isNull);
 
-    // Older beside-the-file sidecar…
+    // Only the legacy one exists: it is still offered.
     final beside = File('$projectPath.autosave');
     await beside.writeAsString('old');
     await beside.setLastModified(DateTime(2020));
+    expect(AppSave.newestExistingRecoveryFor(projectPath), beside.path);
 
-    // …newer one in the custom directory.
-    final custom = File(AppSave.sidecarPathFor(projectPath));
-    await custom.create(recursive: true);
-    await custom.writeAsString('new');
-    await custom.setLastModified(DateTime(2024));
+    // Once the app has written its own, the newest wins either way.
+    final current = File(AppSave.recoveryPathFor(projectPath));
+    await current.create(recursive: true);
+    addTearDown(() => current.parent.delete(recursive: true));
+    await current.writeAsString('new');
+    await current.setLastModified(DateTime(2024));
+    expect(AppSave.newestExistingRecoveryFor(projectPath), current.path);
 
-    expect(AppSave.newestExistingSidecarFor(projectPath), custom.path);
+    await current.setLastModified(DateTime(2019));
+    expect(AppSave.newestExistingRecoveryFor(projectPath), beside.path);
+  });
 
-    await custom.setLastModified(DateTime(2019));
-    expect(AppSave.newestExistingSidecarFor(projectPath), beside.path);
+  test('under FLUTTER_TEST the snapshot is redirected out of the real '
+      'app-support folder', () {
+    // Tests reach this through the production save and open wiring. Without
+    // the redirect a run would drop snapshots into the user's own folder
+    // and then read the ones an earlier run left there.
+    final path = AppSave.recoveryPathFor('/projects/scene.anicel');
+    expect(
+      path.startsWith(Directory.systemTemp.path.replaceAll('\\', '/')),
+      isTrue,
+      reason: 'got $path',
+    );
   });
 }

@@ -3,21 +3,38 @@ import 'dart:io';
 
 import 'app_save_settings.dart';
 
-/// Autosave (P3): a periodic tick snapshots a DIRTY session into a sidecar
-/// `<path>.autosave` next to the saved file. Opening a file with a newer
-/// sidecar offers recovery (the menu's open flow).
+/// Autosave (P3): a DIRTY session's work is snapshotted into the app's
+/// recovery folder when the app is about to stop being in front of the
+/// user. Opening a file with a newer snapshot offers recovery (the menu's
+/// open flow).
 ///
-/// A sidecar holds unsaved work, so it dies the moment that work stops
+/// It used to be a five-minute TIMER, and the timer is gone. Two reasons,
+/// and the second is the one that decided it:
+///
+/// - It defeated incremental saving outright. Each tick adopted every
+///   cel's file ref into the snapshot, so the next manual save could no
+///   longer see its own work in the project file and rewrote the whole
+///   thing. Incremental save only ever ran when two manual saves landed
+///   inside one interval, which in practice is never.
+/// - Nobody in the industry runs one on documents this size. Of the
+///   professional animation tools surveyed, every desktop one ships its
+///   timer OFF by default, and not one writes a complete copy of a
+///   multi-gigabyte document on a clock. What they all do instead is
+///   shrink the unit of write. The mobile ones, where the OS can kill the
+///   process without warning, write on the LIFECYCLE instead — which is
+///   the trigger that actually matches when work is at risk.
+///
+/// A snapshot holds unsaved work, so it dies the moment that work stops
 /// existing — see [retireSidecarsFor] for the three moments and why a
-/// surviving sidecar has to mean something.
+/// surviving snapshot has to mean something.
 ///
-/// PEN-12 #8: a NEVER-SAVED project autosaves nowhere — instead of piling
-/// sidecars into hidden app-data folders, a dirty tick fires
-/// [onUnsavedProject] so the shell can ask the user for a real file
+/// PEN-12 #8: a NEVER-SAVED project snapshots nowhere — instead of piling
+/// files into hidden app-data folders for a document that has no identity
+/// yet, it fires [onUnsavedProject] so the shell can ask for a real file
 /// (OpenToonz-style).
 ///
-/// The service knows nothing about widgets: the shell starts it
-/// (FLUTTER_TEST never runs the timer) and tests drive [tick] directly.
+/// The service knows nothing about widgets: the shell decides WHEN, this
+/// decides WHETHER.
 class ProjectAutosaveService {
   ProjectAutosaveService({
     required this.isDirty,
@@ -25,60 +42,52 @@ class ProjectAutosaveService {
     required this.autosavePath,
     this.needsProjectFile,
     this.onUnsavedProject,
-    this.interval = const Duration(minutes: 5),
   });
 
   /// Whether unsaved changes exist (the session's dirty flag).
   final bool Function() isDirty;
 
   /// Writes the current session snapshot to [path] (the session's .anicel
-  /// writer pointed at the sidecar — atomic like a manual save).
+  /// writer pointed at the recovery file — atomic like a manual save).
   final Future<void> Function(String path) writeSnapshot;
 
-  /// The sidecar path for the CURRENT session state (moves when the
+  /// The recovery path for the CURRENT session state (moves when the
   /// project is saved under a new name).
   final String Function() autosavePath;
 
   /// True while the project has never been saved to a real file — a
-  /// dirty tick then calls [onUnsavedProject] instead of snapshotting.
+  /// dirty pass then calls [onUnsavedProject] instead of snapshotting.
   final bool Function()? needsProjectFile;
 
   /// The shell's "please save first" hook (once-per-session gating is
   /// the shell's business).
   final void Function()? onUnsavedProject;
 
-  final Duration interval;
+  bool _writing = false;
 
-  Timer? _timer;
-  bool _ticking = false;
-
-  void start() {
-    _timer ??= Timer.periodic(interval, (_) => unawaited(tick()));
-  }
-
-  void dispose() {
-    _timer?.cancel();
-    _timer = null;
-  }
-
-  /// One autosave pass: dirty → snapshot to the sidecar (clean sessions
-  /// write nothing). Never throws — a failed autosave must not disturb
-  /// editing; the next tick retries.
-  Future<void> tick() async {
-    if (_ticking || !isDirty()) {
+  /// One snapshot pass: dirty → write (clean sessions write nothing).
+  /// Never throws — a failed snapshot must not disturb editing or block
+  /// the lifecycle callback that asked for it.
+  ///
+  /// Re-entrant calls return immediately rather than queue: the triggers
+  /// arrive in bursts (inactive, then hidden, then paused, for one trip to
+  /// the home screen) and each would otherwise rewrite what the last one
+  /// just wrote.
+  Future<void> saveNow() async {
+    if (_writing || !isDirty()) {
       return;
     }
     if (needsProjectFile?.call() ?? false) {
       onUnsavedProject?.call();
       return;
     }
-    _ticking = true;
+    _writing = true;
     try {
       await writeSnapshot(autosavePath());
     } catch (_) {
-      // Swallowed by design; the next tick retries.
+      // Swallowed by design; the next trigger retries.
     } finally {
-      _ticking = false;
+      _writing = false;
     }
   }
 
@@ -105,10 +114,10 @@ class ProjectAutosaveService {
   ///
   /// Sync also keeps the exit and open flows testable — async `dart:io`
   /// inside `testWidgets` never completes (fake zone) — and matches the
-  /// neighbouring reads ([sidecarIsNewer], `newestExistingSidecarFor`),
+  /// neighbouring reads ([sidecarIsNewer], `newestExistingRecoveryFor`),
   /// which are sync for the same reason. One small file, at save or exit.
   static void retireSidecarsFor(String projectFilePath) {
-    for (final candidate in AppSave.sidecarCandidatesFor(projectFilePath)) {
+    for (final candidate in AppSave.recoveryCandidatesFor(projectFilePath)) {
       _deleteSidecar(candidate);
     }
   }

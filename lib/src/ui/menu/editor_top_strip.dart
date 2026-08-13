@@ -4,6 +4,8 @@ import 'dart:io' show File, Platform;
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
+import '../../services/persistence/anicel_file_service.dart'
+    show anicelSnapshotIsOverlay;
 import '../../services/persistence/anicel_project_archive.dart';
 import '../../services/persistence/app_documents.dart';
 import '../../services/persistence/app_save_settings.dart';
@@ -169,6 +171,7 @@ class EditorTopStrip extends StatelessWidget {
     // written) — every candidate location is checked, newest wins.
     var openPath = path;
     String? recoverAs;
+    String? overlayPath;
     var declinedSidecar = false;
     // Reopening the project that is ALREADY open and dirty. There is no
     // unsaved-changes gate on the open flow, so this reload throws the
@@ -179,7 +182,7 @@ class EditorTopStrip extends StatelessWidget {
     // of these.
     final reopeningDirtySelf =
         session.projectFilePath == path && session.hasUnsavedChanges;
-    final sidecar = AppSave.newestExistingSidecarFor(path);
+    final sidecar = AppSave.newestExistingRecoveryFor(path);
     if (sidecar != null &&
         ProjectAutosaveService.sidecarIsNewer(
           filePath: path,
@@ -211,14 +214,26 @@ class EditorTopStrip extends StatelessWidget {
         return;
       }
       if (recover) {
-        openPath = sidecar;
-        recoverAs = path;
+        if (anicelSnapshotIsOverlay(sidecar)) {
+          // The snapshot holds only what changed since the last save, so
+          // the PROJECT is what gets opened and the snapshot goes on top.
+          overlayPath = sidecar;
+        } else {
+          // A build before overlays wrote a complete archive: open it
+          // directly, keeping the project as the path to save back to.
+          openPath = sidecar;
+          recoverAs = path;
+        }
       } else {
         declinedSidecar = true;
       }
     }
     try {
-      await session.openProjectFromFile(openPath, recoverAs: recoverAs);
+      await session.openProjectFromFile(
+        openPath,
+        recoverAs: recoverAs,
+        overlayPath: overlayPath,
+      );
       // Recorded AFTER the open succeeds, not at pick time: a file that
       // fails to parse has no business sitting at the top of the menu.
       // `path` rather than `openPath` — recovering from a sidecar still

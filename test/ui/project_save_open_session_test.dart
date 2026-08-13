@@ -126,15 +126,22 @@ void main() {
       writeSnapshot: s.writeAutosaveSnapshot,
       autosavePath: () => s.autosaveSidecarPath!,
     );
-    // Clean session: nothing written.
-    await autosave.tick();
-    final sidecar = File('$path.autosave');
+    // Clean session: nothing written. The snapshot lives in app support
+    // now, so its path comes from the session rather than from the
+    // project's own name.
+    await autosave.saveNow();
+    final sidecar = File(s.autosaveSidecarPath!);
+    addTearDown(() {
+      if (sidecar.parent.existsSync()) {
+        sidecar.parent.deleteSync(recursive: true);
+      }
+    });
     expect(sidecar.existsSync(), isFalse);
 
     // Dirty session: the sidecar lands; the dirty flag stays (autosave is
     // not a manual save).
     s.createCut();
-    await autosave.tick();
+    await autosave.saveNow();
     expect(sidecar.existsSync(), isTrue);
     expect(s.hasUnsavedChanges, isTrue);
     expect(

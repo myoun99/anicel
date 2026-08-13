@@ -116,37 +116,32 @@ void main() {
     await tester.pumpAndSettle();
     expect(AppSave.settings.value.autosaveEnabled, isFalse);
 
-    // Interval: bad input snaps back, good input commits.
-    final interval = find.byKey(
-      const ValueKey<String>('settings-autosave-interval'),
-    );
-    // Re-enable so the field accepts input.
+    // Back on.
     await tester.tap(
       find.byKey(const ValueKey<String>('settings-autosave-enabled')),
     );
     await tester.pumpAndSettle();
-    await tester.enterText(interval, '0');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
-    expect(AppSave.settings.value.autosaveIntervalMinutes, 5);
-    await tester.enterText(interval, '12');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
-    expect(AppSave.settings.value.autosaveIntervalMinutes, 12);
+    expect(AppSave.settings.value.autosaveEnabled, isTrue);
 
-    // The sidecar switch turns the custom folder on (empty until chosen)
-    // and back off to "beside the file".
-    await tester.tap(
-      find.byKey(const ValueKey<String>('settings-sidecar-custom')),
+    // The INTERVAL field is gone with the timer: there is no cadence to
+    // set when the trigger is leaving the app.
+    expect(
+      find.byKey(const ValueKey<String>('settings-autosave-interval')),
+      findsNothing,
     );
-    await tester.pumpAndSettle();
-    expect(AppSave.settings.value.sidecarDirectory, '');
-    expect(find.text('No folder chosen yet'), findsOneWidget);
-    await tester.tap(
+
+    // The sidecar-folder row is GONE: the recovery snapshot lives in the
+    // app's own support folder and there is nothing to point anywhere.
+    // Asserted rather than merely deleted, so re-adding a control for a
+    // location that no longer varies has to argue with a test.
+    expect(
       find.byKey(const ValueKey<String>('settings-sidecar-custom')),
+      findsNothing,
     );
-    await tester.pumpAndSettle();
-    expect(AppSave.settings.value.sidecarDirectory, isNull);
+    expect(
+      find.byKey(const ValueKey<String>('settings-sidecar-browse')),
+      findsNothing,
+    );
 
     // REC1-B2: the recordings folder row shows the live shelf — the
     // default app folder, a custom choice, and the reset back.

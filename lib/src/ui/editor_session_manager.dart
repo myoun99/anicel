@@ -15603,20 +15603,51 @@ class EditorSessionManager extends ChangeNotifier {
   /// for a real file instead of writing into hidden app-data dirs).
   String? get autosaveSidecarPath {
     final path = _projectFilePath;
-    return path == null ? null : AppSave.sidecarPathFor(path);
+    return path == null ? null : AppSave.recoveryPathFor(path);
   }
 
   /// Writes the current state to [path] WITHOUT touching the dirty flag or
-  /// the project path — the autosave service's snapshot writer. Creates
-  /// the parent folder (a custom sidecar directory may not exist yet).
+  /// the project path — the recovery service's snapshot writer.
+  ///
+  /// An OVERLAY on the saved project: only the cels edited since the last
+  /// manual save. This runs as the app is going away, with a few seconds
+  /// and no promise of coming back, so it has to cost what the user drew
+  /// rather than what the project weighs. Everything left out is already
+  /// in the project file, unchanged, which is also what the base stamp
+  /// inside the overlay is there to guarantee.
   Future<void> writeAutosaveSnapshot(String path) async {
+    final base = _projectFilePath;
+    if (base == null) {
+      return;
+    }
+    // 🚨A RECOVERED session must not write one. Recovery pointed every
+    // restored cel's ref INTO this file and cleared the RAM tiers, and it
+    // also cleared the dirty set — so a snapshot taken now would carry no
+    // cels at all and rename itself over the only copy of the work, and
+    // the live refs would then read past the end of a file holding a
+    // stamp and a project.json. The session has nothing new to snapshot
+    // until a manual save moves those pixels into the project file, which
+    // is exactly when this unblocks.
+    if (_recoveredFromSidecar != null) {
+      return;
+    }
+    // The user chose to throw this session's work away and the app is
+    // shutting down around that choice; the lifecycle callbacks that
+    // follow must not put it back.
+    if (_discardedUnsavedWork) {
+      return;
+    }
     await _flushTextCelBakes();
-    await File(path).parent.create(recursive: true);
-    await _anicelFileService.save(
+    await _anicelFileService.writeRecoveryOverlay(
       project: _repository.requireProject(),
       brushFrameStore: brushFrameStore,
       auxCelStores: [conteInkRowStore, conteInkPageStore, envelopeInkStore],
       filePath: path,
+      baseFilePath: base,
+      // Asked again at the rename: a manual save can begin and finish
+      // while this one is in the isolate, and it retires the snapshot on
+      // its way out.
+      isStale: () => autosaveShouldStandDown,
     );
   }
 
@@ -15646,10 +15677,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// instead of racing it. Read through [autosaveShouldStandDown].
   bool _saveInFlight = false;
 
-  /// Whether an autosave tick should do nothing right now — a save is
-  /// mid-flight, so anything the tick writes would land beside a
-  /// retirement that has already run.
-  bool get autosaveShouldStandDown => _saveInFlight;
+  /// Whether a snapshot should do nothing right now: a save is mid-flight
+  /// (anything written would land beside a retirement that has already
+  /// run), the session was recovered (its refs point INTO the snapshot,
+  /// see [writeAutosaveSnapshot]), or the user threw the work away.
+  bool get autosaveShouldStandDown =>
+      _saveInFlight || _discardedUnsavedWork || _recoveredFromSidecar != null;
 
   Future<void> _writeProjectToFile(String filePath) async {
     await _flushTextCelBakes();
@@ -15667,9 +15700,12 @@ class EditorSessionManager extends ChangeNotifier {
     );
     _projectFilePath = filePath;
     _hasUnsavedChanges = false;
-    // The recovered work now lives in the project file, so the sidecar is
+    // The recovered work now lives in the project file, so the snapshot is
     // ordinary again and the retirement below is free to take it.
     _recoveredFromSidecar = null;
+    // A save is the session saying it is worth keeping after all; whatever
+    // was discarded before it is not this session's state any more.
+    _discardedUnsavedWork = false;
     if (adoptedTakePaths.isNotEmpty) {
       // With the project path set, conforms resolve into the new
       // `.assets` container — refresh the moved takes there.
@@ -15713,6 +15749,13 @@ class EditorSessionManager extends ChangeNotifier {
   /// offers recovery again, which is what it did before this round; the
   /// user discards it by saving, not by closing.
   void discardAutosaveSidecar() {
+    // Recorded even when there is nothing to delete: what this really
+    // says is "the user threw this session away", and the shutdown that
+    // follows delivers the same lifecycle callbacks as any other — which
+    // would otherwise write a fresh snapshot straight over the retirement
+    // and hand the discarded work back at the next open. Deleting without
+    // stopping the trigger is a race the trigger wins.
+    _discardedUnsavedWork = true;
     final path = _projectFilePath;
     if (path == null || _recoveredFromSidecar != null) {
       return;
@@ -15720,13 +15763,24 @@ class EditorSessionManager extends ChangeNotifier {
     ProjectAutosaveService.retireSidecarsFor(path);
   }
 
+  /// True once the user has closed without saving. The session is on its
+  /// way out; nothing may snapshot it again.
+  bool _discardedUnsavedWork = false;
+
   /// Opens a .anicel file, replacing the WHOLE session state: project,
   /// drawings, selection (first cut, frame 0) — and BOTH undo stacks
   /// (loaded state has no history; the load→draw→undo path is pinned by
   /// test). [recoverAs] opens autosave SIDECAR bytes while keeping the
   /// real file as the project path (the recovery flow).
-  Future<void> openProjectFromFile(String filePath, {String? recoverAs}) async {
-    final result = await _anicelFileService.open(filePath: filePath);
+  Future<void> openProjectFromFile(
+    String filePath, {
+    String? recoverAs,
+    String? overlayPath,
+  }) async {
+    final result = await _anicelFileService.open(
+      filePath: filePath,
+      overlayPath: overlayPath,
+    );
     playback.stop();
     _repository.replaceProject(result.project);
     // R22-C: opens land every cel FILE-BACKED — pixels stay in the .anicel
@@ -15786,12 +15840,17 @@ class EditorSessionManager extends ChangeNotifier {
     _voiceRecordShelfPaths.clear();
     _voiceRecordShelfDirectory = null;
     _projectFilePath = recoverAs ?? filePath;
-    // Remembered because [filePath] IS the sidecar on a recovery, every ref
-    // now points inside it, and the RAM tiers were just cleared — so until
-    // a save moves those pixels into the project file, deleting it is
-    // deleting the work. Reset on an ordinary open so a later session never
-    // inherits another one's exception.
-    _recoveredFromSidecar = recoverAs == null ? null : filePath;
+    // Remembered because the recovered work lives ONLY in that file — an
+    // overlay holds the edited cels and every ref for them points inside
+    // it, and the RAM tiers were just cleared — so until a save moves
+    // those pixels into the project file, deleting it is deleting the
+    // work. (A snapshot from an older build is a whole archive opened as
+    // [filePath]; same reasoning, same field.) Reset on an ordinary open
+    // so a later session never inherits another one's exception.
+    _recoveredFromSidecar = overlayPath ?? (recoverAs == null ? null : filePath);
+    // A different project is a different session; a discard that belonged
+    // to the last one must not silence this one's snapshots.
+    _discardedUnsavedWork = false;
     _warmAudioConforms();
     // RELINK-2: the first of the three refresh moments. A project opened
     // on a machine that does not have its referenced media has to SAY so —
@@ -15800,7 +15859,7 @@ class EditorSessionManager extends ChangeNotifier {
     refreshMediaExistence();
     // A recovered session stays dirty: its content differs from the real
     // file until the user saves.
-    _hasUnsavedChanges = recoverAs != null;
+    _hasUnsavedChanges = recoverAs != null || overlayPath != null;
     _warmActiveCut();
     frameSeekCommitted.value += 1;
     notifyListeners();

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
@@ -66,6 +67,23 @@ class _CelWork {
   }
 }
 
+/// Whether the snapshot at [path] is a recovery OVERLAY (holds only what
+/// changed, needs its base) rather than a complete archive.
+///
+/// Builds before overlays wrote whole projects, and those are still found
+/// and offered — the two have to be told apart before deciding what to
+/// open. Cheap: a tail parse, no pixel bytes.
+bool anicelSnapshotIsOverlay(String path) {
+  try {
+    return parseAnicelZipLayoutFile(
+          path,
+        ).entryNamed(AnicelFileService.recoveryStampEntry) !=
+        null;
+  } on Object {
+    return false;
+  }
+}
+
 /// Saves/loads .anicel project files (P3 / R22-C).
 ///
 /// Two save paths:
@@ -87,6 +105,149 @@ class AnicelFileService {
   /// A full rewrite is forced when shadowed/removed garbage exceeds this
   /// fraction of the file.
   static const double _compactionGarbageRatio = 0.5;
+
+  /// The entry naming the base a recovery overlay was built against.
+  /// Its presence is also what tells an overlay apart from a standalone
+  /// archive, which is how snapshots written by older builds — complete
+  /// projects, no base — keep opening.
+  static const String recoveryStampEntry = 'recovery.json';
+
+  /// Writes a RECOVERY OVERLAY for [baseFilePath]: only the cels edited
+  /// since the last manual save, plus the project and a stamp naming the
+  /// base.
+  ///
+  /// Small on purpose. This runs when the app is going away — a few
+  /// seconds on mobile, and no promise of coming back — so it must cost
+  /// what the user drew since their last save, not what the project
+  /// weighs. Everything it leaves out is already in the base, unchanged.
+  ///
+  /// Deliberately does NOT adopt refs. Adopting would point the store at
+  /// the overlay and clear the dirty set, which is exactly how the timer
+  /// broke incremental saving: the next manual save could no longer find
+  /// its own work in the project file. The set keeps growing until a save
+  /// clears it, so each overlay is complete with respect to that save.
+  Future<void> writeRecoveryOverlay({
+    required Project project,
+    required BrushFrameStore brushFrameStore,
+    List<BrushFrameStore> auxCelStores = const [],
+    required String filePath,
+    required String baseFilePath,
+    bool Function()? isStale,
+  }) async {
+    final stores = [brushFrameStore, ...auxCelStores];
+    final snapshots = [for (final store in stores) store.bakedSnapshotForSave()];
+    final baked = (
+      hot: {for (final s in snapshots) ...s.hot},
+      cold: {for (final s in snapshots) ...s.cold},
+      fileRefs: {for (final s in snapshots) ...s.fileRefs},
+    );
+    final dirty = <BrushFrameKey>{
+      for (final store in stores) ...store.dirtyCelKeysSinceSave,
+    };
+    final works = <_CelWork>[];
+    final removed = <String>[];
+    for (final key in dirty) {
+      final work = _workForDirtyKey(key, baked);
+      if (work == null) {
+        removed.add(anicelCelEntryName(key));
+      } else {
+        works.add(work);
+      }
+    }
+    final stamp = anicelBaseStamp(baseFilePath);
+    if (stamp == null) {
+      // No stamp, no overlay. A snapshot that cannot name its base is
+      // worse than none in both directions: the reader compares
+      // `stamp != anicelBaseStamp(base)`, so null on both sides passes and
+      // merges a delta nobody checked; and a base that was merely
+      // unreadable at this moment — a cloud file locking, an Apple
+      // security scope momentarily gone — would write a null stamp that
+      // never matches again, which makes the project refuse to open and
+      // then loses the overlay to the decline path. Skipping is the
+      // honest answer; the next trigger tries again.
+      return;
+    }
+    final saveDirectory = _parentDirectory(baseFilePath);
+    final temp = File('$filePath.tmp-${DateTime.now().microsecondsSinceEpoch}');
+    await temp.parent.create(recursive: true);
+    final tempPath = temp.path;
+
+    try {
+      await Isolate.run(() {
+        writeAnicelArchiveFile(
+          path: tempPath,
+          entries: () sync* {
+            yield (
+              name: recoveryStampEntry,
+              bytes: Uint8List.fromList(
+                utf8.encode(
+                  jsonEncode({
+                    'base': stamp,
+                    // Cels the session DELETED since the save. The base
+                    // still holds them, so the overlay has to say they are
+                    // gone rather than merely not mention them.
+                    'removed': removed,
+                  }),
+                ),
+              ),
+            );
+            yield (
+              name: 'project.json',
+              bytes: buildAnicelProjectJsonBytes(
+                project: project,
+                saveDirectory: saveDirectory,
+              ),
+            );
+            for (final work in works) {
+              yield (name: work.name, bytes: work.resolveBlob().bytes);
+            }
+          }(),
+        );
+      });
+    } on Object {
+      if (temp.existsSync()) {
+        temp.deleteSync();
+      }
+      rethrow;
+    }
+    // Re-asked at the LAST moment, not only on entry. A manual save can
+    // start and finish while this is in the isolate, and it retires the
+    // snapshot on its way out — renaming onto that path afterwards
+    // recreates one for a project that was just saved cleanly, stamped
+    // against the base as it was BEFORE the save. The next open would then
+    // offer to recover it and throw on the mismatch, which is a project
+    // that refuses to open.
+    if (isStale?.call() ?? false) {
+      if (temp.existsSync()) {
+        temp.deleteSync();
+      }
+      return;
+    }
+    temp.renameSync(filePath);
+    _sweepStaleTemps(temp.parent, keep: temp.path);
+  }
+
+  /// Removes `.tmp-<micros>` leftovers beside a snapshot.
+  ///
+  /// The write runs as the app is being killed, so a torn attempt is a
+  /// normal outcome rather than an exceptional one — and the catch above
+  /// only covers a throw, not a process that stops existing. Nothing
+  /// enumerates this folder otherwise (the candidate paths are literal),
+  /// and the user cannot see it to tidy it, so the next successful write
+  /// takes the bodies with it.
+  static void _sweepStaleTemps(Directory folder, {required String keep}) {
+    try {
+      for (final entity in folder.listSync()) {
+        if (entity is File &&
+            entity.path != keep &&
+            entity.path.contains('.tmp-')) {
+          entity.deleteSync();
+        }
+      }
+    } on Object {
+      // Housekeeping never fails a save.
+    }
+  }
 
   Future<void> save({
     required Project project,
@@ -407,7 +568,22 @@ class AnicelFileService {
     });
   }
 
-  Future<AnicelOpenResult> open({required String filePath}) async {
+  /// Opens [filePath], optionally laying a recovery [overlayPath] over it.
+  ///
+  /// The overlay holds only what changed since the last save, so it is
+  /// applied on top rather than opened alone: its cels win by name, its
+  /// project.json wins outright, and cels it lists as removed disappear.
+  ///
+  /// Throws when the overlay was built against a DIFFERENT base. The whole
+  /// hazard of a delta is that laying it over the wrong file produces a
+  /// project that looks fine and is not, so a mismatch is refused loudly
+  /// instead of being merged hopefully. An overlay with no stamp is a
+  /// snapshot from a build that wrote complete archives, and opening it
+  /// directly is the caller's job — not something to guess at here.
+  Future<AnicelOpenResult> open({
+    required String filePath,
+    String? overlayPath,
+  }) async {
     // Everything off the UI isolate; only the project + small refs come
     // back. No pixel bytes load here — each cel is a ~200-byte header
     // read for its key + geometry.
@@ -449,7 +625,15 @@ class AnicelFileService {
             tileSize: header.tileSize,
           );
         }
-        return (projectJsonBytes: projectJsonBytes, cels: cels);
+        if (overlayPath == null) {
+          return (projectJsonBytes: projectJsonBytes, cels: cels);
+        }
+        return _applyOverlay(
+          basePath: filePath,
+          overlayPath: overlayPath,
+          projectJsonBytes: projectJsonBytes,
+          cels: cels,
+        );
       } finally {
         raf.closeSync();
       }
@@ -490,6 +674,83 @@ class AnicelFileService {
       project: remapProjectMediaPaths(project, remap),
       cels: cels,
     );
+  }
+
+  /// Lays a recovery overlay over what the base gave, INSIDE the open
+  /// isolate — the base's refs and the overlay's have to be merged before
+  /// anything leaves it, or the caller would have to know which file each
+  /// cel came from.
+  static ({Uint8List projectJsonBytes, Map<BrushFrameKey, AnicelCelFileRef> cels})
+  _applyOverlay({
+    required String basePath,
+    required String overlayPath,
+    required Uint8List projectJsonBytes,
+    required Map<BrushFrameKey, AnicelCelFileRef> cels,
+  }) {
+    final layout = parseAnicelZipLayoutFile(overlayPath);
+    final stampEntry = layout.entryNamed(recoveryStampEntry);
+    if (stampEntry == null) {
+      throw const FormatException(
+        'This recovery snapshot carries no base, so it cannot be laid over '
+        'one. Open it directly instead.',
+      );
+    }
+    final raf = File(overlayPath).openSync();
+    try {
+      raf.setPositionSync(stampEntry.dataOffset);
+      final stampJson =
+          jsonDecode(utf8.decode(raf.readSync(stampEntry.length)))
+              as Map<String, dynamic>;
+      final recorded = stampJson['base'];
+      final actual = anicelBaseStamp(basePath);
+      // `recorded == null` cannot happen from this app — the writer
+      // refuses to make one — but a hand-edited or truncated snapshot can
+      // carry it, and `null != null` would wave that through unchecked.
+      if (recorded is! String || actual == null || recorded != actual) {
+        // Refused rather than merged: a delta over the wrong base gives a
+        // project that opens, looks right, and is not.
+        throw const FormatException(
+          'This recovery snapshot was made from a different version of the '
+          'project, so it cannot be restored onto this one.',
+        );
+      }
+      final removed = <String>{
+        for (final name in (stampJson['removed'] as List? ?? const []))
+          if (name is String) name,
+      };
+      cels.removeWhere((key, _) => removed.contains(anicelCelEntryName(key)));
+
+      Uint8List? overlayProjectJson;
+      for (final entry in layout.entries) {
+        if (entry.name == 'project.json') {
+          raf.setPositionSync(entry.dataOffset);
+          overlayProjectJson = raf.readSync(entry.length);
+          continue;
+        }
+        if (!entry.name.endsWith('.celz')) {
+          continue;
+        }
+        raf.setPositionSync(entry.dataOffset);
+        final header = AnicelCelBlob(
+          raf.readSync(entry.length < 4096 ? entry.length : 4096),
+        );
+        cels[header.key] = AnicelCelFileRef(
+          filePath: overlayPath,
+          dataOffset: entry.dataOffset,
+          length: entry.length,
+          canvasSize: header.canvasSize,
+          tileSize: header.tileSize,
+        );
+      }
+      return (
+        // The overlay's project is the newer one by construction — it was
+        // written after the base and describes the session being restored.
+        projectJsonBytes: overlayProjectJson ?? projectJsonBytes,
+        cels: cels,
+      );
+    } finally {
+      raf.closeSync();
+    }
   }
 
   static String _parentDirectory(String filePath) {
