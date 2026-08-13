@@ -8,6 +8,14 @@ class _Callbacks {
   var importRequests = 0;
   final renamed = <(String, String)>[];
   final relinked = <(String, String)>[];
+
+  /// What the relink handed on besides the path.
+  ///
+  /// Relink is the answer this app gives when a reference stops resolving,
+  /// so it is where a durable grant matters most — and it used to throw
+  /// the picker's token away, which made a relink work for one session and
+  /// be refused at the next launch.
+  final relinkGrants = <List<Object?>>[];
   final removed = <String>[];
   final promoted = <String>[];
   var promoteResult = true;
@@ -33,8 +41,10 @@ Future<void> _pump(
             isAssetReferenced: callbacks.referencedPaths.contains,
             onImportRequested: () => callbacks.importRequests += 1,
             onRenameAsset: (path, name) => callbacks.renamed.add((path, name)),
-            onRelinkAsset: (oldPath, newPath) =>
-                callbacks.relinked.add((oldPath, newPath)),
+            onRelinkAsset: (oldPath, newPath, grants) {
+              callbacks.relinked.add((oldPath, newPath));
+              callbacks.relinkGrants.add(grants);
+            },
             onRemoveAsset: (path) {
               callbacks.removed.add(path);
               return callbacks.removeResult;

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/media_asset.dart';
 import '../../services/persistence/file_type_groups.dart';
+import '../../services/persistence/folder_grant.dart' show FolderGrant;
 import '../dialogs/app_prompt_dialog.dart';
 import '../dialogs/folder_pick_flow.dart';
 import '../text/app_strings.dart';
@@ -46,7 +47,16 @@ class MediaBrowserPanel extends StatelessWidget {
   /// say otherwise. It now goes where every other import already went.
   final VoidCallback onImportRequested;
   final void Function(String path, String name) onRenameAsset;
-  final void Function(String oldPath, String newPath) onRelinkAsset;
+  /// The grants come along because relinking is a PICK: the token minted
+  /// for the file the user just chose is the only thing that makes the new
+  /// path outlive the session on Apple, and this is the flow a broken
+  /// reference lands in.
+  final void Function(
+    String oldPath,
+    String newPath,
+    List<FolderGrant> grants,
+  )
+  onRelinkAsset;
 
   /// Returns false when the asset is still referenced (kept in the pool).
   final bool Function(String path) onRemoveAsset;
@@ -92,21 +102,29 @@ class MediaBrowserPanel extends StatelessWidget {
   /// copies the chosen file into a temporary directory on both mobile
   /// platforms — relinking to a copy that the next cache sweep deletes is
   /// worse than not relinking at all.
-  static Future<String?> _pickAudioFile(BuildContext context) async {
-    final paths = await pickFilesForUser(
+  Future<void> _relink(BuildContext context, String path) async {
+    // 🚨 Relink is the answer this app gives when a reference stops
+    // resolving, so it is exactly where a durable grant matters most —
+    // and it used to throw the picker's bookmark away, which made the
+    // relink work for one session and be refused at the next launch. The
+    // injected picker (tests) still answers in paths and mints nothing.
+    final injected = audioFilePicker;
+    if (injected != null) {
+      final next = await injected();
+      if (next != null) {
+        onRelinkAsset(path, next, const []);
+      }
+      return;
+    }
+    final grants = await pickFileGrantsForUser(
       context,
       acceptedTypeGroups: const [FileTypeGroups.poolMedia],
     );
-    return paths.isEmpty ? null : paths.first;
-  }
-
-  Future<void> _relink(BuildContext context, String path) async {
-    final picker = audioFilePicker ?? () => _pickAudioFile(context);
-    final next = await picker();
+    final next = grants.isEmpty ? null : grants.first.path;
     if (next == null) {
       return;
     }
-    onRelinkAsset(path, next);
+    onRelinkAsset(path, next, grants);
   }
 
   Future<void> _rename(BuildContext context, MediaAsset asset) async {

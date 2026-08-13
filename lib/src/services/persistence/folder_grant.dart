@@ -239,6 +239,20 @@ abstract final class FolderPicker {
   @visibleForTesting
   static String? debugOperatingSystem;
 
+  /// Test seam for [resolveBookmark].
+  ///
+  /// Reopening a stored bookmark is the one step of the grant story that
+  /// cannot be reached from this workstation at all — it is native, on
+  /// three platforms, none of them Windows — and it is also where the
+  /// interesting answers live: a token that no longer resolves, and one
+  /// that resolves to a DIFFERENT path because the file moved. Both decide
+  /// whether a reference survives, so both need to be drivable.
+  ///
+  /// ⚠️Reset in `test/flutter_test_config.dart`, like the seams above.
+  @visibleForTesting
+  static Future<FolderGrant> Function(String bookmark, GrantKind kind)?
+  debugBookmarkResolver;
+
   static String get _operatingSystem =>
       debugOperatingSystem ?? Platform.operatingSystem;
 
@@ -383,6 +397,10 @@ abstract final class FolderPicker {
     String bookmark, {
     GrantKind kind = GrantKind.folder,
   }) async {
+    final override = debugBookmarkResolver;
+    if (override != null) {
+      return override(bookmark, kind);
+    }
     if (!grantsAreScoped) {
       return const FolderGrant.unavailable();
     }

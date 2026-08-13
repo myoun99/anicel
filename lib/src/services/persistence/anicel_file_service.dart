@@ -158,6 +158,14 @@ class AnicelFileService {
     required String filePath,
     required String baseFilePath,
     bool Function()? isStale,
+    /// 🚨 Required in practice, though the default keeps the signature
+    /// kind. The overlay's `project.json` WINS OUTRIGHT over the base
+    /// file's on recovery, so anything missing here is missing from the
+    /// recovered session — and a recovered session is dirty by
+    /// construction, so its first save writes that absence back over the
+    /// real file. Leaving grants out would make the one path built to
+    /// protect unsaved work the path that destroys the permission record.
+    List<Map<String, Object?>> grants = const [],
   }) async {
     final stores = [brushFrameStore, ...auxCelStores];
     final snapshots = [for (final store in stores) store.bakedSnapshotForSave()];
@@ -221,6 +229,7 @@ class AnicelFileService {
               bytes: buildAnicelProjectJsonBytes(
                 project: project,
                 saveDirectory: saveDirectory,
+                grants: grants,
               ),
             );
             for (final work in works) {

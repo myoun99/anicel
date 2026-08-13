@@ -294,13 +294,19 @@ class _ImportDialogState extends State<ImportDialog> {
     // The injected picker (tests, and the drop path) answers in paths; the
     // real one answers in grants. Both end up in `_files`, and only the
     // real one has tokens to record.
+    // 🚨 Nothing is replaced until the pick is known to have produced
+    // something. A second pick that the user CANCELS returns empty and
+    // leaves `_files` alone — so clearing the tokens first would strand
+    // the first batch's files with no grants, and the reference they were
+    // imported as would be refused at the next launch.
     final List<String> paths;
+    final List<FolderGrant> grants;
     final injected = widget.filePicker;
     if (injected != null) {
       paths = await injected();
-      _pickedGrants.clear();
+      grants = const [];
     } else {
-      final grants = await pickFileGrantsForUser(
+      grants = await pickFileGrantsForUser(
         context,
         // The POOL group, not the placeable one: this window is the
         // media browser's entrance now, and the browser registers
@@ -312,9 +318,6 @@ class _ImportDialogState extends State<ImportDialog> {
         allowMultiple: true,
       );
       paths = [for (final grant in grants) ?grant.path];
-      _pickedGrants
-        ..clear()
-        ..addAll(grants);
     }
     if (paths.isEmpty || !mounted) {
       return;
@@ -325,6 +328,9 @@ class _ImportDialogState extends State<ImportDialog> {
       _files
         ..clear()
         ..addAll(paths);
+      _pickedGrants
+        ..clear()
+        ..addAll(grants);
       _adoptTvpJsonFromFiles();
     });
   }

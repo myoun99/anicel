@@ -172,7 +172,7 @@ import '../services/audio/conform_cache_maintenance.dart'
 import '../services/persistence/folder_grant.dart'
     show FolderGrant, FolderPicker;
 import '../services/persistence/anicel_project_archive.dart'
-    show projectMediaPaths;
+    show projectMediaPaths, remapProjectMediaPaths;
 import '../services/audio/conform_wav_codec.dart' show encodeConformWav;
 import '../services/commands/update_media_assets_command.dart';
 import '../models/se_take_placement.dart';
@@ -15683,6 +15683,10 @@ class EditorSessionManager extends ChangeNotifier {
       auxCelStores: [conteInkRowStore, conteInkPageStore, envelopeInkStore],
       filePath: path,
       baseFilePath: base,
+      // The overlay's project.json replaces the base file's, so a snapshot
+      // that left these out would hand the recovered session no grants —
+      // and its first save would write that emptiness back over the file.
+      grants: _grantsToStore(),
       // Asked again at the rename: a manual save can begin and finish
       // while this one is in the isolate, and it retires the snapshot on
       // its way out.
@@ -15831,11 +15835,37 @@ class EditorSessionManager extends ChangeNotifier {
   /// working on its own.
   List<FolderGrant> _mediaGrants = const [];
 
+  /// 🚨 What the FILE should keep, which is not the same question as what
+  /// this launch can USE.
+  ///
+  /// A bookmark that will not resolve right now is unusable today and
+  /// perfectly good tomorrow: the volume is unmounted, the provider is
+  /// signed out, the phone is in a different country. Keeping only what
+  /// resolved would mean the next save writes the survivors and DELETES
+  /// the rest — so plugging the drive back in would no longer help,
+  /// because the token that named the file is gone from the only place it
+  /// was written down.
+  ///
+  /// Android makes that concrete without any failure at all: it reports
+  /// scoped grants, and its `resolveBookmark` answers `unavailable`
+  /// unconditionally — so a project authored on an iPad, opened once on an
+  /// Android tablet and saved, would come back to the iPad stripped of
+  /// every bookmark it had.
+  ///
+  /// So resolution narrows [_mediaGrants]; it never narrows this.
+  List<FolderGrant> _storedGrants = const [];
+
   /// What the session is holding, for tests. There is no production reader
   /// — grants leave through the save argument and arrive through the open
   /// result — so without this the round trip has no observer at all.
   @visibleForTesting
   List<FolderGrant> get debugMediaGrants => List.unmodifiable(_mediaGrants);
+
+  /// What the next save would write down, for tests. Distinct from
+  /// [debugMediaGrants] exactly where it matters: a grant the OS refused
+  /// today is absent there and present here.
+  @visibleForTesting
+  List<FolderGrant> get debugStoredGrants => List.unmodifiable(_storedGrants);
 
   /// Adds what a picker just granted, replacing any grant for the same
   /// path. Newest wins: Apple hands back a fresh token every time, and the
@@ -15855,6 +15885,11 @@ class EditorSessionManager extends ChangeNotifier {
     final replaced = {for (final grant in incoming) grant.path};
     _mediaGrants = [
       for (final grant in _mediaGrants)
+        if (!replaced.contains(grant.path)) grant,
+      ...incoming,
+    ];
+    _storedGrants = [
+      for (final grant in _storedGrants)
         if (!replaced.contains(grant.path)) grant,
       ...incoming,
     ];
@@ -15880,36 +15915,52 @@ class EditorSessionManager extends ChangeNotifier {
   /// ⛔ Never dirties the project. The re-issue is the OS's bookkeeping,
   /// not an edit, and it rides along on the next save.
   ///
-  /// A grant that will not resolve is DROPPED, not kept: the provider was
-  /// reinstalled or the account changed, and a token that cannot open its
-  /// file is not a permission — it is a record of one. The reference then
-  /// behaves exactly as it did before any of this existed, and the
-  /// existing missing-media relink flow is what answers.
-  Future<void> _resolveMediaGrants(List<Map<String, Object?>> stored) async {
+  /// ⛔ A grant that will not resolve is unusable THIS LAUNCH and is not
+  /// forgotten: it stays in [_storedGrants] so the next save writes it back
+  /// unchanged. Dropping it from the file would turn "the drive is
+  /// unplugged" into "the permission is gone", and plugging the drive back
+  /// in would no longer help.
+  ///
+  /// Returns {old path: new path} for every bookmark that came back
+  /// pointing somewhere else, so the caller can take the project with it.
+  Future<Map<String, String>> _resolveMediaGrants(
+    List<Map<String, Object?>> stored,
+  ) async {
     final parsed = [for (final json in stored) ?FolderGrant.fromJson(json)];
+    _storedGrants = parsed;
     if (parsed.isEmpty || !FolderPicker.grantsAreScoped) {
-      // Nothing to hold, or a platform where a path is durable on its own.
+      // Nothing to hold, or a platform where a path is durable on its own
+      // — Windows and Linux never minted these in the first place.
       _mediaGrants = parsed;
-      return;
+      return const {};
     }
     final resolved = <FolderGrant>[];
+    final stillStored = <FolderGrant>[];
+    final moved = <String, String>{};
     for (final grant in parsed) {
       final answer = await FolderPicker.resolveBookmark(
         grant.bookmark!,
         kind: grant.kind,
       );
-      if (answer.isGranted && answer.path != null) {
-        resolved.add(
-          FolderGrant.granted(
-            path: answer.path!,
-            // The freshly issued token, never the one we arrived with.
-            bookmark: answer.bookmark ?? grant.bookmark,
-            kind: grant.kind,
-          ),
-        );
+      if (!answer.isGranted || answer.path == null) {
+        stillStored.add(grant); // Unusable today. Not gone.
+        continue;
       }
+      final fresh = FolderGrant.granted(
+        path: answer.path!,
+        // The freshly issued token, never the one we arrived with.
+        bookmark: answer.bookmark ?? grant.bookmark,
+        kind: grant.kind,
+      );
+      if (fresh.path != grant.path) {
+        moved[grant.path!] = fresh.path!;
+      }
+      resolved.add(fresh);
+      stillStored.add(fresh);
     }
     _mediaGrants = resolved;
+    _storedGrants = stillStored;
+    return moved;
   }
 
   /// The grants worth writing into this save, as JSON.
@@ -15920,12 +15971,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// a project file that accumulates those is the shape that reads as an
   /// app hoarding access.
   List<Map<String, Object?>> _grantsToStore() {
-    if (_mediaGrants.isEmpty) {
+    if (_storedGrants.isEmpty) {
       return const [];
     }
     final referenced = projectMediaPaths(_repository.requireProject());
     return [
-      for (final grant in _mediaGrants)
+      for (final grant in _storedGrants)
         if (referenced.any(grant.covers)) ?grant.toJson(),
     ];
   }
@@ -15945,7 +15996,18 @@ class EditorSessionManager extends ChangeNotifier {
       overlayPath: overlayPath,
     );
     playback.stop();
-    _repository.replaceProject(result.project);
+    // BEFORE the project lands: a bookmark tracks the file rather than the
+    // path, so resolving one is how a referenced movie that was renamed or
+    // moved is found again — and the project has to be told, or the pool
+    // goes on naming an address nothing answers at. This is the same move
+    // the relative-path remap above makes, at the same moment, for the
+    // same reason.
+    final movedByGrant = await _resolveMediaGrants(result.grants);
+    _repository.replaceProject(
+      movedByGrant.isEmpty
+          ? result.project
+          : remapProjectMediaPaths(result.project, movedByGrant),
+    );
     // What this project carries, as the file on disk says. Anything the
     // pool names that is NOT here is an ordinary outside reference and
     // resolves by path like it always did.
@@ -16018,7 +16080,6 @@ class EditorSessionManager extends ChangeNotifier {
     // A different project is a different session; a discard that belonged
     // to the last one must not silence this one's snapshots.
     _discardedUnsavedWork = false;
-    await _resolveMediaGrants(result.grants);
     _settleConformCache();
     _warmAudioConforms();
     // RELINK-2: the first of the three refresh moments. A project opened

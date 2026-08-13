@@ -2323,7 +2323,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               isAssetReferenced: widget.session.isMediaAssetReferenced,
               onImportRequested: () => _openImportWindow(poolOnly: true),
               onRenameAsset: widget.session.renameMediaAsset,
-              onRelinkAsset: widget.session.relinkMediaAsset,
+              onRelinkAsset: (oldPath, newPath, grants) {
+                // The token first: the relink itself is undoable and the
+                // grant is not, so recording it before the path moves
+                // keeps the two from disagreeing about which file the
+                // session may read.
+                widget.session.rememberMediaGrants(grants);
+                widget.session.relinkMediaAsset(oldPath, newPath);
+              },
               // RELINK-2: the loss banner reads the session's cached
               // answer rather than probing the disk per row.
               missingPaths: widget.session.missingMediaPaths,
