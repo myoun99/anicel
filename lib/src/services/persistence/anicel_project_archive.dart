@@ -55,6 +55,17 @@ class AnicelArchiveContents {
 /// bytes from a cel's by name alone.
 const String anicelMediaEntryPrefix = 'media/';
 
+/// What fraction of the media a rewrite must copy for nothing has to be
+/// reclaimed before that copying is worth doing.
+///
+/// A rewrite streams every asset through to the new file whether or not
+/// anything about it changed, so a project carrying five hundred megabytes
+/// of sound pays five hundred megabytes to reclaim whatever the cels left
+/// behind. At five percent that asks for twenty-five megabytes of waste
+/// before it will — and a project with NO media pays nothing, so the rule
+/// leaves the old behaviour exactly where it was.
+const double anicelMediaRewriteRatio = 0.05;
+
 /// Whether an append would leave more dead bytes behind than it is worth,
 /// given the file's size and what its live entries weigh.
 ///
@@ -72,6 +83,7 @@ bool anicelNeedsCompaction({
   required int fileLength,
   required Iterable<({String name, int length})> entries,
   double garbageRatio = 0.5,
+  double mediaRewriteRatio = anicelMediaRewriteRatio,
 }) {
   var activeBytes = 0;
   var activeMediaBytes = 0;
@@ -81,11 +93,27 @@ bool anicelNeedsCompaction({
       activeMediaBytes += entry.length;
     }
   }
+  final garbageBytes = fileLength - activeBytes;
+  // A floor as well as a ratio, and taking media out of the denominator is
+  // what made it necessary. The rotting area is now just the cels and
+  // `project.json`, which in a project that is mostly sound can be a few
+  // kilobytes — so two superseded copies of `project.json` cross fifty
+  // percent of it and ask for a rewrite that re-streams every megabyte of
+  // media to reclaim four.
+  //
+  // Proportional to that copying rather than a flat number, deliberately:
+  // a project with no media pays nothing to be rewritten, so it keeps
+  // exactly the behaviour it always had, while one carrying half a
+  // gigabyte has to be wasting a proportionate amount before it is worth
+  // moving those bytes again.
+  if (garbageBytes < activeMediaBytes * mediaRewriteRatio) {
+    return false;
+  }
   final rottingBytes = fileLength - activeMediaBytes;
   if (rottingBytes <= 0) {
     return false;
   }
-  return fileLength - activeBytes > rottingBytes * garbageRatio;
+  return garbageBytes > rottingBytes * garbageRatio;
 }
 
 /// The archive entry a piece of media is stored under.
