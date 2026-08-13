@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart' show kTouchSlop;
+import 'package:flutter/gestures.dart'
+    show DoubleTapGestureRecognizer, DragGestureRecognizer, DragStartBehavior;
 
+import '../input/value_control_pointers.dart';
 import '../theme/app_theme.dart';
 import 'axis_bar_gesture.dart';
 
@@ -111,63 +113,64 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
     _owed = wanted - used;
   }
 
-  /// 🚨★ THE POINTER PATH — see [rivalOwnsGesture].
+  /// 🚨★ THE POINTER PATH — 유저 확정 2026-08-14, ⛔재론 금지.
   ///
   /// ⑧ 유저 2026-08-12: 「펜 갖다대면 5번중 1번만 성공함. 뭔가 펜을 스플리터
   /// 위에 두고 멈추고 조작해야 먹히는거같음.」
+  /// T30 유저 2026-08-14: 「스플리터가 도중에 그립이 풀려서 멈춤. **마우스
+  /// 여전히 클릭도중인데도.** 빠르게 드래그하다보면 풀리는거같음.」
   ///
-  /// The grip used to take `GestureDetector`'s axis drags, which have to WIN
-  /// AN ARENA before they see a single update — and a desktop `Scrollable`
-  /// enters that arena for touch and stylus alone. A pen leaving the grip on
-  /// any diagonal let the scroller cross its threshold first, so the drag
-  /// never started; a mouse, with no rival, always worked. Holding the pen
-  /// still first "fixed" it because a stationary pointer gives the rival
-  /// nothing to claim.
+  /// Those two reports are the same mechanism seen from both ends, and both
+  /// come from the grip trying to live OUTSIDE the arena.
   ///
-  /// A raw [Listener] keeps delivering whoever wins the arena, so the grip no
-  /// longer needs to win one — it only needs to know when to STOP, and that
-  /// is the axis question, not a distance.
-  Offset _pointerShift = Offset.zero;
-  Offset? _pointerDownAt;
-  double _rivalSlop = kTouchSlop;
-
-  /// The axis the grip MOVES along — perpendicular to the line it draws.
+  /// It started on `GestureDetector`'s axis drags, which must WIN AN ARENA
+  /// before they see a single update — and a desktop `Scrollable` enters that
+  /// arena for touch and stylus alone. A pen leaving the grip on any diagonal
+  /// let the scroller cross its threshold first, so the drag never started.
+  /// The answer taken then was to stop needing the arena: read the pointer
+  /// raw, and ask afterwards whether the rival had *earned* the gesture by
+  /// crossing this grip's axis.
+  ///
+  /// 🚨That question is what T30 is. A fast drag puts more travel in each
+  /// event, so the cross-axis component clears the rival's slop sooner — and
+  /// the grip answered by letting go, mid-drag, with the button still down.
+  /// It was never robbed; it resigned.
+  ///
+  /// ★So the grip wins the arena instead, on the FIRST MOVEMENT
+  /// ([OwningHorizontalDragGestureRecognizer]). Hit testing runs
+  /// deepest-first, so it has accepted before any scrollable reaches its own
+  /// threshold — which fixes ⑧ (no diagonal can lose a race that is over) and
+  /// T30 together (there is no rival left to resign to).
   Axis get _dragAxis =>
       widget.axis == Axis.vertical ? Axis.horizontal : Axis.vertical;
 
-  void _handlePointerDown(PointerDownEvent event) {
-    _pointerDownAt = event.position;
-    _pointerShift = Offset.zero;
-    _setDragging(true);
-  }
+  void _handleDragDown(DragDownDetails details) => _setDragging(true);
 
-  void _handlePointerMove(PointerMoveEvent event) {
-    final origin = _pointerDownAt;
-    if (origin == null) {
-      return;
-    }
-    _pointerShift = event.position - origin;
+  void _handleDragUpdate(DragUpdateDetails details) {
     if (!_dragging) {
       return;
     }
-    // The rival earned it: stop, and leave what has already been applied.
-    // Nothing is rolled back — an edge that sprang back to where it started
-    // would be [[no-optimistic-commit-then-revert]] wearing a splitter.
-    if (rivalOwnsGesture(
-      dragAxis: _dragAxis,
-      travelSinceDown: _pointerShift,
-      rivalSlop: _rivalSlop,
-    )) {
-      _setDragging(false);
-      return;
-    }
-    _applyDelta(_dragAxis == Axis.horizontal ? event.delta.dx : event.delta.dy);
+    _applyDelta(
+      _dragAxis == Axis.horizontal ? details.delta.dx : details.delta.dy,
+    );
   }
 
-  void _handlePointerEnd(PointerEvent event) {
-    _pointerDownAt = null;
-    _pointerShift = Offset.zero;
-    _setDragging(false);
+  /// Wires one drag recogniser. Both axes take the same handlers, so the
+  /// vertical and horizontal factories cannot drift apart.
+  void _configureDrag(DragGestureRecognizer recognizer) {
+    // Down, not start: the grip goes accent the moment it is pressed, which
+    // is R9 #12's rule — a press is an answer the affordance owes
+    // immediately, and there is no slop left to wait through anyway.
+    recognizer
+      ..dragStartBehavior = DragStartBehavior.down
+      ..onDown = _handleDragDown
+      ..onUpdate = _handleDragUpdate
+      ..onEnd = (_) {
+        _setDragging(false);
+      }
+      ..onCancel = () {
+        _setDragging(false);
+      };
   }
 
   Color get _lineColor {
@@ -199,8 +202,6 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
   @override
   Widget build(BuildContext context) {
     final vertical = widget.axis == Axis.vertical;
-    // The rival's own threshold, captured where inherited widgets belong.
-    _rivalSlop = rivalScrollSlop(context);
     Widget grip = MouseRegion(
       cursor: vertical
           ? SystemMouseCursors.resizeLeftRight
@@ -209,15 +210,45 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
       onExit: (_) => setState(() => _hovered = false),
       child: Listener(
         behavior: HitTestBehavior.opaque,
-        onPointerDown: _handlePointerDown,
-        onPointerMove: _handlePointerMove,
-        onPointerUp: _handlePointerEnd,
-        onPointerCancel: _handlePointerEnd,
-        // ⛔The double tap stays on a recognizer: it is a TAP, so it has no
-        // axis to keep and nothing to lose by waiting for the arena.
-        child: GestureDetector(
+        // The grip is a value control for T11's purposes too: no eager pan
+        // above it may start from a press that landed here.
+        onPointerDown: (event) => claimPointerForValueControl(event.pointer),
+        onPointerUp: (event) => releasePointerForValueControl(event.pointer),
+        onPointerCancel: (event) =>
+            releasePointerForValueControl(event.pointer),
+        child: RawGestureDetector(
           behavior: HitTestBehavior.opaque,
-          onDoubleTap: widget.onDoubleTap,
+          gestures: <Type, GestureRecognizerFactory>{
+            if (_dragAxis == Axis.horizontal)
+              OwningHorizontalDragGestureRecognizer:
+                  GestureRecognizerFactoryWithHandlers<
+                    OwningHorizontalDragGestureRecognizer
+                  >(
+                    () => OwningHorizontalDragGestureRecognizer(
+                      debugOwner: this,
+                    ),
+                    _configureDrag,
+                  )
+            else
+              OwningVerticalDragGestureRecognizer:
+                  GestureRecognizerFactoryWithHandlers<
+                    OwningVerticalDragGestureRecognizer
+                  >(
+                    () =>
+                        OwningVerticalDragGestureRecognizer(debugOwner: this),
+                    _configureDrag,
+                  ),
+            // ⛔The double tap stays a recognizer beside the drag: it is a
+            // TAP, so it has no axis to keep and nothing to lose by waiting
+            // for the arena.
+            DoubleTapGestureRecognizer:
+                GestureRecognizerFactoryWithHandlers<
+                  DoubleTapGestureRecognizer
+                >(
+                  () => DoubleTapGestureRecognizer(debugOwner: this),
+                  (recognizer) => recognizer.onDoubleTap = widget.onDoubleTap,
+                ),
+          },
           child: SizedBox(
             width: vertical ? DockEdgeSplitter.thickness : null,
             height: vertical ? null : DockEdgeSplitter.thickness,
