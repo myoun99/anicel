@@ -440,8 +440,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     // a hidden inspector costs one bool read and never builds the string —
     // the same shape the pan recogniser's probes use.
     if (InputInspector.visible.value) {
+      // The FRAME leads, and it is not decoration: without it "no new line"
+      // reads two ways — the four answers were the same, or this build never
+      // ran at all — and those point at opposite halves of the app. With the
+      // playhead in the string every move prints exactly once, so silence
+      // means the build did not happen and nothing else.
       final probe =
-          'canvas gap=$inGap'
+          'canvas f=${session.editingGlobalFrame}'
+          ' gap=$inGap'
           ' cut=${session.activeCutOrNull?.id.value ?? '-'}'
           ' nodes=${layerStack.nodes.length}'
           ' paper=${!inGap}';

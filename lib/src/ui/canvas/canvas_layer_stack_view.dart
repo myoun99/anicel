@@ -13,6 +13,7 @@ import '../../models/pasteboard_bounds.dart';
 import '../../models/playback_quality.dart';
 import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
+import '../debug/input_inspector.dart';
 import '../dev_profile.dart';
 import '../playback/layer_frame_image_cache.dart';
 import 'bitmap_surface_painter.dart';
@@ -554,6 +555,11 @@ class _LayerStackPainter extends CustomPainter {
                ]),
        );
 
+  /// The last line the T12 probe in [paint] emitted. Static: a
+  /// [CustomPainter] is a fresh object every frame, so an instance field
+  /// would only ever compare against itself.
+  static String? _lastStackProbe;
+
   final List<_PaintNode> nodes;
 
   /// Draws the ACTIVE layer's live surface in place. Its own repaint
@@ -582,6 +588,32 @@ class _LayerStackPainter extends CustomPainter {
       canvasSize.width.toDouble(),
       canvasSize.height.toDouble(),
     );
+    // T12 field probe, one floor DOWN from the canvas area's.
+    //
+    // That one measures what the WIDGET decided; this measures what the
+    // paint actually did, and the difference between them is the whole
+    // question: past the cut's end line the paper is gone from the screen
+    // while the widget above still answers `paper=true`. Only a probe here
+    // can say whether this painter ran, what it was told, and whether the
+    // paper it was told to draw is even visible ink — `paintProjectPaper`
+    // returns without drawing when the colour's alpha is zero, and that is
+    // an answer no widget-level value can show.
+    //
+    // Static because a `CustomPainter` is rebuilt every frame: an instance
+    // field would compare against itself and print every time. ⚠️Not behind
+    // an `assert` for the reason the sibling probe carries — release builds
+    // are the ones that get reported. The visibility flag is the guard.
+    if (InputInspector.visible.value) {
+      final probe =
+          'stack paint paper=$paintPaper'
+          ' alpha=${Color(paperBackground.argb).a.toStringAsFixed(2)}'
+          ' nodes=${nodes.length}'
+          ' rect=${canvasRect.width.round()}x${canvasRect.height.round()}';
+      if (probe != _lastStackProbe) {
+        _lastStackProbe = probe;
+        InputInspector.note(probe);
+      }
+    }
     if (paintPaper) {
       paintProjectPaper(canvas, canvasRect, paperBackground);
     }
