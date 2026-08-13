@@ -30,7 +30,7 @@ void main() {
             isAssetReferenced: (_) => false,
             onImportRequested: () {},
             onRenameAsset: (_, _) {},
-            onRelinkAsset: (_, _) {},
+            onRelinkAsset: (_, _, _) {},
             onRemoveAsset: (_) => true,
             onPromoteAsset: (_) => true,
             missingPaths: missingPaths,

@@ -87,28 +87,31 @@ void main() {
   });
 
   group('the project file carries them', () {
-    test('grants are written at the top level and read back', () {
+    test('grants are written at the top level and READ BACK', () {
+      // ⚠️ Through the real reader, not by looking for a substring. An
+      // earlier draft of this test asserted the JSON contained "grants"
+      // and called that a round trip — which would have stayed green with
+      // the decoder deleted, and the decoder is half of what makes the
+      // feature work.
       final project = createDefaultProject();
-      final bytes = buildAnicelProjectJsonBytes(
+      const grant = FolderGrant.granted(
+        path: '/외장/참고영상.mp4',
+        bookmark: 'Ym9va21hcms=',
+        kind: GrantKind.file,
+      );
+      final archive = buildAnicelArchiveBytes(
         project: project,
-        grants: [
-          const FolderGrant.granted(
-            path: '/외장/참고영상.mp4',
-            bookmark: 'Ym9va21hcms=',
-            kind: GrantKind.file,
-          ).toJson()!,
-        ],
+        cels: const [],
+        grants: [grant.toJson()!],
       );
 
-      // Read back the way the archive reader does.
-      final archive = buildAnicelArchiveBytes(project: project, cels: const []);
-      expect(archive, isNotEmpty, reason: 'the builder still builds');
-      expect(
-        String.fromCharCodes(bytes),
-        contains('"grants"'),
-        reason: 'top level, beside mediaPaths — bookkeeping about the '
-            'machine, not anything about the film',
-      );
+      final parsed = parseAnicelArchiveBytes(archive);
+      expect(parsed.grants, hasLength(1));
+      final restored = FolderGrant.fromJson(parsed.grants.single);
+      expect(restored, isNotNull);
+      expect(restored!.path, '/외장/참고영상.mp4');
+      expect(restored.bookmark, 'Ym9va21hcms=');
+      expect(restored.kind, GrantKind.file);
     });
 
     test('no grants means no key at all', () {
@@ -250,6 +253,188 @@ void main() {
       ]);
       expect(s.debugMediaGrants, isEmpty);
       s.dispose();
+    });
+
+    test('🚨 a grant the OS refuses TODAY is not deleted from the file',
+        () async {
+      // The distinction the whole store rests on: what this launch can USE
+      // is not what the FILE should keep. An unmounted volume, a signed-out
+      // provider, a different country — all of them make a bookmark fail
+      // to resolve, and all of them are temporary. Keeping only what
+      // resolved would mean the next save writes the survivors and deletes
+      // the rest, so plugging the drive back in would no longer help.
+      //
+      // Android needs no failure at all to reach this: it reports scoped
+      // grants and answers every resolveBookmark with `unavailable`, so a
+      // project authored on an iPad and saved once on an Android tablet
+      // would come back stripped of every token it had.
+      FolderPicker.debugOperatingSystem = 'macos';
+      addTearDown(() => FolderPicker.debugOperatingSystem = null);
+      FolderPicker.debugBookmarkResolver = (bookmark, kind) async =>
+          const FolderGrant.unavailable();
+      addTearDown(() => FolderPicker.debugBookmarkResolver = null);
+
+      final s = session();
+      final movie = File('${directory.path}/참고영상.mp4')
+        ..writeAsBytesSync([0, 0, 0, 24]);
+      final path = movie.path.replaceAll('\\', '/');
+      s.importMediaFiles([movie.path], copyIntoProject: false);
+      s.rememberMediaGrants([
+        FolderGrant.granted(
+          path: path,
+          bookmark: 'Ym9va21hcms=',
+          kind: GrantKind.file,
+        ),
+      ]);
+      final projectPath = '${directory.path}/scene.anicel';
+      await s.saveProjectToFile(projectPath);
+      s.dispose();
+
+      // The launch where it will not resolve.
+      final refused = session();
+      await refused.openProjectFromFile(projectPath);
+      expect(
+        refused.debugMediaGrants,
+        isEmpty,
+        reason: 'unusable this launch — nothing can be read through it',
+      );
+      expect(
+        refused.debugStoredGrants,
+        hasLength(1),
+        reason: 'but not forgotten',
+      );
+      await refused.saveProjectToFile(projectPath);
+      refused.dispose();
+
+      // The launch after the drive comes back.
+      FolderPicker.debugBookmarkResolver = null;
+      final restored = session();
+      await restored.openProjectFromFile(projectPath);
+      expect(
+        restored.debugStoredGrants,
+        hasLength(1),
+        reason: 'the save in between must not have erased it',
+      );
+      expect(restored.debugStoredGrants.single.bookmark, 'Ym9va21hcms=');
+      restored.dispose();
+    });
+
+    test('🚨 a bookmark that resolves ELSEWHERE takes the project with it',
+        () async {
+      // A bookmark tracks the FILE, not the path — following a renamed or
+      // moved reference is most of why it exists. But the pool names paths,
+      // so resolving one and saying nothing leaves the project asking for
+      // an address nothing answers at, and then the grant covers nothing
+      // the project references and is filtered out of the next save. The
+      // token that still points at the file would be the thing discarded.
+      final movie = File('${directory.path}/참고영상.mp4')
+        ..writeAsBytesSync([0, 0, 0, 24]);
+      final oldPath = movie.path.replaceAll('\\', '/');
+      final newPath = '${directory.path.replaceAll('\\', '/')}/참고영상_v2.mp4';
+
+      final s = session();
+      s.importMediaFiles([movie.path], copyIntoProject: false);
+      s.rememberMediaGrants([
+        FolderGrant.granted(
+          path: oldPath,
+          bookmark: 'Ym9va21hcms=',
+          kind: GrantKind.file,
+        ),
+      ]);
+      final projectPath = '${directory.path}/scene.anicel';
+      await s.saveProjectToFile(projectPath);
+      s.dispose();
+
+      // The file was renamed while the project was closed.
+      movie.renameSync(newPath);
+      FolderPicker.debugOperatingSystem = 'macos';
+      addTearDown(() => FolderPicker.debugOperatingSystem = null);
+      FolderPicker.debugBookmarkResolver = (bookmark, kind) async =>
+          FolderGrant.granted(
+            path: newPath,
+            bookmark: 'ZnJlc2g=',
+            kind: kind,
+          );
+      addTearDown(() => FolderPicker.debugBookmarkResolver = null);
+
+      final reopened = session();
+      await reopened.openProjectFromFile(projectPath);
+
+      expect(
+        reopened.mediaAssets.single.path,
+        newPath,
+        reason: 'the pool has to be told where the bookmark found it',
+      );
+      expect(reopened.debugMediaGrants.single.path, newPath);
+      expect(
+        reopened.debugMediaGrants.single.bookmark,
+        'ZnJlc2g=',
+        reason: 'the freshly issued token, never the one we arrived with',
+      );
+
+      // And the grant still covers something, so a save keeps it.
+      await reopened.saveProjectToFile(projectPath);
+      reopened.dispose();
+
+      final again = session();
+      await again.openProjectFromFile(projectPath);
+      expect(again.debugStoredGrants, hasLength(1));
+      again.dispose();
+    });
+
+    test('🚨 recovering from a crash does not erase the grants', () async {
+      // The overlay's project.json WINS OUTRIGHT over the base file's, so
+      // anything the snapshot leaves out is missing from the recovered
+      // session — and a recovered session is dirty by construction, so its
+      // very first save writes that absence back over the real file.
+      //
+      // Which would make the one path built to protect unsaved work the
+      // path that destroys the permission record: crash once, recover, and
+      // the referenced movie is refused at every launch afterwards.
+      final s = session();
+      final movie = File('${directory.path}/참고영상.mp4')
+        ..writeAsBytesSync([0, 0, 0, 24]);
+      final path = movie.path.replaceAll('\\', '/');
+      s.importMediaFiles([movie.path], copyIntoProject: false);
+      s.rememberMediaGrants([
+        FolderGrant.granted(
+          path: path,
+          bookmark: 'Ym9va21hcms=',
+          kind: GrantKind.file,
+        ),
+      ]);
+      final projectPath = '${directory.path}/scene.anicel';
+      await s.saveProjectToFile(projectPath);
+
+      final overlayPath = '${directory.path}/scene.overlay';
+      await s.writeAutosaveSnapshot(overlayPath);
+      s.dispose();
+
+      final recovered = session();
+      await recovered.openProjectFromFile(
+        projectPath,
+        overlayPath: overlayPath,
+      );
+      expect(
+        recovered.debugStoredGrants,
+        hasLength(1),
+        reason: 'the snapshot has to carry them, because it replaces the '
+            'base file\'s project.json outright',
+      );
+
+      // The save a recovered session always makes.
+      await recovered.saveProjectToFile(projectPath);
+      recovered.dispose();
+
+      final after = session();
+      await after.openProjectFromFile(projectPath);
+      expect(
+        after.debugStoredGrants,
+        hasLength(1),
+        reason: 'and that save must not have written the emptiness back',
+      );
+      expect(after.debugStoredGrants.single.bookmark, 'Ym9va21hcms=');
+      after.dispose();
     });
 
     test('a movie kept as a REFERENCE is what this is for', () async {

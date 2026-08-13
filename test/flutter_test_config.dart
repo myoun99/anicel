@@ -39,6 +39,7 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   FolderPicker.debugFolderPicker = null;
   FolderPicker.debugFilePicker = null;
   FolderPicker.debugOperatingSystem = null;
+  FolderPicker.debugBookmarkResolver = null;
   // Same hazard, same fix: the flow's platform seam decides whether a pick
   // has to clear Android's storage grant first.
   debugOperatingSystemOverride = null;

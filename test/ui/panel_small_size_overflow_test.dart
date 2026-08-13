@@ -79,7 +79,7 @@ void main() {
     isAssetReferenced: (_) => true,
     onImportRequested: () {},
     onRenameAsset: (_, _) {},
-    onRelinkAsset: (_, _) {},
+    onRelinkAsset: (_, _, _) {},
     onRemoveAsset: (_) => true,
     onPromoteAsset: (_) => true,
     // RELINK-2: nothing missing is the default now, which is what

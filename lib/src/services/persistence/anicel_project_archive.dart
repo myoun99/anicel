@@ -244,6 +244,7 @@ Uint8List buildAnicelArchiveBytes({
   required Project project,
   required List<AnicelCelBlob> cels,
   String? saveDirectory,
+  List<Map<String, Object?>> grants = const [],
 }) {
   // R22-C: EVERY entry is STORE'd — readers (and the file-backed cold
   // tier) address raw bytes by {offset, length} without inflating.
@@ -251,7 +252,11 @@ Uint8List buildAnicelArchiveBytes({
     ..add(
       ArchiveFile.bytes(
         'project.json',
-        buildAnicelProjectJsonBytes(project: project, saveDirectory: saveDirectory),
+        buildAnicelProjectJsonBytes(
+          project: project,
+          saveDirectory: saveDirectory,
+          grants: grants,
+        ),
       )..compression = CompressionType.none,
     );
   // v3: cel blobs are already deflated — STORE them as-is (an inner
