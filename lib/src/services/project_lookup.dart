@@ -118,3 +118,31 @@ Set<String> projectAudioSourcePaths(Project project) => {
   for (final asset in project.mediaAssets)
     if (asset.kind == MediaAssetKind.audio) asset.path,
 };
+
+/// Whether an asset of this [kind] belongs INSIDE the `.anicel`.
+///
+/// Blender's rule, adopted whole (user decision 2026-08-13): images and
+/// sounds pack, video does not. It is a rule about the KIND, not about
+/// size or about what the user picked at import — a reference movie can be
+/// three gigabytes and a project that swallowed one would be unopenable
+/// and unsyncable, while a sound the project does not carry is a sound
+/// that goes missing the first time someone moves a folder.
+///
+/// A PREDICATE rather than a switch at each call site, so the next kind
+/// answers here once instead of in every save path
+/// ([[predicates-before-new-kind]]).
+bool mediaKindBelongsInArchive(MediaAssetKind kind) => switch (kind) {
+  MediaAssetKind.audio || MediaAssetKind.image || MediaAssetKind.pdf => true,
+  MediaAssetKind.video => false,
+};
+
+/// Every pool path whose bytes the project should carry.
+///
+/// ⚠️ The POOL only. SE clips reference audio by path and are warmed by
+/// [projectAudioSourcePaths], but a clip is not a registration — what the
+/// project stores is what the pool holds, and a clip pointing at an
+/// unregistered file stays a reference like any other.
+Set<String> projectArchivedMediaPaths(Project project) => {
+  for (final asset in project.mediaAssets)
+    if (mediaKindBelongsInArchive(asset.kind)) asset.path,
+};

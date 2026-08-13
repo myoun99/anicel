@@ -204,4 +204,59 @@ void main() {
       });
     });
   });
+
+  group('what the project carries', () {
+    test('sounds, stills and PDFs pack; video never does', () {
+      // Blender's rule, adopted whole. It is about the KIND, not about
+      // size and not about what was picked at import: a reference movie
+      // can be three gigabytes, and a project that swallowed one would be
+      // unopenable and unsyncable.
+      expect(mediaKindBelongsInArchive(MediaAssetKind.audio), isTrue);
+      expect(mediaKindBelongsInArchive(MediaAssetKind.image), isTrue);
+      expect(mediaKindBelongsInArchive(MediaAssetKind.pdf), isTrue);
+      expect(mediaKindBelongsInArchive(MediaAssetKind.video), isFalse);
+    });
+
+    test('the pool decides, and a movie stays outside it', () {
+      final project = _project(
+        mediaAssets: [
+          _asset('bgm.wav', MediaAssetKind.audio),
+          _asset('board.png', MediaAssetKind.image),
+          _asset('conte.pdf', MediaAssetKind.pdf),
+          _asset('reference.mp4', MediaAssetKind.video),
+        ],
+      );
+
+      expect(projectArchivedMediaPaths(project), {
+        'bgm.wav',
+        'board.png',
+        'conte.pdf',
+      });
+    });
+
+    test('an SE clip is not a registration', () {
+      // A clip references audio by path and gets warmed for playback, but
+      // what the project CARRIES is what the pool holds. A clip pointing
+      // at an unregistered file stays a reference like any other, and
+      // packing it would put bytes in the archive that nothing in the pool
+      // could ever name again.
+      final project = _project(
+        seLayers: [
+          _seLayer('se1', ['unregistered.wav']),
+        ],
+        mediaAssets: [_asset('bgm.wav', MediaAssetKind.audio)],
+      );
+
+      expect(projectArchivedMediaPaths(project), {'bgm.wav'});
+      expect(
+        projectAudioSourcePaths(project),
+        contains('unregistered.wav'),
+        reason: 'still warmed for playback — the two questions differ',
+      );
+    });
+
+    test('an empty pool carries nothing', () {
+      expect(projectArchivedMediaPaths(_project()), isEmpty);
+    });
+  });
 }
