@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/straight_rgba_image.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/cut_piece.dart';
+import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
@@ -34,8 +38,7 @@ void main() {
     WidgetTester tester, {
     required CanvasTool tool,
     CutPieceSlot? slot,
-    VoidCallback? onPasteAbove,
-    VoidCallback? onPasteBelow,
+    VoidCallback? onPasteAtOrigin,
     VoidCallback? onRegisterAsTip,
   }) {
     return tester.pumpWidget(
@@ -52,8 +55,7 @@ void main() {
               selectionMaskOptions: SelectionMaskOptions.none,
               eyedropperSource: CanvasColorSampleSource.display,
               cutPieceSlot: slot,
-              onCutPasteAbove: onPasteAbove,
-              onCutPasteBelow: onPasteBelow,
+              onCutPasteAtOrigin: onPasteAtOrigin,
               onRegisterCutPieceAsTip: onRegisterAsTip,
             ),
           ),
@@ -85,8 +87,9 @@ void main() {
     await pump(tester, tool: CanvasTool.cutStamp, slot: slot);
     expect(find.text('Holding 40×24 px'), findsOneWidget);
     for (final key in const [
-      'cut-paste-above-button',
-      'cut-paste-below-button',
+      // TS8: ONE paste button. The pair that said Above/Below was spelling
+      // a composite order, and the blend control says that now.
+      'cut-paste-at-origin-button',
       'cut-flip-horizontal-switch',
       'cut-flip-vertical-switch',
       'cut-scale-slider',
@@ -168,7 +171,7 @@ void main() {
     expect(
       tester
           .widget<OutlinedButton>(
-            find.byKey(const ValueKey<String>('cut-paste-above-button')),
+            find.byKey(const ValueKey<String>('cut-paste-at-origin-button')),
           )
           .onPressed,
       isNull,
@@ -179,11 +182,148 @@ void main() {
       tester,
       tool: CanvasTool.cutStamp,
       slot: slot,
-      onPasteAbove: () => pasted += 1,
+      onPasteAtOrigin: () => pasted += 1,
     );
     await tester.tap(
-      find.byKey(const ValueKey<String>('cut-paste-above-button')),
+      find.byKey(const ValueKey<String>('cut-paste-at-origin-button')),
     );
     expect(pasted, 1);
+  });
+
+  // TS4: 유저 — "커서에 달린 프리뷰, 너무 퀄리티가 심함. 해상도가 심각하게
+  // 낮음. … 툴설정 프리뷰든 커서 프리뷰든 퀄리티 낮추지마. 원본그대로."
+  //
+  // The previews used to draw a 20-cell mosaic of alpha-weighted averages,
+  // so a one-pixel detail came out as a quarter-strength 2×2 block. The
+  // oracle is therefore a LONE pixel: averaging cannot reproduce it.
+  group('the held piece previews at its own resolution', () {
+    // 40 px so the retired mosaic's 20 cells would be 2×2 blocks — small
+    // enough and the grid oversamples, which would let the old code pass.
+    const side = 40;
+
+    CutPiece pieceWithDot({
+      bool flipHorizontal = false,
+      bool flipVertical = false,
+    }) {
+      final rgba = Uint8List(side * side * 4);
+      const dotX = 37;
+      const dotY = 3;
+      final offset = (dotY * side + dotX) * 4;
+      rgba[offset] = 255;
+      rgba[offset + 3] = 255;
+      return CutPiece(
+        image: BrushStampImage(id: 'dot', width: side, height: side, rgba: rgba),
+        originLeft: 0,
+        originTop: 0,
+        flipHorizontal: flipHorizontal,
+        flipVertical: flipVertical,
+      );
+    }
+
+    /// The preview's own pixels, painted at 1:1.
+    ///
+    /// ⚠️`runAsync`: the image upload lands on the engine, and inside the
+    /// fake-async zone its callback never fires — which is a HANG, not a
+    /// failure, so this wrapper is not optional.
+    Future<Uint8List> render(
+      WidgetTester tester,
+      CutPiece piece, {
+      bool decoded = true,
+    }) async {
+      final bytes = await tester.runAsync(() async {
+        ui.Image? image;
+        if (decoded) {
+          final completer = Completer<ui.Image>();
+          decodeStraightRgbaImage(
+            rgba: piece.image.rgba,
+            width: piece.image.width,
+            height: piece.image.height,
+            onDecoded: completer.complete,
+          );
+          image = await completer.future;
+        }
+        final recorder = ui.PictureRecorder();
+        final size = Size(side.toDouble(), side.toDouble());
+        final canvas = Canvas(recorder, Offset.zero & size);
+        paintCutPiece(canvas, Offset.zero & size, piece, image);
+        final rendered = await recorder.endRecording().toImage(side, side);
+        final data = await rendered.toByteData(format: ui.ImageByteFormat.rawRgba);
+        rendered.dispose();
+        image?.dispose();
+        return data!.buffer.asUint8List();
+      });
+      return bytes!;
+    }
+
+    List<int> at(Uint8List pixels, int x, int y) {
+      final offset = (y * side + x) * 4;
+      return pixels.sublist(offset, offset + 4);
+    }
+
+    testWidgets('a single source pixel lands as a single opaque pixel', (
+      tester,
+    ) async {
+      final pixels = await render(tester, pieceWithDot());
+      expect(at(pixels, 37, 3), [255, 0, 0, 255]);
+      // Its neighbours stay empty: nothing was averaged into them, which is
+      // the whole difference from the mosaic.
+      expect(at(pixels, 36, 3), [0, 0, 0, 0]);
+      expect(at(pixels, 37, 4), [0, 0, 0, 0]);
+    });
+
+    testWidgets('the flips are honoured without re-ordering any bytes', (
+      tester,
+    ) async {
+      // Flipping is a canvas mirror here, not a second copy of the pixels:
+      // the decoded image is the piece as cut, and it survives every knob.
+      final pixels = await render(
+        tester,
+        pieceWithDot(flipHorizontal: true, flipVertical: true),
+      );
+      expect(at(pixels, side - 1 - 37, side - 1 - 3), [255, 0, 0, 255]);
+      expect(at(pixels, 37, 3), [0, 0, 0, 0]);
+    });
+
+    testWidgets('nothing is drawn before the decode lands', (tester) async {
+      // The app's standing answer for "no image yet" is silence, never a
+      // degraded stand-in (the surface painter's fallback ladder ends the
+      // same way). The window is one frame: the decode starts with the
+      // piece, not with the look.
+      final pixels = await render(tester, pieceWithDot(), decoded: false);
+      expect(pixels.every((byte) => byte == 0), isTrue);
+    });
+
+    testWidgets('the widget hands its painter the decoded image', (
+      tester,
+    ) async {
+      final seen = <bool>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SizedBox(
+            width: 80,
+            height: 80,
+            child: CutPieceImageHost(
+              piece: pieceWithDot(),
+              builder: (context, image) {
+                seen.add(image != null);
+                return const SizedBox.expand();
+              },
+            ),
+          ),
+        ),
+      );
+      expect(seen.first, isFalse, reason: 'the first frame has no image yet');
+      // Let the real upload complete, then take the frame it asked for. The
+      // loop is for the engine's sake, not the widget's: the upload was
+      // started from inside the fake-async zone, so how many real turns its
+      // callback needs is not something this test should pretend to know.
+      for (var attempt = 0; attempt < 20 && seen.last == false; attempt += 1) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump();
+      }
+      expect(seen.last, isTrue, reason: 'and the decode arrives right after');
+    });
   });
 }
