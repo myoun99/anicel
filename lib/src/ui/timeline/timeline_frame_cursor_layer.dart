@@ -188,11 +188,28 @@ class TimelineCursorLayer extends StatelessWidget {
             range.startIndex < window.endIndexExclusive) {
           // Excel-style spans (UI-R17 #8): the band covers every spanned
           // row (contiguous in display order by construction).
+          //
+          // 🚨T6 (유저 2026-08-13): 「트랜스폼 헤더행, 여전히 프레임 셀
+          // 선택범위가 혼자만 규칙 이상함. **몇번이나 말할까? 통일하라고.**
+          // 헤더행에서 선택범위 시작하면 다른 행의 프레임셀 선택불가.
+          // **내부적으로 선택된 상태일지 몰라도 ui는 적어도 그렇게 안 되고
+          // 있음**」 — and that last sentence was exactly right.
+          //
+          // ⛔This used to read `!isLane && coversLayer(...)`, which is two
+          // separate mistakes wearing one condition. `!isLane` skipped every
+          // lane and header the drag had swept, and `coversLayer` asked the
+          // DERIVED layer list instead of the authoritative one — a header is
+          // not a layer, so it could not be spelled in that list at all.
+          // ③ made `rows` the authority in the model; the drawing never
+          // followed.
+          //
+          // ★[TimelineFrameRangeSelection.coversRow] is the question, and the
+          // rail already knows each row's [TimelineDisplayRow.address]. Every
+          // kind, one predicate, and a new row kind joins by existing.
           int? rangeRowIndex;
           var rangeRowCount = 1;
           for (var index = 0; index < rows.length; index += 1) {
-            if (!rows[index].isLane &&
-                range.coversLayer(rows[index].layer.id)) {
+            if (range.coversRow(rows[index].address)) {
               rangeRowIndex ??= index;
               rangeRowCount = index - rangeRowIndex + 1;
             }
@@ -244,7 +261,17 @@ class TimelineCursorLayer extends StatelessWidget {
         // the same overlay across the spanned lane rows. Lane bands used
         // to paint their own flat rectangle each, which is why a key span
         // read as a different kind of selection than a cell span.
-        final laneRange = laneRangeSelection?.value;
+        //
+        // 🚨T6: and only when the CELL span is not already drawing. There is
+        // one selected state at a time ([claimSelection]) with a single
+        // exception — a mixed cell drag ends up owning lane state too — and
+        // in that one case both bands would cover the same rows and stack
+        // their fills, so the same span would read darker for having been
+        // described twice. The cell span already knows every row it swept,
+        // lanes included, since the loop above stopped skipping them.
+        final laneRange = frameRangeSelection?.value == null
+            ? laneRangeSelection?.value
+            : null;
         if (laneRange != null &&
             laneRange.endIndexExclusive > window.startIndex &&
             laneRange.startIndex < window.endIndexExclusive) {
