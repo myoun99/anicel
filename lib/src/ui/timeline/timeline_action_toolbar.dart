@@ -800,8 +800,6 @@ class TimelineActionToolbar extends StatelessWidget {
           session.canCutExposureAtCurrentFrame,
           session.canToggleMarkAtCurrentFrame,
           session.languageSettings.value,
-          // ①: Edit Instance is one of these buttons now.
-          onEditInstance != null && _canEditInstance,
         ),
         builder: (context) => Row(
           mainAxisSize: MainAxisSize.min,
@@ -832,16 +830,40 @@ class TimelineActionToolbar extends StatelessWidget {
                   ? session.toggleMarkAtCurrentFrame
                   : null,
             ),
-            // ① 유저 확정: 「프레임 알약 밖으로 … Edit Instance」. A host with
-            // no dispatch to offer greys it out — the same answer the
-            // enablement gate gives, from a different cause.
-            _iconButton(
-              key: const ValueKey<String>('rename-frame-button'),
-              tooltip: AppText.strings.tlEditInstance,
-              icon: Icons.edit_outlined,
-              onPressed: onEditInstance != null && _canEditInstance
-                  ? onEditInstance
-                  : null,
+            // ① 유저 확정: 「프레임 알약 밖으로 … Edit Instance」.
+            //
+            // 🚨ITS OWN ZONE, not a fourth button in the group above. Its
+            // gate flips on the crossing that group is built to sleep
+            // through (a cel → empty paper step): folding it in made ＋ and
+            // the mark button re-bake on every flip, which is the exact
+            // defect `toolbar_button_group_memo_test` was written to catch
+            // — and did.
+            //
+            // 🚨AND IT SUBSCRIBES TO THE STANDING ROW, which a menu ENTRY
+            // never had to. A flyout builds its entries when it opens, so it
+            // always read this gate fresh; a baked button only re-reads when
+            // something wakes it, and `currentRow` publishes WITHOUT a
+            // session notify (it moves per press). Left unwired the verb sat
+            // grey on the transition row it was supposed to serve — the same
+            // shape ⑰'s shared delete hit with `rowSelection`, one door over.
+            ValueListenableBuilder<TimelineRowAddress?>(
+              valueListenable: session.currentRowListenable,
+              builder: (context, _, _) => _StaticCommandGroup(
+                rebuildKey: (
+                  onEditInstance != null && _canEditInstance,
+                  session.languageSettings.value,
+                ),
+                builder: (context) => _iconButton(
+                  key: const ValueKey<String>('rename-frame-button'),
+                  tooltip: AppText.strings.tlEditInstance,
+                  icon: Icons.edit_outlined,
+                  // A host with no dispatch to offer greys it out — the same
+                  // answer the enablement gate gives, from a different cause.
+                  onPressed: onEditInstance != null && _canEditInstance
+                      ? onEditInstance
+                      : null,
+                ),
+              ),
             ),
           ],
         ),
