@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -16,6 +17,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/canvas/layer_position_gizmo.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/input/app_input_settings.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
 
 const _gizmoKey = ValueKey<String>('layer-position-gizmo');
@@ -99,6 +101,50 @@ void main() {
       expect(committed, hasLength(1));
       expect(committed.single.x, closeTo(100 + 48 / 2, 0.001));
       expect(committed.single.y, closeTo(80 - 20 / 2, 0.001));
+    });
+
+    // TS9's law reaches the layer chrome too (유저: 드로잉모드가 아닌이상은
+    // 툴이 작동하면 안되지). This one is a GestureDetector rather than a
+    // Listener, so it declines by staying OUT OF THE ARENA — an early return
+    // in `onPanStart` would come after the recognizer had already won, and
+    // then neither the gizmo nor the flip would happen.
+    testWidgets('a finger moves nothing while the one-finger slot flips', (
+      tester,
+    ) async {
+      AppInput.settings.value = AppInput.settings.value.copyWith(
+        touchDragOneFinger: CanvasTouchDragAction.flip,
+      );
+      addTearDown(() {
+        AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+      });
+      final committed = <CanvasPoint>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: LayerPositionGizmo(
+              pose: TransformPose(center: CanvasPoint(x: 100, y: 80)),
+              viewport: CanvasViewport(),
+              onPositionCommitted: committed.add,
+            ),
+          ),
+        ),
+      );
+
+      await tester.drag(
+        find.byKey(_gizmoKey),
+        const Offset(48, -20),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pumpAndSettle();
+      expect(committed, isEmpty);
+
+      await tester.drag(
+        find.byKey(_gizmoKey),
+        const Offset(48, -20),
+        kind: PointerDeviceKind.stylus,
+      );
+      await tester.pumpAndSettle();
+      expect(committed, hasLength(1), reason: 'the pen is never in doubt');
     });
 
     testWidgets('R5 #10: the ANCHOR gizmo keys anchor-point alone — the '

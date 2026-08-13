@@ -6,6 +6,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/transform_track.dart';
+import '../input/app_input_settings.dart';
 import '../theme/app_theme.dart';
 import 'layer_pose_paint.dart';
 
@@ -220,6 +221,10 @@ class _LayerTransformBoxState extends State<LayerTransformBox> {
       child: GestureDetector(
         key: ValueKey<String>(keyValue),
         behavior: HitTestBehavior.opaque,
+        // TS9: a finger drives this only while the one-finger slot draws —
+        // stated as devices so the recognizer stays out of the arena and the
+        // flip below can take the touch (see [AppInput.toolPointerDevices]).
+        supportedDevices: AppInput.toolPointerDevices,
         onPanStart: (details) => _beginGrab(grab, details.globalPosition),
         onPanUpdate: (details) => _updateGrab(details.globalPosition),
         onPanEnd: (_) => _endGrab(),
