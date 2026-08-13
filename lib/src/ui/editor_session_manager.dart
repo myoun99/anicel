@@ -15,6 +15,7 @@ import '../models/import/tvp_json_parse.dart';
 import '../services/commands/import_media_command.dart';
 import '../services/commands/reorder_track_command.dart';
 import '../services/import/media_identity_reader.dart';
+import '../services/media/media_byte_source.dart';
 import '../services/import/media_import_planner.dart';
 import '../services/import/raster_cel_import.dart';
 import '../services/import/tvp_json_import_planner.dart';
@@ -6389,7 +6390,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final Uint8List bytes;
     try {
-      bytes = await File(path).readAsBytes();
+      bytes = await MediaFileBytes(path).read();
     } on Object {
       return false;
     }
@@ -6857,7 +6858,7 @@ class EditorSessionManager extends ChangeNotifier {
         final List<DecodedImageFrame> frames;
         try {
           frames = await decodeImageFrames(
-            await File(bake.sourceFile).readAsBytes(),
+            await MediaFileBytes(bake.sourceFile).read(),
           );
         } on Object {
           continue; // Unreadable file — the cel stays empty.
@@ -6991,7 +6992,7 @@ class EditorSessionManager extends ChangeNotifier {
         final List<DecodedImageFrame> frames;
         try {
           frames = await decodeImageFrames(
-            await File(bake.sourceFile).readAsBytes(),
+            await MediaFileBytes(bake.sourceFile).read(),
           );
         } on Object {
           continue; // Unreadable file — the cel keeps its name, no pixels.
