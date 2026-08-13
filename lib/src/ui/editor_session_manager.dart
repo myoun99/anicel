@@ -1904,24 +1904,39 @@ class EditorSessionManager extends ChangeNotifier {
   /// of the media pool) — what a project open warms so waveforms and
   /// playback PCM are ready before the first play.
   ///
-  /// Settling the cache's size here is deliberate: this is the moment a
-  /// fresh batch of conforms is about to be built, so it is where the
-  /// bound is worth enforcing, and it costs one directory scan rather than
-  /// one per conform on the UI isolate. Pruning FIRST also means the
-  /// entries this project is about to touch are the newest in the cache,
-  /// so they are the last things a later prune would consider.
   void _warmAudioConforms() {
-    if (Platform.environment['FLUTTER_TEST'] != 'true') {
-      // The store lets go FIRST. A conform past the streaming threshold is
-      // held here with no resident PCM and the file as the copy of record,
-      // so pruning one out from under a live entry would leave the clip
-      // silent for the session — see `releaseDiskBacked`.
-      audioConformStore.releaseDiskBacked();
-      pruneConformCache();
-    }
     audioConformStore.warmPaths(
       projectAudioSourcePaths(_repository.requireProject()),
     );
+  }
+
+  /// Settles the conform cache's size — ON PROJECT OPEN ONLY.
+  ///
+  /// That is the moment a fresh batch of conforms is about to be built, so
+  /// it is where the bound is worth enforcing, and it costs one directory
+  /// scan instead of one per conform on the UI isolate. Pruning FIRST also
+  /// means the entries this project is about to touch are the newest in
+  /// the cache, so they are the last things a later prune considers.
+  ///
+  /// ⛔ NOT on the audio-settings knobs. Warming happens there too — a
+  /// rate or speed change re-keys every conform — but a directory walk on
+  /// the UI isolate is not something to hang off a knob somebody drags
+  /// through four values to compare them ([[old-device-support-policy]]).
+  ///
+  /// The store lets go BEFORE the collector runs. A conform past the
+  /// streaming threshold is held with no resident PCM and the file as the
+  /// copy of record, so pruning one out from under a live entry leaves the
+  /// clip silent for the session — see [AudioConformStore.releaseDiskBacked].
+  ///
+  /// ⚠️ Deliberately NOT switched off under `FLUTTER_TEST`. The root is
+  /// already redirected to a temp folder there, and a call site compiled
+  /// out of every test is a call site with no observer — which is how the
+  /// path assembly went unwatched before ([[verify-before-claiming-shared]]).
+  /// It costs nothing when the cache does not exist yet, which is the
+  /// state every test starts in.
+  void _settleConformCache() {
+    audioConformStore.releaseDiskBacked();
+    pruneConformCache();
   }
 
   bool _activeCutHasLayer(LayerId? layerId) {
@@ -15886,6 +15901,7 @@ class EditorSessionManager extends ChangeNotifier {
     // A different project is a different session; a discard that belonged
     // to the last one must not silence this one's snapshots.
     _discardedUnsavedWork = false;
+    _settleConformCache();
     _warmAudioConforms();
     // RELINK-2: the first of the three refresh moments. A project opened
     // on a machine that does not have its referenced media has to SAY so —

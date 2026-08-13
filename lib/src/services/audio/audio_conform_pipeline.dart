@@ -251,9 +251,19 @@ class ConformCacheLayout {
   /// looking in the cache folder can tell what they are looking at — the
   /// hash is what makes it unique, the name is what makes it legible.
   ///
-  /// A hash collision costs a REBUILD and never the wrong sound: the
-  /// conform carries its source's fingerprint and its own rate and speed,
-  /// and reuse checks all of them before trusting a file.
+  /// ⚠️ What a hash collision costs, stated honestly. Two sources whose
+  /// (path | rate | speed) hashes collide AND whose basenames match land
+  /// on one file, and the reuse check that decides it is the CHEAP one:
+  /// source length plus mtime, with the content fingerprint reached only
+  /// when that hint misses (PR-1's fast path, deliberately — the
+  /// alternative is reading every source on every open). So the two would
+  /// also have to share a length and a modification time to the
+  /// microsecond before the wrong sound could be served; anything less
+  /// and the file is rebuilt.
+  ///
+  /// ⛔ Do not "fix" this by checking the fingerprint first. That trades a
+  /// probability nobody will meet for a full read of every source at every
+  /// open, which is the cost that path was built to remove.
   String conformPathFor(String mediaPath) {
     final normalized = mediaPath.replaceAll('\\', '/');
     final name = normalized.substring(normalized.lastIndexOf('/') + 1);
