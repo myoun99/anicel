@@ -1,5 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// The session's link verbs (L4 wiring): 링크 복제, 독립시키기, 겸용컷
@@ -88,6 +92,75 @@ void main() {
     expect(
       session.convertToLinkedCutPreviewData(session.requireActiveCut.id),
       isNull,
+    );
+  });
+
+  /// 🚨T9 (유저 2026-08-13) — 「비지블/정적불투명도는 독립되게 하고싶음. 지금
+  /// 하나 바꾸면 링크된 레이어들 바꿈」. ⛔This REVERSES the old 「레인만 각자,
+  /// 나머지는 하나」: a link shares the DRAWING, and how loudly a given use
+  /// shows that drawing is that use's own business.
+  test('a link shares the drawing, not the eye: visibility, static opacity '
+      'and blend are per-use', () {
+    final origin = session.activeLayer!;
+    session.linkDuplicateActiveLayer();
+    final copy = session.requireActiveCut.layers.firstWhere(
+      (layer) => layer.name == origin.name && layer.id != origin.id,
+    );
+    expect(session.isLayerLinked(origin.id), isTrue);
+
+    Layer read(LayerId id) =>
+        session.requireActiveCut.layers.firstWhere((layer) => layer.id == id);
+
+    final originVisibleBefore = read(origin.id).isVisible;
+    session.toggleLayerVisibility(copy.id);
+    expect(read(copy.id).isVisible, !originVisibleBefore);
+    expect(
+      read(origin.id).isVisible,
+      originVisibleBefore,
+      reason: 'the other use of the same cel keeps its own eye',
+    );
+
+    session.setLayerOpacity(layerId: copy.id, opacity: 0.2);
+    expect(read(copy.id).opacity, closeTo(0.2, 1e-9));
+    expect(read(origin.id).opacity, closeTo(origin.opacity, 1e-9));
+
+    session.setLayerBlendMode(copy.id, LayerBlendMode.multiply);
+    expect(read(copy.id).blendMode, LayerBlendMode.multiply);
+    expect(read(origin.id).blendMode, origin.blendMode);
+
+    // ⚠️And the LINK itself survives all three — this is a display split, not
+    // an unlink. The two rows are still one drawing.
+    expect(session.isLayerLinked(origin.id), isTrue);
+    expect(session.isLayerLinked(copy.id), isTrue);
+  });
+
+  /// The 겸용 cut never had an answer of its own — it went through the same
+  /// registry — so the split reaches it without a second edit (유저: 「겸용컷
+  /// 에서도 같은 로직 쓰지? 똑같이 적용되도록」).
+  test('the same holds across a 겸용 cut', () {
+    final origin = session.activeLayer!;
+    final originCutId = session.requireActiveCut.id;
+    session.createLinkedCutFromActiveCut();
+
+    final linkedCut = session.activeTrack.cuts.firstWhere(
+      (cut) => cut.id != originCutId,
+    );
+    final twin = linkedCut.layers.firstWhere(
+      (layer) => layer.name == origin.name,
+    );
+    expect(session.isLayerLinked(twin.id), isTrue);
+
+    session.setLayerOpacity(layerId: twin.id, opacity: 0.35);
+
+    Layer inCut(CutId cutId, LayerId layerId) => session
+        .cutById(cutId)!
+        .layers
+        .firstWhere((layer) => layer.id == layerId);
+    expect(inCut(linkedCut.id, twin.id).opacity, closeTo(0.35, 1e-9));
+    expect(
+      inCut(originCutId, origin.id).opacity,
+      closeTo(origin.opacity, 1e-9),
+      reason: 'the origin cut shows the same cel at its own strength',
     );
   });
 }

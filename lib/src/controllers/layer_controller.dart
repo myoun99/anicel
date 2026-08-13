@@ -7,7 +7,6 @@ import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
-import '../models/project.dart';
 import 'default_layer_helpers.dart';
 import '../services/commands/add_layer_command.dart';
 import '../services/commands/cut_command_input_planner.dart';
@@ -193,29 +192,36 @@ class LayerController {
     );
   }
 
+  /// 🚨T9 (유저 2026-08-13) — THE EYE IS PER-USE. So are static opacity and
+  /// blend, and ⛔this REVERSES 「레인만 각자, 나머지는 하나」, which used to be
+  /// quoted right here: 「링크레이어 … **비지블/정적불투명도는 독립되게
+  /// 하고싶음.** 지금 하나 바꾸면 링크된 레이어들 바꿈. **겸용컷에서도 같은
+  /// 로직 쓰지? 똑같이 적용되도록**」.
+  ///
+  /// ★What a link shares is the DRAWING — that is the whole of what it means
+  /// for two rows to be one cel. How loudly a given cut shows that cel is
+  /// that cut's own business, and mirroring it made one drawing impossible to
+  /// use twice at two strengths, which is an ordinary reason to link.
+  ///
+  /// The 겸용 cut needed no separate answer because it never had one: both
+  /// went through the same registry, so this is ONE deletion rather than two
+  /// edits — and the mirror helper died with it, since these three were its
+  /// only callers ([[duplication-program]]: the last step is removing the
+  /// predecessor).
   void toggleLayerVisibility(LayerId layerId) {
-    // The eye MIRRORS across the layer's link group ("레인만 각자,
-    // 나머지는 하나"): every member SETS the toggled value — per-member
-    // toggling could freeze a divergent state forever.
     final project = _repository.requireProject();
-    final target = requireLayerAnywhere(project, layerId);
-    final nextVisible = !target.isVisible;
-    for (final member in _mirrorTargetsOf(project, layerId)) {
-      _repository.updateLayer(
-        layerId: member,
-        update: (layer) => layer.isVisible == nextVisible
-            ? layer
-            : layer.copyWith(isVisible: nextVisible),
-      );
-    }
+    final nextVisible = !requireLayerAnywhere(project, layerId).isVisible;
+    _repository.updateLayer(
+      layerId: layerId,
+      update: (layer) => layer.copyWith(isVisible: nextVisible),
+    );
   }
 
-  /// The layer-list twirl: PER-USE view state — never mirrored ("레인만
-  /// 각자" applies to display state too), persisted like CSP. Folder rows
-  /// use it to swallow their members; the eye, static opacity and blend a
-  /// folder carries need no method of their own, because a folder IS a
+  /// The layer-list twirl: PER-USE view state, persisted like CSP. Folder
+  /// rows use it to swallow their members; the eye, static opacity and blend
+  /// a folder carries need no method of their own, because a folder IS a
   /// layer and rides [toggleLayerVisibility] / [setLayerOpacity] /
-  /// [setLayerBlendMode] — mirroring included.
+  /// [setLayerBlendMode] — all four per-use since T9.
   void toggleLayerCollapsed(LayerId layerId) {
     _repository.updateLayer(
       layerId: layerId,
@@ -249,52 +255,28 @@ class LayerController {
   }
 
   /// R26 #30: the layer's composite blend — display state written the
-  /// repo-direct way (like the eye and static opacity), mirrored across
-  /// the link group.
+  /// repo-direct way, and PER-USE like the eye (T9).
   void setLayerBlendMode({
     required LayerId layerId,
     required LayerBlendMode blendMode,
   }) {
-    final project = _repository.requireProject();
-    for (final member in _mirrorTargetsOf(project, layerId)) {
-      _repository.updateLayer(
-        layerId: member,
-        update: (layer) => layer.blendMode == blendMode
-            ? layer
-            : layer.copyWith(blendMode: blendMode),
-      );
-    }
-  }
-
-  void setLayerOpacity({required LayerId layerId, required double opacity}) {
-    // Static opacity mirrors like the eye; per-use fades belong to the
-    // local FX opacity lane instead.
-    final clamped = opacity.clamp(0.0, 1.0).toDouble();
-    final project = _repository.requireProject();
-    for (final member in _mirrorTargetsOf(project, layerId)) {
-      _repository.updateLayer(
-        layerId: member,
-        update: (layer) =>
-            layer.opacity == clamped ? layer : layer.copyWith(opacity: clamped),
-      );
-    }
-  }
-
-  /// The link-group member ids a mirrored display edit applies to —
-  /// [layerId] alone when unlinked (track SE rows always are).
-  List<LayerId> _mirrorTargetsOf(Project project, LayerId layerId) {
-    final cutId = cutIdOfLayer(project, layerId);
-    if (cutId == null) {
-      return [layerId];
-    }
-    final group = project.linkRegistry.groupOf(
-      cutId: cutId,
+    _repository.updateLayer(
       layerId: layerId,
+      update: (layer) =>
+          layer.blendMode == blendMode ? layer : layer.copyWith(blendMode: blendMode),
     );
-    if (group == null) {
-      return [layerId];
-    }
-    return [for (final member in group.members) member.layerId];
+  }
+
+  /// Static opacity is PER-USE (T9), like the eye beside it. Per-use FADES
+  /// still belong to the local FX opacity lane — that split is unchanged;
+  /// what changed is that this one stopped reaching across the link.
+  void setLayerOpacity({required LayerId layerId, required double opacity}) {
+    final clamped = opacity.clamp(0.0, 1.0).toDouble();
+    _repository.updateLayer(
+      layerId: layerId,
+      update: (layer) =>
+          layer.opacity == clamped ? layer : layer.copyWith(opacity: clamped),
+    );
   }
 
   Cut? _findCutOrNull() {
