@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../models/layer_id.dart';
 import 'selected_exposure_display_range_policy.dart';
-import 'timeline_cell_style.dart' show timelineSelectedFrameBorderColor;
+import 'timeline_cell_style.dart'
+    show timelineRangeSelectionBandDecoration, timelineSelectedFrameBorderColor;
 import 'timeline_frame_coordinate_policy.dart';
 
 /// THE ring that says "this is in the selection", wherever a selection is
@@ -121,4 +122,101 @@ class TimelineSelectedExposureOutline extends StatelessWidget {
       child: outline,
     );
   }
+}
+
+/// 🚨T1 — THE ROW SELECTION, as ONE band over the run it covers.
+///
+/// 유저 2026-08-13: 「레이어 선택, 여러개 선택시 **외곽선이 레이어 하나마다
+/// 들어오는데, 그게아니라 프레임셀 처럼 연결된 레이어들 선택하면 한 외곽선,
+/// 바탕**이 되도록. 그리고 지금 **외곽선이 왼쪽 섹션부분의 선이 없음**」.
+///
+/// ⛔Each selected row used to wrap itself in a [TimelineSelectionRing], so
+/// four selected rows drew four boxes with three seams down the middle of
+/// what is one selection. And the box it drew was the row's INNER container —
+/// `layerControlsWidth − sectionLabelGutterWidth` — which is why the left
+/// edge had no line: the section band lives in that gutter, outside the box.
+///
+/// ★So this is the frame side's own arrangement, transposed: the cells do not
+/// each outline themselves either — the cursor overlay lays one band across
+/// the run ([timelineRangeSelectionBandDecoration], the same fill and the
+/// same edge). A selection is one thing and gets one shape.
+///
+/// Contiguous runs are drawn separately: a selection can be broken by a row
+/// that is not in it (a collapsed group, a filtered row), and two runs with a
+/// gap between them are two shapes, not one tall one.
+class TimelineRowSelectionBands extends StatelessWidget {
+  const TimelineRowSelectionBands({
+    super.key,
+    required this.selectedFlags,
+    required this.rowExtent,
+    required this.leadingSpacer,
+    required this.crossExtent,
+    this.axis = Axis.horizontal,
+  });
+
+  /// One flag per DRAWN row, in draw order — the rail already knows which of
+  /// its rows are in the selection, and asking it here keeps this widget from
+  /// needing to know what a row IS.
+  final List<bool> selectedFlags;
+
+  /// A row's extent along the rail (height in the timeline, width in the
+  /// X-sheet).
+  final double rowExtent;
+
+  /// What sits before the first drawn row — the virtualization spacer.
+  final double leadingSpacer;
+
+  /// The band's extent ACROSS the rail: the FULL rail width, section gutter
+  /// included. That inclusion is half the report.
+  final double crossExtent;
+
+  /// Which way the rail runs.
+  final Axis axis;
+
+  @override
+  Widget build(BuildContext context) {
+    final bands = <Widget>[];
+    var runStart = -1;
+    for (var index = 0; index <= selectedFlags.length; index += 1) {
+      final selected = index < selectedFlags.length && selectedFlags[index];
+      if (selected) {
+        if (runStart < 0) {
+          runStart = index;
+        }
+        continue;
+      }
+      if (runStart < 0) {
+        continue;
+      }
+      final offset = leadingSpacer + runStart * rowExtent;
+      final extent = (index - runStart) * rowExtent;
+      bands.add(
+        axis == Axis.horizontal
+            ? Positioned(
+                top: offset,
+                left: 0,
+                height: extent,
+                width: crossExtent,
+                child: _band(runStart),
+              )
+            : Positioned(
+                left: offset,
+                top: 0,
+                width: extent,
+                height: crossExtent,
+                child: _band(runStart),
+              ),
+      );
+      runStart = -1;
+    }
+    if (bands.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return IgnorePointer(child: Stack(children: bands));
+  }
+
+  Widget _band(int runStart) => DecoratedBox(
+    key: ValueKey<String>('timeline-row-selection-band-$runStart'),
+    decoration: timelineRangeSelectionBandDecoration,
+  );
 }

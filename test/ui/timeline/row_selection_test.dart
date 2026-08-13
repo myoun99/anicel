@@ -18,6 +18,8 @@ import 'package:anicel/src/ui/timeline/layer_name_commands.dart'
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show LayerRowSubject;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/timeline_selected_exposure_outline.dart'
+    show TimelineRowSelectionBands;
 
 /// ⑨ (user, 2026-08-12): 「레이어에도 선택 시스템 — 첫 드래그가 선택
 /// (1개/여러 개), 그 다음이 드래그. 타임라인 프레임과 완전히 같은 순서.
@@ -461,10 +463,16 @@ void main() {
       );
       await tester.ensureVisible(row);
       await tester.pumpAndSettle();
-      final ring = find.byKey(
-        const ValueKey<String>('timeline-row-selection-ring'),
+      // ⚠️CONTRACT CHANGED (T1, 2026-08-13): the ring per row became ONE band
+      // per contiguous run, laid over the rail — 유저: 「외곽선이 레이어
+      // 하나마다 들어오는데, 그게아니라 프레임셀 처럼 연결된 레이어들 선택하면
+      // 한 외곽선, 바탕이 되도록」. ㊴'s point is untouched and is what the
+      // ground check below still asks: the WASH belongs to the active row.
+      Finder bands() => find.descendant(
+        of: find.byType(TimelineRowSelectionBands),
+        matching: find.byType(DecoratedBox),
       );
-      expect(ring, findsNothing, reason: 'nothing is selected yet');
+      expect(bands(), findsNothing, reason: 'nothing is selected yet');
 
       // The sideways nudge is the SELECT drag (only the rail's axis counts
       // as travel), exactly as the click-clears test above drives it.
@@ -472,7 +480,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(s.rowSelection.value, isNotEmpty);
 
-      expect(ring, findsOneWidget, reason: '㊴: the selection is a ring');
+      expect(
+        bands(),
+        findsOneWidget,
+        reason: 'T1: ONE band for the run, not one box per row',
+      );
       expect(
         groundOf(target.id),
         isNot(groundOf(activeId)),

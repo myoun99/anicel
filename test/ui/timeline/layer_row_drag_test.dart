@@ -296,6 +296,27 @@ void main() {
     );
     await tester.ensureVisible(header);
     await tester.pumpAndSettle();
+
+    // 🚨CONTRACT CHANGED (T5, 유저 2026-08-13): 「모든 행은 자유롭게 규칙없이
+    // 선택가능 … 셀과 같은문법으로 통일」. An fx header used to opt OUT of the
+    // row selection entirely — its drag went straight to re-ordering — which
+    // left it the one row kind with a grammar of its own. It follows the
+    // cells' now: the FIRST drag selects and the second moves, exactly as a
+    // layer row does (which is what `_selectRow` is doing for those above).
+    await _selectRow(tester, header);
+    expect(
+      chain(),
+      before,
+      reason: 'the first drag selected — nothing has moved yet',
+    );
+    expect(
+      session.rowSelection.value,
+      isNotEmpty,
+      reason: 'T5: an fx header is a row like any other now. It used to answer '
+          '「이 주체는 참여 안 함」, which is a KIND deciding whether a row may '
+          'be named — the one thing ③ and ⑨ removed everywhere else',
+    );
+
     await tester.drag(header, const Offset(0, 28));
     await tester.pumpAndSettle();
 

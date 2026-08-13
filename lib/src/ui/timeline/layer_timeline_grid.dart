@@ -61,6 +61,8 @@ import 'timeline_layer_controls_row.dart';
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
+import 'timeline_selected_exposure_outline.dart'
+    show TimelineRowSelectionBands;
 import 'timeline_vertical_scrollbar_rail.dart';
 import 'timeline_visible_range.dart';
 
@@ -116,7 +118,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.currentRowHooks,
     this.rowDragHooks,
     this.onRowSelectionSpan,
-    this.selectedRowIds = const {},
+    this.selectedRows = const {},
     this.runEdit,
     this.isFrameCached,
     this.metrics = TimelineGridMetrics.defaults,
@@ -332,7 +334,7 @@ class LayerTimelineGrid extends StatefulWidget {
 
   /// ⑨: the rows currently in the selection, as layer ids — what the rail
   /// washes and what the row verbs act on.
-  final Set<LayerId> selectedRowIds;
+  final Set<TimelineRowAddress> selectedRows;
 
   /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
   final TimelineRunEditCallbacks? runEdit;
@@ -1109,7 +1111,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     final inputs = (
       layer: row.layer,
       active: _layerRowIsActive(row.layer),
-      selected: widget.selectedRowIds.contains(row.layer.id),
+      selected: widget.selectedRows.contains(row.address),
       hasLanes: _lanesFor(row.layer).isNotEmpty,
       lanesExpanded: widget.expandedLaneLayerIds.contains(row.layer.id),
       depth: row.depth,
@@ -1386,7 +1388,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       wearsBaseComposite: attachRowWearsBaseComposite(row.layer, widget.layers),
       active: _layerRowIsActive(row.layer),
       // ⑨: in the row selection the row verbs act on.
-      selected: widget.selectedRowIds.contains(row.layer.id),
+      selected: widget.selectedRows.contains(row.address),
       metrics: _metrics,
       onSelectLayer: widget.onSelectLayer,
       onToggleLayerVisibility: widget.onToggleLayerVisibility,
@@ -2102,6 +2104,28 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                 child: _sectionBandOverlay(
                                                                   windowRows,
                                                                   leadingRowSpacerHeight,
+                                                                ),
+                                                              ),
+                                                              // 🚨T1: the row
+                                                              // SELECTION, as
+                                                              // one band per
+                                                              // contiguous run
+                                                              // over the FULL
+                                                              // rail width —
+                                                              // section gutter
+                                                              // included, which
+                                                              // no row could
+                                                              // reach from
+                                                              // inside itself.
+                                                              Positioned.fill(
+                                                                child: TimelineRowSelectionBands(
+                                                                  selectedFlags: [
+                                                                    for (final row in windowRows)
+                                                                      widget.selectedRows.contains(row.address),
+                                                                  ],
+                                                                  rowExtent: _metrics.layerRowHeight,
+                                                                  leadingSpacer: leadingRowSpacerHeight,
+                                                                  crossExtent: _metrics.layerControlsWidth,
                                                                 ),
                                                               ),
                                                             ],
