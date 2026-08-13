@@ -10,6 +10,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
+import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../helpers/fake_pdf_document.dart';
@@ -245,6 +246,59 @@ void main() {
     );
     expect(group, isNotNull, reason: 'the extra cut links the cel banks');
     expect(group!.members, hasLength(2));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('importCutFolder stamps the CARRY answer on its reference '
+      'registrations, under the kind ceiling', (tester) async {
+    // 🚨 The planner is handed a folder, not a window, so it cannot know
+    // the answer — and the session used to express it by copying the file
+    // into `.assets/Media` and nothing else. The pool entry itself still
+    // said `carried: false`, which is the one thing the save reads, so
+    // the first save after a folder import left every timesheet scan
+    // OUTSIDE the archive. It only came right on a reopen, through the
+    // older `sourcePath` spelling of the same answer.
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+
+    final warnings = await tester.runAsync(() async {
+      const root = 'csm_13_069_loeks';
+      final sep = Platform.pathSeparator;
+      await writePng('$root${sep}A1.png', seed: 0xFF111111);
+      await writePng('$root${sep}_TS_a.png', seed: 0xFF222222);
+      final movie = File('${tempDir.path}$sep$root${sep}참고.mp4');
+      await movie.writeAsBytes(const [0, 0, 0, 24]);
+      return s.importCutFolder(
+        folderPath: '${tempDir.path}$sep$root',
+        copyIntoProject: true,
+      );
+    });
+    expect(warnings, isNotNull);
+
+    final assets = {
+      for (final asset in s.mediaAssets) asset.kind: asset,
+    };
+    expect(
+      assets[MediaAssetKind.image]?.carried,
+      isTrue,
+      reason: 'the timesheet scan was asked for and can be carried',
+    );
+    expect(
+      assets[MediaAssetKind.video]?.carried,
+      isTrue,
+      reason: 'the answer is recorded as given at every registration site',
+    );
+    expect(
+      projectArchivedMediaPaths(s.repository.requireProject()),
+      {assets[MediaAssetKind.image]!.path},
+      reason: 'the kind ceiling keeps the 참고영상 out — that is where it '
+          'is applied, not by rewriting what the user asked for',
+    );
+    expect(
+      Directory('${tempDir.path}/csm_13_069_loeks.assets').existsSync(),
+      isFalse,
+      reason: 'carrying copies nothing',
+    );
     await tester.pumpAndSettle();
   });
 

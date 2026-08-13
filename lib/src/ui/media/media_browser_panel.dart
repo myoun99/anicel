@@ -51,8 +51,9 @@ class MediaBrowserPanel extends StatelessWidget {
   /// Returns false when the asset is still referenced (kept in the pool).
   final bool Function(String path) onRemoveAsset;
 
-  /// Copies a referenced file into the project's assets folder and points
-  /// the project at the copy. False when there was nothing to promote.
+  /// Marks a referenced file as one the project carries, so the next save
+  /// writes its bytes inside the `.anicel`. Nothing on disk moves. False
+  /// when there was nothing to promote.
   final bool Function(String path) onPromoteAsset;
 
   /// Opens the asset in the MAIN viewer (double-click or the row menu);
@@ -123,8 +124,8 @@ class MediaBrowserPanel extends StatelessWidget {
     if (onPromoteAsset(asset.path)) {
       return;
     }
-    // Already inside, never-saved project, or the source is gone. Saying
-    // nothing would read as a menu item that does not work.
+    // Already carried, or a kind that never is. Saying nothing would read
+    // as a menu item that does not work.
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
       SnackBar(content: Text(AppText.strings.mediaAlreadyInProject)),
     );
@@ -399,11 +400,11 @@ class MediaBrowserPanel extends StatelessWidget {
                 onSelected: () => _relink(context, asset.path),
               ),
               // The other half of importing by reference: the moment the
-              // user decides the project folder should own this file
-              // after all. Offered on every row rather than only on
-              // references — a file already inside answers "nothing to
-              // do" honestly, and hiding it would mean the row's menu
-              // changes shape for a reason the user cannot see.
+              // user decides the project should own this file after all.
+              // Offered on every row rather than only on references — a
+              // file already carried answers "nothing to do" honestly,
+              // and hiding it would mean the row's menu changes shape for
+              // a reason the user cannot see.
               PanelFlyoutItem(
                 keyValue: 'media-asset-menu-promote',
                 label: AppText.strings.mediaRegisterInProject,
