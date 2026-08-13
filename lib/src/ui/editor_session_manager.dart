@@ -167,6 +167,8 @@ import '../services/audio/audio_mixer_reference.dart'
 import 'playback/audio_input_monitor.dart';
 import 'playback/audio_playback_schedule.dart' show ScheduledAudioClip;
 import '../services/audio/audio_conform_pipeline.dart' show ConformCacheLayout;
+import '../services/audio/conform_cache_maintenance.dart'
+    show pruneConformCache;
 import '../services/audio/conform_wav_codec.dart' show encodeConformWav;
 import '../services/commands/update_media_assets_command.dart';
 import '../models/se_take_placement.dart';
@@ -1881,19 +1883,37 @@ class EditorSessionManager extends ChangeNotifier {
         ..addListener(notifyListeners);
 
   /// Resolved per call rather than cached: the cache root is a live
-  /// setting and the project path changes under Save As, so a conform path
-  /// held from before either would name a folder nothing writes to.
+  /// setting and the project's rate and speed are live settings too, so a
+  /// conform path held from before any of them would name a file nothing
+  /// writes to.
+  ///
+  /// Never null now. It used to be, for a project with no path — the cache
+  /// was named after the project, so an unsaved one had no name to cache
+  /// under and re-decoded its audio every launch. Keying by source removed
+  /// the question.
   String? _conformPathFor(String sourcePath) {
-    final path = _projectFilePath;
-    return path == null
-        ? null
-        : ConformCacheLayout.forProject(path).conformPathFor(sourcePath);
+    final project = _repository.requireProject();
+    return ConformCacheLayout.forAudio(
+      sampleRate: project.audioSampleRate,
+      speedNumerator: project.audioSpeedNumerator,
+      speedDenominator: project.audioSpeedDenominator,
+    ).conformPathFor(sourcePath);
   }
 
   /// Every audio path the project references (SE clips + the SOUND entries
   /// of the media pool) — what a project open warms so waveforms and
   /// playback PCM are ready before the first play.
+  ///
+  /// Settling the cache's size here is deliberate: this is the moment a
+  /// fresh batch of conforms is about to be built, so it is where the
+  /// bound is worth enforcing, and it costs one directory scan rather than
+  /// one per conform on the UI isolate. Pruning FIRST also means the
+  /// entries this project is about to touch are the newest in the cache,
+  /// so they are the last things a later prune would consider.
   void _warmAudioConforms() {
+    if (Platform.environment['FLUTTER_TEST'] != 'true') {
+      pruneConformCache();
+    }
     audioConformStore.warmPaths(
       projectAudioSourcePaths(_repository.requireProject()),
     );

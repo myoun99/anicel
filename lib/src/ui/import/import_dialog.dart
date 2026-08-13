@@ -13,6 +13,7 @@ import '../../services/project_lookup.dart'
 import '../dialogs/folder_pick_flow.dart';
 import '../editor_session_manager.dart';
 import '../export/export_settings_modules.dart';
+import '../text/byte_size_label.dart';
 import '../widgets/app_window.dart';
 
 /// The 가져오기/배치 window (§6-z21): ONE window for every import — file
@@ -850,14 +851,6 @@ class _ImportDialogState extends State<ImportDialog> {
     ];
   }
 
-  static String _sizeLabel(int bytes) {
-    const megabyte = 1024 * 1024;
-    if (bytes >= 1024 * megabyte) {
-      return '${(bytes / (1024 * megabyte)).toStringAsFixed(1)} GB';
-    }
-    return '${(bytes / megabyte).round()} MB';
-  }
-
   /// Says what carrying is about to cost, before it costs it.
   ///
   /// Apple's default is Keep inside and the toggle is one click away, so
@@ -873,13 +866,13 @@ class _ImportDialogState extends State<ImportDialog> {
     final total = large.fold<int>(0, (sum, path) => sum + _sizeOf(path));
     final named = [
       for (final path in large.take(3))
-        '${mediaAssetDefaultName(path)} (${_sizeLabel(_sizeOf(path))})',
+        '${mediaAssetDefaultName(path)} (${byteSizeLabel(_sizeOf(path))})',
     ].join(', ');
     final more = large.length > 3 ? ' and ${large.length - 3} more' : '';
     return Padding(
       padding: const EdgeInsets.only(top: 4),
       child: Text(
-        '${_sizeLabel(total)} goes inside the project file — $named$more. '
+        '${byteSizeLabel(total)} goes inside the project file — $named$more. '
         'Reference leaves the originals where they are.',
         key: const ValueKey<String>('import-large-carry-note'),
         style: Theme.of(context).textTheme.labelSmall!.copyWith(

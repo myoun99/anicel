@@ -231,21 +231,24 @@ abstract final class AppSave {
   /// never disagree about which project they belong to.
   static String encodeProjectKey(String projectFilePath) {
     final normalized = projectFilePath.replaceAll('\\', '/');
+    final base = normalized.split('/').last;
+    return '$base.${pathHash(normalized).toRadixString(16).padLeft(8, '0')}';
+  }
+
+  /// FNV-1a over [text] — the one hash every derived cache name in the app
+  /// is built from, so two of them cannot disagree about what "the same
+  /// path" means.
+  static int pathHash(String text) {
     var hash = 0x811c9dc5;
-    for (final unit in normalized.codeUnits) {
+    for (final unit in text.codeUnits) {
       hash ^= unit;
       hash = (hash * 0x01000193) & 0xFFFFFFFF;
     }
-    final base = normalized.split('/').last;
-    return '$base.${hash.toRadixString(16).padLeft(8, '0')}';
+    return hash;
   }
 
-  /// Where [projectFilePath]'s audio conforms are cached.
-  ///
-  /// Defaults into the app support folder; [AppSaveSettings.conformDirectory]
-  /// overrides the ROOT, and the per-project folder underneath it is still
-  /// derived here — a user picking a drive should not also have to keep two
-  /// projects of the same name apart.
+  /// The folder the conform cache sits under — what Preferences shows, and
+  /// the one place that decides where the cache root is.
   ///
   /// Conforms used to live in `<project>.assets/Conformed`, which put a
   /// twelve-times-the-source cache inside whatever folder the project was
@@ -255,12 +258,6 @@ abstract final class AppSave {
   /// Only the DEFAULT root is redirected under FLUTTER_TEST: a configured
   /// root was named explicitly and is used as given, which is what a test
   /// that sets one is asking for.
-  static String conformDirectoryFor(String projectFilePath) =>
-      '$conformRootDirectory/${encodeProjectKey(projectFilePath)}';
-
-  /// The folder every project's conform cache sits under — what
-  /// Preferences shows, and the one place that decides where the cache
-  /// root is.
   static String get conformRootDirectory {
     final configured = settings.value.conformDirectory;
     if (configured != null && configured.isNotEmpty) {

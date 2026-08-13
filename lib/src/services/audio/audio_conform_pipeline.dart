@@ -178,36 +178,89 @@ class ProjectAssetLayout {
       Directory(assetsDirectory).existsSync();
 }
 
-/// Where a project's conforms are cached, and what they are called.
+/// Where conforms are cached, and what they are called.
 ///
 /// A directory plus a naming rule, kept apart from [ProjectAssetLayout]
 /// because the two stopped answering the same question: media is the
-/// project's own content and a conform is a regenerable cache, so only one
-/// of them is still derived from the project path. The cache directory
-/// comes from `AppSave.conformDirectoryFor` — the app container by default,
-/// a user-named drive when there is one.
+/// project's own content and a conform is a regenerable cache.
+///
+/// 🔑 Keyed by the SOURCE and the settings it was rendered under, never by
+/// the project. What decides a conform's contents is the file, the sample
+/// rate and the audio speed — not who happens to be using it. The old
+/// per-project folder was inherited from `<project>.assets/Conformed`,
+/// where the project WAS the folder, and carrying that shape into a common
+/// cache cost three things:
+///
+/// - Save As, a rename or a move produced a brand new key, and every
+///   conform the project had built became unreachable garbage nobody
+///   would ever collect.
+/// - Two projects using the same sound each built their own copy of a
+///   cache entry twelve times the size of the source.
+/// - A project that had never been saved had no key at all, so it got no
+///   cache and re-decoded its audio on every launch.
+///
+/// All three are the same mistake, and keying by source ends all three.
 class ConformCacheLayout {
-  const ConformCacheLayout(this.directory);
+  const ConformCacheLayout({
+    required this.directory,
+    required this.sampleRate,
+    required this.speedNumerator,
+    required this.speedDenominator,
+  });
 
-  /// The cache [projectFilePath] uses — the whole composition in one
-  /// place so a caller cannot assemble a different one by hand.
+  /// The cache for audio rendered at these settings — the whole
+  /// composition in one place so a caller cannot assemble a different one
+  /// by hand.
   ///
-  /// The session used to hold the two halves itself, and nothing could
-  /// see the result: every test that builds a session injects its own
-  /// conform store, so the production path assembly had no observer at
-  /// all. Naming the composition gives it one.
-  factory ConformCacheLayout.forProject(String projectFilePath) =>
-      ConformCacheLayout(AppSave.conformDirectoryFor(projectFilePath));
+  /// The session used to hold the halves itself, and nothing could see the
+  /// result: every test that builds a session injects its own conform
+  /// store, so the production path assembly had no observer at all. Naming
+  /// the composition gives it one.
+  factory ConformCacheLayout.forAudio({
+    required int sampleRate,
+    required int speedNumerator,
+    required int speedDenominator,
+  }) => ConformCacheLayout(
+    directory: AppSave.conformRootDirectory,
+    sampleRate: sampleRate,
+    speedNumerator: speedNumerator,
+    speedDenominator: speedDenominator,
+  );
 
-  /// The project's conform folder, already resolved.
+  /// The cache root, already resolved.
   final String directory;
+
+  /// The project's audio settings, which a conform's contents depend on.
+  ///
+  /// ⚠️ Both belong in the KEY, not merely in the file. A 44.1k conform
+  /// played against a 48k schedule slides every clip, and a pull-down
+  /// speed difference drifts by a thousandth — small enough to survive a
+  /// listen and wrong by the end of a reel. They are recorded inside the
+  /// conform as well, so a mismatch is caught either way; putting them in
+  /// the name means the two never meet in the first place, and a project
+  /// that switches rate back and forth keeps both conforms instead of
+  /// rebuilding at every change.
+  final int sampleRate;
+  final int speedNumerator;
+  final int speedDenominator;
 
   /// The conform for [mediaPath], derived by rule rather than recorded in
   /// the project. Nothing to keep in sync, and `project.json` stays small.
+  ///
+  /// The source's own name is kept in front of the hash so a person
+  /// looking in the cache folder can tell what they are looking at — the
+  /// hash is what makes it unique, the name is what makes it legible.
+  ///
+  /// A hash collision costs a REBUILD and never the wrong sound: the
+  /// conform carries its source's fingerprint and its own rate and speed,
+  /// and reuse checks all of them before trusting a file.
   String conformPathFor(String mediaPath) {
     final normalized = mediaPath.replaceAll('\\', '/');
     final name = normalized.substring(normalized.lastIndexOf('/') + 1);
-    return '$directory/$name.wav';
+    final key = AppSave.pathHash(
+      '$normalized|$sampleRate|$speedNumerator/$speedDenominator',
+    );
+    return '$directory/$name.${key.toRadixString(16).padLeft(8, '0')}.wav';
   }
 }
 
@@ -276,30 +329,6 @@ class AudioConformPipeline {
     }
   }
 
-  /// A name inside [directory] that no existing file claims: `x.wav`,
-  /// then `x-1.wav`, `x-2.wav`. Pro Tools does the same on import, and the
-  /// alternative is one sound silently overwriting another.
-  static String uniqueNameIn(
-    String directory,
-    String fileName, {
-    bool Function(String path)? exists,
-  }) {
-    final taken = exists ?? (path) => File(path).existsSync();
-    if (!taken('$directory/$fileName')) {
-      return fileName;
-    }
-    final dot = fileName.lastIndexOf('.');
-    final stem = dot <= 0 ? fileName : fileName.substring(0, dot);
-    final extension = dot <= 0 ? '' : fileName.substring(dot);
-    for (var index = 1; index < 10000; index += 1) {
-      final candidate = '$stem-$index$extension';
-      if (!taken('$directory/$candidate')) {
-        return candidate;
-      }
-    }
-    return fileName;
-  }
-
   /// Ensures a usable conform exists for [sourcePath] at [conformPath].
   ///
   /// Reuses the existing one when its recorded fingerprint still matches
@@ -308,34 +337,46 @@ class AudioConformPipeline {
   /// and guessing wrong plays the wrong sound against someone's drawing.
   ///
   /// A null [conformPath] runs MEMORY-ONLY: decode and resample without
-  /// touching the disk. That is the unsaved-project case — the cache is
-  /// named per project and an unsaved project has no name yet — and a
-  /// conform is derived data anyway: once the project is saved, the next
-  /// ensure caches it like any other.
-  ///
-  /// Memory-only is also the FALLBACK when the cache cannot be written, so
+  /// touching the disk — the FALLBACK when the cache cannot be written, so
   /// a cache that is missing, full or unreachable costs a re-decode rather
-  /// than the sound.
+  /// than the sound. (It used to be the unsaved-project case too, back
+  /// when the cache was named after the project. Keying by source ended
+  /// that: an unsaved project caches like any other.)
+  ///
   /// The reuse answer, from an [existing] conform that has already been
   /// judged current. One place so the fast (stat) and slow (content) paths
   /// cannot drift into returning different shapes for the same decision.
-  ConformResult _reuse(ConformAudio existing, String? conformPath) =>
-      ConformResult(
-        outcome: ConformOutcome.reused,
-        conformPath: conformPath,
-        peaks: peaksFromSamples(
-          samples: existing.samples,
-          channels: existing.channels,
-          sampleRate: existing.sampleRate,
-          bucketsPerSecond: bucketsPerSecond,
-        ),
+  ///
+  /// Reuse TOUCHES the file. It is the only record of when an entry was
+  /// last wanted, and without it the eviction order would be "oldest
+  /// built" — which throws out the sound someone uses in every cut and
+  /// keeps the one they imported once by mistake.
+  ConformResult _reuse(ConformAudio existing, String? conformPath) {
+    if (conformPath != null) {
+      try {
+        File(conformPath).setLastModifiedSync(DateTime.now());
+      } on Object {
+        // A read-only cache still reuses; it just evicts in a worse
+        // order. Never worth failing a conform over.
+      }
+    }
+    return ConformResult(
+      outcome: ConformOutcome.reused,
+      conformPath: conformPath,
+      peaks: peaksFromSamples(
         samples: existing.samples,
         channels: existing.channels,
         sampleRate: existing.sampleRate,
-        frames: existing.length,
-        speedNumerator: speedNumerator,
-        speedDenominator: speedDenominator,
-      );
+        bucketsPerSecond: bucketsPerSecond,
+      ),
+      samples: existing.samples,
+      channels: existing.channels,
+      sampleRate: existing.sampleRate,
+      frames: existing.length,
+      speedNumerator: speedNumerator,
+      speedDenominator: speedDenominator,
+    );
+  }
 
   ConformResult ensureConform({
     required String sourcePath,
