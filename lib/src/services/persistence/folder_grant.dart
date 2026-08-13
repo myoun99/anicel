@@ -141,6 +141,63 @@ class FolderGrant {
     final normalized = candidate.replaceAll('\\', '/');
     return normalized == granted || normalized.startsWith('$granted/');
   }
+
+  /// How a grant is written into `project.json`, or null when it is not
+  /// worth writing.
+  ///
+  /// The STATUS is not persisted: a stored grant is one that was granted,
+  /// and a file recording "cancelled" would be a file recording nothing.
+  ///
+  /// ⛔ Only a grant with a BOOKMARK is stored. On Windows, Linux and
+  /// Android a recorded path keeps working on its own, so writing one down
+  /// would add a field that says what the path already says. On Apple the
+  /// bookmark IS the grant — a path there is refused after a relaunch,
+  /// which is the whole reason any of this is saved.
+  Map<String, Object?>? toJson() {
+    final granted = path;
+    final token = bookmark;
+    if (granted == null || token == null || token.isEmpty) {
+      return null;
+    }
+    return {'path': granted, 'bookmark': token, 'kind': kind.jsonValue};
+  }
+
+  /// Null for anything that is not a complete stored grant — a hand-edited
+  /// file, or one written by a build that spelled this differently. A
+  /// missing grant costs a reconnect; a half-built one would be a path the
+  /// app believes it may write to.
+  static FolderGrant? fromJson(Object? json) {
+    if (json is! Map) {
+      return null;
+    }
+    final path = json['path'];
+    final bookmark = json['bookmark'];
+    if (path is! String ||
+        path.isEmpty ||
+        bookmark is! String ||
+        bookmark.isEmpty) {
+      return null;
+    }
+    return FolderGrant.granted(
+      path: path.replaceAll('\\', '/'),
+      bookmark: bookmark,
+      kind: GrantKind.fromJson(json['kind']),
+    );
+  }
+
+  /// The grant that opens [candidate], or null when none does.
+  ///
+  /// A helper rather than a `firstWhere` at each call site because the
+  /// answer is "none" far more often than not — most paths on most
+  /// platforms need no grant at all.
+  static FolderGrant? covering(Iterable<FolderGrant> grants, String path) {
+    for (final grant in grants) {
+      if (grant.covers(path)) {
+        return grant;
+      }
+    }
+    return null;
+  }
 }
 
 /// The one place that asks for a writable directory.

@@ -1,0 +1,287 @@
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
+import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
+import 'package:anicel/src/services/persistence/folder_grant.dart';
+import 'package:anicel/src/ui/audio/audio_conform_store.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+
+/// PR-5: the security-scoped tokens a project needs to reopen the media it
+/// only REFERENCES.
+///
+/// The whole feature is one sentence long on Apple: a recorded path is
+/// refused after a relaunch, so a reference that keeps only a path is a
+/// reference that works today and not tomorrow. Everything here is about
+/// the token surviving from the picker to the file and back.
+void main() {
+  group('a grant as the file records it', () {
+    test('a bookmarked grant round-trips through JSON', () {
+      const grant = FolderGrant.granted(
+        path: '/외장/참고영상.mp4',
+        bookmark: 'Ym9va21hcms=',
+        kind: GrantKind.file,
+      );
+      final restored = FolderGrant.fromJson(grant.toJson());
+
+      expect(restored, isNotNull);
+      expect(restored!.path, '/외장/참고영상.mp4');
+      expect(restored.bookmark, 'Ym9va21hcms=');
+      expect(restored.kind, GrantKind.file);
+      expect(
+        restored.isGranted,
+        isTrue,
+        reason: 'a stored grant is one that was granted — the status is not '
+            'written, because a file recording "cancelled" records nothing',
+      );
+    });
+
+    test('a grant with NO bookmark is not written down', () {
+      // Windows, Linux and Android: the path keeps working on its own, so
+      // a stored token would say what the path already says.
+      const desktop = FolderGrant.granted(path: '/work/참고영상.mp4');
+      expect(desktop.toJson(), isNull);
+    });
+
+    test('a half-built entry decodes to nothing', () {
+      // A missing grant costs a reconnect; a half-built one would be a
+      // path the app believes it may write to.
+      expect(FolderGrant.fromJson(null), isNull);
+      expect(FolderGrant.fromJson({'path': '/x.mp4'}), isNull);
+      expect(FolderGrant.fromJson({'bookmark': 'abc'}), isNull);
+      expect(FolderGrant.fromJson({'path': '', 'bookmark': 'abc'}), isNull);
+    });
+
+    test('coverage is one expression for a file and a folder alike', () {
+      const file = FolderGrant.granted(
+        path: '/외장/참고영상.mp4',
+        bookmark: 'b',
+        kind: GrantKind.file,
+      );
+      const folder = FolderGrant.granted(
+        path: '/외장/소재',
+        bookmark: 'b',
+        kind: GrantKind.folder,
+      );
+      expect(file.covers('/외장/참고영상.mp4'), isTrue);
+      expect(
+        file.covers('/외장/참고영상2.mp4'),
+        isFalse,
+        reason: 'a file grant is a subtree of size one',
+      );
+      expect(folder.covers('/외장/소재/발소리.wav'), isTrue);
+      expect(
+        folder.covers('/외장/소재다른곳/발소리.wav'),
+        isFalse,
+        reason: 'the separator is what makes a prefix a parent — without it '
+            '소재 would claim 소재다른곳',
+      );
+      // ⚠️ NOT asserted: that a file grant refuses `<file>/child`. The
+      // expression would say yes, and the docstring's "never true for a
+      // file" rests on no such path existing on a filesystem rather than
+      // on the code refusing it. Pinning the expression's answer to an
+      // impossible input would be pinning a coincidence.
+    });
+  });
+
+  group('the project file carries them', () {
+    test('grants are written at the top level and read back', () {
+      final project = createDefaultProject();
+      final bytes = buildAnicelProjectJsonBytes(
+        project: project,
+        grants: [
+          const FolderGrant.granted(
+            path: '/외장/참고영상.mp4',
+            bookmark: 'Ym9va21hcms=',
+            kind: GrantKind.file,
+          ).toJson()!,
+        ],
+      );
+
+      // Read back the way the archive reader does.
+      final archive = buildAnicelArchiveBytes(project: project, cels: const []);
+      expect(archive, isNotEmpty, reason: 'the builder still builds');
+      expect(
+        String.fromCharCodes(bytes),
+        contains('"grants"'),
+        reason: 'top level, beside mediaPaths — bookkeeping about the '
+            'machine, not anything about the film',
+      );
+    });
+
+    test('no grants means no key at all', () {
+      // Every project on every desktop. An empty list in the JSON would be
+      // a field the reader has to learn means nothing.
+      final bytes = buildAnicelProjectJsonBytes(project: createDefaultProject());
+      expect(String.fromCharCodes(bytes), isNot(contains('grants')));
+    });
+  });
+
+  group('the session holds them beside the project, not inside it', () {
+    late Directory directory;
+
+    setUp(() {
+      directory = Directory.systemTemp.createTempSync('qa-grants-');
+    });
+
+    tearDown(() {
+      try {
+        directory.deleteSync(recursive: true);
+      } on Object {
+        // Windows handles.
+      }
+    });
+
+    EditorSessionManager session() => EditorSessionManager(
+      initialProject: createDefaultProject(),
+      audioConformStore: AudioConformStore(
+        resolveConformPath: (_) => null,
+        runner: (request) async => const ConformResult(
+          outcome: ConformOutcome.undecodable,
+          error: 'test stub',
+        ),
+        log: (_) {},
+      ),
+    );
+
+    test('a grant survives a save and reopen', () async {
+      final s = session();
+      final movie = File('${directory.path}/참고영상.mp4')
+        ..writeAsBytesSync([0, 0, 0, 24]);
+      final path = movie.path.replaceAll('\\', '/');
+      s.importMediaFiles([movie.path], copyIntoProject: false);
+      s.rememberMediaGrants([
+        FolderGrant.granted(
+          path: path,
+          bookmark: 'Ym9va21hcms=',
+          kind: GrantKind.file,
+        ),
+      ]);
+
+      final projectPath = '${directory.path}/scene.anicel';
+      await s.saveProjectToFile(projectPath);
+      s.dispose();
+
+      final reopened = session();
+      await reopened.openProjectFromFile(projectPath);
+      expect(reopened.debugMediaGrants, hasLength(1));
+      expect(reopened.debugMediaGrants.single.path, path);
+      expect(reopened.debugMediaGrants.single.bookmark, 'Ym9va21hcms=');
+      expect(reopened.debugMediaGrants.single.kind, GrantKind.file);
+      reopened.dispose();
+    });
+
+    test('remembering a grant does NOT dirty the project', () async {
+      // 🚨 The reason grants live outside `Project`. Apple re-issues a
+      // bookmark on every resolve, so a grant in the model would mark the
+      // film dirty simply for having been opened — an edit the user never
+      // made, and a "save your changes?" they cannot account for.
+      final s = session();
+      final projectPath = '${directory.path}/scene.anicel';
+      await s.saveProjectToFile(projectPath);
+      expect(s.hasUnsavedChanges, isFalse);
+
+      s.rememberMediaGrants([
+        const FolderGrant.granted(
+          path: '/외장/참고영상.mp4',
+          bookmark: 'Ym9va21hcms=',
+          kind: GrantKind.file,
+        ),
+      ]);
+
+      expect(s.hasUnsavedChanges, isFalse);
+      s.dispose();
+    });
+
+    test('a grant for media the project no longer references is not saved',
+        () async {
+      // A token for a file nobody uses is a permission record for nothing,
+      // and a project that accumulates those is the shape that reads as an
+      // app hoarding access.
+      final s = session();
+      s.rememberMediaGrants([
+        const FolderGrant.granted(
+          path: '/외장/한때썼던것.mp4',
+          bookmark: 'Ym9va21hcms=',
+          kind: GrantKind.file,
+        ),
+      ]);
+      final projectPath = '${directory.path}/scene.anicel';
+      await s.saveProjectToFile(projectPath);
+      s.dispose();
+
+      final reopened = session();
+      await reopened.openProjectFromFile(projectPath);
+      expect(reopened.debugMediaGrants, isEmpty);
+      reopened.dispose();
+    });
+
+    test('a newer grant for the same path replaces the older token', () {
+      // Apple hands back a fresh bookmark every resolve; the one we came
+      // in with is the stale copy.
+      final s = session();
+      s.rememberMediaGrants([
+        const FolderGrant.granted(
+          path: '/외장/참고영상.mp4',
+          bookmark: 'old',
+          kind: GrantKind.file,
+        ),
+      ]);
+      s.rememberMediaGrants([
+        const FolderGrant.granted(
+          path: '/외장/참고영상.mp4',
+          bookmark: 'new',
+          kind: GrantKind.file,
+        ),
+      ]);
+
+      expect(s.debugMediaGrants, hasLength(1));
+      expect(s.debugMediaGrants.single.bookmark, 'new');
+      s.dispose();
+    });
+
+    test('a grant with no token is not held at all', () {
+      final s = session();
+      s.rememberMediaGrants([
+        const FolderGrant.granted(path: '/work/참고영상.mp4'),
+        const FolderGrant.cancelled(),
+      ]);
+      expect(s.debugMediaGrants, isEmpty);
+      s.dispose();
+    });
+
+    test('a movie kept as a REFERENCE is what this is for', () async {
+      // The kind rule keeps video outside the archive whatever anyone
+      // picks, so a movie is the asset whose path has to keep working —
+      // and on Apple a path alone does not.
+      final s = session();
+      final movie = File('${directory.path}/참고영상.mp4')
+        ..writeAsBytesSync([0, 0, 0, 24]);
+      s.importMediaFiles([movie.path], copyIntoProject: true);
+
+      expect(s.mediaAssets.single.kind, MediaAssetKind.video);
+      s.rememberMediaGrants([
+        FolderGrant.granted(
+          path: movie.path.replaceAll('\\', '/'),
+          bookmark: 'Ym9va21hcms=',
+          kind: GrantKind.file,
+        ),
+      ]);
+      final projectPath = '${directory.path}/scene.anicel';
+      await s.saveProjectToFile(projectPath);
+      s.dispose();
+
+      final reopened = session();
+      await reopened.openProjectFromFile(projectPath);
+      expect(
+        reopened.debugMediaGrants,
+        hasLength(1),
+        reason: 'the one asset that stays outside is the one that needs a '
+            'token to be read again',
+      );
+      reopened.dispose();
+    });
+  });
+}

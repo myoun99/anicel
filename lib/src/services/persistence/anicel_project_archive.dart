@@ -44,11 +44,25 @@ class AnicelArchiveContents {
     required this.project,
     required this.cels,
     required this.mediaRelativePaths,
+    this.grants = const [],
   });
 
   final Project project;
   final List<AnicelCelBlob> cels;
   final Map<String, String> mediaRelativePaths;
+
+  /// Security-scoped tokens for the media this project REFERENCES, as
+  /// they were written. Empty everywhere a path is durable on its own, and
+  /// empty for every project written before they were kept.
+  ///
+  /// Raw JSON, for the same reason the writer takes raw JSON: the type
+  /// that understands these cannot be imported here. The session decodes
+  /// them.
+  ///
+  /// ⚠️ Not yet resolved either — a bookmark has to be handed back to the
+  /// OS to become usable, and that answer may carry a DIFFERENT path (a
+  /// bookmark follows a file that moved).
+  final List<Map<String, Object?>> grants;
 }
 
 /// Everything media lives under, so the save path can tell an asset's
@@ -162,14 +176,30 @@ String anicelCelEntryName(BrushFrameKey key) {
 /// identical entry. [saveDirectory] (the file's parent, normalized with
 /// forward slashes) keys the relative-path manifest: media living under
 /// it is recorded relative, everything else stays absolute-only.
+/// [grants] are the security-scoped tokens the project needs to reopen the
+/// media it REFERENCES — top level, beside `mediaPaths`, because they are
+/// bookkeeping about the machine rather than anything about the film.
+///
+/// ⛔ Deliberately not on [Project]. Apple re-issues a bookmark on every
+/// resolve, so a grant that lived in the model would mark the project
+/// dirty every time it was opened — an edit the user never made, and a
+/// "save your changes?" they cannot explain.
+///
+/// 🔑 Taken as plain JSON rather than as the picker's grant type. This
+/// runs inside the save isolate, and the type lives in a file that reaches
+/// for `file_selector` and a `MethodChannel` — neither of which works
+/// there. Deciding WHICH grants are worth keeping needs to know what the
+/// project references, which is the session's business anyway; the format
+/// writes down what it is handed.
 Uint8List buildAnicelProjectJsonBytes({
   required Project project,
   String? saveDirectory,
   Set<String> mediaInArchive = const {},
+  List<Map<String, Object?>> grants = const [],
 }) {
   final mediaRelativePaths = <String, String>{};
   final mediaEntries = <String, String>{};
-  for (final path in _projectMediaPaths(project)) {
+  for (final path in projectMediaPaths(project)) {
     // Two ways for the project to find its media again, and which one
     // applies is a property of the asset, not of the project: what lives
     // INSIDE travels with the file and can never be lost or moved, while
@@ -194,6 +224,7 @@ Uint8List buildAnicelProjectJsonBytes({
         'project': project.toJson(),
         if (mediaRelativePaths.isNotEmpty) 'mediaPaths': mediaRelativePaths,
         if (mediaEntries.isNotEmpty) 'mediaEntries': mediaEntries,
+        if (grants.isNotEmpty) 'grants': grants,
       }),
     ),
   );
@@ -270,10 +301,22 @@ AnicelArchiveContents parseAnicelArchiveBytes(Uint8List bytes) {
         AnicelCelBlob(file.readBytes()!),
   ];
 
+  final grantsJson = decoded['grants'];
+  final grants = <Map<String, Object?>>[
+    if (grantsJson is List)
+      for (final entry in grantsJson)
+        if (entry is Map)
+          {
+            for (final field in entry.entries)
+              if (field.key is String) field.key as String: field.value,
+          },
+  ];
+
   return AnicelArchiveContents(
     project: project,
     cels: cels,
     mediaRelativePaths: mediaRelativePaths,
+    grants: grants,
   );
 }
 
@@ -322,7 +365,11 @@ Project remapProjectMediaPaths(Project project, Map<String, String> oldToNew) {
 }
 
 /// The distinct media file paths a project references (pool + clips).
-Set<String> _projectMediaPaths(Project project) {
+///
+/// Public because the session asks the same question when it decides which
+/// grants are still worth saving — the alternative was a second walk of
+/// the same tree that could drift from this one.
+Set<String> projectMediaPaths(Project project) {
   final paths = <String>{for (final asset in project.mediaAssets) asset.path};
   for (final track in project.tracks) {
     for (final layer in track.seLayers) {
