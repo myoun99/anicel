@@ -600,6 +600,7 @@ void main() {
     'tlDetachLayer': (s) => s.tlDetachLayer,
     'tlCopyFrame': (s) => s.tlCopyFrame,
     'tlPasteLinkedFrame': (s) => s.tlPasteLinkedFrame,
+    'tlPasteIndependentFrame': (s) => s.tlPasteIndependentFrame,
     'tlDeleteCell': (s) => s.tlDeleteCell,
     'tlEditInstance': (s) => s.tlEditInstance,
     'tlAdd': (s) => s.tlAdd,

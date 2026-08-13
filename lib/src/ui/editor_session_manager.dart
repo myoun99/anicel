@@ -9920,6 +9920,36 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// ㉕: the copied cel's content here, as a cel of its own.
+  ///
+  /// Same gate as the linked paste — there is a copied cel and it belongs to
+  /// this row — because the question "is there something to paste" does not
+  /// change with what the paste MAKES.
+  bool get canPasteIndependentFrameAtCurrentFrame =>
+      canPasteLinkedFrameAtCurrentFrame;
+
+  void pasteIndependentFrameAtCurrentFrame() {
+    final layer = activeLayer;
+    final copiedFrame = _copiedFrame;
+    if (layer == null ||
+        copiedFrame == null ||
+        !canPasteIndependentFrameAtCurrentFrame) {
+      return;
+    }
+
+    _timelineController.pasteIndependentFrameForLayer(
+      layerId: layer.id,
+      frameId: copiedFrame.frameId,
+      // 🚨Through the MINT. `_nextFrameId` reads the sequence without
+      // advancing it, so two independent pastes inside one clock tick would
+      // come out as the SAME cel — which is not "two cels that look alike",
+      // it is one cel exposed twice, and the import round already paid for
+      // that lesson once.
+      newFrameId: _mintFrameId(layer.id),
+    );
+    notifyListeners();
+  }
+
   void pasteLinkedFrameAtCurrentFrame() {
     final layer = activeLayer;
     final copiedFrame = _copiedFrame;

@@ -11,6 +11,7 @@ import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
+import 'cut_duplicate_helpers.dart' show duplicateFrameContent;
 import '../models/timeline_exposure.dart';
 import '../models/timeline_repeat.dart';
 import '../services/command.dart';
@@ -719,14 +720,58 @@ class TimelineController {
     required FrameId frameId,
   }) {
     final before = _requireLayer(layerId);
-    final index = _editFrameIndexFor(layerId);
     if (!canPasteLinkedFrameAt(
       layer: before,
-      frameIndex: index,
+      frameIndex: _editFrameIndexFor(layerId),
       copiedFrameId: frameId,
     )) {
       return;
     }
+    _pasteFrameForLayer(layerId: layerId, frameId: frameId);
+  }
+
+  /// ㉕ 독립 붙여넣기: the copied cel's CONTENT here, as a cel of its OWN.
+  ///
+  /// The only difference from the linked paste is which cel the exposure
+  /// ends up pointing at — a new one rather than the copied one — so the
+  /// placement rules (relink on a block start, split inside a hold, fill an
+  /// empty cell up to the next block) are shared rather than restated.
+  /// Drawing on the result must not reach the frame it came from; that is
+  /// the whole of what "독립" means here.
+  void pasteIndependentFrameForLayer({
+    required LayerId layerId,
+    required FrameId frameId,
+    required FrameId newFrameId,
+  }) {
+    final before = _requireLayer(layerId);
+    if (!canPasteLinkedFrameAt(
+      layer: before,
+      frameIndex: _editFrameIndexFor(layerId),
+      copiedFrameId: frameId,
+    )) {
+      return;
+    }
+    final source = _frameOrNull(layer: before, frameId: frameId);
+    if (source == null) {
+      return;
+    }
+    _pasteFrameForLayer(
+      layerId: layerId,
+      frameId: newFrameId,
+      bornFrame: duplicateFrameContent(frame: source, newFrameId: newFrameId),
+    );
+  }
+
+  /// Puts [frameId]'s exposure at the edit index. [bornFrame] is the
+  /// independent paste's new cel, which joins the layer before anything
+  /// points at it; null is the linked paste, where reuse IS the point.
+  void _pasteFrameForLayer({
+    required LayerId layerId,
+    required FrameId frameId,
+    Frame? bornFrame,
+  }) {
+    final before = _requireLayer(layerId);
+    final index = _editFrameIndexFor(layerId);
 
     final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
       before.timeline,
@@ -757,12 +802,14 @@ class TimelineController {
       );
     }
 
-    var nextFrames = before.frames;
+    var nextFrames = bornFrame == null
+        ? before.frames
+        : [...before.frames, bornFrame];
     if (replacedFrameId != null &&
         replacedFrameId != frameId &&
         !_timelineReferencesFrame(nextTimeline, replacedFrameId)) {
       final removedFrameId = replacedFrameId;
-      nextFrames = before.frames
+      nextFrames = nextFrames
           .where((frame) => frame.id != removedFrameId)
           .toList(growable: false);
     }

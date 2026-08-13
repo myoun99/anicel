@@ -546,20 +546,10 @@ class TimelineActionToolbar extends StatelessWidget {
       // 확정: 「프레임 알약 밖으로: 딜리트 · Edit Instance」). The delete half
       // of that sentence went further, to the shared pill, but ⑰ sent it
       // there — 「밖으로」 on its own means out of the menu.
-      PanelFlyoutItem(
-        keyValue: 'copy-frame-button',
-        label: AppText.strings.tlCopyFrame,
-        icon: Icons.content_copy,
-        enabled: session.canCopyFrameAtCurrentFrame,
-        onSelected: session.copyFrameAtCurrentFrame,
-      ),
-      PanelFlyoutItem(
-        keyValue: 'paste-linked-frame-button',
-        label: AppText.strings.tlPasteLinkedFrame,
-        icon: Icons.link,
-        enabled: session.canPasteLinkedFrameAtCurrentFrame,
-        onSelected: session.pasteLinkedFrameAtCurrentFrame,
-      ),
+      // ⛔COPY AND THE PASTES ARE NOT HERE — ㉕ put them on the SHARED pill
+      // (확정 #11), beside the one delete. They belong to no noun: what they
+      // act on is whatever is selected, which is exactly the sentence that
+      // pill exists to say.
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'delete-cell-button',
@@ -731,10 +721,46 @@ class TimelineActionToolbar extends StatelessWidget {
   );
 
   Widget _sharedPillBody() => _StaticCommandGroup(
-    rebuildKey: (session.deleteSubject, AppText.settings.value.programLanguage),
+    rebuildKey: (
+      session.deleteSubject,
+      AppText.settings.value.programLanguage,
+      // ㉕: the three that joined the delete read their own gates.
+      session.canCopyFrameAtCurrentFrame,
+      session.canPasteLinkedFrameAtCurrentFrame,
+      session.canPasteIndependentFrameAtCurrentFrame,
+    ),
     builder: (context) => CommandPill(
       key: const ValueKey<String>('timeline-toolbar-shared-group'),
       children: [
+        _iconButton(
+          key: const ValueKey<String>('copy-frame-button'),
+          tooltip: AppText.strings.tlCopyFrame,
+          icon: Icons.content_copy,
+          onPressed: session.canCopyFrameAtCurrentFrame
+              ? session.copyFrameAtCurrentFrame
+              : null,
+        ),
+        // ㉕ 확정 #8: the paste that makes a REAL frame, not a link. Two
+        // buttons rather than one with a modifier, because which one you
+        // meant is not a detail — a linked paste that was meant to be
+        // independent is only discovered later, by drawing on it and
+        // watching another cel change.
+        _iconButton(
+          key: const ValueKey<String>('paste-independent-frame-button'),
+          tooltip: AppText.strings.tlPasteIndependentFrame,
+          icon: Icons.content_paste,
+          onPressed: session.canPasteIndependentFrameAtCurrentFrame
+              ? session.pasteIndependentFrameAtCurrentFrame
+              : null,
+        ),
+        _iconButton(
+          key: const ValueKey<String>('paste-linked-frame-button'),
+          tooltip: AppText.strings.tlPasteLinkedFrame,
+          icon: Icons.link,
+          onPressed: session.canPasteLinkedFrameAtCurrentFrame
+              ? session.pasteLinkedFrameAtCurrentFrame
+              : null,
+        ),
         _iconButton(
           key: const ValueKey<String>('shared-delete-button'),
           tooltip: AppText.strings.tlDeleteCell,

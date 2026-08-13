@@ -553,6 +553,10 @@ class AppStrings {
   String get tlDetachLayer => _s('tlDetachLayer');
   String get tlCopyFrame => _s('tlCopyFrame');
   String get tlPasteLinkedFrame => _s('tlPasteLinkedFrame');
+
+  /// ㉕: the copied cel's content as a cel of its OWN — the paste that does
+  /// NOT link, named for what it makes rather than for what it is not.
+  String get tlPasteIndependentFrame => _s('tlPasteIndependentFrame');
   String get tlDeleteCell => _s('tlDeleteCell');
   String get tlEditInstance => _s('tlEditInstance');
   String get tlAdd => _s('tlAdd');
@@ -1560,6 +1564,7 @@ class AppStrings {
     'tlDetachLayer': 'Detach from base',
     'tlCopyFrame': 'Copy frame',
     'tlPasteLinkedFrame': 'Paste linked frame',
+    'tlPasteIndependentFrame': 'Paste independent frame',
     'tlDeleteCell': 'Delete',
     'tlEditInstance': 'Edit instance…',
     'tlAdd': 'Add',
@@ -2322,6 +2327,7 @@ class AppStrings {
     'tlDetachLayer': '付属を解除',
     'tlCopyFrame': 'フレームをコピー',
     'tlPasteLinkedFrame': 'リンクフレームを貼り付け',
+    'tlPasteIndependentFrame': '独立フレームを貼り付け',
     'tlDeleteCell': '削除',
     'tlEditInstance': 'インスタンスを編集…',
     'tlAdd': '追加',
@@ -3077,6 +3083,7 @@ class AppStrings {
     'tlDetachLayer': '어태치 해제',
     'tlCopyFrame': '프레임 복사',
     'tlPasteLinkedFrame': '링크 프레임 붙여넣기',
+    'tlPasteIndependentFrame': '독립 프레임 붙여넣기',
     'tlDeleteCell': '삭제',
     'tlEditInstance': '인스턴스 편집…',
     'tlAdd': '추가',
@@ -3870,6 +3877,7 @@ class AppStrings {
     'tlDetachLayer': 'Détacher de la base',
     'tlCopyFrame': "Copier l'image",
     'tlPasteLinkedFrame': "Coller l'image liée",
+    'tlPasteIndependentFrame': "Coller une image indépendante",
     'tlDeleteCell': 'Supprimer',
     'tlEditInstance': "Modifier l'instance…",
     'tlAdd': 'Ajouter',
@@ -4602,6 +4610,7 @@ class AppStrings {
     'tlDetachLayer': '解除附属',
     'tlCopyFrame': '复制帧',
     'tlPasteLinkedFrame': '粘贴链接帧',
+    'tlPasteIndependentFrame': '粘贴独立帧',
     'tlDeleteCell': '删除',
     'tlEditInstance': '编辑实例…',
     'tlAdd': '添加',

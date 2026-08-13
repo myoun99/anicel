@@ -30,9 +30,9 @@ const Map<String, String> flyoutOwnerByItemKey = {
   // lanes on the SE row now, so the window it opened had nothing left to
   // hold.
   // ⛔'rename-frame-button' (Edit Instance) left the frame menu for the
-  // frame pill — ① again.
-  'copy-frame-button': 'timeline-frame-menu-button',
-  'paste-linked-frame-button': 'timeline-frame-menu-button',
+  // frame pill — ① again. ⛔'copy-frame-button' and
+  // 'paste-linked-frame-button' went further, to the SHARED pill (㉕): they
+  // act on what is selected, so they belong to no noun's menu.
   'delete-cell-button': 'timeline-frame-menu-button',
   'add-cut-create-linked': 'new-cut-menu',
   'rename-cut-button': 'cut-menu-button',

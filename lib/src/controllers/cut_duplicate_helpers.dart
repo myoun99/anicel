@@ -153,6 +153,31 @@ Layer duplicateLayerAsIndependentCopy({
   );
 }
 
+/// One frame's CONTENT under a new id — strokes deep-copied, so the copy
+/// owes the source nothing afterwards.
+///
+/// Public because ㉕'s independent paste wants exactly this and nothing
+/// else: a cel that came from another cel and is not linked to it. The cut
+/// duplication below is the same question asked about a whole cut, so it
+/// asks it here rather than growing a second answer.
+///
+/// ⚠️Field-by-field reconstruction is this helper's trap: it silently
+/// dropped `seName` until the text round walked past — every new [Frame]
+/// field must be carried here by hand.
+Frame duplicateFrameContent({
+  required Frame frame,
+  required FrameId newFrameId,
+}) {
+  return Frame(
+    id: newFrameId,
+    duration: frame.duration,
+    strokes: frame.strokes.map(_duplicateStroke).toList(),
+    name: frame.name,
+    seName: frame.seName,
+    textContent: frame.textContent,
+  );
+}
+
 Frame _duplicateFrame({
   required Frame frame,
   required Map<FrameId, FrameId> frameIdMap,
@@ -166,17 +191,7 @@ Frame _duplicateFrame({
     );
   }
 
-  return Frame(
-    id: newFrameId,
-    duration: frame.duration,
-    strokes: frame.strokes.map(_duplicateStroke).toList(),
-    name: frame.name,
-    // Field-by-field reconstruction is this helper's trap: it silently
-    // dropped seName until the text round walked past — every new Frame
-    // field must be carried here by hand.
-    seName: frame.seName,
-    textContent: frame.textContent,
-  );
+  return duplicateFrameContent(frame: frame, newFrameId: newFrameId);
 }
 
 TimelineExposure _duplicateTimelineExposure({
