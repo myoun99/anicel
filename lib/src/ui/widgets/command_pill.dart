@@ -20,9 +20,18 @@ import 'panel_flyout.dart';
 /// bare row of icons is a state machine** (the playback transport, which is
 /// deliberately not wrapped in one).
 ///
-/// ⛔The `▾` is gone from the whole bar. Where a verb needs to offer VARIANTS
-/// it grows a [GripBand] along its top edge instead ([StrapIconButton]) — a
-/// caret costs 16px of the scarce axis, and the top edge costs none.
+/// ⛔The `▾` is gone from the whole bar, with ONE exception: a verb that
+/// offers VARIANTS carries a slim caret beside it ([StrapIconButton]).
+///
+/// That exception was itself the retired rule for a while — the variants sat
+/// on a band along the button's top edge, bought with the argument that 「a
+/// caret costs 16px of the scarce axis, and the top edge costs none」. It
+/// cost something the width never would: nobody could find it. The `＋`
+/// makes only an animation layer, so the band was the sole route to every
+/// other KIND, and a first-time user simply could not reach them (유저
+/// 2026-08-14: 「옛날처럼 +버튼 오른쪽에 펼치기아이콘으로 버튼 했었잖아.
+/// 그거 그대로하자.」). Discoverability was feature availability, and the bar
+/// scrolls anyway.
 class CommandPill extends StatelessWidget {
   const CommandPill({
     super.key,
@@ -265,80 +274,104 @@ class _StrapIconButtonState extends State<StrapIconButton> {
     if (!_hasBand) {
       return button;
     }
-    return SizedBox(
-      width: AppIconButtonSize.bar.maxWidth,
-      height: CommandPill.height,
-      child: Stack(
-        children: [
-          // ★The body keeps its FULL size and sits against the bottom; the
-          // band's target is laid OVER its top edge rather than beside it.
-          //
-          // It was written the other way first — body pushed down below the
-          // 8px, `Align`ed inside what was left — and that is 24px of button
-          // in a 20px box: a silent 4px overflow, because a `Stack` neither
-          // clips nor complains. The pill is exactly the bar's content height
-          // (36 − 8 of padding = 28), so there is no margin above it to
-          // borrow; the zone has to come out of the button's own top.
-          //
-          // What the body loses is 8px of TARGET, not of glyph — the icon is
-          // 18px centred in a 24px box, so it still clears the band.
-          Align(alignment: Alignment.bottomCenter, child: button),
-          Positioned(
-            left: 3,
-            right: 3,
-            top: 1,
-            height: GripBand.reach,
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  // ★Thickness never moves (유저 확정: 호버하면 굵어지는 것은
-                  // 폐기, 처음부터 굵은 상태). Only the colour climbs, and it
-                  // climbs the app's one ladder.
-                  color: GripBand.ink(
-                    nearby: enabled,
-                    hovered: _bandHovered,
-                    active: _bandPressed,
-                    idle: AppColors.hairlineStrong,
-                  ),
-                  borderRadius: BorderRadius.circular(2),
-                ),
+    // 🚨★ 유저 확정 2026-08-14, ⛔재론 금지: 「**옛날처럼 +버튼 오른쪽에
+    // 펼치기아이콘으로 버튼** 했었잖아. 그거 그대로하자.」
+    //
+    // The variants used to live on an 8px band laid over the button's top
+    // edge, and the note defending that weighed one cost only: 「a caret
+    // costs 16px of the scarce axis, and the top edge costs none」. It bought
+    // the width by making the affordance invisible.
+    //
+    // ⚠️Here that is not a cosmetic loss. The `＋` makes an ANIMATION layer
+    // and nothing else; the band was the ONLY route to a storyboard, image or
+    // text layer. Someone new to the app could not find it (유저: 「그 띠가
+    // 너무 알기어렵다고해」), so discoverability WAS feature availability —
+    // and 16px is not the expensive side of that trade. The bar scrolls
+    // (유저: 「스크롤있으니까 상관없는데」).
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        button,
+        _ExpandButton(
+          menuKey: widget.menuKey!,
+          enabled: enabled,
+          hovered: _bandHovered,
+          pressed: _bandPressed,
+          onHoverChanged: (value) => setState(() => _bandHovered = value),
+          onPressedChanged: (value) => setState(() => _bandPressed = value),
+          onOpen: (context) =>
+              showPanelFlyout(context, entries: widget.entriesBuilder!()),
+        ),
+      ],
+    );
+  }
+}
+
+/// The slim caret beside a [StrapIconButton] that opens its variants.
+///
+/// Narrow on purpose: it is a second door onto the button next to it, not a
+/// verb of its own, and a full-width target would read as two buttons.
+///
+/// ⛔The accent never lands here. [StrapIconButton.accent] puts it on the
+/// `＋` GLYPH and only there (유저 확정) — an accented caret would claim the
+/// menu is the thing that adds. The ink climbs [GripBand]'s ladder instead,
+/// which is the same one the retired band used, so the hover and press
+/// shades are unchanged.
+class _ExpandButton extends StatelessWidget {
+  const _ExpandButton({
+    required this.menuKey,
+    required this.enabled,
+    required this.hovered,
+    required this.pressed,
+    required this.onHoverChanged,
+    required this.onPressedChanged,
+    required this.onOpen,
+  });
+
+  final String menuKey;
+  final bool enabled;
+  final bool hovered;
+  final bool pressed;
+  final ValueChanged<bool> onHoverChanged;
+  final ValueChanged<bool> onPressedChanged;
+  final void Function(BuildContext context) onOpen;
+
+  /// Wide enough to aim at, narrow enough to read as part of its neighbour.
+  static const double width = 16;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      onEnter: (_) => onHoverChanged(true),
+      onExit: (_) => onHoverChanged(false),
+      child: GestureDetector(
+        key: ValueKey<String>(menuKey),
+        behavior: HitTestBehavior.opaque,
+        onTapDown: enabled ? (_) => onPressedChanged(true) : null,
+        onTapCancel: () => onPressedChanged(false),
+        onTap: enabled
+            ? () {
+                onPressedChanged(false);
+                onOpen(context);
+              }
+            : null,
+        child: SizedBox(
+          width: width,
+          height: CommandPill.height,
+          child: Center(
+            child: Icon(
+              Icons.arrow_drop_down,
+              size: 16,
+              color: GripBand.ink(
+                nearby: enabled,
+                hovered: hovered,
+                active: pressed,
+                idle: AppColors.hairlineStrong,
               ),
             ),
           ),
-          // LAST in the stack, so its 8px wins the hit test over the body.
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 0,
-            height: GripBand.hitExtent,
-            child: MouseRegion(
-              cursor: SystemMouseCursors.click,
-              onEnter: (_) => setState(() => _bandHovered = true),
-              onExit: (_) => setState(() => _bandHovered = false),
-              child: GestureDetector(
-                key: ValueKey<String>(widget.menuKey!),
-                behavior: HitTestBehavior.opaque,
-                onTapDown: (_) => setState(() => _bandPressed = true),
-                onTapCancel: () => setState(() => _bandPressed = false),
-                onTap: () {
-                  setState(() => _bandPressed = false);
-                  showPanelFlyout(
-                    context,
-                    entries: widget.entriesBuilder!(),
-                    // The list belongs to the BUTTON, not to the 8px sliver
-                    // that opened it — anchoring on the sliver would hang the
-                    // menu off the bar's top edge instead of under the button.
-                    anchorRect: Offset.zero &
-                        Size(
-                          AppIconButtonSize.bar.maxWidth,
-                          CommandPill.height,
-                        ),
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
