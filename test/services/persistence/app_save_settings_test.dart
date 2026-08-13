@@ -13,12 +13,17 @@ void main() {
     AppSave.settings.value = const AppSaveSettings();
   });
 
-  test('defaults: autosave ON, and there is no cadence to set', () {
+  test('defaults: the two cheap triggers on, the clock off', () {
     const settings = AppSaveSettings();
-    expect(settings.autosaveEnabled, isTrue);
-    // No interval field: the trigger is leaving the app, not a clock.
+    expect(settings.lifecycleSnapshotEnabled, isTrue);
+    expect(settings.pauseSnapshotEnabled, isTrue);
+    // The clock is opt-in: pauses cover a session that has them, and the
+    // interval only earns its keep on a long unbroken stretch.
+    expect(settings.periodicSnapshotMinutes, isNull);
     expect(settings.toJson().keys, unorderedEquals(<String>[
-      'autosaveEnabled',
+      'lifecycleSnapshotEnabled',
+      'pauseSnapshotEnabled',
+      'periodicSnapshotMinutes',
       'recordingsDirectory',
       'conformDirectory',
     ]));
@@ -30,7 +35,9 @@ void main() {
 
   test('json roundtrip', () {
     const settings = AppSaveSettings(
-      autosaveEnabled: false,
+      lifecycleSnapshotEnabled: false,
+      pauseSnapshotEnabled: false,
+      periodicSnapshotMinutes: 20,
       recordingsDirectory: '/tmp/takes',
       conformDirectory: '/tmp/conforms',
     );
@@ -55,20 +62,49 @@ void main() {
     );
   });
 
-  test('settings an older build wrote are read and DROPPED, not carried',
-      () {
-    // Neither names anything now — the location is fixed and the trigger
-    // is not a clock — and a setting that outlives its feature is a value
-    // the next reader has to work out is dead.
+  test('a setting whose feature is gone is read and DROPPED', () {
+    // The sidecar location is fixed now, and a setting that outlives its
+    // feature is a value the next reader has to work out is dead.
     final revived = AppSaveSettings.fromJson(const {
-      'autosaveEnabled': true,
-      'autosaveIntervalMinutes': 12,
       'sidecarDirectory': '/somewhere/old',
       'recordingsDirectory': null,
     });
     expect(revived, const AppSaveSettings());
     expect(revived.toJson().containsKey('sidecarDirectory'), isFalse);
-    expect(revived.toJson().containsKey('autosaveIntervalMinutes'), isFalse);
+  });
+
+  test('the two OLD names still mean something, so they are carried', () {
+    // `autosaveEnabled` was one switch over every trigger; the closest
+    // thing it now names is the pause. `autosaveIntervalMinutes` was a
+    // clock a build in between dropped — a user who had set one gets it
+    // back rather than silently starting from the default.
+    final revived = AppSaveSettings.fromJson(const {
+      'autosaveEnabled': false,
+      'autosaveIntervalMinutes': 12,
+    });
+    expect(revived.pauseSnapshotEnabled, isFalse);
+    expect(revived.periodicSnapshotMinutes, 12);
+    // The switch the old name never covered keeps its own default.
+    expect(revived.lifecycleSnapshotEnabled, isTrue);
+    // And the new name wins when both are present.
+    expect(
+      AppSaveSettings.fromJson(const {
+        'autosaveEnabled': false,
+        'pauseSnapshotEnabled': true,
+      }).pauseSnapshotEnabled,
+      isTrue,
+    );
+  });
+
+  test('a non-positive interval is OFF, not a clock that never stops', () {
+    for (final bad in const <Object?>[0, -5, 'ten', null]) {
+      expect(
+        AppSaveSettings.fromJson({'periodicSnapshotMinutes': bad})
+            .periodicSnapshotMinutes,
+        isNull,
+        reason: 'for $bad',
+      );
+    }
   });
 
   test('store roundtrip; missing/corrupt files yield null', () async {

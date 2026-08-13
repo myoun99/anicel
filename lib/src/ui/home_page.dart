@@ -157,8 +157,13 @@ class _HomePageState extends State<HomePage> {
   /// as two fields on a State is a policy nothing can test.
   late final IdleSnapshotGuard _idleGuard = IdleSnapshotGuard(
     idleAfter: const Duration(seconds: 15),
-    onIdle: () => unawaited(_autosave?.saveNow()),
+    onSnapshot: () => unawaited(_autosave?.saveNow()),
   );
+
+  /// Pointer ids currently down. A count rather than a bool because a
+  /// second finger landing and lifting must not report the stroke over
+  /// while the first is still drawing.
+  final Set<int> _pointersDown = <int>{};
 
   /// PEN-12 #5: the DESKTOP exit gate — the window's close button lands
   /// in the same confirm dialog as the Android back button (the OS asks
@@ -302,10 +307,16 @@ class _HomePageState extends State<HomePage> {
   /// disabled tears it down. No timer any more: [_snapshotForRecovery]
   /// decides WHEN, off the app lifecycle.
   void _syncAutosaveService() {
-    _autosave = null;
-    if (!AppSave.settings.value.autosaveEnabled) {
-      return;
-    }
+    final settings = AppSave.settings.value;
+    final minutes = settings.periodicSnapshotMinutes;
+    _idleGuard.configure(
+      pauseEnabled: settings.pauseSnapshotEnabled,
+      ceiling: minutes == null ? null : Duration(minutes: minutes),
+    );
+    // Built unconditionally now. It used to be torn down when autosave was
+    // switched off, which also silenced the lifecycle snapshot — so the
+    // one trigger that costs nothing and is the only one a mobile OS
+    // leaves room for went away with the two that are optional.
     _autosave = ProjectAutosaveService(
       // Stands down while a manual save runs: a snapshot that lands after
       // the save's retirement leaves one behind for a project that was
@@ -335,6 +346,9 @@ class _HomePageState extends State<HomePage> {
   /// of those a platform sends, and in what order, is not something to
   /// depend on, and the service collapses the burst itself.
   void _snapshotForRecovery() {
+    if (!AppSave.settings.value.lifecycleSnapshotEnabled) {
+      return;
+    }
     // This trigger just wrote one, so the guard no longer owes anything.
     _idleGuard.standDown();
     unawaited(_autosave?.saveNow());
@@ -346,7 +360,14 @@ class _HomePageState extends State<HomePage> {
   /// wrapped around the app: a global route OBSERVES events without
   /// joining hit testing, so nothing about how input reaches the canvas
   /// changes. This repo cares about that path more than most.
-  void _noteUserActivity(PointerEvent event) => _idleGuard.noteActivity();
+  void _noteUserActivity(PointerEvent event) {
+    if (event is PointerDownEvent) {
+      _pointersDown.add(event.pointer);
+    } else if (event is PointerUpEvent || event is PointerCancelEvent) {
+      _pointersDown.remove(event.pointer);
+    }
+    _idleGuard.noteActivity(strokeInFlight: _pointersDown.isNotEmpty);
+  }
 
   @override
   void dispose() {

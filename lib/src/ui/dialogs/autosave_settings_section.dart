@@ -33,21 +33,99 @@ class AutosaveSettingsSection extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const Text(
+              'Crash recovery',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Snapshots unsaved changes so a crash or a flat battery does '
+              'not cost them. The project file itself only changes when you '
+              'save; a snapshot is discarded the moment the work stops '
+              'being unsaved.',
+              style: TextStyle(fontSize: 12),
+            ),
             SwitchListTile(
               key: const ValueKey<String>('settings-autosave-enabled'),
               contentPadding: EdgeInsets.zero,
               dense: true,
-              title: const Text('Autosave'),
+              title: const Text('When leaving the app'),
               subtitle: const Text(
-                'Snapshots unsaved changes for crash recovery whenever you '
-                'leave the app. The project file itself only changes when '
-                'you save.',
+                'Closing the project, switching away, or the system putting '
+                'the app to sleep. Costs nothing — nobody is drawing — and '
+                'on a phone or tablet it is the only warning the system '
+                'gives before it stops the app.',
               ),
-              value: settings.autosaveEnabled,
+              value: settings.lifecycleSnapshotEnabled,
               onChanged: (enabled) => session.setSaveSettings(
-                settings.copyWith(autosaveEnabled: enabled),
+                settings.copyWith(lifecycleSnapshotEnabled: enabled),
               ),
             ),
+            SwitchListTile(
+              key: const ValueKey<String>('settings-autosave-pause'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: const Text('When you pause'),
+              subtitle: const Text(
+                'A few seconds without touching anything is enough. Once per '
+                'pause, not on a repeat — sitting idle does not keep '
+                'rewriting the same file.',
+              ),
+              value: settings.pauseSnapshotEnabled,
+              onChanged: (enabled) => session.setSaveSettings(
+                settings.copyWith(pauseSnapshotEnabled: enabled),
+              ),
+            ),
+            SwitchListTile(
+              key: const ValueKey<String>('settings-autosave-periodic'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: const Text('While you keep working'),
+              subtitle: Text(
+                settings.periodicSnapshotMinutes == null
+                    // The reason to want it: a long focused stretch never
+                    // pauses, so a pause-only guard covers nothing during
+                    // exactly the hours that hold the most work.
+                    ? 'Off. Pauses alone cover a session that has them — a '
+                          'long stretch without one goes unprotected.'
+                    : 'At most ${settings.periodicSnapshotMinutes} minutes '
+                          'of work is ever unprotected. Any snapshot resets '
+                          'the count, so this only fires when nothing else '
+                          'did.',
+              ),
+              value: settings.periodicSnapshotMinutes != null,
+              onChanged: (enabled) => session.setSaveSettings(
+                settings.copyWith(
+                  periodicSnapshotMinutes: enabled
+                      ? AppSaveSettings.defaultPeriodicSnapshotMinutes
+                      : null,
+                ),
+              ),
+            ),
+            if (settings.periodicSnapshotMinutes != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 8, bottom: 4),
+                child: Row(
+                  children: [
+                    const Text('Minutes', style: TextStyle(fontSize: 12)),
+                    const SizedBox(width: 8),
+                    for (final minutes in const <int>[5, 10, 20, 30])
+                      Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: ChoiceChip(
+                          key: ValueKey<String>('settings-autosave-$minutes'),
+                          label: Text('$minutes'),
+                          selected: settings.periodicSnapshotMinutes == minutes,
+                          onSelected: (_) => session.setSaveSettings(
+                            settings.copyWith(
+                              periodicSnapshotMinutes: minutes,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             const Divider(height: 16),
             // REC1-B2: the take shelf. Mobile shows where takes land but
             // cannot move it (the app documents home is the only sane
