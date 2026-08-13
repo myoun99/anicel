@@ -47,7 +47,7 @@ void main() {
           body: MainCanvasBrushHost(
             // No selection: the active layer has no frame at the playhead,
             // but the other layers' composite (the underlay) must show.
-            viewportUnderlayBuilder: (context, viewport, _) => const ColoredBox(
+            viewportUnderlayBuilder: (context, viewport, _, _) => const ColoredBox(
               key: ValueKey<String>('underlay-probe'),
               color: Colors.red,
             ),

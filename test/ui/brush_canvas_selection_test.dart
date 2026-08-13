@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/canvas/selection_ants_painter.dart';
+import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/input/app_input_settings.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
@@ -326,6 +327,27 @@ void main() {
       await tester.pump();
     }
   }
+
+  /// The FLOAT's surface painters — every one whose surface is not the
+  /// committed cel.
+  ///
+  /// TS1 moved the float out of the widget tree's own painters: it is a
+  /// canvas-space DESCRIPTION now, published so the composite can draw it at
+  /// the active layer's depth (that is what makes the rows above occlude it).
+  /// Hosts with no composite — this test's panel among them — draw the same
+  /// description through [SelectionFloatPainter], so the way to the float is
+  /// through that painter's `float`.
+  List<BitmapSurfacePainter> floatPainters(
+    WidgetTester tester,
+    BitmapSurface committed,
+  ) => tester
+      .widgetList<CustomPaint>(find.byType(CustomPaint))
+      .map((paint) => paint.painter)
+      .whereType<SelectionFloatPainter>()
+      .map((painter) => painter.float.surface)
+      .whereType<BitmapSurfacePainter>()
+      .where((painter) => !identical(painter.surface, committed))
+      .toList();
 
   Future<void> dragOnLayer(WidgetTester tester, Offset from, Offset to) async {
     final origin = tester.getTopLeft(find.byKey(layerKey));
@@ -1593,15 +1615,10 @@ void main() {
       }
 
       BitmapSurfacePainter floatPainter() {
-        final committed = env.coordinator.currentSurfaceOf(
-          env.coordinator.activeFrameKey,
+        final floats = floatPainters(
+          tester,
+          env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
         );
-        final floats = tester
-            .widgetList<CustomPaint>(find.byType(CustomPaint))
-            .map((paint) => paint.painter)
-            .whereType<BitmapSurfacePainter>()
-            .where((painter) => !identical(painter.surface, committed))
-            .toList();
         expect(
           floats,
           hasLength(1),
@@ -1726,16 +1743,10 @@ void main() {
       await dragOnLayer(tester, const Offset(6, 6), const Offset(720, 540));
       await env.setTool(CanvasTool.move);
 
-      BitmapSurfacePainter floatPainter() {
-        final committed = env.coordinator.currentSurfaceOf(
-          env.coordinator.activeFrameKey,
-        );
-        return tester
-            .widgetList<CustomPaint>(find.byType(CustomPaint))
-            .map((paint) => paint.painter)
-            .whereType<BitmapSurfacePainter>()
-            .firstWhere((painter) => !identical(painter.surface, committed));
-      }
+      BitmapSurfacePainter floatPainter() => floatPainters(
+        tester,
+        env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+      ).first;
 
       // A move drag: the lift happens on the way, and the release runs
       // `_commitMove`, which is the first of the three rebuilds that have
@@ -1941,11 +1952,20 @@ void main() {
       bool isInk(Uint8List px, int offset) =>
           px[offset] > 128 && px[offset + 1] < 100 && px[offset + 2] < 100;
       Future<bool> somethingCanPaintIt() async {
-        final painters = tester
-            .widgetList<CustomPaint>(find.byType(CustomPaint))
-            .map((paint) => paint.painter)
-            .whereType<BitmapSurfacePainter>()
-            .toList();
+        // Both candidates: the base's own painter (a widget's) and the
+        // float's (inside the published description since TS1).
+        final painters = <BitmapSurfacePainter>[
+          ...tester
+              .widgetList<CustomPaint>(find.byType(CustomPaint))
+              .map((paint) => paint.painter)
+              .whereType<BitmapSurfacePainter>(),
+          ...tester
+              .widgetList<CustomPaint>(find.byType(CustomPaint))
+              .map((paint) => paint.painter)
+              .whereType<SelectionFloatPainter>()
+              .map((painter) => painter.float.surface)
+              .whereType<BitmapSurfacePainter>(),
+        ];
         for (final painter in painters) {
           var own = 0;
           var missing = 0;
@@ -2027,12 +2047,7 @@ void main() {
       final committed = env.coordinator.currentSurfaceOf(
         env.coordinator.activeFrameKey,
       );
-      final floats = tester
-          .widgetList<CustomPaint>(find.byType(CustomPaint))
-          .map((paint) => paint.painter)
-          .whereType<BitmapSurfacePainter>()
-          .where((painter) => !identical(painter.surface, committed))
-          .toList();
+      final floats = floatPainters(tester, committed);
       expect(floats, isNotEmpty, reason: 'no float is up — bad premise');
 
       var own = 0;
@@ -2230,12 +2245,8 @@ void main() {
       // (Both matter — the cel is the pre-image half of the composition —
       // so both are asserted.)
       final committedBefore = currentSurface(env.coordinator);
-      final floatSurfaces = tester
-          .widgetList<CustomPaint>(find.byType(CustomPaint))
-          .map((paint) => paint.painter)
-          .whereType<BitmapSurfacePainter>()
+      final floatSurfaces = floatPainters(tester, committedBefore)
           .map((painter) => painter.surface)
-          .where((surface) => !identical(surface, committedBefore))
           .toList();
       expect(
         floatSurfaces,
@@ -2325,12 +2336,8 @@ void main() {
       await settle(tester);
       final committedBefore = currentSurface(env.coordinator);
       expect(
-        tester
-            .widgetList<CustomPaint>(find.byType(CustomPaint))
-            .map((paint) => paint.painter)
-            .whereType<BitmapSurfacePainter>()
-            .any((painter) => !identical(painter.surface, committedBefore)),
-        isTrue,
+        floatPainters(tester, committedBefore),
+        isNotEmpty,
         reason: 'no float during the session — bad premise',
       );
 
@@ -2338,12 +2345,7 @@ void main() {
       await tester.pump();
       final atConfirm = await screenBytes(tester);
       final committed = currentSurface(env.coordinator);
-      final covers = tester
-          .widgetList<CustomPaint>(find.byType(CustomPaint))
-          .map((paint) => paint.painter)
-          .whereType<BitmapSurfacePainter>()
-          .where((painter) => !identical(painter.surface, committed))
-          .length;
+      final covers = floatPainters(tester, committed).length;
 
       await settle(tester);
       final settled = await screenBytes(tester);

@@ -4,7 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 
 import '../../models/canvas_point.dart';
+import '../../models/canvas_viewport.dart';
 import 'bitmap_surface_painter.dart';
+import 'viewport_canvas_transform.dart';
 
 /// What a selection MOVE or TRANSFORM is holding, described in CANVAS space
 /// so that whoever draws the active layer can draw it AT THAT LAYER'S DEPTH.
@@ -125,3 +127,30 @@ class SelectionFloatPaint {
 /// The channel between the selection layer (which owns the float) and the
 /// composite that draws it. Null value = nothing floating.
 typedef SelectionFloatOverlay = ValueNotifier<SelectionFloatPaint?>;
+
+/// Draws a [SelectionFloatPaint] for hosts with NO composite behind them (the
+/// conte, the timesheet, the cut envelope, and tests that mount the selection
+/// layer alone).
+///
+/// The description is in canvas space, so this applies the viewport itself —
+/// the only difference from the merged route, where the stack painter has
+/// already applied it. Same bytes, same rects, one implementation of the
+/// drawing.
+class SelectionFloatPainter extends CustomPainter {
+  SelectionFloatPainter({required this.float, required this.viewport});
+
+  final SelectionFloatPaint float;
+  final CanvasViewport viewport;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.transform(viewportTransformMatrix(viewport).storage);
+    float.paintInto(canvas);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant SelectionFloatPainter oldDelegate) =>
+      oldDelegate.float != float || oldDelegate.viewport != viewport;
+}

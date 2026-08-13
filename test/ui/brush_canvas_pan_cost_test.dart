@@ -56,7 +56,7 @@ void main() {
             // the test passes for the wrong reason. (It did, first time
             // round.) The panel owning its own viewport is what a pan looks
             // like between the host's rebuilds.
-            viewportUnderlayBuilder: (context, viewport, activeSurfacePainter) {
+            viewportUnderlayBuilder: (context, viewport, activeSurfacePainter, _) {
               panelBuilds[0] += 1;
               painters.add(activeSurfacePainter);
               return const SizedBox.expand();

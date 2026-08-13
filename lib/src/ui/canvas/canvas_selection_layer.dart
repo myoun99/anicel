@@ -34,7 +34,6 @@ import 'selection_float_overlay.dart';
 import 'bitmap_surface_painter.dart';
 import 'provisional_tile_pictures.dart';
 import 'bitmap_tile_image_cache.dart';
-import 'viewport_canvas_transform.dart';
 
 /// The P9 selection interaction layer, mounted over the canvas while a
 /// selection tool is active (Photoshop/CSP language):
@@ -3738,7 +3737,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               child: IgnorePointer(
                 child: CustomPaint(
                   key: const ValueKey<String>('transform-resample-preview'),
-                  painter: _SelectionFloatPainter(
+                  painter: SelectionFloatPainter(
                     float: floatPaint,
                     viewport: widget.viewport,
                   ),
@@ -3876,30 +3875,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 /// homography matrix for the quad, and a `drawVertices` mesh at
 /// `FilterQuality.medium`), none of which agreed with the commit and none
 /// of which agreed with each other.
-/// Draws a [SelectionFloatPaint] for hosts with no composite behind them.
-///
-/// The float's description is in CANVAS space, so this applies the viewport
-/// itself — which is the only difference from the merged route, where the
-/// stack painter has already applied it. Same bytes, same rects, one
-/// implementation of the drawing.
-class _SelectionFloatPainter extends CustomPainter {
-  _SelectionFloatPainter({required this.float, required this.viewport});
-
-  final SelectionFloatPaint float;
-  final CanvasViewport viewport;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.save();
-    canvas.transform(viewportTransformMatrix(viewport).storage);
-    float.paintInto(canvas);
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant _SelectionFloatPainter oldDelegate) =>
-      oldDelegate.float != float || oldDelegate.viewport != viewport;
-}
+// (The fallback float painter moved to selection_float_overlay.dart, beside
+// the description it draws — one file owns "what is floating and how it is
+// drawn", and the pixel tests can name it.)
 
 // (The hold's clip used to be a `ClipPath` around the float's widget, in
 // screen space. TS1 turned the float into a canvas-space description, so the
