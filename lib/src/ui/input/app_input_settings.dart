@@ -496,6 +496,26 @@ abstract final class AppInput {
   static bool get touchDraws =>
       touchDragActionFor(1) == CanvasTouchDragAction.draw;
 
+  /// Whether a pointer of [kind] may DRIVE A CANVAS TOOL at all (TS9).
+  ///
+  /// 유저 법: *"드로잉모드가 아닌이상은 툴이 작동하면 안되지"* — with the
+  /// one-finger slot on flip (or pan, or brush size), a finger is
+  /// navigating, and a tool acting on it is a bug no matter which tool.
+  ///
+  /// ⛔This is the ONE door. [touchDraws] was already the law, but only the
+  /// painting stroke, the camera frame and the draw-refused notice asked
+  /// it — so every tool input layer written afterwards (the selection /
+  /// cut / shape-fill / move drag, the eyedropper and stamp tap layer, the
+  /// guide handles) took fingers in flip mode. Ask THIS from every such
+  /// layer, and a tool added later inherits the answer instead of having to
+  /// remember the question.
+  ///
+  /// ⚠️Callers must DECLINE quietly (return from the handler) rather than
+  /// swallowing the pointer: the panel's gesture layer is an ancestor and
+  /// owns the touch, and it can only win if the event still reaches it.
+  static bool toolAcceptsPointer(PointerDeviceKind kind) =>
+      kind != PointerDeviceKind.touch || touchDraws;
+
   /// Nearest-value snapping against a user-editable list (PEN-7b) —
   /// shared by the navigate constraints and the brush-size drag.
   static double snapToList(double value, List<double> snaps) {
