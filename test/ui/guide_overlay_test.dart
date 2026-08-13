@@ -1,6 +1,10 @@
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/ui/canvas/guide_overlay.dart';
+import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 CanvasPoint _point(double x, double y) => CanvasPoint(x: x, y: y);
@@ -183,6 +187,62 @@ void main() {
 
       expect(moved.activeSymmetryId, guides.activeSymmetryId);
       expect(moved.actingSymmetry, isNotNull);
+    });
+  });
+
+  // TS9: the handle layer is the third tool input layer that was taking
+  // fingers while the one-finger slot was on flip — and the only one of the
+  // three with no test at all, which is how it stayed missing.
+  group('the handle layer obeys the touch law', () {
+    Future<CutGuides?> dragHandle(
+      WidgetTester tester,
+      PointerDeviceKind kind,
+    ) async {
+      CutGuides? live;
+      final guides = _symmetry();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GuideEditLayer(
+              guides: guides,
+              viewport: CanvasViewport(),
+              onGuidesChanged: (next) => live = next,
+              onGuidesCommitted: (_) {},
+            ),
+          ),
+        ),
+      );
+      // The origin handle sits at canvas (100,100) — identity viewport, so
+      // that is where the pointer goes.
+      final origin = tester.getTopLeft(find.byType(GuideEditLayer));
+      final gesture = await tester.startGesture(
+        origin + const Offset(100, 100),
+        kind: kind,
+      );
+      await tester.pump();
+      await gesture.moveTo(origin + const Offset(140, 120));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+      return live;
+    }
+
+    testWidgets('a finger moves no handle while the slot is on flip', (
+      tester,
+    ) async {
+      AppInput.settings.value = AppInput.settings.value.copyWith(
+        touchDragOneFinger: CanvasTouchDragAction.flip,
+      );
+      addTearDown(() {
+        AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+      });
+
+      expect(await dragHandle(tester, PointerDeviceKind.touch), isNull);
+      expect(
+        await dragHandle(tester, PointerDeviceKind.stylus),
+        isNotNull,
+        reason: 'the pen edits guides as before',
+      );
     });
   });
 }
