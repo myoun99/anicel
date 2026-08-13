@@ -9,6 +9,7 @@ import 'package:anicel/src/models/viewport_point.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/brush/canvas_view_commands.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
@@ -143,6 +144,76 @@ void main() {
     expect(inkOf('canvas-viewport-flip-vertical'), AppColors.accent);
     await tapToolbarButton(tester, 'canvas-viewport-flip');
     expect(inkOf('canvas-viewport-flip'), isNull);
+  });
+
+  testWidgets('…and ON THE PILL, where the memo cannot help them', (
+    tester,
+  ) async {
+    // 🚨The same accents, on the floor's own bar, and this is the harder
+    // half. The pill is MEMOIZED and its token deliberately does not carry
+    // rotation — it left the day these controls moved into the flyout, and
+    // putting it back would throw thirteen buttons away on every frame of a
+    // rotate drag. So the inline row listens to the viewport signal the way
+    // the flyout row does, and this is the test that says so: press rotate
+    // and the accent has to move with NOTHING having invalidated the bar.
+    //
+    // Delete the listener and the buttons keep working while the ink stays
+    // where it was, until an unrelated pan or resize happens to rebuild the
+    // pill — which is the same shape of bug the surface swatches had.
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1200, 700));
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 900,
+            height: 600,
+            child: CanvasFloorInsets(
+              insets: EdgeInsets.zero,
+              child: BrushCanvasPanel(
+                coordinator: BrushCanvasFixture.createCoordinator(
+                  frameKeys: frameKeys,
+                ),
+                availableFrameKeys: frameKeys,
+                cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+                floorCover: EdgeInsets.zero,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    Color? inkOf(String key) => tester
+        .widget<IconButton>(find.byKey(ValueKey<String>(key)))
+        .style
+        ?.foregroundColor
+        ?.resolve(const {});
+
+    // No list to open: the controls are on the bar (유저 확정 2026-08-13).
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-settings')),
+      findsNothing,
+    );
+    expect(inkOf('canvas-viewport-rotate-cw'), isNull);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('canvas-viewport-rotate-cw')),
+    );
+    await tester.pumpAndSettle();
+    expect(inkOf('canvas-viewport-rotate-cw'), AppColors.accent);
+    expect(inkOf('canvas-viewport-rotate-ccw'), isNull);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('canvas-viewport-flip')),
+    );
+    await tester.pumpAndSettle();
+    expect(inkOf('canvas-viewport-flip'), AppColors.accent);
+
+    // The readout is the same story told in numbers.
+    expect(find.text('15°'), findsOneWidget);
   });
 
   testWidgets('toolbar buttons rotate in 15° steps and toggle the flip', (

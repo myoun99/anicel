@@ -3626,7 +3626,6 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   /// timesheet's whole cluster away at its default width.
   static const double _leadingControlFloor = 26;
 
-
   /// Below this the pill drops the zoom readout and the two zoom steps,
   /// and below it MINUS the host's own controls it drops those too. It
   /// never drops Fit, and it never stands down: the docked bar that used
