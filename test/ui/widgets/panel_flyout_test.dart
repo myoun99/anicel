@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/command_pill.dart';
-import 'package:anicel/src/ui/widgets/grip_band.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 void main() {
