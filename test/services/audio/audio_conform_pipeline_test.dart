@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_resampler_reference.dart';
 import 'package:anicel/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/services/persistence/app_save_settings.dart';
 
 void main() {
   late Directory temp;
@@ -84,18 +85,14 @@ void main() {
       const layout = ProjectAssetLayout('/work/내작업/프로젝트.anicel');
       expect(layout.assetsDirectory, '/work/내작업/프로젝트.assets');
       expect(layout.mediaDirectory, '/work/내작업/프로젝트.assets/Media');
-      expect(
-        layout.conformedDirectory,
-        '/work/내작업/프로젝트.assets/Conformed',
-      );
     });
 
     test('the conform path is derived from the media name, not recorded', () {
       // Nothing to keep in sync, and project.json stays small.
-      const layout = ProjectAssetLayout('/work/p.anicel');
+      const layout = ConformCacheLayout('/cache/p.anicel.0badf00d');
       expect(
         layout.conformPathFor('/work/p.assets/Media/대사.m4a'),
-        '/work/p.assets/Conformed/대사.m4a.wav',
+        '/cache/p.anicel.0badf00d/대사.m4a.wav',
       );
     });
 
@@ -103,14 +100,103 @@ void main() {
       const layout = ProjectAssetLayout(r'C:\work\p.anicel');
       expect(layout.assetsDirectory, 'C:/work/p.assets');
       expect(
-        layout.conformPathFor(r'C:\work\p.assets\Media\a.wav'),
-        'C:/work/p.assets/Conformed/a.wav.wav',
+        const ConformCacheLayout('/cache/k').conformPathFor(
+          r'C:\work\p.assets\Media\a.wav',
+        ),
+        '/cache/k/a.wav.wav',
       );
     });
 
     test('a project name containing dots keeps all but the last', () {
       const layout = ProjectAssetLayout('/work/ep.01.final.anicel');
       expect(layout.assetsDirectory, '/work/ep.01.final.assets');
+    });
+
+    test('the conform cache is NOT beside the project', () {
+      // The whole point of the move: a twelve-times-the-source cache must
+      // not land in whatever cloud folder the project happens to be in,
+      // and the single-file format has no siblings to put it in either.
+      const project = '/work/내작업/프로젝트.anicel';
+      expect(
+        AppSave.conformDirectoryFor(project),
+        isNot(contains('/work/내작업')),
+      );
+    });
+
+    test('two projects of the same name do not share a cache', () {
+      // A basename alone would collide the moment both land in one folder.
+      expect(
+        AppSave.conformDirectoryFor('/work/a/C-045.anicel'),
+        isNot(AppSave.conformDirectoryFor('/work/b/C-045.anicel')),
+      );
+    });
+
+    test('the recovery snapshot and the conform cache agree on the key', () {
+      // Both derive from encodeProjectKey rather than re-hashing, so they
+      // cannot come to disagree about which project they belong to.
+      const project = '/work/C-045.anicel';
+      final key = AppSave.encodeProjectKey(project);
+      expect(AppSave.encodeRecoveryFileName(project), '$key.autosave');
+      expect(AppSave.conformDirectoryFor(project), endsWith('/$key'));
+    });
+
+    test('a configured root moves the cache but still splits by project', () {
+      // Picking a drive should not also mean keeping same-named projects
+      // apart by hand.
+      AppSave.settings.value = const AppSaveSettings(
+        conformDirectory: r'D:\fast\conforms',
+      );
+      addTearDown(() => AppSave.settings.value = const AppSaveSettings());
+      expect(AppSave.conformRootDirectory, 'D:/fast/conforms');
+      expect(
+        AppSave.conformDirectoryFor('/work/C-045.anicel'),
+        'D:/fast/conforms/${AppSave.encodeProjectKey('/work/C-045.anicel')}',
+      );
+    });
+
+    test('an empty configured root falls back to the default', () {
+      // Settings round-trip an empty string as "unset" everywhere else;
+      // reading it as a root would put the cache at the filesystem root.
+      AppSave.settings.value = const AppSaveSettings(conformDirectory: '');
+      addTearDown(() => AppSave.settings.value = const AppSaveSettings());
+      expect(AppSave.conformRootDirectory, contains('qa_test_conform_'));
+    });
+
+    test('the cache a PROJECT uses is assembled, not just available', () {
+      // The law (where the root is) was covered and the wiring was not:
+      // every test that builds a session injects its own conform store,
+      // so nothing observed the path the app actually resolves. This
+      // pins the composition itself.
+      const project = '/work/내작업/프로젝트.anicel';
+      expect(
+        ConformCacheLayout.forProject(project).conformPathFor('/x/대사.m4a'),
+        '${AppSave.conformDirectoryFor(project)}/대사.m4a.wav',
+      );
+      expect(
+        ConformCacheLayout.forProject(project).conformPathFor('/x/대사.m4a'),
+        isNot(startsWith('/work/내작업/프로젝트.assets')),
+      );
+    });
+
+    test('a project assembles its cache from the LIVE setting', () {
+      // Resolved per call rather than held: a cache path captured before
+      // the user moved the root would name a folder nothing writes to.
+      const project = '/work/p.anicel';
+      AppSave.settings.value = const AppSaveSettings(
+        conformDirectory: '/fast/conforms',
+      );
+      addTearDown(() => AppSave.settings.value = const AppSaveSettings());
+      expect(
+        ConformCacheLayout.forProject(project).conformPathFor('/x/a.wav'),
+        startsWith('/fast/conforms/'),
+      );
+    });
+
+    test('the default root is redirected under test', () {
+      // Without this a test run caches into the real user's app folder and
+      // reads whatever a previous run left there.
+      expect(AppSave.conformRootDirectory, contains(Directory.systemTemp.path
+          .replaceAll('\\', '/')));
     });
   });
 
@@ -165,6 +251,65 @@ void main() {
       expect(log, isEmpty, reason: 'no filter should run at equal rates');
       expect(File(result.conformPath!).existsSync(), isTrue);
       expect(result.peaks!.peaks, isNotEmpty);
+    });
+
+    test('an unwritable cache costs a re-decode, never the sound', () {
+      // The cache root is a setting now and Preferences invites the user to
+      // put it on another drive, so "the cache cannot be written" is a
+      // configuration away: an unplugged volume, a deleted folder, a macOS
+      // scope that did not survive a relaunch. The decoded PCM is already
+      // in hand when the write fails — dropping it silences the clip for
+      // the session and silences it in an export, over a cache.
+      final source = writeSource('uncacheable.wav', rate: 48000);
+      // A FILE where the cache wants a directory: createSync(recursive)
+      // throws on every platform.
+      final blocker = '${temp.path}/blocker';
+      File(blocker).writeAsBytesSync(const [0]);
+
+      final result = pipelineFor().ensureConform(
+        sourcePath: source,
+        conformPath: '$blocker/nested/uncacheable.wav.wav',
+      );
+
+      expect(result.outcome, ConformOutcome.built);
+      expect(result.isUsable, isTrue);
+      expect(result.samples, isNotNull);
+      expect(result.samples!.isNotEmpty, isTrue);
+      expect(result.peaks!.peaks, isNotEmpty);
+      expect(result.sampleRate, 48000);
+      // Cached NOWHERE, and says why — a caller must not go looking for a
+      // file that was never written.
+      expect(result.conformPath, isNull);
+      expect(result.error, contains('could not cache'));
+    });
+
+    test('an uncacheable source is retried, not remembered as broken', () {
+      // Self-healing: the next ensure tries the write again, which is what
+      // lets a volume coming back fix itself. A failure that spent the
+      // store's attempt budget could never do that.
+      final source = writeSource('retry.wav', rate: 48000);
+      final blocker = '${temp.path}/blocker2';
+      File(blocker).writeAsBytesSync(const [0]);
+      final conformPath = '$blocker/nested/retry.wav.wav';
+
+      expect(
+        pipelineFor().ensureConform(
+          sourcePath: source,
+          conformPath: conformPath,
+        ).isUsable,
+        isTrue,
+      );
+
+      // The obstruction goes away; the same call now caches.
+      File(blocker).deleteSync();
+      final second = pipelineFor().ensureConform(
+        sourcePath: source,
+        conformPath: conformPath,
+      );
+      expect(second.outcome, ConformOutcome.built);
+      expect(second.conformPath, conformPath);
+      expect(second.error, isNull);
+      expect(File(conformPath).existsSync(), isTrue);
     });
 
     test('a 44.1k source is resampled to the project rate', () {

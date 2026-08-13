@@ -21,6 +21,7 @@ class AppSaveSettings {
   const AppSaveSettings({
     this.autosaveEnabled = true,
     this.recordingsDirectory,
+    this.conformDirectory,
   });
 
   /// Whether the app snapshots unsaved work for crash recovery at all.
@@ -32,21 +33,36 @@ class AppSaveSettings {
   /// app documents `Recordings` folder.
   final String? recordingsDirectory;
 
+  /// Where audio conforms are cached; null/empty = the app support folder.
+  ///
+  /// This exists to place them on a PARTICULAR DEVICE'S disk — out of a
+  /// cloud-synced folder, onto an SD card, onto a fast drive — because a
+  /// conform is around twelve times the size of its source and used to sit
+  /// beside the project, which meant it synced with it. It is NOT a way to
+  /// share a cache between machines: that trade spends gigabytes of
+  /// transfer to save minutes of CPU.
+  final String? conformDirectory;
+
   static const Object _unset = Object();
 
   AppSaveSettings copyWith({
     bool? autosaveEnabled,
     Object? recordingsDirectory = _unset,
+    Object? conformDirectory = _unset,
   }) => AppSaveSettings(
     autosaveEnabled: autosaveEnabled ?? this.autosaveEnabled,
     recordingsDirectory: identical(recordingsDirectory, _unset)
         ? this.recordingsDirectory
         : recordingsDirectory as String?,
+    conformDirectory: identical(conformDirectory, _unset)
+        ? this.conformDirectory
+        : conformDirectory as String?,
   );
 
   Map<String, dynamic> toJson() => {
     'autosaveEnabled': autosaveEnabled,
     'recordingsDirectory': recordingsDirectory,
+    'conformDirectory': conformDirectory,
   };
 
   /// `sidecarDirectory` and `autosaveIntervalMinutes` left by an older
@@ -55,10 +71,14 @@ class AppSaveSettings {
   /// would let settings outlive the features that used them.
   static AppSaveSettings fromJson(Map<String, dynamic> json) {
     final recordings = json['recordingsDirectory'];
+    final conforms = json['conformDirectory'];
     return AppSaveSettings(
       autosaveEnabled: json['autosaveEnabled'] as bool? ?? true,
       recordingsDirectory: recordings is String && recordings.isNotEmpty
           ? recordings
+          : null,
+      conformDirectory: conforms is String && conforms.isNotEmpty
+          ? conforms
           : null,
     );
   }
@@ -67,10 +87,12 @@ class AppSaveSettings {
   bool operator ==(Object other) =>
       other is AppSaveSettings &&
       other.autosaveEnabled == autosaveEnabled &&
-      other.recordingsDirectory == recordingsDirectory;
+      other.recordingsDirectory == recordingsDirectory &&
+      other.conformDirectory == conformDirectory;
 
   @override
-  int get hashCode => Object.hash(autosaveEnabled, recordingsDirectory);
+  int get hashCode =>
+      Object.hash(autosaveEnabled, recordingsDirectory, conformDirectory);
 }
 
 /// The LIVE save policy (the [AppInput] idiom): the session restores and
@@ -133,10 +155,19 @@ abstract final class AppSave {
   }
 
   /// `basename.<fnv1a32-of-full-path>.autosave` — stable across runs,
-  /// filesystem-safe, and collision-resistant across folders. The hash is
-  /// what keeps two projects called `C-045.anicel` in different works from
-  /// sharing one snapshot now that they land in a common folder.
-  static String encodeRecoveryFileName(String projectFilePath) {
+  /// filesystem-safe, and collision-resistant across folders.
+  static String encodeRecoveryFileName(String projectFilePath) =>
+      '${encodeProjectKey(projectFilePath)}.autosave';
+
+  /// `basename.<fnv1a32-of-full-path>` — the app container's name for
+  /// [projectFilePath].
+  ///
+  /// The hash is what keeps two projects called `C-045.anicel` in different
+  /// works from sharing one anything now that per-project state lands in
+  /// common folders. Every such folder derives its name here rather than
+  /// re-deriving the hash, so a recovery snapshot and a conform cache can
+  /// never disagree about which project they belong to.
+  static String encodeProjectKey(String projectFilePath) {
     final normalized = projectFilePath.replaceAll('\\', '/');
     var hash = 0x811c9dc5;
     for (final unit in normalized.codeUnits) {
@@ -144,6 +175,39 @@ abstract final class AppSave {
       hash = (hash * 0x01000193) & 0xFFFFFFFF;
     }
     final base = normalized.split('/').last;
-    return '$base.${hash.toRadixString(16).padLeft(8, '0')}.autosave';
+    return '$base.${hash.toRadixString(16).padLeft(8, '0')}';
+  }
+
+  /// Where [projectFilePath]'s audio conforms are cached.
+  ///
+  /// Defaults into the app support folder; [AppSaveSettings.conformDirectory]
+  /// overrides the ROOT, and the per-project folder underneath it is still
+  /// derived here — a user picking a drive should not also have to keep two
+  /// projects of the same name apart.
+  ///
+  /// Conforms used to live in `<project>.assets/Conformed`, which put a
+  /// twelve-times-the-source cache inside whatever folder the project was
+  /// in, synced it to whatever cloud that folder belonged to, and made the
+  /// `.anicel` grow a sibling that the single-file format exists to remove.
+  ///
+  /// Only the DEFAULT root is redirected under FLUTTER_TEST: a configured
+  /// root was named explicitly and is used as given, which is what a test
+  /// that sets one is asking for.
+  static String conformDirectoryFor(String projectFilePath) =>
+      '$conformRootDirectory/${encodeProjectKey(projectFilePath)}';
+
+  /// The folder every project's conform cache sits under — what
+  /// Preferences shows, and the one place that decides where the cache
+  /// root is.
+  static String get conformRootDirectory {
+    final configured = settings.value.conformDirectory;
+    if (configured != null && configured.isNotEmpty) {
+      return configured.replaceAll('\\', '/');
+    }
+    if (Platform.environment['FLUTTER_TEST'] == 'true') {
+      return '${Directory.systemTemp.path.replaceAll('\\', '/')}'
+          '/qa_test_conform_$pid';
+    }
+    return appSupportFilePath('Conformed');
   }
 }

@@ -12,10 +12,13 @@ import 'folder_pick_flow.dart';
 /// SAVE-1: the autosave policy section (Preferences ▸ Autosave).
 ///
 /// Autosave writes a recovery snapshot only — the project file changes on
-/// an explicit save alone. One knob left, on/off, because the other two
-/// stopped naming anything: the cadence went with the timer, and the
-/// location is the app's own folder now rather than a place the user has
-/// to keep out of a sync client's way.
+/// an explicit save alone. Its own knobs came down to on/off: the cadence
+/// went with the timer, and the snapshot's location is the app's own folder
+/// now rather than a place the user has to keep out of a sync client's way.
+///
+/// The two folders below are here because they are the caches and shelves
+/// that used to sit beside the project and no longer do — the section is
+/// "what the app writes on its own, and where".
 class AutosaveSettingsSection extends StatelessWidget {
   const AutosaveSettingsSection({super.key, required this.session});
 
@@ -90,6 +93,62 @@ class AutosaveSettingsSection extends StatelessWidget {
                         session.setSaveSettings(
                           AppSave.settings.value.copyWith(
                             recordingsDirectory: directory,
+                          ),
+                        );
+                      }
+                    },
+                    child: Text(AppText.strings.autosaveChoose),
+                  ),
+                ],
+              ],
+            ),
+            const Divider(height: 16),
+            // The conform cache. Movable for the same reason the recordings
+            // folder is, and desktop-only for the same reason too: on
+            // mobile the app container is the one place writable without
+            // asking an OS, and a cache in a scoped folder would need a
+            // grant held for a session that writes to it unannounced.
+            const Text(
+              'Conform cache',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Decoded audio, kept so a waveform and playback do not decode '
+              'the same file twice. A conform is around twelve times the '
+              'size of its source, so point this at a drive with room — and '
+              'out of a cloud-synced folder. Deleting it costs time, never '
+              'content.',
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    AppSave.conformRootDirectory,
+                    key: const ValueKey<String>('settings-conform-directory'),
+                    style: const TextStyle(fontSize: 12),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (!Platform.isAndroid && !Platform.isIOS) ...[
+                  if (settings.conformDirectory != null)
+                    TextButton(
+                      key: const ValueKey<String>('settings-conform-reset'),
+                      onPressed: () => session.setSaveSettings(
+                        settings.copyWith(conformDirectory: null),
+                      ),
+                      child: const Text('Default'),
+                    ),
+                  TextButton(
+                    key: const ValueKey<String>('settings-conform-browse'),
+                    onPressed: () async {
+                      final directory = await pickFolderForUser(context);
+                      if (directory != null) {
+                        session.setSaveSettings(
+                          AppSave.settings.value.copyWith(
+                            conformDirectory: directory,
                           ),
                         );
                       }

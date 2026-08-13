@@ -20,25 +20,39 @@ void main() {
     expect(settings.toJson().keys, unorderedEquals(<String>[
       'autosaveEnabled',
       'recordingsDirectory',
+      'conformDirectory',
     ]));
+    // Both folders default to the app's own, so a fresh install writes
+    // nothing beside a project.
+    expect(settings.recordingsDirectory, isNull);
+    expect(settings.conformDirectory, isNull);
   });
 
   test('json roundtrip', () {
     const settings = AppSaveSettings(
       autosaveEnabled: false,
       recordingsDirectory: '/tmp/takes',
+      conformDirectory: '/tmp/conforms',
     );
     expect(AppSaveSettings.fromJson(settings.toJson()), settings);
     expect(
       AppSaveSettings.fromJson(const AppSaveSettings().toJson()),
       const AppSaveSettings(),
     );
-    // copyWith can EXPLICITLY clear the directory back to the default.
+    // copyWith can EXPLICITLY clear either directory back to the default.
     expect(
       settings.copyWith(recordingsDirectory: null).recordingsDirectory,
       isNull,
     );
+    expect(settings.copyWith(conformDirectory: null).conformDirectory, isNull);
     expect(settings.copyWith().recordingsDirectory, '/tmp/takes');
+    expect(settings.copyWith().conformDirectory, '/tmp/conforms');
+    // The two must not be one field wearing two names: moving the cache
+    // must not move the take shelf with it.
+    expect(
+      settings.copyWith(conformDirectory: '/elsewhere').recordingsDirectory,
+      '/tmp/takes',
+    );
   });
 
   test('settings an older build wrote are read and DROPPED, not carried',
