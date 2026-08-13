@@ -16,7 +16,8 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart'
     show TimelineActionToolbar;
-import 'package:anicel/src/ui/widgets/panel_flyout.dart' show PanelFlyoutItem;
+
+import 'flyout_test_helpers.dart' show readCommandEnabled;
 
 /// The GLOBAL surface authors transitions. The transition row is track-owned
 /// and its spans address the track's frame axis, so this panel — not the cut
@@ -58,31 +59,24 @@ Future<void> _standOnTransitionRow(WidgetTester tester, int frame) async {
 /// Open the frame pill and press Edit Instance — the real path, not the
 /// callback. Which button the rail grows is exactly what this round changed,
 /// so the test drives the button.
+/// ① moved Edit Instance out of the frame MENU and onto the frame pill, so
+/// there is nothing to open first — and opening the menu now actively
+/// breaks the tap, because the barrier swallows it while the button sits
+/// behind. The bar scrolls, so scroll to it before pressing.
 Future<void> _tapEditInstance(WidgetTester tester) async {
-  await tester.tap(
-    find.byKey(const ValueKey<String>('timeline-frame-menu-button')),
-  );
+  final button = find.byKey(const ValueKey<String>('rename-frame-button'));
+  await tester.ensureVisible(button);
   await tester.pumpAndSettle();
-  await tester.tap(find.byKey(const ValueKey<String>('rename-frame-button')));
+  await tester.tap(button);
   await tester.pumpAndSettle();
 }
 
-/// Whether the pill offers the verb here, read from the open flyout.
+/// Whether the pill offers the verb here.
 Future<bool> _editInstanceEnabled(WidgetTester tester) async {
-  await tester.tap(
-    find.byKey(const ValueKey<String>('timeline-frame-menu-button')),
+  return readCommandEnabled(
+    tester,
+    const ValueKey<String>('rename-frame-button'),
   );
-  await tester.pumpAndSettle();
-  return tester
-      .widget<PopupMenuItem<PanelFlyoutItem>>(
-        find.byKey(const ValueKey<String>('rename-frame-button')),
-      )
-      .enabled;
-}
-
-Future<void> _closeFlyout(WidgetTester tester) async {
-  await tester.tapAt(const Offset(4, 4));
-  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -205,13 +199,14 @@ void main() {
 
       // ON the span it edits, one frame off it it creates. The entry that
       // went dark on a covered frame belonged to a create-only button.
+      //
+      // ⛔No flyout to close any more (①): reading the button's enablement
+      // opens nothing, and the old dismissing tap would land on the canvas.
       await _standOnTransitionRow(tester, 8);
       expect(await _editInstanceEnabled(tester), isTrue);
-      await _closeFlyout(tester);
 
       await _standOnTransitionRow(tester, 9);
       expect(await _editInstanceEnabled(tester), isTrue);
-      await _closeFlyout(tester);
     });
   });
 

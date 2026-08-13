@@ -31,11 +31,14 @@ const _layerBId = LayerId('layer-b');
 const _frameId = FrameId('frame-a');
 
 void main() {
-  testWidgets('Rename Layer lives in the Layer flyout and opens a '
+  testWidgets('Rename Layer is a button ON the layer pill and opens a '
       'prefilled dialog', (tester) async {
     await tester.pumpWidget(const AnicelApp());
 
-    expect(find.byKey(_renameButtonKey), findsNothing);
+    // ① moved it out of the menu (유저: 「레이어 알약 밖으로: 레이어
+    // 이름변경」), so it is reachable without opening anything — which is
+    // the whole of what "밖으로" asked for.
+    expect(find.byKey(_renameButtonKey), findsOneWidget);
     expect(await readCommandEnabled(tester, _renameButtonKey), isTrue);
 
     await _tapKey(tester, _renameButtonKey);

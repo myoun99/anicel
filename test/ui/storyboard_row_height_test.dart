@@ -81,6 +81,13 @@ void main() {
     var previous = -1.0;
     while (_railHeight(tester) != previous) {
       previous = _railHeight(tester);
+      // 🚨SCROLL TO IT FIRST. The command bar scrolls horizontally by design
+      // (유저: 「버튼 사라지기 시작하면 생기는 스크롤바」), so a bar with
+      // enough on it puts this stepper past the right edge — and a tap on an
+      // off-screen widget MISSES SILENTLY, which reads here as "the stepper
+      // hit its floor" rather than "the tap never landed".
+      await tester.ensureVisible(shorter);
+      await tester.pumpAndSettle();
       await tester.tap(shorter);
       await tester.pumpAndSettle();
       expect(
@@ -101,6 +108,9 @@ void main() {
       const ValueKey<String>('storyboard-row-shorter-button'),
     );
     for (var i = 0; i < 12; i += 1) {
+      // Same reason as the test above: the bar may have scrolled it away.
+      await tester.ensureVisible(shorter);
+      await tester.pumpAndSettle();
       await tester.tap(shorter);
       await tester.pumpAndSettle();
     }

@@ -306,6 +306,157 @@ void main() {
       },
     );
   });
+
+  /// ㉕ 독립 붙여넣기. The linked paste puts the SAME cel at a second place,
+  /// which is the feature; this one puts a cel that came FROM it and owes it
+  /// nothing afterwards. The two share their placement rules on purpose —
+  /// only which cel the exposure names is different.
+  group('independent frame paste', () {
+    test('it makes a NEW cel, where the linked paste reuses the old one', () {
+      final fixture = _fixture(_layer());
+      fixture.controller.selectFrameIndex(3);
+
+      fixture.controller.pasteIndependentFrameForLayer(
+        layerId: const LayerId('layer'),
+        frameId: const FrameId('a'),
+        newFrameId: const FrameId('a-copy'),
+      );
+
+      final layer = fixture.repository.requireProject().tracks.single.cuts
+          .single
+          .layers
+          .single;
+      expect(
+        layer.frames.map((frame) => frame.id.value),
+        containsAll(<String>['a', 'a-copy']),
+        reason: 'the source stays, and the copy is a cel of its own',
+      );
+      expect(layer.timeline[3]?.frameId, const FrameId('a-copy'));
+      expect(
+        layer.timeline[0]?.frameId,
+        const FrameId('a'),
+        reason: 'the cel it came from is untouched where it already was',
+      );
+    });
+
+    test('the copy carries the content and NOT the identity — drawing on one '
+        'can never reach the other', () {
+      final fixture = _fixture(_layer());
+      fixture.controller.selectFrameIndex(3);
+
+      fixture.controller.pasteIndependentFrameForLayer(
+        layerId: const LayerId('layer'),
+        frameId: const FrameId('a'),
+        newFrameId: const FrameId('a-copy'),
+      );
+
+      final layer = fixture.repository.requireProject().tracks.single.cuts
+          .single
+          .layers
+          .single;
+      final source = layer.frames.firstWhere(
+        (frame) => frame.id == const FrameId('a'),
+      );
+      final copy = layer.frames.firstWhere(
+        (frame) => frame.id == const FrameId('a-copy'),
+      );
+      expect(copy.strokes, hasLength(source.strokes.length));
+      for (var index = 0; index < source.strokes.length; index += 1) {
+        expect(
+          identical(copy.strokes[index], source.strokes[index]),
+          isFalse,
+          reason: 'a shared stroke object is a link wearing a copy\'s name',
+        );
+      }
+    });
+
+    test('the copy comes out UNNAMED — a name is the identity that would '
+        'link it right back to the cel it came from', () {
+      final named = _layer(
+        frames: [
+          Frame(
+            id: const FrameId('a'),
+            duration: 1,
+            strokes: _sampleStrokes,
+            name: 'A1',
+          ),
+          Frame(id: const FrameId('b'), duration: 1, strokes: const []),
+        ],
+      );
+      final fixture = _fixture(named);
+      fixture.controller.selectFrameIndex(3);
+
+      fixture.controller.pasteIndependentFrameForLayer(
+        layerId: const LayerId('layer'),
+        frameId: const FrameId('a'),
+        newFrameId: const FrameId('a-copy'),
+      );
+
+      final layer = fixture.repository.requireProject().tracks.single.cuts
+          .single
+          .layers
+          .single;
+      expect(
+        layer.frames
+            .firstWhere((frame) => frame.id == const FrameId('a-copy'))
+            .name,
+        isNull,
+      );
+      expect(
+        layer.frames
+            .firstWhere((frame) => frame.id == const FrameId('a'))
+            .name,
+        'A1',
+        reason: 'the source keeps the name it had',
+      );
+      // The invariant a rename enforces and this path must not slip past:
+      // inside a layer, a name belongs to exactly one cel.
+      final names = layer.frames
+          .map((frame) => frame.name)
+          .whereType<String>()
+          .toList();
+      expect(names.toSet(), hasLength(names.length));
+    });
+
+    test('it obeys the SAME placement rules — inside a hold it splits, '
+        'exactly as the linked paste does', () {
+      final fixture = _fixture(_layer());
+      fixture.controller.selectFrameIndex(1);
+
+      fixture.controller.pasteIndependentFrameForLayer(
+        layerId: const LayerId('layer'),
+        frameId: const FrameId('b'),
+        newFrameId: const FrameId('b-copy'),
+      );
+
+      final layer = fixture.repository.requireProject().tracks.single.cuts
+          .single
+          .layers
+          .single;
+      expect(layer.timeline[0]?.length, 1, reason: 'the hold ends here');
+      expect(layer.timeline[1]?.frameId, const FrameId('b-copy'));
+      expect(layer.timeline[1]?.length, 2, reason: 'and the copy holds out');
+    });
+
+    test('a copied id the layer does not have is refused, like the linked '
+        'paste refuses it', () {
+      final fixture = _fixture(_layer());
+      fixture.controller.selectFrameIndex(3);
+
+      fixture.controller.pasteIndependentFrameForLayer(
+        layerId: const LayerId('layer'),
+        frameId: const FrameId('missing'),
+        newFrameId: const FrameId('nope'),
+      );
+
+      final layer = fixture.repository.requireProject().tracks.single.cuts
+          .single
+          .layers
+          .single;
+      expect(layer.frames, hasLength(2));
+      expect(layer.timeline.keys, orderedEquals([0, 5, 9]));
+    });
+  });
 }
 
 const _cutId = CutId('cut');
@@ -318,14 +469,16 @@ final _sampleStrokes = [
 ];
 
 /// Default: a[0,3) .. X[3,5) .. b[5,9) .. a[9,12).
-Layer _layer({Map<int, TimelineExposure>? timeline}) {
+Layer _layer({Map<int, TimelineExposure>? timeline, List<Frame>? frames}) {
   return Layer(
     id: const LayerId('layer'),
     name: 'Layer',
-    frames: [
-      Frame(id: const FrameId('a'), duration: 3, strokes: _sampleStrokes),
-      Frame(id: const FrameId('b'), duration: 4, strokes: const []),
-    ],
+    frames:
+        frames ??
+        [
+          Frame(id: const FrameId('a'), duration: 3, strokes: _sampleStrokes),
+          Frame(id: const FrameId('b'), duration: 4, strokes: const []),
+        ],
     timeline:
         timeline ??
         {

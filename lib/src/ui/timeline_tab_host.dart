@@ -1082,7 +1082,18 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                timelineToolbar,
+                // 🚨The SAME overflow scroller [TimelineCommandBar] gives
+                // its leading (유저 2026-08-10: 「버튼 사라지기 시작하면
+                // 생기는 스크롤바」). This state is the one place the toolbar
+                // is mounted WITHOUT that bar, so it was the one place a bar
+                // too wide for the window overflowed instead of scrolling —
+                // and it only showed once ㉕ put three more buttons on it,
+                // which is to say the row had been one button from the edge
+                // for a while.
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: timelineToolbar,
+                ),
                 Expanded(
                   child: Center(
                     child: ValueListenableBuilder(

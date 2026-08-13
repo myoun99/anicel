@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 /// R-toolbar round: these command keys moved from standalone toolbar
@@ -8,7 +9,9 @@ import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 /// preserved as the menu ITEM keys, so tests reach them by opening the
 /// owning flyout first.
 const Map<String, String> flyoutOwnerByItemKey = {
-  'rename-layer-button': 'timeline-layer-menu-button',
+  // ⛔'rename-layer-button' is NOT here any more: ① moved it out of the
+  // layer menu and onto the pill, the same way 'delete-cut-button' left the
+  // cut menu below.
   'duplicate-layer-button': 'timeline-layer-menu-button',
   'copy-layer-button': 'timeline-layer-menu-button',
   'paste-layer-button': 'timeline-layer-menu-button',
@@ -26,9 +29,10 @@ const Map<String, String> flyoutOwnerByItemKey = {
   // 'timeline-se-name-tag-button' is gone (R5 #7): the tag's controls are
   // lanes on the SE row now, so the window it opened had nothing left to
   // hold.
-  'rename-frame-button': 'timeline-frame-menu-button',
-  'copy-frame-button': 'timeline-frame-menu-button',
-  'paste-linked-frame-button': 'timeline-frame-menu-button',
+  // ⛔'rename-frame-button' (Edit Instance) left the frame menu for the
+  // frame pill — ① again. ⛔'copy-frame-button' and
+  // 'paste-linked-frame-button' went further, to the SHARED pill (㉕): they
+  // act on what is selected, so they belong to no noun's menu.
   'delete-cell-button': 'timeline-frame-menu-button',
   'add-cut-create-linked': 'new-cut-menu',
   'rename-cut-button': 'cut-menu-button',
@@ -77,11 +81,27 @@ Future<void> tapCommandButton(WidgetTester tester, ValueKey<String> key) async {
 
 /// Whether the (possibly flyout-hosted) command is enabled right now.
 /// Opens and closes the owning flyout to read the item.
+///
+/// A command that has MOVED onto a pill is a plain button with no owner to
+/// open, and its enablement is a null `onPressed` rather than an item flag.
+/// Reading both here is what lets a test survive the move: what the test
+/// wanted to know — 「이 명령이 지금 눌리나」 — did not change.
 Future<bool> readCommandEnabled(
   WidgetTester tester,
   ValueKey<String> key,
 ) async {
   await openOwningFlyout(tester, key.value);
+  if (flyoutOwnerByItemKey[key.value] == null) {
+    final button = tester.widget(find.byKey(key));
+    return switch (button) {
+      AppIconButton(:final onPressed) => onPressed != null,
+      IconButton(:final onPressed) => onPressed != null,
+      _ => throw StateError(
+        'readCommandEnabled: ${key.value} is neither a flyout item nor a '
+        'known button type (${button.runtimeType})',
+      ),
+    };
+  }
   // The item key sits ON the PopupMenuItem itself.
   final item = tester.widget<PopupMenuItem<PanelFlyoutItem>>(find.byKey(key));
   final enabled = item.enabled;

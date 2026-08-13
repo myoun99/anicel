@@ -6,7 +6,7 @@ import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:anicel/src/ui/timeline/timeline_shift_buttons.dart';
-import 'package:anicel/src/ui/widgets/panel_flyout.dart';
+import 'flyout_test_helpers.dart' show readCommandEnabled;
 
 /// 유저 확정 (2026-08-10): 스토리보드 레이어의 프레임을 조절해야 하고,
 /// 레이어도 만들고 지워야 한다 — so the storyboard mounts the SAME four
@@ -118,20 +118,18 @@ void main() {
     manager.createDrawingAtCurrentFrame();
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-frame-menu-button')),
-    );
-    await tester.pumpAndSettle();
-
-    final entry = find.byKey(const ValueKey<String>('rename-frame-button'));
-    expect(entry, findsOneWidget);
+    // ① took it out of the frame menu and onto the pill, so there is
+    // nothing to open first — the question this test asks is unchanged:
+    // does the STORYBOARD's host serve the dispatch.
+    const entryKey = ValueKey<String>('rename-frame-button');
+    expect(find.byKey(entryKey), findsOneWidget);
     expect(
-      tester.widget<PopupMenuItem<PanelFlyoutItem>>(entry).enabled,
+      await readCommandEnabled(tester, entryKey),
       isTrue,
       reason: 'the storyboard can serve Edit Instance now',
     );
 
-    await tester.tap(entry);
+    await tester.tap(find.byKey(entryKey));
     await tester.pumpAndSettle();
     expect(
       find.byType(TextField),

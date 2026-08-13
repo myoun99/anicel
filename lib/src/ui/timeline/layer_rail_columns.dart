@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/layer_kind.dart';
+import '../text/app_strings.dart';
 import 'layer_label_controls.dart';
 
 /// The rail row's COLUMN SKELETON — the one declaration of slot ORDER and
@@ -341,17 +342,22 @@ class LayerTypeButton extends StatelessWidget {
   }
 }
 
+/// What a screen reader says about a row's kind button.
+///
+/// This was a SECOND table of the same ten names with ' layer' glued on —
+/// hardcoded English, so the rail announced `Transition layer` while the
+/// toolbar beside it said 「트랜지션」. It is not a table any more: the name
+/// comes from [layerKindDisplayName] and the sentence around it from a
+/// template, because 'X layer' is not a suffix in every language (fr puts
+/// the noun first; ja and zh take no space).
 String layerTypeSemanticLabel(LayerKind kind) {
-  return switch (kind) {
-    LayerKind.animation => 'Animation layer',
-    LayerKind.storyboard => 'Storyboard layer',
-    LayerKind.image => 'Image layer',
-    LayerKind.text => 'Text layer',
-    LayerKind.se => 'SE layer',
-    LayerKind.instruction => 'Direction layer',
-    LayerKind.transition => 'Transition layer',
-    LayerKind.camera => 'Camera layer',
-    LayerKind.folder => 'Folder',
-    LayerKind.adjustment => 'Adjustment layer',
-  };
+  // A FOLDER is not "a folder layer" in any of them — it is a folder, which
+  // is why the old table quietly broke its own pattern on this one row.
+  if (kind == LayerKind.folder) {
+    return AppText.strings.tlKindFolder;
+  }
+  return AppText.strings.tlKindSemanticTemplate.replaceAll(
+    '{kind}',
+    layerKindDisplayName(kind),
+  );
 }

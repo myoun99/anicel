@@ -466,6 +466,16 @@ class AppStrings {
   String get tlKindAdjustment => _s('tlKindAdjustment');
   String get tlKindFolder => _s('tlKindFolder');
   String get tlKindSe => _s('tlKindSe');
+  String get tlKindTransition => _s('tlKindTransition');
+  String get tlKindCamera => _s('tlKindCamera');
+
+  /// A row's kind said as a SCREEN-READER label: '{kind}' is the kind name.
+  ///
+  /// ⚠️A template rather than a suffix, because the suffix is not a suffix
+  /// in every language — fr puts the noun first and ja/zh take no space.
+  /// Building this by appending ' layer' was the reason the rail's labels
+  /// could never be translated at all.
+  String get tlKindSemanticTemplate => _s('tlKindSemanticTemplate');
 
   // --- The text cel editor (R5) ---
   String get textCelNewTitle => _s('textCelNewTitle');
@@ -543,6 +553,10 @@ class AppStrings {
   String get tlDetachLayer => _s('tlDetachLayer');
   String get tlCopyFrame => _s('tlCopyFrame');
   String get tlPasteLinkedFrame => _s('tlPasteLinkedFrame');
+
+  /// ㉕: the copied cel's content as a cel of its OWN — the paste that does
+  /// NOT link, named for what it makes rather than for what it is not.
+  String get tlPasteIndependentFrame => _s('tlPasteIndependentFrame');
   String get tlDeleteCell => _s('tlDeleteCell');
   String get tlEditInstance => _s('tlEditInstance');
   String get tlAdd => _s('tlAdd');
@@ -1488,6 +1502,9 @@ class AppStrings {
     'tlKindAdjustment': 'Adjustment',
     'tlKindFolder': 'Folder',
     'tlKindSe': 'SE',
+    'tlKindTransition': 'Transition',
+    'tlKindCamera': 'Camera',
+    'tlKindSemanticTemplate': '{kind} layer',
     'tlKindInstruction': 'Direction',
     'tlNoriShiro': 'MARGIN',
     'textCelNewTitle': 'New Text',
@@ -1547,6 +1564,7 @@ class AppStrings {
     'tlDetachLayer': 'Detach from base',
     'tlCopyFrame': 'Copy frame',
     'tlPasteLinkedFrame': 'Paste linked frame',
+    'tlPasteIndependentFrame': 'Paste independent frame',
     'tlDeleteCell': 'Delete',
     'tlEditInstance': 'Edit instance…',
     'tlAdd': 'Add',
@@ -2248,6 +2266,9 @@ class AppStrings {
     'tlKindAdjustment': '調整レイヤー',
     'tlKindFolder': 'フォルダー',
     'tlKindSe': 'SE',
+    'tlKindTransition': 'トランジション',
+    'tlKindCamera': 'カメラ',
+    'tlKindSemanticTemplate': '{kind}レイヤー',
     'textCelNewTitle': '新規テキスト',
     'textCelEditTitle': 'テキストを編集',
     'textCelTextLabel': 'テキスト',
@@ -2306,6 +2327,7 @@ class AppStrings {
     'tlDetachLayer': '付属を解除',
     'tlCopyFrame': 'フレームをコピー',
     'tlPasteLinkedFrame': 'リンクフレームを貼り付け',
+    'tlPasteIndependentFrame': '独立フレームを貼り付け',
     'tlDeleteCell': '削除',
     'tlEditInstance': 'インスタンスを編集…',
     'tlAdd': '追加',
@@ -3000,6 +3022,9 @@ class AppStrings {
     'tlKindAdjustment': '조정 레이어',
     'tlKindFolder': '폴더',
     'tlKindSe': 'SE',
+    'tlKindTransition': '트랜지션',
+    'tlKindCamera': '카메라',
+    'tlKindSemanticTemplate': '{kind} 레이어',
     'textCelNewTitle': '새 텍스트',
     'textCelEditTitle': '텍스트 편집',
     'textCelTextLabel': '텍스트',
@@ -3058,6 +3083,7 @@ class AppStrings {
     'tlDetachLayer': '어태치 해제',
     'tlCopyFrame': '프레임 복사',
     'tlPasteLinkedFrame': '링크 프레임 붙여넣기',
+    'tlPasteIndependentFrame': '독립 프레임 붙여넣기',
     'tlDeleteCell': '삭제',
     'tlEditInstance': '인스턴스 편집…',
     'tlAdd': '추가',
@@ -3789,6 +3815,9 @@ class AppStrings {
     'tlKindAdjustment': 'Calque de réglage',
     'tlKindFolder': 'Dossier',
     'tlKindSe': 'SE',
+    'tlKindTransition': 'Transition',
+    'tlKindCamera': 'Camera',
+    'tlKindSemanticTemplate': 'Calque {kind}',
     'tlKindInstruction': 'Direction',
     'tlNoriShiro': 'MARGE',
     'textCelNewTitle': 'Nouveau texte',
@@ -3848,6 +3877,7 @@ class AppStrings {
     'tlDetachLayer': 'Détacher de la base',
     'tlCopyFrame': "Copier l'image",
     'tlPasteLinkedFrame': "Coller l'image liée",
+    'tlPasteIndependentFrame': "Coller une image indépendante",
     'tlDeleteCell': 'Supprimer',
     'tlEditInstance': "Modifier l'instance…",
     'tlAdd': 'Ajouter',
@@ -4517,6 +4547,9 @@ class AppStrings {
     'tlKindAdjustment': '调整图层',
     'tlKindFolder': '文件夹',
     'tlKindSe': 'SE',
+    'tlKindTransition': 'Transition',
+    'tlKindCamera': 'Camera',
+    'tlKindSemanticTemplate': '{kind}图层',
     'textCelNewTitle': '新建文本',
     'textCelEditTitle': '编辑文本',
     'textCelTextLabel': '文本',
@@ -4543,7 +4576,11 @@ class AppStrings {
     'seNameTagSampleName': '名称',
     'seNameTagSampleLine': '台词',
     'seNameTagReset': '恢复默认',
-    'tlKindInstruction': '指示',
+    // 🚨A TRADE TERM, not a general word (user 2026-08-12: 「현장용어만
+    // 원어/영어로 두기로 하자」). ja/ko already transliterate it rather than
+    // translate it — ディレクション / 디렉션 — so zh standing alone with 指示
+    // was the odd one out, not the rule.
+    'tlKindInstruction': 'Direction',
     'tlNoriShiro': '留白',
     'tlAttachFreeAbove': '在上方添加自由附属图层',
     'tlAttachFreeBelow': '在下方添加自由附属图层',
@@ -4573,6 +4610,7 @@ class AppStrings {
     'tlDetachLayer': '解除附属',
     'tlCopyFrame': '复制帧',
     'tlPasteLinkedFrame': '粘贴链接帧',
+    'tlPasteIndependentFrame': '粘贴独立帧',
     'tlDeleteCell': '删除',
     'tlEditInstance': '编辑实例…',
     'tlAdd': '添加',
