@@ -3,6 +3,7 @@ import '../../models/cut.dart';
 import '../../models/export_overrides.dart';
 import '../../models/export_spec.dart';
 import '../../models/layer.dart';
+import '../../models/layer_folder.dart';
 import '../../models/layer_kind.dart';
 
 /// The Cels tab's resolved layer set for one cut: AUTO RULES first, the
@@ -75,7 +76,10 @@ ExportCelsSelection resolveExportCelsSelection({
       case LayerKind.storyboard:
       case LayerKind.image:
       case LayerKind.text:
-        if (!layer.isVisible) {
+        // The FOLDER's eye counts too. Asking only the row's own eye wrote
+        // cel files for rows the user had switched off by hiding the folder
+        // they live in — the eye said "not in this render" everywhere else.
+        if (!layers.rowVisible(layer)) {
           return false;
         }
         if (spec.onTimesheetOnly && !layer.onTimesheet) {
@@ -110,7 +114,7 @@ ExportCelsSelection resolveExportCelsSelection({
       // predicate inline is how a kind gets missed when the next one is
       // added, which is exactly what layer_kind.dart's predicates exist to
       // prevent.
-      if (layerKindIsDrawingCel(layer.kind) && layer.isVisible) {
+      if (layerKindIsDrawingCel(layer.kind) && layers.rowVisible(layer)) {
         included[i] = true;
       }
     }
