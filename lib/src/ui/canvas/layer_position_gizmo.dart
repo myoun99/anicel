@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/transform_track.dart';
+import '../input/app_input_settings.dart';
 import '../theme/app_theme.dart';
 
 /// The on-canvas Position drag gizmo: a crosshair handle at the active
@@ -75,6 +76,12 @@ class _LayerPositionGizmoState extends State<LayerPositionGizmo> {
           child: GestureDetector(
             key: const ValueKey<String>('layer-position-gizmo'),
             behavior: HitTestBehavior.opaque,
+            // TS9's law, at the door a GestureDetector has: a finger only
+            // moves this while the one-finger slot says draw. Stated as
+            // supported DEVICES rather than checked in the handler, because
+            // by `onPanStart` the recognizer has already won the arena and
+            // returning would leave the gizmo dead and the flip undone.
+            supportedDevices: AppInput.toolPointerDevices,
             onPanStart: (_) => setState(() => _dragging = true),
             onPanUpdate: (details) =>
                 setState(() => _dragDelta += details.delta),
@@ -174,6 +181,7 @@ class _LayerAnchorGizmoState extends State<LayerAnchorGizmo> {
           child: GestureDetector(
             key: const ValueKey<String>('layer-anchor-gizmo'),
             behavior: HitTestBehavior.opaque,
+            supportedDevices: AppInput.toolPointerDevices,
             onPanStart: (_) => setState(() => _dragging = true),
             onPanUpdate: (details) =>
                 setState(() => _dragDelta += details.delta),

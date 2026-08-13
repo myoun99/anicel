@@ -516,6 +516,28 @@ abstract final class AppInput {
   static bool toolAcceptsPointer(PointerDeviceKind kind) =>
       kind != PointerDeviceKind.touch || touchDraws;
 
+  /// The same law for a `GestureDetector`, which needs it BEFORE the arena
+  /// rather than inside a handler.
+  ///
+  /// 🚨A recognizer that has already won cannot hand the gesture back: an
+  /// early return in `onPanStart` would leave the control dead AND the flip
+  /// undone, which is worse than the bug. `supportedDevices` keeps the
+  /// recognizer out of the arena entirely for a finger, so the ancestor
+  /// (pan/flip) takes it cleanly — the same "decline, do not swallow" the
+  /// `Listener` layers get for free.
+  ///
+  /// Null when every device is welcome, because that is what
+  /// `GestureDetector` wants for "no restriction".
+  static Set<PointerDeviceKind>? get toolPointerDevices => touchDraws
+      ? null
+      : const {
+          PointerDeviceKind.mouse,
+          PointerDeviceKind.stylus,
+          PointerDeviceKind.invertedStylus,
+          PointerDeviceKind.trackpad,
+          PointerDeviceKind.unknown,
+        };
+
   /// Nearest-value snapping against a user-editable list (PEN-7b) —
   /// shared by the navigate constraints and the brush-size drag.
   static double snapToList(double value, List<double> snaps) {
