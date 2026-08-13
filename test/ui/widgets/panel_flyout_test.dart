@@ -240,12 +240,20 @@ void main() {
     expect(variant, 1);
   });
 
-  testWidgets('StrapIconButton: the band zone is the full 8px of the top '
-      'edge, and the body never reaches into it', (tester) async {
-    // The whole point of moving the menu from a `▾` beside the button to a
-    // band above it is that the band costs no WIDTH — so the price is paid
-    // in height, and this is where that price has to be checked. A tap one
-    // pixel inside the band must open the menu, not run the action.
+  testWidgets('StrapIconButton: the opener is its own target beside the '
+      'button, and a tap there never runs the action', (tester) async {
+    // 🚨T27 (유저 확정 2026-08-14): 「옛날처럼 +버튼 오른쪽에 펼치기아이콘으로
+    // 버튼 했었잖아. 그거 그대로하자.」
+    //
+    // ⛔This used to assert the opposite geometry — an 8px band ON the
+    // button's top edge — reasoning that a band costs no WIDTH so the price
+    // should be paid in height instead. The price it actually charged was
+    // that nobody could find it, and since the `＋` makes only an animation
+    // layer, every other KIND was unreachable for a first-time user.
+    //
+    // What still has to hold is the part that was never about geometry: the
+    // two targets do not overlap, so a tap aimed at the variants cannot run
+    // the ADD.
     var primary = 0;
     await tester.pumpWidget(
       harness(
@@ -262,14 +270,26 @@ void main() {
       ),
     );
 
-    final band = tester.getRect(
+    final body = tester.getRect(
+      find.byKey(const ValueKey<String>('strap-main')),
+    );
+    final opener = tester.getRect(
       find.byKey(const ValueKey<String>('strap-menu')),
     );
-    expect(band.height, GripBand.hitExtent);
+    expect(
+      opener.left,
+      greaterThanOrEqualTo(body.right - 1),
+      reason: 'beside it, on the right',
+    );
+    expect(
+      opener.width,
+      lessThan(body.width),
+      reason: 'a second door onto that button, not a second button',
+    );
 
-    // Just inside the band's BOTTOM edge — the far end from where a stray
-    // tap would land — still opens the menu rather than adding.
-    await tester.tapAt(Offset(band.center.dx, band.bottom - 1));
+    // Aimed at the opener's far side from the body — the corner a stray tap
+    // would be most likely to miss into — and it still opens the menu.
+    await tester.tapAt(Offset(opener.right - 1, opener.center.dy));
     await tester.pumpAndSettle();
     expect(primary, 0);
     expect(
