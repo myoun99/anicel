@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/conform_cache_maintenance.dart';
 import 'package:anicel/src/services/audio/conform_wav_codec.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
@@ -75,6 +76,27 @@ void main() {
   }
 
   int sizeOf(String path) => File(path).lengthSync();
+
+  test('🚨 what the LAYOUT writes is what the COLLECTOR recognises', () {
+    // The seam nobody was standing on. The layout names a conform and the
+    // collector decides what is a conform, and if those two ever drift the
+    // failure is silent in the worst direction: the cache stops being
+    // collectable and grows without bound — which is the entire thing 4b
+    // exists to prevent. Neither side's own tests can see it.
+    final path = ConformCacheLayout.forAudio(
+      sampleRate: 48000,
+      speedNumerator: 1,
+      speedDenominator: 1,
+    ).conformPathFor('/somewhere/대사.m4a');
+    File(path).writeAsBytesSync(conformBytes(ours: true));
+
+    expect(
+      conformCacheEntries().map((entry) => entry.path),
+      [path.replaceAll('\\', '/')],
+      reason: 'a file written at the layout\'s own address, with the '
+          'bytes the pipeline writes, has to be collectable',
+    );
+  });
 
   test('an absent cache measures zero rather than throwing', () {
     // The first run of a fresh install, and every run before any audio is

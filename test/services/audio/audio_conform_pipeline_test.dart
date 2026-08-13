@@ -5,7 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_resampler_reference.dart';
 import 'package:anicel/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 
 void main() {
   late Directory temp;
@@ -259,6 +261,38 @@ void main() {
       expect(AppSave.conformRootDirectory, contains(Directory.systemTemp.path
           .replaceAll('\\', '/')));
     });
+
+    test('🚨 the cache a SESSION uses is assembled, not just available', () {
+      // The law (where the root is, how a name is built) is covered above
+      // and the WIRING is a different question: every test that builds a
+      // session injects its own conform store, so nothing observes the
+      // path the app actually resolves. A previous round noticed exactly
+      // this and named the composition to give it an observer; re-keying
+      // by source moved the composition and would have left it unwatched
+      // again.
+      //
+      // A session with NO injected store is the only way to see it.
+      final session = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(session.dispose);
+      final project = session.repository.requireProject();
+
+      expect(
+        session.audioConformStore.resolveConformPath('/x/대사.m4a'),
+        ConformCacheLayout.forAudio(
+          sampleRate: project.audioSampleRate,
+          speedNumerator: project.audioSpeedNumerator,
+          speedDenominator: project.audioSpeedDenominator,
+        ).conformPathFor('/x/대사.m4a'),
+        reason: 'the session must compose the same address the layout does',
+      );
+      expect(
+        session.audioConformStore.resolveConformPath('/x/대사.m4a'),
+        isNotNull,
+        reason: 'and an UNSAVED project caches like any other now — the '
+            'old key was the project path, so a project with no name got '
+            'no cache and re-decoded its audio every launch',
+      );
+    });
   });
 
   group('building a conform', () {
@@ -368,6 +402,40 @@ void main() {
       expect(
         written.fingerprint,
         AudioConformPipeline.fingerprintOf(File(source).readAsBytesSync()),
+      );
+    });
+
+    test('🚨 a REUSE touches the conform — the cache\'s only record of '
+        'when an entry was last wanted', () {
+      // The eviction order is the conform's own mtime, and nothing else
+      // writes it. Without this the order would be "oldest BUILT", which
+      // throws out the sound used in every cut — built once, long ago —
+      // and keeps the one imported by mistake and never played again.
+      //
+      // Untested, it is one line nobody would miss removing.
+      final source = writeSource('warm.wav');
+      final conformPath = '${temp.path}/Conformed/warm.wav.wav';
+      expect(
+        pipelineFor()
+            .ensureConform(sourcePath: source, conformPath: conformPath)
+            .outcome,
+        ConformOutcome.built,
+      );
+      final cold = DateTime.now().subtract(const Duration(days: 30));
+      File(conformPath).setLastModifiedSync(cold);
+
+      expect(
+        pipelineFor()
+            .ensureConform(sourcePath: source, conformPath: conformPath)
+            .outcome,
+        ConformOutcome.reused,
+      );
+
+      expect(
+        File(conformPath).lastModifiedSync().isAfter(cold),
+        isTrue,
+        reason: 'wanted just now, so it must not look like the coldest '
+            'thing in the cache',
       );
     });
 
