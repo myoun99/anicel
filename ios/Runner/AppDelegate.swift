@@ -84,6 +84,10 @@ import UniformTypeIdentifiers
           utis: arguments?["utis"] as? [String] ?? [],
           allowMultiple: arguments?["allowMultiple"] as? Bool ?? false,
           result: result)
+      case "exportFile":
+        let arguments = call.arguments as? [String: Any]
+        self.exportFile(
+          sourcePath: arguments?["sourcePath"] as? String, result: result)
       case "resolveBookmark":
         let arguments = call.arguments as? [String: Any]
         self.resolveBookmark(
@@ -153,6 +157,39 @@ import UniformTypeIdentifiers
       picker = UIDocumentPickerViewController(documentTypes: identifiers, in: .open)
     }
     present(picker: picker, allowMultiple: allowMultiple, result: result)
+  }
+
+  /// PICK-6: hands a finished file to the user's chosen location.
+  ///
+  /// iOS has no save panel — Apple never built one — so "Save As" cannot ask
+  /// for a destination and then write there. The shape is inverted: the app
+  /// writes the file in its own container FIRST, then offers it, and the
+  /// picker reports where it landed.
+  ///
+  /// `asCopy: false` MOVES it. A copy would leave the container file behind
+  /// as a duplicate the user never asked for, and the app would be holding
+  /// the wrong one of the two.
+  ///
+  /// ★This mode reaches Google Drive, which folder mode does not (measured
+  /// on iOS 26.5.2 — the system's own "Save to Files" lands there). That is
+  /// the whole reason Save As can stop asking for a folder.
+  private func exportFile(sourcePath: String?, result: @escaping FlutterResult) {
+    guard let sourcePath, !sourcePath.isEmpty else {
+      result(["status": "unavailable"])
+      return
+    }
+    let url = URL(fileURLWithPath: sourcePath)
+    let picker: UIDocumentPickerViewController
+    if #available(iOS 14.0, *) {
+      picker = UIDocumentPickerViewController(forExporting: [url], asCopy: false)
+    } else {
+      // The pre-14 spelling of the same two choices: move, not export.
+      picker = UIDocumentPickerViewController(url: url, in: .moveToService)
+    }
+    // The delegate reports the DESTINATION url, so the ordinary grant path
+    // mints a bookmark for it — which is what lets every later save write
+    // there with no UI at all.
+    present(picker: picker, allowMultiple: false, result: result)
   }
 
   /// The one place a picker reaches the screen. Shared so the folder and file

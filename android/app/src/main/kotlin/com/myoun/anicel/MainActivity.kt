@@ -46,6 +46,12 @@ class MainActivity : FlutterActivity() {
                 // Android hands out durable real paths, so there is no
                 // bookmark to resolve and no scope to re-acquire. It
                 // answers honestly rather than pretending.
+                "exportFile" ->
+                    exportFile(
+                        call.argument<String>("sourcePath"),
+                        call.argument<String>("suggestedName"),
+                        result,
+                    )
                 "resolveBookmark" ->
                     result.success(mapOf("status" to "unavailable"))
                 else -> result.notImplemented()
@@ -62,6 +68,7 @@ class MainActivity : FlutterActivity() {
     // 4801 and 4802 are taken by the two permission requests below.
     private val folderPickRequestCode = 4803
     private val filePickRequestCode = 4804
+    private val exportRequestCode = 4805
 
     // PICK-2: asks the system for a folder, then converts what it hands back
     // into a REAL PATH.
@@ -143,6 +150,87 @@ class MainActivity : FlutterActivity() {
         launch(intent, filePickRequestCode, result)
     }
 
+    // PICK-6: hands a finished file to the user's chosen location.
+    //
+    // Same contract as the Apple runners even though Android could hand back
+    // a destination first: Dart writes into the app container and asks for
+    // the file to be PLACED. One contract means Dart never learns that one
+    // platform gives a file and another gives a path.
+    //
+    // ACTION_CREATE_DOCUMENT creates an empty document at the chosen spot;
+    // the bytes are moved onto it below, through the real path, because the
+    // save stack rewrites a ZIP in place and no content:// stream survives
+    // that.
+    private var pendingExportSource: String? = null
+
+    private fun exportFile(
+        sourcePath: String?,
+        suggestedName: String?,
+        result: MethodChannel.Result,
+    ) {
+        if (sourcePath.isNullOrEmpty()) {
+            result.success(mapOf("status" to "unavailable"))
+            return
+        }
+        if (pendingPickResult != null) {
+            result.success(mapOf("status" to "cancelled"))
+            return
+        }
+        pendingPickResult = result
+        pendingExportSource = sourcePath
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            // The project's own type is not one the system knows, and an
+            // unknown type makes some providers refuse to create at all.
+            type = "application/octet-stream"
+            putExtra(
+                Intent.EXTRA_TITLE,
+                suggestedName ?: java.io.File(sourcePath).name,
+            )
+        }
+        launch(intent, exportRequestCode, result)
+    }
+
+    // Moves the staged bytes onto the document the user just created, and
+    // reports the real path the save stack will keep writing to.
+    private fun finishExport(waiting: MethodChannel.Result, uri: Uri?) {
+        val source = pendingExportSource
+        pendingExportSource = null
+        if (uri == null || source == null) {
+            waiting.success(mapOf("status" to "cancelled"))
+            return
+        }
+        takePersistable(uri, writable = true)
+        val path = realPathFor(uri, isTree = false)
+        if (path == null) {
+            // A provider with no filesystem behind it (Drive). Reported
+            // rather than papered over: an in-place ZIP rewrite would fail
+            // later and silently.
+            waiting.success(mapOf("status" to "noFilesystemPath"))
+            return
+        }
+        val moved = try {
+            // copy+delete rather than renameTo: the container and the
+            // destination can be different volumes, and renameTo answers
+            // false there instead of throwing.
+            java.io.File(source).copyTo(java.io.File(path), overwrite = true)
+            java.io.File(source).delete()
+            true
+        } catch (_: Exception) {
+            false
+        }
+        if (!moved) {
+            waiting.success(mapOf("status" to "unavailable"))
+            return
+        }
+        waiting.success(
+            mapOf(
+                "status" to "granted",
+                "items" to listOf(mapOf("path" to path, "bookmark" to null)),
+            )
+        )
+    }
+
     private fun launch(intent: Intent, requestCode: Int, result: MethodChannel.Result) {
         try {
             startActivityForResult(intent, requestCode)
@@ -182,12 +270,17 @@ class MainActivity : FlutterActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         val isFolder = requestCode == folderPickRequestCode
         val isFile = requestCode == filePickRequestCode
-        if (!isFolder && !isFile) {
+        val isExport = requestCode == exportRequestCode
+        if (!isFolder && !isFile && !isExport) {
             return
         }
         val waiting = pendingPickResult
         pendingPickResult = null
         if (waiting == null) {
+            return
+        }
+        if (isExport) {
+            finishExport(waiting, if (resultCode == RESULT_OK) data?.data else null)
             return
         }
         val uris = if (resultCode == RESULT_OK && data != null) {

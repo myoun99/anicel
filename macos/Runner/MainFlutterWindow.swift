@@ -103,6 +103,11 @@ final class PathGrantHandler {
         utis: arguments?["utis"] as? [String] ?? [],
         allowMultiple: arguments?["allowMultiple"] as? Bool ?? false,
         host: host, result: result)
+    case "exportFile":
+      exportFile(
+        sourcePath: arguments?["sourcePath"] as? String,
+        suggestedName: arguments?["suggestedName"] as? String,
+        host: host, result: result)
     case "resolveBookmark":
       resolve(base64: arguments?["bookmark"] as? String, result: result)
     default:
@@ -154,6 +159,59 @@ final class PathGrantHandler {
       }
     }
     present(panel: panel, host: host, result: result)
+  }
+
+  /// PICK-6: hands a finished file to the user's chosen location.
+  ///
+  /// macOS DOES have a save panel, so the inversion iOS forces is not needed
+  /// here — but the CONTRACT is shared: Dart writes into the app container
+  /// and asks for the file to be placed. Keeping one contract means Dart
+  /// never has to know that one platform hands over a file and another hands
+  /// back a path.
+  ///
+  /// The move happens here rather than in Dart because the sandbox extends
+  /// to the panel's answer, and doing it while that answer is fresh is the
+  /// simplest way to be sure the write is inside it.
+  func exportFile(
+    sourcePath: String?, suggestedName: String?, host: NSWindow?,
+    result: @escaping FlutterResult
+  ) {
+    guard let sourcePath, !sourcePath.isEmpty else {
+      result(["status": "unavailable"])
+      return
+    }
+    let source = URL(fileURLWithPath: sourcePath)
+    let panel = NSSavePanel()
+    panel.nameFieldStringValue = suggestedName ?? source.lastPathComponent
+    panel.canCreateDirectories = true
+    let complete: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+      guard response == .OK, let destination = panel.url else {
+        result(["status": "cancelled"])
+        return
+      }
+      guard let self else {
+        result(["status": "unavailable"])
+        return
+      }
+      do {
+        // The panel already asked about overwriting; `moveItem` refuses a
+        // destination that exists, so the yes it collected has to be acted
+        // on here.
+        if FileManager.default.fileExists(atPath: destination.path) {
+          try FileManager.default.removeItem(at: destination)
+        }
+        try FileManager.default.moveItem(at: source, to: destination)
+      } catch {
+        result(["status": "unavailable"])
+        return
+      }
+      result(self.grantPayload(for: destination))
+    }
+    if let host {
+      panel.beginSheetModal(for: host, completionHandler: complete)
+    } else {
+      panel.begin(completionHandler: complete)
+    }
   }
 
   private func present(

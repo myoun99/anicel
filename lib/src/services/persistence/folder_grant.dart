@@ -233,6 +233,18 @@ abstract final class FolderPicker {
   })?
   debugFilePicker;
 
+  /// The same seam for [exportFile].
+  ///
+  /// ⚠️Reset in `test/flutter_test_config.dart`. A test that forgets this
+  /// would have its fake MOVE a real file — export is the one picker with a
+  /// side effect on disk.
+  @visibleForTesting
+  static Future<FolderGrant> Function({
+    required String sourcePath,
+    String? suggestedName,
+  })?
+  debugFileExporter;
+
   /// Test seam for the OS these rules are read from.
   ///
   /// ⚠️Reset in `test/flutter_test_config.dart`, like [debugFolderPicker].
@@ -393,6 +405,59 @@ abstract final class FolderPicker {
   /// provider was reinstalled, the account changed, or the folder is gone.
   /// The caller keeps the row and offers to reconnect instead of deleting
   /// what the user may still want.
+  /// PICK-6: hands a finished file to the location the user picks.
+  ///
+  /// **The file is written FIRST**, into the app container, and this places
+  /// it. That order is not a preference — iOS has no save panel (Apple never
+  /// built one), so "ask where, then write there" is not available. Rather
+  /// than let one platform invert the flow, every platform shares the one
+  /// contract: *move this file to where the user says, and tell me where
+  /// that turned out to be.*
+  ///
+  /// ⚠️[sourcePath] is CONSUMED on success — the file is moved, not copied.
+  /// Callers must treat the returned path as the only copy from then on.
+  ///
+  /// ★On Apple this is the mode that reaches Google Drive; folder mode does
+  /// not ([[ipad-cloud-project-location]]). The bookmark that comes back is
+  /// what lets every later save write there with no UI at all.
+  static Future<FolderGrant> exportFile({
+    required String sourcePath,
+    String? suggestedName,
+  }) async {
+    final override = debugFileExporter;
+    if (override != null) {
+      return override(sourcePath: sourcePath, suggestedName: suggestedName);
+    }
+    if (!grantsAreScoped) {
+      // Windows and Linux have a real save dialog and no permission to
+      // hold, so the plugin is the whole story — but the CONTRACT is the
+      // same, which is why the move happens here.
+      try {
+        final location = await file_selector.getSaveLocation(
+          suggestedName: suggestedName ?? _fileNameOf(sourcePath),
+        );
+        if (location == null) {
+          return const FolderGrant.cancelled();
+        }
+        final destination = _normalize(location.path);
+        await File(sourcePath).rename(destination);
+        return FolderGrant.granted(path: destination, kind: GrantKind.file);
+      } on Object {
+        return const FolderGrant.unavailable();
+      }
+    }
+    return (await _invoke('exportFile', {
+      'sourcePath': sourcePath,
+      'suggestedName': suggestedName ?? _fileNameOf(sourcePath),
+    }, GrantKind.file)).first;
+  }
+
+  static String _fileNameOf(String path) {
+    final normalized = _normalize(path);
+    final slash = normalized.lastIndexOf('/');
+    return slash < 0 ? normalized : normalized.substring(slash + 1);
+  }
+
   static Future<FolderGrant> resolveBookmark(
     String bookmark, {
     GrantKind kind = GrantKind.folder,

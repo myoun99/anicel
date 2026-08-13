@@ -38,6 +38,9 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // Cleared here rather than trusted to each suite's tearDown.
   FolderPicker.debugFolderPicker = null;
   FolderPicker.debugFilePicker = null;
+  // PICK-6: export is the one picker with a side effect on disk (it MOVES
+  // the file), so a leaked seam here does more than return a wrong path.
+  FolderPicker.debugFileExporter = null;
   FolderPicker.debugOperatingSystem = null;
   FolderPicker.debugBookmarkResolver = null;
   // Same hazard, same fix: the flow's platform seam decides whether a pick
