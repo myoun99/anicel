@@ -19,15 +19,45 @@ import 'app_support_path.dart';
 ///   temp; a custom folder is a desktop-only choice.
 class AppSaveSettings {
   const AppSaveSettings({
-    this.autosaveEnabled = true,
+    this.lifecycleSnapshotEnabled = true,
+    this.pauseSnapshotEnabled = true,
+    this.periodicSnapshotMinutes,
     this.recordingsDirectory,
     this.conformDirectory,
   });
 
-  /// Whether the app snapshots unsaved work for crash recovery at all.
-  /// There is no interval to go with it any more — the trigger is leaving
-  /// the app, not a clock.
-  final bool autosaveEnabled;
+  /// What the interval offers when the user first switches the clock on.
+  /// Ten minutes rather than the old five: the clock is a ceiling on
+  /// unprotected work now, and pauses already cover everything shorter.
+  static const int defaultPeriodicSnapshotMinutes = 10;
+
+  /// Whether leaving the app snapshots (default on).
+  ///
+  /// The cheapest of the three by a distance — it runs when the app is on
+  /// its way out, so nobody is drawing — and on mobile it is the only
+  /// warning the OS gives before it kills the process. Switchable because
+  /// the user asked for all three to be, not because turning it off is a
+  /// sensible thing to want.
+  final bool lifecycleSnapshotEnabled;
+
+  /// Whether a pause in the work is worth a snapshot (default on).
+  final bool pauseSnapshotEnabled;
+
+  /// Minutes of work the app will let pass without a snapshot, or null for
+  /// "only when you pause" (the default).
+  ///
+  /// The five-minute clock this replaces was removed because each tick
+  /// adopted every cel's file ref, so the next manual save could no longer
+  /// find its own work and rewrote the project whole. The overlay adopts
+  /// nothing now and writes a delta, so a clock is affordable again — and
+  /// a long focused stretch is exactly what a pause-only trigger cannot
+  /// cover, because it never pauses.
+  ///
+  /// 🔑 Read as a CEILING, not a cadence: any snapshot, from any trigger,
+  /// restarts the count. Ten minutes means "never more than ten minutes of
+  /// work at risk", not "write every ten minutes" — otherwise a pause at
+  /// 9:50 and a tick at 10:00 write the same bytes twice.
+  final int? periodicSnapshotMinutes;
 
   /// Where a never-saved project's voice takes land; null/empty = the
   /// app documents `Recordings` folder.
@@ -46,11 +76,18 @@ class AppSaveSettings {
   static const Object _unset = Object();
 
   AppSaveSettings copyWith({
-    bool? autosaveEnabled,
+    bool? lifecycleSnapshotEnabled,
+    bool? pauseSnapshotEnabled,
+    Object? periodicSnapshotMinutes = _unset,
     Object? recordingsDirectory = _unset,
     Object? conformDirectory = _unset,
   }) => AppSaveSettings(
-    autosaveEnabled: autosaveEnabled ?? this.autosaveEnabled,
+    lifecycleSnapshotEnabled:
+        lifecycleSnapshotEnabled ?? this.lifecycleSnapshotEnabled,
+    pauseSnapshotEnabled: pauseSnapshotEnabled ?? this.pauseSnapshotEnabled,
+    periodicSnapshotMinutes: identical(periodicSnapshotMinutes, _unset)
+        ? this.periodicSnapshotMinutes
+        : periodicSnapshotMinutes as int?,
     recordingsDirectory: identical(recordingsDirectory, _unset)
         ? this.recordingsDirectory
         : recordingsDirectory as String?,
@@ -60,20 +97,38 @@ class AppSaveSettings {
   );
 
   Map<String, dynamic> toJson() => {
-    'autosaveEnabled': autosaveEnabled,
+    'lifecycleSnapshotEnabled': lifecycleSnapshotEnabled,
+    'pauseSnapshotEnabled': pauseSnapshotEnabled,
+    'periodicSnapshotMinutes': periodicSnapshotMinutes,
     'recordingsDirectory': recordingsDirectory,
     'conformDirectory': conformDirectory,
   };
 
-  /// `sidecarDirectory` and `autosaveIntervalMinutes` left by an older
-  /// build are READ AND DROPPED. Neither names anything now — the location
-  /// is fixed and the trigger is not a clock — and carrying them forward
-  /// would let settings outlive the features that used them.
+  /// `sidecarDirectory` left by an older build is READ AND DROPPED — the
+  /// location is fixed now, and a setting that outlives its feature is a
+  /// value the next reader has to work out is dead.
+  ///
+  /// The two older names ARE carried, because they still mean something:
+  /// `autosaveEnabled` was the single switch over every trigger, and the
+  /// closest thing it now names is the pause; `autosaveIntervalMinutes`
+  /// was a clock a build in between dropped, and a user who had set one
+  /// should get it back rather than silently start from the default.
+  /// A non-positive interval means "off", the same thing null means, so a
+  /// 0 from anywhere cannot become a clock that fires continuously.
   static AppSaveSettings fromJson(Map<String, dynamic> json) {
     final recordings = json['recordingsDirectory'];
     final conforms = json['conformDirectory'];
+    final interval =
+        json['periodicSnapshotMinutes'] ?? json['autosaveIntervalMinutes'];
+    final legacyEnabled = json['autosaveEnabled'] as bool?;
     return AppSaveSettings(
-      autosaveEnabled: json['autosaveEnabled'] as bool? ?? true,
+      lifecycleSnapshotEnabled:
+          json['lifecycleSnapshotEnabled'] as bool? ?? true,
+      pauseSnapshotEnabled:
+          json['pauseSnapshotEnabled'] as bool? ?? legacyEnabled ?? true,
+      periodicSnapshotMinutes: interval is int && interval > 0
+          ? interval
+          : null,
       recordingsDirectory: recordings is String && recordings.isNotEmpty
           ? recordings
           : null,
@@ -86,13 +141,20 @@ class AppSaveSettings {
   @override
   bool operator ==(Object other) =>
       other is AppSaveSettings &&
-      other.autosaveEnabled == autosaveEnabled &&
+      other.lifecycleSnapshotEnabled == lifecycleSnapshotEnabled &&
+      other.pauseSnapshotEnabled == pauseSnapshotEnabled &&
+      other.periodicSnapshotMinutes == periodicSnapshotMinutes &&
       other.recordingsDirectory == recordingsDirectory &&
       other.conformDirectory == conformDirectory;
 
   @override
-  int get hashCode =>
-      Object.hash(autosaveEnabled, recordingsDirectory, conformDirectory);
+  int get hashCode => Object.hash(
+    lifecycleSnapshotEnabled,
+    pauseSnapshotEnabled,
+    periodicSnapshotMinutes,
+    recordingsDirectory,
+    conformDirectory,
+  );
 }
 
 /// The LIVE save policy (the [AppInput] idiom): the session restores and

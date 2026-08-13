@@ -110,25 +110,49 @@ void main() {
       'interval commit, and the sidecar folder switch', (tester) async {
     await pumpPreferences(tester, initialSection: PreferencesSection.autosave);
 
+    // Three triggers, three switches, and they move independently — the
+    // one switch that used to cover all of them also silenced the
+    // lifecycle snapshot, which is the only one a mobile OS leaves room
+    // for.
     await tester.tap(
       find.byKey(const ValueKey<String>('settings-autosave-enabled')),
     );
     await tester.pumpAndSettle();
-    expect(AppSave.settings.value.autosaveEnabled, isFalse);
+    expect(AppSave.settings.value.lifecycleSnapshotEnabled, isFalse);
+    expect(AppSave.settings.value.pauseSnapshotEnabled, isTrue);
 
     // Back on.
     await tester.tap(
       find.byKey(const ValueKey<String>('settings-autosave-enabled')),
     );
     await tester.pumpAndSettle();
-    expect(AppSave.settings.value.autosaveEnabled, isTrue);
+    expect(AppSave.settings.value.lifecycleSnapshotEnabled, isTrue);
 
-    // The INTERVAL field is gone with the timer: there is no cadence to
-    // set when the trigger is leaving the app.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('settings-autosave-pause')),
+    );
+    await tester.pumpAndSettle();
+    expect(AppSave.settings.value.pauseSnapshotEnabled, isFalse);
+    expect(AppSave.settings.value.lifecycleSnapshotEnabled, isTrue);
+
+    // The clock is off by default and reveals its interval only once on.
     expect(
-      find.byKey(const ValueKey<String>('settings-autosave-interval')),
+      find.byKey(const ValueKey<String>('settings-autosave-20')),
       findsNothing,
     );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('settings-autosave-periodic')),
+    );
+    await tester.pumpAndSettle();
+    expect(AppSave.settings.value.periodicSnapshotMinutes, 10);
+    // The chips appear below the fold in this viewport; a tap that lands
+    // on nothing would leave the value at its default and read as a pass.
+    final twenty = find.byKey(const ValueKey<String>('settings-autosave-20'));
+    await tester.ensureVisible(twenty);
+    await tester.pumpAndSettle();
+    await tester.tap(twenty);
+    await tester.pumpAndSettle();
+    expect(AppSave.settings.value.periodicSnapshotMinutes, 20);
 
     // The sidecar-folder row is GONE: the recovery snapshot lives in the
     // app's own support folder and there is nothing to point anywhere.

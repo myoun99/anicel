@@ -14,28 +14,42 @@ void main() {
     IdleSnapshotGuard guard,
     List<int> snapshots,
     void Function() elapse,
+    void Function() elapseCeiling,
     int Function() pending,
   })
-  makeGuard() {
+  makeGuard({Duration? ceiling}) {
+    const idleAfter = Duration(seconds: 15);
     final snapshots = <int>[];
     var pendingCount = 0;
-    void Function()? due;
+    // Two countdowns share one scheduler, told apart by their duration —
+    // which is also how the test proves the ceiling restarts.
+    void Function()? duePause;
+    void Function()? dueCeiling;
     final guard = IdleSnapshotGuard(
-      idleAfter: const Duration(seconds: 15),
-      onIdle: () => snapshots.add(snapshots.length),
+      idleAfter: idleAfter,
+      onSnapshot: () => snapshots.add(snapshots.length),
       scheduler: (duration, callback) {
-        expect(duration, const Duration(seconds: 15));
         pendingCount += 1;
-        due = callback;
+        if (duration == idleAfter) {
+          duePause = callback;
+        } else {
+          dueCeiling = callback;
+        }
         return Timer(Duration.zero, () {})..cancel();
       },
     );
+    guard.configure(pauseEnabled: true, ceiling: ceiling);
     return (
       guard: guard,
       snapshots: snapshots,
       elapse: () {
-        final callback = due;
-        due = null;
+        final callback = duePause;
+        duePause = null;
+        callback?.call();
+      },
+      elapseCeiling: () {
+        final callback = dueCeiling;
+        dueCeiling = null;
         callback?.call();
       },
       pending: () => pendingCount,
@@ -110,6 +124,122 @@ void main() {
     h.guard.noteActivity();
     h.elapse();
     expect(h.snapshots, hasLength(1));
+  });
+
+  group('the ceiling', () {
+    test('covers the stretch a pause never gets to', () {
+      // The reason it exists: a long focused session has no pause, so a
+      // pause-only guard protects nothing during exactly the hours that
+      // hold the most work.
+      final h = makeGuard(ceiling: const Duration(minutes: 10));
+      for (var i = 0; i < 200; i += 1) {
+        h.guard.noteActivity();
+      }
+      expect(h.snapshots, isEmpty, reason: 'the hand never stopped');
+      h.elapseCeiling();
+      expect(h.snapshots, hasLength(1));
+    });
+
+    test('🔑 is a ceiling, not a cadence — any snapshot restarts it', () {
+      // A pause at 9:50 followed by a tick at 10:00 would write two
+      // byte-identical files: nothing happened in between, and the overlay
+      // is "what changed since the last manual save". So the ten minutes
+      // are counted from the last SNAPSHOT, whoever took it.
+      final h = makeGuard(ceiling: const Duration(minutes: 10));
+      h.guard.noteActivity();
+      final beforePause = h.pending();
+      h.elapse();
+      expect(h.snapshots, hasLength(1), reason: 'the pause wrote it');
+      expect(
+        h.pending(),
+        greaterThan(beforePause),
+        reason: 'the ceiling was rescheduled from now, not left running',
+      );
+    });
+
+    test('and a ceiling snapshot settles the pause that was armed', () {
+      // The mirror image, and the one a deferred fire used to leak.
+      final h = makeGuard(ceiling: const Duration(minutes: 10));
+      h.guard.noteActivity();
+      expect(h.guard.isArmed, isTrue);
+      h.elapseCeiling();
+      expect(h.snapshots, hasLength(1));
+      expect(h.guard.isArmed, isFalse, reason: 'the debt is paid');
+      h.elapse();
+      expect(h.snapshots, hasLength(1), reason: 'no identical second write');
+    });
+
+    test('off means off — no ceiling countdown exists', () {
+      final h = makeGuard();
+      h.guard.noteActivity();
+      h.elapseCeiling();
+      expect(h.snapshots, isEmpty);
+    });
+
+    test('turning it on starts counting from now, not from app launch', () {
+      final h = makeGuard();
+      h.guard.configure(
+        pauseEnabled: true,
+        ceiling: const Duration(minutes: 10),
+      );
+      h.elapseCeiling();
+      expect(h.snapshots, hasLength(1));
+    });
+  });
+
+  group('a stroke in flight', () {
+    test('holds the write until the pen lifts', () {
+      // A snapshot reads the cel store on the caller's isolate, so landing
+      // one mid-stroke is the cost this repo minds most.
+      final h = makeGuard(ceiling: const Duration(minutes: 10));
+      h.guard.noteActivity(strokeInFlight: true);
+      h.elapseCeiling();
+      expect(h.snapshots, isEmpty, reason: 'deferred, not dropped');
+      expect(h.guard.isDeferred, isTrue);
+
+      h.guard.noteActivity(strokeInFlight: false);
+      expect(h.snapshots, hasLength(1));
+      expect(h.guard.isDeferred, isFalse);
+    });
+
+    test('a held write still settles the pause it interrupted', () {
+      // The leak: the ceiling defers past the stroke, the pen lifts, and
+      // the pause nobody cleared writes the same bytes seconds later.
+      final h = makeGuard(ceiling: const Duration(minutes: 10));
+      h.guard.noteActivity(strokeInFlight: true);
+      h.elapseCeiling();
+      h.guard.noteActivity(strokeInFlight: false);
+      expect(h.snapshots, hasLength(1));
+      h.elapse();
+      expect(h.snapshots, hasLength(1), reason: 'not twice for one moment');
+    });
+  });
+
+  group('switching the pause off', () {
+    test('stops it firing, and the ceiling carries on alone', () {
+      final h = makeGuard(ceiling: const Duration(minutes: 10));
+      h.guard.noteActivity();
+      h.guard.configure(
+        pauseEnabled: false,
+        ceiling: const Duration(minutes: 10),
+      );
+      h.elapse();
+      expect(h.snapshots, isEmpty);
+      h.elapseCeiling();
+      expect(h.snapshots, hasLength(1), reason: 'the other trigger stands');
+    });
+
+    test('switching it back on starts owing again', () {
+      final h = makeGuard();
+      h.guard.configure(pauseEnabled: false, ceiling: null);
+      h.guard.noteActivity();
+      expect(h.guard.isArmed, isFalse);
+      h.guard.configure(pauseEnabled: true, ceiling: null);
+      h.guard.noteActivity();
+      expect(h.guard.isArmed, isTrue);
+      h.elapse();
+      expect(h.snapshots, hasLength(1));
+    });
   });
 
   test('a disposed guard neither arms nor fires', () {
