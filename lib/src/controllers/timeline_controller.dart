@@ -758,7 +758,21 @@ class TimelineController {
     _pasteFrameForLayer(
       layerId: layerId,
       frameId: newFrameId,
-      bornFrame: duplicateFrameContent(frame: source, newFrameId: newFrameId),
+      // 🚨IT COMES OUT UNNAMED, and that is the point rather than an
+      // omission. A cel's name is its IDENTITY inside the layer — the
+      // rename path REFUSES a duplicate and offers to merge instead, which
+      // is this app's 「같은 이름 = 같은 그림」 rule. Carrying the source's
+      // name would assert the very link this verb exists to avoid, and do
+      // it behind that dialog's back: two cels claiming one name, a state
+      // no rename could ever produce.
+      //
+      // Unnamed cels coexist freely, so "not named yet" is a legal answer
+      // and the animator gives it one when they mean to. `seName` DOES
+      // travel — a speaker label is a property, not a name that links.
+      bornFrame: duplicateFrameContent(
+        frame: source,
+        newFrameId: newFrameId,
+      ).copyWith(name: null),
     );
   }
 

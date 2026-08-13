@@ -361,7 +361,6 @@ void main() {
         (frame) => frame.id == const FrameId('a-copy'),
       );
       expect(copy.strokes, hasLength(source.strokes.length));
-      expect(copy.name, source.name);
       for (var index = 0; index < source.strokes.length; index += 1) {
         expect(
           identical(copy.strokes[index], source.strokes[index]),
@@ -369,6 +368,54 @@ void main() {
           reason: 'a shared stroke object is a link wearing a copy\'s name',
         );
       }
+    });
+
+    test('the copy comes out UNNAMED — a name is the identity that would '
+        'link it right back to the cel it came from', () {
+      final named = _layer(
+        frames: [
+          Frame(
+            id: const FrameId('a'),
+            duration: 1,
+            strokes: _sampleStrokes,
+            name: 'A1',
+          ),
+          Frame(id: const FrameId('b'), duration: 1, strokes: const []),
+        ],
+      );
+      final fixture = _fixture(named);
+      fixture.controller.selectFrameIndex(3);
+
+      fixture.controller.pasteIndependentFrameForLayer(
+        layerId: const LayerId('layer'),
+        frameId: const FrameId('a'),
+        newFrameId: const FrameId('a-copy'),
+      );
+
+      final layer = fixture.repository.requireProject().tracks.single.cuts
+          .single
+          .layers
+          .single;
+      expect(
+        layer.frames
+            .firstWhere((frame) => frame.id == const FrameId('a-copy'))
+            .name,
+        isNull,
+      );
+      expect(
+        layer.frames
+            .firstWhere((frame) => frame.id == const FrameId('a'))
+            .name,
+        'A1',
+        reason: 'the source keeps the name it had',
+      );
+      // The invariant a rename enforces and this path must not slip past:
+      // inside a layer, a name belongs to exactly one cel.
+      final names = layer.frames
+          .map((frame) => frame.name)
+          .whereType<String>()
+          .toList();
+      expect(names.toSet(), hasLength(names.length));
     });
 
     test('it obeys the SAME placement rules — inside a hold it splits, '
@@ -422,14 +469,16 @@ final _sampleStrokes = [
 ];
 
 /// Default: a[0,3) .. X[3,5) .. b[5,9) .. a[9,12).
-Layer _layer({Map<int, TimelineExposure>? timeline}) {
+Layer _layer({Map<int, TimelineExposure>? timeline, List<Frame>? frames}) {
   return Layer(
     id: const LayerId('layer'),
     name: 'Layer',
-    frames: [
-      Frame(id: const FrameId('a'), duration: 3, strokes: _sampleStrokes),
-      Frame(id: const FrameId('b'), duration: 4, strokes: const []),
-    ],
+    frames:
+        frames ??
+        [
+          Frame(id: const FrameId('a'), duration: 3, strokes: _sampleStrokes),
+          Frame(id: const FrameId('b'), duration: 4, strokes: const []),
+        ],
     timeline:
         timeline ??
         {
