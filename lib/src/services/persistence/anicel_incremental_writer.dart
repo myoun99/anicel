@@ -292,13 +292,38 @@ Uint32List _buildCrcTable() {
   return table;
 }
 
-int anicelCrc32(Uint8List bytes) {
-  var c = 0xFFFFFFFF;
-  for (var i = 0; i < bytes.length; i += 1) {
-    c = _crcTable[(c ^ bytes[i]) & 0xFF] ^ (c >> 8);
+int anicelCrc32(Uint8List bytes) =>
+    anicelCrc32Finish(anicelCrc32Update(anicelCrc32Start, bytes));
+
+/// The running value a chunked CRC starts from.
+///
+/// Split out so a source too big to hold can still be checksummed: ZIP
+/// wants the CRC in the local header, which is written BEFORE the data,
+/// so a streamed entry passes over its bytes twice — once to fold them
+/// into this, once to copy them. Two reads of a warm file beat one
+/// allocation the size of the file, which is what a gigabyte of audio
+/// would otherwise cost on the device least able to afford it.
+const int anicelCrc32Start = 0xFFFFFFFF;
+
+/// How much of a streamed entry is held at once. One buffer, reused, so
+/// appending a gigabyte of audio costs this much memory and not a
+/// gigabyte.
+const int _streamChunkBytes = 256 * 1024;
+
+/// Folds [chunk] into a running CRC. Only the first [length] bytes count,
+/// so a caller reusing one buffer for a short final read does not have to
+/// trim it first.
+int anicelCrc32Update(int running, Uint8List chunk, [int? length]) {
+  var c = running;
+  final end = length ?? chunk.length;
+  for (var i = 0; i < end; i += 1) {
+    c = _crcTable[(c ^ chunk[i]) & 0xFF] ^ (c >> 8);
   }
-  return (c ^ 0xFFFFFFFF) & 0xFFFFFFFF;
+  return c;
 }
+
+/// Turns a running CRC into the value ZIP records.
+int anicelCrc32Finish(int running) => (running ^ 0xFFFFFFFF) & 0xFFFFFFFF;
 
 /// Appends [newEntries] ({name: raw bytes, STORE'd}) to the .anicel at
 /// [path] IN PLACE: new locals write from the old central directory's
@@ -308,18 +333,48 @@ int anicelCrc32(Uint8List bytes) {
 /// became empty or moved away) — their bytes turn to garbage like any
 /// shadowed entry, reclaimed at the next compaction. Returns the
 /// resulting layout (offsets valid for the rewritten file).
+/// One entry appended by streaming rather than by handing over bytes.
+///
+/// 🚨 The reason it exists: [appendAnicelEntries] takes a `Uint8List` per
+/// entry, which is right for a cel — small, and already deflated in hand —
+/// and wrong for media. A two-hundred-megabyte import would put two
+/// hundred megabytes on the heap to append it, which is the cost this
+/// round already took out of the full-save path and would otherwise walk
+/// straight back in through the incremental one.
+class AnicelStreamedEntry {
+  const AnicelStreamedEntry({
+    required this.name,
+    required this.length,
+    required this.readInto,
+  });
+
+  final String name;
+
+  /// Known up front, because a ZIP local header states it before the data
+  /// and this writer does not use data descriptors.
+  final int length;
+
+  /// Fills [buffer] from [position], answering how many bytes landed —
+  /// `MediaByteSource.readIntoSync`'s shape, so a source can be passed
+  /// straight in.
+  final int Function(Uint8List buffer, int position, int size) readInto;
+}
+
 AnicelZipLayout appendAnicelEntries({
   required String path,
   required Map<String, Uint8List> newEntries,
   Set<String> removeNames = const {},
+  List<AnicelStreamedEntry> streamedEntries = const [],
 }) {
   final file = File(path);
   // Tail-only parse: the append must not scale with file size.
   final layout = parseAnicelZipLayoutFile(path);
 
+  final streamedNames = {for (final entry in streamedEntries) entry.name};
   final survivors = [
     for (final entry in layout.entries)
       if (!newEntries.containsKey(entry.name) &&
+          !streamedNames.contains(entry.name) &&
           !removeNames.contains(entry.name))
         entry,
   ];
@@ -346,8 +401,51 @@ AnicelZipLayout appendAnicelEntries({
     writeOffset += header.length + entry.value.length;
   }
 
+  // Streamed entries are checksummed BEFORE the file is touched. Their
+  // headers state a CRC, and a source that turns out to be unreadable
+  // must not have already truncated the archive to find that out.
+  final streamedCrcs = <int>[];
+  for (final entry in streamedEntries) {
+    var running = anicelCrc32Start;
+    final buffer = Uint8List(_streamChunkBytes);
+    var position = 0;
+    while (position < entry.length) {
+      final wanted = entry.length - position;
+      final read = entry.readInto(
+        buffer,
+        position,
+        wanted < buffer.length ? wanted : buffer.length,
+      );
+      if (read <= 0) {
+        throw StateError(
+          'media entry "${entry.name}" ended after $position of '
+          '${entry.length} bytes',
+        );
+      }
+      running = anicelCrc32Update(running, buffer, read);
+      position += read;
+    }
+    streamedCrcs.add(anicelCrc32Finish(running));
+  }
+
+  var streamOffset = writeOffset;
+  for (var i = 0; i < streamedEntries.length; i += 1) {
+    final entry = streamedEntries[i];
+    final header = _localHeaderBytes(entry.name, entry.length, streamedCrcs[i]);
+    appended.add(
+      AnicelZipEntry(
+        name: entry.name,
+        localHeaderOffset: streamOffset,
+        dataOffset: streamOffset + header.length,
+        length: entry.length,
+        crc32: streamedCrcs[i],
+      ),
+    );
+    streamOffset += header.length + entry.length;
+  }
+
   // Central directory over survivors + appended.
-  final centralOffset = writeOffset;
+  final centralOffset = streamOffset;
   final all = [...survivors, ...appended];
   final centralBytes = _centralDirectoryBytes(all);
   final eocd = _eocdBytes(
@@ -357,12 +455,39 @@ AnicelZipLayout appendAnicelEntries({
   );
 
   // One sequential write: truncate at the old central directory, then
-  // locals + central + EOCD.
+  // locals + streamed locals + central + EOCD.
   final raf = file.openSync(mode: FileMode.append);
   try {
     raf.truncateSync(layout.centralDirectoryOffset);
     raf.setPositionSync(layout.centralDirectoryOffset);
     raf.writeFromSync(builder.takeBytes());
+    for (var i = 0; i < streamedEntries.length; i += 1) {
+      final entry = streamedEntries[i];
+      raf.writeFromSync(_localHeaderBytes(
+        entry.name,
+        entry.length,
+        streamedCrcs[i],
+      ));
+      // Chunked on purpose: one buffer, reused, whatever the asset weighs.
+      final buffer = Uint8List(_streamChunkBytes);
+      var position = 0;
+      while (position < entry.length) {
+        final wanted = entry.length - position;
+        final read = entry.readInto(
+          buffer,
+          position,
+          wanted < buffer.length ? wanted : buffer.length,
+        );
+        if (read <= 0) {
+          throw StateError(
+            'media entry "${entry.name}" ended after $position of '
+            '${entry.length} bytes',
+          );
+        }
+        raf.writeFromSync(buffer, 0, read);
+        position += read;
+      }
+    }
     raf.writeFromSync(centralBytes);
     raf.writeFromSync(eocd);
     raf.flushSync();
