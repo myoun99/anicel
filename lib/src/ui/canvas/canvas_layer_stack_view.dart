@@ -48,6 +48,7 @@ final class CanvasLayerImageNode extends CanvasLayerStackNode {
 final class CanvasActiveLayerNode extends CanvasLayerStackNode {
   const CanvasActiveLayerNode({
     required this.opacity,
+    this.blendMode = LayerBlendMode.normal,
     this.pose,
     this.anchorPoint,
     this.effects = const [],
@@ -56,6 +57,17 @@ final class CanvasActiveLayerNode extends CanvasLayerStackNode {
   /// The active row's effective opacity (the interactive view used to
   /// apply this itself, through the panel's content-opacity wrap).
   final double opacity;
+
+  /// The active row's composite blend — the SAME field its cached twin
+  /// [CanvasLayerImageRequest.blendMode] carries, because being the row you
+  /// are drawing on is not a reason to composite differently.
+  ///
+  /// 🚨It was missing entirely until now, which is ㊱'s shape one field over:
+  /// the value never reached the painter because there was nowhere to put
+  /// it, so a multiply row went back to srcOver the moment you stood on it
+  /// and the editing canvas disagreed with playback about the same frame.
+  final LayerBlendMode blendMode;
+
   final TransformPose? pose;
   final CanvasPoint? anchorPoint;
 
@@ -376,6 +388,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           );
         case CanvasActiveLayerNode(
           :final opacity,
+          :final blendMode,
           :final pose,
           :final anchorPoint,
           :final effects,
@@ -386,6 +399,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           out.add(
             _PaintActiveSurface(
               opacity: opacity,
+              blendMode: blendMode,
               pose: pose,
               anchorPoint: anchorPoint,
               effects: effects,
@@ -475,6 +489,7 @@ final class _PaintImage extends _PaintNode {
 final class _PaintActiveSurface extends _PaintNode {
   const _PaintActiveSurface({
     required this.opacity,
+    required this.blendMode,
     required this.pose,
     required this.anchorPoint,
     required this.effects,
@@ -484,6 +499,12 @@ final class _PaintActiveSurface extends _PaintNode {
   /// stopped here — the field did not exist, so the live surface drew at full
   /// strength while every OTHER row honoured its slider.
   final double opacity;
+
+  /// The same story as [opacity], one field over and one round later: the
+  /// blend had no field on the node either, so it could not stop here — it
+  /// never started. See [CanvasActiveLayerNode.blendMode].
+  final LayerBlendMode blendMode;
+
   final TransformPose? pose;
   final CanvasPoint? anchorPoint;
   final List<ResolvedLayerEffect> effects;
@@ -660,7 +681,11 @@ class _LayerStackPainter extends CustomPainter {
                 if (pass.crossfades) {
                   canvas.restore();
                 }
-              case _PaintActiveSurface(:final opacity, :final effects):
+              case _PaintActiveSurface(
+                :final opacity,
+                :final blendMode,
+                :final effects,
+              ):
                 // The live surface, drawn by the SAME painter the standalone
                 // interactive view uses — the canvas is already
                 // viewport-transformed, so only the content body runs.
@@ -676,12 +701,24 @@ class _LayerStackPainter extends CustomPainter {
                 // merged mode: there the interactive view is input-only, so
                 // the wrap dims a widget that paints nothing and the layer
                 // you are drawing on stayed at full strength.
+                //
+                // The BLEND rides the same buffer for a reason of its own: the
+                // surface painter draws many separate tiles, and a non-srcOver
+                // blend applied per tile would compose each tile against the
+                // rows below it independently — overlapping coverage inside one
+                // row would then darken at the seams. One buffer, one blend, is
+                // the same answer [_PaintGroup] already gives for a folder.
                 final activeEffects = resolveCompositeEffectPaint(effects);
                 final activeAlpha = opacity.clamp(0.0, 1.0).toDouble();
-                final needsBuffer = activeEffects.isNotEmpty || activeAlpha < 1;
+                final activeBlend = blendMode.paintBlendMode;
+                final needsBuffer =
+                    activeEffects.isNotEmpty ||
+                    activeAlpha < 1 ||
+                    activeBlend != BlendMode.srcOver;
                 if (needsBuffer) {
                   final activePaint = Paint()
-                    ..color = Color.fromRGBO(0, 0, 0, activeAlpha);
+                    ..color = Color.fromRGBO(0, 0, 0, activeAlpha)
+                    ..blendMode = activeBlend;
                   activeEffects.applyTo(activePaint);
                   canvas.saveLayer(
                     effectBufferBounds(
@@ -758,6 +795,14 @@ class _LayerStackPainter extends CustomPainter {
     return oldDelegate.canvasSize != canvasSize ||
         oldDelegate.viewport != viewport ||
         oldDelegate.paintPaper != paintPaper ||
+        // The paper's COLOR is painted here (see the `paintPaper` branch), so
+        // it belongs in the gate beside the flag that turns it on. It was the
+        // one value this painter drew and did not compare: changing the
+        // project background left the editing canvas on its old paper until
+        // something unrelated moved. `ProjectBackground` compares by argb, so
+        // this costs an int compare, not an identity miss every frame — and
+        // the sibling `playback_frame_painter` already gates on it.
+        oldDelegate.paperBackground != paperBackground ||
         !identical(oldDelegate.activeSurfacePainter, activeSurfacePainter) ||
         !_treesMatch(oldDelegate.nodes, nodes);
   }
@@ -794,6 +839,7 @@ class _LayerStackPainter extends CustomPainter {
           // paint the new value only when some unrelated fact moved (the
           // ㉘/㉞ shape: the value is right and the gate says "unchanged").
           if (x.opacity != y.opacity ||
+              x.blendMode != y.blendMode ||
               x.pose != y.pose ||
               x.anchorPoint != y.anchorPoint ||
               !listEquals(x.effects, y.effects)) {
