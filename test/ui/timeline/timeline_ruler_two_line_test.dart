@@ -39,9 +39,13 @@ void main() {
 
     expect(timelineHeaderModel(tester, 22).label, '23');
     expect(timelineHeaderModel(tester, 24).label, '25');
-    // The seconds line: frame 24 starts second 2, off-boundary rows stay
-    // blank (plain numbers only, no quote notation).
-    expect(timelineHeaderModel(tester, 24).secondsLabel, '2');
+    // The seconds line marks ELAPSED time, so frame index 24 is where one
+    // second has passed (유저 2026-08-13: 「초 표시하는곳. 1부터 시작하는데
+    // 그게아니라 0부터 시작하도록」). It used to print 2 here, one ahead of
+    // the clock. Off-boundary rows stay blank — plain numbers, no quote
+    // notation.
+    expect(timelineHeaderModel(tester, 0).secondsLabel, '0');
+    expect(timelineHeaderModel(tester, 24).secondsLabel, '1');
     expect(timelineHeaderModel(tester, 23).secondsLabel, '');
     expect(timelineHeaderModel(tester, 25).secondsLabel, '');
   });
@@ -59,10 +63,13 @@ void main() {
       '24',
       reason: 'frame 23 → cycle 24',
     );
-    // Frame 24 restarts the cycle at 1 — and its seconds label 2 sits on
-    // the same boundary.
+    // Frame 24 restarts the cycle at 1 — and the seconds mark on the same
+    // boundary reads 1, because that is where one second has elapsed. The
+    // two lines counting differently is the point: the bottom one numbers
+    // FRAMES within the second (a count, from 1) and the top one marks a
+    // POSITION on the clock (elapsed, from 0).
     expect(timelineHeaderModel(tester, 24).label, '1');
-    expect(timelineHeaderModel(tester, 24).secondsLabel, '2');
+    expect(timelineHeaderModel(tester, 24).secondsLabel, '1');
     expect(
       timelineHeaderModel(tester, 25).label,
       '2',

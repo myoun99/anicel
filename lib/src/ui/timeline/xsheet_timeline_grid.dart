@@ -24,7 +24,8 @@ import 'timeline_cell_exposure_state.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
 import 'timeline_cell_style.dart';
-import 'timeline_frame_ruler_painter.dart' show TimelineRulerHeaderModel;
+import 'timeline_frame_ruler_painter.dart'
+    show TimelineRulerHeaderModel, timelineRulerSecondsLabel;
 import 'timeline_body_norishiro_boundary.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
@@ -2385,9 +2386,10 @@ class XSheetFrameRailPainter extends CustomPainter {
           : showSeconds
           ? '${frameIndex % safeFps + 1}'
           : '${frameIndex + 1}',
-      secondsLabel: frameIndex % safeFps == 0
-          ? '${frameIndex ~/ safeFps + 1}'
-          : '',
+      secondsLabel: timelineRulerSecondsLabel(
+        frameIndex: frameIndex,
+        framesPerSecond: safeFps,
+      ),
       selected: selected,
       outsidePlaybackRange: outside,
       background: selected
