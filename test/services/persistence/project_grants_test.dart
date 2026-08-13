@@ -150,6 +150,30 @@ void main() {
     );
 
     test('a grant survives a save and reopen', () async {
+      // ⚠️ The platform is PINNED, and it has to be. Opening a project
+      // resolves its grants, and whether that even happens is a property
+      // of the host OS: `grantsAreScoped` is true on Apple and Android and
+      // false on Windows and Linux. Left unpinned, this asserted whatever
+      // the machine running it happened to be — green on the Windows
+      // workstation and on the Linux CI shard, red on the macOS one, and
+      // the macOS job runs once a day so the red hid until somebody
+      // else's PR rebased onto it.
+      //
+      // macOS is the platform this feature exists for, so it is the one
+      // worth pinning; the resolver seam stands in for the native channel
+      // that no test machine has.
+      FolderPicker.debugOperatingSystem = 'macos';
+      addTearDown(() => FolderPicker.debugOperatingSystem = null);
+      FolderPicker.debugBookmarkResolver = (bookmark, kind) async =>
+          FolderGrant.granted(
+            path: '${directory.path}/참고영상.mp4'.replaceAll('\\', '/'),
+            // Apple re-issues on every resolve, which is the answer the
+            // session must keep instead of the one it arrived with.
+            bookmark: 'ZnJlc2g=',
+            kind: kind,
+          );
+      addTearDown(() => FolderPicker.debugBookmarkResolver = null);
+
       final s = session();
       final movie = File('${directory.path}/참고영상.mp4')
         ..writeAsBytesSync([0, 0, 0, 24]);
@@ -169,10 +193,13 @@ void main() {
 
       final reopened = session();
       await reopened.openProjectFromFile(projectPath);
+      // What the FILE kept — the round trip this test is named for.
+      expect(reopened.debugStoredGrants, hasLength(1));
+      expect(reopened.debugStoredGrants.single.path, path);
+      expect(reopened.debugStoredGrants.single.kind, GrantKind.file);
+      // And what this launch can USE, which is the resolver's answer.
       expect(reopened.debugMediaGrants, hasLength(1));
-      expect(reopened.debugMediaGrants.single.path, path);
-      expect(reopened.debugMediaGrants.single.bookmark, 'Ym9va21hcms=');
-      expect(reopened.debugMediaGrants.single.kind, GrantKind.file);
+      expect(reopened.debugMediaGrants.single.bookmark, 'ZnJlc2g=');
       reopened.dispose();
     });
 
@@ -217,7 +244,10 @@ void main() {
 
       final reopened = session();
       await reopened.openProjectFromFile(projectPath);
-      expect(reopened.debugMediaGrants, isEmpty);
+      // The FILE list: nothing was written, so nothing comes back. (The
+      // usable list would also be empty here, but for a reason that
+      // varies by host OS — see the pinning note above.)
+      expect(reopened.debugStoredGrants, isEmpty);
       reopened.dispose();
     });
 
@@ -460,8 +490,11 @@ void main() {
 
       final reopened = session();
       await reopened.openProjectFromFile(projectPath);
+      // ⚠️ What the FILE kept, not what this launch can use — the latter
+      // depends on the host OS (see the pinning note above) and this test
+      // is about the kind rule, not about resolving.
       expect(
-        reopened.debugMediaGrants,
+        reopened.debugStoredGrants,
         hasLength(1),
         reason: 'the one asset that stays outside is the one that needs a '
             'token to be read again',
