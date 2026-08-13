@@ -72,6 +72,26 @@ class CanvasFloorInsets extends InheritedWidget {
   static CanvasFloorInsets? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<CanvasFloorInsets>();
 
+  /// Whether [context] is on the floor AT ALL — the presence of this
+  /// widget, not the numbers in it.
+  ///
+  /// 유저 확정 2026-08-13 (「바닥 둘만」): the floor's panels lay their whole
+  /// vocabulary out on the pill, and a panel in a rail or the bottom dock
+  /// keeps it behind the gear. That is this question, and the tree already
+  /// answers it — the same reason [maybeOf] exists rather than a flag each
+  /// host remembers to pass.
+  ///
+  /// 🚨Deliberately does NOT subscribe. [maybeOf] registers a dependency on
+  /// the INSETS, which change on every frame of a rail resize; a canvas
+  /// panel that took that dependency to learn one unchanging bool would
+  /// rebuild its whole spine through the drag. Presence cannot change
+  /// without this element being rebuilt anyway (the floor and the rails are
+  /// different subtrees, so moving a panel between them rebuilds it), which
+  /// is exactly when this is read again.
+  static bool isFloor(BuildContext context) =>
+      context.getElementForInheritedWidgetOfExactType<CanvasFloorInsets>() !=
+      null;
+
   @override
   bool updateShouldNotify(CanvasFloorInsets oldWidget) =>
       oldWidget.insets != insets ||

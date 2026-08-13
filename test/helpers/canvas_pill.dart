@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// The canvas pill's settings list (유저 확정 2026-08-13).
+/// The canvas pill's settings list — where a control that did not fit on
+/// the pill went (유저 확정 2026-08-13).
 ///
-/// The pill shows the zoom readout, Fit and the host's own few controls;
-/// 1:1, rotate, flip and the three surface colours moved behind the gear,
-/// because "공통적으로 쓰는 것만 노출하고 나머지는 설정". Every flow that
-/// pressed one of those gains ONE tap here and nothing else — which is the
-/// same shape the media browser's row menu took when its buttons moved.
+/// 🚨WHICH controls are in there depends on WHERE the panel is and how wide
+/// it is, so a test that reaches for one has to know which pill it is
+/// holding. A panel in a rail or a dock folds 1:1, rotate, flip, the
+/// surface colours and the host's own verbs at every width, and that is the
+/// bar most tests here are looking at. The FLOOR's two panels start with
+/// all of it laid out and fold only what will not fit — so on a wide floor
+/// the gear does not exist at all and this helper will not find it.
+///
 /// Pass [of] whenever more than one canvas panel is mounted — the default
 /// workspace docks the timesheet open, and the sheet is a real
 /// [BrushCanvasPanel] with a gear of its own (see `panel_finders.dart`).

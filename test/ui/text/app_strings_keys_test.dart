@@ -494,6 +494,8 @@ void main() {
     'brFolderIcon': (s) => s.brFolderIcon,
     'commonReset': (s) => s.commonReset,
     'commonFill': (s) => s.commonFill,
+    'viewZoomIn': (s) => s.viewZoomIn,
+    'viewZoomOut': (s) => s.viewZoomOut,
     'viewFitToView': (s) => s.viewFitToView,
     'viewResetView': (s) => s.viewResetView,
     'panelSettings': (s) => s.panelSettings,
