@@ -266,7 +266,7 @@ void main() {
       final sep = Platform.pathSeparator;
       await writePng('$root${sep}A1.png', seed: 0xFF111111);
       await writePng('$root${sep}_TS_a.png', seed: 0xFF222222);
-      final movie = File('${tempDir.path}$sep$root${sep}참고.mp4');
+      final movie = File([tempDir.path, root, '참고.mp4'].join(sep));
       await movie.writeAsBytes(const [0, 0, 0, 24]);
       return s.importCutFolder(
         folderPath: '${tempDir.path}$sep$root',
