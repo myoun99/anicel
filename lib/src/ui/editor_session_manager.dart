@@ -2518,6 +2518,11 @@ class EditorSessionManager extends ChangeNotifier {
                 : _stackLayerOpacity(entry.layer, stackCut.layers, frameIndex);
             return CanvasActiveLayerNode(
               opacity: entry.opacity,
+              // The SAME entry the image branch below reads it from. It was
+              // dropped right here — five fields arrived and four were
+              // forwarded, so standing on a multiply row silently made it
+              // normal on the editing canvas only.
+              blendMode: entry.blendMode,
               pose: entry.pose,
               anchorPoint: entry.anchorPoint,
               effects: entry.effects,
@@ -2574,6 +2579,13 @@ class EditorSessionManager extends ChangeNotifier {
       nodes.add(
         CanvasActiveLayerNode(
           opacity: activeLayerOpacity,
+          // The row's own blend, since this route has no composite entry to
+          // read one from. ⚠️That is the whole problem with this block and
+          // not just with this field — it re-derives by hand what the plan
+          // already knows, which is why it also loses the folder chain, the
+          // group buffer and its z-position. Fixing THAT retires this
+          // argument along with the rest of the block.
+          blendMode: activeStackLayer.blendMode,
           // No master gate here: each effect's own switch gates it inside
           // the resolve, so this route cannot forget one (R8).
           effects: resolveLayerEffectsAt(
