@@ -1260,10 +1260,10 @@ class AppStrings {
     'mediaFindInFolder': 'Find in folder…',
     'mediaRelinkFound': 'Found {m} of {n}. Relink them?',
     'mediaRemove': 'Remove',
-    'mediaRegisterInProject': 'Register in project',
+    'mediaRegisterInProject': 'Keep inside the project file',
     'mediaAlreadyInProject':
-        'Nothing to copy — it already lives in the project, or the project '
-        'has not been saved anywhere yet.',
+        'Nothing to take in — it is kept inside already, or it is a kind '
+        'that always stays a reference (video).',
     'mediaStillLinked': 'Still linked on SE rows — remove its sounds first.',
     'mediaOpenInViewer': 'Open in Viewer',
     'mediaOpenInSubViewer': 'Open in Sub Viewer',
@@ -2025,10 +2025,10 @@ class AppStrings {
     'mediaFindInFolder': 'フォルダーから探す…',
     'mediaRelinkFound': '{n} 件中 {m} 件が見つかりました。再リンクしますか？',
     'mediaRemove': '削除',
-    'mediaRegisterInProject': 'プロジェクトに取り込む',
+    'mediaRegisterInProject': 'プロジェクトファイルに取り込む',
     'mediaAlreadyInProject':
-        'コピーするものがありません — すでにプロジェクト内にあるか、'
-        'プロジェクトがまだ保存されていません。',
+        '取り込むものがありません — すでにファイル内にあるか、'
+        '常に参照のままの種類（動画）です。',
     'mediaStillLinked': 'SE行でまだ使われています — 先に音を外してください。',
     'mediaOpenInViewer': 'ビューアで開く',
     'mediaOpenInSubViewer': 'サブビューアで開く',
@@ -2786,8 +2786,8 @@ class AppStrings {
     'mediaFindInFolder': '폴더에서 찾기…',
     'mediaRelinkFound': '{n}개 중 {m}개를 찾았습니다. 다시 연결할까요?',
     'mediaRemove': '제거',
-    'mediaRegisterInProject': '에셋 폴더에 등록',
-    'mediaAlreadyInProject': '복사할 것이 없습니다 — 이미 프로젝트 안에 있거나, 프로젝트가 아직 저장되지 않았습니다.',
+    'mediaRegisterInProject': '프로젝트 파일에 품기',
+    'mediaAlreadyInProject': '품을 것이 없습니다 — 이미 파일 안에 있거나, 항상 참조로 남는 종류(동영상)입니다.',
     'mediaStillLinked': 'SE 행에서 아직 쓰이고 있습니다 — 소리를 먼저 빼세요.',
     'mediaOpenInViewer': '뷰어에서 열기',
     'mediaOpenInSubViewer': '서브 뷰어에서 열기',
@@ -3567,10 +3567,10 @@ class AppStrings {
     'mediaFindInFolder': 'Chercher dans un dossier…',
     'mediaRelinkFound': '{m} sur {n} trouvés. Les relier ?',
     'mediaRemove': 'Retirer',
-    'mediaRegisterInProject': 'Enregistrer dans le projet',
+    'mediaRegisterInProject': 'Conserver dans le fichier de projet',
     'mediaAlreadyInProject':
-        "Rien à copier — le fichier est déjà dans le projet, ou le projet "
-        "n'a pas encore été enregistré.",
+        "Rien à intégrer — le fichier est déjà à l'intérieur, ou son type "
+        "reste toujours une référence (vidéo).",
     'mediaOpenInViewer': 'Ouvrir dans la visionneuse',
     'mediaOpenInSubViewer': 'Ouvrir dans la visionneuse secondaire',
     'mediaViewerEmpty':
@@ -4313,8 +4313,8 @@ class AppStrings {
     'mediaFindInFolder': '在文件夹中查找…',
     'mediaRelinkFound': '在 {n} 个中找到 {m} 个。要重新链接吗？',
     'mediaRemove': '移除',
-    'mediaRegisterInProject': '登记到项目',
-    'mediaAlreadyInProject': '没有可复制的内容 — 它已在项目中，或项目尚未保存。',
+    'mediaRegisterInProject': '收入项目文件',
+    'mediaAlreadyInProject': '没有可收入的内容 — 它已在文件内，或属于始终保持引用的类型（视频）。',
     'mediaStillLinked': 'SE 行仍在使用 — 请先移除它的声音。',
     'mediaOpenInViewer': '在查看器中打开',
     'mediaOpenInSubViewer': '在副查看器中打开',

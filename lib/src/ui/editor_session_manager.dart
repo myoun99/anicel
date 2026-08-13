@@ -23,7 +23,7 @@ import '../services/import/tvp_json_import_planner.dart';
 import '../services/input/wintab_pen_service.dart';
 import '../services/pdf/pdf_render_service.dart';
 import '../services/project_lookup.dart'
-    show cutIdOfLayer, projectAudioSourcePaths;
+    show cutIdOfLayer, mediaKindBelongsInArchive, projectAudioSourcePaths;
 import '../models/app_language.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
@@ -166,8 +166,7 @@ import '../services/audio/audio_mixer_reference.dart'
     show AudioMixClip, AudioMixSource;
 import 'playback/audio_input_monitor.dart';
 import 'playback/audio_playback_schedule.dart' show ScheduledAudioClip;
-import '../services/audio/audio_conform_pipeline.dart'
-    show ConformCacheLayout, ProjectAssetLayout;
+import '../services/audio/audio_conform_pipeline.dart' show ConformCacheLayout;
 import '../services/audio/conform_wav_codec.dart' show encodeConformWav;
 import '../services/commands/update_media_assets_command.dart';
 import '../models/se_take_placement.dart';
@@ -6264,13 +6263,9 @@ class EditorSessionManager extends ChangeNotifier {
     if (layer == null || layer.kind != LayerKind.se) {
       return;
     }
-    // Copy or reference per the import's choice, then conform from
-    // scratch — the file may have changed on disk since a previous
-    // import.
-    final effectivePath = importAudioFile(
-      filePath,
-      copyIntoProject: copyIntoProject,
-    );
+    // Conform from scratch — the file may have changed on disk since a
+    // previous import.
+    final effectivePath = importAudioFile(filePath);
     final frameIndex = _timelineController.currentFrameIndex < 0
         ? 0
         : _timelineController.currentFrameIndex;
@@ -6288,7 +6283,11 @@ class EditorSessionManager extends ChangeNotifier {
     final carrier = activeLayer ?? layer;
     // The pool learns every imported file (its own undo step, like the
     // SE-instance creation above) so the browser can offer it for reuse.
-    addMediaAssets([effectivePath]);
+    // The choice travels WITH it: the pool entry is what the save reads to
+    // decide whose bytes go inside the archive, so an import that dropped
+    // it here would leave a carried sound outside the file it was carried
+    // into.
+    addMediaAssets([effectivePath], carried: copyIntoProject);
     _cutCommandCoordinator.updateLayerAudioClips(
       cutId: requireActiveCut.id,
       layerId: carrier.id,
@@ -6301,28 +6300,20 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- Audio import: originals into the project's Media/ folder ------------
+  // --- Audio import: conform and waveform for a freshly picked file -------
 
-  /// Brings [sourcePath] into the project and kicks its conform. Returns
-  /// the path the project should reference from here on.
+  /// Kicks [sourcePath]'s conform and returns the path the project records
+  /// for it — the file where the user keeps it, whichever way the import
+  /// window's carry-or-reference switch is set.
   ///
-  /// With [copyIntoProject] the file is copied into
-  /// `<project>.assets/Media/` (the Pro Tools/Logic rule — the project
-  /// folder owns its sounds, so a Drive folder opened on another machine
-  /// has them); without it the original stays where it is and the project
-  /// points at it.
-  ///
-  /// A copy falls back to referencing [sourcePath] directly when there is
-  /// nowhere to copy yet (never-saved project) or the copy fails — an
-  /// import must degrade to Premiere-style referencing, never refuse.
-  String importAudioFile(
-    String sourcePath, {
-    required bool copyIntoProject,
-  }) {
-    final effectivePath = _mediaPathFor(
-      sourcePath,
-      copyIntoProject: copyIntoProject,
-    );
+  /// CARRYING used to mean a second copy on disk under
+  /// `<project>.assets/Media/`, and that copy was the last thing making a
+  /// `.anicel` grow a sibling folder. It now means the save writes the
+  /// bytes INSIDE the archive, so the choice is recorded as
+  /// [MediaAsset.carried] — where a choice belongs — instead of being
+  /// smuggled into the path and read back off it later.
+  String importAudioFile(String sourcePath) {
+    final effectivePath = _normalizedPath(sourcePath);
     // Fresh conform + waveform budget: on a re-import the file may have
     // changed on disk. (A byte-identical reused copy re-fingerprints
     // against the existing conform and lands as `reused` without a
@@ -6332,7 +6323,7 @@ class EditorSessionManager extends ChangeNotifier {
     return effectivePath;
   }
 
-  /// The media browser's import: same copy-or-reference choice as a
+  /// The media browser's import: same carry-or-reference choice as a
   /// timeline import, pool only (no clip link). Non-audio kinds register
   /// with their detected kind (R3b) — the batch stays one undo through
   /// [addMediaAssets].
@@ -6346,32 +6337,27 @@ class EditorSessionManager extends ChangeNotifier {
     for (final path in paths) {
       final source = _normalizedPath(path);
       final kind = mediaAssetKindForPath(source) ?? MediaAssetKind.image;
-      final effectivePath = kind == MediaAssetKind.audio
-          ? importAudioFile(source, copyIntoProject: copyIntoProject)
-          : _mediaPathFor(source, copyIntoProject: copyIntoProject);
-      if (!known.add(effectivePath)) {
+      if (kind == MediaAssetKind.audio) {
+        importAudioFile(source);
+      }
+      if (!known.add(source)) {
         continue;
       }
-      // Both compared in the recorded spelling: a reference registers as
-      // its own original, and only a copy that ACTUALLY landed elsewhere
-      // carries the source it came from.
-      final isCopy = effectivePath != source;
       added.add(
         MediaAsset(
-          path: effectivePath,
-          name: mediaAssetDefaultName(effectivePath),
+          path: source,
+          name: mediaAssetDefaultName(source),
           kind: kind,
-          sourcePath: isCopy ? source : null,
-          sourceStamp: isCopy ? _mediaSourceStampFor(source) : null,
-          // What the user asked for, not what happened to the file. The
-          // kind still decides whether it CAN be carried.
+          // What the user asked for. The kind still decides whether it CAN
+          // be carried, and NEITHER is a path any more: every import
+          // records the file where the user keeps it, and the save reads
+          // this to decide whose bytes travel inside the archive.
           carried: copyIntoProject,
-          // Stamped for a REFERENCE too, unlike the two above. Those answer
-          // "did the original we copied from change?", which a reference
-          // has no original for. Identity answers "which file is this?",
-          // and a reference is exactly the asset that can go missing and
-          // need finding again.
-          identity: readMediaIdentity(effectivePath),
+          // Answers "which file is this?", so it is stamped for a carried
+          // asset and a reference alike — a reference is exactly the one
+          // that can go missing and have to be found again, and a carried
+          // asset still has an original on disk until the first save.
+          identity: readMediaIdentity(source),
         ),
       );
     }
@@ -6380,18 +6366,6 @@ class EditorSessionManager extends ChangeNotifier {
     }
     _cutCommandCoordinator.updateMediaAssets([...pool, ...added]);
     notifyListeners();
-  }
-
-  String? _mediaSourceStampFor(String path) {
-    try {
-      final stat = File(path).statSync();
-      return mediaSourceStamp(
-        lengthBytes: stat.size,
-        modifiedMillis: stat.modified.millisecondsSinceEpoch,
-      );
-    } on Object {
-      return null;
-    }
   }
 
   // --- Media import (R3b): stills, GIF sequences, cut folders -------------
@@ -6470,13 +6444,9 @@ class EditorSessionManager extends ChangeNotifier {
     final project = _repository.requireProject();
     final mint = _importIdMint();
     final source = _normalizedPath(path);
-    final storedPath = rasterize
-        ? source
-        : _mediaPathFor(source, copyIntoProject: copyIntoProject);
-    final sourceStamp = _mediaSourceStampFor(source);
-    // Of the STORED path, not the source: it is the registered file that
-    // can go missing and have to be found again.
-    final identity = readMediaIdentity(storedPath);
+    // The file where the user keeps it, either way: carrying is a fact
+    // about the SAVE now, not about a copy made at import time.
+    final identity = readMediaIdentity(source);
     final displayName = mediaAssetDefaultName(source);
 
     final cutId = targetCut?.id ?? mint.nextCutId();
@@ -6489,15 +6459,13 @@ class EditorSessionManager extends ChangeNotifier {
     final List<MediaAsset> assets;
     if (decoded.length == 1) {
       final plan = planStillImageLayer(
-        sourceFile: storedPath,
+        sourceFile: source,
         displayName: displayName,
         cutId: cutId,
         duration: stillDuration,
         fit: fit,
         rasterize: rasterize,
         mint: mint,
-        sourcePath: storedPath == source ? null : source,
-        sourceStamp: sourceStamp,
         identity: identity,
         carried: copyIntoProject,
       );
@@ -6515,16 +6483,14 @@ class EditorSessionManager extends ChangeNotifier {
         fingerprints.add(data == null ? null : _foldBytes(data));
       }
       final plan = planSequenceLayer(
-        sourceFiles: List<String>.filled(decoded.length, storedPath),
+        sourceFiles: List<String>.filled(decoded.length, source),
         frameFingerprints: fingerprints,
         displayName: displayName,
         cutId: cutId,
         fit: fit,
         rasterize: rasterize,
         mint: mint,
-        referencePath: storedPath,
-        sourcePath: storedPath == source ? null : source,
-        sourceStamp: sourceStamp,
+        referencePath: source,
         identity: identity,
         carried: copyIntoProject,
       );
@@ -6639,11 +6605,7 @@ class EditorSessionManager extends ChangeNotifier {
       final project = _repository.requireProject();
       final mint = _importIdMint();
       final source = _normalizedPath(path);
-      final storedPath = rasterize
-          ? source
-          : _mediaPathFor(source, copyIntoProject: copyIntoProject);
-      final sourceStamp = _mediaSourceStampFor(source);
-      final identity = readMediaIdentity(storedPath);
+      final identity = readMediaIdentity(source);
       final displayName = mediaAssetDefaultName(source);
       final cutId = targetCut?.id ?? mint.nextCutId();
 
@@ -6657,15 +6619,13 @@ class EditorSessionManager extends ChangeNotifier {
             ? (targetCut!.duration < 1 ? 1 : targetCut.duration)
             : project.fps;
         final plan = planStillImageLayer(
-          sourceFile: storedPath,
+          sourceFile: source,
           displayName: displayName,
           cutId: cutId,
           duration: stillDuration,
           fit: fit,
           rasterize: rasterize,
           mint: mint,
-          sourcePath: storedPath == source ? null : source,
-          sourceStamp: sourceStamp,
           identity: identity,
           carried: copyIntoProject,
           assetKind: MediaAssetKind.pdf,
@@ -6678,16 +6638,14 @@ class EditorSessionManager extends ChangeNotifier {
         // Pages never fold (the fingerprint is the page index): a conte's
         // pages can repeat a layout, but page 12 is still page 12.
         final plan = planSequenceLayer(
-          sourceFiles: List<String>.filled(pageCount, storedPath),
+          sourceFiles: List<String>.filled(pageCount, source),
           frameFingerprints: [for (var i = 0; i < pageCount; i += 1) i],
           displayName: displayName,
           cutId: cutId,
           fit: fit,
           rasterize: rasterize,
           mint: mint,
-          referencePath: storedPath,
-          sourcePath: storedPath == source ? null : source,
-          sourceStamp: sourceStamp,
+          referencePath: source,
           identity: identity,
           carried: copyIntoProject,
           assetKind: MediaAssetKind.pdf,
@@ -6883,23 +6841,19 @@ class EditorSessionManager extends ChangeNotifier {
     }
 
     // A cut folder's reference registrations follow the import's
-    // copy-or-reference choice like any other file. This is the site that
-    // most wants the reference default: a delivery's 참고영상 is routinely
-    // bigger than everything else in the folder put together.
+    // carry-or-reference choice like any other file. The planner cannot
+    // know it — it is given a folder, not a window — so the answer is
+    // stamped on the way out.
     //
-    // Referencing keeps the planner's asset as it stands — source
-    // tracking is what a COPY carries so the "original changed" badge has
-    // two things to compare, and a reference is its own original.
+    // 🚨 It used to be stamped as a COPY into `.assets/Media` and nothing
+    // else, which meant the pool entry itself said `carried: false`: the
+    // one thing the save reads. The first save after a folder import left
+    // every 参考 scan OUTSIDE the archive, and only a reopen put it right
+    // (the old `sourcePath` spelling of the same answer). The kind still
+    // sets the ceiling above this, so a delivery's 참고영상 stays a
+    // reference either way.
     final registeredAssets = [
-      for (final asset in plan.assets)
-        if (!copyIntoProject)
-          asset
-        else
-          asset.copyWith(
-            path: _copyIntoProjectMedia(asset.path),
-            sourcePath: asset.path,
-            sourceStamp: _mediaSourceStampFor(asset.path),
-          ),
+      for (final asset in plan.assets) asset.copyWith(carried: copyIntoProject),
     ];
 
     _historyManager.execute(
@@ -8288,99 +8242,14 @@ class EditorSessionManager extends ChangeNotifier {
     return const [];
   }
 
-  /// The path the project should record for [sourcePath] under this
-  /// import's copy/reference choice.
-  ///
-  /// REFERENCE is the default the import window offers, and it means
-  /// exactly what it says: nothing moves, nothing is duplicated, the
-  /// project points at the file where the user keeps it. A 3GB reference
-  /// movie used to be copied into `.assets/Media/` before anyone could
-  /// say otherwise.
-  ///
-  /// ⚠️On iOS and macOS a referenced path outside the project folder's
-  /// grant is readable now and refused after a relaunch — the reference
-  /// needs a security-scoped bookmark of its own. That is the picker
-  /// round's follow-up; the choice lands first so there is something for
-  /// the bookmark to belong to.
-  ///
-  /// Either answer comes back in the one spelling the project records
-  /// (see [_normalizedPath]).
-  String _mediaPathFor(String sourcePath, {required bool copyIntoProject}) =>
-      _normalizedPath(
-        copyIntoProject ? _copyIntoProjectMedia(sourcePath) : sourcePath,
-      );
-
   /// One spelling for every path the project records: forward slashes.
   ///
   /// The media pool is keyed by path, so `C:\a\b.wav` and `C:/a/b.wav`
   /// reaching it as written are two assets for one file — two rows, a
   /// dedupe that does not, and a usage badge counting half the clips.
-  /// A copy comes back this way already; a reference, and a copy that
-  /// degraded to one, arrive spelled however the OS handed them over.
+  /// Paths arrive spelled however the OS handed them over, so every site
+  /// that records one passes it through here first.
   static String _normalizedPath(String path) => path.replaceAll('\\', '/');
-
-  String _copyIntoProjectMedia(String sourcePath) {
-    final projectPath = _projectFilePath;
-    if (projectPath == null) {
-      return sourcePath;
-    }
-    final mediaDirectory = ProjectAssetLayout(projectPath).mediaDirectory;
-    final normalized = sourcePath.replaceAll('\\', '/');
-    if (normalized.startsWith('$mediaDirectory/')) {
-      // Already ours — a pool path re-imported from the browser.
-      return sourcePath;
-    }
-    final name = normalized.substring(normalized.lastIndexOf('/') + 1);
-    final dot = name.lastIndexOf('.');
-    final stem = dot <= 0 ? name : name.substring(0, dot);
-    final extension = dot <= 0 ? '' : name.substring(dot);
-    try {
-      final source = File(sourcePath);
-      if (!source.existsSync()) {
-        return sourcePath;
-      }
-      Directory(mediaDirectory).createSync(recursive: true);
-      // Same name taken: REUSE it when the bytes match (re-importing the
-      // same sound must not stack x-1, x-2 copies), otherwise walk to a
-      // unique name (two different sounds sharing a name must never
-      // overwrite each other — Pro Tools' import rule).
-      for (var index = 0; index < 10000; index += 1) {
-        final candidate = File(
-          index == 0
-              ? '$mediaDirectory/$name'
-              : '$mediaDirectory/$stem-$index$extension',
-        );
-        if (!candidate.existsSync()) {
-          source.copySync(candidate.path);
-          return candidate.path;
-        }
-        if (_sameFileBytes(source, candidate)) {
-          return candidate.path;
-        }
-      }
-      return sourcePath;
-    } on Object {
-      // Cloud folder mid-sync, permissions, full disk: the reference
-      // still plays and the pool can be relinked later.
-      return sourcePath;
-    }
-  }
-
-  static bool _sameFileBytes(File a, File b) {
-    if (a.lengthSync() != b.lengthSync()) {
-      return false;
-    }
-    // Full compare, but only ever reached on a NAME collision — rare, and
-    // a wrong "same" here would silently play one sound for another.
-    final bytesA = a.readAsBytesSync();
-    final bytesB = b.readAsBytesSync();
-    for (var index = 0; index < bytesA.length; index += 1) {
-      if (bytesA[index] != bytesB[index]) {
-        return false;
-      }
-    }
-    return true;
-  }
 
   /// Removes the [clipIndex]th clip of [layerId]; one undo step.
   void removeAudioClipAt(LayerId layerId, int clipIndex) {
@@ -8693,7 +8562,12 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Adds [paths] to the pool (skipping known ones) without linking them
   /// anywhere — import-to-browse, one undo step.
-  void addMediaAssets(List<String> paths) {
+  ///
+  /// [carried] defaults to referencing, for the callers that are not an
+  /// import and so have no answer to give: linking a file that was already
+  /// on disk registers it as what it is, and only a picker the user
+  /// answered can say the project should own the bytes.
+  void addMediaAssets(List<String> paths, {bool carried = false}) {
     final pool = mediaAssets;
     final known = {for (final asset in pool) asset.path};
     final added = [
@@ -8703,6 +8577,7 @@ class EditorSessionManager extends ChangeNotifier {
             path: path,
             name: mediaAssetDefaultName(path),
             identity: readMediaIdentity(path),
+            carried: carried,
           ),
     ];
     if (added.isEmpty) {
@@ -8801,31 +8676,45 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Copies the [path] asset into `<project>.assets/Media/` and points the
-  /// project at the copy — the per-asset promotion out of the media
-  /// browser, and the answer to what a REFERENCE does when the user
-  /// decides they want the project folder to own it after all.
+  /// Marks the [path] asset as one the project CARRIES — the per-asset
+  /// promotion out of the media browser, and the answer to what a
+  /// REFERENCE does when the user decides they want the project to own it
+  /// after all.
   ///
-  /// One undo step: the pool entry, every referencing clip and the source
-  /// tracking move together. Returns false when there is nothing to
-  /// promote — already inside the project's media folder, no project file
-  /// to sit beside yet, or the source is gone — because all three of
-  /// those leave the copier returning the path it was handed, and a
-  /// promotion that changed nothing must not spend an undo step saying so.
+  /// One undo step, and nothing on disk moves. Carrying used to mean a
+  /// copy under `<project>.assets/Media/`, so this verb relinked every
+  /// referencing clip onto the copy's path and invalidated its conform;
+  /// it now means the next save writes the bytes INSIDE the `.anicel`,
+  /// and the file stays exactly where it was. Same sound, same address —
+  /// nothing to relink, nothing to re-conform.
+  ///
+  /// Returns false when there is nothing to promote — no such asset, one
+  /// already carried, or a kind that is never carried whatever anyone
+  /// picks — because a promotion that changed nothing must not spend an
+  /// undo step saying so.
+  ///
+  /// ⛔ONE DIRECTION on purpose. Carrying is always safe; UN-carrying
+  /// strands a project whose original has since been moved or deleted, so
+  /// the two are not a pair of switches to offer side by side. A reverse
+  /// verb needs a "the original is still there" guard of its own first,
+  /// and that is a separate decision.
   bool promoteMediaAssetIntoProject(String path) {
-    final copied = _mediaPathFor(path, copyIntoProject: true);
-    if (copied == path) {
+    final pool = mediaAssets;
+    var promotes = false;
+    for (final asset in pool) {
+      if (asset.path != path) {
+        continue;
+      }
+      promotes = !asset.carried && mediaKindBelongsInArchive(asset.kind);
+      break;
+    }
+    if (!promotes) {
       return false;
     }
-    audioConformStore.invalidate(copied);
-    _cutCommandCoordinator.relinkMediaAsset(
-      oldPath: path,
-      newPath: copied,
-      recordSource: true,
-      sourceStamp: _mediaSourceStampFor(path),
-      description: 'Register media in project',
-    );
-    refreshMediaExistence();
+    _cutCommandCoordinator.updateMediaAssets([
+      for (final asset in pool)
+        asset.path == path ? asset.copyWith(carried: true) : asset,
+    ], description: 'Register media in project');
     notifyListeners();
     return true;
   }
