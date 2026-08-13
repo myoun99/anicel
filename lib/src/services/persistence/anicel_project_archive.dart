@@ -51,6 +51,68 @@ class AnicelArchiveContents {
   final Map<String, String> mediaRelativePaths;
 }
 
+/// Everything media lives under, so the save path can tell an asset's
+/// bytes from a cel's by name alone.
+const String anicelMediaEntryPrefix = 'media/';
+
+/// Whether an append would leave more dead bytes behind than it is worth,
+/// given the file's size and what its live entries weigh.
+///
+/// 🔑 Media is out of the DENOMINATOR, not out of the garbage — it makes
+/// none. An imported sound is written once and never shadowed, so it can
+/// only dilute the ratio: five hundred megabytes of media beside ten of
+/// cels turns eight megabytes of dead cel bytes into 1.6% of the file, and
+/// compaction stops running at all while the cel area fills with garbage
+/// indefinitely. Judging the part that actually rots keeps the threshold
+/// meaning what it always meant.
+///
+/// A named function rather than four lines inside the save isolate,
+/// because it is a rule and rules need somewhere to be checked.
+bool anicelNeedsCompaction({
+  required int fileLength,
+  required Iterable<({String name, int length})> entries,
+  double garbageRatio = 0.5,
+}) {
+  var activeBytes = 0;
+  var activeMediaBytes = 0;
+  for (final entry in entries) {
+    activeBytes += entry.length;
+    if (entry.name.startsWith(anicelMediaEntryPrefix)) {
+      activeMediaBytes += entry.length;
+    }
+  }
+  final rottingBytes = fileLength - activeMediaBytes;
+  if (rottingBytes <= 0) {
+    return false;
+  }
+  return fileLength - activeBytes > rottingBytes * garbageRatio;
+}
+
+/// The archive entry a piece of media is stored under.
+///
+/// Derived from the pool path so the same asset lands on the same name
+/// every save — the entry has to be findable again after a compaction has
+/// moved every byte in the file, and the only thing that survives that is
+/// the name. The basename rides along ahead of the hash because a person
+/// looking inside a `.anicel` with an unzip tool should be able to tell
+/// what they are looking at.
+///
+/// ⚠️ Not derived from CONTENT. Two identical files imported under
+/// different names are two assets to the pool, and giving them one entry
+/// would make deleting either take the other's bytes with it.
+String anicelMediaEntryName(String poolPath) {
+  final normalized = poolPath.replaceAll('\\', '/');
+  var hash = 0x811c9dc5;
+  for (final unit in normalized.codeUnits) {
+    hash ^= unit;
+    hash = (hash * 0x01000193) & 0xFFFFFFFF;
+  }
+  final base = normalized.split('/').last;
+  final safe = base.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+  return '$anicelMediaEntryPrefix${hash.toRadixString(16).padLeft(8, '0')}'
+      '-$safe';
+}
+
 /// The cel's STABLE archive entry name (R22-C): derived from the key
 /// alone, so an incremental append of the same cel SHADOWS its previous
 /// entry by name. Base64url over the NUL-joined key parts — reversible,
@@ -75,10 +137,22 @@ String anicelCelEntryName(BrushFrameKey key) {
 Uint8List buildAnicelProjectJsonBytes({
   required Project project,
   String? saveDirectory,
+  Set<String> mediaInArchive = const {},
 }) {
   final mediaRelativePaths = <String, String>{};
-  if (saveDirectory != null) {
-    for (final path in _projectMediaPaths(project)) {
+  final mediaEntries = <String, String>{};
+  for (final path in _projectMediaPaths(project)) {
+    // Two ways for the project to find its media again, and which one
+    // applies is a property of the asset, not of the project: what lives
+    // INSIDE travels with the file and can never be lost or moved, while
+    // what stays outside is a path that may or may not still resolve.
+    // Inside wins where both could describe the same asset — the copy the
+    // project carries is the one it is sure of.
+    if (mediaInArchive.contains(path)) {
+      mediaEntries[path] = anicelMediaEntryName(path);
+      continue;
+    }
+    if (saveDirectory != null) {
       final relative = _relativeTo(path, saveDirectory);
       if (relative != null) {
         mediaRelativePaths[path] = relative;
@@ -91,6 +165,7 @@ Uint8List buildAnicelProjectJsonBytes({
         'formatVersion': anicelFormatVersion,
         'project': project.toJson(),
         if (mediaRelativePaths.isNotEmpty) 'mediaPaths': mediaRelativePaths,
+        if (mediaEntries.isNotEmpty) 'mediaEntries': mediaEntries,
       }),
     ),
   );
