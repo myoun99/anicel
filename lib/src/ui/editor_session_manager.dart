@@ -2663,18 +2663,37 @@ class EditorSessionManager extends ChangeNotifier {
   /// dimming) uses for [layer]: the shared composite semantics — an attach
   /// layer multiplies its own static opacity with its BASE's animated
   /// Opacity sample (fx shared), a regular layer with its own.
+  /// The active row's opacity for a view that draws it ALONE — the
+  /// interactive canvas during a ruler scrub, where nothing else composites
+  /// it and no folder buffer stands above it.
+  ///
+  /// 🚨THIS IS NOT `entry.opacity`, and the two must not be unified. An
+  /// entry's opacity is BUFFER-RELATIVE: inside a buffering folder it is
+  /// 1.0, because the folder node applies the folder's share once to the
+  /// composed buffer. A standalone draw has no such buffer, so it needs the
+  /// whole chain folded in — which is why the folder factor is here and not
+  /// there.
+  ///
+  /// It used to stop at the row's own opacity, so scrubbing the ruler showed
+  /// a row inside a half-opacity folder at FULL row opacity while every
+  /// other row honoured the folder. Same shape as the rest of this round:
+  /// the active row answered a question differently from everyone else.
   double _stackLayerOpacity(Layer layer, List<Layer> layers, int frameIndex) {
     final base = isAttachedLayer(layer) ? attachedBaseOf(layer, layers) : null;
     final fxCarrier = base ?? layer;
+    var opacity = layer.opacity;
     // The animated Opacity is a TRANSFORM property, so its own group's
     // switch decides it — not the row master (R8).
-    if (!fxCarrier.transformEnabled) {
-      return layer.opacity.clamp(0.0, 1.0).toDouble();
+    if (fxCarrier.transformEnabled) {
+      opacity *= resolveOpacityTrackAt(
+        fxCarrier.transformTrack.opacity,
+        frameIndex,
+      );
     }
-    return (layer.opacity *
-            resolveOpacityTrackAt(fxCarrier.transformTrack.opacity, frameIndex))
-        .clamp(0.0, 1.0)
-        .toDouble();
+    for (final folder in layers.ancestryOf(layer.folderId)) {
+      opacity *= resolveFolderOpacityAt(folder: folder, frameIndex: frameIndex);
+    }
+    return opacity.clamp(0.0, 1.0).toDouble();
   }
 
   /// The geometric pose sample the interactive canvas shows for [layerId]
