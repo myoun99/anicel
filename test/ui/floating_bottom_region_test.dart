@@ -485,6 +485,42 @@ void main() {
         ),
         findsNothing,
       );
+
+      // …and the floor LAYS THEM OUT rather than folding them behind a gear
+      // (유저 확정 2026-08-13: 「설정에 있는거 다 빼 … 바닥에 깔려있는
+      // 메인뷰어랑 캔버스패널만」).
+      //
+      // 🚨This is the only test that proves the WIRING. The pill's own tests
+      // build a `CanvasFloorInsets` by hand to say "you are the floor"; this
+      // one asks the app whether the panel it actually lays on the floor is
+      // under one, which is a question no harness can answer for it.
+      expect(
+        find.descendant(
+          of: mainCanvasPanelShell(),
+          matching: find.byKey(const ValueKey<String>('canvas-viewport-flip')),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: mainCanvasPanelShell(),
+          matching: find.byKey(
+            const ValueKey<String>('canvas-viewport-settings'),
+          ),
+        ),
+        findsNothing,
+        reason: 'a floor this wide folds nothing, so it has no gear at all',
+      );
+      // The timesheet, one panel over and at the same moment, still does.
+      expect(
+        find.descendant(
+          of: timesheetPanel(),
+          matching: find.byKey(
+            const ValueKey<String>('canvas-viewport-settings'),
+          ),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('the cluster fades out of the way of a stroke', (tester) async {

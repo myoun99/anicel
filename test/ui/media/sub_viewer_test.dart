@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
@@ -441,6 +442,69 @@ void main() {
       expect(sub.request.value, isNull);
       expect(sub.position.value, 0);
     });
+  });
+
+  testWidgets('…and ON THE FLOOR the very same verbs are buttons', (
+    tester,
+  ) async {
+    // 유저 확정 2026-08-13: 「메인뷰어도 똑같아. 설정에 있는거 다 빼」. Register
+    // and swap are the viewer's own verbs, and the floor has room for them,
+    // so the floor shows them rather than listing them — the SAME entries
+    // the sub viewer above reaches by opening a gear.
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1200, 700));
+
+    final slot = MediaViewerSlot();
+    addTearDown(slot.dispose);
+    final session = EditorSessionManager(initialProject: _projectWithAssets());
+    addTearDown(session.dispose);
+    final registered = <String>[];
+    var swaps = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CanvasFloorInsets(
+            insets: EdgeInsets.zero,
+            child: MediaViewerTabHost(
+              viewerId: 'media-viewer',
+              session: session,
+              request: slot.request,
+              onRegisterAsset: registered.add,
+              onSwapViewers: () => swaps += 1,
+              isPathRegistered: (_) => false,
+            ),
+          ),
+        ),
+      ),
+    );
+    slot.open(
+      const MediaViewerRequest(
+        path: 'D:/refs/pose.png',
+        kind: MediaAssetKind.image,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-settings')),
+      findsNothing,
+      reason: 'nothing folded, so the viewer has no gear',
+    );
+
+    // Pressed WITHOUT opening anything — one tap where the sub viewer needs
+    // two, which is the whole of what the user asked for.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('media-viewer-register-asset-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(registered, ['D:/refs/pose.png']);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('media-viewer-swap-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(swaps, 1);
   });
 
   test('a drag payload names the pool key the drop resolves', () {
