@@ -169,6 +169,10 @@ import 'playback/audio_playback_schedule.dart' show ScheduledAudioClip;
 import '../services/audio/audio_conform_pipeline.dart' show ConformCacheLayout;
 import '../services/audio/conform_cache_maintenance.dart'
     show pruneConformCache;
+import '../services/persistence/folder_grant.dart'
+    show FolderGrant, FolderPicker;
+import '../services/persistence/anicel_project_archive.dart'
+    show projectMediaPaths;
 import '../services/audio/conform_wav_codec.dart' show encodeConformWav;
 import '../services/commands/update_media_assets_command.dart';
 import '../models/se_take_placement.dart';
@@ -15742,6 +15746,7 @@ class EditorSessionManager extends ChangeNotifier {
       auxCelStores: [conteInkRowStore, conteInkPageStore, envelopeInkStore],
       filePath: filePath,
       mediaToStore: mediaToStore,
+      grants: _grantsToStore(),
     );
     _mediaEntryNames = mediaEntryNamesFor(mediaToStore.keys);
     _projectFilePath = filePath;
@@ -15812,6 +15817,118 @@ class EditorSessionManager extends ChangeNotifier {
   /// True once the user has closed without saving. The session is on its
   /// way out; nothing may snapshot it again.
   bool _discardedUnsavedWork = false;
+
+  /// Security-scoped tokens for media the project REFERENCES, held beside
+  /// the project rather than inside it.
+  ///
+  /// 🚨 Outside [Project] on purpose. Apple re-issues a bookmark on every
+  /// resolve, so a grant in the model would mark the film dirty simply for
+  /// having been opened — an edit the user never made, and a "save your
+  /// changes?" they cannot account for. Keeping them here costs one
+  /// argument at the save call and buys that.
+  ///
+  /// Empty on Windows, Linux and Android, where a recorded path keeps
+  /// working on its own.
+  List<FolderGrant> _mediaGrants = const [];
+
+  /// What the session is holding, for tests. There is no production reader
+  /// — grants leave through the save argument and arrive through the open
+  /// result — so without this the round trip has no observer at all.
+  @visibleForTesting
+  List<FolderGrant> get debugMediaGrants => List.unmodifiable(_mediaGrants);
+
+  /// Adds what a picker just granted, replacing any grant for the same
+  /// path. Newest wins: Apple hands back a fresh token every time, and the
+  /// old one is the stale copy.
+  ///
+  /// ⛔ Does NOT touch `_hasUnsavedChanges`. This is OS bookkeeping, not
+  /// the user's work — it rides along on the next save they were going to
+  /// make anyway (그쪽 확정 ⑩).
+  void rememberMediaGrants(Iterable<FolderGrant> grants) {
+    final incoming = [
+      for (final grant in grants)
+        if (grant.isGranted && grant.bookmark != null) grant,
+    ];
+    if (incoming.isEmpty) {
+      return;
+    }
+    final replaced = {for (final grant in incoming) grant.path};
+    _mediaGrants = [
+      for (final grant in _mediaGrants)
+        if (!replaced.contains(grant.path)) grant,
+      ...incoming,
+    ];
+  }
+
+  /// Hands every stored bookmark back to the OS, so the session may read
+  /// the media this project only REFERENCES.
+  ///
+  /// Resolved ALL AT ONCE on open rather than lazily at each read. There
+  /// is no single point where media bytes are asked for — audio decode,
+  /// image decode and thumbnails each reach for a file — so a lazy scheme
+  /// would need that point built first. References are few by design (the
+  /// kind rule keeps everything but video inside the archive), which is
+  /// what makes the simple answer affordable.
+  ///
+  /// 🚨 The answer REPLACES what was stored. Apple re-issues a bookmark on
+  /// every resolve, and a bookmark tracks the file rather than the path —
+  /// so this is also how a referenced movie that was moved or renamed is
+  /// followed instead of lost. Dropping the new token is a bug this
+  /// codebase has already had once (`_openRecent` overwrote a fresh
+  /// bookmark with the stale one it had in hand).
+  ///
+  /// ⛔ Never dirties the project. The re-issue is the OS's bookkeeping,
+  /// not an edit, and it rides along on the next save.
+  ///
+  /// A grant that will not resolve is DROPPED, not kept: the provider was
+  /// reinstalled or the account changed, and a token that cannot open its
+  /// file is not a permission — it is a record of one. The reference then
+  /// behaves exactly as it did before any of this existed, and the
+  /// existing missing-media relink flow is what answers.
+  Future<void> _resolveMediaGrants(List<Map<String, Object?>> stored) async {
+    final parsed = [for (final json in stored) ?FolderGrant.fromJson(json)];
+    if (parsed.isEmpty || !FolderPicker.grantsAreScoped) {
+      // Nothing to hold, or a platform where a path is durable on its own.
+      _mediaGrants = parsed;
+      return;
+    }
+    final resolved = <FolderGrant>[];
+    for (final grant in parsed) {
+      final answer = await FolderPicker.resolveBookmark(
+        grant.bookmark!,
+        kind: grant.kind,
+      );
+      if (answer.isGranted && answer.path != null) {
+        resolved.add(
+          FolderGrant.granted(
+            path: answer.path!,
+            // The freshly issued token, never the one we arrived with.
+            bookmark: answer.bookmark ?? grant.bookmark,
+            kind: grant.kind,
+          ),
+        );
+      }
+    }
+    _mediaGrants = resolved;
+  }
+
+  /// The grants worth writing into this save, as JSON.
+  ///
+  /// Filtered HERE rather than in the writer, which runs in an isolate and
+  /// has no business knowing what a grant is. A token for a file the pool
+  /// no longer holds is a permission record for something nobody uses, and
+  /// a project file that accumulates those is the shape that reads as an
+  /// app hoarding access.
+  List<Map<String, Object?>> _grantsToStore() {
+    if (_mediaGrants.isEmpty) {
+      return const [];
+    }
+    final referenced = projectMediaPaths(_repository.requireProject());
+    return [
+      for (final grant in _mediaGrants)
+        if (referenced.any(grant.covers)) ?grant.toJson(),
+    ];
+  }
 
   /// Opens a .anicel file, replacing the WHOLE session state: project,
   /// drawings, selection (first cut, frame 0) — and BOTH undo stacks
@@ -15901,6 +16018,7 @@ class EditorSessionManager extends ChangeNotifier {
     // A different project is a different session; a discard that belonged
     // to the last one must not silence this one's snapshots.
     _discardedUnsavedWork = false;
+    await _resolveMediaGrants(result.grants);
     _settleConformCache();
     _warmAudioConforms();
     // RELINK-2: the first of the three refresh moments. A project opened

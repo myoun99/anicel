@@ -24,6 +24,7 @@ class AnicelOpenResult {
     required this.project,
     required this.cels,
     this.mediaEntryNames = const {},
+    this.grants = const [],
   });
 
   final Project project;
@@ -38,6 +39,15 @@ class AnicelOpenResult {
   /// and plays the wrong sound. A name survives that, and the layout is
   /// already parsed whenever the bytes are actually wanted.
   final Map<String, String> mediaEntryNames;
+
+  /// Security-scoped tokens for the media this project REFERENCES, as
+  /// written. Raw JSON: the type that understands them reaches for a
+  /// `MethodChannel`, and this file is read from inside an isolate.
+  ///
+  /// ⚠️ NOT resolved. A bookmark only becomes usable by being handed back
+  /// to the OS, and the answer may carry a different path — a bookmark
+  /// follows a file that moved, which is most of why it exists.
+  final List<Map<String, Object?>> grants;
 }
 
 /// One dirty cel's save payload, resolved on the UI isolate to a
@@ -270,6 +280,9 @@ class AnicelFileService {
     List<BrushFrameStore> auxCelStores = const [],
     required String filePath,
     Map<String, MediaByteSource> mediaToStore = const {},
+    /// The security-scoped tokens for referenced media, already reduced to
+    /// JSON by the session — see [buildAnicelProjectJsonBytes].
+    List<Map<String, Object?>> grants = const [],
   }) async {
     // Aux stores (the conte sheet ink, R5) ride the same archive: their
     // keys live in their own namespace, so the snapshots merge without
@@ -325,6 +338,7 @@ class AnicelFileService {
         filePath: filePath,
         saveDirectory: saveDirectory,
         mediaToStore: mediaToStore,
+        grants: grants,
       );
       if (adopted != null) {
         adoptEach(adopted);
@@ -341,6 +355,7 @@ class AnicelFileService {
         filePath: filePath,
         saveDirectory: saveDirectory,
         mediaToStore: mediaToStore,
+        grants: grants,
       ),
     );
   }
@@ -398,6 +413,7 @@ class AnicelFileService {
     required Set<BrushFrameKey> dirty,
     required String filePath,
     required String saveDirectory,
+    List<Map<String, Object?>> grants = const [],
     Map<String, MediaByteSource> mediaToStore = const {},
   }) async {
     final works = <_CelWork>[];
@@ -452,6 +468,7 @@ class AnicelFileService {
             project: project,
             saveDirectory: saveDirectory,
             mediaInArchive: mediaToStore.keys.toSet(),
+            grants: grants,
           ),
           for (final (_, name, blob) in blobs) name: blob.bytes,
         },
@@ -487,6 +504,7 @@ class AnicelFileService {
     required Set<BrushFrameKey> dirty,
     required String filePath,
     required String saveDirectory,
+    List<Map<String, Object?>> grants = const [],
     Map<String, MediaByteSource> mediaToStore = const {},
   }) async {
     final allKeys = <BrushFrameKey>{
@@ -539,6 +557,7 @@ class AnicelFileService {
         saveDirectory: saveDirectory,
         works: works,
         mediaToStore: mediaToStore,
+        grants: grants,
       );
     } on Object {
       if (temp.existsSync()) {
@@ -563,6 +582,9 @@ class AnicelFileService {
     required String saveDirectory,
     required List<_CelWork> works,
     required Map<String, MediaByteSource> mediaToStore,
+    // Plain maps, so the closure carries values the port can copy — the
+    // picker's grant type could not cross this boundary at all.
+    required List<Map<String, Object?>> grants,
   }) {
     return Isolate.run(() {
       // Scalars only. Holding the BLOB here to read its geometry later
@@ -579,6 +601,7 @@ class AnicelFileService {
               project: project,
               saveDirectory: saveDirectory,
               mediaInArchive: mediaToStore.keys.toSet(),
+              grants: grants,
             ),
           );
           for (final work in works) {
@@ -740,10 +763,20 @@ class AnicelFileService {
       }
     }
 
+    final grantsJson = decoded['grants'];
     return AnicelOpenResult(
       project: remapProjectMediaPaths(project, remap),
       cels: cels,
       mediaEntryNames: mediaEntryNames,
+      grants: [
+        if (grantsJson is List)
+          for (final entry in grantsJson)
+            if (entry is Map)
+              {
+                for (final field in entry.entries)
+                  if (field.key is String) field.key as String: field.value,
+              },
+      ],
     );
   }
 

@@ -108,7 +108,36 @@ Future<FolderGrant?> pickFolderGrantForUser(
 ///
 /// Returns the chosen paths; empty when the user backed out or was told why
 /// they cannot use what they chose.
+///
+/// The short spelling, for the callers that only need somewhere to read
+/// from. Anything that RECORDS what it picked wants
+/// [pickFileGrantsForUser] instead — see there.
 Future<List<String>> pickFilesForUser(
+  BuildContext context, {
+  required List<XTypeGroup> acceptedTypeGroups,
+  bool allowMultiple = false,
+}) async => [
+  for (final grant in await pickFileGrantsForUser(
+    context,
+    acceptedTypeGroups: acceptedTypeGroups,
+    allowMultiple: allowMultiple,
+  ))
+    ?grant.path,
+];
+
+/// The same flow, keeping the whole grant.
+///
+/// 🚨 This is the difference between a reference that survives a relaunch
+/// and one that does not. `pickFiles` mints a security-scoped bookmark on
+/// Apple platforms and the short spelling above threw it away at the door
+/// — so an asset imported by REFERENCE recorded a path, and a recorded
+/// path on iOS or macOS is refused the next time the app starts. Every
+/// piece of the machine existed; the answer simply never reached the code
+/// that could write it down.
+///
+/// Empty when the user backed out or was told why they cannot use what
+/// they chose.
+Future<List<FolderGrant>> pickFileGrantsForUser(
   BuildContext context, {
   required List<XTypeGroup> acceptedTypeGroups,
   bool allowMultiple = false,
@@ -135,7 +164,7 @@ Future<List<String>> pickFilesForUser(
   // so the first entry answers for the batch.
   switch (grants.first.status) {
     case FolderPickStatus.granted:
-      return [for (final grant in grants) ?grant.path];
+      return grants;
     case FolderPickStatus.cancelled:
       return const [];
     case FolderPickStatus.noFilesystemPath:

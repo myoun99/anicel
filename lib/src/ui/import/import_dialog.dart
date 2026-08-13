@@ -10,6 +10,7 @@ import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/project_lookup.dart'
     show largeCarriedAssetBytes, mediaKindBelongsInArchive;
+import '../../services/persistence/folder_grant.dart' show FolderGrant;
 import '../dialogs/folder_pick_flow.dart';
 import '../editor_session_manager.dart';
 import '../export/export_settings_modules.dart';
@@ -280,21 +281,41 @@ class _ImportDialogState extends State<ImportDialog> {
     });
   }
 
+  /// What the picker granted for the files in [_files], kept until Import
+  /// runs so the session can record it.
+  ///
+  /// 🚨 The whole point of PICK-5 arrives here. On Apple a referenced path
+  /// is refused after a relaunch unless the app kept the security-scoped
+  /// token, and the token exists only for as long as this window holds it
+  /// — nothing else in the app ever sees the picker's answer.
+  final List<FolderGrant> _pickedGrants = [];
+
   Future<void> _pickFiles() async {
-    final picker =
-        widget.filePicker ??
-        () => pickFilesForUser(
-          context,
-          // The POOL group, not the placeable one: this window is the
-          // media browser's entrance now, and the browser registers
-          // movies it cannot yet place. A movie picked while a placing
-          // destination is selected is refused BY NAME in the table
-          // below — which is the honest version of a picker that simply
-          // did not list it.
-          acceptedTypeGroups: const [FileTypeGroups.poolMedia],
-          allowMultiple: true,
-        );
-    final paths = await picker();
+    // The injected picker (tests, and the drop path) answers in paths; the
+    // real one answers in grants. Both end up in `_files`, and only the
+    // real one has tokens to record.
+    final List<String> paths;
+    final injected = widget.filePicker;
+    if (injected != null) {
+      paths = await injected();
+      _pickedGrants.clear();
+    } else {
+      final grants = await pickFileGrantsForUser(
+        context,
+        // The POOL group, not the placeable one: this window is the
+        // media browser's entrance now, and the browser registers
+        // movies it cannot yet place. A movie picked while a placing
+        // destination is selected is refused BY NAME in the table
+        // below — which is the honest version of a picker that simply
+        // did not list it.
+        acceptedTypeGroups: const [FileTypeGroups.poolMedia],
+        allowMultiple: true,
+      );
+      paths = [for (final grant in grants) ?grant.path];
+      _pickedGrants
+        ..clear()
+        ..addAll(grants);
+    }
     if (paths.isEmpty || !mounted) {
       return;
     }
@@ -403,6 +424,11 @@ class _ImportDialogState extends State<ImportDialog> {
       _status = 'Importing…';
     });
     final session = widget.session;
+    // Before anything registers: the session has to be holding the tokens
+    // by the time a save writes them down, and this is the only moment
+    // they exist outside the picker. Harmless when the list is empty,
+    // which is every desktop import and every drop.
+    session.rememberMediaGrants(_pickedGrants);
     var imported = 0;
     final warnings = <String>[];
     final done = <String>[];
