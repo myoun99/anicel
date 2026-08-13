@@ -186,6 +186,157 @@ void main() {
         reason: 'the archive is exactly as it was');
   });
 
+  group('a full rewrite', () {
+    test('streams media through and a standard tool still reads it', () {
+      // The full path writes into a temp nobody has yet, so it can afford
+      // to patch the header's CRC after the bytes go by rather than pay a
+      // second pass over every asset. Get that seek wrong and the archive
+      // is quietly rejected by anything but us.
+      final path = '${temp.path}/full.anicel';
+      final source = writeSource('score.wav', 900 * 1024);
+      final expected = File(source).readAsBytesSync();
+
+      final layout = writeAnicelArchiveFile(
+        path: path,
+        entries: [
+          (name: 'project.json', bytes: Uint8List.fromList(const [123, 125])),
+          (name: 'cels/a.celz', bytes: Uint8List.fromList(const [7, 7, 7])),
+        ],
+        streamedEntries: [
+          AnicelStreamedEntry(
+            name: 'media/score',
+            length: expected.length,
+            readInto: MediaFileBytes(source).readIntoSync,
+          ),
+        ],
+      );
+
+      final decoded = ZipDecoder().decodeBytes(File(path).readAsBytesSync());
+      expect(
+        decoded.files.firstWhere((f) => f.name == 'media/score').content,
+        expected,
+      );
+      expect(
+        decoded.files.firstWhere((f) => f.name == 'cels/a.celz').content,
+        [7, 7, 7],
+      );
+
+      // The CRC that landed in the header is the real one, in both places
+      // ZIP records it.
+      final entry = layout.entryNamed('media/score')!;
+      expect(entry.crc32, anicelCrc32(expected));
+      final bytes = File(path).readAsBytesSync();
+      final header = ByteData.sublistView(bytes);
+      expect(
+        header.getUint32(entry.localHeaderOffset + 14, Endian.little),
+        anicelCrc32(expected),
+        reason: 'the patched local header, not just the central directory',
+      );
+      // And our own reader agrees about where the bytes are.
+      expect(
+        MediaArchiveBytes(
+          archivePath: path,
+          dataOffset: entry.dataOffset,
+          length: entry.length,
+        ).readSync(),
+        expected,
+      );
+    });
+
+    test('several media entries keep their own offsets', () {
+      final path = '${temp.path}/many.anicel';
+      final a = writeSource('a.wav', 5000);
+      final b = writeSource('b.wav', 9000);
+
+      final layout = writeAnicelArchiveFile(
+        path: path,
+        entries: [
+          (name: 'project.json', bytes: Uint8List.fromList(const [123, 125])),
+        ],
+        streamedEntries: [
+          AnicelStreamedEntry(
+            name: 'media/a',
+            length: 5000,
+            readInto: MediaFileBytes(a).readIntoSync,
+          ),
+          AnicelStreamedEntry(
+            name: 'media/b',
+            length: 9000,
+            readInto: MediaFileBytes(b).readIntoSync,
+          ),
+        ],
+      );
+
+      expect(
+        MediaArchiveBytes(
+          archivePath: path,
+          dataOffset: layout.entryNamed('media/a')!.dataOffset,
+          length: 5000,
+        ).readSync(),
+        File(a).readAsBytesSync(),
+      );
+      expect(
+        MediaArchiveBytes(
+          archivePath: path,
+          dataOffset: layout.entryNamed('media/b')!.dataOffset,
+          length: 9000,
+        ).readSync(),
+        File(b).readAsBytesSync(),
+      );
+    });
+
+    test('media can come FROM an archive — which is what save-as does', () {
+      // Save-as streams a clean cel out of the old file into the new one.
+      // Media rides the same road: nothing is re-encoded, and the source
+      // being an archive rather than a file changes nothing here.
+      final first = '${temp.path}/first.anicel';
+      final source = writeSource('voice.wav', 4096);
+      final expected = File(source).readAsBytesSync();
+      final one = writeAnicelArchiveFile(
+        path: first,
+        entries: [
+          (name: 'project.json', bytes: Uint8List.fromList(const [123, 125])),
+        ],
+        streamedEntries: [
+          AnicelStreamedEntry(
+            name: 'media/v',
+            length: expected.length,
+            readInto: MediaFileBytes(source).readIntoSync,
+          ),
+        ],
+      );
+
+      final inFirst = one.entryNamed('media/v')!;
+      final second = '${temp.path}/second.anicel';
+      final two = writeAnicelArchiveFile(
+        path: second,
+        entries: [
+          (name: 'project.json', bytes: Uint8List.fromList(const [123, 125])),
+        ],
+        streamedEntries: [
+          AnicelStreamedEntry(
+            name: 'media/v',
+            length: inFirst.length,
+            readInto: MediaArchiveBytes(
+              archivePath: first,
+              dataOffset: inFirst.dataOffset,
+              length: inFirst.length,
+            ).readIntoSync,
+          ),
+        ],
+      );
+
+      expect(
+        MediaArchiveBytes(
+          archivePath: second,
+          dataOffset: two.entryNamed('media/v')!.dataOffset,
+          length: expected.length,
+        ).readSync(),
+        expected,
+      );
+    });
+  });
+
   test('appending the same media name replaces it rather than doubling it',
       () {
     // Shadowing by name, the same rule cels live by — a re-import of the
