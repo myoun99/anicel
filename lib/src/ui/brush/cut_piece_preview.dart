@@ -1,37 +1,130 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../../core/straight_rgba_image.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut_piece.dart';
 
-/// Cells per long edge when a held piece is drawn as a preview.
+/// Decodes the held piece ONCE and hands the image to [builder], null until
+/// the decode lands.
 ///
-/// The same coarse-grid trick the tip previews use, and for the same
-/// reason spelled out there: **deliberately synchronous and image-free.**
-/// Raw RGBA cannot be handed to a canvas directly — the routes to a
-/// `ui.Image` are async — and a preview that decodes would flicker every
-/// time the piece or the pose changed. Averaging into cells costs one loop
-/// and paints the same frame.
+/// ⛔It used to draw a 20-cell mosaic of alpha-weighted averages instead —
+/// the trick the tip previews use, on the reasoning that raw RGBA cannot
+/// reach a canvas synchronously and a decoding preview would flicker. The
+/// first half is true (there is no synchronous bytes→image path on Skia);
+/// the second half was borrowed from a different problem. Tip previews
+/// change with every slider drag, so they cannot afford a decode. **A cut
+/// piece changes only when something is cut** — the pose knobs re-order
+/// bytes or scale the destination rect, neither of which is a new picture —
+/// so one decode per piece is enough, and the artwork shows at full
+/// resolution (유저: *"퀄리티 낮추지마. 원본그대로."*).
 ///
-/// This is a hint at the artwork, not a rasterisation of it.
-const int cutPiecePreviewGrid = 20;
+/// Before the decode lands the previews draw NOTHING. That is this app's
+/// standing answer for "no image yet" (see the surface painter's fallback
+/// ladder, whose last rung is silence): show the artwork or show nothing,
+/// never a degraded stand-in. The window is one frame in practice — the
+/// decode starts when the piece arrives, not when a preview is looked at.
+class CutPieceImageHost extends StatefulWidget {
+  const CutPieceImageHost({
+    super.key,
+    required this.piece,
+    required this.builder,
+  });
 
-/// Draws [piece] into [target], letterboxed.
+  final CutPiece piece;
+  final Widget Function(BuildContext context, ui.Image? image) builder;
+
+  @override
+  State<CutPieceImageHost> createState() => _CutPieceImageHostState();
+}
+
+class _CutPieceImageHostState extends State<CutPieceImageHost> {
+  ui.Image? _image;
+
+  /// Bumped per request, so a decode that lands after the piece changed (or
+  /// after this went away) disposes its image instead of showing it.
+  int _request = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _decode();
+  }
+
+  @override
+  void didUpdateWidget(CutPieceImageHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The PIXELS' identity, not the piece's: flipping and scaling produce a
+    // new [CutPiece] around the same bytes, and re-decoding for those would
+    // throw the image away on every knob nudge. The flips are a canvas
+    // transform below and the scale is the destination rect.
+    if (oldWidget.piece.image.id != widget.piece.image.id) {
+      _decode();
+    }
+  }
+
+  void _decode() {
+    final piece = widget.piece;
+    final request = ++_request;
+    decodeStraightRgbaImage(
+      rgba: piece.image.rgba,
+      width: piece.image.width,
+      height: piece.image.height,
+      onDecoded: (image) {
+        if (!mounted || request != _request) {
+          image.dispose();
+          return;
+        }
+        setState(() {
+          _image?.dispose();
+          _image = image;
+        });
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _request += 1; // Invalidate an in-flight decode.
+    _image?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _image);
+}
+
+/// Draws [image] (the piece's pixels) into [target], letterboxed, with
+/// [piece]'s flips applied.
 ///
 /// Letterboxed rather than stretched because a cut piece is any width by
 /// any height: stretching it into a square box would make the preview lie
 /// about the shape, which is the one thing it exists to tell you.
 ///
 /// The FLIPS are honoured — a preview's job is "this is what would land".
-/// The scale is not: inside a fixed box a percentage cannot show, and the
-/// panel prints the number beside it. (The CURSOR preview is the opposite
-/// case and scales, because there the size is the whole point.)
-void paintCutPiece(Canvas canvas, Rect target, CutPiece piece) {
-  final image = piece.flippedImage();
+/// Whether the SCALE is honoured is the caller's business: inside a fixed
+/// panel box a percentage cannot show and the panel prints the number
+/// beside it, while the cursor preview is the opposite case (there the
+/// footprint is the whole question).
+///
+/// NEAREST sampling, always. The stamp lands through `ResampleMode.pick`
+/// (2치 보존) and the canvas draws its own tiles with `FilterQuality.none`,
+/// so this is what "원본그대로" means here: magnify to the same hard pixels
+/// the commit will put down, rather than a smoothed guess at them.
+void paintCutPiece(
+  Canvas canvas,
+  Rect target,
+  CutPiece piece,
+  ui.Image? image,
+) {
+  if (image == null || target.isEmpty) {
+    return;
+  }
   final width = image.width;
   final height = image.height;
-  if (width <= 0 || height <= 0 || target.isEmpty) {
+  if (width <= 0 || height <= 0) {
     return;
   }
 
@@ -39,63 +132,39 @@ void paintCutPiece(Canvas canvas, Rect target, CutPiece piece) {
   final scale = math.min(target.width / width, target.height / height);
   final drawWidth = width * scale;
   final drawHeight = height * scale;
-  final left = target.left + (target.width - drawWidth) / 2;
-  final top = target.top + (target.height - drawHeight) / 2;
+  final destination = Rect.fromLTWH(
+    target.left + (target.width - drawWidth) / 2,
+    target.top + (target.height - drawHeight) / 2,
+    drawWidth,
+    drawHeight,
+  );
 
-  final longSide = math.max(width, height);
-  final cols = math.max(1, (width * cutPiecePreviewGrid / longSide).round());
-  final rows = math.max(1, (height * cutPiecePreviewGrid / longSide).round());
-  final cellWidth = drawWidth / cols;
-  final cellHeight = drawHeight / rows;
-
-  final rgba = image.rgba;
-  final paint = Paint();
-  for (var row = 0; row < rows; row += 1) {
-    final startY = row * height ~/ rows;
-    final endY = math.max(startY + 1, (row + 1) * height ~/ rows);
-    for (var col = 0; col < cols; col += 1) {
-      final startX = col * width ~/ cols;
-      final endX = math.max(startX + 1, (col + 1) * width ~/ cols);
-      var r = 0;
-      var g = 0;
-      var b = 0;
-      var a = 0;
-      var count = 0;
-      for (var y = startY; y < endY; y += 1) {
-        for (var x = startX; x < endX; x += 1) {
-          final index = (y * width + x) * 4;
-          // Weight colour by alpha so a mostly-transparent cell is not
-          // dragged toward whatever colour its stray opaque pixel had.
-          final alpha = rgba[index + 3];
-          r += rgba[index] * alpha;
-          g += rgba[index + 1] * alpha;
-          b += rgba[index + 2] * alpha;
-          a += alpha;
-          count += 1;
-        }
-      }
-      if (count == 0 || a == 0) {
-        continue;
-      }
-      paint.color = Color.fromARGB(
-        255,
-        (r / a).round().clamp(0, 255),
-        (g / a).round().clamp(0, 255),
-        (b / a).round().clamp(0, 255),
-      ).withValues(alpha: a / count / 255);
-      canvas.drawRect(
-        Rect.fromLTWH(
-          left + col * cellWidth,
-          top + row * cellHeight,
-          // Half a pixel of overlap, so neighbouring cells do not leave
-          // hairlines of background between them.
-          cellWidth + 0.5,
-          cellHeight + 0.5,
-        ),
-        paint,
-      );
-    }
+  final paint = Paint()
+    ..filterQuality = FilterQuality.none
+    ..isAntiAlias = false;
+  if (!piece.flipHorizontal && !piece.flipVertical) {
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      destination,
+      paint,
+    );
+    return;
   }
+  // A mirror about the destination's own centre, so the piece stays inside
+  // the box it was letterboxed into. Cheaper than re-ordering bytes and, in
+  // a preview, exactly as truthful.
+  canvas.save();
+  canvas.translate(destination.center.dx, destination.center.dy);
+  canvas.scale(piece.flipHorizontal ? -1.0 : 1.0, piece.flipVertical ? -1.0 : 1.0);
+  canvas.translate(-destination.center.dx, -destination.center.dy);
+  canvas.drawImageRect(
+    image,
+    Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+    destination,
+    paint,
+  );
+  canvas.restore();
 }
 
 /// The held piece, drawn over a checker.
@@ -111,13 +180,17 @@ class CutPiecePreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      key: const ValueKey<String>('cut-piece-preview'),
-      painter: _CutPiecePreviewPainter(
-        piece: piece,
-        checkerColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+    return CutPieceImageHost(
+      piece: piece,
+      builder: (context, image) => CustomPaint(
+        key: const ValueKey<String>('cut-piece-preview'),
+        painter: _CutPiecePreviewPainter(
+          piece: piece,
+          image: image,
+          checkerColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+        ),
+        size: Size.infinite,
       ),
-      size: Size.infinite,
     );
   }
 }
@@ -125,10 +198,12 @@ class CutPiecePreview extends StatelessWidget {
 class _CutPiecePreviewPainter extends CustomPainter {
   const _CutPiecePreviewPainter({
     required this.piece,
+    required this.image,
     required this.checkerColor,
   });
 
   final CutPiece piece;
+  final ui.Image? image;
   final Color checkerColor;
 
   static const double _checkerCell = 6;
@@ -148,12 +223,13 @@ class _CutPiecePreviewPainter extends CustomPainter {
         );
       }
     }
-    paintCutPiece(canvas, bounds, piece);
+    paintCutPiece(canvas, bounds, piece, image);
   }
 
   @override
   bool shouldRepaint(_CutPiecePreviewPainter oldDelegate) =>
       !identical(oldDelegate.piece, piece) ||
+      !identical(oldDelegate.image, image) ||
       oldDelegate.checkerColor != checkerColor;
 }
 
@@ -205,10 +281,13 @@ class CutPieceCursorOverlay extends StatelessWidget {
         // Its own layer, so following the pointer is a transform rather
         // than a repaint of the piece.
         child: RepaintBoundary(
-          child: CustomPaint(
-            key: const ValueKey<String>('cut-piece-cursor-overlay'),
-            painter: _CutPieceCursorPainter(piece: piece),
-            child: const SizedBox.expand(),
+          child: CutPieceImageHost(
+            piece: piece,
+            builder: (context, image) => CustomPaint(
+              key: const ValueKey<String>('cut-piece-cursor-overlay'),
+              painter: _CutPieceCursorPainter(piece: piece, image: image),
+              child: const SizedBox.expand(),
+            ),
           ),
         ),
       ),
@@ -217,15 +296,17 @@ class CutPieceCursorOverlay extends StatelessWidget {
 }
 
 class _CutPieceCursorPainter extends CustomPainter {
-  const _CutPieceCursorPainter({required this.piece});
+  const _CutPieceCursorPainter({required this.piece, required this.image});
 
   final CutPiece piece;
+  final ui.Image? image;
 
   @override
   void paint(Canvas canvas, Size size) =>
-      paintCutPiece(canvas, Offset.zero & size, piece);
+      paintCutPiece(canvas, Offset.zero & size, piece, image);
 
   @override
   bool shouldRepaint(_CutPieceCursorPainter oldDelegate) =>
-      !identical(oldDelegate.piece, piece);
+      !identical(oldDelegate.piece, piece) ||
+      !identical(oldDelegate.image, image);
 }

@@ -946,6 +946,12 @@ class _BlendModeControl extends StatelessWidget {
                 // overflowing the width the strip budgeted.
                 expand: true,
                 entriesBuilder: () => [
+                  // ONE list for every tool that composites — TS8 유저 법:
+                  // 「블렌드모드가 존재한다면 다 공통이야. 지우개만 이레이저만
+                  // 남기는거고. 나머지는 이레이저 포함 다 있어.」 The stamp
+                  // joining `toolHasBlendMode` is all it took: the eraser's
+                  // single-entry case is the `toolLocked` box above, so this
+                  // list needs no per-tool filter to obey that law.
                   for (final candidate in BrushBlendMode.values)
                     PanelFlyoutItem(
                       keyValue: 'brush-tool-blend-${candidate.name}',

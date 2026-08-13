@@ -1,5 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_stamp_image.dart';
+import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
@@ -267,6 +271,144 @@ void main() {
 
       await gesture.up();
       await tester.pumpAndSettle();
+    });
+  });
+
+  group('EditorWorkspace tool library', () {
+    // TS3: 유저 — "라소 컷 골랐는데도 ui는 사각형컷을 가리키고있음. 동작
+    // 자체는 라소컷으로 잘 작동하는데. 이거는 채우기툴쪽도 똑같은거 보니
+    // 공통로직 손봐야할듯."
+    //
+    // The tap always worked (the callback reads the live state), so this
+    // has to assert on what the TILE says, not on what the tool does. The
+    // library lives inside a per-tool keep-alive stack whose cache key was
+    // the active PRESET alone — null for every drag-out verb, for ever — so
+    // the state changed, the builder ran, the cache answered and the panel
+    // that came back was the one built with the rectangle.
+    Future<bool> tileSelected(WidgetTester tester, String key) async {
+      final tile = tester.widget<ListTile>(
+        find.descendant(
+          of: find.byKey(ValueKey<String>(key)),
+          matching: find.byType(ListTile),
+          matchRoot: true,
+        ),
+      );
+      return tile.selected;
+    }
+
+    testWidgets('the highlighted shape tile follows the shape that was picked', (
+      tester,
+    ) async {
+      await _pumpHome(tester);
+      await tester.tap(find.byKey(const ValueKey<String>('tool-cut-button')));
+      await tester.pumpAndSettle();
+
+      expect(await tileSelected(tester, 'sub-tool-cut-rect'), isTrue);
+
+      await tester.tap(find.byKey(const ValueKey<String>('sub-tool-cut-lasso')));
+      await tester.pumpAndSettle();
+
+      expect(
+        await tileSelected(tester, 'sub-tool-cut-lasso'),
+        isTrue,
+        reason: 'the picked outline is the one highlighted',
+      );
+      expect(
+        await tileSelected(tester, 'sub-tool-cut-rect'),
+        isFalse,
+        reason: 'and the old one lets go',
+      );
+    });
+
+    testWidgets('the fill tiles follow too — it was one cache, not one tool', (
+      tester,
+    ) async {
+      await _pumpHome(tester);
+      await tester.tap(find.byKey(const ValueKey<String>('tool-fill-button')));
+      await tester.pumpAndSettle();
+
+      // Enter the shape verb FIRST. Coming from the bucket is a different
+      // keep-alive key, so that hop builds cold and would pass either way —
+      // the staleness only shows when the shape changes with the verb
+      // already active, which is exactly how a person uses it.
+      await tester.tap(find.byKey(const ValueKey<String>('sub-tool-fill-rect')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('sub-tool-fill-polygon')),
+      );
+      await tester.pumpAndSettle();
+      expect(await tileSelected(tester, 'sub-tool-fill-polygon'), isTrue);
+      expect(await tileSelected(tester, 'sub-tool-fill-rect'), isFalse);
+
+      // Away to another tool and back: the cached panel has to come back
+      // showing the CURRENT state, whichever way that cuts. The rail's Fill
+      // button re-enters on the BUCKET (its own long-standing rule — a verb
+      // is not an outline, so it is not one of the things the shape memory
+      // restores), and the cached panel must say so rather than carrying
+      // the polygon highlight back with it.
+      await tester.tap(find.byKey(const ValueKey<String>('tool-brush-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey<String>('tool-fill-button')));
+      await tester.pumpAndSettle();
+      expect(await tileSelected(tester, 'sub-tool-fill-bucket'), isTrue);
+      expect(await tileSelected(tester, 'sub-tool-fill-polygon'), isFalse);
+
+      // …and the outline itself was remembered all along: re-entering the
+      // shape verb lands back on the polygon, not on the rectangle.
+      await tester.tap(
+        find.byKey(const ValueKey<String>('sub-tool-fill-polygon')),
+      );
+      await tester.pumpAndSettle();
+      expect(await tileSelected(tester, 'sub-tool-fill-polygon'), isTrue);
+    });
+
+    // TS2: 유저 — "잘라내고 나면 찍기로 모드전환".
+    //
+    // Driven through the SLOT rather than through a cut drag, because the
+    // slot is where the workspace listens and it is the honest boundary:
+    // the rule is "something is being held now", and the cut gesture is
+    // covered where it lives (cut_tool_drag_test).
+    testWidgets('a fresh cut arms the stamp; posing what is held does not', (
+      tester,
+    ) async {
+      await _pumpHome(tester);
+      await tester.tap(find.byKey(const ValueKey<String>('tool-cut-button')));
+      await tester.pumpAndSettle();
+      expect(await tileSelected(tester, 'sub-tool-cut-stamp'), isFalse);
+
+      // The canvas panel is always mounted and carries the workspace's own
+      // slot, so this is the real object the cut gesture would fill.
+      final slot = tester
+          .widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel).first)
+          .cutPieceSlot!;
+      slot.hold(
+        CutPiece(
+          image: BrushStampImage(
+            id: 'cut-1',
+            width: 4,
+            height: 4,
+            rgba: Uint8List(4 * 4 * 4),
+          ),
+          originLeft: 0,
+          originTop: 0,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        await tileSelected(tester, 'sub-tool-cut-stamp'),
+        isTrue,
+        reason: 'holding something arms the tool that puts it down',
+      );
+
+      // Back to the grab tile, then nudge the POSE: the slot notifies for
+      // that too, and taking it for a fresh cut would yank the tool out from
+      // under the hand.
+      await tester.tap(find.byKey(const ValueKey<String>('sub-tool-cut-rect')));
+      await tester.pumpAndSettle();
+      slot.updatePose(scalePercent: 150);
+      await tester.pumpAndSettle();
+      expect(await tileSelected(tester, 'sub-tool-cut-stamp'), isFalse);
+      expect(await tileSelected(tester, 'sub-tool-cut-rect'), isTrue);
     });
   });
 

@@ -74,14 +74,18 @@ class CutPieceSlot extends ChangeNotifier {
   /// the tool settings panel and the canvas live in different subtrees, and
   /// threading a callback down and an action back up through both would be
   /// more wiring than a slot the canvas fills in.
-  void Function({required bool behind})? pasteAtOriginHandler;
+  ///
+  /// TS8: it takes no `behind` any more. 위/아래 was a COMPOSITE ORDER and
+  /// the stamp has a blend mode now, so the panel that owns the pixels
+  /// reads the order from there — one verb, and the two buttons that used
+  /// to spell `color`/`behind` by hand became one.
+  void Function()? pasteAtOriginHandler;
 
   /// True when a canvas is mounted AND something is held — what the paste
-  /// buttons gate on.
+  /// button gates on.
   bool get canPasteAtOrigin => pasteAtOriginHandler != null && isNotEmpty;
 
-  void pasteAtOrigin({required bool behind}) =>
-      pasteAtOriginHandler?.call(behind: behind);
+  void pasteAtOrigin() => pasteAtOriginHandler?.call();
 
   /// Empties the slot. Nothing in the shipped UI calls this yet: the piece
   /// is meant to sit there until the next cut replaces it, and a stray

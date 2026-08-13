@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_shape.dart' show BrushMaskSlot;
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
@@ -241,10 +242,63 @@ void main() {
           tool == CanvasTool.brush ||
               tool == CanvasTool.eraser ||
               tool == CanvasTool.fill ||
-              tool == CanvasTool.fillShape,
+              tool == CanvasTool.fillShape ||
+              // TS8: the stamp puts pixels on the cel through the same
+              // funnel, and its 위/아래 붙여넣기 pair was already spelling
+              // `color`/`behind` by hand.
+              tool == CanvasTool.cutStamp,
           reason: '$tool',
         );
       }
+    });
+
+    test('the stamp keeps its own blend, and its own pin', () {
+      // Sharing the brush's field would mean painting shadows on multiply
+      // and then dropping a stamp on multiply — the leak the fill's own
+      // field was split off to stop, one tool over.
+      final stamp = BrushToolState.defaults
+          .copyWith(tool: CanvasTool.cutStamp)
+          .withActiveBlendMode(BrushBlendMode.behind);
+      expect(stamp.activeBlendMode, BrushBlendMode.behind);
+      expect(
+        stamp.copyWith(tool: CanvasTool.brush).activeBlendMode,
+        BrushBlendMode.color,
+        reason: 'the brush never hears about it',
+      );
+
+      final pinned = stamp.withActiveBlendLock(BrushBlendMode.multiply);
+      expect(pinned.activeBlendLock, BrushBlendMode.multiply);
+      expect(pinned.activeBlendMode, BrushBlendMode.multiply, reason: '핀 > 툴 값');
+      expect(
+        pinned.copyWith(tool: CanvasTool.brush).activeBlendLock,
+        isNull,
+        reason: "the brush's pin lives in its preset and stays free",
+      );
+      expect(
+        pinned.withActiveBlendLock(null).activeBlendMode,
+        BrushBlendMode.behind,
+        reason: 'unpinning falls back to the mode the tool was set to',
+      );
+    });
+
+    test('picking a tip keeps every hand setting', () {
+      // `withMask` rebuilds the state through the raw constructor, which
+      // DEFAULTS whatever it is not handed — so this used to snap the three
+      // remembered outlines back to the rectangle and both blends back to
+      // Color every time a tip was chosen.
+      final before = BrushToolState.defaults
+          .withShapeKind(CanvasShapeKind.lasso, forTool: CanvasTool.select)
+          .withShapeKind(CanvasShapeKind.polygon, forTool: CanvasTool.cut)
+          .copyWith(tool: CanvasTool.fill)
+          .withActiveBlendMode(BrushBlendMode.multiply)
+          .copyWith(tool: CanvasTool.cutStamp)
+          .withActiveBlendMode(BrushBlendMode.behind);
+      final after = before.withMask(BrushMaskSlot.tip, null);
+      expect(after.selectShape, CanvasShapeKind.lasso);
+      expect(after.cutShape, CanvasShapeKind.polygon);
+      expect(after.fillBlendMode, BrushBlendMode.multiply);
+      expect(after.cutStampBlendMode, BrushBlendMode.behind);
+      expect(after.tool, CanvasTool.cutStamp);
     });
   });
 

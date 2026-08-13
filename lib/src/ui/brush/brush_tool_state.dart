@@ -190,6 +190,8 @@ class BrushToolState {
     BrushBlendMode brushBlendMode = BrushBlendMode.color,
     BrushBlendMode fillBlendMode = BrushBlendMode.color,
     BrushBlendMode? fillBlendLock,
+    BrushBlendMode cutStampBlendMode = BrushBlendMode.color,
+    BrushBlendMode? cutStampBlendLock,
   }) {
     return BrushToolState.clamped(
       size: size,
@@ -228,6 +230,8 @@ class BrushToolState {
       brushBlendMode: brushBlendMode,
       fillBlendMode: fillBlendMode,
       fillBlendLock: fillBlendLock,
+      cutStampBlendMode: cutStampBlendMode,
+      cutStampBlendLock: cutStampBlendLock,
     );
   }
 
@@ -241,6 +245,8 @@ class BrushToolState {
     this.brushBlendMode = BrushBlendMode.color,
     this.fillBlendMode = BrushBlendMode.color,
     this.fillBlendLock,
+    this.cutStampBlendMode = BrushBlendMode.color,
+    this.cutStampBlendLock,
   });
 
   /// Builds tool state from a loose [BrushShape] and the three hand settings,
@@ -258,6 +264,8 @@ class BrushToolState {
     BrushBlendMode brushBlendMode = BrushBlendMode.color,
     BrushBlendMode fillBlendMode = BrushBlendMode.color,
     BrushBlendMode? fillBlendLock,
+    BrushBlendMode cutStampBlendMode = BrushBlendMode.color,
+    BrushBlendMode? cutStampBlendLock,
   }) {
     return BrushToolState._raw(
       shape: _clampShape(shape),
@@ -269,6 +277,8 @@ class BrushToolState {
       brushBlendMode: brushBlendMode,
       fillBlendMode: fillBlendMode,
       fillBlendLock: fillBlendLock,
+      cutStampBlendMode: cutStampBlendMode,
+      cutStampBlendLock: cutStampBlendLock,
     );
   }
 
@@ -313,6 +323,8 @@ class BrushToolState {
     BrushBlendMode? brushBlendMode,
     BrushBlendMode? fillBlendMode,
     BrushBlendMode? fillBlendLock,
+    BrushBlendMode? cutStampBlendMode,
+    BrushBlendMode? cutStampBlendLock,
   }) {
     return BrushToolState.fromShape(
       BrushShape(
@@ -357,6 +369,8 @@ class BrushToolState {
       brushBlendMode: brushBlendMode ?? BrushBlendMode.color,
       fillBlendMode: fillBlendMode ?? BrushBlendMode.color,
       fillBlendLock: fillBlendLock,
+      cutStampBlendMode: cutStampBlendMode ?? BrushBlendMode.color,
+      cutStampBlendLock: cutStampBlendLock,
     );
   }
 
@@ -562,6 +576,17 @@ class BrushToolState {
   /// does not change until you unlock it.
   final BrushBlendMode? fillBlendLock;
 
+  /// The STAMP's composite mode (TS8), its own field for the same reason
+  /// the fill got one: 유저 확정 — 값은 툴별 칸. Painting shadows on
+  /// multiply and then dropping a stamp must not drop it on multiply.
+  final BrushBlendMode cutStampBlendMode;
+
+  /// The stamp's blend PIN, or null when it is free. Like the fill, the
+  /// stamp has no preset for a pin to belong to, so it pins here — without
+  /// this field the padlock would read and write the BRUSH's pin, which is
+  /// the very leak the per-tool fields exist to stop.
+  final BrushBlendMode? cutStampBlendLock;
+
   /// The blend the ACTIVE tool actually composites with — a pin when there
   /// is one, otherwise the mode that tool was last set to.
   ///
@@ -572,6 +597,7 @@ class BrushToolState {
     // Both fill tiles share one blend: they are one tool wearing two ways
     // of choosing an area (유저 확정: 채우기 툴 하나로 공유).
     CanvasTool.fill || CanvasTool.fillShape => fillBlendLock ?? fillBlendMode,
+    CanvasTool.cutStamp => cutStampBlendLock ?? cutStampBlendMode,
     _ => effectiveBlendMode,
   };
 
@@ -579,6 +605,7 @@ class BrushToolState {
   /// the tool composites nothing at all).
   BrushBlendMode? get activeBlendLock => switch (tool) {
     CanvasTool.fill || CanvasTool.fillShape => fillBlendLock,
+    CanvasTool.cutStamp => cutStampBlendLock,
     _ => lockedBlendMode,
   };
 
@@ -588,10 +615,15 @@ class BrushToolState {
   /// This is why the strip's blend button used to lie: it was shown for
   /// every tool, and the fill (and the selection tools, and move) ignored
   /// it outright.
+  ///
+  /// TS8: the STAMP composites too — 유저 확정, 「블렌드모드가 존재한다면
+  /// 다 공통」. It puts pixels on the cel through the same funnel, and the
+  /// 위/아래 붙여넣기 pair was already spelling `color`/`behind` by hand.
   bool get toolHasBlendMode =>
       tool == CanvasTool.brush ||
       tool == CanvasTool.eraser ||
-      canvasToolFills(tool);
+      canvasToolFills(tool) ||
+      canvasToolStamps(tool);
 
   /// Builds tool state from a preset's model-layer [BrushSettings], clamping
   /// every value into the panel's ranges.
@@ -632,6 +664,8 @@ class BrushToolState {
       // selected — it rides across for the same reason the shapes do.
       fillBlendMode: fillBlendMode,
       fillBlendLock: fillBlendLock,
+      cutStampBlendMode: cutStampBlendMode,
+      cutStampBlendLock: cutStampBlendLock,
       color: color,
     );
   }
@@ -704,6 +738,9 @@ class BrushToolState {
     BrushBlendMode? fillBlendMode,
     bool clearFillBlendLock = false,
     BrushBlendMode? fillBlendLock,
+    BrushBlendMode? cutStampBlendMode,
+    bool clearCutStampBlendLock = false,
+    BrushBlendMode? cutStampBlendLock,
   }) {
     return BrushToolState._raw(
       shape: _clampShape(
@@ -756,6 +793,10 @@ class BrushToolState {
       fillBlendLock: clearFillBlendLock
           ? null
           : (fillBlendLock ?? this.fillBlendLock),
+      cutStampBlendMode: cutStampBlendMode ?? this.cutStampBlendMode,
+      cutStampBlendLock: clearCutStampBlendLock
+          ? null
+          : (cutStampBlendLock ?? this.cutStampBlendLock),
     );
   }
 
@@ -766,6 +807,7 @@ class BrushToolState {
   /// for one tool can never reach into another's.
   BrushToolState withActiveBlendMode(BrushBlendMode mode) => switch (tool) {
     CanvasTool.fill || CanvasTool.fillShape => copyWith(fillBlendMode: mode),
+    CanvasTool.cutStamp => copyWith(cutStampBlendMode: mode),
     _ => copyWith(brushBlendMode: mode),
   };
 
@@ -780,6 +822,9 @@ class BrushToolState {
     CanvasTool.fill || CanvasTool.fillShape => mode == null
         ? copyWith(clearFillBlendLock: true)
         : copyWith(fillBlendLock: mode),
+    CanvasTool.cutStamp => mode == null
+        ? copyWith(clearCutStampBlendLock: true)
+        : copyWith(cutStampBlendLock: mode),
     _ => mode == null
         ? copyWith(clearBlendLock: true)
         : copyWith(lockedBlendMode: mode),
@@ -792,14 +837,30 @@ class BrushToolState {
   /// Replaces (or CLEARS, with null) one of the three sampled masks.
   /// [copyWith] preserves them so a slider tweak keeps a textured tip, which
   /// leaves no way to take one off; this is that way.
+  ///
+  /// ⚠️Every non-shape field is listed: this constructor DEFAULTS the ones
+  /// it is not given, so an omission here is not a no-op — it is a silent
+  /// reset. Picking a tip used to snap the three remembered outlines back
+  /// to the rectangle and the fill's blend back to Color, which is the same
+  /// trap [withPresetSettings] carries a comment about.
   BrushToolState withMask(BrushMaskSlot slot, BrushTipMask? mask) {
-    return BrushToolState._raw(
-      shape: _clampShape(shape.withMask(slot, mask)),
-      tool: tool,
-      stabilizerStrength: stabilizerStrength,
-      brushBlendMode: brushBlendMode,
-    );
+    return _withShape(shape.withMask(slot, mask));
   }
+
+  /// [shape] replaced, every hand setting carried through untouched.
+  BrushToolState _withShape(BrushShape next) => BrushToolState._raw(
+    shape: _clampShape(next),
+    tool: tool,
+    selectShape: selectShape,
+    cutShape: cutShape,
+    fillShape: fillShape,
+    stabilizerStrength: stabilizerStrength,
+    brushBlendMode: brushBlendMode,
+    fillBlendMode: fillBlendMode,
+    fillBlendLock: fillBlendLock,
+    cutStampBlendMode: cutStampBlendMode,
+    cutStampBlendLock: cutStampBlendLock,
+  );
 
   /// Replaces (or CLEARS, with null) one setting's pressure curve —
   /// [copyWith] deliberately preserves curves, so disabling pressure on a
@@ -808,12 +869,7 @@ class BrushToolState {
     BrushPressureTarget target,
     BrushPressureCurve? curve,
   ) {
-    return BrushToolState._raw(
-      shape: _clampShape(shape.withPressureCurve(target, curve)),
-      tool: tool,
-      stabilizerStrength: stabilizerStrength,
-      brushBlendMode: brushBlendMode,
-    );
+    return _withShape(shape.withPressureCurve(target, curve));
   }
 
   static double clampSize(double value) {
@@ -916,7 +972,9 @@ class BrushToolState {
           // equal, so listeners could skip rebuilding on a blend change.
           other.brushBlendMode == brushBlendMode &&
           other.fillBlendMode == fillBlendMode &&
-          other.fillBlendLock == fillBlendLock;
+          other.fillBlendLock == fillBlendLock &&
+          other.cutStampBlendMode == cutStampBlendMode &&
+          other.cutStampBlendLock == cutStampBlendLock;
 
   @override
   int get hashCode => Object.hash(
@@ -929,5 +987,7 @@ class BrushToolState {
     brushBlendMode,
     fillBlendMode,
     fillBlendLock,
+    cutStampBlendMode,
+    cutStampBlendLock,
   );
 }
