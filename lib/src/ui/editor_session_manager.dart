@@ -18,6 +18,7 @@ import '../services/import/media_identity_reader.dart';
 import '../services/media/media_byte_source.dart';
 import '../services/media/project_media_sources.dart';
 import '../services/import/media_import_planner.dart';
+import '../services/import/psd_expand_import.dart';
 import '../services/import/raster_cel_import.dart';
 import '../services/import/tvp_json_import_planner.dart';
 import '../services/input/wintab_pen_service.dart';
@@ -6671,6 +6672,131 @@ class EditorSessionManager extends ChangeNotifier {
     _refreshAfterCutCommand(preferredActiveLayerId: layer.id);
     notifyListeners();
     return true;
+  }
+
+  /// EXPAND: a Photoshop stack becomes ours — ONE folder named after the
+  /// file, holding its layers with their groups, names, opacity, blend and
+  /// eye intact.
+  ///
+  /// Always baked. "One of them baked means all of them are" is the rule
+  /// the user set: a half-linked stack would take original updates on some
+  /// rows and not others, and a reorder in Photoshop would break the match
+  /// for the rest. So nothing registers and nothing keeps a reference —
+  /// the merged reading ([importImageFile]) is the one that stays live.
+  ///
+  /// Returns the warnings (colour conversions, blends we have no
+  /// equivalent for, adjustment layers left behind), or null when the
+  /// import did not happen — including a FLATTENED document, which has no
+  /// stack to expand and which merge reads perfectly.
+  Future<List<String>?> importPsdExpanded({
+    required String path,
+    required ImportDestination destination,
+    MediaFitMode fit = MediaFitMode.contain,
+    int? lengthFrames,
+  }) async {
+    // Same order as the image path: the destination gate runs before any
+    // read, so a refused import never has pixels to leak.
+    final targetCut = destination == ImportDestination.activeCutLayer
+        ? activeCutOrNull
+        : null;
+    if (destination == ImportDestination.activeCutLayer && targetCut == null) {
+      return null;
+    }
+    final Uint8List bytes;
+    try {
+      bytes = await MediaFileBytes(path).read();
+    } on Object {
+      return null;
+    }
+    final canvasSize =
+        targetCut?.canvasSize ??
+        activeCutOrNull?.canvasSize ??
+        defaultCutCanvasSize;
+    final project = _repository.requireProject();
+    final mint = _importIdMint();
+    final source = _normalizedPath(path);
+    final displayName = mediaAssetDefaultName(source);
+    final cutId = targetCut?.id ?? mint.nextCutId();
+    final duration = destination == ImportDestination.activeCutLayer
+        ? (targetCut!.duration < 1 ? 1 : targetCut.duration)
+        : (lengthFrames ?? project.fps);
+
+    final PsdExpansion? expansion;
+    try {
+      expansion = await readPsdExpansion(
+        bytes: bytes,
+        displayName: displayName,
+        cutId: cutId,
+        duration: duration,
+        canvas: canvasSize,
+        fit: fit,
+        mint: mint,
+      );
+    } on Object {
+      return null;
+    }
+    if (expansion == null || expansion.layers.isEmpty) {
+      return null;
+    }
+
+    if (destination == ImportDestination.activeCutLayer) {
+      _historyManager.execute(
+        ImportMediaCommand(
+          repository: _repository,
+          editingSession: _editingSession,
+          targetCutId: cutId,
+          newLayers: expansion.layers,
+          description: 'Import $displayName',
+        ),
+      );
+    } else {
+      final defaultCut = createDefaultCut(
+        cutId: cutId,
+        name: displayName,
+        layerId: mint.nextLayerId(),
+        canvasSize: canvasSize,
+      );
+      final fixtureLayers = [
+        for (final fixture in defaultCut.layers)
+          if (fixture.kind != LayerKind.animation) fixture,
+      ];
+      final cut = defaultCut.copyWith(
+        duration: duration,
+        layers: [...expansion.layers, ...fixtureLayers],
+      );
+      _historyManager.execute(
+        ImportMediaCommand(
+          repository: _repository,
+          editingSession: _editingSession,
+          trackId: selectedTrackId,
+          newCuts: [cut],
+          description: 'Import $displayName',
+        ),
+      );
+    }
+
+    // Pixels after the structure, like every other import: the cel keys
+    // resolve their owner through the cut that now exists.
+    final bakedCut = _cutById(cutId);
+    if (bakedCut != null) {
+      for (final cel in expansion.cels) {
+        bakeCelSurface(
+          brushFrameStore,
+          brushFrameKeyForCut(bakedCut, cel.layerId, cel.frameId),
+          cel.surface,
+        );
+      }
+    }
+
+    // The folder row is the last layer, and a folder takes no brush — so
+    // the topmost PICTURE is what the hand should land on.
+    final picture = expansion.layers.lastWhere(
+      (layer) => layer.kind != LayerKind.folder,
+      orElse: () => expansion!.layers.last,
+    );
+    _refreshAfterCutCommand(preferredActiveLayerId: picture.id);
+    notifyListeners();
+    return expansion.warnings;
   }
 
   /// Imports a PDF: pages become cels at canvas resolution — §6-m's full
