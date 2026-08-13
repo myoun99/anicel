@@ -387,7 +387,26 @@ class AppControllerScrollbar extends StatefulWidget {
 }
 
 class _AppControllerScrollbarState extends State<AppControllerScrollbar> {
-  bool _attachRetryUsed = false;
+  /// The metrics the last build DREW, so the post-frame check can tell a
+  /// stale thumb from a settled one.
+  ///
+  /// 🚨T7 — a [ScrollController] notifies when the OFFSET moves and at no
+  /// other time. Content growing or shrinking under a stationary offset —
+  /// adding layers, expanding a lane group, switching to a cut with a
+  /// different number of rows — changes what the thumb should be and rings
+  /// no bell at all. The bar then keeps the size it had, which is exactly
+  /// the report: 「컷1에서 레이어 많이 만들고, 컷2 가면 스크롤바가 작은 채로」.
+  ///
+  /// A host rebuild used to be the accidental cure, and where one did not
+  /// arrive the bar simply lied. It is worse than a missed notify: the
+  /// scrollable LAYS OUT after this widget builds, so even in the frame
+  /// where everything changes, the numbers read here are the previous
+  /// frame's. Something has to look again once the frame is done.
+  ///
+  /// ★So the existing one-shot attach retry is generalised rather than
+  /// joined by a second mechanism: the same "look again after the frame"
+  /// answers both, and one of them was already the trusted idiom here.
+  ({double viewport, double content, double offset})? _drawn;
 
   /// The controller's position, or null when it is attached to anything
   /// other than exactly one view.
@@ -404,33 +423,56 @@ class _AppControllerScrollbarState extends State<AppControllerScrollbar> {
 
   bool get _hasDimensions => _position?.hasContentDimensions ?? false;
 
+  /// The metrics as they stand RIGHT NOW, falling back while unattached.
+  ({double viewport, double content, double offset}) get _metrics {
+    final position = _position;
+    if (!_hasDimensions || position == null) {
+      return (
+        viewport: widget.fallbackViewportExtent ?? 0.0,
+        content: widget.fallbackContentExtent ?? 0.0,
+        offset: 0.0,
+      );
+    }
+    return (
+      viewport: position.viewportDimension,
+      content: position.viewportDimension + position.maxScrollExtent,
+      offset: position.pixels,
+    );
+  }
+
+  /// Looks once more after the frame has laid out, and rebuilds only if what
+  /// was drawn is no longer true. Costs one callback and three comparisons
+  /// per build; a settled bar stops there.
+  void _scheduleSettledCheck() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _metrics == _drawn) {
+        return;
+      }
+      setState(() {});
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     // A ScrollController does not notify on attach, so the first build can
-    // race the scrollable's layout. Retry once on the next frame; further
-    // updates arrive through offset notifications or host rebuilds.
-    if (!_hasDimensions && !_attachRetryUsed) {
-      _attachRetryUsed = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() {});
-        }
-      });
-    } else if (_hasDimensions) {
-      _attachRetryUsed = false;
-    }
+    // race the scrollable's layout — and (T7) it never notifies for a content
+    // extent that changed under a still offset either. One post-frame look
+    // covers both, which is why the one-shot attach retry that used to sit
+    // here is GONE rather than kept beside it: it was this check with a
+    // narrower question ([[duplication-program]] — the last step is deleting
+    // the predecessor).
+    _scheduleSettledCheck();
     return AnimatedBuilder(
       animation: widget.controller,
       builder: (context, _) {
-        var viewportExtent = widget.fallbackViewportExtent ?? 0.0;
-        var contentExtent = widget.fallbackContentExtent ?? 0.0;
-        var offset = 0.0;
-        final position = _position;
-        if (_hasDimensions && position != null) {
-          viewportExtent = position.viewportDimension;
-          contentExtent = position.viewportDimension + position.maxScrollExtent;
-          offset = position.pixels;
-        }
+        final metrics = _metrics;
+        final viewportExtent = metrics.viewport;
+        final contentExtent = metrics.content;
+        final offset = metrics.offset;
+        // Recorded from INSIDE the AnimatedBuilder: an offset notification
+        // rebuilds only this closure, and the check must compare against
+        // what was actually painted rather than the outer build's snapshot.
+        _drawn = metrics;
         return AppScrollbar(
           axis: widget.axis,
           offset: offset,

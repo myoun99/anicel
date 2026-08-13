@@ -108,6 +108,14 @@ void main() {
     );
     expect(session.deleteSubject, isNot(DeleteSubject.nothing));
     expect(glyph().color, AppColors.danger);
-    expect(AppColors.deleteGlyph(enabled: false), isNull);
+    // CONTRACT CHANGED (T16, 2026-08-13): disabled used to be `null`, which
+    // handed the icon to the BUTTON's own ink — and a button has two of
+    // those, so red → grey travelled through near-white, and a folded bar
+    // (the command groups are baked pictures) could freeze there.
+    // 유저: 「빨강→하양→회색. 중간에 이상하게 하얀색이 존재하는 버그」.
+    // Both ends are named now, so there is no third value to stop on.
+    expect(AppColors.deleteGlyph(enabled: false), AppColors.glyphDisabled);
+    expect(AppColors.deleteGlyph(enabled: false), isNot(AppColors.text));
+    expect(AppColors.addGlyph(enabled: false), AppColors.glyphDisabled);
   });
 }

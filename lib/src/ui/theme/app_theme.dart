@@ -42,10 +42,25 @@ abstract final class AppColors {
   /// being re-decided at each button. Never the border, never a caret, never
   /// the label beside it: the plus itself and nothing else.
   ///
-  /// Returns null when the button cannot be pressed, which hands the icon
-  /// back to whatever the surface dims disabled controls to — an accent that
-  /// still burns on a dead button would be advertising a door that is shut.
-  static Color? addGlyph({required bool enabled}) => enabled ? accent : null;
+  /// A disabled glyph is dim rather than coloured — an accent that still
+  /// burns on a dead button would be advertising a door that is shut.
+  ///
+  /// 🚨T16 — this is NAMED rather than left as `null`, and that is the whole
+  /// fix. Handing the icon back with no colour let the BUTTON's own ink
+  /// answer instead, and a button has two of those: [text] while it is live
+  /// and this one once it is not. Crossing from red to grey therefore went
+  /// through near-white — 유저: 「빨강→하양→회색. 중간에 이상하게 하얀색이
+  /// 존재하는 버그」 — and a bar that BAKES (the timeline's command groups are
+  /// baked pictures) can be folded mid-crossing and keep the white forever.
+  ///
+  /// ★A colour that is always one of two named values cannot have a third
+  /// state to freeze on. The value is the same grey the button theme dims to
+  /// (`disabledForegroundColor`), so nothing looks different at rest — what
+  /// changes is that the in-between has nowhere to live.
+  static final Color glyphDisabled = textDim.withValues(alpha: 0.5);
+
+  static Color addGlyph({required bool enabled}) =>
+      enabled ? accent : glyphDisabled;
 
   /// The colour of a DELETE glyph, wherever one appears — [addGlyph]'s twin.
   ///
@@ -54,7 +69,11 @@ abstract final class AppColors {
   /// same reason: 「모든 곳」 has to be one decision rather than the same
   /// decision made again at each button. The GLYPH only — never the border,
   /// never the label beside it — and it goes dark with the button.
-  static Color? deleteGlyph({required bool enabled}) => enabled ? danger : null;
+  ///
+  /// Dims to [glyphDisabled] for the reason spelled out there: this is the
+  /// twin the user actually caught turning white.
+  static Color deleteGlyph({required bool enabled}) =>
+      enabled ? danger : glyphDisabled;
 
   /// FILL 1 — below every chrome surface: the scaffold, a well cut into a
   /// panel, the ring that separates a floating panel from the artwork.
