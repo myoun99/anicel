@@ -136,6 +136,19 @@ bool mediaKindBelongsInArchive(MediaAssetKind kind) => switch (kind) {
   MediaAssetKind.video => false,
 };
 
+/// The size at which carrying a file is worth saying out loud.
+///
+/// Dialogue audio runs to a few megabytes and a scanned timesheet
+/// likewise, a storyboard PDF to a few tens — so this sits well clear of
+/// ordinary work and catches the accident instead: the several-hundred-
+/// megabyte master somebody meant to reference, doubling the project
+/// without a word about it.
+///
+/// A WARNING and never a refusal (user direction). It is their file and
+/// their disk; what they need is to know before the save, not to be
+/// stopped at the door.
+const int largeCarriedAssetBytes = 100 * 1024 * 1024;
+
 /// Every pool path whose bytes the project should carry.
 ///
 /// TWO questions, and both have to say yes. The KIND sets the ceiling —
