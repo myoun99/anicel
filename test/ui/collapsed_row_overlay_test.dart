@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
@@ -22,13 +24,16 @@ import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 /// drawing, because that is the property that keeps being true when the row
 /// grows a column.
 void main() {
-  Future<void> pumpApp(WidgetTester tester) async {
+  Future<EditorSessionManager> pumpApp(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(theme: buildAppTheme(), home: const HomePage()),
     );
     await tester.pumpAndSettle();
+    return tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
   }
 
   Future<void> collapseBottom(WidgetTester tester) async {
@@ -147,6 +152,53 @@ void main() {
       reason: 'the cells row is CURSOR-INDEPENDENT by design, so the '
           'playhead cannot live inside it — mounting the row without this '
           'would silently drop "where am I"',
+    );
+  });
+
+  /// T16-ⓒ — 유저 2026-08-13: 「접기 전에 프레임 없는 곳에 인덱스 두고, 접고
+  /// 나서 프레임으로 이동하면 1,2,3,4,n 같은 버튼이 비활성화인 채 그대로」.
+  ///
+  /// The bar survives a fold (only the grid goes offstage), so the buttons on
+  /// it are still the app's answer to "what can I do here" while the panel is
+  /// away — and they were answering about the frame the fold happened on.
+  testWidgets('folded, the bar still follows the playhead', (tester) async {
+    final session = await pumpApp(tester);
+    session.selectFrameIndex(0);
+    session.createDrawingAtCurrentFrame();
+    await tester.pumpAndSettle();
+
+    bool commaEnabled() =>
+        tester
+            .widget<TextButton>(
+              find.byKey(const ValueKey<String>('set-comma-1-button')),
+            )
+            .onPressed !=
+        null;
+
+    expect(commaEnabled(), isTrue);
+
+    // Stand on empty paper, THEN fold — the order the user reported.
+    session.selectFrameIndex(session.activeCutPlaybackFrameCount - 1);
+    await tester.pumpAndSettle();
+    expect(commaEnabled(), isFalse);
+
+    await collapseBottom(tester);
+    expect(find.byType(CollapsedRowOverlay), findsOneWidget);
+
+    // Back onto the cel while folded.
+    session.selectFrameIndex(0);
+    await tester.pumpAndSettle();
+
+    expect(
+      session.canSetCommaForSelectionOrCurrent,
+      isTrue,
+      reason: 'the state moved',
+    );
+    expect(
+      commaEnabled(),
+      isTrue,
+      reason: 'and the buttons have to say so while the panel is folded — '
+          'they are the only ones left saying anything',
     );
   });
 
