@@ -80,6 +80,18 @@ extension LayerFolderQueries on List<Layer> {
     return true;
   }
 
+  /// 🚨WHETHER [layer] IS SHOWN AT ALL — its own eye AND every folder it
+  /// lives in. This is the question, and callers must ask it here.
+  ///
+  /// [subtreeVisible] answers only half of it (the ancestors), which is why
+  /// it sat in this file with zero callers while seven places re-derived the
+  /// other half as a bare `layer.isVisible` and got the folders wrong:
+  /// artwork went on being drawn into a hidden folder, onion ghosts kept
+  /// showing, and cel export kept writing files for rows the user had
+  /// switched off. A predicate nobody can reach is not a law.
+  bool rowVisible(Layer layer) =>
+      layer.isVisible && subtreeVisible(layer.folderId);
+
   /// Whether any ancestor is collapsed (the row hides in the list).
   bool subtreeCollapsed(LayerId? folderId) {
     for (final folder in ancestryOf(folderId)) {
@@ -166,6 +178,10 @@ class LayerFolderIndex {
     }
     return true;
   }
+
+  /// See [LayerFolderQueries.rowVisible].
+  bool rowVisible(Layer layer) =>
+      layer.isVisible && subtreeVisible(layer.folderId);
 
   /// See [LayerFolderQueries.subtreeMembersOf]. Every folder's list is
   /// filled by ONE walk of the stack, the first time any of them is asked

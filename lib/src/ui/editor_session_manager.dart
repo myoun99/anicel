@@ -3615,9 +3615,22 @@ class EditorSessionManager extends ChangeNotifier {
     if (activeId == null) {
       return;
     }
-    for (final layer in layers) {
+    final stack = layers;
+    // 🚨THE ANCESTORS STAY ON. Solo means "show this row alone", and a row
+    // inside a folder is not shown by its own eye — turning every OTHER row
+    // off turned its folders off with them, so soloing a row inside a folder
+    // hid the very thing it was soloing. On the editing canvas that read as
+    // "nothing happened"; in playback and export the frame came out EMPTY.
+    final keepShown = <LayerId>{
+      activeId,
+      for (final folder in stack.ancestryOf(
+        stack.where((layer) => layer.id == activeId).firstOrNull?.folderId,
+      ))
+        folder.id,
+    };
+    for (final layer in stack) {
       _visibilitySoloSnapshot?.putIfAbsent(layer.id, () => layer.isVisible);
-      final shouldShow = layer.id == activeId;
+      final shouldShow = keepShown.contains(layer.id);
       if (layer.isVisible != shouldShow) {
         _layerController.toggleLayerVisibility(layer.id);
       }
@@ -15548,10 +15561,18 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// The drawing layers the legend's bulk onion sweep addresses: the
   /// active cut's VISIBLE brush-holding rows.
-  List<Layer> get _onionSweepLayers => [
-    for (final layer in activeCutOrNull?.layers ?? const <Layer>[])
-      if (layer.isVisible && layerKindAcceptsBrushInput(layer.kind)) layer,
-  ];
+  List<Layer> get _onionSweepLayers {
+    final stack = activeCutOrNull?.layers ?? const <Layer>[];
+    return [
+      for (final layer in stack)
+        // `rowVisible`, not `isVisible`: a row inside a hidden folder is not
+        // displayed, so the sweep over "every displayed layer" must not
+        // count it — otherwise the bulk button reads OFF because of rows
+        // nobody can see.
+        if (stack.rowVisible(layer) && layerKindAcceptsBrushInput(layer.kind))
+          layer,
+    ];
+  }
 
   /// Whether the legend's bulk button reads ON (every displayed layer
   /// currently ghosting).
@@ -15599,8 +15620,11 @@ class EditorSessionManager extends ChangeNotifier {
     }
     return [
       for (final layer in cut.layers)
+        // A ghost is that layer's artwork, so it is shown exactly when the
+        // layer is: hiding the FOLDER used to leave its members' onion skins
+        // on screen with nothing under them.
         if (enabledIds.contains(layer.id) &&
-            layer.isVisible &&
+            cut.layers.rowVisible(layer) &&
             layerKindAcceptsBrushInput(layer.kind))
           for (final plan in planOnionSkin(
             layer: layer,
