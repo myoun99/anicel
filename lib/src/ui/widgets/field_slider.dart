@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../input/value_control_pointers.dart';
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import 'axis_bar_gesture.dart';
@@ -492,13 +493,25 @@ class _FieldSliderState extends State<FieldSlider> {
         onPointerDown: (event) {
           _pointerDownAt = event.position;
           _pointerShift = Offset.zero;
+          // T11: this press is the slider's. Claimed HERE because hit-test
+          // dispatch runs deepest-first, so the claim is already standing
+          // by the time the row above is offered the same event and asks.
+          claimPointerForValueControl(event.pointer);
         },
         onPointerMove: _trackShift,
         // The lift too: `Listener` sees it before the arena sweeps, and a
         // gesture whose last move arrived with the finger already leaving
         // would otherwise be judged on a stale position.
-        onPointerUp: _trackShift,
-        onPointerCancel: _trackShift,
+        onPointerUp: (event) {
+          _trackShift(event);
+          releasePointerForValueControl(event.pointer);
+        },
+        onPointerCancel: (event) {
+          _trackShift(event);
+          // Released on cancel too: a claim that outlives its gesture would
+          // silently deafen whichever later pan is handed the same id.
+          releasePointerForValueControl(event.pointer);
+        },
         onPointerSignal: (event) {
           if (event is PointerScrollEvent) {
             _handleWheel(event);
