@@ -2561,10 +2561,21 @@ class EditorSessionManager extends ChangeNotifier {
         : stackCut.layers.byId(activeLayerId);
     if (activeStackLayer != null &&
         !_treeHoldsActiveLayer(nodes) &&
-        layerAcceptsBrushInput(activeStackLayer)) {
-      activeLayerOpacity = !activeStackLayer.isVisible
-          ? 0.0
-          : _stackLayerOpacity(activeStackLayer, stackCut.layers, frameIndex);
+        layerAcceptsBrushInput(activeStackLayer) &&
+        // 🚨THE FOLDER CHAIN, which the tree walk applies and this block does
+        // not. A row WITH a cel never reaches here — a hidden folder drops
+        // its whole subtree inside `resolveCutFrameCompositeTree`, so the
+        // node simply is not in the tree. A row with nothing exposed at this
+        // frame took this hand-built path instead and skipped that walk, so
+        // the layer you were standing on went on being drawn out of a folder
+        // the user had switched off — visible on the editing canvas and
+        // nowhere else, which is the worst shape a difference can take.
+        stackCut.layers.rowVisible(activeStackLayer)) {
+      activeLayerOpacity = _stackLayerOpacity(
+        activeStackLayer,
+        stackCut.layers,
+        frameIndex,
+      );
       // R6: the surface you are about to draw on shows the effects the
       // composite will apply to it, so the first stroke lands in the
       // picture you can see. The chain comes from the FX CARRIER exactly
@@ -4048,7 +4059,14 @@ class EditorSessionManager extends ChangeNotifier {
     // R4 #1: a hidden layer takes no strokes either — you would be drawing
     // into something the canvas doesn't show. Flip the eye back on (or use
     // the solo mode) to draw.
-    if (!activeLayer.isVisible) {
+    //
+    // 🚨AND THE FOLDER'S EYE COUNTS (유저 2026-08-13: 「숨긴 폴더는 안에
+    // 있는 레이어들도 숨김상태인거일거잖아. 그러면 브러시 막는거지」). The
+    // reason R4 #1 gives — you would be drawing into something the canvas
+    // doesn't show — is the SAME reason one folder up, and asking only the
+    // row's own eye is how a stroke went on landing in a folder the user had
+    // switched off.
+    if (!layers.rowVisible(activeLayer)) {
       return null;
     }
 
