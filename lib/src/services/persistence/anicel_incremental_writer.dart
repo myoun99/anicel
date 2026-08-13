@@ -515,6 +515,7 @@ AnicelZipLayout appendAnicelEntries({
 AnicelZipLayout writeAnicelArchiveFile({
   required String path,
   required Iterable<({String name, Uint8List bytes})> entries,
+  Iterable<AnicelStreamedEntry> streamedEntries = const [],
 }) {
   final written = <AnicelZipEntry>[];
   var offset = 0;
@@ -535,6 +536,62 @@ AnicelZipLayout writeAnicelArchiveFile({
         ),
       );
       offset += header.length + entry.bytes.length;
+    }
+    // Media last, and streamed. A cel resolves to a small blob that is
+    // already deflated, so holding one at a time costs nothing; an
+    // imported sound can weigh more than the rest of the project put
+    // together, and this path is what a backgrounding tablet runs with the
+    // least headroom to spare.
+    //
+    // Unlike the append, this writes into a TEMP file nobody has yet — so
+    // a short source can fail mid-write without endangering anything, and
+    // the checksum rides along with the copy instead of costing a second
+    // pass over every asset on every full save.
+    for (final entry in streamedEntries) {
+      final headerOffset = offset;
+      // Placeholder header: the CRC is not known until the bytes have
+      // gone by, and a full rewrite can afford to seek back four bytes
+      // where a sequential append could not.
+      final placeholder = _localHeaderBytes(entry.name, entry.length, 0);
+      raf.writeFromSync(placeholder);
+      offset += placeholder.length;
+
+      var running = anicelCrc32Start;
+      final buffer = Uint8List(_streamChunkBytes);
+      var position = 0;
+      while (position < entry.length) {
+        final wanted = entry.length - position;
+        final read = entry.readInto(
+          buffer,
+          position,
+          wanted < buffer.length ? wanted : buffer.length,
+        );
+        if (read <= 0) {
+          throw StateError(
+            'media entry "${entry.name}" ended after $position of '
+            '${entry.length} bytes',
+          );
+        }
+        running = anicelCrc32Update(running, buffer, read);
+        raf.writeFromSync(buffer, 0, read);
+        position += read;
+      }
+      final crc = anicelCrc32Finish(running);
+      final resume = raf.positionSync();
+      raf.setPositionSync(headerOffset + 14);
+      raf.writeFromSync(_uint32(crc));
+      raf.setPositionSync(resume);
+
+      written.add(
+        AnicelZipEntry(
+          name: entry.name,
+          localHeaderOffset: headerOffset,
+          dataOffset: headerOffset + placeholder.length,
+          length: entry.length,
+          crc32: crc,
+        ),
+      );
+      offset += entry.length;
     }
     final centralBytes = _centralDirectoryBytes(written);
     raf.writeFromSync(centralBytes);
@@ -588,6 +645,14 @@ String? anicelBaseStamp(String path) {
 
 /// A STORE'd local file header + its name. [length] is both sizes: no
 /// compression happens at the ZIP layer.
+/// Four little-endian bytes — what a seek-back patch of a header field
+/// writes. The offset it goes to (14) is the CRC's, per the layout in
+/// [_localHeaderBytes] directly below.
+Uint8List _uint32(int value) {
+  final out = ByteData(4)..setUint32(0, value, Endian.little);
+  return out.buffer.asUint8List();
+}
+
 Uint8List _localHeaderBytes(String name, int length, int crc) {
   final nameBytes = Uint8List.fromList(name.codeUnits);
   final header = ByteData(30);
