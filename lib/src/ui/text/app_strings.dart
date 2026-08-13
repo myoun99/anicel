@@ -846,9 +846,10 @@ class AppStrings {
   String get commonFill => _s('commonFill');
 
   // --- Canvas view controls ---
-  // ⛔`viewZoomIn`/`viewZoomOut` are gone with the ± buttons they named
-  // (유저 확정 2026-08-13: 줌은 드래그 숫자 하나). A tooltip nothing wears is
-  // five translations that go stale unread.
+  // The ± buttons are BACK on the floor's pill (유저 확정 2026-08-13, later
+  // the same day), so the two tooltips they wear are back with them.
+  String get viewZoomIn => _s('viewZoomIn');
+  String get viewZoomOut => _s('viewZoomOut');
   String get viewFitToView => _s('viewFitToView');
   String get viewResetView => _s('viewResetView');
   String get viewRotateLeft => _s('viewRotateLeft');
@@ -1463,6 +1464,8 @@ class AppStrings {
     'trMeshRows': 'Rows',
     'commonReset': 'Reset',
     'commonFill': 'Fill',
+    'viewZoomIn': 'Zoom In',
+    'viewZoomOut': 'Zoom Out',
     'viewFitToView': 'Fit to View',
     'viewResetView': 'Reset View (100%)',
     'panelSettings': 'Settings',
@@ -2231,6 +2234,8 @@ class AppStrings {
     'trMeshRows': '縦のマス',
     'commonReset': 'リセット',
     'commonFill': '塗りつぶし',
+    'viewZoomIn': 'ズームイン',
+    'viewZoomOut': 'ズームアウト',
     'viewFitToView': '画面に合わせる',
     'viewResetView': '表示をリセット（100%）',
     'panelSettings': '設定',
@@ -2990,6 +2995,8 @@ class AppStrings {
     'trMeshRows': '세로 칸',
     'commonReset': '초기화',
     'commonFill': '채우기',
+    'viewZoomIn': '확대',
+    'viewZoomOut': '축소',
     'viewFitToView': '화면에 맞추기',
     'viewResetView': '보기 초기화 (100%)',
     'panelSettings': '설정',
@@ -3787,6 +3794,8 @@ class AppStrings {
     'brMeshWarp': 'Déformation par grille',
     'commonReset': 'Réinitialiser',
     'commonFill': 'Remplir',
+    'viewZoomIn': 'Zoom avant',
+    'viewZoomOut': 'Zoom arrière',
     'viewFitToView': 'Ajuster à la fenêtre',
     'viewResetView': 'Réinitialiser la vue (100 %)',
     'panelSettings': 'Paramètres',
@@ -4522,6 +4531,8 @@ class AppStrings {
     'trMeshRows': '行数',
     'commonReset': '重置',
     'commonFill': '填充',
+    'viewZoomIn': '放大',
+    'viewZoomOut': '缩小',
     'viewFitToView': '适应窗口',
     'viewResetView': '重置视图（100%）',
     'panelSettings': '设置',

@@ -14,10 +14,96 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import 'brush_canvas_test_helpers.dart';
+
+/// Everything a floor pill shows that a rail pill folds away — in the order
+/// it is laid out, which is also the reverse of the order it folds in.
+///
+/// Fit and the zoom readout are deliberately NOT here: they are on both
+/// bars, and the tests below assert their own things about them.
+const floorPillKeys = <String>[
+  'probe-host-verb',
+  'canvas-viewport-reset',
+  'canvas-viewport-zoom-out',
+  'canvas-viewport-zoom-in',
+  'canvas-viewport-rotate-ccw',
+  'canvas-viewport-rotation-label',
+  'canvas-viewport-rotate-cw',
+  'canvas-viewport-rotate-reset',
+  'canvas-viewport-flip',
+  'canvas-viewport-flip-vertical',
+  'canvas-paper-color-button',
+  'canvas-pasteboard-color-button',
+  'canvas-backdrop-color-button',
+];
+
+/// The panel as the app mounts it, with [onFloor] deciding WHERE.
+///
+/// 🚨[CanvasFloorInsets] is what says "you are lying on the floor" — the
+/// panel reads it out of the tree rather than being told, which is the
+/// whole reason no host had to learn a new parameter. A test that wants the
+/// floor's pill has to put the panel under one; `floorCover:` is a
+/// different thing entirely (how much of the artwork is covered) and says
+/// nothing about where the panel is.
+Widget floorPillHarness({
+  required double width,
+  required bool onFloor,
+  int leadingCount = 0,
+}) {
+  final frameKeys = BrushCanvasFixture.createFrameKeys();
+  final panel = BrushCanvasPanel(
+    coordinator: BrushCanvasFixture.createCoordinator(frameKeys: frameKeys),
+    availableFrameKeys: frameKeys,
+    cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+    floorCover: EdgeInsets.zero,
+    canvasSize: const CanvasSize(width: 300, height: 300),
+    paperColor: 0xFFFFFFFF,
+    onPaperColorChanged: (_) {},
+    pasteboardColor: 0xFF202020,
+    onPasteboardColorChanged: (_) {},
+    backdropArgb: 0xFF101010,
+    onBackdropColorChanged: (_) {},
+    bottomBarLeading: [
+      for (var i = 0; i < leadingCount; i += 1)
+        AppIconButton(
+          keyValue: 'probe-leading-$i',
+          tooltip: 'probe $i',
+          icon: const Icon(Icons.circle),
+          size: AppIconButtonSize.strip,
+          onPressed: () {},
+        ),
+    ],
+    // The media viewer's shape: a verb the host keeps in its settings,
+    // which the floor unfolds into a button of its own.
+    bottomBarSettings: [
+      PanelFlyoutItem(
+        keyValue: 'probe-host-verb',
+        label: 'probe verb',
+        icon: Icons.playlist_add_outlined,
+        onSelected: () {},
+      ),
+    ],
+    bottomBarHostToken: leadingCount,
+  );
+  return MaterialApp(
+    home: Scaffold(
+      body: Center(
+        child: SizedBox(
+          width: width,
+          height: 420,
+          child: onFloor
+              ? CanvasFloorInsets(insets: EdgeInsets.zero, child: panel)
+              : panel,
+        ),
+      ),
+    ),
+  );
+}
 
 void main() {
   testWidgets('renders embedded canvas without temporary debug controls', (
@@ -576,6 +662,218 @@ void main() {
             'outside its own clip',
       );
     }
+  });
+
+  testWidgets('nor on the FLOOR, where it holds everything at once', (
+    tester,
+  ) async {
+    // The same sweep for the pill that starts unfolded. It carries twelve
+    // more controls than the rail's, so it is the one whose arithmetic can
+    // actually be wrong — and the failure mode is identical: the capsule
+    // clips, so a mis-budgeted control is in the tree, found by find.byKey,
+    // and cannot be seen or pressed.
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1200, 600));
+
+    for (final leadingCount in <int>[0, 2]) {
+      final bad = <String>[];
+      for (var width = 120.0; width <= 900.0; width += width < 620 ? 1 : 8) {
+        await tester.pumpWidget(
+          floorPillHarness(
+            width: width,
+            onFloor: true,
+            leadingCount: leadingCount,
+          ),
+        );
+        await tester.pumpAndSettle();
+        final capsule = find.byKey(const ValueKey<String>('canvas-view-pill'));
+        expect(capsule, findsOneWidget);
+        final box = tester.getRect(capsule);
+        for (final key in <String>[
+          'canvas-viewport-fit',
+          'canvas-viewport-settings',
+          'canvas-viewport-zoom-label',
+          ...floorPillKeys,
+          for (var i = 0; i < leadingCount; i += 1) 'probe-leading-$i',
+        ]) {
+          final finder = find.byKey(ValueKey<String>(key));
+          if (finder.evaluate().isEmpty) {
+            continue; // folded, which is the correct way to not fit
+          }
+          final rect = tester.getRect(finder);
+          if (rect.left < box.left - 0.5 || rect.right > box.right + 0.5) {
+            bad.add('${width.toInt()}px: $key');
+          }
+        }
+        final exception = tester.takeException();
+        if (exception != null) {
+          bad.add('${width.toInt()}px: $exception');
+        }
+      }
+      expect(
+        bad,
+        isEmpty,
+        reason:
+            'with $leadingCount host controls, the floor pill pushed '
+            'something outside its own clip',
+      );
+    }
+  });
+
+  testWidgets('a wide floor pill lays everything out and has NO gear', (
+    tester,
+  ) async {
+    // 유저 확정 2026-08-13: 「캔버스패널은 너무 설정에 다넣었어 … 설정에 있는거
+    // 다 빼」. The gear stopped being a decision about which controls are
+    // common and became the place the ones that did not fit went — so with
+    // room for all of them there is nothing behind it and it is not drawn.
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1200, 600));
+    await tester.pumpWidget(floorPillHarness(width: 900, onFloor: true));
+    await tester.pumpAndSettle();
+
+    for (final key in floorPillKeys) {
+      expect(
+        find.byKey(ValueKey<String>(key)),
+        findsOneWidget,
+        reason: '$key belongs on a floor pill with room for it',
+      );
+    }
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-fit')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-zoom-label')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-settings')),
+      findsNothing,
+      reason: 'nothing folded, so the gear has nothing to hold',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the SAME panel off the floor keeps its gear at that width', (
+    tester,
+  ) async {
+    // 유저 확정: 「바닥 둘만」. A sub viewer dragged as wide as the floor is
+    // still not the floor — the rule is about WHERE a panel is, not about
+    // how much room it happens to have.
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1200, 600));
+    await tester.pumpWidget(floorPillHarness(width: 900, onFloor: false));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-settings')),
+      findsOneWidget,
+    );
+    for (final key in floorPillKeys) {
+      expect(
+        find.byKey(ValueKey<String>(key)),
+        findsNothing,
+        reason: '$key stays folded off the floor, however wide the panel is',
+      );
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a floor pill folds outside-in, and lands on the rail bar', (
+    tester,
+  ) async {
+    // The fold ORDER the user gave: colours, rotate/flip, 1:1, the host's
+    // own verbs, the zoom steps. Each width below is a step further down
+    // that ladder, and the last one is the bar every other panel wears —
+    // which is the whole point of 「최대로 버튼 사라지는건 지금 고치기 전
+    // 상황되도록」: folding cannot cost more than the old bar already did.
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1200, 600));
+
+    Future<Set<String>> shownAt(double width) async {
+      await tester.pumpWidget(floorPillHarness(width: width, onFloor: true));
+      await tester.pumpAndSettle();
+      return <String>{
+        for (final key in floorPillKeys)
+          if (find.byKey(ValueKey<String>(key)).evaluate().isNotEmpty) key,
+      };
+    }
+
+    final wide = await shownAt(900);
+    final medium = await shownAt(420);
+    final narrow = await shownAt(300);
+    final tiny = await shownAt(150);
+
+    // Every step is a SUBSET of the one before it. A fold that brought
+    // something back would be a control blinking in and out as a rail is
+    // dragged, which is the defect this bar has had once already.
+    expect(wide.containsAll(medium), isTrue, reason: '$wide -> $medium');
+    expect(medium.containsAll(narrow), isTrue, reason: '$medium -> $narrow');
+    expect(narrow.containsAll(tiny), isTrue, reason: '$narrow -> $tiny');
+    expect(medium, isNot(equals(wide)));
+
+    // The colours go first — a choice you make once a project.
+    expect(medium.contains('canvas-paper-color-button'), isFalse);
+    expect(medium.contains('canvas-viewport-zoom-in'), isTrue);
+
+    // …and the end of the ladder is exactly the bar a rail panel wears.
+    expect(tiny, isEmpty);
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-fit')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-settings')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-zoom-label')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('what folded off the floor pill is IN the gear', (tester) async {
+    // The promise the fold makes: nothing is cut off, it is one tap away.
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1200, 600));
+    await tester.pumpWidget(floorPillHarness(width: 420, onFloor: true));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('canvas-paper-color-button')),
+      findsNothing,
+    );
+    await openViewSettings(tester);
+    expect(
+      find.byKey(const ValueKey<String>('canvas-paper-color-button')),
+      findsOneWidget,
+      reason: 'the colours folded, so the gear is where they went',
+    );
+  });
+
+  testWidgets('the zoom steps exist ONLY where the floor put them', (
+    tester,
+  ) async {
+    // ⛔They fold into the gear like everything else — but only on a panel
+    // that had them. Listing them in a rail panel's gear would hand it two
+    // controls it has never had at any width.
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1200, 600));
+    await tester.pumpWidget(floorPillHarness(width: 150, onFloor: false));
+    await tester.pumpAndSettle();
+
+    await openViewSettings(tester);
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-zoom-in')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-reset')),
+      findsOneWidget,
+      reason: '1:1 is in every gear — it is the zoom steps that are not',
+    );
   });
 
   testWidgets('keeps inner drawing canvas at Cut canvas size', (tester) async {
