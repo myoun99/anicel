@@ -1,7 +1,6 @@
 import 'dart:async';
-import 'dart:io' show File, Platform;
+import 'dart:io' show Directory, File;
 
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/persistence/anicel_file_service.dart'
@@ -27,9 +26,7 @@ import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart';
-import '../dialogs/app_prompt_dialog.dart';
 import '../dialogs/folder_pick_flow.dart';
-import '../dialogs/project_chooser_dialog.dart';
 import '../dialogs/preferences_dialog.dart';
 import '../canvas/paper_background.dart' show alphaPreviewEnabled;
 import '../debug/input_inspector.dart';
@@ -128,14 +125,6 @@ class EditorTopStrip extends StatelessWidget {
 
   // --- File -----------------------------------------------------------------
 
-  static Future<String?> _defaultOpenPicker() async {
-    final file = await openFile(
-      // SAVE-1: pickers start in the app's project home (앱 문서 폴더).
-      initialDirectory: await ensuredAppDocumentsDirectory(),
-      acceptedTypeGroups: const [FileTypeGroups.anicelProject],
-    );
-    return file?.path;
-  }
 
   void _showFileError(BuildContext context, Object error) {
     ScaffoldMessenger.maybeOf(
@@ -1103,39 +1092,19 @@ class _StripPopoverButton extends StatelessWidget {
 /// unsaved-autosave prompt land in the same picker + writer. SAVE-1: a
 /// never-saved project's picker starts in the app's project home (앱
 /// 문서 폴더); a saved one starts beside its current file.
-/// PICK-2: whether the project pickers ask for a FOLDER rather than a file.
-///
-/// Windows and Linux hand out real paths with no permission attached, so a
-/// file dialog is the whole story there and nothing changes. The other three
-/// need a grant the app has to hold — and because a grant covers exactly
-/// what was picked, picking the project FILE would leave its sibling
-/// `.assets/` folder and its autosave sidecar outside the grant.
-///
-/// macOS sits with iPad rather than with Windows here, which is the part
-/// that surprises: it is sandboxed, so a file selection extends the sandbox
-/// to that file and nothing beside it.
-@visibleForTesting
-bool? debugUseFolderPickerOverride;
+// PICK-6: `useFolderPickerForProjects` and its platform tuple are GONE.
+//
+// They routed Apple and Android to a FOLDER grant because a grant covers
+// exactly what was picked, and a project used to be a file PLUS a sibling
+// `.assets/` folder PLUS an autosave sidecar — so granting the file alone
+// granted the one item that could not be saved.
+//
+// The single-file save format removed both siblings, and with them the
+// reason. Every platform now picks the project file itself, which also
+// unblocks Google Drive: it declines folder mode outright but serves file
+// mode fine.
 
-bool get useFolderPickerForProjects =>
-    debugUseFolderPickerOverride ??
-    folderPickerAppliesTo(Platform.operatingSystem);
-
-/// The routing decision as a pure function of the OS name.
-///
-/// Every test sets [debugUseFolderPickerOverride], so the `??` right-hand
-/// side is never evaluated by the suite — replacing the platform tuple
-/// outright left all tests green while sending iPad and macOS back to the OS
-/// FILE dialog, which picks the project file and leaves its sibling
-/// `.assets/` folder outside the grant. That is the exact bug this round
-/// exists to remove, so the tuple is pinned directly.
-@visibleForTesting
-bool folderPickerAppliesTo(String operatingSystem) =>
-    operatingSystem == 'android' ||
-    operatingSystem == 'ios' ||
-    operatingSystem == 'macos';
-
-/// A chosen project, plus the token that reopens its folder next launch.
+/// A chosen project, plus the token that reopens it next launch.
 ///
 /// The bookmark travels with the path because the recent-projects list is
 /// worthless without it on Apple platforms — a stored path outside the app
@@ -1143,120 +1112,127 @@ bool folderPickerAppliesTo(String operatingSystem) =>
 /// security scope it was granted.
 typedef ProjectPick = ({String path, String? folderBookmark});
 
-/// Open: a folder grant, then which project inside it.
+/// Open: the project FILE itself, on every platform.
 ///
-/// The chooser is skipped when the folder holds exactly one project, so the
-/// common single-project folder costs no extra tap.
+/// PICK-6: the folder grant and the chooser it fed are both gone. A project
+/// is one file now — no sibling `.assets/`, no autosave sidecar — so the
+/// permission can land on the file, and asking for a folder would be asking
+/// for more than the job needs.
+///
+/// It also unblocks Google Drive, which declines folder mode outright
+/// (measured on iOS 26.5.2) but serves file mode fine.
 @visibleForTesting
 Future<ProjectPick?> pickProjectToOpen(BuildContext context) async {
-  if (!useFolderPickerForProjects) {
-    final path = await EditorTopStrip._defaultOpenPicker();
-    return path == null ? null : (path: path, folderBookmark: null);
-  }
-  // The SYNC twin on purpose: async `dart:io` never completes under the
-  // widget-test clock, and this is the first line of the open flow — awaiting
-  // the async one here would make the whole flow untestable.
-  //
-  // Not on macOS. There the app is sandboxed, so `$HOME` is the container and
-  // this path would point at `~/Library/Containers/…/Documents/Anicel` — the
-  // panel would open inside the sandbox on every Open and the user would have
-  // to climb out to reach their real Documents or Drive. With no hint,
-  // NSOpenPanel restores wherever they were last, which is what "behaves like
-  // iPad" meant.
-  final grant = await pickFolderGrantForUser(
+  final grants = await pickFileGrantsForUser(
     context,
-    initialDirectory: Platform.isMacOS ? null : ensuredAppDocumentsDirectorySync(),
+    acceptedTypeGroups: const [FileTypeGroups.anicelProject],
+    // A DESKTOP hint only, and the SYNC twin on purpose: async `dart:io`
+    // never completes under the widget-test clock, and this is the first
+    // line of the open flow.
+    //
+    // Withheld wherever grants are scoped — on macOS the sandbox makes
+    // `$HOME` the container, so this would point at
+    // `~/Library/Containers/…/Documents/Anicel` and the panel would open
+    // inside the sandbox on every Open. With no hint the Apple pickers
+    // restore wherever the user last was, which is what Files trains them
+    // to expect.
+    initialDirectory: FolderPicker.grantsAreScoped
+        ? null
+        : ensuredAppDocumentsDirectorySync(),
   );
-  if (grant?.path == null || !context.mounted) {
+  final grant = grants.isEmpty ? null : grants.first;
+  final path = grant?.path;
+  if (path == null) {
     return null;
   }
-  final folder = grant!.path!;
-  final chosen = await showProjectChooser(
-    context,
-    entries: anicelProjectsIn(folder),
-    folderPath: folder,
-  );
-  return chosen == null
-      ? null
-      : (path: chosen, folderBookmark: grant.bookmark);
+  return (path: path, folderBookmark: grant!.bookmark);
 }
 
-/// Save As: a folder grant, then a name.
+/// Save As: the system's own save dialog, on every platform.
 ///
-/// The name is asked in-app because iOS HAS no save panel — Apple never
-/// shipped one, and every iOS app that writes a document asks for the name
-/// itself. Confirming an overwrite is asked here too, for the same reason:
-/// the system dialog that would normally do it is not in this flow.
+/// PICK-6: the in-app name prompt and the overwrite confirmation are both
+/// GONE. Both existed only because iOS has no save panel — and the export
+/// picker turned out to let the user edit the name right there (verified on
+/// device), so the workaround has nothing left to work around. The system
+/// dialog asks about replacing too.
+///
+/// 🚨What is handed to the picker is a PLACEHOLDER, not the project. Media
+/// lives inside the file now, so a finished project can be gigabytes;
+/// staging that in the app container would need the space twice and fail
+/// AFTER the user chose a name and a place — the worst possible moment. A
+/// minimal valid archive claims the spot instead, and the real save writes
+/// to the path that comes back.
 @visibleForTesting
 Future<ProjectPick?> pickProjectSaveTarget(
   BuildContext context,
   String suggestedName,
   String initialDirectory,
 ) async {
-  if (!useFolderPickerForProjects) {
-    final path = await _defaultAnicelSavePicker(suggestedName, initialDirectory);
-    return path == null ? null : (path: path, folderBookmark: null);
+  var name = suggestedName;
+  if (!name.toLowerCase().endsWith(anicelProjectSuffix)) {
+    name = '$name$anicelProjectSuffix';
   }
-  final grant = await pickFolderGrantForUser(
+  // Its own directory so the cleanup below cannot reach anything else.
+  final Directory stagingDirectory;
+  final File staged;
+  try {
+    stagingDirectory = Directory.systemTemp.createTempSync('anicel_save_');
+    staged = File('${stagingDirectory.path}/$name');
+    // SYNC on purpose: async `dart:io` never completes under the widget-test
+    // clock, and this sits before the picker — awaiting the async twin here
+    // makes the whole Save As flow untestable (it hangs at this line rather
+    // than failing, which reads as "the exporter was never called").
+    staged.writeAsBytesSync(_emptyAnicelArchive, flush: true);
+  } on Object {
+    return null;
+  }
+  if (!context.mounted) {
+    _discardStaging(stagingDirectory);
+    return null;
+  }
+  final grant = await exportFileForUser(
     context,
-    initialDirectory: initialDirectory,
+    sourcePath: staged.path,
+    suggestedName: name,
+    // A desktop hint only; the Apple pickers reopen where the user was.
+    initialDirectory: FolderPicker.grantsAreScoped ? null : initialDirectory,
   );
-  final folder = grant?.path;
-  if (folder == null || !context.mounted) {
+  // On success the placeholder was MOVED out and only the empty directory is
+  // left; on cancel the placeholder is still in it. Same cleanup.
+  _discardStaging(stagingDirectory);
+  final path = grant?.path;
+  if (path == null) {
     return null;
   }
-  final strings = AppText.strings;
-  final name = await showDialog<String>(
-    context: context,
-    builder: (context) => AppPromptDialog(
-      windowKey: const ValueKey<String>('project-save-name-dialog'),
-      title: strings.fileSaveTitle,
-      titleIcon: Icons.save_outlined,
-      fieldLabel: strings.fileNameLabel,
-      initialValue: suggestedName,
-      confirmLabel: strings.commonSave,
-      emptyError: strings.fileNameEmpty,
-      fieldKey: const ValueKey<String>('project-save-name-field'),
-      cancelKey: const ValueKey<String>('project-save-name-cancel'),
-      confirmKey: const ValueKey<String>('project-save-name-confirm'),
-    ),
-  );
-  if (name == null || name.isEmpty || !context.mounted) {
-    return null;
-  }
-  var target = '$folder/$name';
-  if (!target.toLowerCase().endsWith(anicelProjectSuffix)) {
-    target = '$target$anicelProjectSuffix';
-  }
-  if (!File(target).existsSync()) {
-    return (path: target, folderBookmark: grant!.bookmark);
-  }
-  final replace = await showDialog<bool>(
-    context: context,
-    builder: (context) => AppConfirmDialog(
-      windowKey: const ValueKey<String>('project-save-replace-dialog'),
-      title: strings.replaceFileTitle,
-      titleIcon: Icons.warning_amber_outlined,
-      message: strings.replaceFileMessageTemplate.replaceAll('{name}', name),
-      actions: [
-        AppWindowAction(
-          label: strings.commonCancel,
-          actionKey: const ValueKey<String>('project-save-replace-cancel'),
-          onPressed: () => Navigator.of(context).pop(false),
-        ),
-        AppWindowAction(
-          label: strings.commonReplace,
-          actionKey: const ValueKey<String>('project-save-replace-confirm'),
-          emphasis: AppWindowActionEmphasis.primary,
-          onPressed: () => Navigator.of(context).pop(true),
-        ),
-      ],
-    ),
-  );
-  return replace == true
-      ? (path: target, folderBookmark: grant!.bookmark)
-      : null;
+  return (path: path, folderBookmark: grant!.bookmark);
 }
+
+/// Removes the staging directory. A leak here must never fail a save — or a
+/// cancel, which is the path that reaches it most often.
+void _discardStaging(Directory directory) {
+  try {
+    directory.deleteSync(recursive: true);
+  } on Object {
+    // Temp is the OS's to reclaim if this ever loses the race.
+  }
+}
+
+/// An empty but VALID zip: the 22-byte end-of-central-directory record and
+/// nothing else.
+///
+/// Enough for a picker to place, and enough that anything opening it in the
+/// moment before the real save lands reads an empty archive rather than a
+/// corrupt file.
+const List<int> _emptyAnicelArchive = [
+  0x50, 0x4B, 0x05, 0x06, // signature
+  0, 0, // number of this disk
+  0, 0, // disk where the central directory starts
+  0, 0, // central directory records on this disk
+  0, 0, // central directory records total
+  0, 0, 0, 0, // size of the central directory
+  0, 0, 0, 0, // offset of the central directory
+  0, 0, // comment length
+];
 
 Future<void> promptSaveProjectAs(
   BuildContext context,
@@ -1301,14 +1277,3 @@ Future<void> promptSaveProjectAs(
   }
 }
 
-Future<String?> _defaultAnicelSavePicker(
-  String suggestedName,
-  String initialDirectory,
-) async {
-  final location = await getSaveLocation(
-    suggestedName: suggestedName,
-    initialDirectory: initialDirectory,
-    acceptedTypeGroups: const [FileTypeGroups.anicelProject],
-  );
-  return location?.path;
-}
