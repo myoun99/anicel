@@ -6,6 +6,7 @@ import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_cels_selection.dart';
 
@@ -137,6 +138,68 @@ void main() {
     });
   });
 
+  group('the row you are standing on', () {
+    test('takes no strokes when its FOLDER is hidden', () {
+      final (s, member, folder) = sessionWithFolder();
+      expect(
+        s.activeBrushEditorSelection,
+        isNotNull,
+        reason: 'the CONTROL — a visible row is drawable',
+      );
+
+      hideFolder(s, folder);
+
+      expect(
+        s.activeBrushEditorSelection,
+        isNull,
+        reason:
+            'R4 #1 refuses a hidden row because you would be drawing into '
+            'something the canvas does not show. That reason is the same one '
+            'folder up (유저 2026-08-13: 「숨긴 폴더는 안에 있는 레이어들도 '
+            '숨김상태인거일거잖아. 그러면 브러시 막는거지」).',
+      );
+    });
+
+    test('is not drawn on the editing canvas either — even with nothing '
+        'exposed at this frame', () {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      // A row with NO cel at this frame is the one that takes the hand-built
+      // fallback path instead of the composite tree — the path that skipped
+      // the folder walk.
+      s.addLayer();
+      s.groupActiveLayerIntoFolder();
+      final folder = s.activeCutOrNull!.layers.folderLayers.single.id;
+
+      bool holdsActive(List<CanvasLayerStackNode> nodes) => nodes.any(
+        (node) =>
+            node is CanvasActiveLayerNode ||
+            (node is CanvasLayerGroupNode && holdsActive(node.children)),
+      );
+
+      expect(
+        holdsActive(s.editingCanvasStack.nodes),
+        isTrue,
+        reason: 'the CONTROL — the live surface needs a slot to draw into',
+      );
+
+      if (s.activeCutOrNull!.layers.byId(folder)!.isVisible) {
+        s.toggleLayerVisibility(folder);
+      }
+
+      expect(
+        holdsActive(s.editingCanvasStack.nodes),
+        isFalse,
+        reason:
+            'A row WITH a cel is dropped by the tree walk, which honours the '
+            'folder chain. A row with nothing exposed was appended by hand '
+            'AFTER that walk, so it went on painting out of a folder the user '
+            'had switched off — visible on the editing canvas and nowhere '
+            'else, which is the worst shape a difference can take.',
+      );
+    });
+  });
+
   group('cel export', () {
     test('a row inside a hidden folder does not export', () {
       final (s, member, folder) = sessionWithFolder();
@@ -229,13 +292,16 @@ const _mayAnswerVisibilityItself = <String, String>{
 
 /// How many raw reads remained when this contract was written.
 ///
-/// The batch that added it converted four of them (the onion ghosts, the
-/// onion sweep, the solo, and cel export). What is left is listed in the
-/// round's plan: the brush gate, the camera backdrop, the SE name-tag plan,
-/// the stroke painter, the colour sampler, the thumbnail store, the timeline
-/// grid, a dead export function, and the session's own `activeLayerOpacity`
-/// pair — each one a place that can disagree with the composite about
-/// whether the user can see a row.
+/// The round that added it converted six: the onion ghosts, the onion sweep,
+/// the solo, cel export, the brush gate, and the editing canvas's own
+/// hand-built node for a row with nothing exposed.
+///
+/// What is left, and why each is still here rather than fixed: the SE
+/// name-tag plan, the stroke painter, the colour sampler, the thumbnail
+/// store's cache key, the timeline grid, a dead export function, the camera
+/// backdrop, `activeLayerOpacity`'s pair (being deleted), and the visibility
+/// solo's SNAPSHOT — that last one reads the raw flag on purpose, because
+/// what it saves and restores IS the raw flag.
 ///
 /// ⚠️Only ever lower this. Raising it is the change this test exists to stop.
-const _knownOffenders = 13;
+const _knownOffenders = 11;
