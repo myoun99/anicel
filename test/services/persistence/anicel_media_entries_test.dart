@@ -131,6 +131,8 @@ void main() {
         (name: '${anicelMediaEntryPrefix}0badf00d-a.wav', length: length);
 
     test('half the cel area dead is the threshold, as it always was', () {
+      // A project with no media is untouched by the rewrite floor below —
+      // it costs nothing to rewrite, so it keeps exactly the rule it had.
       expect(
         anicelNeedsCompaction(fileLength: 100, entries: [cel(49)]),
         isTrue,
@@ -141,23 +143,51 @@ void main() {
       );
     });
 
+    test('🔑 a rewrite has to be worth the bytes it moves for nothing', () {
+      // Taking media out of the denominator made this necessary. The
+      // rotting area is now just cels and `project.json`, which in a
+      // project that is mostly sound can be a few kilobytes — so two
+      // superseded copies of `project.json` cross fifty percent of it and
+      // ask for a rewrite that re-streams half a gigabyte to reclaim four.
+      const mediaBytes = 500 * 1024 * 1024;
+      final mostlySound = [media(mediaBytes), cel(2048)];
+      expect(
+        anicelNeedsCompaction(
+          fileLength: mediaBytes + 2048 + 4096,
+          entries: mostlySound,
+        ),
+        isFalse,
+        reason: '4KB of dead project.json is not worth 500MB of copying',
+      );
+      // Proportionate waste, and it runs as before.
+      expect(
+        anicelNeedsCompaction(
+          fileLength: mediaBytes + 2048 + 40 * 1024 * 1024,
+          entries: mostlySound,
+        ),
+        isTrue,
+      );
+    });
+
     test('🔑 media cannot dilute the ratio into never compacting', () {
-      // The whole reason this is a named rule. 500MB of media beside 10MB
-      // of cels, 8MB of them dead: against the file that is 1.6% and
-      // compaction never runs again while the cel area fills with garbage.
+      // The whole reason this is a named rule. Measured against the FILE,
+      // a cel area that is mostly garbage disappears into the rounding of
+      // a project carrying half a gigabyte of sound, and compaction never
+      // runs again while that area fills up forever.
       const mediaBytes = 500 * 1024 * 1024;
       const liveCels = 2 * 1024 * 1024;
-      const deadCels = 8 * 1024 * 1024;
+      const deadCels = 30 * 1024 * 1024;
       final entries = [media(mediaBytes), cel(liveCels)];
       const fileLength = mediaBytes + liveCels + deadCels;
 
       expect(
         anicelNeedsCompaction(fileLength: fileLength, entries: entries),
         isTrue,
-        reason: '8MB dead against 10MB of cel area is well past half',
+        reason: '30MB dead against 32MB of cel area is well past half',
       );
-      // The measurement that would have said otherwise.
-      expect((fileLength - mediaBytes - liveCels) / fileLength, lessThan(0.02));
+      // The measurement that would have said otherwise: against the whole
+      // file the same waste is under six percent.
+      expect(deadCels / fileLength, lessThan(0.06));
     });
 
     test('media alone never asks to be compacted', () {

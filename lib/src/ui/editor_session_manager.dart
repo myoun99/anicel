@@ -16,6 +16,7 @@ import '../services/commands/import_media_command.dart';
 import '../services/commands/reorder_track_command.dart';
 import '../services/import/media_identity_reader.dart';
 import '../services/media/media_byte_source.dart';
+import '../services/media/project_media_sources.dart';
 import '../services/import/media_import_planner.dart';
 import '../services/import/raster_cel_import.dart';
 import '../services/import/tvp_json_import_planner.dart';
@@ -15643,6 +15644,20 @@ class EditorSessionManager extends ChangeNotifier {
 
   String? _projectFilePath;
 
+  /// Pool path → archive entry, for the media this project carries.
+  ///
+  /// NAMES, not offsets. A compaction moves every byte in the file, so a
+  /// remembered offset would read a window of whatever landed in its
+  /// place — a project that opens fine and plays the wrong sound. The
+  /// offset is looked up from the layout at the moment it is wanted, and
+  /// the layout is already being parsed then.
+  Map<String, String> _mediaEntryNames = const {};
+
+  /// What the project carries, for tests and for anything that needs to
+  /// resolve an asset's bytes without going through a save.
+  Map<String, String> get mediaEntryNames =>
+      Map<String, String>.unmodifiable(_mediaEntryNames);
+
   /// The open project's file path; null until first saved/opened (Save
   /// falls back to Save As).
   String? get projectFilePath => _projectFilePath;
@@ -15751,12 +15766,23 @@ class EditorSessionManager extends ChangeNotifier {
     // Before serializing: the first save adopts the session's shelf
     // takes into Media/ so the .anicel carries the adopted paths.
     final adoptedTakePaths = _adoptShelfTakesForSave(filePath);
+    // Resolved against the CURRENT project path, before it moves. On a
+    // save-as that makes each source point into the file being left
+    // behind, and the writer streams from there into the new one — which
+    // is how a copy carries its media without a copy step of its own.
+    final mediaToStore = projectMediaSources(
+      project: _repository.requireProject(),
+      projectFilePath: _projectFilePath,
+      mediaEntryNames: _mediaEntryNames,
+    );
     await _anicelFileService.save(
       project: _repository.requireProject(),
       brushFrameStore: brushFrameStore,
       auxCelStores: [conteInkRowStore, conteInkPageStore, envelopeInkStore],
       filePath: filePath,
+      mediaToStore: mediaToStore,
     );
+    _mediaEntryNames = mediaEntryNamesFor(mediaToStore.keys);
     _projectFilePath = filePath;
     _hasUnsavedChanges = false;
     // The recovered work now lives in the project file, so the snapshot is
@@ -15842,6 +15868,10 @@ class EditorSessionManager extends ChangeNotifier {
     );
     playback.stop();
     _repository.replaceProject(result.project);
+    // What this project carries, as the file on disk says. Anything the
+    // pool names that is NOT here is an ordinary outside reference and
+    // resolves by path like it always did.
+    _mediaEntryNames = result.mediaEntryNames;
     // R22-C: opens land every cel FILE-BACKED — pixels stay in the .anicel
     // until a cel is first shown (near-zero RAM for 1500-cut projects).
     // The conte ink namespace routes to its own stores (R5); a ROW entry

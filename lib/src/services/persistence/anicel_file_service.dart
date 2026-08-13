@@ -8,6 +8,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/project.dart';
 import '../brush_frame_store.dart';
+import '../media/media_byte_source.dart';
 import 'brush_drawing_binary_codec.dart';
 import 'anicel_incremental_writer.dart';
 import 'anicel_project_archive.dart';
@@ -268,6 +269,7 @@ class AnicelFileService {
     required BrushFrameStore brushFrameStore,
     List<BrushFrameStore> auxCelStores = const [],
     required String filePath,
+    Map<String, MediaByteSource> mediaToStore = const {},
   }) async {
     // Aux stores (the conte sheet ink, R5) ride the same archive: their
     // keys live in their own namespace, so the snapshots merge without
@@ -322,6 +324,7 @@ class AnicelFileService {
         dirty: dirty,
         filePath: filePath,
         saveDirectory: saveDirectory,
+        mediaToStore: mediaToStore,
       );
       if (adopted != null) {
         adoptEach(adopted);
@@ -337,6 +340,7 @@ class AnicelFileService {
         dirty: dirty,
         filePath: filePath,
         saveDirectory: saveDirectory,
+        mediaToStore: mediaToStore,
       ),
     );
   }
@@ -394,6 +398,7 @@ class AnicelFileService {
     required Set<BrushFrameKey> dirty,
     required String filePath,
     required String saveDirectory,
+    Map<String, MediaByteSource> mediaToStore = const {},
   }) async {
     final works = <_CelWork>[];
     final removeNames = <String>{};
@@ -427,16 +432,31 @@ class AnicelFileService {
       final blobs = <(BrushFrameKey, String, AnicelCelBlob)>[
         for (final work in works) (work.key, work.name, work.resolveBlob()),
       ];
+      // Only what is not already in the file. Media is written once and
+      // never edited, so an asset already inside is a survivor of the
+      // append like any untouched cel — re-streaming it every save would
+      // rewrite the project's whole media area to change one drawing.
+      final newMedia = [
+        for (final entry in mediaToStore.entries)
+          if (layout.entryNamed(anicelMediaEntryName(entry.key)) == null)
+            AnicelStreamedEntry(
+              name: anicelMediaEntryName(entry.key),
+              length: entry.value.lengthSync(),
+              readInto: entry.value.readIntoSync,
+            ),
+      ];
       final appended = appendAnicelEntries(
         path: filePath,
         newEntries: {
           'project.json': buildAnicelProjectJsonBytes(
             project: project,
             saveDirectory: saveDirectory,
+            mediaInArchive: mediaToStore.keys.toSet(),
           ),
           for (final (_, name, blob) in blobs) name: blob.bytes,
         },
         removeNames: removeNames,
+        streamedEntries: newMedia,
       );
       return {
         for (final (key, name, blob) in blobs)
@@ -467,6 +487,7 @@ class AnicelFileService {
     required Set<BrushFrameKey> dirty,
     required String filePath,
     required String saveDirectory,
+    Map<String, MediaByteSource> mediaToStore = const {},
   }) async {
     final allKeys = <BrushFrameKey>{
       ...baked.hot.keys,
@@ -517,6 +538,7 @@ class AnicelFileService {
         project: project,
         saveDirectory: saveDirectory,
         works: works,
+        mediaToStore: mediaToStore,
       );
     } on Object {
       if (temp.existsSync()) {
@@ -540,6 +562,7 @@ class AnicelFileService {
     required Project project,
     required String saveDirectory,
     required List<_CelWork> works,
+    required Map<String, MediaByteSource> mediaToStore,
   }) {
     return Isolate.run(() {
       // Scalars only. Holding the BLOB here to read its geometry later
@@ -555,6 +578,7 @@ class AnicelFileService {
             bytes: buildAnicelProjectJsonBytes(
               project: project,
               saveDirectory: saveDirectory,
+              mediaInArchive: mediaToStore.keys.toSet(),
             ),
           );
           for (final work in works) {
@@ -570,6 +594,20 @@ class AnicelFileService {
             yield (name: work.name, bytes: blob.bytes);
           }
         }(),
+        // Every asset, every time — a full rewrite has no survivors to
+        // inherit from. The sources may point INTO the file being
+        // replaced (a compaction) or into the one being left behind (a
+        // save-as); either way the writer streams them across without
+        // re-encoding, which is what makes save-as carry media without a
+        // copy step of its own.
+        streamedEntries: [
+          for (final entry in mediaToStore.entries)
+            AnicelStreamedEntry(
+              name: anicelMediaEntryName(entry.key),
+              length: entry.value.lengthSync(),
+              readInto: entry.value.readIntoSync,
+            ),
+        ],
       );
       return <BrushFrameKey, AnicelCelFileRef>{
         for (final entry in geometry.entries)
