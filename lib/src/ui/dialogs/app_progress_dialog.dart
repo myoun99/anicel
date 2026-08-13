@@ -170,9 +170,18 @@ Future<T> runWithAppProgress<T>({
     await Future<void>.delayed(doneLinger);
     return result;
   } finally {
+    // `removeRoute`, NOT `pop`. A pop takes whatever route is on TOP, and
+    // this window is not guaranteed to be it — anything the app pushes
+    // while the save runs (a prompt raised by a lifecycle event, a second
+    // dialog) would be closed instead, leaving this one up and `shown`
+    // waiting on a route nobody will now remove. Naming the route closes
+    // the one this function opened, whatever is stacked over it.
     final open = windowContext;
     if (open != null && open.mounted) {
-      Navigator.of(open).pop();
+      final route = ModalRoute.of(open);
+      if (route != null) {
+        Navigator.of(open).removeRoute(route);
+      }
     }
     await shown;
     progress.dispose();

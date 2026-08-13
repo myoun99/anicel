@@ -129,6 +129,48 @@ void main() {
     expect(run.closed.isCompleted, isTrue);
   });
 
+  testWidgets('🚨 a route pushed DURING the save does not strand the window', (
+    tester,
+  ) async {
+    // The close used to be a plain `pop`, which takes whatever is on TOP.
+    // Anything the app raises while the save runs — a prompt from a
+    // lifecycle event, a second dialog — would be closed in this window's
+    // place, leaving it up and the caller waiting on a route nobody was
+    // going to remove. That is a hang, not a cosmetic slip.
+    final run = await showOver(tester);
+    final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+    unawaited(
+      showDialog<void>(
+        context: navigator.context,
+        builder: (_) => const AlertDialog(
+          key: ValueKey<String>('interloper'),
+          content: Text('something else'),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(const ValueKey<String>('interloper')), findsOneWidget);
+
+    run.task.complete('written');
+    await tester.pumpAndSettle();
+
+    expect(
+      run.closed.isCompleted,
+      isTrue,
+      reason: 'the caller never came back — it is waiting on its own route',
+    );
+    expect(
+      find.byKey(const ValueKey<String>('save-progress-dialog')),
+      findsNothing,
+      reason: 'the wrong route was closed and this one was left behind',
+    );
+    expect(
+      find.byKey(const ValueKey<String>('interloper')),
+      findsOneWidget,
+      reason: 'and the other dialog is not collateral damage',
+    );
+  });
+
   testWidgets('it cannot be dismissed while the write is running', (
     tester,
   ) async {

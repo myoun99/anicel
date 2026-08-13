@@ -441,6 +441,25 @@ const int anicelCrc32Start = 0xFFFFFFFF;
 /// gigabyte.
 const int _streamChunkBytes = 256 * 1024;
 
+/// How many times [appendAnicelEntries] reads each streamed entry end to
+/// end: once to checksum it before the file is touched, once to copy the
+/// bytes in.
+///
+/// 🚨 Declared because it is not a private detail — anything measuring the
+/// work of a save has to know, and the one thing that did got it wrong.
+/// Counting an append's media as a single traversal made a progress bar
+/// reach 100% at the end of the CRC pass, before a byte was written, and
+/// then hold there through the entire copy. The number of passes is a fact
+/// about this function; a caller cannot infer it, so this states it.
+const int anicelAppendStreamPasses = 2;
+
+/// The same count for [writeAnicelArchiveFile], which is ONE: it writes a
+/// placeholder CRC ahead of the data and seeks back to patch it, so the
+/// bytes go past exactly once. ⚠️ Deliberately a separate constant — the
+/// two writers differ here, and a single shared number would be wrong for
+/// one of them.
+const int anicelArchiveStreamPasses = 1;
+
 /// Folds [chunk] into a running CRC. Only the first [length] bytes count,
 /// so a caller reusing one buffer for a short final read does not have to
 /// trim it first.

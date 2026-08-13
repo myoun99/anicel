@@ -128,6 +128,14 @@ class _SaveProgress {
   /// never read from, rounding leaves crumbs, and a bar that stops at 99%
   /// on a finished save is the exact doubt this whole window answers.
   void finish() {
+    // Nothing to say if the last entry already landed on it. Saying it
+    // twice is harmless on the wire and wrong as a signal: "the bar
+    // arrives at the end once" is the property that catches an end
+    // announced early, and it cannot be asserted if the normal path
+    // announces it twice.
+    if (_sent >= 1) {
+      return;
+    }
     _sent = -1;
     _emit(1);
   }
@@ -602,7 +610,15 @@ class AnicelFileService {
               readInto: entry.value.readIntoSync,
             ),
       ];
-      final progress = _SaveProgress(port, 1 + works.length + newMedia.length);
+      // ⚠️ Media counts once PER PASS, not once. This writer reads every
+      // streamed entry twice (checksum, then copy), and counting it once
+      // put `_done` at `_total` when the checksum pass ended — the window
+      // said 100% and then sat there through the whole byte copy, which on
+      // a large import is most of the wait.
+      final progress = _SaveProgress(
+        port,
+        1 + works.length + newMedia.length * anicelAppendStreamPasses,
+      );
       final projectJson = buildAnicelProjectJsonBytes(
         project: project,
         saveDirectory: saveDirectory,
@@ -742,9 +758,11 @@ class AnicelFileService {
     void Function(double)? onProgress,
   }) {
     return _reportingProgress(onProgress, (port) => Isolate.run(() {
+      // One pass here, unlike the append path above — this writer patches
+      // the CRC by seeking back rather than pre-reading.
       final progress = _SaveProgress(
         port,
-        1 + works.length + mediaToStore.length,
+        1 + works.length + mediaToStore.length * anicelArchiveStreamPasses,
       );
       // Scalars only. Holding the BLOB here to read its geometry later
       // would keep every cel resident and give back exactly the memory
