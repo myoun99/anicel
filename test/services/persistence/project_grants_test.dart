@@ -467,6 +467,56 @@ void main() {
       after.dispose();
     });
 
+    test('🚨 recovering does not lose media whose original is gone', () async {
+      // Carrying a file in is what lets the original be deleted — that is
+      // the feature. So the recovered session has to know its audio lives
+      // INSIDE the archive; if it forgets, `projectMediaSources` falls
+      // back to a path that is not there any more and silently leaves the
+      // asset out, and the next save renames a media-less archive over
+      // the one that still held the bytes.
+      //
+      // The overlay's project.json replaces the base file's outright, so
+      // "the overlay forgot to mention it" and "it is not in there" are
+      // the same sentence to the reader.
+      final s = session();
+      final wav = File('${directory.path}/대사.wav')
+        ..writeAsBytesSync(List<int>.filled(512, 7));
+      s.importMediaFiles([wav.path], copyIntoProject: true);
+      final projectPath = '${directory.path}/scene.anicel';
+      await s.saveProjectToFile(projectPath);
+      expect(s.mediaEntryNames, isNotEmpty, reason: 'it went inside');
+
+      final overlayPath = '${directory.path}/scene.overlay';
+      await s.writeAutosaveSnapshot(overlayPath);
+      s.dispose();
+
+      // The original is deleted — which carrying it in is what permits.
+      wav.deleteSync();
+
+      final recovered = session();
+      await recovered.openProjectFromFile(
+        projectPath,
+        overlayPath: overlayPath,
+      );
+      expect(
+        recovered.mediaEntryNames,
+        isNotEmpty,
+        reason: 'the snapshot has to say what the base file already holds',
+      );
+
+      await recovered.saveProjectToFile(projectPath);
+      recovered.dispose();
+
+      final after = session();
+      await after.openProjectFromFile(projectPath);
+      expect(
+        after.mediaEntryNames.keys,
+        contains(wav.path.replaceAll('\\', '/')),
+        reason: 'and that save must not have dropped it',
+      );
+      after.dispose();
+    });
+
     test('a movie kept as a REFERENCE is what this is for', () async {
       // The kind rule keeps video outside the archive whatever anyone
       // picks, so a movie is the asset whose path has to keep working —
