@@ -278,6 +278,50 @@ class SelectionAffine {
   );
 }
 
+/// A canvas-space rectangle a PREVIEW only has to cover.
+typedef SelectionVisibleRect = ({
+  double left,
+  double top,
+  double right,
+  double bottom,
+});
+
+/// Which part of [out] a preview actually has to compute, in
+/// output-pixel coordinates relative to `out.left`/`out.top` — or null
+/// when the answer is "all of it".
+///
+/// A whole-picture transform is millions of pixels and a viewport is
+/// under one, so a preview that resamples the whole rect spends most of
+/// a pointer move on pixels nobody can see. Returning null for the cases
+/// that ARE fully visible matters as much as clipping the ones that are
+/// not: an unclipped result is the one the commit can reuse, and most
+/// selections are small enough to stay on that path.
+///
+/// Never empty. A transform dragged entirely off screen still yields one
+/// pixel rather than a zero-sized buffer, because "nothing to draw" is
+/// the caller's business and a degenerate allocation is nobody's.
+({int x, int y, int width, int height})? selectionPreviewWindow({
+  required ({int left, int top, int width, int height}) out,
+  required SelectionVisibleRect? visible,
+}) {
+  if (visible == null) {
+    return null;
+  }
+  final x = math.max(0, visible.left.floor() - out.left);
+  final y = math.max(0, visible.top.floor() - out.top);
+  final right = math.min(out.width, visible.right.ceil() - out.left);
+  final bottom = math.min(out.height, visible.bottom.ceil() - out.top);
+  if (x == 0 && y == 0 && right >= out.width && bottom >= out.height) {
+    return null;
+  }
+  return (
+    x: math.min(x, out.width - 1),
+    y: math.min(y, out.height - 1),
+    width: math.max(1, right - x),
+    height: math.max(1, bottom - y),
+  );
+}
+
 /// The selected dabs through [affine] (the Ctrl+T commit): centers map
 /// exactly, the scalar dab size scales by √|sx·sy| (the plan's mapping —
 /// non-uniform scale approximates through the area factor) and the tip
@@ -338,6 +382,7 @@ BrushDab transformStampDab(
   BrushDab stampDab,
   SelectionAffine affine, {
   ResampleMode mode = ResampleMode.blend,
+  SelectionVisibleRect? visible,
 }) {
   final stamp = stampDab.stamp;
   if (stamp == null || affine.isIdentity) {
@@ -366,36 +411,71 @@ BrushDab transformStampDab(
     affine.apply(CanvasPoint(x: srcLeft, y: srcTop + stamp.height)),
   ];
   final out = selectionWarpOutputRect(corners);
-  final outLeft = out.left;
-  final outTop = out.top;
-  final outWidth = out.width;
-  final outHeight = out.height;
+  final window = selectionPreviewWindow(out: out, visible: visible);
 
-  final bytes = Uint8List(outWidth * outHeight * 4);
+  return _resampleIntoWindow(
+    stampDab: stampDab,
+    stamp: stamp,
+    out: out,
+    window: window,
+    // The FULL rect's matrix, always. A window keeps the whole rect's
+    // pixel grid and says where it sits; folding the offset into the
+    // origin instead is the version that is equal in arithmetic and not
+    // in doubles — see ABI 26.
+    transform: selectionAffineResampleTransform(
+      affine: affine,
+      srcLeft: srcLeft,
+      srcTop: srcTop,
+      outLeft: out.left,
+      outTop: out.top,
+    ),
+    mode: mode,
+  );
+}
+
+/// Runs one resample into [window] of [out] (or all of [out] when window
+/// is null) and wraps the result as a dab positioned at what it covers.
+///
+/// ⚠️ A WINDOWED result is a PREVIEW. It holds only the pixels asked for,
+/// so committing it would land a rectangle of the picture and drop the
+/// rest. The one caller that clips keys its cache on the window, so the
+/// commit — which asks for no window — cannot be handed one by mistake.
+BrushDab _resampleIntoWindow({
+  required BrushDab stampDab,
+  required BrushStampImage stamp,
+  required ({int left, int top, int width, int height}) out,
+  required ({int x, int y, int width, int height})? window,
+  required ResampleTransform transform,
+  required ResampleMode mode,
+  String idPrefix = 't',
+}) {
+  final clipX = window?.x ?? 0;
+  final clipY = window?.y ?? 0;
+  final dstWidth = window?.width ?? out.width;
+  final dstHeight = window?.height ?? out.height;
+  final bytes = Uint8List(dstWidth * dstHeight * 4);
   resampleSelectionInto(
     src: stamp.rgba,
     srcWidth: stamp.width,
     srcHeight: stamp.height,
     dst: bytes,
-    dstWidth: outWidth,
-    dstHeight: outHeight,
-    transform: selectionAffineResampleTransform(
-      affine: affine,
-      srcLeft: srcLeft,
-      srcTop: srcTop,
-      outLeft: outLeft,
-      outTop: outTop,
-    ),
+    dstWidth: dstWidth,
+    dstHeight: dstHeight,
+    transform: transform,
     mode: mode,
+    clipX: clipX,
+    clipY: clipY,
   );
-
   return stampDab.copyWith(
-    center: CanvasPoint(x: outLeft + outWidth / 2, y: outTop + outHeight / 2),
-    size: math.max(outWidth, outHeight).toDouble(),
+    center: CanvasPoint(
+      x: out.left + clipX + dstWidth / 2,
+      y: out.top + clipY + dstHeight / 2,
+    ),
+    size: math.max(dstWidth, dstHeight).toDouble(),
     stamp: BrushStampImage(
-      id: '${stamp.id}-t${DateTime.now().microsecondsSinceEpoch}',
-      width: outWidth,
-      height: outHeight,
+      id: '${stamp.id}-$idPrefix${DateTime.now().microsecondsSinceEpoch}',
+      width: dstWidth,
+      height: dstHeight,
       rgba: bytes,
     ),
   );
@@ -475,6 +555,7 @@ BrushDab transformStampDabQuad(
   BrushDab stampDab,
   List<CanvasPoint> corners, {
   ResampleMode mode = ResampleMode.blend,
+  SelectionVisibleRect? visible,
 }) {
   final stamp = stampDab.stamp;
   if (stamp == null) {
@@ -522,42 +603,24 @@ BrushDab transformStampDabQuad(
   }
 
   final out = selectionWarpOutputRect(corners);
-  final outLeft = out.left;
-  final outTop = out.top;
-  final outWidth = out.width;
-  final outHeight = out.height;
-
-  final bytes = Uint8List(outWidth * outHeight * 4);
   // The per-pixel `w ≈ 0` guard the old loop carried lives in the kernel
   // now, along with a non-finite check the old one did not have. Both write
   // the outside token where this used to leave the pixel untouched, which
   // is the same thing on a freshly allocated buffer.
-  resampleSelectionInto(
-    src: stamp.rgba,
-    srcWidth: stamp.width,
-    srcHeight: stamp.height,
-    dst: bytes,
-    dstWidth: outWidth,
-    dstHeight: outHeight,
+  return _resampleIntoWindow(
+    stampDab: stampDab,
+    stamp: stamp,
+    out: out,
+    window: selectionPreviewWindow(out: out, visible: visible),
     transform: selectionQuadResampleTransform(
       h: h,
       srcLeft: srcLeft,
       srcTop: srcTop,
-      outLeft: outLeft,
-      outTop: outTop,
+      outLeft: out.left,
+      outTop: out.top,
     ),
     mode: mode,
-  );
-
-  return stampDab.copyWith(
-    center: CanvasPoint(x: outLeft + outWidth / 2, y: outTop + outHeight / 2),
-    size: math.max(outWidth, outHeight).toDouble(),
-    stamp: BrushStampImage(
-      id: '${stamp.id}-q${DateTime.now().microsecondsSinceEpoch}',
-      width: outWidth,
-      height: outHeight,
-      rgba: bytes,
-    ),
+    idPrefix: 'q',
   );
 }
 
@@ -583,6 +646,7 @@ BrushDab transformStampDabMesh(
   required int rows,
   required List<CanvasPoint> points,
   ResampleMode mode = ResampleMode.blend,
+  SelectionVisibleRect? visible,
 }) {
   final stamp = stampDab.stamp;
   if (stamp == null || columns < 1 || rows < 1) {
@@ -652,19 +716,43 @@ BrushDab transformStampDabMesh(
     if (denominator.abs() < 1e-12) {
       return; // Degenerate destination triangle.
     }
-    final left = math.max(
+    // The triangle's own bounding box, clamped to the output rect. This
+    // is the ORIGIN the resample transform is built from, and it must not
+    // move when the preview clips — moving an origin is exactly the
+    // regrouping ABI 26 exists to avoid, and it would make a clipped mesh
+    // preview differ from what Enter lands.
+    final rawLeft = math.max(
       outLeft,
       math.min(d0.x, math.min(d1.x, d2.x)).floor(),
     );
-    final top = math.max(outTop, math.min(d0.y, math.min(d1.y, d2.y)).floor());
-    final right = math.min(
+    final rawTop = math.max(
+      outTop,
+      math.min(d0.y, math.min(d1.y, d2.y)).floor(),
+    );
+    final rawRight = math.min(
       outLeft + outWidth,
       math.max(d0.x, math.max(d1.x, d2.x)).ceil(),
     );
-    final bottom = math.min(
+    final rawBottom = math.min(
       outTop + outHeight,
       math.max(d0.y, math.max(d1.y, d2.y)).ceil(),
     );
+    // What is on screen of it. The mesh clips per TRIANGLE rather than by
+    // windowing the shared buffer: each triangle already resamples only
+    // its own box, so narrowing that box skips the off-screen work
+    // without disturbing the `bytes`/`covered` indexing.
+    final left = visible == null
+        ? rawLeft
+        : math.max(rawLeft, visible.left.floor());
+    final top = visible == null
+        ? rawTop
+        : math.max(rawTop, visible.top.floor());
+    final right = visible == null
+        ? rawRight
+        : math.min(rawRight, visible.right.ceil());
+    final bottom = visible == null
+        ? rawBottom
+        : math.min(rawBottom, visible.bottom.ceil());
     final tileWidth = right - left;
     final tileHeight = bottom - top;
     if (tileWidth <= 0 || tileHeight <= 0) {
@@ -694,12 +782,14 @@ BrushDab transformStampDabMesh(
         s1: s1,
         s2: s2,
         denominator: denominator,
-        left: left,
-        top: top,
+        left: rawLeft,
+        top: rawTop,
         srcLeft: srcLeft,
         srcTop: srcTop,
       ),
       mode: mode,
+      clipX: left - rawLeft,
+      clipY: top - rawTop,
     );
     for (var y = top; y < bottom; y += 1) {
       final qy = y + 0.5;

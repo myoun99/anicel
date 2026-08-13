@@ -11,6 +11,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
@@ -54,6 +55,7 @@ void main() {
       HistoryManager history,
       CanvasSelectionCommands commands,
       Future<void> Function(CanvasTool tool) setTool,
+      Future<void> Function(CanvasViewport viewport) setViewport,
       ValueNotifier<TransformToolOptions> transformOptions,
     })
   >
@@ -63,6 +65,7 @@ void main() {
     CanvasShapeKind shapeKind = CanvasShapeKind.rect,
     BrushBlendMode blendMode = BrushBlendMode.color,
     TransformMode transformMode = TransformMode.normal,
+    CanvasViewport? viewport,
     // Extra committed ink, mounted with the fixture. `null` replaces the
     // in-canvas stroke entirely (a cel whose only ink is off-canvas).
     List<BrushDab>? sourceDabs,
@@ -89,38 +92,42 @@ void main() {
       coordinator.commitSourceStroke(sourceDabs: dabs);
     }
 
+    var liveViewport = viewport;
+    var liveTool = tool;
     Future<void> pumpWith(CanvasTool tool) async {
+      liveTool = tool;
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             body: RepaintBoundary(
               key: const ValueKey<String>('panel-capture'),
               child: BrushCanvasPanel(
-              coordinator: coordinator,
-              // The panel carries its OWN canvas size, independent of the
-              // coordinator's session store — passing only the fixture's
-              // left the panel at the 2340×1654 default, which silently
-              // put every reachable pointer position back on canvas.
-              canvasSize: canvasSize,
-              availableFrameKeys: frameKeys,
-              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-              historyManager: history,
-              brushToolState: BrushToolState.defaults.copyWith(
-                tool: tool,
-                selectShape: shapeKind,
-                fillShape: shapeKind,
-                fillBlendMode: blendMode,
-              ),
-              selectionCommands: commands,
-              shapeFillDabFor: (shape, color) => buildShapeFillDab(
-                shape: shape,
-                color: color,
-                options: const FloodFillOptions(
-                  expandPx: 0,
-                  antiAlias: false,
+                coordinator: coordinator,
+                // The panel carries its OWN canvas size, independent of the
+                // coordinator's session store — passing only the fixture's
+                // left the panel at the 2340×1654 default, which silently
+                // put every reachable pointer position back on canvas.
+                canvasSize: canvasSize,
+                availableFrameKeys: frameKeys,
+                cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+                historyManager: history,
+                brushToolState: BrushToolState.defaults.copyWith(
+                  tool: tool,
+                  selectShape: shapeKind,
+                  fillShape: shapeKind,
+                  fillBlendMode: blendMode,
                 ),
-              ),
-              transformOptions: transformOptions,
+                selectionCommands: commands,
+                viewport: liveViewport,
+                shapeFillDabFor: (shape, color) => buildShapeFillDab(
+                  shape: shape,
+                  color: color,
+                  options: const FloodFillOptions(
+                    expandPx: 0,
+                    antiAlias: false,
+                  ),
+                ),
+                transformOptions: transformOptions,
               ),
             ),
           ),
@@ -135,6 +142,10 @@ void main() {
       history: history,
       commands: commands,
       setTool: pumpWith,
+      setViewport: (next) async {
+        liveViewport = next;
+        await pumpWith(liveTool);
+      },
       transformOptions: transformOptions,
     );
   }
@@ -263,6 +274,46 @@ void main() {
     }
     return (ghost: ghost, hole: hole);
   }
+
+  /// Waits for a CONDITION, never for a clock.
+  ///
+  /// The float preview lands through a real `decodeImageFromPixels`
+  /// callback, so a test has to let real async work run — and how long
+  /// that takes depends on what else the machine is doing. A fixed delay
+  /// passes when the file runs alone and fails in a full suite, which is
+  /// the worst way for a test to be wrong: it comes back as a failure in
+  /// whatever landed that day.
+  ///
+  /// Fails loudly on timeout rather than falling through to an assertion
+  /// that would blame the code.
+  Future<void> pumpUntil(
+    WidgetTester tester,
+    bool Function() ready, {
+    required String reason,
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
+    final watch = Stopwatch()..start();
+    while (!ready()) {
+      if (watch.elapsed > timeout) {
+        fail(
+          'timed out after ${timeout.inSeconds}s waiting for $reason — the '
+          'pipeline never got there, which is a real failure and not a '
+          'slow machine',
+        );
+      }
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+      await tester.pump();
+    }
+  }
+
+  /// True once the transform preview widget is mounted — the observable
+  /// end of the resample + decode round trip.
+  bool previewIsUp() => find
+      .byKey(const ValueKey<String>('transform-resample-preview'))
+      .evaluate()
+      .isNotEmpty;
 
   /// Lets the real decode pipeline run to completion, so the committed
   /// surface can paint and any hold releases.
@@ -969,13 +1020,9 @@ void main() {
     await env.setTool(CanvasTool.move);
     final entriesBefore = env.history.undoCount;
 
-    await tester.runAsync(() async {
-      // The mesh has no button any more — the mode is the door, and any
-      // ordinary open brings the grid with it.
-      env.commands.beginTransform();
-      // Let the float decode land (drawVertices live warp preview, R21).
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-    });
+    // The mesh has no button any more — the mode is the door, and any
+    // ordinary open brings the grid with it.
+    env.commands.beginTransform();
     await tester.pump();
     expect(env.commands.transformActive, isTrue);
     expect(
@@ -988,16 +1035,16 @@ void main() {
     // Drag an interior control point (stamp rect (20,20)-(71,71), 3×3
     // cells → pitch 17: the (1,1) point sits at (37,37)).
     await dragOnLayer(tester, const Offset(37, 37), const Offset(31, 42));
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    await pumpUntil(
+      tester,
+      previewIsUp,
+      reason:
+          'the live warp preview to mount — it appears once there is a warp '
+          'to show, an all-zero grid resampling nothing by design',
     );
-    await tester.pump();
     expect(
       find.byKey(const ValueKey<String>('transform-resample-preview')),
       findsOneWidget,
-      reason:
-          'the live warp preview mounts once there is a warp to show — an '
-          'all-zero grid resamples nothing, by design',
     );
 
     env.commands.commitTransform();
@@ -1129,6 +1176,105 @@ void main() {
     expect(env.history.undoCount, entriesAfterFirst + 1);
   });
 
+  testWidgets('the preview clips ONLY while a handle is being dragged, and '
+      'goes back to the whole rect the moment it is released', (tester) async {
+    // A canvas larger than the 800×600 test viewport, so a whole-picture
+    // box really is bigger than the screen and clipping has something to
+    // clip.
+    const big = CanvasSize(width: 1800, height: 1400);
+    await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      canvasSize: big,
+      sourceDabs: [dab(100, 100), dab(700, 600), dab(1500, 1200)],
+      viewport: CanvasViewport(),
+    );
+
+    final origin = tester.getTopLeft(find.byKey(layerKey));
+    // The box frames the ink, which runs to (1500,1200) — far past the
+    // 800×600 test viewport, so a window really is smaller. Its TOP-LEFT
+    // handle is the one that is on screen to grab.
+    final gesture = await tester.startGesture(origin + const Offset(100, 100));
+    await tester.pump();
+    await gesture.moveTo(origin + const Offset(60, 55));
+    await tester.pump();
+    // Wait for the resample to have HAPPENED, not for a stopwatch — the
+    // same lesson the mesh test above learned the hard way.
+    await pumpUntil(
+      tester,
+      () => debugLastResampledFloat?.stamp != null,
+      reason: 'the drag-time resample',
+    );
+    final duringDrag = debugLastResampledFloat!.stamp!.width;
+
+    await gesture.up();
+    // Releasing widens it back out to the whole rect.
+    await pumpUntil(
+      tester,
+      () => (debugLastResampledFloat?.stamp?.width ?? duringDrag) > duringDrag,
+      reason: 'the at-rest resample to widen past the drag-time window',
+    );
+    final atRest = debugLastResampledFloat!.stamp!.width;
+
+    expect(
+      duringDrag,
+      lessThan(atRest),
+      reason:
+          'mid-drag the preview covers the viewport; at rest it covers the '
+          'whole rect, because the viewport can MOVE at rest and a window '
+          'computed for where the user was is a window with a hole in it',
+    );
+  });
+
+  testWidgets('a transform dragged with most of the picture OFF SCREEN '
+      'still lands all of it', (tester) async {
+    // The failure this exists for: the preview resamples only the visible
+    // window, and if that window ever reached the commit the user would
+    // keep the rectangle they could see and lose the rest of the drawing.
+    // Three things are supposed to prevent it — the commit asks for no
+    // window, the window is part of the cache key so it cannot be handed
+    // one, and clipping only happens mid-drag while the commit happens at
+    // rest. This checks the OUTCOME rather than any of the three.
+    const big = CanvasSize(width: 1800, height: 1400);
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      canvasSize: big,
+      // The far dab sits at (1500,1200) — far outside the 800×600 test
+      // viewport, and therefore outside every window the preview ever
+      // computed during the drag below.
+      sourceDabs: [dab(100, 100), dab(700, 600), dab(1500, 1200)],
+      viewport: CanvasViewport(),
+    );
+    expect(
+      inkAt(env.coordinator, 1500, 1200),
+      isNonZero,
+      reason: 'the far ink is there to begin with',
+    );
+    final entriesBefore = env.history.undoCount;
+
+    // Scale by the top-left handle, which is the one on screen. The drag
+    // is what turns clipping on.
+    await dragOnLayer(tester, const Offset(100, 100), const Offset(40, 30));
+    expect(env.commands.transformActive, isTrue);
+    env.commands.commitTransform();
+    await tester.pump();
+
+    expect(
+      env.history.undoCount,
+      entriesBefore + 1,
+      reason: 'the transform really committed',
+    );
+    expect(
+      inkAt(env.coordinator, 1500, 1200),
+      isNonZero,
+      reason:
+          'the far corner is the anchor, so it lands where it started — and '
+          'it is still THERE, which is what says the commit landed the '
+          'whole picture and not the window the preview was drawing',
+    );
+  });
+
   testWidgets('the ANCHOR is a setting, and Alt inverts it for one drag', (
     tester,
   ) async {
@@ -1151,7 +1297,8 @@ void main() {
     expect(
       inkAt(env.coordinator, 75, 75),
       isNonZero,
-      reason: 'the grabbed end went out to 75, not the 80 a corner anchor '
+      reason:
+          'the grabbed end went out to 75, not the 80 a corner anchor '
           'would have given',
     );
     expect(
@@ -1632,7 +1779,8 @@ void main() {
       expect(
         identical(nudged.surface, lifted),
         isTrue,
-        reason: 'a nudge rebuilt the float — it is a translation, not new '
+        reason:
+            'a nudge rebuilt the float — it is a translation, not new '
             'pixels, and a rebuilt surface has no decoded tiles to paint',
       );
       var undecoded = 0;
@@ -2251,10 +2399,7 @@ void main() {
       // rest, which is the only shape where the two rounding orders can
       // disagree at all — and the anti-vacuity assertion below fails if a
       // future change makes it stop blending.
-      final env = await pumpSelectionPanel(
-        tester,
-        sourceDabs: blendedPicture,
-      );
+      final env = await pumpSelectionPanel(tester, sourceDabs: blendedPicture);
       await dragOnLayer(tester, const Offset(120, 120), const Offset(430, 380));
       await env.setTool(CanvasTool.move);
       await dragOnLayer(tester, const Offset(250, 220), const Offset(286, 249));
@@ -2514,6 +2659,45 @@ void main() {
       await tester.pump();
       expect(inkAt(env.coordinator, 35, 35), isNonZero);
       expect(inkAt(env.coordinator, 80, 80), isNonZero);
+    });
+
+    testWidgets('일반변형 follows the hand off the diagonal: the uniform '
+        'scale is the PROJECTION, not the larger axis', (tester) async {
+      // The test above drags exactly along the diagonal, where every rule
+      // for picking one scale from two agrees. This one does not, which is
+      // the only way to see which rule is running.
+      //
+      // Box (20,20)-(70,70), anchored at TL. Grabbing BR and pulling it
+      // sideways to (95,70) asks for 1.5× on x and 1.0× on y:
+      //
+      //   max(|sx|,|sy|)  → 1.5×, so the stroke's far end (60,60) lands
+      //                     at 20 + 40·1.5 = 80 — past the pointer on the
+      //                     axis the hand never moved along.
+      //   projection      → (75·50 + 50·50)/(50²+50²) = 1.25×, so it
+      //                     lands at 20 + 40·1.25 = 70.
+      //
+      // Following the hand is also 1.44× fewer pixels to resample here,
+      // which is the whole reason the rule changed.
+      final env = await pumpSelectionPanel(tester);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+
+      await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 70));
+      env.commands.commitTransform();
+      await tester.pump();
+
+      expect(
+        inkAt(env.coordinator, 70, 70),
+        isNonZero,
+        reason: 'the far end landed at the projected 1.25×',
+      );
+      expect(
+        inkAt(env.coordinator, 80, 80),
+        0,
+        reason:
+            'and NOT at the 1.5× the larger-axis rule would have given — '
+            'that is the box outrunning the hand',
+      );
     });
 
     testWidgets('numeric transform input (tool settings) applies through '

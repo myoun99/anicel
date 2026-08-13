@@ -713,6 +713,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _scheduleFloatResample();
       _syncAnts();
     }
+    // The preview is clipped to what is on screen, so MOVING the screen
+    // changes what it has to compute. Nothing else would notice: the
+    // resample is scheduled by pointer moves and mode switches, and a pan
+    // is neither — the box would keep painting the window it was given
+    // and the picture would simply be absent outside it.
+    if (_transform != null && oldWidget.viewport != widget.viewport) {
+      _scheduleFloatResample();
+    }
     if (oldWidget._resampleMode != widget._resampleMode) {
       // P3a: flipping the switch with a box already open re-resamples on
       // the spot. Waiting for the next drag would show the old kernel's
@@ -1211,7 +1219,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// The mesh grid's BASE points over the pending stamp's rect, row-major
   /// — the mesh's equivalent of [_stampRectCorners].
-  List<CanvasPoint>? _meshBasePoints({required int columns, required int rows}) {
+  List<CanvasPoint>? _meshBasePoints({
+    required int columns,
+    required int rows,
+  }) {
     final base = _stampRectCorners();
     if (base == null) {
       return null;
@@ -1265,10 +1276,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _mode != TransformMode.mesh || _meshOffsets == null
       ? null
       : _placedPoints(
-          _meshBasePoints(
-            columns: _meshOffsetColumns,
-            rows: _meshOffsetRows,
-          ),
+          _meshBasePoints(columns: _meshOffsetColumns, rows: _meshOffsetRows),
           _meshOffsets,
         );
 
@@ -1340,7 +1348,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         final corners = _cornerOffsets ?? _stashedCornerOffsets;
         _stashOffsets();
         _cornerOffsets = null;
-        _meshOffsets = _stashedMeshOffsets != null &&
+        _meshOffsets =
+            _stashedMeshOffsets != null &&
                 _stashedMeshColumns == columns &&
                 _stashedMeshRows == rows
             ? List.of(_stashedMeshOffsets!)
@@ -1369,13 +1378,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     final columns = _meshOffsetColumns;
     final rows = _meshOffsetRows;
-    CanvasPoint at(int column, int row) => offsets[row * (columns + 1) + column];
-    return [
-      at(0, 0),
-      at(columns, 0),
-      at(columns, rows),
-      at(0, rows),
-    ];
+    CanvasPoint at(int column, int row) =>
+        offsets[row * (columns + 1) + column];
+    return [at(0, 0), at(columns, 0), at(columns, rows), at(0, rows)];
   }
 
   /// A fresh grid whose CORNERS carry [corners] and whose interior is flat
@@ -1395,7 +1400,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     flat[rows * (columns + 1)] = corners[3];
     return flat;
   }
-
 
   // ---------------------------------------------------------------
   // The transform preview (P3a).
@@ -1427,7 +1431,133 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// buffer is immutable for its lifetime, and a value comparison of a
   /// multi-megabyte cel on every drag frame would cost more than the
   /// resample it is guarding.
-  _ResampleKey? _currentResampleKey() {
+  /// The canvas rectangle the user can actually SEE, or null when it
+  /// cannot be worked out (no layout yet) — in which case the preview
+  /// falls back to computing everything, which is what it always did.
+  ///
+  /// Padded, because the window is recomputed only when the resample key
+  /// changes: a hair of slack means a small viewport nudge does not
+  /// immediately expose an uncomputed edge.
+  ///
+  /// All four corners are mapped, not two: the canvas rotates and flips
+  /// (P8), so the visible region's axis-aligned bounds are the bounds of
+  /// the mapped corners rather than of two opposite ones.
+  static const double _previewClipPadding = 96;
+
+  SelectionVisibleRect? _visibleCanvasRect() {
+    // The render object rather than `context.size`: this is reached from
+    // `didUpdateWidget` (a mode switch re-resamples the open box), and
+    // `BuildContext.size` throws while the owner is building. Asking the
+    // box directly, and only when it `hasSize`, has no such rule — and
+    // "no size yet" answers null, which means "do not clip", which is
+    // what the tool did before any of this.
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) {
+      return null;
+    }
+    final size = box.size;
+    if (size.isEmpty) {
+      return null;
+    }
+    var minX = double.infinity, minY = double.infinity;
+    var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+    for (final corner in <ViewportPoint>[
+      ViewportPoint(x: 0, y: 0),
+      ViewportPoint(x: size.width, y: 0),
+      ViewportPoint(x: size.width, y: size.height),
+      ViewportPoint(x: 0, y: size.height),
+    ]) {
+      final point = widget.viewport.viewportToCanvas(corner);
+      minX = math.min(minX, point.x);
+      maxX = math.max(maxX, point.x);
+      minY = math.min(minY, point.y);
+      maxY = math.max(maxY, point.y);
+    }
+    if (!minX.isFinite || !minY.isFinite || !maxX.isFinite || !maxY.isFinite) {
+      return null;
+    }
+    return (
+      left: minX - _previewClipPadding,
+      top: minY - _previewClipPadding,
+      right: maxX + _previewClipPadding,
+      bottom: maxY + _previewClipPadding,
+    );
+  }
+
+  /// The output rect the open warp would produce — the same rect the
+  /// three transform functions compute for themselves.
+  ///
+  /// The layer needs it to answer one question before resampling: would a
+  /// window actually be smaller than the whole? If not, it asks for NO
+  /// window, and then the cache entry is one the commit can reuse. Most
+  /// selections are that case, and losing the reuse for all of them
+  /// would have traded a big win on the whole picture for a second full
+  /// resample on every ordinary Enter.
+  ({int left, int top, int width, int height})? _currentOutputRect() {
+    final mesh = _placedMeshPoints;
+    if (mesh != null) {
+      return selectionWarpOutputRect(mesh);
+    }
+    final quad = _placedCorners;
+    if (quad != null && !_offsetsAreZero(_cornerOffsets)) {
+      return selectionWarpOutputRect(quad);
+    }
+    final affine = _transform;
+    final base = _stampRectCorners();
+    if (affine == null || base == null || affine.isIdentity) {
+      return null;
+    }
+    return selectionWarpOutputRect([
+      for (final corner in base) affine.apply(corner),
+    ]);
+  }
+
+  /// The visible rect the PREVIEW clips to — or null, which means "do not
+  /// clip", and which is the answer everywhere except mid-drag.
+  ///
+  /// Clipping is only safe while a handle is actually being dragged, and
+  /// that is also the only time it is worth anything.
+  ///
+  /// Safe, because the viewport CANNOT move then: the panel holds mapped
+  /// pans and wheel zooms behind `strokeActive` for the length of a
+  /// selection drag, and touch behind `touchLocked`. Outside a drag the
+  /// viewport moves freely — Fit, the zoom pill, the pan bars — and a
+  /// window computed for where the user WAS is a window with a hole in
+  /// it. Rescheduling on a viewport change does not close that hole
+  /// either: the resample is synchronous but the decode is not, so the
+  /// frames between a pan and the new image would paint the old window
+  /// and nothing else. A drag cannot pan, so the question never arises.
+  ///
+  /// Worth anything, because a drag is the only thing that resamples
+  /// dozens of times a second. At rest there is one resample, it computes
+  /// the whole rect, and the commit reuses that very buffer — so the
+  /// byte-identity path the tool has always had survives untouched.
+  SelectionVisibleRect? _previewVisibleRect() {
+    if (_dragMode != _DragMode.transform) {
+      return null;
+    }
+    final rect = _visibleCanvasRect();
+    if (rect == null) {
+      return null;
+    }
+    final rounded = (
+      left: rect.left.floorToDouble(),
+      top: rect.top.floorToDouble(),
+      right: rect.right.ceilToDouble(),
+      bottom: rect.bottom.ceilToDouble(),
+    );
+    final out = _currentOutputRect();
+    if (out == null) {
+      return null;
+    }
+    // Everything already on screen: ask for no window at all, so the
+    // buffer this produces is the one Enter can land.
+    return selectionPreviewWindow(out: out, visible: rounded) == null
+        ? null
+        : rounded;
+  }
+
+  _ResampleKey? _currentResampleKey({SelectionVisibleRect? visible}) {
     final stamp = _pendingLiftStamp?.stamp;
     if (stamp == null) {
       return null;
@@ -1456,12 +1586,21 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // the right picture and the resampler has nothing to do.
       return null;
     }
+    // The window is PART of the key. A preview asks for one and a commit
+    // does not, so the commit can never be handed the preview's window by
+    // a cache hit — which matters, because a window holds only the pixels
+    // on screen and landing it would drop the rest of the picture.
+    if (visible != null) {
+      shape.write(
+        '|v${visible.left},${visible.top},${visible.right},${visible.bottom}',
+      );
+    }
     return _ResampleKey(widget._resampleMode, stamp.rgba, shape.toString());
   }
 
   /// The float through whatever warp is open — the ONE place the three
   /// warp functions are called from during a session.
-  BrushDab? _resampleOpenTransform() {
+  BrushDab? _resampleOpenTransform({SelectionVisibleRect? visible}) {
     final pending = _pendingLiftStamp;
     if (pending == null) {
       return null;
@@ -1474,21 +1613,36 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         rows: _meshOffsetRows,
         points: mesh,
         mode: widget._resampleMode,
+        visible: visible,
       );
     }
     final quad = _warpCorners;
     if (quad != null) {
-      return transformStampDabQuad(pending, quad, mode: widget._resampleMode);
+      return transformStampDabQuad(
+        pending,
+        quad,
+        mode: widget._resampleMode,
+        visible: visible,
+      );
     }
     final affine = _transform;
     if (affine != null && !affine.isIdentity) {
-      return transformStampDab(pending, affine, mode: widget._resampleMode);
+      return transformStampDab(
+        pending,
+        affine,
+        mode: widget._resampleMode,
+        visible: visible,
+      );
     }
     return null;
   }
 
-  /// The cached resample, or a fresh one — what every commit path calls
-  /// so that "what you saw" and "what landed" are the same object.
+  /// The cached resample, or a fresh one — what every COMMIT path calls.
+  ///
+  /// Deliberately asks for no window. The preview clips to the viewport
+  /// and its cache entry is keyed on that, so this cannot hit it: the
+  /// commit gets the whole picture or computes it, and never lands a
+  /// rectangle of one.
   BrushDab? _warpedFloat() {
     final key = _currentResampleKey();
     if (key == null) {
@@ -1518,6 +1672,29 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// picture just before Enter is always the exact one.
   ui.Image? _resampledFloatImage;
   BrushDab? _resampledImageDab;
+
+  /// Set by a commit that has checked the decoded preview is the CURRENT
+  /// state's — so [_clearTransform] may hold it over even though it is a
+  /// window rather than the whole landed picture. Consumed there.
+  bool _holdDecodedPreview = false;
+
+  /// Whether the decoded preview belongs to the state about to be
+  /// committed: the decode has caught up to the newest resample, and that
+  /// resample is the one the current transform + viewport asks for.
+  ///
+  /// Asked BEFORE the commit mutates anything — the key includes the
+  /// pending stamp's bytes by identity, so after `_pendingLiftStamp` is
+  /// replaced there is no way to ask it any more.
+  bool _decodedPreviewIsCurrent() {
+    final decoded = _resampledImageDab;
+    final cached = _resampledFloat;
+    return _resampledFloatImage != null &&
+        decoded != null &&
+        cached != null &&
+        identical(decoded, cached.dab) &&
+        cached.key == _currentResampleKey(visible: _previewVisibleRect());
+  }
+
   int _resampleImageRequest = 0;
   bool _resampleInFlight = false;
   bool _resampleDirty = false;
@@ -1546,7 +1723,17 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (_resampleInFlight || !_resampleDirty) {
       return;
     }
-    final key = _currentResampleKey();
+    // The PREVIEW clips to the viewport (ABI 26). A whole-picture
+    // transform is millions of pixels and the screen holds under one, so
+    // most of every pointer move used to go into pixels nobody could see.
+    // The window keeps the whole rect's pixel grid, so what is drawn is
+    // exactly what the commit will land there — measured byte for byte
+    // over 70 transforms in `resample_clip_parity_test.dart`.
+    //
+    // A selection that already fits gets no window at all, and stays on
+    // the path where the commit reuses this very buffer.
+    final visible = _previewVisibleRect();
+    final key = _currentResampleKey(visible: visible);
     if (key == null) {
       _resampleDirty = false;
       if (_resampledFloat != null || _resampledFloatImage != null) {
@@ -1559,7 +1746,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     _resampleDirty = false;
-    final dab = _resampleOpenTransform();
+    final dab = _resampleOpenTransform(visible: visible);
     final stamp = dab?.stamp;
     if (dab == null || stamp == null) {
       return;
@@ -1668,7 +1855,17 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final keepPreview =
         keepLandedPreview &&
         landed != null &&
-        identical(_resampledImageDab, landed);
+        // Either the decoded image IS what landed (an unclipped preview,
+        // reused by the commit), or it is the up-to-date WINDOW of it.
+        //
+        // A window still serves the hold, and serves it exactly: what the
+        // hold has to cover is the part of the screen the base cannot
+        // paint yet, and the window is the part of the screen. The
+        // identity test alone would refuse it and leave that frame blank
+        // — one frame of the picture missing, which is the thing the hold
+        // exists to prevent (유저 법: 한 프레임 보이는 건 무조건 걸린다).
+        (identical(_resampledImageDab, landed) || _holdDecodedPreview);
+    _holdDecodedPreview = false;
     _transform = null;
     _transformOpenedLift = false;
     _baseBoxWidth = 0;
@@ -1787,6 +1984,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _syncAnts();
         return;
       }
+      // Asked here, before anything moves: the answer stops being
+      // askable the moment `_pendingLiftStamp` is replaced.
+      _holdDecodedPreview = _decodedPreviewIsCurrent();
       _recordTransformRecall(affine);
       final boundary = _meshBoundary(meshPoints);
       _floatContentReplaced();
@@ -1812,6 +2012,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _syncAnts();
         return;
       }
+      // Asked here, before anything moves: the answer stops being
+      // askable the moment `_pendingLiftStamp` is replaced.
+      _holdDecodedPreview = _decodedPreviewIsCurrent();
       _recordTransformRecall(affine);
       final base = _stampRectCorners();
       final h = base == null ? null : solveHomography(base, warpCorners);
@@ -1830,6 +2033,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     if (!affine.isIdentity && pending != null) {
+      // Asked here, before anything moves: the answer stops being
+      // askable the moment `_pendingLiftStamp` is replaced.
+      _holdDecodedPreview = _decodedPreviewIsCurrent();
       _recordTransformRecall(affine);
       _floatContentReplaced();
       setState(() {
@@ -1958,10 +2164,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // float's own previous generation. Emptying and then seeding says
     // both things in the right order.
     _floatContentReplaced();
-    BitmapTileImageCache.instance.seedScope(
-      _floatStaleScope,
-      lift.wholeTiles,
-    );
+    BitmapTileImageCache.instance.seedScope(_floatStaleScope, lift.wholeTiles);
     _pendingLiftStamp = lift.stampDab;
     _moveSessionDirty = false;
     _moveSessionStartShape = region;
@@ -2131,6 +2334,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// this arithmetic does not describe.
   ProvisionalInkPainter? _landedInkPainter(BrushDab landed, int left, int top) {
     final resampled = _resampledFloatImage;
+    // The identity test stays exact here, and must: this hands the BASE a
+    // picture covering the landed rect, so a viewport WINDOW would be both
+    // misplaced and short. A windowed commit therefore gets no provisional
+    // compose and waits for the real cel — which is only slower, never
+    // wrong, because the visual hold above is still covering the screen.
     if (resampled != null && identical(_resampledImageDab, landed)) {
       return inkFromImage(
         resampled,
@@ -2647,9 +2855,29 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (widget.transformOptions.isUniform &&
         grabbed.x != anchorLocal.x &&
         grabbed.y != anchorLocal.y) {
-      final magnitude = math.max(sx.abs(), sy.abs());
-      sx = sx.isNegative ? -magnitude : magnitude;
-      sy = sy.isNegative ? -magnitude : magnitude;
+      // One scale for both axes, chosen as the least-squares projection of
+      // the pointer onto the anchor→handle diagonal: the s that puts the
+      // handle as close to the pointer as a uniform scale can.
+      //
+      // It used to take max(|sx|, |sy|), which is the LARGER axis rather
+      // than the closest fit — so a drag that was not exactly along the
+      // diagonal pulled the short axis up to the long one. That grows the
+      // box past where the hand is, and it grows the resample with it: the
+      // output area a pointer move costs is proportional to sx·sy, and the
+      // measured penalty was 1.11× ten degrees off the diagonal, 1.33× at
+      // twenty-five, 2× at fifty
+      // (`test/services/transform_drag_cost_benchmark_test.dart`).
+      //
+      // The projection is a weighted mean of the two axis scales instead
+      // of their max, so it always sits BETWEEN them: the box follows the
+      // hand, and the cost follows the box. Signs need no special case
+      // either — dragging past the anchor makes the projection negative
+      // on its own, which is the mirror it should be.
+      final gx = grabbed.x - anchorLocal.x;
+      final gy = grabbed.y - anchorLocal.y;
+      final projected = (vx * gx + vy * gy) / (gx * gx + gy * gy);
+      sx = projected;
+      sy = projected;
     }
     sx = _clampScale(sx);
     sy = _clampScale(sy);
@@ -2773,6 +3001,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// open Ctrl+T session — its float persists between handle drags).
   void _cancelDrag({required bool notify}) {
     final wasDragging = _dragMode != _DragMode.none;
+    // Leaving a handle drag widens the preview back to the whole rect:
+    // the clip is a drag-time measure, and at rest the box has to be
+    // correct wherever the user looks next. It is also what lets the
+    // commit reuse this buffer instead of computing a second one.
+    final wasTransformDrag = _dragMode == _DragMode.transform;
     // R16-①: the move SESSION survives the gesture — the float keeps
     // rendering at its pending position until the user confirms.
     // A CANCELLED marquee leaves the region exactly as the drag found it
@@ -2795,6 +3028,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _warpDragStartOffsets = null;
     if (_transform == null && !_movePending) {
       _floatSurface = null;
+    }
+    if (wasTransformDrag && _transform != null) {
+      _scheduleFloatResample();
     }
     if (notify && wasDragging) {
       _notifyDragActive(false);
@@ -3265,8 +3501,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                 _mapCanvasToViewportOffset(point),
             ],
             handles: [
-              for (final point in placedMesh)
-                _mapCanvasToViewportOffset(point),
+              for (final point in placedMesh) _mapCanvasToViewportOffset(point),
             ],
             knob: null as Offset?,
           )
@@ -3333,23 +3568,23 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               child: IgnorePointer(
                 child: clipToHold(
                   CustomPaint(
-                  key: const ValueKey<String>('transform-resample-preview'),
-                  painter: _ResampledFloatPainter(
-                    image: resampledImage,
-                    // The landing rect, computed the way the stamp blend
-                    // computes it: the dab centre rounded to an integer
-                    // top-left. Previewing at the unrounded position
-                    // would put a sub-pixel Ctrl+T on screen half a pixel
-                    // from where it lands.
-                    left: (resampledDab.center.x - resampledImage.width / 2)
-                        .round()
-                        .toDouble(),
-                    top: (resampledDab.center.y - resampledImage.height / 2)
-                        .round()
-                        .toDouble(),
-                    viewport: widget.viewport,
-                    canvasSize: widget.canvasSize,
-                  ),
+                    key: const ValueKey<String>('transform-resample-preview'),
+                    painter: _ResampledFloatPainter(
+                      image: resampledImage,
+                      // The landing rect, computed the way the stamp blend
+                      // computes it: the dab centre rounded to an integer
+                      // top-left. Previewing at the unrounded position
+                      // would put a sub-pixel Ctrl+T on screen half a pixel
+                      // from where it lands.
+                      left: (resampledDab.center.x - resampledImage.width / 2)
+                          .round()
+                          .toDouble(),
+                      top: (resampledDab.center.y - resampledImage.height / 2)
+                          .round()
+                          .toDouble(),
+                      viewport: widget.viewport,
+                      canvasSize: widget.canvasSize,
+                    ),
                     child: const SizedBox.expand(),
                   ),
                 ),
@@ -3376,43 +3611,43 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               child: IgnorePointer(
                 child: clipToHold(
                   Transform(
-                  transform: Matrix4.translationValues(
-                    _floatDrawOffset.dx,
-                    _floatDrawOffset.dy,
-                    0,
-                  ),
-                  child: CustomPaint(
-                    painter: BitmapSurfacePainter(
-                      surface: floatSurface,
-                      viewport: widget.viewport,
-                      showTransparentBackground: false,
-                      // ONE scope for every float this app ever lifts, and
-                      // it is emptied when a lift gives the float new
-                      // pixels — see [_floatStaleScope]. Without a scope
-                      // at all, which is what this was, the float shared
-                      // the null bucket with every float ever lifted, so
-                      // opening a second transform painted the FIRST one's
-                      // artwork at the first one's place and size:
-                      // measured, 36 pixels of ink where this float's own
-                      // surface is empty.
-                      //
-                      // ⚠️ That ghost is a DUPLICATE, not a move. The base
-                      // painter's own fallback is on and its
-                      // (layerId, frameId) bucket still holds the
-                      // pre-erase tiles, so on the same frame it redraws
-                      // the artwork in place — 48 ink pixels over a base
-                      // surface that contains none. How much of the
-                      // reported "teleport" this accounts for is still
-                      // open; what is measured is the ghost. ⚠️ Both
-                      // painters have to be recorded in ONE synchronous
-                      // burst: an await between them lets the pending
-                      // decodes land and the base reads zero, which is how
-                      // an earlier version of this comment came to claim
-                      // the base drew nothing.
-                      staleScope: _floatStaleScope,
+                    transform: Matrix4.translationValues(
+                      _floatDrawOffset.dx,
+                      _floatDrawOffset.dy,
+                      0,
                     ),
-                    child: const SizedBox.expand(),
-                  ),
+                    child: CustomPaint(
+                      painter: BitmapSurfacePainter(
+                        surface: floatSurface,
+                        viewport: widget.viewport,
+                        showTransparentBackground: false,
+                        // ONE scope for every float this app ever lifts, and
+                        // it is emptied when a lift gives the float new
+                        // pixels — see [_floatStaleScope]. Without a scope
+                        // at all, which is what this was, the float shared
+                        // the null bucket with every float ever lifted, so
+                        // opening a second transform painted the FIRST one's
+                        // artwork at the first one's place and size:
+                        // measured, 36 pixels of ink where this float's own
+                        // surface is empty.
+                        //
+                        // ⚠️ That ghost is a DUPLICATE, not a move. The base
+                        // painter's own fallback is on and its
+                        // (layerId, frameId) bucket still holds the
+                        // pre-erase tiles, so on the same frame it redraws
+                        // the artwork in place — 48 ink pixels over a base
+                        // surface that contains none. How much of the
+                        // reported "teleport" this accounts for is still
+                        // open; what is measured is the ghost. ⚠️ Both
+                        // painters have to be recorded in ONE synchronous
+                        // burst: an await between them lets the pending
+                        // decodes land and the base reads zero, which is how
+                        // an earlier version of this comment came to claim
+                        // the base drew nothing.
+                        staleScope: _floatStaleScope,
+                      ),
+                      child: const SizedBox.expand(),
+                    ),
                   ),
                 ),
               ),

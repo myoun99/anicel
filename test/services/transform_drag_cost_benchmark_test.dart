@@ -220,6 +220,67 @@ void main() {
     }
   });
 
+  test('what the viewport clip buys: the same drag, only the visible part', () {
+    if (dllPath == null) {
+      markTestSkipped(nativeEngineMissingSkipReason);
+      return;
+    }
+    QaNativeEngine.debugResetForTests();
+    debugQaEngineLibraryPathOverride = dllPath;
+    QaNativeEngine.debugForceDartFallback = false;
+
+    // A whole-picture transform against a 1600×1000 window — a laptop
+    // canvas pane over the default 2340×1654 canvas, which is the case
+    // the tool is slowest in and the case a user hits by pressing Ctrl+T
+    // with nothing selected.
+    const width = 2340;
+    const height = 1654;
+    for (final mode in ResampleMode.values) {
+      final art = lineArtDab(width, height);
+      final affine = SelectionAffine(
+        pivot: CanvasPoint(x: width / 2, y: height / 2),
+        sx: 1.25,
+        sy: 1.25,
+        rotationDegrees: 12,
+      );
+      final full = transformStampDab(art, affine, mode: mode);
+      final fullStamp = full.stamp!;
+      final left = full.center.x - fullStamp.width / 2;
+      final top = full.center.y - fullStamp.height / 2;
+      final visible = (
+        left: left + (fullStamp.width - 1600) / 2,
+        top: top + (fullStamp.height - 1000) / 2,
+        right: left + (fullStamp.width + 1600) / 2,
+        bottom: top + (fullStamp.height + 1000) / 2,
+      );
+
+      final wholeMs = millisPer(
+        3,
+        () => transformStampDab(art, affine, mode: mode),
+      );
+      final clippedMs = millisPer(
+        3,
+        () => transformStampDab(art, affine, mode: mode, visible: visible),
+      );
+      final clipped = transformStampDab(
+        art,
+        affine,
+        mode: mode,
+        visible: visible,
+      ).stamp!;
+      debugPrint(
+        '[viewport clip ${mode.name}] whole '
+        '${fullStamp.width}×${fullStamp.height} '
+        '${wholeMs.toStringAsFixed(1)} ms  →  window '
+        '${clipped.width}×${clipped.height} '
+        '${clippedMs.toStringAsFixed(1)} ms  '
+        '= ${(wholeMs / clippedMs).toStringAsFixed(1)}× faster per pointer '
+        'move',
+      );
+      expect(clipped.width, lessThan(fullStamp.width));
+    }
+  });
+
   test('the same drag on LINE ART, which is what the tool is for', () {
     if (dllPath == null) {
       markTestSkipped(nativeEngineMissingSkipReason);
