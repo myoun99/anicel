@@ -14,6 +14,7 @@ import '../models/import/tvp_csv_parse.dart';
 import '../models/import/tvp_json_parse.dart';
 import '../services/commands/import_media_command.dart';
 import '../services/commands/reorder_track_command.dart';
+import '../services/import/media_identity_reader.dart';
 import '../services/import/media_import_planner.dart';
 import '../services/import/raster_cel_import.dart';
 import '../services/import/tvp_json_import_planner.dart';
@@ -6304,6 +6305,12 @@ class EditorSessionManager extends ChangeNotifier {
           kind: kind,
           sourcePath: isCopy ? source : null,
           sourceStamp: isCopy ? _mediaSourceStampFor(source) : null,
+          // Stamped for a REFERENCE too, unlike the two above. Those answer
+          // "did the original we copied from change?", which a reference
+          // has no original for. Identity answers "which file is this?",
+          // and a reference is exactly the asset that can go missing and
+          // need finding again.
+          identity: readMediaIdentity(effectivePath),
         ),
       );
     }
@@ -6406,6 +6413,9 @@ class EditorSessionManager extends ChangeNotifier {
         ? source
         : _mediaPathFor(source, copyIntoProject: copyIntoProject);
     final sourceStamp = _mediaSourceStampFor(source);
+    // Of the STORED path, not the source: it is the registered file that
+    // can go missing and have to be found again.
+    final identity = readMediaIdentity(storedPath);
     final displayName = mediaAssetDefaultName(source);
 
     final cutId = targetCut?.id ?? mint.nextCutId();
@@ -6427,6 +6437,7 @@ class EditorSessionManager extends ChangeNotifier {
         mint: mint,
         sourcePath: storedPath == source ? null : source,
         sourceStamp: sourceStamp,
+        identity: identity,
       );
       layer = plan.layer;
       bakes = plan.bakes;
@@ -6452,6 +6463,7 @@ class EditorSessionManager extends ChangeNotifier {
         referencePath: storedPath,
         sourcePath: storedPath == source ? null : source,
         sourceStamp: sourceStamp,
+        identity: identity,
       );
       layer = plan.layer;
       bakes = plan.bakes;
@@ -6568,6 +6580,7 @@ class EditorSessionManager extends ChangeNotifier {
           ? source
           : _mediaPathFor(source, copyIntoProject: copyIntoProject);
       final sourceStamp = _mediaSourceStampFor(source);
+      final identity = readMediaIdentity(storedPath);
       final displayName = mediaAssetDefaultName(source);
       final cutId = targetCut?.id ?? mint.nextCutId();
 
@@ -6590,6 +6603,7 @@ class EditorSessionManager extends ChangeNotifier {
           mint: mint,
           sourcePath: storedPath == source ? null : source,
           sourceStamp: sourceStamp,
+          identity: identity,
           assetKind: MediaAssetKind.pdf,
           pageCount: pageCount,
         );
@@ -6610,6 +6624,7 @@ class EditorSessionManager extends ChangeNotifier {
           referencePath: storedPath,
           sourcePath: storedPath == source ? null : source,
           sourceStamp: sourceStamp,
+          identity: identity,
           assetKind: MediaAssetKind.pdf,
           pageCount: pageCount,
         );
@@ -8108,7 +8123,11 @@ class EditorSessionManager extends ChangeNotifier {
               repository: _repository,
               mediaAssets: [
                 ...pool,
-                MediaAsset(path: path, name: mediaAssetDefaultName(path)),
+                MediaAsset(
+                  path: path,
+                  name: mediaAssetDefaultName(path),
+                  identity: readMediaIdentity(path),
+                ),
               ],
               description: 'Record voice',
             ),
@@ -8646,7 +8665,11 @@ class EditorSessionManager extends ChangeNotifier {
     final added = [
       for (final path in paths)
         if (known.add(path))
-          MediaAsset(path: path, name: mediaAssetDefaultName(path)),
+          MediaAsset(
+            path: path,
+            name: mediaAssetDefaultName(path),
+            identity: readMediaIdentity(path),
+          ),
     ];
     if (added.isEmpty) {
       return;
