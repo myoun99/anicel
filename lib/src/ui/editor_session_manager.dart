@@ -1912,6 +1912,11 @@ class EditorSessionManager extends ChangeNotifier {
   /// so they are the last things a later prune would consider.
   void _warmAudioConforms() {
     if (Platform.environment['FLUTTER_TEST'] != 'true') {
+      // The store lets go FIRST. A conform past the streaming threshold is
+      // held here with no resident PCM and the file as the copy of record,
+      // so pruning one out from under a live entry would leave the clip
+      // silent for the session — see `releaseDiskBacked`.
+      audioConformStore.releaseDiskBacked();
       pruneConformCache();
     }
     audioConformStore.warmPaths(

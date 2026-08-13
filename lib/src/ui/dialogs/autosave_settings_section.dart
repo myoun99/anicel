@@ -239,7 +239,11 @@ class AutosaveSettingsSection extends StatelessWidget {
                 ],
               ],
             ),
-            _ConformCacheSizeRow(directory: AppSave.conformRootDirectory),
+            _ConformCacheSizeRow(
+              directory: AppSave.conformRootDirectory,
+              releaseDiskBackedConforms:
+                  session.audioConformStore.releaseDiskBacked,
+            ),
           ],
         );
       },
@@ -258,10 +262,17 @@ class AutosaveSettingsSection extends StatelessWidget {
 /// neither visible nor reachable, so without this the only honest thing
 /// to say about the cache would be "it is somewhere, and it is some size".
 class _ConformCacheSizeRow extends StatefulWidget {
-  const _ConformCacheSizeRow({required this.directory});
+  const _ConformCacheSizeRow({
+    required this.directory,
+    required this.releaseDiskBackedConforms,
+  });
 
   /// Read only to NOTICE it changed — the measurement follows the root.
   final String directory;
+
+  /// Makes the session let go of the conforms whose PCM lives only on
+  /// disk, so that emptying the cache means what it says.
+  final VoidCallback releaseDiskBackedConforms;
 
   @override
   State<_ConformCacheSizeRow> createState() => _ConformCacheSizeRowState();
@@ -296,7 +307,15 @@ class _ConformCacheSizeRowState extends State<_ConformCacheSizeRow> {
             // the worst this can cost is a re-decode. Asking "are you
             // sure" about something that cannot lose anything teaches
             // people to click through the dialogs that can.
+            //
+            // 🚨 That is only true once the SESSION has let go. A conform
+            // past the streaming threshold is held with no resident PCM
+            // and the file as the copy of record — delete it underneath
+            // and the clip is silent for the rest of the session and in
+            // the export, and on Windows the open reader blocks the
+            // delete so the biggest entries survive the emptying.
             onPressed: () {
+              widget.releaseDiskBackedConforms();
               clearConformCache();
               setState(() => _bytes = conformCacheBytes());
             },
