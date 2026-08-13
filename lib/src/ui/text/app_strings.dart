@@ -628,6 +628,16 @@ class AppStrings {
   String get mediaRemove => _s('mediaRemove');
   String get mediaRegisterInProject => _s('mediaRegisterInProject');
   String get mediaAlreadyInProject => _s('mediaAlreadyInProject');
+
+  /// Shown on opening a project written by a build that kept its media in
+  /// a sibling folder. `{name}` is that folder.
+  ///
+  /// It says the folder is dead and what makes it collectable, and stops
+  /// there: the app does not delete the user's files. It reappears on
+  /// every open until they do, which is honest — the folder is still
+  /// there, and the media inside it is still the only copy until a save
+  /// takes it in.
+  String get projectLegacyAssetsFolder => _s('projectLegacyAssetsFolder');
   String get mediaStillLinked => _s('mediaStillLinked');
   String get mediaOpenInViewer => _s('mediaOpenInViewer');
   String get mediaOpenInSubViewer => _s('mediaOpenInSubViewer');
@@ -1264,6 +1274,10 @@ class AppStrings {
     'mediaAlreadyInProject':
         'Nothing to take in — it is kept inside already, or it is a kind '
         'that always stays a reference (video).',
+    'projectLegacyAssetsFolder':
+        'This project still has a {name} folder beside it. Nothing writes '
+        'there any more — save once and its media moves inside the project '
+        'file, and then the folder can go.',
     'mediaStillLinked': 'Still linked on SE rows — remove its sounds first.',
     'mediaOpenInViewer': 'Open in Viewer',
     'mediaOpenInSubViewer': 'Open in Sub Viewer',
@@ -2029,6 +2043,10 @@ class AppStrings {
     'mediaAlreadyInProject':
         '取り込むものがありません — すでにファイル内にあるか、'
         '常に参照のままの種類（動画）です。',
+    'projectLegacyAssetsFolder':
+        'このプロジェクトの隣にまだ {name} フォルダーがあります。'
+        'もう使われません — 一度保存すると中のメディアはプロジェクト'
+        'ファイルに入り、そのあとフォルダーは削除できます。',
     'mediaStillLinked': 'SE行でまだ使われています — 先に音を外してください。',
     'mediaOpenInViewer': 'ビューアで開く',
     'mediaOpenInSubViewer': 'サブビューアで開く',
@@ -2788,6 +2806,9 @@ class AppStrings {
     'mediaRemove': '제거',
     'mediaRegisterInProject': '프로젝트 파일에 품기',
     'mediaAlreadyInProject': '품을 것이 없습니다 — 이미 파일 안에 있거나, 항상 참조로 남는 종류(동영상)입니다.',
+    'projectLegacyAssetsFolder':
+        '이 프로젝트 옆에 아직 {name} 폴더가 있습니다. 이제 쓰지 않습니다 — '
+        '한 번 저장하면 안의 미디어가 프로젝트 파일로 들어가고, 그 뒤엔 폴더를 지워도 됩니다.',
     'mediaStillLinked': 'SE 행에서 아직 쓰이고 있습니다 — 소리를 먼저 빼세요.',
     'mediaOpenInViewer': '뷰어에서 열기',
     'mediaOpenInSubViewer': '서브 뷰어에서 열기',
@@ -3571,6 +3592,10 @@ class AppStrings {
     'mediaAlreadyInProject':
         "Rien à intégrer — le fichier est déjà à l'intérieur, ou son type "
         "reste toujours une référence (vidéo).",
+    'projectLegacyAssetsFolder':
+        "Ce projet a encore un dossier {name} à côté de lui. Plus rien n'y "
+        "est écrit — enregistrez une fois et ses médias passent dans le "
+        "fichier de projet, ensuite le dossier peut être supprimé.",
     'mediaOpenInViewer': 'Ouvrir dans la visionneuse',
     'mediaOpenInSubViewer': 'Ouvrir dans la visionneuse secondaire',
     'mediaViewerEmpty':
@@ -4315,6 +4340,9 @@ class AppStrings {
     'mediaRemove': '移除',
     'mediaRegisterInProject': '收入项目文件',
     'mediaAlreadyInProject': '没有可收入的内容 — 它已在文件内，或属于始终保持引用的类型（视频）。',
+    'projectLegacyAssetsFolder':
+        '此项目旁边仍有 {name} 文件夹。它已不再被写入 — 保存一次后，'
+        '其中的媒体会进入项目文件，之后即可删除该文件夹。',
     'mediaStillLinked': 'SE 行仍在使用 — 请先移除它的声音。',
     'mediaOpenInViewer': '在查看器中打开',
     'mediaOpenInSubViewer': '在副查看器中打开',

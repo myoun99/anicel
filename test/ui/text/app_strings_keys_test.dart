@@ -314,6 +314,7 @@ void main() {
     'mediaRemove': (s) => s.mediaRemove,
     'mediaRegisterInProject': (s) => s.mediaRegisterInProject,
     'mediaAlreadyInProject': (s) => s.mediaAlreadyInProject,
+    'projectLegacyAssetsFolder': (s) => s.projectLegacyAssetsFolder,
     'mediaStillLinked': (s) => s.mediaStillLinked,
     'mediaOpenInViewer': (s) => s.mediaOpenInViewer,
     'mediaOpenInSubViewer': (s) => s.mediaOpenInSubViewer,

@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 
 import '../../services/persistence/anicel_file_service.dart'
     show anicelSnapshotIsOverlay;
+import '../../services/audio/audio_conform_pipeline.dart'
+    show ProjectAssetLayout;
 import '../../services/persistence/anicel_project_archive.dart';
 import '../../services/persistence/app_documents.dart';
 import '../../services/persistence/app_save_settings.dart';
@@ -248,6 +250,24 @@ class EditorTopStrip extends StatelessWidget {
         // SUCCEEDS — a file that fails to parse is exactly when the
         // declined sidecar is the user's last copy.
         ProjectAutosaveService.retireSidecarsFor(path);
+      }
+      // A project from a build that kept its media in a sibling folder.
+      // Said AFTER the open, because a file that failed to parse has no
+      // media to absorb and the folder is still the only copy.
+      final layout = ProjectAssetLayout(path);
+      if (layout.hasLegacyAssetsDirectory && context.mounted) {
+        final name = layout.assetsDirectory.split('/').last;
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(
+            key: const ValueKey<String>('legacy-assets-folder-notice'),
+            content: Text(
+              AppText.strings.projectLegacyAssetsFolder.replaceAll(
+                '{name}',
+                name,
+              ),
+            ),
+          ),
+        );
       }
     } catch (error) {
       if (context.mounted) {
