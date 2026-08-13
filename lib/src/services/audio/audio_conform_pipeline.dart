@@ -1,9 +1,9 @@
 /// Import → conform (audio program 2B, final wiring).
 ///
 /// What happens when a sound enters a project, in the order professional
-/// tools do it: the original is copied in beside the project, decoded once,
-/// resampled to the project rate, and written back out as plain PCM. From
-/// then on nothing reads the original — playback reads the conform.
+/// tools do it: decoded once, resampled to the project rate, and written
+/// back out as plain PCM. From then on nothing reads the original —
+/// playback reads the conform.
 ///
 /// This is what makes the audio callback able to promise anything. A
 /// compressed codec decodes in variable time and cannot be asked to finish
@@ -11,25 +11,27 @@
 /// convert on import, Premiere writes a `.cfa`, Avid transcodes to MXF —
 /// all the same move.
 ///
-/// Layout. What can be regenerated and what cannot no longer live next to
-/// each other, because they do not travel together: the original is the
-/// user's content and belongs with the project, while a conform is a cache
-/// roughly twelve times its source's size that has no business syncing to
-/// a cloud folder or riding along to another machine.
+/// Layout. What can be regenerated and what cannot do not live together,
+/// because they do not travel together: the sound is the user's content
+/// and rides inside the project, while a conform is a cache roughly twelve
+/// times its source's size with no business syncing to a cloud folder or
+/// following anyone to another machine.
 ///
 /// ```
-/// 프로젝트.anicel
-/// 프로젝트.assets/
-///   Media/                        대사.m4a      deleting this loses work
+/// 프로젝트.anicel                                the sound is IN here
 /// <app container>/Conformed/
-///   프로젝트.anicel.<hash>/       대사.m4a.wav  costs only time
+///   대사.m4a.<hash>.wav                          costs only time
 /// ```
 ///
-/// `Media/` sits under the save directory, so the .anicel's existing
-/// relative-path manifest picks it up for free and a folder moved to
-/// another machine relinks itself. The conform folder is named by
-/// `AppSave.encodeProjectKey` so two projects called `C-045.anicel` cannot
-/// share one cache, and the root moves with a Preferences setting.
+/// 🔑 The cache is keyed by the SOURCE and the settings it was rendered
+/// under — never by the project, which is what an earlier layout did back
+/// when the cache was a folder beside the `.anicel`. Keying by the project
+/// meant a Save As abandoned every conform it had built, two projects
+/// using one sound each paid for their own copy, and a project with no
+/// name yet got no cache at all. See [ConformCacheLayout].
+///
+/// The root moves with a Preferences setting, and the cache has a size
+/// bound and a collector — see `conform_cache_maintenance.dart`.
 library;
 
 import 'dart:io';
