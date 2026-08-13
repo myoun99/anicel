@@ -200,6 +200,32 @@ void main() {
     });
   });
 
+  group('the standalone draw (ruler scrub)', () {
+    test('the active row carries its FOLDER\'s opacity too', () {
+      final (s, member, folder) = sessionWithFolder();
+      s.setLayerOpacity(layerId: folder, opacity: 0.5);
+
+      expect(
+        s.editingCanvasStack.activeLayerOpacity,
+        closeTo(0.5, 1e-9),
+        reason:
+            'During a ruler scrub the interactive view draws the active row '
+            'ALONE — no folder node stands above it — so this value has to '
+            'be the whole chain. It stopped at the row\'s own opacity, so a '
+            'row inside a half-opacity folder scrubbed at full strength '
+            'while every other row honoured the folder.',
+      );
+    });
+
+    test('and still multiplies its own', () {
+      final (s, member, folder) = sessionWithFolder();
+      s.setLayerOpacity(layerId: folder, opacity: 0.5);
+      s.setLayerOpacity(layerId: member, opacity: 0.4);
+
+      expect(s.editingCanvasStack.activeLayerOpacity, closeTo(0.2, 1e-9));
+    });
+  });
+
   group('cel export', () {
     test('a row inside a hidden folder does not export', () {
       final (s, member, folder) = sessionWithFolder();
