@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
+import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 /// Undo, redo and the onion toggle moved from the top strip to the head of
@@ -82,6 +85,57 @@ void main() {
       isNull,
       reason: 'dimmed rather than hidden — a button that comes and goes is '
           'one you have to look for',
+    );
+  });
+
+  // T23 (user, 2026-08-13): 「선택해제가 선택툴일때만 조작가능. 다른툴로
+  // 이동하면 선택중인상태인데도 비활성화되있어」.
+  //
+  // The region is a DOCUMENT-level fact and outlives the selection layer
+  // (R28-S) — which is why Ctrl+D never went dead on a tool switch. The
+  // button asked `hasSelection`, which asks the MOUNTED layer, so it dimmed
+  // the moment that layer unbound while the selection was still on screen.
+  testWidgets('deselect follows the SELECTION, not the tool — nothing is '
+      'bound here and the button still works', (tester) async {
+    await pumpHome(tester);
+
+    final commands = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .canvasSelectionCommands!;
+
+    expect(
+      commands.hasSelection,
+      isFalse,
+      reason:
+          'no selection layer is bound in this fixture — which is the point: '
+          'that is what "some other tool is active" looks like',
+    );
+
+    commands.setRegion(
+      CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(left: 0, top: 0, right: 8, bottom: 8),
+      ),
+    );
+    await tester.idle();
+    await tester.pump();
+
+    expect(
+      tester.widget<RailButton>(railButton('rail-deselect-button')).onPressed,
+      isNotNull,
+      reason:
+          'There IS a selection — the ants are on screen and Ctrl+D would '
+          'clear it. A button that asks the mounted layer answers "nothing '
+          'selected" about a selection the user is looking at.',
+    );
+
+    commands.setRegion(null);
+    await tester.idle();
+    await tester.pump();
+
+    expect(
+      tester.widget<RailButton>(railButton('rail-deselect-button')).onPressed,
+      isNull,
+      reason: 'and it dims again when the region really is gone',
     );
   });
 }
