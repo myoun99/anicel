@@ -6520,6 +6520,8 @@ class EditorSessionManager extends ChangeNotifier {
     bool rasterize = false,
     MediaFitMode fit = MediaFitMode.contain,
     int? lengthFrames,
+    int inFrame = 0,
+    int? outFrame,
   }) async {
     // The destination gate runs BEFORE any decode: a refused import must
     // not have images to leak.
@@ -6535,14 +6537,29 @@ class EditorSessionManager extends ChangeNotifier {
     } on Object {
       return false;
     }
-    final List<DecodedImageFrame> decoded;
+    final List<DecodedImageFrame> allFrames;
     try {
-      decoded = await decodeImageFrames(bytes);
+      allFrames = await decodeImageFrames(bytes);
     } on Object {
       return false;
     }
-    if (decoded.isEmpty) {
+    if (allFrames.isEmpty) {
       return false;
+    }
+    // IN/OUT on a multi-frame source: only the chosen span becomes cels.
+    // The frames outside it are disposed HERE rather than left to the
+    // finally block, which only knows about the ones that were kept.
+    final start = inFrame < 0
+        ? 0
+        : (inFrame > allFrames.length - 1 ? allFrames.length - 1 : inFrame);
+    final last = outFrame == null || outFrame > allFrames.length - 1
+        ? allFrames.length - 1
+        : (outFrame < start ? start : outFrame);
+    final decoded = allFrames.sublist(start, last + 1);
+    for (var index = 0; index < allFrames.length; index += 1) {
+      if (index < start || index > last) {
+        allFrames[index].image.dispose();
+      }
     }
     final canvasSize =
         targetCut?.canvasSize ??
