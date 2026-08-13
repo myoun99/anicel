@@ -15783,6 +15783,10 @@ class EditorSessionManager extends ChangeNotifier {
       // that left these out would hand the recovered session no grants —
       // and its first save would write that emptiness back over the file.
       grants: _grantsToStore(),
+      // What the base file already carries. Without it the recovered
+      // session forgets its media is inside the archive and its first
+      // save writes one that no longer holds it.
+      mediaInArchive: _mediaEntryNames.keys.toSet(),
       // Asked again at the rename: a manual save can begin and finish
       // while this one is in the isolate, and it retires the snapshot on
       // its way out.

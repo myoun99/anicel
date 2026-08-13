@@ -166,6 +166,19 @@ class AnicelFileService {
     /// real file. Leaving grants out would make the one path built to
     /// protect unsaved work the path that destroys the permission record.
     List<Map<String, Object?>> grants = const [],
+
+    /// The pool paths whose bytes already live INSIDE the base file.
+    ///
+    /// 🚨 Same reasoning as [grants], and a worse failure. The overlay's
+    /// `project.json` replaces the base file's outright, so leaving this
+    /// out hands the recovered session an EMPTY `mediaEntryNames` — it no
+    /// longer knows its own audio is inside the archive.
+    /// `projectMediaSources` then falls back to the path the asset was
+    /// imported from, and if that file is gone — which is the entire
+    /// point of having carried it in — the asset is silently OMITTED from
+    /// the next save, and `_saveFull` renames a media-less archive over
+    /// the one that still held the bytes.
+    Set<String> mediaInArchive = const {},
   }) async {
     final stores = [brushFrameStore, ...auxCelStores];
     final snapshots = [for (final store in stores) store.bakedSnapshotForSave()];
@@ -230,6 +243,7 @@ class AnicelFileService {
                 project: project,
                 saveDirectory: saveDirectory,
                 grants: grants,
+                mediaInArchive: mediaInArchive,
               ),
             );
             for (final work in works) {
