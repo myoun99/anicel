@@ -58,7 +58,7 @@ void main() {
 
     final source = writeMedia('bgm.wav', 40 * 1024);
     final expected = File(source).readAsBytesSync();
-    editor.importMediaFiles([source], copyIntoProject: false);
+    editor.importMediaFiles([source], copyIntoProject: true);
     await editor.saveProjectToFile(projectPath);
     editor.dispose();
 
@@ -111,7 +111,7 @@ void main() {
 
     final source = writeMedia('voice.wav', 12 * 1024);
     final expected = File(source).readAsBytesSync();
-    editor.importMediaFiles([source], copyIntoProject: false);
+    editor.importMediaFiles([source], copyIntoProject: true);
     await editor.saveProjectToFile(first);
 
     // Deleted BEFORE the save-as, deliberately. With the original still
@@ -149,7 +149,7 @@ void main() {
     final projectPath = '${directory.path}/scene.anicel';
     await editor.saveProjectToFile(projectPath);
     final source = writeMedia('bgm.wav', 64 * 1024);
-    editor.importMediaFiles([source], copyIntoProject: false);
+    editor.importMediaFiles([source], copyIntoProject: true);
     await editor.saveProjectToFile(projectPath);
 
     final afterFirst = File(projectPath).lengthSync();
@@ -162,6 +162,26 @@ void main() {
       lessThan(4 * 1024),
       reason: 'a second save must not append the sound again',
     );
+  });
+
+  test('a sound imported as a REFERENCE stays outside', () async {
+    // The toggle still means something. Someone sharing an original with
+    // another tool asked for a link, and a project that swallowed it
+    // anyway would be answering a question nobody posed.
+    final editor = session();
+    final projectPath = '${directory.path}/scene.anicel';
+    await editor.saveProjectToFile(projectPath);
+    final source = writeMedia('shared.wav', 8 * 1024);
+    editor.importMediaFiles([source], copyIntoProject: false);
+    await editor.saveProjectToFile(projectPath);
+    editor.dispose();
+
+    final reopened = session();
+    await reopened.openProjectFromFile(projectPath);
+    expect(reopened.mediaEntryNames, isEmpty);
+    // And it still resolves, by path, exactly as it always did.
+    expect(reopened.mediaAssets.single.path, source.replaceAll('\\', '/'));
+    reopened.dispose();
   });
 
   test('the entry name is stable, so a re-save finds the same bytes',

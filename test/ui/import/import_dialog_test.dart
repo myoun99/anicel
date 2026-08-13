@@ -317,14 +317,18 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('on iPad and macOS it starts on Copy instead — a reference '
-        'there does not survive the next launch', (tester) async {
-      // A recorded path on Apple stops working unless the app kept the
-      // grant that produced it, and references carry none yet. Until they
-      // do, the default cannot be the one that dies overnight. The chip
-      // is still there: Reference becomes a choice rather than a trap.
+    testWidgets('it starts on Copy, on every platform', (tester) async {
+      // It used to start on Reference everywhere but Apple, where a
+      // recorded path dies at the next launch without a grant. Two things
+      // moved since: the project carries its own media, so carrying costs
+      // bytes inside a ZIP rather than a second file on disk, and the KIND
+      // rule stops a 3GB movie from being carried at all — which was the
+      // reason Reference had to be the default in the first place.
+      //
+      // What is left is which failure someone meets by not choosing, and a
+      // link that breaks when the original moves is the worse one.
       final (s, path) = await savedProjectWithPng(tester);
-      for (final os in const ['ios', 'macos']) {
+      for (final os in const ['ios', 'macos', 'windows', 'linux']) {
         FolderPicker.debugOperatingSystem = os;
         addTearDown(() => FolderPicker.debugOperatingSystem = null);
 
@@ -350,23 +354,23 @@ void main() {
       }
     });
 
-    testWidgets('untouched, it references: the file stays where it is', (
+    testWidgets('Reference is still a choice, and it still costs nothing', (
       tester,
     ) async {
-      // PINNED to a platform where Reference is the default rather than
-      // left to whatever host runs the suite. #961 made Apple start on
-      // Copy, so on the macOS runner this window correctly says the
-      // opposite — and the assertion here is about what the window says
-      // while REFERENCING, not about which default the machine has. The
-      // Apple default has its own test directly above.
-      FolderPicker.debugOperatingSystem = 'windows';
-      addTearDown(() => FolderPicker.debugOperatingSystem = null);
+      // The toggle has to keep meaning something: an original shared with
+      // another tool should stay where the other tool expects it. That is
+      // a deliberate answer now rather than the one you get by not
+      // answering.
       final (s, path) = await savedProjectWithPng(tester);
 
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(body: ImportDialog(session: s, initialPaths: [path])),
         ),
+      );
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('import-media-reference')),
       );
       await tester.pump();
       expect(
@@ -379,15 +383,20 @@ void main() {
 
       expect(s.mediaAssets.single.path, path.replaceAll('\\', '/'));
       expect(
+        s.mediaAssets.single.carried,
+        isFalse,
+        reason: 'and the project will not pack it at the next save',
+      );
+      expect(
         Directory(
           '${tempDir.path}${Platform.pathSeparator}scene.assets',
         ).existsSync(),
         isFalse,
-        reason: 'the reference default costs zero bytes — the point of it',
+        reason: 'a reference costs zero bytes — the point of it',
       );
     });
 
-    testWidgets('on Copy in, the file lands in the project assets folder', (
+    testWidgets('Copy is the default, and the project will carry it', (
       tester,
     ) async {
       final (s, path) = await savedProjectWithPng(tester);
@@ -396,10 +405,6 @@ void main() {
         MaterialApp(
           home: Scaffold(body: ImportDialog(session: s, initialPaths: [path])),
         ),
-      );
-      await tester.pump();
-      await tester.tap(
-        find.byKey(const ValueKey<String>('import-media-copy')),
       );
       await tester.pump();
       expect(find.textContaining('assets folder'), findsOneWidget);
@@ -415,6 +420,11 @@ void main() {
         path.replaceAll('\\', '/'),
         reason: 'a copy remembers where it came from; a reference has no '
             'second place to point at',
+      );
+      expect(
+        s.mediaAssets.single.carried,
+        isTrue,
+        reason: 'and the next save packs it into the .anicel',
       );
     });
   });

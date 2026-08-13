@@ -142,7 +142,6 @@ import '../services/commands/cut_command_input_planner.dart'
     show nextFolderName;
 import '../services/commands/rekey_brush_frames_command.dart';
 import '../services/commands/update_layer_transform_enabled_command.dart';
-import '../services/commands/relink_media_asset_command.dart';
 import '../services/commands/update_cut_camera_command.dart';
 import '../services/commands/update_layer_fill_reference_command.dart';
 import '../services/commands/set_cut_guides_command.dart';
@@ -6364,6 +6363,9 @@ class EditorSessionManager extends ChangeNotifier {
           kind: kind,
           sourcePath: isCopy ? source : null,
           sourceStamp: isCopy ? _mediaSourceStampFor(source) : null,
+          // What the user asked for, not what happened to the file. The
+          // kind still decides whether it CAN be carried.
+          carried: copyIntoProject,
           // Stamped for a REFERENCE too, unlike the two above. Those answer
           // "did the original we copied from change?", which a reference
           // has no original for. Identity answers "which file is this?",
@@ -6497,6 +6499,7 @@ class EditorSessionManager extends ChangeNotifier {
         sourcePath: storedPath == source ? null : source,
         sourceStamp: sourceStamp,
         identity: identity,
+        carried: copyIntoProject,
       );
       layer = plan.layer;
       bakes = plan.bakes;
@@ -6523,6 +6526,7 @@ class EditorSessionManager extends ChangeNotifier {
         sourcePath: storedPath == source ? null : source,
         sourceStamp: sourceStamp,
         identity: identity,
+        carried: copyIntoProject,
       );
       layer = plan.layer;
       bakes = plan.bakes;
@@ -6663,6 +6667,7 @@ class EditorSessionManager extends ChangeNotifier {
           sourcePath: storedPath == source ? null : source,
           sourceStamp: sourceStamp,
           identity: identity,
+          carried: copyIntoProject,
           assetKind: MediaAssetKind.pdf,
           pageCount: pageCount,
         );
@@ -6684,6 +6689,7 @@ class EditorSessionManager extends ChangeNotifier {
           sourcePath: storedPath == source ? null : source,
           sourceStamp: sourceStamp,
           identity: identity,
+          carried: copyIntoProject,
           assetKind: MediaAssetKind.pdf,
           pageCount: pageCount,
         );
@@ -8185,6 +8191,11 @@ class EditorSessionManager extends ChangeNotifier {
                 MediaAsset(
                   path: path,
                   name: mediaAssetDefaultName(path),
+                  // A take is the project's own recording, so the project
+                  // carries it. The shelf copy stays where it is — losing
+                  // a performance because a save never happened is not a
+                  // trade anyone would take.
+                  carried: true,
                   identity: readMediaIdentity(path),
                 ),
               ],
@@ -8218,11 +8229,18 @@ class EditorSessionManager extends ChangeNotifier {
     final base = laneName.replaceAll(RegExp(r'[\\/:*?"<>|.\s]+'), '_');
     final safeBase = base.isEmpty ? 'REC' : base;
     try {
-      final projectPath = _projectFilePath;
-      final onShelf = projectPath == null;
-      final directory = onShelf
-          ? (_voiceRecordShelfDirectory ??= appRecordingsDirectory())
-          : ProjectAssetLayout(projectPath).mediaDirectory;
+      // ALWAYS the shelf, saved project or not. A take used to land in
+      // the project's `Media/` folder once it had one, which made that
+      // folder the only copy of a performance — and the project carries
+      // its own audio now, so writing it there buys nothing and costs the
+      // one place a recording could be found again.
+      //
+      // The shelf is also somewhere a person can look: on desktop it is a
+      // folder they chose, and losing a take to a `.assets` directory
+      // nobody opens is not a thing to keep.
+      final directory = (_voiceRecordShelfDirectory ??=
+          appRecordingsDirectory());
+      const onShelf = true;
       Directory(directory).createSync(recursive: true);
       for (var take = 1; take < 10000; take += 1) {
         final file = File(
@@ -8253,64 +8271,21 @@ class EditorSessionManager extends ChangeNotifier {
     if (_projectFilePath != null || _voiceRecordShelfPaths.isEmpty) {
       return const [];
     }
-    final mediaDirectory = ProjectAssetLayout(projectFilePath).mediaDirectory;
-    final referenced = {for (final asset in mediaAssets) asset.path};
-    final adopted = <String>[];
-    for (final oldPath in _voiceRecordShelfPaths) {
-      if (!referenced.contains(oldPath)) {
-        continue;
-      }
-      final newPath = _moveTakeIntoDirectory(oldPath, mediaDirectory);
-      if (newPath == null) {
-        continue; // The reference still plays from the shelf.
-      }
-      RelinkMediaAssetCommand(
-        repository: _repository,
-        oldPath: oldPath,
-        newPath: newPath,
-      ).execute();
-      audioConformStore.invalidate(oldPath);
-      adopted.add(newPath);
-    }
+    // Nothing MOVES any more, and that is the whole change.
+    //
+    // A take used to be renamed out of the shelf into the project's
+    // `Media/` folder, which made that folder the only copy of a
+    // performance — delete it and the recording is gone, with no original
+    // anywhere to relink to. The project carries its own audio now, so the
+    // first save absorbs the take from wherever it sits and the shelf copy
+    // simply stays a file, which is what the user asked for: closing
+    // without saving must not cost a recording that cannot be made again.
+    //
+    // The shelf list still clears: these takes belong to the project now,
+    // and the shelf is for the ones a session made before it had a home.
     _voiceRecordShelfPaths.clear();
     _voiceRecordShelfDirectory = null;
-    return adopted;
-  }
-
-  /// Moves a shelf take into [directory] under a collision-walked name.
-  /// A custom shelf may sit on another volume, where rename fails —
-  /// copy-then-retire covers that.
-  String? _moveTakeIntoDirectory(String sourcePath, String directory) {
-    try {
-      final source = File(sourcePath);
-      if (!source.existsSync()) {
-        return null;
-      }
-      Directory(directory).createSync(recursive: true);
-      final normalized = sourcePath.replaceAll('\\', '/');
-      final name = normalized.substring(normalized.lastIndexOf('/') + 1);
-      final dot = name.lastIndexOf('.');
-      final stem = dot <= 0 ? name : name.substring(0, dot);
-      final extension = dot <= 0 ? '' : name.substring(dot);
-      for (var index = 0; index < 10000; index += 1) {
-        final candidate = index == 0
-            ? '$directory/$name'
-            : '$directory/$stem-$index$extension';
-        if (File(candidate).existsSync()) {
-          continue;
-        }
-        try {
-          source.renameSync(candidate);
-        } on FileSystemException {
-          source.copySync(candidate);
-          source.deleteSync();
-        }
-        return candidate;
-      }
-      return null;
-    } on Object {
-      return null; // The save must not die on a shelf move.
-    }
+    return const [];
   }
 
   /// The path the project should record for [sourcePath] under this

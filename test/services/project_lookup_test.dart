@@ -59,8 +59,8 @@ Layer _seLayer(String id, List<String> clipPaths) => Layer(
   ],
 );
 
-MediaAsset _asset(String path, MediaAssetKind kind) =>
-    MediaAsset(path: path, name: path, kind: kind);
+MediaAsset _asset(String path, MediaAssetKind kind, {bool carried = true}) =>
+    MediaAsset(path: path, name: path, kind: kind, carried: carried);
 
 void main() {
   group('project_lookup', () {
@@ -257,6 +257,22 @@ void main() {
 
     test('an empty pool carries nothing', () {
       expect(projectArchivedMediaPaths(_project()), isEmpty);
+    });
+
+    test('the toggle chooses UNDERNEATH the kind, both ways', () {
+      // The kind is a ceiling, not the whole answer: a sound the user
+      // deliberately left linked — because the original is shared with
+      // another tool — stays linked, and no setting can make the project
+      // swallow a movie.
+      final project = _project(
+        mediaAssets: [
+          _asset('kept.wav', MediaAssetKind.audio),
+          _asset('linked.wav', MediaAssetKind.audio, carried: false),
+          _asset('movie.mp4', MediaAssetKind.video),
+        ],
+      );
+
+      expect(projectArchivedMediaPaths(project), {'kept.wav'});
     });
   });
 }
