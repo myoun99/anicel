@@ -356,6 +356,7 @@ abstract final class FolderPicker {
   static Future<List<FolderGrant>> pickFiles({
     required List<file_selector.XTypeGroup> acceptedTypeGroups,
     bool allowMultiple = false,
+    String? initialDirectory,
   }) async {
     final override = debugFilePicker;
     if (override != null) {
@@ -366,13 +367,18 @@ abstract final class FolderPicker {
     }
     if (!grantsAreScoped) {
       try {
+        // `initialDirectory` is a desktop hint only — the Apple pickers
+        // reopen wherever the user last was, which is the behaviour Files
+        // trains them to expect.
         final picked = allowMultiple
             ? await file_selector.openFiles(
                 acceptedTypeGroups: acceptedTypeGroups,
+                initialDirectory: initialDirectory,
               )
             : <file_selector.XFile?>[
                 await file_selector.openFile(
                   acceptedTypeGroups: acceptedTypeGroups,
+                  initialDirectory: initialDirectory,
                 ),
               ].whereType<file_selector.XFile>().toList();
         if (picked.isEmpty) {
@@ -423,6 +429,7 @@ abstract final class FolderPicker {
   static Future<FolderGrant> exportFile({
     required String sourcePath,
     String? suggestedName,
+    String? initialDirectory,
   }) async {
     final override = debugFileExporter;
     if (override != null) {
@@ -435,6 +442,7 @@ abstract final class FolderPicker {
       try {
         final location = await file_selector.getSaveLocation(
           suggestedName: suggestedName ?? _fileNameOf(sourcePath),
+          initialDirectory: initialDirectory,
         );
         if (location == null) {
           return const FolderGrant.cancelled();

@@ -67,33 +67,14 @@ Future<FolderGrant?> pickFolderGrantForUser(
   // fails without the All-Files grant — which would surface as "this
   // location has no folder path" and send the user hunting for a different
   // folder when the folder was never the problem. Ask first.
-  if (folderPickNeedsStorageGrant(_operatingSystem) &&
-      !await AppStorage.isAllFilesAccessGranted()) {
-    if (!context.mounted) {
-      return null;
-    }
-    await _showStorageGrantNotice(context);
+  if (!await _storageGrantCleared(context)) {
     return null;
   }
   final grant = await FolderPicker.pick(initialDirectory: initialDirectory);
   if (!context.mounted) {
     return null;
   }
-  switch (grant.status) {
-    case FolderPickStatus.granted:
-      return grant;
-    case FolderPickStatus.cancelled:
-      // Backing out is not an event. Say nothing.
-      return null;
-    case FolderPickStatus.noFilesystemPath:
-      await _showNoFilesystemPathNotice(context);
-      return null;
-    case FolderPickStatus.unavailable:
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text(AppText.strings.folderPickUnavailable)),
-      );
-      return null;
-  }
+  return _spokenFor(context, grant);
 }
 
 /// PICK-5: the same flow for FILES.
@@ -125,7 +106,7 @@ Future<List<String>> pickFilesForUser(
     ?grant.path,
 ];
 
-/// The same flow, keeping the whole grant.
+/// The same flow, keeping the grants whole.
 ///
 /// 🚨 This is the difference between a reference that survives a relaunch
 /// and one that does not. `pickFiles` mints a security-scoped bookmark on
@@ -135,46 +116,106 @@ Future<List<String>> pickFilesForUser(
 /// piece of the machine existed; the answer simply never reached the code
 /// that could write it down.
 ///
+/// Opening a PROJECT wants it for the same reason: a recent-projects entry
+/// is refused after relaunch unless the app can produce the token it was
+/// granted.
+///
 /// Empty when the user backed out or was told why they cannot use what
 /// they chose.
 Future<List<FolderGrant>> pickFileGrantsForUser(
   BuildContext context, {
   required List<XTypeGroup> acceptedTypeGroups,
   bool allowMultiple = false,
+  String? initialDirectory,
 }) async {
   // The same gate as the folder flow, for the same reason: Android resolves
   // the system document back to a real path, and that probe fails without
   // the All-Files grant.
-  if (folderPickNeedsStorageGrant(_operatingSystem) &&
-      !await AppStorage.isAllFilesAccessGranted()) {
-    if (!context.mounted) {
-      return const [];
-    }
-    await _showStorageGrantNotice(context);
+  if (!await _storageGrantCleared(context)) {
     return const [];
   }
   final grants = await FolderPicker.pickFiles(
     acceptedTypeGroups: acceptedTypeGroups,
     allowMultiple: allowMultiple,
+    initialDirectory: initialDirectory,
   );
   if (!context.mounted) {
     return const [];
   }
-  // Never empty, and a failure arrives as one grant carrying the status —
+  // Never empty, and a failure arrives as ONE grant carrying the status —
   // so the first entry answers for the batch.
-  switch (grants.first.status) {
+  if (await _spokenFor(context, grants.first) == null) {
+    return const [];
+  }
+  return grants;
+}
+
+/// PICK-6: hands a finished file to the location the user picks.
+///
+/// ⚠️[sourcePath] is CONSUMED on success — the file is MOVED, not copied.
+/// From then on the returned grant's path is the only copy.
+///
+/// The grant is returned whole rather than as a path, because Save As is
+/// exactly the caller that needs the bookmark: it is what lets every later
+/// save write there with no UI at all.
+Future<FolderGrant?> exportFileForUser(
+  BuildContext context, {
+  required String sourcePath,
+  String? suggestedName,
+  String? initialDirectory,
+}) async {
+  if (!await _storageGrantCleared(context)) {
+    return null;
+  }
+  final grant = await FolderPicker.exportFile(
+    sourcePath: sourcePath,
+    suggestedName: suggestedName,
+    initialDirectory: initialDirectory,
+  );
+  if (!context.mounted) {
+    return null;
+  }
+  return _spokenFor(context, grant);
+}
+
+/// Android alone has to clear a storage grant before a picker is worth
+/// opening — everywhere else the OS either attaches no permission to a path
+/// (Windows, Linux) or grants one with the pick itself (iOS, macOS).
+///
+/// Returns false when the caller should stop (the user was told why).
+Future<bool> _storageGrantCleared(BuildContext context) async {
+  if (!folderPickNeedsStorageGrant(_operatingSystem) ||
+      await AppStorage.isAllFilesAccessGranted()) {
+    return true;
+  }
+  if (!context.mounted) {
+    return false;
+  }
+  await _showStorageGrantNotice(context);
+  return false;
+}
+
+/// The one place a pick's outcome becomes words.
+///
+/// Three entry points used to spell this switch out themselves, which is
+/// how a fourth (export) would have quietly grown a fourth dialect of "the
+/// user backed out" — and the whole reason [FolderGrant] reports four
+/// distinct outcomes is that three of them deserve to be said out loud.
+Future<FolderGrant?> _spokenFor(BuildContext context, FolderGrant grant) async {
+  switch (grant.status) {
     case FolderPickStatus.granted:
-      return grants;
+      return grant;
     case FolderPickStatus.cancelled:
-      return const [];
+      // Backing out is not an event. Say nothing.
+      return null;
     case FolderPickStatus.noFilesystemPath:
       await _showNoFilesystemPathNotice(context);
-      return const [];
+      return null;
     case FolderPickStatus.unavailable:
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         SnackBar(content: Text(AppText.strings.folderPickUnavailable)),
       );
-      return const [];
+      return null;
   }
 }
 

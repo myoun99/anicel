@@ -1,43 +1,34 @@
 import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 
-/// PICK-2/PICK-3: the project open and Save-As flows on the platforms that
-/// ask for a folder.
+/// PICK-6: the project open and Save-As flows, now that a project is ONE
+/// file.
 ///
-/// These are new because the flow they cover had NO test at all. Both
-/// injection seams on `EditorTopStrip` were declared and never used — by
-/// anything, in lib or test — so a green suite said nothing whatsoever about
-/// opening or saving a project. The in-app browser this replaces was the only
-/// piece of it with coverage, and it is gone.
+/// Rewritten from the folder-grant version. Everything it pinned — the
+/// chooser window, the in-app name prompt, the overwrite confirmation, the
+/// three-platform routing tuple — was scaffolding around two facts that
+/// stopped being true: a project had siblings, and iOS could not ask for a
+/// name. It has neither now.
 ///
-/// Everything here drives the real widgets: a tap on the row, typed text in
-/// the field, a tap on Replace. A test that called the callbacks directly
-/// would survive the dialog losing its buttons.
+/// What survives is the assertion those tests were really for: **the
+/// bookmark rides through**. Replacing it with a hardcoded null anywhere in
+/// these functions must fail here, because on Apple that mutation stores
+/// every recent-projects entry without its security-scoped token and every
+/// remembered project is refused after relaunch.
 void main() {
   late Directory folder;
 
   setUp(() {
     folder = Directory.systemTemp.createTempSync('qa_pickers_');
-    debugUseFolderPickerOverride = true;
-    // The fake carries a BOOKMARK. Without one, replacing `grant.bookmark`
-    // with a hardcoded null anywhere in the pick functions left the whole
-    // suite green — and on iPad that mutation stores every recent-projects
-    // entry without its security-scoped token, so after relaunch every
-    // remembered project is refused. That is the exact failure the folder
-    // model exists to prevent, so it is pinned.
-    FolderPicker.debugFolderPicker = ({String? initialDirectory}) async =>
-        FolderGrant.granted(
-          path: folder.path.replaceAll('\\', '/'),
-          bookmark: 'BOOK==',
-        );
   });
   tearDown(() {
-    debugUseFolderPickerOverride = null;
-    FolderPicker.debugFolderPicker = null;
+    FolderPicker.debugFilePicker = null;
+    FolderPicker.debugFileExporter = null;
     try {
       folder.deleteSync(recursive: true);
     } on Object {
@@ -45,15 +36,16 @@ void main() {
     }
   });
 
-  void writeProject(String name, {DateTime? modified}) {
-    final file = File('${folder.path}/$name')..writeAsStringSync('x');
-    if (modified != null) {
-      file.setLastModifiedSync(modified);
-    }
+  void installFilePicker(List<FolderGrant> answer) {
+    FolderPicker.debugFilePicker =
+        ({
+          required List<XTypeGroup> acceptedTypeGroups,
+          required bool allowMultiple,
+        }) async => answer;
   }
 
   /// Runs [action] from inside a real Navigator + ScaffoldMessenger, which
-  /// the flows need for their dialogs and their error snackbar.
+  /// the flows need for their notices.
   Future<ProjectPick?> runFlow(
     WidgetTester tester,
     Future<ProjectPick?> Function(BuildContext context) action,
@@ -72,305 +64,47 @@ void main() {
       ),
     );
     await tester.tap(find.text('go'));
-    // Settled TWICE. The flow crosses two async gaps before a dialog exists
-    // — the injected picker's future, then `showDialog` — and a single
-    // settle can return between them, so the caller finds no dialog. It
-    // passed alone and failed once in a six-file run, which is the shape of
-    // that race rather than of a real defect.
+    // Settled TWICE: the flow crosses two async gaps before a dialog can
+    // exist, and a single settle can return between them.
     await tester.pumpAndSettle();
     await tester.pumpAndSettle();
     return result;
   }
 
   group('opening', () {
-    testWidgets('one project still goes through the chooser', (tester) async {
-      // REPLACES 'a folder with one project opens it directly'. The skip made
-      // what came back after picking a folder depend on a count the user
-      // could not see; the window now opens whatever is in there. The
-      // bookmark assertion stays — it rides through the chooser too.
-      writeProject('only.anicel');
-      ProjectPick? pick;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Builder(
-              builder: (context) => TextButton(
-                onPressed: () async => pick = await pickProjectToOpen(context),
-                child: const Text('go'),
-              ),
-            ),
-          ),
+    testWidgets('the picked file IS the project, chooser and all gone', (
+      tester,
+    ) async {
+      installFilePicker(const [
+        FolderGrant.granted(
+          path: '/work/C-045/scene.anicel',
+          bookmark: 'BOOK==',
+          kind: GrantKind.file,
         ),
-      );
-      await tester.tap(find.text('go'));
-      await tester.pumpAndSettle();
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey<String>('project-chooser-dialog')),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('only.anicel'));
-      await tester.pumpAndSettle();
-      expect(pick?.path, '${folder.path.replaceAll('\\', '/')}/only.anicel');
-      expect(pick?.folderBookmark, 'BOOK==');
-    });
-
-    test('the folder picker applies to exactly three platforms', () {
-      // Every widget test here sets debugUseFolderPickerOverride, so the
-      // platform tuple behind it is never evaluated by them. Pinned directly:
-      // dropping macOS or iOS from it sends them back to the OS FILE dialog,
-      // which grants the project file and leaves its sibling .assets/ folder
-      // outside the grant.
-      for (final platform in ['android', 'ios', 'macos']) {
-        expect(folderPickerAppliesTo(platform), isTrue, reason: platform);
-      }
-      for (final platform in ['windows', 'linux', 'fuchsia']) {
-        expect(folderPickerAppliesTo(platform), isFalse, reason: platform);
-      }
-    });
-
-    testWidgets('a folder with several asks which', (tester) async {
-      writeProject('a.anicel', modified: DateTime(2026, 1, 1));
-      writeProject('b.anicel', modified: DateTime(2026, 8, 11));
-      ProjectPick? pick;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Builder(
-              builder: (context) => TextButton(
-                onPressed: () async => pick = await pickProjectToOpen(context),
-                child: const Text('go'),
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.tap(find.text('go'));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey<String>('project-chooser-dialog')),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('a.anicel'));
-      await tester.pumpAndSettle();
-      expect(pick?.path,endsWith('/a.anicel'));
-    });
-
-    testWidgets('cancelling the folder pick opens nothing', (tester) async {
-      writeProject('only.anicel');
-      FolderPicker.debugFolderPicker =
-          ({String? initialDirectory}) async => const FolderGrant.cancelled();
-      expect(await runFlow(tester, pickProjectToOpen), isNull);
-    });
-
-    testWidgets('a folder with no projects says so', (tester) async {
+      ]);
       final pick = await runFlow(tester, pickProjectToOpen);
-      expect(
-        find.byKey(const ValueKey<String>('project-chooser-empty')),
-        findsOneWidget,
-      );
-      expect(pick, isNull);
-    });
-  });
-
-  group('saving', () {
-    Future<ProjectPick?> runSave(WidgetTester tester, String suggested) =>
-        runFlow(
-          tester,
-          (context) => pickProjectSaveTarget(context, suggested, folder.path),
-        );
-
-    testWidgets('the folder grant is followed by a name prompt', (
-      tester,
-    ) async {
-      // iOS has no save panel — Apple never shipped one — so the name is
-      // asked in-app on every folder-picking platform.
-      ProjectPick? pick;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Builder(
-              builder: (context) => TextButton(
-                onPressed: () async => pick = await pickProjectSaveTarget(
-                  context,
-                  'Suggested.anicel',
-                  folder.path,
-                ),
-                child: const Text('go'),
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.tap(find.text('go'));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey<String>('project-save-name-dialog')),
-        findsOneWidget,
-      );
-      await tester.enterText(
-        find.byKey(const ValueKey<String>('project-save-name-field')),
-        'Cut 12',
-      );
-      await tester.tap(
-        find.byKey(const ValueKey<String>('project-save-name-confirm')),
-      );
-      await tester.pumpAndSettle();
-      expect(pick?.path, '${folder.path.replaceAll('\\', '/')}/Cut 12.anicel');
+      expect(pick?.path, '/work/C-045/scene.anicel');
+      // The bookmark is what makes a recent-projects entry outlive a
+      // relaunch. Dropping it here would be invisible until the next launch.
       expect(pick?.folderBookmark, 'BOOK==');
-    });
-
-    testWidgets('a name that already ends in .anicel is not doubled', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Builder(
-              builder: (context) => TextButton(
-                onPressed: () => pickProjectSaveTarget(
-                  context,
-                  'x.anicel',
-                  folder.path,
-                ).then((value) => _captured = value),
-                child: const Text('go'),
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.tap(find.text('go'));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const ValueKey<String>('project-save-name-field')),
-        'Scene.anicel',
-      );
-      await tester.tap(
-        find.byKey(const ValueKey<String>('project-save-name-confirm')),
-      );
-      await tester.pumpAndSettle();
-      expect(_captured?.path, endsWith('/Scene.anicel'));
-      expect(_captured?.path, isNot(contains('.anicel.anicel')));
-    });
-
-    testWidgets('an empty name is refused rather than saved', (tester) async {
-      await runSave(tester, 'Suggested.anicel');
-      await tester.enterText(
-        find.byKey(const ValueKey<String>('project-save-name-field')),
-        '   ',
-      );
-      await tester.tap(
-        find.byKey(const ValueKey<String>('project-save-name-confirm')),
-      );
-      await tester.pumpAndSettle();
-      // Still open: the prompt reports the error instead of popping.
+      // Nothing asks WHICH project any more — there is no folder to look in.
       expect(
-        find.byKey(const ValueKey<String>('project-save-name-dialog')),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('overwriting an existing project asks first', (tester) async {
-      // The system save dialog would normally ask this. It is not in this
-      // flow, so the app has to.
-      writeProject('Taken.anicel');
-      ProjectPick? pick;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Builder(
-              builder: (context) => TextButton(
-                onPressed: () async => pick = await pickProjectSaveTarget(
-                  context,
-                  'x.anicel',
-                  folder.path,
-                ),
-                child: const Text('go'),
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.tap(find.text('go'));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const ValueKey<String>('project-save-name-field')),
-        'Taken',
-      );
-      await tester.tap(
-        find.byKey(const ValueKey<String>('project-save-name-confirm')),
-      );
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey<String>('project-save-replace-dialog')),
-        findsOneWidget,
-      );
-      await tester.tap(
-        find.byKey(const ValueKey<String>('project-save-replace-cancel')),
-      );
-      await tester.pumpAndSettle();
-      expect(pick?.path,isNull, reason: 'declining Replace must not save');
-    });
-
-    testWidgets('confirming Replace returns the target', (tester) async {
-      writeProject('Taken.anicel');
-      ProjectPick? pick;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Builder(
-              builder: (context) => TextButton(
-                onPressed: () async => pick = await pickProjectSaveTarget(
-                  context,
-                  'x.anicel',
-                  folder.path,
-                ),
-                child: const Text('go'),
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.tap(find.text('go'));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const ValueKey<String>('project-save-name-field')),
-        'Taken',
-      );
-      await tester.tap(
-        find.byKey(const ValueKey<String>('project-save-name-confirm')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const ValueKey<String>('project-save-replace-confirm')),
-      );
-      await tester.pumpAndSettle();
-      expect(pick?.path, endsWith('/Taken.anicel'));
-      // The Replace branch is a SEPARATE return statement from the plain
-      // save, so it needs its own assertion or the bookmark can be dropped
-      // on exactly that path.
-      expect(pick?.folderBookmark, 'BOOK==');
-    });
-
-    testWidgets('cancelling the folder pick never asks for a name', (
-      tester,
-    ) async {
-      FolderPicker.debugFolderPicker =
-          ({String? initialDirectory}) async => const FolderGrant.cancelled();
-      expect(await runSave(tester, 'x.anicel'), isNull);
-      expect(
-        find.byKey(const ValueKey<String>('project-save-name-dialog')),
+        find.byKey(const ValueKey<String>('project-chooser-dialog')),
         findsNothing,
       );
     });
-  });
 
-  group('a folder with no filesystem path', () {
-    testWidgets('is explained rather than silently ignored', (tester) async {
+    testWidgets('cancelling opens nothing', (tester) async {
+      installFilePicker(const [FolderGrant.cancelled()]);
+      expect(await runFlow(tester, pickProjectToOpen), isNull);
+    });
+
+    testWidgets('a location with no filesystem path is explained', (
+      tester,
+    ) async {
       // Android's Drive / SD / USB case. Collapsing it into a silent cancel
       // would leave the user tapping Open and nothing happening.
-      FolderPicker.debugFolderPicker = ({String? initialDirectory}) async =>
-          const FolderGrant.noFilesystemPath();
+      installFilePicker(const [FolderGrant.noFilesystemPath()]);
       final pick = await runFlow(tester, pickProjectToOpen);
       expect(pick, isNull);
       expect(
@@ -379,6 +113,113 @@ void main() {
       );
     });
   });
-}
 
-ProjectPick? _captured;
+  group('saving', () {
+    String? offeredSource;
+    String? offeredName;
+
+    void installExporter(FolderGrant Function(String sourcePath) answer) {
+      offeredSource = null;
+      offeredName = null;
+      FolderPicker.debugFileExporter =
+          ({required String sourcePath, String? suggestedName}) async {
+            offeredSource = sourcePath;
+            offeredName = suggestedName;
+            return answer(sourcePath);
+          };
+    }
+
+    Future<ProjectPick?> runSave(WidgetTester tester, String suggested) =>
+        runFlow(
+          tester,
+          (context) => pickProjectSaveTarget(context, suggested, folder.path),
+        );
+
+    testWidgets('the system dialog decides name and place — no in-app prompt', (
+      tester,
+    ) async {
+      installExporter(
+        (_) => const FolderGrant.granted(
+          path: '/drive/Cut 12.anicel',
+          bookmark: 'BOOK==',
+          kind: GrantKind.file,
+        ),
+      );
+      final pick = await runSave(tester, 'Suggested');
+      expect(pick?.path, '/drive/Cut 12.anicel');
+      expect(pick?.folderBookmark, 'BOOK==');
+      // Both prompts existed only because iOS had no save panel. The export
+      // picker asks for the name itself, and the system asks about
+      // replacing.
+      expect(
+        find.byKey(const ValueKey<String>('project-save-name-dialog')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('project-save-replace-dialog')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('what is offered is a PLACEHOLDER, not the project', (
+      tester,
+    ) async {
+      // 🚨The whole reason this indirection exists: a finished project can be
+      // gigabytes now that media lives inside it, and staging one in the app
+      // container would need the space twice — then fail AFTER the user
+      // chose a name and a place. Handing over anything project-sized here
+      // would put that failure back.
+      late int offeredLength;
+      late List<int> offeredBytes;
+      installExporter((sourcePath) {
+        final file = File(sourcePath);
+        offeredLength = file.lengthSync();
+        offeredBytes = file.readAsBytesSync();
+        return const FolderGrant.granted(
+          path: '/drive/x.anicel',
+          kind: GrantKind.file,
+        );
+      });
+      await runSave(tester, 'x');
+      // An empty but VALID zip: the 22-byte end-of-central-directory record.
+      expect(offeredLength, 22);
+      expect(offeredBytes.take(4), [0x50, 0x4B, 0x05, 0x06]);
+    });
+
+    testWidgets('the suffix is added once and only once', (tester) async {
+      installExporter(
+        (_) => const FolderGrant.granted(
+          path: '/drive/x.anicel',
+          kind: GrantKind.file,
+        ),
+      );
+      await runSave(tester, 'Scene');
+      expect(offeredName, 'Scene.anicel');
+
+      await runSave(tester, 'Scene.anicel');
+      expect(offeredName, 'Scene.anicel');
+      expect(offeredName, isNot(contains('.anicel.anicel')));
+    });
+
+    testWidgets('cancelling saves nothing and leaves no staged file', (
+      tester,
+    ) async {
+      installExporter((_) => const FolderGrant.cancelled());
+      final pick = await runSave(tester, 'x');
+      expect(pick, isNull);
+      // The placeholder never left, so it must not be left behind either.
+      expect(File(offeredSource!).existsSync(), isFalse);
+      expect(Directory(offeredSource!).parent.existsSync(), isFalse);
+    });
+
+    testWidgets('a refused export says so rather than saving', (tester) async {
+      installExporter((_) => const FolderGrant.noFilesystemPath());
+      final pick = await runSave(tester, 'x');
+      expect(pick, isNull);
+      expect(
+        find.byKey(const ValueKey<String>('folder-no-path-dialog')),
+        findsOneWidget,
+      );
+    });
+  });
+}
