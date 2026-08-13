@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 
 import '../../services/persistence/app_documents.dart'
     show appRecordingsDirectory;
+import '../../services/audio/conform_cache_maintenance.dart'
+    show clearConformCache, conformCacheBytes;
 import '../../services/persistence/app_save_settings.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
+import '../text/byte_size_label.dart';
 import 'folder_pick_flow.dart';
 
 /// SAVE-1: the autosave policy section (Preferences ▸ Autosave).
@@ -236,9 +239,70 @@ class AutosaveSettingsSection extends StatelessWidget {
                 ],
               ],
             ),
+            _ConformCacheSizeRow(directory: AppSave.conformRootDirectory),
           ],
         );
       },
+    );
+  }
+}
+
+/// What the conform cache is holding, and the one button that empties it.
+///
+/// Its own widget because it holds a MEASUREMENT: a directory scan has no
+/// business in a build that reruns on every settings change, and after
+/// emptying, the number has to come back changed.
+///
+/// It exists at all because of the iPad. On a desktop the folder is a
+/// place someone can open and delete; inside an app container it is
+/// neither visible nor reachable, so without this the only honest thing
+/// to say about the cache would be "it is somewhere, and it is some size".
+class _ConformCacheSizeRow extends StatefulWidget {
+  const _ConformCacheSizeRow({required this.directory});
+
+  /// Read only to NOTICE it changed — the measurement follows the root.
+  final String directory;
+
+  @override
+  State<_ConformCacheSizeRow> createState() => _ConformCacheSizeRowState();
+}
+
+class _ConformCacheSizeRowState extends State<_ConformCacheSizeRow> {
+  late int _bytes = conformCacheBytes();
+
+  @override
+  void didUpdateWidget(covariant _ConformCacheSizeRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.directory != widget.directory) {
+      setState(() => _bytes = conformCacheBytes());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            _bytes == 0 ? 'Empty' : 'Holding ${byteSizeLabel(_bytes)}',
+            key: const ValueKey<String>('settings-conform-size'),
+            style: const TextStyle(fontSize: 12),
+          ),
+        ),
+        if (_bytes > 0)
+          TextButton(
+            key: const ValueKey<String>('settings-conform-clear'),
+            // No confirmation on purpose: a conform is derived data, so
+            // the worst this can cost is a re-decode. Asking "are you
+            // sure" about something that cannot lose anything teaches
+            // people to click through the dialogs that can.
+            onPressed: () {
+              clearConformCache();
+              setState(() => _bytes = conformCacheBytes());
+            },
+            child: const Text('Empty now'),
+          ),
+      ],
     );
   }
 }

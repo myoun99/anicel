@@ -81,29 +81,48 @@ void main() {
   }
 
   group('layout', () {
+    /// The cache as an ordinary project uses it, so a test about something
+    /// else does not have to say so three times.
+    ///
+    /// Built per call, not held: the root is a live setting, and a layout
+    /// captured once would quietly answer with the root from before a test
+    /// changed it.
+    ConformCacheLayout layoutAt48k() => ConformCacheLayout.forAudio(
+      sampleRate: 48000,
+      speedNumerator: 1,
+      speedDenominator: 1,
+    );
+
     test('assets sit beside the project, not inside it', () {
       const layout = ProjectAssetLayout('/work/내작업/프로젝트.anicel');
       expect(layout.assetsDirectory, '/work/내작업/프로젝트.assets');
       expect(layout.mediaDirectory, '/work/내작업/프로젝트.assets/Media');
     });
 
-    test('the conform path is derived from the media name, not recorded', () {
-      // Nothing to keep in sync, and project.json stays small.
-      const layout = ConformCacheLayout('/cache/p.anicel.0badf00d');
+    test('the conform path is derived from the source, not recorded', () {
+      // Nothing to keep in sync, and project.json stays small. The source
+      // name stays in front so the cache folder is legible; the hash is
+      // what makes the entry unique.
+      const layout = ConformCacheLayout(
+        directory: '/cache',
+        sampleRate: 48000,
+        speedNumerator: 1,
+        speedDenominator: 1,
+      );
       expect(
         layout.conformPathFor('/work/p.assets/Media/대사.m4a'),
-        '/cache/p.anicel.0badf00d/대사.m4a.wav',
+        startsWith('/cache/대사.m4a.'),
       );
+      expect(layout.conformPathFor('/work/p.assets/Media/대사.m4a'),
+          endsWith('.wav'));
     });
 
     test('a windows path with backslashes resolves the same', () {
       const layout = ProjectAssetLayout(r'C:\work\p.anicel');
       expect(layout.assetsDirectory, 'C:/work/p.assets');
       expect(
-        const ConformCacheLayout('/cache/k').conformPathFor(
-          r'C:\work\p.assets\Media\a.wav',
-        ),
-        '/cache/k/a.wav.wav',
+        layoutAt48k().conformPathFor(r'C:\work\p\대사.m4a'),
+        layoutAt48k().conformPathFor('C:/work/p/대사.m4a'),
       );
     });
 
@@ -136,41 +155,92 @@ void main() {
       // The whole point of the move: a twelve-times-the-source cache must
       // not land in whatever cloud folder the project happens to be in,
       // and the single-file format has no siblings to put it in either.
-      const project = '/work/내작업/프로젝트.anicel';
       expect(
-        AppSave.conformDirectoryFor(project),
-        isNot(contains('/work/내작업')),
+        layoutAt48k().conformPathFor('/work/내작업/대사.m4a'),
+        isNot(startsWith('/work/내작업')),
       );
     });
 
-    test('two projects of the same name do not share a cache', () {
-      // A basename alone would collide the moment both land in one folder.
+    test('the cache is keyed by the SOURCE, so a rename, a move or a Save '
+        'As orphans nothing', () {
+      // The old key was the project path: Save As minted a fresh folder
+      // and abandoned every conform the project had built. Nobody
+      // collected them, and on an iPad nobody could even see them.
       expect(
-        AppSave.conformDirectoryFor('/work/a/C-045.anicel'),
-        isNot(AppSave.conformDirectoryFor('/work/b/C-045.anicel')),
+        layoutAt48k().conformPathFor('/x/대사.m4a'),
+        layoutAt48k().conformPathFor('/x/대사.m4a'),
+      );
+      expect(
+        layoutAt48k().conformPathFor('/x/대사.m4a'),
+        startsWith('${AppSave.conformRootDirectory}/대사.m4a.'),
       );
     });
 
-    test('the recovery snapshot and the conform cache agree on the key', () {
-      // Both derive from encodeProjectKey rather than re-hashing, so they
-      // cannot come to disagree about which project they belong to.
+    test('two projects using the same sound share one conform', () {
+      // They used to build a copy each, at twelve times the source.
+      final other = ConformCacheLayout.forAudio(
+        sampleRate: 48000,
+        speedNumerator: 1,
+        speedDenominator: 1,
+      );
+      expect(
+        layoutAt48k().conformPathFor('/shared/발소리.wav'),
+        other.conformPathFor('/shared/발소리.wav'),
+      );
+    });
+
+    test('two sounds of the same NAME do not share one', () {
+      expect(
+        layoutAt48k().conformPathFor('/a/발소리.wav'),
+        isNot(layoutAt48k().conformPathFor('/b/발소리.wav')),
+      );
+    });
+
+    test('the RATE and the SPEED are in the key, not only in the file', () {
+      // A 44.1k conform against a 48k schedule slides every clip, and a
+      // pull-down difference drifts by a thousandth — small enough to
+      // survive a listen and wrong by the end of a reel. Both are recorded
+      // inside the conform so a mismatch is caught either way; keying on
+      // them means the two never meet, and a project that switches back
+      // and forth keeps both instead of rebuilding at every change.
+      final at441 = ConformCacheLayout.forAudio(
+        sampleRate: 44100,
+        speedNumerator: 1,
+        speedDenominator: 1,
+      );
+      final pulled = ConformCacheLayout.forAudio(
+        sampleRate: 48000,
+        speedNumerator: 1001,
+        speedDenominator: 1000,
+      );
+      const source = '/x/대사.m4a';
+      expect({
+        layoutAt48k().conformPathFor(source),
+        at441.conformPathFor(source),
+        pulled.conformPathFor(source),
+      }, hasLength(3));
+    });
+
+    test('the recovery snapshot still derives from the project key', () {
+      // The conform cache stopped being per-project; recovery did not.
       const project = '/work/C-045.anicel';
-      final key = AppSave.encodeProjectKey(project);
-      expect(AppSave.encodeRecoveryFileName(project), '$key.autosave');
-      expect(AppSave.conformDirectoryFor(project), endsWith('/$key'));
+      expect(
+        AppSave.encodeRecoveryFileName(project),
+        '${AppSave.encodeProjectKey(project)}.autosave',
+      );
     });
 
-    test('a configured root moves the cache but still splits by project', () {
-      // Picking a drive should not also mean keeping same-named projects
-      // apart by hand.
+    test('the cache is assembled from the LIVE setting', () {
+      // Resolved per call rather than held: a path captured before the
+      // user moved the root would name a folder nothing writes to.
       AppSave.settings.value = const AppSaveSettings(
         conformDirectory: r'D:\fast\conforms',
       );
       addTearDown(() => AppSave.settings.value = const AppSaveSettings());
       expect(AppSave.conformRootDirectory, 'D:/fast/conforms');
       expect(
-        AppSave.conformDirectoryFor('/work/C-045.anicel'),
-        'D:/fast/conforms/${AppSave.encodeProjectKey('/work/C-045.anicel')}',
+        layoutAt48k().conformPathFor('/x/a.wav'),
+        startsWith('D:/fast/conforms/'),
       );
     });
 
@@ -182,78 +252,12 @@ void main() {
       expect(AppSave.conformRootDirectory, contains('qa_test_conform_'));
     });
 
-    test('the cache a PROJECT uses is assembled, not just available', () {
-      // The law (where the root is) was covered and the wiring was not:
-      // every test that builds a session injects its own conform store,
-      // so nothing observed the path the app actually resolves. This
-      // pins the composition itself.
-      const project = '/work/내작업/프로젝트.anicel';
-      expect(
-        ConformCacheLayout.forProject(project).conformPathFor('/x/대사.m4a'),
-        '${AppSave.conformDirectoryFor(project)}/대사.m4a.wav',
-      );
-      expect(
-        ConformCacheLayout.forProject(project).conformPathFor('/x/대사.m4a'),
-        isNot(startsWith('/work/내작업/프로젝트.assets')),
-      );
-    });
-
-    test('a project assembles its cache from the LIVE setting', () {
-      // Resolved per call rather than held: a cache path captured before
-      // the user moved the root would name a folder nothing writes to.
-      const project = '/work/p.anicel';
-      AppSave.settings.value = const AppSaveSettings(
-        conformDirectory: '/fast/conforms',
-      );
-      addTearDown(() => AppSave.settings.value = const AppSaveSettings());
-      expect(
-        ConformCacheLayout.forProject(project).conformPathFor('/x/a.wav'),
-        startsWith('/fast/conforms/'),
-      );
-    });
 
     test('the default root is redirected under test', () {
       // Without this a test run caches into the real user's app folder and
       // reads whatever a previous run left there.
       expect(AppSave.conformRootDirectory, contains(Directory.systemTemp.path
           .replaceAll('\\', '/')));
-    });
-  });
-
-  group('name collisions', () {
-    test('a second file of the same name gets a suffix, not an overwrite', () {
-      final taken = <String>{'/m/a.wav'};
-      expect(
-        AudioConformPipeline.uniqueNameIn(
-          '/m',
-          'a.wav',
-          exists: taken.contains,
-        ),
-        'a-1.wav',
-      );
-      taken.add('/m/a-1.wav');
-      expect(
-        AudioConformPipeline.uniqueNameIn(
-          '/m',
-          'a.wav',
-          exists: taken.contains,
-        ),
-        'a-2.wav',
-      );
-    });
-
-    test('a free name is used as-is', () {
-      expect(
-        AudioConformPipeline.uniqueNameIn('/m', 'b.wav', exists: (_) => false),
-        'b.wav',
-      );
-    });
-
-    test('an extensionless name still deduplicates', () {
-      expect(
-        AudioConformPipeline.uniqueNameIn('/m', 'sound', exists: (p) => p == '/m/sound'),
-        'sound-1',
-      );
     });
   });
 
