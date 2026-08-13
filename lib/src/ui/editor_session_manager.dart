@@ -164,7 +164,8 @@ import '../services/audio/audio_mixer_reference.dart'
     show AudioMixClip, AudioMixSource;
 import 'playback/audio_input_monitor.dart';
 import 'playback/audio_playback_schedule.dart' show ScheduledAudioClip;
-import '../services/audio/audio_conform_pipeline.dart' show ProjectAssetLayout;
+import '../services/audio/audio_conform_pipeline.dart'
+    show ConformCacheLayout, ProjectAssetLayout;
 import '../services/audio/conform_wav_codec.dart' show encodeConformWav;
 import '../services/commands/update_media_assets_command.dart';
 import '../models/se_take_placement.dart';
@@ -1794,9 +1795,10 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Conformed audio per source path (audio program wiring): waveform
   /// peaks, exact clip lengths and the device transport's PCM, decoded
-  /// ONCE per file off the UI isolate. Conforms live in
-  /// `<project>.assets/Conformed/`, derived by rule from the source path —
-  /// nothing recorded, nothing to fall out of sync.
+  /// ONCE per file off the UI isolate. Conforms live in the app container
+  /// (or a drive the user named), in a folder per project, under a name
+  /// derived by rule from the source path — nothing recorded, nothing to
+  /// fall out of sync.
   late final AudioConformStore audioConformStore =
       (_injectedAudioConformStore ??
             AudioConformStore(
@@ -1820,11 +1822,14 @@ class EditorSessionManager extends ChangeNotifier {
             ))
         ..addListener(notifyListeners);
 
+  /// Resolved per call rather than cached: the cache root is a live
+  /// setting and the project path changes under Save As, so a conform path
+  /// held from before either would name a folder nothing writes to.
   String? _conformPathFor(String sourcePath) {
     final path = _projectFilePath;
     return path == null
         ? null
-        : ProjectAssetLayout(path).conformPathFor(sourcePath);
+        : ConformCacheLayout.forProject(path).conformPathFor(sourcePath);
   }
 
   /// Every audio path the project references (SE clips + the SOUND entries

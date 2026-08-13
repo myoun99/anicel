@@ -11,26 +11,32 @@
 /// convert on import, Premiere writes a `.cfa`, Avid transcodes to MXF —
 /// all the same move.
 ///
-/// Layout, beside the `.anicel` rather than inside it (user decision,
-/// 2026-07-21): the project file stays light, and the parts that CAN be
-/// regenerated are visibly separate from the parts that cannot.
+/// Layout. What can be regenerated and what cannot no longer live next to
+/// each other, because they do not travel together: the original is the
+/// user's content and belongs with the project, while a conform is a cache
+/// roughly twelve times its source's size that has no business syncing to
+/// a cloud folder or riding along to another machine.
 ///
 /// ```
 /// 프로젝트.anicel
 /// 프로젝트.assets/
-///   Media/      대사.m4a      the original — deleting this loses work
-///   Conformed/  대사.m4a.wav  regenerable; deleting it costs only time
+///   Media/                        대사.m4a      deleting this loses work
+/// <app container>/Conformed/
+///   프로젝트.anicel.<hash>/       대사.m4a.wav  costs only time
 /// ```
 ///
 /// `Media/` sits under the save directory, so the .anicel's existing
 /// relative-path manifest picks it up for free and a folder moved to
-/// another machine relinks itself.
+/// another machine relinks itself. The conform folder is named by
+/// `AppSave.encodeProjectKey` so two projects called `C-045.anicel` cannot
+/// share one cache, and the root moves with a Preferences setting.
 library;
 
 import 'dart:io';
 import 'dart:typed_data';
 
 import '../persistence/anicel_incremental_writer.dart' show anicelCrc32;
+import '../persistence/app_save_settings.dart' show AppSave;
 import 'audio_peaks_extractor.dart';
 import 'conform_wav_codec.dart';
 
@@ -73,7 +79,13 @@ enum ConformOutcome {
   /// No decoder recognized the container.
   undecodable,
 
-  /// Writing failed (permissions, full disk, a cloud folder mid-sync).
+  /// The attempt failed in a way nothing anticipated.
+  ///
+  /// NOT the ordinary "could not write the cache" case any more: permissions,
+  /// a full disk or a cloud folder mid-sync leave the decoded audio intact,
+  /// so [AudioConformPipeline.ensureConform] returns [built] with a null
+  /// `conformPath` and the reason in `error`. Losing the sound over a cache
+  /// was the bug. What is left here is the store's catch-all wrapper.
   writeFailed,
 }
 
@@ -128,7 +140,7 @@ class ConformResult {
   bool get isTransientFailure => outcome == ConformOutcome.sourceUnreadable;
 }
 
-/// Where a project's imported media and conforms live.
+/// Where a project's imported media lives.
 class ProjectAssetLayout {
   const ProjectAssetLayout(this.projectFilePath);
 
@@ -147,16 +159,38 @@ class ProjectAssetLayout {
 
   /// Originals. Deleting this loses work; the name says so.
   String get mediaDirectory => '$assetsDirectory/Media';
+}
 
-  /// Conforms. Regenerable — deleting it costs time, not content.
-  String get conformedDirectory => '$assetsDirectory/Conformed';
+/// Where a project's conforms are cached, and what they are called.
+///
+/// A directory plus a naming rule, kept apart from [ProjectAssetLayout]
+/// because the two stopped answering the same question: media is the
+/// project's own content and a conform is a regenerable cache, so only one
+/// of them is still derived from the project path. The cache directory
+/// comes from `AppSave.conformDirectoryFor` — the app container by default,
+/// a user-named drive when there is one.
+class ConformCacheLayout {
+  const ConformCacheLayout(this.directory);
+
+  /// The cache [projectFilePath] uses — the whole composition in one
+  /// place so a caller cannot assemble a different one by hand.
+  ///
+  /// The session used to hold the two halves itself, and nothing could
+  /// see the result: every test that builds a session injects its own
+  /// conform store, so the production path assembly had no observer at
+  /// all. Naming the composition gives it one.
+  factory ConformCacheLayout.forProject(String projectFilePath) =>
+      ConformCacheLayout(AppSave.conformDirectoryFor(projectFilePath));
+
+  /// The project's conform folder, already resolved.
+  final String directory;
 
   /// The conform for [mediaPath], derived by rule rather than recorded in
   /// the project. Nothing to keep in sync, and `project.json` stays small.
   String conformPathFor(String mediaPath) {
     final normalized = mediaPath.replaceAll('\\', '/');
     final name = normalized.substring(normalized.lastIndexOf('/') + 1);
-    return '$conformedDirectory/$name.wav';
+    return '$directory/$name.wav';
   }
 }
 
@@ -257,10 +291,14 @@ class AudioConformPipeline {
   /// and guessing wrong plays the wrong sound against someone's drawing.
   ///
   /// A null [conformPath] runs MEMORY-ONLY: decode and resample without
-  /// touching the disk. That is the unsaved-project case — there is no
-  /// `.assets` directory to write beside a file that does not exist yet,
-  /// and a conform is derived data anyway: once the project is saved, the
-  /// next ensure writes it beside the `.anicel` like any other.
+  /// touching the disk. That is the unsaved-project case — the cache is
+  /// named per project and an unsaved project has no name yet — and a
+  /// conform is derived data anyway: once the project is saved, the next
+  /// ensure caches it like any other.
+  ///
+  /// Memory-only is also the FALLBACK when the cache cannot be written, so
+  /// a cache that is missing, full or unreachable costs a re-decode rather
+  /// than the sound.
   /// The reuse answer, from an [existing] conform that has already been
   /// judged current. One place so the fast (stat) and slow (content) paths
   /// cannot drift into returning different shapes for the same decision.
@@ -365,6 +403,26 @@ class AudioConformPipeline {
             outputRate: projectSampleRate * speedDenominator,
           );
 
+    // Failing to CACHE a conform is not failing to CONFORM one. The decoded,
+    // resampled PCM is already in hand at this point — the very bytes the
+    // success below returns — so throwing it away because a directory could
+    // not be created costs the user their sound to save nothing.
+    //
+    // That mattered less when the cache lived under the project's own
+    // folder, which the app already had a grant for. The cache root is a
+    // setting now, and Preferences invites the user to point it at another
+    // drive; an unplugged one, a folder they deleted, or a macOS path whose
+    // sandbox scope did not survive the relaunch all land here. The store
+    // spends one of three attempts per failure and then returns null
+    // forever, so the old answer was: the clip goes silent for the session
+    // and exports silent, over a cache.
+    //
+    // Uncached is a normal state — a never-saved project runs this way on
+    // purpose. So report exactly that: built, cached nowhere, with the
+    // reason. The next ensure tries the write again, which is what lets a
+    // volume coming back fix itself.
+    var cachedAt = conformPath;
+    String? cacheError;
     if (conformPath != null) {
       try {
         final directory = conformPath.substring(
@@ -388,16 +446,15 @@ class AudioConformPipeline {
           ),
         );
       } on Object catch (error) {
-        return ConformResult(
-          outcome: ConformOutcome.writeFailed,
-          error: 'could not write the conform: $error',
-        );
+        cachedAt = null;
+        cacheError = 'could not cache the conform: $error';
       }
     }
 
     return ConformResult(
       outcome: ConformOutcome.built,
-      conformPath: conformPath,
+      conformPath: cachedAt,
+      error: cacheError,
       peaks: peaksFromSamples(
         samples: converted,
         channels: decoded.channels,
