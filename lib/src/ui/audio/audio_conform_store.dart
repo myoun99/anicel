@@ -132,6 +132,50 @@ class AudioConformStore extends ChangeNotifier {
     _streamReaders.remove(sourcePath)?.close();
   }
 
+  /// Lets go of every conform whose PCM lives only on DISK — readers
+  /// closed, entries dropped — so the cache underneath can be collected.
+  ///
+  /// 🚨 The cache has a size bound and a Preferences button that empties
+  /// it, and the collector cannot know what this session is holding. A
+  /// streaming entry IS its file: [isStreaming] answers true, `samples` is
+  /// null, and the transport reads windows of the WAV. Delete that file
+  /// behind a live entry and nothing here notices — [resultFor] keeps
+  /// returning a usable result so no rebuild is ever kicked,
+  /// [streamReaderFor] opens nothing, and the schedule stands down. The
+  /// clip is silent for the rest of the session and silent in the export,
+  /// with a debug line as the only trace.
+  ///
+  /// The mirror image on Windows is just as bad: an open reader makes the
+  /// delete fail, so the biggest entries survive the emptying that existed
+  /// to reclaim them.
+  ///
+  /// So the session stands down BEFORE the collector runs. What it drops
+  /// re-conforms on next use, and if the file survived the prune that
+  /// costs a stat rather than a decode — which is what calling a conform
+  /// "derived data" was supposed to mean.
+  ///
+  /// Entries with resident PCM stay: their samples are in hand, so losing
+  /// the file costs them nothing until the next session.
+  void releaseDiskBacked() {
+    for (final sourcePath in _streamReaders.keys.toList()) {
+      _closeStreamReader(sourcePath);
+    }
+    final dropped = <String>[
+      for (final entry in _entries.entries)
+        if (entry.value.isUsable &&
+            entry.value.samples == null &&
+            entry.value.conformPath != null)
+          entry.key,
+    ];
+    if (dropped.isEmpty) {
+      return;
+    }
+    for (final sourcePath in dropped) {
+      _entries.remove(sourcePath);
+    }
+    notifyListeners();
+  }
+
   /// The conform for [sourcePath]: a usable result, a definitive
   /// `undecodable`, or null while pending/failed (kicking ONE async
   /// conform as a side effect, like [AudioPeaksStore.peaksFor]).

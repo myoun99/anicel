@@ -204,4 +204,43 @@ void main() {
     );
     store.dispose();
   });
+
+  test('the session lets go before the cache is collected: the entry that '
+      'IS its file stands down, the resident one does not', () async {
+    // 🚨 The conform cache now has a size bound and a Preferences button
+    // that empties it, and the collector cannot know what this session is
+    // holding. A streaming entry is its file — delete the file underneath
+    // and nothing notices: `resultFor` keeps answering "usable" so no
+    // rebuild is ever kicked, `streamReaderFor` opens nothing, and the
+    // schedule stands down. The clip is silent for the rest of the
+    // session and silent in the export, with a debug line as the trace.
+    //
+    // The mirror on Windows is just as bad: an open reader makes the
+    // delete fail, so the biggest entries survive the emptying that
+    // existed to reclaim them.
+    final (store, _) = await storeWithBoth();
+    addTearDown(store.dispose);
+    final conformPath = '${directory.path}/long.wav.wav';
+    expect(store.streamReaderFor('long'), isNotNull, reason: 'reader open');
+
+    store.releaseDiskBacked();
+
+    expect(
+      store.isStreaming('long'),
+      isFalse,
+      reason: 'left standing, it would answer for a file that is gone',
+    );
+    expect(
+      File(conformPath).deleteSync,
+      returnsNormally,
+      reason: 'and the reader is closed, so the collector can actually '
+          'remove it',
+    );
+    expect(
+      store.resultFor('short'),
+      isNotNull,
+      reason: 'resident PCM is untouched — losing the file costs it '
+          'nothing until the next session',
+    );
+  });
 }
