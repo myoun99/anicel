@@ -1,9 +1,15 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-/// Big-endian cursor over ABR file bytes (Photoshop formats are BE).
-class AbrByteReader {
-  AbrByteReader(this._bytes) : _data = ByteData.sublistView(_bytes);
+/// Big-endian cursor over Photoshop file bytes — brush packs (`.abr`),
+/// patterns, descriptors and documents (`.psd`/`.psb`) all share one wire
+/// format, so they share one reader.
+///
+/// It arrived as the ABR reader and moved here when the document reader
+/// needed the same cursor: two copies of a big-endian cursor is exactly the
+/// duplication the repo refuses.
+class PhotoshopByteReader {
+  PhotoshopByteReader(this._bytes) : _data = ByteData.sublistView(_bytes);
 
   final Uint8List _bytes;
   final ByteData _data;
@@ -36,6 +42,23 @@ class AbrByteReader {
     _require(4);
     final value = _data.getInt32(offset);
     offset += 4;
+    return value;
+  }
+
+  int readUint32() {
+    _require(4);
+    final value = _data.getUint32(offset);
+    offset += 4;
+    return value;
+  }
+
+  /// A `.psb` length field. Dart integers are 64-bit on every target this
+  /// app builds for, so the value comes back whole; a document that
+  /// genuinely needed more than 2^63 bytes could not be opened anyway.
+  int readUint64() {
+    _require(8);
+    final value = _data.getUint64(offset);
+    offset += 8;
     return value;
   }
 
@@ -90,8 +113,8 @@ class AbrByteReader {
   }
 
   void _require(int count) {
-    if (offset + count > _bytes.length) {
-      throw const FormatException('Unexpected end of ABR data.');
+    if (count < 0 || offset + count > _bytes.length) {
+      throw const FormatException('Unexpected end of Photoshop data.');
     }
   }
 }
@@ -99,23 +122,47 @@ class AbrByteReader {
 /// Decodes Photoshop's per-scanline PackBits RLE: one compressed byte count
 /// per scanline, then the packed data for each in turn.
 ///
-/// Shared by the sampled-tip reader and the pattern reader — both are the
-/// same Photoshop compression code (1) over the same kind of 8-bit plane.
+/// Shared by the sampled-tip reader, the pattern reader and the document
+/// reader — all three are the same Photoshop compression code (1) over the
+/// same kind of plane.
+///
+/// [bytesPerRow] is BYTES, not pixels: a 16-bit channel packs two bytes per
+/// sample and the RLE runs over the bytes. [scanlineCountBytes] is 2 for
+/// every format but `.psb`, whose counts are 4.
 Uint8List decodePackBitsScanlines(
-  AbrByteReader reader, {
-  required int width,
+  PhotoshopByteReader reader, {
+  required int bytesPerRow,
   required int height,
+  int scanlineCountBytes = 2,
 }) {
   final scanlineLengths = List<int>.generate(
     height,
-    (_) => reader.readUint16(),
+    (_) => scanlineCountBytes == 4 ? reader.readUint32() : reader.readUint16(),
   );
-  final output = Uint8List(width * height);
+  return decodePackBitsRows(
+    reader,
+    rowLengths: scanlineLengths,
+    bytesPerRow: bytesPerRow,
+  );
+}
+
+/// The rows of a PackBits plane whose length table has ALREADY been read.
+///
+/// A document's composite image puts ONE table in front of every channel's
+/// rows, so the table and the rows cannot be read in one pass — which is
+/// why this half is callable on its own.
+Uint8List decodePackBitsRows(
+  PhotoshopByteReader reader, {
+  required List<int> rowLengths,
+  required int bytesPerRow,
+}) {
+  final height = rowLengths.length;
+  final output = Uint8List(bytesPerRow * height);
   for (var y = 0; y < height; y += 1) {
-    final compressed = reader.readBytes(scanlineLengths[y]);
+    final compressed = reader.readBytes(rowLengths[y]);
     var read = 0;
-    var write = y * width;
-    final rowEnd = write + width;
+    var write = y * bytesPerRow;
+    final rowEnd = write + bytesPerRow;
     while (read < compressed.length && write < rowEnd) {
       final control = compressed[read].toSigned(8);
       read += 1;

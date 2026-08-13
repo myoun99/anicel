@@ -8,7 +8,7 @@ import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_rotation_mode.dart';
-import 'abr_byte_reader.dart';
+import '../photoshop/photoshop_byte_reader.dart';
 import 'photoshop_descriptor.dart';
 import 'photoshop_pattern.dart';
 
@@ -46,7 +46,7 @@ AbrImportResult decodeAbrBrushFile(
   Uint8List bytes, {
   required String sourceName,
 }) {
-  final reader = AbrByteReader(bytes);
+  final reader = PhotoshopByteReader(bytes);
   if (bytes.length < 4) {
     throw const AbrDecodeException('File is too short to be an ABR file.');
   }
@@ -94,7 +94,7 @@ AbrImportResult decodeAbrBrushFile(
       case 'desc':
         try {
           descriptor = readVersionedDescriptor(
-            AbrByteReader(reader.readBytes(sectionLength)),
+            PhotoshopByteReader(reader.readBytes(sectionLength)),
           );
         } on FormatException catch (error) {
           warnings.add(
@@ -186,7 +186,7 @@ AbrImportResult decodeAbrBrushFile(
 
 /// Positions the reader at the start of the next `8BIM` signature; returns
 /// false at end of data. Robust against writer padding differences.
-bool _seekTo8bimSection(AbrByteReader reader) {
+bool _seekTo8bimSection(PhotoshopByteReader reader) {
   while (reader.remaining >= 12) {
     final bytes = reader.readBytes(4);
     if (bytes[0] == 0x38 && // 8
@@ -201,7 +201,7 @@ bool _seekTo8bimSection(AbrByteReader reader) {
 }
 
 void _readSampledTips(
-  AbrByteReader reader, {
+  PhotoshopByteReader reader, {
   required int sectionEnd,
   required int subversion,
   required Map<String, BrushTipMask> tipsByKey,
@@ -245,7 +245,7 @@ void _readSampledTips(
       }
 
       final pixels = compressed
-          ? decodePackBitsScanlines(reader, width: width, height: height)
+          ? decodePackBitsScanlines(reader, bytesPerRow: width, height: height)
           : Uint8List.fromList(reader.readBytes(width * height));
       final mask = _squareMaskFromTipPixels(
         key: key,

@@ -196,6 +196,9 @@ void main() {
           'org.xiph.ogg': ('public.audio', 'ogg'),
           'org.matroska.mkv': ('public.movie', 'mkv'),
           'org.webmproject.webm': ('public.movie', 'webm'),
+          // `.psd` needs no entry — Apple declares it and it conforms to
+          // public.image. Its large sibling has no system type at all.
+          'com.adobe.photoshop-large-image': ('public.image', 'psb'),
         };
         for (final entry in imported.entries) {
           final block = declarationFor(contents, entry.key);

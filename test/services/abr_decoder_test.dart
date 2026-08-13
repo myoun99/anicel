@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
-import 'package:anicel/src/services/abr/abr_byte_reader.dart';
+import 'package:anicel/src/services/photoshop/photoshop_byte_reader.dart';
 import 'package:anicel/src/services/abr/abr_decoder.dart';
 import 'package:anicel/src/services/abr/photoshop_descriptor.dart';
 
@@ -682,7 +682,7 @@ void main() {
 
   group('photoshop descriptor parser', () {
     test('round-trips the fixture descriptor structure', () {
-      final reader = AbrByteReader(_descPayload(sampledUuid: 'u'));
+      final reader = PhotoshopByteReader(_descPayload(sampledUuid: 'u'));
       final descriptor = readVersionedDescriptor(reader);
 
       final brushes = descriptor['Brsh'] as List;
@@ -705,7 +705,7 @@ void main() {
         ..key('Wht?')
         ..asciiChars('XXXX');
       expect(
-        () => readVersionedDescriptor(AbrByteReader(bytes.bytes)),
+        () => readVersionedDescriptor(PhotoshopByteReader(bytes.bytes)),
         throwsFormatException,
       );
     });

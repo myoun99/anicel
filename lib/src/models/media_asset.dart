@@ -298,7 +298,10 @@ MediaAssetKind? mediaAssetKindForPath(String path) {
   final extension = path.substring(dot + 1).toLowerCase();
   return switch (extension) {
     'mp3' || 'wav' || 'm4a' || 'aac' || 'flac' || 'ogg' => MediaAssetKind.audio,
-    'png' || 'jpg' || 'jpeg' || 'webp' || 'bmp' || 'gif' =>
+    // A Photoshop document is an image kind: merged it IS one picture, and
+    // expanding it into layers is a placement decision the import window
+    // makes, not a different kind of asset.
+    'png' || 'jpg' || 'jpeg' || 'webp' || 'bmp' || 'gif' || 'psd' || 'psb' =>
       MediaAssetKind.image,
     'mp4' || 'mov' || 'avi' || 'mkv' || 'webm' => MediaAssetKind.video,
     'pdf' => MediaAssetKind.pdf,

@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'abr_byte_reader.dart';
+import '../photoshop/photoshop_byte_reader.dart';
 
 /// Minimal parser for Photoshop's serialized ActionDescriptor structure —
 /// the format of the ABR `desc` section (and PSD descriptors generally).
@@ -74,7 +74,7 @@ class PsEnum {
 
 /// Reads a versioned descriptor (the `desc` section payload starts with a
 /// 32-bit descriptor version, expected to be 16).
-PsDescriptor readVersionedDescriptor(AbrByteReader reader) {
+PsDescriptor readVersionedDescriptor(PhotoshopByteReader reader) {
   final version = reader.readInt32();
   if (version != 16) {
     throw FormatException('Unsupported descriptor version $version.');
@@ -82,7 +82,7 @@ PsDescriptor readVersionedDescriptor(AbrByteReader reader) {
   return readDescriptor(reader);
 }
 
-PsDescriptor readDescriptor(AbrByteReader reader) {
+PsDescriptor readDescriptor(PhotoshopByteReader reader) {
   final name = reader.readUnicodeString();
   final classId = reader.readKeyString();
   final count = reader.readInt32();
@@ -94,7 +94,7 @@ PsDescriptor readDescriptor(AbrByteReader reader) {
   return PsDescriptor(name: name, classId: classId, items: items);
 }
 
-Object? _readTypedValue(AbrByteReader reader) {
+Object? _readTypedValue(PhotoshopByteReader reader) {
   final type = reader.readAscii(4);
   switch (type) {
     case 'Objc':
