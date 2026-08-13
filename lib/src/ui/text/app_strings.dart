@@ -292,6 +292,14 @@ class AppStrings {
   String get closeProjectTitle => _s('closeProjectTitle');
   String get closeProjectBody => _s('closeProjectBody');
   String get commonSaveAs => _s('commonSaveAs');
+
+  /// The window a manual save puts in front of itself, running and finished.
+  ///
+  /// The finished line is the point of the pair. The running one only says
+  /// what is happening; this one is the answer to "did it save?", which is
+  /// a question the app never used to answer at all.
+  String get saveProgressRunning => _s('saveProgressRunning');
+  String get saveProgressDone => _s('saveProgressDone');
   String get unsavedAutosaveTitle => _s('unsavedAutosaveTitle');
   String get unsavedAutosaveBody => _s('unsavedAutosaveBody');
   String get commonNotNow => _s('commonNotNow');
@@ -1082,6 +1090,8 @@ class AppStrings {
     'closeProjectTitle': 'Close project?',
     'closeProjectBody': 'Your changes are not saved. Close anyway?',
     'commonSaveAs': 'Save as…',
+    'saveProgressRunning': 'Saving…',
+    'saveProgressDone': 'Saved',
     'unsavedAutosaveTitle': 'Save your project',
     'unsavedAutosaveBody':
         'This project has never been saved, so autosave has nowhere to '
@@ -1767,6 +1777,8 @@ class AppStrings {
     'closeProjectTitle': 'プロジェクトを閉じますか？',
     'closeProjectBody': '変更は保存されていません。閉じますか？',
     'commonSaveAs': '名前を付けて保存…',
+    'saveProgressRunning': '保存中…',
+    'saveProgressDone': '保存しました',
     'unsavedAutosaveTitle': 'プロジェクトを保存',
     'unsavedAutosaveBody':
         'このプロジェクトはまだ一度も保存されていないため、自動保存の書き込み'
@@ -2536,6 +2548,8 @@ class AppStrings {
     'closeProjectTitle': '프로젝트를 닫을까요?',
     'closeProjectBody': '변경 사항이 저장되지 않았습니다. 그래도 닫을까요?',
     'commonSaveAs': '다른 이름으로 저장…',
+    'saveProgressRunning': '저장 중…',
+    'saveProgressDone': '저장 완료',
     'unsavedAutosaveTitle': '프로젝트 저장',
     'unsavedAutosaveBody':
         '이 프로젝트는 한 번도 저장된 적이 없어서 자동 저장이 쓸 곳이 '
@@ -3305,6 +3319,8 @@ class AppStrings {
     'closeProjectBody':
         'Vos modifications ne sont pas enregistrées. Fermer quand même ?',
     'commonSaveAs': 'Enregistrer sous…',
+    'saveProgressRunning': 'Enregistrement…',
+    'saveProgressDone': 'Enregistré',
     'unsavedAutosaveTitle': 'Enregistrez votre projet',
     'unsavedAutosaveBody':
         "Ce projet n'a jamais été enregistré : la sauvegarde automatique "
@@ -4088,6 +4104,8 @@ class AppStrings {
     'closeProjectTitle': '关闭项目？',
     'closeProjectBody': '你的更改尚未保存。仍要关闭吗？',
     'commonSaveAs': '另存为…',
+    'saveProgressRunning': '正在保存…',
+    'saveProgressDone': '已保存',
     'unsavedAutosaveTitle': '保存你的项目',
     'unsavedAutosaveBody':
         '此项目从未保存过，自动保存没有可写入的位置。选择一个文件后，'

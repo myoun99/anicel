@@ -801,7 +801,10 @@ class _HomePageState extends State<HomePage> {
           if (choice == _ExitChoice.saveAs || path == null) {
             await promptSaveProjectAs(context, _session);
           } else {
-            await _session.saveProjectToFile(path);
+            // Through the shared flow, so this save shows what it is doing
+            // and — the part this path used to get wrong — REPORTS a
+            // failure instead of throwing past the `return` below.
+            await saveProjectShowingProgress(context, _session, path);
           }
           return !_session.hasUnsavedChanges;
       }

@@ -16,6 +16,7 @@ import '../../services/persistence/project_autosave_service.dart';
 import '../../services/persistence/recent_projects.dart';
 import '../../services/persistence/recent_projects_store.dart';
 import '../dialogs/app_confirm_dialog.dart';
+import '../dialogs/app_progress_dialog.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../services/color_palette_file_service.dart';
@@ -274,13 +275,7 @@ class EditorTopStrip extends StatelessWidget {
       await _saveProjectAs(context);
       return;
     }
-    try {
-      await session.saveProjectToFile(path);
-    } catch (error) {
-      if (context.mounted) {
-        _showFileError(context, error);
-      }
-    }
+    await saveProjectShowingProgress(context, session, path);
   }
 
   /// PICK-4: the recent projects, or nothing at all.
@@ -1234,6 +1229,43 @@ const List<int> _emptyAnicelArchive = [
   0, 0, // comment length
 ];
 
+/// 🔑 THE ONE WAY a manual save runs: behind a window that shows it
+/// happening and then says it landed.
+///
+/// Every button the user can press to save goes through here — Save, Save
+/// As, and the save inside the exit prompt. Wrapping them one at a time is
+/// how "the button I use does not show anything" comes back.
+///
+/// Returns whether the file was written. The exit flow needs that answer:
+/// a save that failed must call the close off rather than take the project
+/// down with it. Failure is reported the way every other file error in this
+/// strip is, once the window is out of the way.
+Future<bool> saveProjectShowingProgress(
+  BuildContext context,
+  EditorSessionManager session,
+  String path,
+) async {
+  try {
+    await runWithAppProgress<void>(
+      context: context,
+      title: AppText.strings.commonSave,
+      titleIcon: Icons.save_outlined,
+      runningLabel: AppText.strings.saveProgressRunning,
+      doneLabel: AppText.strings.saveProgressDone,
+      windowKey: const ValueKey<String>('save-progress-dialog'),
+      task: (report) => session.saveProjectToFile(path, onProgress: report),
+    );
+    return true;
+  } catch (error) {
+    if (context.mounted) {
+      ScaffoldMessenger.maybeOf(
+        context,
+      )?.showSnackBar(SnackBar(content: Text('$error')));
+    }
+    return false;
+  }
+}
+
 Future<void> promptSaveProjectAs(
   BuildContext context,
   EditorSessionManager session, {
@@ -1263,17 +1295,10 @@ Future<void> promptSaveProjectAs(
   if (!path.toLowerCase().endsWith(anicelProjectSuffix)) {
     path = '$path$anicelProjectSuffix';
   }
-  try {
-    await session.saveProjectToFile(path);
+  if (await saveProjectShowingProgress(context, session, path)) {
     recordRecentProject(
       RecentProject(path: path, folderBookmark: pick.folderBookmark),
     );
-  } catch (error) {
-    if (context.mounted) {
-      ScaffoldMessenger.maybeOf(
-        context,
-      )?.showSnackBar(SnackBar(content: Text('$error')));
-    }
   }
 }
 

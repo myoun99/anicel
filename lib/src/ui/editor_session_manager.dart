@@ -15924,7 +15924,14 @@ class EditorSessionManager extends ChangeNotifier {
   /// temp-then-rename write; media stays external with relative paths
   /// recorded for Drive portability). A successful save retires the
   /// autosave sidecar.
-  Future<void> saveProjectToFile(String filePath) async {
+  ///
+  /// [onProgress] is called with 0..1 as the write proceeds, for the window
+  /// a manual save puts in front of itself. Omitted by the autosave tick,
+  /// which nobody is watching.
+  Future<void> saveProjectToFile(
+    String filePath, {
+    void Function(double)? onProgress,
+  }) async {
     // A text bake in flight must land before the store snapshots — the
     // archive's parameters and raster must never disagree.
     // Raised for the WHOLE save, retirement included. An autosave tick that
@@ -15936,7 +15943,7 @@ class EditorSessionManager extends ChangeNotifier {
     // write, and this is write-versus-delete, which is an isolate wide.
     _saveInFlight = true;
     try {
-      await _writeProjectToFile(filePath);
+      await _writeProjectToFile(filePath, onProgress: onProgress);
     } finally {
       _saveInFlight = false;
     }
@@ -15953,7 +15960,10 @@ class EditorSessionManager extends ChangeNotifier {
   bool get autosaveShouldStandDown =>
       _saveInFlight || _discardedUnsavedWork || _recoveredFromSidecar != null;
 
-  Future<void> _writeProjectToFile(String filePath) async {
+  Future<void> _writeProjectToFile(
+    String filePath, {
+    void Function(double)? onProgress,
+  }) async {
     await _flushTextCelBakes();
     // Captured BEFORE the save moves the project path: a Save As has to
     // retire the sidecars of the file it was saved FROM as well.
@@ -15977,6 +15987,7 @@ class EditorSessionManager extends ChangeNotifier {
       filePath: filePath,
       mediaToStore: mediaToStore,
       grants: _grantsToStore(),
+      onProgress: onProgress,
     );
     _mediaEntryNames = mediaEntryNamesFor(mediaToStore.keys);
     _projectFilePath = filePath;

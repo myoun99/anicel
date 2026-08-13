@@ -92,6 +92,105 @@ class _CelWork {
   }
 }
 
+/// Counts a save's entries as they land, inside the writing isolate, and
+/// pushes the running fraction back out through [port].
+///
+/// 🔑 How anything gets out at all: `Isolate.run` hands back a value and
+/// nothing else — there is no port to listen on. But the closure it sends
+/// across may CAPTURE one, and a [SendPort] is sendable, so the caller
+/// makes the [ReceivePort] and the isolate simply talks into the sendPort
+/// it was closed over. That is the whole trick, and it is why this needed
+/// no change to the writer.
+///
+/// The unit is one ENTRY, except that a streaming entry advances by the
+/// fraction of ITSELF that has been read. One imported track can outweigh
+/// every cel in the project; counted flat, the bar would run to nearly
+/// full and then sit still through the only part that takes time, which
+/// reads as a hang rather than as progress.
+class _SaveProgress {
+  _SaveProgress(this._port, this._total);
+
+  final SendPort? _port;
+  final int _total;
+  int _done = 0;
+  double _sent = -1;
+
+  /// An entry is finished.
+  void step() {
+    _done += 1;
+    _emit(_done / _total);
+  }
+
+  /// [fraction] of the entry currently streaming has been read.
+  void within(double fraction) => _emit((_done + fraction) / _total);
+
+  /// Said outright at the end rather than inferred. Zero-length assets are
+  /// never read from, rounding leaves crumbs, and a bar that stops at 99%
+  /// on a finished save is the exact doubt this whole window answers.
+  void finish() {
+    _sent = -1;
+    _emit(1);
+  }
+
+  void _emit(double value) {
+    final port = _port;
+    if (port == null) {
+      return;
+    }
+    final clamped = value.clamp(0.0, 1.0);
+    // 256KB chunks across a large asset would otherwise put thousands of
+    // messages on the port to move the label by less than one digit.
+    if (clamped - _sent < 0.005 && clamped < 1) {
+      return;
+    }
+    _sent = clamped;
+    port.send(clamped);
+  }
+}
+
+/// [entry] with its reads reported to [progress], and its own [step] taken
+/// when the last byte is handed over.
+AnicelStreamedEntry _progressed(
+  AnicelStreamedEntry entry,
+  _SaveProgress progress,
+) {
+  final length = entry.length;
+  return AnicelStreamedEntry(
+    name: entry.name,
+    length: length,
+    readInto: (buffer, position, size) {
+      progress.within(length <= 0 ? 1 : position / length);
+      final read = entry.readInto(buffer, position, size);
+      if (position + read >= length) {
+        progress.step();
+      }
+      return read;
+    },
+  );
+}
+
+/// Runs [write] with a port for it to report progress on, and closes that
+/// port afterwards. With no [onProgress] there is no port and no cost.
+Future<R> _reportingProgress<R>(
+  void Function(double)? onProgress,
+  Future<R> Function(SendPort? port) write,
+) async {
+  if (onProgress == null) {
+    return write(null);
+  }
+  final receive = ReceivePort();
+  receive.listen((message) {
+    if (message is double) {
+      onProgress(message);
+    }
+  });
+  try {
+    return await write(receive.sendPort);
+  } finally {
+    receive.close();
+  }
+}
+
 /// Whether the snapshot at [path] is a recovery OVERLAY (holds only what
 /// changed, needs its base) rather than a complete archive.
 ///
@@ -319,6 +418,9 @@ class AnicelFileService {
     /// The security-scoped tokens for referenced media, already reduced to
     /// JSON by the session — see [buildAnicelProjectJsonBytes].
     List<Map<String, Object?>> grants = const [],
+    /// Called on the UI isolate with 0..1 as the write proceeds. Null costs
+    /// nothing — no port is opened and the writer reports into no one.
+    void Function(double)? onProgress,
   }) async {
     // Aux stores (the conte sheet ink, R5) ride the same archive: their
     // keys live in their own namespace, so the snapshots merge without
@@ -375,6 +477,7 @@ class AnicelFileService {
         saveDirectory: saveDirectory,
         mediaToStore: mediaToStore,
         grants: grants,
+        onProgress: onProgress,
       );
       if (adopted != null) {
         adoptEach(adopted);
@@ -392,6 +495,7 @@ class AnicelFileService {
         saveDirectory: saveDirectory,
         mediaToStore: mediaToStore,
         grants: grants,
+        onProgress: onProgress,
       ),
     );
   }
@@ -451,6 +555,7 @@ class AnicelFileService {
     required String saveDirectory,
     List<Map<String, Object?>> grants = const [],
     Map<String, MediaByteSource> mediaToStore = const {},
+    void Function(double)? onProgress,
   }) async {
     final works = <_CelWork>[];
     final removeNames = <String>{};
@@ -463,7 +568,7 @@ class AnicelFileService {
       }
     }
 
-    return Isolate.run(() {
+    return _reportingProgress(onProgress, (port) => Isolate.run(() {
       final AnicelZipLayout layout;
       try {
         layout = parseAnicelZipLayoutFile(filePath);
@@ -481,13 +586,13 @@ class AnicelFileService {
         return null; // Garbage-heavy — compact instead of appending more.
       }
 
-      final blobs = <(BrushFrameKey, String, AnicelCelBlob)>[
-        for (final work in works) (work.key, work.name, work.resolveBlob()),
-      ];
       // Only what is not already in the file. Media is written once and
       // never edited, so an asset already inside is a survivor of the
       // append like any untouched cel — re-streaming it every save would
       // rewrite the project's whole media area to change one drawing.
+      //
+      // Resolved BEFORE the cels so the count is complete: a fraction needs
+      // its denominator before the first thing it divides.
       final newMedia = [
         for (final entry in mediaToStore.entries)
           if (layout.entryNamed(anicelMediaEntryName(entry.key)) == null)
@@ -497,20 +602,31 @@ class AnicelFileService {
               readInto: entry.value.readIntoSync,
             ),
       ];
+      final progress = _SaveProgress(port, 1 + works.length + newMedia.length);
+      final projectJson = buildAnicelProjectJsonBytes(
+        project: project,
+        saveDirectory: saveDirectory,
+        mediaInArchive: mediaToStore.keys.toSet(),
+        grants: grants,
+      );
+      progress.step();
+      final blobs = <(BrushFrameKey, String, AnicelCelBlob)>[];
+      for (final work in works) {
+        blobs.add((work.key, work.name, work.resolveBlob()));
+        progress.step();
+      }
       final appended = appendAnicelEntries(
         path: filePath,
         newEntries: {
-          'project.json': buildAnicelProjectJsonBytes(
-            project: project,
-            saveDirectory: saveDirectory,
-            mediaInArchive: mediaToStore.keys.toSet(),
-            grants: grants,
-          ),
+          'project.json': projectJson,
           for (final (_, name, blob) in blobs) name: blob.bytes,
         },
         removeNames: removeNames,
-        streamedEntries: newMedia,
+        streamedEntries: [
+          for (final entry in newMedia) _progressed(entry, progress),
+        ],
       );
+      progress.finish();
       return {
         for (final (key, name, blob) in blobs)
           key: AnicelCelFileRef(
@@ -521,7 +637,7 @@ class AnicelFileService {
             tileSize: blob.tileSize,
           ),
       };
-    });
+    }));
   }
 
   /// Full atomic rewrite (first save, save-as, compaction, recovery):
@@ -542,6 +658,7 @@ class AnicelFileService {
     required String saveDirectory,
     List<Map<String, Object?>> grants = const [],
     Map<String, MediaByteSource> mediaToStore = const {},
+    void Function(double)? onProgress,
   }) async {
     final allKeys = <BrushFrameKey>{
       ...baked.hot.keys,
@@ -594,6 +711,7 @@ class AnicelFileService {
         works: works,
         mediaToStore: mediaToStore,
         grants: grants,
+        onProgress: onProgress,
       );
     } on Object {
       if (temp.existsSync()) {
@@ -621,8 +739,13 @@ class AnicelFileService {
     // Plain maps, so the closure carries values the port can copy — the
     // picker's grant type could not cross this boundary at all.
     required List<Map<String, Object?>> grants,
+    void Function(double)? onProgress,
   }) {
-    return Isolate.run(() {
+    return _reportingProgress(onProgress, (port) => Isolate.run(() {
+      final progress = _SaveProgress(
+        port,
+        1 + works.length + mediaToStore.length,
+      );
       // Scalars only. Holding the BLOB here to read its geometry later
       // would keep every cel resident and give back exactly the memory
       // this streams to avoid.
@@ -640,6 +763,7 @@ class AnicelFileService {
               grants: grants,
             ),
           );
+          progress.step();
           for (final work in works) {
             // Resolved HERE rather than up front: the generator is pulled
             // lazily, so exactly one cel is resident at a time.
@@ -651,6 +775,7 @@ class AnicelFileService {
               length: blob.bytes.length,
             );
             yield (name: work.name, bytes: blob.bytes);
+            progress.step();
           }
         }(),
         // Every asset, every time — a full rewrite has no survivors to
@@ -661,13 +786,17 @@ class AnicelFileService {
         // copy step of its own.
         streamedEntries: [
           for (final entry in mediaToStore.entries)
-            AnicelStreamedEntry(
-              name: anicelMediaEntryName(entry.key),
-              length: entry.value.lengthSync(),
-              readInto: entry.value.readIntoSync,
+            _progressed(
+              AnicelStreamedEntry(
+                name: anicelMediaEntryName(entry.key),
+                length: entry.value.lengthSync(),
+                readInto: entry.value.readIntoSync,
+              ),
+              progress,
             ),
         ],
       );
+      progress.finish();
       return <BrushFrameKey, AnicelCelFileRef>{
         for (final entry in geometry.entries)
           entry.key: AnicelCelFileRef(
@@ -678,7 +807,7 @@ class AnicelFileService {
             tileSize: entry.value.tileSize,
           ),
       };
-    });
+    }));
   }
 
   /// Opens [filePath], optionally laying a recovery [overlayPath] over it.
