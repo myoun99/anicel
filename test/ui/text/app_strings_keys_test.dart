@@ -161,6 +161,8 @@ void main() {
     'closeProjectTitle': (s) => s.closeProjectTitle,
     'closeProjectBody': (s) => s.closeProjectBody,
     'commonSaveAs': (s) => s.commonSaveAs,
+    'saveProgressRunning': (s) => s.saveProgressRunning,
+    'saveProgressDone': (s) => s.saveProgressDone,
     'unsavedAutosaveTitle': (s) => s.unsavedAutosaveTitle,
     'unsavedAutosaveBody': (s) => s.unsavedAutosaveBody,
     'commonNotNow': (s) => s.commonNotNow,
