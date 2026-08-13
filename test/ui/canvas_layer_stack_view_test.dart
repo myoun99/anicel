@@ -213,11 +213,10 @@ void main() {
       addTearDown(float.dispose);
       final image = await tester.runAsync(() async {
         final recorder = PictureRecorder();
-        Canvas(recorder, const Rect.fromLTWH(0, 0, 6, 2))
-          ..drawRect(
-            const Rect.fromLTWH(0, 0, 6, 2),
-            Paint()..color = const Color(0xFFFF0000),
-          );
+        Canvas(recorder, const Rect.fromLTWH(0, 0, 6, 2)).drawRect(
+          const Rect.fromLTWH(0, 0, 6, 2),
+          Paint()..color = const Color(0xFFFF0000),
+        );
         return recorder.endRecording().toImage(6, 2);
       });
       addTearDown(image!.dispose);
