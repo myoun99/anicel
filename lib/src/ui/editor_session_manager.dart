@@ -15335,11 +15335,34 @@ class EditorSessionManager extends ChangeNotifier {
   /// playhead) use it without rebuilding the axis.
   int? get gapParkedGlobalFrame => _gapGlobalFrame;
 
-  /// The editing playhead as a track-global frame. A gap parking returns
-  /// its stored global; otherwise over-end positions clamp to the active
-  /// CUT's last frame (UI-R9 #4 — the timeline's runway is a clipped view
-  /// of the cut, so the global axis never shows it inside the trailing
-  /// gap).
+  /// The editing playhead as a track-global frame. A gap parking returns its
+  /// stored global; otherwise the position is folded onto the active cut's
+  /// last frame.
+  ///
+  /// 🚨**That fold contradicts the law and is a known bug (T12).** 유저:
+  /// 「컷길이 넘어서도 공간은 항상 존재하고 항상 보인다고. 스토리보드에서만
+  /// 그걸 컷길이로 클램핑해서 보여줄 뿐인거고.」 Stand on frame 31 of a
+  /// 24-frame cut and this answers 23 — the user read exactly that off the
+  /// canvas probe. ⛔The old note here justified it with 「the timeline's
+  /// RUNWAY is a clipped view of the cut」, and that vocabulary is itself
+  /// banned: naming those frames a runway restores the idea that they are a
+  /// different KIND of place, and the special rules follow the word.
+  ///
+  /// The unclamped twin already exists — [TrackFrameAxis.globalOf] — so the
+  /// fix is one call. ⚠️It is not one line of consequence: fourteen readers
+  /// take this value, [editingPlayheadInGap] among them, and unclamping
+  /// makes `isGap` answerable past the end line where today it cannot be
+  /// (the clamped value is always inside the cut, so that term is dead
+  /// code). Whoever lands it owns that sweep.
+  ///
+  /// ⛔And it is NOT established that this is what removes the paper from
+  /// the screen. Two measurements say the pieces are all correct:
+  /// `past_cut_end_is_ordinary_test` (the session) and
+  /// `past_cut_end_paints_test` (the widget — the view really is handed
+  /// `paintPaper: true` and a non-empty tree past the end line, last cut
+  /// included). Neither reproduces what the user sees, so the difference is
+  /// in their project, not in this getter. Fix the law here because it is
+  /// wrong; do not assume the screen follows.
   int get editingGlobalFrame {
     final parked = _gapGlobalFrame;
     if (parked != null) {
