@@ -9,6 +9,8 @@ import '../../models/media_asset.dart' show MediaFitMode;
 import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
 import '../brush_frame_store.dart';
+import '../photoshop/psd_image.dart';
+import '../photoshop/psd_reader.dart';
 
 /// Decode-and-bake for the import system: an image FILE becomes a cel's
 /// [BitmapSurface] — the same store shape a drawn cel has, so every
@@ -29,7 +31,19 @@ class DecodedImageFrame {
 /// Decodes every frame of [bytes] (PNG/JPEG = one, GIF = many) through
 /// the platform codec — the repo's established recipe
 /// (decodeBrushTipImage does the single-frame version).
+///
+/// A Photoshop document takes the one detour: no platform decodes it (iOS
+/// appearing to was an accident of Apple's picker and Apple's codec), so it
+/// is read here and arrives as the one frame its composite makes.
 Future<List<DecodedImageFrame>> decodeImageFrames(Uint8List bytes) async {
+  if (looksLikePsdBytes(bytes)) {
+    return [
+      DecodedImageFrame(
+        image: await decodePsdCompositeImage(bytes),
+        duration: Duration.zero,
+      ),
+    ];
+  }
   final codec = await ui.instantiateImageCodec(bytes);
   try {
     final frames = <DecodedImageFrame>[];

@@ -5,13 +5,13 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:anicel/src/services/abr/abr_byte_reader.dart';
+import 'package:anicel/src/services/photoshop/photoshop_byte_reader.dart';
 import 'package:anicel/src/services/abr/photoshop_descriptor.dart';
 
 void main(List<String> args) {
   final bytes = File(args[0]).readAsBytesSync();
   final maxBrushes = args.length > 1 ? int.parse(args[1]) : 2;
-  final reader = AbrByteReader(bytes);
+  final reader = PhotoshopByteReader(bytes);
   stdout.writeln('version=${reader.readInt16()} sub=${reader.readInt16()}');
 
   while (reader.remaining >= 12) {
@@ -26,7 +26,7 @@ void main(List<String> args) {
     final end = reader.offset + length;
     if (tag == 'desc') {
       final descriptor = readVersionedDescriptor(
-        AbrByteReader(reader.readBytes(length)),
+        PhotoshopByteReader(reader.readBytes(length)),
       );
       final brushes = descriptor['Brsh'];
       if (brushes is List) {

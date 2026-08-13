@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import '../../models/brush_tip_mask.dart';
-import 'abr_byte_reader.dart';
+import '../photoshop/photoshop_byte_reader.dart';
 
 /// A pattern lifted from an ABR `patt` section — Photoshop's paper textures.
 class PsPattern {
@@ -34,14 +34,14 @@ class PsPattern {
 /// A record that cannot be read stops the scan rather than failing the
 /// import: the tips and parameters are worth keeping without the paper.
 List<PsPattern> readPatternSection(Uint8List payload) {
-  final reader = AbrByteReader(payload);
+  final reader = PhotoshopByteReader(payload);
   final patterns = <PsPattern>[];
   while (reader.remaining > 16) {
     final recordLength = reader.readInt32();
     if (recordLength <= 0 || recordLength > reader.remaining) {
       break;
     }
-    final record = AbrByteReader(reader.readBytes(recordLength));
+    final record = PhotoshopByteReader(reader.readBytes(recordLength));
     try {
       final pattern = _readPatternRecord(record);
       if (pattern != null) {
@@ -58,7 +58,7 @@ List<PsPattern> readPatternSection(Uint8List payload) {
   return patterns;
 }
 
-PsPattern? _readPatternRecord(AbrByteReader record) {
+PsPattern? _readPatternRecord(PhotoshopByteReader record) {
   record.readInt32(); // record version
   final imageMode = record.readInt32();
   final height = record.readInt16();
@@ -99,7 +99,7 @@ PsPattern? _readPatternRecord(AbrByteReader record) {
     if (length > record.remaining) {
       break;
     }
-    final channel = AbrByteReader(record.readBytes(length));
+    final channel = PhotoshopByteReader(record.readBytes(length));
     final depth = channel.readInt32();
     channel.skip(16); // the channel's own rectangle
     channel.readInt16(); // depth, repeated
@@ -123,7 +123,7 @@ PsPattern? _readPatternRecord(AbrByteReader record) {
       try {
         plane = decodePackBitsScanlines(
           channel,
-          width: width,
+          bytesPerRow: width,
           height: height,
         );
       } on FormatException {

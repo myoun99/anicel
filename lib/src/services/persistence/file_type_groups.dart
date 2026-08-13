@@ -51,6 +51,12 @@ const String _utiJson = 'public.json';
 const String _utiData = 'public.data';
 
 /// Raster formats the tip/image decoders accept.
+///
+/// `psd`/`psb` are in here because the decoders read them THEMSELVES now
+/// (`services/photoshop`), not because a platform codec grew a new format.
+/// ⚠️`psd` reaches the Apple pickers through the `public.image` umbrella —
+/// Apple declares `com.adobe.photoshop-image` and it conforms — but `psb`
+/// has no system type, so it is imported in both Info.plists like `flac`.
 const List<String> imageFileExtensions = [
   'png',
   'jpg',
@@ -58,6 +64,8 @@ const List<String> imageFileExtensions = [
   'webp',
   'bmp',
   'gif',
+  'psd',
+  'psb',
 ];
 
 /// Sound formats the audio conform can decode.

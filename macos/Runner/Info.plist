@@ -78,6 +78,23 @@
 	<array>
 		<dict>
 			<key>UTTypeIdentifier</key>
+			<string>com.adobe.photoshop-large-image</string>
+			<key>UTTypeDescription</key>
+			<string>Photoshop Large Document</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.image</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>psb</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
 			<string>org.xiph.flac</string>
 			<key>UTTypeDescription</key>
 			<string>FLAC Audio</string>

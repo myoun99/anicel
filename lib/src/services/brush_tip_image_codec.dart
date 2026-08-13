@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import '../models/brush_tip_mask.dart';
+import 'photoshop/psd_image.dart';
+import 'photoshop/psd_reader.dart';
 
 // `maxBrushTipMaskSide` moved to the mask model so the pure-Dart importers
 // can honour the same cap without pulling `dart:ui` in behind it.
@@ -25,9 +27,11 @@ Future<BrushTipMask> decodeBrushTipImage(
   Uint8List bytes, {
   required String id,
 }) async {
-  final codec = await ui.instantiateImageCodec(bytes);
-  final frame = await codec.getNextFrame();
-  final image = frame.image;
+  // A Photoshop document reaches the tip library the same way a PNG does,
+  // so it takes the same detour every image entry point takes.
+  final image = looksLikePsdBytes(bytes)
+      ? await decodePsdCompositeImage(bytes)
+      : (await (await ui.instantiateImageCodec(bytes)).getNextFrame()).image;
   try {
     final byteData = await image.toByteData(
       format: ui.ImageByteFormat.rawStraightRgba,
