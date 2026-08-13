@@ -567,19 +567,24 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   // cut, so an S row and a V row agree about which cut is
                   // active (a gap still parks, on either).
                   selectedRow: _session.selectedRow,
-                  // A CLICK CLEARS (유저 확정) — this rail's taps too.
+                  // A CLICK CLEARS (유저 확정) — this rail's taps too, through
+                  // the same verb since T4. `takesLayerActive: false` is this
+                  // panel's own rule: the row you stand on and the layer you
+                  // draw on are separate states here (유저 2026-07-27). The
+                  // seek afterwards is the storyboard's — a row press says
+                  // where you ARE on the global axis.
                   onSelectLayer: (layerId) {
-                    _session.clearAllSelections();
-                    _session.selectRow(LayerRowAddress(layerId));
+                    _session.standOnRow(
+                      LayerRowAddress(layerId),
+                      takesLayerActive: false,
+                    );
                     final frame = storyboardPlayheadFrame(_session);
                     if (frame != null) {
                       seekStoryboardGlobalFrame(_session, frame);
                     }
                   },
-                  onSelectTrack: (trackId) {
-                    _session.clearAllSelections();
-                    _session.selectRow(TrackRowAddress(trackId));
-                  },
+                  onSelectTrack: (trackId) =>
+                      _session.standOnRow(TrackRowAddress(trackId)),
                   pixelsPerFrame: widget.pixelsPerFrame,
                   trackLaneHeight: widget.trackLaneHeight,
                   showSeconds: widget.showSeconds,
@@ -767,8 +772,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   // band's press is the one that lands on a frame.
                   currentRowHooks: TimelineCurrentRowHooks(
                     currentRow: _session.currentRowListenable,
-                    onStandOnLane: (layerId, laneId) =>
-                        _session.selectRow(LaneRowAddress(layerId, laneId)),
+                    // T4: standing here clears too — 「어떤 행이든 액티브
+                    // 바꾸면 풀리도록」 is not a timeline-only law.
+                    onStandOnLane: (layerId, laneId) => _session.standOnRow(
+                      LaneRowAddress(layerId, laneId),
+                      takesLayerActive: false,
+                    ),
                   ),
                   // The S rows take the rail's row-order drag; the V rows
                   // are tracks and keep their order.
