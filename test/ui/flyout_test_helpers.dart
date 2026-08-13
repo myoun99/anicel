@@ -33,7 +33,9 @@ const Map<String, String> flyoutOwnerByItemKey = {
   // frame pill — ① again. ⛔'copy-frame-button' and
   // 'paste-linked-frame-button' went further, to the SHARED pill (㉕): they
   // act on what is selected, so they belong to no noun's menu.
-  'delete-cell-button': 'timeline-frame-menu-button',
+  // ⛔'delete-cell-button' left this map with the item itself (T24): it was
+  // the last duplicate of the one shared delete, so there is no menu to open
+  // and nothing to find inside it.
   'add-cut-create-linked': 'new-cut-menu',
   'rename-cut-button': 'cut-menu-button',
   'convert-cut-to-linked-button': 'cut-menu-button',

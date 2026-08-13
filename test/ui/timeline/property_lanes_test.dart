@@ -28,7 +28,6 @@ import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
-import '../flyout_test_helpers.dart';
 import 'timeline_cell_probe.dart';
 
 const _cameraLayerId = LayerId('lane-cam-layer');
@@ -1040,10 +1039,16 @@ void main() {
       await tester.tap(drawKey('rotation', 0));
       await tester.pumpAndSettle();
 
-      await openOwningFlyout(tester, 'delete-cell-button');
-      await tester.tap(
-        find.byKey(const ValueKey<String>('delete-cell-button')),
+      // The ONE delete (T24 retired the frame menu's copy). Standing on the
+      // lane names no ROWS, so the ladder falls through to the cell rung —
+      // and that rung has always answered a lane key first.
+      final sharedDelete = find.byKey(
+        const ValueKey<String>('shared-delete-button'),
       );
+      // The bar scrolls, so the pill can sit off the right edge.
+      await tester.ensureVisible(sharedDelete);
+      await tester.pumpAndSettle();
+      await tester.tap(sharedDelete);
       await tester.pumpAndSettle();
 
       expect(drawKey('rotation', 0), findsNothing);
