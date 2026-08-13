@@ -648,27 +648,50 @@ class BrushToolState {
   /// a brush, and which outline the select and cut tools drag is not part
   /// of one. Rebuilding from settings alone would quietly snap both back to
   /// the rectangle every time a brush was picked.
+  /// This state after a PRESET's [settings] are applied, on [tool].
+  ///
+  /// This used to REBUILD the state from the preset's shape and then hand-list
+  /// eleven fields to carry back across, so survival depended on someone
+  /// remembering to add the twelfth.
+  ///
+  /// 🚨⛔It was ALSO named as T26's culprit (「브러시툴로만 바꾸면 모드
+  /// 초기화되」) and it is not. Measured 2026-08-14: restoring the old body as
+  /// a mutation kills no test — the eleven entries covered every field this
+  /// class holds, so nothing was being dropped. The reported symptom is
+  /// elsewhere, and the likeliest place is the one that round already
+  /// flagged: the selection's COMBINE mode lives on `CanvasSelectionCommands`,
+  /// so this class never had it to lose. ⛔Do not read the shape below as
+  /// having fixed that.
+  ///
+  /// ⇒ A preset owns **the shape**, and everything outside the shape survives
+  /// because it is never touched rather than because it was listed. The
+  /// remembered shape kinds, the stabilizer and the per-tool blends are all
+  /// out there, so a field added tomorrow is safe without anyone knowing this
+  /// method exists.
+  ///
+  /// ⚠️Two exceptions stay, and they are named because they are DECISIONS,
+  /// not omissions: **size and colour live inside the shape** and are the
+  /// user's hand anyway.
+  ///
+  /// * size — R26 #10, 「브러시 다른거 선택한다고 사이즈/블렌딩모드가 바뀌지
+  ///   않음」
+  /// * colour — R9 #2. A preset stores one so it can round-trip through
+  ///   export, and most of the roster carries the default black, so without
+  ///   this every brush swap silently repainted the palette black.
+  ///
+  /// The list went from eleven entries to two, and the two that remain are
+  /// the only ones a reader has to be able to justify. (The stabilizer and
+  /// the brush blend were on the old list for the same reason and no longer
+  /// need to be — they are outside the shape, so they are already safe.)
   BrushToolState withPresetSettings(
     BrushSettings settings, {
     required CanvasTool tool,
-  }) {
-    return BrushToolState.fromBrushSettings(settings).copyWith(
-      tool: tool,
-      selectShape: selectShape,
-      cutShape: cutShape,
-      fillShape: fillShape,
-      stabilizerStrength: stabilizerStrength,
-      size: size,
-      brushBlendMode: brushBlendMode,
-      // Another tool's blend has nothing to do with which brush is
-      // selected — it rides across for the same reason the shapes do.
-      fillBlendMode: fillBlendMode,
-      fillBlendLock: fillBlendLock,
-      cutStampBlendMode: cutStampBlendMode,
-      cutStampBlendLock: cutStampBlendLock,
-      color: color,
-    );
-  }
+  }) => copyWith(
+    shape: settings.shape,
+    tool: tool,
+    size: size,
+    color: color,
+  );
 
   /// Snapshot of this tool state as the model-layer [BrushSettings] — the
   /// payload brush presets store.
@@ -695,6 +718,18 @@ class BrushToolState {
   }
 
   BrushToolState copyWith({
+    /// Swaps the whole BRUSH out, leaving every setting that is not part of
+    /// one alone (T26).
+    ///
+    /// The state flattens a shape — size, opacity, spacing, the curves, the
+    /// masks — so "give me this brush and keep the rest" had no way to be
+    /// said before, and callers said it by rebuilding and listing what to
+    /// carry back. This is that sentence.
+    ///
+    /// ⚠️The individual arguments below WIN over it: a caller may lay a
+    /// shape down and override one value on top, which is the order
+    /// `withPresetSettings` and the sliders both need.
+    BrushShape? shape,
     double? size,
     double? opacity,
     int? color,
@@ -742,9 +777,12 @@ class BrushToolState {
     bool clearCutStampBlendLock = false,
     BrushBlendMode? cutStampBlendLock,
   }) {
+    // The base is the caller's shape when it gave one; the named arguments
+    // then land on TOP of it, so "this brush, but at my size" is one call.
+    final baseShape = shape ?? this.shape;
     return BrushToolState._raw(
       shape: _clampShape(
-        shape.copyWith(
+        baseShape.copyWith(
           size: size,
           opacity: opacity,
           color: color,
