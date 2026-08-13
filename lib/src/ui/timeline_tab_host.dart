@@ -24,7 +24,12 @@ import 'timeline/effect_lane_policy.dart';
 import 'timeline/property_lane_model.dart';
 import 'timeline/timeline_lane_provider.dart';
 import 'timeline/layer_row_drag.dart'
-    show LayerRowSubject, TimelineRowDragHooks;
+    show
+        EffectRowSubject,
+        LayerRowDragSubject,
+        LayerRowSubject,
+        TimelineRowDragHooks,
+        TrackRowSubject;
 import 'timeline/timeline_cel_content_source.dart';
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_cut_end_handle.dart';
@@ -231,6 +236,25 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     );
   }
 
+  /// T5: what a row drag's subject is CALLED in the selection's own words.
+  ///
+  /// The two vocabularies existed side by side — the drag names a subject,
+  /// the selection names an address — and the seam between them was where
+  /// 「이 종류는 선택 못 함」 hid. Naming every subject makes the question
+  /// disappear rather than answering it per kind.
+  ///
+  /// An fx header's address is its GROUP LANE, which is what the rail already
+  /// draws it as; nothing new is invented here.
+  TimelineRowAddress _addressOfDragSubject(LayerRowDragSubject subject) =>
+      switch (subject) {
+        LayerRowSubject(:final layerId) => LayerRowAddress(layerId),
+        EffectRowSubject(:final layerId, :final effectId) => LaneRowAddress(
+          layerId,
+          effectGroupLaneId(effectId),
+        ),
+        TrackRowSubject(:final trackId) => TrackRowAddress(trackId),
+      };
+
   /// The LABEL half of the same rule: pressing a lane's name stands on it,
   /// exactly as the layer row's name selects its layer. No seek — a label
   /// names a ROW, and the frame stays where it was.
@@ -238,48 +262,30 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     _session.standOnRow(LaneRowAddress(layerId, laneId));
   }
 
-  /// lane row under the pointer — member lanes only; headers and
-  /// non-transform lanes (SE audio) cross silently, and rows past the
-  /// group clamp to the farthest member reached. Null keeps the anchor.
+  /// Where a lane span ENDS — the rail's own row list, sliced.
+  ///
+  /// 🚨T13: the whitelist that used to live here (transform members and
+  /// effect parameters only, everything else "crossed silently") is gone, and
+  /// with it the private policy — see [resolveLaneSpanHead], which says why
+  /// and is a pure function so the rule can be read without a widget around
+  /// it. This is now only the part that is genuinely the host's: which lanes
+  /// this layer is DRAWING.
   String? _laneSpanHeadLane(
     LayerId layerId,
     String anchorLaneId,
     int rowDelta,
   ) {
-    if (rowDelta == 0) {
-      return null;
-    }
     final layer = _session.layers
         .where((candidate) => candidate.id == layerId)
         .firstOrNull;
     if (layer == null) {
       return null;
     }
-    final lanes = _lanesForLayer(layer);
-    final anchor = lanes.indexWhere((lane) => lane.laneId == anchorLaneId);
-    if (anchor < 0) {
-      return null;
-    }
-    final step = rowDelta > 0 ? 1 : -1;
-    String? head;
-    for (var moved = 1; moved <= rowDelta.abs(); moved += 1) {
-      final index = anchor + moved * step;
-      if (index < 0 || index >= lanes.length) {
-        break;
-      }
-      final laneId = lanes[index].laneId;
-      // Rows the span can END on: a transform member lane, or (R6) an
-      // effect PARAMETER lane. Anything else — a group header, the SE
-      // audio lane — is crossed silently, so a drag reaching past it still
-      // spans the member lanes it covered. Without the effect case the
-      // span could never hold two parameters of one effect, and
-      // [effectLaneSpan]'s range branch would be unreachable.
-      if (transformLaneDisplayOrder.contains(laneId) ||
-          parseEffectLaneId(laneId)?.parameterId != null) {
-        head = laneId;
-      }
-    }
-    return head;
+    return resolveLaneSpanHead(
+      lanes: _lanesForLayer(layer),
+      anchorLaneId: anchorLaneId,
+      rowDelta: rowDelta,
+    );
   }
 
   /// R10 moved the lane list out to [timelineLanesForLayer] — the ↑/↓ row
@@ -915,16 +921,27 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               onCancel: _session.cancelLayerRowDrag,
               // ⑨: the first drag SELECTS, and a drag that starts INSIDE the
               // selection moves it — the cells' grammar, transposed.
-              isInRowSelection: (subject) => subject is! LayerRowSubject
-                  // An fx header's drag re-orders a CHAIN — it is not a row
-                  // selection's business, so it keeps the old grammar.
-                  ? null
-                  : _session.rowIsSelected(LayerRowAddress(subject.layerId)),
-              onSelectBegin: (subject) {
-                if (subject is LayerRowSubject) {
-                  _session.beginRowSelection(LayerRowAddress(subject.layerId));
-                }
-              },
+              //
+              // 🚨T5 (유저 2026-08-13): 「모든 셀은 선택범위 자유롭게 규칙없이
+              // 가능하듯이 **모든 행은 자유롭게 규칙없이 선택가능.** 지금 fx랑
+              // fx멤버가 선택범위 안됨」 — and on the fx header's chain drag
+              // specifically: 「셀과 같은문법으로 통일」.
+              //
+              // ⛔The old answer here was `null` for every subject that is not
+              // a layer row, which this file called "not a row selection's
+              // business". That was a KIND deciding whether a row may be
+              // selected, and the whole of ③/⑨'s law is that kind decides
+              // what an edit DOES, never whether the row can be named.
+              //
+              // The chain drag is not lost by this: it is the second phase
+              // now, exactly as a layer row's move is. Start outside the
+              // selection and the drag selects; start inside it and the drag
+              // re-orders the chain.
+              isInRowSelection: (subject) =>
+                  _session.rowIsSelected(_addressOfDragSubject(subject)),
+              onSelectBegin: (subject) => _session.beginRowSelection(
+                _addressOfDragSubject(subject),
+              ),
               onSelectEnd: _session.endRowSelection,
             ),
             onRowSelectionSpan: _session.updateRowSelection,

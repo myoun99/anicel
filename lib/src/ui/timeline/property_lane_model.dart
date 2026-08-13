@@ -455,3 +455,54 @@ List<TimelineDisplayRow> _laneRunsMovedAhead(
   }
   return out;
 }
+
+/// 🚨T13 — where a lane SELECTION SPAN ends, given the rows the rail draws.
+///
+/// 유저 2026-08-13: 「se행의 네임태그에선 이번엔 행 하나만 선택범위 작동가능.
+/// 다른 행 걸쳐서 선택불가. 트랜스폼이랑 같은 fx 아닌가? **왜 이렇게 또 규칙이
+/// 다르지? 제발 규칙다른거 그만좀하자**」.
+///
+/// ⛔It used to be a WHITELIST living inside the timeline host: a span could
+/// only end on a transform member lane or an effect parameter lane, and
+/// everything else — the name-tag group and its seven members, the SE audio
+/// lane, every group header — was "crossed silently". So a drag inside the
+/// name-tag group never moved its head off the anchor and the selection
+/// folded to the one row it started on.
+///
+/// ★The span verb for those rows already existed and was UNREACHABLE:
+/// `seNameTagLaneSpan` is a complete twin of `transformLaneSpan`. Nothing was
+/// missing except permission.
+///
+/// ★So the rule is the same one ③ and ⑨ put everywhere else — **the rows the
+/// rail draws are the rows a span may end on** — and it is a pure function
+/// here rather than a private method on a host, because a policy that decides
+/// what may be selected is not a widget's business.
+///
+/// [rowDelta] is how many rows the pointer has crossed, signed. Null means
+/// the head stays where it is: the drag has not left the anchor row, or it
+/// ran off the end of the list and there is nothing further to reach.
+String? resolveLaneSpanHead({
+  required List<PropertyLaneRow> lanes,
+  required String anchorLaneId,
+  required int rowDelta,
+}) {
+  if (rowDelta == 0) {
+    return null;
+  }
+  final anchor = lanes.indexWhere((lane) => lane.laneId == anchorLaneId);
+  if (anchor < 0) {
+    return null;
+  }
+  final step = rowDelta > 0 ? 1 : -1;
+  String? head;
+  for (var moved = 1; moved <= rowDelta.abs(); moved += 1) {
+    final index = anchor + moved * step;
+    if (index < 0 || index >= lanes.length) {
+      // Past the end: the span stops at the farthest row it actually
+      // reached, rather than snapping back to the anchor.
+      break;
+    }
+    head = lanes[index].laneId;
+  }
+  return head;
+}
