@@ -8,6 +8,7 @@ import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
+import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
@@ -109,7 +110,17 @@ void main() {
     s.createCut();
     drawOnCurrentFrame(s);
     await s.saveProjectToFile(projectPath);
-    final sizeAfterFirst = File(projectPath).lengthSync();
+    // The proof that an APPEND ran, rather than a full rewrite that happened
+    // to end up bigger. An append truncates at the old central directory and
+    // writes from there, so everything before that offset survives byte for
+    // byte; a rewrite builds a fresh file in a temp and renames it over.
+    // Growth alone cannot tell those apart — a rewrite of a project that
+    // gained a cut grows too, which is how this test spent its first draft
+    // measuring the wrong path.
+    final keptPrefix = File(projectPath).readAsBytesSync().sublist(
+      0,
+      parseAnicelZipLayoutFile(projectPath).centralDirectoryOffset,
+    );
 
     s.createCut();
     drawOnCurrentFrame(s);
@@ -117,12 +128,114 @@ void main() {
     await s.saveProjectToFile(projectPath, onProgress: reports.add);
 
     expect(
-      File(projectPath).lengthSync(),
-      greaterThan(sizeAfterFirst),
-      reason: 'an append, not a rewrite — otherwise this tests the wrong path',
+      File(projectPath).readAsBytesSync().sublist(0, keptPrefix.length),
+      keptPrefix,
+      reason: 'those bytes were rewritten, so this is the FULL path and the '
+          'incremental one is going untested',
     );
     expect(reports, isNotEmpty);
     expect(reports.last, 1.0);
+  });
+
+  test('🚨 an APPEND with new media does not reach the end before it starts', () async {
+    // The append writer reads every streamed entry TWICE — once to
+    // checksum it before the archive is touched, once to copy the bytes.
+    // Counted as one entry, `_done` hit `_total` when the checksum pass
+    // ended: the window said 100% and then held there through the whole
+    // copy, which on a real import is most of the wait. Worse, a fraction
+    // pinned at 1.0 defeats the throttle (`clamped < 1` is false), so every
+    // 256KB chunk of the copy re-sent 1.0 — thousands of messages saying
+    // nothing.
+    //
+    // Nothing caught it because no test took this path: the incremental
+    // test saved no media, and every media test started from a fresh
+    // session, which is a full rewrite.
+    final s = session();
+    drawOnCurrentFrame(s);
+    await s.saveProjectToFile(projectPath);
+
+    File('${directory.path}/대사.wav')
+      ..createSync()
+      ..writeAsBytesSync(List<int>.filled(1200 * 1024, 9));
+    s.importMediaFiles(['${directory.path}/대사.wav'], copyIntoProject: true);
+    s.createCut();
+    drawOnCurrentFrame(s);
+
+    final reports = <double>[];
+    await s.saveProjectToFile(projectPath, onProgress: reports.add);
+
+    expect(reports.last, 1.0);
+    expect(
+      reports.where((r) => r >= 1.0),
+      hasLength(1),
+      reason: 'the bar arrives at the end ONCE. More than one 1.0 means it '
+          'got there early and then kept saying so while work continued',
+    );
+    expect(
+      reports.indexOf(1.0),
+      reports.length - 1,
+      reason: 'nothing may claim the save is finished before it is',
+    );
+  });
+
+  test('an APPEND reports as it goes, not just at the end', () async {
+    // The end-of-save `finish()` alone satisfies "reaches 1.0" — so on its
+    // own that assertion would pass with every step() and within() in the
+    // append path deleted, which is a window that shows a spinner and one
+    // number. The path has to be seen moving.
+    final s = session();
+    drawOnCurrentFrame(s);
+    await s.saveProjectToFile(projectPath);
+
+    for (var i = 0; i < 5; i += 1) {
+      s.createCut();
+      drawOnCurrentFrame(s);
+    }
+    final reports = <double>[];
+    await s.saveProjectToFile(projectPath, onProgress: reports.add);
+
+    expect(
+      reports.where((r) => r < 1.0),
+      isNotEmpty,
+      reason: 'every report was the final one — nothing counted the cels',
+    );
+  });
+
+  test('🚨 a BIGGER asset is reported on more often, at the same entry count', () async {
+    // Isolates the one idea the entry count cannot express: a streaming
+    // entry advancing by the fraction of ITSELF already read.
+    //
+    // The earlier "two assets beat one" test does NOT cover this — a second
+    // asset adds a whole entry, hence a whole extra step(), so that count
+    // rises even with the within-entry reporting deleted. Holding the entry
+    // count FIXED and varying only the asset's size leaves the sub-entry
+    // fraction as the only thing that can move the number.
+    Future<List<double>> saveAssetOf(String tag, int bytes) async {
+      final s = session();
+      drawOnCurrentFrame(s);
+      final path = '${directory.path}/$tag.wav';
+      File(path)
+        ..createSync()
+        ..writeAsBytesSync(List<int>.filled(bytes, 5));
+      s.importMediaFiles([path], copyIntoProject: true);
+      final reports = <double>[];
+      await s.saveProjectToFile(
+        '${directory.path.replaceAll('\\', '/')}/$tag.anicel',
+        onProgress: reports.add,
+      );
+      return reports;
+    }
+
+    // One 256KB chunk versus twenty. Same project shape, same entry count.
+    final small = await saveAssetOf('small', 256 * 1024);
+    final big = await saveAssetOf('big', 20 * 256 * 1024);
+
+    expect(
+      big.length,
+      greaterThan(small.length),
+      reason: 'a twenty-times-larger asset produced no more reports than a '
+          'one-chunk one, so nothing is reporting DURING an entry',
+    );
   });
 
   test('every asset is reported on — the second does not pass in silence', () async {
