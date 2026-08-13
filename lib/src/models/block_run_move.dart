@@ -133,17 +133,57 @@ BlockRunMoveLayout planBlockRunMove({
   // the ones before it in rank.
   final originalRank = runStart;
 
-  // Midpoint against midpoint — the only comparison that reads the same
-  // dragging left and right. Comparing an EDGE to a midpoint would make
-  // one direction flip a whole run-length earlier than the other.
+  // 🚨★★ THE RULE (유저 확정 2026-08-14, ⛔재론 금지):
+  // **a run swaps when the cursor reaches the seat it will SIT IN after
+  // the swap.**
   //
-  // Doubled, so an odd-length block's midpoint is exact: truncating it
-  // would shift the flip point by a frame for odd lengths only.
-  final wantedMidpointX2 = 2 * wanted + runLength;
-  var rank = 0;
-  for (final other in rest) {
-    if (other.start + other.endExclusive <= wantedMidpointX2) {
-      rank += 1;
+  // > 「**커서랑 판정이랑 일치**하도록. A가 10코마 끌어야하는거. 그게
+  // > 직관적임 … A10코마 B1코마의 경우 … **A를 1코마 끌면 A가 바뀌게
+  // > 되는거니까**」
+  //
+  // The block is therefore exactly under the hand at the instant it moves:
+  // the travel a swap costs is the NEIGHBOUR's length, and nothing jumps.
+  //
+  // ⛔What this replaces was midpoint against midpoint, which cost
+  // (mine + neighbour) ÷ 2 — a 1-frame block had to travel 5.5 to pass a
+  // 10-frame one and then landed nowhere near the cursor. That was chosen
+  // because comparing an EDGE to a midpoint flips one direction a whole
+  // run-length earlier than the other. The asymmetry is real; the answer to
+  // it is not a midpoint, it is asking the question separately on each
+  // side, which is what the two loops below do.
+  //
+  // 📐The seat is computed in the ORIGINAL layout — the invariant the old
+  // note guarded and this keeps. Judging against the PREVIEW makes a run
+  // chase its own tail.
+  int seatStartFor(int rank) {
+    var at = 0;
+    for (var position = 0; position < rank; position += 1) {
+      // Gaps belong to POSITIONS and blocks to ranks — the same split the
+      // reorder below applies, so this is where the run really lands.
+      at += slots[position].leadingGap + slots[rest[position].index].length;
+    }
+    return at + slots[rank].leadingGap;
+  }
+
+  // Asked from the side the hand came from. Moving right, the run passes a
+  // seat once the cursor is at or past it; moving left, once it is at or
+  // before it. A single expression would need a tie-break, and that
+  // tie-break IS the asymmetry — 10 frames to pass a 10-frame neighbour
+  // going one way and 1 going the other, for the same pair.
+  var rank = originalRank;
+  if (wanted > runFrom) {
+    for (var next = originalRank + 1; next <= rest.length; next += 1) {
+      if (seatStartFor(next) > wanted) {
+        break;
+      }
+      rank = next;
+    }
+  } else if (wanted < runFrom) {
+    for (var next = originalRank - 1; next >= 0; next -= 1) {
+      if (seatStartFor(next) < wanted) {
+        break;
+      }
+      rank = next;
     }
   }
 
