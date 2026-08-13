@@ -714,7 +714,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // canvas is the static stage, only the content rides the pose.
               viewportUnderlayBuilder: isPlaybackActive || isScrubbing
                   ? null
-                  : (context, viewport, activeSurfacePainter) {
+                  : (context, viewport, activeSurfacePainter, floatOverlay) {
                       final below = CanvasLayerStackView(
                         // MERGED: the whole tree, active layer included, so
                         // a folder's group buffer encloses the layer being
@@ -728,6 +728,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                           inGap ? const [] : session.onionSkinCanvasRequests(),
                         ),
                         activeSurfacePainter: activeSurfacePainter,
+                        // TS1: the selection's float draws in the active
+                        // layer's slot, so the rows above it occlude the live
+                        // preview the way they occlude the landed pixels.
+                        floatOverlay: floatOverlay,
                         imageCache: session.layerFrameImageCache,
                         canvasSize: canvasSize,
                         viewport: viewport,

@@ -27,6 +27,8 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/canvas/selection_ants_painter.dart';
+import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
+import 'package:anicel/src/ui/input/app_input_settings.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 
@@ -325,6 +327,27 @@ void main() {
       await tester.pump();
     }
   }
+
+  /// The FLOAT's surface painters — every one whose surface is not the
+  /// committed cel.
+  ///
+  /// TS1 moved the float out of the widget tree's own painters: it is a
+  /// canvas-space DESCRIPTION now, published so the composite can draw it at
+  /// the active layer's depth (that is what makes the rows above occlude it).
+  /// Hosts with no composite — this test's panel among them — draw the same
+  /// description through [SelectionFloatPainter], so the way to the float is
+  /// through that painter's `float`.
+  List<BitmapSurfacePainter> floatPainters(
+    WidgetTester tester,
+    BitmapSurface committed,
+  ) => tester
+      .widgetList<CustomPaint>(find.byType(CustomPaint))
+      .map((paint) => paint.painter)
+      .whereType<SelectionFloatPainter>()
+      .map((painter) => painter.float.surface)
+      .whereType<BitmapSurfacePainter>()
+      .where((painter) => !identical(painter.surface, committed))
+      .toList();
 
   Future<void> dragOnLayer(WidgetTester tester, Offset from, Offset to) async {
     final origin = tester.getTopLeft(find.byKey(layerKey));
@@ -1592,15 +1615,10 @@ void main() {
       }
 
       BitmapSurfacePainter floatPainter() {
-        final committed = env.coordinator.currentSurfaceOf(
-          env.coordinator.activeFrameKey,
+        final floats = floatPainters(
+          tester,
+          env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
         );
-        final floats = tester
-            .widgetList<CustomPaint>(find.byType(CustomPaint))
-            .map((paint) => paint.painter)
-            .whereType<BitmapSurfacePainter>()
-            .where((painter) => !identical(painter.surface, committed))
-            .toList();
         expect(
           floats,
           hasLength(1),
@@ -1725,16 +1743,10 @@ void main() {
       await dragOnLayer(tester, const Offset(6, 6), const Offset(720, 540));
       await env.setTool(CanvasTool.move);
 
-      BitmapSurfacePainter floatPainter() {
-        final committed = env.coordinator.currentSurfaceOf(
-          env.coordinator.activeFrameKey,
-        );
-        return tester
-            .widgetList<CustomPaint>(find.byType(CustomPaint))
-            .map((paint) => paint.painter)
-            .whereType<BitmapSurfacePainter>()
-            .firstWhere((painter) => !identical(painter.surface, committed));
-      }
+      BitmapSurfacePainter floatPainter() => floatPainters(
+        tester,
+        env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+      ).first;
 
       // A move drag: the lift happens on the way, and the release runs
       // `_commitMove`, which is the first of the three rebuilds that have
@@ -1940,11 +1952,20 @@ void main() {
       bool isInk(Uint8List px, int offset) =>
           px[offset] > 128 && px[offset + 1] < 100 && px[offset + 2] < 100;
       Future<bool> somethingCanPaintIt() async {
-        final painters = tester
-            .widgetList<CustomPaint>(find.byType(CustomPaint))
-            .map((paint) => paint.painter)
-            .whereType<BitmapSurfacePainter>()
-            .toList();
+        // Both candidates: the base's own painter (a widget's) and the
+        // float's (inside the published description since TS1).
+        final painters = <BitmapSurfacePainter>[
+          ...tester
+              .widgetList<CustomPaint>(find.byType(CustomPaint))
+              .map((paint) => paint.painter)
+              .whereType<BitmapSurfacePainter>(),
+          ...tester
+              .widgetList<CustomPaint>(find.byType(CustomPaint))
+              .map((paint) => paint.painter)
+              .whereType<SelectionFloatPainter>()
+              .map((painter) => painter.float.surface)
+              .whereType<BitmapSurfacePainter>(),
+        ];
         for (final painter in painters) {
           var own = 0;
           var missing = 0;
@@ -2026,12 +2047,7 @@ void main() {
       final committed = env.coordinator.currentSurfaceOf(
         env.coordinator.activeFrameKey,
       );
-      final floats = tester
-          .widgetList<CustomPaint>(find.byType(CustomPaint))
-          .map((paint) => paint.painter)
-          .whereType<BitmapSurfacePainter>()
-          .where((painter) => !identical(painter.surface, committed))
-          .toList();
+      final floats = floatPainters(tester, committed);
       expect(floats, isNotEmpty, reason: 'no float is up — bad premise');
 
       var own = 0;
@@ -2229,12 +2245,8 @@ void main() {
       // (Both matter — the cel is the pre-image half of the composition —
       // so both are asserted.)
       final committedBefore = currentSurface(env.coordinator);
-      final floatSurfaces = tester
-          .widgetList<CustomPaint>(find.byType(CustomPaint))
-          .map((paint) => paint.painter)
-          .whereType<BitmapSurfacePainter>()
+      final floatSurfaces = floatPainters(tester, committedBefore)
           .map((painter) => painter.surface)
-          .where((surface) => !identical(surface, committedBefore))
           .toList();
       expect(
         floatSurfaces,
@@ -2324,12 +2336,8 @@ void main() {
       await settle(tester);
       final committedBefore = currentSurface(env.coordinator);
       expect(
-        tester
-            .widgetList<CustomPaint>(find.byType(CustomPaint))
-            .map((paint) => paint.painter)
-            .whereType<BitmapSurfacePainter>()
-            .any((painter) => !identical(painter.surface, committedBefore)),
-        isTrue,
+        floatPainters(tester, committedBefore),
+        isNotEmpty,
         reason: 'no float during the session — bad premise',
       );
 
@@ -2337,12 +2345,7 @@ void main() {
       await tester.pump();
       final atConfirm = await screenBytes(tester);
       final committed = currentSurface(env.coordinator);
-      final covers = tester
-          .widgetList<CustomPaint>(find.byType(CustomPaint))
-          .map((paint) => paint.painter)
-          .whereType<BitmapSurfacePainter>()
-          .where((painter) => !identical(painter.surface, committed))
-          .length;
+      final covers = floatPainters(tester, committed).length;
 
       await settle(tester);
       final settled = await screenBytes(tester);
@@ -2925,37 +2928,104 @@ void main() {
       expect(env.commands.region, isNull);
     });
 
-    testWidgets('the close ring appears only once closing is on offer', (
-      tester,
-    ) async {
-      // The ring is a promise about what a tap there would do, so it must
-      // not be up while such a tap would do nothing.
+    // TS6 (유저: 폴리곤필 첫번째 점 찍을때 동그란 포인트 바로 보이게해줬으면함.
+    // 지금은 세번째 포인트 찍어야 보여서 첫번째 점 찍은건지 만건지 모르겠음).
+    //
+    // ⛔The ring used to wait for `canClosePolygon`, on the grounds that it
+    // must not promise a tap that would do nothing. The user's answer widened
+    // the promise instead of hiding it: a tap there ENDS the trace, closing
+    // when it can and abandoning when it cannot ("불가능할땐 그냥
+    // 취소시켜버리면 되잖아. 클튜도 그렇게해"). So it is honest from the first
+    // vertex — which is also the only thing that says the vertex landed.
+    SelectionAntsPainter? antsPainter(WidgetTester tester) {
+      for (final paint in tester.widgetList<CustomPaint>(
+        find.descendant(
+          of: find.byKey(layerKey),
+          matching: find.byType(CustomPaint),
+        ),
+      )) {
+        final painter = paint.painter;
+        if (painter is SelectionAntsPainter) {
+          return painter;
+        }
+      }
+      return null;
+    }
+
+    testWidgets('the close ring is up from the FIRST vertex', (tester) async {
       final env = await pumpSelectionPanel(
         tester,
         shapeKind: CanvasShapeKind.polygon,
       );
-      CanvasPoint? ringAt() {
-        for (final paint in tester.widgetList<CustomPaint>(
-          find.descendant(
-            of: find.byKey(layerKey),
-            matching: find.byType(CustomPaint),
-          ),
-        )) {
-          final painter = paint.painter;
-          if (painter is SelectionAntsPainter) {
-            return painter.closeTarget;
-          }
-        }
-        return null;
-      }
+      expect(antsPainter(tester)?.closeTarget, isNull, reason: 'nothing open');
 
       await tapOnLayer(tester, const Offset(20, 20));
-      await tapOnLayer(tester, const Offset(80, 20));
-      expect(ringAt(), isNull, reason: 'two vertices enclose nothing');
+      expect(antsPainter(tester)?.closeTarget, CanvasPoint(x: 20, y: 20));
+      expect(
+        antsPainter(tester)?.closeTargetArmed,
+        isFalse,
+        reason: 'it can only abandon yet, and it says so',
+      );
 
+      await tapOnLayer(tester, const Offset(80, 20));
       await tapOnLayer(tester, const Offset(80, 80));
-      expect(ringAt(), CanvasPoint(x: 20, y: 20));
+      expect(antsPainter(tester)?.closeTargetArmed, isTrue);
       expect(env.commands.canClosePolygon, isTrue);
+    });
+
+    testWidgets('tapping the ring before it can close ABANDONS the trace', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        shapeKind: CanvasShapeKind.polygon,
+      );
+      await tapOnLayer(tester, const Offset(20, 20));
+      await tapOnLayer(tester, const Offset(80, 20));
+      expect(env.commands.polygonPoints, hasLength(2));
+
+      await tapOnLayer(tester, const Offset(20, 20));
+      expect(
+        env.commands.hasOpenPolygon,
+        isFalse,
+        reason: 'two vertices enclose nothing, so the tap ends it',
+      );
+      expect(
+        env.commands.region,
+        isNull,
+        reason: 'and nothing was selected on the way out',
+      );
+    });
+
+    testWidgets('the rubber band follows the pointer and stops at the vertex', (
+      tester,
+    ) async {
+      // 유저: "직선이 커서를 따라 이동하고 찍히면 고정이란 느낌 나야하는데
+      // 그게 없음." The band IS the whole drawing while there is one vertex,
+      // which is why the vertices themselves wear no dot.
+      await pumpSelectionPanel(tester, shapeKind: CanvasShapeKind.polygon);
+      await tapOnLayer(tester, const Offset(20, 20));
+
+      final cursor = antsPainter(tester)?.cursor;
+      expect(cursor, isNotNull, reason: 'a vertex-tapping shape has a band');
+
+      final origin = tester.getTopLeft(find.byKey(layerKey));
+      final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      // A hover, not a drag: the band has to follow a pointer that is not
+      // pressing anything, which is how a vertex is aimed with a pen or a
+      // mouse. (A finger has no hover at all — there the band follows only
+      // while the contact is down, which is that device's aiming window.)
+      await gesture.addPointer(location: origin);
+      addTearDown(gesture.removePointer);
+      await gesture.moveTo(origin + const Offset(60, 40));
+      await tester.pump();
+      expect(cursor!.value, const Offset(60, 40));
+
+      // …and it keeps up without anyone rebuilding the layer: the notifier
+      // is merged into the painter's own repaint.
+      await gesture.moveTo(origin + const Offset(70, 50));
+      await tester.pump();
+      expect(cursor.value, const Offset(70, 50));
     });
   });
 
@@ -2994,5 +3064,78 @@ void main() {
       isTrue,
       reason: '"어느 상황에서든 무조건" — the marquee works on empty ground',
     );
+  });
+
+  // TS9 (유저: 지금 1핑거가 플립모드인데도 선택툴고르고 터치하면 선택이 작동함.
+  // 명백한 버그지. 드로잉모드가 아닌이상은 툴이 작동하면 안되지).
+  group('a finger only drives a tool when the one-finger slot draws', () {
+    setUp(() {
+      AppInput.settings.value = AppInput.settings.value.copyWith(
+        touchDragOneFinger: CanvasTouchDragAction.flip,
+      );
+    });
+    tearDown(() {
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+    });
+
+    Future<void> dragWith(
+      WidgetTester tester,
+      PointerDeviceKind kind, {
+      required Offset from,
+      required Offset to,
+    }) async {
+      final origin = tester.getTopLeft(find.byKey(layerKey));
+      final gesture = await tester.startGesture(origin + from, kind: kind);
+      await tester.pump();
+      await gesture.moveTo(origin + to);
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+    }
+
+    testWidgets('a touch marquee makes no selection; the pen still does', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(tester);
+      await dragWith(
+        tester,
+        PointerDeviceKind.touch,
+        from: const Offset(20, 20),
+        to: const Offset(70, 70),
+      );
+      expect(
+        env.commands.hasSelection,
+        isFalse,
+        reason: 'the finger was flipping pages, not selecting',
+      );
+
+      await dragWith(
+        tester,
+        PointerDeviceKind.stylus,
+        from: const Offset(20, 20),
+        to: const Offset(70, 70),
+      );
+      expect(
+        env.commands.hasSelection,
+        isTrue,
+        reason: 'the slot is about FINGERS — a pen is never in doubt',
+      );
+    });
+
+    testWidgets('a touch cannot lay a polygon vertex either', (tester) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        shapeKind: CanvasShapeKind.polygon,
+      );
+      final origin = tester.getTopLeft(find.byKey(layerKey));
+      final finger = await tester.startGesture(
+        origin + const Offset(20, 20),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump();
+      await finger.up();
+      await tester.pump();
+      expect(env.commands.polygonPoints, isEmpty);
+    });
   });
 }

@@ -85,7 +85,7 @@ void main() {
                 ),
                 sampleColorAt: (_) => 0x336699,
                 onEyedropperPick: (_) {},
-                viewportUnderlayBuilder: (context, viewport, painter) =>
+                viewportUnderlayBuilder: (context, viewport, painter, _) =>
                     CustomPaint(
                       painter: _CountingPainter(canvasPaints),
                       child: const SizedBox.expand(),

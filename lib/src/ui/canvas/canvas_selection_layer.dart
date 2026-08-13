@@ -19,6 +19,7 @@ import 'dart:math' as math;
 
 import '../../native/qa_native_engine.dart';
 import '../dialogs/app_confirm_dialog.dart';
+import '../input/app_input_settings.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import '../../services/bitmap_surface_brush_commit.dart';
@@ -29,10 +30,10 @@ import '../../models/pasteboard_bounds.dart';
 import '../brush/canvas_selection_commands.dart';
 import '../brush/transform_tool_options.dart';
 import 'selection_ants_painter.dart';
+import 'selection_float_overlay.dart';
 import 'bitmap_surface_painter.dart';
 import 'provisional_tile_pictures.dart';
 import 'bitmap_tile_image_cache.dart';
-import 'viewport_canvas_transform.dart';
 
 /// The P9 selection interaction layer, mounted over the canvas while a
 /// selection tool is active (Photoshop/CSP language):
@@ -72,7 +73,19 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.committedRegionPendingTiles,
     this.composeCommittedRegionPictures,
     this.transformOptions = TransformToolOptions.defaults,
+    this.floatOverlay,
   });
+
+  /// Where the FLOAT's pixels go (TS1): the composite that draws the active
+  /// layer reads this and draws them at that layer's depth, so the layers
+  /// above occlude the live preview exactly as they occlude the committed
+  /// result.
+  ///
+  /// Null = no composite behind this layer (the conte, the timesheet, the cut
+  /// envelope, and tests that mount the layer alone). The float then draws
+  /// itself here, from the same description — the mount point differs, the
+  /// drawing does not.
+  final SelectionFloatOverlay? floatOverlay;
 
   /// Offers the host the picture the screen is showing over the landing
   /// rect, so the tiles the commit just created can draw THEMSELVES on the
@@ -627,6 +640,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   bool get _hasSelection => _region != null;
 
+  /// Where the pointer is, in this layer's own coordinates — the far end of
+  /// the polygon's rubber band (TS6).
+  ///
+  /// A notifier rather than state: the ants painter listens to it directly,
+  /// so the band follows the pointer without rebuilding this layer. ⚠️Touch
+  /// has no hover, so on a finger the band follows only while the contact is
+  /// down (which is the whole aiming window there — a vertex is aimed on
+  /// press and placed on release). A pen with hover follows continuously.
+  final ValueNotifier<Offset?> _cursor = ValueNotifier<Offset?>(null);
+
   /// Mirrors the channel's open-trace length so a vertex added or taken
   /// back repaints this layer. The trace itself is never copied down here
   /// — the channel stays its only owner.
@@ -842,6 +865,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // discard has to be explicit here or every tool switch during a
     // transform leaks a full-selection image.
     _discardFloatResample();
+    _cursor.dispose();
     _ants.dispose();
     super.dispose();
   }
@@ -2407,17 +2431,108 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         .toDouble();
     final path = ui.Path();
     for (final coord in tiles) {
-      final topLeft = widget.viewport.canvasToViewport(
-        CanvasPoint(x: coord.x * size, y: coord.y * size),
-      );
-      final bottomRight = widget.viewport.canvasToViewport(
-        CanvasPoint(x: (coord.x + 1) * size, y: (coord.y + 1) * size),
-      );
+      // CANVAS coordinates (TS1): the float draws inside an already
+      // viewport-transformed canvas now, and the mask has to be in the same
+      // space as the thing it masks. It used to be mapped to the screen here
+      // because it wrapped widgets instead.
       path.addRect(
-        Rect.fromLTRB(topLeft.x, topLeft.y, bottomRight.x, bottomRight.y),
+        Rect.fromLTRB(
+          coord.x * size,
+          coord.y * size,
+          (coord.x + 1) * size,
+          (coord.y + 1) * size,
+        ),
       );
     }
     return path;
+  }
+
+  /// What is floating right now, in canvas space — see [SelectionFloatPaint].
+  ///
+  /// The three reasons to draw a float are unchanged; only where the drawing
+  /// happens moved. A warp open ⇒ the resampled preview IS the result. A pure
+  /// move ⇒ the untouched lift at an offset is byte-exact by short circuit.
+  /// And a HOLD, the one that outlives the session: after a confirm the stamp
+  /// has landed but its destination tiles have no decoded image yet, so the
+  /// base cannot paint what it was just handed — the float can, and it holds
+  /// those exact bytes at that exact place.
+  SelectionFloatPaint _floatPaint({
+    required ui.Image? resampledImage,
+    required BrushDab? resampledDab,
+    required BitmapSurface? floatSurface,
+    required SelectionAffine? transform,
+  }) {
+    final holdClip = _floatHoldClipPath();
+    final pasteboard = Rect.fromLTRB(
+      widget.canvasSize.pasteboardLeft.toDouble(),
+      widget.canvasSize.pasteboardTop.toDouble(),
+      widget.canvasSize.pasteboardRightExclusive.toDouble(),
+      widget.canvasSize.pasteboardBottomExclusive.toDouble(),
+    );
+    if (resampledImage != null && resampledDab != null) {
+      return SelectionFloatPaint(
+        image: resampledImage,
+        // The landing rect, computed the way the stamp blend computes it: the
+        // dab centre rounded to an integer top-left. Previewing at the
+        // unrounded position would put a sub-pixel Ctrl+T on screen half a
+        // pixel from where it lands.
+        imageLeft: (resampledDab.center.x - resampledImage.width / 2)
+            .round()
+            .toDouble(),
+        imageTop: (resampledDab.center.y - resampledImage.height / 2)
+            .round()
+            .toDouble(),
+        // The pasteboard wall, because the landing clips there too
+        // (`bitmap_surface_brush_commit`): a selection dragged past the stage
+        // edge loses those pixels on Enter, and a preview that kept showing
+        // them would be promising something the commit will not deliver.
+        clip: pasteboard,
+        holdClip: holdClip,
+      );
+    }
+    if (floatSurface != null &&
+        (_dragMode == _DragMode.move ||
+            transform != null ||
+            _movePending ||
+            _floatHold != null)) {
+      return SelectionFloatPaint(
+        surface: BitmapSurfacePainter(
+          surface: floatSurface,
+          viewport: widget.viewport,
+          showTransparentBackground: false,
+          // ONE scope for every float this app ever lifts, and it is emptied
+          // when a lift gives the float new pixels — see [_floatStaleScope].
+          // Without a scope at all, which is what this was, the float shared
+          // the null bucket with every float ever lifted, so opening a second
+          // transform painted the FIRST one's artwork at the first one's place
+          // and size: measured, 36 pixels of ink where this float's own
+          // surface is empty.
+          //
+          // ⚠️ That ghost is a DUPLICATE, not a move. The base painter's own
+          // fallback is on and its (layerId, frameId) bucket still holds the
+          // pre-erase tiles, so on the same frame it redraws the artwork in
+          // place — 48 ink pixels over a base surface that contains none.
+          staleScope: _floatStaleScope,
+        ),
+        surfaceOffset: _floatDrawCanvasOffset,
+        holdClip: holdClip,
+      );
+    }
+    return SelectionFloatPaint();
+  }
+
+  /// Hands [paint] to the composite, if this layer has one behind it.
+  ///
+  /// Called from build: the underlay is built BEFORE this layer in the panel's
+  /// stack, so the notification reaches a mounted painter and lands in the
+  /// same frame. A repaint is all it triggers — no listener here calls
+  /// setState — which is what makes a write during build safe.
+  void _publishFloat(SelectionFloatPaint paint) {
+    final overlay = widget.floatOverlay;
+    if (overlay == null) {
+      return;
+    }
+    overlay.value = paint.isEmpty ? null : paint;
   }
 
   /// R28 #10: resamples the pending stamp through an OPEN transform box,
@@ -2476,6 +2591,18 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         setState(() => _cancelDrag(notify: true));
         _syncAnts();
       }
+      return;
+    }
+    // TS9 (유저: 1핑거가 플립모드인데도 선택툴고르고 터치하면 선택이 작동함.
+    // 드로잉모드가 아닌이상은 툴이 작동하면 안되지): a finger drives a tool
+    // only while the one-finger slot says draw. Declining QUIETLY is the
+    // point — the panel's gesture layer is an ancestor and owns that touch,
+    // and it can only take it if the event still reaches it.
+    //
+    // Below the second-touch branch above deliberately: that one is about a
+    // drag already in progress, which a rejected pointer can never have
+    // started.
+    if (!AppInput.toolAcceptsPointer(event.kind)) {
       return;
     }
     if (event.buttons != kPrimaryButton &&
@@ -2943,8 +3070,21 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     final tapped = _toCanvas(down);
     final points = commands.polygonPoints;
-    if (commands.canClosePolygon && _aimsAtCloseTarget(down, points.first)) {
-      _closeOpenPolygon();
+    if (points.isNotEmpty && _aimsAtCloseTarget(down, points.first)) {
+      // TS6: the ring is on offer from the FIRST vertex, so a tap on it
+      // always ends the trace — closing it when three points enclose
+      // something, and otherwise just abandoning it (유저: "1점상태나
+      // 2점상태든 불가능할땐 그냥 취소시켜버리면 되잖아. 클튜도 그렇게해").
+      //
+      // That is what lets the ring appear immediately without promising a
+      // tap that would do nothing: the promise is "this ends here", and it
+      // is kept at every count.
+      if (commands.canClosePolygon) {
+        _closeOpenPolygon();
+      } else {
+        commands.abandonPolygon();
+        _syncAnts();
+      }
       return;
     }
     if (points.isEmpty) {
@@ -3408,8 +3548,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   CanvasPoint? _floatHoldCentre;
 
   /// Where the float is drawn relative to its own surface: the live drag
-  /// offset, plus the drift its stamp has accumulated since the surface
-  /// was built.
+  /// offset, plus the drift its stamp has accumulated since the surface was
+  /// built — in CANVAS space (TS1).
   ///
   /// A move used to rebuild the surface at the new centre, which is what
   /// made the confirm frame blank: the rebuilt tiles are new objects with
@@ -3417,22 +3557,29 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// four-tile budget and 44% of a wide landing was simply absent. The
   /// surface's tiles decode ONCE now and a translation is a translation.
   ///
-  /// ⚠️ The drift is mapped through [CanvasViewport.canvasDeltaToViewportDelta],
-  /// which carries rotation and flip, and it is applied INSIDE the hold's
-  /// ClipPath: the clip is a screen-space mask over the base's not-yet-
-  /// paintable tiles, and what has to fill it is whatever the float shows
-  /// there AFTER the offset.
-  Offset get _floatDrawOffset {
+  /// The drag delta is measured on SCREEN and the drift on the canvas, so the
+  /// two have to meet somewhere; they used to meet in screen space because
+  /// the float wrapped widgets. It draws inside a viewport-transformed canvas
+  /// now, so they meet here instead — and the drag delta comes back through
+  /// the same mapping that carried it out, rotation and flip included.
+  ///
+  /// ⚠️It is applied INSIDE the hold's clip: the clip is a mask over the
+  /// base's not-yet-paintable tiles, and what has to fill it is whatever the
+  /// float shows there AFTER the offset.
+  CanvasPoint get _floatDrawCanvasOffset {
+    final dragged = widget.viewport.viewportDeltaToCanvasDelta(
+      dx: _moveScreenDelta.dx,
+      dy: _moveScreenDelta.dy,
+    );
     final from = _floatSurfaceCentre;
     final to = _pendingLiftStamp?.center ?? _floatHoldCentre;
     if (from == null || to == null) {
-      return _moveScreenDelta;
+      return dragged;
     }
-    final drift = widget.viewport.canvasDeltaToViewportDelta(
-      dx: to.x - from.x,
-      dy: to.y - from.y,
+    return CanvasPoint(
+      x: dragged.x + (to.x - from.x),
+      y: dragged.y + (to.y - from.y),
     );
-    return _moveScreenDelta + Offset(drift.x, drift.y);
   }
 
   @override
@@ -3546,109 +3693,55 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // tiles the base cannot paint yet — screen space, because it wraps
     // the painters rather than living inside one of them, and both
     // painters apply the viewport themselves.
-    final holdClip = _floatHoldClipPath();
-    Widget clipToHold(Widget child) => holdClip == null
-        ? child
-        : ClipPath(clipper: _StaticPathClipper(holdClip), child: child);
+    // TS1: one description of what is floating, published for the composite
+    // and used by the fallback painter below. Built here because this is
+    // where every piece of it is already in scope.
+    final floatPaint = _floatPaint(
+      resampledImage: resampledImage,
+      resampledDab: resampledDab,
+      floatSurface: floatSurface,
+      transform: transform,
+    );
+    _publishFloat(floatPaint);
     return Listener(
       key: const ValueKey<String>('canvas-selection-layer'),
       behavior: HitTestBehavior.opaque,
-      onPointerDown: _handlePointerDown,
-      onPointerMove: _handlePointerMove,
+      onPointerDown: (event) {
+        _cursor.value = event.localPosition;
+        _handlePointerDown(event);
+      },
+      // TS6: hover feeds the rubber band. It is the ONLY thing hover does
+      // here, and it writes a notifier rather than state — see [_cursor].
+      onPointerHover: (event) => _cursor.value = event.localPosition,
+      onPointerMove: (event) {
+        _cursor.value = event.localPosition;
+        _handlePointerMove(event);
+      },
       onPointerUp: _handlePointerUp,
       onPointerCancel: _handlePointerCancel,
       child: Stack(
         children: [
-          // P3a: with a warp open the preview IS the resampled result,
-          // drawn unfiltered at the rect it will land in. Affine, quad
-          // and mesh alike — one painter, because there is no longer any
-          // per-mode screen approximation to differ between them.
-          if (resampledImage != null && resampledDab != null)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: clipToHold(
-                  CustomPaint(
-                    key: const ValueKey<String>('transform-resample-preview'),
-                    painter: _ResampledFloatPainter(
-                      image: resampledImage,
-                      // The landing rect, computed the way the stamp blend
-                      // computes it: the dab centre rounded to an integer
-                      // top-left. Previewing at the unrounded position
-                      // would put a sub-pixel Ctrl+T on screen half a pixel
-                      // from where it lands.
-                      left: (resampledDab.center.x - resampledImage.width / 2)
-                          .round()
-                          .toDouble(),
-                      top: (resampledDab.center.y - resampledImage.height / 2)
-                          .round()
-                          .toDouble(),
-                      viewport: widget.viewport,
-                      canvasSize: widget.canvasSize,
-                    ),
-                    child: const SizedBox.expand(),
-                  ),
-                ),
-              ),
-            )
-          // A pure MOVE drag has no warp: the translation is byte-exact
-          // by short circuit, so a screen-space offset of the untouched
-          // float IS the result and costs nothing.
+          // 🚨TS1: the float's PIXELS are not in this Stack any more. They
+          // are published to [SelectionFloatOverlay] and drawn by whoever
+          // draws the active layer, at that layer's depth — so the layers
+          // above it occlude the preview exactly as they occlude the
+          // committed result, which is what a live stroke has always got.
+          // Everything below here is CHROME and stays on top.
           //
-          // `_floatHold != null` is the fourth reason to draw it, and the
-          // only one that outlives the session: after a confirm the stamp
-          // has landed but its destination tiles have no decoded image
-          // yet, so the base cannot paint what it was just handed. The
-          // float can — it holds those exact bytes at that exact place —
-          // and the hold releases the moment the base is ready. Without
-          // this clause the session ends, `_movePending` goes false, and
-          // the artwork is on screen nowhere for two frames.
-          else if (floatSurface != null &&
-              (_dragMode == _DragMode.move ||
-                  transform != null ||
-                  _movePending ||
-                  _floatHold != null))
+          // The fallback for hosts with no composite (the conte, the
+          // timesheet, the cut envelope, and the tests that mount this
+          // layer alone) is the same description drawn here instead —
+          // one painting code path, two mount points.
+          if (widget.floatOverlay == null && !floatPaint.isEmpty)
             Positioned.fill(
               child: IgnorePointer(
-                child: clipToHold(
-                  Transform(
-                    transform: Matrix4.translationValues(
-                      _floatDrawOffset.dx,
-                      _floatDrawOffset.dy,
-                      0,
-                    ),
-                    child: CustomPaint(
-                      painter: BitmapSurfacePainter(
-                        surface: floatSurface,
-                        viewport: widget.viewport,
-                        showTransparentBackground: false,
-                        // ONE scope for every float this app ever lifts, and
-                        // it is emptied when a lift gives the float new
-                        // pixels — see [_floatStaleScope]. Without a scope
-                        // at all, which is what this was, the float shared
-                        // the null bucket with every float ever lifted, so
-                        // opening a second transform painted the FIRST one's
-                        // artwork at the first one's place and size:
-                        // measured, 36 pixels of ink where this float's own
-                        // surface is empty.
-                        //
-                        // ⚠️ That ghost is a DUPLICATE, not a move. The base
-                        // painter's own fallback is on and its
-                        // (layerId, frameId) bucket still holds the
-                        // pre-erase tiles, so on the same frame it redraws
-                        // the artwork in place — 48 ink pixels over a base
-                        // surface that contains none. How much of the
-                        // reported "teleport" this accounts for is still
-                        // open; what is measured is the ghost. ⚠️ Both
-                        // painters have to be recorded in ONE synchronous
-                        // burst: an await between them lets the pending
-                        // decodes land and the base reads zero, which is how
-                        // an earlier version of this comment came to claim
-                        // the base drew nothing.
-                        staleScope: _floatStaleScope,
-                      ),
-                      child: const SizedBox.expand(),
-                    ),
+                child: CustomPaint(
+                  key: const ValueKey<String>('transform-resample-preview'),
+                  painter: SelectionFloatPainter(
+                    float: floatPaint,
+                    viewport: widget.viewport,
                   ),
+                  child: const SizedBox.expand(),
                 ),
               ),
             ),
@@ -3670,11 +3763,27 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                       : _dragMode == _DragMode.marquee && _tracesPointerPath
                       ? _lassoPoints
                       : const [],
+                  // TS6: from the FIRST vertex, not from the third. It used
+                  // to wait for `canClosePolygon` so the ring never offered
+                  // a tap that would do nothing — and the answer to that was
+                  // not to hide it but to make the tap always mean
+                  // something (see [_placeVertex]): close if it can, drop
+                  // the trace if it cannot. Until this, the first point drew
+                  // nothing at all and there was no way to tell whether it
+                  // had landed.
                   closeTarget:
                       _tapsVertices &&
-                          (widget.selectionCommands?.canClosePolygon ?? false)
+                          (widget.selectionCommands?.hasOpenPolygon ?? false)
                       ? widget.selectionCommands!.polygonPoints.first
                       : null,
+                  closeTargetArmed:
+                      widget.selectionCommands?.canClosePolygon ?? false,
+                  // The rubber band: the segment the next tap would lay.
+                  // Fed by a notifier the painter reads, NOT by setState —
+                  // a rebuild per pointer move on this layer is the R4 #3
+                  // hazard (it re-records the whole canvas picture), and the
+                  // ants painter is already repainting for its dashes.
+                  cursor: _tapsVertices ? _cursor : null,
                   transformChrome: chrome,
                   movePendingDirty: _movePending && _moveSessionDirty,
                 ),
@@ -3766,74 +3875,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 /// homography matrix for the quad, and a `drawVertices` mesh at
 /// `FilterQuality.medium`), none of which agreed with the commit and none
 /// of which agreed with each other.
-class _ResampledFloatPainter extends CustomPainter {
-  _ResampledFloatPainter({
-    required this.image,
-    required this.left,
-    required this.top,
-    required this.viewport,
-    required this.canvasSize,
-  });
+// (The fallback float painter moved to selection_float_overlay.dart, beside
+// the description it draws — one file owns "what is floating and how it is
+// drawn", and the pixel tests can name it.)
 
-  final ui.Image image;
-
-  /// Canvas-space top-left of the landing rect.
-  final double left;
-  final double top;
-
-  final CanvasViewport viewport;
-  final CanvasSize canvasSize;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.save();
-    canvas.transform(viewportTransformMatrix(viewport).storage);
-    // The pasteboard wall, because the landing clips there too
-    // (`bitmap_surface_brush_commit`): a selection dragged past the stage
-    // edge loses those pixels on Enter, and a preview that kept showing
-    // them would be promising something the commit will not deliver.
-    canvas.clipRect(
-      Rect.fromLTRB(
-        canvasSize.pasteboardLeft.toDouble(),
-        canvasSize.pasteboardTop.toDouble(),
-        canvasSize.pasteboardRightExclusive.toDouble(),
-        canvasSize.pasteboardBottomExclusive.toDouble(),
-      ),
-    );
-    canvas.drawImageRect(
-      image,
-      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-      Rect.fromLTWH(left, top, image.width.toDouble(), image.height.toDouble()),
-      Paint()
-        ..filterQuality = FilterQuality.none
-        ..isAntiAlias = false,
-    );
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant _ResampledFloatPainter oldDelegate) =>
-      oldDelegate.image != image ||
-      oldDelegate.left != left ||
-      oldDelegate.top != top ||
-      oldDelegate.viewport != viewport ||
-      oldDelegate.canvasSize != canvasSize;
-}
-
-/// Clips to a path the caller already computed in screen space.
-///
-/// The hold's path is rebuilt whenever the set of tiles the base cannot
-/// paint changes, so identity is the right question to ask here: a new
-/// path means new tiles.
-class _StaticPathClipper extends CustomClipper<ui.Path> {
-  const _StaticPathClipper(this.path);
-
-  final ui.Path path;
-
-  @override
-  ui.Path getClip(Size size) => path;
-
-  @override
-  bool shouldReclip(covariant _StaticPathClipper oldClipper) =>
-      !identical(oldClipper.path, path);
-}
+// (The hold's clip used to be a `ClipPath` around the float's widget, in
+// screen space. TS1 turned the float into a canvas-space description, so the
+// clip travels inside it and the clipper class is gone.)
