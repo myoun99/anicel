@@ -19,10 +19,24 @@ import 'anicel_project_archive.dart';
 /// directory walk plus one tiny header read per cel — no pixel bytes
 /// load until a cel is first shown.
 class AnicelOpenResult {
-  const AnicelOpenResult({required this.project, required this.cels});
+  const AnicelOpenResult({
+    required this.project,
+    required this.cels,
+    this.mediaEntryNames = const {},
+  });
 
   final Project project;
   final Map<BrushFrameKey, AnicelCelFileRef> cels;
+
+  /// Pool path → the archive entry holding that asset's bytes, for the
+  /// media that travels INSIDE the project.
+  ///
+  /// Names, not offsets. An offset belongs to one layout and a compaction
+  /// rewrites the file, so anything holding one across a save would read a
+  /// window of whatever moved into those bytes — a project that opens fine
+  /// and plays the wrong sound. A name survives that, and the layout is
+  /// already parsed whenever the bytes are actually wanted.
+  final Map<String, String> mediaEntryNames;
 }
 
 /// One dirty cel's save payload, resolved on the UI isolate to a
@@ -399,12 +413,14 @@ class AnicelFileService {
       } on FormatException {
         return null; // Torn tail — compaction is the recovery.
       }
-      final fileLength = File(filePath).lengthSync();
-      final activeBytes = layout.entries.fold<int>(
-        0,
-        (sum, entry) => sum + entry.length,
-      );
-      if (fileLength - activeBytes > fileLength * _compactionGarbageRatio) {
+      if (anicelNeedsCompaction(
+        fileLength: File(filePath).lengthSync(),
+        entries: [
+          for (final entry in layout.entries)
+            (name: entry.name, length: entry.length),
+        ],
+        garbageRatio: _compactionGarbageRatio,
+      )) {
         return null; // Garbage-heavy — compact instead of appending more.
       }
 
@@ -657,13 +673,29 @@ class AnicelFileService {
             entry.key as String: entry.value as String,
     };
 
-    // Relative media resolution: an entry whose relative path exists next
-    // to the .anicel wins (the folder traveled whole); otherwise the stored
+    final mediaEntriesJson = decoded['mediaEntries'];
+    final mediaEntryNames = <String, String>{
+      if (mediaEntriesJson is Map)
+        for (final entry in mediaEntriesJson.entries)
+          if (entry.key is String && entry.value is String)
+            entry.key as String: entry.value as String,
+    };
+
+    // Media resolution, INSIDE FIRST. A copy the project carries cannot be
+    // moved away or renamed out from under it, so it answers before any
+    // path does — and a file that happens to sit at the old location must
+    // not win over the bytes that travel with the document.
+    //
+    // Then the relative one: an entry whose relative path exists next to
+    // the .anicel wins (the folder traveled whole); otherwise the stored
     // absolute path stays and the existing missing-media relink flow takes
     // over.
     final directory = _parentDirectory(filePath);
     final remap = <String, String>{};
     for (final entry in mediaRelativePaths.entries) {
+      if (mediaEntryNames.containsKey(entry.key)) {
+        continue;
+      }
       final resolved = '$directory/${entry.value}';
       if (await File(resolved).exists()) {
         remap[entry.key] = resolved;
@@ -673,6 +705,7 @@ class AnicelFileService {
     return AnicelOpenResult(
       project: remapProjectMediaPaths(project, remap),
       cels: cels,
+      mediaEntryNames: mediaEntryNames,
     );
   }
 

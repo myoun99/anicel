@@ -35,15 +35,17 @@ void main() {
     expect(stamp.modifiedMicros, greaterThan(0));
   });
 
-  test('null means NOTHING IS THERE — not "not a file"', () {
-    // The distinction the conform pipeline reads: null sends it down the
-    // "the source is gone" path, and anything else means something exists
-    // that may or may not be readable right now — a transient failure that
-    // must not spend the retry budget. A directory is therefore NOT null:
-    // it is something, and reporting it missing would let a real problem
-    // be recorded as a permanent absence.
-    expect(MediaFileBytes('${temp.path}/nope.bin').statSync(), isNull);
-    expect(MediaFileBytes(temp.path).statSync(), isNotNull);
+  test('existence and the cheap hint are DIFFERENT questions', () {
+    // They were one question while every source was a file, and an archive
+    // entry breaks that: it plainly exists and has no stat to give. Fused,
+    // every sound inside a project would report as a missing source.
+    final file = File('${temp.path}/f.bin')..writeAsBytesSync(Uint8List(4));
+    expect(MediaFileBytes(file.path).existsSync(), isTrue);
+    expect(MediaFileBytes('${temp.path}/nope.bin').existsSync(), isFalse);
+    // A directory exists — "there but not readable as a file" must not be
+    // reported as gone, or a cloud file still downloading spends the
+    // conform store's retry budget.
+    expect(MediaFileBytes(temp.path).existsSync(), isTrue);
   });
 
   test('asks the path, not a File — the trap that reads as "missing"', () {
@@ -92,6 +94,86 @@ void main() {
       {const MediaFileBytes('/x/a.wav'): 1}[const MediaFileBytes('/x/a.wav')],
       1,
     );
+  });
+
+  group('inside an archive', () {
+    /// A stand-in for a `.anicel`: some bytes, with our entry at a known
+    /// offset and other entries either side of it.
+    ({String path, int offset, int length}) fakeArchive() {
+      final before = List<int>.filled(37, 0xAA);
+      final payload = List<int>.generate(120, (i) => i);
+      final after = List<int>.filled(41, 0xBB);
+      final file = File('${temp.path}/scene.anicel')
+        ..writeAsBytesSync(Uint8List.fromList([...before, ...payload, ...after]));
+      return (path: file.path, offset: before.length, length: payload.length);
+    }
+
+    test('reads its own range and nothing either side of it', () {
+      final archive = fakeArchive();
+      final source = MediaArchiveBytes(
+        archivePath: archive.path,
+        dataOffset: archive.offset,
+        length: archive.length,
+      );
+      final bytes = source.readSync();
+      expect(bytes, hasLength(120));
+      expect(bytes.first, 0);
+      expect(bytes.last, 119);
+      expect(source.lengthSync(), 120);
+    });
+
+    test('a window is clamped to the ENTRY, not to the file', () {
+      // Without the clamp, a caller reading past the end of its media
+      // would be handed whatever follows it in the archive — another
+      // asset's bytes, presented as this one's.
+      final archive = fakeArchive();
+      final source = MediaArchiveBytes(
+        archivePath: archive.path,
+        dataOffset: archive.offset,
+        length: archive.length,
+      );
+      final buffer = Uint8List(16);
+      expect(source.readIntoSync(buffer, 110, 16), 10);
+      expect(buffer.sublist(0, 10), [110, 111, 112, 113, 114, 115, 116, 117, 118, 119]);
+      expect(buffer[10], 0, reason: '0xBB from the next entry never appears');
+      expect(source.readIntoSync(buffer, 120, 4), 0);
+      expect(source.readIntoSync(buffer, -1, 4), 0);
+    });
+
+    test('a mid-entry window starts where it was asked to', () {
+      final archive = fakeArchive();
+      final source = MediaArchiveBytes(
+        archivePath: archive.path,
+        dataOffset: archive.offset,
+        length: archive.length,
+      );
+      final buffer = Uint8List(3);
+      expect(source.readIntoSync(buffer, 50, 3), 3);
+      expect(buffer, [50, 51, 52]);
+    });
+
+    test('exists asks about the ARCHIVE; the hint is absent, not missing', () {
+      final archive = fakeArchive();
+      final source = MediaArchiveBytes(
+        archivePath: archive.path,
+        dataOffset: archive.offset,
+        length: archive.length,
+        entryCrc32: 0x1234,
+      );
+      expect(source.existsSync(), isTrue);
+      expect(source.statSync(), isNull, reason: 'no stat, and that is fine');
+      // The expensive half of the identity question, free from the header
+      // ZIP had to write anyway.
+      expect(source.knownCrc32, 0x1234);
+      expect(
+        MediaArchiveBytes(
+          archivePath: '${temp.path}/gone.anicel',
+          dataOffset: 0,
+          length: 1,
+        ).existsSync(),
+        isFalse,
+      );
+    });
   });
 
   test('a source survives being sent through an isolate', () async {
