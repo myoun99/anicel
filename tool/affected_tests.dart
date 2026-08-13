@@ -24,6 +24,7 @@
 //
 // Exit code is flutter test's own, or 0 when nothing needed running.
 
+import 'dart:convert';
 import 'dart:io';
 
 /// Changing one of these means the graph cannot answer, so we do not ask it.
@@ -48,7 +49,7 @@ const _runEverything = <String>[
   'test/flutter_test_config.dart',
 ];
 
-void main(List<String> args) {
+Future<void> main(List<String> args) async {
   final listOnly = args.contains('--list');
   final runAll = args.contains('--all');
   final base = _flagValue(args, '--base') ?? 'origin/master';
@@ -62,7 +63,7 @@ void main(List<String> args) {
 
   if (runAll) {
     _report('--all: running the whole suite.');
-    exit(_runTests(const [], listOnly: listOnly));
+    exit(await _runTests(const [], listOnly: listOnly));
   }
 
   final changed = _changedFiles(base);
@@ -75,7 +76,7 @@ void main(List<String> args) {
   if (blanket.isNotEmpty) {
     _report('running everything: ${blanket.first} changed'
         '${blanket.length > 1 ? ' (and ${blanket.length - 1} more like it)' : ''}.');
-    exit(_runTests(const [], listOnly: listOnly));
+    exit(await _runTests(const [], listOnly: listOnly));
   }
 
   final imports = _importGraph();
@@ -110,7 +111,7 @@ void main(List<String> args) {
 
   _report('${present.length} of ${tests.length} test files reach the '
       '${changedDart.length} changed Dart file(s).');
-  exit(_runTests(present, listOnly: listOnly));
+  exit(await _runTests(present, listOnly: listOnly));
 }
 
 String? _flagValue(List<String> args, String name) {
@@ -231,7 +232,43 @@ Set<String> _closure(String start, Map<String, Set<String>> graph) {
 }
 
 
-int _runTests(List<String> files, {required bool listOnly}) {
+/// How many characters of arguments one invocation may carry.
+///
+/// `flutter` is a .bat, so on Windows the whole command line goes through
+/// cmd.exe's ~8191-character buffer whatever launched it. A selection of
+/// 214 files is about 9,800 characters, and the failure is not subtle —
+/// "コマンド ラインが長すぎます", exit 1, no tests run. The CI shard action
+/// has carried `xargs -0 -s 6000` against this exact wall since the day it
+/// was written; this tool shipped without it and was caught the first time
+/// somebody changed a widely-imported file.
+///
+/// 6000 keeps 2k of daylight below the real ceiling. Elsewhere ARG_MAX is
+/// megabytes and one batch is always enough.
+const _argBudget = 6000;
+
+/// Split so no invocation exceeds the budget. A file that is somehow longer
+/// than the whole budget still goes out alone rather than being dropped —
+/// failing loudly beats running less than we said we would.
+List<List<String>> _batches(List<String> files) {
+  if (!Platform.isWindows) return [files];
+  final out = <List<String>>[];
+  var current = <String>[];
+  var length = 0;
+  for (final file in files) {
+    final cost = file.length + 1;
+    if (current.isNotEmpty && length + cost > _argBudget) {
+      out.add(current);
+      current = <String>[];
+      length = 0;
+    }
+    current.add(file);
+    length += cost;
+  }
+  if (current.isNotEmpty) out.add(current);
+  return out;
+}
+
+Future<int> _runTests(List<String> files, {required bool listOnly}) async {
   if (listOnly) {
     if (files.isEmpty) {
       stdout.writeln('(the whole suite)');
@@ -240,17 +277,92 @@ int _runTests(List<String> files, {required bool listOnly}) {
     }
     return 0;
   }
+
+  final batches = files.isEmpty ? [<String>[]] : _batches(files);
+  if (batches.length > 1) {
+    _report('${files.length} files exceed the command-line budget: '
+        'running them in ${batches.length} batches. Each batch pays the '
+        'resident compiler\'s cold start again.');
+  }
+
+  var worst = 0;
+  final failed = <int>[];
+  final neverRan = <int>[];
+  for (var i = 0; i < batches.length; i++) {
+    if (batches.length > 1) _report('batch ${i + 1} of ${batches.length}');
+    final result = await _flutterTest(batches[i]);
+    if (result.exitCode != 0) {
+      failed.add(i + 1);
+      if (!result.ranTests) neverRan.add(i + 1);
+      if (worst == 0) worst = result.exitCode;
+    }
+  }
+
+  // A batch that exits non-zero having run NOTHING is not a test failure,
+  // and reading it as one costs an hour. It happened on this tool's first
+  // day in anger: an over-long command line made cmd.exe refuse to launch
+  // flutter at all, and what reached the reader was exit 1 plus a single
+  // mojibake line in the system locale — indistinguishable at a glance
+  // from a red suite. The message below is the distinction, drawn from
+  // whether any test result appeared rather than from parsing an error
+  // string we cannot even decode.
+  if (neverRan.isNotEmpty) {
+    _report('batch(es) ${neverRan.join(', ')} FAILED TO START — no test '
+        'result came back at all, so this is not a failing test. Look at '
+        'the launch error above, not at the suite.');
+  }
+
+  // The verdict goes LAST and says the word, because a run this long is
+  // read through `tail` and a pipeline reports the exit code of whatever
+  // ended it. A green tail under a red run has already nearly been
+  // believed once.
+  if (failed.isEmpty) {
+    _report('PASSED (${batches.length} batch(es), exit 0)');
+  } else {
+    _report('FAILED — batch(es) ${failed.join(', ')} of ${batches.length}, '
+        'exit $worst');
+  }
+  return worst;
+}
+
+class _BatchResult {
+  const _BatchResult(this.exitCode, this.ranTests);
+  final int exitCode;
+  final bool ranTests;
+}
+
+/// `flutter test` writes its counter and its verdict in English whatever
+/// the machine's locale is, because they come from Dart. Anything cmd.exe
+/// says does not — which is why this looks for the shape of a test result
+/// rather than for the shape of an error.
+final _testOutput = RegExp(r'\+\d+|All tests passed|Some tests failed');
+
+/// Passed through to this terminal as it arrives rather than buffered: a
+/// suite takes tens of minutes, and a tool that says nothing until it
+/// finishes is a tool nobody trusts is still alive. Copied rather than
+/// inherited so the same bytes can answer one question on the way past —
+/// did any test actually run?
+Future<_BatchResult> _flutterTest(List<String> files) async {
   // --no-pub because resolving again buys nothing between two runs of the
   // same checkout, and on a loaded machine every process launch is felt.
-  final args = <String>['test', '--no-pub', ...files];
-  final result = Process.runSync(
+  final process = await Process.start(
     Platform.isWindows ? 'flutter.bat' : 'flutter',
-    args,
+    <String>['test', '--no-pub', ...files],
     runInShell: true,
-    stdoutEncoding: null,
-    stderrEncoding: null,
   );
-  stdout.add(result.stdout as List<int>);
-  stderr.add(result.stderr as List<int>);
-  return result.exitCode;
+  var ranTests = false;
+  final pumped = <Future<void>>[
+    process.stdout.map((chunk) {
+      // latin1 never throws on malformed bytes; a mojibake launch error
+      // must not take the tool down with it.
+      if (!ranTests && _testOutput.hasMatch(latin1.decode(chunk))) {
+        ranTests = true;
+      }
+      return chunk;
+    }).forEach(stdout.add),
+    process.stderr.forEach(stderr.add),
+  ];
+  final code = await process.exitCode;
+  await Future.wait(pumped);
+  return _BatchResult(code, ranTests);
 }
