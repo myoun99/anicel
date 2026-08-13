@@ -50,8 +50,7 @@ class ToolSettingsPanel extends StatelessWidget {
     this.selectedGuideId,
     this.onGuidesCommitted,
     this.cutPieceSlot,
-    this.onCutPasteAbove,
-    this.onCutPasteBelow,
+    this.onCutPasteAtOrigin,
     this.onRegisterCutPieceAsTip,
   });
 
@@ -99,10 +98,10 @@ class ToolSettingsPanel extends StatelessWidget {
   /// The piece the cut tool is holding — the stamp tile's knobs pose it.
   final CutPieceSlot? cutPieceSlot;
 
-  /// Drop the held piece back at the coordinates it was cut from, over or
-  /// behind what is already there. Null = the host cannot paste (no cel).
-  final VoidCallback? onCutPasteAbove;
-  final VoidCallback? onCutPasteBelow;
+  /// Drop the held piece back at the coordinates it was cut from. Whether it
+  /// lands over what is there or under it is the BLEND's answer now (TS8),
+  /// so this is ONE verb. Null = the host cannot paste (no cel).
+  final VoidCallback? onCutPasteAtOrigin;
 
   /// Promote the held piece into the brush tip library. Explicit on
   /// purpose: cutting must never grow the library by itself.
@@ -171,8 +170,7 @@ class ToolSettingsPanel extends StatelessWidget {
         ),
         CanvasTool.cutStamp => _CutStampSettings(
           slot: cutPieceSlot,
-          onPasteAbove: onCutPasteAbove,
-          onPasteBelow: onCutPasteBelow,
+          onPasteAtOrigin: onCutPasteAtOrigin,
           onRegisterAsTip: onRegisterCutPieceAsTip,
         ),
         CanvasTool.move => _MoveSettings(
@@ -329,14 +327,17 @@ class _ClosePolygonButton extends StatelessWidget {
 class _CutStampSettings extends StatelessWidget {
   const _CutStampSettings({
     required this.slot,
-    required this.onPasteAbove,
-    required this.onPasteBelow,
+    required this.onPasteAtOrigin,
     required this.onRegisterAsTip,
   });
 
   final CutPieceSlot? slot;
-  final VoidCallback? onPasteAbove;
-  final VoidCallback? onPasteBelow;
+
+  /// Drop the held piece back where it was cut from. ONE button (TS8): the
+  /// pair that used to say Above/Below was spelling a COMPOSITE ORDER, and
+  /// that is what the blend control says now — 유저 확정, *"합성순서는
+  /// 블렌드가 정함. 제자리붙여넣기는 개별로 존재."*
+  final VoidCallback? onPasteAtOrigin;
   final VoidCallback? onRegisterAsTip;
 
   @override
@@ -389,26 +390,14 @@ class _CutStampSettings extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            Text('Paste at original position', style: theme.textTheme.labelSmall),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    key: const ValueKey<String>('cut-paste-above-button'),
-                    onPressed: onPasteAbove,
-                    child: const Text('Above'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton(
-                    key: const ValueKey<String>('cut-paste-below-button'),
-                    onPressed: onPasteBelow,
-                    child: const Text('Below'),
-                  ),
-                ),
-              ],
+            // ONE button, and the strip's blend decides whether the pixels
+            // land over what is there or under it (TS8). The two buttons
+            // this replaced were `color` and `behind` under other names —
+            // the same two entries the blend list has always carried.
+            OutlinedButton(
+              key: const ValueKey<String>('cut-paste-at-origin-button'),
+              onPressed: onPasteAtOrigin,
+              child: const Text('Paste at original position'),
             ),
             const SizedBox(height: 16),
             // Flip is a flag applied at stamp time, never baked into the

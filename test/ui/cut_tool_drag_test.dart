@@ -47,7 +47,12 @@ void main() {
       BrushFrameEditingCoordinator coordinator,
       CanvasSelectionCommands commands,
       CutPieceSlot slot,
-      Future<void> Function(CanvasTool tool, {CanvasShapeKind? shape}) setTool,
+      Future<void> Function(
+        CanvasTool tool, {
+        CanvasShapeKind? shape,
+        BrushBlendMode? stampBlend,
+      })
+      setTool,
     })
   >
   pumpPanel(
@@ -63,7 +68,11 @@ void main() {
     final commands = CanvasSelectionCommands();
     final slot = CutPieceSlot();
 
-    Future<void> pumpWith(CanvasTool next, {CanvasShapeKind? shape}) async {
+    Future<void> pumpWith(
+      CanvasTool next, {
+      CanvasShapeKind? shape,
+      BrushBlendMode? stampBlend,
+    }) async {
       // Both verbs get the same outline: a test picks one shape and the
       // panel reads whichever field the active verb owns.
       final outline = shape ?? shapeKind;
@@ -79,6 +88,7 @@ void main() {
                 tool: next,
                 selectShape: outline,
                 cutShape: outline,
+                cutStampBlendMode: stampBlend,
               ),
               selectionCommands: commands,
               cutPieceSlot: slot,
@@ -258,6 +268,95 @@ void main() {
     expect(after ?? 0, isNot(0));
   });
 
+  // TS8: 유저 — "스탬프모드에서는 블렌드모드 살리기로하지않았나? 지금
+  // 사라지니까 존재하도록. 위합성 아래합성버튼은 없애고 어차피 블렌드모드에
+  // 노말/배경 모드 있으니까 그거활용".
+  testWidgets('the stamp composites through the tool blend — erase CLEARS', (
+    tester,
+  ) async {
+    // 🚨The trap this pins: erase is a flag on the DAB, not a blend mode.
+    // Passing the mode alone sends the stamp down the ordinary path with
+    // the flag false, and the piece gets PAINTED where it should have cut a
+    // hole. That has now been the same mistake in three places (bucket,
+    // shape fill, stamp), which is why all three stamp routes go through
+    // one commit method.
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
+    await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+    expect(env.slot.isNotEmpty, isTrue);
+
+    await env.setTool(CanvasTool.cutStamp, stampBlend: BrushBlendMode.erase);
+    // On the bar, so there is something to remove.
+    final canvas = find.byType(BrushCanvasPanel);
+    expect(
+      surfacePixelRgba(
+            env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+            50,
+            40,
+          ) ??
+          0,
+      isNot(0),
+      reason: 'ink to erase',
+    );
+
+    await tester.tapAt(tester.getTopLeft(canvas) + const Offset(50, 40));
+    await tester.pump();
+
+    expect(
+      surfacePixelRgba(
+            env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+            50,
+            40,
+          ) ??
+          0,
+      0,
+      reason: 'the piece cut a hole instead of painting itself',
+    );
+  });
+
+  testWidgets('Behind is what the "paste below" button used to be', (
+    tester,
+  ) async {
+    // The two buttons were spelling `color` and `behind` by hand. With the
+    // blend list open to the stamp they are two of its entries, and this is
+    // the entry that has to still mean what the button meant.
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
+    await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+
+    // Paint one blue pixel where the piece will land, then paste behind: the
+    // pixel that is already there wins.
+    env.coordinator.commitSourceStroke(
+      sourceDabs: [
+        BrushDab(
+          center: CanvasPoint(x: 50, y: 40),
+          color: 0xFF0000FF,
+          size: 2,
+          opacity: 1,
+          flow: 1,
+          hardness: 1,
+          tipShape: BrushTipShape.square,
+          pressure: 1,
+          sequence: 0,
+        ),
+      ],
+    );
+    await tester.pump();
+    await env.setTool(CanvasTool.cutStamp, stampBlend: BrushBlendMode.behind);
+    env.slot.pasteAtOrigin();
+    await tester.pump();
+
+    final landed = surfacePixelRgba(
+      env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+      50,
+      40,
+    );
+    expect(
+      landed,
+      // RGBA order, as the surface stores it: still the blue pixel.
+      0x0000FFFF,
+      reason: 'behind leaves what is already there in front',
+    );
+  });
+
   testWidgets('clicking with an EMPTY slot does nothing', (tester) async {
     final env = await pumpPanel(tester, tool: CanvasTool.cutStamp);
     expect(env.slot.isEmpty, isTrue);
@@ -346,7 +445,7 @@ void main() {
     );
     await tester.pump();
 
-    env.slot.pasteAtOrigin(behind: false);
+    env.slot.pasteAtOrigin();
     await tester.pump();
 
     final surface = env.coordinator.currentSurfaceOf(

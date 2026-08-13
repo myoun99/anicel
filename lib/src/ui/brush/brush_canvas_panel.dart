@@ -646,7 +646,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     widget.cutPieceSlot?.pasteAtOriginHandler = _installedCutPasteHandler;
   }
 
-  void Function({required bool behind})? _installedCutPasteHandler;
+  void Function()? _installedCutPasteHandler;
 
   @override
   void didChangeDependencies() {
@@ -2368,11 +2368,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           if (piece == null) {
             return;
           }
-          _commitSourceStroke(
-            BrushStrokeCommitData(
-              sourceDabs: [buildCutStampDab(piece: piece, center: point)],
-            ),
-          );
+          _commitStampDabs([buildCutStampDab(piece: piece, center: point)]);
           // A press is also the start of a possible drag, and the drag
           // measures its spacing from the stamp that just landed.
           _lastStampCenter = point;
@@ -2501,11 +2497,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return;
     }
     for (final center in centers) {
-      _commitSourceStroke(
-        BrushStrokeCommitData(
-          sourceDabs: [buildCutStampDab(piece: piece, center: center)],
-        ),
-      );
+      _commitStampDabs([buildCutStampDab(piece: piece, center: center)]);
     }
     _lastStampCenter = centers.last;
   }
@@ -2543,18 +2535,34 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   /// Drop the held piece back where it was cut from.
   ///
-  /// [behind] is the "아래에 붙여넣기" half: 위/아래 is COMPOSITE ORDER, not
-  /// a layer row (유저 확정) — the pixels land in the same cel either way,
-  /// over what is there or under it.
-  void pasteCutPieceAtOrigin({required bool behind}) {
+  /// TS8: whether it lands over what is there or under it is the STAMP's
+  /// BLEND, not a second button. 위/아래 was always COMPOSITE ORDER rather
+  /// than a layer row (유저 확정), which is precisely what `color`/`behind`
+  /// are — so the pair collapsed into the list every other tool already
+  /// has, and every other mode came along with them.
+  void pasteCutPieceAtOrigin() {
     final piece = widget.cutPieceSlot?.piece;
     if (piece == null || widget._editableCoordinator == null) {
       return;
     }
+    _commitStampDabs([buildCutPasteDab(piece)]);
+  }
+
+  /// Lands stamp dabs with the stamp tool's own blend.
+  ///
+  /// 🚨ERASE rides a flag on the DAB, not the blend mode — the materializer
+  /// reads `dab.erase` per dab and the erase blend takes the plain path, so
+  /// passing the mode alone paints the piece instead of clearing with it.
+  /// This is the THIRD place that trap has been hit (bucket, shape fill,
+  /// here), which is why all three stamp routes go through one method.
+  void _commitStampDabs(List<BrushDab> dabs) {
+    final blend = widget.brushToolState.activeBlendMode;
     _commitSourceStroke(
       BrushStrokeCommitData(
-        sourceDabs: [buildCutPasteDab(piece)],
-        blendMode: behind ? BrushBlendMode.behind : BrushBlendMode.color,
+        sourceDabs: blend == BrushBlendMode.erase
+            ? [for (final dab in dabs) dab.copyWith(erase: true)]
+            : dabs,
+        blendMode: blend,
       ),
     );
   }
