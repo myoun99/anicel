@@ -850,7 +850,20 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 selected: false,
                 // Dimmed with nothing selected rather than hidden: a button
                 // that comes and goes is one you have to look for.
-                onPressed: selection.hasSelection ? selection.deselect : null,
+                //
+                // 🚨`hasRegion`, NOT `hasSelection`. The region is a
+                // DOCUMENT-level fact and survives tool switches (R28-S);
+                // `hasSelection` asks the MOUNTED selection layer, which
+                // exists only while a selection tool is active, and answers
+                // `false` the moment that layer unbinds. So the button went
+                // dead the instant you picked the brush, with the selection
+                // still on screen and Ctrl+D still working — 유저: 「다른툴
+                // 이동하면 선택중인상태인데도 비활성화되있어」.
+                //
+                // `hasSelection` keeps its own job: arrow keys nudge instead
+                // of flipping frames, and that one really does need a live
+                // layer to nudge.
+                onPressed: selection.hasRegion ? selection.deselect : null,
               ),
             ],
           ],
