@@ -17,6 +17,7 @@ import '../dev_profile.dart';
 import '../playback/layer_frame_image_cache.dart';
 import 'bitmap_surface_painter.dart';
 import 'composite_effect_paint.dart';
+import 'selection_float_overlay.dart';
 import 'layer_image_draw.dart';
 import 'paper_background.dart';
 import 'viewport_canvas_transform.dart';
@@ -155,9 +156,14 @@ class CanvasLayerStackView extends StatefulWidget {
     required this.canvasSize,
     required this.viewport,
     this.activeSurfacePainter,
+    this.floatOverlay,
     this.paintPaper = false,
     this.paperBackground = ProjectBackground.defaultBackground,
   });
+
+  /// The selection's floating pixels (TS1), drawn in the active layer's slot
+  /// so the rows above it occlude them. Null = nothing to draw there.
+  final SelectionFloatOverlay? floatOverlay;
 
   /// The composite tree, bottom → top.
   final List<CanvasLayerStackNode> nodes;
@@ -427,6 +433,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         painter: _LayerStackPainter(
           nodes: _resolvedTree(widget.nodes),
           activeSurfacePainter: widget.activeSurfacePainter,
+          floatOverlay: widget.floatOverlay,
           canvasSize: widget.canvasSize,
           viewport: widget.viewport,
           paintPaper: widget.paintPaper,
@@ -512,11 +519,19 @@ class _LayerStackPainter extends CustomPainter {
   _LayerStackPainter({
     required this.nodes,
     required this.activeSurfacePainter,
+    required this.floatOverlay,
     required this.canvasSize,
     required this.viewport,
     required this.paintPaper,
     required this.paperBackground,
-  }) : super(repaint: activeSurfacePainter);
+  }) : super(
+         repaint: floatOverlay == null
+             ? activeSurfacePainter
+             : Listenable.merge(<Listenable?>[
+                 activeSurfacePainter,
+                 floatOverlay,
+               ]),
+       );
 
   final List<_PaintNode> nodes;
 
@@ -524,6 +539,11 @@ class _LayerStackPainter extends CustomPainter {
   /// Listenable (tile cache + stroke overlay) drives this painter too, so
   /// a stroke step still repaints without a widget rebuild.
   final BitmapSurfacePainter? activeSurfacePainter;
+
+  /// TS1: the selection float, drawn in the active layer's slot. Merged into
+  /// the repaint above for the same reason the surface painter is — a drag
+  /// step has to reach the canvas without a widget rebuild.
+  final SelectionFloatOverlay? floatOverlay;
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
   final bool paintPaper;
@@ -674,6 +694,21 @@ class _LayerStackPainter extends CustomPainter {
                 canvas.save();
                 canvas.clipRect(activeSurfacePainter!.pasteboardRect);
                 activeSurfacePainter!.paintContentInto(canvas);
+                // 🚨TS1: the selection's FLOAT belongs here, right on top of
+                // the surface it was lifted out of and UNDER everything
+                // above that row. Drawn inside this slot's clip and its
+                // effects/opacity buffer, because the pixels are that
+                // layer's pixels — 유저 확정 A: 「프리뷰는 원래 그런거」, so a
+                // half-opacity row previews a transform at half opacity,
+                // which is what the commit will look like.
+                //
+                // ⚠️Inside the POSE wrap as well (the whole switch is). For
+                // an unposed row that changes nothing; for a posed one the
+                // float now travels with its layer instead of ignoring the
+                // pose, but the drag delta rides through the pose matrix
+                // with it — fine for translation, and worth an eye on a
+                // scaled or rotated row.
+                floatOverlay?.value?.paintInto(canvas);
                 canvas.restore();
                 if (needsBuffer) {
                   canvas.restore();
