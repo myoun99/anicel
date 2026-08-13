@@ -138,11 +138,18 @@ bool mediaKindBelongsInArchive(MediaAssetKind kind) => switch (kind) {
 
 /// Every pool path whose bytes the project should carry.
 ///
+/// TWO questions, and both have to say yes. The KIND sets the ceiling —
+/// video is never carried, whatever anyone picked — and the asset's own
+/// [MediaAsset.carried] chooses underneath it, which is where the import
+/// window's copy-or-reference answer lives. A sound left outside on
+/// purpose, because the original is shared with another tool, stays
+/// outside.
+///
 /// ⚠️ The POOL only. SE clips reference audio by path and are warmed by
 /// [projectAudioSourcePaths], but a clip is not a registration — what the
 /// project stores is what the pool holds, and a clip pointing at an
 /// unregistered file stays a reference like any other.
 Set<String> projectArchivedMediaPaths(Project project) => {
   for (final asset in project.mediaAssets)
-    if (mediaKindBelongsInArchive(asset.kind)) asset.path,
+    if (asset.carried && mediaKindBelongsInArchive(asset.kind)) asset.path,
 };

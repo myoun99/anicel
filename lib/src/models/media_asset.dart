@@ -91,6 +91,7 @@ class MediaAsset {
     this.fitMode = MediaFitMode.contain,
     this.sourcePath,
     this.sourceStamp,
+    this.carried = false,
     this.identity,
     this.sourceFps,
     this.frameCount,
@@ -131,6 +132,26 @@ class MediaAsset {
   /// moved or restored — use [identity] for that question.
   final String? sourceStamp;
 
+  /// Whether the project should CARRY this asset's bytes rather than
+  /// point at them.
+  ///
+  /// The import window's copy-or-reference choice, kept as what the user
+  /// meant rather than inferred from [sourcePath] — that field records
+  /// where an asset CAME FROM, which is a different question and stops
+  /// being a usable proxy the moment carrying no longer means copying a
+  /// file somewhere first.
+  ///
+  /// 🔑 The KIND still sets the ceiling: video is never carried however
+  /// this is set, because a three-gigabyte reference inside a project file
+  /// is a project nobody can open or sync. This chooses underneath that —
+  /// a sound left outside on purpose, because the user shares the original
+  /// with another tool.
+  ///
+  /// Assets from before this existed fall back to [sourcePath] being set,
+  /// which is exactly the ones that WERE copied into the project: the old
+  /// meaning of the same choice.
+  final bool carried;
+
   /// What the file at [path] looked like when it was registered — the
   /// evidence relink compares a candidate against.
   ///
@@ -162,6 +183,7 @@ class MediaAsset {
     MediaFitMode? fitMode,
     String? sourcePath,
     String? sourceStamp,
+    bool? carried,
     MediaIdentity? identity,
     double? sourceFps,
     int? frameCount,
@@ -177,6 +199,7 @@ class MediaAsset {
       fitMode: fitMode ?? this.fitMode,
       sourcePath: sourcePath ?? this.sourcePath,
       sourceStamp: sourceStamp ?? this.sourceStamp,
+      carried: carried ?? this.carried,
       identity: identity ?? this.identity,
       sourceFps: sourceFps ?? this.sourceFps,
       frameCount: frameCount ?? this.frameCount,
@@ -194,6 +217,7 @@ class MediaAsset {
     if (fitMode != MediaFitMode.contain) 'fit': fitMode.toJson(),
     if (sourcePath != null) 'sourcePath': sourcePath,
     if (sourceStamp != null) 'sourceStamp': sourceStamp,
+    if (carried) 'carried': true,
     if (identity != null) 'identity': identity!.toJson(),
     if (sourceFps != null) 'sourceFps': sourceFps,
     if (frameCount != null) 'frameCount': frameCount,
@@ -211,6 +235,10 @@ class MediaAsset {
       fitMode: MediaFitMode.fromJson(json['fit']),
       sourcePath: json['sourcePath'] as String?,
       sourceStamp: json['sourceStamp'] as String?,
+      // Absent in projects written before this existed, where the same
+      // choice was spelled "was it copied in?" — so those assets keep the
+      // answer they were given.
+      carried: json['carried'] as bool? ?? json['sourcePath'] != null,
       identity: MediaIdentity.fromJson(json['identity']),
       sourceFps: (json['sourceFps'] as num?)?.toDouble(),
       frameCount: json['frameCount'] as int?,
@@ -231,6 +259,7 @@ class MediaAsset {
           other.fitMode == fitMode &&
           other.sourcePath == sourcePath &&
           other.sourceStamp == sourceStamp &&
+          other.carried == carried &&
           other.identity == identity &&
           other.sourceFps == sourceFps &&
           other.frameCount == frameCount &&
@@ -247,6 +276,7 @@ class MediaAsset {
     fitMode,
     sourcePath,
     sourceStamp,
+    carried,
     identity,
     sourceFps,
     frameCount,

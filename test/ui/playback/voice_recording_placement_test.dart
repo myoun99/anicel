@@ -72,8 +72,19 @@ void main() {
 
     final landed = manager.activeTrack.seLayers.first;
     final clip = landed.audioClips.single;
-    expect(clip.filePath, contains('.assets/Media/'));
-    expect(clip.filePath, endsWith('${lane.name}_T01.wav'));
+    // On the shelf, saved project or not. A take used to land in the
+    // project's `Media/` folder once it had one, which made that folder
+    // the only copy of a performance; the project carries its own audio
+    // now, so the recording stays somewhere a person can find it.
+    expect(clip.filePath, contains('/Recordings/'));
+    expect(clip.filePath, isNot(contains('.assets/Media/')));
+    // The lane's name and a take ordinal, not a fixed one: the shelf
+    // outlives a project, so the walk continues past earlier sessions.
+    expect(
+      RegExp('${lane.name}_T\\d+\\.wav\$').hasMatch(clip.filePath),
+      isTrue,
+      reason: clip.filePath,
+    );
     expect(File(clip.filePath).existsSync(), isTrue);
     expect(
       manager.mediaAssets.map((asset) => asset.path),
@@ -167,11 +178,19 @@ void main() {
     expect(blocks[0].length, 12, reason: 'the first take lost its tail');
     expect(blocks[1].startIndex, 12);
     expect(blocks[1].length, 12);
-    // Take numbering advanced; the first WAV stays in the pool.
-    expect(
-      manager.mediaAssets.map((asset) => asset.path).join(' '),
-      allOf(contains('_T01.wav'), contains('_T02.wav')),
-    );
+    // Take numbering advanced and the first WAV stays in the pool — two
+    // files, not one overwritten.
+    //
+    // By SHAPE rather than by ordinal: takes land on the shelf now, and
+    // the shelf outlives one project, so the walk continues past whatever
+    // is already there instead of restarting per project folder.
+    final takes = manager.mediaAssets.map((asset) => asset.path).toList();
+    expect(takes, hasLength(2));
+    expect(takes.toSet(), hasLength(2), reason: 'the first was not replaced');
+    for (final take in takes) {
+      expect(RegExp(r'_T\d+\.wav$').hasMatch(take), isTrue, reason: take);
+      expect(File(take).existsSync(), isTrue);
+    }
     manager.dispose();
   });
 

@@ -98,6 +98,7 @@ ImageLayerImportPlan planStillImageLayer({
   String? sourcePath,
   String? sourceStamp,
   MediaIdentity? identity,
+  bool carried = false,
   MediaAssetKind assetKind = MediaAssetKind.image,
   int? pageCount,
 }) {
@@ -134,6 +135,7 @@ ImageLayerImportPlan planStillImageLayer({
               sourcePath: sourcePath,
               sourceStamp: sourceStamp,
               identity: identity,
+              carried: carried,
               pageCount: pageCount,
             ),
           ],
@@ -168,6 +170,7 @@ SequenceLayerImportPlan planSequenceLayer({
   String? sourcePath,
   String? sourceStamp,
   MediaIdentity? identity,
+  bool carried = false,
   double? sourceFps,
   MediaAssetKind assetKind = MediaAssetKind.image,
   int? pageCount,
@@ -248,6 +251,7 @@ SequenceLayerImportPlan planSequenceLayer({
               sourcePath: sourcePath,
               sourceStamp: sourceStamp,
               identity: identity,
+              carried: carried,
               sourceFps: sourceFps,
               // A PDF's page count is its own field; frameCount stays the
               // image-sequence/video detection slot (§6-z10).

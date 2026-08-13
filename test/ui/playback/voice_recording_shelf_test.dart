@@ -99,8 +99,16 @@ void main() {
     second.dispose();
   });
 
-  test('the FIRST save adopts referenced takes into Media/: file moved, '
-      'pool + clip relinked, undo history untouched', () async {
+  test('a saved take STAYS on the shelf — the project carries a copy, and '
+      'the performance is never the archive\'s alone', () async {
+    // This used to MOVE the file into the project's `Media/` folder, which
+    // made that folder the only copy of a performance: delete it and the
+    // recording was gone, with no original anywhere to relink to. The
+    // project carries its own audio now, so the save absorbs the take from
+    // where it sits and the shelf keeps the file.
+    //
+    // 유저 확정: closing without saving must not cost a recording that
+    // cannot be made again.
     final manager = session();
     final lane = manager.activeTrack.seLayers.first;
     manager.placeVoiceRecording(
@@ -114,31 +122,45 @@ void main() {
 
     await manager.saveProjectToFile('${directory.path}/scene.anicel');
 
-    final adopted =
-        manager.activeTrack.seLayers.first.audioClips.single.filePath;
-    expect(adopted, contains('.assets/Media/'));
-    expect(adopted, endsWith('${lane.name}_T01.wav'));
-    expect(File(adopted).existsSync(), isTrue);
-    expect(File(shelfPath).existsSync(), isFalse, reason: 'moved, not copied');
-    expect(manager.mediaAssets.single.path, adopted);
+    expect(
+      manager.activeTrack.seLayers.first.audioClips.single.filePath,
+      shelfPath,
+      reason: 'the clip still points at the take where it was recorded',
+    );
+    expect(File(shelfPath).existsSync(), isTrue, reason: 'nothing moved');
+    expect(manager.mediaAssets.single.path, shelfPath);
+    expect(
+      manager.mediaAssets.single.carried,
+      isTrue,
+      reason: 'and the project packs it — a take is its own recording',
+    );
+    expect(
+      manager.mediaEntryNames.keys,
+      contains(shelfPath),
+      reason: 'the save put it inside the .anicel',
+    );
+    // No sibling folder is created for it any more.
+    expect(
+      Directory('${directory.path}/scene.assets/Media').existsSync(),
+      isFalse,
+    );
 
-    // The adoption rode the save, not the edit history: ONE undo still
-    // strips the whole take (pool + lane), exactly as before saving.
+    // Undo still strips the whole take in one step (the save never
+    // touched the edit history).
     manager.undo();
     expect(manager.activeTrack.seLayers.first.audioClips, isEmpty);
     expect(manager.mediaAssets, isEmpty);
 
-    // After the save, new takes land straight in Media/ and the number
-    // walk continues past the adopted file still on disk.
+    // And the take numbering keeps walking on the shelf.
     manager.placeVoiceRecording(
       takeOfSeconds(1.0),
       laneId: lane.id,
       anchorFrame: 0,
     );
-    final second =
-        manager.activeTrack.seLayers.first.audioClips.single.filePath;
-    expect(second, contains('.assets/Media/'));
-    expect(second, endsWith('${lane.name}_T02.wav'));
+    expect(
+      manager.activeTrack.seLayers.first.audioClips.single.filePath,
+      '$shelf/${lane.name}_T02.wav',
+    );
     manager.dispose();
   });
 

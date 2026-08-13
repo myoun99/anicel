@@ -8,7 +8,6 @@ import '../../models/media_asset.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/file_type_groups.dart';
-import '../../services/persistence/folder_grant.dart';
 import '../dialogs/folder_pick_flow.dart';
 import '../editor_session_manager.dart';
 import '../export/export_settings_modules.dart';
@@ -65,20 +64,27 @@ class _ImportDialogState extends State<ImportDialog> {
   ImportDestination? _destination = ImportDestination.activeCutLayer;
   bool _rasterize = false;
 
-  /// Copy the files into `<project>.assets/Media/`, or point at them where
-  /// they are. REFERENCE is the default: the pool used to copy whatever it
-  /// was handed, which turned dropping a 3GB 참고영상 into a 3GB copy the
-  /// user never asked for and could not decline.
+  /// Whether the project CARRIES these files or points at them where they
+  /// are. Carrying is the default now, on every platform.
   ///
-  /// 🚨Except on iOS and macOS, where a reference is not yet safe to hand
-  /// anyone. A recorded path there stops working at the next launch unless
-  /// the app kept the grant that produced it, and references do not carry
-  /// one yet. Until they do, Apple starts on Copy — a copy lands inside
-  /// the project folder, which the project's own grant already covers.
-  /// Everything else about the window is unchanged: the user can still
-  /// pick Reference, and on iPad that is a deliberate choice rather than
-  /// the default handing them a link that dies overnight.
-  bool _copyIntoProject = FolderPicker.referencesExpire;
+  /// It was Reference, for a reason that has since been answered: the pool
+  /// copied whatever it was handed, so dropping a 3GB 참고영상 meant a 3GB
+  /// copy the user never asked for and could not decline. The KIND rule
+  /// settles that case on its own — video is never carried, whatever this
+  /// says — so the default no longer has to protect against it.
+  ///
+  /// What is left is which failure a person meets by not choosing. A
+  /// reference dies when the original moves, and a project that has to be
+  /// mailed with a folder beside it is the shape Pencil2D abandoned after
+  /// its users kept sending the file alone. Apple already started here
+  /// because a recorded path there stops working at the next launch; the
+  /// rest follows, now that carrying costs bytes inside a ZIP rather than
+  /// a second copy on disk.
+  ///
+  /// Reference stays one click away, for an original shared with another
+  /// tool — that is a deliberate choice, which is exactly what it should
+  /// be.
+  bool _copyIntoProject = true;
   MediaFitMode _fit = MediaFitMode.contain;
   CutFolderParseConfig _parseConfig = const CutFolderParseConfig();
   CutFolderParseResult? _parsed;

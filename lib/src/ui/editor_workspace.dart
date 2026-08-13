@@ -27,7 +27,6 @@ import '../services/brush_tip_library_service.dart';
 import '../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
-import '../services/persistence/folder_grant.dart' show FolderPicker;
 import '../models/brush_tip_entry.dart';
 import '../services/cut_piece_slot.dart';
 import '../services/cut_piece_tip.dart';
@@ -1607,14 +1606,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           // default the import window opens on — a viewer-only policy
           // here would be a third import surface nobody remembers to fix.
           //
-          // ⚠️That default is the platform's, not a preference: where a
-          // reference does not survive a restart (Apple's grants) it
-          // copies, and elsewhere it references. #957/#961 own that rule;
-          // this reads it rather than restating it.
-          onRegisterAsset: (path) => widget.session.importMediaFiles(
-            [path],
-            copyIntoProject: FolderPicker.referencesExpire,
-          ),
+          // ⚠️The same default the import window starts on: the project
+          // carries what it can. This button exists to promote a loose
+          // path into something that travels with the project, so a
+          // reference here would be the one answer it cannot mean.
+          onRegisterAsset: (path) =>
+              widget.session.importMediaFiles([path], copyIntoProject: true),
           isPathRegistered: (path) =>
               widget.session.repository.currentProject?.mediaAssetByPath(
                 path,
