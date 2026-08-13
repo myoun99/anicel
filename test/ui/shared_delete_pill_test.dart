@@ -55,13 +55,26 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-delete-layer-button')),
       findsNothing,
     );
-    // ⛔The CUT delete stays, and for the reason the layer button no longer
-    // has: cut selection lives on the storyboard's axis alone, so from the
-    // timeline the shared verb can never be handed a cut.
+    // ⚠️And the CUT delete has now gone too (T24). It was the last one held
+    // back, on the ground that cut selection lives on the storyboard's axis
+    // alone so the shared verb could never be handed a cut from here — true,
+    // and retired by the user rather than disproved: 「타임라인에서 컷 선택은
+    // 못해도되. 할필요도없어. 컷 편집은 스토리보드패널에서 하는거고」. A
+    // capability the timeline is not meant to have is not one it loses.
     expect(
       find.byKey(const ValueKey<String>('delete-cut-button')),
+      findsNothing,
+    );
+    // The frame menu's cell delete went with them — the same verb the shared
+    // ladder falls through to with nothing else selected.
+    expect(
+      find.byKey(const ValueKey<String>('delete-cell-button')),
+      findsNothing,
+    );
+    // Which leaves exactly one door.
+    expect(
+      find.byKey(const ValueKey<String>('shared-delete-button')),
       findsOneWidget,
-      reason: 'on the cut PILL now (①), not inside its menu',
     );
   });
 

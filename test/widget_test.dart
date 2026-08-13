@@ -526,6 +526,22 @@ Future<void> _tapCutCommandButton(
   await _tapToolbarButton(tester, key);
 }
 
+/// Deletes the active cut the way the app now can.
+///
+/// T24 retired `delete-cut-button`. The one shared delete reaches a cut
+/// through a cut SELECTION, and that axis lives on the storyboard — which is
+/// where cut editing belongs (유저 2026-08-13: 「컷 편집은 스토리보드
+/// 패널에서 하는거고」). The two tests below are about what deleting a cut
+/// DOES; the ENTRANCE is `shared_delete_pill_test`'s subject, so miming a
+/// timeline door here would be a test of a button that no longer exists.
+Future<void> _deleteActiveCut(WidgetTester tester) async {
+  tester
+      .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+      .session
+      .deleteActiveCut();
+  await tester.pumpAndSettle();
+}
+
 Future<void> _tapTopBarButton(WidgetTester tester, ValueKey<String> key) async {
   final button = find.byKey(key);
   await tester.ensureVisible(button);
@@ -586,9 +602,11 @@ Future<void> _expectTimelineActionKeys(WidgetTester tester) async {
     find.byKey(const ValueKey<String>('rename-frame-button')),
     findsOneWidget,
   );
+  // T24: the frame menu's delete went the way the cut and layer ones did —
+  // the shared pill's one delete falls through to the same verb.
   expect(
     find.byKey(const ValueKey<String>('delete-cell-button')),
-    findsOneWidget,
+    findsNothing,
   );
   // The exposure ± buttons are gone outright (edge grips replaced them).
   expect(
@@ -1096,10 +1114,7 @@ void main() {
     await _expectCutName(tester, 'default-cut-1', '1');
     await _expectCutName(tester, 'cut-1', '2');
 
-    await _tapCutCommandButton(
-      tester,
-      const ValueKey<String>('delete-cut-button'),
-    );
+    await _deleteActiveCut(tester);
 
     await _expectCutExists(tester, 'default-cut-1', exists: false);
     await _expectCutExists(tester, 'default-cut-1', exists: false);
@@ -1113,10 +1128,7 @@ void main() {
   ) async {
     await tester.pumpWidget(const AnicelApp());
 
-    await _tapCutCommandButton(
-      tester,
-      const ValueKey<String>('delete-cut-button'),
-    );
+    await _deleteActiveCut(tester);
 
     await _expectCutExists(tester, 'default-cut-1', exists: false);
     await _expectCutExists(tester, 'cut-1', exists: false);
@@ -2207,7 +2219,7 @@ Line 8''';
     expect(
       await _isActionButtonEnabled(
         tester,
-        const ValueKey<String>('delete-cell-button'),
+        const ValueKey<String>('shared-delete-button'),
       ),
       isFalse,
     );
@@ -2221,7 +2233,7 @@ Line 8''';
     expect(
       await _isActionButtonEnabled(
         tester,
-        const ValueKey<String>('delete-cell-button'),
+        const ValueKey<String>('shared-delete-button'),
       ),
       isFalse,
     );
@@ -2240,7 +2252,7 @@ Line 8''';
     expect(
       await _isActionButtonEnabled(
         tester,
-        const ValueKey<String>('delete-cell-button'),
+        const ValueKey<String>('shared-delete-button'),
       ),
       isTrue,
     );
@@ -2270,7 +2282,7 @@ Line 8''';
     expect(
       await _isActionButtonEnabled(
         tester,
-        const ValueKey<String>('delete-cell-button'),
+        const ValueKey<String>('shared-delete-button'),
       ),
       isTrue,
     );
@@ -2393,7 +2405,7 @@ Line 8''';
       expect(
         await _isActionButtonEnabled(
           tester,
-          const ValueKey<String>('delete-cell-button'),
+          const ValueKey<String>('shared-delete-button'),
         ),
         isFalse,
       );
@@ -2448,13 +2460,13 @@ Line 8''';
       expect(
         await _isActionButtonEnabled(
           tester,
-          const ValueKey<String>('delete-cell-button'),
+          const ValueKey<String>('shared-delete-button'),
         ),
         isTrue,
       );
       await _tapToolbarButton(
         tester,
-        const ValueKey<String>('delete-cell-button'),
+        const ValueKey<String>('shared-delete-button'),
       );
       _expectNoCellText('default-layer-1', 0, 'A1');
       _expectNoCellText('default-layer-1', 0, '●');
@@ -2468,7 +2480,7 @@ Line 8''';
       expect(
         await _isActionButtonEnabled(
           tester,
-          const ValueKey<String>('delete-cell-button'),
+          const ValueKey<String>('shared-delete-button'),
         ),
         isFalse,
       );

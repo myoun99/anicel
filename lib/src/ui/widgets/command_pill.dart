@@ -171,7 +171,21 @@ class PillNameCell extends StatelessWidget {
         // wear the app's control shape like everything else, and a literal
         // radius here is what `app_shapes_coverage_test` exists to catch.
         customBorder: AppShapes.control(CommandPill.height - 4),
-        onTap: () => showPanelFlyout(context, entries: entriesBuilder()),
+        // 🚨A NAME CELL WITH NOTHING TO SHOW OPENS NOTHING. `showMenu`
+        // asserts on an empty list, so a pill whose last menu item is
+        // retired used to crash on the press rather than simply having no
+        // menu — which is a hard failure for a soft situation, and it is
+        // the noun's own name the user pressed.
+        //
+        // The entries are built to ask rather than assumed empty: several of
+        // them are gated per state, so "empty right now" is a live answer.
+        onTap: () {
+          final entries = entriesBuilder();
+          if (entries.isEmpty) {
+            return;
+          }
+          showPanelFlyout(context, entries: entries);
+        },
         child: Container(
           height: CommandPill.height - 4,
           constraints: const BoxConstraints(minWidth: 24),

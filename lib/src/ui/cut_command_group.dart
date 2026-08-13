@@ -8,8 +8,6 @@ import 'dialogs/canvas_size_dialog.dart';
 import 'dialogs/rename_cut_dialog.dart';
 import 'editor_session_manager.dart';
 import 'text/app_strings.dart';
-import 'theme/app_theme.dart' show AppColors;
-import 'widgets/app_icon_button.dart';
 import 'widgets/command_pill.dart';
 import 'widgets/panel_flyout.dart';
 
@@ -20,6 +18,11 @@ import 'widgets/panel_flyout.dart';
 /// `＋`, whose top band offers the other ways of making one (duplicate,
 /// linked). The cut used to be folded into the layer group as "행"; the user
 /// split it back out because 「오히려 나누는 게 알기 쉬울 것 같아서」.
+///
+/// ⚠️The pill is mounted on BOTH bars but cut editing is a storyboard job
+/// (유저 2026-08-13: 「컷 편집은 스토리보드패널에서 하는거고」) — this pill
+/// rides the timeline 「일단 통일성으로」. That is why the shared delete not
+/// reaching a cut from the timeline is the intended shape rather than a hole.
 ///
 /// Owns its dialog flows (rename/note/canvas size) so both hosts share the
 /// wiring; menu item keys reuse the retired buttons' key strings so tests
@@ -195,9 +198,10 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
         icon: Icons.videocam_outlined,
         onSelected: () => copyCameraAeKeyframes(context, session),
       ),
-      // ⛔The cut DELETE left this MENU (① 유저 2026-08-12: 「컷 알약 밖으로
-      // 꺼낼 동사, 컷삭제, 리네임컷」) — it is a button on the pill now, one
-      // door instead of two.
+      // ⛔The cut DELETE is in NEITHER place now. It left this menu for the
+      // pill (① 유저 2026-08-12), and left the pill for the one shared
+      // delete (T24 유저 2026-08-13) — see the build method for why the
+      // objection that kept it there expired.
     ];
   }
 
@@ -224,24 +228,22 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
           entriesBuilder: _addEntries,
           accent: true,
         ),
-        // ① 유저 2026-08-12: 「컷 알약 밖으로 꺼낼 동사, 컷삭제, 리네임컷」 —
-        // out of the MENU and onto the pill, which is where it is now.
+        // ⛔THE CUT DELETE IS GONE (T24, 유저 2026-08-13: 「컷알약 삭제버튼
+        // 일단 삭제. 공통버튼에 존재하니까」). ⑰'s one delete has it.
         //
-        // ⚠️⑰ wants this folded into the shared delete as well, and it will
-        // be — but that verb reaches a cut through a cut SELECTION, and the
-        // cut axis only exists on the storyboard. Removing this would have
-        // left the timeline unable to delete a cut at all, which is the same
-        // mistake as pulling the layer delete before ⑨ builds row selection:
-        // a predecessor may only go once the successor can do its job.
-        AppIconButton(
-          keyValue: 'delete-cut-button',
-          tooltip: AppText.strings.cutDelete,
-          icon: Icon(
-            Icons.delete_outline,
-            color: AppColors.deleteGlyph(enabled: true),
-          ),
-          onPressed: session.deleteActiveCut,
-        ),
+        // This button was kept back once, and the reason is worth keeping
+        // because it is the reason that expired rather than a reason that
+        // was wrong: the shared delete reaches a cut through a cut
+        // SELECTION, the cut axis lives only on the storyboard, so removing
+        // this would leave the timeline unable to delete a cut at all — the
+        // same mistake as pulling the layer delete before ⑨ built row
+        // selection.
+        //
+        // 유저 2026-08-13 retired the premise, not the reasoning: 「타임라인
+        // 에서 컷 선택은 못해도되. 할필요도없어. **컷 편집은 스토리보드
+        // 패널에서 하는거고**」 — and the cut pill itself is only here 「일단
+        // 통일성으로」. A capability the timeline is not supposed to have is
+        // not a capability the timeline loses.
       ],
     );
   }

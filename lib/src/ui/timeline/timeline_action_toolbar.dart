@@ -550,15 +550,18 @@ class TimelineActionToolbar extends StatelessWidget {
       // (확정 #11), beside the one delete. They belong to no noun: what they
       // act on is whatever is selected, which is exactly the sentence that
       // pill exists to say.
-      const PanelFlyoutDivider(),
-      PanelFlyoutItem(
-        keyValue: 'delete-cell-button',
-        label: AppText.strings.tlDeleteCell,
-        icon: Icons.delete_outline,
-        danger: true,
-        enabled: session.canDeleteCellAtCurrentFrame,
-        onSelected: session.deleteCellAtCurrentFrame,
-      ),
+      // ⛔DELETE IS NOT HERE EITHER (T24, 유저 2026-08-13: 「프레임알약
+      // 삭제버튼 … 일단 삭제. 공통버튼에 존재하니까」). It was the last
+      // duplicate: the shared pill's one delete falls through to this exact
+      // verb when nothing else is selected, so the menu item reached
+      // `deleteCellAtCurrentFrame` by a second road under a second gate.
+      //
+      // ⚠️The ladder is the difference, and it is the confirmed law rather
+      // than a loss: with rows selected the one delete deletes ROWS
+      // (확정 D2, 컷 > 레이어 > 셀), so deleting just the cell now means
+      // clearing the row selection first. That is what "하나의 딜리트"
+      // means — the button asks what is selected instead of the reach
+      // deciding for it.
     ];
   }
 
