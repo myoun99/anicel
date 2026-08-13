@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/app_documents.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
@@ -43,6 +44,9 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   FolderPicker.debugFileExporter = null;
   FolderPicker.debugOperatingSystem = null;
   FolderPicker.debugBookmarkResolver = null;
+  // Back to the PRODUCTION default, not to false — a reset that quietly
+  // put every test on the other shape would hide the one that ships.
+  anicelAlwaysZip64 = true;
   // Same hazard, same fix: the flow's platform seam decides whether a pick
   // has to clear Android's storage grant first.
   debugOperatingSystemOverride = null;
