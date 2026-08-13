@@ -283,9 +283,10 @@ void main() {
   /// reach `copyIntoProject`, or whose default silently flipped, leaves
   /// those tests green while every import copies again. So this drives the
   /// real chips and reads the path the project ended up with.
-  group('the import window decides copy or reference', () {
-    /// A png beside a SAVED project — saved, because an unsaved one has
-    /// nowhere to copy to and would pass either way.
+  group('the import window decides carry or reference', () {
+    /// A png beside a SAVED project — saved, so that a `.assets` sibling
+    /// COULD be created here. That is the whole assertion of the carry
+    /// test: there is somewhere for a copy to land and none appears.
     Future<(EditorSessionManager, String)> savedProjectWithPng(
       WidgetTester tester,
     ) async {
@@ -317,7 +318,7 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('it starts on Copy, on every platform', (tester) async {
+    testWidgets('it starts on Keep inside, on every platform', (tester) async {
       // It used to start on Reference everywhere but Apple, where a
       // recorded path dies at the next launch without a grant. Two things
       // moved since: the project carries its own media, so carrying costs
@@ -346,11 +347,11 @@ void main() {
         await tester.pump();
 
         expect(
-          find.textContaining('assets folder'),
+          find.textContaining('project file holds these'),
           findsOneWidget,
-          reason: '$os starts on Copy',
+          reason: '$os starts on Keep inside',
         );
-        expect(find.textContaining('stays where it is'), findsNothing);
+        expect(find.textContaining('stay where they are'), findsNothing);
       }
     });
 
@@ -374,7 +375,7 @@ void main() {
       );
       await tester.pump();
       expect(
-        find.textContaining('stays where it is'),
+        find.textContaining('stay where they are'),
         findsOneWidget,
         reason: 'the window says which of the two it is on',
       );
@@ -396,7 +397,7 @@ void main() {
       );
     });
 
-    testWidgets('Copy is the default, and the project will carry it', (
+    testWidgets('Keep inside is the default, and it duplicates nothing', (
       tester,
     ) async {
       final (s, path) = await savedProjectWithPng(tester);
@@ -407,24 +408,27 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.textContaining('assets folder'), findsOneWidget);
+      expect(find.textContaining('project file holds these'), findsOneWidget);
 
       await runImport(tester, s);
 
-      final media =
-          '${tempDir.path.replaceAll('\\', '/')}/scene.assets/Media/ref.png';
-      expect(s.mediaAssets.single.path, media);
-      expect(File(media).existsSync(), isTrue);
       expect(
-        s.mediaAssets.single.sourcePath,
+        s.mediaAssets.single.path,
         path.replaceAll('\\', '/'),
-        reason: 'a copy remembers where it came from; a reference has no '
-            'second place to point at',
+        reason: 'the project records the file where the user keeps it',
       );
       expect(
         s.mediaAssets.single.carried,
         isTrue,
         reason: 'and the next save packs it into the .anicel',
+      );
+      expect(
+        Directory(
+          '${tempDir.path}${Platform.pathSeparator}scene.assets',
+        ).existsSync(),
+        isFalse,
+        reason: 'carrying is a fact about the SAVE — there was somewhere '
+            'for a copy to land and none was made',
       );
     });
   });
@@ -794,6 +798,119 @@ void main() {
           .onPressed,
       isNull,
       reason: 'there is nothing left to import',
+    );
+  });
+
+  // --- The size warning (A-2) ---------------------------------------------
+  //
+  // Keep inside is the default and the chips are one click apart, so the
+  // cost of an accident is a project that quietly doubled. The window is
+  // where the choice is made and where changing it is cheap; the save is
+  // already too late, and a modal there is the shape this round has spent
+  // its whole length avoiding.
+
+  /// A file of [bytes] that costs no time to make — the length is what is
+  /// being tested, never the contents.
+  Future<String> writeBigFile(String name, int bytes) async {
+    final file = File('${tempDir.path}${Platform.pathSeparator}$name');
+    await file.parent.create(recursive: true);
+    final handle = file.openSync(mode: FileMode.write);
+    handle.truncateSync(bytes);
+    handle.closeSync();
+    return file.path;
+  }
+
+  testWidgets('a large file bound for the project file says so — total, '
+      'name and the way out', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final path = await tester.runAsync(
+      () => writeBigFile('마스터.wav', 120 * 1024 * 1024),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: ImportDialog(session: s, initialPaths: [path!])),
+      ),
+    );
+    await tester.pump();
+
+    final note = find.byKey(const ValueKey<String>('import-large-carry-note'));
+    expect(note, findsOneWidget, reason: 'Keep inside is the default');
+    final text = tester.widget<Text>(note).data!;
+    expect(text, contains('120 MB'), reason: 'the number being decided');
+    expect(text, contains('마스터'), reason: 'and what the answer acts on');
+    expect(text, contains('Reference'), reason: 'the way out is named');
+  });
+
+  testWidgets('choosing Reference takes the warning away', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final path = await tester.runAsync(
+      () => writeBigFile('마스터.wav', 120 * 1024 * 1024),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: ImportDialog(session: s, initialPaths: [path!])),
+      ),
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('import-large-carry-note')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-media-reference')),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('import-large-carry-note')),
+      findsNothing,
+      reason: 'nothing large is going inside any more',
+    );
+  });
+
+  testWidgets('a large MOVIE never warns — the kind keeps it outside '
+      'whatever the chips say', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final path = await tester.runAsync(
+      () => writeBigFile('참고영상.mp4', 900 * 1024 * 1024),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: ImportDialog(session: s, initialPaths: [path!])),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('import-large-carry-note')),
+      findsNothing,
+      reason: 'a warning about a file that was always staying outside is '
+          'the noise that teaches people to ignore the real one',
+    );
+  });
+
+  testWidgets('an ordinary file does not warn', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final path = await tester.runAsync(() => writePng('보통.png'));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: ImportDialog(session: s, initialPaths: [path!])),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('import-large-carry-note')),
+      findsNothing,
     );
   });
 }

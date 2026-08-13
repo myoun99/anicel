@@ -8,6 +8,8 @@ import '../../models/media_asset.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/file_type_groups.dart';
+import '../../services/project_lookup.dart'
+    show largeCarriedAssetBytes, mediaKindBelongsInArchive;
 import '../dialogs/folder_pick_flow.dart';
 import '../editor_session_manager.dart';
 import '../export/export_settings_modules.dart';
@@ -101,6 +103,10 @@ class _ImportDialogState extends State<ImportDialog> {
   /// path wins when a folder is among them) — listed so nothing exits
   /// silently.
   final List<String> _ignoredSources = [];
+
+  /// One stat per file for the size warning, kept because `build` asks and
+  /// `build` runs on every chip tap.
+  final Map<String, int> _fileSizes = {};
 
   @override
   void initState() {
@@ -799,6 +805,90 @@ class _ImportDialogState extends State<ImportDialog> {
     );
   }
 
+  int _sizeOf(String path) => _fileSizes.putIfAbsent(path, () {
+    try {
+      return File(path).lengthSync();
+    } on Object {
+      return 0; // Unreadable: the import degrades, and so does its warning.
+    }
+  });
+
+  /// Every path this import would REGISTER — the loose files, or the
+  /// reference rows a cut folder brings with it. Baked cels are not here:
+  /// their pixels become `.celz` and the file itself is not carried.
+  List<String> _registeredPaths() {
+    final folder = _folder;
+    if (folder == null) {
+      return _files;
+    }
+    final parsed = _parsed;
+    if (parsed == null) {
+      return const [];
+    }
+    return [
+      for (final reference in parsed.references) '$folder/${reference.file}',
+    ];
+  }
+
+  /// The files big enough that carrying them should be said out loud.
+  ///
+  /// Only ones that WOULD be carried. The kind ceiling means a movie is
+  /// never in here however the chips are set, and warning about a file
+  /// that was always going to stay outside is the noise that teaches
+  /// people to ignore the real warning.
+  List<String> _largeCarriedPaths() {
+    if (!_copyIntoProject) {
+      return const [];
+    }
+    return [
+      for (final path in _registeredPaths())
+        if (mediaKindBelongsInArchive(
+              mediaAssetKindForPath(path) ?? MediaAssetKind.image,
+            ) &&
+            _sizeOf(path) > largeCarriedAssetBytes)
+          path,
+    ];
+  }
+
+  static String _sizeLabel(int bytes) {
+    const megabyte = 1024 * 1024;
+    if (bytes >= 1024 * megabyte) {
+      return '${(bytes / (1024 * megabyte)).toStringAsFixed(1)} GB';
+    }
+    return '${(bytes / megabyte).round()} MB';
+  }
+
+  /// Says what carrying is about to cost, before it costs it.
+  ///
+  /// Apple's default is Keep inside and the toggle is one click away, so
+  /// the size someone did not intend to take on is the one they find out
+  /// about at the next sync. It leads with the TOTAL because that is the
+  /// number being decided, and it names the files because that is what
+  /// the answer acts on.
+  Widget _largeCarriedNote(BuildContext context) {
+    final large = _largeCarriedPaths();
+    if (large.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final total = large.fold<int>(0, (sum, path) => sum + _sizeOf(path));
+    final named = [
+      for (final path in large.take(3))
+        '${mediaAssetDefaultName(path)} (${_sizeLabel(_sizeOf(path))})',
+    ].join(', ');
+    final more = large.length > 3 ? ' and ${large.length - 3} more' : '';
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(
+        '${_sizeLabel(total)} goes inside the project file — $named$more. '
+        'Reference leaves the originals where they are.',
+        key: const ValueKey<String>('import-large-carry-note'),
+        style: Theme.of(context).textTheme.labelSmall!.copyWith(
+          color: Theme.of(context).colorScheme.error,
+        ),
+      ),
+    );
+  }
+
   Widget _settingsColumn(BuildContext context) {
     final isFolder = _folder != null;
     final isTvp = _tvpJson != null;
@@ -832,7 +922,7 @@ class _ImportDialogState extends State<ImportDialog> {
                   ),
                   ExportChip(
                     key: const ValueKey<String>('import-media-copy'),
-                    label: 'Copy in',
+                    label: 'Keep inside',
                     selected: _copyIntoProject,
                     onTap: () => setState(() => _copyIntoProject = true),
                   ),
@@ -841,14 +931,15 @@ class _ImportDialogState extends State<ImportDialog> {
             ),
             Text(
               _copyIntoProject
-                  ? 'A copy lands in the project’s assets folder; the '
-                        'original is left alone.'
-                  : 'The file stays where it is and the project points at '
-                        'it.',
+                  ? 'The project file holds these; the originals are left '
+                        'alone.'
+                  : 'The files stay where they are and the project points '
+                        'at them.',
               style: Theme.of(context).textTheme.labelSmall!.copyWith(
                 color: Theme.of(context).colorScheme.outline,
               ),
             ),
+            _largeCarriedNote(context),
             const SizedBox(height: 6),
           ],
           if (!landsWholeCut) ...[
