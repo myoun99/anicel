@@ -652,6 +652,38 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// One field, like Photoshop's. Our tip library has no groups to file
   /// into — that is the preset library — so a second field would be asking
   /// about a place that does not exist.
+  /// The id the stamp was last armed for, so a POSE change is not mistaken
+  /// for a fresh cut (the slot notifies for both).
+  String? _armedCutPieceId;
+
+  /// TS8-adjacent (TS2): a finished cut arms the STAMP.
+  ///
+  /// 유저: *"잘라내고 나면 찍기로 모드전환"* — cutting is how you get
+  /// something to stamp, so the tool that stamps it is where the hand is
+  /// going next. TVPaint's cutting tool hands over to its custom brush the
+  /// same way.
+  ///
+  /// It hangs off the SLOT rather than the cut gesture on purpose: the slot
+  /// is only ever filled by a cut that actually lifted pixels (scraping an
+  /// empty area deliberately leaves the held piece alone), so "a stray
+  /// scrape switched my tool" cannot happen without an extra guard. The
+  /// pose knobs notify through here too, hence [_armedCutPieceId] — ids are
+  /// minted per cut and survive `copyWith`.
+  ///
+  /// Tool changes are view state, not history: this is one write, and undo
+  /// never sees it.
+  void _armStampOnFreshCut() {
+    final piece = _cutPieceSlot.piece;
+    if (piece == null || piece.image.id == _armedCutPieceId) {
+      return;
+    }
+    _armedCutPieceId = piece.image.id;
+    if (_brushTool.value.tool == CanvasTool.cutStamp) {
+      return;
+    }
+    _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.cutStamp);
+  }
+
   Future<void> _registerCutPieceAsTip() async {
     final piece = _cutPieceSlot.piece;
     if (piece == null) {
@@ -1132,6 +1164,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             ? null
             : WorkspaceLayoutStore());
     unawaited(_restoreLayout());
+    _cutPieceSlot.addListener(_armStampOnFreshCut);
     _layout.addListener(_scheduleLayoutSave);
     // Sizes no longer come through the model's own notifier, but they are
     // still persisted — the save has to hear them separately or a resized
@@ -1716,6 +1749,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _storyboardThumbnails.dispose();
     _presetLibrary.dispose();
     _tipLibrary.dispose();
+    _cutPieceSlot.removeListener(_armStampOnFreshCut);
     // An injected tool notifier belongs to the shell; only a local
     // fallback is ours to dispose.
     if (widget.brushTool == null) {
@@ -2044,10 +2078,26 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                   _activePresetByTool[state.tool],
                 ),
                 builder: (context, toolState) =>
-                    KeyedKeepAliveStack<CanvasTool, BrushPresetId?>(
+                    KeyedKeepAliveStack<
+                      CanvasTool,
+                      (BrushPresetId?, CanvasShapeKind?)
+                    >(
                       keys: CanvasTool.values,
                       activeKey: toolState.tool,
-                      stateOf: () => _activePresetByTool[toolState.tool],
+                      // TS3: the SHAPE belongs here as much as in the slice
+                      // above. The slice decides whether this builder runs;
+                      // this decides whether the kept-alive subtree is
+                      // thrown away — and a cached panel is reused whole, so
+                      // with the preset alone (null for every drag-out verb,
+                      // for ever) picking the lasso changed the state, ran
+                      // the builder, hit the cache and left the tiles
+                      // painting the rectangle as selected. The tap still
+                      // worked, which is exactly what made it read as a
+                      // UI-only lie.
+                      stateOf: () => (
+                        _activePresetByTool[toolState.tool],
+                        toolState.activeShapeKind,
+                      ),
                       builder: (context) => ToolLibraryPanel(
                         transformOptions: _transformOptions,
                         onTransformOptionsChanged: (options) =>
@@ -2219,16 +2269,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                                   selectionCommands: widget
                                                       .canvasSelectionCommands,
                                                   cutPieceSlot: _cutPieceSlot,
-                                                  onCutPasteAbove: () =>
+                                                  // TS8: composite order is
+                                                  // the BLEND's answer, so
+                                                  // the button no longer
+                                                  // carries one.
+                                                  onCutPasteAtOrigin: () =>
                                                       _cutPieceSlot
-                                                          .pasteAtOrigin(
-                                                            behind: false,
-                                                          ),
-                                                  onCutPasteBelow: () =>
-                                                      _cutPieceSlot
-                                                          .pasteAtOrigin(
-                                                            behind: true,
-                                                          ),
+                                                          .pasteAtOrigin(),
                                                   onRegisterCutPieceAsTip:
                                                       _registerCutPieceAsTip,
                                                   onRenameTip: _renameTip,
