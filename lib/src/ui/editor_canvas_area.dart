@@ -34,6 +34,7 @@ import 'playback/canvas_playback_controller.dart' show PlaybackScope;
 import 'playback/canvas_playback_view.dart';
 import 'playback/canvas_track_stack_view.dart';
 import 'playback/recording_streamer_overlay.dart';
+import 'debug/input_inspector.dart';
 import 'playback/canvas_scrub_preview.dart';
 import 'text/app_strings.dart';
 import 'text/se_name_tag_paint.dart';
@@ -135,6 +136,10 @@ class EditorCanvasArea extends StatefulWidget {
 }
 
 class _EditorCanvasAreaState extends State<EditorCanvasArea> {
+  /// The last T12 probe line, so the inspector shows a line per CHANGE
+  /// rather than one per build. See the probe in [build].
+  String? _lastCanvasProbe;
+
   /// The brush size at the start of a 3-finger size drag (PEN-7b); the
   /// drag maps EXPONENTIALLY from here (120px per doubling) so the feel
   /// is uniform at every size.
@@ -414,6 +419,37 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final layerStack = inGap
         ? (nodes: const <CanvasLayerStackNode>[], activeLayerOpacity: 1.0)
         : session.editingCanvasStack;
+    // T12 field probe (no-op while the Input Inspector is hidden, and it
+    // prints only when one of the four answers CHANGES — a line per build
+    // would bury the inspector's five-note window in a single scrub).
+    //
+    // 유저 실기: 컷 끝 너머로 가면 용지와 그림이 사라지고 흰 외곽선만 남는다.
+    // The SESSION was measured and is right there (`past_cut_end_is_ordinary_test`
+    // pins `inGap == false`, a non-empty stack and an unchanged duration in
+    // all three arrangements), so the disagreement is between what the
+    // session answers and what reaches the screen — and only the device can
+    // say which. These are the four values the paper hangs on, in order:
+    // if `gap` is true the session decided there is no cut here after all;
+    // if `nodes` is 0 with `gap` false the plan came back empty; and if all
+    // four look right while the paper is gone, the fault is below this
+    // widget, in the painting.
+    //
+    // ⚠️NOT behind an `assert`: the builds the user actually reports from are
+    // release ones, and an assert-gated probe is exactly the probe that is
+    // missing when it is needed. The visibility flag is the guard instead, so
+    // a hidden inspector costs one bool read and never builds the string —
+    // the same shape the pan recogniser's probes use.
+    if (InputInspector.visible.value) {
+      final probe =
+          'canvas gap=$inGap'
+          ' cut=${session.activeCutOrNull?.id.value ?? '-'}'
+          ' nodes=${layerStack.nodes.length}'
+          ' paper=${!inGap}';
+      if (probe != _lastCanvasProbe) {
+        _lastCanvasProbe = probe;
+        InputInspector.note(probe);
+      }
+    }
     final selection = inGap
         ? null
         : isCameraLayerActive
