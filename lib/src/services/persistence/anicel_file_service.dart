@@ -165,7 +165,20 @@ class AnicelFileService {
     /// construction, so its first save writes that absence back over the
     /// real file. Leaving grants out would make the one path built to
     /// protect unsaved work the path that destroys the permission record.
-    List<Map<String, Object?>> grants = const [],
+    ///
+    /// ⛔ REQUIRED, and so is [mediaInArchive] below. A default is exactly
+    /// what let this be forgotten — twice: the overlay shipped without
+    /// grants, that was found and fixed, and then the same shape was found
+    /// again for media entries. Both were data loss, and both were a
+    /// parameter quietly taking its default at one call site.
+    ///
+    /// 🔑 The rule these two are instances of: **the overlay's
+    /// `project.json` must carry everything a SAVE's would, because it
+    /// replaces it outright.** `test/services/persistence/
+    /// recovery_overlay_carries_everything_test.dart` states that as a
+    /// property, so a third field added to the writer fails a test instead
+    /// of quietly defaulting here.
+    required List<Map<String, Object?>> grants,
 
     /// The pool paths whose bytes already live INSIDE the base file.
     ///
@@ -178,7 +191,7 @@ class AnicelFileService {
     /// point of having carried it in — the asset is silently OMITTED from
     /// the next save, and `_saveFull` renames a media-less archive over
     /// the one that still held the bytes.
-    Set<String> mediaInArchive = const {},
+    required Set<String> mediaInArchive,
   }) async {
     final stores = [brushFrameStore, ...auxCelStores];
     final snapshots = [for (final store in stores) store.bakedSnapshotForSave()];

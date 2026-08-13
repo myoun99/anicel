@@ -257,6 +257,12 @@ void main() {
       brushFrameStore: s.brushFrameStore,
       filePath: overlayPath,
       baseFilePath: projectPath,
+      // Spelled out because they are required, and required because
+      // defaulting them at a call site is what cost two data-loss bugs.
+      // This test is about the STALE check, so it has nothing to carry —
+      // saying so is the point.
+      grants: const [],
+      mediaInArchive: const {},
       isStale: () => true,
     );
 
