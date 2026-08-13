@@ -1,4 +1,7 @@
 import '../core/collection_equality.dart';
+import 'media_identity.dart';
+
+export 'media_identity.dart' show MediaIdentity, MediaIdentityMatch;
 
 /// What a media pool entry holds.
 enum MediaAssetKind {
@@ -68,7 +71,14 @@ enum MediaFitMode {
 /// seed a placement and are user-editable per asset. SOURCE-TRACKING
 /// fields ([sourcePath], [sourceStamp]) power the "original changed"
 /// badge for COPIED assets (§6-g): the copy stays the truth, the badge
-/// only offers re-import. Detection-only metadata ([sourceFps],
+/// only offers re-import.
+///
+/// [identity] is the one that looks like source-tracking and is not. It
+/// describes the file at [path] rather than the origin, it is recorded for
+/// REFERENCES as much as copies, and it answers "which file is this?" so
+/// relink can recognize one that moved. The stamp cannot do that job —
+/// it carries an mtime precisely so it CAN notice a touched file, which is
+/// the opposite requirement. Detection-only metadata ([sourceFps],
 /// [frameCount], [pageCount]) is recorded at registration and never
 /// forces a policy (§6-x).
 class MediaAsset {
@@ -81,6 +91,7 @@ class MediaAsset {
     this.fitMode = MediaFitMode.contain,
     this.sourcePath,
     this.sourceStamp,
+    this.identity,
     this.sourceFps,
     this.frameCount,
     this.pageCount,
@@ -114,7 +125,20 @@ class MediaAsset {
 
   /// Change-detection stamp of the source at copy/registration time
   /// (mtime+size fingerprint); null = never stamped.
+  ///
+  /// ⚠️ Answers "did the original change?", NOT "is this the same file?".
+  /// It carries a modification time, so it stops matching when a file is
+  /// moved or restored — use [identity] for that question.
   final String? sourceStamp;
+
+  /// What the file at [path] looked like when it was registered — the
+  /// evidence relink compares a candidate against.
+  ///
+  /// Null for assets registered before this existed, and for anything the
+  /// app could not stat. Never back-filled: it can only describe a file
+  /// that was present at the time, and a missing reference is by definition
+  /// no longer there to measure.
+  final MediaIdentity? identity;
 
   /// Detected source frame rate (sequence/video kinds); detection only.
   final double? sourceFps;
@@ -138,6 +162,7 @@ class MediaAsset {
     MediaFitMode? fitMode,
     String? sourcePath,
     String? sourceStamp,
+    MediaIdentity? identity,
     double? sourceFps,
     int? frameCount,
     int? pageCount,
@@ -152,6 +177,7 @@ class MediaAsset {
       fitMode: fitMode ?? this.fitMode,
       sourcePath: sourcePath ?? this.sourcePath,
       sourceStamp: sourceStamp ?? this.sourceStamp,
+      identity: identity ?? this.identity,
       sourceFps: sourceFps ?? this.sourceFps,
       frameCount: frameCount ?? this.frameCount,
       pageCount: pageCount ?? this.pageCount,
@@ -168,6 +194,7 @@ class MediaAsset {
     if (fitMode != MediaFitMode.contain) 'fit': fitMode.toJson(),
     if (sourcePath != null) 'sourcePath': sourcePath,
     if (sourceStamp != null) 'sourceStamp': sourceStamp,
+    if (identity != null) 'identity': identity!.toJson(),
     if (sourceFps != null) 'sourceFps': sourceFps,
     if (frameCount != null) 'frameCount': frameCount,
     if (pageCount != null) 'pageCount': pageCount,
@@ -184,6 +211,7 @@ class MediaAsset {
       fitMode: MediaFitMode.fromJson(json['fit']),
       sourcePath: json['sourcePath'] as String?,
       sourceStamp: json['sourceStamp'] as String?,
+      identity: MediaIdentity.fromJson(json['identity']),
       sourceFps: (json['sourceFps'] as num?)?.toDouble(),
       frameCount: json['frameCount'] as int?,
       pageCount: json['pageCount'] as int?,
@@ -203,6 +231,7 @@ class MediaAsset {
           other.fitMode == fitMode &&
           other.sourcePath == sourcePath &&
           other.sourceStamp == sourceStamp &&
+          other.identity == identity &&
           other.sourceFps == sourceFps &&
           other.frameCount == frameCount &&
           other.pageCount == pageCount &&
@@ -218,6 +247,7 @@ class MediaAsset {
     fitMode,
     sourcePath,
     sourceStamp,
+    identity,
     sourceFps,
     frameCount,
     pageCount,

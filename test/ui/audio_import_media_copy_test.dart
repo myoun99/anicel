@@ -221,4 +221,78 @@ void main() {
     );
     session.dispose();
   });
+
+  test('a REFERENCE is stamped with an identity, not just a copy', () async {
+    // The gap this closes. `sourceStamp` answers "did the original we
+    // copied from change?", so it is stamped for copies only — and relink's
+    // subject is precisely the reference, which has no original to compare
+    // against and used to carry nothing at all.
+    final session = sessionWithFakeConforms();
+    await session.saveProjectToFile('${directory.path}/scene.anicel');
+    final referenced = File('${directory.path}/guide.wav')
+      ..writeAsBytesSync(List<int>.filled(321, 4));
+
+    session.importMediaFiles([referenced.path], copyIntoProject: false);
+
+    final asset = session.mediaAssets.single;
+    expect(asset.sourcePath, isNull, reason: 'a reference has no origin');
+    expect(asset.sourceStamp, isNull, reason: 'nothing was copied');
+    expect(asset.identity, isNotNull, reason: 'but it can still go missing');
+    expect(asset.identity!.lengthBytes, 321);
+    session.dispose();
+  });
+
+  test('a COPY is stamped too, and the two fields stay different', () async {
+    // Both are recorded and they are not interchangeable: identity
+    // describes the file at `path` (the copy, which relink would have to
+    // find), the stamp describes the origin it came from.
+    final session = sessionWithFakeConforms();
+    await session.saveProjectToFile('${directory.path}/scene.anicel');
+    final source = File('${directory.path}/bgm.wav')
+      ..writeAsBytesSync(List<int>.filled(77, 9));
+
+    session.importMediaFiles([source.path], copyIntoProject: true);
+
+    final asset = session.mediaAssets.single;
+    expect(asset.sourcePath, source.path.replaceAll('\\', '/'));
+    expect(asset.sourceStamp, isNotNull);
+    expect(asset.identity!.lengthBytes, 77);
+    expect(
+      asset.sourceStamp,
+      isNot(asset.identity!.toJson()),
+      reason: 'the stamp carries an mtime; identity must not',
+    );
+    session.dispose();
+  });
+
+  test('import-to-browse stamps one too', () async {
+    // A fourth registration path that carried no evidence whatsoever.
+    final session = sessionWithFakeConforms();
+    await session.saveProjectToFile('${directory.path}/scene.anicel');
+    final foot = File('${directory.path}/foot.wav')
+      ..writeAsBytesSync(List<int>.filled(12, 1));
+
+    session.addMediaAssets([foot.path]);
+
+    expect(session.mediaAssets.single.identity!.lengthBytes, 12);
+    session.dispose();
+  });
+
+  test('an identity survives a save and reopen', () async {
+    // It is worthless if it does not: the whole point is to still be there
+    // when the file is not.
+    final session = sessionWithFakeConforms();
+    final path = '${directory.path}/scene.anicel';
+    await session.saveProjectToFile(path);
+    final referenced = File('${directory.path}/guide.wav')
+      ..writeAsBytesSync(List<int>.filled(555, 2));
+    session.importMediaFiles([referenced.path], copyIntoProject: false);
+    await session.saveProjectToFile(path);
+    session.dispose();
+
+    final reopened = sessionWithFakeConforms();
+    await reopened.openProjectFromFile(path);
+    expect(reopened.mediaAssets.single.identity!.lengthBytes, 555);
+    reopened.dispose();
+  });
 }
