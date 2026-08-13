@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/canvas_point.dart';
@@ -29,10 +30,16 @@ class SelectionAntsPainter extends CustomPainter {
     required this.marqueeShape,
     required this.openTrail,
     this.closeTarget,
+    this.closeTargetArmed = true,
+    this.cursor,
     this.transformChrome,
     this.movePendingDirty = false,
   }) : _phase = repaint,
-       super(repaint: repaint);
+       super(
+         repaint: cursor == null
+             ? repaint
+             : Listenable.merge(<Listenable>[repaint, cursor]),
+       );
 
   final Animation<double> _phase;
   final CanvasViewport viewport;
@@ -49,10 +56,31 @@ class SelectionAntsPainter extends CustomPainter {
   /// the end. Drawn open, because it IS open.
   final List<CanvasPoint> openTrail;
 
-  /// Where tapping would close the outline — the polygon's first vertex,
-  /// once there are enough of them. Null while closing is not on offer, so
-  /// the ring never promises a tap that would do nothing.
+  /// Where tapping would END the outline — the polygon's first vertex, from
+  /// the moment it is placed.
+  ///
+  /// TS6: it used to appear only once three vertices could actually close,
+  /// on the grounds that the ring must not promise a tap that does nothing.
+  /// The promise is wider than that now — a tap here closes when it can and
+  /// abandons the trace when it cannot (유저: 불가능할땐 그냥 취소) — so it
+  /// is honest from the first point, which is also the only feedback that
+  /// the first point landed at all.
   final CanvasPoint? closeTarget;
+
+  /// Whether that tap would CLOSE (three or more vertices) rather than
+  /// abandon. Drawn hollow either way; the ring is one shape with two
+  /// meanings, so it is drawn thinner while it can only abandon.
+  final bool closeTargetArmed;
+
+  /// The pointer, in this painter's own (viewport-local) coordinates — the
+  /// far end of the rubber band from the last placed vertex. Null when the
+  /// active shape lays no vertices.
+  ///
+  /// 유저: *"직선이 커서를 따라 이동하고 찍히면 고정이란 느낌 나야하는데 그게
+  /// 없음."* ⚠️A listenable rather than a value: it is merged into this
+  /// painter's repaint so the band follows the pointer without anyone
+  /// rebuilding the layer above.
+  final ValueListenable<Offset?>? cursor;
   final SelectionTransformChrome? transformChrome;
 
   /// R16-① TVP grammar: RED silhouette while the move session holds
@@ -97,28 +125,39 @@ class SelectionAntsPainter extends CustomPainter {
         ..fillType = PathFillType.evenOdd
         ..addPolygon([for (final point in marquee.points) _map(point)], true);
       _paintAnts(canvas, path, phase);
-    } else if (openTrail.length >= 2) {
-      // Not closable yet: show the outline as far as it has been drawn.
+    } else if (openTrail.isNotEmpty) {
+      // Not closable yet: show the outline as far as it has been drawn,
+      // plus the segment the next tap would lay (TS6). With one vertex the
+      // band IS the whole drawing — which is the point, since a lone
+      // vertex has no segment of its own to show.
+      final band = cursor?.value;
       final path = Path()
         ..moveTo(_map(openTrail.first).dx, _map(openTrail.first).dy);
       for (final point in openTrail.skip(1)) {
         final mapped = _map(point);
         path.lineTo(mapped.dx, mapped.dy);
       }
-      _paintAnts(canvas, path, phase);
+      if (band != null) {
+        path.lineTo(band.dx, band.dy);
+      }
+      if (openTrail.length >= 2 || band != null) {
+        _paintAnts(canvas, path, phase);
+      }
     }
 
     final close = closeTarget;
     if (close != null) {
-      // The tap target that would close the outline. A ring, not a filled
-      // dot: it has to read as somewhere to aim rather than as a vertex
-      // that is already there.
+      // The tap target that ends the outline. A ring, not a filled dot: it
+      // has to read as somewhere to aim rather than as a vertex that is
+      // already there — and the vertices themselves wear nothing (유저:
+      // "꼭짓점 점 그리지말라고. 그냥 라이브로 보이면 찍은건지 알수있으니까"
+      // — the band is that liveness).
       canvas.drawCircle(
         _map(close),
         closeTargetRadius,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5
+          ..strokeWidth = closeTargetArmed ? 1.5 : 1.0
           ..color = _chromeColor,
       );
     }
@@ -200,6 +239,8 @@ class SelectionAntsPainter extends CustomPainter {
       oldDelegate.marqueeShape != marqueeShape ||
       oldDelegate.openTrail != openTrail ||
       oldDelegate.closeTarget != closeTarget ||
+      oldDelegate.closeTargetArmed != closeTargetArmed ||
+      !identical(oldDelegate.cursor, cursor) ||
       oldDelegate.transformChrome != transformChrome ||
       oldDelegate.movePendingDirty != movePendingDirty;
 }
