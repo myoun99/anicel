@@ -83,6 +83,7 @@ class TimelineRowCellsPainter extends CustomPainter {
     this.devicePixelRatio = 1.0,
     this.celContent,
     this.coverageIdentity,
+    this.chromeless = false,
   }) : super(
          repaint: Listenable.merge([
            geometry,
@@ -162,6 +163,32 @@ class TimelineRowCellsPainter extends CustomPainter {
   /// its revision joins the repaint listenable so landed tiles paint on
   /// the next frame. Null (or no native engine) keeps the classic path.
   final TimelineGridTileStore? tileStore;
+
+  /// GROUND OFF — the row drawn over the artwork instead of over a panel.
+  ///
+  /// 유저 확정 (2026-08-10), restated 2026-08-13 when it went missing:
+  /// 「프레임셀쪽은 **바탕색은 싹 없애고** 그리드선 띄우고 그 부분도 전체적으로
+  /// **반투명**하게」. The collapsed row's design is in its negative space —
+  /// no panel fill, no rail fill, no active-row wash — and the one fill that
+  /// survives is the out-of-cut shading, because that one IS information.
+  ///
+  /// 🚨T16 — this exists because the collapsed overlay MOUNTS this row now
+  /// rather than re-drawing it (⑩'s root C). Mounting was right and it
+  /// brought the timeline's ground along with it, since only the RAIL row had
+  /// a way to take its ground off. So the flag goes where the twin already
+  /// is ([TimelineLayerControlsRow.chromeless]) instead of the overlay
+  /// growing a second painter again.
+  ///
+  /// ★It is a GROUND rule, not a look of its own: empty paper stops being
+  /// painted and a block keeps a translucent body, at the exact values the
+  /// strip painter used while it owned this drawing — so nothing about the
+  /// confirmed appearance is being re-decided here, only re-hosted.
+  final bool chromeless;
+
+  /// The translucency the collapsed row's blocks read at — `0x66` and `0x9E`
+  /// alpha, lifted verbatim from the painter this replaces.
+  static const double _chromelessBodyAlpha = 0x66 / 0xFF;
+  static const double _chromelessEdgeAlpha = 0x9E / 0xFF;
 
   /// Physical resolution for the tiles (tiles raster at logical × DPR
   /// and draw 1:1, so hidpi rows stay crisp).
@@ -532,8 +559,23 @@ class TimelineRowCellsPainter extends CustomPainter {
   /// same style/geometry, so the two paths cannot drift).
   void _paintCellSubstrate(Canvas canvas, int frameIndex) {
     final style = resolvedCellStyleFor(frameIndex);
-    final background = style.background;
-    final borderColor = style.border;
+    var background = style.background;
+    var borderColor = style.border;
+
+    if (chromeless) {
+      // Empty paper simply is not there — that is what 「바탕색은 싹 없애고」
+      // means, and it is the difference between a row laid ON the artwork and
+      // a row with a panel behind it. A covered cell keeps a body, thinned,
+      // so a block still reads as paper.
+      final covered = cellModelAt(frameIndex).exposureState.isCovered;
+      if (!covered) {
+        return;
+      }
+      background = background.withValues(alpha: _chromelessBodyAlpha);
+      borderColor = borderColor.withValues(
+        alpha: borderColor.a * _chromelessEdgeAlpha,
+      );
+    }
 
     final rect = cellRectFor(frameIndex);
     // Border.all paints INSIDE the box: stroke centered half a pixel in.
@@ -730,6 +772,9 @@ class TimelineRowCellsPainter extends CustomPainter {
       oldDelegate.celHasContentForLayer != celHasContentForLayer ||
       oldDelegate.celContentRevision != celContentRevision ||
       !identical(oldDelegate.tileStore, tileStore) ||
+      // T16: the ground rule is a painted fact like any other. One row can
+      // switch (the collapsed overlay folds and unfolds under a live panel).
+      oldDelegate.chromeless != chromeless ||
       oldDelegate.devicePixelRatio != devicePixelRatio;
 
   @override
@@ -789,6 +834,7 @@ Widget timelineRowCellsPaintArea({
   ValueListenable<int>? windowBucket,
   double viewportMainExtent = 0,
   Object? coverageIdentity,
+  bool chromeless = false,
 }) {
   final painter = TimelineRowCellsPainter(
     layer: layer,
@@ -803,9 +849,16 @@ Widget timelineRowCellsPaintArea({
     axis: axis,
     windowBucket: windowBucket,
     viewportMainExtent: viewportMainExtent,
+    chromeless: chromeless,
     // Substrate tiles (UI-R18 O7 T2): the app-wide store; it stands down
     // by itself when the native engine is unavailable (tests, web).
-    tileStore: TimelineGridTileStore.instance,
+    //
+    // ⛔A CHROMELESS row does not tile. A tile is a baked picture of the
+    // substrate, and the whole point of this mode is that the substrate is
+    // mostly absent — one row over the artwork is not worth teaching the
+    // bake key a new dimension it would then have to be trusted with. This
+    // is one row on screen; the classic pass is the cheap answer here.
+    tileStore: chromeless ? null : TimelineGridTileStore.instance,
     devicePixelRatio: MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
   );
   // Read LIVE: the row that built this closure survives zoom steps now.
