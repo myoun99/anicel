@@ -161,7 +161,7 @@ class CameraFrameRenderService {
         nodes ??
         [for (final layer in layers) CutFrameCompositeSurfaceLeaf(layer)];
     final resolvedOutput = outputSize ?? cameraFrameSize;
-    final layerImages = <CutFrameCompositeLayer, ui.Image>{};
+    final layerImages = <CutFrameCompositeLayer, PositionedSurfaceImage>{};
     Future<void> composeImages(List<CutFrameCompositeSurfaceNode> list) async {
       for (final node in list) {
         switch (node) {
@@ -170,10 +170,28 @@ class CameraFrameRenderService {
             // new upload — the storyboard thumbnail after a stroke reuses
             // the editing canvas's tiles); the camera transform then
             // samples the composed full-res image exactly as before.
+            //
+            // 🚨POSITIONED, so the crop happens AFTER the pose. The
+            // canvas-extent compose rasterised at the canvas origin, which
+            // threw pasteboard tiles away BEFORE the layer's transform ran —
+            // so artwork parked off-canvas and moved INTO frame by a pose
+            // was on screen and missing from the file. Playback has always
+            // cropped after (`composePositionedSurfaceImage` +
+            // `cut_frame_composite_cache`), and this is what made the two
+            // disagree about the same frame.
+            //
+            // ⚠️The output is still canvas-sized: this changes WHEN the crop
+            // happens, not whether. Off-canvas artwork that the pose does
+            // not bring in is still cropped, at the end, by the camera
+            // projection — 유저 확정: 「페이스트보드는 포함 안 시킴」.
+            //
+            // Cost is proportional to what is actually there: the positioned
+            // compose only rasters a bigger rect when pasteboard tiles
+            // exist, so a project that never parks artwork pays nothing.
             layerImages[layer] =
                 // Non-null without shouldAbort (on-demand render, never
                 // abandoned).
-                (await composeTiledSurfaceImage(
+                (await composePositionedSurfaceImage(
                   layer.surface,
                   reuse: BitmapTileImageCache.instance,
                 ))!;
@@ -283,15 +301,25 @@ class CameraFrameRenderService {
             // Layer transforms apply at composite time (never baked);
             // identity layers skip the save/restore.
             final layerImage = layerImages[layer]!;
+            // ★THE BYTE PIN IS KEPT WHERE IT APPLIED. `drawAtOrigin` is the
+            // legacy `drawImage(Offset.zero)` path and its output is held to
+            // the pixel by the composite parity suites — but it is only
+            // EQUIVALENT while the composed image is the canvas rect. When
+            // there are no pasteboard tiles that is still exactly what comes
+            // back, so those renders take the same path they always did and
+            // their bytes do not move. Only a surface with artwork outside
+            // the canvas takes the general path, which is the case that was
+            // broken.
+            final worldRect = layerImage.worldRect;
+            final atCanvasExtent =
+                worldRect.left == 0 &&
+                worldRect.top == 0 &&
+                worldRect.width == layer.surface.canvasSize.width &&
+                worldRect.height == layer.surface.canvasSize.height;
             drawPosedLayerImage(
               canvas,
-              image: layerImage,
-              worldRect: Rect.fromLTWH(
-                0,
-                0,
-                layerImage.width.toDouble(),
-                layerImage.height.toDouble(),
-              ),
+              image: layerImage.image,
+              worldRect: worldRect,
               canvasSize: layer.surface.canvasSize,
               pose: layer.pose,
               anchorPoint: layer.anchorPoint,
@@ -299,9 +327,7 @@ class CameraFrameRenderService {
               blendMode: layer.blendMode,
               effects: layer.effects,
               filterQuality: filterQuality,
-              // This route has always drawn its canvas-extent image whole,
-              // and a camera test pins its pixels exactly.
-              drawAtOrigin: true,
+              drawAtOrigin: atCanvasExtent,
             );
         }
       }
@@ -315,8 +341,8 @@ class CameraFrameRenderService {
       return await picture.toImage(resolvedOutput.width, resolvedOutput.height);
     } finally {
       picture.dispose();
-      for (final image in layerImages.values) {
-        image.dispose();
+      for (final composed in layerImages.values) {
+        composed.image.dispose();
       }
     }
   }

@@ -11,6 +11,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 
@@ -52,6 +53,94 @@ void main() {
   test('file names are 1-based and zero padded', () {
     expect(cameraSequenceFileName(0), 'frame_0001.png');
     expect(cameraSequenceFileName(11), 'frame_0012.png');
+  });
+
+  /// One red pixel in the tile to the LEFT of the canvas: local (7,2) of the
+  /// tile at x = -1 is world (-1, 2).
+  BitmapSurface surfaceWithParkedRedPixel() {
+    final pixels = Uint8List(8 * 8 * 4);
+    const offset = (2 * 8 + 7) * 4;
+    pixels[offset] = 255;
+    pixels[offset + 3] = 255;
+    return BitmapSurface(
+      canvasSize: canvasSize,
+      tileSize: 8,
+      tiles: {
+        TileCoord(x: -1, y: 0): BitmapTile(
+          coord: TileCoord(x: -1, y: 0),
+          size: 8,
+          pixels: pixels,
+        ),
+      },
+    );
+  }
+
+  testWidgets('artwork parked OFF canvas and posed INTO frame reaches the '
+      'render — the crop is after the pose, as it already is in playback', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final image = await service.renderThroughCamera(
+        layers: [
+          CutFrameCompositeLayer(
+            surface: surfaceWithParkedRedPixel(),
+            opacity: 1,
+            // The anchor is the canvas centre (4,4), so this translates the
+            // layer +2 in x: world (-1,2) lands on (1,2).
+            pose: TransformPose(center: CanvasPoint(x: 6, y: 4)),
+          ),
+        ],
+        pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),
+        cameraFrameSize: canvasSize,
+      );
+
+      expect(
+        await pixelAt(image, 1, 2),
+        const Color(0xFFFF0000),
+        reason:
+            'This route composed each layer at the CANVAS extent, so the '
+            'pasteboard tile was thrown away BEFORE the pose ran and the '
+            'artwork the pose brought into frame was on screen but missing '
+            'from the file. Playback has always cropped after the pose; that '
+            'is what made the two disagree about the same frame.',
+      );
+      expect(
+        await pixelAt(image, 5, 5),
+        const Color(0xFFFFFFFF),
+        reason: 'and nothing else moved',
+      );
+    });
+  });
+
+  testWidgets('artwork the pose does NOT bring in is still cropped', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final image = await service.renderThroughCamera(
+        layers: [
+          CutFrameCompositeLayer(
+            surface: surfaceWithParkedRedPixel(),
+            opacity: 1,
+          ),
+        ],
+        pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),
+        cameraFrameSize: canvasSize,
+      );
+
+      for (var y = 0; y < 8; y += 1) {
+        for (var x = 0; x < 8; x += 1) {
+          expect(
+            await pixelAt(image, x, y),
+            const Color(0xFFFFFFFF),
+            reason:
+                'The output is still canvas-sized: what changed is WHEN the '
+                'crop happens, not whether. 유저 확정: 「페이스트보드는 포함 '
+                '안 시킴」 — off-canvas artwork no pose brings in stays out '
+                'of the file. ($x,$y)',
+          );
+        }
+      }
+    });
   });
 
   testWidgets('identity pose maps canvas pixels 1:1 onto the output', (
