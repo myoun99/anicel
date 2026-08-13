@@ -140,7 +140,14 @@ class ConformResult {
   bool get isTransientFailure => outcome == ConformOutcome.sourceUnreadable;
 }
 
-/// Where a project's imported media lives.
+/// Where a project's imported media USED to live.
+///
+/// Nothing writes here any more — a `.anicel` carries its own media, and
+/// the import that used to copy files into `Media/` records the original
+/// in place. This survives because absorbing an old project still means
+/// knowing the old address: the files sitting there are ordinary sources,
+/// so opening such a project and saving it takes them inside, and the
+/// notice that says the folder can go needs to find it first.
 class ProjectAssetLayout {
   const ProjectAssetLayout(this.projectFilePath);
 
@@ -157,8 +164,18 @@ class ProjectAssetLayout {
   /// `<project>.assets` — beside the file, not inside it.
   String get assetsDirectory => '${_withoutExtension(projectFilePath)}.assets';
 
-  /// Originals. Deleting this loses work; the name says so.
+  /// Originals, from the builds that copied them here.
   String get mediaDirectory => '$assetsDirectory/Media';
+
+  /// Whether this project still has the sibling folder beside it.
+  ///
+  /// ⛔ Answering yes is not permission to delete it. The app does not
+  /// remove the user's files (user direction) — it says the folder is no
+  /// longer used and leaves the decision where it belongs. Which also
+  /// means this keeps answering yes until they act, and that is honest:
+  /// the folder really is still there.
+  bool get hasLegacyAssetsDirectory =>
+      Directory(assetsDirectory).existsSync();
 }
 
 /// Where a project's conforms are cached, and what they are called.

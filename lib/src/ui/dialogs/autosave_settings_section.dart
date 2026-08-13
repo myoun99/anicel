@@ -136,9 +136,9 @@ class AutosaveSettingsSection extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             const Text(
-              'Where voice takes land while a project has never been '
-              'saved. The first save moves the project\'s takes into its '
-              'Media folder; unused takes stay here.',
+              'Where voice takes land. Saving copies the ones a project '
+              'uses into the project file; every take stays here either '
+              'way, so a recording is never in one place only.',
               style: TextStyle(fontSize: 12),
             ),
             const SizedBox(height: 4),

@@ -112,6 +112,26 @@ void main() {
       expect(layout.assetsDirectory, '/work/ep.01.final.assets');
     });
 
+    test('the legacy sibling is REPORTED, never removed', () async {
+      // Nothing writes there any more, so the folder is dead weight — but
+      // it holds the user's originals until a save takes them inside, and
+      // the app does not delete the user's files (user direction). All
+      // this answers is whether there is something to say.
+      final root = await Directory.systemTemp.createTemp('qa-legacy-assets');
+      addTearDown(() => root.delete(recursive: true));
+      final project = '${root.path.replaceAll('\\', '/')}/scene.anicel';
+      final layout = ProjectAssetLayout(project);
+      expect(layout.hasLegacyAssetsDirectory, isFalse);
+
+      Directory('${layout.assetsDirectory}/Media').createSync(recursive: true);
+      expect(layout.hasLegacyAssetsDirectory, isTrue);
+      expect(
+        Directory(layout.assetsDirectory).existsSync(),
+        isTrue,
+        reason: 'asking must not be the same as clearing',
+      );
+    });
+
     test('the conform cache is NOT beside the project', () {
       // The whole point of the move: a twelve-times-the-source cache must
       // not land in whatever cloud folder the project happens to be in,
