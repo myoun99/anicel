@@ -713,6 +713,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _scheduleFloatResample();
       _syncAnts();
     }
+    // The preview is clipped to what is on screen, so MOVING the screen
+    // changes what it has to compute. Nothing else would notice: the
+    // resample is scheduled by pointer moves and mode switches, and a pan
+    // is neither — the box would keep painting the window it was given
+    // and the picture would simply be absent outside it.
+    if (_transform != null && oldWidget.viewport != widget.viewport) {
+      _scheduleFloatResample();
+    }
     if (oldWidget._resampleMode != widget._resampleMode) {
       // P3a: flipping the switch with a box already open re-resamples on
       // the spot. Waiting for the next drag would show the old kernel's
@@ -1476,19 +1484,77 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     );
   }
 
-  /// The visible rect the PREVIEW clips to, rounded to whole pixels so a
-  /// sub-pixel pan does not churn the cache key.
+  /// The output rect the open warp would produce — the same rect the
+  /// three transform functions compute for themselves.
+  ///
+  /// The layer needs it to answer one question before resampling: would a
+  /// window actually be smaller than the whole? If not, it asks for NO
+  /// window, and then the cache entry is one the commit can reuse. Most
+  /// selections are that case, and losing the reuse for all of them
+  /// would have traded a big win on the whole picture for a second full
+  /// resample on every ordinary Enter.
+  ({int left, int top, int width, int height})? _currentOutputRect() {
+    final mesh = _placedMeshPoints;
+    if (mesh != null) {
+      return selectionWarpOutputRect(mesh);
+    }
+    final quad = _placedCorners;
+    if (quad != null && !_offsetsAreZero(_cornerOffsets)) {
+      return selectionWarpOutputRect(quad);
+    }
+    final affine = _transform;
+    final base = _stampRectCorners();
+    if (affine == null || base == null || affine.isIdentity) {
+      return null;
+    }
+    return selectionWarpOutputRect([
+      for (final corner in base) affine.apply(corner),
+    ]);
+  }
+
+  /// The visible rect the PREVIEW clips to — or null, which means "do not
+  /// clip", and which is the answer everywhere except mid-drag.
+  ///
+  /// Clipping is only safe while a handle is actually being dragged, and
+  /// that is also the only time it is worth anything.
+  ///
+  /// Safe, because the viewport CANNOT move then: the panel holds mapped
+  /// pans and wheel zooms behind `strokeActive` for the length of a
+  /// selection drag, and touch behind `touchLocked`. Outside a drag the
+  /// viewport moves freely — Fit, the zoom pill, the pan bars — and a
+  /// window computed for where the user WAS is a window with a hole in
+  /// it. Rescheduling on a viewport change does not close that hole
+  /// either: the resample is synchronous but the decode is not, so the
+  /// frames between a pan and the new image would paint the old window
+  /// and nothing else. A drag cannot pan, so the question never arises.
+  ///
+  /// Worth anything, because a drag is the only thing that resamples
+  /// dozens of times a second. At rest there is one resample, it computes
+  /// the whole rect, and the commit reuses that very buffer — so the
+  /// byte-identity path the tool has always had survives untouched.
   SelectionVisibleRect? _previewVisibleRect() {
+    if (_dragMode != _DragMode.transform) {
+      return null;
+    }
     final rect = _visibleCanvasRect();
     if (rect == null) {
       return null;
     }
-    return (
+    final rounded = (
       left: rect.left.floorToDouble(),
       top: rect.top.floorToDouble(),
       right: rect.right.ceilToDouble(),
       bottom: rect.bottom.ceilToDouble(),
     );
+    final out = _currentOutputRect();
+    if (out == null) {
+      return null;
+    }
+    // Everything already on screen: ask for no window at all, so the
+    // buffer this produces is the one Enter can land.
+    return selectionPreviewWindow(out: out, visible: rounded) == null
+        ? null
+        : rounded;
   }
 
   _ResampleKey? _currentResampleKey({SelectionVisibleRect? visible}) {
@@ -2268,6 +2334,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// this arithmetic does not describe.
   ProvisionalInkPainter? _landedInkPainter(BrushDab landed, int left, int top) {
     final resampled = _resampledFloatImage;
+    // The identity test stays exact here, and must: this hands the BASE a
+    // picture covering the landed rect, so a viewport WINDOW would be both
+    // misplaced and short. A windowed commit therefore gets no provisional
+    // compose and waits for the real cel — which is only slower, never
+    // wrong, because the visual hold above is still covering the screen.
     if (resampled != null && identical(_resampledImageDab, landed)) {
       return inkFromImage(
         resampled,
@@ -2930,6 +3001,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// open Ctrl+T session — its float persists between handle drags).
   void _cancelDrag({required bool notify}) {
     final wasDragging = _dragMode != _DragMode.none;
+    // Leaving a handle drag widens the preview back to the whole rect:
+    // the clip is a drag-time measure, and at rest the box has to be
+    // correct wherever the user looks next. It is also what lets the
+    // commit reuse this buffer instead of computing a second one.
+    final wasTransformDrag = _dragMode == _DragMode.transform;
     // R16-①: the move SESSION survives the gesture — the float keeps
     // rendering at its pending position until the user confirms.
     // A CANCELLED marquee leaves the region exactly as the drag found it
@@ -2952,6 +3028,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _warpDragStartOffsets = null;
     if (_transform == null && !_movePending) {
       _floatSurface = null;
+    }
+    if (wasTransformDrag && _transform != null) {
+      _scheduleFloatResample();
     }
     if (notify && wasDragging) {
       _notifyDragActive(false);

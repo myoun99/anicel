@@ -66,7 +66,13 @@ void main() {
     return rgba;
   }
 
+  /// Every clipped buffer the sweep produced, so the two kernels can be
+  /// held against each OTHER and not only against themselves.
+  final clippedByKernel = <bool, List<Uint8List>>{};
+
   void runSweep({required bool forceDart}) {
+    final produced = <Uint8List>[];
+    clippedByKernel[forceDart] = produced;
     QaNativeEngine.debugResetForTests();
     debugQaEngineLibraryPathOverride = dllPath;
     QaNativeEngine.debugForceDartFallback = forceDart;
@@ -153,6 +159,7 @@ void main() {
             clipY: oy,
           );
 
+          produced.add(clipped);
           compared += 1;
           var mismatched = 0;
           for (var row = 0; row < h; row += 1) {
@@ -278,6 +285,157 @@ void main() {
     expect(mismatched, 0);
   });
 
+  test('퍼스 and 메쉬 clip too, and their windows are the whole warp\'s '
+      'windows — the mesh moved a per-TRIANGLE origin at first, which is '
+      'the one regrouping ABI 26 exists to prevent', () {
+    if (dllPath == null) {
+      markTestSkipped(nativeEngineMissingSkipReason);
+      return;
+    }
+    QaNativeEngine.debugResetForTests();
+    debugQaEngineLibraryPathOverride = dllPath;
+    QaNativeEngine.debugForceDartFallback = false;
+
+    const width = 180;
+    const height = 140;
+    final dab = BrushDab(
+      center: CanvasPoint(x: width / 2, y: height / 2),
+      color: 0xFF000000,
+      size: 1,
+      opacity: 1,
+      flow: 1,
+      hardness: 1,
+      tipShape: BrushTipShape.square,
+      pressure: 1,
+      sequence: 0,
+      stamp: BrushStampImage(
+        id: 'warp',
+        width: width,
+        height: height,
+        rgba: lineArt(width, height),
+      ),
+    );
+    final base = <CanvasPoint>[
+      CanvasPoint(x: 0, y: 0),
+      CanvasPoint(x: width.toDouble(), y: 0),
+      CanvasPoint(x: width.toDouble(), y: height.toDouble()),
+      CanvasPoint(x: 0, y: height.toDouble()),
+    ];
+
+    void compareWindowed(String label, BrushDab whole, BrushDab windowed) {
+      final full = whole.stamp!;
+      final part = windowed.stamp!;
+      expect(
+        part.width < full.width || part.height < full.height,
+        isTrue,
+        reason: '$label: the window must be smaller or this proves nothing',
+      );
+      final offsetX =
+          ((windowed.center.x - part.width / 2) -
+                  (whole.center.x - full.width / 2))
+              .round();
+      final offsetY =
+          ((windowed.center.y - part.height / 2) -
+                  (whole.center.y - full.height / 2))
+              .round();
+      var mismatched = 0;
+      for (var row = 0; row < part.height; row += 1) {
+        final fullBase = ((offsetY + row) * full.width + offsetX) * 4;
+        final partBase = row * part.width * 4;
+        for (var byte = 0; byte < part.width * 4; byte += 1) {
+          if (full.rgba[fullBase + byte] != part.rgba[partBase + byte]) {
+            mismatched += 1;
+          }
+        }
+      }
+      expect(mismatched, 0, reason: '$label: the window is not the window');
+    }
+
+    // 퍼스: a real quad, not a rectangle.
+    final quad = <CanvasPoint>[
+      CanvasPoint(x: 14, y: 8),
+      CanvasPoint(x: width + 30.0, y: 22),
+      CanvasPoint(x: width - 6.0, y: height + 25.0),
+      CanvasPoint(x: 2, y: height - 11.0),
+    ];
+    final quadWhole = transformStampDabQuad(dab, quad);
+    final quadFull = quadWhole.stamp!;
+    final quadLeft = quadWhole.center.x - quadFull.width / 2;
+    final quadTop = quadWhole.center.y - quadFull.height / 2;
+    compareWindowed(
+      'quad',
+      quadWhole,
+      transformStampDabQuad(
+        dab,
+        quad,
+        visible: (
+          left: quadLeft + 25,
+          top: quadTop + 18,
+          right: quadLeft + quadFull.width - 30,
+          bottom: quadTop + quadFull.height - 20,
+        ),
+      ),
+    );
+
+    // 메쉬: a 3×3 grid with one interior point pulled aside.
+    const columns = 3;
+    const rows = 3;
+    final points = <CanvasPoint>[
+      for (var row = 0; row <= rows; row += 1)
+        for (var column = 0; column <= columns; column += 1)
+          CanvasPoint(
+            x: base[0].x + column * width / columns,
+            y: base[0].y + row * height / rows,
+          ),
+    ];
+    points[1 * (columns + 1) + 1] = CanvasPoint(
+      x: points[1 * (columns + 1) + 1].x - 17,
+      y: points[1 * (columns + 1) + 1].y + 23,
+    );
+    final meshWhole = transformStampDabMesh(
+      dab,
+      columns: columns,
+      rows: rows,
+      points: points,
+    );
+    final meshFull = meshWhole.stamp!;
+    final meshLeft = meshWhole.center.x - meshFull.width / 2;
+    final meshTop = meshWhole.center.y - meshFull.height / 2;
+    // The mesh keeps the WHOLE buffer and fills only the visible part, so
+    // its "window" is the same size — compare the visible region instead.
+    final meshClipped = transformStampDabMesh(
+      dab,
+      columns: columns,
+      rows: rows,
+      points: points,
+      visible: (
+        left: meshLeft + 20,
+        top: meshTop + 16,
+        right: meshLeft + meshFull.width - 24,
+        bottom: meshTop + meshFull.height - 18,
+      ),
+    );
+    final meshPart = meshClipped.stamp!;
+    var meshMismatched = 0;
+    for (var row = 16; row < meshFull.height - 18; row += 1) {
+      for (var column = 20; column < meshFull.width - 24; column += 1) {
+        final offset = (row * meshFull.width + column) * 4;
+        for (var byte = 0; byte < 4; byte += 1) {
+          if (meshFull.rgba[offset + byte] != meshPart.rgba[offset + byte]) {
+            meshMismatched += 1;
+          }
+        }
+      }
+    }
+    expect(
+      meshMismatched,
+      0,
+      reason:
+          'mesh: the visible region of a clipped mesh must be byte-for-byte '
+          'the same region of the unclipped one',
+    );
+  });
+
   test('asking for a visible rect that covers everything returns the WHOLE '
       'dab, so small selections keep the commit-reuse path', () {
     if (dllPath == null) {
@@ -337,5 +495,27 @@ void main() {
     // kernel's row banding rather than in the idea.
     runSweep(forceDart: false);
     runSweep(forceDart: true);
+
+    // And against each other. The two agreeing with THEMSELVES leaves the
+    // case where both are wrong the same way — which is exactly what
+    // happened when the supersampler was missed, since the C mirrors the
+    // Dart line for line.
+    final native = clippedByKernel[false]!;
+    final dart = clippedByKernel[true]!;
+    expect(native, hasLength(dart.length));
+    var crossMismatched = 0;
+    for (var i = 0; i < native.length; i += 1) {
+      expect(native[i].length, dart[i].length);
+      for (var byte = 0; byte < native[i].length; byte += 1) {
+        if (native[i][byte] != dart[i][byte]) {
+          crossMismatched += 1;
+        }
+      }
+    }
+    expect(
+      crossMismatched,
+      0,
+      reason: 'the native kernel and the Dart reference must clip alike',
+    );
   });
 }

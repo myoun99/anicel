@@ -716,31 +716,43 @@ BrushDab transformStampDabMesh(
     if (denominator.abs() < 1e-12) {
       return; // Degenerate destination triangle.
     }
-    // The mesh clips per TRIANGLE rather than per output buffer: each one
-    // already resamples only its own bounding box, so narrowing that box
-    // to what is on screen skips the off-screen work without disturbing
-    // the shared `bytes`/`covered` indexing. A preview asks for the
-    // visible rect; a commit asks for nothing and gets the whole mesh.
-    final left = math.max(
-      visible == null ? outLeft : math.max(outLeft, visible.left.floor()),
+    // The triangle's own bounding box, clamped to the output rect. This
+    // is the ORIGIN the resample transform is built from, and it must not
+    // move when the preview clips — moving an origin is exactly the
+    // regrouping ABI 26 exists to avoid, and it would make a clipped mesh
+    // preview differ from what Enter lands.
+    final rawLeft = math.max(
+      outLeft,
       math.min(d0.x, math.min(d1.x, d2.x)).floor(),
     );
-    final top = math.max(
-      visible == null ? outTop : math.max(outTop, visible.top.floor()),
+    final rawTop = math.max(
+      outTop,
       math.min(d0.y, math.min(d1.y, d2.y)).floor(),
     );
-    final right = math.min(
-      visible == null
-          ? outLeft + outWidth
-          : math.min(outLeft + outWidth, visible.right.ceil()),
+    final rawRight = math.min(
+      outLeft + outWidth,
       math.max(d0.x, math.max(d1.x, d2.x)).ceil(),
     );
-    final bottom = math.min(
-      visible == null
-          ? outTop + outHeight
-          : math.min(outTop + outHeight, visible.bottom.ceil()),
+    final rawBottom = math.min(
+      outTop + outHeight,
       math.max(d0.y, math.max(d1.y, d2.y)).ceil(),
     );
+    // What is on screen of it. The mesh clips per TRIANGLE rather than by
+    // windowing the shared buffer: each triangle already resamples only
+    // its own box, so narrowing that box skips the off-screen work
+    // without disturbing the `bytes`/`covered` indexing.
+    final left = visible == null
+        ? rawLeft
+        : math.max(rawLeft, visible.left.floor());
+    final top = visible == null
+        ? rawTop
+        : math.max(rawTop, visible.top.floor());
+    final right = visible == null
+        ? rawRight
+        : math.min(rawRight, visible.right.ceil());
+    final bottom = visible == null
+        ? rawBottom
+        : math.min(rawBottom, visible.bottom.ceil());
     final tileWidth = right - left;
     final tileHeight = bottom - top;
     if (tileWidth <= 0 || tileHeight <= 0) {
@@ -770,12 +782,14 @@ BrushDab transformStampDabMesh(
         s1: s1,
         s2: s2,
         denominator: denominator,
-        left: left,
-        top: top,
+        left: rawLeft,
+        top: rawTop,
         srcLeft: srcLeft,
         srcTop: srcTop,
       ),
       mode: mode,
+      clipX: left - rawLeft,
+      clipY: top - rawTop,
     );
     for (var y = top; y < bottom; y += 1) {
       final qy = y + 0.5;

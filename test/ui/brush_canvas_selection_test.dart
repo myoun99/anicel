@@ -11,6 +11,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
@@ -54,6 +55,7 @@ void main() {
       HistoryManager history,
       CanvasSelectionCommands commands,
       Future<void> Function(CanvasTool tool) setTool,
+      Future<void> Function(CanvasViewport viewport) setViewport,
       ValueNotifier<TransformToolOptions> transformOptions,
     })
   >
@@ -63,6 +65,7 @@ void main() {
     CanvasShapeKind shapeKind = CanvasShapeKind.rect,
     BrushBlendMode blendMode = BrushBlendMode.color,
     TransformMode transformMode = TransformMode.normal,
+    CanvasViewport? viewport,
     // Extra committed ink, mounted with the fixture. `null` replaces the
     // in-canvas stroke entirely (a cel whose only ink is off-canvas).
     List<BrushDab>? sourceDabs,
@@ -89,7 +92,10 @@ void main() {
       coordinator.commitSourceStroke(sourceDabs: dabs);
     }
 
+    var liveViewport = viewport;
+    var liveTool = tool;
     Future<void> pumpWith(CanvasTool tool) async {
+      liveTool = tool;
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -112,6 +118,7 @@ void main() {
                 fillBlendMode: blendMode,
               ),
               selectionCommands: commands,
+              viewport: liveViewport,
               shapeFillDabFor: (shape, color) => buildShapeFillDab(
                 shape: shape,
                 color: color,
@@ -135,6 +142,10 @@ void main() {
       history: history,
       commands: commands,
       setTool: pumpWith,
+      setViewport: (next) async {
+        liveViewport = next;
+        await pumpWith(liveTool);
+      },
       transformOptions: transformOptions,
     );
   }
@@ -1129,6 +1140,52 @@ void main() {
     expect(env.history.undoCount, entriesAfterFirst + 1);
   });
 
+  testWidgets('the preview clips ONLY while a handle is being dragged, and '
+      'goes back to the whole rect the moment it is released', (tester) async {
+    // A canvas larger than the 800×600 test viewport, so a whole-picture
+    // box really is bigger than the screen and clipping has something to
+    // clip.
+    const big = CanvasSize(width: 1800, height: 1400);
+    await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      canvasSize: big,
+      sourceDabs: [dab(100, 100), dab(700, 600), dab(1500, 1200)],
+      viewport: CanvasViewport(),
+    );
+
+    final origin = tester.getTopLeft(find.byKey(layerKey));
+    // The box frames the ink, which runs to (1500,1200) — far past the
+    // 800×600 test viewport, so a window really is smaller. Its TOP-LEFT
+    // handle is the one that is on screen to grab.
+    late final int duringDrag;
+    await tester.runAsync(() async {
+      final gesture = await tester.startGesture(
+        origin + const Offset(100, 100),
+      );
+      await tester.pump();
+      await gesture.moveTo(origin + const Offset(60, 55));
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      duringDrag = debugLastResampledFloat!.stamp!.width;
+      await gesture.up();
+      await tester.pump();
+      // Releasing widens it back out.
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+    });
+    await tester.pump();
+    final atRest = debugLastResampledFloat!.stamp!.width;
+
+    expect(
+      duringDrag,
+      lessThan(atRest),
+      reason:
+          'mid-drag the preview covers the viewport; at rest it covers the '
+          'whole rect, because the viewport can MOVE at rest and a window '
+          'computed for where the user was is a window with a hole in it',
+    );
+  });
+
   testWidgets('the ANCHOR is a setting, and Alt inverts it for one drag', (
     tester,
   ) async {
@@ -1151,7 +1208,8 @@ void main() {
     expect(
       inkAt(env.coordinator, 75, 75),
       isNonZero,
-      reason: 'the grabbed end went out to 75, not the 80 a corner anchor '
+      reason:
+          'the grabbed end went out to 75, not the 80 a corner anchor '
           'would have given',
     );
     expect(
@@ -1632,7 +1690,8 @@ void main() {
       expect(
         identical(nudged.surface, lifted),
         isTrue,
-        reason: 'a nudge rebuilt the float — it is a translation, not new '
+        reason:
+            'a nudge rebuilt the float — it is a translation, not new '
             'pixels, and a rebuilt surface has no decoded tiles to paint',
       );
       var undecoded = 0;
@@ -2251,10 +2310,7 @@ void main() {
       // rest, which is the only shape where the two rounding orders can
       // disagree at all — and the anti-vacuity assertion below fails if a
       // future change makes it stop blending.
-      final env = await pumpSelectionPanel(
-        tester,
-        sourceDabs: blendedPicture,
-      );
+      final env = await pumpSelectionPanel(tester, sourceDabs: blendedPicture);
       await dragOnLayer(tester, const Offset(120, 120), const Offset(430, 380));
       await env.setTool(CanvasTool.move);
       await dragOnLayer(tester, const Offset(250, 220), const Offset(286, 249));
