@@ -10,6 +10,30 @@ import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart';
 
+/// The ruler's top-line SECOND mark at [frameIndex], or '' off a boundary.
+///
+/// 🚨COUNTED FROM 0, because a ruler mark is a POSITION on the time axis and
+/// what has elapsed at the first frame is nothing (유저 2026-08-13: 「초
+/// 표시하는곳. 1부터 시작하는데 그게아니라 0부터 시작하도록」). At 24fps the
+/// mark on frame 25 is where exactly one second has passed, so `1` belongs
+/// there and `0` belongs at the head.
+///
+/// ⛔This is NOT the `s+ff` notation of a cut's LENGTH
+/// ([ProjectFrameRate]'s formatter, the conte sheet's totals). A length is a
+/// count and 24 frames is `1+0`; the two look alike and answer different
+/// questions, so they stay separate functions.
+///
+/// One function because the timeline, the storyboard and the x-sheet all ask
+/// it: the expression used to be written out twice, letter for letter, and
+/// fixing one would have left the sheet counting from 1.
+String timelineRulerSecondsLabel({
+  required int frameIndex,
+  required int framesPerSecond,
+}) {
+  final safeFps = framesPerSecond > 0 ? framesPerSecond : 24;
+  return frameIndex % safeFps == 0 ? '${frameIndex ~/ safeFps}' : '';
+}
+
 /// The resolved per-header model — THE probe surface for ruler tests
 /// (labels, states and colors live here, not in widget trees), the ruler
 /// counterpart of the cells painter's model (UI-R9 #12b → UI-R13 #1).
@@ -127,9 +151,10 @@ class TimelineFrameRulerPainter extends CustomPainter {
     return TimelineRulerHeaderModel(
       frameIndex: frameIndex,
       label: labeled ? _frameNumberLabel(frameIndex) : '',
-      secondsLabel: frameIndex % safeFps == 0
-          ? '${frameIndex ~/ safeFps + 1}'
-          : '',
+      secondsLabel: timelineRulerSecondsLabel(
+        frameIndex: frameIndex,
+        framesPerSecond: safeFps,
+      ),
       selected: selected,
       outsidePlaybackRange: outside,
       // No past-playback graying on the RULER (UI-R18 #9): small zooms
