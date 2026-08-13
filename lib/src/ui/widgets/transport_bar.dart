@@ -30,6 +30,7 @@ class TransportBar extends StatelessWidget {
     this.looping = false,
     this.onLoopingChanged,
     this.compact = false,
+    this.showRange = true,
   });
 
   /// How many frames the source has. One means a still: every control
@@ -56,6 +57,13 @@ class TransportBar extends StatelessWidget {
   /// window has been dragged down to a tablet's width.
   final bool compact;
 
+  /// Whether IN and OUT are on offer at all.
+  ///
+  /// A range that cannot act on anything is a control that lies, and there
+  /// are two of those: a source with one frame, and a place where trimming
+  /// is not implemented. Both hide the ends and keep the scrub.
+  final bool showRange;
+
   int get _lastFrame => frameCount <= 1 ? 0 : frameCount - 1;
 
   int _clamp(int frame) =>
@@ -70,6 +78,7 @@ class TransportBar extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TransportTrack(
+          showRange: showRange,
           frameCount: frameCount,
           currentFrame: currentFrame,
           inFrame: inFrame,
@@ -80,6 +89,7 @@ class TransportBar extends StatelessWidget {
         const SizedBox(height: 6),
         Row(
           children: [
+            if (showRange)
             SizedBox(
               width: compact ? 64 : 84,
               child: FittedBox(
@@ -168,6 +178,7 @@ class TransportBar extends StatelessWidget {
                 ),
               ),
             ),
+            if (showRange)
             SizedBox(
               width: compact ? 64 : 84,
               child: FittedBox(
@@ -240,6 +251,7 @@ class TransportBar extends StatelessWidget {
 class TransportTrack extends StatefulWidget {
   const TransportTrack({
     super.key,
+    required this.showRange,
     required this.frameCount,
     required this.currentFrame,
     required this.inFrame,
@@ -253,6 +265,7 @@ class TransportTrack extends StatefulWidget {
   final int currentFrame;
   final int inFrame;
   final int outFrame;
+  final bool showRange;
   final ValueChanged<int> onSeek;
   final void Function(int inFrame, int outFrame) onRangeChanged;
   final double height;
@@ -283,6 +296,11 @@ class _TransportTrackState extends State<TransportTrack> {
   }
 
   void _begin(Offset local) {
+    if (!widget.showRange) {
+      _grab = _Grab.seek;
+      _apply(local);
+      return;
+    }
     final inX = _xFor(widget.inFrame);
     final outX = _xFor(widget.outFrame);
     final toIn = (local.dx - inX).abs();
@@ -333,6 +351,7 @@ class _TransportTrackState extends State<TransportTrack> {
             size: Size(constraints.maxWidth, widget.height),
             painter: _TrackPainter(
               position: _lastFrame == 0 ? 0 : widget.currentFrame / _lastFrame,
+              showRange: widget.showRange,
               rangeStart: _lastFrame == 0 ? 0 : widget.inFrame / _lastFrame,
               rangeEnd: _lastFrame == 0 ? 1 : widget.outFrame / _lastFrame,
             ),
@@ -347,11 +366,13 @@ class _TransportTrackState extends State<TransportTrack> {
 class _TrackPainter extends CustomPainter {
   const _TrackPainter({
     required this.position,
+    required this.showRange,
     required this.rangeStart,
     required this.rangeEnd,
   });
 
   final double position;
+  final bool showRange;
   final double rangeStart;
   final double rangeEnd;
 
@@ -366,6 +387,14 @@ class _TrackPainter extends CustomPainter {
         ..strokeWidth = 1
         ..color = AppColors.hairline,
     );
+    if (!showRange) {
+      final only = position * size.width;
+      canvas.drawRect(
+        Rect.fromLTWH(only, -3, 1, size.height + 6),
+        Paint()..color = AppColors.text,
+      );
+      return;
+    }
     final startX = rangeStart * size.width;
     final endX = rangeEnd * size.width;
     canvas.drawRect(
@@ -384,6 +413,7 @@ class _TrackPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_TrackPainter old) =>
+      old.showRange != showRange ||
       old.position != position ||
       old.rangeStart != rangeStart ||
       old.rangeEnd != rangeEnd;

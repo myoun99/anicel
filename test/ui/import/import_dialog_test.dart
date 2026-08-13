@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 
 import '../../helpers/fake_pdf_document.dart';
+import '../../helpers/psd_fixture.dart';
 
 /// The import/placement window: the interpretation table shows the parse
 /// (dropped files included), the settings answer with filled defaults,
@@ -54,6 +55,26 @@ void main() {
   }
 
   Future<String> writePng(String name) => writePngFilled(name, 0xAA);
+
+  /// Answers one question for one FILE: press its cell in [column] and pick
+  /// [option] from the popup that column opens.
+  ///
+  /// This is the window's shape now — the settings that were chips over a
+  /// whole batch are cells on the row they belong to — so the tests drive
+  /// it the way a hand does.
+  Future<void> pickCell(
+    WidgetTester tester, {
+    required String column,
+    required String path,
+    required String option,
+  }) async {
+    await tester.tap(
+      find.byKey(ValueKey<String>('import-cell-$column-$path')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ValueKey<String>('import-option-$option')));
+    await tester.pumpAndSettle();
+  }
 
   /// A fully transparent PNG — what 「빈 사진 포함」 writes for an instance
   /// with no pixels (a quarter of the files in a real export).
@@ -154,8 +175,13 @@ void main() {
     await tester.pump();
 
     expect(
-      find.byKey(const ValueKey<String>('import-destination-layer')),
+      find.byKey(const ValueKey<String>('import-place-timeline')),
       findsOneWidget,
+    );
+    expect(
+      find.text('Layer'),
+      findsOneWidget,
+      reason: 'the row is already answered: into the cut you are in',
     );
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     for (var tries = 0; tries < 100; tries += 1) {
@@ -238,13 +264,29 @@ void main() {
       expect(s.mediaAssets.single.kind, MediaAssetKind.video);
     });
 
-    testWidgets('switched to a placing destination, the same movie is '
-        'refused BY NAME', (tester) async {
+    testWidgets('the browser pins the pool — the other door is shown, not '
+        'offered', (tester) async {
       final path = await tester.runAsync(writeMovie);
-      final s = await pumpWindow(tester, path!, poolOnly: true);
+      await pumpWindow(tester, path!, poolOnly: true);
 
       await tester.tap(
-        find.byKey(const ValueKey<String>('import-destination-cut')),
+        find.byKey(const ValueKey<String>('import-place-timeline')),
+      );
+      await tester.pump();
+      expect(
+        find.textContaining('placement not available'),
+        findsNothing,
+        reason: 'the chip is disabled: pressing it changes nothing',
+      );
+    });
+
+    testWidgets('placed from anywhere else, the same movie is refused BY '
+        'NAME', (tester) async {
+      final path = await tester.runAsync(writeMovie);
+      final s = await pumpWindow(tester, path!, poolOnly: false);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('import-place-timeline')),
       );
       await tester.pump();
       expect(find.textContaining('placement not available'), findsOneWidget);
@@ -265,13 +307,18 @@ void main() {
       await pumpWindow(tester, path!, poolOnly: false);
 
       expect(
-        find.byKey(const ValueKey<String>('import-rasterize-toggle')),
+        find.byKey(const ValueKey<String>('import-place-timeline')),
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey<String>('import-destination-pool')),
+        find.byKey(const ValueKey<String>('import-place-pool')),
         findsOneWidget,
         reason: 'the pool is on offer from here too — one window',
+      );
+      expect(
+        find.byKey(const ValueKey<String>('import-column-File')),
+        findsOneWidget,
+        reason: 'and whether a file is absorbed is that file\'s own answer',
       );
     });
   });
@@ -347,11 +394,11 @@ void main() {
         await tester.pump();
 
         expect(
-          find.textContaining('project file holds these'),
-          findsOneWidget,
+          find.text('Keep'),
+          findsWidgets,
           reason: '$os starts on Keep inside',
         );
-        expect(find.textContaining('stay where they are'), findsNothing);
+        expect(find.text('Ref'), findsNothing);
       }
     });
 
@@ -370,14 +417,11 @@ void main() {
         ),
       );
       await tester.pump();
-      await tester.tap(
-        find.byKey(const ValueKey<String>('import-media-reference')),
-      );
-      await tester.pump();
+      await pickCell(tester, column: 'File', path: path, option: 'Ref');
       expect(
-        find.textContaining('stay where they are'),
+        find.text('Ref'),
         findsOneWidget,
-        reason: 'the window says which of the two it is on',
+        reason: 'the row says which of the three it is on',
       );
 
       await runImport(tester, s);
@@ -408,7 +452,11 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.textContaining('project file holds these'), findsOneWidget);
+      expect(
+        find.text('Keep'),
+        findsWidgets,
+        reason: 'the row starts answered, and answered with carry',
+      );
 
       await runImport(tester, s);
 
@@ -462,8 +510,7 @@ void main() {
       reason: 'PDF left the unplaceable set in R4',
     );
 
-    await tester.tap(find.byKey(const ValueKey<String>('import-destination-cut')));
-    await tester.pump();
+    await pickCell(tester, column: 'Into', path: pdfPath, option: 'New cut');
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     for (var tries = 0; tries < 100; tries += 1) {
       if (s.repository.requireProject().tracks.first.cuts.length >
@@ -503,8 +550,7 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey<String>('import-destination-cut')));
-    await tester.pump();
+    await pickCell(tester, column: 'Into', path: pdfPath, option: 'New cut');
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     for (var tries = 0; tries < 100; tries += 1) {
       final status = tester.widgetList<Text>(
@@ -861,10 +907,7 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('import-media-reference')),
-    );
-    await tester.pump();
+    await pickCell(tester, column: 'File', path: path, option: 'Ref');
 
     expect(
       find.byKey(const ValueKey<String>('import-large-carry-note')),
@@ -912,5 +955,234 @@ void main() {
       find.byKey(const ValueKey<String>('import-large-carry-note')),
       findsNothing,
     );
+  });
+
+  /// The table itself: one row per file, one column per question, and a
+  /// press that speaks for exactly the rows it should.
+  group('the file table', () {
+    Future<String> writeMovie(String name) async {
+      final file = File('${tempDir.path}${Platform.pathSeparator}$name');
+      await file.writeAsBytes(const [0, 0, 0, 24]);
+      return file.path;
+    }
+
+    Future<String> writePsd(String name) async {
+      final file = File('${tempDir.path}${Platform.pathSeparator}$name');
+      await file.writeAsBytes(
+        buildPsd(
+          width: 4,
+          height: 4,
+          layers: [
+            PsdTestLayer(
+              name: 'art',
+              left: 0,
+              top: 0,
+              right: 4,
+              bottom: 4,
+              planes: psdSolidPlanes(4, 4, [10, 20, 30]),
+            ),
+          ],
+          compositePlanes: [Uint8List(16), Uint8List(16), Uint8List(16)],
+        ),
+      );
+      return file.path;
+    }
+
+    Future<EditorSessionManager> pump(
+      WidgetTester tester,
+      List<String> paths, {
+      bool poolOnly = false,
+    }) async {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ImportDialog(
+              session: s,
+              initialPaths: paths,
+              poolOnly: poolOnly,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      return s;
+    }
+
+    /// What a cell READS — the answer this file will give, whether the
+    /// cell is a button or the dash that says the question does not apply.
+    String cellText(WidgetTester tester, String column, String path) {
+      final cell = find.byKey(ValueKey<String>('import-cell-$column-$path'));
+      final widget = tester.widget(cell);
+      if (widget is Text) {
+        return widget.data!;
+      }
+      return tester
+          .widget<Text>(
+            find.descendant(of: cell, matching: find.byType(Text)),
+          )
+          .data!;
+    }
+
+    testWidgets('a column header answers for every row at once',
+        (tester) async {
+      final a = await tester.runAsync(() => writePng('a.png'));
+      final b = await tester.runAsync(() => writePng('b.png'));
+      await pump(tester, [a!, b!]);
+
+      expect(cellText(tester, 'File', a), 'Keep');
+      await tester.tap(
+        find.byKey(const ValueKey<String>('import-column-File')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey<String>('import-option-Ref')));
+      await tester.pumpAndSettle();
+
+      expect(cellText(tester, 'File', a), 'Ref');
+      expect(cellText(tester, 'File', b), 'Ref');
+    });
+
+    testWidgets('a cell speaks for the SELECTION when its row is in one',
+        (tester) async {
+      final a = await tester.runAsync(() => writePng('a.png'));
+      final b = await tester.runAsync(() => writePng('b.png'));
+      final c = await tester.runAsync(() => writePng('c.png'));
+      await pump(tester, [a!, b!, c!]);
+
+      // The NAME, not the row's centre: the centre is a cell, and pressing
+      // a cell answers its question instead of selecting the row.
+      Future<void> selectRow(String name) async {
+        final rect = tester.getRect(
+          find.byKey(ValueKey<String>('import-row-$name')),
+        );
+        await tester.tapAt(Offset(rect.left + 20, rect.center.dy));
+        await tester.pump();
+      }
+
+      await selectRow('a.png');
+      await selectRow('b.png');
+      await pickCell(tester, column: 'File', path: a, option: 'Ref');
+
+      expect(cellText(tester, 'File', a), 'Ref');
+      expect(cellText(tester, 'File', b), 'Ref');
+      expect(
+        cellText(tester, 'File', c),
+        'Keep',
+        reason: 'the row nobody selected keeps its own answer',
+      );
+    });
+
+    testWidgets('an answer the KIND refuses does not stick', (tester) async {
+      final png = await tester.runAsync(() => writePng('a.png'));
+      final movie = await tester.runAsync(() => writeMovie('ref.mp4'));
+      await pump(tester, [png!, movie!]);
+
+      expect(
+        cellText(tester, 'File', movie),
+        'Ref',
+        reason: 'a movie is never carried, whatever the default says',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('import-column-File')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('import-option-Keep')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(cellText(tester, 'File', png), 'Keep');
+      expect(
+        cellText(tester, 'File', movie),
+        'Ref',
+        reason: 'the header asked, and this file still cannot',
+      );
+    });
+
+    testWidgets('expanding a PSD locks its File answer to the pixels',
+        (tester) async {
+      final psd = await tester.runAsync(() => writePsd('BG.psd'));
+      await pump(tester, [psd!]);
+
+      expect(cellText(tester, 'PSD', psd), 'Merge');
+      expect(cellText(tester, 'File', psd), 'Keep');
+
+      await pickCell(tester, column: 'PSD', path: psd, option: 'Expand');
+
+      expect(
+        cellText(tester, 'File', psd),
+        'Raster',
+        reason: 'one of them baked means all of them are',
+      );
+    });
+
+    testWidgets('the pool asks nothing about placement', (tester) async {
+      final png = await tester.runAsync(() => writePng('a.png'));
+      await pump(tester, [png!], poolOnly: true);
+
+      expect(cellText(tester, 'Into', png), '—');
+      expect(cellText(tester, 'Fit', png), '—');
+      expect(
+        cellText(tester, 'File', png),
+        'Keep',
+        reason: 'what the project holds is still a question here',
+      );
+    });
+  });
+
+  /// The preview zone, and the rule that keeps its range honest.
+  group('the preview', () {
+    testWidgets('a still shows no IN/OUT — a range that cannot act is a '
+        'control that lies', (tester) async {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      final png = await tester.runAsync(() => writePng('a.png'));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: ImportDialog(session: s, initialPaths: [png!])),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey<String>('import-preview')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('transport-in')),
+        findsNothing,
+        reason: 'one frame has no span to choose',
+      );
+      expect(
+        find.byKey(const ValueKey<String>('transport-play')),
+        findsOneWidget,
+        reason: 'the bar itself stays, inert, rather than blinking in and out',
+      );
+    });
+
+    testWidgets('registering into the pool shows no IN/OUT either — trimming '
+        'what is only registered would have to write the trimmed bytes',
+        (tester) async {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      final png = await tester.runAsync(() => writePng('a.png'));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ImportDialog(
+              session: s,
+              initialPaths: [png!],
+              poolOnly: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey<String>('transport-in')), findsNothing);
+    });
   });
 }

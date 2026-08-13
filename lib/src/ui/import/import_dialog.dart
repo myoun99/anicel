@@ -14,8 +14,12 @@ import '../../services/persistence/folder_grant.dart' show FolderGrant;
 import '../dialogs/folder_pick_flow.dart';
 import '../editor_session_manager.dart';
 import '../export/export_settings_modules.dart';
+import 'import_file_settings.dart';
+import 'import_file_table.dart';
+import 'import_preview.dart';
 import '../text/byte_size_label.dart';
 import '../widgets/app_window.dart';
+import '../widgets/dock_edge_splitter.dart';
 
 /// The 가져오기/배치 window (§6-z21): ONE window for every import — file
 /// picks, folder drops, OS drag-and-drop all land here, defaults filled
@@ -66,6 +70,43 @@ class _ImportDialogState extends State<ImportDialog> {
   /// placing is not a place. A value there would be one every switch over
   /// the enum had to learn to ignore.
   ImportDestination? _destination = ImportDestination.activeCutLayer;
+
+  /// Whether a placement is being planned at all — the window's ONE
+  /// remaining batch-wide answer, and the reason it sits alone at the top:
+  /// every other question changes meaning depending on it.
+  bool get _placing => _destination != null;
+
+  /// One answer set per FILE. The window used to hold one for the whole
+  /// batch and be wrong about at least one file most of the time.
+  final Map<String, ImportFileSettings> _settings = {};
+
+  /// Rows a cell press speaks for. Empty means "the row you pressed".
+  final Set<String> _selected = {};
+
+  /// How wide the list is; the splitter moves it and the window remembers
+  /// it for as long as it is open.
+  double _tableWidth = 420;
+
+  ImportFileSettings _settingsFor(String path) => resolvedImportSettings(
+    _settings[path] ?? const ImportFileSettings(),
+    kind: mediaAssetKindForPath(path),
+    isPsd: importPathIsPsd(path),
+    placing: _placing,
+  );
+
+  void _setSettings(
+    Iterable<String> paths,
+    ImportFileSettings Function(ImportFileSettings) change,
+  ) {
+    setState(() {
+      for (final path in paths) {
+        _settings[path] = change(
+          _settings[path] ?? const ImportFileSettings(),
+        );
+      }
+    });
+  }
+
   bool _rasterize = false;
 
   /// Whether the project CARRIES these files or points at them where they
@@ -471,24 +512,20 @@ class _ImportDialogState extends State<ImportDialog> {
           warnings.addAll(folderWarnings);
         }
       } else if (destination == null) {
-        // The pool: every kind registers, movies included, in ONE undo.
-        // Nothing is placed, so nothing can be unplaceable — this is the
-        // browser's old behaviour, minus the copy it never asked about.
-        session.importMediaFiles(_files, copyIntoProject: _copyIntoProject);
-        imported += _files.length;
+        // The pool: every kind registers, movies included. Two batches
+        // rather than one, because carrying is now a per-file answer and
+        // the registration verb takes one flag for the batch it is given.
+        imported += _registerBatches(session, _files);
         done.addAll(_files);
       } else {
-        // Audio registers as ONE batch (one undo), whatever the count.
+        // Audio registers rather than places, and does it in as few undos
+        // as the per-file answers allow.
         final audioPaths = [
           for (final path in _files)
             if (mediaAssetKindForPath(path) == MediaAssetKind.audio) path,
         ];
         if (audioPaths.isNotEmpty) {
-          session.importMediaFiles(
-            audioPaths,
-            copyIntoProject: _copyIntoProject,
-          );
-          imported += audioPaths.length;
+          imported += _registerBatches(session, audioPaths);
           done.addAll(audioPaths);
         }
         for (final path in _files) {
@@ -503,16 +540,21 @@ class _ImportDialogState extends State<ImportDialog> {
             );
             continue;
           }
+          final settings = _settingsFor(path);
+          final carry = settings.mode == ImportFileMode.keepInside;
+          final bake = settings.mode == ImportFileMode.rasterize;
           final failedPages = <int>[];
           final bool ok;
           try {
-            ok = kind == MediaAssetKind.pdf
+            ok = importPathIsPsd(path) && settings.psd == PsdPlaceMode.expand
+                ? await _expandPsd(session, path, settings, warnings)
+                : kind == MediaAssetKind.pdf
                 ? await session.importPdfFile(
                     path: path,
-                    destination: destination,
-                    rasterize: _rasterize,
-                    fit: _fit,
-                    copyIntoProject: _copyIntoProject,
+                    destination: settings.into,
+                    rasterize: bake,
+                    fit: settings.fit,
+                    copyIntoProject: carry,
                     // A 100-page conte renders for seconds — the footer
                     // says where it is instead of looking hung.
                     onRenderProgress: (rendered, total) {
@@ -527,10 +569,12 @@ class _ImportDialogState extends State<ImportDialog> {
                   )
                 : await session.importImageFile(
                     path: path,
-                    destination: destination,
-                    rasterize: _rasterize,
-                    fit: _fit,
-                    copyIntoProject: _copyIntoProject,
+                    destination: settings.into,
+                    rasterize: bake,
+                    fit: settings.fit,
+                    copyIntoProject: carry,
+                    inFrame: settings.inFrame,
+                    outFrame: settings.outFrame,
                   );
           } on Object {
             // A corrupt/locked file must not abort the rest of the batch —
@@ -557,7 +601,7 @@ class _ImportDialogState extends State<ImportDialog> {
                       PdfRenderService.availability != true
                   ? '${mediaAssetDefaultName(path)}: no PDF renderer in '
                         'this build.'
-                  : destination == ImportDestination.activeCutLayer &&
+                  : settings.into == ImportDestination.activeCutLayer &&
                         session.activeCutOrNull == null
                   ? 'No active cut — pick "New cut" or leave the gap.'
                   : 'Could not import ${mediaAssetDefaultName(path)}.',
@@ -594,24 +638,83 @@ class _ImportDialogState extends State<ImportDialog> {
     });
   }
 
+  /// Registers [paths] in as few undo steps as their answers allow: one
+  /// batch for the carried, one for the referenced.
+  int _registerBatches(EditorSessionManager session, List<String> paths) {
+    var count = 0;
+    for (final carry in const [true, false]) {
+      final batch = [
+        for (final path in paths)
+          if ((_settingsFor(path).mode == ImportFileMode.keepInside) == carry)
+            path,
+      ];
+      if (batch.isEmpty) {
+        continue;
+      }
+      session.importMediaFiles(batch, copyIntoProject: carry);
+      count += batch.length;
+    }
+    return count;
+  }
+
+  /// EXPAND, which reports its outcome as warnings-or-null rather than a
+  /// bool: a flattened PSD has no stack, and that is not a failure worth
+  /// the word "could not".
+  Future<bool> _expandPsd(
+    EditorSessionManager session,
+    String path,
+    ImportFileSettings settings,
+    List<String> warnings,
+  ) async {
+    final expanded = await session.importPsdExpanded(
+      path: path,
+      destination: settings.into,
+      fit: settings.fit,
+    );
+    if (expanded == null) {
+      warnings.add(
+        '${mediaAssetDefaultName(path)}: no layers to expand — import it '
+        'merged instead.',
+      );
+      return false;
+    }
+    warnings.addAll(expanded);
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppWindow(
       windowKey: const ValueKey<String>('import-dialog'),
-      title: 'Import / Place',
+      title: 'Import',
       titleIcon: Icons.download_outlined,
       width: 760,
       height: 520,
       scrollBody: false,
       bodyPadding: EdgeInsets.zero,
       onClose: _running ? null : () => Navigator.of(context).pop(),
-      footerNote: _status.isEmpty
+      // The size warning moved down here with the settings column: what
+      // travels inside the project file is now the sum of per-row answers,
+      // so it belongs where the window speaks about the batch.
+      footerNote:
+          _status.isEmpty &&
+              _largeCarriedPaths().isEmpty &&
+              _unplaceablePaths().isEmpty
           ? null
-          : Text(
-              _status,
-              key: const ValueKey<String>('import-status'),
-              style: Theme.of(context).textTheme.labelSmall,
-              overflow: TextOverflow.ellipsis,
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_status.isNotEmpty)
+                  Text(
+                    _status,
+                    key: const ValueKey<String>('import-status'),
+                    style: Theme.of(context).textTheme.labelSmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                _unplaceableNote(context),
+                _largeCarriedNote(context),
+              ],
             ),
       actions: [
         AppWindowAction(
@@ -631,19 +734,280 @@ class _ImportDialogState extends State<ImportDialog> {
         children: [
           _sourceBar(context),
           const Divider(height: 1),
+          _placeStrip(context),
+          const Divider(height: 1),
+          // Loose files answer per row; a cut folder and a TVPaint export
+          // land a whole CUT and have nothing per-file to answer, so they
+          // keep the interpretation list and the knobs that read it.
           Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(child: _interpretationTable(context)),
-                const VerticalDivider(width: 1),
-                SizedBox(width: 272, child: _settingsColumn(context)),
-              ],
+            child: _files.isNotEmpty
+                ? _twoZones(context)
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: _interpretationTable(context)),
+                      if (_folder != null || _tvpJson != null) ...[
+                        const VerticalDivider(width: 1),
+                        SizedBox(width: 272, child: _settingsColumn(context)),
+                      ],
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The one batch-wide answer, and the only one that changes what the
+  /// other questions mean — so it sits above them rather than among them.
+  ///
+  /// Opened from the media browser it is pinned to the pool: registering
+  /// for later is what that panel is for, and a disabled chip says the
+  /// other door exists rather than hiding it.
+  Widget _placeStrip(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 46,
+            child: Text(
+              'Place',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          ExportChip(
+            key: const ValueKey<String>('import-place-pool'),
+            label: 'Pool',
+            selected: !_placing,
+            onTap: _running
+                ? null
+                : () => setState(() => _destination = null),
+          ),
+          const SizedBox(width: 4),
+          Tooltip(
+            message: widget.poolOnly
+                ? 'The media browser registers; place from the timeline.'
+                : '',
+            child: ExportChip(
+              key: const ValueKey<String>('import-place-timeline'),
+              label: 'Timeline',
+              selected: _placing,
+              onTap: _running || widget.poolOnly
+                  ? null
+                  : () => setState(
+                      () => _destination = ImportDestination.activeCutLayer,
+                    ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  /// The list and the picture, with a grip between them.
+  ///
+  /// The split is draggable because the two halves are wanted in different
+  /// amounts by different work: eight option columns want the room when a
+  /// batch is being set up, and the picture wants it when one file is being
+  /// looked at.
+  Widget _twoZones(BuildContext context) {
+    final previewPath = _selected.isNotEmpty
+        ? _selected.last
+        : (_files.isEmpty ? null : _files.first);
+    final settings = previewPath == null
+        ? const ImportFileSettings()
+        : _settingsFor(previewPath);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxTable = constraints.maxWidth - 200;
+        final tableWidth = _tableWidth.clamp(
+          240.0,
+          maxTable < 240 ? 240.0 : maxTable,
+        );
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(width: tableWidth, child: _fileTable(context)),
+            DockEdgeSplitter(
+              axis: Axis.horizontal,
+              tooltip: 'Resize',
+              onDragDelta: (delta) {
+                setState(() => _tableWidth = tableWidth + delta);
+                return delta;
+              },
+            ),
+            Expanded(
+              child: ImportPreview(
+                key: const ValueKey<String>('import-preview'),
+                path: previewPath,
+                inFrame: settings.inFrame,
+                outFrame: settings.outFrame,
+                // Trimming a REGISTRATION would have to write the trimmed
+                // bytes, and there is no trimmer yet — so the ends only
+                // appear where they already act: on what gets placed.
+                rangeEditable: _placing,
+                onRangeChanged: (start, end) {
+                  if (previewPath == null) {
+                    return;
+                  }
+                  _setSettings(
+                    [previewPath],
+                    (current) => current.copyWith(
+                      inFrame: start,
+                      outFrame: end,
+                      clearOut: end == null,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// One row per file, one column per question (§3 of the round).
+  Widget _fileTable(BuildContext context) {
+    final placing = _placing;
+    return ImportFileTable(
+      key: const ValueKey<String>('import-file-table'),
+      enabled: !_running,
+      selected: _selected,
+      onRowTap: (path) => setState(() {
+        if (!_selected.remove(path)) {
+          _selected.add(path);
+        }
+      }),
+      rows: [
+        for (final path in _files)
+          ImportFileRow(
+            path: path,
+            name: mediaAssetDefaultName(path),
+            modified: _modifiedOf(path),
+            size: byteSizeLabel(_sizeOf(path)),
+          ),
+      ],
+      columns: [
+        ImportColumn<Object?>(
+          label: 'File',
+          width: 62,
+          values: ImportFileMode.values,
+          labelOf: (value) => importModeLabel(value! as ImportFileMode),
+          valueOf: (path) => _settingsFor(path).mode,
+          appliesTo: (path) => true,
+          enabledFor: (path, value) => importModeAllowed(
+            kind: mediaAssetKindForPath(path),
+            mode: value! as ImportFileMode,
+            psdExpanding: importPathIsPsd(path) &&
+                placing &&
+                _settingsFor(path).psd == PsdPlaceMode.expand,
+            placing: placing,
+            trimmed: _settingsFor(path).isTrimmed,
+          ),
+          onPick: (paths, value) => _setSettings(
+            paths,
+            (settings) => settings.copyWith(mode: value! as ImportFileMode),
+          ),
+        ),
+        ImportColumn<Object?>(
+          label: 'Into',
+          width: 68,
+          values: ImportDestination.values,
+          labelOf: (value) => importIntoLabel(value! as ImportDestination),
+          valueOf: (path) => _settingsFor(path).into,
+          // A pool registration is not a placement, and a movie has no
+          // placement to plan yet.
+          appliesTo: (path) =>
+              placing &&
+              !_unplaceableKinds.contains(mediaAssetKindForPath(path)) &&
+              mediaAssetKindForPath(path) != MediaAssetKind.audio,
+          enabledFor: (path, value) =>
+              value != ImportDestination.activeCutLayer ||
+              widget.session.activeCutOrNull != null,
+          onPick: (paths, value) => _setSettings(
+            paths,
+            (settings) =>
+                settings.copyWith(into: value! as ImportDestination),
+          ),
+        ),
+        ImportColumn<Object?>(
+          label: 'Fit',
+          width: 62,
+          values: MediaFitMode.values,
+          labelOf: (value) => importFitLabel(value! as MediaFitMode),
+          valueOf: (path) => _settingsFor(path).fit,
+          appliesTo: (path) =>
+              placing && mediaAssetKindForPath(path) != MediaAssetKind.audio,
+          enabledFor: (path, value) => true,
+          onPick: (paths, value) => _setSettings(
+            paths,
+            (settings) => settings.copyWith(fit: value! as MediaFitMode),
+          ),
+        ),
+        ImportColumn<Object?>(
+          label: 'PSD',
+          width: 66,
+          values: PsdPlaceMode.values,
+          labelOf: (value) =>
+              (value! as PsdPlaceMode) == PsdPlaceMode.merge
+              ? 'Merge'
+              : 'Expand',
+          valueOf: (path) => _settingsFor(path).psd,
+          appliesTo: (path) => placing && importPathIsPsd(path),
+          enabledFor: (path, value) => true,
+          onPick: (paths, value) => _setSettings(
+            paths,
+            (settings) => settings.copyWith(psd: value! as PsdPlaceMode),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Files this window cannot place — a movie, until there is a decoder.
+  ///
+  /// Their Into cell shows a dash, which says the question does not apply
+  /// but not WHY. The row cannot carry the reason without becoming a
+  /// paragraph, so the reason sits in the footer and names them.
+  List<String> _unplaceablePaths() {
+    if (!_placing) {
+      return const [];
+    }
+    return [
+      for (final path in _files)
+        if (_unplaceableKinds.contains(mediaAssetKindForPath(path))) path,
+    ];
+  }
+
+  Widget _unplaceableNote(BuildContext context) {
+    final paths = _unplaceablePaths();
+    if (paths.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final named = paths.map(mediaAssetDefaultName).take(3).join(', ');
+    final more = paths.length > 3 ? ' and ${paths.length - 3} more' : '';
+    return Text(
+      '$named$more: placement not available yet — register instead.',
+      key: const ValueKey<String>('import-unplaceable-note'),
+      style: Theme.of(context).textTheme.labelSmall,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  /// `MM-DD`, which is what a row has space for and what a person scanning
+  /// a folder of today's work is actually reading.
+  String _modifiedOf(String path) {
+    try {
+      final stamp = File(path).lastModifiedSync();
+      return '${stamp.month.toString().padLeft(2, '0')}-'
+          '${stamp.day.toString().padLeft(2, '0')}';
+    } on Object {
+      return '';
+    }
   }
 
   Widget _sourceBar(BuildContext context) {
@@ -870,6 +1234,19 @@ class _ImportDialogState extends State<ImportDialog> {
   /// that was always going to stay outside is the noise that teaches
   /// people to ignore the real warning.
   List<String> _largeCarriedPaths() {
+    // Loose files answer one at a time now, so the question is per row:
+    // which of them are big AND set to travel inside the project file.
+    if (_files.isNotEmpty) {
+      return [
+        for (final path in _files)
+          if (_settingsFor(path).mode == ImportFileMode.keepInside &&
+              mediaKindBelongsInArchive(
+                mediaAssetKindForPath(path) ?? MediaAssetKind.image,
+              ) &&
+              _sizeOf(path) >= largeCarriedAssetBytes)
+            path,
+      ];
+    }
     if (!_copyIntoProject) {
       return const [];
     }
