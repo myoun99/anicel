@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:file_selector/file_selector.dart';
@@ -9,6 +8,7 @@ import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/media_asset.dart';
 import '../../services/import/raster_cel_import.dart';
+import '../../services/media/media_byte_source.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../brush/brush_canvas_panel.dart';
@@ -295,7 +295,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       case MediaAssetKind.image:
         final List<DecodedImageFrame> frames;
         try {
-          final bytes = await File(request.path).readAsBytes();
+          final bytes = await MediaFileBytes(request.path).read();
           frames = await decodeImageFrames(bytes);
         } on Object {
           if (mounted && generation == _generation) {
