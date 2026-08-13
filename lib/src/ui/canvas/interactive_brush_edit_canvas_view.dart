@@ -262,6 +262,16 @@ class _InteractiveBrushEditCanvasViewState
   CanvasPointerRelease? _mappedHoldRelease;
   bool _mappedHoldIsEyedropper = false;
 
+  /// The contact that started as an ALT pick (TS7), so its moves keep
+  /// sampling.
+  ///
+  /// 유저 확정 — one law for every dropper: 「클릭중이면 색 바뀌도록 …
+  /// 같은법으로. 드래그중 계속샘플」. The mapped hold above has always done
+  /// this ('누르는 동안 해당 색을 뽑는다', PEN-7a) and the eyedropper TOOL now
+  /// does it on the tap layer; Alt was the third door, and it was the one
+  /// still picking once per press.
+  int? _altPickPointer;
+
   /// Placement dynamics (scatter/jitter/direction rotation) for the active
   /// stroke; created at pointer-down from the stroke's settings snapshot.
   BrushStrokeDynamics? _strokeDynamics;
@@ -614,6 +624,8 @@ class _InteractiveBrushEditCanvasViewState
     // Alt+click = temporary eyedropper (P5): pick, never stroke.
     final onAltPick = widget.onAltPick;
     if (onAltPick != null && HardwareKeyboard.instance.isAltPressed) {
+      // TS7: remembered, so the drag that follows keeps sampling.
+      _altPickPointer = event.pointer;
       if (startsInsidePasteboard) {
         onAltPick(canvasPosition);
       }
@@ -774,6 +786,19 @@ class _InteractiveBrushEditCanvasViewState
     // A held eyedropper mapping picks LIVE along the whole drag (PEN-7a:
     // '누르는 동안 해당 색을 뽑는다').
     if (event.pointer == _mappedHoldPointer && _mappedHoldIsEyedropper) {
+      final pickPosition = _canvasPositionFromLocal(event.localPosition);
+      if (_isInsidePasteboard(pickPosition)) {
+        widget.onAltPick?.call(pickPosition);
+      }
+      return;
+    }
+    // TS7: the ALT pick does the same. Alt is re-read rather than assumed —
+    // letting go of the key mid-drag ends the sampling, which is the same
+    // moment the crosshair goes away.
+    if (event.pointer == _altPickPointer) {
+      if (!HardwareKeyboard.instance.isAltPressed) {
+        return;
+      }
       final pickPosition = _canvasPositionFromLocal(event.localPosition);
       if (_isInsidePasteboard(pickPosition)) {
         widget.onAltPick?.call(pickPosition);
@@ -949,6 +974,9 @@ class _InteractiveBrushEditCanvasViewState
     _lastContactButtons.remove(event.pointer);
     _forgetTouchPointer(event.pointer);
     _releaseMappedHold(event.pointer);
+    if (event.pointer == _altPickPointer) {
+      _altPickPointer = null;
+    }
     if (event.pointer != _activeDrawingPointer) {
       return;
     }
@@ -1152,6 +1180,9 @@ class _InteractiveBrushEditCanvasViewState
     _lastContactButtons.remove(event.pointer);
     _forgetTouchPointer(event.pointer);
     _releaseMappedHold(event.pointer);
+    if (event.pointer == _altPickPointer) {
+      _altPickPointer = null;
+    }
     if (event.pointer != _activeDrawingPointer) {
       return;
     }

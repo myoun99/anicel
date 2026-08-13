@@ -8,6 +8,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/drawing_guide.dart';
 import '../../models/viewport_point.dart';
 import '../../services/guide_geometry.dart';
+import '../input/app_input_settings.dart';
 
 /// How far from a handle, in screen pixels, a press still grabs it.
 const double kGuideHandleGrabRadius = 14;
@@ -539,6 +540,9 @@ class _GuideEditLayerState extends State<GuideEditLayer> {
       behavior: HitTestBehavior.translucent,
       onPointerDown: (event) {
         if (_pointer != null) return;
+        // TS9: same door as every other tool input layer — a finger is
+        // navigating unless the one-finger slot says draw.
+        if (!AppInput.toolAcceptsPointer(event.kind)) return;
         final point = _canvasPoint(event.localPosition);
         final handle = guideHandleAt(
           guideHandles(widget.guides),

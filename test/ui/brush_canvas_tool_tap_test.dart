@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/input/app_input_settings.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import 'brush_canvas_test_helpers.dart';
@@ -176,6 +177,61 @@ void main() {
     );
   });
 
+  // TS7 (유저: 지금 클릭해야 색 바뀌고 클릭한채로 드래그하는 도중에는
+  // 안바뀌는데, 규칙 간단하게해서 클릭중이면 색 바뀌도록).
+  testWidgets('the eyedropper keeps sampling while the button is held', (
+    tester,
+  ) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final sampled = <CanvasPoint>[];
+    final picks = <int>[];
+    var next = 0xFF000001;
+
+    await tester.pumpWidget(
+      app(
+        BrushCanvasPanel(
+          coordinator: BrushCanvasFixture.createCoordinator(
+            frameKeys: frameKeys,
+          ),
+          availableFrameKeys: frameKeys,
+          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+          brushToolState: BrushToolState.defaults.copyWith(
+            tool: CanvasTool.eyedropper,
+          ),
+          sampleColorAt: (point) {
+            sampled.add(point);
+            return next += 1;
+          },
+          onEyedropperPick: picks.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final centre = tester.getCenter(find.byKey(tapLayerKey));
+    final gesture = await tester.startGesture(centre);
+    await tester.pump();
+    expect(picks, hasLength(1), reason: 'the press still picks');
+
+    await gesture.moveTo(centre + const Offset(12, 0));
+    await tester.pump();
+    await gesture.moveTo(centre + const Offset(24, 0));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    expect(
+      picks,
+      hasLength(3),
+      reason: 'a MOVE is the press verb continuing, not a second gesture',
+    );
+    expect(
+      sampled.map((point) => point.x).toSet(),
+      hasLength(3),
+      reason: 'and it samples where the pointer actually is',
+    );
+  });
+
   testWidgets('a null sample (off-canvas) does not pick', (tester) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final picks = <int>[];
@@ -202,6 +258,63 @@ void main() {
     await tester.pump();
 
     expect(picks, isEmpty);
+  });
+
+  // TS9 (유저: 1핑거가 플립모드인데도 선택툴고르고 터치하면 선택이 작동함.
+  // 드로잉모드가 아닌이상은 툴이 작동하면 안되지). The eyedropper is on this
+  // layer with the stamp, so it was taking fingers in flip mode too — the
+  // selection layer's own half is pinned in brush_canvas_selection_test.
+  testWidgets('a FINGER does not pick unless the one-finger slot draws', (
+    tester,
+  ) async {
+    AppInput.settings.value = AppInput.settings.value.copyWith(
+      touchDragOneFinger: CanvasTouchDragAction.flip,
+    );
+    addTearDown(() {
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+    });
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final picks = <int>[];
+
+    await tester.pumpWidget(
+      app(
+        BrushCanvasPanel(
+          coordinator: BrushCanvasFixture.createCoordinator(
+            frameKeys: frameKeys,
+          ),
+          availableFrameKeys: frameKeys,
+          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+          brushToolState: BrushToolState.defaults.copyWith(
+            tool: CanvasTool.eyedropper,
+          ),
+          sampleColorAt: (_) => 0xFF123456,
+          onEyedropperPick: picks.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final centre = tester.getCenter(find.byKey(tapLayerKey));
+    final finger = await tester.startGesture(
+      centre,
+      kind: PointerDeviceKind.touch,
+    );
+    await tester.pump();
+    await finger.moveTo(centre + const Offset(10, 0));
+    await tester.pump();
+    await finger.up();
+    await tester.pump();
+    expect(picks, isEmpty, reason: 'that finger was navigating');
+
+    // The pen is unaffected — the slot is about fingers.
+    final pen = await tester.startGesture(
+      centre,
+      kind: PointerDeviceKind.stylus,
+    );
+    await tester.pump();
+    await pen.up();
+    await tester.pump();
+    expect(picks, hasLength(1));
   });
 
   testWidgets('a fill tap commits the dab through the stroke funnel', (

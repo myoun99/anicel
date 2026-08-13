@@ -31,10 +31,12 @@ import '../canvas/bitmap_surface_painter.dart';
 import '../canvas/active_stroke_overlay.dart';
 import '../canvas/canvas_selection_layer.dart';
 import '../canvas/selection_ants_painter.dart';
+import '../canvas/selection_float_overlay.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../canvas/flip_hud_overlay.dart';
 import 'canvas_floor_insets.dart';
+import '../input/app_input_settings.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../services/cut_piece_lift.dart';
 import '../../services/cut_piece_slot.dart';
@@ -98,11 +100,15 @@ class CanvasAutoFrameRequest {
 /// the interactive canvas. [activeSurfacePainter] is non-null only in
 /// merged mode: draw it where the ACTIVE layer belongs in the composite
 /// tree, so a folder's group buffer can enclose it.
+/// TS1: the FLOAT rides along beside the active layer's painter, because it
+/// belongs in the same slot of the same picture — the composite is the only
+/// thing that can draw it with the layers above it on top.
 typedef CanvasUnderlayBuilder =
     Widget Function(
       BuildContext context,
       CanvasViewport viewport,
       BitmapSurfacePainter? activeSurfacePainter,
+      SelectionFloatOverlay floatOverlay,
     );
 
 class BrushCanvasPanel extends StatefulWidget {
@@ -540,6 +546,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// sample nothing (the fill bucket).
   final ValueNotifier<Offset?> _toolCursorHover = ValueNotifier<Offset?>(null);
 
+  /// TS1: the channel the selection layer publishes its FLOAT on, and the
+  /// composite underlay reads. Owned here because it outlives both — the
+  /// selection layer is mounted and unmounted by tool changes, and the
+  /// underlay is rebuilt by the host.
+  final SelectionFloatOverlay _selectionFloat =
+      SelectionFloatOverlay(null);
+
   /// R28-S: the dash phase for the ants the panel paints when NO selection
   /// layer is mounted — the region belongs to the document, so it keeps
   /// showing while the brush/eraser/fill is armed (R26 #18).
@@ -743,6 +756,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       widget.cutPieceSlot?.pasteAtOriginHandler = null;
     }
     _idleAnts.dispose();
+    _selectionFloat.dispose();
     _eyedropperHover.dispose();
     _toolCursorHover.dispose();
     widget.viewCommands?.unbind();
@@ -1626,6 +1640,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                               null
                                                           ? null
                                                           : _activeSurfacePainter(),
+                                                      _selectionFloat,
                                                     ),
                                                   ),
                                                 Positioned.fill(
@@ -1679,35 +1694,49 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                                 kPrimaryButton) {
                                                           return;
                                                         }
+                                                        // TS9: and a finger
+                                                        // only drives a tool
+                                                        // while the one-finger
+                                                        // slot says draw. This
+                                                        // layer takes the pick
+                                                        // and the stamp, and
+                                                        // both were acting on
+                                                        // fingers in flip mode.
+                                                        if (!AppInput
+                                                            .toolAcceptsPointer(
+                                                              event.kind,
+                                                            )) {
+                                                          return;
+                                                        }
                                                         _toolTapHandler()!(
-                                                          _viewport.viewportToCanvas(
-                                                            ViewportPoint(
-                                                              x: event
-                                                                  .localPosition
-                                                                  .dx,
-                                                              y: event
-                                                                  .localPosition
-                                                                  .dy,
-                                                            ),
-                                                          ),
+                                                          _canvasPointOf(event),
                                                         );
                                                       },
-                                                      // Drag = draw with the held
-                                                      // piece. Only the stamp tile
-                                                      // wants this; the other tap
-                                                      // tools act once per press.
+                                                      // TS7 (유저: 클릭중이면
+                                                      // 색 바뀌도록 — 규칙
+                                                      // 간단하게): a MOVE is
+                                                      // the press verb
+                                                      // CONTINUING. The stamp
+                                                      // lays its next dab
+                                                      // where the spacing says;
+                                                      // the eyedropper samples
+                                                      // again, which is what
+                                                      // dragging a dropper
+                                                      // means everywhere else.
+                                                      //
+                                                      // The bucket cannot get
+                                                      // here — its tap handler
+                                                      // is null (R22-A sends
+                                                      // the dab through the
+                                                      // stroke pipeline), so
+                                                      // this layer is not even
+                                                      // mounted for it and
+                                                      // "one fill per move
+                                                      // event" is structurally
+                                                      // impossible.
                                                       onPointerMove: (event) =>
-                                                          _dragStampTo(
-                                                            _viewport.viewportToCanvas(
-                                                              ViewportPoint(
-                                                                x: event
-                                                                    .localPosition
-                                                                    .dx,
-                                                                y: event
-                                                                    .localPosition
-                                                                    .dy,
-                                                              ),
-                                                            ),
+                                                          _continuePressVerb(
+                                                            event,
                                                           ),
                                                       onPointerUp: (_) =>
                                                           _lastStampCenter = null,
@@ -1962,6 +1991,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                             // waiting for the next gesture.
                                                             transformOptions:
                                                                 transformOptions,
+                                                            // TS1: with a
+                                                            // composite behind
+                                                            // this layer the
+                                                            // float goes into
+                                                            // it; without one
+                                                            // the layer draws
+                                                            // its own.
+                                                            floatOverlay:
+                                                                underlayBuilder ==
+                                                                    null
+                                                                ? null
+                                                                : _selectionFloat,
                                                           ),
                                                     ),
                                                   ),
@@ -2483,6 +2524,33 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// move continues from the last stamp that actually landed, so a slow
   /// drag and a fast one lay the same number of stamps over the same
   /// distance.
+  CanvasPoint _canvasPointOf(PointerEvent event) =>
+      _viewport.viewportToCanvas(
+        ViewportPoint(x: event.localPosition.dx, y: event.localPosition.dy),
+      );
+
+  /// TS7: the tap layer's press verb, continued while the pointer is held.
+  ///
+  /// One rule for both of its tools rather than a per-tool `if` at the call
+  /// site: the stamp continues by SPACING (a stamp lands only when the
+  /// pointer has travelled a whole piece), the eyedropper by sampling again.
+  /// A tool whose press means something that must not repeat simply keeps no
+  /// continue verb — which is why the fill is not in this list even though
+  /// it is the other tap-shaped tool.
+  void _continuePressVerb(PointerEvent event) {
+    if (!AppInput.toolAcceptsPointer(event.kind)) {
+      return;
+    }
+    final point = _canvasPointOf(event);
+    if (canvasToolStamps(widget.brushToolState.tool)) {
+      _dragStampTo(point);
+      return;
+    }
+    if (widget.brushToolState.tool == CanvasTool.eyedropper) {
+      _toolTapHandler()?.call(point);
+    }
+  }
+
   void _dragStampTo(CanvasPoint point) {
     if (!canvasToolStamps(widget.brushToolState.tool)) {
       return;
