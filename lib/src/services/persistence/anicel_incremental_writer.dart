@@ -58,6 +58,116 @@ class AnicelZipLayout {
 const int _eocdSignature = 0x06054b50;
 const int _centralSignature = 0x02014b50;
 const int _localSignature = 0x04034b50;
+const int _zip64EndSignature = 0x06064b50;
+const int _zip64LocatorSignature = 0x07064b50;
+
+/// The ZIP64 Extended Information extra field's header id.
+const int _zip64ExtraId = 0x0001;
+
+/// What a plain ZIP field can say. Above these the value is written as
+/// all-ones and the truth moves into a ZIP64 record.
+const int _zip16Max = 0xFFFF;
+const int _zip32Max = 0xFFFFFFFF;
+
+/// Whether EVERY archive gets ZIP64 records, or only the ones that need
+/// them.
+///
+/// ✅ **On.** Every archive carries the ZIP64 records, whatever its size.
+///
+/// 🔑 The reason this costs nothing is the rule in `_eocdBytes` below: a
+/// sentinel goes into a plain field only when the TRUTH does not fit
+/// there, never merely because ZIP64 records exist. So an archive that
+/// happens to fit is still read correctly by a reader that has never
+/// heard of ZIP64 — it takes the real count at the real offset and never
+/// looks at the extra records behind it. What an older build loses is
+/// exactly the files that genuinely overflow, and those it could not have
+/// opened under any writer.
+///
+/// ⛔ The alternative — emit them only when needed — was the first
+/// version, and its cost is a format that CHANGES SHAPE MID-LIFE: a
+/// project crosses 65,535 entries during an append and the record layout
+/// has to change under a file that already exists, at that exact moment.
+/// This repo has been caught by threshold bands before ("only breaks
+/// between 206 and 250 pixels wide"), and a band nobody reaches in
+/// testing is the worst kind.
+///
+/// The switch stays because it is the one-line revert if some reader in
+/// the wild turns out to disagree, and because it is how the OTHER shape
+/// stays under test — see the group that pins it false.
+bool anicelAlwaysZip64 = true;
+
+/// Reads the ZIP64 entry count and central-directory offset when the
+/// plain EOCD is flying all-ones flags, or null when it is not.
+///
+/// [tail] holds the bytes ending at the plain EOCD, and [eocd] is that
+/// record's offset within it. The locator sits immediately before the
+/// EOCD and points at the ZIP64 record; [tailStart] is where [tail] began
+/// in the file, so an absolute pointer can be turned back into an index.
+({int entryCount, int centralOffset, int centralLength})? _readZip64End(
+  ByteData tail,
+  int eocd, {
+  required int tailStart,
+}) {
+  final locator = eocd - 20;
+  if (locator < 0 ||
+      tail.getUint32(locator, Endian.little) != _zip64LocatorSignature) {
+    return null;
+  }
+  final absolute = tail.getUint64(locator + 8, Endian.little);
+  final index = absolute - tailStart;
+  if (index < 0 ||
+      index + 56 > tail.lengthInBytes ||
+      tail.getUint32(index, Endian.little) != _zip64EndSignature) {
+    // The locator says the record is outside the window we read. Every
+    // writer puts it immediately before the locator, so this means a file
+    // built by something else in a shape this reader has not learned —
+    // louder than quietly reading a truncated count.
+    throw const FormatException('ZIP64 end record not found where the '
+        'locator points.');
+  }
+  return (
+    entryCount: tail.getUint64(index + 32, Endian.little),
+    centralOffset: tail.getUint64(index + 48, Endian.little),
+    centralLength: tail.getUint64(index + 40, Endian.little),
+  );
+}
+
+/// The local header offset a central record names, following its ZIP64
+/// extra field when the fixed field is all-ones.
+int _centralLocalOffset(ByteData data, int cursor, int extraStart,
+    int extraLength) {
+  final fixed = data.getUint32(cursor + 42, Endian.little);
+  if (fixed != _zip32Max) {
+    return fixed;
+  }
+  // Walk the extra fields for id 0x0001. The 64-bit values inside appear
+  // in a FIXED order — uncompressed size, compressed size, local header
+  // offset — and only for the fields that were all-ones. This writer only
+  // ever flags the offset, but a file from another tool may flag sizes
+  // too, so the sizes are skipped by looking at what is flagged.
+  var walk = extraStart;
+  final end = extraStart + extraLength;
+  while (walk + 4 <= end) {
+    final id = data.getUint16(walk, Endian.little);
+    final size = data.getUint16(walk + 2, Endian.little);
+    if (id == _zip64ExtraId) {
+      var at = walk + 4;
+      if (data.getUint32(cursor + 24, Endian.little) == _zip32Max) {
+        at += 8; // uncompressed size
+      }
+      if (data.getUint32(cursor + 20, Endian.little) == _zip32Max) {
+        at += 8; // compressed size
+      }
+      if (at + 8 <= end) {
+        return data.getUint64(at, Endian.little);
+      }
+      break;
+    }
+    walk += 4 + size;
+  }
+  throw const FormatException('Central record flags a ZIP64 offset with '
+      'no extra field to hold it.');
+}
 
 /// Parses the central directory of [bytes] (a complete .anicel). Throws
 /// [FormatException] when no EOCD is found (torn append — the caller
@@ -78,8 +188,10 @@ AnicelZipLayout parseAnicelZipLayout(Uint8List bytes) {
   if (eocd < 0) {
     throw const FormatException('No ZIP end-of-central-directory found.');
   }
-  final entryCount = data.getUint16(eocd + 10, Endian.little);
-  final centralOffset = data.getUint32(eocd + 16, Endian.little);
+  final zip64 = _readZip64End(data, eocd, tailStart: 0);
+  final entryCount = zip64?.entryCount ?? data.getUint16(eocd + 10, Endian.little);
+  final centralOffset =
+      zip64?.centralOffset ?? data.getUint32(eocd + 16, Endian.little);
 
   final entries = <AnicelZipEntry>[];
   var cursor = centralOffset;
@@ -92,7 +204,12 @@ AnicelZipLayout parseAnicelZipLayout(Uint8List bytes) {
     final nameLength = data.getUint16(cursor + 28, Endian.little);
     final extraLength = data.getUint16(cursor + 30, Endian.little);
     final commentLength = data.getUint16(cursor + 32, Endian.little);
-    final localOffset = data.getUint32(cursor + 42, Endian.little);
+    final localOffset = _centralLocalOffset(
+      data,
+      cursor,
+      cursor + 46 + nameLength,
+      extraLength,
+    );
     final name = String.fromCharCodes(
       bytes.sublist(cursor + 46, cursor + 46 + nameLength),
     );
@@ -138,15 +255,24 @@ AnicelZipLayout parseAnicelZipLayoutFile(String path) {
     if (eocd < 0) {
       throw const FormatException('No ZIP end-of-central-directory found.');
     }
-    final entryCount = tailData.getUint16(eocd + 10, Endian.little);
-    final centralOffset = tailData.getUint32(eocd + 16, Endian.little);
-    final eocdAbsolute = fileLength - tailLength + eocd;
-    if (centralOffset > eocdAbsolute) {
+    final tailStart = fileLength - tailLength;
+    final zip64 = _readZip64End(tailData, eocd, tailStart: tailStart);
+    final entryCount =
+        zip64?.entryCount ?? tailData.getUint16(eocd + 10, Endian.little);
+    final centralOffset =
+        zip64?.centralOffset ?? tailData.getUint32(eocd + 16, Endian.little);
+    // With ZIP64 the central directory ends at the ZIP64 record rather
+    // than at the plain EOCD — reading to the EOCD would swallow the
+    // ZIP64 record and locator as if they were another entry.
+    final centralEnd = zip64 == null
+        ? tailStart + eocd
+        : centralOffset + zip64.centralLength;
+    if (centralOffset > centralEnd) {
       throw const FormatException('Corrupt central directory.');
     }
 
     raf.setPositionSync(centralOffset);
-    final central = raf.readSync(eocdAbsolute - centralOffset);
+    final central = raf.readSync(centralEnd - centralOffset);
     final data = ByteData.sublistView(central);
     final entries = <AnicelZipEntry>[];
     var cursor = 0;
@@ -160,7 +286,12 @@ AnicelZipLayout parseAnicelZipLayoutFile(String path) {
       final nameLength = data.getUint16(cursor + 28, Endian.little);
       final extraLength = data.getUint16(cursor + 30, Endian.little);
       final commentLength = data.getUint16(cursor + 32, Endian.little);
-      final localOffset = data.getUint32(cursor + 42, Endian.little);
+      final localOffset = _centralLocalOffset(
+        data,
+        cursor,
+        cursor + 46 + nameLength,
+        extraLength,
+      );
       final name = String.fromCharCodes(
         central.sublist(cursor + 46, cursor + 46 + nameLength),
       );
@@ -676,10 +807,32 @@ Uint8List _centralDirectoryBytes(List<AnicelZipEntry> entries) {
   final central = BytesBuilder(copy: false);
   for (final entry in entries) {
     final nameBytes = Uint8List.fromList(entry.name.codeUnits);
+    // A single entry over 4GB would need its SIZES in a ZIP64 extra too,
+    // and nothing this app writes can reach that: a cel is a tile sheet
+    // and the only media that travels inside is audio, images and PDFs
+    // (video is a reference by the kind rule). Refused loudly rather than
+    // handled, because a silently truncated size is a file that opens and
+    // reads the wrong bytes.
+    if (entry.length > _zip32Max) {
+      throw StateError(
+        'entry "${entry.name}" is ${entry.length} bytes; the writer does '
+        'not emit ZIP64 sizes',
+      );
+    }
+    final needsOffset64 = entry.localHeaderOffset > _zip32Max;
+    final extra = needsOffset64 ? ByteData(12) : null;
+    if (extra != null) {
+      // ZIP64 Extended Information: only the fields that read 0xFFFFFFFF
+      // above appear, in the spec's order. Here that is the local header
+      // offset alone.
+      extra.setUint16(0, _zip64ExtraId, Endian.little);
+      extra.setUint16(2, 8, Endian.little); // payload size
+      extra.setUint64(4, entry.localHeaderOffset, Endian.little);
+    }
     final record = ByteData(46);
     record.setUint32(0, _centralSignature, Endian.little);
     record.setUint16(4, 20, Endian.little); // version made by
-    record.setUint16(6, 20, Endian.little); // version needed
+    record.setUint16(6, needsOffset64 ? 45 : 20, Endian.little);
     record.setUint16(8, 0, Endian.little);
     record.setUint16(10, 0, Endian.little); // method STORE
     record.setUint32(12, 0, Endian.little); // time/date
@@ -687,24 +840,93 @@ Uint8List _centralDirectoryBytes(List<AnicelZipEntry> entries) {
     record.setUint32(20, entry.length, Endian.little);
     record.setUint32(24, entry.length, Endian.little);
     record.setUint16(28, nameBytes.length, Endian.little);
-    record.setUint32(42, entry.localHeaderOffset, Endian.little);
+    record.setUint16(30, extra?.lengthInBytes ?? 0, Endian.little);
+    record.setUint32(
+      42,
+      needsOffset64 ? _zip32Max : entry.localHeaderOffset,
+      Endian.little,
+    );
     central
       ..add(record.buffer.asUint8List())
       ..add(nameBytes);
+    if (extra != null) {
+      central.add(extra.buffer.asUint8List());
+    }
   }
   return central.takeBytes();
 }
 
+/// The end of the archive: a ZIP64 record + locator when the plain one
+/// cannot say the truth, then always the plain EOCD.
+///
+/// 🚨 The plain EOCD's fields are 16 and 32 bits, and `ByteData.setUint16`
+/// TRUNCATES rather than throwing — so before this existed, entry 65,536
+/// wrote a count of 0 and the reader opened the project with nothing in
+/// it. Silent, and at 1500 cuts (this app's stated target, one entry per
+/// cel) it is reachable rather than theoretical.
+///
+/// Written only when needed, so every archive that fits in plain ZIP is
+/// byte-identical to what this wrote before — the widest reader support,
+/// and no churn in the fixtures.
 Uint8List _eocdBytes({
   required int entryCount,
   required int centralLength,
   required int centralOffset,
 }) {
+  final needs64 = anicelAlwaysZip64 ||
+      entryCount > _zip16Max ||
+      centralOffset > _zip32Max ||
+      centralLength > _zip32Max;
+  // 🔑 A sentinel goes in a field only when the TRUTH does not fit there,
+  // never merely because a ZIP64 record exists. That is what the spec
+  // says, and it buys something concrete: an archive that carries ZIP64
+  // records but whose values all fit is still readable by a reader that
+  // has never heard of ZIP64 — it reads the real count at the real
+  // offset and never looks at the extra records sitting behind it.
+  //
+  // Which is why flipping `anicelAlwaysZip64` is cheaper than it looks:
+  // the older builds only lose the files that genuinely overflow, and
+  // those they could not have opened under any writer.
+  final countField = entryCount > _zip16Max ? _zip16Max : entryCount;
   final eocd = ByteData(22);
   eocd.setUint32(0, _eocdSignature, Endian.little);
-  eocd.setUint16(8, entryCount, Endian.little);
-  eocd.setUint16(10, entryCount, Endian.little);
-  eocd.setUint32(12, centralLength, Endian.little);
-  eocd.setUint32(16, centralOffset, Endian.little);
-  return eocd.buffer.asUint8List();
+  eocd.setUint16(8, countField, Endian.little);
+  eocd.setUint16(10, countField, Endian.little);
+  eocd.setUint32(
+    12,
+    centralLength > _zip32Max ? _zip32Max : centralLength,
+    Endian.little,
+  );
+  eocd.setUint32(
+    16,
+    centralOffset > _zip32Max ? _zip32Max : centralOffset,
+    Endian.little,
+  );
+  if (!needs64) {
+    return eocd.buffer.asUint8List();
+  }
+  final zip64End = ByteData(56);
+  zip64End.setUint32(0, _zip64EndSignature, Endian.little);
+  // Size of this record MINUS the 12 bytes up to and including this field.
+  zip64End.setUint64(4, 44, Endian.little);
+  zip64End.setUint16(12, 45, Endian.little); // version made by
+  zip64End.setUint16(14, 45, Endian.little); // version needed
+  zip64End.setUint32(16, 0, Endian.little); // this disk
+  zip64End.setUint32(20, 0, Endian.little); // disk with central directory
+  zip64End.setUint64(24, entryCount, Endian.little);
+  zip64End.setUint64(32, entryCount, Endian.little);
+  zip64End.setUint64(40, centralLength, Endian.little);
+  zip64End.setUint64(48, centralOffset, Endian.little);
+
+  final locator = ByteData(20);
+  locator.setUint32(0, _zip64LocatorSignature, Endian.little);
+  locator.setUint32(4, 0, Endian.little); // disk with the ZIP64 EOCD
+  locator.setUint64(8, centralOffset + centralLength, Endian.little);
+  locator.setUint32(16, 1, Endian.little); // total disks
+
+  return (BytesBuilder(copy: false)
+        ..add(zip64End.buffer.asUint8List())
+        ..add(locator.buffer.asUint8List())
+        ..add(eocd.buffer.asUint8List()))
+      .takeBytes();
 }
