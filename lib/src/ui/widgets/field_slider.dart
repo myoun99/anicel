@@ -169,28 +169,17 @@ class _FieldSliderState extends State<FieldSlider> {
   // Shift's relative fine mode has something to accumulate against; display
   // always derives from widget.value (the widget stays fully controlled).
   double? _gestureT;
-  double? _preDownValue;
 
-  /// Where the raw pointer went since it went down — SIGNED, and per axis.
-  ///
-  /// Measured from POINTER events rather than drag updates, because the two
-  /// cases this has to tell apart look identical to the drag recognizer: it
-  /// is rejected without ever seeing an update either way. Only the pointer
-  /// knows where a finger went.
-  ///
-  /// It is a VECTOR and not a distance because the question is not "did the
-  /// pointer move" but "did it move the way a SCROLL moves" — see
-  /// [_handleCancel].
-  Offset _pointerShift = Offset.zero;
-  Offset? _pointerDownAt;
-
-  /// The travel a scrollable above us needs before it may claim the gesture.
-  ///
-  /// Read from the platform rather than picked: Android hands down about 8
-  /// logical px where Flutter's own default is 18, and this number only
-  /// means anything if it is the SAME one our rival is using. Captured in
-  /// `build` because inherited widgets are for build methods.
-  double _scrollSlop = kTouchSlop;
+  // ⛔Four fields left with the workaround they served (유저 확정
+  // 2026-08-14): the pre-down value to restore, the pointer's down position
+  // and its signed travel from there — which together decided whether a
+  // rival "legitimately" owned the gesture — and the rival's scroll slop
+  // that travel was measured against.
+  //
+  // All four existed to answer *did someone take this from me, and were
+  // they entitled to?* Nobody can take it any more — the recogniser accepts
+  // on the first movement — so the question has no askers left, and a
+  // restore path that never runs is a trap for whoever reads it next.
 
   bool get _enabled => widget.onChanged != null;
 
@@ -235,7 +224,6 @@ class _FieldSliderState extends State<FieldSlider> {
     if (!_enabled) {
       return;
     }
-    _preDownValue = widget.value;
     if (_trackExtent <= 0) {
       return;
     }
@@ -266,7 +254,6 @@ class _FieldSliderState extends State<FieldSlider> {
   void _handleEnd(DragEndDetails details) {
     final t = _gestureT;
     setState(() => _gestureT = null);
-    _preDownValue = null;
     if (t != null) {
       widget.onChangeEnd?.call(_valueFor(t));
     }
@@ -304,28 +291,35 @@ class _FieldSliderState extends State<FieldSlider> {
   /// settings only ever differed here: a desktop `Scrollable` puts a drag
   /// recognizer in the arena for touch and stylus alone, so a MOUSE tap had
   /// no rival to lose to and a PEN tap did.
+  /// Wires one drag recogniser. Both axes take the same four handlers, so
+  /// the vertical and horizontal factories cannot drift apart.
+  void _configureDrag(DragGestureRecognizer recognizer) {
+    // Down, not start: the bar answers the press itself (R9 #12's rule for
+    // grips) — and with acceptance now on the first movement there is no
+    // slop left to discard anyway.
+    recognizer
+      ..dragStartBehavior = DragStartBehavior.down
+      ..onDown = _handleDown
+      ..onUpdate = _handleUpdate
+      ..onEnd = _handleEnd
+      ..onCancel = _handleCancel;
+  }
+
   void _handleCancel() {
     final t = _gestureT;
     setState(() => _gestureT = null);
-    final restore = _preDownValue;
-    _preDownValue = null;
-    // 「바는 자기 축을 따라 움직인 것을 지킨다」 — the rule itself lives in
-    // [rivalOwnsGesture] now, because the splitter needs the identical one
-    // and a second copy of it would drift.
-    if (!rivalOwnsGesture(
-      dragAxis: widget.axis,
-      travelSinceDown: _pointerShift,
-      rivalSlop: _scrollSlop,
-    )) {
-      if (t != null) {
-        // Pointer-down already emitted this value; only the commit is owed.
-        widget.onChangeEnd?.call(_valueFor(t));
-      }
-      return;
-    }
-    if (restore != null) {
-      _emit(restore);
-      widget.onChangeEnd?.call(restore);
+    // ⛔The 「did the pointer cross my axis far enough that the rival owns
+    // this?」 branch is GONE (유저 확정 2026-08-14: 「슬라이더위에서 조작하기
+    // 시작하면 슬라이더조작하는거고 그 외가 스크롤인거야」). There is no
+    // rival to lose to any more — the recogniser takes the arena on the
+    // first movement — so a cancel can only mean the one thing left:
+    //
+    // ★a TAP. A drag recogniser that never moved rejects itself when the
+    // pointer lifts, so this is the normal end of every tap the bar
+    // receives, not an error path. Pointer-down already emitted the value;
+    // only the commit is owed.
+    if (t != null) {
+      widget.onChangeEnd?.call(_valueFor(t));
     }
   }
 
@@ -351,18 +345,8 @@ class _FieldSliderState extends State<FieldSlider> {
 
   double get _radius => widget.height < 20 ? 3 : 4;
 
-  /// Keeps [_pointerShift] current. One callback for move, up and cancel:
-  /// they all answer the same question.
-  void _trackShift(PointerEvent event) {
-    final from = _pointerDownAt;
-    if (from != null) {
-      _pointerShift = event.position - from;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    _scrollSlop = rivalScrollSlop(context);
     final textTheme = Theme.of(context).textTheme;
     final labelStyle = textTheme.labelSmall?.copyWith(color: AppColors.textDim);
     final valueStyle = textTheme.labelSmall?.copyWith(
@@ -467,17 +451,35 @@ class _FieldSliderState extends State<FieldSlider> {
       cursor: _vertical
           ? SystemMouseCursors.resizeUpDown
           : SystemMouseCursors.resizeLeftRight,
-      child: GestureDetector(
+      // ★유저 확정 2026-08-14: a press that lands on the bar is the bar's,
+      // scrolling included. These recognisers take the arena on the FIRST
+      // movement instead of at a slop, so no ancestor scrollable is ever in
+      // a position to take the gesture away — see [axis_bar_gesture].
+      child: RawGestureDetector(
         behavior: HitTestBehavior.opaque,
-        dragStartBehavior: DragStartBehavior.down,
-        onHorizontalDragDown: _vertical ? null : _handleDown,
-        onHorizontalDragUpdate: _vertical ? null : _handleUpdate,
-        onHorizontalDragEnd: _vertical ? null : _handleEnd,
-        onHorizontalDragCancel: _vertical ? null : _handleCancel,
-        onVerticalDragDown: _vertical ? _handleDown : null,
-        onVerticalDragUpdate: _vertical ? _handleUpdate : null,
-        onVerticalDragEnd: _vertical ? _handleEnd : null,
-        onVerticalDragCancel: _vertical ? _handleCancel : null,
+        gestures: _vertical
+            ? <Type, GestureRecognizerFactory>{
+                OwningVerticalDragGestureRecognizer:
+                    GestureRecognizerFactoryWithHandlers<
+                      OwningVerticalDragGestureRecognizer
+                    >(
+                      () => OwningVerticalDragGestureRecognizer(
+                        debugOwner: this,
+                      ),
+                      _configureDrag,
+                    ),
+              }
+            : <Type, GestureRecognizerFactory>{
+                OwningHorizontalDragGestureRecognizer:
+                    GestureRecognizerFactoryWithHandlers<
+                      OwningHorizontalDragGestureRecognizer
+                    >(
+                      () => OwningHorizontalDragGestureRecognizer(
+                        debugOwner: this,
+                      ),
+                      _configureDrag,
+                    ),
+              },
         child: bar,
       ),
     );
@@ -486,32 +488,18 @@ class _FieldSliderState extends State<FieldSlider> {
       label: widget.label,
       value: widget.valueText,
       child: Listener(
-        // Raw pointer travel, watched here rather than in the drag
-        // callbacks: a rejected recognizer reports no updates at all, so
-        // this is the only place that can say WHICH WAY the gesture went
-        // (see [_handleCancel]).
-        onPointerDown: (event) {
-          _pointerDownAt = event.position;
-          _pointerShift = Offset.zero;
-          // T11: this press is the slider's. Claimed HERE because hit-test
-          // dispatch runs deepest-first, so the claim is already standing
-          // by the time the row above is offered the same event and asks.
-          claimPointerForValueControl(event.pointer);
-        },
-        onPointerMove: _trackShift,
-        // The lift too: `Listener` sees it before the arena sweeps, and a
-        // gesture whose last move arrived with the finger already leaving
-        // would otherwise be judged on a stale position.
-        onPointerUp: (event) {
-          _trackShift(event);
-          releasePointerForValueControl(event.pointer);
-        },
-        onPointerCancel: (event) {
-          _trackShift(event);
-          // Released on cancel too: a claim that outlives its gesture would
-          // silently deafen whichever later pan is handed the same id.
-          releasePointerForValueControl(event.pointer);
-        },
+        // What is left here is the CLAIM and the wheel. The raw travel this
+        // used to track went with the workaround that read it.
+        //
+        // T11: this press is the slider's. Claimed HERE because hit-test
+        // dispatch runs deepest-first, so the claim is already standing by
+        // the time the row above is offered the same event and asks.
+        onPointerDown: (event) => claimPointerForValueControl(event.pointer),
+        onPointerUp: (event) => releasePointerForValueControl(event.pointer),
+        // Cancel too: a claim that outlives its gesture would silently
+        // deafen whichever later pan is handed the same id.
+        onPointerCancel: (event) =>
+            releasePointerForValueControl(event.pointer),
         onPointerSignal: (event) {
           if (event is PointerScrollEvent) {
             _handleWheel(event);

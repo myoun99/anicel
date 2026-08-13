@@ -175,8 +175,17 @@ void main() {
     expect(opacity.opacity, 0.4);
   });
 
+  // 🚨유저 확정 2026-08-14, ⛔재론 금지: 「**슬라이더위에서 조작하기 시작하면
+  // 슬라이더조작하는거고 그 외가 스크롤인거야**」 — and about the very case the
+  // old behaviour protected, 「태블릿에서 슬라이더 위에 손가락을 얹고 패널을
+  // 스크롤하는게 실제로 쓰겟냐? **절대로안하니까 다신하지마**」.
+  //
+  // This test used to assert the opposite — that a vertical drag over the bar
+  // scrolled the list and rolled the value back. That was never a decision.
+  // It was an assumption about how people hold tablets, written down as if it
+  // were one, and the bar grew a whole workaround to serve it.
   testWidgets(
-    'vertical scroll over the bar scrolls the list and rolls the value back',
+    'a drag that STARTS on the bar never reaches the list, whatever direction',
     (tester) async {
       final value = ValueNotifier<double>(0.2);
       final controller = ScrollController();
@@ -209,8 +218,22 @@ void main() {
       );
       await tester.drag(find.byKey(sliderKey), const Offset(0, -80));
       await tester.pump();
-      expect(controller.offset, greaterThan(0));
-      expect(value.value, moreOrLessEquals(0.2, epsilon: 0.001));
+      expect(
+        controller.offset,
+        0,
+        reason: 'the press landed on the bar, so the list gets nothing',
+      );
+      // And the press STANDS. `drag` presses the centre, and answering the
+      // press is what this bar does (유저: 「상단띠 브러시사이즈 변경처럼
+      // 대충눌러도 바뀌도록하고싶음」) — so the value is the centre's. The
+      // straight-down travel adds nothing, because down is across this bar's
+      // axis; what matters is that it is not TAKEN AWAY afterwards, which is
+      // exactly what the retired rollback did.
+      expect(
+        value.value,
+        moreOrLessEquals(0.5, epsilon: 0.02),
+        reason: 'the press set it and nothing rolled it back',
+      );
     },
   );
 
@@ -295,9 +318,8 @@ void main() {
       );
     });
 
-    testWidgets('a scroll that STARTS sideways still rolls back', (
-      tester,
-    ) async {
+    testWidgets('a sideways lead-in then a long vertical pull still never '
+        'reaches the list', (tester) async {
       final value = ValueNotifier<double>(0.2);
       addTearDown(value.dispose);
       final commits = <double>[];
@@ -312,28 +334,31 @@ void main() {
         Offset(rect.left + rect.width * 0.75, rect.center.dy),
         kind: PointerDeviceKind.stylus,
       );
-      // The sideways lead-in is exactly what a distance test could not see
-      // past: it is travel, but it is not the travel that decides.
       await gesture.moveBy(const Offset(10, 0));
-      // Split, because a drag that clears the slop in ONE move starts where
-      // that move ENDED and the remainder is thrown away — the list would
-      // take the gesture and then sit still, and the assertion below could
-      // not tell that from never taking it.
+      // 60px of pure vertical after the lead-in — far past any scroll slop.
+      // Under the retired law this was the case that handed the gesture over
+      // and rolled the value back; under this one the first movement already
+      // settled ownership and the direction afterwards is not a vote.
       await gesture.moveBy(const Offset(0, -25));
       await gesture.moveBy(const Offset(0, -35));
       await gesture.up();
       await tester.pumpAndSettle();
 
-      expect(controller.offset, greaterThan(0), reason: 'the list took it');
+      expect(
+        controller.offset,
+        0,
+        reason: 'the bar took the gesture on the first movement and kept it',
+      );
       expect(
         value.value,
-        moreOrLessEquals(0.2, epsilon: 0.001),
-        reason: 'so the tentative jump goes back',
+        greaterThan(0.2),
+        reason: 'the sideways lead-in is a real edit and it stands',
       );
+      expect(commits, isNotEmpty, reason: 'and it commits like any drag');
     });
 
-    testWidgets('stood up, the axes swap: a SIDEWAYS drag is the one that '
-        'rolls a vertical bar back', (tester) async {
+    testWidgets('a STOOD-UP bar keeps its gesture from a horizontal list the '
+        'same way', (tester) async {
       final value = ValueNotifier<double>(0.5);
       addTearDown(value.dispose);
       final controller = ScrollController();
@@ -371,14 +396,9 @@ void main() {
       );
 
       // 🚨Started OFF-CENTRE on purpose. Pressed at the middle, the
-      // pointer-down value and the resting value are the same number, so a
-      // bar that wrongly KEPT the gesture would land on 0.5 as well and
-      // this test would pass against the bug it exists to catch.
-      //
-      // `dragFrom` and not a hand-rolled `moveBy`: it pays the touch slop in
-      // its own move first, so what follows is travel the list can actually
-      // spend. One 80px jump clears the slop and starts the drag THERE,
-      // leaving nothing to scroll with.
+      // pointer-down value and the resting value are the same number, so
+      // the assertion below could not tell a bar that answered the press
+      // from one that did nothing at all.
       final rect = tester.getRect(find.byKey(sliderKey));
       await tester.dragFrom(
         Offset(rect.center.dx, rect.bottom - rect.height / 4),
@@ -387,13 +407,19 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(controller.offset, greaterThan(0), reason: 'the row scrolled');
+      expect(
+        controller.offset,
+        0,
+        reason: 'the press landed on the bar, so the row gets nothing',
+      );
+      // Sideways is ACROSS a stood-up bar, so the value follows the press
+      // and not the travel: the bar answered the down at a quarter up from
+      // the bottom and holds it. The point is that it holds it rather than
+      // handing the gesture to the row and rolling back.
       expect(
         value.value,
-        moreOrLessEquals(0.5, epsilon: 0.001),
-        reason:
-            'across a STOOD-UP bar is left/right, so this one rolls back — '
-            'a bar that read dy as its cross axis would keep 0.25 here',
+        moreOrLessEquals(0.25, epsilon: 0.02),
+        reason: 'the bar answered its own press and kept the pointer',
       );
     });
   });

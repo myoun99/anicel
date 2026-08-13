@@ -1,5 +1,65 @@
-import 'package:flutter/gestures.dart' show kTouchSlop;
+import 'package:flutter/gestures.dart'
+    show
+        HorizontalDragGestureRecognizer,
+        PointerDeviceKind,
+        VerticalDragGestureRecognizer,
+        kTouchSlop;
 import 'package:flutter/widgets.dart';
+
+/// 🚨🚨 **THE LAW, RESTATED (유저 확정 2026-08-14, ⛔재론 금지)**
+///
+/// > 「**슬라이더위에서 조작하기 시작하면 슬라이더조작하는거고 그 외가
+/// > 스크롤인거야**」 — 「태블릿에서 슬라이더 위에 손가락을 얹고 패널을
+/// > 스크롤하는게 실제로 쓰겟냐? **절대로안하니까 다신하지마.**」
+///
+/// A press that lands on a bar belongs to that bar. Every gesture from it is
+/// the bar's, scrolling included, with no exception and no direction test.
+///
+/// ⛔The "finger resting on a slider while scrolling the panel" case that the
+/// [rivalOwnsGesture] design below was protecting **was never a real
+/// gesture** — it was an assumption written down as if it were a decision,
+/// and it cost this control several rounds of workarounds. Do not resurrect
+/// it, and do not invent a new cost of the same shape.
+///
+/// [owningHorizontalDrag]/[owningVerticalDrag] are how the law is kept:
+/// accept on the FIRST movement rather than at a slop, so the bar has
+/// already won by the time any scrollable reaches its own threshold. Hit
+/// testing runs deepest-first, so the bar's recogniser is offered each move
+/// before its ancestors — winning is a matter of asking earlier, not of
+/// asking harder.
+
+/// A horizontal drag that takes the arena on the first movement, whatever
+/// direction that movement is in.
+///
+/// The direction not mattering is the point: a slider dragged straight DOWN
+/// moves 0 along its own axis, so a threshold on |dx| can never be crossed
+/// and the rival wins by walkover rather than by racing. Accepting on any
+/// motion removes the walkover. The value still only follows |dx| — the
+/// recogniser reports `primaryDelta` from its own axis — so a vertical drag
+/// holds the pointer and changes nothing, which is exactly "you are
+/// operating the slider now".
+class OwningHorizontalDragGestureRecognizer
+    extends HorizontalDragGestureRecognizer {
+  OwningHorizontalDragGestureRecognizer({super.debugOwner});
+
+  @override
+  bool hasSufficientGlobalDistanceToAccept(
+    PointerDeviceKind pointerDeviceKind,
+    double? deviceTouchSlop,
+  ) => true;
+}
+
+/// The vertical twin of [OwningHorizontalDragGestureRecognizer].
+class OwningVerticalDragGestureRecognizer
+    extends VerticalDragGestureRecognizer {
+  OwningVerticalDragGestureRecognizer({super.debugOwner});
+
+  @override
+  bool hasSufficientGlobalDistanceToAccept(
+    PointerDeviceKind pointerDeviceKind,
+    double? deviceTouchSlop,
+  ) => true;
+}
 
 /// 🚨★★★ THE LAW: **A BAR KEEPS WHAT MOVED ALONG ITS OWN AXIS.**
 ///
