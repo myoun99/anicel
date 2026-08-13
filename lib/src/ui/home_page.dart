@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'dart:ui' show AppExitResponse;
 
+import 'package:flutter/gestures.dart' show GestureBinding, PointerEvent;
 import 'package:flutter/services.dart' show SystemNavigator;
 
 import 'dialogs/app_confirm_dialog.dart';
@@ -20,6 +21,7 @@ import '../services/persistence/app_save_settings_store.dart';
 import '../services/persistence/recent_projects.dart';
 import '../services/persistence/recent_projects_store.dart';
 import '../services/persistence/audio_sync_settings_store.dart';
+import '../services/persistence/idle_snapshot_guard.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/color_palette_file_service.dart';
 import '../services/project_repository.dart';
@@ -145,9 +147,18 @@ class _HomePageState extends State<HomePage> {
         : ShortcutSettingsStore(),
   );
 
-  /// Autosave (P3): periodic dirty-session snapshots into the sidecar.
-  /// Never runs under FLUTTER_TEST (tests drive the service directly).
+  /// Autosave (P3): dirty-session snapshots into the recovery folder. The
+  /// service decides WHETHER; the two triggers below decide WHEN.
   ProjectAutosaveService? _autosave;
+
+  /// The crash guard for the exits no lifecycle callback sees — a SIGSEGV
+  /// or a dead battery mid-session. Its rule (armed by activity, disarmed
+  /// by firing) lives in the guard rather than here, because a policy held
+  /// as two fields on a State is a policy nothing can test.
+  late final IdleSnapshotGuard _idleGuard = IdleSnapshotGuard(
+    idleAfter: const Duration(seconds: 15),
+    onIdle: () => unawaited(_autosave?.saveNow()),
+  );
 
   /// PEN-12 #5: the DESKTOP exit gate — the window's close button lands
   /// in the same confirm dialog as the Android back button (the OS asks
@@ -245,6 +256,7 @@ class _HomePageState extends State<HomePage> {
     // the interval rebuild it; the settings notifier is the one source.
     _syncAutosaveService();
     AppSave.settings.addListener(_syncAutosaveService);
+    GestureBinding.instance.pointerRouter.addGlobalRoute(_noteUserActivity);
     _lifecycle = AppLifecycleListener(
       onExitRequested: _handleExitRequested,
       // Every way the app can stop being in front of the user, because the
@@ -323,8 +335,18 @@ class _HomePageState extends State<HomePage> {
   /// of those a platform sends, and in what order, is not something to
   /// depend on, and the service collapses the burst itself.
   void _snapshotForRecovery() {
+    // This trigger just wrote one, so the guard no longer owes anything.
+    _idleGuard.standDown();
     unawaited(_autosave?.saveNow());
   }
+
+  /// Any pointer activity: the user is here, so push the guard back.
+  ///
+  /// Watched through the global pointer route rather than a [Listener]
+  /// wrapped around the app: a global route OBSERVES events without
+  /// joining hit testing, so nothing about how input reaches the canvas
+  /// changes. This repo cares about that path more than most.
+  void _noteUserActivity(PointerEvent event) => _idleGuard.noteActivity();
 
   @override
   void dispose() {
@@ -332,6 +354,8 @@ class _HomePageState extends State<HomePage> {
     _session.historyManager.removeListener(_recordRecentColor);
     _session.voiceRecordingNotice.removeListener(_showVoiceRecordingNotice);
     AppSave.settings.removeListener(_syncAutosaveService);
+    GestureBinding.instance.pointerRouter.removeGlobalRoute(_noteUserActivity);
+    _idleGuard.dispose();
     _lifecycle?.dispose();
     _session.dispose();
     _panelsMenu.dispose();
