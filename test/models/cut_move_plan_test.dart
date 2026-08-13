@@ -85,23 +85,30 @@ void main() {
     expect(plan.gaps, isEmpty);
   });
 
-  test('the flip point sits a run-length away in either direction', () {
-    // c back over b: both midpoints are ten frames apart, so eleven frames
-    // of travel clears b's (the midpoint itself belongs to the cut that
-    // holds the rank — a boundary has to fall on one side).
-    final backwards = planCutMove(
+  test("the flip point is the SEAT — the neighbour's length away", () {
+    // 🚨T14 (유저 확정 2026-08-14): a run swaps once the cursor reaches the
+    // seat it will sit in afterwards, so the travel a swap costs is the
+    // NEIGHBOUR's length. c back over b lands on frame 10, and ten frames
+    // is what it asks for.
+    //
+    // ⛔This used to want ELEVEN. The rule compared midpoints, and a
+    // midpoint had to be strictly cleared. On this fixture every cut is the
+    // same length, so (mine + neighbour) ÷ 2 and the seat both land on 10
+    // and the two rules differ by exactly that one frame — which is why
+    // this is the only case in the file that moved.
+    final onTheSeat = planCutMove(
       slots: packed(),
       runStart: 2,
       runEnd: 2,
-      frameDelta: -11,
+      frameDelta: -10,
     );
-    expect(backwards.order, [a, c, b]);
+    expect(onTheSeat.order, [a, c, b]);
 
     final short = planCutMove(
       slots: packed(),
       runStart: 2,
       runEnd: 2,
-      frameDelta: -10,
+      frameDelta: -9,
     );
     expect(short.isReorder, isFalse);
     // c already touches b, so there is nowhere left to go: no edit at all.
