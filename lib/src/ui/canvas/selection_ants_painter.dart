@@ -27,7 +27,8 @@ class SelectionAntsPainter extends CustomPainter {
     required this.committedRegion,
     required this.screenOffset,
     required this.marqueeShape,
-    required this.lassoTrail,
+    required this.openTrail,
+    this.closeTarget,
     this.transformChrome,
     this.movePendingDirty = false,
   }) : _phase = repaint,
@@ -42,7 +43,16 @@ class SelectionAntsPainter extends CustomPainter {
 
   /// The polygon being dragged right now (not yet folded into the region).
   final CanvasSelectionShape? marqueeShape;
-  final List<CanvasPoint> lassoTrail;
+
+  /// An outline still being drawn and not yet closable: the lasso's raw
+  /// trail, or a polygon's vertices with the rubber band to the cursor on
+  /// the end. Drawn open, because it IS open.
+  final List<CanvasPoint> openTrail;
+
+  /// Where tapping would close the outline — the polygon's first vertex,
+  /// once there are enough of them. Null while closing is not on offer, so
+  /// the ring never promises a tap that would do nothing.
+  final CanvasPoint? closeTarget;
   final SelectionTransformChrome? transformChrome;
 
   /// R16-① TVP grammar: RED silhouette while the move session holds
@@ -55,6 +65,12 @@ class SelectionAntsPainter extends CustomPainter {
 
   static const double _dashOn = 5;
   static const double _dashOff = 4;
+
+  /// Screen pixels. The same number the layer hit-tests the close tap
+  /// against, so what the ring says is aimable is what is aimable — and
+  /// screen pixels rather than canvas ones, because a finger is the same
+  /// size at every zoom.
+  static const double closeTargetRadius = 9;
 
   Offset _map(CanvasPoint point) {
     final mapped = viewport.canvasToViewport(point);
@@ -81,15 +97,30 @@ class SelectionAntsPainter extends CustomPainter {
         ..fillType = PathFillType.evenOdd
         ..addPolygon([for (final point in marquee.points) _map(point)], true);
       _paintAnts(canvas, path, phase);
-    } else if (lassoTrail.length >= 2) {
-      // Lasso still too short to close: show the raw trail.
+    } else if (openTrail.length >= 2) {
+      // Not closable yet: show the outline as far as it has been drawn.
       final path = Path()
-        ..moveTo(_map(lassoTrail.first).dx, _map(lassoTrail.first).dy);
-      for (final point in lassoTrail.skip(1)) {
+        ..moveTo(_map(openTrail.first).dx, _map(openTrail.first).dy);
+      for (final point in openTrail.skip(1)) {
         final mapped = _map(point);
         path.lineTo(mapped.dx, mapped.dy);
       }
       _paintAnts(canvas, path, phase);
+    }
+
+    final close = closeTarget;
+    if (close != null) {
+      // The tap target that would close the outline. A ring, not a filled
+      // dot: it has to read as somewhere to aim rather than as a vertex
+      // that is already there.
+      canvas.drawCircle(
+        _map(close),
+        closeTargetRadius,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5
+          ..color = _chromeColor,
+      );
     }
 
     final chrome = transformChrome;
@@ -167,7 +198,8 @@ class SelectionAntsPainter extends CustomPainter {
       oldDelegate.committedRegion != committedRegion ||
       oldDelegate.screenOffset != screenOffset ||
       oldDelegate.marqueeShape != marqueeShape ||
-      oldDelegate.lassoTrail != lassoTrail ||
+      oldDelegate.openTrail != openTrail ||
+      oldDelegate.closeTarget != closeTarget ||
       oldDelegate.transformChrome != transformChrome ||
       oldDelegate.movePendingDirty != movePendingDirty;
 }

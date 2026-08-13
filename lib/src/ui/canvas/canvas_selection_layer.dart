@@ -10,6 +10,7 @@ import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_dab_sequence.dart';
 import '../../models/canvas_point.dart';
+import '../../models/canvas_shape_kind.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/tile_coord.dart';
@@ -51,11 +52,13 @@ class CanvasSelectionLayer extends StatefulWidget {
   const CanvasSelectionLayer({
     super.key,
     required this.tool,
+    this.shapeKind = CanvasShapeKind.rect,
     required this.viewport,
     required this.canvasSize,
     required this.frameToken,
     this.onShapeCommitted,
     this.onCutShape,
+    this.onFillShape,
     this.selectionCommands,
     this.onDragActiveChanged,
     this.onTransformDragActiveChanged,
@@ -148,8 +151,12 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// interaction, never on mere display). Ctrl+T still works everywhere.
   final bool alwaysShowTransformBox;
 
-  /// Which selection tool draws new regions (selectRect or lasso).
+  /// What a finished drag DOES with its outline — select, move, or cut.
   final CanvasSelectionTool tool;
+
+  /// Which outline a drag traces. Ignored by [CanvasSelectionTool.move],
+  /// which drags an existing region rather than tracing a new one.
+  final CanvasShapeKind shapeKind;
 
   final CanvasViewport viewport;
   final CanvasSize canvasSize;
@@ -177,6 +184,12 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// either. Ctrl+Z after a cut should undo whatever the user last DREW,
   /// not silently swallow one press.
   final ValueChanged<CanvasSelectionShape>? onCutShape;
+
+  /// A finished SHAPE FILL outline. Same arrangement as [onCutShape] and
+  /// for the same reason: the host paints the outline, and the committed
+  /// selection is not touched. The undo it leaves behind is the fill
+  /// itself, arriving through the stroke funnel like any other mark.
+  final ValueChanged<CanvasSelectionShape>? onFillShape;
 
   final CanvasSelectionCommands? selectionCommands;
 
@@ -236,41 +249,36 @@ class CanvasSelectionLayer extends StatefulWidget {
   State<CanvasSelectionLayer> createState() => _CanvasSelectionLayerState();
 }
 
-/// The layer's interaction mode: the marquee tools DRAW regions, the MOVE
-/// tool drags the selected content (R11-⑧: selection and move are
-/// separate tools — a marquee drag never moves strokes anymore).
+/// What the layer DOES with a finished drag — the verb, never the shape.
+///
+/// Which outline the drag traces is [CanvasSelectionLayer.shapeKind], a
+/// separate axis: [select] and [cut] each draw every shape, and they differ
+/// only in where the outline goes afterwards.
 enum CanvasSelectionTool {
-  rect,
-  lasso,
+  /// Folds the finished outline into the selection region.
+  select,
+
+  /// Drags the selected content (R11-⑧: selection and move are separate
+  /// tools — a marquee drag never moves strokes anymore). It traces no
+  /// outline, so it wears no shape.
   move,
 
-  /// The CUT tool's rectangle variant. It draws the same marquee as [rect]
-  /// and then does something else with it entirely: the outline is handed
-  /// to [CanvasSelectionLayer.onCutShape] and the committed region is left
-  /// exactly as the drag found it.
+  /// Hands the finished outline to [CanvasSelectionLayer.onCutShape] and
+  /// leaves the committed region exactly as the drag found it.
   ///
   /// Riding this layer rather than a second one of its own is deliberate —
   /// the marquee/lasso geometry, the viewport mapping and the pointer
   /// arbitration here are the trickiest input code in the app, and a
   /// parallel copy would be the kind that drifts.
-  cutRect,
+  cut,
 
-  /// The CUT tool's lasso variant.
-  cutLasso,
+  /// Hands the finished outline to [CanvasSelectionLayer.onFillShape] to be
+  /// painted, and — like [cut] — leaves the selection alone. Filling a
+  /// shape you drew is not selecting it.
+  fillShape,
 }
 
-/// Whether [tool] draws a freehand outline rather than a box.
-bool canvasSelectionToolIsLasso(CanvasSelectionTool tool) =>
-    tool == CanvasSelectionTool.lasso ||
-    tool == CanvasSelectionTool.cutLasso;
-
-/// Whether [tool] hands its finished outline to the cut slot instead of
-/// folding it into the selection.
-bool canvasSelectionToolCuts(CanvasSelectionTool tool) =>
-    tool == CanvasSelectionTool.cutRect ||
-    tool == CanvasSelectionTool.cutLasso;
-
-enum _DragMode { none, marquee, move, transform }
+enum _DragMode { none, marquee, move, transform, vertexTap }
 
 /// The float the transform preview last resampled.
 ///
@@ -619,6 +627,19 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   bool get _hasSelection => _region != null;
 
+  /// Mirrors the channel's open-trace length so a vertex added or taken
+  /// back repaints this layer. The trace itself is never copied down here
+  /// — the channel stays its only owner.
+  int _polygonTracePoints = 0;
+
+  /// Where a vertex tap went DOWN — the point it will place.
+  ///
+  /// Down for the position, up for the commit: the aim is taken where the
+  /// stylus landed, and nothing is placed until the hand comes off (유저
+  /// 법: 선택은 탭 = 손 떼야). Taking the release position instead would
+  /// slide the vertex out from under a finger that rolled.
+  Offset? _vertexTapStart;
+
   @override
   void initState() {
     super.initState();
@@ -638,6 +659,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   void _adoptChannelRegion() {
     if (!mounted) {
       return;
+    }
+    // An open polygon trace lives on the channel too, and undo/redo drive
+    // it from the app rather than from here — so a vertex coming or going
+    // has to repaint this layer even when the region did not move.
+    final tracePoints = widget.selectionCommands?.polygonPoints.length ?? 0;
+    if (tracePoints != _polygonTracePoints) {
+      setState(() => _polygonTracePoints = tracePoints);
+      _syncAnts();
     }
     final channelRegion = widget.selectionCommands?.region;
     if (channelRegion == _region) {
@@ -690,6 +719,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // picture and land the new one's.
       _scheduleFloatResample();
     }
+    // Note what is NOT here: cancelling an open polygon trace on a tool
+    // change. This layer does not mount for the painting tools, so on the
+    // switch that matters most it is being DISPOSED rather than updated
+    // and would never see it. The panel above watches the tool instead.
     // R17-①: a context change over a pending move ASKS (CSP grammar) —
     // 확정 lands the session as one undo entry, 되돌리기 puts the pixels
     // back exactly. Deferred post-frame: dialogs and history commands
@@ -810,6 +843,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       hasSelection: () => _hasSelection,
       nudge: _nudge,
       deselect: _deselect,
+      closePolygon: _closeOpenPolygon,
       transformActive: () => _transform != null,
       beginTransform: _beginTransform,
       // Enter: an open Ctrl+T commits; otherwise a pending move confirms
@@ -2411,6 +2445,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _moveScreenDelta = Offset.zero;
         _floatSurface = _buildFloatSurface();
       });
+    } else if (_tapsVertices) {
+      // The polygon places points; it has no drag verb at all, so the
+      // press only records where the tap aimed and the release decides
+      // what it meant.
+      _activePointer = event.pointer;
+      setState(() {
+        _dragMode = _DragMode.vertexTap;
+        _vertexTapStart = event.localPosition;
+      });
     } else {
       // The marquee tools ALWAYS draw a NEW polygon — even starting
       // inside the current region (moving lives on the Move tool). The
@@ -2425,7 +2468,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _dragMode = _DragMode.marquee;
         // Nothing to stash while cutting: the drag never touches the
         // region, so there is nothing for a cancel to put back.
-        _shapeBeforeMarquee = canvasSelectionToolCuts(widget.tool)
+        // Nothing to stash for the verbs that never touch the region: the
+        // drag leaves it alone, so a cancel has nothing to put back.
+        _shapeBeforeMarquee =
+            widget.tool == CanvasSelectionTool.cut ||
+                widget.tool == CanvasSelectionTool.fillShape
             ? null
             : _region;
         _marqueeStart = canvasPoint;
@@ -2444,11 +2491,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     switch (_dragMode) {
       case _DragMode.none:
         return;
+      case _DragMode.vertexTap:
+        // Nothing follows the pointer: the vertex was aimed on the way
+        // down and only the release decides whether it lands.
+        return;
       case _DragMode.marquee:
         setState(() {
           final canvasPoint = _toCanvas(event.localPosition);
           _marqueeCurrent = canvasPoint;
-          if (canvasSelectionToolIsLasso(widget.tool)) {
+          if (_tracesPointerPath) {
             _lassoPoints = [..._lassoPoints, canvasPoint];
           }
         });
@@ -2646,9 +2697,68 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       case _DragMode.transform:
         // The session stays open across drags; Enter/Escape close it.
         break;
+      case _DragMode.vertexTap:
+        _placeVertex();
     }
     setState(() => _cancelDrag(notify: true));
     _syncAnts();
+  }
+
+  /// A polygon tap has come off: close the trace if it aimed at the first
+  /// vertex, otherwise extend it.
+  void _placeVertex() {
+    final commands = widget.selectionCommands;
+    final down = _vertexTapStart;
+    _vertexTapStart = null;
+    if (commands == null || down == null) {
+      return;
+    }
+    final tapped = _toCanvas(down);
+    final points = commands.polygonPoints;
+    if (commands.canClosePolygon && _aimsAtCloseTarget(down, points.first)) {
+      _closeOpenPolygon();
+      return;
+    }
+    if (points.isEmpty) {
+      // Starting a fresh outline, like the first press of a marquee drag:
+      // a pending move confirms rather than reverts (R16-①).
+      _confirmMoveSession();
+    }
+    commands.addPolygonPoint(tapped);
+  }
+
+  /// Closes an open polygon trace: the outline goes wherever this verb
+  /// puts outlines, and the trace is over either way. False when there was
+  /// nothing open — the confirm that asked then means what it usually
+  /// means.
+  ///
+  /// Fewer than three vertices encloses nothing, so a confirm there ends
+  /// the trace without committing anything rather than leaving it up.
+  bool _closeOpenPolygon() {
+    final commands = widget.selectionCommands;
+    if (commands == null || !commands.hasOpenPolygon) {
+      return false;
+    }
+    final drawn = commands.takePolygonShape();
+    if (drawn != null) {
+      _commitDrawnOutline(drawn, before: _region);
+    }
+    _syncAnts();
+    return true;
+  }
+
+  /// Whether a tap at [local] (screen space) lands on the close ring drawn
+  /// over [first].
+  ///
+  /// Screen space, matching the ring: the target must be the same size to
+  /// the hand at every zoom, and it is drawn at a fixed screen radius.
+  bool _aimsAtCloseTarget(Offset local, CanvasPoint first) {
+    final mapped = widget.viewport.canvasToViewport(first);
+    final dx = local.dx - mapped.x;
+    final dy = local.dy - mapped.y;
+    return dx * dx + dy * dy <=
+        SelectionAntsPainter.closeTargetRadius *
+            SelectionAntsPainter.closeTargetRadius;
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
@@ -2716,25 +2826,39 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   void _finishMarquee() {
-    // The CUT variants stop here: the outline goes to the slot and the
-    // selection is left alone. 유저 확정: "잘라내기는 잘라내기만이야. 그러니
-    // 선택으로 남지 않아" — so there is no combine mode to apply, no
-    // history entry to record (a cut is not a selection change), and no
-    // stashed shape to consume.
-    if (canvasSelectionToolCuts(widget.tool)) {
-      _shapeBeforeMarquee = null;
-      final drawn = _marqueeShape();
+    final before = _shapeBeforeMarquee;
+    _shapeBeforeMarquee = null;
+    _commitDrawnOutline(_marqueeShape(), before: before);
+  }
+
+  /// Where every finished outline lands, whoever traced it — a marquee
+  /// drag, a lasso, or a closed polygon. The tracing is the only part that
+  /// differs between shapes; what a finished outline MEANS is the verb's.
+  void _commitDrawnOutline(
+    CanvasSelectionShape? drawn, {
+    required CanvasSelectionRegion? before,
+  }) {
+    // CUT and SHAPE FILL stop here: the outline goes to the slot or to the
+    // paint, and the selection is left alone. 유저 확정: "잘라내기는
+    // 잘라내기만이야. 그러니 선택으로 남지 않아" — the same law reads for
+    // the shape fill, which fills what you drew rather than choosing it.
+    // So there is no combine mode to apply, no history entry to record for
+    // the region, and no stashed shape to consume.
+    if (widget.tool == CanvasSelectionTool.cut) {
       if (drawn != null) {
         widget.onCutShape?.call(drawn);
       }
       return;
     }
-    final before = _shapeBeforeMarquee;
-    _shapeBeforeMarquee = null;
+    if (widget.tool == CanvasSelectionTool.fillShape) {
+      if (drawn != null) {
+        widget.onFillShape?.call(drawn);
+      }
+      return;
+    }
     // R26 #16: the drawn polygon FOLDS into the region under the active
     // mode. A click (degenerate polygon) still deselects in 갱신 mode —
     // Photoshop's click-away — and is inert in the other three.
-    final drawn = _marqueeShape();
     final after = CanvasSelectionRegion.combine(before, drawn, _marqueeMode());
     if (before == null && after == null) {
       return;
@@ -2773,28 +2897,73 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _syncAnts();
   }
 
+  /// Whether the active shape IS the pointer's path (points accumulate as
+  /// the drag runs) rather than being derived from its two corners.
+  ///
+  /// Exhaustive on purpose: a new [CanvasShapeKind] fails to compile here
+  /// until it has said which kind of drag it is.
+  bool get _tracesPointerPath => switch (widget.shapeKind) {
+    CanvasShapeKind.rect => false,
+    CanvasShapeKind.ellipse => false,
+    CanvasShapeKind.lasso => true,
+    CanvasShapeKind.polygon => false,
+  };
+
+  /// Whether the active shape is TAPPED out vertex by vertex rather than
+  /// dragged. The polygon is the only shape with no drag verb at all: a
+  /// press places a point and the outline stays open until it is closed,
+  /// which is why its trace has to outlive this widget (see
+  /// [CanvasSelectionCommands.polygonPoints]).
+  bool get _tapsVertices => switch (widget.shapeKind) {
+    CanvasShapeKind.rect => false,
+    CanvasShapeKind.ellipse => false,
+    CanvasShapeKind.lasso => false,
+    CanvasShapeKind.polygon => true,
+  };
+
   /// The in-progress or final marquee polygon; null while degenerate.
+  ///
+  /// This is the one place a shape kind turns into geometry — every other
+  /// site asks a predicate rather than branching on the kind itself.
   CanvasSelectionShape? _marqueeShape() {
-    if (canvasSelectionToolIsLasso(widget.tool)) {
-      if (_lassoPoints.length < 3) {
+    switch (widget.shapeKind) {
+      case CanvasShapeKind.lasso:
+        if (_lassoPoints.length < 3) {
+          return null;
+        }
+        return CanvasSelectionShape(_lassoPoints);
+      case CanvasShapeKind.polygon:
+        // Tapped out, not dragged: its outline is the channel's open trace
+        // and it is built when the trace CLOSES, not while a drag runs.
         return null;
-      }
-      return CanvasSelectionShape(_lassoPoints);
+      case CanvasShapeKind.rect:
+      case CanvasShapeKind.ellipse:
+        final start = _marqueeStart;
+        final current = _marqueeCurrent;
+        if (start == null || current == null) {
+          return null;
+        }
+        // A click (or a drag too small to have meant one) is degenerate for
+        // both box shapes — an ellipse in a 1px box is not a thinner
+        // ellipse, it is nothing.
+        if ((current.x - start.x).abs() < 2 &&
+            (current.y - start.y).abs() < 2) {
+          return null;
+        }
+        return widget.shapeKind == CanvasShapeKind.ellipse
+            ? CanvasSelectionShape.ellipse(
+                left: start.x,
+                top: start.y,
+                right: current.x,
+                bottom: current.y,
+              )
+            : CanvasSelectionShape.rect(
+                left: start.x,
+                top: start.y,
+                right: current.x,
+                bottom: current.y,
+              );
     }
-    final start = _marqueeStart;
-    final current = _marqueeCurrent;
-    if (start == null || current == null) {
-      return null;
-    }
-    if ((current.x - start.x).abs() < 2 && (current.y - start.y).abs() < 2) {
-      return null;
-    }
-    return CanvasSelectionShape.rect(
-      left: start.x,
-      top: start.y,
-      right: current.x,
-      bottom: current.y,
-    );
   }
 
   void _finishMove() {
@@ -3261,11 +3430,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                   marqueeShape: _dragMode == _DragMode.marquee
                       ? _marqueeShape()
                       : null,
-                  lassoTrail:
-                      _dragMode == _DragMode.marquee &&
-                          canvasSelectionToolIsLasso(widget.tool)
+                  openTrail: _tapsVertices
+                      ? (widget.selectionCommands?.polygonPoints ?? const [])
+                      : _dragMode == _DragMode.marquee && _tracesPointerPath
                       ? _lassoPoints
                       : const [],
+                  closeTarget:
+                      _tapsVertices &&
+                          (widget.selectionCommands?.canClosePolygon ?? false)
+                      ? widget.selectionCommands!.polygonPoints.first
+                      : null,
                   transformChrome: chrome,
                   movePendingDirty: _movePending && _moveSessionDirty,
                 ),

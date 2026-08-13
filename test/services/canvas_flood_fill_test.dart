@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -22,6 +23,7 @@ import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/services/canvas_selection.dart';
 
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
@@ -454,5 +456,95 @@ void main() {
         }
       },
     );
+  });
+
+  group('buildShapeFillDab', () {
+    int alphaAt(BrushDab dab, int x, int y) {
+      final stamp = dab.stamp!;
+      final left = (dab.center.x - stamp.width / 2).round();
+      final top = (dab.center.y - stamp.height / 2).round();
+      final lx = x - left;
+      final ly = y - top;
+      if (lx < 0 || ly < 0 || lx >= stamp.width || ly >= stamp.height) {
+        return 0;
+      }
+      return stamp.rgba[(ly * stamp.width + lx) * 4 + 3];
+    }
+
+    test('fills the outline with the colour, corners and all', () {
+      // 유저 확정: 올가미 채우기는 A — 내부에 뭐가 있든 채운다. There is no
+      // picture in this test at all, which is the point: a shape fill has
+      // no seed, no tolerance and nothing to read.
+      final dab = buildShapeFillDab(
+        shape: CanvasSelectionShape.rect(
+          left: 10,
+          top: 10,
+          right: 40,
+          bottom: 30,
+        ),
+        color: 0xFF3366CC,
+        options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+      )!;
+      expect(alphaAt(dab, 25, 20), 255, reason: 'the middle');
+      expect(alphaAt(dab, 11, 11), 255, reason: 'a corner is inside a box');
+      expect(alphaAt(dab, 5, 20), 0, reason: 'outside stays out');
+      final stamp = dab.stamp!;
+      expect(stamp.rgba[3 * 4 + 0], anyOf(0, 0x33));
+      expect(dab.color, 0xFF3366CC);
+    });
+
+    test('the ellipse loses the box corners it was drawn in', () {
+      final dab = buildShapeFillDab(
+        shape: CanvasSelectionShape.ellipse(
+          left: 0,
+          top: 0,
+          right: 60,
+          bottom: 60,
+        ),
+        color: 0xFF000000,
+        options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+      )!;
+      expect(alphaAt(dab, 30, 30), 255);
+      expect(alphaAt(dab, 2, 2), 0);
+    });
+
+    test('an outline enclosing nothing fills nothing', () {
+      // Three collinear points have no area — the same rule that makes a
+      // lasso dragged in a straight line cut nothing.
+      final dab = buildShapeFillDab(
+        shape: CanvasSelectionShape([
+          CanvasPoint(x: 0, y: 0),
+          CanvasPoint(x: 10, y: 0),
+          CanvasPoint(x: 20, y: 0),
+        ]),
+        color: 0xFF000000,
+      );
+      expect(dab, isNull);
+    });
+
+    test('anti-alias softens the edge and leaves the inside alone', () {
+      // 유저 확정 ②: AA follows the fill, on by default. It is the SAME
+      // post-pass the flood uses — that is why it needed no rasterizer.
+      final shape = CanvasSelectionShape.rect(
+        left: 10,
+        top: 10,
+        right: 40,
+        bottom: 30,
+      );
+      final hard = buildShapeFillDab(
+        shape: shape,
+        color: 0xFF000000,
+        options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+      )!;
+      final soft = buildShapeFillDab(
+        shape: shape,
+        color: 0xFF000000,
+        options: const FloodFillOptions(expandPx: 0, antiAlias: true),
+      )!;
+      expect(alphaAt(hard, 10, 20), 255);
+      expect(alphaAt(soft, 10, 20), lessThan(255));
+      expect(alphaAt(soft, 10, 20), greaterThan(0));
+      expect(alphaAt(soft, 25, 20), 255, reason: 'only the edge softens');
+    });
   });
 }

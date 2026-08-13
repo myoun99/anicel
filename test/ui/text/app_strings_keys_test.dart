@@ -80,6 +80,7 @@ void main() {
     'selectionMoveConfirmBody': (s) => s.selectionMoveConfirmBody,
     'selectionMoveRevert': (s) => s.selectionMoveRevert,
     'selectionMoveApply': (s) => s.selectionMoveApply,
+    'selectionClosePolygon': (s) => s.selectionClosePolygon,
     'commonSave': (s) => s.commonSave,
     'commonDelete': (s) => s.commonDelete,
     'commonRename': (s) => s.commonRename,

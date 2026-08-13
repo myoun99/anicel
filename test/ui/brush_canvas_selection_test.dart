@@ -8,7 +8,10 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
@@ -56,7 +59,9 @@ void main() {
   >
   pumpSelectionPanel(
     WidgetTester tester, {
-    CanvasTool tool = CanvasTool.selectRect,
+    CanvasTool tool = CanvasTool.select,
+    CanvasShapeKind shapeKind = CanvasShapeKind.rect,
+    BrushBlendMode blendMode = BrushBlendMode.color,
     TransformMode transformMode = TransformMode.normal,
     // Extra committed ink, mounted with the fixture. `null` replaces the
     // in-canvas stroke entirely (a cel whose only ink is off-canvas).
@@ -100,8 +105,21 @@ void main() {
               availableFrameKeys: frameKeys,
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
               historyManager: history,
-              brushToolState: BrushToolState.defaults.copyWith(tool: tool),
+              brushToolState: BrushToolState.defaults.copyWith(
+                tool: tool,
+                selectShape: shapeKind,
+                fillShape: shapeKind,
+                fillBlendMode: blendMode,
+              ),
               selectionCommands: commands,
+              shapeFillDabFor: (shape, color) => buildShapeFillDab(
+                shape: shape,
+                color: color,
+                options: const FloodFillOptions(
+                  expandPx: 0,
+                  antiAlias: false,
+                ),
+              ),
               transformOptions: transformOptions,
               ),
             ),
@@ -267,6 +285,15 @@ void main() {
     await tester.pump();
   }
 
+  /// One polygon vertex tap: down where it aims, up to commit it.
+  Future<void> tapOnLayer(WidgetTester tester, Offset at) async {
+    final origin = tester.getTopLeft(find.byKey(layerKey));
+    final gesture = await tester.startGesture(origin + at);
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+  }
+
   /// The chrome the ants painter is ACTUALLY drawing — read off the
   /// mounted painter, so a fix that only reaches the model cannot pass.
   SelectionTransformChrome? chromeOnScreen(WidgetTester tester) {
@@ -309,7 +336,7 @@ void main() {
     expect(wide.width, greaterThan(0));
 
     // 삭제: a second drag cuts the right half back out.
-    await env.setTool(CanvasTool.selectRect);
+    await env.setTool(CanvasTool.select);
     env.commands.combineMode = SelectionCombineMode.subtract;
     await tester.pump();
     await dragOnLayer(tester, const Offset(70, 10), const Offset(140, 140));
@@ -2542,7 +2569,10 @@ void main() {
   });
 
   testWidgets('the lasso tool selects with a freehand region', (tester) async {
-    final env = await pumpSelectionPanel(tester, tool: CanvasTool.lasso);
+    final env = await pumpSelectionPanel(
+      tester,
+      shapeKind: CanvasShapeKind.lasso,
+    );
 
     // A rough triangle around the stroke.
     final origin = tester.getTopLeft(find.byKey(layerKey));
@@ -2570,6 +2600,181 @@ void main() {
     expect(inkAt(env.coordinator, 28, 30), 0);
   });
 
+  testWidgets('the ellipse shape drags out a round region, not a box', (
+    tester,
+  ) async {
+    // The wiring, not the geometry: the shape kind has to reach the drag
+    // surface and pick the other factory. A box drag that came back square
+    // would pass every pure-function test next door.
+    final env = await pumpSelectionPanel(
+      tester,
+      shapeKind: CanvasShapeKind.ellipse,
+    );
+    await dragOnLayer(tester, const Offset(10, 10), const Offset(90, 90));
+
+    final region = env.commands.region!;
+    expect(
+      region.containsPoint(CanvasPoint(x: 50, y: 50)),
+      isTrue,
+      reason: 'the middle is inside',
+    );
+    expect(
+      region.containsPoint(CanvasPoint(x: 13, y: 13)),
+      isFalse,
+      reason: 'the box corner is not — that is what makes it an ellipse',
+    );
+  });
+
+  testWidgets('the shape fill paints the outline and leaves the selection '
+      'alone', (tester) async {
+    // The verb, end to end. 유저 확정: 잘라내기와 같은 법 — filling a shape
+    // you drew is not choosing it, so no region is created and Ctrl+Z
+    // undoes the FILL rather than a marquee nobody asked for.
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.fillShape);
+    expect(inkAt(env.coordinator, 70, 70), 0, reason: 'blank to begin with');
+
+    await dragOnLayer(tester, const Offset(60, 60), const Offset(90, 90));
+    await tester.pump();
+
+    expect(inkAt(env.coordinator, 70, 70), isNonZero, reason: 'it painted');
+    expect(
+      env.commands.region,
+      isNull,
+      reason: 'and made no selection doing it',
+    );
+  });
+
+  testWidgets('a shape fill on the erase blend REMOVES ink', (tester) async {
+    // 유저 확정 ③: erase is in the blend list, which makes the shapes into
+    // an eraser. Asserted on the raster, not on a flag: erase is carried
+    // per DAB and not by the blend mode at commit, so a fill handed only
+    // `blendMode: erase` takes the plain path and paints the region. That
+    // is exactly what this file caught.
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.fillShape,
+      blendMode: BrushBlendMode.erase,
+    );
+    expect(inkAt(env.coordinator, 45, 45), isNonZero, reason: 'ink to erase');
+
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await tester.pump();
+
+    expect(inkAt(env.coordinator, 45, 45), 0, reason: 'the ink is gone');
+  });
+
+  group('polygon', () {
+    testWidgets('taps place vertices and the first one closes the outline', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        shapeKind: CanvasShapeKind.polygon,
+      );
+      // Nothing is selected while the outline is still open — an unclosed
+      // shape has not chosen anything yet.
+      await tapOnLayer(tester, const Offset(20, 20));
+      await tapOnLayer(tester, const Offset(80, 20));
+      await tapOnLayer(tester, const Offset(80, 80));
+      expect(env.commands.polygonPoints, hasLength(3));
+      expect(env.commands.region, isNull);
+
+      // Tapping the first vertex again closes it.
+      await tapOnLayer(tester, const Offset(20, 20));
+      expect(env.commands.hasOpenPolygon, isFalse);
+      final region = env.commands.region;
+      expect(region, isNotNull);
+      expect(region!.containsPoint(CanvasPoint(x: 60, y: 40)), isTrue);
+      expect(region.containsPoint(CanvasPoint(x: 30, y: 70)), isFalse);
+    });
+
+    testWidgets('the confirm closes it too — a tablet has no Enter key', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        shapeKind: CanvasShapeKind.polygon,
+      );
+      await tapOnLayer(tester, const Offset(20, 20));
+      await tapOnLayer(tester, const Offset(80, 20));
+      await tapOnLayer(tester, const Offset(80, 80));
+
+      expect(env.commands.closePolygon(), isTrue);
+      await tester.pump();
+      expect(env.commands.hasOpenPolygon, isFalse);
+      expect(env.commands.region, isNotNull);
+    });
+
+    testWidgets('an undone vertex leaves the rest of the outline standing', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        shapeKind: CanvasShapeKind.polygon,
+      );
+      await tapOnLayer(tester, const Offset(20, 20));
+      await tapOnLayer(tester, const Offset(80, 20));
+      await tapOnLayer(tester, const Offset(80, 80));
+
+      expect(env.commands.undoPolygonPoint(), isTrue);
+      await tester.pump();
+      expect(env.commands.polygonPoints, hasLength(2));
+      expect(
+        env.commands.region,
+        isNull,
+        reason: 'taking a vertex back is not a selection change',
+      );
+    });
+
+    testWidgets('changing tool drops the trace; the region it never made '
+        'is not affected', (tester) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        shapeKind: CanvasShapeKind.polygon,
+      );
+      await tapOnLayer(tester, const Offset(20, 20));
+      await tapOnLayer(tester, const Offset(80, 20));
+      expect(env.commands.hasOpenPolygon, isTrue);
+
+      await env.setTool(CanvasTool.brush);
+      expect(env.commands.hasOpenPolygon, isFalse);
+      expect(env.commands.region, isNull);
+    });
+
+    testWidgets('the close ring appears only once closing is on offer', (
+      tester,
+    ) async {
+      // The ring is a promise about what a tap there would do, so it must
+      // not be up while such a tap would do nothing.
+      final env = await pumpSelectionPanel(
+        tester,
+        shapeKind: CanvasShapeKind.polygon,
+      );
+      CanvasPoint? ringAt() {
+        for (final paint in tester.widgetList<CustomPaint>(
+          find.descendant(
+            of: find.byKey(layerKey),
+            matching: find.byType(CustomPaint),
+          ),
+        )) {
+          final painter = paint.painter;
+          if (painter is SelectionAntsPainter) {
+            return painter.closeTarget;
+          }
+        }
+        return null;
+      }
+
+      await tapOnLayer(tester, const Offset(20, 20));
+      await tapOnLayer(tester, const Offset(80, 20));
+      expect(ringAt(), isNull, reason: 'two vertices enclose nothing');
+
+      await tapOnLayer(tester, const Offset(80, 80));
+      expect(ringAt(), CanvasPoint(x: 20, y: 20));
+      expect(env.commands.canClosePolygon, isTrue);
+    });
+  });
+
   testWidgets('R26 #15: NO frame under the playhead still selects — the '
       'region is view state; only pixel ops need a cel', (tester) async {
     final commands = CanvasSelectionCommands();
@@ -2582,7 +2787,7 @@ void main() {
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
             historyManager: HistoryManager(),
             brushToolState: BrushToolState.defaults.copyWith(
-              tool: CanvasTool.selectRect,
+              tool: CanvasTool.select,
             ),
             selectionCommands: commands,
             // The production no-frame configuration: the blank-canvas

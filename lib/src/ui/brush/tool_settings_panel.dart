@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart';
 import '../../models/brush_tip_entry.dart';
+import '../../models/canvas_shape_kind.dart';
 import '../../models/drawing_guide.dart';
 import '../../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
 import '../../services/canvas_flood_fill.dart';
@@ -136,12 +137,23 @@ class ToolSettingsPanel extends StatelessWidget {
           options: fillOptions,
           onChanged: onFillOptionsChanged,
         ),
+        // 유저 확정 ⑥: a panel PER TILE, showing what actually applies.
+        // The bucket's knobs above are about reading the picture — where
+        // the flood may go — and a drawn outline never asks that question,
+        // so tolerance, gap close and pasteboard-fill are simply not here.
+        // Only the edge is shared, because only the edge is shared.
+        CanvasTool.fillShape => _ShapeFillSettings(
+          options: fillOptions,
+          onChanged: onFillOptionsChanged,
+          shapeKind: state.activeShapeKind,
+          selectionCommands: selectionCommands,
+        ),
         // R28 #6: the eyedropper has a REFERENCE SOURCE setting now.
         CanvasTool.eyedropper => _EyedropperSettings(
           source: eyedropperSource,
           onChanged: onEyedropperSourceChanged,
         ),
-        CanvasTool.selectRect || CanvasTool.lasso => _SelectionSettings(
+        CanvasTool.select => _SelectionSettings(
           state: state,
           onChanged: onChanged,
           maskOptions: selectionMaskOptions,
@@ -149,11 +161,14 @@ class ToolSettingsPanel extends StatelessWidget {
           selectionCommands: selectionCommands,
           language: language,
         ),
-        // The CUT variants: the two grab tiles have nothing to set (the
+        // The CUT grab: nothing to set whatever shape it is wearing (the
         // grab is hard-edged by law — 2치 보존 — and it makes no selection,
-        // so there is no combine mode either), and the stamp tile's knobs
-        // land here in the next slice.
-        CanvasTool.cutRect || CanvasTool.cutLasso => const _CutGrabSettings(),
+        // so there is no combine mode either) — except the polygon's
+        // confirm, which every drag-out verb needs while a trace is open.
+        CanvasTool.cut => _CutGrabSettings(
+          shapeKind: state.activeShapeKind,
+          selectionCommands: selectionCommands,
+        ),
         CanvasTool.cutStamp => _CutStampSettings(
           slot: cutPieceSlot,
           onPasteAbove: onCutPasteAbove,
@@ -183,8 +198,60 @@ class ToolSettingsPanel extends StatelessWidget {
 /// mode to offer, and its mask is hard-edged by law (2치 보존) rather than
 /// by a default someone could nudge. The soft-edge knobs that would
 /// otherwise belong here already live on the Select tool.
+/// The SHAPE FILL tile's knobs.
+///
+/// Short on purpose. A drawn outline is filled whatever is inside it (유저
+/// 확정: 올가미 채우기는 A), so nothing here reads the picture — the
+/// bucket's tolerance, gap close and pasteboard boundary have no question
+/// to answer. What remains is the edge, which both tiles share because
+/// both end in a coverage mask.
+class _ShapeFillSettings extends StatelessWidget {
+  const _ShapeFillSettings({
+    required this.options,
+    required this.onChanged,
+    required this.shapeKind,
+    required this.selectionCommands,
+  });
+
+  final FloodFillOptions options;
+  final ValueChanged<FloodFillOptions> onChanged;
+  final CanvasShapeKind? shapeKind;
+  final CanvasSelectionCommands? selectionCommands;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListView(
+      key: const ValueKey<String>('tool-settings-fill-shape'),
+      padding: const EdgeInsets.all(12),
+      children: [
+        Text('Shape Fill', style: theme.textTheme.titleSmall),
+        _ClosePolygonButton(
+          shapeKind: shapeKind,
+          selectionCommands: selectionCommands,
+        ),
+        const SizedBox(height: 8),
+        SwitchListTile(
+          key: const ValueKey<String>('fill-shape-anti-alias-switch'),
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: Text(AppText.strings.brAntiAlias),
+          value: options.antiAlias,
+          onChanged: (value) => onChanged(options.copyWith(antiAlias: value)),
+        ),
+      ],
+    );
+  }
+}
+
 class _CutGrabSettings extends StatelessWidget {
-  const _CutGrabSettings();
+  const _CutGrabSettings({
+    required this.shapeKind,
+    required this.selectionCommands,
+  });
+
+  final CanvasShapeKind? shapeKind;
+  final CanvasSelectionCommands? selectionCommands;
 
   @override
   Widget build(BuildContext context) {
@@ -192,14 +259,59 @@ class _CutGrabSettings extends StatelessWidget {
     return Padding(
       key: const ValueKey<String>('tool-settings-cut-grab'),
       padding: const EdgeInsets.all(12),
-      child: Align(
-        alignment: Alignment.topLeft,
-        child: Text(
-          'Cut copies the pixels under the drag — the original stays.\n'
-          'Pick Stamp to place the piece you are holding.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Align(
+            alignment: Alignment.topLeft,
+            child: Text(
+              'Cut copies the pixels under the drag — the original stays.\n'
+              'Pick Stamp to place the piece you are holding.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
+          _ClosePolygonButton(
+            shapeKind: shapeKind,
+            selectionCommands: selectionCommands,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The polygon's confirm, for hands with no Enter key.
+///
+/// Shows only while the polygon shape is armed, and only bites once three
+/// vertices are down — a button offering to close nothing would be lying
+/// about what a tap does. Nothing at all is rendered otherwise, so the
+/// panel does not grow a permanent dead row for the other shapes.
+class _ClosePolygonButton extends StatelessWidget {
+  const _ClosePolygonButton({
+    required this.shapeKind,
+    required this.selectionCommands,
+  });
+
+  final CanvasShapeKind? shapeKind;
+  final CanvasSelectionCommands? selectionCommands;
+
+  @override
+  Widget build(BuildContext context) {
+    final commands = selectionCommands;
+    if (shapeKind != CanvasShapeKind.polygon || commands == null) {
+      return const SizedBox.shrink();
+    }
+    return ListenableBuilder(
+      listenable: commands,
+      builder: (context, _) => Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: FilledButton.tonal(
+          key: const ValueKey<String>('selection-close-polygon-button'),
+          onPressed: commands.canClosePolygon ? commands.closePolygon : null,
+          child: Text(AppText.strings.selectionClosePolygon),
         ),
       ),
     );
@@ -398,6 +510,10 @@ class _SelectionSettings extends StatelessWidget {
         // (two tools there), so the settings panel no longer duplicates
         // it — only the mask knobs remain.
         Text(AppText.strings.toolSelect, style: theme.textTheme.titleSmall),
+        _ClosePolygonButton(
+          shapeKind: state.activeShapeKind,
+          selectionCommands: commands,
+        ),
         // R26 #16: 갱신 / 추가 / 삭제 / 선택중 — how the next drag folds
         // into the region already selected. Default 추가 (유저 원문).
         if (commands != null) ...[

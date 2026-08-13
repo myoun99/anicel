@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -16,7 +17,7 @@ void main() {
         home: Scaffold(
           body: ToolSettingsPanel(
             state: BrushToolState.defaults.copyWith(
-              tool: CanvasTool.selectRect,
+              tool: CanvasTool.select,
             ),
             onChanged: (_) {},
             fillOptions: const FloodFillOptions(),
@@ -53,7 +54,10 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: ToolSettingsPanel(
-            state: BrushToolState.defaults.copyWith(tool: CanvasTool.lasso),
+            state: BrushToolState.defaults.withShapeKind(
+              CanvasShapeKind.lasso,
+              forTool: CanvasTool.select,
+            ),
             onChanged: (_) {},
             fillOptions: const FloodFillOptions(),
             onFillOptionsChanged: (_) {},

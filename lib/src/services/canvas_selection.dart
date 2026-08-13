@@ -39,6 +39,61 @@ class CanvasSelectionShape {
     ]);
   }
 
+  /// The ellipse inscribed in the drag's box, as a polygon.
+  ///
+  /// A polygon because that is the only thing the region model knows how to
+  /// be — membership is an even-odd ray cast and the mask is a scanline
+  /// fill, and both of those are already exact for a polygon of any size.
+  /// So the question is not "curve or polygon" but how many sides, and the
+  /// answer comes from the RADIUS: [_ellipseSegments] picks the smallest
+  /// count whose chord sags less than half a canvas pixel. A small ellipse
+  /// gets a dozen sides and a huge one gets hundreds, and neither pays for
+  /// the other.
+  ///
+  /// Segments are canvas-space, not screen-space, deliberately: the mask is
+  /// rasterized in canvas space, so a zoomed-in view shows more of the same
+  /// polygon rather than a smoother one. Anything else would make the
+  /// committed pixels depend on the zoom they were committed at.
+  factory CanvasSelectionShape.ellipse({
+    required double left,
+    required double top,
+    required double right,
+    required double bottom,
+  }) {
+    final centerX = (left + right) / 2;
+    final centerY = (top + bottom) / 2;
+    final radiusX = (right - left).abs() / 2;
+    final radiusY = (bottom - top).abs() / 2;
+    final segments = _ellipseSegments(math.max(radiusX, radiusY));
+    return CanvasSelectionShape([
+      for (var i = 0; i < segments; i += 1)
+        () {
+          final angle = 2 * math.pi * i / segments;
+          return CanvasPoint(
+            x: centerX + radiusX * math.cos(angle),
+            y: centerY + radiusY * math.sin(angle),
+          );
+        }(),
+    ]);
+  }
+
+  /// Sides enough that the chord sags less than [_ellipseSagPx] from the
+  /// true arc: for radius r and n sides the sag is `r · (1 − cos(π/n))`,
+  /// solved for n. Clamped at both ends — the floor keeps a tiny ellipse
+  /// from degenerating into a triangle, and the ceiling keeps a huge one
+  /// from turning a selection into a point cloud.
+  static int _ellipseSegments(double radius) {
+    if (radius <= _ellipseSagPx) {
+      return _ellipseMinSegments;
+    }
+    final exact = math.pi / math.acos(1 - _ellipseSagPx / radius);
+    return exact.ceil().clamp(_ellipseMinSegments, _ellipseMaxSegments);
+  }
+
+  static const double _ellipseSagPx = 0.5;
+  static const int _ellipseMinSegments = 12;
+  static const int _ellipseMaxSegments = 512;
+
   final List<CanvasPoint> points;
 
   /// Even-odd ray cast (the polygon closes implicitly).

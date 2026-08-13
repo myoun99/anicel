@@ -17,6 +17,7 @@ import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_paint_clip.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../models/canvas_point.dart';
+import '../../models/canvas_shape_kind.dart';
 import '../../models/canvas_size.dart';
 import '../../models/drawing_guide.dart';
 import '../../models/canvas_viewport.dart';
@@ -146,6 +147,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onEyedropperPick,
     this.onAltColorPick,
     this.fillDabAt,
+    this.shapeFillDabFor,
     this.selectionMaskOptions,
     this.transformOptions,
     this.viewCommands,
@@ -391,6 +393,13 @@ class BrushCanvasPanel extends StatefulWidget {
   /// Builds the fill-region dab for a tap (P6); the panel commits it
   /// through the exact stroke funnel. Null disables the fill tool.
   final BrushDab? Function(CanvasPoint point, int color)? fillDabAt;
+
+  /// Builds the dab for a finished SHAPE FILL outline. Supplied by the
+  /// host for the same reason [fillDabAt] is — the fill's knobs live up
+  /// there, and the panel commits whatever comes back. Null disables the
+  /// shape fill.
+  final BrushDab? Function(CanvasSelectionShape shape, int color)?
+  shapeFillDabFor;
 
   /// R26 (C2): the Select tool's lift-time mask knobs — read at lift.
   /// Null/absent keeps the classic byte-preserving hard mask.
@@ -1024,6 +1033,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         _handleSelectionChannelChanged,
       );
       widget.selectionCommands?.addListener(_handleSelectionChannelChanged);
+    }
+    // 유저 확정: an open polygon trace survives a frame change and a CUT
+    // change, but putting the TOOL or the SHAPE down cancels it.
+    //
+    // Watched here rather than in the selection layer, which is where the
+    // trace is drawn: that layer does not mount for the painting tools, so
+    // on "polygon half-drawn, user picks the brush" it is being disposed
+    // rather than updated and a check inside it never runs.
+    if (oldWidget.brushToolState.tool != widget.brushToolState.tool ||
+        oldWidget.brushToolState.activeShapeKind !=
+            widget.brushToolState.activeShapeKind) {
+      widget.selectionCommands?.abandonPolygon();
     }
     _bindSelectionHistoryRecorder();
     _syncIdleAnts();
@@ -1744,25 +1765,33 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                             tool: switch (widget
                                                                 .brushToolState
                                                                 .tool) {
-                                                              CanvasTool
-                                                                  .lasso =>
-                                                                CanvasSelectionTool
-                                                                    .lasso,
                                                               CanvasTool.move =>
                                                                 CanvasSelectionTool
                                                                     .move,
-                                                              CanvasTool
-                                                                  .cutRect =>
+                                                              CanvasTool.cut =>
                                                                 CanvasSelectionTool
-                                                                    .cutRect,
+                                                                    .cut,
                                                               CanvasTool
-                                                                  .cutLasso =>
+                                                                  .fillShape =>
                                                                 CanvasSelectionTool
-                                                                    .cutLasso,
+                                                                    .fillShape,
                                                               _ =>
                                                                 CanvasSelectionTool
-                                                                    .rect,
+                                                                    .select,
                                                             },
+                                                            // The verb picks
+                                                            // the branch above;
+                                                            // the SHAPE rides
+                                                            // beside it, so
+                                                            // neither axis has
+                                                            // to enumerate the
+                                                            // other.
+                                                            shapeKind:
+                                                                widget
+                                                                    .brushToolState
+                                                                    .activeShapeKind ??
+                                                                CanvasShapeKind
+                                                                    .rect,
                                                             // R17-U: Move = 이동+변형 통합 툴
                                                             // — 핸들 상시.
                                                             alwaysShowTransformBox:
@@ -1774,6 +1803,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                                 _recordSelectionChange,
                                                             onCutShape:
                                                                 _cutPieceFromShape,
+                                                            onFillShape:
+                                                                _fillDrawnShape,
                                                             viewport: _viewport,
                                                             canvasSize: widget
                                                                 .canvasSize,
@@ -1902,7 +1933,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                                     Offset.zero,
                                                                 marqueeShape:
                                                                     null,
-                                                                lassoTrail:
+                                                                // The IDLE
+                                                                // ants: no
+                                                                // tool is
+                                                                // drawing, so
+                                                                // there is no
+                                                                // outline in
+                                                                // progress.
+                                                                openTrail:
                                                                     const [],
                                                               ),
                                                           child:
@@ -2239,11 +2277,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // layer. The CUT variants ride that same layer (canvasToolSelects),
       // and the STAMP variant paints, so none of them want a tap handler
       // here either.
-      case CanvasTool.selectRect:
-      case CanvasTool.lasso:
+      case CanvasTool.select:
       case CanvasTool.move:
-      case CanvasTool.cutRect:
-      case CanvasTool.cutLasso:
+      case CanvasTool.cut:
+      // The shape fill rides the same drag layer as select and cut — one
+      // outline, three things to do with it.
+      case CanvasTool.fillShape:
         return null;
       case CanvasTool.cutStamp:
         // Click = drop the held piece, centred here, committed at once.
@@ -2400,6 +2439,37 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       );
     }
     _lastStampCenter = centers.last;
+  }
+
+  /// Paint a finished shape-fill outline.
+  ///
+  /// Straight through the stroke funnel like the bucket's own dab, so the
+  /// live selection clips it, undo covers it and serialization is free —
+  /// the fill has landed this way since P6 and the shape fill is the same
+  /// dab from a different source.
+  void _fillDrawnShape(CanvasSelectionShape shape) {
+    final build = widget.shapeFillDabFor;
+    if (build == null || widget._editableCoordinator == null) {
+      return;
+    }
+    final dab = build(shape, widget.brushToolState.color);
+    if (dab == null) {
+      return;
+    }
+    final blend = widget.brushToolState.activeBlendMode;
+    _commitSourceStroke(
+      BrushStrokeCommitData(
+        // ERASE rides a flag on the DAB, not the blend mode: the
+        // materializer reads `dab.erase` per dab and the erase blend takes
+        // the plain path, so passing the mode alone would paint the shape
+        // instead of clearing it. This is what makes 사각형/올가미 지우개
+        // out of the erase entry in the blend list.
+        sourceDabs: [
+          blend == BrushBlendMode.erase ? dab.copyWith(erase: true) : dab,
+        ],
+        blendMode: blend,
+      ),
+    );
   }
 
   /// Drop the held piece back where it was cut from.

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 
+import '../../models/canvas_point.dart';
+import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
 import 'transform_tool_options.dart';
 
@@ -66,6 +68,99 @@ class CanvasSelectionCommands extends ChangeNotifier {
     notifySessionChanged();
   }
 
+  /// The vertices of an OPEN polygon trace, oldest first; empty when none
+  /// is being traced.
+  ///
+  /// Lives here rather than in the selection layer's State for the same
+  /// reason the region does, but for a sharper case: an open trace has to
+  /// survive a CUT change (유저 확정 — *"의미 잃어도 그거는 폴리곤을
+  /// 완성하고 나서 결과를 어떻게 처리하느냐의 문제"*), and changing cuts
+  /// remounts the layer outright. State kept down there would be gone.
+  final List<CanvasPoint> _polygonPoints = [];
+
+  /// Vertices taken back by undo, newest first — the redo side. Cleared by
+  /// the next real vertex, the way every redo stack is.
+  final List<CanvasPoint> _polygonRedo = [];
+
+  List<CanvasPoint> get polygonPoints =>
+      List<CanvasPoint>.unmodifiable(_polygonPoints);
+
+  /// Whether a polygon trace is open. While true, undo/redo mean "take the
+  /// last vertex back" / "put it back" rather than their document meanings,
+  /// and the confirm action closes the trace instead of a transform box.
+  bool get hasOpenPolygon => _polygonPoints.isNotEmpty;
+
+  /// Whether a closed polygon could be made right now — three vertices is
+  /// the least that encloses anything.
+  bool get canClosePolygon => _polygonPoints.length >= 3;
+
+  void addPolygonPoint(CanvasPoint point) {
+    _polygonPoints.add(point);
+    _polygonRedo.clear();
+    notifySessionChanged();
+  }
+
+  /// Takes the last vertex back. False when there was none — the caller
+  /// then lets undo mean what it usually means, so undo never becomes a
+  /// dead key just because a trace was open a moment ago.
+  bool undoPolygonPoint() {
+    if (_polygonPoints.isEmpty) {
+      return false;
+    }
+    _polygonRedo.add(_polygonPoints.removeLast());
+    notifySessionChanged();
+    return true;
+  }
+
+  bool redoPolygonPoint() {
+    if (_polygonRedo.isEmpty) {
+      return false;
+    }
+    _polygonPoints.add(_polygonRedo.removeLast());
+    notifySessionChanged();
+    return true;
+  }
+
+  /// Closes an open trace, folding its outline in wherever the active verb
+  /// puts outlines. True when there WAS one — the caller then stops,
+  /// because the confirm it was serving has been spent here.
+  ///
+  /// Without a mounted layer to fold into, the trace is dropped rather
+  /// than left hanging: a confirm has to end the thing it was pressed for.
+  bool closePolygon() {
+    if (!hasOpenPolygon) {
+      return false;
+    }
+    final close = _closePolygon;
+    if (close != null) {
+      return close();
+    }
+    abandonPolygon();
+    return true;
+  }
+
+  /// Closes the trace and hands back its outline, or null when there are
+  /// too few vertices to enclose anything. Either way the trace is over.
+  CanvasSelectionShape? takePolygonShape() {
+    final closed = canClosePolygon
+        ? CanvasSelectionShape(List<CanvasPoint>.of(_polygonPoints))
+        : null;
+    abandonPolygon();
+    return closed;
+  }
+
+  /// Drops the trace with nothing committed — a tool change, a shape
+  /// change, or Escape.
+  void abandonPolygon() {
+    if (_polygonPoints.isEmpty && _polygonRedo.isEmpty) {
+      return;
+    }
+    _polygonPoints.clear();
+    _polygonRedo.clear();
+    notifySessionChanged();
+  }
+
+  bool Function()? _closePolygon;
   bool Function()? _hasSelection;
   void Function(double dx, double dy)? _nudge;
   VoidCallback? _deselect;
@@ -96,6 +191,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     required bool Function() hasSelection,
     required void Function(double dx, double dy) nudge,
     required VoidCallback deselect,
+    bool Function()? closePolygon,
     bool Function()? transformActive,
     VoidCallback? beginTransform,
     VoidCallback? commitTransform,
@@ -124,6 +220,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _hasSelection = hasSelection;
     _nudge = nudge;
     _deselect = deselect;
+    _closePolygon = closePolygon;
     _transformActive = transformActive;
     _beginTransform = beginTransform;
     _commitTransform = commitTransform;
@@ -141,6 +238,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _hasSelection = null;
     _nudge = null;
     _deselect = null;
+    _closePolygon = null;
     _transformActive = null;
     _beginTransform = null;
     _commitTransform = null;

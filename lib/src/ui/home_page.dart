@@ -9,6 +9,7 @@ import 'package:flutter/services.dart' show SystemNavigator;
 import 'dialogs/app_confirm_dialog.dart';
 import 'widgets/app_window.dart';
 import '../controllers/default_project_helpers.dart';
+import '../models/canvas_shape_kind.dart';
 import '../models/project.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
@@ -394,11 +395,25 @@ class _HomePageState extends State<HomePage> {
         }
       case EditorActionIds.voiceRecordToggle:
         toggleVoiceRecordingWithFeedback(context, _session);
+      // While a polygon outline is open, undo/redo take its last vertex
+      // back and put it there again (유저 확정). They are NOT document
+      // history for that: a trace of twenty taps would otherwise bury the
+      // twenty real edits under it, and the undo cap is 200.
+      //
+      // The channel answers false once the trace is empty, so undo falls
+      // straight through to the document — undo never becomes a dead key
+      // just because a polygon was being drawn a moment ago.
       case EditorActionIds.undo:
+        if (_canvasSelectionCommands.undoPolygonPoint()) {
+          break;
+        }
         if (_session.canUndo) {
           _session.undo();
         }
       case EditorActionIds.redo:
+        if (_canvasSelectionCommands.redoPolygonPoint()) {
+          break;
+        }
         if (_session.canRedo) {
           _session.redo();
         }
@@ -441,12 +456,18 @@ class _HomePageState extends State<HomePage> {
         _canvasViewCommands.rotateBy(15);
       case EditorActionIds.canvasFlipHorizontal:
         _canvasViewCommands.toggleFlipHorizontal();
+      // M and L still mean "rectangle select" and "lasso select" — the two
+      // shortcuts survive the shape/verb split by setting both halves.
       case EditorActionIds.toolSelectRect:
-        _brushTool.value = _brushTool.value.copyWith(
-          tool: CanvasTool.selectRect,
+        _brushTool.value = _brushTool.value.withShapeKind(
+          CanvasShapeKind.rect,
+          forTool: CanvasTool.select,
         );
       case EditorActionIds.toolLasso:
-        _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.lasso);
+        _brushTool.value = _brushTool.value.withShapeKind(
+          CanvasShapeKind.lasso,
+          forTool: CanvasTool.select,
+        );
       case EditorActionIds.toolMove:
         _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.move);
       case EditorActionIds.selectionDeselect:
@@ -477,9 +498,19 @@ class _HomePageState extends State<HomePage> {
         // the Move tool, so one code path (and one set of guards) owns
         // transforming.
         _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.move);
+      // CONFIRM. An open polygon outline is the newest thing this key can
+      // be closing, and it takes precedence: it is what the user is
+      // looking at (유저 확정 — 폴리곤 확정은 확정 버튼으로).
       case EditorActionIds.selectionTransformCommit:
+        if (_canvasSelectionCommands.closePolygon()) {
+          break;
+        }
         _canvasSelectionCommands.commitTransform();
       case EditorActionIds.selectionTransformCancel:
+        if (_canvasSelectionCommands.hasOpenPolygon) {
+          _canvasSelectionCommands.abandonPolygon();
+          break;
+        }
         _canvasSelectionCommands.cancelTransform();
       // The comma set row (UI-R17 #7): current block or whole selection.
       case EditorActionIds.timelineComma1:

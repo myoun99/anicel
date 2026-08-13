@@ -9,6 +9,7 @@ import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
@@ -46,10 +47,14 @@ void main() {
       BrushFrameEditingCoordinator coordinator,
       CanvasSelectionCommands commands,
       CutPieceSlot slot,
-      Future<void> Function(CanvasTool tool) setTool,
+      Future<void> Function(CanvasTool tool, {CanvasShapeKind? shape}) setTool,
     })
   >
-  pumpPanel(WidgetTester tester, {required CanvasTool tool}) async {
+  pumpPanel(
+    WidgetTester tester, {
+    required CanvasTool tool,
+    CanvasShapeKind shapeKind = CanvasShapeKind.rect,
+  }) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
@@ -58,7 +63,10 @@ void main() {
     final commands = CanvasSelectionCommands();
     final slot = CutPieceSlot();
 
-    Future<void> pumpWith(CanvasTool next) async {
+    Future<void> pumpWith(CanvasTool next, {CanvasShapeKind? shape}) async {
+      // Both verbs get the same outline: a test picks one shape and the
+      // panel reads whichever field the active verb owns.
+      final outline = shape ?? shapeKind;
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -67,7 +75,11 @@ void main() {
               availableFrameKeys: frameKeys,
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
               historyManager: history,
-              brushToolState: BrushToolState.defaults.copyWith(tool: next),
+              brushToolState: BrushToolState.defaults.copyWith(
+                tool: next,
+                selectShape: outline,
+                cutShape: outline,
+              ),
               selectionCommands: commands,
               cutPieceSlot: slot,
             ),
@@ -113,7 +125,7 @@ void main() {
   testWidgets('a cut variant still mounts the selection layer', (tester) async {
     // It rides the same drag surface; that is the whole reason the marquee
     // geometry is not duplicated anywhere.
-    await pumpPanel(tester, tool: CanvasTool.cutRect);
+    await pumpPanel(tester, tool: CanvasTool.cut);
     expect(find.byKey(layerKey), findsOneWidget);
   });
 
@@ -123,7 +135,7 @@ void main() {
   });
 
   testWidgets('a rectangle cut fills the slot', (tester) async {
-    final env = await pumpPanel(tester, tool: CanvasTool.cutRect);
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
     expect(env.slot.isEmpty, isTrue);
     await dragOnLayer(tester, const Offset(10, 10), const Offset(90, 70));
     expect(env.slot.isNotEmpty, isTrue);
@@ -131,7 +143,11 @@ void main() {
   });
 
   testWidgets('a lasso cut fills the slot too', (tester) async {
-    final env = await pumpPanel(tester, tool: CanvasTool.cutLasso);
+    final env = await pumpPanel(
+      tester,
+      tool: CanvasTool.cut,
+      shapeKind: CanvasShapeKind.lasso,
+    );
     // The path has to BEND: a lasso dragged in a straight line is a
     // zero-area polygon, and enclosing nothing is correctly nothing to cut.
     final origin = tester.getTopLeft(find.byKey(layerKey));
@@ -159,14 +175,18 @@ void main() {
   ) async {
     // It encloses no area, so there is nothing under it — and the slot
     // must not be blanked on the way to finding that out.
-    final env = await pumpPanel(tester, tool: CanvasTool.cutLasso);
+    final env = await pumpPanel(
+      tester,
+      tool: CanvasTool.cut,
+      shapeKind: CanvasShapeKind.lasso,
+    );
     await dragOnLayer(tester, const Offset(10, 10), const Offset(90, 70));
     expect(env.slot.isEmpty, isTrue);
   });
 
   testWidgets('cutting leaves the selection completely alone', (tester) async {
     // 유저 확정: "잘라내기는 잘라내기만이야. 그러니 선택으로 남지 않아."
-    final env = await pumpPanel(tester, tool: CanvasTool.cutRect);
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
     expect(env.commands.region, isNull);
     await dragOnLayer(tester, const Offset(10, 10), const Offset(90, 70));
     expect(env.slot.isNotEmpty, isTrue, reason: 'the cut happened');
@@ -176,19 +196,19 @@ void main() {
   testWidgets('an EXISTING selection survives a cut untouched', (tester) async {
     // A selection made with the select tool still clips painting, so a cut
     // must not quietly redraw or drop it.
-    final env = await pumpPanel(tester, tool: CanvasTool.selectRect);
+    final env = await pumpPanel(tester, tool: CanvasTool.select);
     await dragOnLayer(tester, const Offset(10, 10), const Offset(60, 60));
     final selected = env.commands.region;
     expect(selected, isNotNull);
 
-    await env.setTool(CanvasTool.cutRect);
+    await env.setTool(CanvasTool.cut);
     await dragOnLayer(tester, const Offset(20, 20), const Offset(90, 70));
     expect(env.slot.isNotEmpty, isTrue);
     expect(env.commands.region, same(selected));
   });
 
   testWidgets('cutting again replaces the held piece', (tester) async {
-    final env = await pumpPanel(tester, tool: CanvasTool.cutRect);
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
     await dragOnLayer(tester, const Offset(10, 10), const Offset(90, 70));
     final first = env.slot.piece;
     await dragOnLayer(tester, const Offset(20, 20), const Offset(80, 60));
@@ -198,7 +218,7 @@ void main() {
   testWidgets('the piece survives switching tools and back', (tester) async {
     // The slot outlives the tool — the whole point is cutting here and
     // stamping somewhere else later.
-    final env = await pumpPanel(tester, tool: CanvasTool.cutRect);
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
     await dragOnLayer(tester, const Offset(10, 10), const Offset(90, 70));
     final piece = env.slot.piece;
     expect(piece, isNotNull);
@@ -211,7 +231,7 @@ void main() {
   testWidgets('clicking with the stamp tile drops the piece, at once', (
     tester,
   ) async {
-    final env = await pumpPanel(tester, tool: CanvasTool.cutRect);
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
     // Cut the painted bar.
     await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
     expect(env.slot.isNotEmpty, isTrue);
@@ -258,7 +278,7 @@ void main() {
   testWidgets('dragging with the stamp tile draws a trail of stamps', (
     tester,
   ) async {
-    final env = await pumpPanel(tester, tool: CanvasTool.cutRect);
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
     await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
     expect(env.slot.isNotEmpty, isTrue);
 
@@ -287,7 +307,7 @@ void main() {
   });
 
   testWidgets('a stamp drag stops when the pointer lifts', (tester) async {
-    final env = await pumpPanel(tester, tool: CanvasTool.cutRect);
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
     await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
     await env.setTool(CanvasTool.cutStamp);
 
@@ -314,7 +334,7 @@ void main() {
   testWidgets('paste at origin puts the piece back where it was cut', (
     tester,
   ) async {
-    final env = await pumpPanel(tester, tool: CanvasTool.cutRect);
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
     await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
     expect(env.slot.isNotEmpty, isTrue);
 
@@ -353,7 +373,7 @@ void main() {
     // hands back the very same BrushStampImage). This is the end of the
     // chain the user actually sees: cut, wipe the source, put it back, and
     // the cel is what it was — every channel of every pixel.
-    final env = await pumpPanel(tester, tool: CanvasTool.cutRect);
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
 
     List<int> footprint(int left, int top, int width, int height) {
       final surface = env.coordinator.currentSurfaceOf(
@@ -465,7 +485,7 @@ void main() {
   ) async {
     // The button must stop working with the canvas rather than throw at a
     // dead State.
-    final env = await pumpPanel(tester, tool: CanvasTool.cutRect);
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
     await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
     expect(env.slot.canPasteAtOrigin, isTrue);
 
@@ -479,7 +499,7 @@ void main() {
     tester,
   ) async {
     // The slot is a long-term holder; one stray scrape must not empty it.
-    final env = await pumpPanel(tester, tool: CanvasTool.cutRect);
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
     await dragOnLayer(tester, const Offset(10, 10), const Offset(90, 70));
     final piece = env.slot.piece;
     expect(piece, isNotNull);

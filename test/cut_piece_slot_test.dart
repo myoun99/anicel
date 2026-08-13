@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
+import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -191,12 +192,11 @@ void main() {
   });
 
   group('cut tool predicates', () {
-    test('the two grab variants cut, the stamp variant stamps', () {
-      expect(canvasToolCuts(CanvasTool.cutRect), isTrue);
-      expect(canvasToolCuts(CanvasTool.cutLasso), isTrue);
+    test('the grab verb cuts, the stamp verb stamps', () {
+      expect(canvasToolCuts(CanvasTool.cut), isTrue);
       expect(canvasToolCuts(CanvasTool.cutStamp), isFalse);
       expect(canvasToolStamps(CanvasTool.cutStamp), isTrue);
-      expect(canvasToolStamps(CanvasTool.cutRect), isFalse);
+      expect(canvasToolStamps(CanvasTool.cut), isFalse);
       for (final tool in CanvasTool.values) {
         expect(
           canvasToolUsesCutPiece(tool),
@@ -206,11 +206,22 @@ void main() {
       }
     });
 
-    test('the grab variants mount the selection layer, the stamp does not', () {
-      // They need the same marquee/lasso drag; what differs is what a
+    test('the predicates read the VERB, never the shape', () {
+      // The shape is a separate axis now: changing which outline the grab
+      // traces must not change what the grab IS.
+      for (final shape in CanvasShapeKind.values) {
+        final state = BrushToolState(tool: CanvasTool.cut, cutShape: shape);
+        expect(canvasToolCuts(state.tool), isTrue, reason: '$shape');
+        expect(canvasToolSelects(state.tool), isTrue, reason: '$shape');
+        expect(canvasToolMarksCel(state.tool), isFalse, reason: '$shape');
+        expect(state.activeShapeKind, shape);
+      }
+    });
+
+    test('the grab verb mounts the selection layer, the stamp does not', () {
+      // It needs the same marquee/lasso drag; what differs is what a
       // finished drag does.
-      expect(canvasToolSelects(CanvasTool.cutRect), isTrue);
-      expect(canvasToolSelects(CanvasTool.cutLasso), isTrue);
+      expect(canvasToolSelects(CanvasTool.cut), isTrue);
       expect(canvasToolSelects(CanvasTool.cutStamp), isFalse);
     });
 
@@ -222,24 +233,40 @@ void main() {
       expect(canvasToolPaints(CanvasTool.cutStamp), isFalse);
     });
 
-    test('the grab variants put no marks on the cel', () {
-      expect(canvasToolMarksCel(CanvasTool.cutRect), isFalse);
-      expect(canvasToolMarksCel(CanvasTool.cutLasso), isFalse);
+    test('the grab verb puts no marks on the cel', () {
+      expect(canvasToolMarksCel(CanvasTool.cut), isFalse);
+    });
+
+    test('only the drag-out verbs wear a shape', () {
+      for (final tool in CanvasTool.values) {
+        expect(
+          BrushToolState(tool: tool).activeShapeKind != null,
+          canvasToolDragsShape(tool),
+          reason: '$tool',
+        );
+      }
+      // MOVE mounts the selection layer but traces nothing.
+      expect(canvasToolSelects(CanvasTool.move), isTrue);
+      expect(canvasToolDragsShape(CanvasTool.move), isFalse);
     });
   });
 
   group('tool library', () {
     Future<void> pumpLibrary(
       WidgetTester tester,
-      CanvasTool tool,
-      ValueChanged<CanvasTool> onToolChanged,
-    ) {
+      CanvasTool tool, {
+      ValueChanged<CanvasTool>? onToolChanged,
+      void Function(CanvasTool verb, CanvasShapeKind kind)? onShapeKindChanged,
+      CanvasShapeKind shapeKind = CanvasShapeKind.rect,
+    }) {
       return tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             body: ToolLibraryPanel(
               tool: tool,
-              onToolChanged: onToolChanged,
+              onToolChanged: onToolChanged ?? (_) {},
+              shapeKind: shapeKind,
+              onShapeKindChanged: onShapeKindChanged ?? (_, _) {},
               brushLibrary: const SizedBox.shrink(),
             ),
           ),
@@ -247,21 +274,24 @@ void main() {
       );
     }
 
-    testWidgets('the cut tool lists three tiles', (tester) async {
-      await pumpLibrary(tester, CanvasTool.cutRect, (_) {});
+    testWidgets('the cut tool lists a tile per shape, plus the stamp', (
+      tester,
+    ) async {
+      await pumpLibrary(tester, CanvasTool.cut);
       expect(find.byKey(const ValueKey<String>('tool-library-cut')), findsOne);
-      expect(find.byKey(const ValueKey<String>('sub-tool-cut-rect')), findsOne);
-      expect(find.byKey(const ValueKey<String>('sub-tool-cut-lasso')), findsOne);
+      for (final kind in CanvasShapeKind.values) {
+        expect(
+          find.byKey(ValueKey<String>('sub-tool-cut-${kind.name}')),
+          findsOne,
+          reason: '$kind',
+        );
+      }
       expect(find.byKey(const ValueKey<String>('sub-tool-cut-stamp')), findsOne);
     });
 
-    testWidgets('every cut variant shows the same three tiles', (tester) async {
-      for (final tool in [
-        CanvasTool.cutRect,
-        CanvasTool.cutLasso,
-        CanvasTool.cutStamp,
-      ]) {
-        await pumpLibrary(tester, tool, (_) {});
+    testWidgets('both cut verbs show the same tiles', (tester) async {
+      for (final tool in [CanvasTool.cut, CanvasTool.cutStamp]) {
+        await pumpLibrary(tester, tool);
         expect(
           find.byKey(const ValueKey<String>('tool-library-cut')),
           findsOne,
@@ -270,25 +300,62 @@ void main() {
       }
     });
 
-    testWidgets('tapping a tile switches to that variant', (tester) async {
-      final picked = <CanvasTool>[];
-      await pumpLibrary(tester, CanvasTool.cutRect, picked.add);
-      await tester.tap(find.byKey(const ValueKey<String>('sub-tool-cut-stamp')));
-      await tester.tap(find.byKey(const ValueKey<String>('sub-tool-cut-lasso')));
-      expect(picked, [CanvasTool.cutStamp, CanvasTool.cutLasso]);
-    });
-
-    testWidgets('the selection tool still lists only its own two tiles', (
+    testWidgets('tapping a shape tile picks that shape FOR the cut verb', (
       tester,
     ) async {
+      // One write, not two: the tile is also how the grab verb is entered,
+      // so it must carry the verb with it.
+      final picked = <(CanvasTool, CanvasShapeKind)>[];
+      await pumpLibrary(
+        tester,
+        CanvasTool.cutStamp,
+        onShapeKindChanged: (verb, kind) => picked.add((verb, kind)),
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('sub-tool-cut-lasso')),
+      );
+      expect(picked, [(CanvasTool.cut, CanvasShapeKind.lasso)]);
+    });
+
+    testWidgets('tapping the stamp tile switches the verb', (tester) async {
+      final picked = <CanvasTool>[];
+      await pumpLibrary(
+        tester,
+        CanvasTool.cut,
+        onToolChanged: picked.add,
+      );
+      await tester.tap(find.byKey(const ValueKey<String>('sub-tool-cut-stamp')));
+      expect(picked, [CanvasTool.cutStamp]);
+    });
+
+    testWidgets('with the stamp armed no cut SHAPE reads as selected', (
+      tester,
+    ) async {
+      // Nothing is being traced then, so highlighting an outline would be
+      // claiming a drag that cannot happen.
+      await pumpLibrary(tester, CanvasTool.cutStamp);
+      final tile = tester.widget<ListTile>(
+        find.byKey(const ValueKey<String>('sub-tool-cut-rect')),
+      );
+      expect(tile.selected, isFalse);
+    });
+
+    testWidgets('the selection tool lists only its own tiles', (tester) async {
       // The cut tiles must not leak into the neighbour that shares the
-      // grammar — these are different tools with different verbs.
-      await pumpLibrary(tester, CanvasTool.selectRect, (_) {});
+      // grammar — these are different verbs.
+      await pumpLibrary(tester, CanvasTool.select);
       expect(
         find.byKey(const ValueKey<String>('tool-library-selection')),
         findsOne,
       );
-      expect(find.byKey(const ValueKey<String>('sub-tool-cut-rect')), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('sub-tool-cut-rect')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('sub-tool-select-rect')),
+        findsOne,
+      );
     });
   });
 }

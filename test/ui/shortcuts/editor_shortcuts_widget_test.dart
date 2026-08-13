@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
+import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
@@ -136,13 +138,26 @@ void main() {
     await tester.pumpAndSettle();
     expect(toolOf(), CanvasTool.fill);
 
-    // P9: M = rectangle select, L = lasso.
+    // P9: M = rectangle select, L = lasso. Both land on the same VERB now
+    // and differ in the shape — the two keys have to keep meaning what
+    // they meant, which is exactly what the split could have broken.
+    // Read it off the DRAG SURFACE, not off the tool library: the library
+    // lives in a per-tool keep-alive stack, so several instances are
+    // mounted at once and the first one found is whichever tool was
+    // visited first — it would answer "rectangle" forever.
+    CanvasShapeKind shapeOf() =>
+        tester.widget<CanvasSelectionLayer>(
+          find.byType(CanvasSelectionLayer),
+        ).shapeKind;
+
     await tester.sendKeyEvent(LogicalKeyboardKey.keyM);
     await tester.pumpAndSettle();
-    expect(toolOf(), CanvasTool.selectRect);
+    expect(toolOf(), CanvasTool.select);
+    expect(shapeOf(), CanvasShapeKind.rect);
     await tester.sendKeyEvent(LogicalKeyboardKey.keyL);
     await tester.pumpAndSettle();
-    expect(toolOf(), CanvasTool.lasso);
+    expect(toolOf(), CanvasTool.select);
+    expect(shapeOf(), CanvasShapeKind.lasso);
   });
 
   testWidgets('R/Shift+R rotate the canvas view; H flips it (P8)', (

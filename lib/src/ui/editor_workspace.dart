@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../models/brush_group_id.dart';
 import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
+import '../models/canvas_shape_kind.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/media_viewer_bookmark.dart' show MediaViewerBookmark;
@@ -563,14 +564,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   late final ValueNotifier<BrushToolState> _brushTool =
       widget.brushTool ?? PaintToolStateNotifier(BrushToolState.defaults);
 
-  /// The last selection VARIANT used (R17-U: rectangle/lasso are one
-  /// toolbar tool; the single Select button re-activates this).
-  CanvasTool _lastSelectionVariant = CanvasTool.selectRect;
-
-  /// The last CUT variant used — the rail's single Cut button re-activates
-  /// this, exactly as the Select button does with its own.
-  CanvasTool _lastCutVariant = CanvasTool.cutRect;
-
   /// The one piece the cut tool is holding.
   ///
   /// Owned here rather than by the session because the piece has to
@@ -705,16 +698,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       cutPieceToTipMask(piece, id: id),
       name: trimmed,
     );
-  }
-
-  void _rememberSelectionVariant() {
-    final tool = _brushTool.value.tool;
-    if (tool == CanvasTool.selectRect || tool == CanvasTool.lasso) {
-      _lastSelectionVariant = tool;
-    }
-    if (canvasToolUsesCutPiece(tool)) {
-      _lastCutVariant = tool;
-    }
   }
 
   /// Which preset is highlighted PER painting tool (R11-④: the brush and
@@ -1139,7 +1122,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // Warm the conte's embedded faces so the sheet opens with its type
     // ready (the tab host still awaits, for the cold path).
     unawaited(ensureConteFontsLoaded());
-    _brushTool.addListener(_rememberSelectionVariant);
     _storyboardThumbnails = StoryboardCutThumbnailStore(
       render: _renderStoryboardThumbnail,
       invalidationHub: widget.session.cacheInvalidationHub,
@@ -1731,7 +1713,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   @override
   void dispose() {
-    _brushTool.removeListener(_rememberSelectionVariant);
     _storyboardThumbnails.dispose();
     _presetLibrary.dispose();
     _tipLibrary.dispose();
@@ -1965,8 +1946,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 slice: (state) => state.tool,
                 builder: (context, toolState) => ToolsPanel(
                   tool: toolState.tool,
-                  selectionVariant: _lastSelectionVariant,
-                  cutVariant: _lastCutVariant,
                   onToolChanged: (tool) =>
                       _brushTool.value = _brushTool.value.copyWith(tool: tool),
                   // The between-strokes group. Its own listeners, so undoing
@@ -2053,10 +2032,17 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           builder: (context) =>
               SlicedValueListenableBuilder<
                 BrushToolState,
-                (CanvasTool, BrushPresetId?)
+                (CanvasTool, CanvasShapeKind?, BrushPresetId?)
               >(
                 valueListenable: _brushTool,
-                slice: (state) => (state.tool, _activePresetByTool[state.tool]),
+                // The shape kind rides in the slice: without it, picking a
+                // different outline changes the state but not this slice,
+                // and the tiles keep painting the old one as selected.
+                slice: (state) => (
+                  state.tool,
+                  state.activeShapeKind,
+                  _activePresetByTool[state.tool],
+                ),
                 builder: (context, toolState) =>
                     KeyedKeepAliveStack<CanvasTool, BrushPresetId?>(
                       keys: CanvasTool.values,
@@ -2070,6 +2056,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                         onToolChanged: (tool) => _brushTool.value = _brushTool
                             .value
                             .copyWith(tool: tool),
+                        shapeKind:
+                            toolState.activeShapeKind ?? CanvasShapeKind.rect,
+                        onShapeKindChanged: (verb, kind) =>
+                            _brushTool.value = _brushTool.value.withShapeKind(
+                              kind,
+                              forTool: verb,
+                            ),
                         brushLibrary: ListenableBuilder(
                           listenable: _presetLibrary,
                           builder: (context, _) => BrushPresetPanel(

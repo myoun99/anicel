@@ -14,6 +14,8 @@ import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
 import '../ui/dev_profile.dart';
 import 'canvas_color_sampler.dart';
+import 'canvas_selection.dart';
+import 'canvas_selection_region.dart';
 import 'cut_frame_composite_plan.dart';
 
 /// P6 fill options — the Tool Settings panel's knobs (R11-④).
@@ -1054,6 +1056,82 @@ void _chamferDistance(
   }
 }
 
+/// The SHAPE fill (유저 확정: 올가미 채우기는 A — 내부에 뭐가 있든 채운다):
+/// the outline the user just drew, filled with [color] whatever is under
+/// it.
+///
+/// It shares the flood's tail rather than resembling it. Once there is a
+/// coverage mask the two are the same problem, so the expand and
+/// anti-alias passes are literally [_cropAndFinishFloodRegion] — which is
+/// why "AA follows the fill" (유저 확정) needed no new rasterizer: the
+/// bucket's AA has always been a post-pass over a binary mask, and a
+/// polygon's mask is binary too.
+///
+/// What it does NOT share is the front: no lazy compose, no seed, no
+/// tolerance. A shape fill never looks at the picture, so it never pays to
+/// composite one — this is markedly cheaper than a flood, not a variant of
+/// it. Null when the outline covers no pixels at all.
+BrushDab? buildShapeFillDab({
+  required CanvasSelectionShape shape,
+  required int color,
+  FloodFillOptions options = const FloodFillOptions(),
+}) {
+  final region = CanvasSelectionRegion.shape(shape);
+  final bounds = region.coverageBounds;
+  final left = bounds.left.floor();
+  final top = bounds.top.floor();
+  final width = bounds.right.ceil() - left;
+  final height = bounds.bottom.ceil() - top;
+  if (width <= 0 || height <= 0) {
+    return null;
+  }
+  final mask = region.maskFor(
+    left: left,
+    top: top,
+    width: width,
+    height: height,
+  );
+  var covers = false;
+  for (final coverage in mask) {
+    if (coverage != 0) {
+      covers = true;
+      break;
+    }
+  }
+  if (!covers) {
+    return null;
+  }
+  // The mask arrives cropped already, so the tail is handed the box it
+  // will keep — the grow pass still needs room to grow into, which is what
+  // the expand margin below is for.
+  final margin = options.expandPx;
+  final padded = Uint8List((width + margin * 2) * (height + margin * 2));
+  for (var y = 0; y < height; y += 1) {
+    padded.setRange(
+      (y + margin) * (width + margin * 2) + margin,
+      (y + margin) * (width + margin * 2) + margin + width,
+      mask,
+      y * width,
+    );
+  }
+  final region2 = _cropAndFinishFloodRegion(
+    filled: padded,
+    width: width + margin * 2,
+    height: height + margin * 2,
+    minX: margin,
+    maxX: margin + width - 1,
+    minY: margin,
+    maxY: margin + height - 1,
+    options: options,
+  );
+  return _colorStampDab(
+    region: region2,
+    color: color,
+    originX: left - margin,
+    originY: top - margin,
+  );
+}
+
 /// The whole P6 tap: compose → fill from [point] → the region as ONE
 /// mask-tipped dab ("fill = one dab"), committed through the exact stroke
 /// funnel — three-route parity, undo and .anicel serialization come free.
@@ -1122,11 +1200,28 @@ BrushDab? buildFillDab({
     }
   }
 
-  // The fill lands as a COLOR STAMP (R15-⑥): rgba = fill color × mask
-  // coverage, drawn 1:1 by the stamp blend path. The old square-padded
-  // tip-mask dab re-sampled the giant mask bilinearly per pixel at every
-  // materialization — a multi-second slice on large fills — and the stamp
-  // is byte-exact by construction.
+  return _colorStampDab(
+    region: region,
+    color: color,
+    originX: raster.originX,
+    originY: raster.originY,
+  );
+}
+
+/// A coverage mask painted [color] and handed over as ONE stamp dab, its
+/// region coordinates offset by ([originX], [originY]) into world space.
+///
+/// The fill lands as a COLOR STAMP (R15-⑥): rgba = fill color × mask
+/// coverage, drawn 1:1 by the stamp blend path. The old square-padded
+/// tip-mask dab re-sampled the giant mask bilinearly per pixel at every
+/// materialization — a multi-second slice on large fills — and the stamp
+/// is byte-exact by construction.
+BrushDab _colorStampDab({
+  required FloodFillRegion region,
+  required int color,
+  required int originX,
+  required int originY,
+}) {
   final r = (color >> 16) & 0xFF;
   final g = (color >> 8) & 0xFF;
   final b = color & 0xFF;
@@ -1164,8 +1259,8 @@ BrushDab? buildFillDab({
   return BrushDab(
     // Region coords are raster-space; the dab lands in WORLD space.
     center: CanvasPoint(
-      x: region.left + raster.originX + region.width / 2,
-      y: region.top + raster.originY + region.height / 2,
+      x: region.left + originX + region.width / 2,
+      y: region.top + originY + region.height / 2,
     ),
     color: color,
     size: math.max(region.width, region.height).toDouble(),

@@ -51,7 +51,7 @@ void main() {
       Future<void> Function(CanvasTool tool) setTool,
     })
   >
-  pumpPanel(WidgetTester tester, {CanvasTool tool = CanvasTool.selectRect}) async {
+  pumpPanel(WidgetTester tester, {CanvasTool tool = CanvasTool.select}) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
@@ -136,7 +136,7 @@ void main() {
     expect(find.byKey(idleAntsKey), findsOneWidget);
 
     // And coming back finds it again.
-    await env.setTool(CanvasTool.selectRect);
+    await env.setTool(CanvasTool.select);
     expect(find.byKey(idleAntsKey), findsNothing);
     expect(env.commands.region, isNotNull);
   });
@@ -406,5 +406,71 @@ void main() {
       0,
       reason: 'selected ink lifted away from the origin',
     );
+  });
+
+  group('the open polygon trace lives on the channel', () {
+    // It has to outlive the layer that draws it: 유저 확정 says a trace
+    // survives a frame change AND a cut change, and changing cuts remounts
+    // the layer outright.
+    CanvasSelectionCommands commandsWith(int points) {
+      final commands = CanvasSelectionCommands();
+      for (var i = 0; i < points; i += 1) {
+        commands.addPolygonPoint(CanvasPoint(x: i * 10, y: i * 10));
+      }
+      return commands;
+    }
+
+    test('undo takes the last vertex back, redo puts it there again', () {
+      final commands = commandsWith(3);
+      expect(commands.undoPolygonPoint(), isTrue);
+      expect(commands.polygonPoints, hasLength(2));
+      expect(commands.canClosePolygon, isFalse);
+      expect(commands.redoPolygonPoint(), isTrue);
+      expect(commands.polygonPoints, hasLength(3));
+      expect(commands.polygonPoints.last, CanvasPoint(x: 20, y: 20));
+    });
+
+    test('undo past the first vertex hands the key back', () {
+      // The rule that keeps undo from ever being a dead key: once the
+      // trace is empty the channel says no and the caller lets undo mean
+      // what it usually means.
+      final commands = commandsWith(1);
+      expect(commands.undoPolygonPoint(), isTrue);
+      expect(commands.undoPolygonPoint(), isFalse);
+      expect(commands.redoPolygonPoint(), isTrue);
+    });
+
+    test('a fresh vertex ends the redo road', () {
+      final commands = commandsWith(2);
+      commands.undoPolygonPoint();
+      commands.addPolygonPoint(CanvasPoint(x: 99, y: 99));
+      expect(commands.redoPolygonPoint(), isFalse);
+      expect(commands.polygonPoints, hasLength(2));
+    });
+
+    test('two vertices enclose nothing, so confirming just ends the trace', () {
+      final commands = commandsWith(2);
+      expect(commands.takePolygonShape(), isNull);
+      expect(commands.hasOpenPolygon, isFalse);
+    });
+
+    test('three vertices make the outline, and the trace is over', () {
+      final commands = commandsWith(3);
+      final shape = commands.takePolygonShape();
+      expect(shape, isNotNull);
+      expect(shape!.points, hasLength(3));
+      expect(commands.hasOpenPolygon, isFalse);
+      expect(commands.redoPolygonPoint(), isFalse, reason: 'redo went too');
+    });
+
+    test('closePolygon says whether it spent the confirm', () {
+      // False means the confirm was not for a polygon, and its usual
+      // meaning gets to run.
+      final commands = CanvasSelectionCommands();
+      expect(commands.closePolygon(), isFalse);
+      commands.addPolygonPoint(CanvasPoint(x: 0, y: 0));
+      expect(commands.closePolygon(), isTrue);
+      expect(commands.hasOpenPolygon, isFalse);
+    });
   });
 }
