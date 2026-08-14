@@ -1185,4 +1185,88 @@ void main() {
       expect(find.byKey(const ValueKey<String>('transport-in')), findsNothing);
     });
   });
+
+  /// IN/OUT over a document's PAGES: a hundred-page conte comes in for the
+  /// span someone is drawing, not for all of it.
+  testWidgets('a PDF placed with a range lands only those pages, and the '
+      'RIGHT ones', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    addTearDown(PdfRenderService.debugResetForTests);
+    final fake = FakePdfDocument(
+      pageSizes: const [
+        ui.Size(595, 842),
+        ui.Size(595, 842),
+        ui.Size(595, 842),
+        ui.Size(595, 842),
+        ui.Size(595, 842),
+      ],
+    );
+    PdfRenderService.debugOpenerOverride = (path) async => fake;
+    final pdfPath = await tester.runAsync(() async {
+      final file = File('${tempDir.path}${Platform.pathSeparator}conte.pdf');
+      await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+      return file.path;
+    });
+    final cutsBefore = s.repository.requireProject().tracks.first.cuts.length;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [pdfPath!]),
+        ),
+      ),
+    );
+    await tester.pump();
+    await pickCell(tester, column: 'Into', path: pdfPath, option: 'New cut');
+
+    // Pages three and four of five: IN and OUT are one-based on screen.
+    await tester.tap(find.byKey(const ValueKey<String>('transport-in')));
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('transport-in-input')),
+      '3',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('transport-out')));
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('transport-out-input')),
+      '4',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    // The CUT lands before its pages are drawn — the structure is
+    // committed first and the bakes follow — so waiting for the cut alone
+    // would read the render log half-written.
+    for (var tries = 0; tries < 200; tries += 1) {
+      if (s.repository.requireProject().tracks.first.cuts.length >
+              cutsBefore &&
+          fake.renderRequests.length >= 3) {
+        break;
+      }
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    final cut = s.repository.requireProject().tracks.first.cuts.firstWhere(
+      (cut) => cut.name == 'conte.pdf',
+    );
+    final layer = cut.layers.firstWhere((l) => l.name == 'conte.pdf');
+    expect(layer.frames, hasLength(2), reason: 'two pages, not five');
+    final pages = [for (final request in fake.renderRequests) request.$1];
+    expect(
+      pages,
+      containsAll(<int>[2, 3]),
+      reason: 'the pages the user chose, zero-based against the document',
+    );
+    expect(pages, isNot(contains(1)), reason: 'page two was outside IN');
+    expect(pages, isNot(contains(4)), reason: 'page five was outside OUT');
+  });
 }

@@ -6831,6 +6831,8 @@ class EditorSessionManager extends ChangeNotifier {
     required bool copyIntoProject,
     bool rasterize = false,
     MediaFitMode fit = MediaFitMode.contain,
+    int inFrame = 0,
+    int? outFrame,
     void Function(int done, int total)? onRenderProgress,
     void Function(int pageIndex)? onPageRenderFailed,
   }) async {
@@ -6851,6 +6853,17 @@ class EditorSessionManager extends ChangeNotifier {
       if (pageCount <= 0) {
         return false;
       }
+      // IN/OUT over PAGES: a hundred-page conte is imported for the cuts
+      // someone is drawing this week, not for all of it. The span decides
+      // how many cels there are; [pageCount] keeps describing the FILE,
+      // because that is what the asset records about it.
+      final firstPage = inFrame < 0
+          ? 0
+          : (inFrame > pageCount - 1 ? pageCount - 1 : inFrame);
+      final lastPage = outFrame == null || outFrame > pageCount - 1
+          ? pageCount - 1
+          : (outFrame < firstPage ? firstPage : outFrame);
+      final spanCount = lastPage - firstPage + 1;
       final project = _repository.requireProject();
       final mint = _importIdMint();
       final source = _normalizedPath(path);
@@ -6861,8 +6874,8 @@ class EditorSessionManager extends ChangeNotifier {
       final Layer layer;
       final List<PlannedCelBake> bakes;
       final List<MediaAsset> assets;
-      if (pageCount == 1) {
-        // A one-page PDF is a still: an image-kind layer holding over the
+      if (spanCount == 1) {
+        // A one-page span is a still: an image-kind layer holding over the
         // cut, exactly like a placed PNG.
         final stillDuration = destination == ImportDestination.activeCutLayer
             ? (targetCut!.duration < 1 ? 1 : targetCut.duration)
@@ -6887,8 +6900,10 @@ class EditorSessionManager extends ChangeNotifier {
         // Pages never fold (the fingerprint is the page index): a conte's
         // pages can repeat a layout, but page 12 is still page 12.
         final plan = planSequenceLayer(
-          sourceFiles: List<String>.filled(pageCount, source),
-          frameFingerprints: [for (var i = 0; i < pageCount; i += 1) i],
+          sourceFiles: List<String>.filled(spanCount, source),
+          frameFingerprints: [
+            for (var i = 0; i < spanCount; i += 1) firstPage + i,
+          ],
           displayName: displayName,
           cutId: cutId,
           fit: fit,
@@ -6929,7 +6944,7 @@ class EditorSessionManager extends ChangeNotifier {
             if (fixture.kind != LayerKind.animation) fixture,
         ];
         final cut = defaultCut.copyWith(
-          duration: pageCount > 1 ? _sequenceLength(layer) : project.fps,
+          duration: spanCount > 1 ? _sequenceLength(layer) : project.fps,
           layers: [layer, ...fixtureLayers],
         );
         _historyManager.execute(
@@ -6956,8 +6971,11 @@ class EditorSessionManager extends ChangeNotifier {
       if (bakedCut != null) {
         var done = 0;
         for (final bake in bakes) {
+          // The bake counts within the SPAN; the document counts from its
+          // first page.
+          final pageIndex = firstPage + bake.sourceFrameIndex;
           try {
-            final pageSize = document.pageSize(bake.sourceFrameIndex);
+            final pageSize = document.pageSize(pageIndex);
             final placement = placementRectFor(
               sourceWidth: pageSize.width.round().clamp(1, 1 << 13).toInt(),
               sourceHeight: pageSize.height.round().clamp(1, 1 << 13).toInt(),
@@ -6965,7 +6983,7 @@ class EditorSessionManager extends ChangeNotifier {
               fit: bake.fit,
             );
             final image = await document.renderPage(
-              bake.sourceFrameIndex,
+              pageIndex,
               width: placement.width.round().clamp(1, 1 << 13).toInt(),
               height: placement.height.round().clamp(1, 1 << 13).toInt(),
             );
@@ -6984,7 +7002,7 @@ class EditorSessionManager extends ChangeNotifier {
               image.dispose();
             }
           } on Object {
-            onPageRenderFailed?.call(bake.sourceFrameIndex);
+            onPageRenderFailed?.call(pageIndex);
           }
           done += 1;
           onRenderProgress?.call(done, bakes.length);
