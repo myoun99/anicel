@@ -87,6 +87,15 @@ jobs:
       # The suite runs here too: platform-conditional code (Platform.isMacOS
       # branches in the input/sidecar layers) only executes on this runner.
       #
+      # ⛔Do not narrow this to the parity subset because testflight.yml now
+      # runs that subset on every build. The two are deliberately different
+      # shapes: that one is NARROW and unskippable, this one is BROAD and
+      # nightly. Narrowing here would leave macOS-only Dart defects — path
+      # separators, file locking, Platform.isMacOS branches — with nothing
+      # looking for them at all, and nobody is waiting on this job at 03:00
+      # UTC. Slow is the correct trade here; it is only ever wrong on the
+      # release path, which is precisely where the narrow check went.
+      #
       # QA_ENGINE_PATH points at the dylib built in the first step so the
       # PARITY tests actually RUN here instead of skipping. That is the
       # real prize of a Mac runner: it tells us whether Apple clang on
