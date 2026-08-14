@@ -620,6 +620,10 @@ class AppStrings {
   String get mediaActions => _s('mediaActions');
   String get mediaImportAudio => _s('mediaImportAudio');
   String get mediaRename => _s('mediaRename');
+  /// The pool row's way onto the timeline for a hand that would rather
+  /// not drag — and the only way at all until the drop targets land.
+  String get mediaPlace => _s('mediaPlace');
+
   String get mediaRelink => _s('mediaRelink');
 
   /// RELINK-2: the loss banner. `{n}` is replaced with the count rather
@@ -1276,6 +1280,7 @@ class AppStrings {
     'mediaActions': 'Media actions',
     'mediaImportAudio': 'Import audio',
     'mediaRename': 'Rename media',
+    'mediaPlace': 'Place…',
     'mediaRelink': 'Relink…',
     'mediaMissingCount': '{n} media files not found',
     'mediaFindInFolder': 'Find in folder…',
@@ -2049,6 +2054,7 @@ class AppStrings {
     'mediaActions': 'メディア操作',
     'mediaImportAudio': '音声を読み込み',
     'mediaRename': 'メディア名を変更',
+    'mediaPlace': '配置…',
     'mediaRelink': '再リンク…',
     'mediaMissingCount': '見つからないファイル {n} 個',
     'mediaFindInFolder': 'フォルダーから探す…',
@@ -2818,6 +2824,7 @@ class AppStrings {
     'mediaActions': '미디어 작업',
     'mediaImportAudio': '오디오 불러오기',
     'mediaRename': '미디어 이름 변경',
+    'mediaPlace': '배치…',
     'mediaRelink': '다시 연결…',
     'mediaMissingCount': '못 찾은 파일 {n}개',
     'mediaFindInFolder': '폴더에서 찾기…',
@@ -3606,6 +3613,7 @@ class AppStrings {
     'mediaActions': 'Actions média',
     'mediaImportAudio': "Importer de l'audio",
     'mediaRename': 'Renommer le média',
+    'mediaPlace': 'Placer…',
     'mediaRelink': 'Relier…',
     'mediaMissingCount': '{n} fichiers multimédias introuvables',
     'mediaFindInFolder': 'Chercher dans un dossier…',
@@ -4360,6 +4368,7 @@ class AppStrings {
     'mediaActions': '媒体操作',
     'mediaImportAudio': '导入音频',
     'mediaRename': '重命名媒体',
+    'mediaPlace': '放置…',
     'mediaRelink': '重新链接…',
     'mediaMissingCount': '找不到 {n} 个媒体文件',
     'mediaFindInFolder': '在文件夹中查找…',

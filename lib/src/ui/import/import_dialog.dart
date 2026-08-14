@@ -36,6 +36,7 @@ class ImportDialog extends StatefulWidget {
     required this.session,
     this.initialPaths = const [],
     this.poolOnly = false,
+    this.placeOnly = false,
     this.filePicker,
     this.directoryPicker,
   });
@@ -50,6 +51,12 @@ class ImportDialog extends StatefulWidget {
   /// pool. Only the starting point differs: the other destinations are
   /// still there, which is what makes this one window instead of two.
   final bool poolOnly;
+
+  /// Opened from a pool ROW: the source is decided, so the source bar is
+  /// gone and the window is called what it is doing. Everything else —
+  /// the columns, the preview, the range — is the import window's, because
+  /// placing an asset asks the same questions as bringing one in.
+  final bool placeOnly;
 
   /// Injectable pickers (tests).
   final Future<List<String>> Function()? filePicker;
@@ -688,7 +695,12 @@ class _ImportDialogState extends State<ImportDialog> {
   Widget build(BuildContext context) {
     return AppWindow(
       windowKey: const ValueKey<String>('import-dialog'),
-      title: 'Import',
+      // The file's name goes in the TITLE in place mode: the window is
+      // about one file, and the strip below already owns the word "Place"
+      // for the question it asks.
+      title: widget.placeOnly && _files.isNotEmpty
+          ? 'Place — ${mediaAssetDefaultName(_files.first)}'
+          : 'Import',
       titleIcon: Icons.download_outlined,
       width: 760,
       height: 520,
@@ -734,8 +746,10 @@ class _ImportDialogState extends State<ImportDialog> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _sourceBar(context),
-          const Divider(height: 1),
+          if (!widget.placeOnly) ...[
+            _sourceBar(context),
+            const Divider(height: 1),
+          ],
           _placeStrip(context),
           const Divider(height: 1),
           // Loose files answer per row; a cut folder and a TVPaint export

@@ -309,6 +309,7 @@ void main() {
     'mediaActions': (s) => s.mediaActions,
     'mediaImportAudio': (s) => s.mediaImportAudio,
     'mediaRename': (s) => s.mediaRename,
+    'mediaPlace': (s) => s.mediaPlace,
     'mediaRelink': (s) => s.mediaRelink,
     'mediaMissingCount': (s) => s.mediaMissingCount,
     'mediaFindInFolder': (s) => s.mediaFindInFolder,

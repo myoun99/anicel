@@ -29,6 +29,7 @@ class MediaBrowserPanel extends StatelessWidget {
     required this.onPromoteAsset,
     this.onOpenAsset,
     this.onOpenAssetInSubViewer,
+    this.onPlaceAsset,
     this.audioFilePicker,
     this.missingPaths = const <String>{},
     this.onRelinkMissing,
@@ -77,6 +78,10 @@ class MediaBrowserPanel extends StatelessWidget {
   /// Opens the asset in the SUB viewer — the row menu only, because it is
   /// the deliberate choice and the double-click is the reflex one.
   final void Function(MediaAsset asset)? onOpenAssetInSubViewer;
+
+  /// Puts this asset on the timeline — the import window in its PLACE
+  /// mode, so the answers are the same ones a fresh import gives.
+  final void Function(MediaAsset asset)? onPlaceAsset;
 
   /// Injectable file dialog; defaults to the platform audio picker.
   final Future<String?> Function()? audioFilePicker;
@@ -406,6 +411,16 @@ class MediaBrowserPanel extends StatelessWidget {
                   keyValue: 'media-asset-menu-open-sub',
                   label: AppText.strings.mediaOpenInSubViewer,
                   onSelected: () => onOpenAssetInSubViewer?.call(asset),
+                ),
+              // The pool's way onto the timeline. A row can be DRAGGED
+              // there too, but a menu entry is what a tablet hand and a
+              // long list want — and it is the only route that exists at
+              // all until the timeline grows its drop targets.
+              if (onPlaceAsset != null)
+                PanelFlyoutItem(
+                  keyValue: 'media-asset-menu-place',
+                  label: AppText.strings.mediaPlace,
+                  onSelected: () => onPlaceAsset?.call(asset),
                 ),
               PanelFlyoutItem(
                 keyValue: 'media-asset-menu-rename',
