@@ -60,7 +60,39 @@ void releasePointerForValueControl(int pointer) {
 /// Whether a value control is holding [pointer].
 bool valueControlOwnsPointer(int pointer) => _held.contains(pointer);
 
+/// Pointers a BUTTON is holding — a WEAKER claim than [_held].
+///
+/// 🚨★★★ 유저 #1 (2026-08-14): a press on a rail row's button also fired the
+/// row's PICK, which moved the drawing target, rebuilt the row, and took
+/// the gesture still running on it with the old widget. So a button has to
+/// own something.
+///
+/// ⛔But not the whole pointer. A button owns its TAP; it does not own
+/// drags — and claiming the pointer outright broke a real one, because the
+/// storyboard's row-order drag deliberately starts ON the visibility button
+/// (its test says so in as many words). A slider is the opposite case:
+/// dragging IS its verb, so it takes the strong claim above and pans
+/// decline outright.
+///
+/// ⇒ Two sets, and the question that decides which a control joins is
+/// 「is a drag that starts here mine?」. [InstantTapRegion] asks both; the
+/// pan recogniser asks only the strong one.
+final Set<int> _tapHeld = <int>{};
+
+void claimTapForControl(int pointer) {
+  _tapHeld.add(pointer);
+}
+
+void releaseTapForControl(int pointer) {
+  _tapHeld.remove(pointer);
+}
+
+/// Whether ANY control — a button or a value control — owns [pointer]'s tap.
+bool controlOwnsTap(int pointer) =>
+    _tapHeld.contains(pointer) || _held.contains(pointer);
+
 /// Test-only: drops every claim.
 void debugClearValueControlPointers() {
   _held.clear();
+  _tapHeld.clear();
 }
