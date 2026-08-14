@@ -409,3 +409,174 @@ void qa_video_apple_abort(void) {
     qa_apple_teardown();
   }
 }
+
+// ---------------------------------------------------------------------------
+// The DECODE half (ABI v27): AVAssetImageGenerator.
+//
+// The reader half of this file is deliberately NOT AVAssetReader. A reader
+// is sequential — it is the right tool for "play this through once" and
+// the wrong one for "the picture at frame N", which is the only question
+// this app asks. The image generator seeks for us and, with both
+// tolerances set to zero, returns the exact frame rather than the nearest
+// keyframe. That "exact" is not free (it decodes forward from the keyframe
+// internally), and it is the same work the Windows path does by hand.
+//
+// One document at a time, matching qa_video_decode.c's contract.
+
+static AVAsset* g_decode_asset = nil;
+static AVAssetImageGenerator* g_decode_generator = nil;
+static int32_t g_decode_width = 0;
+static int32_t g_decode_height = 0;
+static int32_t g_decode_fps_num = 0;
+static int32_t g_decode_fps_den = 0;
+static int64_t g_decode_frames = 0;
+
+void qa_video_apple_decode_close(void) {
+  g_decode_generator = nil;
+  g_decode_asset = nil;
+  g_decode_width = 0;
+  g_decode_height = 0;
+  g_decode_frames = 0;
+}
+
+int32_t qa_video_apple_decode_open(const char* utf8_path,
+                                   char* error,
+                                   int32_t error_capacity) {
+  @autoreleasepool {
+    qa_video_apple_decode_close();
+    if (utf8_path == NULL || utf8_path[0] == '\0') {
+      qa_apple_set_error(error, error_capacity, "no path");
+      return 0;
+    }
+    NSString* path = [NSString stringWithUTF8String:utf8_path];
+    NSURL* url = [NSURL fileURLWithPath:path];
+    AVAsset* asset = [AVAsset assetWithURL:url];
+    NSArray<AVAssetTrack*>* tracks =
+        [asset tracksWithMediaType:AVMediaTypeVideo];
+    if (asset == nil || tracks.count == 0) {
+      qa_apple_set_error(error, error_capacity,
+                         "this file has no readable video stream");
+      return 0;
+    }
+    AVAssetTrack* track = tracks.firstObject;
+    CGSize size = track.naturalSize;
+    // The stored size is before the display transform: a phone video
+    // recorded upright is 1920x1080 with a 90° rotation, and a decoder
+    // that ignores that hands back a sideways picture.
+    CGSize display = CGSizeApplyAffineTransform(size, track.preferredTransform);
+    g_decode_width = (int32_t)fabs(display.width);
+    g_decode_height = (int32_t)fabs(display.height);
+    if (g_decode_width <= 0 || g_decode_height <= 0) {
+      qa_apple_set_error(error, error_capacity,
+                         "the video stream has no frame size");
+      return 0;
+    }
+
+    float rate = track.nominalFrameRate;
+    if (rate <= 0) {
+      rate = 24.0f;
+    }
+    // A fraction, not a float: 30000/1001 is not 29.97, and rounding it is
+    // how a frame index drifts a second out over a long take.
+    if (fabsf(rate - roundf(rate)) < 0.001f) {
+      g_decode_fps_num = (int32_t)roundf(rate);
+      g_decode_fps_den = 1;
+    } else {
+      g_decode_fps_num = (int32_t)roundf(rate * 1001.0f);
+      g_decode_fps_den = 1001;
+    }
+
+    Float64 seconds = CMTimeGetSeconds(asset.duration);
+    if (!isfinite(seconds) || seconds <= 0) {
+      seconds = 0;
+    }
+    g_decode_frames =
+        (int64_t)(seconds * (double)g_decode_fps_num / (double)g_decode_fps_den);
+    if (g_decode_frames < 1) {
+      g_decode_frames = 1;
+    }
+
+    AVAssetImageGenerator* generator =
+        [AVAssetImageGenerator assetImageGeneratorWithAsset:asset];
+    generator.appliesPreferredTrackTransform = YES;
+    generator.requestedTimeToleranceBefore = kCMTimeZero;
+    generator.requestedTimeToleranceAfter = kCMTimeZero;
+    g_decode_asset = asset;
+    g_decode_generator = generator;
+    return 1;
+  }
+}
+
+int32_t qa_video_apple_decode_info(int32_t* width,
+                                   int32_t* height,
+                                   int64_t* frame_count,
+                                   int32_t* fps_num,
+                                   int32_t* fps_den) {
+  if (g_decode_generator == nil) {
+    return 0;
+  }
+  if (width != NULL) *width = g_decode_width;
+  if (height != NULL) *height = g_decode_height;
+  if (frame_count != NULL) *frame_count = g_decode_frames;
+  if (fps_num != NULL) *fps_num = g_decode_fps_num;
+  if (fps_den != NULL) *fps_den = g_decode_fps_den;
+  return 1;
+}
+
+int32_t qa_video_apple_decode_frame(int64_t index,
+                                    uint8_t* rgba,
+                                    int32_t capacity,
+                                    char* error,
+                                    int32_t error_capacity) {
+  @autoreleasepool {
+    if (g_decode_generator == nil) {
+      qa_apple_set_error(error, error_capacity, "no document is open");
+      return 0;
+    }
+    const int32_t needed = g_decode_width * g_decode_height * 4;
+    if (rgba == NULL || capacity < needed) {
+      qa_apple_set_error(error, error_capacity, "frame buffer too small");
+      return 0;
+    }
+    if (index < 0) {
+      index = 0;
+    }
+    CMTime time = CMTimeMake(index * (int64_t)g_decode_fps_den,
+                             g_decode_fps_num);
+    NSError* failure = nil;
+    CGImageRef image = [g_decode_generator copyCGImageAtTime:time
+                                                  actualTime:NULL
+                                                       error:&failure];
+    if (image == NULL) {
+      qa_apple_set_error(
+          error, error_capacity,
+          failure == nil ? "that frame could not be read"
+                         : failure.localizedDescription.UTF8String);
+      return 0;
+    }
+
+    // Straight into RGBA: a CGBitmapContext converts colour space and
+    // component order for us, which is the same job the Windows path does
+    // by hand on BGRA rows.
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    CGContextRef context = CGBitmapContextCreate(
+        rgba, (size_t)g_decode_width, (size_t)g_decode_height, 8,
+        (size_t)g_decode_width * 4, space,
+        kCGImageAlphaNoneSkipLast | kCGBitmapByteOrder32Big);
+    CGColorSpaceRelease(space);
+    if (context == NULL) {
+      CGImageRelease(image);
+      qa_apple_set_error(error, error_capacity, "could not make a bitmap");
+      return 0;
+    }
+    CGContextDrawImage(
+        context, CGRectMake(0, 0, g_decode_width, g_decode_height), image);
+    CGContextRelease(context);
+    CGImageRelease(image);
+    // The context skipped alpha; the app's convention is opaque 255.
+    for (int32_t i = 0; i < g_decode_width * g_decode_height; i += 1) {
+      rgba[i * 4 + 3] = 255;
+    }
+    return 1;
+  }
+}
