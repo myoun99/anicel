@@ -26,6 +26,21 @@ class DisplayBufferCache {
   Rect? _rect;
   Object? _key;
 
+  /// The part of the key that does not move with the live surface, kept
+  /// apart so a stroke step can still recognise its own previous frame.
+  Object? _staticKey;
+
+  /// What the live surface looked like when the kept image was made, so the
+  /// next paint can say WHERE it changed.
+  ///
+  /// 🚨Here rather than on the painter, and that is forced: a
+  /// `CustomPainter` is a fresh object every frame, and a stroke step
+  /// repaints WITHOUT a widget rebuild, so neither the painter nor `build`
+  /// can hold a "since last time". This object is the only thing on that
+  /// path that outlives a frame.
+  Set<Object> lastOverlayCoords = const {};
+  Map<Object, Object> lastTileTokens = const {};
+
   /// The kept image for [key] over [rect], or null when there is none.
   ui.Image? imageFor(Object key, Rect rect) {
     if (_key == key && _rect == rect) {
@@ -36,13 +51,68 @@ class DisplayBufferCache {
 
   /// Keeps [image] as the answer for [key] over [rect], dropping whatever
   /// was there.
-  void store(Object key, Rect rect, ui.Image image) {
+  ///
+  /// [staticKey] is the part of [key] that does NOT move with the live
+  /// surface: the layer tree, the viewport, the paper. Keeping it apart is
+  /// what makes [patchBaseFor] possible — a stroke step changes the live
+  /// half and nothing else, and that is the one case where the previous
+  /// image is still worth something.
+  /// How many stored images were built by PATCHING the previous one, and
+  /// how many were composited from nothing.
+  ///
+  /// 🚨A counter rather than an argument about the design: an optimisation
+  /// that never runs looks exactly like one that works, and this session
+  /// shipped two that did not (a tile grid whose key never matched, and a
+  /// walk that hashed every tile and still missed). The test asserts the
+  /// SECOND stroke step patches — if the dirty rect stops being found, this
+  /// number says so instead of the frame rate saying it later.
+  @visibleForTesting
+  int patchedCount = 0;
+  @visibleForTesting
+  int fullCount = 0;
+
+  void store(
+    Object key,
+    Object staticKey,
+    Rect rect,
+    ui.Image image, {
+    bool patched = false,
+  }) {
+    if (patched) {
+      patchedCount += 1;
+    } else {
+      fullCount += 1;
+    }
     if (!identical(_image, image)) {
       _image?.dispose();
     }
     _image = image;
     _rect = rect;
     _key = key;
+    _staticKey = staticKey;
+  }
+
+  /// The previous image, when the only thing that moved since is the LIVE
+  /// surface — so redrawing the dirty part over it is the same picture as
+  /// compositing the whole thing again.
+  ///
+  /// 🚨★★★THIS IS WHAT REPLACED THE TILE GRID. Tiling split the buffer to
+  /// avoid recompositing all of it per stroke step; it also gave every
+  /// boundary a seam at fractional scale, and made a cold cache cost N
+  /// rasters instead of one. Patching the whole buffer keeps the ONE image
+  /// (so there is no boundary to seam) and the cold path is untouched (so
+  /// the worst case is still today's) — the recomposite is confined to the
+  /// dirty rect either way, which was the only thing tiles were for.
+  ///
+  /// ⛔Null unless [staticKey] AND [rect] both match: a changed layer tree
+  /// or a moved viewport means the old pixels are wrong everywhere, not
+  /// just where the stroke went.
+  ({ui.Image image, Rect rect})? patchBaseFor(Object staticKey, Rect rect) {
+    final image = _image;
+    if (image == null || _staticKey != staticKey || _rect != rect) {
+      return null;
+    }
+    return (image: image, rect: rect);
   }
 
   void invalidate() {
@@ -50,6 +120,12 @@ class DisplayBufferCache {
     _image = null;
     _rect = null;
     _key = null;
+    _staticKey = null;
+    // ⛔The snapshots go with the image. Kept across an invalidate they would
+    // describe a frame nobody holds any more, and the next paint would
+    // "find" a small dirty rect against a base that no longer exists.
+    lastOverlayCoords = const {};
+    lastTileTokens = const {};
   }
 
   void dispose() => invalidate();

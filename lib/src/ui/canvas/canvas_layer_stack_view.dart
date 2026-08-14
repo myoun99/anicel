@@ -13,6 +13,7 @@ import '../../models/pasteboard_bounds.dart';
 import '../../models/playback_quality.dart';
 import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
+import '../../models/tile_coord.dart';
 import '../debug/input_inspector.dart';
 import '../dev_profile.dart';
 import '../playback/layer_frame_image_cache.dart';
@@ -177,7 +178,15 @@ class CanvasLayerStackView extends StatefulWidget {
     this.paperBackground = ProjectBackground.defaultBackground,
     this.debugDisableBake = false,
     this.debugDisableSingleBuffer = false,
+    this.debugBufferCache,
   });
+
+  /// 🚨A cache the TEST owns, so it can read how each frame was built.
+  /// An optimisation that never runs looks exactly like one that works —
+  /// this session shipped two that did not — so the counters are part of
+  /// the contract rather than a debugging aid.
+  @visibleForTesting
+  final DisplayBufferCache? debugBufferCache;
 
   /// 🚨(v) 2단계 — turns the single composite buffer OFF, so a test can
   /// render the SAME tree both ways and compare the pixels.
@@ -277,7 +286,8 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
 
   /// 🚨(v) — the recording of everything a stroke cannot change.
   final StaticCompositeBake _bake = StaticCompositeBake();
-  final DisplayBufferCache _bufferCache = DisplayBufferCache();
+  late final DisplayBufferCache _bufferCache =
+      widget.debugBufferCache ?? DisplayBufferCache();
 
   /// 🚨★★★ Bumped at EVERY `_images` mutation, and read into the bake's key.
   ///
@@ -1190,10 +1200,49 @@ class _LayerStackPainter extends CustomPainter {
         );
       }
     }
+    // 🚨★★★A MISS DOES NOT HAVE TO START FROM NOTHING. When the only thing
+    // that moved is the LIVE surface — which is every step of a stroke —
+    // the previous buffer is right everywhere the stroke did not touch, so
+    // the recomposite is confined to the dirty rect and the rest is one
+    // opaque blit.
+    //
+    // ⛔This is what replaced the TILE GRID. Tiling split the buffer for the
+    // same reason and paid for it twice: a seam at every boundary at
+    // fractional scale, and a cold cache costing N rasters instead of one.
+    // Patching keeps ONE image — there is no boundary to seam — and leaves
+    // the cold path exactly as it was.
+    final base = cache == null || key == null
+        ? null
+        : cache.patchBaseFor(compositeKey, rect);
+    // ⛔ALWAYS, even with no base to patch: this call is also what RECORDS
+    // what the live surface looks like now. Asking it only when a patch was
+    // already possible left the snapshot empty forever, so the first real
+    // stroke step compared against nothing and fell back to a full raster —
+    // measured, with the counter reading zero.
+    final dirty = cache == null ? null : _liveDirtyCanvasRect();
     final recorder = ui.PictureRecorder();
     final into = Canvas(recorder);
     into.translate(-rect.left, -rect.top);
-    paintContent(into, rasterRect: rect);
+    if (base != null && dirty != null) {
+      into.drawImageRect(
+        base.image,
+        Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+        rect,
+        Paint()
+          ..filterQuality = ui.FilterQuality.none
+          ..isAntiAlias = false,
+      );
+      into.save();
+      into.clipRect(dirty);
+      // ⛔CLEAR first. The composite is drawn OVER the old pixels otherwise,
+      // and ink that is not fully opaque would blend with its own previous
+      // frame — a stroke would darken as it was redrawn.
+      into.drawRect(dirty, Paint()..blendMode = BlendMode.clear);
+      paintContent(into, rasterRect: rect);
+      into.restore();
+    } else {
+      paintContent(into, rasterRect: rect);
+    }
     final picture = recorder.endRecording();
     final ui.Image image;
     try {
@@ -1202,7 +1251,13 @@ class _LayerStackPainter extends CustomPainter {
       picture.dispose();
     }
     if (cache != null && key != null) {
-      cache.store(key, rect, image);
+      cache.store(
+        key,
+        compositeKey,
+        rect,
+        image,
+        patched: base != null && dirty != null,
+      );
       return _DisplayBuffer(
         image: image,
         rect: rect,
@@ -1240,6 +1295,84 @@ class _LayerStackPainter extends CustomPainter {
   /// question the tiled buffer had to ask, and the answer that makes a
   /// cache honest: ask the thing you are caching where it changed, and do
   /// not cache what cannot say.
+  /// Where the LIVE surface changed since the kept buffer was made, in
+  /// canvas space — or null when that cannot be answered.
+  ///
+  /// 🚨Null is the safe answer and it costs only a full re-raster, which is
+  /// what every paint did before the cache existed. It is returned whenever
+  /// the change cannot be located: the same three cases [_bufferKey] refuses
+  /// to cache for, plus a surface whose tiles cannot be compared to the ones
+  /// the buffer was made from.
+  ///
+  /// ⛔The rect is INFLATED by one pixel. A dab writes whole texels, but the
+  /// composite around it does not have to land on them — a posed sibling or
+  /// a rounded edge can put ink a fraction over the line, and a patch that
+  /// trusted the exact rect would leave a hairline of the previous frame.
+  /// One pixel is cheap and the alternative is a class of bug that only
+  /// shows on some zoom levels.
+  Rect? _liveDirtyCanvasRect() {
+    final surfacePainter = activeSurfacePainter;
+    if (surfacePainter == null || !surfacePainter.drawsOnlyFromPublishedState) {
+      return null;
+    }
+    final overlay = surfacePainter.overlayModel;
+    if (overlay != null && (overlay.hasStandIns || overlay.settling)) {
+      return null;
+    }
+    if (overlay?.stampImage != null) {
+      return null;
+    }
+    if (!_liveSurfaceIsSpatiallyStable(nodes)) {
+      return null;
+    }
+    final tileSize = surfacePainter.surface.tileSize.toDouble();
+    Rect? dirty;
+    void add(Rect rect) => dirty = dirty == null ? rect : dirty!.expandToInclude(rect);
+    Rect rectOf(TileCoord coord) => Rect.fromLTWH(
+      coord.x * tileSize,
+      coord.y * tileSize,
+      tileSize,
+      tileSize,
+    );
+    // The overlay's tiles are the stroke in flight — every one of them is
+    // being drawn into right now, and one it LEFT has to lose its ink.
+    final cacheState = bufferCache!;
+    for (final coord in cacheState.lastOverlayCoords) {
+      add(rectOf(coord as TileCoord));
+    }
+    for (final coord in const <TileCoord>[]) {
+      add(rectOf(coord));
+    }
+    final now = overlay?.tileImages.keys ?? const <TileCoord>[];
+    for (final coord in now) {
+      add(rectOf(coord));
+    }
+    cacheState.lastOverlayCoords = now.toSet();
+    // Committed tiles: a commit replaces the tile, and a decode replaces its
+    // image. Both are identity changes on the same coordinate.
+    final cache = surfacePainter.tileImageCache;
+    final seen = <TileCoord, Object>{};
+    for (final entry in surfacePainter.surface.tiles.entries) {
+      final token = cache.imageFor(entry.value) ?? entry.value;
+      seen[entry.key] = token;
+      if (!identical(cacheState.lastTileTokens[entry.key], token)) {
+        add(rectOf(entry.key));
+      }
+    }
+    for (final coord in cacheState.lastTileTokens.keys) {
+      if (!seen.containsKey(coord)) {
+        add(rectOf(coord as TileCoord));
+      }
+    }
+    final hadTokens = cacheState.lastTileTokens.isNotEmpty;
+    cacheState.lastTileTokens = seen;
+    if (!hadTokens) {
+      // Nothing to compare against — the first paint after a cold start.
+      return null;
+    }
+    return dirty?.inflate(1);
+  }
+
   Object? _bufferKey() {
     // ⛔A FLOATING SELECTION IS DRAWN INSIDE THIS BUFFER and moves under the
     // hand without touching anything else the key can see, so while one
@@ -1282,6 +1415,32 @@ class _LayerStackPainter extends CustomPainter {
       }
     }
     return Object.hash(compositeKey, live);
+  }
+
+  /// Whether a change to the live surface lands where that surface is.
+  ///
+  /// ⛔False means no dirty rect drawn from the surface's own coordinates is
+  /// correct. A POSE puts its pixels somewhere else entirely, and an effect
+  /// that SPREADS — on the surface itself or on any folder enclosing it,
+  /// because the stroke's pixels pass through those buffers — smears a dab
+  /// past its own tile. Both are answered by re-rastering the whole buffer,
+  /// which is what every paint did before any of this existed.
+  static bool _liveSurfaceIsSpatiallyStable(List<_PaintNode> list) {
+    for (final node in list) {
+      if (node is _PaintActiveSurface) {
+        return node.pose == null && !resolvedEffectsSpreadPixels(node.effects);
+      }
+      if (node is _PaintGroup && node.children.any(_enclosesActiveSurface)) {
+        return !resolvedEffectsSpreadPixels(node.effects) &&
+            _liveSurfaceIsSpatiallyStable(node.children);
+      }
+      if (node is _PaintAdjustment &&
+          node.children.any(_enclosesActiveSurface)) {
+        return !resolvedEffectsSpreadPixels(node.effects) &&
+            _liveSurfaceIsSpatiallyStable(node.children);
+      }
+    }
+    return false;
   }
 
   /// Whether the live surface is this node, or anywhere inside it.
