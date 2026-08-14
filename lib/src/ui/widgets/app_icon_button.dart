@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../input/value_control_pointers.dart';
 import '../theme/app_theme.dart';
 
 /// R26 #42 — THE app's icon button.
@@ -63,7 +64,24 @@ class AppIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
+    // 🚨★★★ 유저 #1 (2026-08-14): 「액티브 레이어가 아닌 다른 레이어의 버튼
+    // 누르면 작동안함 … 레이어에 있는 **모든 버튼이나 편집이** 그럼」.
+    //
+    // ★A press that lands on a control belongs to that control
+    // ([value_control_pointers.dart]). That law was written for sliders and
+    // splitters — and the user's report says 「모든 버튼」, which is the same
+    // sentence: a BUTTON is as much the thing under the finger as a slider
+    // is. Claiming here is what stops a rail row's pick from firing too,
+    // which moved the drawing target and rebuilt the row out from under the
+    // press that was still running.
+    //
+    // ⛔Released on CANCEL as well as UP: a claim that outlives its gesture
+    // silently deafens every later press handed the same pointer id.
+    return Listener(
+      onPointerDown: (event) => claimPointerForValueControl(event.pointer),
+      onPointerUp: (event) => releasePointerForValueControl(event.pointer),
+      onPointerCancel: (event) => releasePointerForValueControl(event.pointer),
+      child: IconButton(
       key: ValueKey<String>(keyValue),
       tooltip: tooltip,
       onPressed: onPressed,
@@ -80,7 +98,8 @@ class AppIconButton extends StatelessWidget {
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         foregroundColor: isSelected ? AppColors.accent : null,
       ),
-      icon: icon,
+        icon: icon,
+      ),
     );
   }
 }
