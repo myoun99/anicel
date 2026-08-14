@@ -6,6 +6,9 @@ import 'package:flutter/material.dart';
 
 import '../../services/import/raster_cel_import.dart';
 import '../../services/media/media_byte_source.dart';
+import '../../core/straight_rgba_image.dart';
+import '../../models/media_asset.dart';
+import '../../native/qa_video_decoder.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/transport_bar.dart';
@@ -62,6 +65,12 @@ class _ImportPreviewState extends State<ImportPreview> {
   ui.Image? _pdfPage;
   int _pdfPageShown = -1;
 
+  /// A movie, once the reader has said what it is.
+  QaVideoInfo? _video;
+  ui.Image? _videoFrame;
+  int _videoFrameShown = -1;
+  bool _videoOpen = false;
+
   @override
   void initState() {
     super.initState();
@@ -91,11 +100,80 @@ class _ImportPreviewState extends State<ImportPreview> {
     _pdfPage = null;
     _pdfPageShown = -1;
     _pdfPages = 0;
+    _videoFrame?.dispose();
+    _videoFrame = null;
+    _videoFrameShown = -1;
+    _video = null;
+    if (_videoOpen) {
+      _videoOpen = false;
+      QaVideoDecoder.instance?.close();
+    }
     final pdf = _pdf;
     _pdf = null;
     if (pdf != null) {
       unawaited(pdf.dispose());
     }
+  }
+
+  /// A movie, on the platforms whose reader exists. The decoder holds ONE
+  /// document, so opening one here is also what closes the last.
+  Future<void> _loadVideo(String path) async {
+    final decoder = QaVideoDecoder.instance;
+    if (decoder == null || !decoder.isSupported) {
+      // No engine, or a build without a reader: the zone stays empty and
+      // the window's footer already says a movie cannot be placed.
+      setState(() {});
+      return;
+    }
+    final info = decoder.open(path);
+    if (!mounted || _loadedPath != path) {
+      decoder.close();
+      return;
+    }
+    if (info == null) {
+      setState(() {});
+      return;
+    }
+    setState(() {
+      _video = info;
+      _videoOpen = true;
+    });
+    await _renderVideoFrame(0);
+  }
+
+  /// Draws the frame under the playhead. One at a time: a scrub asks for
+  /// the frame it landed on, not for the ones it passed over.
+  Future<void> _renderVideoFrame(int index) async {
+    final info = _video;
+    final decoder = QaVideoDecoder.instance;
+    if (info == null || decoder == null || index == _videoFrameShown) {
+      return;
+    }
+    _videoFrameShown = index;
+    final rgba = decoder.frame(
+      index,
+      width: info.width,
+      height: info.height,
+    );
+    if (rgba == null || !mounted || _video != info) {
+      return;
+    }
+    final completer = Completer<ui.Image>();
+    decodeStraightRgbaImage(
+      rgba: rgba,
+      width: info.width,
+      height: info.height,
+      onDecoded: completer.complete,
+    );
+    final image = await completer.future;
+    if (!mounted || _video != info) {
+      image.dispose();
+      return;
+    }
+    setState(() {
+      _videoFrame?.dispose();
+      _videoFrame = image;
+    });
   }
 
   /// Draws the page under the playhead, once per page.
@@ -137,6 +215,10 @@ class _ImportPreviewState extends State<ImportPreview> {
     _position = 0;
     if (path == null) {
       setState(() {});
+      return;
+    }
+    if (mediaAssetKindForPath(path) == MediaAssetKind.video) {
+      await _loadVideo(path);
       return;
     }
     if (path.toLowerCase().endsWith('.pdf')) {
@@ -181,11 +263,15 @@ class _ImportPreviewState extends State<ImportPreview> {
 
   @override
   Widget build(BuildContext context) {
-    final frameCount = _pdfPages > 0
+    final frameCount = _video != null
+        ? _video!.frameCount
+        : _pdfPages > 0
         ? _pdfPages
         : (_frames.isEmpty ? 1 : _frames.length);
     final out = widget.outFrame ?? frameCount - 1;
-    final shown = _pdfPages > 0
+    final shown = _video != null
+        ? _videoFrame
+        : _pdfPages > 0
         ? _pdfPage
         : (_frames.isEmpty
               ? null

@@ -4558,4 +4558,4 @@ QA_EXPORT int32_t qa_resample_rgba(
 // v26: qa_resample_rgba gained clip_x/clip_y - where the destination
 // buffer sits inside the full output rect, so a caller can compute one
 // window of it bit-identically. Zero is the whole rect.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 26; }
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 27; }

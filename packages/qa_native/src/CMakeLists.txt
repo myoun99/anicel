@@ -18,13 +18,16 @@ endif()
 # qa_engine.c: it pulls in ~27k lines of vendored dr_libs, and compiling
 # that alongside the hot loops would slow every build and mix third-party
 # warnings into ours. qa_video_encode.c is per-OS encoder glue (AUDIO-PRO
-# R7) — Media Foundation / AVAssetWriter / NDK MediaCodec.
+# R7) — Media Foundation / AVAssetWriter / NDK MediaCodec. qa_video_decode.c is its
+# mirror: the Source Reader half, so a movie can answer "the picture at
+# frame N" the way every other source already does.
 add_library(qa_engine SHARED
   "${CMAKE_CURRENT_LIST_DIR}/qa_engine.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_audio_denoise.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_audio_device.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_video_encode.c"
+  "${CMAKE_CURRENT_LIST_DIR}/qa_video_decode.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_image_encode.c"
 )
 if(APPLE)
