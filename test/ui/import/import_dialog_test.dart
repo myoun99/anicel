@@ -1269,4 +1269,83 @@ void main() {
     expect(pages, isNot(contains(1)), reason: 'page two was outside IN');
     expect(pages, isNot(contains(4)), reason: 'page five was outside OUT');
   });
+
+  /// PLACE: the pool row's way onto the timeline. The same window, minus
+  /// the question it has already answered — which file.
+  testWidgets('place mode drops the source bar and says what it is doing',
+      (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final path = await tester.runAsync(() => writePng('bg.png'));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(
+            session: s,
+            initialPaths: [path!],
+            placeOnly: true,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Place — bg.png'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('import-browse-files-button')),
+      findsNothing,
+      reason: 'the source is what the row already decided',
+    );
+    expect(
+      find.byKey(const ValueKey<String>('import-file-table')),
+      findsOneWidget,
+      reason: 'and every other answer is still the row\'s to give',
+    );
+    expect(
+      find.byKey(const ValueKey<String>('import-place-timeline')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('an already-registered asset placed again does not register '
+      'twice', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final path = await tester.runAsync(() => writePng('bg.png'));
+    s.importMediaFiles([path!], copyIntoProject: true);
+    expect(s.mediaAssets, hasLength(1));
+    final layersBefore = s.requireActiveCut.layers.length;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(
+            session: s,
+            initialPaths: [path],
+            placeOnly: true,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    for (var tries = 0; tries < 100; tries += 1) {
+      if (s.requireActiveCut.layers.length > layersBefore) {
+        break;
+      }
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    expect(s.requireActiveCut.layers.length, layersBefore + 1);
+    expect(
+      s.mediaAssets,
+      hasLength(1),
+      reason: 'the pool already knew this file',
+    );
+  });
 }

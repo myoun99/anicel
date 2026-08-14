@@ -2359,6 +2359,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 asset,
                 tabId: EditorWorkspace.mediaViewerSubTabId,
               ),
+              onPlaceAsset: (asset) => _openImportWindow(
+                initialPaths: [asset.path],
+                placeOnly: true,
+              ),
             ),
           ),
         );
@@ -4120,6 +4124,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   void _openImportWindow({
     List<String> initialPaths = const [],
     bool poolOnly = false,
+    bool placeOnly = false,
   }) {
     unawaited(
       showDialog<void>(
@@ -4128,6 +4133,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           session: widget.session,
           initialPaths: initialPaths,
           poolOnly: poolOnly,
+          placeOnly: placeOnly,
         ),
       ),
     );
