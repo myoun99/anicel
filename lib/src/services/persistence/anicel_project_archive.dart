@@ -21,6 +21,7 @@ import 'package:archive/archive.dart';
 import '../../models/audio_clip.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/project.dart';
+import '../media/media_fingerprints.dart';
 import 'brush_drawing_binary_codec.dart';
 
 /// The project file's extension, without the dot — what a picker filter
@@ -52,11 +53,17 @@ class AnicelArchiveContents {
     required this.cels,
     required this.mediaRelativePaths,
     this.grants = const [],
+    this.mediaFingerprints = const MediaFingerprints.empty(),
   });
 
   final Project project;
   final List<AnicelCelBlob> cels;
   final Map<String, String> mediaRelativePaths;
+
+  /// What the project knows about its media's CONTENT, for telling one
+  /// `A1.png` from another when a reference has to be found again. Empty
+  /// for every project written before they were kept.
+  final MediaFingerprints mediaFingerprints;
 
   /// Security-scoped tokens for the media this project REFERENCES, as
   /// they were written. Empty everywhere a path is durable on its own, and
@@ -203,6 +210,9 @@ Uint8List buildAnicelProjectJsonBytes({
   String? saveDirectory,
   Set<String> mediaInArchive = const {},
   List<Map<String, Object?>> grants = const [],
+  /// Pool path → CRC-32 hex, for the assets somebody has read the bytes of.
+  /// Kept out of `project` on purpose — see [MediaFingerprints].
+  Map<String, Object?> mediaCrcs = const {},
 }) {
   final mediaRelativePaths = <String, String>{};
   final mediaEntries = <String, String>{};
@@ -232,6 +242,7 @@ Uint8List buildAnicelProjectJsonBytes({
         if (mediaRelativePaths.isNotEmpty) 'mediaPaths': mediaRelativePaths,
         if (mediaEntries.isNotEmpty) 'mediaEntries': mediaEntries,
         if (grants.isNotEmpty) 'grants': grants,
+        if (mediaCrcs.isNotEmpty) 'mediaCrcs': mediaCrcs,
       }),
     ),
   );
@@ -252,6 +263,7 @@ Uint8List buildAnicelArchiveBytes({
   required List<AnicelCelBlob> cels,
   String? saveDirectory,
   List<Map<String, Object?>> grants = const [],
+  Map<String, Object?> mediaCrcs = const {},
 }) {
   // R22-C: EVERY entry is STORE'd — readers (and the file-backed cold
   // tier) address raw bytes by {offset, length} without inflating.
@@ -263,6 +275,7 @@ Uint8List buildAnicelArchiveBytes({
           project: project,
           saveDirectory: saveDirectory,
           grants: grants,
+          mediaCrcs: mediaCrcs,
         ),
       )..compression = CompressionType.none,
     );
@@ -329,6 +342,7 @@ AnicelArchiveContents parseAnicelArchiveBytes(Uint8List bytes) {
     cels: cels,
     mediaRelativePaths: mediaRelativePaths,
     grants: grants,
+    mediaFingerprints: MediaFingerprints.fromJson(decoded['mediaCrcs']),
   );
 }
 

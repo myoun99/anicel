@@ -263,6 +263,7 @@ void main() {
       // saying so is the point.
       grants: const [],
       mediaInArchive: const {},
+      mediaCrcs: const {},
       isStale: () => true,
     );
 

@@ -93,6 +93,15 @@ void main() {
         kind: GrantKind.file,
       ),
     ]);
+    // ⚠️ Every sidecar fact has to be PRESENT in the fixture or this file
+    // guards nothing. `mediaCrcs` was added to the writer and these tests
+    // stayed green, because a project with no fingerprints writes no
+    // fingerprint key and the pinned set still matched. The law can only
+    // catch an omission it can see, so each new fact earns a line here.
+    s.rememberMediaFingerprint(
+      '${directory.path}/참고영상.mp4'.replaceAll('\\', '/'),
+      0x0badc0de,
+    );
     final projectPath = '${directory.path}/scene.anicel';
     await s.saveProjectToFile(projectPath);
     final overlayPath = '${directory.path}/scene.overlay';
@@ -131,6 +140,12 @@ void main() {
     expect(overlay['mediaEntries'], isNotEmpty, reason: 'the fixture carries');
     expect(overlay['grants'], saved['grants']);
     expect(overlay['grants'], isNotEmpty, reason: 'the fixture has one');
+    expect(overlay['mediaCrcs'], saved['mediaCrcs']);
+    expect(
+      overlay['mediaCrcs'],
+      isNotEmpty,
+      reason: 'the fixture recorded one — without that this asserts nothing',
+    );
   });
 
   test('⛔ the writer has not grown a key nobody has thought about', () async {
@@ -141,7 +156,14 @@ void main() {
     final (projectPath, _) = await loadedProject();
     expect(
       projectJsonOf(projectPath).keys.toSet(),
-      {'formatVersion', 'project', 'mediaPaths', 'mediaEntries', 'grants'},
+      {
+        'formatVersion',
+        'project',
+        'mediaPaths',
+        'mediaEntries',
+        'grants',
+        'mediaCrcs',
+      },
       reason: 'a new top-level key is a decision for the overlay too — add '
           'it here once the snapshot handles it',
     );

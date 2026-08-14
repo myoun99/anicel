@@ -15,7 +15,13 @@
 /// picks exactly one of the candidates. Anything still ambiguous is left
 /// out and reported, because the alternative is choosing arbitrarily on the
 /// user's behalf and being wrong at scale.
+///
+/// When the folders cannot force it either, the CONTENT is asked — length
+/// first because a `stat` settles most of it, and a recorded CRC only when
+/// one is both available and still needed.
 library;
+
+import '../../models/media_identity.dart';
 
 /// What a relink pass decided.
 class MediaRelinkPlan {
@@ -39,6 +45,20 @@ class MediaRelinkPlan {
 MediaRelinkPlan planMediaRelink({
   required Iterable<String> missingPaths,
   required Iterable<String> candidatePaths,
+  /// What the PROJECT recorded about a missing asset's content, or null
+  /// when it recorded nothing. Free to call — it reads a map.
+  MediaIdentity? Function(String missingPath)? recordedIdentity,
+
+  /// What a candidate ON DISK is, given what is being looked for.
+  ///
+  /// 🚨 This one costs. It is called ONLY for candidates that survived the
+  /// tail walk and still tie, which on a production drive is a handful out
+  /// of thousands. [wanted] is passed so the reader can stop early: a
+  /// length that already differs is decisive without opening the file, and
+  /// a [wanted] with no CRC means reading the candidate's bytes cannot
+  /// change any answer.
+  MediaIdentity? Function(String candidatePath, MediaIdentity wanted)?
+  candidateIdentity,
 }) {
   final byName = <String, List<String>>{};
   for (final raw in candidatePaths) {
@@ -67,7 +87,14 @@ MediaRelinkPlan planMediaRelink({
       for (final candidate in candidates)
         if (_extension(candidate) == _extension(missing)) candidate,
     ];
-    final chosen = _chooseByTail(missing, sameKind);
+    final chosen =
+        _chooseByTail(missing, sameKind) ??
+        _chooseByContent(
+          missing,
+          sameKind,
+          recordedIdentity: recordedIdentity,
+          candidateIdentity: candidateIdentity,
+        );
     if (chosen == null) {
       unmatched.add(missing);
       continue;
@@ -125,6 +152,71 @@ String? _chooseByTail(String missing, List<String> candidates) {
     remaining = next;
   }
   return null;
+}
+
+/// The one candidate whose CONTENT forces it, or null.
+///
+/// Runs only where the tail walk gave up — the folders could not tell these
+/// apart, so the bytes are asked instead. Two steps, cheap one first:
+///
+/// 1. **Length.** A candidate whose size differs is provably not the file,
+///    and saying so costs a `stat`. This alone settles the common shape of
+///    the problem, because two different drawings that happen to share the
+///    name `A1.png` almost never weigh the same. When it leaves exactly one
+///    standing, no file is ever opened.
+/// 2. **CRC**, and only when the project recorded one AND more than one
+///    candidate survived step 1. Without a recorded fingerprint there is
+///    nothing to compare against, and reading every candidate to build one
+///    would be paying the price for an answer that cannot arrive.
+///
+/// ⛔ Still refuses to guess. `unknown` is not a match, ties are not broken
+/// arbitrarily, and two survivors mean the caller reports rather than picks
+/// — the rule the whole file is built on does not bend because a new kind
+/// of evidence arrived.
+String? _chooseByContent(
+  String missing,
+  List<String> candidates, {
+  MediaIdentity? Function(String missingPath)? recordedIdentity,
+  MediaIdentity? Function(String candidatePath, MediaIdentity wanted)?
+  candidateIdentity,
+}) {
+  if (candidates.length < 2 ||
+      recordedIdentity == null ||
+      candidateIdentity == null) {
+    return null;
+  }
+  final wanted = recordedIdentity(missing);
+  if (wanted == null) {
+    return null;
+  }
+  final proven = <String>[];
+  final possible = <String>[];
+  for (final candidate in candidates) {
+    final found = candidateIdentity(candidate, wanted);
+    if (found == null) {
+      continue;
+    }
+    switch (wanted.compare(found)) {
+      case MediaIdentityMatch.same:
+        proven.add(candidate);
+      case MediaIdentityMatch.unknown:
+        possible.add(candidate);
+      case MediaIdentityMatch.different:
+        break;
+    }
+  }
+  // ⛔ Every candidate is walked before deciding, and two proven matches
+  // are refused rather than resolved by whichever came first. Byte-identical
+  // copies of one drawing DO sit in a production folder — the same cel
+  // handed to two cuts — and either would render correctly, but the path
+  // written down is not the same path, and choosing it for the user is the
+  // thing this file exists to not do.
+  if (proven.isNotEmpty) {
+    return proven.length == 1 ? proven.single : null;
+  }
+  // Nothing proven: the length alone may still have forced it, by leaving
+  // exactly one candidate that could be the file at all.
+  return possible.length == 1 ? possible.single : null;
 }
 
 String _normalize(String path) => path.replaceAll('\\', '/');
