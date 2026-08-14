@@ -78,9 +78,23 @@ class _HomePageState extends State<HomePage> {
   /// the workspace's tool/brush panels drive one notifier. Paint tools
   /// keep per-tool settings memory (R11-④: the brush and the eraser each
   /// remember their own preset/settings).
-  final ValueNotifier<BrushToolState> _brushTool = PaintToolStateNotifier(
+  final PaintToolStateNotifier _brushTool = PaintToolStateNotifier(
     BrushToolState.defaults,
   );
+
+  /// Arms [group]'s current tile — the shortcut half of the rail button.
+  ///
+  /// Every tool shortcut goes through this rather than writing its own
+  /// `copyWith(tool: …)`, so pressing `G` lands where the Fill BUTTON lands
+  /// (유저 2026-08-15: 「모드 선택한게 초기화됨」 — a memory kept beside one
+  /// entrance is a memory the other one disagrees with). For the groups
+  /// with a single tile `railEntry` is the identity, so this costs them
+  /// nothing and cannot be forgotten if one of them grows a second tile.
+  void _armToolGroup(CanvasTool group) {
+    _brushTool.value = _brushTool.value.copyWith(
+      tool: _brushTool.railEntry(group),
+    );
+  }
 
   /// The colour wheel's spare (background) slot; the foreground IS the brush
   /// colour, so it rides [_brushTool] and only the spare needs a home.
@@ -288,10 +302,9 @@ class _HomePageState extends State<HomePage> {
     // answering for the cel that was active at the moment of the switch,
     // which went stale the instant the user moved to another layer
     // (피드백 ⑥); the live predicate cannot.
-    final toolNotifier = _brushTool;
-    if (toolNotifier is PaintToolStateNotifier) {
-      toolNotifier.onSwitchRefused = cursorNotices.show;
-    }
+    // The type test this used to need is gone: [_brushTool] is declared as
+    // the subclass now (the rail asks it for `railEntry`).
+    _brushTool.onSwitchRefused = cursorNotices.show;
   }
 
   void _showVoiceRecordingNotice() {
@@ -496,15 +509,13 @@ class _HomePageState extends State<HomePage> {
           _session.redo();
         }
       case EditorActionIds.toolBrush:
-        _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.brush);
+        _armToolGroup(CanvasTool.brush);
       case EditorActionIds.toolEraser:
-        _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.eraser);
+        _armToolGroup(CanvasTool.eraser);
       case EditorActionIds.toolEyedropper:
-        _brushTool.value = _brushTool.value.copyWith(
-          tool: CanvasTool.eyedropper,
-        );
+        _armToolGroup(CanvasTool.eyedropper);
       case EditorActionIds.toolFill:
-        _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.fill);
+        _armToolGroup(CanvasTool.fill);
       case EditorActionIds.onionSkinToggle:
         _session.toggleOnionSkin();
       // The film verbs. Each one guards itself the way the toolbar button
@@ -547,7 +558,7 @@ class _HomePageState extends State<HomePage> {
           forTool: CanvasTool.select,
         );
       case EditorActionIds.toolMove:
-        _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.move);
+        _armToolGroup(CanvasTool.move);
       case EditorActionIds.selectionDeselect:
         _canvasSelectionCommands.deselect();
       // With a live selection ↑/↓ nudge; otherwise they walk the
@@ -575,7 +586,7 @@ class _HomePageState extends State<HomePage> {
         // R26 #17: Ctrl+T is not its own transform mode — it SWITCHES to
         // the Move tool, so one code path (and one set of guards) owns
         // transforming.
-        _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.move);
+        _armToolGroup(CanvasTool.move);
       // CONFIRM. An open polygon outline is the newest thing this key can
       // be closing, and it takes precedence: it is what the user is
       // looking at (유저 확정 — 폴리곤 확정은 확정 버튼으로).

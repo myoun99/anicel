@@ -144,6 +144,31 @@ bool canvasToolFills(CanvasTool tool) =>
 /// [TransformToolOptions] instead.
 bool canvasToolTransforms(CanvasTool tool) => tool == CanvasTool.move;
 
+/// Which RAIL BUTTON [tool] lives under, named by that group's default tile.
+///
+/// The rail has fewer buttons than there are tools: the bucket and the shape
+/// fill share one, the grab and the stamp share another. Each of those
+/// buttons used to spell its own membership test AND its own re-entry rule
+/// by hand (`canvasToolFills(tool) ? tool : CanvasTool.fill`), which is two
+/// hand-written lists to keep in step and the reason a new tile could be
+/// added without either button hearing about it.
+///
+/// 🚨Spelled as a SWITCH over every value rather than a couple of `if`s, so
+/// a tool added tomorrow cannot slip in without saying which button it
+/// answers to — the same discipline `supports` uses for the strip (TP2).
+CanvasTool canvasToolRailGroup(CanvasTool tool) => switch (tool) {
+  CanvasTool.brush => CanvasTool.brush,
+  CanvasTool.eraser => CanvasTool.eraser,
+  CanvasTool.eyedropper => CanvasTool.eyedropper,
+  CanvasTool.fill || CanvasTool.fillShape => CanvasTool.fill,
+  CanvasTool.guide => CanvasTool.guide,
+  CanvasTool.select => CanvasTool.select,
+  // MOVE is its own button even though it drags what SELECT traced: its
+  // three modes are settings, not tiles (see [canvasToolTransforms]).
+  CanvasTool.move => CanvasTool.move,
+  CanvasTool.cut || CanvasTool.cutStamp => CanvasTool.cut,
+};
+
 /// Editor-session state for the active brush tool options.
 ///
 /// This is UI/tool state owned by the editor session. It is intentionally

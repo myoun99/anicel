@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
+import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 
@@ -51,6 +52,7 @@ void main() {
         CanvasTool tool, {
         CanvasShapeKind? shape,
         BrushBlendMode? stampBlend,
+        double? stampOpacity,
       })
       setTool,
     })
@@ -72,6 +74,7 @@ void main() {
       CanvasTool next, {
       CanvasShapeKind? shape,
       BrushBlendMode? stampBlend,
+      double? stampOpacity,
     }) async {
       // Both verbs get the same outline: a test picks one shape and the
       // panel reads whichever field the active verb owns.
@@ -89,6 +92,7 @@ void main() {
                 selectShape: outline,
                 cutShape: outline,
                 cutStampBlendMode: stampBlend,
+                cutStampOpacity: stampOpacity,
               ),
               selectionCommands: commands,
               cutPieceSlot: slot,
@@ -460,6 +464,109 @@ void main() {
           ) ??
           0,
       isNot(0),
+    );
+  });
+
+  testWidgets('paste at origin presses at the STAMP tool\'s opacity', (
+    tester,
+  ) async {
+    // 유저 2026-08-15: "제자리 붙여넣기도 불투명도 반영하도록."
+    //
+    // TP3 gave the stamp an opacity and left this route at a hardcoded
+    // 100%, on the reading that "original position" and "original picture"
+    // are one idea. They are — but that idea is the POSE (size and flip),
+    // which decides WHICH picture lands. Opacity decides how hard it
+    // presses, and that belongs to the tool on every route it puts pixels
+    // down through.
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
+    await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+    final piece = env.slot.piece!;
+    final x = piece.originLeft + piece.image.width ~/ 2;
+    final y = piece.originTop + piece.image.height ~/ 2;
+
+    int alphaAt() =>
+        (surfacePixelRgba(
+              env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+              x,
+              y,
+            ) ??
+            0) &
+        0xFF;
+
+    // The bar the piece came from, wiped, so the paste lands on nothing and
+    // the alpha that comes back is the stamp's own.
+    //
+    // 🚨`erase` rides the DAB, not the blend mode — passing the mode alone
+    // PAINTS the dabs instead of clearing with them, which is the trap the
+    // three stamp routes share one funnel to avoid. Here it would have made
+    // the reading below meaningless.
+    Future<void> wipe() async {
+      env.coordinator.commitSourceStroke(
+        sourceDabs: [
+          for (var px = 10; px <= 90; px += 2)
+            dab(px.toDouble(), 40).copyWith(erase: true),
+        ],
+        blendMode: BrushBlendMode.erase,
+      );
+      await tester.pump();
+    }
+
+    await wipe();
+    expect(alphaAt(), 0, reason: 'nothing underneath to confuse the reading');
+
+    await env.setTool(CanvasTool.cutStamp, stampOpacity: 0.5);
+    env.slot.pasteAtOrigin();
+    await tester.pump();
+    final half = alphaAt();
+    expect(half, greaterThan(0), reason: 'it still lands');
+
+    await wipe();
+    await env.setTool(CanvasTool.cutStamp, stampOpacity: 1);
+    env.slot.pasteAtOrigin();
+    await tester.pump();
+    final full = alphaAt();
+
+    expect(full, greaterThan(half), reason: 'the setting is read, not ignored');
+    expect(
+      half,
+      closeTo(full / 2, 2),
+      reason: 'and it is the number itself, not a fade someone invented',
+    );
+  });
+
+  testWidgets('the cursor preview wears the stamp opacity', (tester) async {
+    // ⛔Not the ghosting the user had removed ("그냥 심플하게 … 프리뷰만
+    // 띄워") — that one was a made-up constant that lied about a stamp
+    // landing at full force. This is the number the click will press with,
+    // so showing it is the same rule that removed the fade.
+    final env = await pumpPanel(tester, tool: CanvasTool.cutStamp);
+    await env.setTool(CanvasTool.cutStamp, stampOpacity: 0.4);
+    env.slot.hold(
+      CutPiece(
+        image: BrushStampImage(
+          id: 'p',
+          width: 20,
+          height: 12,
+          rgba: Uint8List(20 * 12 * 4)..fillRange(0, 20 * 12 * 4, 200),
+        ),
+        originLeft: 4,
+        originTop: 6,
+      ),
+    );
+    await tester.pump();
+
+    final origin = tester.getTopLeft(find.byType(BrushCanvasPanel));
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await gesture.addPointer(location: origin + const Offset(120, 160));
+    await tester.pump();
+    await gesture.moveTo(origin + const Offset(120, 160));
+    await tester.pump();
+
+    expect(
+      tester
+          .widget<CutPieceCursorOverlay>(find.byType(CutPieceCursorOverlay))
+          .opacity,
+      0.4,
     );
   });
 

@@ -1056,6 +1056,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                   position: position,
                   viewport: _viewport,
                   piece: piece,
+                  // The same field the three commit routes read, so the
+                  // ghost under the pointer is the strength the click
+                  // will land at rather than a full-force stand-in.
+                  opacity: widget.brushToolState.cutStampOpacity,
                 );
               },
             );
@@ -2473,7 +2477,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           _commitStampDabs([buildCutStampDab(
             piece: piece,
             center: point,
-            opacity: widget.brushToolState.activeOpacity,
+            opacity: widget.brushToolState.cutStampOpacity,
           )]);
           // A press is also the start of a possible drag, and the drag
           // measures its spacing from the stamp that just landed.
@@ -2634,7 +2638,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         buildCutStampDab(
           piece: piece,
           center: center,
-          opacity: widget.brushToolState.activeOpacity,
+          opacity: widget.brushToolState.cutStampOpacity,
         ),
       ]);
     }
@@ -2679,12 +2683,22 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// than a layer row (유저 확정), which is precisely what `color`/`behind`
   /// are — so the pair collapsed into the list every other tool already
   /// has, and every other mode came along with them.
+  ///
+  /// It presses at the STAMP's opacity like every other stamp route (유저
+  /// 2026-08-15). Read from the stamp's own field rather than from
+  /// [BrushToolState.activeOpacity]: today the button only exists inside the
+  /// stamp tile so the two are the same number, but a shortcut added later
+  /// would reach this from the brush — and then "active" would mean the 40%
+  /// left over from shading, which is exactly the leak TP1's per-tool fields
+  /// were built to make impossible.
   void pasteCutPieceAtOrigin() {
     final piece = widget.cutPieceSlot?.piece;
     if (piece == null || widget._editableCoordinator == null) {
       return;
     }
-    _commitStampDabs([buildCutPasteDab(piece)]);
+    _commitStampDabs([
+      buildCutPasteDab(piece, opacity: widget.brushToolState.cutStampOpacity),
+    ]);
   }
 
   /// Lands stamp dabs with the stamp tool's own blend.

@@ -158,7 +158,7 @@ class EditorWorkspace extends StatefulWidget {
   /// The active-tool notifier, owned by the shell (HomePage) so the tool
   /// shortcuts (B/E) and the workspace panels drive one state. Null keeps
   /// a workspace-local notifier (focused widget tests).
-  final ValueNotifier<BrushToolState>? brushTool;
+  final PaintToolStateNotifier? brushTool;
 
   /// The BACK colour slot and the palette, owned by the shell alongside the
   /// tool state — the colour picker is a rail panel now (유저 확정: 컬러
@@ -560,7 +560,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// canvas tab re-docks.
   final GlobalKey _canvasAreaKey = GlobalKey();
 
-  late final ValueNotifier<BrushToolState> _brushTool =
+  /// The active-tool notifier. Typed as the SUBCLASS because the rail asks
+  /// it which tile to re-enter a tool group on (`railEntry`), and that
+  /// memory has to be the same one the shell's tool shortcuts read.
+  late final PaintToolStateNotifier _brushTool =
       widget.brushTool ?? PaintToolStateNotifier(BrushToolState.defaults);
 
   /// The one piece the cut tool is holding.
@@ -1992,6 +1995,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                   tool: toolState.tool,
                   onToolChanged: (tool) =>
                       _brushTool.value = _brushTool.value.copyWith(tool: tool),
+                  // Asked at PRESS time, not build time: the memory is the
+                  // notifier's, not state this builder is sliced on.
+                  groupEntry: _brushTool.railEntry,
                   // The between-strokes group. Its own listeners, so undoing
                   // does not rebuild the tool column above it.
                   historyControls: _railHistoryControls(),

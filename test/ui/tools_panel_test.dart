@@ -6,12 +6,14 @@ import 'package:anicel/src/ui/brush/tools_panel.dart';
 Widget _panel({
   CanvasTool tool = CanvasTool.brush,
   ValueChanged<CanvasTool>? onToolChanged,
+  CanvasTool Function(CanvasTool group)? groupEntry,
 }) {
   return MaterialApp(
     home: Scaffold(
       body: ToolsPanel(
         tool: tool,
         onToolChanged: onToolChanged ?? (_) {},
+        groupEntry: groupEntry,
       ),
     ),
   );
@@ -217,6 +219,43 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey<String>('tool-fill-button')));
       expect(picked, [CanvasTool.fill, CanvasTool.fillShape]);
+    });
+
+    testWidgets('a multi-tile button re-enters on the tile it was left on', (
+      tester,
+    ) async {
+      // 유저 2026-08-15: "필 툴은 아직도 다른 툴 이동하면 모드 선택한게
+      // 초기화됨. 도대체 왜 다른거랑 공통로직안할까?" — the button asks its
+      // group's memory instead of carrying a rule per button, so the fill
+      // and the cut answer the same way and a third group would too.
+      final picked = <CanvasTool>[];
+      const memory = <CanvasTool, CanvasTool>{
+        CanvasTool.fill: CanvasTool.fillShape,
+        CanvasTool.cut: CanvasTool.cutStamp,
+      };
+      await tester.pumpWidget(
+        _panel(
+          tool: CanvasTool.brush,
+          onToolChanged: picked.add,
+          groupEntry: (group) => memory[group] ?? group,
+        ),
+      );
+
+      await tester.tap(find.byKey(const ValueKey<String>('tool-fill-button')));
+      await tester.tap(find.byKey(const ValueKey<String>('tool-cut-button')));
+      expect(picked, [CanvasTool.fillShape, CanvasTool.cutStamp]);
+
+      // A group with nothing remembered still lands on its default tile.
+      picked.clear();
+      await tester.pumpWidget(
+        _panel(
+          tool: CanvasTool.brush,
+          onToolChanged: picked.add,
+          groupEntry: (group) => group,
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey<String>('tool-fill-button')));
+      expect(picked, [CanvasTool.fill]);
     });
 
     testWidgets('the rail never names a SHAPE', (tester) async {

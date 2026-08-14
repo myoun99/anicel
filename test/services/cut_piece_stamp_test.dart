@@ -121,6 +121,30 @@ void main() {
     });
   });
 
+  group('the paste-at-origin dab', () {
+    test('lands unposed at the cut coordinates', () {
+      // The POSE is what "original picture" means, so it is deliberately
+      // not applied: a paste at 200% and mirrored would reproduce nothing.
+      final dab = buildCutPasteDab(
+        _piece(flipHorizontal: true, scalePercent: 200),
+      );
+      expect(dab.stamp!.width, 4, reason: 'source size, not the posed size');
+      // First row unmirrored: 1,2,3,4.
+      expect(dab.stamp!.rgba[0], 1);
+      expect(dab.center.x, 22, reason: 'origin 20 + half the source width');
+      expect(dab.center.y, 32, reason: 'origin 30 + half the source height');
+    });
+
+    test('but it DOES take the opacity (유저 2026-08-15)', () {
+      // "제자리 붙여넣기도 불투명도 반영하도록." Opacity is not part of the
+      // pose — it says how hard the stamp presses, not which picture lands
+      // — so grouping it with the flips was the mistake. Asking for nothing
+      // still means 100%, which is what "put it back exactly" needs.
+      expect(buildCutPasteDab(_piece()).opacity, 1);
+      expect(buildCutPasteDab(_piece(), opacity: 0.35).opacity, 0.35);
+    });
+  });
+
   group('drag spacing', () {
     test('a drag shorter than the piece lays no extra stamps', () {
       final centers = cutStampCentersAlong(

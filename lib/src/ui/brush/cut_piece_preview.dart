@@ -107,7 +107,9 @@ class _CutPieceImageHostState extends State<CutPieceImageHost> {
 /// Whether the SCALE is honoured is the caller's business: inside a fixed
 /// panel box a percentage cannot show and the panel prints the number
 /// beside it, while the cursor preview is the opposite case (there the
-/// footprint is the whole question).
+/// footprint is the whole question). [opacity] follows the same split: it
+/// is the stamp's PRESSURE, so the preview that stands for a landing wants
+/// it and the panel thumbnail — which stands for what is HELD — does not.
 ///
 /// NEAREST sampling, always. The stamp lands through `ResampleMode.pick`
 /// (2치 보존) and the canvas draws its own tiles with `FilterQuality.none`,
@@ -117,8 +119,9 @@ void paintCutPiece(
   Canvas canvas,
   Rect target,
   CutPiece piece,
-  ui.Image? image,
-) {
+  ui.Image? image, {
+  double opacity = 1,
+}) {
   if (image == null || target.isEmpty) {
     return;
   }
@@ -139,9 +142,13 @@ void paintCutPiece(
     drawHeight,
   );
 
+  // The paint's ALPHA modulates the image — the same one line every other
+  // faded image in this app is drawn with (`drawPosedLayerImage`), so a
+  // half-strength stamp previews the way a half-strength layer composites.
   final paint = Paint()
     ..filterQuality = FilterQuality.none
-    ..isAntiAlias = false;
+    ..isAntiAlias = false
+    ..color = const Color(0xFF000000).withValues(alpha: opacity.clamp(0, 1));
   if (!piece.flipHorizontal && !piece.flipVertical) {
     canvas.drawImageRect(
       image,
@@ -240,12 +247,17 @@ class _CutPiecePreviewPainter extends CustomPainter {
 /// less: it puts down a whole drawing rather than a dot, and without this
 /// the only way to find out where it goes is to drop it and undo.
 ///
-/// Unlike the panel thumbnail this DOES scale, because the footprint is the
-/// question being asked.
+/// Unlike the panel thumbnail this DOES scale, and it wears the stamp's
+/// [opacity], because both are the footprint — the question being asked.
 ///
-/// ⛔It draws the piece and nothing else — no fade, no outline. Both were
-/// here briefly and the user removed them: *"그냥 심플하게 진짜 그냥
-/// 아무것도 안 하고 프리뷰만 띄워."* Same note as
+/// ⛔It still draws the piece and nothing else — no outline, and no fade of
+/// its OWN. A constant ghosting was here briefly and the user removed it:
+/// *"그냥 심플하게 진짜 그냥 아무것도 안 하고 프리뷰만 띄워."* [opacity] is
+/// not that fade coming back: that one was decoration invented here and it
+/// LIED, showing a made-up strength for a stamp that would land at full
+/// force. This one is the number the tool will actually press with, so
+/// honouring it is the same rule that removed the fade — show what would
+/// land, and nothing else. Same note as
 /// [[tool-settings-panel-convention]] — do not decorate this.
 class CutPieceCursorOverlay extends StatelessWidget {
   const CutPieceCursorOverlay({
@@ -253,12 +265,16 @@ class CutPieceCursorOverlay extends StatelessWidget {
     required this.position,
     required this.viewport,
     required this.piece,
+    this.opacity = 1,
   });
 
   /// Pointer position in viewport (panel-local) coordinates.
   final Offset position;
   final CanvasViewport viewport;
   final CutPiece piece;
+
+  /// The stamp tool's opacity — what a click would press with.
+  final double opacity;
 
   @override
   Widget build(BuildContext context) {
@@ -285,7 +301,11 @@ class CutPieceCursorOverlay extends StatelessWidget {
             piece: piece,
             builder: (context, image) => CustomPaint(
               key: const ValueKey<String>('cut-piece-cursor-overlay'),
-              painter: _CutPieceCursorPainter(piece: piece, image: image),
+              painter: _CutPieceCursorPainter(
+                piece: piece,
+                image: image,
+                opacity: opacity,
+              ),
               child: const SizedBox.expand(),
             ),
           ),
@@ -296,17 +316,23 @@ class CutPieceCursorOverlay extends StatelessWidget {
 }
 
 class _CutPieceCursorPainter extends CustomPainter {
-  const _CutPieceCursorPainter({required this.piece, required this.image});
+  const _CutPieceCursorPainter({
+    required this.piece,
+    required this.image,
+    required this.opacity,
+  });
 
   final CutPiece piece;
   final ui.Image? image;
+  final double opacity;
 
   @override
   void paint(Canvas canvas, Size size) =>
-      paintCutPiece(canvas, Offset.zero & size, piece, image);
+      paintCutPiece(canvas, Offset.zero & size, piece, image, opacity: opacity);
 
   @override
   bool shouldRepaint(_CutPieceCursorPainter oldDelegate) =>
       !identical(oldDelegate.piece, piece) ||
-      !identical(oldDelegate.image, image);
+      !identical(oldDelegate.image, image) ||
+      oldDelegate.opacity != opacity;
 }
