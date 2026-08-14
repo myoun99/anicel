@@ -86,7 +86,14 @@ import 'dart:io';
 ///   comes out of the same multiply-add on the same operands rather than
 ///   out of an origin folded into `c`, and folding is where a position
 ///   sitting exactly on a pixel boundary rounds the other way.
-const int kQaEngineAbiVersion = 26;
+///
+/// - v27: `qa_video_decode_*` — the export path's mirror. A movie was the
+///   one source that could not answer "the picture at frame N", which is
+///   the question every media surface in this app is built on. Windows
+///   reads through Media Foundation's Source Reader; the other platforms
+///   answer `qa_video_decode_supported() == 0` until their reader is
+///   written on a device that can verify it.
+const int kQaEngineAbiVersion = 27;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///
