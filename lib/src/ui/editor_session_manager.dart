@@ -15918,8 +15918,25 @@ class EditorSessionManager extends ChangeNotifier {
   /// quiet-crossing drag) — so consumers outside the scrub-gated display
   /// path must not read a true here as "certainly between cuts" until the
   /// release resolves it into a selection or a real gap parking.
-  bool get editingPlayheadInGap =>
-      _gapGlobalFrame != null || trackFrameAxis().isGap(editingGlobalFrame);
+  /// 🚨★★★ T12 — A GAP PARKING IS THE ONLY WAY TO BE IN A GAP.
+  ///
+  /// This used to also ask `trackFrameAxis().isGap(editingGlobalFrame)`, and
+  /// that term was DEAD CODE only because the global frame was clamped into
+  /// the cut: a clamped frame is inside its own cut by construction, so the
+  /// question could never come back true. Unclamping woke it up, and it
+  /// immediately said the wrong thing — standing on frame 31 of a 24-frame
+  /// cut lands on a global the axis calls a gap, so the canvas dropped its
+  /// paper and its layers.
+  ///
+  /// ⛔That is precisely the law's negation: 「컷길이 넘어서도 **공간은 항상
+  /// 존재하고 항상 보인다**」. If a cut is active you are standing IN it —
+  /// anywhere in it, past its end line included. Only a global seek that
+  /// parked with no cut is a gap, and [_gapGlobalFrame] is exactly that
+  /// state, held explicitly rather than inferred.
+  ///
+  /// ⚠️This is the sweep the getter's own doc promised whoever unclamped:
+  /// the term did not need updating, it needed removing.
+  bool get editingPlayheadInGap => _gapGlobalFrame != null;
 
   /// The gap parking's exact global frame, or null when the playhead sits
   /// on a cut. Cheap field read — per-tick consumers (the storyboard

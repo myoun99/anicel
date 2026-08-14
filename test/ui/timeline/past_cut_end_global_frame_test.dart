@@ -34,6 +34,25 @@ void main() {
     );
   });
 
+  /// 🚨This is the half the unclamp nearly broke, and the reason the sweep
+  /// the old doc comment demanded was not optional.
+  ///
+  /// `editingPlayheadInGap` also asked `axis.isGap(editingGlobalFrame)`. That
+  /// term was DEAD under clamping — a clamped frame is inside its own cut by
+  /// construction — so unclamping woke it up, and it immediately answered
+  /// TRUE past the end line. The canvas dropped its paper and its layers,
+  /// which is the exact negation of 「컷길이 넘어서도 공간은 항상 존재하고
+  /// 항상 보인다」. A gap PARKING is the only way to be in a gap.
+  test('past the end line is not a gap — a cut is active, so you are in it', () {
+    final session = _session(duration: 24);
+    addTearDown(session.dispose);
+
+    session.selectFrameIndex(31);
+
+    expect(session.activeCutId, isNotNull);
+    expect(session.editingPlayheadInGap, isFalse);
+  });
+
   test('the second cut is still reached by ITS own start, not by the '
       'first cut spilling into it', () {
     // Two 10-frame cuts: cut-b owns globals 10..19. Standing at local 15 of
