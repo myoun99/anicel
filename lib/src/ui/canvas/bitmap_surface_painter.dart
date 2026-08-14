@@ -98,6 +98,22 @@ class BitmapSurfacePainter extends CustomPainter {
     canvas.restore();
   }
 
+  /// Whether everything this painter draws can be LOCATED from the state it
+  /// publishes — [surface]'s tiles, their decoded images, and the overlay's.
+  ///
+  /// 🚨★★★This exists so a cache can ask before trusting itself. (v)'s
+  /// composite buffer holds the live surface inside it, which is only sound
+  /// while it can tell WHEN the live surface changed. It works that out
+  /// from published state — and a subclass drawing from anything else (a
+  /// test double with a mutable colour, most obviously) would be kept and
+  /// would then freeze mid-stroke.
+  ///
+  /// ⛔The honest default is not "true", it is "true for what THIS class
+  /// draws". An override of [paintContentInto] that reads state this class
+  /// does not publish MUST override this to false, and false is never a
+  /// bug: it costs a re-raster and keeps the picture right.
+  bool get drawsOnlyFromPublishedState => true;
+
   /// The surface + live overlay, onto a canvas the CALLER has already
   /// viewport-transformed and clipped to [pasteboardRect].
   ///

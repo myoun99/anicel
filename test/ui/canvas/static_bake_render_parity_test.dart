@@ -444,6 +444,15 @@ class _SwappableSurface extends BitmapSurfacePainter {
 
   Color ink = const Color(0xFFFF0000);
 
+  /// 🚨This double draws from a field it does not publish, so nothing that
+  /// inspects a surface painter can tell WHEN — let alone where — it
+  /// changed. Saying so is not a concession to a cache: it is the honest
+  /// answer, and a cache that believed otherwise would serve this stub's
+  /// first frame for the rest of the stroke. That is exactly what the two
+  /// tests below catch.
+  @override
+  bool get drawsOnlyFromPublishedState => false;
+
   @override
   void paintContentInto(Canvas canvas) {
     canvas.drawRect(

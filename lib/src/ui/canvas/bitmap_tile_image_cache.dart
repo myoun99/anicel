@@ -30,6 +30,30 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// state: it holds no editing data and only accelerates repaints.
   static final BitmapTileImageCache instance = BitmapTileImageCache();
 
+  /// Bumped whenever this cache tells its listeners something moved — one
+  /// int that answers "did anything I hold change since you last looked".
+  ///
+  /// 🚨★★★A CACHE OVER THIS MUST ASK ONE CHEAP QUESTION, NOT N. (v)'s
+  /// composite buffer needs to know when the pixels under it moved, and a
+  /// decode ARRIVING is the everyday case — the bytes were always there,
+  /// the pixels on screen were not. Walking every tile and hashing its
+  /// image identity answers that, and costs a lookup per tile PER PAINT for
+  /// a cache that may not even hit: measured, that walk never produced a
+  /// stable key in a widget test, so the buffer paid the walk and missed
+  /// anyway ([[cache-what-can-say-where-it-changed]]).
+  ///
+  /// ⛔It rides [notifyListeners] because those ARE the moments this cache
+  /// admits it changed. Anything that moves an image without notifying is
+  /// already broken for every listener, not just for this counter.
+  int get revision => _revision;
+  int _revision = 0;
+
+  @override
+  void notifyListeners() {
+    _revision += 1;
+    super.notifyListeners();
+  }
+
   final Expando<ui.Image> _images = Expando<ui.Image>('bitmapTileImages');
   final Expando<Object> _inFlight = Expando<Object>('bitmapTileImageDecodes');
   static const Object _inFlightMarker = Object();
