@@ -3277,6 +3277,28 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                         'rail-scroll-${right ? 'right' : 'left'}',
                       ),
                       controller: controller,
+                      // 🚨★★ THE RAIL OWNS ITS PANELS, NOT ITS COLUMN
+                      // (유저 2026-08-15 #1: 「작은거 열면 밑에 공간 남는데
+                      // 그 공간에서 터치가 안먹힘」 — 그리기도 안 됐다).
+                      //
+                      // The column is laid out full height whatever is open
+                      // on it, and it has to be: R6-⑤ pinned ONE tree shape
+                      // so a live splitter drag cannot rebuild itself away.
+                      // But a scroller's default `hitTestBehavior` is
+                      // `opaque`, so that full-height rectangle took every
+                      // pointer that entered it — and the floor is
+                      // full-bleed underneath, so the pasteboard below a
+                      // short panel was a pane of glass over live canvas.
+                      // One hit test stopping stops every verb at once:
+                      // the tap, the stroke, the hover, the wheel.
+                      //
+                      // Deferring to the child says the true thing instead
+                      // — the rail owns exactly the rectangles its panels
+                      // occupy — and it says it without changing the tree.
+                      // ⚠️Nothing is lost when the rail DOES scroll: then
+                      // the content fills the viewport and there is no
+                      // empty space to have dragged in.
+                      hitTestBehavior: HitTestBehavior.deferToChild,
                       // Top-aligned when it does not fill, which is what the
                       // `Align` used to do on the non-scrolling branch.
                       child: Align(
