@@ -257,11 +257,9 @@ void main() {
     expect(status!.globalFrame, inInclusiveRange(0, 9));
     expect(status.ended, isFalse);
 
-    controller.pause();
-    expect(await _waitFor(() => !device.isPlaying), isTrue);
-
-    controller.resume();
-    expect(await _waitFor(() => device.isPlaying), isTrue);
+    // ⛔T28: the pause/resume round-trip is gone with the state it exercised.
+    // What it was really checking — the device follows the controller in and
+    // out of playback — is the play/stop pair, which this still covers.
     controller.stop();
     expect(await _waitFor(() => !device.isPlaying), isTrue);
     sync.dispose();

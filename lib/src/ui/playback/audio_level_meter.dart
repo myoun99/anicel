@@ -75,10 +75,12 @@ class _MeterPainter extends CustomPainter {
       );
     }
 
-    canvas.drawRect(
-      Offset.zero & size,
-      Paint()..color = const Color(0x33000000),
-    );
+    // 🚨T29 — ⛔NO TROUGH. 유저 2026-08-13: 「드롭율 왼쪽에 **이상한 바탕색?
+    // 배경? 사각형 패딩같은거** 있는데 삭제」. This was it: a 6×24 grey
+    // rectangle painted whether or not there was a level to show, sitting
+    // right beside the drop readout and reading as stray chrome. The BARS
+    // are the meter; a silent one now shows nothing, which is what the
+    // complaint asked for.
     bar(left, 0);
     bar(right, barWidth + 1);
   }

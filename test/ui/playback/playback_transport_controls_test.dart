@@ -77,35 +77,53 @@ void main() {
     expect(c.scope, PlaybackScope.activeCut);
     expect(c.position!.globalFrameIndex, 2);
 
-    // The button now pauses.
+    // 🚨T28: the second press STOPS. It used to pause — 「재생, 일시정지
+    // 상태의 필요성을 못느끼겠음. 삭제하고 재생/정지 상태만 남김」.
     await tester.tap(
       find.byKey(const ValueKey<String>('playback-play-button')),
     );
     await tester.pump();
     expect(c.isPlaying, isFalse);
-    expect(c.isActive, isTrue);
-
-    c.stop();
+    expect(c.isActive, isFalse, reason: 'stopped, not parked in a third state');
   });
 
-  testWidgets('stop is enabled only while this scope is active', (
+  /// 🚨T28 — this was 'stop is enabled only while this scope is active'.
+  /// ⛔The separate `playback-stop-button` is GONE: with two states and one
+  /// toggling button it was a second door to what the play button already
+  /// does, dimmed in exactly the case where the play button reads 「Play」.
+  ///
+  /// 🚨T28-b 「버튼은 기본적으로 **동작중이면 강조색으로** 바꾸도록」 — so the
+  /// one button also has to SAY which of the two states it is in.
+  testWidgets('the one button says which state it is in, and shows it', (
     tester,
   ) async {
     final c = controller();
     addTearDown(c.dispose);
     await pumpControls(tester, controller: c);
 
-    IconButton stopButton() => tester.widget<IconButton>(
+    expect(
       find.byKey(const ValueKey<String>('playback-stop-button')),
+      findsNothing,
     );
-    expect(stopButton().onPressed, isNull);
+
+    IconButton playButton() => tester.widget<IconButton>(
+      find.byKey(const ValueKey<String>('playback-play-button')),
+    );
+    expect(playButton().isSelected, isFalse);
+    expect(playButton().tooltip, 'Play');
 
     c.play(scope: PlaybackScope.activeCut);
     await tester.pump();
-    expect(stopButton().onPressed, isNotNull);
+
+    expect(
+      playButton().isSelected,
+      isTrue,
+      reason: '동작중이면 강조색 — AppIconButton accents the glyph on this',
+    );
+    expect(playButton().tooltip, 'Stop');
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('playback-stop-button')),
+      find.byKey(const ValueKey<String>('playback-play-button')),
     );
     await tester.pump();
     expect(c.isActive, isFalse);

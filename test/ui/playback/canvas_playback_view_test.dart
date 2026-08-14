@@ -389,7 +389,11 @@ void main() {
     f.composites.dispose();
   });
 
-  testWidgets('pause then resume keeps ticking through the view vsync', (
+  /// ⛔T28 — this was 'pause then resume keeps ticking through the view
+  /// vsync'. Pause is gone, but the hazard it caught is not: the ticker is
+  /// recreated on every entry into playback, and a single-ticker provider
+  /// throws the second time. Stop-then-play is that same round trip.
+  testWidgets('stop then play keeps ticking through the view vsync', (
     tester,
   ) async {
     final f = fixture();
@@ -399,16 +403,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(f.controller.position!.localFrameIndex, 1);
 
-    f.controller.pause();
+    f.controller.stop();
     await tester.pump();
-    // Resume recreates the ticker: this asserted with a single-ticker
-    // provider and playback stayed dead after pausing.
-    f.controller.resume();
+    f.controller.play(scope: PlaybackScope.activeCut);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(f.controller.isPlaying, isTrue);
-    expect(f.controller.position!.localFrameIndex, 0, reason: '2-frame wrap');
+    expect(f.controller.position!.localFrameIndex, 1);
     expect(tester.takeException(), isNull);
 
     f.controller.stop();

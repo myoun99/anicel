@@ -6,6 +6,7 @@ import '../../models/playback_quality.dart';
 import '../../services/persistence/app_documents.dart' show AppStorage;
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
+import '../widgets/app_icon_button.dart';
 import 'audio_level_meter.dart';
 import 'audio_recorder.dart' show VoiceRecordStartResult;
 import 'canvas_playback_controller.dart';
@@ -37,6 +38,12 @@ Future<void> toggleVoiceRecordingWithFeedback(
     messenger?.showSnackBar(SnackBar(content: Text(message)));
   }
 }
+
+/// 🚨T29 — the drop readout's fixed slot. Wide enough for a four-digit
+/// count at `labelSmall`; the text right-aligns inside it, so the digits
+/// grow leftward into space that was already reserved and the transport
+/// buttons never move.
+const double _dropSlotWidth = 72;
 
 /// Play/stop, loop mode and quality transport row.
 ///
@@ -107,6 +114,39 @@ class PlaybackTransportControls extends StatelessWidget {
           key: ValueKey<String>('playback-transport-${scope.name}'),
           mainAxisSize: MainAxisSize.min,
           children: [
+            // 🚨T29 — the drop readout leads the row, in a FIXED slot.
+            //
+            // 유저 2026-08-13: 「지금 재생버튼 오른쪽에, 오른쪽정렬로있어서
+            // **글자 생길때마다 재생버튼이 좌우로 왔다갔다함**. 그러니까
+            // 해당 영역 **재생버튼쪽 영역의 제일 왼쪽에 붙여두자.
+            // 오른쪽정렬인상태는 그대로지만 위치만**」
+            //
+            // ★The root is a VARIABLE-width thing sharing a flow with fixed
+            // ones. Moving it is only half the fix — first in a `min` row it
+            // would still shove the buttons as its digits appear. The slot
+            // is a fixed width with the text right-aligned INSIDE it, so
+            // the count grows leftward into its own space and no button
+            // ever moves. That is what keeping 「오른쪽정렬」 buys.
+            SizedBox(
+              width: _dropSlotWidth,
+              child: controlsThisScope && controller.droppedFrames > 0
+                  ? Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: Text(
+                        '${controller.droppedFrames} dropped',
+                        key: const ValueKey<String>(
+                          'playback-dropped-indicator',
+                        ),
+                        textAlign: TextAlign.right,
+                        maxLines: 1,
+                        overflow: TextOverflow.clip,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
             IconButton(
               key: const ValueKey<String>('playback-skip-to-start-button'),
               tooltip: AppText.strings.playbackToStart,
@@ -121,17 +161,23 @@ class PlaybackTransportControls extends StatelessWidget {
                 }
               },
             ),
-            IconButton(
-              key: const ValueKey<String>('playback-play-button'),
-              tooltip: isPlayingHere ? 'Pause' : 'Play',
-              iconSize: 18,
-              visualDensity: VisualDensity.compact,
-              icon: Icon(isPlayingHere ? Icons.pause : Icons.play_arrow),
+            // 🚨T28 — ONE button: play, or stop. 「재생, 일시정지상태의
+            // 필요성을 못느끼겠음. 삭제하고 재생/정지 상태만 남김」.
+            //
+            // 🚨T28-b 「버튼은 기본적으로 **동작중이면 강조색으로** 바꾸도록」 —
+            // and the app already had that law: [AppIconButton] accents the
+            // glyph on `isSelected`. This row was the one place that had not
+            // joined it, hand-rolling `IconButton` + `selectedIcon` with a
+            // theme colour of its own. Nothing here is a new rule; three
+            // buttons stopped being exceptions to an old one.
+            AppIconButton(
+              keyValue: 'playback-play-button',
+              tooltip: isPlayingHere ? 'Stop' : 'Play',
+              isSelected: isPlayingHere,
+              icon: Icon(isPlayingHere ? Icons.stop : Icons.play_arrow),
               onPressed: () {
                 if (isPlayingHere) {
-                  controller.pause();
-                } else if (controlsThisScope) {
-                  controller.resume();
+                  controller.stop();
                 } else {
                   controller.play(
                     scope: scope,
@@ -140,26 +186,12 @@ class PlaybackTransportControls extends StatelessWidget {
                 }
               },
             ),
-            IconButton(
-              key: const ValueKey<String>('playback-stop-button'),
-              tooltip: 'Stop',
-              iconSize: 18,
-              visualDensity: VisualDensity.compact,
-              icon: const Icon(Icons.stop),
-              onPressed: controlsThisScope ? controller.stop : null,
-            ),
-            IconButton(
-              key: const ValueKey<String>('playback-loop-toggle'),
+            AppIconButton(
+              keyValue: 'playback-loop-toggle',
               tooltip: controller.loopMode == PlaybackLoopMode.loop
                   ? 'Loop (click for play once)'
                   : 'Play once (click for loop)',
-              iconSize: 18,
-              visualDensity: VisualDensity.compact,
               isSelected: controller.loopMode == PlaybackLoopMode.loop,
-              selectedIcon: Icon(
-                Icons.repeat,
-                color: Theme.of(context).colorScheme.primary,
-              ),
               icon: const Icon(Icons.repeat),
               onPressed: () {
                 controller.loopMode =
@@ -231,17 +263,9 @@ class PlaybackTransportControls extends StatelessWidget {
                   resolvePeaks: resolveMeterPeaks!,
                 ),
               ),
-            if (controlsThisScope && controller.droppedFrames > 0)
-              Padding(
-                padding: const EdgeInsets.only(left: 6),
-                child: Text(
-                  '${controller.droppedFrames} dropped',
-                  key: const ValueKey<String>('playback-dropped-indicator'),
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-                ),
-              ),
+            // ⛔The DROP readout is not here any more — it leads the row
+            // (T29). Trailing a `min`-width row is exactly what made the
+            // buttons move when its digits appeared.
           ],
         );
       },
