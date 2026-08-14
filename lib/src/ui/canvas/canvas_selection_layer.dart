@@ -616,6 +616,47 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   Offset _moveScreenDelta = Offset.zero;
   BitmapSurface? _floatSurface;
 
+  /// The drag so far in WHOLE CANVAS PIXELS — what a move can actually
+  /// land on (TP5).
+  ///
+  /// 🚨The confirm rounds: the stamp lands at
+  /// `(center - size/2).round()` (`bitmap_surface_brush_commit`), so a
+  /// fractional centre snaps at commit time and the artwork stepped by up
+  /// to half a pixel the moment you confirmed — 유저: *"확정하면 그림이
+  /// 미세하게 바뀌거든? 살짝 움직이거나?"*. Invisible at 100% zoom and two
+  /// screen pixels at 400%, which is why it read as "미세".
+  ///
+  /// So the rounding happens HERE, once, and everything that shows or
+  /// commits the move reads this same value: the float, the ants, the
+  /// confirm button and the landing. 유저 확정 A — *"바이트단위로 동일해야
+  /// 하니까"*: a whole-pixel translation is a copy, and the preview is then
+  /// showing the exact bytes the commit will write, at the exact place.
+  ///
+  /// The cost is deliberate: zoomed in, the drag steps by canvas pixels
+  /// instead of gliding. That is the truth about where pixels can go.
+  CanvasPoint get _moveCanvasDelta {
+    final raw = widget.viewport.viewportDeltaToCanvasDelta(
+      dx: _moveScreenDelta.dx,
+      dy: _moveScreenDelta.dy,
+    );
+    return CanvasPoint(
+      x: raw.x.roundToDouble(),
+      y: raw.y.roundToDouble(),
+    );
+  }
+
+  /// [_moveCanvasDelta] back in screen space — for the chrome that is
+  /// positioned in screen coordinates (the ants, the confirm button), so it
+  /// steps with the pixels rather than gliding past them.
+  Offset get _moveChromeOffset {
+    final delta = _moveCanvasDelta;
+    final mapped = widget.viewport.canvasDeltaToViewportDelta(
+      dx: delta.x,
+      dy: delta.y,
+    );
+    return Offset(mapped.x, mapped.y);
+  }
+
   // Ctrl+T free-transform session (P9b): the composite affine, the base
   // box it manipulates (the shape's AABB at session start; its center is
   // the affine pivot) and the per-drag solving context.
@@ -2612,6 +2653,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     final canvasPoint = _toCanvas(event.localPosition);
     var transform = _transform;
+    /// TP4: the press landed inside the box the Move tool is DRAWING, even
+    /// though no session is open yet — which is a grab, whatever the
+    /// selection's own outline says (유저: "변형툴 내부 사각형 안이라면
+    /// 언제든 작동하도록").
+    var insideImplicitBox = false;
     // R17-U 핸들 상시: with the always-on box (Move tool), grabbing a
     // scale/rotate HANDLE promotes the implicit box into a real session
     // on the spot — the lift happens here, at the first interaction.
@@ -2653,7 +2699,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         });
         transform = implicit;
       } else {
-        // Inside/miss: fall through to the ordinary move-drag flow.
+        // Inside/miss: fall through to the ordinary move-drag flow — but
+        // remember WHICH (TP4). "Inside" is the box the user can see, and
+        // the box is the promise: 유저 확정 (변형툴 라운드 ④) already said
+        // 사각형(박스)을 잡아야 해당 기능, while the flow below asked the
+        // REGION instead. A lasso's box has corners the outline does not
+        // fill, and pressing there did nothing at all.
+        insideImplicitBox = handle == _TransformHandle.inside;
         _baseBoxWidth = 0;
         _baseBoxHeight = 0;
       }
@@ -2761,7 +2813,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         setState(() {
           targetShape = _adoptImplicitWholePictureShape(_wholeCanvasShape());
         });
-      } else if (!targetShape.containsPoint(canvasPoint)) {
+      } else if (!targetShape.containsPoint(canvasPoint) &&
+          !insideImplicitBox) {
+        // TP4: inside the drawn box counts as a grab. What MOVES is still
+        // the region's own pixels — the box widened the door, not the
+        // thing being carried through it.
         return;
       }
       final liftShape = targetShape;
@@ -3347,10 +3403,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (_moveScreenDelta == Offset.zero) {
       return;
     }
-    final canvasDelta = widget.viewport.viewportDeltaToCanvasDelta(
-      dx: _moveScreenDelta.dx,
-      dy: _moveScreenDelta.dy,
-    );
+    // Whole canvas pixels (TP5) — the same value the float has been drawn
+    // at all through the drag, so the confirm moves nothing.
+    final canvasDelta = _moveCanvasDelta;
     _commitMove(dx: canvasDelta.x, dy: canvasDelta.y);
   }
 
@@ -3568,10 +3623,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// base's not-yet-paintable tiles, and what has to fill it is whatever the
   /// float shows there AFTER the offset.
   CanvasPoint get _floatDrawCanvasOffset {
-    final dragged = widget.viewport.viewportDeltaToCanvasDelta(
-      dx: _moveScreenDelta.dx,
-      dy: _moveScreenDelta.dy,
-    );
+    final dragged = _moveCanvasDelta;
     final from = _floatSurfaceCentre;
     final to = _pendingLiftStamp?.center ?? _floatHoldCentre;
     if (from == null || to == null) {
@@ -3753,8 +3805,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                   repaint: _ants,
                   viewport: widget.viewport,
                   committedRegion: displayShape,
+                  // TP5: the ants step with the PIXELS, not with the
+                  // pointer — the outline has to be around the thing that
+                  // will land, or the confirm looks like it moved.
                   screenOffset: _dragMode == _DragMode.move
-                      ? _moveScreenDelta
+                      ? _moveChromeOffset
                       : Offset.zero,
                   marqueeShape: _dragMode == _DragMode.marquee
                       ? _marqueeShape()
@@ -3853,7 +3908,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       CanvasPoint(x: bounds.right, y: bounds.top),
     );
     final dragOffset = _dragMode == _DragMode.move
-        ? _moveScreenDelta
+        ? _moveChromeOffset
         : Offset.zero;
     return mapped + dragOffset + const Offset(8, -34);
   }
