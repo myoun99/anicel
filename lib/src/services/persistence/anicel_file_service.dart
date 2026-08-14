@@ -265,8 +265,7 @@ class AnicelFileService {
     required String filePath,
     required String baseFilePath,
     bool Function()? isStale,
-    /// 🚨 Required in practice, though the default keeps the signature
-    /// kind. The overlay's `project.json` WINS OUTRIGHT over the base
+    /// 🚨 The overlay's `project.json` WINS OUTRIGHT over the base
     /// file's on recovery, so anything missing here is missing from the
     /// recovered session — and a recovered session is dirty by
     /// construction, so its first save writes that absence back over the
