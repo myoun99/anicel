@@ -108,12 +108,37 @@ TimelineRowAddress? adjacentDisplayedRow({
 /// Unbound calls are no-ops — the CanvasSelectionCommands idiom.
 class TimelineLayerNavCommands {
   void Function(int direction)? _step;
+  Object? _owner;
 
-  void bind(void Function(int direction) step) {
+  /// 🚨★★★ 유저 #13 (2026-08-14): 「언제부턴가 **화살표 위아래나 플립 위아래로
+  /// 레이어이동이 안먹힘**」 — ★**A HANDLER MAY ONLY BE REMOVED BY WHOEVER
+  /// INSTALLED IT.**
+  ///
+  /// `unbind()` used to clear unconditionally. Whenever the workspace is
+  /// rebuilt in a way that mounts the new State before disposing the old
+  /// one — a panel moving between docks does exactly that — the order is
+  ///
+  ///   old.bind → new.bind → **old.dispose → unbind()**
+  ///
+  /// and that last step nulls the handler the LIVE workspace just
+  /// installed. Nothing throws and nothing logs; the shortcut simply stops
+  /// answering, which is why the report says 「언제부턴가」 instead of naming
+  /// the action that broke it.
+  ///
+  /// ⚠️Two unrelated inputs dying together was the clue: the arrows and the
+  /// flip share no key and no gesture, they share this channel SHAPE. All
+  /// four command channels carried it, so this is one law in four places
+  /// rather than four patches.
+  void bind(Object owner, void Function(int direction) step) {
+    _owner = owner;
     _step = step;
   }
 
-  void unbind() {
+  void unbind(Object owner) {
+    if (!identical(_owner, owner)) {
+      return;
+    }
+    _owner = null;
     _step = null;
   }
 

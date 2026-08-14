@@ -10,20 +10,29 @@ class CanvasViewCommands {
   VoidCallback? _toggleFlipHorizontal;
   VoidCallback? _toggleFlipVertical;
   VoidCallback? _resetRotation;
+  Object? _owner;
 
-  void bind({
+  /// ⚠️Owner-scoped — see `TimelineLayerNavCommands.bind` for the failure
+  /// an unconditional `unbind()` produced (유저 #13, 2026-08-14).
+  void bind(
+    Object owner, {
     required void Function(double degrees) rotateBy,
     required VoidCallback toggleFlipHorizontal,
     VoidCallback? toggleFlipVertical,
     VoidCallback? resetRotation,
   }) {
+    _owner = owner;
     _rotateBy = rotateBy;
     _toggleFlipHorizontal = toggleFlipHorizontal;
     _toggleFlipVertical = toggleFlipVertical;
     _resetRotation = resetRotation;
   }
 
-  void unbind() {
+  void unbind(Object owner) {
+    if (!identical(_owner, owner)) {
+      return;
+    }
+    _owner = null;
     _rotateBy = null;
     _toggleFlipHorizontal = null;
     _toggleFlipVertical = null;

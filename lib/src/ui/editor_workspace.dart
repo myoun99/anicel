@@ -1212,8 +1212,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         _scheduleLayoutSave();
       },
     );
-    widget.layerNav?.bind(_stepDisplayedLayer);
-    widget.flipHud?.bind(_flipHudSnapshot);
+    widget.layerNav?.bind(this, _stepDisplayedLayer);
+    widget.flipHud?.bind(this, _flipHudSnapshot);
     // The viewers follow the PROJECT: seed them from it now, and again
     // whenever a different one is opened under us.
     _syncViewersWithProject();
@@ -1805,8 +1805,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _mainViewer.dispose();
     _subViewer.dispose();
     _draggingTab.dispose();
-    widget.layerNav?.unbind();
-    widget.flipHud?.unbind();
+    widget.layerNav?.unbind(this);
+    widget.flipHud?.unbind(this);
     widget.panelsMenu?.detach();
     _layoutSaveTimer?.cancel();
     _layout.removeListener(_scheduleLayoutSave);

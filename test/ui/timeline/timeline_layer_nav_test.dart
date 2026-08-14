@@ -29,6 +29,8 @@ Layer _layer(
 /// TVP-style. The visual stack is the HORIZONTAL display order: this
 /// model list [a, b, c, s1, cam] renders top-to-bottom as
 /// [cam, s1, c, b, a] (camera section on top, drawing at the bottom).
+final _navOwner = Object();
+
 void main() {
   final stack = [
     _layer('a'),
@@ -219,11 +221,11 @@ void main() {
     final nav = TimelineLayerNavCommands();
     nav.step(1); // Unbound: must not throw.
     final calls = <int>[];
-    nav.bind(calls.add);
+    nav.bind(_navOwner, calls.add);
     nav.step(-1);
     nav.step(1);
     expect(calls, [-1, 1]);
-    nav.unbind();
+    nav.unbind(_navOwner);
     nav.step(1);
     expect(calls, [-1, 1]);
   });

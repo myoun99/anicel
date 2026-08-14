@@ -770,7 +770,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _selectionFloat.dispose();
     _eyedropperHover.dispose();
     _toolCursorHover.dispose();
-    widget.viewCommands?.unbind();
+    widget.viewCommands?.unbind(this);
     super.dispose();
   }
 
@@ -1089,6 +1089,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   void _bindViewCommands() {
     widget.viewCommands?.bind(
+      this,
       rotateBy: _rotateAroundCenter,
       toggleFlipHorizontal: _toggleFlipHorizontal,
       toggleFlipVertical: _toggleFlipVertical,
@@ -1107,7 +1108,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       _readStageColors();
     }
     if (!identical(oldWidget.viewCommands, widget.viewCommands)) {
-      oldWidget.viewCommands?.unbind();
+      oldWidget.viewCommands?.unbind(this);
       _bindViewCommands();
     }
     if (!identical(oldWidget.selectionCommands, widget.selectionCommands)) {

@@ -57,6 +57,7 @@ class FlipHudController extends ChangeNotifier {
   final DateTime Function() _clock;
 
   FlipHudSnapshot Function(FlipHudAxis axis)? _snapshotOf;
+  Object? _owner;
 
   bool _visible = false;
   FlipHudAxis? _axis;
@@ -114,13 +115,30 @@ class FlipHudController extends ChangeNotifier {
   /// The axis is passed in because it decides how much has to be built: a
   /// frame-axis window draws ONE row's blocks, so materialising every
   /// other row's runs would be work nobody looks at.
-  void bind(FlipHudSnapshot Function(FlipHudAxis axis) snapshotOf) {
+  /// ⚠️Owner-scoped, and that is load-bearing rather than tidy — see
+  /// [TimelineLayerNavCommands.bind]. An unconditional `unbind()` let a
+  /// disposing workspace null the handler a freshly mounted one had just
+  /// installed, and THIS channel dying alongside the layer nav is what
+  /// identified the shape (유저 #13: 「화살표 위아래나 **플립 위아래**로」).
+  void bind(
+    Object owner,
+    FlipHudSnapshot Function(FlipHudAxis axis) snapshotOf,
+  ) {
+    _owner = owner;
     _snapshotOf = snapshotOf;
   }
 
-  void unbind() {
+  void unbind(Object owner) {
+    if (!identical(_owner, owner)) {
+      return;
+    }
+    _owner = null;
     _snapshotOf = null;
   }
+
+  /// The snapshot the HUD would show right now; null when nothing is bound.
+  @visibleForTesting
+  FlipHudSnapshot? debugSnapshotFor(FlipHudAxis axis) => _snapshotOf?.call(axis);
 
   /// The axis has locked: show, and remember what we are standing on so
   /// the first real step can tell whether the picture changed. No tick —

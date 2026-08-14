@@ -711,7 +711,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   void didUpdateWidget(covariant CanvasSelectionLayer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.selectionCommands, widget.selectionCommands)) {
-      oldWidget.selectionCommands?.unbind();
+      oldWidget.selectionCommands?.unbind(this);
       oldWidget.selectionCommands?.removeListener(_adoptChannelRegion);
       _region = widget.selectionCommands?.region;
       _shapeNeedsLift = _region != null;
@@ -828,7 +828,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   void dispose() {
     _cancelFloatHold();
     widget.selectionCommands?.removeListener(_adoptChannelRegion);
-    widget.selectionCommands?.unbind();
+    widget.selectionCommands?.unbind(this);
     if (_dragMode != _DragMode.none) {
       _notifyDragActive(false);
     }
@@ -872,6 +872,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   void _bindCommands() {
     widget.selectionCommands?.bind(
+      this,
       hasSelection: () => _hasSelection,
       nudge: _nudge,
       deselect: _deselect,
