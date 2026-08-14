@@ -1,9 +1,16 @@
 /// The .anicel container (P3): ONE self-contained ZIP — `project.json`
-/// (timeline + metadata, with a formatVersion) and `cels/<n>.bin` (baked
-/// tile rasters; deflate does the rest). Drawings live INSIDE the file
-/// (user direction: no scattered sidecars); media stays EXTERNAL
-/// Premiere-style, with save-directory-relative paths recorded so a Drive
-/// folder opened on another machine relinks by itself.
+/// (timeline + metadata, with a formatVersion), `cels/<n>.bin` (baked tile
+/// rasters; deflate does the rest) and `media/<hash>-<name>` (the assets
+/// the project carries).
+///
+/// Drawings AND media live INSIDE the file — user direction, no scattered
+/// sidecars. Which media travels is decided by KIND, not by size: audio,
+/// images and PDFs come in, and video stays a reference, because a
+/// three-gigabyte plate copied into every project is not a thing anyone
+/// asked for. A referenced file keeps a save-directory-relative path so a
+/// Drive folder opened on another machine relinks by itself, and its
+/// security-scoped token rides along in `grants` so the next launch can
+/// still open it.
 library;
 
 import 'dart:convert';

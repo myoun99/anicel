@@ -8426,7 +8426,6 @@ class EditorSessionManager extends ChangeNotifier {
       // nobody opens is not a thing to keep.
       final directory = (_voiceRecordShelfDirectory ??=
           appRecordingsDirectory());
-      const onShelf = true;
       Directory(directory).createSync(recursive: true);
       for (var take = 1; take < 10000; take += 1) {
         final file = File(
@@ -8434,9 +8433,7 @@ class EditorSessionManager extends ChangeNotifier {
         );
         if (!file.existsSync()) {
           file.writeAsBytesSync(bytes);
-          if (onShelf) {
-            _voiceRecordShelfPaths.add(file.path);
-          }
+          _voiceRecordShelfPaths.add(file.path);
           return file.path;
         }
       }
@@ -8446,32 +8443,26 @@ class EditorSessionManager extends ChangeNotifier {
     }
   }
 
-  /// REC1-B2: the FIRST save adopts this session's shelf takes — every
-  /// still-referenced WAV recorded before the project had a home MOVES
-  /// into the new project's `Media/`, and the pool entry plus every clip
-  /// follow via the relink transform, applied OUTSIDE undo history
-  /// (saving is not an edit). Undone takes stay on the shelf. Returns
-  /// the new paths so the caller can refresh conforms once the project
-  /// path is set.
-  List<String> _adoptShelfTakesForSave(String projectFilePath) {
+  /// The FIRST save hands this session's shelf takes over to the project:
+  /// the shelf list clears, and nothing on disk moves.
+  ///
+  /// 🔑 Nothing MOVING is the whole point, and it is why this is no longer
+  /// the "adopt" it used to be. A take was once renamed out of the shelf
+  /// into the project's `Media/` folder, which made that folder the only
+  /// copy of a performance — delete it and the recording is gone, with no
+  /// original anywhere to relink to. The project carries its own audio
+  /// now, so the save absorbs the take from wherever it sits and the shelf
+  /// copy simply stays a file. Closing without saving must not cost a
+  /// recording that cannot be made again.
+  ///
+  /// The list still clears because these takes belong to the project now;
+  /// the shelf is for the ones a session made before it had a home.
+  void _releaseShelfTakesToProject() {
     if (_projectFilePath != null || _voiceRecordShelfPaths.isEmpty) {
-      return const [];
+      return;
     }
-    // Nothing MOVES any more, and that is the whole change.
-    //
-    // A take used to be renamed out of the shelf into the project's
-    // `Media/` folder, which made that folder the only copy of a
-    // performance — delete it and the recording is gone, with no original
-    // anywhere to relink to. The project carries its own audio now, so the
-    // first save absorbs the take from wherever it sits and the shelf copy
-    // simply stays a file, which is what the user asked for: closing
-    // without saving must not cost a recording that cannot be made again.
-    //
-    // The shelf list still clears: these takes belong to the project now,
-    // and the shelf is for the ones a session made before it had a home.
     _voiceRecordShelfPaths.clear();
     _voiceRecordShelfDirectory = null;
-    return const [];
   }
 
   /// One spelling for every path the project records: forward slashes.
@@ -15968,9 +15959,9 @@ class EditorSessionManager extends ChangeNotifier {
     // Captured BEFORE the save moves the project path: a Save As has to
     // retire the sidecars of the file it was saved FROM as well.
     final previousPath = _projectFilePath;
-    // Before serializing: the first save adopts the session's shelf
-    // takes into Media/ so the .anicel carries the adopted paths.
-    final adoptedTakePaths = _adoptShelfTakesForSave(filePath);
+    // Before serializing: the first save takes this session's recordings
+    // off the shelf. Nothing moves on disk — see the verb.
+    _releaseShelfTakesToProject();
     // Resolved against the CURRENT project path, before it moves. On a
     // save-as that makes each source point into the file being left
     // behind, and the writer streams from there into the new one — which
@@ -15998,14 +15989,11 @@ class EditorSessionManager extends ChangeNotifier {
     // A save is the session saying it is worth keeping after all; whatever
     // was discarded before it is not this session's state any more.
     _discardedUnsavedWork = false;
-    if (adoptedTakePaths.isNotEmpty) {
-      // With the project path set, conforms resolve into the new
-      // `.assets` container — refresh the moved takes there.
-      for (final path in adoptedTakePaths) {
-        audioConformStore.invalidate(path);
-      }
-      audioConformStore.warmPaths(adoptedTakePaths);
-    }
+    // No conform refresh here any more. It existed because a take MOVED
+    // into the project on first save, which changed the path a conform is
+    // keyed by; takes stay put now, and the cache is keyed by source
+    // rather than by anything the project owns, so a save moves nothing a
+    // conform depends on.
     if (previousPath != null) {
       ProjectAutosaveService.retireSidecarsFor(previousPath);
     }
