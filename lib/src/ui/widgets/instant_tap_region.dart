@@ -29,6 +29,7 @@ class InstantTapRegion extends StatefulWidget {
     required this.onTap,
     required this.child,
     this.onPressDown,
+    this.onSettledTap,
     this.pressSeeksFor,
     this.travelSlop = 12,
     this.behavior = HitTestBehavior.deferToChild,
@@ -44,6 +45,26 @@ class InstantTapRegion extends StatefulWidget {
   /// because the double-tap recognizer only reports the second tap's
   /// position.
   final void Function(Offset localPosition)? onPressDown;
+
+  /// Fired on the RELEASE, and only when the pointer never travelled past
+  /// [travelSlop] — 「this press turned out to be a tap」.
+  ///
+  /// 🚨T10 needs two different things at two different moments, which is why
+  /// [onTap] alone could not carry it (유저 확정 2026-08-14):
+  ///
+  /// | moment | what happens |
+  /// |---|---|
+  /// | DOWN | the active target moves, and the selection is cleared if the press landed OUTSIDE it |
+  /// | RELEASE, no travel | the selection is cleared — 「클릭하고 떼면 뭐든 비우게」 |
+  ///
+  /// ⛔Clearing on the down unconditionally kills the MOVE drag that starts
+  /// inside a selection, and clearing only on the release leaves a range
+  /// drag that started outside one carrying the old selection all the way —
+  /// and a drag has travel, so that one would never clear at all.
+  ///
+  /// This fires whether or not [onTap] already ran on the down, so a caller
+  /// can use both: the down is the pick, the settled release is the tap.
+  final void Function(Offset localPosition)? onSettledTap;
 
   /// Whether [kind] may act on the DOWN. Defaults to "everything but a
   /// finger"; the timeline passes its own gate, which follows the
@@ -61,9 +82,23 @@ class InstantTapRegion extends StatefulWidget {
 }
 
 class _InstantTapRegionState extends State<InstantTapRegion> {
-  int? _touchPointer;
-  Offset? _touchDownAt;
-  Offset? _touchDownLocal;
+  /// The live primary pointer, tracked for EVERY device now — a pen and a
+  /// mouse used to be forgotten the moment they acted on the down, because
+  /// nothing downstream cared what happened next. [onSettledTap] does.
+  int? _pointer;
+  Offset? _downAt;
+  Offset? _downLocal;
+
+  /// Whether this pointer has left [InstantTapRegion.travelSlop] behind. It
+  /// is remembered rather than acted on, because the two callbacks want it
+  /// at different times: the touch [onTap] is cancelled outright, while
+  /// [onSettledTap] only needs to know at the release.
+  bool _travelled = false;
+
+  /// Whether this pointer's [InstantTapRegion.onTap] already ran on the
+  /// down. The release reads it to decide whether the primary action is
+  /// still owed — a finger's is, a pen's is not.
+  bool _actedOnDown = false;
 
   bool _actsOnDown(PointerDeviceKind kind) =>
       widget.pressSeeksFor?.call(kind) ?? kind != PointerDeviceKind.touch;
@@ -71,10 +106,11 @@ class _InstantTapRegionState extends State<InstantTapRegion> {
   bool _isPrimary(PointerDownEvent event) =>
       event.buttons == 0 || (event.buttons & kPrimaryButton) != 0;
 
-  void _forgetTouch() {
-    _touchPointer = null;
-    _touchDownAt = null;
-    _touchDownLocal = null;
+  void _forget() {
+    _pointer = null;
+    _downAt = null;
+    _downLocal = null;
+    _travelled = false;
   }
 
   @override
@@ -85,34 +121,47 @@ class _InstantTapRegionState extends State<InstantTapRegion> {
         if (!_isPrimary(event)) {
           return;
         }
+        // Tracked whatever the device: the release still has something to
+        // say ([onSettledTap]) even when the down already acted.
+        _pointer = event.pointer;
+        _downAt = event.position;
+        _downLocal = event.localPosition;
+        _travelled = false;
+        _actedOnDown = _actsOnDown(event.kind);
         widget.onPressDown?.call(event.localPosition);
-        if (_actsOnDown(event.kind)) {
+        if (_actedOnDown) {
           widget.onTap(event.localPosition);
-          return;
         }
-        _touchPointer = event.pointer;
-        _touchDownAt = event.position;
-        _touchDownLocal = event.localPosition;
       },
       onPointerMove: (event) {
-        final downAt = _touchDownAt;
-        if (event.pointer == _touchPointer &&
+        final downAt = _downAt;
+        if (event.pointer == _pointer &&
             downAt != null &&
             (event.position - downAt).distance > widget.travelSlop) {
-          _forgetTouch();
+          _travelled = true;
         }
       },
       onPointerUp: (event) {
-        if (event.pointer != _touchPointer) {
+        if (event.pointer != _pointer) {
           return;
         }
-        final local = _touchDownLocal ?? event.localPosition;
-        _forgetTouch();
-        widget.onTap(local);
+        final local = _downLocal ?? event.localPosition;
+        final travelled = _travelled;
+        final actedOnDown = _actedOnDown;
+        _forget();
+        // A finger that stayed put still owes the primary action, which the
+        // down deliberately withheld from it.
+        if (!actedOnDown && !travelled) {
+          widget.onTap(local);
+        }
+        // And whoever acted, a press that did not travel was a TAP.
+        if (!travelled) {
+          widget.onSettledTap?.call(local);
+        }
       },
       onPointerCancel: (event) {
-        if (event.pointer == _touchPointer) {
-          _forgetTouch();
+        if (event.pointer == _pointer) {
+          _forget();
         }
       },
       child: widget.child,
