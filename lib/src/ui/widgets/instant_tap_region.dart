@@ -139,7 +139,7 @@ class _InstantTapRegionState extends State<InstantTapRegion> {
         //
         // Dispatch is deepest-first, so a control that claims on down has
         // claimed by the time this runs.
-        if (valueControlOwnsPointer(event.pointer)) {
+        if (controlOwnsTap(event.pointer)) {
           return;
         }
         // Tracked whatever the device: the release still has something to

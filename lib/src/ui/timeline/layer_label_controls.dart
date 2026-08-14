@@ -896,11 +896,11 @@ class RailControlPointer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Listener(
-      onPointerDown: (event) => claimPointerForValueControl(event.pointer),
-      onPointerUp: (event) => releasePointerForValueControl(event.pointer),
+      onPointerDown: (event) => claimTapForControl(event.pointer),
+      onPointerUp: (event) => releaseTapForControl(event.pointer),
       // ⛔Cancel too: a claim that outlives its gesture silently deafens
       // every later press handed the same pointer id.
-      onPointerCancel: (event) => releasePointerForValueControl(event.pointer),
+      onPointerCancel: (event) => releaseTapForControl(event.pointer),
       child: child,
     );
   }

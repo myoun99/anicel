@@ -78,9 +78,9 @@ class AppIconButton extends StatelessWidget {
     // ⛔Released on CANCEL as well as UP: a claim that outlives its gesture
     // silently deafens every later press handed the same pointer id.
     return Listener(
-      onPointerDown: (event) => claimPointerForValueControl(event.pointer),
-      onPointerUp: (event) => releasePointerForValueControl(event.pointer),
-      onPointerCancel: (event) => releasePointerForValueControl(event.pointer),
+      onPointerDown: (event) => claimTapForControl(event.pointer),
+      onPointerUp: (event) => releaseTapForControl(event.pointer),
+      onPointerCancel: (event) => releaseTapForControl(event.pointer),
       child: IconButton(
       key: ValueKey<String>(keyValue),
       tooltip: tooltip,
