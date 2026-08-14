@@ -100,7 +100,7 @@ void main() {
     // catch an omission it can see, so each new fact earns a line here.
     s.rememberMediaFingerprint(
       '${directory.path}/참고영상.mp4'.replaceAll('\\', '/'),
-      0x0badc0de,
+      File('${directory.path}/참고영상.mp4').readAsBytesSync(),
     );
     final projectPath = '${directory.path}/scene.anicel';
     await s.saveProjectToFile(projectPath);

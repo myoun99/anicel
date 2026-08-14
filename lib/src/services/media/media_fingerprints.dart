@@ -17,44 +17,65 @@ import '../../models/media_identity.dart';
 /// so a fingerprint has to be recorded while the file is still there, which
 /// is why every free chance to record one is taken.
 class MediaFingerprints {
-  const MediaFingerprints(this._crc32ByPath);
+  const MediaFingerprints(this._byPath);
 
-  const MediaFingerprints.empty() : _crc32ByPath = const {};
+  const MediaFingerprints.empty() : _byPath = const {};
 
-  final Map<String, int> _crc32ByPath;
+  final Map<String, MediaIdentity> _byPath;
 
-  bool get isEmpty => _crc32ByPath.isEmpty;
+  bool get isEmpty => _byPath.isEmpty;
 
-  int? crc32For(String poolPath) => _crc32ByPath[normalizeFingerprintPath(poolPath)];
+  MediaIdentity? operator [](String poolPath) =>
+      _byPath[normalizeFingerprintPath(poolPath)];
 
-  /// [recorded] with whatever content fingerprint is known for [poolPath].
+  /// What is known about [poolPath], preferring a recorded fingerprint over
+  /// [recorded] — the length an import imprinted.
   ///
-  /// Returns null when the project never recorded even a length, because a
-  /// CRC with no length beside it cannot answer "different" cheaply and this
-  /// type promises the cheap half first.
-  MediaIdentity? identityFor(String poolPath, MediaIdentity? recorded) {
-    if (recorded == null) {
-      return null;
-    }
-    final crc = crc32For(poolPath);
-    if (crc == null || recorded.crc32 == crc) {
-      return recorded;
-    }
-    return MediaIdentity(lengthBytes: recorded.lengthBytes, crc32: crc);
-  }
+  /// 🚨 A fingerprint answers with ITS OWN length, never [recorded]'s. The
+  /// two are taken at different moments and a file can change between them:
+  /// `MediaAsset.identity` is written once, at first registration, while a
+  /// fingerprint is re-taken every time something reads the bytes. Welding
+  /// a stale length onto a fresh CRC describes a revision that never
+  /// existed, and relink would then rule OUT the very file it is hunting —
+  /// its length disagrees with the record, which `compare` treats as
+  /// decisive. Both halves have to come from one read or they are not one
+  /// fact.
+  MediaIdentity? identityFor(String poolPath, MediaIdentity? recorded) =>
+      this[poolPath] ?? recorded;
 
-  /// This map plus [crc32] for [poolPath], or this map unchanged when it
-  /// already said so.
+  /// This map plus [identity] for [poolPath], or this map unchanged when it
+  /// already said exactly that.
   ///
   /// Returning the same instance on a no-op is what lets a caller skip
   /// storing anything at all — promotion happens on a read path, and a
   /// picture the user flips back to should cost nothing the second time.
-  MediaFingerprints remembering(String poolPath, int crc32) {
+  MediaFingerprints remembering(String poolPath, MediaIdentity identity) {
     final key = normalizeFingerprintPath(poolPath);
-    if (_crc32ByPath[key] == crc32) {
+    if (_byPath[key] == identity) {
       return this;
     }
-    return MediaFingerprints({..._crc32ByPath, key: crc32});
+    return MediaFingerprints({..._byPath, key: identity});
+  }
+
+  /// The same facts under new paths.
+  ///
+  /// 🚨 EVERY place a pool path changes has to come through here, or the
+  /// fact is silently dropped at the next save — the store is keyed by path
+  /// and the save keeps only keys the pool still holds. There are three
+  /// such places and they were not obvious: opening a project whose folder
+  /// traveled, a bookmark resolving to a file the user moved, and RELINK
+  /// itself. The last one is the cruel case: relink is the feature these
+  /// exist for, and it was throwing away the fingerprint it had just used.
+  MediaFingerprints moved(Map<String, String> moves) {
+    if (moves.isEmpty || isEmpty) {
+      return this;
+    }
+    final next = <String, MediaIdentity>{};
+    for (final entry in _byPath.entries) {
+      final to = moves[entry.key];
+      next[to == null ? entry.key : normalizeFingerprintPath(to)] = entry.value;
+    }
+    return MediaFingerprints(next);
   }
 
   /// Only the entries for [keep], with [moved] paths renamed.
@@ -68,22 +89,21 @@ class MediaFingerprints {
     Set<String> keep, {
     Map<String, String> moved = const {},
   }) {
-    final kept = <String, int>{};
-    for (final entry in _crc32ByPath.entries) {
-      final path = normalizeFingerprintPath(moved[entry.key] ?? entry.key);
-      if (keep.contains(path)) {
-        kept[path] = entry.value;
+    final kept = <String, MediaIdentity>{};
+    for (final entry in this.moved(moved)._byPath.entries) {
+      if (keep.contains(entry.key)) {
+        kept[entry.key] = entry.value;
       }
     }
     return MediaFingerprints(kept);
   }
 
-  /// `{path: "<crc32 hex>"}` — hex strings rather than ints because a CRC
-  /// fills 32 bits and JSON numbers are doubles in enough readers that
-  /// writing one is asking for a value that comes back rounded.
+  /// `{path: "<length>:<crc32 hex>"}` — the same short spelling
+  /// [MediaIdentity] already uses, so `project.json` gains one string per
+  /// asset rather than an object, and the round trip is code that already
+  /// exists rather than a second parser to keep in step.
   Map<String, Object?> toJson() => {
-    for (final entry in _crc32ByPath.entries)
-      entry.key: entry.value.toRadixString(16),
+    for (final entry in _byPath.entries) entry.key: entry.value.toJson(),
   };
 
   /// Reads back [toJson], skipping anything unrecognized so a file written
@@ -92,18 +112,20 @@ class MediaFingerprints {
     if (json is! Map) {
       return const MediaFingerprints.empty();
     }
-    final parsed = <String, int>{};
+    final parsed = <String, MediaIdentity>{};
     for (final entry in json.entries) {
       final key = entry.key;
-      final value = entry.value;
       if (key is! String || key.isEmpty) {
         continue;
       }
-      final crc = value is int ? value : int.tryParse('$value', radix: 16);
-      if (crc == null) {
+      final identity = MediaIdentity.fromJson(entry.value);
+      // Length-only rows are dropped rather than kept: the length already
+      // lives on the asset, so a row without a CRC is a row that says
+      // nothing new and would only be a second place to disagree from.
+      if (identity?.crc32 == null) {
         continue;
       }
-      parsed[normalizeFingerprintPath(key)] = crc;
+      parsed[normalizeFingerprintPath(key)] = identity!;
     }
     return MediaFingerprints(parsed);
   }
