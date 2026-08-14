@@ -537,8 +537,8 @@ void main() {
     expect(ended, 1, reason: 'the release commits exactly once');
   });
 
-  testWidgets('a TAP inside the selection picks; a DRAG from inside it '
-      'still picks nothing (㉟-a rewrites UI-R22 #2)', (tester) async {
+  testWidgets('T10: a press inside the selection picks whether or not it '
+      'becomes a drag', (tester) async {
     final cursor = ValueNotifier<int>(0);
     final selection = ValueNotifier<TimelineFrameRangeSelection?>(
       const TimelineFrameRangeSelection(
@@ -594,19 +594,31 @@ void main() {
     await tester.pump();
     expect(seeks, [1], reason: 'a tap picks, wherever it lands');
 
-    // ...and the half of UI-R22 #2 that SURVIVES, which is the half that
-    // made deleting the old guard safe: a drag from inside the selection is
-    // the move, and it picks nothing. Travel is what tells them apart now,
-    // so no caller has to declare its intent up front.
+    // 🚨T10 reverses the other half. ⛔This used to assert `isEmpty` — 「a
+    // move drag never became a pick」 — because the pick waited for a
+    // release a drag never reaches. The press picks now, and the user named
+    // that cost when he chose the rule: 「범위 드래그를 시작만 해도 액티브가
+    // 옮겨간다」.
+    //
+    // ★What protects the MOVE is no longer the pick being withheld; it is
+    // the CLEARING being withheld. A press that lands inside the selection
+    // stands without wiping it (`standOnRow` asks
+    // `standingInsideSelection`), so the range the drag is about to carry
+    // survives — which is what the SE row move measured.
     seeks.clear();
     gesture = await tester.startGesture(inside, kind: PointerDeviceKind.mouse);
     await gesture.moveBy(const Offset(60, 0));
     await tester.pump();
     await gesture.up();
     await tester.pump();
-    expect(seeks, isEmpty, reason: 'a move drag never became a pick');
+    expect(
+      seeks,
+      [1],
+      reason: 'the press picked before it became a drag — the accepted cost',
+    );
 
     // Press OUTSIDE (cell 6): seeks as always.
+    seeks.clear();
     gesture = await tester.startGesture(
       tester.getTopLeft(gestureLayer) + const Offset(24 + 6 * 48, 26),
       kind: PointerDeviceKind.mouse,

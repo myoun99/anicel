@@ -594,46 +594,44 @@ abstract final class AppInput {
   ///   range drag that began outside a selection is not left dragging the
   ///   old one along, which it would be if the release were the only clear.
   ///
-  /// 🚧**T10 FLIPS THIS TO TRUE, AND IT IS NOT READY TO BE FLIPPED ALONE.**
+  /// Whether a press of [kind] on a timeline SURFACE — a frame cell or a
+  /// rail row alike — moves the active target on the DOWN (T10).
   ///
-  /// Measured 2026-08-14: turning it on by itself makes an SE row move stop
-  /// committing on its release. The press picks, `select` routes through
-  /// `standOnRow`, that clears the selection — and the move drag it was
-  /// about to perform has no subject left. The T10 design predicted exactly
-  /// this (「다운에서 무조건 비우면 선택 안에서 시작하는 이동 드래그가
-  /// 죽는다」); the regression is what proves the guard is load-bearing
-  /// rather than a nicety.
+  /// 유저 확정 2026-08-14: 「탭다운 하면 **먼저 기존 선택된거 삭제**하게
+  /// 하면, 바꾸면 선택삭제고 거기서 이동하면 선택 새로 추가니까
+  /// 문제없을거같은데」 · 「**클릭하고 떼면 뭐든 비우게**」 · 「행이든 뭐든
+  /// 동일하게」. The cost was named and accepted with it: 「범위 드래그를
+  /// 시작만 해도 액티브가 옮겨간다」.
   ///
-  /// So the flip needs its other halves first, and 「행이든 셀이든 동일」
-  /// means all of them land together:
+  /// ⛔This was `false` for every device (㉟, 2026-08-12: 「둘 다 선택하려면
+  /// 탭. 즉 손 떼야 선택됨」). What makes the reversal safe is that the press
+  /// and the release now carry DIFFERENT jobs, which they could not before
+  /// [InstantTapRegion.onSettledTap] existed:
   ///
-  /// 1. the DOWN clears only when the press landed OUTSIDE the selection —
-  ///    the predicates exist (`isInSelection` for cells, `isInRowSelection`
-  ///    for rows) but do not reach here;
-  /// 2. `standOnRow` splits into standing and clearing, so a caller can
-  ///    stand without clearing (T4's law is unchanged — only WHERE the
-  ///    clearing is called from moves);
-  /// 3. the RAIL ROW moves off `InkWell(onTap:)` onto the press too, or the
-  ///    two surfaces disagree, which is the one thing the user has asked
-  ///    about more than once (「제발 규칙다른거 그만좀하자」).
+  /// * the DOWN picks, and clears only when the press landed OUTSIDE the
+  ///   selection — the session decides that, in `standOnRow`, so no surface
+  ///   has to remember to ask;
+  /// * the RELEASE clears, and only when the pointer never travelled.
   ///
-  /// ✅The piece that IS in place is [InstantTapRegion.onSettledTap] — the
-  /// release-and-did-not-travel signal T10 needs for its second half, which
-  /// `onTap` alone could not express.
+  /// 🔬The guard is load-bearing rather than a nicety, and that was
+  /// measured: with clearing unconditional, turning this on made an SE row
+  /// move stop committing — the pick wiped the very rows the move was about
+  /// to carry.
   ///
-  /// ⚠️And touch is a separate question this must not answer by accident.
-  /// The pre-㉟ carve-out came from its own user report (UI-R23 feedback #2:
-  /// 「the first scroll touch kept moving the playhead」) — a finger has no
-  /// hover, so its press really is ambiguous with the start of a scroll.
-  /// T10 says nothing about touch, so 🟡ask before extending the press-pick
-  /// to it.
+  /// 🚨⚠️**A FINGER IS CARVED OUT, and that is not T10's doing.** T10 says
+  /// nothing about touch. The carve-out predates ㉟ and came from its own
+  /// user report — UI-R23 feedback #2: 「the first scroll touch kept moving
+  /// the playhead」 — because a finger has no hover, so its press is
+  /// genuinely ambiguous with the start of a scroll. That is a fact about
+  /// the device rather than a preference, and 「행이든 뭐든 동일하게」 is
+  /// about SURFACES (rows vs cells), which this now satisfies exactly.
+  /// 🟡One word changes it if the user wants a finger to pick on the press
+  /// too; it is left alone rather than guessed at.
   ///
-  /// 유저 2026-08-12 (㉟), the value standing here now: 「둘 다 선택하려면
-  /// 탭. 즉 손 떼야 선택됨」.
-  ///
-  /// ⚠️Constant ON PURPOSE, and not the ⑮ smell: it is an adapter to
-  /// [InstantTapRegion.pressSeeksFor], and the name is what keeps the grid
-  /// and the sheet from drifting apart — they wrote this policy twice before
-  /// it had one.
-  static bool timelineCellPressSeeks(PointerDeviceKind kind) => false;
+  /// ⚠️Still a NAMED gate rather than an inline device test, and still not
+  /// the ⑮ smell: it is an adapter to [InstantTapRegion.pressSeeksFor], and
+  /// the name is what keeps the grid, the sheet and the rail from drifting
+  /// apart — the timeline wrote this policy twice before it had one.
+  static bool timelineCellPressSeeks(PointerDeviceKind kind) =>
+      kind != PointerDeviceKind.touch;
 }

@@ -101,6 +101,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.celContent,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onSettledPress,
     this.onScrubFrame,
     this.onScrubEnd,
     this.onActivateCell,
@@ -207,6 +208,11 @@ class XSheetTimelineGrid extends StatefulWidget {
   final TimelineCelContentSource? celContent;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+
+  /// 🚨T10's second half: a press that turned out to be a TAP clears
+  /// whatever was selected (유저: 「클릭하고 떼면 뭐든 비우게」). The sheet
+  /// is the same surface stood up, so it takes the same law.
+  final VoidCallback? onSettledPress;
 
   /// Frame-rail scrub path: per-move frames go to [onScrubFrame]
   /// (cursor-only, no commit) and the pointer's release fires [onScrubEnd]
@@ -1141,6 +1147,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       celContent: widget.celContent,
       onSelectLayer: widget.onSelectLayer,
       onSelectFrame: widget.onSelectFrame,
+      onSettledPress: widget.onSettledPress,
       commaDrag: widget.commaDrag,
       rangeGesture: _rangeGesture,
       runEdit: widget.runEdit,

@@ -1012,6 +1012,55 @@ class EditorSessionManager extends ChangeNotifier {
   bool rowIsSelected(TimelineRowAddress row) =>
       rowSelection.value.contains(row);
 
+  /// 🚨T10 — whether standing on ([row], [frameIndex]) lands INSIDE whatever
+  /// is currently selected.
+  ///
+  /// The one question [standOnRow] asks before it clears. 유저 확정
+  /// 2026-08-14: 「탭다운 하면 **먼저 기존 선택된거 삭제**하게 하면, 바꾸면
+  /// 선택삭제고 거기서 이동하면 선택 새로 추가니까 문제없을거같은데」 — a
+  /// press clears when it moves you somewhere else, and holds when it is the
+  /// beginning of a MOVE of what is already selected.
+  ///
+  /// ★Asked HERE rather than threaded in from each surface. Handing every
+  /// surface the same predicate and trusting each to use it is the shape T5
+  /// and T13 spent a round deleting from the selection model — the next
+  /// surface forgets, and the bug is invisible until someone drags on it.
+  ///
+  /// ★Every KIND is asked, and 「선택한 상태라는건 한 종류만 존재하도록」
+  /// means at most one can answer yes anyway. A kind added later joins by
+  /// being named here, exactly like [claimSelection]'s switch.
+  ///
+  /// ⚠️A null [frameIndex] means "no cell is in question", so only the ROW
+  /// selection can answer. [standOnRow] does not pass null — it substitutes
+  /// the playhead, because standing on a row without naming a frame IS
+  /// standing there at the playhead.
+  bool standingInsideSelection(TimelineRowAddress row, [int? frameIndex]) {
+    if (rowIsSelected(row)) {
+      return true;
+    }
+    final cells = frameRangeSelection.value;
+    if (cells != null &&
+        frameIndex != null &&
+        cells.coversRow(row) &&
+        frameIndex >= cells.startIndex &&
+        frameIndex < cells.endIndexExclusive) {
+      return true;
+    }
+    // ⚠️A lane selection has no `coversRow` — it names its rows by LANE
+    // (`coversLane`), which is why this arm reads differently from the one
+    // above rather than sharing it.
+    final lanes = laneRangeSelection.value;
+    if (lanes != null &&
+        frameIndex != null &&
+        row is LaneRowAddress &&
+        lanes.coversLane(row.layerId, row.laneId) &&
+        frameIndex >= lanes.startIndex &&
+        frameIndex < lanes.endIndexExclusive) {
+      return true;
+    }
+    return false;
+  }
+
   /// A press that lands OUTSIDE the current selection starts a fresh one —
   /// the cells' rule, transposed (their range gesture's `isInSelection`).
   void beginRowSelection(TimelineRowAddress anchor) {
@@ -1126,7 +1175,25 @@ class EditorSessionManager extends ChangeNotifier {
     int? frameIndex,
     bool takesLayerActive = true,
   }) {
-    clearAllSelections();
+    // 🚨T10. T4's law is untouched by this: the clearing still lives INSIDE
+    // the verb rather than at its call sites — scattering it was T4's whole
+    // bug. What changed is that the verb now asks a question first.
+    //
+    // A press that lands inside the current selection stands WITHOUT
+    // clearing, because that press is most likely the start of a move.
+    // Measured, not assumed: with this unconditional, turning the press-pick
+    // on made an SE row move stop committing — the pick wiped the very rows
+    // the move was about to carry.
+    //
+    // ⚠️A caller that names no frame is standing on the row AT THE
+    // PLAYHEAD, so that is the cell the question is about. Falling back to
+    // it rather than to "no cell" is what lets the guard see a cell range
+    // at all: the surfaces reach this verb through a `ValueChanged<LayerId>`
+    // that carries no frame, and a null there would make the guard blind to
+    // exactly the selection it exists to protect.
+    if (!standingInsideSelection(row, frameIndex ?? currentFrameIndex)) {
+      clearAllSelections();
+    }
     switch (row) {
       case LayerRowAddress(:final layerId):
         if (takesLayerActive) {

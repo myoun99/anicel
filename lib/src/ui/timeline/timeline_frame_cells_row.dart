@@ -46,6 +46,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.coverageIdentity,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onSettledPress,
     this.onActivateCell,
     this.instructionDefById,
     this.audioPeaksFor,
@@ -122,6 +123,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
   final Object? coverageIdentity;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+
+  /// 🚨T10's second half: the press turned out to be a TAP, so whatever was
+  /// selected goes (유저: 「클릭하고 떼면 뭐든 비우게」). Null on surfaces
+  /// that own no selection.
+  final VoidCallback? onSettledPress;
 
   /// Double-tap cell editor hook; only kinds that open an editor get it
   /// (policy: [layerKindOpensCellEditorOnDoubleTap]).
@@ -382,6 +388,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
           coverageIdentity: coverageIdentity,
           onSelectLayer: onSelectLayer,
           onSelectFrame: onSelectFrame,
+          onSettledPress: onSettledPress,
           onActivateCell: layerKindOpensCellEditorOnDoubleTap(layer.kind)
               ? onActivateCell
               : null,
