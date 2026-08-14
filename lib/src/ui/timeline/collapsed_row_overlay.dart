@@ -1,10 +1,9 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../canvas/flip_hud_model.dart';
 import '../theme/app_theme.dart';
 import 'layer_label_controls.dart' show layerKindIcon;
+import 'layer_rail_window.dart' show LayerRailExtent, LayerRailWindow;
 import 'timeline_beat_lines.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_grid_metrics.dart';
@@ -44,11 +43,20 @@ import 'timeline_grid_metrics.dart';
 /// every time the rail grew a column. Mounting the row means the overlay
 /// follows it by construction. [railChild] is null on a property lane, whose
 /// rail is a name and a value rather than a control cluster.
+/// The folded row's translucency, as ONE number (유저 확정 2026-08-14:
+/// 「반투명 = 오버레이 루트 하나, 70%」).
+///
+/// A constant rather than a literal at the install site because the whole
+/// point is that there is only one of it: the two per-cell alphas it replaced
+/// were `0x66` and `0x9E`, and having two was the bug.
+const double collapsedRowOverlayOpacity = 0.7;
+
 class CollapsedRowOverlay extends StatefulWidget {
   const CollapsedRowOverlay({
     super.key,
     required this.snapshot,
-    required this.railWidth,
+    required this.rail,
+    required this.naturalRailWidth,
     required this.pixelsPerFrame,
     required this.framesPerSecond,
     this.railChild,
@@ -75,11 +83,28 @@ class CollapsedRowOverlay extends StatefulWidget {
 
   final FlipHudSnapshot snapshot;
 
-  /// The rail's window, straight off the timeline's own splitter
-  /// (`LayerRailId.timeline`). 유저 확정: 좁혀놨으면 좁힌 대로 — and the rail
-  /// model's rule comes with it, because it is the same number: nothing
-  /// inside rearranges, the tail is simply cut off.
-  final double railWidth;
+  /// The timeline's own rail window (`LayerRailId.timeline`), WHOLE.
+  ///
+  /// 유저 확정: 좁혀놨으면 좁힌 대로 — 「레이어영역의 가로길이같은거 타임라인
+  /// 그대로 가져와. 그래야 **열의 규격이 맞을** 거니까」.
+  ///
+  /// 🚨⛔It used to be a `double` read as `rail?.value ?? layerRailMinimumWindowExtent`,
+  /// and that one line is where the columns came apart. A null `value` means
+  /// **「자연폭」** — lay the rail out at its own size — and the overlay read
+  /// it as **「최소폭」**, which is `layerRailLeadingWidth + 14`: the leading
+  /// cluster plus the first letter of the name. That is exactly the
+  /// `▸ ▦ ● 🎞 A` the user photographed, and it made three complaints out of
+  /// one bug — 「버튼이 없다」, 「길이가 다르다」, 「열이 안 맞는다」. The
+  /// buttons were never removed; they were cut off outside the window.
+  ///
+  /// Taking the object instead of a number means [LayerRailWindow] answers
+  /// all three of its questions the way the panel's own rail does: null is
+  /// natural, `offset` is the push, and `availableExtent` is the clamp.
+  final LayerRailExtent? rail;
+
+  /// The rail's own size when nothing windows it — [TimelineGridMetrics.layerControlsWidth],
+  /// the same number `layer_timeline_grid` calls `_naturalRailWidth`.
+  final double naturalRailWidth;
 
   final double pixelsPerFrame;
   final int framesPerSecond;
@@ -96,6 +121,12 @@ class CollapsedRowOverlay extends StatefulWidget {
 }
 
 class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
+  /// The fallback window for a host that has no stored one — the same
+  /// `?? (owned ??= …)` shape `layer_timeline_grid` uses, and for the same
+  /// reason: a fresh [LayerRailExtent] per build would drop the offset every
+  /// pass. A default one reports null, which means natural width.
+  LayerRailExtent? _ownedRail;
+
   /// 🚨Owned by the State, not rebuilt per pass: the row memo keys on this
   /// handle's IDENTITY, so a fresh one each build would defeat the repaint
   /// gating it exists for. Republished (value only) from the layout —
@@ -118,15 +149,29 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
   @override
   Widget build(BuildContext context) {
     final snapshot = widget.snapshot;
-    final railWidth = widget.railWidth;
     final row = snapshot.currentRow;
     if (row == null || snapshot.isEmpty) {
       return const SizedBox.shrink();
     }
     final colorScheme = Theme.of(context).colorScheme;
     return IgnorePointer(
-      child: SizedBox(
-        height: CollapsedRowOverlay.height,
+      // ★ONE translucency for the whole row (유저 확정 2026-08-14: 「반투명 =
+      // 오버레이 루트 하나, 70%」).
+      //
+      // ⛔It used to be two per-cell alphas inside the cells painter, `0x66`
+      // on a block's body and `0x9E` on its edge, which gave the folded row
+      // an opacity SCHEME of its own — parts fading by different amounts. It
+      // is supposed to be the open row seen through glass, and that is what
+      // a single value on the root makes it, by construction.
+      //
+      // ⚠️The 08-10 confirmation 「the frame you are standing on is the one
+      // thing painted SOLIDLY」 still holds, but RELATIVELY: the current cell
+      // is still the only full one inside this row, and the row as a whole
+      // sits at 70%.
+      child: Opacity(
+        opacity: collapsedRowOverlayOpacity,
+        child: SizedBox(
+          height: CollapsedRowOverlay.height,
         // ★The rail window is CLAMPED to the room that exists. The stored
         // width is the splitter's answer for a panel as wide as the region,
         // and the collapsed row is laid over a region that can be pulled
@@ -138,30 +183,31 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
           builder: (context, constraints) => Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SizedBox(
-                width: math.min(railWidth, constraints.maxWidth),
-              // ★THE RAIL MODEL, verbatim: 「레일은 자기 자연 크기로 눕고,
-              // 스플리터는 그 위의 창을 정하고, 꼬리가 그냥 잘린다」. The
-              // `OverflowBox` is what lets it lie at its natural width —
-              // without it the row is squeezed into the window and its own
-              // Row overflows, which is what a narrow region actually did.
-              // And the clip is why there is no `…`: an ellipsis in this app
-              // means a LABEL overflowing its own slot, and a narrowed
-              // window is not that.
-              child: ClipRect(
-                child: OverflowBox(
-                  alignment: Alignment.centerLeft,
-                  maxWidth: double.infinity,
-                  child: _haloed(
-                    context,
-                    // A layer row is the REAL row, chromeless. A property
-                    // lane is its name and its value, which is what the rail
-                    // shows there — so the caller hands null instead.
-                    widget.railChild ?? _rail(row, colorScheme),
-                  ),
+              // ★THE RAIL MODEL, from the widget that owns it rather than
+              // rebuilt by hand: 「레일은 자기 자연 크기로 눕고, 스플리터는
+              // 그 위의 창을 정하고, 꼬리가 그냥 잘린다」.
+              //
+              // ⛔This was a `SizedBox(min(railWidth, maxWidth))` wrapping a
+              // `ClipRect` + `OverflowBox` — the same three jobs
+              // [LayerRailWindow] does, spelled out a second time. The copy
+              // could not answer the one question that mattered: a stored
+              // extent of null means NATURAL, and only the window widget
+              // knows that. `availableExtent` carries over the clamp the
+              // `min()` was doing, which is what keeps a narrowed region
+              // from overflowing.
+              LayerRailWindow(
+                axis: Axis.horizontal,
+                rail: widget.rail ?? (_ownedRail ??= LayerRailExtent()),
+                naturalExtent: widget.naturalRailWidth,
+                availableExtent: constraints.maxWidth,
+                child: _haloed(
+                  context,
+                  // A layer row is the REAL row, chromeless. A property
+                  // lane is its name and its value, which is what the rail
+                  // shows there — so the caller hands null instead.
+                  widget.railChild ?? _rail(row, colorScheme),
                 ),
               ),
-            ),
             Expanded(
               child: ClipRect(
                 child: LayoutBuilder(
@@ -188,12 +234,43 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
                           : (frameConstraints.maxWidth / widget.pixelsPerFrame)
                                 .ceil(),
                     );
-                    return build(context, _geometry);
+                    // 🚨THE GRID LINES, and they were never removed — this
+                    // painter was simply not mounted here. Every plain
+                    // per-cell border is `Colors.transparent` on purpose
+                    // (`timeline_cell_style`: 「the GRID OVERLAY owns every
+                    // plain per-cell line now」), so a row without this
+                    // overlay has no lines at all, and chromeless mode was
+                    // wrongly blamed for erasing them.
+                    //
+                    // 🎁The cut-end shading rides in the same painter, so
+                    // mounting it brings both back at once — and the shading
+                    // is information rather than chrome (유저 확정 08-10),
+                    // which is why it belongs on a folded row too.
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        build(context, _geometry),
+                        IgnorePointer(
+                          child: CustomPaint(
+                            key: const ValueKey<String>(
+                              'collapsed-beat-lines',
+                            ),
+                            painter: TimelineBeatLinesPainter(
+                              frameCellExtent: widget.pixelsPerFrame,
+                              framesPerSecond: widget.framesPerSecond,
+                              colorScheme: colorScheme,
+                              crossCellExtent: CollapsedRowOverlay.height,
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
                   },
                 ),
               ),
             ),
-          ],
+            ],
+            ),
           ),
         ),
       ),
