@@ -22,8 +22,8 @@ void main() {
   testWidgets('a TEXT-headed pill breathes the same on both ends', (
     tester,
   ) async {
-    final verb = Container(
-      key: const ValueKey<String>('verb'),
+    const verb = SizedBox(
+      key: ValueKey<String>('verb'),
       width: 24,
       height: 24,
     );
@@ -49,8 +49,8 @@ void main() {
   });
 
   testWidgets('an ICON-headed pill too', (tester) async {
-    final verb = Container(
-      key: const ValueKey<String>('verb'),
+    const verb = SizedBox(
+      key: ValueKey<String>('verb'),
       width: 24,
       height: 24,
     );
