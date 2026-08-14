@@ -35,11 +35,39 @@ void main() {
     expect(session.rowSelection.value, isNotEmpty);
   }
 
-  test('standing on a LAYER row clears', () {
+  test('standing on a layer row OUTSIDE the selection clears', () {
+    // 🚨T10 NARROWED T4's law, and this case moved with it. T4 said
+    // standing clears, full stop; T10 says it clears when it moves you
+    // somewhere ELSE — 유저 2026-08-14: 「바꾸면 선택삭제고 거기서 이동하면
+    // 선택 새로 추가」.
+    //
+    // ⛔What T4 actually fixed is untouched: the clearing still lives inside
+    // the verb rather than at its call sites. That was the whole complaint
+    // (「트랜스폼 멤버 행 액티브로하면 안풀림」), and the lane case below
+    // still pins it.
+    selectARow();
+    final other = session.layers.firstWhere(
+      (layer) => layer.id != session.activeLayer!.id,
+    );
+
+    session.standOnRow(LayerRowAddress(other.id));
+
+    expect(session.rowSelection.value, isEmpty);
+  });
+
+  test('standing on the row you already selected KEEPS it', () {
     final layerId = session.activeLayer!.id;
     selectARow();
+
     session.standOnRow(LayerRowAddress(layerId));
-    expect(session.rowSelection.value, isEmpty);
+
+    expect(
+      session.rowSelection.value,
+      isNotEmpty,
+      reason: 'that press is most likely the start of a MOVE (T10) — and '
+          'clearing here is exactly what stopped an SE row move from '
+          'committing. The RELEASE clears it if it turns out to be a tap.',
+    );
   });
 
   test('standing on a transform MEMBER lane clears — the case that did not', () {
@@ -80,12 +108,18 @@ void main() {
 
   test('the storyboard stands without taking the layer active, and still '
       'clears', () {
-    final layerId = session.activeLayer!.id;
     final activeBefore = session.activeLayerId;
     selectARow();
+    // ⚠️A DIFFERENT row, since T10: standing on the selected one is a move
+    // in waiting and keeps it. What this case is about is the storyboard's
+    // own split — standing and drawing are two states there — so the row
+    // only has to be one the press moves you TO.
+    final other = session.layers.firstWhere(
+      (layer) => layer.id != session.activeLayer!.id,
+    );
 
     session.standOnRow(
-      LayerRowAddress(layerId),
+      LayerRowAddress(other.id),
       takesLayerActive: false,
     );
 

@@ -835,6 +835,14 @@ Widget timelineRowCellsPaintArea({
   TimelineCelContentSource? celContent,
   required ValueChanged<LayerId> onSelectLayer,
   required ValueChanged<int> onSelectFrame,
+
+  /// 🚨T10's second half: the press turned out to be a TAP, so whatever was
+  /// selected goes (유저: 「클릭하고 떼면 뭐든 비우게」).
+  ///
+  /// Separate from the pick because the pick may deliberately NOT clear — a
+  /// press landing inside a selection is the start of a MOVE — and
+  /// something still has to clear when that press does not become one.
+  VoidCallback? onSettledPress,
   void Function(LayerId layerId, int frameIndex)? onActivateCell,
   ValueListenable<int>? windowBucket,
   double viewportMainExtent = 0,
@@ -868,9 +876,18 @@ Widget timelineRowCellsPaintArea({
   );
   // Read LIVE: the row that built this closure survives zoom steps now.
   bool inWindow(int frameIndex) => geometry.value.contains(frameIndex);
+  // 🚨T10 — THE ORDER IS LOAD-BEARING. The frame moves first.
+  //
+  // Standing is what decides whether the selection is cleared, and it makes
+  // that decision about the cell being stood ON. The layer callback carries
+  // no frame (it is a `ValueChanged<LayerId>` shared with the rail row), so
+  // the session reads the playhead — which has to already BE this cell by
+  // then, or a press inside a cell selection looks like a press outside it
+  // and wipes the very range a move was about to carry. Measured: with
+  // these two the other way round, an SE row move stopped committing.
   void select(int frameIndex) {
-    onSelectLayer(layer.id);
     onSelectFrame(frameIndex);
+    onSelectLayer(layer.id);
   }
 
   // The pick rides the raw pointer, never the arena — see the shared
@@ -894,13 +911,17 @@ Widget timelineRowCellsPaintArea({
       if (!inWindow(frameIndex)) {
         return;
       }
-      // ㉟-a: a tap picks, including a tap inside the selection. The
-      // "don't re-seek, this press is a move" guard that used to stand here
-      // (UI-R10 #12) has nothing left to catch — ㉟ moved the pick to the
-      // release, which a drag never reaches — and the still tap it did
-      // catch is the one 「선택 안을 클릭해도 사라진다」 asks to clear.
+      // T10: the PICK. Whether it also clears is not decided here — the
+      // session's `standOnRow` holds the selection when the press landed
+      // inside it, because that press is most likely the start of a move.
+      // ⛔The old UI-R10 #12 guard that used to stand at this call site is
+      // not coming back: the question belongs where the selection lives, or
+      // the next surface to grow a press forgets to ask it.
       select(frameIndex);
     },
+    // And when the press turned out to be a tap, the selection goes —
+    // 유저: 「클릭하고 떼면 뭐든 비우게」.
+    onSettledTap: onSettledPress == null ? null : (_) => onSettledPress(),
     child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {},

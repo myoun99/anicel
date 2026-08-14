@@ -61,6 +61,7 @@ class TimelinePanel extends StatefulWidget {
     this.celContent,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onSettledPress,
     this.onScrubFrame,
     this.onScrubEnd,
     this.onActivateCell,
@@ -185,6 +186,12 @@ class TimelinePanel extends StatefulWidget {
   final TimelineCelContentSource? celContent;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+
+  /// 🚨T10's second half: a press that turned out to be a TAP clears
+  /// whatever was selected (유저: 「클릭하고 떼면 뭐든 비우게」). Both
+  /// orientations get it, because the law is 「행이든 셀이든 동일」 and an
+  /// x-sheet column is the same surface stood up.
+  final VoidCallback? onSettledPress;
 
   /// Ruler-scrub path (both orientations): per-move frames go to
   /// [onScrubFrame] (cursor-only, no commit) and the release fires
@@ -529,6 +536,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     celContent: widget.celContent,
                     onSelectLayer: widget.onSelectLayer,
                     onSelectFrame: widget.onSelectFrame,
+                    onSettledPress: widget.onSettledPress,
                     onScrubFrame: widget.onScrubFrame,
                     onScrubEnd: widget.onScrubEnd,
                     onActivateCell: widget.onActivateCell,
@@ -609,6 +617,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     celContent: widget.celContent,
                     onSelectLayer: widget.onSelectLayer,
                     onSelectFrame: widget.onSelectFrame,
+                    onSettledPress: widget.onSettledPress,
                     onScrubFrame: widget.onScrubFrame,
                     onScrubEnd: widget.onScrubEnd,
                     onActivateCell: widget.onActivateCell,

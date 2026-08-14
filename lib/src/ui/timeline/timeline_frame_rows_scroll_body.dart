@@ -55,6 +55,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.celContent,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onSettledPress,
     this.onActivateCell,
     this.instructionDefById,
     this.audioPeaksFor,
@@ -120,6 +121,10 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   final TimelineCelContentSource? celContent;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+
+  /// T10's settled-tap clear, passed straight through — see
+  /// [TimelineFrameCellsRow.onSettledPress].
+  final VoidCallback? onSettledPress;
   final void Function(LayerId layerId, int frameIndex)? onActivateCell;
   final CameraInstructionDef? Function(String instructionId)?
   instructionDefById;
@@ -392,6 +397,7 @@ class _TimelineFrameRowsScrollBodyState
       coverageIdentity: _auxiliaryIdentityFor(baseLayer),
       onSelectLayer: widget.onSelectLayer,
       onSelectFrame: widget.onSelectFrame,
+      onSettledPress: widget.onSettledPress,
       onActivateCell: widget.onActivateCell,
       instructionDefById: widget.instructionDefById,
       audioPeaksFor: widget.audioPeaksFor,

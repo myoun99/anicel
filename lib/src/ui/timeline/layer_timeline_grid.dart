@@ -84,6 +84,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.celContent,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onSettledPress,
     this.onScrubFrame,
     this.onScrubEnd,
     this.onActivateCell,
@@ -217,6 +218,11 @@ class LayerTimelineGrid extends StatefulWidget {
   final TimelineCelContentSource? celContent;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+
+  /// 🚨T10's second half: a press that turned out to be a TAP clears
+  /// whatever was selected (유저: 「클릭하고 떼면 뭐든 비우게」). Handed
+  /// down to the cell rows; null leaves the grid display-only.
+  final VoidCallback? onSettledPress;
 
   /// Ruler-scrub path: per-move frames go to [onScrubFrame] (cursor-only,
   /// no commit) and the pointer's release fires [onScrubEnd] to commit
@@ -1391,6 +1397,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       selected: widget.selectedRows.contains(row.address),
       metrics: _metrics,
       onSelectLayer: widget.onSelectLayer,
+      // T10: the rail row and the frame cells take the SAME settled-tap
+      // clear, because 「행이든 뭐든 동일하게」.
+      onSettledPress: widget.onSettledPress,
       onToggleLayerVisibility: widget.onToggleLayerVisibility,
       onLayerOpacityChanged: widget.onLayerOpacityChanged,
       onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
@@ -2235,6 +2244,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                 onSelectFrame:
                                                                     widget
                                                                         .onSelectFrame,
+                                                                onSettledPress:
+                                                                    widget
+                                                                        .onSettledPress,
                                                                 onActivateCell:
                                                                     widget
                                                                         .onActivateCell,

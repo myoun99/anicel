@@ -8,7 +8,9 @@ import '../../models/layer_blend_mode.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
+import '../input/app_input_settings.dart' show AppInput;
 import '../widgets/field_slider.dart';
+import '../widgets/instant_tap_region.dart';
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
 import 'timeline_grid_metrics.dart';
@@ -60,6 +62,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.selected = false,
     required this.metrics,
     required this.onSelectLayer,
+    this.onSettledPress,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
@@ -103,6 +106,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
 
   final TimelineGridMetrics metrics;
   final ValueChanged<LayerId> onSelectLayer;
+
+  /// 🚨T10's second half: the press turned out to be a TAP, so whatever was
+  /// selected goes (유저: 「클릭하고 떼면 뭐든 비우게」). The SAME callback
+  /// the frame cells take, because 「행이든 뭐든 동일하게」.
+  final VoidCallback? onSettledPress;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
 
@@ -215,16 +223,38 @@ class TimelineLayerControlsRow extends StatelessWidget {
     // doubled the signal for nothing.
     final borderColor = colorScheme.outlineVariant;
 
-    final row = InkWell(
-      key: ValueKey<String>(
-        layerKindGroupsLayers(layer.kind)
-            ? 'timeline-folder-row-${layer.id}'
-            : 'timeline-layer-row-${layer.id}',
-      ),
-      onTap: () => onSelectLayer(layer.id),
-      // No hover glow on the ROW surface (UI-R24 #6): selection speaks
-      // through the background alone; only the buttons may brighten.
-      hoverColor: Colors.transparent,
+    // 🚨T10 — the rail row picks on the PRESS, exactly like a frame cell.
+    //
+    // 유저 확정 2026-08-14: 「행이든 뭐든 동일하게」. This row used to pick on
+    // `InkWell.onTap` — the release — while the cells moved to the press,
+    // and two surfaces answering the same gesture differently is the
+    // complaint the user has made more than once (「제발 규칙다른거
+    // 그만좀하자」). Both wear the same widget-level policy now, device gate
+    // included.
+    //
+    // ⛔The InkWell keeps a NO-OP `onTap`, which is not decoration: it holds
+    // a tap recognizer in the arena so scroll slop over a row behaves the
+    // way it always has. The painted cells do the identical thing for the
+    // identical reason.
+    final row = InstantTapRegion(
+      pressSeeksFor: AppInput.timelineCellPressSeeks,
+      // The PICK. Whether it also CLEARS is the session's call — see
+      // `standOnRow`, which holds the selection when the press landed inside
+      // it, because that press is most likely the start of a move.
+      onTap: (_) => onSelectLayer(layer.id),
+      // And when the press turned out to be a tap, the selection goes —
+      // 유저: 「클릭하고 떼면 뭐든 비우게」.
+      onSettledTap: onSettledPress == null ? null : (_) => onSettledPress!(),
+      child: InkWell(
+        key: ValueKey<String>(
+          layerKindGroupsLayers(layer.kind)
+              ? 'timeline-folder-row-${layer.id}'
+              : 'timeline-layer-row-${layer.id}',
+        ),
+        onTap: () {},
+        // No hover glow on the ROW surface (UI-R24 #6): selection speaks
+        // through the background alone; only the buttons may brighten.
+        hoverColor: Colors.transparent,
       child: Container(
         // The section bracket occupies the leading gutter beside the rail.
         width: metrics.layerControlsWidth - metrics.sectionLabelGutterWidth,
@@ -526,6 +556,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
 

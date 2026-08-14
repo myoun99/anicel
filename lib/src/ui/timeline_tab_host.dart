@@ -729,6 +729,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                 _session.selectFrameIndex(frameIndex);
               }
             },
+            // 🚨T10's second half (유저: 「클릭하고 떼면 뭐든 비우게」). The
+            // press picks and may deliberately hold the selection — it could
+            // be the start of a move — so something has to clear when the
+            // press turns out to have been a tap. This is that something,
+            // and it is the same verb for the cells and the rail rows.
+            onSettledPress: _session.clearAllSelections,
             // Ruler drags: per-move seeks ride the cursor path (value-only —
             // the playhead and the canvas preview follow, nothing rebuilds);
             // the release commits the selection as ONE ordinary seek.

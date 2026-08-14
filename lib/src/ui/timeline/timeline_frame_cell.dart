@@ -31,6 +31,7 @@ class TimelineFrameCell extends StatelessWidget {
     this.frameName,
     required this.onSelectLayer,
     required this.onSelectFrame,
+    this.onSettledPress,
     this.onActivateCell,
     this.axis = Axis.horizontal,
     this.width,
@@ -56,6 +57,11 @@ class TimelineFrameCell extends StatelessWidget {
   final String? frameName;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
+
+  /// 🚨T10's second half: the press turned out to be a TAP, so whatever was
+  /// selected goes (유저: 「클릭하고 떼면 뭐든 비우게」). Null on surfaces
+  /// that own no selection.
+  final VoidCallback? onSettledPress;
 
   /// Double-tap hook opening the cell's editor (SE label dialog; the
   /// instruction picker joins later). Null keeps plain taps snappy — the
@@ -126,9 +132,13 @@ class TimelineFrameCell extends StatelessWidget {
     final isEmptyX = exposureState == TimelineCellExposureState.uncovered;
 
     final onActivateCell = this.onActivateCell;
+    // 🚨T10 — the order is load-bearing; see the twin in
+    // `timeline_row_cells_painter`. The frame moves first so that standing
+    // decides about THIS cell rather than about wherever the playhead
+    // happened to be.
     void select() {
-      onSelectLayer(layer.id);
       onSelectFrame(frameIndex);
+      onSelectLayer(layer.id);
     }
 
     final cell = InkWell(
@@ -224,15 +234,18 @@ class TimelineFrameCell extends StatelessWidget {
     // the timeline alone before it had a name.
     return InstantTapRegion(
       pressSeeksFor: AppInput.timelineCellPressSeeks,
-      // ㉟-a: a tap picks, including a tap INSIDE the selection.
+      // T10: the PICK. Whether it also clears is the session's call —
+      // `standOnRow` holds the selection when the press landed inside it,
+      // because that press is most likely the start of a move.
       //
-      // UI-R10 #12 used to hold this back so that pressing inside a
-      // selection could start a MOVE without the playhead jumping first.
-      // ㉟ retired that job: a press that travels never reaches this
-      // callback at all, so the only thing the guard still caught was a
-      // STILL tap inside a selection — and 「선택 안을 클릭해도 사라진다」
-      // (유저 08-12) says that one clears, exactly as it does on a rail row.
+      // ⛔The UI-R10 #12 guard that used to stand at this call site is not
+      // coming back. The question belongs where the selection lives, or the
+      // next surface to grow a press forgets to ask it — which is how this
+      // cell and the painted strip drifted apart before.
       onTap: (_) => select(),
+      // And when the press turned out to be a tap, the selection goes —
+      // 유저: 「클릭하고 떼면 뭐든 비우게」.
+      onSettledTap: onSettledPress == null ? null : (_) => onSettledPress!(),
       child: cell,
     );
   }
