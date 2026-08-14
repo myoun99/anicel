@@ -18,6 +18,7 @@ import '../dev_profile.dart';
 import '../playback/layer_frame_image_cache.dart';
 import 'bitmap_surface_painter.dart';
 import 'composite_effect_paint.dart';
+import 'display_buffer_cache.dart';
 import 'display_resample.dart';
 import 'selection_float_overlay.dart';
 import 'static_composite_bake.dart';
@@ -276,6 +277,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
 
   /// 🚨(v) — the recording of everything a stroke cannot change.
   final StaticCompositeBake _bake = StaticCompositeBake();
+  final DisplayBufferCache _bufferCache = DisplayBufferCache();
 
   /// 🚨★★★ Bumped at EVERY `_images` mutation, and read into the bake's key.
   ///
@@ -300,6 +302,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     }
     _images.clear();
     _bake.dispose();
+    _bufferCache.dispose();
     super.dispose();
   }
 
@@ -502,16 +505,15 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     // The ACTIVE surface is absent on purpose: a stroke step changes its
     // pixels and nothing else, and its pixels are the one thing never
     // recorded. That absence IS the optimisation.
-    _bake.keepFor(
-      Object.hash(
-        _imagesRevision,
-        widget.canvasSize,
-        widget.viewport,
-        widget.paintPaper,
-        widget.paperBackground,
-        _LayerStackPainter.treeSignature(nodes),
-      ),
+    final compositeKey = Object.hash(
+      _imagesRevision,
+      widget.canvasSize,
+      widget.viewport,
+      widget.paintPaper,
+      widget.paperBackground,
+      _LayerStackPainter.treeSignature(nodes),
     );
+    _bake.keepFor(compositeKey);
     return IgnorePointer(
       child: CustomPaint(
         painter: _LayerStackPainter(
@@ -523,6 +525,8 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           paintPaper: widget.paintPaper,
           paperBackground: widget.paperBackground,
           bake: widget.debugDisableBake ? null : _bake,
+          bufferCache: widget.debugDisableBake ? null : _bufferCache,
+          compositeKey: compositeKey,
           debugDisableSingleBuffer: widget.debugDisableSingleBuffer,
         ),
         child: const SizedBox.expand(),
@@ -619,12 +623,21 @@ class _DisplayBuffer {
     required this.rect,
     required this.pixelWidth,
     required this.pixelHeight,
+    this.owned = true,
   });
 
   final ui.Image image;
   final Rect rect;
   final double pixelWidth;
   final double pixelHeight;
+
+  /// Whether the caller disposes [image] after drawing it.
+  ///
+  /// ⛔False when the cache is holding it for the next paint — disposing
+  /// there hands the following frame a dead handle, which is the hazard
+  /// [[native-tile-pixel-lifetime]] and the bake's revision counter both
+  /// exist to make structurally impossible rather than merely unlikely.
+  final bool owned;
 }
 
 class _LayerStackPainter extends CustomPainter {
@@ -637,6 +650,8 @@ class _LayerStackPainter extends CustomPainter {
     required this.paintPaper,
     required this.paperBackground,
     this.bake,
+    this.bufferCache,
+    required this.compositeKey,
     this.debugDisableSingleBuffer = false,
   }) : super(
          repaint: floatOverlay == null
@@ -660,6 +675,14 @@ class _LayerStackPainter extends CustomPainter {
   /// object every frame, so a cache held here would be recorded and thrown
   /// away in the same breath. Null keeps the original walk.
   final StaticCompositeBake? bake;
+
+  /// The kept composite buffer ([DisplayBufferCache]). Owned by the State,
+  /// because a painter is a fresh object every frame.
+  final DisplayBufferCache? bufferCache;
+
+  /// What the bake was kept for. The buffer's key builds on it and adds the
+  /// live surface, which the bake deliberately leaves out.
+  final Object compositeKey;
 
   /// Draws the ACTIVE layer's live surface in place. Its own repaint
   /// Listenable (tile cache + stroke overlay) drives this painter too, so
@@ -1099,7 +1122,9 @@ class _LayerStackPainter extends CustomPainter {
         // this frame's display list, and the engine holds its own reference
         // to it from that moment. What `dispose` releases is this handle's
         // claim, not the pixels the list is going to replay.
-        buffer.image.dispose();
+        if (buffer.owned) {
+          buffer.image.dispose();
+        }
       }
     }
     canvas.restore();
@@ -1142,21 +1167,121 @@ class _LayerStackPainter extends CustomPainter {
         height > _maxBufferSide) {
       return null;
     }
+    // 🚨(v) — KEEP IT WHILE NOTHING HAS CHANGED. Every paint used to
+    // rasterise this again, including the ones where nothing had moved: a
+    // hover, a cursor blink, a neighbouring panel rebuilding.
+    //
+    // ⛔A miss costs exactly what the uncached path cost, which is the
+    // property that makes this safe. The TILED buffer failed on the other
+    // side of that line — a cold tile cache rasterised the composite once
+    // per tile, so the thing meant to make strokes cheap made panning N
+    // times dearer. One image cannot do that.
+    final cache = bufferCache;
+    final key = cache == null ? null : _bufferKey();
+    if (cache != null && key != null) {
+      final kept = cache.imageFor(key, rect);
+      if (kept != null) {
+        return _DisplayBuffer(
+          image: kept,
+          rect: rect,
+          pixelWidth: width.toDouble(),
+          pixelHeight: height.toDouble(),
+          owned: false,
+        );
+      }
+    }
     final recorder = ui.PictureRecorder();
     final into = Canvas(recorder);
     into.translate(-rect.left, -rect.top);
     paintContent(into, rasterRect: rect);
     final picture = recorder.endRecording();
+    final ui.Image image;
     try {
-      return _DisplayBuffer(
-        image: picture.toImageSync(width, height),
-        rect: rect,
-        pixelWidth: width.toDouble(),
-        pixelHeight: height.toDouble(),
-      );
+      image = picture.toImageSync(width, height);
     } finally {
       picture.dispose();
     }
+    if (cache != null && key != null) {
+      cache.store(key, rect, image);
+      return _DisplayBuffer(
+        image: image,
+        rect: rect,
+        pixelWidth: width.toDouble(),
+        pixelHeight: height.toDouble(),
+        owned: false,
+      );
+    }
+    return _DisplayBuffer(
+      image: image,
+      rect: rect,
+      pixelWidth: width.toDouble(),
+      pixelHeight: height.toDouble(),
+    );
+  }
+
+  /// Everything the composite depends on that the bake's key does not
+  /// already carry — or null when this stack must not be cached at all.
+  ///
+  /// 🚨The bake deliberately leaves the live surface out: it never records
+  /// it, so a stroke step cannot stale a recording. The BUFFER holds the
+  /// live surface, so it needs every way that surface's pixels can move:
+  ///
+  ///  * the committed tiles, by identity — `BitmapSurface` is immutable, so
+  ///    an edit is a new instance;
+  ///  * their DECODED images, because a decode ARRIVING changes the screen
+  ///    while the tile it came from never moved;
+  ///  * the overlay's tile images and its stamp, by identity, which is how
+  ///    an in-flight stroke reaches the canvas at all;
+  ///  * the stand-in and settling passes, which redraw on their own clock.
+  ///
+  /// ⛔And null when the painter says it draws from state it does not
+  /// publish ([BitmapSurfacePainter.drawsOnlyFromPublishedState]) — then no
+  /// comparison here can be right, so nothing is kept. That is the same
+  /// question the tiled buffer had to ask, and the answer that makes a
+  /// cache honest: ask the thing you are caching where it changed, and do
+  /// not cache what cannot say.
+  Object? _bufferKey() {
+    // ⛔A FLOATING SELECTION IS DRAWN INSIDE THIS BUFFER and moves under the
+    // hand without touching anything else the key can see, so while one
+    // exists nothing is kept. Caught by walking this painter's own body
+    // asking "what else can change" — which is the discipline the two
+    // reverts before this bought ([[cache-what-can-say-where-it-changed]]).
+    // Shipping without it would have frozen the canvas for the whole drag.
+    //
+    // Not cheap-and-narrow (hash the float's value) on purpose: the float is
+    // a transient editing state, so declining to cache costs only what the
+    // uncached path already cost, and it cannot go stale.
+    if (floatOverlay?.value != null) {
+      return null;
+    }
+    final surfacePainter = activeSurfacePainter;
+    if (surfacePainter == null) {
+      // Nothing live: the bake's key already covers every pixel here.
+      return compositeKey;
+    }
+    if (!surfacePainter.drawsOnlyFromPublishedState) {
+      return null;
+    }
+    // ⛔ONE int, not a walk. This used to hash every tile's decoded image:
+    // it costs a lookup per tile PER PAINT and — measured — never produced
+    // a stable key, so the buffer paid the walk and missed anyway. The
+    // cache's own revision says the same thing for free, because it is
+    // bumped at exactly the moments the cache tells anyone it changed.
+    var live = Object.hash(
+      identityHashCode(surfacePainter.surface),
+      surfacePainter.tileImageCache.revision,
+    );
+    final overlay = surfacePainter.overlayModel;
+    if (overlay != null) {
+      if (overlay.hasStandIns || overlay.settling) {
+        return null;
+      }
+      live = Object.hash(live, identityHashCode(overlay.stampImage));
+      for (final entry in overlay.tileImages.entries) {
+        live = Object.hash(live, entry.key, identityHashCode(entry.value));
+      }
+    }
+    return Object.hash(compositeKey, live);
   }
 
   /// Whether the live surface is this node, or anywhere inside it.
