@@ -113,12 +113,24 @@ void main() {
     _select(session, 2, 5);
     session.cutRunAtCurrentFrame();
 
-    expect(_row(session), 'AACC', reason: 'the hole closed');
+    expect(
+      _row(session),
+      'AA...CC',
+      reason: '⑳ — a cut leaves a HOLE. Closing it was MY rule and never a '
+          'confirmed one: 「이딴거 누가넣으랫지? 삭제는 잘만 해당 위치 '
+          '블록만 삭제하고 다른거 위치 안건드는데」',
+    );
 
     // What came out is on the clipboard, at its own length.
     _stand(session, 0);
     session.pasteLinkedFrameAtCurrentFrame();
-    expect(_row(session), 'BBBAACC');
+    expect(
+      _row(session),
+      'BBBAA...CC',
+      reason: 'the paste pushes (T3, user-confirmed) and the cut leaves its '
+          'hole (⑳) — two halves of the splice, only one of which the user '
+          'ever asked for',
+    );
   });
 
   /// 🚨★★★ 유저 #3 (2026-08-14): 「프레임블록 **잘라내고 독립붙혀넣기**하면
@@ -242,7 +254,7 @@ void main() {
 
     _select(session, 2, 5);
     session.cutRunAtCurrentFrame();
-    expect(_row(session), 'AACC');
+    expect(_row(session), 'AA...CC');
 
     session.undo();
     expect(_row(session), 'AABBBCC');
