@@ -33,6 +33,7 @@ import 'package:flutter/rendering.dart';
 /// sites themselves rather than trusting a comparison to notice.
 class StaticCompositeBake {
   final Map<String, ui.Picture> _slots = {};
+  final Map<String, ui.Image> _rasters = {};
 
   /// What the current slots were recorded against. Null means "nothing
   /// recorded yet".
@@ -45,6 +46,10 @@ class StaticCompositeBake {
       picture.dispose();
     }
     _slots.clear();
+    for (final image in _rasters.values) {
+      image.dispose();
+    }
+    _rasters.clear();
     _key = null;
   }
 
@@ -82,9 +87,75 @@ class StaticCompositeBake {
     canvas.drawPicture(picture);
   }
 
+  /// Replays slot [id] as a RASTER over [rect], rasterising it once.
+  ///
+  /// 🚨★★★ (v) 2단계 후반부 — WHY A PICTURE IS NOT ENOUGH DOWN HERE.
+  ///
+  /// A picture skips the Dart-side walk, which was stage 1's whole point.
+  /// What it does NOT skip is the ENGINE replaying the display list: with
+  /// 500 layers below the active one, every stroke step still re-executes
+  /// 500 draws and every folder's `saveLayer`. A raster is one blit however
+  /// many layers went into it — the difference between a heavy document
+  /// being heavy per STROKE STEP and being heavy once (유저 2026-08-15:
+  /// 「1500컷이나 500개레이어같은 무거운상황도 생각하면서 가볍게 하고싶다니까?」).
+  ///
+  /// ⛔ONLY SOUND WITH NOTHING BENEATH IT. Replaying a picture applies its
+  /// blend modes against whatever is already on the destination; flattening
+  /// it into an image and drawing that `srcOver` does not. This is for the
+  /// BOTTOM of the stack — the paper plus the siblings below the chain that
+  /// encloses the live surface — where the destination is empty and the two
+  /// are identical. A slot ABOVE the live surface may hold a multiply that
+  /// has to see the stroke, and stays a picture.
+  ///
+  /// ⚠️Costs one visible-rect image resident (~9MB at a 1928×1200 view), and
+  /// it is keyed like everything else here: [keepFor] drops it, so a changed
+  /// layer, a new image revision or a viewport move all re-rasterise. Those
+  /// are not stroke steps, which is what makes it the right trade.
+  void drawRaster(
+    Canvas canvas,
+    String id,
+    Rect rect,
+    void Function(Canvas canvas) record,
+  ) {
+    final width = rect.width.round();
+    final height = rect.height.round();
+    if (width <= 0 || height <= 0) {
+      return;
+    }
+    var held = _rasters[id];
+    if (held == null) {
+      final recorder = ui.PictureRecorder();
+      final into = Canvas(recorder);
+      into.translate(-rect.left, -rect.top);
+      record(into);
+      final picture = recorder.endRecording();
+      try {
+        held = picture.toImageSync(width, height);
+      } finally {
+        picture.dispose();
+      }
+      _rasters[id] = held;
+    }
+    canvas.drawImageRect(
+      held,
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      rect,
+      // 1:1 — the raster is at canvas resolution over the very rect it is
+      // drawn into, so there is no resampling here to have a quality. The
+      // one resample this stack is entitled to happens when the display
+      // buffer meets the viewport transform.
+      Paint()..filterQuality = ui.FilterQuality.none,
+    );
+  }
+
   void dispose() => invalidate();
 
   /// Recorded slot count — the seam the cost test reads.
   @visibleForTesting
   int get slotCount => _slots.length;
+
+  /// Rasterised slot count — the seam that says a heavy stack collapsed into
+  /// one blit instead of N draws.
+  @visibleForTesting
+  int get rasterCount => _rasters.length;
 }

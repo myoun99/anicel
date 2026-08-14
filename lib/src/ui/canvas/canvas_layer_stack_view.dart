@@ -995,18 +995,71 @@ class _LayerStackPainter extends CustomPainter {
     /// into a recorder. Those are the two halves of stage 2 and they must be
     /// the same body — a second copy is how "the buffer path draws something
     /// slightly different" starts.
-    void paintContent(Canvas into) {
+    void paintPaperInto(Canvas into) {
       if (paintPaper) {
         paintProjectPaper(into, canvasRect, paperBackground);
       }
+    }
+
+    /// 🚨★★★ (v) 2단계 후반부 — THE BOTTOM OF THE STACK IS ONE BLIT.
+    ///
+    /// Stage 1 stopped the DART walk; the engine still replayed every draw
+    /// in the recording, so a stroke on top of 500 layers re-executed 500
+    /// draws and every folder's `saveLayer` per step. Rasterising the
+    /// bottom collapses all of it to one image, and the raster is redone
+    /// only when the bake key moves — which a stroke step never does.
+    ///
+    /// ⛔The BOTTOM only. Everything above the live surface stays a picture:
+    /// a multiply up there has to blend against the stroke, and an image
+    /// drawn `srcOver` cannot. Below the live surface the destination is
+    /// empty, so flattening and replaying are the same picture — which is
+    /// exactly what the parity suite pins.
+    void paintBackdropSplit(Canvas into, Rect rect) {
+      final at = nodes.indexWhere(_enclosesActiveSurface);
+      if (at < 0) {
+        bake!.drawRaster(into, 'd0:backdrop-all', rect, (c) {
+          paintPaperInto(c);
+          paintNodes(c, nodes);
+        });
+        return;
+      }
+      bake!.drawRaster(into, 'd0:backdrop', rect, (c) {
+        paintPaperInto(c);
+        paintNodes(c, nodes.sublist(0, at));
+      });
+      paintNodesWith(into, [nodes[at]], (c, children) {
+        paintSplit(c, children, 1);
+      });
+      if (at < nodes.length - 1) {
+        bake!.draw(
+          into,
+          'd0:after',
+          (c) => paintNodes(c, nodes.sublist(at + 1)),
+        );
+      }
+    }
+
+    /// [rasterRect] is non-null only when this is composing the display
+    /// buffer. The direct walk deliberately does NOT take the backdrop
+    /// raster: it draws in screen space, so a flattened backdrop would be
+    /// resampled by the CTM as one image while the rest of the stack was
+    /// resampled layer by layer — a third sampling behaviour, in the
+    /// fallback path, for no gain.
+    void paintContent(Canvas into, {Rect? rasterRect}) {
       // ⛔No bake handed down (a host that does not own one, or a tree with
       // no live surface at all) keeps the original walk. The bake is an
       // optimisation, never a second way to be correct.
       if (bake == null || activeSurfacePainter == null) {
+        paintPaperInto(into);
         paintNodes(into, nodes);
-      } else {
-        paintSplit(into, nodes, 0);
+        return;
       }
+      if (rasterRect != null) {
+        paintBackdropSplit(into, rasterRect);
+        return;
+      }
+      paintPaperInto(into);
+      paintSplit(into, nodes, 0);
     }
 
     // 🚨★★★ (v) 2단계 — ONE BUFFER AT CANVAS RESOLUTION, RESAMPLED ONCE.
@@ -1069,7 +1122,7 @@ class _LayerStackPainter extends CustomPainter {
   /// where it is measured at 26-38us for a 256px tile.
   _DisplayBuffer? _composeDisplayBuffer(
     Rect bounds,
-    void Function(Canvas into) paintContent,
+    void Function(Canvas into, {Rect? rasterRect}) paintContent,
   ) {
     if (debugDisableSingleBuffer || bounds.isEmpty) {
       return null;
@@ -1092,7 +1145,7 @@ class _LayerStackPainter extends CustomPainter {
     final recorder = ui.PictureRecorder();
     final into = Canvas(recorder);
     into.translate(-rect.left, -rect.top);
-    paintContent(into);
+    paintContent(into, rasterRect: rect);
     final picture = recorder.endRecording();
     try {
       return _DisplayBuffer(
