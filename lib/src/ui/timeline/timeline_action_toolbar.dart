@@ -231,34 +231,18 @@ class TimelineActionToolbar extends StatelessWidget {
     };
   }
 
-  /// Whether Edit Instance has something to open: drawing kinds need a
-  /// named-frame cell (the rename gate), SE either an entry to edit or an
-  /// empty cell to create into, camera/instruction any cell.
-  bool get _canEditInstance {
-    // A host may answer for its OWN standing row first. The storyboard's rail
-    // row is separate state from the drawing target (user 2026-07-27), so its
-    // transition row cannot be seen through [EditorSessionManager.activeLayer]
-    // at all — and the surface is the only thing that knows which row it means.
-    if (resolveCanEditInstance?.call() case final hostAnswer? when hostAnswer) {
-      return true;
-    }
-    final layer = session.activeLayer;
-    if (layer == null) {
-      return false;
-    }
-    // Standing on a LANE row, the instance is that lane's KEY — which the
-    // owning layer's kind cannot answer.
-    if (session.canNameLaneKeys) {
-      return true;
-    }
-    return switch (layer.kind) {
-      LayerKind.camera ||
-      LayerKind.instruction => session.hasActiveNonNegativeCell,
-      LayerKind.se =>
-        session.selectedFrame != null || session.canCreateDrawingAtCurrentFrame,
-      _ => session.canRenameFrameAtCurrentFrame,
-    };
-  }
+  /// The one thing about Edit Instance a SESSION cannot answer: the
+  /// storyboard's rail row is separate state from the drawing target (user
+  /// 2026-07-27), so its transition row is invisible through
+  /// [EditorSessionManager.activeLayer] and only the surface knows it.
+  ///
+  /// 🚨T25 — everything else moved to
+  /// [EditorSessionManager.canEditCellInstanceAtCurrentFrame]. The kind
+  /// switch used to live here, next to the button, while the DISPATCH read
+  /// [EditorSessionManager.editInstanceSubject]: enablement and action came
+  /// from two predicates that disagreed for camera, direction and SE cells,
+  /// so the button lit up and the press did nothing.
+  bool get _hostCanEditInstance => resolveCanEditInstance?.call() ?? false;
 
   /// The key suffix each kind's Add entry has always used — spelled out
   /// rather than derived from `kind.name`, so a rename of the enum cannot
@@ -758,7 +742,7 @@ class TimelineActionToolbar extends StatelessWidget {
       // storyboard's standing row is separate state from its drawing target
       // (유저 2026-07-27). Leaving it out bakes a stale enablement in
       // exactly the case that has no other source.
-      onEditInstance != null && _canEditInstance,
+      onEditInstance != null && _hostCanEditInstance,
     ),
     builder: (context) => CommandPill(
       key: const ValueKey<String>('timeline-toolbar-shared-group'),
@@ -775,14 +759,13 @@ class TimelineActionToolbar extends StatelessWidget {
           icon: Icons.edit_outlined,
           // Two sources, and they are asking different things rather than
           // the same thing twice: the SUBJECT is what the session has
-          // selected, while [_canEditInstance] carries what only a host can
-          // know — the storyboard's standing row is separate state from its
-          // drawing target (유저 2026-07-27), so no session getter can see
-          // it. Either being a yes is a yes.
+          // selected — the same answer [editSelectionInstance] dispatches on,
+          // so lit and does-something cannot come apart — while the host
+          // carries what only a surface can know. Either being a yes is a yes.
           onPressed:
               onEditInstance != null &&
                   (session.editInstanceSubject != EditInstanceSubject.nothing ||
-                      _canEditInstance)
+                      _hostCanEditInstance)
               ? onEditInstance
               : null,
         ),

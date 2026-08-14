@@ -14996,20 +14996,38 @@ class EditorSessionManager extends ChangeNotifier {
     );
   }
 
-  /// 🚨★★★ THE ONE DELETE — 유저 확정 2026-08-12 (⑰): 「딜리트버튼, 슬 통일하고싶음.
-  /// 버튼 그냥 하나로. 기본적으로 누르면 액티브레이어의 현재 프레임블록 삭제하고,
-  /// 물론 선택범위로 선택하고 삭제가능. 그리고 레이어 선택하고 누르면 레이어삭제.
-  /// 물론 여러개도가능. 컷도 마찬가지로 컷 선택하고 삭제버튼누르면 컷 삭제.」
+  /// 🚨T25 — whether the CELL under the playhead has an instance editor.
   ///
-  /// ★The verb does not ask WHICH BUTTON was pressed — it asks **what is
-  /// selected**, in the order the user gave. Delete lived in three separate
-  /// places before this (the cut menu, the layer menu, a loose layer button),
-  /// each hard-wired to one noun, which is why the same word did different
-  /// things depending on where you reached for it.
+  /// ⚠️Kind-aware, because 「인스턴스」 is not one thing: a drawing cell's is
+  /// its NAME, a camera or direction cell's is the key/event dialog, an SE
+  /// cell's is the entry — or the creation of one. This lived in the
+  /// toolbar as a private getter while the button was hard-wired to cells;
+  /// [editInstanceSubject] asked [canRenameFrameAtCurrentFrame] instead, and
+  /// the two disagreed for every non-drawing kind. The button stayed lit and
+  /// the press did nothing, which is the worst of the three possible
+  /// answers. One question, one getter.
   ///
-  /// ⚠️The LAYER rung is not wired yet — rows have no multi-selection until ⑨
-  /// lands. It is named here rather than left implicit, so the rung slots in
-  /// where the order already says it goes instead of being re-argued.
+  /// ⛔The HOST's answer is deliberately not folded in: the storyboard's
+  /// standing row is separate state from its drawing target (유저
+  /// 2026-07-27), so no session getter can see it.
+  bool get canEditCellInstanceAtCurrentFrame {
+    final layer = activeLayer;
+    if (layer == null) {
+      return false;
+    }
+    // Standing on a LANE row, the instance is that lane's KEY — which the
+    // owning layer's kind cannot answer.
+    if (canNameLaneKeys) {
+      return true;
+    }
+    return switch (layer.kind) {
+      LayerKind.camera || LayerKind.instruction => hasActiveNonNegativeCell,
+      LayerKind.se =>
+        selectedFrame != null || canCreateDrawingAtCurrentFrame,
+      _ => canRenameFrameAtCurrentFrame,
+    };
+  }
+
   /// 🚨T25 — WHAT the one Edit Instance button would rename right now.
   ///
   /// 유저 확정 2026-08-14: 「인스턴스 편집 버튼도 공통버튼으로 이동. 그래서
@@ -15031,11 +15049,21 @@ class EditorSessionManager extends ChangeNotifier {
     if (renameableSelectedLayerIds().isNotEmpty) {
       return EditInstanceSubject.layers;
     }
-    return canRenameFrameAtCurrentFrame
+    return canEditCellInstanceAtCurrentFrame
         ? EditInstanceSubject.cells
         : EditInstanceSubject.nothing;
   }
 
+  /// 🚨★★★ THE ONE DELETE — 유저 확정 2026-08-12 (⑰): 「딜리트버튼, 슬 통일하고싶음.
+  /// 버튼 그냥 하나로. 기본적으로 누르면 액티브레이어의 현재 프레임블록 삭제하고,
+  /// 물론 선택범위로 선택하고 삭제가능. 그리고 레이어 선택하고 누르면 레이어삭제.
+  /// 물론 여러개도가능. 컷도 마찬가지로 컷 선택하고 삭제버튼누르면 컷 삭제.」
+  ///
+  /// ★The verb does not ask WHICH BUTTON was pressed — it asks **what is
+  /// selected**, in the order the user gave. Delete lived in three separate
+  /// places before this (the cut menu, the layer menu, a loose layer button),
+  /// each hard-wired to one noun, which is why the same word did different
+  /// things depending on where you reached for it.
   DeleteSubject get deleteSubject {
     if (trackFrameRangeSelection.value != null) {
       return DeleteSubject.cuts;
