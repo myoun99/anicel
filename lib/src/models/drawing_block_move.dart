@@ -55,8 +55,9 @@ class DrawingBlockMovePlan {
 /// slide). Returns null when the move is impossible or a no-op:
 ///
 /// - a SAME-LAYER slide follows the shared rank rule ([planBlockRunMove]):
-///   staying in its own free space re-times it, reaching past a
-///   neighbour's midpoint reorders instead. It never pushes anything;
+///   reaching the seat beyond a neighbour reorders, and either way the run
+///   re-times inside the free space of the rank it ends up holding. It
+///   never pushes anything;
 /// - a CROSS-LAYER drop pushes the blocks it lands among out of the way
 ///   (R12-②), cascading, and clamps at the frame-0 wall on the way left;
 /// - cross-layer moves take the block's cel along, so a cel that other
@@ -193,8 +194,8 @@ DrawingBlockMovePlan? planDrawingBlockMove({
 ///
 /// Same rules as [planDrawingBlockMove], applied group-wise:
 /// - a same-layer slide follows the shared rank rule ([planBlockRunMove]):
-///   free space re-times, a neighbour's midpoint reorders, nothing is
-///   pushed;
+///   the seat beyond a neighbour reorders, free space re-times either way,
+///   nothing is pushed;
 /// - cross-layer moves carry the moved cels; a cel referenced by an entry
 ///   OUTSIDE the moved set stays (rejected) to keep links intact — entries
 ///   linked WITHIN the range travel together sharing their cel.

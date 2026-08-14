@@ -12283,11 +12283,18 @@ class EditorSessionManager extends ChangeNotifier {
   ///
   /// Where it ends up is [planCutMove]'s answer: a drag that stays in its
   /// own free space re-times (its leading gap grows or shrinks, the
-  /// neighbours hold still), and a drag that reaches past a neighbour's
-  /// midpoint REORDERS the track instead. Sliding used to shove the
+  /// neighbours hold still), and a drag that reaches the seat BEYOND a
+  /// neighbour REORDERS the track instead. Sliding used to shove the
   /// followers along on contact; that whole-track shove is what the
   /// push/pull buttons are for, and a drag that could only shove could
   /// never say "put this cut after that one".
+  ///
+  /// ⚠️The shared rule now also re-times a run AFTER it has reordered (UI
+  /// 08-14 #5), but THIS axis cannot show it: [planCutMove] answers a
+  /// reorder with the sequence alone and this drag commits that sequence,
+  /// so a swapped cut still seats itself. Carrying it here means giving
+  /// `CutMovePlan.reorder` its gaps and re-keying them by the cut that ends
+  /// up in each position — a separate change, not done.
   bool beginCutMoveDrag(CutId cutId) {
     final project = _repository.requireProject();
     for (final track in project.tracks) {

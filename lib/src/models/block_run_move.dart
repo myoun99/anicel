@@ -1,17 +1,24 @@
 /// The ONE rule a block-run drag follows, on either axis.
 ///
-/// A drag that stays in its own free space RE-TIMES: the run's leading gap
-/// grows or shrinks and the blocks around it hold still. A drag that
-/// reaches into a neighbour REORDERS: the sequence permutes and every gap
-/// stays with the block that owns it, so the run carries its own length and
-/// only the boundaries between blocks move (the design's ㉠).
+/// A drag answers TWO questions, and it answers both every time. What
+/// SEQUENCE does the release leave — the run's rank among the blocks it is
+/// not part of, measured against the seats they hold in the ORIGINAL
+/// layout? And WHERE in that sequence does the run sit — inside the free
+/// space its new neighbours leave it, with the follower absorbing the
+/// difference so everything past the run holds still?
 ///
-/// The two are outcomes of ONE rule rather than two modes: the run's rank
-/// among the blocks it is not part of, measured against their ORIGINAL
-/// midpoints. Same rank = re-time, different rank = reorder. Measuring
-/// against the original positions is what makes the rule stable — a rank
-/// read off previewed positions would chase itself, since re-timing moves
-/// the very midpoints the next step compares to.
+/// Re-timing and reordering are therefore not two modes. A reorder is a
+/// drag whose FIRST answer changed; it still has a second answer, and the
+/// hand keeps its hold on the run once the sequence has flipped. Asking the
+/// second question only when the rank HELD was a real bug: a run that had
+/// just swapped stopped dead on its seat, so the empty frames past it were
+/// unreachable for the rest of that drag, and from there on only the cursor
+/// moved — which reads as "the swap is measured from where I started
+/// dragging" (UI 피드백 08-14 #5, both halves of it).
+///
+/// Measuring the rank against ORIGINAL positions is what keeps the rule
+/// stable — a rank read off previewed positions would chase itself, since
+/// re-timing moves the very seats the next step compares to.
 ///
 /// This started on the cut axis and the frame axis kept BULLDOZING — a
 /// slide that shoved its neighbours along. They are the same motion on two
@@ -43,8 +50,11 @@ class BlockRunMoveLayout {
   /// The slots' ORIGINAL indices, in the order the release would leave.
   final List<int> order;
 
-  /// Parallel to [order]: each slot's leading gap after the move. A reorder
-  /// changes none of them — only the sequence they are read in.
+  /// Parallel to [order]: the leading gap of each POSITION after the move.
+  /// The gaps belong to positions rather than to the blocks that arrive in
+  /// them, so a permutation reads the same numbers in a new sequence; what
+  /// a move can still change is the pair around the run, which trade the
+  /// slack the run slid through.
   final List<int> leadingGaps;
 
   /// Parallel to [order]: the frame each slot starts on.
@@ -83,11 +93,12 @@ class BlockRunMoveLayout {
 /// [frameDelta] frames.
 ///
 /// The run is clamped into the free space of whatever rank it lands at, so
-/// a slide never overlaps a neighbour and never pushes one: running out of
-/// room means the run stops at contact, and reaching past the neighbour's
-/// midpoint means the order changes instead. Pushing the followers along
-/// was the old shove — that behaviour belongs to the push/pull buttons,
-/// which take a scope, not to a drag.
+/// a move never overlaps a neighbour and never pushes one: running out of
+/// room means the run stops at contact, and reaching the seat BEYOND that
+/// neighbour means the order changes — after which the run goes on being
+/// clamped into the free space of the rank it just took. Pushing the
+/// followers along was the old shove — that behaviour belongs to the
+/// push/pull buttons, which take a scope, not to a drag.
 ///
 /// [axisEndExclusive] is where the axis stops, for the axes that have an
 /// end. The LAST slot is otherwise unbounded on the right — the cut axis
@@ -187,61 +198,65 @@ BlockRunMoveLayout planBlockRunMove({
     }
   }
 
-  if (rank != originalRank) {
-    final moving = [for (var i = runStart; i <= runEnd; i += 1) i];
-    final others = [for (final other in rest) other.index];
-    final order = <int>[...others.take(rank), ...moving, ...others.skip(rank)];
-    // THE GAPS STAY WITH THE POSITION, not with the block that arrived
-    // carrying one (R5 #13).
-    //
-    // They used to travel: `[for (final index in order) slots[index]...]`
-    // reads each block's OWN leading gap in the new sequence. The total
-    // span survives that either way — a permutation moves the same numbers
-    // around — but the PLACES do not, and places are what a reorder is
-    // for. A row whose first block sits at frame 19 with eighteen empty
-    // frames ahead of it, and a second block glued to its end, has gaps
-    // 18 and 0; swapping the two carried the 0 to the front and the block
-    // landed on frame 1, with the emptiness pushed between them. Nothing
-    // was lost and nothing was where the user put it.
-    //
-    // Reading the gaps by POSITION makes a swap a swap: each block takes
-    // over the leading space of the slot it moved into, so the two trade
-    // places and everything outside the run holds still. On a row with no
-    // gaps (blocks packed end to end) the two rules agree exactly, which
-    // is why this only ever showed itself at the head of a sparse row.
-    return BlockRunMoveLayout(
-      slots: slots,
-      order: order,
-      leadingGaps: [
-        for (var position = 0; position < order.length; position += 1)
-          slots[position].leadingGap,
-      ],
-    );
-  }
+  final moving = [for (var i = runStart; i <= runEnd; i += 1) i];
+  final others = [for (final other in rest) other.index];
+  final order = <int>[...others.take(rank), ...moving, ...others.skip(rank)];
 
-  // Same rank: re-time inside the free space between the neighbours — or,
-  // past the last of them, up to the axis's own end when it has one.
-  final floor = rank == 0 ? 0 : rest[rank - 1].endExclusive;
-  final ceiling = rank == rest.length
+  // THE GAPS STAY WITH THE POSITION, not with the block that arrived
+  // carrying one (R5 #13).
+  //
+  // They used to travel: `[for (final index in order) slots[index]...]`
+  // reads each block's OWN leading gap in the new sequence. The total
+  // span survives that either way — a permutation moves the same numbers
+  // around — but the PLACES do not, and places are what a reorder is
+  // for. A row whose first block sits at frame 19 with eighteen empty
+  // frames ahead of it, and a second block glued to its end, has gaps
+  // 18 and 0; swapping the two carried the 0 to the front and the block
+  // landed on frame 1, with the emptiness pushed between them. Nothing
+  // was lost and nothing was where the user put it.
+  //
+  // Reading the gaps by POSITION makes a swap a swap: each block takes
+  // over the leading space of the slot it moved into, so the two trade
+  // places and everything outside the run holds still. On a row with no
+  // gaps (blocks packed end to end) the two rules agree exactly, which
+  // is why this only ever showed itself at the head of a sparse row.
+  final gaps = [
+    for (var position = 0; position < order.length; position += 1)
+      slots[position].leadingGap,
+  ];
+
+  // The run's own position in the sequence it just landed in, and the one
+  // behind it. When the rank held, these are `runStart` and `runEnd + 1`
+  // and everything below reduces to the plain slide it always was.
+  final runPosition = rank;
+  final afterRun = rank + moving.length;
+  final isLast = afterRun >= order.length;
+
+  // Re-time inside the free space the new neighbours leave — or, past the
+  // last of them, up to the axis's own end when it has one.
+  //
+  // The slack is the pair of gaps AROUND the run: sliding right hands the
+  // follower's space to the leader and sliding left hands it back, which is
+  // the same "the follower absorbs the difference" the slide always did,
+  // said as a total instead of as an increment. Everything outside that
+  // pair holds still, so a swap that lands mid-gap disturbs nothing the
+  // swap itself did not already move.
+  var floor = 0;
+  for (var position = 0; position < runPosition; position += 1) {
+    floor += gaps[position] + slots[order[position]].length;
+  }
+  final slack = gaps[runPosition] + (isLast ? 0 : gaps[afterRun]);
+  final ceiling = isLast
       ? (axisEndExclusive == null ? null : axisEndExclusive - runLength)
-      : rest[rank].start - runLength;
+      : floor + slack;
   var landed = wanted < floor ? floor : wanted;
   if (ceiling != null && landed > ceiling) {
     landed = ceiling < floor ? floor : ceiling;
   }
 
-  final gaps = [for (final slot in slots) slot.leadingGap];
-  if (landed != runFrom) {
-    gaps[runStart] = landed - floor;
-    // The follower absorbs the difference so everything past the run holds
-    // still — the run took its own space with it, not its neighbours'.
-    if (runEnd + 1 < slots.length) {
-      gaps[runEnd + 1] = slots[runEnd + 1].leadingGap + (runFrom - landed);
-    }
+  gaps[runPosition] = landed - floor;
+  if (!isLast) {
+    gaps[afterRun] = slack - (landed - floor);
   }
-  return BlockRunMoveLayout(
-    slots: slots,
-    order: [for (var index = 0; index < slots.length; index += 1) index],
-    leadingGaps: gaps,
-  );
+  return BlockRunMoveLayout(slots: slots, order: order, leadingGaps: gaps);
 }
