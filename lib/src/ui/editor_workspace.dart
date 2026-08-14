@@ -4311,6 +4311,34 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                           top: onTop ? regionSpan : 0,
                           bottom: onTop ? 0 : regionSpan,
                         );
+                        // ★What the region occupies against OTHER PANELS,
+                        // which is a different question from what it hides
+                        // from the artwork (⑫).
+                        //
+                        // The folded row lies ON the drawing on purpose — no
+                        // ground, no fill — so it is deliberately absent from
+                        // `floorCover`. That reading leaked into the rails,
+                        // and a rail grown while the panel was folded stopped
+                        // 23px INSIDE the row: it was standing in another
+                        // panel's space because nobody had said the space was
+                        // a panel's (유저 ⑫, 「옆에 패널들은 간편오버레이를
+                        // 침범해서 자리차지함」).
+                        //
+                        // A `max` rather than a sum: the splitter's thickness
+                        // is the room the region already claims above itself,
+                        // and the folded row occupies that same band and then
+                        // some. Reading BOTH from one number is what makes a
+                        // taller fold later need no second edit (유저: 「그래야
+                        // 수정했을때 아무것도 안고치고 반영되니까」).
+                        final regionPanelSpan = hasBottomDock
+                            ? bottomHeight +
+                                  math.max(
+                                    DockEdgeSplitter.thickness,
+                                    _bottomDockCollapsed
+                                        ? CollapsedRowOverlay.height
+                                        : 0.0,
+                                  )
+                            : 0.0;
                         // ★ Whether each column runs past the floating region or
                         // stops on its edge — one comparison per side, because the
                         // two rails can be different widths and the answer is
@@ -4321,7 +4349,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                   bottomInset: bottomInset,
                                   railWidth: railSpan,
                                 )
-                            ? regionSpan
+                            ? regionPanelSpan
                             : 0.0;
                         final leftStop = columnStop(leftRailSpan);
                         final rightStop = columnStop(rightRailSpan);
