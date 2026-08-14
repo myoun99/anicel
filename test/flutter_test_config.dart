@@ -50,6 +50,9 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // Same hazard, same fix: the flow's platform seam decides whether a pick
   // has to clear Android's storage grant first.
   debugOperatingSystemOverride = null;
+  // PICK-6: once-per-session, so a file that leaves it true silences the
+  // notice for every file after it.
+  debugDriveNoticeShown = false;
   AppStorage.debugAllFilesAccessOverride = null;
   try {
     await testMain();

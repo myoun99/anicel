@@ -190,6 +190,7 @@ void main() {
     'folderNoPathTitle': (s) => s.folderNoPathTitle,
     'folderStorageOffTitle': (s) => s.folderStorageOffTitle,
     'folderPickUnavailable': (s) => s.folderPickUnavailable,
+    'folderPickDriveNotice': (s) => s.folderPickDriveNotice,
     'projectChooserEmpty': (s) => s.projectChooserEmpty,
     'fileNameEmpty': (s) => s.fileNameEmpty,
     'recentProjectsTitle': (s) => s.recentProjectsTitle,
