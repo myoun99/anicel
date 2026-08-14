@@ -96,6 +96,7 @@ import '../models/timeline_coverage.dart';
 import '../models/flip_column_step.dart';
 import '../models/timeline_exposure.dart';
 import '../models/delete_subject.dart';
+import '../models/edit_instance_subject.dart';
 import '../models/timeline_selection_kind.dart';
 import '../models/timeline_frame_range.dart';
 import '../models/timeline_repeat.dart';
@@ -15009,6 +15010,32 @@ class EditorSessionManager extends ChangeNotifier {
   /// ⚠️The LAYER rung is not wired yet — rows have no multi-selection until ⑨
   /// lands. It is named here rather than left implicit, so the rung slots in
   /// where the order already says it goes instead of being re-argued.
+  /// 🚨T25 — WHAT the one Edit Instance button would rename right now.
+  ///
+  /// 유저 확정 2026-08-14: 「인스턴스 편집 버튼도 공통버튼으로 이동. 그래서
+  /// **선택범위 통해 동사통일화** 가능하게.」
+  ///
+  /// ★Deliberately the SAME ladder as [deleteSubject], in the same order and
+  /// for the same reason. Two shared-pill verbs that both ask 「지금 무엇이
+  /// 선택됐나」 and answer it differently would be a rule the user has to
+  /// hold two versions of.
+  ///
+  /// ⚠️Where the two DIFFER is only in the predicate each rung uses:
+  /// deleting asks what is deletable, renaming asks what is renameable, and
+  /// those are not the same set (a camera row selects and renames but does
+  /// not delete).
+  EditInstanceSubject get editInstanceSubject {
+    if (trackFrameRangeSelection.value != null) {
+      return EditInstanceSubject.cuts;
+    }
+    if (renameableSelectedLayerIds().isNotEmpty) {
+      return EditInstanceSubject.layers;
+    }
+    return canRenameFrameAtCurrentFrame
+        ? EditInstanceSubject.cells
+        : EditInstanceSubject.nothing;
+  }
+
   DeleteSubject get deleteSubject {
     if (trackFrameRangeSelection.value != null) {
       return DeleteSubject.cuts;

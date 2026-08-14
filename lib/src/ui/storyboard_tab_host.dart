@@ -363,7 +363,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       unawaited(editTransitionSpanInstance(context, _session));
       return;
     }
-    unawaited(editActiveInstance(context, _session));
+    // 🚨T25: the SELECTION's instance. The transition fork stays above it —
+    // that row kind is this panel's own — but everything past it now walks
+    // delete's ladder (cut, then rows, then the cell at the playhead), so
+    // the button asks the same question on both panels.
+    unawaited(editSelectionInstance(context, _session));
   }
 
   /// ⑬ CREATE on this panel — the same fork as [_editInstanceHere].
