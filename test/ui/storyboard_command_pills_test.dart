@@ -121,7 +121,7 @@ void main() {
     // ① took it out of the frame menu and onto the pill, so there is
     // nothing to open first — the question this test asks is unchanged:
     // does the STORYBOARD's host serve the dispatch.
-    const entryKey = ValueKey<String>('rename-frame-button');
+    const entryKey = ValueKey<String>('shared-edit-button');
     expect(find.byKey(entryKey), findsOneWidget);
     expect(
       await readCommandEnabled(tester, entryKey),

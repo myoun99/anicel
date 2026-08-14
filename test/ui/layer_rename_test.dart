@@ -28,7 +28,7 @@ import 'flyout_test_helpers.dart';
 /// than the widget: **select the row, then press the one verb** — the same
 /// two steps the layer DELETE already took when ⑰ absorbed it. What the
 /// rename does once it opens has not changed at all.
-const _renameButtonKey = ValueKey<String>('rename-frame-button');
+const _renameButtonKey = ValueKey<String>('shared-edit-button');
 const _dialogKey = ValueKey<String>('rename-layer-dialog');
 const _textFieldKey = ValueKey<String>('rename-layer-text-field');
 const _cancelButtonKey = ValueKey<String>('rename-layer-cancel-button');

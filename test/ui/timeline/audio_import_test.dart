@@ -530,7 +530,7 @@ void main() {
       await tester.pumpAndSettle();
       await tapCommandButton(
         tester,
-        const ValueKey<String>('rename-frame-button'),
+        const ValueKey<String>('shared-edit-button'),
       );
       return session;
     }
@@ -590,7 +590,7 @@ void main() {
 
       await tapCommandButton(
         tester,
-        const ValueKey<String>('rename-frame-button'),
+        const ValueKey<String>('shared-edit-button'),
       );
       expect(
         find.byKey(const ValueKey<String>('se-linked-audio-none')),
