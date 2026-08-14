@@ -45,6 +45,22 @@ import 'canvas_playback_controller.dart';
 /// mistake the playback view's own comments were written to prevent. The
 /// editor subtree rides through as `child`, so it is never rebuilt here at
 /// all.
+///
+/// 🚨🚨★★★AND THE SHAPE OF THIS TREE NEVER CHANGES, which is a second and
+/// stronger requirement than not rebuilding (UI 08-14 #11). The gate used to
+/// return the bare `child` when idle and wrap it in two widgets when playing.
+/// Holding the same `child` INSTANCE is not enough: inserting ancestors moves
+/// the subtree to a different position, Flutter finds a `Listener` where an
+/// editor used to be, and it discards the whole element tree and inflates a
+/// fresh one. Every [State] under this gate died on the first frame of
+/// playback — the workspace's own included, which is why a folded timeline
+/// sprang open the instant play was pressed and then folded again when the
+/// saved layout was restored over the new state.
+///
+/// ⇒ The wrapper is ALWAYS mounted and only its two flags move. A `Listener`
+/// with null callbacks defers to its child, and an [AbsorbPointer] that is
+/// not absorbing is transparent, so the idle cost is two inert nodes and the
+/// playing cost is a flag flip.
 class PlaybackActuationGate extends StatefulWidget {
   const PlaybackActuationGate({
     super.key,
@@ -106,20 +122,15 @@ class _PlaybackActuationGateState extends State<PlaybackActuationGate> {
     return ValueListenableBuilder<bool>(
       valueListenable: widget.controller.isActiveListenable,
       child: widget.child,
-      builder: (context, playing, child) {
-        if (!playing) {
-          return child!;
-        }
-        return Listener(
-          onPointerDown: (_) => _stop(),
-          // Wheel and pinch-zoom arrive as signals, not downs, and the user
-          // named them: 「휠/줌」.
-          onPointerSignal: (_) => _stop(),
-          // ★This is the 「입력 일 안함」 half. Without it the press would
-          // stop playback AND land on whatever was under it.
-          child: AbsorbPointer(child: child),
-        );
-      },
+      builder: (context, playing, child) => Listener(
+        onPointerDown: playing ? (_) => _stop() : null,
+        // Wheel and pinch-zoom arrive as signals, not downs, and the user
+        // named them: 「휠/줌」.
+        onPointerSignal: playing ? (_) => _stop() : null,
+        // ★This is the 「입력 일 안함」 half. Without it the press would
+        // stop playback AND land on whatever was under it.
+        child: AbsorbPointer(absorbing: playing, child: child),
+      ),
     );
   }
 }
