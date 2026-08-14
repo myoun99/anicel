@@ -18,6 +18,7 @@ import '../dev_profile.dart';
 import '../playback/layer_frame_image_cache.dart';
 import 'bitmap_surface_painter.dart';
 import 'composite_effect_paint.dart';
+import 'display_resample.dart';
 import 'selection_float_overlay.dart';
 import 'static_composite_bake.dart';
 import 'layer_image_draw.dart';
@@ -174,7 +175,20 @@ class CanvasLayerStackView extends StatefulWidget {
     this.paintPaper = false,
     this.paperBackground = ProjectBackground.defaultBackground,
     this.debugDisableBake = false,
+    this.debugDisableSingleBuffer = false,
   });
+
+  /// 🚨(v) 2단계 — turns the single composite buffer OFF, so a test can
+  /// render the SAME tree both ways and compare the pixels.
+  ///
+  /// ⚠️The comparison is only an identity at 1:1. That is not a weakness of
+  /// the test, it is the change: above and below 100% the buffer resamples
+  /// ONCE where the direct walk resampled every layer separately, and the
+  /// pixels are supposed to differ there. So parity pins the composite —
+  /// order, blending, paper, pasteboard — and a separate test pins the
+  /// sampling law.
+  @visibleForTesting
+  final bool debugDisableSingleBuffer;
 
   /// 🚨(v) — turns the static bake OFF so a test can render the SAME tree
   /// both ways and compare the pixels.
@@ -509,6 +523,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           paintPaper: widget.paintPaper,
           paperBackground: widget.paperBackground,
           bake: widget.debugDisableBake ? null : _bake,
+          debugDisableSingleBuffer: widget.debugDisableSingleBuffer,
         ),
         child: const SizedBox.expand(),
       ),
@@ -593,6 +608,25 @@ final class _PaintAdjustment extends _PaintNode {
   final double mix;
 }
 
+/// One composited canvas-resolution raster and where it belongs.
+///
+/// [rect] is in canvas space and is whole-pixel aligned, so the src/dst pair
+/// of the final `drawImageRect` is exact: the ONE resample the display is
+/// entitled to happens in the viewport transform and nowhere else.
+class _DisplayBuffer {
+  const _DisplayBuffer({
+    required this.image,
+    required this.rect,
+    required this.pixelWidth,
+    required this.pixelHeight,
+  });
+
+  final ui.Image image;
+  final Rect rect;
+  final double pixelWidth;
+  final double pixelHeight;
+}
+
 class _LayerStackPainter extends CustomPainter {
   _LayerStackPainter({
     required this.nodes,
@@ -603,6 +637,7 @@ class _LayerStackPainter extends CustomPainter {
     required this.paintPaper,
     required this.paperBackground,
     this.bake,
+    this.debugDisableSingleBuffer = false,
   }) : super(
          repaint: floatOverlay == null
              ? activeSurfacePainter
@@ -639,6 +674,19 @@ class _LayerStackPainter extends CustomPainter {
   final CanvasViewport viewport;
   final bool paintPaper;
   final ProjectBackground paperBackground;
+
+  /// See [CanvasLayerStackView.debugDisableSingleBuffer].
+  final bool debugDisableSingleBuffer;
+
+  /// The largest buffer side worth allocating, in canvas pixels.
+  ///
+  /// Not a quality setting — a floor under "is this still a good idea". A
+  /// viewport zoomed far out over a 5×5 pasteboard asks for a buffer many
+  /// times the screen, and rasterising that to resample it back down is
+  /// strictly worse than letting each layer draw itself. The direct walk is
+  /// always correct, so falling back to it costs only the sampling law, and
+  /// only in a view where everything is tiny anyway.
+  static const int _maxBufferSide = 8192;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -677,9 +725,6 @@ class _LayerStackPainter extends CustomPainter {
         _lastStackProbe = probe;
         InputInspector.note(probe);
       }
-    }
-    if (paintPaper) {
-      paintProjectPaper(canvas, canvasRect, paperBackground);
     }
     // The group buffer's bounds are a SIZE HINT to the engine: it
     // allocates an offscreen that big. The pasteboard is 5×5 canvases —
@@ -943,15 +988,122 @@ class _LayerStackPainter extends CustomPainter {
       }
     }
 
-    // ⛔No bake handed down (a host that does not own one, or a tree with no
-    // live surface at all) keeps the original walk. The bake is an
-    // optimisation, never a second way to be correct.
-    if (bake == null || activeSurfacePainter == null) {
-      paintNodes(canvas, nodes);
+    /// Everything this stack is, in CANVAS space: the paper and then the
+    /// layers over it.
+    ///
+    /// Pulled out of `paint` so it can be run against the screen directly OR
+    /// into a recorder. Those are the two halves of stage 2 and they must be
+    /// the same body — a second copy is how "the buffer path draws something
+    /// slightly different" starts.
+    void paintContent(Canvas into) {
+      if (paintPaper) {
+        paintProjectPaper(into, canvasRect, paperBackground);
+      }
+      // ⛔No bake handed down (a host that does not own one, or a tree with
+      // no live surface at all) keeps the original walk. The bake is an
+      // optimisation, never a second way to be correct.
+      if (bake == null || activeSurfacePainter == null) {
+        paintNodes(into, nodes);
+      } else {
+        paintSplit(into, nodes, 0);
+      }
+    }
+
+    // 🚨★★★ (v) 2단계 — ONE BUFFER AT CANVAS RESOLUTION, RESAMPLED ONCE.
+    //
+    // Above this line every layer was drawn straight under the viewport
+    // transform, so the CTM resampled each of them SEPARATELY and each one
+    // brought its own `filterQuality`. That is why becoming the active
+    // layer changed how a layer looked (T21): the live surface draws its
+    // tiles at `none` and a cached layer image draws at `low`.
+    //
+    // Compositing at canvas resolution first makes the question disappear
+    // rather than answering it consistently: there is exactly one image to
+    // resample, so [filterQualityForDisplayScale] is the whole policy and
+    // no layer is ever asked what it is.
+    //
+    // 📐The buffer is the VISIBLE canvas-space rect, not the pasteboard —
+    // the pasteboard is 5×5 canvases and rasterising all of it would cost
+    // 25× what is on screen. It is not the canvas rect either: artwork
+    // parked on the pasteboard is visible and must composite with the rest
+    // (유저 2026-08-15, 「페이스트보드도 룰러할때 보이게」).
+    final buffer = _composeDisplayBuffer(groupBounds, paintContent);
+    if (buffer == null) {
+      paintContent(canvas);
     } else {
-      paintSplit(canvas, nodes, 0);
+      try {
+        canvas.drawImageRect(
+          buffer.image,
+          Offset.zero & Size(buffer.pixelWidth, buffer.pixelHeight),
+          buffer.rect,
+          Paint()
+            ..filterQuality = filterQualityForDisplayScale(
+              displayScaleOf(viewport.zoom),
+            ),
+        );
+      } finally {
+        // ⚠️Safe HERE and nowhere earlier: the draw above put the image into
+        // this frame's display list, and the engine holds its own reference
+        // to it from that moment. What `dispose` releases is this handle's
+        // claim, not the pixels the list is going to replay.
+        buffer.image.dispose();
+      }
     }
     canvas.restore();
+  }
+
+  /// Rasterises [paintContent] over [bounds] at CANVAS resolution, or null
+  /// when the stack should just paint itself onto the screen.
+  ///
+  /// Null is not a failure: an empty viewport (nothing on screen yet) and a
+  /// buffer too large to be worth allocating are both cases where the
+  /// direct walk is the better answer, and the direct walk is the one that
+  /// was always correct.
+  ///
+  /// 🚨`toImageSync`, not `toImage`. The design said stage 2 needed a native
+  /// surface because "Skia has no synchronous bytes-to-image path" — true,
+  /// and about the wrong conversion. What this needs is DISPLAY LIST to
+  /// image, which is synchronous from Dart and leaves the rasterisation
+  /// deferred on the GPU. The repo already leans on that in the tile
+  /// compose (`tiled_surface_compose`) and in the provisional tile pictures,
+  /// where it is measured at 26-38us for a 256px tile.
+  _DisplayBuffer? _composeDisplayBuffer(
+    Rect bounds,
+    void Function(Canvas into) paintContent,
+  ) {
+    if (debugDisableSingleBuffer || bounds.isEmpty) {
+      return null;
+    }
+    // Whole pixels, and the DESTINATION is the rounded rect too — a src/dst
+    // pair that disagree by a fraction of a pixel would resample the buffer
+    // a second time and undo the point of having it.
+    final rect = Rect.fromLTRB(
+      bounds.left.floorToDouble(),
+      bounds.top.floorToDouble(),
+      bounds.right.ceilToDouble(),
+      bounds.bottom.ceilToDouble(),
+    );
+    final width = rect.width.round();
+    final height = rect.height.round();
+    if (width <= 0 || height <= 0 || width > _maxBufferSide ||
+        height > _maxBufferSide) {
+      return null;
+    }
+    final recorder = ui.PictureRecorder();
+    final into = Canvas(recorder);
+    into.translate(-rect.left, -rect.top);
+    paintContent(into);
+    final picture = recorder.endRecording();
+    try {
+      return _DisplayBuffer(
+        image: picture.toImageSync(width, height),
+        rect: rect,
+        pixelWidth: width.toDouble(),
+        pixelHeight: height.toDouble(),
+      );
+    } finally {
+      picture.dispose();
+    }
   }
 
   /// Whether the live surface is this node, or anywhere inside it.
