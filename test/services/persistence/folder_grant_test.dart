@@ -18,40 +18,23 @@ import 'package:anicel/src/services/persistence/folder_grant.dart';
 /// all: of eight injectable pickers in this app, tests use two. A seam
 /// nothing exercises is not a seam.
 void main() {
-  // Which platforms can be handed a REFERENCE and still read it tomorrow.
+  // The `references expire on Apple and nowhere else` group is GONE with
+  // the predicate it pinned.
   //
-  // Not the same question as `scopedForPlatform`, and the difference is
-  // the whole point: Android's grant is a permission over real paths that
-  // outlives the pick, so a path written down there keeps working, while
-  // Apple's is attached to the item that was picked. Reading them as one
-  // set would either hand iPad a link that dies overnight or make Android
-  // copy everything for no reason.
+  // It asked which platforms can be handed a REFERENCE and still read it
+  // tomorrow, and the answer changed: grants are now written into
+  // `project.json` and re-resolved on open, so a recorded path survives on
+  // Apple too. Left in place these tests would have kept a false statement
+  // green.
   //
-  // ⚠️PICK-5 history: this table was RIGHT about the platforms and wrong
-  // about reality, because nothing was recording a real Android path in the
-  // first place — `file_selector` copied the document into `getCacheDir()`
-  // and the app recorded the copy. The native picker is what makes the
-  // Android row true rather than merely intended.
-  group('references expire on Apple and nowhere else', () {
-    test('the table', () {
-      expect(FolderPicker.referencesExpireForPlatform('ios'), isTrue);
-      expect(FolderPicker.referencesExpireForPlatform('macos'), isTrue);
-      for (final os in const ['android', 'windows', 'linux', 'fuchsia']) {
-        expect(
-          FolderPicker.referencesExpireForPlatform(os),
-          isFalse,
-          reason: '$os records a path that keeps working',
-        );
-      }
-    });
-
-    test('it is NOT the scoped-grant question', () {
-      // Android answers yes to one and no to the other. A single
-      // predicate for both would be wrong on exactly this row.
-      expect(FolderPicker.scopedForPlatform('android'), isTrue);
-      expect(FolderPicker.referencesExpireForPlatform('android'), isFalse);
-    });
-  });
+  // ⚠️Its history is still worth carrying, because it was wrong twice for
+  // different reasons. PICK-5 found the table RIGHT about the platforms and
+  // wrong about reality — nothing was recording a real Android path at all,
+  // since `file_selector` copied the document into `getCacheDir()` and the
+  // app recorded the copy. The native picker made the Android row true; then
+  // stored grants made the Apple row false. **A platform tuple can be
+  // correct as a statement about platforms and still describe nothing that
+  // happens.**
 
   group('a native answer becomes grants', () {
     test('granted carries the path and the bookmark', () {

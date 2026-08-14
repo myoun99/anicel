@@ -272,23 +272,23 @@ abstract final class FolderPicker {
   /// opposed to a path that simply works.
   static bool get grantsAreScoped => scopedForPlatform(_operatingSystem);
 
-  /// Whether a path this app recorded stops working after a relaunch
-  /// unless the grant that produced it was kept.
-  ///
-  /// The three platforms of [scopedForPlatform] all hand out grants, but
-  /// only Apple's are attached to the ITEM: Android's is a permission over
-  /// real paths that outlives any one pick, so a path written down there
-  /// keeps working. That is the difference that decides whether importing
-  /// by REFERENCE is safe by default — a reference is a path written down
-  /// and nothing else.
-  static bool get referencesExpire => referencesExpireForPlatform(
-    _operatingSystem,
-  );
-
-  /// The decision as a pure function of the OS name.
-  @visibleForTesting
-  static bool referencesExpireForPlatform(String operatingSystem) =>
-      operatingSystem == 'ios' || operatingSystem == 'macos';
+  // `referencesExpire` / `referencesExpireForPlatform` are GONE, and the
+  // reason is worth keeping.
+  //
+  // They said: a path recorded on Apple stops working at the next relaunch
+  // unless the grant that produced it was kept — which decided whether
+  // importing by REFERENCE was safe by default, and is why Apple alone
+  // started on Copy.
+  //
+  // Both halves of that stopped being true. Grants are kept now (they are
+  // written into `project.json` and re-resolved on open), so a recorded
+  // path survives. And the import default moved to Copy everywhere for an
+  // unrelated reason — video is never carried, so the "3GB duplicate" fear
+  // that pushed the default the other way went with it.
+  //
+  // ⚠️A predicate whose last consumer left is not merely unused: this one
+  // would have gone on ANSWERING, and answering wrongly. Deleted rather
+  // than left for someone to trust.
 
   /// The decision as a pure function of the OS name.
   ///
