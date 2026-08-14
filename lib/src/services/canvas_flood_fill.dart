@@ -1074,6 +1074,7 @@ void _chamferDistance(
 BrushDab? buildShapeFillDab({
   required CanvasSelectionShape shape,
   required int color,
+  double opacity = 1.0,
   FloodFillOptions options = const FloodFillOptions(),
 }) {
   final region = CanvasSelectionRegion.shape(shape);
@@ -1129,6 +1130,7 @@ BrushDab? buildShapeFillDab({
     color: color,
     originX: left - margin,
     originY: top - margin,
+    opacity: opacity,
   );
 }
 
@@ -1145,6 +1147,7 @@ BrushDab? buildFillDab({
   required LayerFrameSurfaceResolver surfaceResolver,
   required CanvasPoint point,
   required int color,
+  double opacity = 1.0,
   FloodFillOptions options = const FloodFillOptions(),
   int paperColor = canvasPaperColor,
   void Function()? onOpenRegion,
@@ -1205,6 +1208,7 @@ BrushDab? buildFillDab({
     color: color,
     originX: raster.originX,
     originY: raster.originY,
+    opacity: opacity,
   );
 }
 
@@ -1221,6 +1225,7 @@ BrushDab _colorStampDab({
   required int color,
   required int originX,
   required int originY,
+  required double opacity,
 }) {
   final r = (color >> 16) & 0xFF;
   final g = (color >> 8) & 0xFF;
@@ -1264,7 +1269,7 @@ BrushDab _colorStampDab({
     ),
     color: color,
     size: math.max(region.width, region.height).toDouble(),
-    opacity: 1,
+    opacity: opacity,
     flow: 1,
     hardness: 1,
     tipShape: BrushTipShape.square,

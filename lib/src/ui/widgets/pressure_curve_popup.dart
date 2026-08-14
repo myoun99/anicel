@@ -23,7 +23,14 @@ class PressureCurveButton extends StatelessWidget {
     required this.title,
     required this.curve,
     required this.onChanged,
+    this.enabled = true,
   });
+
+  /// False dims the button and refuses the popup (TP2): the tools that take
+  /// no pressure keep the control in place and greyed rather than losing it,
+  /// so the row never changes shape and "does pressure apply here?" has a
+  /// visible answer.
+  final bool enabled;
 
   /// Widget key string for the trigger button ('brush-tool-pressure-size').
   final String keyValue;
@@ -53,20 +60,22 @@ class PressureCurveButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final active = curve != null;
-    return Tooltip(
+    final active = curve != null && enabled;
+    final button = Tooltip(
       message: 'Pen pressure',
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           key: ValueKey<String>(keyValue),
           borderRadius: BorderRadius.circular(4),
-          onTap: () => showPressureCurvePopup(
-            context,
-            title: title,
-            curve: curve,
-            onChanged: onChanged,
-          ),
+          onTap: enabled
+              ? () => showPressureCurvePopup(
+                  context,
+                  title: title,
+                  curve: curve,
+                  onChanged: onChanged,
+                )
+              : null,
           child: DecoratedBox(
             decoration: BoxDecoration(
               border: Border.all(color: active ? AppColors.accent : _offEdge),
@@ -86,6 +95,9 @@ class PressureCurveButton extends StatelessWidget {
         ),
       ),
     );
+    // The same 40% the field slider dims to, so a disabled group reads as
+    // one thing rather than as three different greys.
+    return enabled ? button : Opacity(opacity: 0.4, child: button);
   }
 }
 

@@ -218,6 +218,83 @@ void main() {
     );
   });
 
+  // TP1/TP2 (유저: 툴마다 기억하게해서 필 툴도 불투명도 설정하면 그거대로
+  // 채워지게 … 적용안되는툴이나 모드면 비활성화시키도록).
+  group('the strip follows the armed tool', () {
+    FieldSlider barOf(WidgetTester tester, String key) =>
+        tester.widget<FieldSlider>(find.byKey(ValueKey<String>(key)));
+
+    Future<void> arm(WidgetTester tester, String railKey) async {
+      await tester.tap(find.byKey(ValueKey<String>(railKey)));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('opacity is per tool: the fill keeps its own', (tester) async {
+      await pumpHome(tester);
+      final bar = find.byKey(const ValueKey<String>('top-strip-opacity-bar'));
+
+      // Half-ish on the BRUSH.
+      await tester.tapAt(
+        tester.getTopLeft(bar) + Offset(tester.getSize(bar).width / 2, 20),
+      );
+      await tester.pumpAndSettle();
+      final brushOpacity = barOf(tester, 'top-strip-opacity-bar').value;
+      expect(brushOpacity, lessThan(0.95), reason: 'the drag moved it');
+
+      // The FILL starts at its own default and takes its own value.
+      await arm(tester, 'tool-fill-button');
+      expect(
+        barOf(tester, 'top-strip-opacity-bar').value,
+        1.0,
+        reason: "the brush's opacity did not follow the tool switch",
+      );
+      await tester.tapAt(
+        tester.getTopLeft(bar) + Offset(tester.getSize(bar).width / 4, 20),
+      );
+      await tester.pumpAndSettle();
+      final fillOpacity = barOf(tester, 'top-strip-opacity-bar').value;
+      expect(fillOpacity, lessThan(brushOpacity));
+
+      // …and neither leaks into the other, in either direction.
+      await arm(tester, 'tool-brush-button');
+      expect(barOf(tester, 'top-strip-opacity-bar').value, brushOpacity);
+      await arm(tester, 'tool-fill-button');
+      expect(barOf(tester, 'top-strip-opacity-bar').value, fillOpacity);
+    });
+
+    testWidgets('a parameter the tool does not read is DIMMED, not gone', (
+      tester,
+    ) async {
+      await pumpHome(tester);
+      // The eyedropper reads none of them.
+      await arm(tester, 'tool-eyedropper-button');
+      for (final key in const [
+        'top-strip-size-bar',
+        'top-strip-opacity-bar',
+        'brush-tool-blend-menu-button',
+        'brush-tool-pressure-size',
+        'brush-tool-pressure-opacity',
+      ]) {
+        expect(
+          find.byKey(ValueKey<String>(key)),
+          findsOneWidget,
+          reason: '$key stays on the strip — the row must not change shape',
+        );
+      }
+      expect(
+        barOf(tester, 'top-strip-size-bar').onChanged,
+        isNull,
+        reason: 'and it is dead while it is dim',
+      );
+      expect(barOf(tester, 'top-strip-opacity-bar').onChanged, isNull);
+
+      // The FILL takes opacity and blend but not size or pressure.
+      await arm(tester, 'tool-fill-button');
+      expect(barOf(tester, 'top-strip-size-bar').onChanged, isNull);
+      expect(barOf(tester, 'top-strip-opacity-bar').onChanged, isNotNull);
+    });
+  });
+
   testWidgets('the bars show the ACTIVE tool — brush and eraser bank apart', (
     tester,
   ) async {

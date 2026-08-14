@@ -725,6 +725,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 surfaceResolver: session.brushSurfaceForLayerFrame,
                 point: point,
                 color: color,
+                // TP1: the FILL has its own opacity now — the strip's bar
+                // writes the fill's field, not the brush's.
+                opacity: toolState.activeOpacity,
                 options: widget.fillOptions?.value ?? const FloodFillOptions(),
                 paperColor: session.projectBackground.argb,
                 // Extended fills refuse OPEN regions (the flood reached
@@ -746,6 +749,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               shapeFillDabFor: (shape, color) => buildShapeFillDab(
                 shape: shape,
                 color: color,
+                opacity: toolState.activeOpacity,
                 options: widget.fillOptions?.value ?? const FloodFillOptions(),
               ),
               // Layers below/above the active one composite around the

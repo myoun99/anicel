@@ -7,19 +7,29 @@ import '../models/cut_piece.dart';
 import 'canvas_selection.dart';
 import 'resample/resample_kernel.dart';
 
-/// One stamp of [piece], centred on [center].
+/// One stamp of [piece], centred on [center], at [opacity].
 ///
-/// 유저 확정 (2026-08-12): the piece does NOT inherit the brush. Opacity is
-/// locked at 100%, there is no pressure, and every other dynamic sits at
-/// its default — "브러시마다 고르면 다르지 않나? 그러니 100%로 함. 필압 없고.
-/// 다른 것들도 초기값으로."
+/// 유저 확정 (2026-08-12): the piece does NOT inherit the brush — no
+/// pressure, and every other dynamic at its default ("브러시마다 고르면
+/// 다르지 않나? … 필압 없고. 다른 것들도 초기값으로").
 ///
-/// 🚨That has to be written down rather than left alone, because the stroke
-/// funnel's default is the opposite: a stamp dab ignores the tip and
+/// 🚨The funnel's default is the opposite: a stamp dab ignores the tip and
 /// texture fields but still MULTIPLIES by [BrushDab.opacity]. Hand it the
-/// live brush state and the 40% multiply left over from shading quietly
-/// rides along, and the user would have no way to see why the stamp came
-/// out faint.
+/// live BRUSH state and the 40% left over from shading rides along, and
+/// there is no way to see why the stamp came out faint.
+///
+/// ⚠️**TP1/TP3 (2026-08-15) retired the hard-coded 100%.** That constant was
+/// never the goal — it was the only way to block that leak while one opacity
+/// field served every tool, which is exactly what 유저's reasoning said. The
+/// stamp has a field of its own now
+/// ([BrushToolState.cutStampOpacity]), so the leak cannot happen and the
+/// tool can have the setting it was denied: *"잘라내기의 스탬프는 불투명도
+/// 쓸수있게하고싶어."* The DEFAULT is still 100% — callers that mean "put it
+/// back exactly" simply do not pass one.
+///
+/// ⚠️So the byte-exactness contract narrows: "what was held is what lands"
+/// holds AT 100%. Below it the funnel multiplies, which is the whole point
+/// of the setting.
 ///
 /// The click point is the piece's CENTRE (Clip Studio and TVPaint both
 /// anchor there, and TVPaint makes it configurable — which is a later
@@ -27,6 +37,7 @@ import 'resample/resample_kernel.dart';
 BrushDab buildCutStampDab({
   required CutPiece piece,
   required CanvasPoint center,
+  double opacity = 1.0,
   ResampleMode resampleMode = ResampleMode.pick,
 }) {
   // Flip first: it is a byte re-order, so at 100% a flipped stamp is still
@@ -38,7 +49,7 @@ BrushDab buildCutStampDab({
     // field is required and black is the neutral thing to say.
     color: 0xFF000000,
     size: math.max(image.width, image.height).toDouble(),
-    opacity: 1,
+    opacity: opacity,
     flow: 1,
     hardness: 1,
     tipShape: BrushTipShape.square,

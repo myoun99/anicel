@@ -8,6 +8,10 @@ import '../../models/brush_tip_shape.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../canvas/brush_edit_canvas_input_settings.dart';
 
+/// The strip's standing hand settings — the group whose members a tool
+/// either honours or has no use for (TP2). See [BrushToolState.supports].
+enum ToolParameter { blend, size, opacity, pressure }
+
 /// Which canvas tool the pointer drives — the VERB only.
 ///
 /// The eraser reuses every brush option (size, hardness, tip) but its dabs
@@ -191,6 +195,8 @@ class BrushToolState {
     BrushBlendMode fillBlendMode = BrushBlendMode.color,
     BrushBlendMode? fillBlendLock,
     BrushBlendMode cutStampBlendMode = BrushBlendMode.color,
+    double fillOpacity = 1.0,
+    double cutStampOpacity = 1.0,
     BrushBlendMode? cutStampBlendLock,
   }) {
     return BrushToolState.clamped(
@@ -232,6 +238,8 @@ class BrushToolState {
       fillBlendLock: fillBlendLock,
       cutStampBlendMode: cutStampBlendMode,
       cutStampBlendLock: cutStampBlendLock,
+      fillOpacity: fillOpacity,
+      cutStampOpacity: cutStampOpacity,
     );
   }
 
@@ -247,6 +255,8 @@ class BrushToolState {
     this.fillBlendLock,
     this.cutStampBlendMode = BrushBlendMode.color,
     this.cutStampBlendLock,
+    this.fillOpacity = 1.0,
+    this.cutStampOpacity = 1.0,
   });
 
   /// Builds tool state from a loose [BrushShape] and the three hand settings,
@@ -266,6 +276,8 @@ class BrushToolState {
     BrushBlendMode? fillBlendLock,
     BrushBlendMode cutStampBlendMode = BrushBlendMode.color,
     BrushBlendMode? cutStampBlendLock,
+    double fillOpacity = 1.0,
+    double cutStampOpacity = 1.0,
   }) {
     return BrushToolState._raw(
       shape: _clampShape(shape),
@@ -279,6 +291,8 @@ class BrushToolState {
       fillBlendLock: fillBlendLock,
       cutStampBlendMode: cutStampBlendMode,
       cutStampBlendLock: cutStampBlendLock,
+      fillOpacity: clampOpacity(fillOpacity),
+      cutStampOpacity: clampOpacity(cutStampOpacity),
     );
   }
 
@@ -325,6 +339,8 @@ class BrushToolState {
     BrushBlendMode? fillBlendLock,
     BrushBlendMode? cutStampBlendMode,
     BrushBlendMode? cutStampBlendLock,
+    double? fillOpacity,
+    double? cutStampOpacity,
   }) {
     return BrushToolState.fromShape(
       BrushShape(
@@ -371,6 +387,8 @@ class BrushToolState {
       fillBlendLock: fillBlendLock,
       cutStampBlendMode: cutStampBlendMode ?? BrushBlendMode.color,
       cutStampBlendLock: cutStampBlendLock,
+      fillOpacity: fillOpacity ?? 1.0,
+      cutStampOpacity: cutStampOpacity ?? 1.0,
     );
   }
 
@@ -587,6 +605,48 @@ class BrushToolState {
   /// the very leak the per-tool fields exist to stop.
   final BrushBlendMode? cutStampBlendLock;
 
+  /// The FILL's opacity, and the STAMP's (TP1).
+  ///
+  /// 유저: *"툴마다 기억하게해서 필 툴도 불투명도 설정하면 그거대로 채워지게
+  /// … 거기서 브러시툴로 바꾼다고해서 필 툴의 불투명도 남는다거나 없게."*
+  ///
+  /// Own fields, exactly like the blends beside them, and for the reason the
+  /// blends were split: the brush's opacity is the BRUSH's. Shading at 40%
+  /// and then reaching for the bucket must not fill at 40%, and the reverse
+  /// must not happen either.
+  ///
+  /// 🚨The stamp's field is also what RETIRES the hard-coded 100% in
+  /// `buildCutStampDab` (TP3). That constant was never about wanting 100% —
+  /// it was the only way to stop the brush's opacity leaking in when there
+  /// was one field for everybody, and 유저's own reasoning at the time said
+  /// so ("브러시마다 고르면 다르지 않나"). With a field of its own the leak
+  /// cannot happen, so the stamp can have the setting it was denied.
+  ///
+  /// ⚠️Both fill tiles share ONE value — 유저 확정, the same law the fill's
+  /// blend follows: the bucket and the shape fill are one tool wearing two
+  /// ways of choosing an area.
+  final double fillOpacity;
+  final double cutStampOpacity;
+
+  /// The opacity the ACTIVE tool paints with.
+  ///
+  /// The brush and the eraser keep theirs in [shape] (it is a brush
+  /// parameter, and presets carry it); the tools that are not brushes keep
+  /// theirs beside it. One reader either way, so the strip's bar never has
+  /// to name a tool.
+  double get activeOpacity => switch (tool) {
+    CanvasTool.fill || CanvasTool.fillShape => fillOpacity,
+    CanvasTool.cutStamp => cutStampOpacity,
+    _ => opacity,
+  };
+
+  /// This state with the ACTIVE tool's opacity set to [value].
+  BrushToolState withActiveOpacity(double value) => switch (tool) {
+    CanvasTool.fill || CanvasTool.fillShape => copyWith(fillOpacity: value),
+    CanvasTool.cutStamp => copyWith(cutStampOpacity: value),
+    _ => copyWith(opacity: value),
+  };
+
   /// The blend the ACTIVE tool actually composites with — a pin when there
   /// is one, otherwise the mode that tool was last set to.
   ///
@@ -619,11 +679,39 @@ class BrushToolState {
   /// TS8: the STAMP composites too — 유저 확정, 「블렌드모드가 존재한다면
   /// 다 공통」. It puts pixels on the cel through the same funnel, and the
   /// 위/아래 붙여넣기 pair was already spelling `color`/`behind` by hand.
-  bool get toolHasBlendMode =>
-      tool == CanvasTool.brush ||
-      tool == CanvasTool.eraser ||
-      canvasToolFills(tool) ||
-      canvasToolStamps(tool);
+  bool get toolHasBlendMode => supports(ToolParameter.blend);
+
+  /// Whether [parameter] means anything for the active tool (TP2).
+  ///
+  /// 🚨ONE table, because the strip's controls are one group and the user's
+  /// complaint was about the group: *"뭐가 적용되고 뭐가 적용안되는지 몰라할거
+  /// 같으니까 … 적용안되는툴이나 모드면 비활성화시키도록"*. Before this, the
+  /// blend asked its own question and size/opacity/pressure asked none at all
+  /// — they were shown for the eyedropper and the guide tool, where nothing
+  /// downstream reads them.
+  ///
+  /// A tool added later shows up here as a row of `false`s and has to be
+  /// argued into each one, which is the point: a control that lies is worse
+  /// than a control that is missing.
+  ///
+  /// 유저 확정 표 (2026-08-15):
+  /// - brush / eraser: everything (the eraser's blend is FIXED to erase, not
+  ///   absent — the strip says that with a padlock, not by dimming).
+  /// - fills: blend + opacity. Not size — the area comes from the flood or
+  ///   from the drawn outline, never from a tip width. Not pressure — one
+  ///   tap is not a stroke.
+  /// - stamp: blend + opacity. Its SIZE is the tool settings' `%`, kept off
+  ///   the strip's slider on purpose (08-12: 크기 슬라이더와 공유 금지).
+  /// - grab / select / move / guide / eyedropper: none. They put no pixels
+  ///   down at all.
+  bool supports(ToolParameter parameter) => switch (tool) {
+    CanvasTool.brush || CanvasTool.eraser => true,
+    CanvasTool.fill ||
+    CanvasTool.fillShape ||
+    CanvasTool.cutStamp => parameter == ToolParameter.blend ||
+        parameter == ToolParameter.opacity,
+    _ => false,
+  };
 
   /// Builds tool state from a preset's model-layer [BrushSettings], clamping
   /// every value into the panel's ranges.
@@ -776,6 +864,8 @@ class BrushToolState {
     BrushBlendMode? cutStampBlendMode,
     bool clearCutStampBlendLock = false,
     BrushBlendMode? cutStampBlendLock,
+    double? fillOpacity,
+    double? cutStampOpacity,
   }) {
     // The base is the caller's shape when it gave one; the named arguments
     // then land on TOP of it, so "this brush, but at my size" is one call.
@@ -835,6 +925,8 @@ class BrushToolState {
       cutStampBlendLock: clearCutStampBlendLock
           ? null
           : (cutStampBlendLock ?? this.cutStampBlendLock),
+      fillOpacity: clampOpacity(fillOpacity ?? this.fillOpacity),
+      cutStampOpacity: clampOpacity(cutStampOpacity ?? this.cutStampOpacity),
     );
   }
 
@@ -898,6 +990,8 @@ class BrushToolState {
     fillBlendLock: fillBlendLock,
     cutStampBlendMode: cutStampBlendMode,
     cutStampBlendLock: cutStampBlendLock,
+    fillOpacity: fillOpacity,
+    cutStampOpacity: cutStampOpacity,
   );
 
   /// Replaces (or CLEARS, with null) one setting's pressure curve —
@@ -1012,7 +1106,9 @@ class BrushToolState {
           other.fillBlendMode == fillBlendMode &&
           other.fillBlendLock == fillBlendLock &&
           other.cutStampBlendMode == cutStampBlendMode &&
-          other.cutStampBlendLock == cutStampBlendLock;
+          other.cutStampBlendLock == cutStampBlendLock &&
+          other.fillOpacity == fillOpacity &&
+          other.cutStampOpacity == cutStampOpacity;
 
   @override
   int get hashCode => Object.hash(
@@ -1027,5 +1123,7 @@ class BrushToolState {
     fillBlendLock,
     cutStampBlendMode,
     cutStampBlendLock,
+    fillOpacity,
+    cutStampOpacity,
   );
 }

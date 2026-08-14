@@ -235,21 +235,79 @@ void main() {
       expect(erasing.toInputSettings().erase, isTrue, reason: '도형 지우기');
     });
 
-    test('tools that composite nothing get no blend control', () {
-      for (final tool in CanvasTool.values) {
+    // TP2: the whole table, spelled out by hand — which is what makes it a
+    // contract. A tool added later lands here as a row of falses and has to
+    // be argued into each column.
+    test('every tool declares which strip parameters it honours', () {
+      const table = <CanvasTool, Set<ToolParameter>>{
+        CanvasTool.brush: {...ToolParameter.values},
+        CanvasTool.eraser: {...ToolParameter.values},
+        // The fills and the stamp composite and take an opacity; their AREA
+        // comes from the flood, the drawn outline or the held piece, never
+        // from the tip width, and one tap is not a stroke.
+        CanvasTool.fill: {ToolParameter.blend, ToolParameter.opacity},
+        CanvasTool.fillShape: {ToolParameter.blend, ToolParameter.opacity},
+        CanvasTool.cutStamp: {ToolParameter.blend, ToolParameter.opacity},
+        CanvasTool.cut: {},
+        CanvasTool.select: {},
+        CanvasTool.move: {},
+        CanvasTool.guide: {},
+        CanvasTool.eyedropper: {},
+      };
+      expect(
+        table.keys.toSet(),
+        CanvasTool.values.toSet(),
+        reason: 'a new tool must answer this table',
+      );
+      for (final entry in table.entries) {
+        final state = BrushToolState.defaults.copyWith(tool: entry.key);
+        for (final parameter in ToolParameter.values) {
+          expect(
+            state.supports(parameter),
+            entry.value.contains(parameter),
+            reason: '${entry.key} / $parameter',
+          );
+        }
         expect(
-          BrushToolState.defaults.copyWith(tool: tool).toolHasBlendMode,
-          tool == CanvasTool.brush ||
-              tool == CanvasTool.eraser ||
-              tool == CanvasTool.fill ||
-              tool == CanvasTool.fillShape ||
-              // TS8: the stamp puts pixels on the cel through the same
-              // funnel, and its 위/아래 붙여넣기 pair was already spelling
-              // `color`/`behind` by hand.
-              tool == CanvasTool.cutStamp,
-          reason: '$tool',
+          state.toolHasBlendMode,
+          entry.value.contains(ToolParameter.blend),
+          reason: 'the blend getter reads the same table (${entry.key})',
         );
       }
+    });
+
+    test('TP1: opacity is remembered per tool, and the fills share one', () {
+      // 유저: "필 툴도 불투명도 설정하면 그거대로 채워지게. 그렇다고 거기서
+      // 브러시툴로 바꾼다고해서 필 툴의 불투명도 남는다거나."
+      final state = BrushToolState.defaults
+          .copyWith(tool: CanvasTool.brush)
+          .withActiveOpacity(0.4)
+          .copyWith(tool: CanvasTool.fill)
+          .withActiveOpacity(0.8)
+          .copyWith(tool: CanvasTool.cutStamp)
+          .withActiveOpacity(0.25);
+
+      expect(state.activeOpacity, 0.25);
+      expect(
+        state.copyWith(tool: CanvasTool.brush).activeOpacity,
+        0.4,
+        reason: 'the brush kept its own',
+      );
+      expect(
+        state.copyWith(tool: CanvasTool.fill).activeOpacity,
+        0.8,
+        reason: 'and the fill kept its own',
+      );
+      expect(
+        state.copyWith(tool: CanvasTool.fillShape).activeOpacity,
+        0.8,
+        reason: 'both fill tiles are one tool — same law as their blend',
+      );
+      expect(
+        state.opacity,
+        0.4,
+        reason: "the brush's opacity is still the shape's, so presets carry it",
+      );
     });
 
     test('the stamp keeps its own blend, and its own pin', () {
