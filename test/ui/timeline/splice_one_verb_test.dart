@@ -121,6 +121,43 @@ void main() {
     expect(_row(session), 'BBBAACC');
   });
 
+  /// 🚨★★★ 유저 #3 (2026-08-14): 「프레임블록 **잘라내고 독립붙혀넣기**하면
+  /// 블록이 그림이 없는걸 붙혀넣었는데도 **흰색**되고, 타임시트엔 **이름이 ?**
+  /// 라고 찍힘. 해당 프레임은 **완전한 버그상태**인지 잘라내기/복사/붙혀넣기등의
+  /// 작업이 불가」
+  ///
+  /// The cut ORPHANS the cels it lifts, so they leave `layer.frames`. The
+  /// independent paste then looked for its source there to copy the
+  /// content from — found nothing, minted an id, and authored an exposure
+  /// pointing at a cel that does not exist. White block, `?` for a name,
+  /// and every verb that resolves the cel refuses.
+  ///
+  /// ⛔The clipboard has been carrying those cels since the splice landed;
+  /// only the LINKED branch was reading them. That is what makes this a
+  /// one-line class of bug and a whole-cell class of damage.
+  testWidgets('⛔잘라내기 → 독립 붙여넣기 leaves a REAL cel behind', (
+    tester,
+  ) async {
+    final session = await _pump(tester, 'AABBBCC');
+
+    _select(session, 2, 5);
+    session.cutRunAtCurrentFrame();
+    _stand(session, 0);
+    session.pasteIndependentFrameAtCurrentFrame();
+
+    final layer = _layer(session);
+    for (final entry in layer.timeline.entries) {
+      final frameId = entry.value.frameId;
+      expect(
+        layer.frames.any((frame) => frame.id == frameId),
+        isTrue,
+        reason:
+            'the exposure at ${entry.key} points at $frameId, which the '
+            'layer does not have — that cell is the 「완전한 버그상태」',
+      );
+    }
+  });
+
   testWidgets('the cut length is never asked: a push past the end line '
       'stays past the end line', (tester) async {
     final session = await _pump(tester, 'AAAA', duration: 4);
