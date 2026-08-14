@@ -13,10 +13,42 @@ import 'brush_tool_state.dart';
 /// settings through unchanged — they never stroke, and the shared color
 /// keeps working for fill/eyedropper.
 class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
-  PaintToolStateNotifier(super.value);
+  PaintToolStateNotifier(super.value) {
+    _rememberRailTile();
+  }
 
   final Map<CanvasTool, BrushToolState> _paintToolBank =
       <CanvasTool, BrushToolState>{};
+
+  /// The tile each rail GROUP was last on — see [railEntry].
+  final Map<CanvasTool, CanvasTool> _railTileByGroup =
+      <CanvasTool, CanvasTool>{};
+
+  void _rememberRailTile() =>
+      _railTileByGroup[canvasToolRailGroup(value.tool)] = value.tool;
+
+  /// The tool an entrance to [group] should arm — the tile that group was
+  /// last left on, or the group's default when it has not been used yet.
+  ///
+  /// 유저 2026-08-15: *"필 툴은 아직도 다른 툴 이동하면 모드 선택한게
+  /// 초기화됨. 도대체 왜 다른거랑 공통로직안할까?"* The answer was that
+  /// there was no common logic: a group with more than one tile (fill =
+  /// bucket + shapes, cut = grab + stamp) only knew "stay if you are
+  /// already inside", so leaving it at all threw the choice away and a
+  /// shape fill came back as the bucket. The OUTLINE was remembered all
+  /// along (`fillShape` lives beside `selectShape` and `cutShape`) — the
+  /// VERB was not.
+  ///
+  /// 🚨It lives HERE rather than in the workspace because a group has more
+  /// than one entrance: the rail button, and the `G`/`B`/`E` shortcuts the
+  /// shell dispatches. A memory kept beside one of them would have made
+  /// the other disagree, which is the same complaint one door over. This
+  /// setter is the funnel every tool change already goes through, so it
+  /// cannot miss one.
+  ///
+  /// Seeded in the constructor as well: this only sees CHANGES, and the
+  /// state it is constructed with is already sitting on a tile.
+  CanvasTool railEntry(CanvasTool group) => _railTileByGroup[group] ?? group;
 
   /// The tool-switch GUARD (R26 #13): returns a refusal MESSAGE to block
   /// the switch, null to allow it. Installed once by the shell — every
@@ -41,6 +73,8 @@ class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
         if (kept != previous) {
           super.value = kept;
         }
+        // No rail memory to update: a refusal keeps the OUTGOING tool, so
+        // the tile the groups were last on has not moved.
         return;
       }
     }
@@ -90,5 +124,6 @@ class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
       }
     }
     super.value = next;
+    _rememberRailTile();
   }
 }

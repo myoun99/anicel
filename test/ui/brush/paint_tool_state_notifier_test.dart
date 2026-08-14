@@ -72,4 +72,56 @@ void main() {
     notifier.value = notifier.value.copyWith(tool: CanvasTool.select);
     expect(notifier.value.size, 30);
   });
+
+  group('railEntry — the tile a tool group re-enters on', () {
+    test('a group answers with the tile it was last left on', () {
+      // 유저 2026-08-15: "필 툴은 아직도 다른 툴 이동하면 모드 선택한게
+      // 초기화됨." Leaving the fill for the brush used to throw the choice
+      // away, because "which tile" IS the tool and the tool is what the
+      // switch replaced.
+      final notifier = PaintToolStateNotifier(BrushToolState.defaults);
+      addTearDown(notifier.dispose);
+
+      // Never used: the group's own default.
+      expect(notifier.railEntry(CanvasTool.fill), CanvasTool.fill);
+      expect(notifier.railEntry(CanvasTool.cut), CanvasTool.cut);
+
+      notifier.value = notifier.value.copyWith(tool: CanvasTool.fillShape);
+      notifier.value = notifier.value.copyWith(tool: CanvasTool.cutStamp);
+      notifier.value = notifier.value.copyWith(tool: CanvasTool.brush);
+
+      expect(notifier.railEntry(CanvasTool.fill), CanvasTool.fillShape);
+      expect(notifier.railEntry(CanvasTool.cut), CanvasTool.cutStamp);
+
+      // …and it follows the tile back, rather than preferring the shapes.
+      notifier.value = notifier.value.copyWith(tool: CanvasTool.fill);
+      notifier.value = notifier.value.copyWith(tool: CanvasTool.eraser);
+      expect(notifier.railEntry(CanvasTool.fill), CanvasTool.fill);
+    });
+
+    test('the state it was CONSTRUCTED with counts as a visit', () {
+      // The setter only sees changes; a shell that starts on a tile would
+      // otherwise have to move off it once before the memory existed.
+      final notifier = PaintToolStateNotifier(
+        BrushToolState.defaults.copyWith(tool: CanvasTool.fillShape),
+      );
+      addTearDown(notifier.dispose);
+      expect(notifier.railEntry(CanvasTool.fill), CanvasTool.fillShape);
+    });
+
+    test('a REFUSED switch leaves the memory where it was', () {
+      // The guard keeps the outgoing tool, so nothing has moved — recording
+      // the refused tool would send the button somewhere it cannot go.
+      final notifier = PaintToolStateNotifier(
+        BrushToolState.defaults.copyWith(tool: CanvasTool.fill),
+      );
+      addTearDown(notifier.dispose);
+      notifier.switchGuard = (tool) =>
+          tool == CanvasTool.fillShape ? 'no' : null;
+
+      notifier.value = notifier.value.copyWith(tool: CanvasTool.fillShape);
+      expect(notifier.value.tool, CanvasTool.fill, reason: 'refused');
+      expect(notifier.railEntry(CanvasTool.fill), CanvasTool.fill);
+    });
+  });
 }

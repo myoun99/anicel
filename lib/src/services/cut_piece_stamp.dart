@@ -72,7 +72,8 @@ BrushDab buildCutStampDab({
   );
 }
 
-/// A stamp of [piece] back at the coordinates it was cut from.
+/// A stamp of [piece] back at the coordinates it was cut from, at
+/// [opacity].
 ///
 /// Deliberately UNPOSED — original size, no flip — even when the stamp
 /// tile is currently posing the piece. "Original position" and "original
@@ -81,11 +82,20 @@ BrushDab buildCutStampDab({
 /// the same line, where clipboard pastes are always 1:1 and only a
 /// registered brush tip scales.
 ///
+/// ⚠️OPACITY is NOT part of that pose, and the first cut of TP3 got this
+/// wrong by grouping it with the flips (유저 2026-08-15: *"제자리 붙여넣기도
+/// 불투명도 반영하도록"*). Size and flip say WHICH PICTURE lands, so
+/// changing them stops reproducing the original; opacity says how hard the
+/// stamp presses, which is the tool's setting and applies to every route
+/// the stamp puts pixels down through — this one included. The DEFAULT is
+/// still 100%, so a caller that means "put it back exactly" simply does
+/// not pass one.
+///
 /// The coordinates are CEL coordinates, which is what makes this land back
 /// on the artwork rather than on the screen: the read was raw cel pixels,
 /// so the write has to be in the same space, and a layer posed by a
 /// transform track cannot pull the two apart.
-BrushDab buildCutPasteDab(CutPiece piece) {
+BrushDab buildCutPasteDab(CutPiece piece, {double opacity = 1.0}) {
   final image = piece.image;
   return BrushDab(
     center: CanvasPoint(
@@ -94,7 +104,7 @@ BrushDab buildCutPasteDab(CutPiece piece) {
     ),
     color: 0xFF000000,
     size: math.max(image.width, image.height).toDouble(),
-    opacity: 1,
+    opacity: opacity,
     flow: 1,
     hardness: 1,
     tipShape: BrushTipShape.square,

@@ -340,18 +340,35 @@ void main() {
       expect(await tileSelected(tester, 'sub-tool-fill-polygon'), isTrue);
       expect(await tileSelected(tester, 'sub-tool-fill-rect'), isFalse);
 
-      // Away to another tool and back: the cached panel has to come back
-      // showing the CURRENT state, whichever way that cuts. The rail's Fill
-      // button re-enters on the BUCKET (its own long-standing rule — a verb
-      // is not an outline, so it is not one of the things the shape memory
-      // restores), and the cached panel must say so rather than carrying
-      // the polygon highlight back with it.
+      // Away to another tool and back: the Fill button re-enters on the
+      // TILE it was left on (유저 2026-08-15 — "필 툴은 아직도 다른 툴
+      // 이동하면 모드 선택한게 초기화됨"). It used to land on the bucket,
+      // which threw the choice away every time a hand reached for the
+      // brush.
+      await tester.tap(find.byKey(const ValueKey<String>('tool-brush-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey<String>('tool-fill-button')));
+      await tester.pumpAndSettle();
+      expect(await tileSelected(tester, 'sub-tool-fill-polygon'), isTrue);
+      expect(await tileSelected(tester, 'sub-tool-fill-bucket'), isFalse);
+
+      // …and the cached panel still tells the truth when the tile changes
+      // with the fill already active, which is the staleness this test was
+      // written for. Picking the bucket by hand moves the highlight.
+      await tester.tap(
+        find.byKey(const ValueKey<String>('sub-tool-fill-bucket')),
+      );
+      await tester.pumpAndSettle();
+      expect(await tileSelected(tester, 'sub-tool-fill-bucket'), isTrue);
+      expect(await tileSelected(tester, 'sub-tool-fill-polygon'), isFalse);
+
+      // The memory is the LAST tile either way, not a preference for the
+      // shapes: leaving on the bucket comes back on the bucket.
       await tester.tap(find.byKey(const ValueKey<String>('tool-brush-button')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey<String>('tool-fill-button')));
       await tester.pumpAndSettle();
       expect(await tileSelected(tester, 'sub-tool-fill-bucket'), isTrue);
-      expect(await tileSelected(tester, 'sub-tool-fill-polygon'), isFalse);
 
       // …and the outline itself was remembered all along: re-entering the
       // shape verb lands back on the polygon, not on the rectangle.
@@ -360,6 +377,37 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(await tileSelected(tester, 'sub-tool-fill-polygon'), isTrue);
+    });
+
+    testWidgets('the cut button remembers its tile the same way', (
+      tester,
+    ) async {
+      // The point of the fix is that this is ONE rule, not a fill-shaped
+      // patch: the cut's own button had the same hole, and a stamp that was
+      // armed before reaching for the brush came back as the grab.
+      await _pumpHome(tester);
+      await tester.tap(find.byKey(const ValueKey<String>('tool-cut-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey<String>('sub-tool-cut-stamp')));
+      await tester.pumpAndSettle();
+      expect(await tileSelected(tester, 'sub-tool-cut-stamp'), isTrue);
+
+      await tester.tap(find.byKey(const ValueKey<String>('tool-brush-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey<String>('tool-cut-button')));
+      await tester.pumpAndSettle();
+      expect(await tileSelected(tester, 'sub-tool-cut-stamp'), isTrue);
+
+      // Leaving on a shape tile comes back on that shape, which is the same
+      // memory answering — the grab's outline is a separate one.
+      await tester.tap(find.byKey(const ValueKey<String>('sub-tool-cut-lasso')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey<String>('tool-brush-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey<String>('tool-cut-button')));
+      await tester.pumpAndSettle();
+      expect(await tileSelected(tester, 'sub-tool-cut-lasso'), isTrue);
+      expect(await tileSelected(tester, 'sub-tool-cut-stamp'), isFalse);
     });
 
     // TS2: 유저 — "잘라내고 나면 찍기로 모드전환".

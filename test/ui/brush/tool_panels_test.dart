@@ -276,6 +276,58 @@ void main() {
       }
     });
 
+    // The rail's group table, by hand for the same reason as the one above:
+    // a tool added later has to declare which BUTTON it answers to instead
+    // of quietly becoming a button of its own.
+    test('every tool declares which rail button it lives under', () {
+      const groups = <CanvasTool, CanvasTool>{
+        CanvasTool.brush: CanvasTool.brush,
+        CanvasTool.eraser: CanvasTool.eraser,
+        CanvasTool.eyedropper: CanvasTool.eyedropper,
+        // The two groups with more than one tile.
+        CanvasTool.fill: CanvasTool.fill,
+        CanvasTool.fillShape: CanvasTool.fill,
+        CanvasTool.cut: CanvasTool.cut,
+        CanvasTool.cutStamp: CanvasTool.cut,
+        CanvasTool.guide: CanvasTool.guide,
+        CanvasTool.select: CanvasTool.select,
+        CanvasTool.move: CanvasTool.move,
+      };
+      expect(
+        groups.keys.toSet(),
+        CanvasTool.values.toSet(),
+        reason: 'a new tool must answer this table',
+      );
+      for (final entry in groups.entries) {
+        expect(
+          canvasToolRailGroup(entry.key),
+          entry.value,
+          reason: '${entry.key}',
+        );
+      }
+      for (final tool in CanvasTool.values) {
+        final group = canvasToolRailGroup(tool);
+        expect(
+          canvasToolRailGroup(group),
+          group,
+          reason: 'a group is named by one of its own members ($tool)',
+        );
+        // The predicates that LIGHT the two shared buttons have to agree
+        // with the table that RE-ENTERS them, or a tile could highlight one
+        // button and be restored by another.
+        expect(
+          canvasToolFills(tool),
+          group == CanvasTool.fill,
+          reason: '$tool',
+        );
+        expect(
+          canvasToolUsesCutPiece(tool),
+          group == CanvasTool.cut,
+          reason: '$tool',
+        );
+      }
+    });
+
     test('TP1: opacity is remembered per tool, and the fills share one', () {
       // 유저: "필 툴도 불투명도 설정하면 그거대로 채워지게. 그렇다고 거기서
       // 브러시툴로 바꾼다고해서 필 툴의 불투명도 남는다거나."

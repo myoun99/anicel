@@ -16,11 +16,29 @@ class ToolsPanel extends StatelessWidget {
     super.key,
     required this.tool,
     required this.onToolChanged,
+    this.groupEntry,
     this.historyControls,
   });
 
   final CanvasTool tool;
   final ValueChanged<CanvasTool> onToolChanged;
+
+  /// Which TILE a rail button re-enters its group on — asked with the
+  /// group's default tile and answered with the one that group was last
+  /// left on.
+  ///
+  /// 유저 2026-08-15: *"필 툴은 아직도 다른 툴 이동하면 모드 선택한게
+  /// 초기화됨. 도대체 왜 다른거랑 공통로직안할까?"* — and the answer was
+  /// that it had no common logic to share. A group with more than one tile
+  /// had only "stay if you are already inside", so leaving the group at all
+  /// threw the choice away and a shape fill came back as the bucket. This
+  /// is the memory that was missing, and it is one rule for every button
+  /// rather than a per-button `if`. CSP and Photoshop both restore the last
+  /// sub-tool the same way.
+  ///
+  /// Null falls back to that old rule, which is what a host with no tool
+  /// memory behind it (focused tests) can honestly answer.
+  final CanvasTool Function(CanvasTool group)? groupEntry;
 
   /// Undo / redo / onion — the things a hand reaches for BETWEEN strokes,
   /// which is what the rail is for. They sit above the tools, separated by a
@@ -62,6 +80,15 @@ class ToolsPanel extends StatelessWidget {
       color: Theme.of(context).colorScheme.outlineVariant,
     ),
   );
+
+  /// The tool the button for [group] should switch to.
+  CanvasTool _entryFor(CanvasTool group) {
+    final resolve = groupEntry;
+    if (resolve != null) {
+      return resolve(group);
+    }
+    return canvasToolRailGroup(tool) == group ? tool : group;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -114,16 +141,15 @@ class ToolsPanel extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             // ONE Fill button for both tiles — the bucket and the shapes.
-            // Same rule the Select and Cut buttons follow: already on one
-            // of the tiles means stay there, otherwise land on the bucket.
+            // It re-enters on the tile the fill was last left on, which is
+            // the rule every multi-tile button now shares (see
+            // [groupEntry]).
             RailButton(
               keyValue: 'tool-fill-button',
               tooltip: AppText.strings.toolFillTip,
               icon: Icons.format_color_fill_outlined,
               selected: canvasToolFills(tool),
-              onPressed: () => onToolChanged(
-                canvasToolFills(tool) ? tool : CanvasTool.fill,
-              ),
+              onPressed: () => onToolChanged(_entryFor(CanvasTool.fill)),
             ),
             const SizedBox(height: 4),
             RailButton(
@@ -169,12 +195,13 @@ class ToolsPanel extends StatelessWidget {
               // the glyph should say that even though the source survives.
               icon: Icons.content_cut,
               selected: canvasToolUsesCutPiece(tool),
-              // Already on one of the cut tiles: stay there (the stamp must
-              // not be knocked back to the grab). Otherwise land on the
-              // grab, wearing whatever outline it last wore.
-              onPressed: () => onToolChanged(
-                canvasToolUsesCutPiece(tool) ? tool : CanvasTool.cut,
-              ),
+              // Re-enters on the tile the cut was last left on — the stamp
+              // is not knocked back to the grab by going away and coming
+              // back, any more than by pressing the button while it is
+              // already armed. The grab wears whatever outline it last wore
+              // either way, because that memory is the shape's, not this
+              // button's.
+              onPressed: () => onToolChanged(_entryFor(CanvasTool.cut)),
             ),
             // 유저 확정 (rail-and-strip): 「컬러 스와치는 레일에서 빠진다」 —
             // the top strip's colour button IS the swatch, so keeping one here
