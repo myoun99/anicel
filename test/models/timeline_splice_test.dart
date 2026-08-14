@@ -154,14 +154,53 @@ void main() {
       expect(_render(row, 5), 'AAPCC', reason: 'the gap closed, C is intact');
     });
 
-    test('잘라내기 = a lift with no clip', () {
+    /// 🚨⑳ (유저 확정 2026-08-15): 「프레임 잘라내기하면 **뒤 프레임을
+    /// 앞당김. 이딴거 누가넣으랫지?** 삭제는 잘만 해당 위치 블록만 삭제하고
+    /// 다른거 위치 안건드는데」.
+    ///
+    /// ⛔This asserted `AACC` — everything after the cut pulled forward.
+    /// That was MINE: E(T2·T3) built the splice as "the length difference is
+    /// absorbed behind" and then defined 잘라내기 as a splice with no clip,
+    /// so cutting dragged the rest of the row. The symmetry made it look
+    /// right; nobody asked for it.
+    test('잘라내기 leaves a HOLE — a bare lift moves nothing else', () {
       final row = spliceTimeline(
         timeline: _row('AABBBCC'),
         index: 2,
         liftCount: 3,
       );
 
-      expect(_render(row, 4), 'AACC');
+      expect(
+        _render(row, 7),
+        'AA...CC',
+        reason: 'the row a DELETE would leave: three cells gone and C still '
+            'on the frames it was already on',
+      );
+    });
+
+    /// ⚠️The other half, and why this is a split rather than a deletion: the
+    /// PUSH is user-confirmed (T3 「현재 인덱스에 블록이 있으면 … 뒤를 민다」),
+    /// so a REPLACE still closes its own gap.
+    test('a replace still absorbs the difference — only a bare lift does not',
+        () {
+      final clip = captureTimelineRun(
+        timeline: _row('PP'),
+        index: 0,
+        count: 2,
+      );
+
+      final row = spliceTimeline(
+        timeline: _row('AABBBCC'),
+        index: 2,
+        liftCount: 3,
+        clip: clip,
+      );
+
+      expect(
+        _render(row, 7),
+        'AAPPCC.',
+        reason: 'three out, two in — the row shortens by one and C follows',
+      );
     });
 
     test('the cut length is never asked — a push past the end line stays '

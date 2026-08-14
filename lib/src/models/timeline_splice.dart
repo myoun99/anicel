@@ -164,19 +164,37 @@ SplayTreeMap<int, TimelineExposure> spliceTimeline({
   TimelineClipRow? clip,
 }) {
   var next = SplayTreeMap<int, TimelineExposure>.from(timeline);
+  final inserting = clip;
+  final replacing = inserting != null && !inserting.isEmpty;
   if (liftCount > 0) {
     next = splitTimelineAt(next, index);
     next = splitTimelineAt(next, index + liftCount);
     next.removeWhere((key, _) => key >= index && key < index + liftCount);
-    next = shiftTimelineFrom(next, index + liftCount, -liftCount);
+    // 🚨★★★A LIFT WITH NOTHING GOING BACK IN LEAVES A HOLE (유저 08-15 ⑳:
+    // 「프레임 잘라내기하면 뒤 프레임을 앞당김. 이딴거 누가넣으랫지? 삭제는
+    // 잘만 해당 위치 블록만 삭제하고 다른거 위치 안건드는데」).
+    //
+    // ⛔The pull-in was MINE. E(T2·T3) built the splice as "the length
+    // difference is absorbed behind" — push when longer, pull when shorter —
+    // and defined 잘라내기 as a splice with no clip, so cutting dragged the
+    // rest of the row forward. Symmetry made it look right; nobody asked
+    // for it.
+    //
+    // ⚠️The push STAYS, because that half the user did confirm (T3:
+    // 「현재 인덱스에 블록이 있으면 그 블록의 앞부분에 끼워넣는다. 즉 뒤를
+    // 민다」). So the difference is only absorbed when something is actually
+    // going back in — a REPLACE still closes its own gap, and a plain lift
+    // is a delete that happens to keep what it took.
+    if (replacing) {
+      next = shiftTimelineFrom(next, index + liftCount, -liftCount);
+    }
   } else {
     // No lift, but the insertion point still has to BE a boundary or the
     // clip would land in the middle of a hold and leave the tail of that
     // hold sitting after it with no start of its own.
     next = splitTimelineAt(next, index);
   }
-  final inserting = clip;
-  if (inserting == null || inserting.isEmpty) {
+  if (!replacing) {
     return next;
   }
   next = shiftTimelineFrom(next, index, inserting.length);

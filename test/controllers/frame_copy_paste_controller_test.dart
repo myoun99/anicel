@@ -154,9 +154,11 @@ void main() {
         orderedEquals([const FrameId('a'), const FrameId('b')]),
       );
       expect(
-        _latestLayer(fixture.repository).timeline[8]?.frameId,
+        _latestLayer(fixture.repository).timeline[9]?.frameId,
         const FrameId('b'),
-        reason: 'the surviving b pulled one left when the hole closed',
+        reason: '⑳ — the hole stays open, so the surviving b never moved. '
+            'What this test is really about is that it SURVIVED: another '
+            'exposure still points at that cel, so the lift may not take it',
       );
     });
 
