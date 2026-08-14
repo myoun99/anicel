@@ -10,6 +10,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
@@ -300,8 +301,16 @@ void main() {
       expect(manager.frameScrubActive.value, isFalse);
     });
 
-    testWidgets('canvas swaps to the scrub preview while scrubbing and '
-        'back on commit', (tester) async {
+    /// 🚨⑯ (유저 확정 2026-08-15): 「**그냥 멈췄을때랑 보이는게 똑같게**」.
+    ///
+    /// ⛔This asserted the OPPOSITE until now — that a scrub swapped the
+    /// canvas for `canvas-scrub-preview`, the playback composite cache
+    /// standing in for the editing stack. That ONE substitution reached the
+    /// user as FOUR faults: filtered artwork, quality following the
+    /// PLAYBACK setting, no pasteboard, and a layer blinking at the
+    /// handback. So the swap is gone and this pins its absence.
+    testWidgets('the canvas does NOT swap while scrubbing — a ruler drag '
+        'shows what a stopped playhead shows', (tester) async {
       final manager = session();
       addTearDown(manager.dispose);
       final brushTool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
@@ -332,16 +341,26 @@ void main() {
       await tester.pump();
       expect(
         find.byKey(previewKey),
-        findsOneWidget,
-        reason: 'scrubbing shows the composite-cache preview',
+        findsNothing,
+        reason: 'a scrub draws the ordinary editing content — there is no '
+            'stand-in to swap in any more',
+      );
+      expect(
+        find.byType(CanvasLayerStackView),
+        findsWidgets,
+        reason: 'and the editing stack is what stayed on screen, which is '
+            'the half a "findsNothing" alone could not tell from a blank '
+            'canvas',
       );
 
       manager.commitFrameScrub();
       await tester.pumpAndSettle();
+      expect(find.byKey(previewKey), findsNothing);
       expect(
-        find.byKey(previewKey),
-        findsNothing,
-        reason: 'the commit swaps back to the editing canvas',
+        find.byType(CanvasLayerStackView),
+        findsWidgets,
+        reason: 'nothing changed at the release either — that handback was '
+            'where a layer used to blink',
       );
     });
 

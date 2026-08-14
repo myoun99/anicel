@@ -35,7 +35,6 @@ import 'playback/canvas_playback_view.dart';
 import 'playback/canvas_track_stack_view.dart';
 import 'playback/recording_streamer_overlay.dart';
 import 'debug/input_inspector.dart';
-import 'playback/canvas_scrub_preview.dart';
 import 'text/app_strings.dart';
 import 'text/se_name_tag_paint.dart';
 import 'timeline/layer_label_controls.dart';
@@ -405,8 +404,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final isScrubbing = !isPlaybackActive && session.frameScrubActive.value;
     // R16-⑥ (user semantics): a gap has NO cut — the canvas shows a
     // paperless VOID: no editable cel, no layer content, no paper.
-    final inGap =
-        !isPlaybackActive && !isScrubbing && session.editingPlayheadInGap;
+    // ⛔`!isScrubbing` is gone from here too: the void and the parked track
+    // stack are part of what a stopped playhead shows, so a scrub that hid
+    // them would be a fifth way of differing (⑯).
+    final inGap = !isPlaybackActive && session.editingPlayheadInGap;
     // The camera overlay authors the ACTIVE cut's pose — with no cut (a
     // gap parking) there is nothing to author and reading the pose would
     // throw (requireActiveCut).
@@ -477,15 +478,15 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     // faded frames are worked with fx off). It is the track's static opacity
     // times the TRANSITION row's ramp now.
     final cutFadeOpacity = session.activeCutEditingFadeOpacity();
-    final showFadeWash =
-        !isPlaybackActive && !isScrubbing && cutFadeOpacity < 1;
+    // ⛔No `!isScrubbing` here any more: the fade is part of the picture,
+    // and the picture during a scrub is the picture when stopped (⑯).
+    final showFadeWash = !isPlaybackActive && cutFadeOpacity < 1;
     // The SE rows' on-canvas name tags (R5b, §6-z15) — the editing
     // canvas's copy of what playback and export draw. Playback/scrub
     // render their own (through the frame painter), so this stands down
     // there exactly like the other editing chrome.
     final activeCutForTags = session.activeCutOrNull;
-    final seNameTags =
-        isPlaybackActive || isScrubbing || activeCutForTags == null
+    final seNameTags = isPlaybackActive || activeCutForTags == null
         ? const <ResolvedSeNameTag>[]
         : session.seNameTagsForCutFrame(
             activeCutForTags,
@@ -500,9 +501,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     // LANE declares its manipulators now, and a lane that declares none
     // (Opacity, every effect parameter) draws none.
     final activeLayer = session.activeLayer;
+    // ⛔`!isScrubbing` is gone from here too, and the split it used to sit
+    // on the wrong side of is worth naming: this flag decides whether the
+    // manipulators are DRAWN, and drawn is part of the picture (⑯). What a
+    // scrub has no business doing is answering a GRAB — that is a different
+    // flag (the camera overlay's `interactive`), and it keeps its guard.
     final canPoseActiveLayer =
         !isPlaybackActive &&
-        !isScrubbing &&
         !isCameraLayerActive &&
         activeLayer != null &&
         // The gizmo COMMITS a transform track, so the row must actually
@@ -592,7 +597,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // the layer being drawn on. Playback/scrub swap the whole
               // viewport content, so merged mode stands down there (no
               // underlay builder, no active painter).
-              activeStrokeOverlayModel: isPlaybackActive || isScrubbing
+              activeStrokeOverlayModel: isPlaybackActive
                   ? null
                   : _activeStrokeOverlay,
               // Camera mode still needs artwork on screen: fall
@@ -754,7 +759,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // editing. During playback the composite covers everything. Under
               // an active CUT pose (R9-B) the paper splits out of the wrap: the
               // canvas is the static stage, only the content rides the pose.
-              viewportUnderlayBuilder: isPlaybackActive || isScrubbing
+              viewportUnderlayBuilder: isPlaybackActive
                   ? null
                   : (context, viewport, activeSurfacePainter, floatOverlay) {
                       final below = CanvasLayerStackView(
@@ -1086,35 +1091,32 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                         RecordingStreamerOverlay(session: session),
                       ],
                     )
-                  : isScrubbing
-                  ? (context, viewport) => CanvasScrubPreview(
-                      frameCursor: session.editingFrameCursor,
-                      compositeCache: session.cutFrameCompositeCache,
-                      // Null in the no-cut gap state: the preview voids.
-                      cut: session.activeCutOrNull,
-                      qualityOf: () => session.playbackQuality,
-                      // Gap scrubs park per move (UI-R7 #9): the preview
-                      // shows the parked track stack there (multitrack
-                      // display path) — with no covered track it stays
-                      // the void, never the owner cut's last frame.
-                      gapParking: session.gapParkingListenable,
-                      gapContentBuilder: (context) =>
-                          _buildTrackStackView(session, viewport),
-                      // The cut FADE follows the editing canvas per cursor
-                      // frame; it is the transition row's ramp times the
-                      // track's static opacity now, and there is no cut pose
-                      // left to sample.
-                      cutFadeOpacityAt: (frame) => session
-                          .activeCutEditingFadeOpacity(frameIndex: frame),
-                      seNameTagsAt: (frame) {
-                        final cut = session.activeCutOrNull;
-                        return cut == null
-                            ? const []
-                            : session.seNameTagsForCutFrame(cut, frame);
-                      },
-                      viewport: viewport,
-                      paperBackground: session.projectBackground,
-                    )
+                  // 🚨★★★A RULER SCRUB SHOWS WHAT A STOPPED PLAYHEAD SHOWS
+                  // (유저 확정 2026-08-15): 「단순히 full만하는게아니라
+                  // 페이스트보드도 보이게. **즉 그냥 멈췄을때랑 보이는게
+                  // 똑같게**」.
+                  //
+                  // ⛔A `CanvasScrubPreview` used to stand here — the
+                  // PLAYBACK composite cache, standing in for the editing
+                  // canvas while the cursor moved. It was ONE substitution
+                  // and the user reported it as FOUR faults: the artwork
+                  // came back filtered; its quality followed the PLAYBACK
+                  // quality setting; the pasteboard was gone (playback
+                  // draws the cut frame, not the stage around it); and
+                  // letting go handed back to the editing stack, which is
+                  // when a layer would blink.
+                  //
+                  // ★So the answer is one sentence rather than four fixes.
+                  // Forcing the preview to full quality and teaching it the
+                  // pasteboard would have closed three and left the fourth,
+                  // because the fourth IS the substitution.
+                  //
+                  // 📐What made the stand-in worth having was cost, and (v)
+                  // moved that: the static composite is baked once, the
+                  // bottom of the stack is one blit, and the display buffer
+                  // is tiled — a cursor move no longer re-walks the tree it
+                  // used to.
+                  //
                   // The parked state (no active cut): the multitrack
                   // display path — every covered track's composite stacks
                   // where the void used to be, in its own CANVAS space (the
