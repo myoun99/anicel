@@ -19,6 +19,7 @@ import '../playback/layer_frame_image_cache.dart';
 import 'bitmap_surface_painter.dart';
 import 'composite_effect_paint.dart';
 import 'selection_float_overlay.dart';
+import 'static_composite_bake.dart';
 import 'layer_image_draw.dart';
 import 'paper_background.dart';
 import 'viewport_canvas_transform.dart';
@@ -172,7 +173,18 @@ class CanvasLayerStackView extends StatefulWidget {
     this.floatOverlay,
     this.paintPaper = false,
     this.paperBackground = ProjectBackground.defaultBackground,
+    this.debugDisableBake = false,
   });
+
+  /// 🚨(v) — turns the static bake OFF so a test can render the SAME tree
+  /// both ways and compare the pixels.
+  ///
+  /// ★That comparison is the only contract worth having here: an
+  /// optimisation is allowed to be faster, never to draw something else.
+  /// It is a field rather than a global so the two renders can sit in one
+  /// test, side by side, with nothing global to reset between them.
+  @visibleForTesting
+  final bool debugDisableBake;
 
   /// The selection's floating pixels (TS1), drawn in the active layer's slot
   /// so the rows above it occlude them. Null = nothing to draw there.
@@ -248,12 +260,32 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     _ensureImages();
   }
 
+  /// 🚨(v) — the recording of everything a stroke cannot change.
+  final StaticCompositeBake _bake = StaticCompositeBake();
+
+  /// 🚨★★★ Bumped at EVERY `_images` mutation, and read into the bake's key.
+  ///
+  /// ⛔This is not belt-and-braces on top of the tree comparison. A recorded
+  /// picture holds references to the `ui.Image` clones below, and those get
+  /// `dispose()`d right here — replaying a picture after that is a dead
+  /// handle. The tree comparison happens on the PAINTER's schedule and the
+  /// dispose happens on the STATE's, so the two run at different moments;
+  /// tying invalidation to the dispose ITSELF is what makes the window
+  /// impossible rather than merely unlikely.
+  int _imagesRevision = 0;
+
+  void _dropImage(({ui.Image source, ui.Image clone, Rect worldRect}) held) {
+    held.clone.dispose();
+    _imagesRevision += 1;
+  }
+
   @override
   void dispose() {
     for (final entry in _images.values) {
       entry.clone.dispose();
     }
     _images.clear();
+    _bake.dispose();
     super.dispose();
   }
 
@@ -277,7 +309,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     };
     for (final key in _images.keys.toList()) {
       if (!wanted.contains(key)) {
-        _images.remove(key)!.clone.dispose();
+        _dropImage(_images.remove(key)!);
       }
     }
     for (final layer in widget.layers) {
@@ -295,7 +327,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       }
       final held = _images[layer.frameKey];
       if (held == null || !identical(held.source, image.image)) {
-        held?.clone.dispose();
+        if (held != null) _dropImage(held);
         _images[layer.frameKey] = (
           source: image.image,
           clone: image.image.clone(),
@@ -331,14 +363,14 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           final held = _images[layer.frameKey];
           if (image == null) {
             if (held != null) {
-              held.clone.dispose();
+              _dropImage(held);
               _images.remove(layer.frameKey);
               changed = true;
             }
             continue;
           }
           if (held == null || !identical(held.source, image.image)) {
-            held?.clone.dispose();
+            if (held != null) _dropImage(held);
             _images[layer.frameKey] = (
               source: image.image,
               clone: image.image.clone(),
@@ -349,7 +381,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         }
         for (final key in _images.keys.toList()) {
           if (!wanted.contains(key)) {
-            _images.remove(key)!.clone.dispose();
+            _dropImage(_images.remove(key)!);
             changed = true;
           }
         }
@@ -443,16 +475,40 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
 
   @override
   Widget build(BuildContext context) {
+    final nodes = _resolvedTree(widget.nodes);
+    // 🚨(v) — the recordings survive only while everything they were
+    // recorded against holds still.
+    //
+    // ⛔The set is deliberately the SAME one `shouldRepaint` compares, plus
+    // [_imagesRevision]. Anything compared there and left out here is a slot
+    // that keeps replaying after the thing it drew has changed — a stale
+    // frame nobody can trace back to a cache, which is the failure mode
+    // [[stale-tile-flicker-program]] is a whole file about.
+    //
+    // The ACTIVE surface is absent on purpose: a stroke step changes its
+    // pixels and nothing else, and its pixels are the one thing never
+    // recorded. That absence IS the optimisation.
+    _bake.keepFor(
+      Object.hash(
+        _imagesRevision,
+        widget.canvasSize,
+        widget.viewport,
+        widget.paintPaper,
+        widget.paperBackground,
+        _LayerStackPainter.treeSignature(nodes),
+      ),
+    );
     return IgnorePointer(
       child: CustomPaint(
         painter: _LayerStackPainter(
-          nodes: _resolvedTree(widget.nodes),
+          nodes: nodes,
           activeSurfacePainter: widget.activeSurfacePainter,
           floatOverlay: widget.floatOverlay,
           canvasSize: widget.canvasSize,
           viewport: widget.viewport,
           paintPaper: widget.paintPaper,
           paperBackground: widget.paperBackground,
+          bake: widget.debugDisableBake ? null : _bake,
         ),
         child: const SizedBox.expand(),
       ),
@@ -546,6 +602,7 @@ class _LayerStackPainter extends CustomPainter {
     required this.viewport,
     required this.paintPaper,
     required this.paperBackground,
+    this.bake,
   }) : super(
          repaint: floatOverlay == null
              ? activeSurfacePainter
@@ -561,6 +618,13 @@ class _LayerStackPainter extends CustomPainter {
   static String? _lastStackProbe;
 
   final List<_PaintNode> nodes;
+
+  /// 🚨(v) — the recording of everything a stroke cannot change.
+  ///
+  /// Owned by the STATE, not by this painter: a `CustomPainter` is a fresh
+  /// object every frame, so a cache held here would be recorded and thrown
+  /// away in the same breath. Null keeps the original walk.
+  final StaticCompositeBake? bake;
 
   /// Draws the ACTIVE layer's live surface in place. Its own repaint
   /// Listenable (tile cache + stroke overlay) drives this painter too, so
@@ -637,7 +701,19 @@ class _LayerStackPainter extends CustomPainter {
         ? pasteboardRect
         : pasteboardRect.intersect(visibleRect);
 
-    void paintNodes(List<_PaintNode> list) {
+    /// 🚨(v) — the body, with WHO PAINTS THE CHILDREN left open.
+    ///
+    /// It was `paintNodes` recursing straight into itself. The static bake
+    /// needs the same body with a different child strategy (descend into
+    /// the chain enclosing the active layer, replay a recording for
+    /// everything else), and copying it would have split the folder
+    /// `saveLayer` rules into two versions that then drift apart. One body,
+    /// two strategies.
+    void paintNodesWith(
+      Canvas canvas,
+      List<_PaintNode> list,
+      void Function(Canvas canvas, List<_PaintNode> children) paintChildren,
+    ) {
       for (final node in list) {
         // Poses apply at composite time — the stack shows the same picture
         // playback composes (route parity).
@@ -683,7 +759,7 @@ class _LayerStackPainter extends CustomPainter {
                   effectBufferBounds(groupBounds, groupEffects),
                   groupPaint,
                 );
-                paintNodes(children);
+                paintChildren(canvas, children);
                 canvas.restore();
               case _PaintAdjustment(
                 :final children,
@@ -704,11 +780,11 @@ class _LayerStackPainter extends CustomPainter {
                     pass.crossfadeLayerPaint!,
                   );
                   canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
-                  paintNodes(children);
+                  paintChildren(canvas, children);
                   canvas.restore();
                 }
                 canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
-                paintNodes(children);
+                paintChildren(canvas, children);
                 canvas.restore();
                 if (pass.crossfades) {
                   canvas.restore();
@@ -818,9 +894,73 @@ class _LayerStackPainter extends CustomPainter {
       }
     }
 
-    paintNodes(nodes);
+    void paintNodes(Canvas canvas, List<_PaintNode> list) =>
+        paintNodesWith(canvas, list, paintNodes);
+
+    /// 🚨★★★ (v) 1단계 — paint the chain that ENCLOSES the active layer live,
+    /// and replay a recording for everything else.
+    ///
+    /// ★The split axis is not "below / above". That was the flat pair this
+    /// tree was built to replace: with the active layer inside a blended
+    /// folder, three sibling painters could not share one `saveLayer` and
+    /// the canvas disagreed with playback (see the file's own header).
+    ///
+    /// There is exactly ONE [_PaintActiveSurface] in the tree, so the path
+    /// from the root to it is a chain of enclosing folders G1…Gn. At every
+    /// level, the siblings BEFORE and AFTER the chain's child are static for
+    /// the whole stroke — the stroke's pixels never pass through them — so
+    /// they bake. The folders ON the chain stay live, because the stroke's
+    /// pixels do go through their buffers.
+    ///
+    /// ⇒ 2n+2 recordings, and n is 0 or 1 in almost every project. At n=0
+    /// that is precisely "one below, one above" — the naive split was not
+    /// wrong, it was this rule's simplest case.
+    ///
+    /// ⚠️Depth identifies a level uniquely BECAUSE the chain is unique;
+    /// that is what makes a bare depth a sound slot id.
+    void paintSplit(Canvas canvas, List<_PaintNode> list, int depth) {
+      final at = list.indexWhere(_enclosesActiveSurface);
+      if (at < 0) {
+        bake!.draw(canvas, 'd$depth:all', (into) => paintNodes(into, list));
+        return;
+      }
+      if (at > 0) {
+        bake!.draw(
+          canvas,
+          'd$depth:before',
+          (into) => paintNodes(into, list.sublist(0, at)),
+        );
+      }
+      paintNodesWith(canvas, [list[at]], (into, children) {
+        paintSplit(into, children, depth + 1);
+      });
+      if (at < list.length - 1) {
+        bake!.draw(
+          canvas,
+          'd$depth:after',
+          (into) => paintNodes(into, list.sublist(at + 1)),
+        );
+      }
+    }
+
+    // ⛔No bake handed down (a host that does not own one, or a tree with no
+    // live surface at all) keeps the original walk. The bake is an
+    // optimisation, never a second way to be correct.
+    if (bake == null || activeSurfacePainter == null) {
+      paintNodes(canvas, nodes);
+    } else {
+      paintSplit(canvas, nodes, 0);
+    }
     canvas.restore();
   }
+
+  /// Whether the live surface is this node, or anywhere inside it.
+  static bool _enclosesActiveSurface(_PaintNode node) => switch (node) {
+    _PaintActiveSurface() => true,
+    _PaintGroup(:final children) => children.any(_enclosesActiveSurface),
+    _PaintAdjustment(:final children) => children.any(_enclosesActiveSurface),
+    _PaintImage() => false,
+  };
 
   @override
   bool shouldRepaint(covariant _LayerStackPainter oldDelegate) {
@@ -902,5 +1042,73 @@ class _LayerStackPainter extends CustomPainter {
       }
     }
     return true;
+  }
+
+  /// 🚨(v) — [_treesMatch] as a VALUE, for the bake's key.
+  ///
+  /// ⛔It must fold in exactly what [_treesMatch] compares, and it lives
+  /// here rather than beside the cache so the two are read together: a
+  /// field added to a node and to `_treesMatch` but not to this one makes
+  /// the recordings outlive the change they should have ended. The
+  /// `default:` arm below is the same tripwire the comparison's is.
+  ///
+  /// ⚠️Images fold in by IDENTITY (`identityHashCode`), matching
+  /// `identical()` above — two different decodes of the same artwork are
+  /// two different pictures to draw.
+  static int treeSignature(List<_PaintNode> list) {
+    var hash = list.length;
+    for (final node in list) {
+      hash = Object.hash(hash, switch (node) {
+        _PaintImage(
+          :final image,
+          :final worldRect,
+          :final opacity,
+          :final blendMode,
+          :final pose,
+          :final anchorPoint,
+          :final tint,
+          :final effects,
+        ) =>
+          Object.hash(
+            identityHashCode(image),
+            worldRect,
+            opacity,
+            blendMode,
+            pose,
+            anchorPoint,
+            tint,
+            Object.hashAll(effects),
+          ),
+        _PaintActiveSurface(
+          :final opacity,
+          :final blendMode,
+          :final pose,
+          :final anchorPoint,
+          :final effects,
+        ) =>
+          Object.hash(
+            opacity,
+            blendMode,
+            pose,
+            anchorPoint,
+            Object.hashAll(effects),
+          ),
+        _PaintGroup(
+          :final opacity,
+          :final blendMode,
+          :final effects,
+          :final children,
+        ) =>
+          Object.hash(
+            opacity,
+            blendMode,
+            Object.hashAll(effects),
+            treeSignature(children),
+          ),
+        _PaintAdjustment(:final mix, :final effects, :final children) =>
+          Object.hash(mix, Object.hashAll(effects), treeSignature(children)),
+      });
+    }
+    return hash;
   }
 }
