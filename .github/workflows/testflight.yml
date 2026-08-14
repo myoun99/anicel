@@ -36,6 +36,50 @@ jobs:
           cache: true
       - run: flutter pub get
 
+      # The Apple-side correctness check lives HERE, before anything
+      # expensive, rather than in a separate workflow somebody has to
+      # remember to run.
+      #
+      # `apple.yml` answers the same question, but it is a nightly job and
+      # a build is not: shipping meant either waiting 32 minutes for a
+      # dispatched run or reasoning about whether the last one had seen
+      # this commit. That reasoning went wrong on 2026-08-14 — the newest
+      # apple.yml success was a BRANCH run, not master, and it took a
+      # second look to notice. A check the release path cannot skip is
+      # worth more than a check that is thorough somewhere else.
+      #
+      # Only the tests that touch the native engine run here: 37 files of
+      # 735, selected by what they import rather than from a list that
+      # would rot. The other 698 have already run on Linux and Windows for
+      # this commit, and running them a third time is what makes apple.yml
+      # take 26 minutes.
+      - name: Native core (Apple clang)
+        run: |
+          cmake -S packages/qa_native/src -B build/ci-apple -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/ci-apple --config Release
+      - name: Parity against the Apple-built engine
+        env:
+          QA_ENGINE_PATH: ${{ github.workspace }}/build/ci-apple/libqa_engine.dylib
+          # A missing engine must FAIL rather than skip: a skipped parity
+          # suite and a passing one look identical in a summary, which is
+          # exactly how #614 hid for five rounds.
+          QA_REQUIRE_NATIVE: '1'
+        run: |
+          set -euo pipefail
+          # `|| true` because grep exits 1 on no matches, and under `set -e`
+          # that would kill the step before the guard below could say why.
+          grep -rl 'native_engine_path\|qa_engine_abi\|QaNativeEngine\|src/native/' \
+            test --include='*_test.dart' | sort > "$RUNNER_TEMP/parity.txt" || true
+          count=$(wc -l < "$RUNNER_TEMP/parity.txt")
+          echo "parity subset: $count of $(find test -name '*_test.dart' | wc -l) files"
+          # A selector that matched nothing would sail through green — the
+          # one way this check could quietly stop checking.
+          if [ "$count" -eq 0 ]; then
+            echo "no parity tests selected"
+            exit 1
+          fi
+          xargs flutter test --no-pub < "$RUNNER_TEMP/parity.txt"
+
       # Flutter's own artifacts first (the Dart AOT snapshot, the engine,
       # the qa_native pod). fastlane's build_app then archives and signs
       # what this produced — signing here would be thrown away.
