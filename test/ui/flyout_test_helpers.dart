@@ -29,9 +29,9 @@ const Map<String, String> flyoutOwnerByItemKey = {
   // 'timeline-se-name-tag-button' is gone (R5 #7): the tag's controls are
   // lanes on the SE row now, so the window it opened had nothing left to
   // hold.
-  // ⛔'rename-frame-button' (Edit Instance) left the frame menu for the
-  // frame pill — ① again. ⛔'copy-frame-button' and
-  // 'paste-linked-frame-button' went further, to the SHARED pill (㉕): they
+  // ⛔'shared-edit-button' (Edit Instance) left the frame menu for the
+  // frame pill — ① again. ⛔'shared-copy-button' and
+  // 'shared-paste-linked-button' went further, to the SHARED pill (㉕): they
   // act on what is selected, so they belong to no noun's menu.
   // ⛔'delete-cell-button' left this map with the item itself (T24): it was
   // the last duplicate of the one shared delete, so there is no menu to open

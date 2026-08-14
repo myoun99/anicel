@@ -36,7 +36,7 @@ const _confirmButtonKey = ValueKey<String>('delete-layer-confirm-button');
 /// T25 folded the loose `rename-layer-button` into the shared pill's Edit
 /// Instance, which takes its subject from the selection — the same two-step
 /// flow (select the row, then the one verb) this file's DELETE already uses.
-const _renameButtonKey = ValueKey<String>('rename-frame-button');
+const _renameButtonKey = ValueKey<String>('shared-edit-button');
 const _renameTextFieldKey = ValueKey<String>('rename-layer-text-field');
 const _renameOkButtonKey = ValueKey<String>('rename-layer-ok-button');
 const _undoKey = ValueKey<String>('undo-button');

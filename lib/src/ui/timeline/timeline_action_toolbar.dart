@@ -792,8 +792,8 @@ class TimelineActionToolbar extends StatelessWidget {
         // did not become a different button, and every test that reached it
         // still does.
         _iconButton(
-          key: const ValueKey<String>('rename-frame-button'),
-          tooltip: AppText.strings.tlEditInstance,
+          key: const ValueKey<String>('shared-edit-button'),
+          tooltip: AppText.strings.tlSharedEdit,
           icon: Icons.edit_outlined,
           // Two sources, and they are asking different things rather than
           // the same thing twice: the SUBJECT is what the session has
@@ -816,16 +816,16 @@ class TimelineActionToolbar extends StatelessWidget {
         // paste-over-a-selection does before it puts the clip down — so it
         // needed no placement rules of its own.
         _iconButton(
-          key: const ValueKey<String>('cut-run-button'),
-          tooltip: AppText.strings.tlCutRun,
+          key: const ValueKey<String>('shared-cut-button'),
+          tooltip: AppText.strings.tlSharedCut,
           icon: Icons.content_cut,
           onPressed: session.canCutRunAtCurrentFrame
               ? session.cutRunAtCurrentFrame
               : null,
         ),
         _iconButton(
-          key: const ValueKey<String>('copy-frame-button'),
-          tooltip: AppText.strings.tlCopyFrame,
+          key: const ValueKey<String>('shared-copy-button'),
+          tooltip: AppText.strings.tlSharedCopy,
           icon: Icons.content_copy,
           onPressed: session.canCopyFrameAtCurrentFrame
               ? session.copyFrameAtCurrentFrame
@@ -837,16 +837,16 @@ class TimelineActionToolbar extends StatelessWidget {
         // independent is only discovered later, by drawing on it and
         // watching another cel change.
         _iconButton(
-          key: const ValueKey<String>('paste-independent-frame-button'),
-          tooltip: AppText.strings.tlPasteIndependentFrame,
+          key: const ValueKey<String>('shared-paste-independent-button'),
+          tooltip: AppText.strings.tlSharedPasteIndependent,
           icon: Icons.content_paste,
           onPressed: session.canPasteIndependentFrameAtCurrentFrame
               ? session.pasteIndependentFrameAtCurrentFrame
               : null,
         ),
         _iconButton(
-          key: const ValueKey<String>('paste-linked-frame-button'),
-          tooltip: AppText.strings.tlPasteLinkedFrame,
+          key: const ValueKey<String>('shared-paste-linked-button'),
+          tooltip: AppText.strings.tlSharedPasteLinked,
           icon: Icons.link,
           onPressed: session.canPasteLinkedFrameAtCurrentFrame
               ? session.pasteLinkedFrameAtCurrentFrame
@@ -854,7 +854,7 @@ class TimelineActionToolbar extends StatelessWidget {
         ),
         _iconButton(
           key: const ValueKey<String>('shared-delete-button'),
-          tooltip: AppText.strings.tlDeleteCell,
+          tooltip: AppText.strings.tlSharedDelete,
           icon: Icons.delete_outline,
           danger: true,
           // F: the ROWS rung asks first. It inherited that from the loose

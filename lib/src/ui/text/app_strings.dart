@@ -567,15 +567,15 @@ class AppStrings {
   String get tlDropFolderInAttachFolder => _s('tlDropFolderInAttachFolder');
 
   String get tlDetachLayer => _s('tlDetachLayer');
-  String get tlCutRun => _s('tlCutRun');
-  String get tlCopyFrame => _s('tlCopyFrame');
-  String get tlPasteLinkedFrame => _s('tlPasteLinkedFrame');
+  String get tlSharedCut => _s('tlSharedCut');
+  String get tlSharedCopy => _s('tlSharedCopy');
+  String get tlSharedPasteLinked => _s('tlSharedPasteLinked');
 
   /// ㉕: the copied cel's content as a cel of its OWN — the paste that does
   /// NOT link, named for what it makes rather than for what it is not.
-  String get tlPasteIndependentFrame => _s('tlPasteIndependentFrame');
-  String get tlDeleteCell => _s('tlDeleteCell');
-  String get tlEditInstance => _s('tlEditInstance');
+  String get tlSharedPasteIndependent => _s('tlSharedPasteIndependent');
+  String get tlSharedDelete => _s('tlSharedDelete');
+  String get tlSharedEdit => _s('tlSharedEdit');
   String get tlAdd => _s('tlAdd');
   String get tlBlankX => _s('tlBlankX');
   String get tlMark => _s('tlMark');
@@ -1608,12 +1608,12 @@ class AppStrings {
     'tlDropDetachAttach': 'detach',
     'tlDropFolderInAttachFolder': 'a folder cannot go inside an attach folder',
     'tlDetachLayer': 'Detach from base',
-    'tlCutRun': 'Cut frames',
-    'tlCopyFrame': 'Copy frame',
-    'tlPasteLinkedFrame': 'Paste linked frame',
-    'tlPasteIndependentFrame': 'Paste independent frame',
-    'tlDeleteCell': 'Delete',
-    'tlEditInstance': 'Edit instance…',
+    'tlSharedCut': 'Cut',
+    'tlSharedCopy': 'Copy',
+    'tlSharedPasteLinked': 'Paste linked',
+    'tlSharedPasteIndependent': 'Paste independent',
+    'tlSharedDelete': 'Delete',
+    'tlSharedEdit': 'Edit…',
     'tlAdd': 'Add',
     'tlPush': 'Push (open frames)',
     'tlPull': 'Pull (close frames)',
@@ -2386,12 +2386,12 @@ class AppStrings {
     'tlDropDetachAttach': '付属を解除',
     'tlDropFolderInAttachFolder': '付属フォルダーの中にフォルダーは入れられません',
     'tlDetachLayer': '付属を解除',
-    'tlCutRun': 'フレームを切り取り',
-    'tlCopyFrame': 'フレームをコピー',
-    'tlPasteLinkedFrame': 'リンクフレームを貼り付け',
-    'tlPasteIndependentFrame': '独立フレームを貼り付け',
-    'tlDeleteCell': '削除',
-    'tlEditInstance': 'インスタンスを編集…',
+    'tlSharedCut': '切り取り',
+    'tlSharedCopy': 'コピー',
+    'tlSharedPasteLinked': 'リンクして貼り付け',
+    'tlSharedPasteIndependent': '独立して貼り付け',
+    'tlSharedDelete': '削除',
+    'tlSharedEdit': '編集…',
     'tlAdd': '追加',
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
@@ -3156,12 +3156,12 @@ class AppStrings {
     'tlDropDetachAttach': '어태치 해제',
     'tlDropFolderInAttachFolder': '어태치 폴더 안에는 폴더를 넣을 수 없습니다',
     'tlDetachLayer': '어태치 해제',
-    'tlCutRun': '프레임 잘라내기',
-    'tlCopyFrame': '프레임 복사',
-    'tlPasteLinkedFrame': '링크 프레임 붙여넣기',
-    'tlPasteIndependentFrame': '독립 프레임 붙여넣기',
-    'tlDeleteCell': '삭제',
-    'tlEditInstance': '인스턴스 편집…',
+    'tlSharedCut': '잘라내기',
+    'tlSharedCopy': '복사',
+    'tlSharedPasteLinked': '링크 붙여넣기',
+    'tlSharedPasteIndependent': '독립 붙여넣기',
+    'tlSharedDelete': '삭제',
+    'tlSharedEdit': '편집…',
     'tlAdd': '추가',
     'tlPush': '밀기(칸 열기)',
     'tlPull': '당기기(칸 닫기)',
@@ -3965,12 +3965,12 @@ class AppStrings {
     'tlDropDetachAttach': 'détacher',
     'tlDropFolderInAttachFolder': 'un dossier ne peut pas contenir de dossier dans un groupe attaché',
     'tlDetachLayer': 'Détacher de la base',
-    'tlCutRun': "Couper l'image",
-    'tlCopyFrame': "Copier l'image",
-    'tlPasteLinkedFrame': "Coller l'image liée",
-    'tlPasteIndependentFrame': "Coller une image indépendante",
-    'tlDeleteCell': 'Supprimer',
-    'tlEditInstance': "Modifier l'instance…",
+    'tlSharedCut': 'Couper',
+    'tlSharedCopy': 'Copier',
+    'tlSharedPasteLinked': 'Coller lié',
+    'tlSharedPasteIndependent': 'Coller indépendant',
+    'tlSharedDelete': 'Supprimer',
+    'tlSharedEdit': 'Modifier…',
     'tlAdd': 'Ajouter',
     'tlPush': 'Pousser (ouvrir des images)',
     'tlPull': 'Tirer (fermer des images)',
@@ -4711,12 +4711,12 @@ class AppStrings {
     'tlDropDetachAttach': '解除附属',
     'tlDropFolderInAttachFolder': '附属文件夹内不能再放文件夹',
     'tlDetachLayer': '解除附属',
-    'tlCutRun': '剪切帧',
-    'tlCopyFrame': '复制帧',
-    'tlPasteLinkedFrame': '粘贴链接帧',
-    'tlPasteIndependentFrame': '粘贴独立帧',
-    'tlDeleteCell': '删除',
-    'tlEditInstance': '编辑实例…',
+    'tlSharedCut': '剪切',
+    'tlSharedCopy': '复制',
+    'tlSharedPasteLinked': '粘贴链接',
+    'tlSharedPasteIndependent': '粘贴独立',
+    'tlSharedDelete': '删除',
+    'tlSharedEdit': '编辑…',
     'tlAdd': '添加',
     'tlPush': '推出（空出帧）',
     'tlPull': '拉回（收拢帧）',

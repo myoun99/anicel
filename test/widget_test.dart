@@ -245,7 +245,7 @@ void _expectNoCellText(String layerId, int frameIndex, String text) {
 Future<void> _renameCurrentFrame(WidgetTester tester, String name) async {
   await _tapToolbarButton(
     tester,
-    const ValueKey<String>('rename-frame-button'),
+    const ValueKey<String>('shared-edit-button'),
   );
   await tester.enterText(
     find.byKey(const ValueKey<String>('rename-frame-text-field')),
@@ -591,15 +591,15 @@ Future<void> _expectTimelineActionKeys(WidgetTester tester) async {
   await tester.tap(frameMenuButton);
   await tester.pumpAndSettle();
   expect(
-    find.byKey(const ValueKey<String>('copy-frame-button')),
+    find.byKey(const ValueKey<String>('shared-copy-button')),
     findsOneWidget,
   );
   expect(
-    find.byKey(const ValueKey<String>('paste-linked-frame-button')),
+    find.byKey(const ValueKey<String>('shared-paste-linked-button')),
     findsOneWidget,
   );
   expect(
-    find.byKey(const ValueKey<String>('rename-frame-button')),
+    find.byKey(const ValueKey<String>('shared-edit-button')),
     findsOneWidget,
   );
   // T24: the frame menu's delete went the way the cut and layer ones did —
@@ -2036,7 +2036,7 @@ Line 8''';
       );
       await _tapToolbarButton(
         tester,
-        const ValueKey<String>('copy-frame-button'),
+        const ValueKey<String>('shared-copy-button'),
       );
 
       await _switchToCut(tester, 'cut-1');
@@ -2045,7 +2045,7 @@ Line 8''';
       expect(
         await _isActionButtonEnabled(
           tester,
-          const ValueKey<String>('paste-linked-frame-button'),
+          const ValueKey<String>('shared-paste-linked-button'),
         ),
         isFalse,
       );
@@ -2058,7 +2058,7 @@ Line 8''';
       expect(
         await _isActionButtonEnabled(
           tester,
-          const ValueKey<String>('paste-linked-frame-button'),
+          const ValueKey<String>('shared-paste-linked-button'),
         ),
         isFalse,
       );
@@ -2180,7 +2180,7 @@ Line 8''';
 
       await _tapToolbarButton(
         tester,
-        const ValueKey<String>('rename-frame-button'),
+        const ValueKey<String>('shared-edit-button'),
       );
       await tester.enterText(
         find.byKey(const ValueKey<String>('rename-frame-text-field')),
@@ -2289,7 +2289,7 @@ Line 8''';
     expect(
       await _isActionButtonEnabled(
         tester,
-        const ValueKey<String>('rename-frame-button'),
+        const ValueKey<String>('shared-edit-button'),
       ),
       isTrue,
     );
@@ -2398,7 +2398,7 @@ Line 8''';
       expect(
         await _isActionButtonEnabled(
           tester,
-          const ValueKey<String>('rename-frame-button'),
+          const ValueKey<String>('shared-edit-button'),
         ),
         isFalse,
       );
@@ -2418,13 +2418,13 @@ Line 8''';
       expect(
         await _isActionButtonEnabled(
           tester,
-          const ValueKey<String>('rename-frame-button'),
+          const ValueKey<String>('shared-edit-button'),
         ),
         isTrue,
       );
       await _tapToolbarButton(
         tester,
-        const ValueKey<String>('rename-frame-button'),
+        const ValueKey<String>('shared-edit-button'),
       );
 
       expect(
@@ -2473,7 +2473,7 @@ Line 8''';
       expect(
         await _isActionButtonEnabled(
           tester,
-          const ValueKey<String>('rename-frame-button'),
+          const ValueKey<String>('shared-edit-button'),
         ),
         isFalse,
       );
@@ -2568,7 +2568,7 @@ Line 8''';
     await tester.pumpAndSettle();
     await _tapToolbarButton(
       tester,
-      const ValueKey<String>('rename-frame-button'),
+      const ValueKey<String>('shared-edit-button'),
     );
     await tester.enterText(
       find.byKey(const ValueKey<String>('rename-frame-text-field')),
@@ -2592,14 +2592,14 @@ Line 8''';
     expect(
       await _isActionButtonEnabled(
         tester,
-        const ValueKey<String>('copy-frame-button'),
+        const ValueKey<String>('shared-copy-button'),
       ),
       isFalse,
     );
     expect(
       await _isActionButtonEnabled(
         tester,
-        const ValueKey<String>('paste-linked-frame-button'),
+        const ValueKey<String>('shared-paste-linked-button'),
       ),
       isFalse,
     );
@@ -2609,19 +2609,19 @@ Line 8''';
     expect(
       await _isActionButtonEnabled(
         tester,
-        const ValueKey<String>('copy-frame-button'),
+        const ValueKey<String>('shared-copy-button'),
       ),
       isTrue,
     );
 
     await _tapToolbarButton(
       tester,
-      const ValueKey<String>('copy-frame-button'),
+      const ValueKey<String>('shared-copy-button'),
     );
     expect(
       await _isActionButtonEnabled(
         tester,
-        const ValueKey<String>('paste-linked-frame-button'),
+        const ValueKey<String>('shared-paste-linked-button'),
       ),
       isTrue,
     );
@@ -2633,7 +2633,7 @@ Line 8''';
 
     await _tapToolbarButton(
       tester,
-      const ValueKey<String>('paste-linked-frame-button'),
+      const ValueKey<String>('shared-paste-linked-button'),
     );
 
     _expectCellText('default-layer-1', 0, '○');
@@ -2652,7 +2652,7 @@ Line 8''';
       );
       await _tapToolbarButton(
         tester,
-        const ValueKey<String>('copy-frame-button'),
+        const ValueKey<String>('shared-copy-button'),
       );
       await _addLayer(tester);
 
@@ -2663,7 +2663,7 @@ Line 8''';
       expect(
         await _isActionButtonEnabled(
           tester,
-          const ValueKey<String>('paste-linked-frame-button'),
+          const ValueKey<String>('shared-paste-linked-button'),
         ),
         isFalse,
       );
@@ -2688,7 +2688,7 @@ Line 8''';
       // block shrinks to [0,1) and the cut-off dot goes with it.
       await _tapToolbarButton(
         tester,
-        const ValueKey<String>('paste-linked-frame-button'),
+        const ValueKey<String>('shared-paste-linked-button'),
       );
 
       _expectNoCellText('default-layer-1', 1, '●');
@@ -2788,7 +2788,7 @@ Line 8''';
     }
     await _tapToolbarButton(
       tester,
-      const ValueKey<String>('rename-frame-button'),
+      const ValueKey<String>('shared-edit-button'),
     );
     await tester.enterText(
       find.byKey(const ValueKey<String>('rename-layer-text-field')),
@@ -2873,7 +2873,7 @@ Line 8''';
     }
     await _tapToolbarButton(
       tester,
-      const ValueKey<String>('rename-frame-button'),
+      const ValueKey<String>('shared-edit-button'),
     );
     await tester.enterText(
       find.byKey(const ValueKey<String>('rename-layer-text-field')),

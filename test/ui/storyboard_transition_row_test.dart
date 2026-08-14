@@ -64,7 +64,7 @@ Future<void> _standOnTransitionRow(WidgetTester tester, int frame) async {
 /// breaks the tap, because the barrier swallows it while the button sits
 /// behind. The bar scrolls, so scroll to it before pressing.
 Future<void> _tapEditInstance(WidgetTester tester) async {
-  final button = find.byKey(const ValueKey<String>('rename-frame-button'));
+  final button = find.byKey(const ValueKey<String>('shared-edit-button'));
   await tester.ensureVisible(button);
   await tester.pumpAndSettle();
   await tester.tap(button);
@@ -75,7 +75,7 @@ Future<void> _tapEditInstance(WidgetTester tester) async {
 Future<bool> _editInstanceEnabled(WidgetTester tester) async {
   return readCommandEnabled(
     tester,
-    const ValueKey<String>('rename-frame-button'),
+    const ValueKey<String>('shared-edit-button'),
   );
 }
 

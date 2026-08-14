@@ -212,7 +212,7 @@ void main() {
     // Editing stays the dialog's job (the unified edit entrance).
     await tapCommandButton(
       tester,
-      const ValueKey<String>('rename-frame-button'),
+      const ValueKey<String>('shared-edit-button'),
     );
     await tester.enterText(
       find.byKey(const ValueKey<String>('se-dialogue-field')),
@@ -251,7 +251,7 @@ void main() {
     // Edit Instance lives in the Frame ▾ flyout (R-toolbar round).
     await tapCommandButton(
       tester,
-      const ValueKey<String>('rename-frame-button'),
+      const ValueKey<String>('shared-edit-button'),
     );
 
     expect(find.text('Camera keys — frame 1'), findsOneWidget);
