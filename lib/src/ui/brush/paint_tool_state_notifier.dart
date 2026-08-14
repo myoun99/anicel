@@ -56,10 +56,36 @@ class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
           ? _paintToolBank[next.tool]
           : null;
       if (stored != null) {
-        next = stored.copyWith(
-          tool: next.tool,
+        // 🚨★★★ 유저 #14 (2026-08-14): 「선택툴에서 올가미 선택하고 브러시가면
+        // 초기화되는거」 — ⛔THE LIST RUNS THE OTHER WAY NOW.
+        //
+        // This restored `stored` WHOLE and carved out the two shared values
+        // (`color`, `stabilizerStrength`). Everything not named was
+        // therefore REVERTED — and the state carries other tools' fields:
+        // `selectShape` / `cutShape` / `fillShape` (유저: 도형은 동사별로
+        // 기억) plus the fill's and the stamp's blends. Pick the lasso, tap
+        // the brush, and a snapshot from before the pick put the box back.
+        // From the very first frame, because the app starts on the brush.
+        //
+        // 🚨★★Third time this round a hand-written carry list went stale as
+        // fields were added (`withMask` passed three and reset the shapes;
+        // `withPresetSettings` dropped them). The DIRECTION is what makes
+        // this one safe: build from the LIVE state and pull back only what
+        // the bank exists to remember — this paint tool's own brush and its
+        // blend. A field added tomorrow is then shared by default, a mild
+        // wrong; under the old direction it silently reverted, which is the
+        // bug.
+        //
+        // ⚠️`color` is re-asserted on top because it rides INSIDE the shape
+        // — swapping the brush swaps its colour with it, and the colour is
+        // shared across tools. That is the order `copyWith` documents: the
+        // individual arguments win over the shape laid down beneath them.
+        // `stabilizerStrength` needs no such line; it is its own field, so
+        // building from `next` already keeps the live one.
+        next = next.copyWith(
+          shape: stored.shape,
           color: next.color,
-          stabilizerStrength: next.stabilizerStrength,
+          brushBlendMode: stored.brushBlendMode,
         );
       }
     }
