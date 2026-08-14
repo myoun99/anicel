@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart' show kPrimaryButton;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HardwareKeyboard, KeyEvent;
 
@@ -839,7 +839,37 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _eyedropperHover.value = null;
   }
 
-  void _noteCanvasPointer(Offset localPosition, {bool sample = true}) {
+  /// The census records a pointer only if that pointer could DRIVE a tool.
+  ///
+  /// 🚨★★유저 (2026-08-15 #2): 「브러시툴인채로 터치하면 브러시의 커서가
+  /// 움직이는데 … 1핑거 터치 none으로해도 커서가 움직임. 커서 안움직이도록.
+  /// **제대로 로직적으로**」.
+  ///
+  /// The finger was never taken for a brush — the stroke path refuses it
+  /// (`interactive_brush_edit_canvas_view`), which is why nothing was drawn.
+  /// This census simply asked nothing about the device and wrote the tool
+  /// cursor's position for whatever moved, so the outline chased a finger
+  /// that was flipping pages.
+  ///
+  /// ⛔So the fix is not a touch special case here: it is
+  /// [AppInput.toolAcceptsPointer], the ONE door 유저 법 「드로잉모드가
+  /// 아닌이상은 툴이 작동하면 안되지」 already lives behind. A cursor is where
+  /// the tool is AIMED, so a pointer that may not drive the tool may not aim
+  /// it either — and because every tool cursor reads this one writer, the
+  /// brush outline, the bucket, the dropper and the stamp preview all inherit
+  /// the answer rather than each having to remember the question.
+  ///
+  /// ⚠️Consequence, and it is the right one: on a pen-less tablet with the
+  /// slot on flip/none, no brush outline ever appears. There is nothing being
+  /// aimed. Lift a pen and it follows the pen.
+  void _noteCanvasPointer(
+    Offset localPosition, {
+    required PointerDeviceKind kind,
+    bool sample = true,
+  }) {
+    if (!AppInput.toolAcceptsPointer(kind)) {
+      return;
+    }
     _lastCanvasPointer = localPosition;
     // The brush outline rides the same census — including the moves of a
     // stroke already in flight, which is most of what it has to follow.
@@ -1610,15 +1640,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                       onPointerHover: (event) =>
                                           _noteCanvasPointer(
                                             event.localPosition,
+                                            kind: event.kind,
                                           ),
                                       onPointerDown: (event) =>
                                           _noteCanvasPointer(
                                             event.localPosition,
+                                            kind: event.kind,
                                             sample: false,
                                           ),
                                       onPointerMove: (event) =>
                                           _noteCanvasPointer(
                                             event.localPosition,
+                                            kind: event.kind,
                                           ),
                                       child:
                                           // 🐛The FILL cursor was missing from this
