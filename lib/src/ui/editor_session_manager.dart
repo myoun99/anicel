@@ -10449,11 +10449,41 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// ㉕: the copied cel's content here, as a cel of its own.
   ///
-  /// Same gate as the linked paste — there is a copied cel and it belongs to
-  /// this row — because the question "is there something to paste" does not
-  /// change with what the paste MAKES.
-  bool get canPasteIndependentFrameAtCurrentFrame =>
-      canPasteLinkedFrameAtCurrentFrame;
+  /// 🚨★★★ 유저 #4 (2026-08-14): 「프레임블록 복사하고 **다른 애니메이션행 등
+  /// 이동가능한행에 붙혀넣기 불가.** 이런 붙혀넣기같은건 **같은 섹션 등
+  /// 허용되는곳이라면 가능하도록**」.
+  ///
+  /// ⛔It used to delegate to the LINKED gate, which asks 「is that cel in
+  /// THIS row」 — and for a link that question is the right one, because a
+  /// link means *the same cel* and a cel belongs to a layer. This verb
+  /// MINTS a cel, so the question does not apply to it: it asks whether
+  /// this row can hold an authored drawing at all, which is what
+  /// 「허용되는곳」 names.
+  ///
+  /// ⚠️Reachable only because the clipboard carries its cels by value
+  /// (유저 #3's fix) — a cross-row paste has no source in `layer.frames` by
+  /// definition, so this and that are one change made in two steps.
+  ///
+  /// ⛔The stand-downs are the AUTHORING ones and are shared with
+  /// [canCreateDrawingAtCurrentFrame] deliberately; what is NOT shared is
+  /// its block-start refusal, which exists because there is nothing there
+  /// to divide — a paste inserts rather than divides.
+  bool get canPasteIndependentFrameAtCurrentFrame {
+    final layer = activeLayer;
+    if (layer == null || _copiedFrame == null) {
+      return false;
+    }
+    if (!layerKindHoldsDrawings(layer.kind) ||
+        // SYNCED attach rows own no timeline of their own.
+        isSyncedAttachedLayer(layer) ||
+        // A reference row's picture comes from the library.
+        layer.mediaReference != null ||
+        // An IMAGE row holds ONE cel by definition.
+        layerKindHoldsSingleCel(layer.kind)) {
+      return false;
+    }
+    return _timelineController.currentFrameIndex >= 0;
+  }
 
   void pasteIndependentFrameAtCurrentFrame() {
     final layer = activeLayer;
