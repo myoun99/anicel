@@ -233,6 +233,15 @@ void main() {
     );
   });
 
+  /// 🚨T25 caught its own bug here. When Edit Instance moved to the shared
+  /// pill the DISPATCH started asking `editInstanceSubject`, while the
+  /// button's enablement kept the toolbar's private kind switch — and the
+  /// subject's cell rung read `canRenameFrameAtCurrentFrame`, which is false
+  /// for a camera row. Lit button, silent press: the worst of the three
+  /// answers, because nothing on screen says the verb declined. The two
+  /// predicates for 「이 셀에 열 게 있나」 are one getter now
+  /// (`canEditCellInstanceAtCurrentFrame`), and this test is what fails if
+  /// they ever come apart again.
   testWidgets('toolbar Edit Instance opens the camera key dialog for the '
       'camera layer', (tester) async {
     await _pumpHome(tester);
