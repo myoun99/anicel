@@ -92,4 +92,68 @@ void main() {
     expect(recordings, 4);
     expect(bake.slotCount, 2);
   });
+
+  /// 🚨★★★ (v) 2단계 후반부 — the bottom of the stack is RASTERISED, and a
+  /// stroke step must not pay for it again.
+  ///
+  /// A picture already stopped the Dart walk; what it cannot stop is the
+  /// engine replaying every draw inside it, so 500 layers below the active
+  /// one still cost 500 draws and 500 paints per step. This counts the only
+  /// thing that can honestly report the saving: how many times the body
+  /// that walks those layers actually runs.
+  group('the backdrop raster', () {
+    const rect = Rect.fromLTWH(0, 0, 4, 4);
+
+    void rasterOnce(Canvas canvas) {
+      bake.drawRaster(canvas, 'd0:backdrop', rect, (into) {
+        recordings += 1;
+        into.drawRect(rect, Paint());
+      });
+    }
+
+    test('three stroke steps walk the stack once', () {
+      rasterOnce(scratch());
+      rasterOnce(scratch());
+      rasterOnce(scratch());
+
+      expect(
+        recordings,
+        1,
+        reason: 'that is the whole difference between a raster and a picture '
+            'down here — the picture replays, the raster is one blit',
+      );
+      expect(bake.rasterCount, 1);
+    });
+
+    test('a new key re-rasterises, because the stack really did change', () {
+      rasterOnce(scratch());
+      bake.keepFor('key-b');
+      rasterOnce(scratch());
+
+      expect(recordings, 2);
+      expect(
+        bake.rasterCount,
+        1,
+        reason: 'the old raster was dropped rather than accumulated — the '
+            'key IS the invalidation, and a raster that outlived its images '
+            'would be replaying dead handles',
+      );
+    });
+
+    test('invalidate() drops the raster too', () {
+      rasterOnce(scratch());
+      bake.invalidate();
+
+      expect(bake.rasterCount, 0);
+    });
+
+    test('an empty rect is a no-op, not a zero-sized image', () {
+      bake.drawRaster(scratch(), 'd0:backdrop', Rect.zero, (into) {
+        recordings += 1;
+      });
+
+      expect(recordings, 0);
+      expect(bake.rasterCount, 0);
+    });
+  });
 }
