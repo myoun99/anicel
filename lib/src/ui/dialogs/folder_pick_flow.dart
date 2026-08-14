@@ -39,6 +39,21 @@ Future<String?> pickFolderForUser(
 bool folderPickNeedsStorageGrant(String operatingSystem) =>
     operatingSystem == 'android';
 
+/// PICK-6: whether a CANCELLED folder pick might really be Google Drive's
+/// greyed-out Open.
+///
+/// 🚨Apple only — and **not for the reason `referencesExpireForPlatform`
+/// names the same two platforms.** There it is the sandbox; here it is that
+/// Android answers `noFilesystemPath` for a Drive tree and raises its own
+/// notice, while on Apple the Open button is simply DEAD: the delegate
+/// never fires, so the app receives a plain cancel and cannot tell the two
+/// apart.
+///
+/// Same tuple, different question — borrowing the other predicate would
+/// leave this silently wrong the day either answer moves.
+bool folderPickCancelMayBeDrive(String operatingSystem) =>
+    operatingSystem == 'ios' || operatingSystem == 'macos';
+
 /// Test seam for the OS the flow branches on.
 ///
 /// The gate's whole job is to keep an Android user out of a picker that
@@ -51,6 +66,20 @@ String? debugOperatingSystemOverride;
 
 String get _operatingSystem =>
     debugOperatingSystemOverride ?? Platform.operatingSystem;
+
+/// Whether the Drive notice has already been shown this session.
+///
+/// Once, not once per picker: it is the same fact wherever folder mode
+/// survives, and a user who has read it does not need it again on the next
+/// import.
+///
+/// ⚠️Reset in `test/flutter_test_config.dart` — a top-level left true by one
+/// test would silence the notice for every file after it.
+@visibleForTesting
+bool debugDriveNoticeShown = false;
+
+bool get _driveNoticeShown => debugDriveNoticeShown;
+set _driveNoticeShown(bool value) => debugDriveNoticeShown = value;
 
 /// The same flow, keeping the whole grant.
 ///
@@ -74,7 +103,7 @@ Future<FolderGrant?> pickFolderGrantForUser(
   if (!context.mounted) {
     return null;
   }
-  return _spokenFor(context, grant);
+  return _spokenFor(context, grant, folderMode: true);
 }
 
 /// PICK-5: the same flow for FILES.
@@ -201,12 +230,35 @@ Future<bool> _storageGrantCleared(BuildContext context) async {
 /// how a fourth (export) would have quietly grown a fourth dialect of "the
 /// user backed out" — and the whole reason [FolderGrant] reports four
 /// distinct outcomes is that three of them deserve to be said out loud.
-Future<FolderGrant?> _spokenFor(BuildContext context, FolderGrant grant) async {
+Future<FolderGrant?> _spokenFor(
+  BuildContext context,
+  FolderGrant grant, {
+  bool folderMode = false,
+}) async {
   switch (grant.status) {
     case FolderPickStatus.granted:
       return grant;
     case FolderPickStatus.cancelled:
-      // Backing out is not an event. Say nothing.
+      // Backing out is not an event — except in the one case the app cannot
+      // see. Google Drive greys out Open in FOLDER mode, and a greyed-out
+      // button never calls the delegate, so a user who walked into Drive and
+      // found Open dead arrives here looking exactly like someone who
+      // changed their mind.
+      //
+      // Said ONCE per session, and only where it can happen: a real cancel
+      // costs the user one line they can ignore, and the alternative is
+      // never telling them at all.
+      if (folderMode &&
+          !_driveNoticeShown &&
+          folderPickCancelMayBeDrive(_operatingSystem)) {
+        _driveNoticeShown = true;
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(
+            key: const ValueKey<String>('folder-pick-drive-notice'),
+            content: Text(AppText.strings.folderPickDriveNotice),
+          ),
+        );
+      }
       return null;
     case FolderPickStatus.noFilesystemPath:
       await _showNoFilesystemPathNotice(context);

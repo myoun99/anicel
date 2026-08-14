@@ -336,6 +336,12 @@ class AppStrings {
   String get folderNoPathTitle => _s('folderNoPathTitle');
   String get folderStorageOffTitle => _s('folderStorageOffTitle');
   String get folderPickUnavailable => _s('folderPickUnavailable');
+
+  /// PICK-6: shown once per session when a FOLDER pick comes back cancelled
+  /// on Apple. Google Drive greys out Open in folder mode, and the app
+  /// cannot tell that apart from a real cancel — the delegate is never
+  /// called — so this is the only moment left to say it.
+  String get folderPickDriveNotice => _s('folderPickDriveNotice');
   String get projectChooserEmpty => _s('projectChooserEmpty');
   String get fileNameEmpty => _s('fileNameEmpty');
   String get recentProjectsTitle => _s('recentProjectsTitle');
@@ -1132,6 +1138,9 @@ class AppStrings {
     'folderNoPathTitle': 'This location has no folder path',
     'folderStorageOffTitle': 'Storage access is off',
     'folderPickUnavailable': 'The folder picker could not be opened.',
+    'folderPickDriveNotice':
+        'Google Drive cannot hand over a folder. Use iCloud Drive, Dropbox, '
+        'or this device.',
     'projectChooserEmpty': 'No Anicel projects in this folder.',
     'fileNameEmpty': 'File name cannot be empty.',
     'recentProjectsTitle': 'Recent projects',
@@ -1871,6 +1880,9 @@ class AppStrings {
     'folderNoPathTitle': 'この場所にはフォルダーパスがありません',
     'folderStorageOffTitle': 'ストレージへのアクセスがオフです',
     'folderPickUnavailable': 'フォルダー選択を開けませんでした。',
+    'folderPickDriveNotice':
+        'Google ドライブはフォルダーを渡せません。iCloud Drive・Dropbox・'
+        'この端末をお使いください。',
     'projectChooserEmpty': 'このフォルダーにAnicelプロジェクトがありません。',
     'fileNameEmpty': 'ファイル名を入力してください。',
     'recentProjectsTitle': '最近使ったプロジェクト',
@@ -2646,6 +2658,9 @@ class AppStrings {
     'folderNoPathTitle': '이 위치에는 폴더 경로가 없습니다',
     'folderStorageOffTitle': '저장소 접근이 꺼져 있습니다',
     'folderPickUnavailable': '폴더 선택 창을 열지 못했습니다.',
+    'folderPickDriveNotice':
+        '구글 드라이브는 폴더를 넘겨주지 못합니다. iCloud Drive·Dropbox·'
+        '이 기기를 사용하세요.',
     'projectChooserEmpty': '이 폴더에 Anicel 프로젝트가 없습니다.',
     'fileNameEmpty': '파일 이름을 입력하세요.',
     'recentProjectsTitle': '최근 프로젝트',
@@ -3426,6 +3441,9 @@ class AppStrings {
     'folderNoPathTitle': "Cet emplacement n'a pas de chemin de dossier",
     'folderStorageOffTitle': "L'accès au stockage est désactivé",
     'folderPickUnavailable': "Impossible d'ouvrir le sélecteur de dossier.",
+    'folderPickDriveNotice':
+        'Google Drive ne peut pas fournir de dossier. Utilisez iCloud Drive, '
+        'Dropbox ou cet appareil.',
     'projectChooserEmpty': 'Aucun projet Anicel dans ce dossier.',
     'fileNameEmpty': 'Le nom de fichier ne peut pas être vide.',
     'recentProjectsTitle': 'Projets récents',
@@ -4208,6 +4226,8 @@ class AppStrings {
     'folderNoPathTitle': '此位置没有文件夹路径',
     'folderStorageOffTitle': '存储访问已关闭',
     'folderPickUnavailable': '无法打开文件夹选择器。',
+    'folderPickDriveNotice':
+        'Google 云端硬盘无法提供文件夹。请使用 iCloud Drive、Dropbox 或本设备。',
     'projectChooserEmpty': '此文件夹中没有 Anicel 项目。',
     'fileNameEmpty': '文件名不能为空。',
     'recentProjectsTitle': '最近的项目',
