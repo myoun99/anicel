@@ -9,6 +9,7 @@ import '../../models/canvas_size.dart';
 import '../../models/project.dart';
 import '../brush_frame_store.dart';
 import '../media/media_byte_source.dart';
+import '../media/media_fingerprints.dart';
 import 'brush_drawing_binary_codec.dart';
 import 'anicel_incremental_writer.dart';
 import 'anicel_project_archive.dart';
@@ -25,7 +26,12 @@ class AnicelOpenResult {
     required this.cels,
     this.mediaEntryNames = const {},
     this.grants = const [],
+    this.mediaFingerprints = const MediaFingerprints.empty(),
   });
+
+  /// What the project recorded about its media's CONTENT, already remapped
+  /// to wherever the references actually resolved.
+  final MediaFingerprints mediaFingerprints;
 
   final Project project;
   final Map<BrushFrameKey, AnicelCelFileRef> cels;
@@ -298,6 +304,16 @@ class AnicelFileService {
     /// the next save, and `_saveFull` renames a media-less archive over
     /// the one that still held the bytes.
     required Set<String> mediaInArchive,
+
+    /// The content fingerprints for this project's media.
+    ///
+    /// 🚨 Required for the same reason as the two above, and this is the
+    /// third instance of the law rather than a new rule. Its failure is
+    /// the quietest of the three: a recovered session that lost these
+    /// still opens, still saves, and still looks right — it has just
+    /// forgotten how to tell one `A1.png` from another, and nobody finds
+    /// out until a drive is remounted and relink picks the wrong picture.
+    required Map<String, Object?> mediaCrcs,
   }) async {
     final stores = [brushFrameStore, ...auxCelStores];
     final snapshots = [for (final store in stores) store.bakedSnapshotForSave()];
@@ -363,6 +379,7 @@ class AnicelFileService {
                 saveDirectory: saveDirectory,
                 grants: grants,
                 mediaInArchive: mediaInArchive,
+                mediaCrcs: mediaCrcs,
               ),
             );
             for (final work in works) {
@@ -425,6 +442,9 @@ class AnicelFileService {
     /// The security-scoped tokens for referenced media, already reduced to
     /// JSON by the session — see [buildAnicelProjectJsonBytes].
     List<Map<String, Object?>> grants = const [],
+    /// Pool path → CRC-32 hex, for the media somebody has read the bytes
+    /// of — see [MediaFingerprints].
+    Map<String, Object?> mediaCrcs = const {},
     /// Called on the UI isolate with 0..1 as the write proceeds. Null costs
     /// nothing — no port is opened and the writer reports into no one.
     void Function(double)? onProgress,
@@ -484,6 +504,7 @@ class AnicelFileService {
         saveDirectory: saveDirectory,
         mediaToStore: mediaToStore,
         grants: grants,
+        mediaCrcs: mediaCrcs,
         onProgress: onProgress,
       );
       if (adopted != null) {
@@ -502,6 +523,7 @@ class AnicelFileService {
         saveDirectory: saveDirectory,
         mediaToStore: mediaToStore,
         grants: grants,
+        mediaCrcs: mediaCrcs,
         onProgress: onProgress,
       ),
     );
@@ -561,6 +583,7 @@ class AnicelFileService {
     required String filePath,
     required String saveDirectory,
     List<Map<String, Object?>> grants = const [],
+    Map<String, Object?> mediaCrcs = const {},
     Map<String, MediaByteSource> mediaToStore = const {},
     void Function(double)? onProgress,
   }) async {
@@ -623,6 +646,7 @@ class AnicelFileService {
         saveDirectory: saveDirectory,
         mediaInArchive: mediaToStore.keys.toSet(),
         grants: grants,
+        mediaCrcs: mediaCrcs,
       );
       progress.step();
       final blobs = <(BrushFrameKey, String, AnicelCelBlob)>[];
@@ -672,6 +696,7 @@ class AnicelFileService {
     required String filePath,
     required String saveDirectory,
     List<Map<String, Object?>> grants = const [],
+    Map<String, Object?> mediaCrcs = const {},
     Map<String, MediaByteSource> mediaToStore = const {},
     void Function(double)? onProgress,
   }) async {
@@ -726,6 +751,7 @@ class AnicelFileService {
         works: works,
         mediaToStore: mediaToStore,
         grants: grants,
+        mediaCrcs: mediaCrcs,
         onProgress: onProgress,
       );
     } on Object {
@@ -754,6 +780,7 @@ class AnicelFileService {
     // Plain maps, so the closure carries values the port can copy — the
     // picker's grant type could not cross this boundary at all.
     required List<Map<String, Object?>> grants,
+    required Map<String, Object?> mediaCrcs,
     void Function(double)? onProgress,
   }) {
     return _reportingProgress(onProgress, (port) => Isolate.run(() {
@@ -778,6 +805,7 @@ class AnicelFileService {
               saveDirectory: saveDirectory,
               mediaInArchive: mediaToStore.keys.toSet(),
               grants: grants,
+              mediaCrcs: mediaCrcs,
             ),
           );
           progress.step();
@@ -946,10 +974,25 @@ class AnicelFileService {
     }
 
     final grantsJson = decoded['grants'];
+    final remapped = remapProjectMediaPaths(project, remap);
     return AnicelOpenResult(
-      project: remapProjectMediaPaths(project, remap),
+      project: remapped,
       cels: cels,
       mediaEntryNames: mediaEntryNames,
+      // Through the SAME remap the references just went through, and
+      // narrowed to what the pool still holds. A fingerprint filed under a
+      // path the project no longer uses describes nothing, and the one
+      // moment that happens is this one — a project opened from a folder
+      // that traveled has every reference rewritten to where it landed.
+      mediaFingerprints: MediaFingerprints.fromJson(
+        decoded['mediaCrcs'],
+      ).narrowedTo(
+        {
+          for (final path in projectMediaPaths(remapped))
+            normalizeFingerprintPath(path),
+        },
+        moved: remap,
+      ),
       grants: [
         if (grantsJson is List)
           for (final entry in grantsJson)

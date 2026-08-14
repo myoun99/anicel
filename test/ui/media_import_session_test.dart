@@ -83,6 +83,21 @@ void main() {
     });
     expect(imported, isTrue);
 
+    // The import read these bytes to decode them, so the content
+    // fingerprint costs nothing extra — and a REFERENCED image is exactly
+    // the asset that can go missing and have to be found again among a
+    // folder full of files called `A1.png`. Nobody has to remember to ask
+    // for it; if this stops holding, relink quietly goes back to giving up
+    // on every tie.
+    final fingerprinted = s.recordedMediaIdentity(
+      s.mediaAssets.single.path,
+    );
+    expect(
+      fingerprinted?.crc32,
+      isNotNull,
+      reason: 'the decode already paid for this',
+    );
+
     final track = s.repository.requireProject().tracks.first;
     expect(track.cuts.length, cutsBefore + 1);
     final cut = track.cuts.last;

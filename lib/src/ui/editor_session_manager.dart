@@ -15,6 +15,9 @@ import '../models/import/tvp_json_parse.dart';
 import '../services/commands/import_media_command.dart';
 import '../services/commands/reorder_track_command.dart';
 import '../services/import/media_identity_reader.dart';
+import '../services/media/media_fingerprints.dart';
+import '../services/persistence/anicel_incremental_writer.dart'
+    show anicelCrc32;
 import '../services/media/media_byte_source.dart';
 import '../services/media/project_media_sources.dart';
 import '../services/import/media_import_planner.dart';
@@ -6537,6 +6540,11 @@ class EditorSessionManager extends ChangeNotifier {
     } on Object {
       return false;
     }
+    // Free, and taken at the one moment it is: these bytes were read to
+    // decode them. A REFERENCED image is the asset that can go missing and
+    // have to be found again, and `A1.png` repeats in every cut folder on
+    // a real drive — the length alone does not always break that tie.
+    rememberMediaFingerprint(path, anicelCrc32(bytes));
     final List<DecodedImageFrame> allFrames;
     try {
       allFrames = await decodeImageFrames(bytes);
@@ -6660,7 +6668,6 @@ class EditorSessionManager extends ChangeNotifier {
         ),
       );
     }
-
     // Bake pixels AFTER the structure exists (keys resolve the owner
     // track through the inserted cut). Duplicate folding compresses the
     // bake list, so every bake names its SOURCE frame index.
@@ -6725,6 +6732,7 @@ class EditorSessionManager extends ChangeNotifier {
     } on Object {
       return null;
     }
+    rememberMediaFingerprint(path, anicelCrc32(bytes));
     final canvasSize =
         targetCut?.canvasSize ??
         activeCutOrNull?.canvasSize ??
@@ -8469,6 +8477,9 @@ class EditorSessionManager extends ChangeNotifier {
         if (!file.existsSync()) {
           file.writeAsBytesSync(bytes);
           _voiceRecordShelfPaths.add(file.path);
+          // We just wrote these, so we know what they hash to without
+          // reading anything back.
+          rememberMediaFingerprint(file.path, anicelCrc32(bytes));
           return file.path;
         }
       }
@@ -15939,6 +15950,10 @@ class EditorSessionManager extends ChangeNotifier {
       // session forgets its media is inside the archive and its first
       // save writes one that no longer holds it.
       mediaInArchive: _mediaEntryNames.keys.toSet(),
+      // And what it knows about its media's content. A recovered session
+      // without these still opens and still looks right — it has just
+      // forgotten how to tell one `A1.png` from another.
+      mediaCrcs: _mediaCrcsToStore(),
       // Asked again at the rename: a manual save can begin and finish
       // while this one is in the isolate, and it retires the snapshot on
       // its way out.
@@ -16013,6 +16028,7 @@ class EditorSessionManager extends ChangeNotifier {
       filePath: filePath,
       mediaToStore: mediaToStore,
       grants: _grantsToStore(),
+      mediaCrcs: _mediaCrcsToStore(),
       onProgress: onProgress,
     );
     _mediaEntryNames = mediaEntryNamesFor(mediaToStore.keys);
@@ -16094,6 +16110,64 @@ class EditorSessionManager extends ChangeNotifier {
   /// Empty on Windows, Linux and Android, where a recorded path keeps
   /// working on its own.
   List<FolderGrant> _mediaGrants = const [];
+
+  /// Content fingerprints for the pool, held OUT of the project.
+  ///
+  /// 🚨 Out here because recording one is not an edit. The length on
+  /// [MediaAsset.identity] is imprinted by an import, which the user did;
+  /// a CRC arrives whenever something reads an asset's bytes for its own
+  /// reasons, which the user did not — and a viewer showing a picture must
+  /// not put a dot on the title bar. Same law as [_storedGrants], same
+  /// shape: this map rides to the writer as an argument, never through
+  /// `Project`.
+  MediaFingerprints _mediaFingerprints = const MediaFingerprints.empty();
+
+  /// What is known about [poolPath]'s content: the length the import
+  /// imprinted, plus the CRC if anyone has paid for one.
+  ///
+  /// Null when the pool has no such asset, or when even the length is
+  /// missing — which is every asset registered by a build that predates
+  /// [MediaIdentity], and is exactly the case that must answer "unknown"
+  /// rather than guess.
+  MediaIdentity? recordedMediaIdentity(String poolPath) {
+    final wanted = _normalizedPath(poolPath);
+    for (final asset in mediaAssets) {
+      if (_normalizedPath(asset.path) == wanted) {
+        return _mediaFingerprints.identityFor(wanted, asset.identity);
+      }
+    }
+    return null;
+  }
+
+  /// Records that [poolPath]'s bytes hash to [crc32], because something
+  /// read them anyway.
+  ///
+  /// 🔑 Deliberately NOT an edit: no command, no undo entry, no dirty
+  /// flag, no notify. Flipping through the media browser must not make the
+  /// project look unsaved. The price is that a fingerprint learned in a
+  /// session that never saves is forgotten, which is the right way round —
+  /// it is a cache of something re-derivable, and the file it describes is
+  /// still there to be read again.
+  ///
+  /// Takes any path, registered or not. An import reads the bytes BEFORE
+  /// it knows whether the import will happen, so demanding the asset exist
+  /// first would forfeit the one reading that is guaranteed free. What
+  /// reaches the FILE is narrowed to the pool at save time instead, which
+  /// is where the same filter has to run anyway for assets since removed.
+  void rememberMediaFingerprint(String poolPath, int crc32) {
+    _mediaFingerprints = _mediaFingerprints.remembering(poolPath, crc32);
+  }
+
+  /// The fingerprints as the file should keep them: only for media the
+  /// project still references.
+  Map<String, Object?> _mediaCrcsToStore() => _mediaFingerprints
+      .narrowedTo({
+        for (final asset in mediaAssets) _normalizedPath(asset.path),
+      })
+      .toJson();
+
+  @visibleForTesting
+  MediaFingerprints get debugMediaFingerprints => _mediaFingerprints;
 
   /// 🚨 What the FILE should keep, which is not the same question as what
   /// this launch can USE.
@@ -16272,6 +16346,7 @@ class EditorSessionManager extends ChangeNotifier {
     // pool names that is NOT here is an ordinary outside reference and
     // resolves by path like it always did.
     _mediaEntryNames = result.mediaEntryNames;
+    _mediaFingerprints = result.mediaFingerprints;
     // R22-C: opens land every cel FILE-BACKED — pixels stay in the .anicel
     // until a cel is first shown (near-zero RAM for 1500-cut projects).
     // The conte ink namespace routes to its own stores (R5); a ROW entry

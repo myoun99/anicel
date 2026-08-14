@@ -2,7 +2,11 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../models/media_identity.dart';
+import '../../services/import/media_identity_reader.dart';
 import '../../services/media/media_relink_matcher.dart';
+import '../../services/persistence/anicel_incremental_writer.dart'
+    show anicelCrc32;
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/folder_pick_flow.dart';
 import '../editor_session_manager.dart';
@@ -43,6 +47,8 @@ Future<void> runMediaRelinkFlow(
   final plan = planMediaRelink(
     missingPaths: missing,
     candidatePaths: candidates,
+    recordedIdentity: session.recordedMediaIdentity,
+    candidateIdentity: readCandidateIdentity,
   );
   final apply = await _confirm(
     context,
@@ -53,6 +59,39 @@ Future<void> runMediaRelinkFlow(
     return;
   }
   session.relinkMediaAssets(plan.matched);
+}
+
+/// What the file at [candidate] is, doing the least work that can still
+/// change the answer about [wanted].
+///
+/// The IO half of the content check, kept out here because the matcher is
+/// pure. Two early exits carry the whole cost story:
+///
+/// - a **length** that already differs is a decisive no from `stat` alone,
+///   so the file is never opened;
+/// - a [wanted] with **no recorded CRC** means reading these bytes could
+///   only ever produce `unknown`, so reading them buys nothing.
+///
+/// What is left is the case that earns its read: same size, and something
+/// to compare a hash against.
+@visibleForTesting
+MediaIdentity? readCandidateIdentity(String candidate, MediaIdentity wanted) {
+  final onDisk = readMediaIdentity(candidate);
+  if (onDisk == null ||
+      onDisk.lengthBytes != wanted.lengthBytes ||
+      wanted.crc32 == null) {
+    return onDisk;
+  }
+  try {
+    return MediaIdentity(
+      lengthBytes: onDisk.lengthBytes,
+      crc32: anicelCrc32(File(candidate).readAsBytesSync()),
+    );
+  } on Object {
+    // Unreadable is not "different" — a permission error must not make the
+    // matcher rule a file out that may be exactly the one.
+    return onDisk;
+  }
 }
 
 /// Every file under [root], recursively.
