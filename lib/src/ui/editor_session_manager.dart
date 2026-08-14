@@ -10296,6 +10296,100 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 🚨T2 복제 — 유저 확정 2026-08-13: 「복붙은 **선택**하고 붙여넣기가
+  /// 기본이지만, **복제는 현재 액티브인 대상**을 상대로 적용하는 것」.
+  ///
+  /// ⛔So it is NOT on the shared pill: that pill's verbs ask what is
+  /// selected, and this one deliberately does not. It lives inside the noun
+  /// it copies, beside the layer's pair and the cut's.
+  ///
+  /// ★The logic is copy-then-paste in one press — 「로직은 복붙 통합 버튼과
+  /// **똑같고** 그것을 독립복제 / 링크복제로 나눈 버전」 — so it goes through
+  /// the same splice everything else does.
+  ///
+  /// ⚠️It lands at the block's END, not at the playhead. Standing in the
+  /// middle of a hold and inserting there would split the block and put the
+  /// copy INSIDE it, which for an independent duplicate is visibly wrong
+  /// (`A P P P A A`) and for a linked one is only right by accident.
+  ///
+  /// ⛔The CLIPBOARD is not touched. A duplicate that clobbered what you had
+  /// copied would be a second verb hiding inside the first.
+  bool get canDuplicateActiveBlock {
+    final layer = activeLayer;
+    if (layer == null || !layerKindHoldsDrawings(layer.kind)) {
+      return false;
+    }
+    return coveringDrawingBlockAt(
+          layer.timeline,
+          _timelineController.currentFrameIndex,
+        ) !=
+        null;
+  }
+
+  void duplicateActiveBlock({required bool linked}) {
+    final layer = activeLayer;
+    if (layer == null || !canDuplicateActiveBlock) {
+      return;
+    }
+    final block = coveringDrawingBlockAt(
+      layer.timeline,
+      _timelineController.currentFrameIndex,
+    );
+    if (block == null) {
+      return;
+    }
+    final clip = _timelineController.copyRunForLayer(
+      layerId: layer.id,
+      index: block.startIndex,
+      count: block.endIndexExclusive - block.startIndex,
+    );
+    final bornFrames = <Frame>[];
+    var placed = clip;
+    if (!linked) {
+      final minted = <FrameId, FrameId>{};
+      final exposures = <int, TimelineExposure>{};
+      for (final entry in clip.exposures.entries) {
+        final sourceId = entry.value.frameId;
+        if (sourceId == null) {
+          continue;
+        }
+        final newId = minted.putIfAbsent(sourceId, () {
+          final id = _mintFrameId(layer.id);
+          final source = layer.frames
+              .where((frame) => frame.id == sourceId)
+              .firstOrNull;
+          if (source != null) {
+            // Unnamed, for the reason the independent paste is: a name is a
+            // cel's identity inside the layer, and two cels claiming one is
+            // a state no rename could produce.
+            bornFrames.add(
+              duplicateFrameContent(
+                frame: source,
+                newFrameId: id,
+              ).copyWith(name: null),
+            );
+          }
+          return id;
+        });
+        exposures[entry.key] = entry.value.copyWith(frameId: newId);
+      }
+      placed = TimelineClipRow(exposures: exposures, length: clip.length);
+    }
+    _timelineController.spliceRunsForLayers(
+      runs: [
+        (
+          layerId: layer.id,
+          index: block.endIndexExclusive,
+          liftCount: 0,
+          clip: placed,
+          bornFrames: bornFrames,
+        ),
+      ],
+      description: linked ? 'Link duplicate frames' : 'Duplicate frames',
+    );
+    notifyListeners();
+  }
+
   /// WHERE a copy, cut or paste acts on the active row, in COMMIT keys.
   ///
   /// ★The one place the two halves of 「N칸을 들어내고 클립을 넣는다」 get

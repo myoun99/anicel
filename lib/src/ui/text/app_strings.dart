@@ -539,6 +539,8 @@ class AppStrings {
   String get tlLayer => _s('tlLayer');
   String get tlFrame => _s('tlFrame');
   String get tlDuplicateLayer => _s('tlDuplicateLayer');
+  String get tlDuplicateFrame => _s('tlDuplicateFrame');
+  String get tlLinkDuplicateFrame => _s('tlLinkDuplicateFrame');
   String get tlLinkDuplicateLayer => _s('tlLinkDuplicateLayer');
   String get tlUnlinkLayer => _s('tlUnlinkLayer');
   String get tlResetGroup => _s('tlResetGroup');
@@ -1579,6 +1581,8 @@ class AppStrings {
     'tlLayer': 'Layer',
     'tlFrame': 'Frame',
     'tlDuplicateLayer': 'Duplicate layer',
+    'tlDuplicateFrame': 'Duplicate frame block',
+    'tlLinkDuplicateFrame': 'Link duplicate frame block',
     'tlLinkDuplicateLayer': 'Link duplicate layer',
     'tlUnlinkLayer': 'Unlink layer',
     'tlResetGroup': 'Reset (keeps keys)',
@@ -2352,6 +2356,8 @@ class AppStrings {
     'tlLayer': 'レイヤー',
     'tlFrame': 'フレーム',
     'tlDuplicateLayer': 'レイヤーを複製',
+    'tlDuplicateFrame': 'フレームブロックを複製',
+    'tlLinkDuplicateFrame': 'リンクして複製 (ブロック)',
     'tlLinkDuplicateLayer': 'リンクして複製',
     'tlUnlinkLayer': 'リンクを解除',
     'tlResetGroup': 'リセット（キーは残す）',
@@ -3117,6 +3123,8 @@ class AppStrings {
     'tlLayer': '레이어',
     'tlFrame': '프레임',
     'tlDuplicateLayer': '레이어 복제',
+    'tlDuplicateFrame': '프레임 블록 복제',
+    'tlLinkDuplicateFrame': '프레임 블록 링크 복제',
     'tlLinkDuplicateLayer': '링크해서 복제',
     'tlUnlinkLayer': '링크 해제',
     'tlResetGroup': '리셋 (키는 유지)',
@@ -3921,6 +3929,8 @@ class AppStrings {
     'tlLayer': 'Calque',
     'tlFrame': 'Image',
     'tlDuplicateLayer': 'Dupliquer le calque',
+    'tlDuplicateFrame': 'Dupliquer le bloc',
+    'tlLinkDuplicateFrame': 'Dupliquer le bloc en liant',
     'tlLinkDuplicateLayer': 'Dupliquer en liant',
     'tlUnlinkLayer': 'Délier le calque',
     'tlResetGroup': 'Réinitialiser (garde les clés)',
@@ -4663,6 +4673,8 @@ class AppStrings {
     'tlLayer': '图层',
     'tlFrame': '帧',
     'tlDuplicateLayer': '复制图层',
+    'tlDuplicateFrame': '复制帧块',
+    'tlLinkDuplicateFrame': '链接复制帧块',
     'tlLinkDuplicateLayer': '链接复制图层',
     'tlUnlinkLayer': '取消图层链接',
     'tlResetGroup': '重置（保留关键帧）',
