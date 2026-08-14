@@ -512,8 +512,15 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         previewAxis: _previewAxis,
       );
 
+  /// 🚨T25 — the SELECTION's instance, not the playhead's.
+  ///
+  /// The button moved to the shared pill, so its subject moved with it:
+  /// 「인스턴스 편집 버튼도 공통버튼으로 이동. 그래서 **선택범위 통해
+  /// 동사통일화** 가능하게」. `editSelectionInstance` walks delete's ladder
+  /// and falls through to the playhead's cell when nothing is selected,
+  /// which is what this used to do unconditionally.
   Future<void> _editActiveInstance() =>
-      editActiveInstance(context, _session, previewAxis: _previewAxis);
+      editSelectionInstance(context, _session, previewAxis: _previewAxis);
 
   /// The end-line drag's session hooks (UI-R18 #14): the boundary grip
   /// end-trims the ACTIVE cut through the storyboard's trim channel.

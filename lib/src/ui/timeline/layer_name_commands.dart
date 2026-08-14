@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../dialogs/delete_layer_dialog.dart';
+import '../dialogs/rename_cut_dialog.dart';
 import '../dialogs/rename_layer_dialog.dart';
 import '../editor_session_manager.dart';
 
@@ -110,4 +111,29 @@ Future<void> renameActiveLayerWithDialog(
     return;
   }
   session.renameActiveLayer(nextName);
+}
+
+/// The CUT rename, lifted out of `CutCommandGroup` so the shared pill's
+/// Edit Instance can reach its top rung (T25).
+///
+/// ⛔A free function for the reason the two above are: the pill is mounted
+/// on both frame panels, and a private `State` method is reachable from
+/// exactly one of them. That is the trap the layer dialogs were already in
+/// before they moved here.
+Future<void> renameActiveCutWithDialog(
+  BuildContext context,
+  EditorSessionManager session,
+) async {
+  final cut = session.activeCutOrNull;
+  if (cut == null) {
+    return; // Gap state: no cut to rename.
+  }
+  final nextName = await showDialog<String>(
+    context: context,
+    builder: (context) => RenameCutDialog(initialName: cut.name),
+  );
+  if (!context.mounted || nextName == null || nextName.trim().isEmpty) {
+    return;
+  }
+  session.renameActiveCut(nextName);
 }

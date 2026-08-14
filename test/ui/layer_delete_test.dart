@@ -33,7 +33,10 @@ const _deleteButtonKey = ValueKey<String>('shared-delete-button');
 const _dialogKey = ValueKey<String>('delete-layer-dialog');
 const _cancelButtonKey = ValueKey<String>('delete-layer-cancel-button');
 const _confirmButtonKey = ValueKey<String>('delete-layer-confirm-button');
-const _renameButtonKey = ValueKey<String>('rename-layer-button');
+/// T25 folded the loose `rename-layer-button` into the shared pill's Edit
+/// Instance, which takes its subject from the selection — the same two-step
+/// flow (select the row, then the one verb) this file's DELETE already uses.
+const _renameButtonKey = ValueKey<String>('rename-frame-button');
 const _renameTextFieldKey = ValueKey<String>('rename-layer-text-field');
 const _renameOkButtonKey = ValueKey<String>('rename-layer-ok-button');
 const _undoKey = ValueKey<String>('undo-button');
@@ -217,6 +220,7 @@ void main() {
       findsOneWidget,
     );
 
+    await _selectActiveRow(tester);
     await _tapKey(tester, _renameButtonKey);
     await tester.enterText(find.byKey(_renameTextFieldKey), 'BG');
     await _tapKey(tester, _renameOkButtonKey);
