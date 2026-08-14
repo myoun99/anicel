@@ -717,6 +717,119 @@ void main() {
     expect(inkAt(env.coordinator, 40, 35), isNonZero);
   });
 
+  // TP4 (유저: 선택된 내부를 끌어야 변형툴이 움직이는데 … 변형툴 내부 사각형
+  // 안이라면 언제든 작동하도록).
+  testWidgets('the move tool grabs anywhere inside the BOX it draws, not '
+      'only inside the outline', (tester) async {
+    // A lasso triangle: its bounding box has corners the outline does not
+    // fill, and those corners are what the user was pressing on.
+    final env = await pumpSelectionPanel(
+      tester,
+      shapeKind: CanvasShapeKind.lasso,
+    );
+    final origin = tester.getTopLeft(find.byKey(layerKey));
+    final gesture = await tester.startGesture(origin + const Offset(20, 20));
+    await tester.pump();
+    for (final point in const [Offset(120, 20), Offset(120, 120)]) {
+      await gesture.moveTo(origin + point);
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pump();
+
+    final region = env.commands.region!;
+    // The press point: inside the box, OUTSIDE the triangle (the half the
+    // hypotenuse cuts off) — and clear of every handle, whose hit radius
+    // is 16 screen px and which would otherwise open a SCALE instead.
+    final inBoxOutsideOutline = CanvasPoint(x: 40, y: 90);
+    expect(
+      region.containsPoint(inBoxOutsideOutline),
+      isFalse,
+      reason: 'precondition: this point is not in the lasso',
+    );
+    expect(
+      region.selectedBounds.left <= inBoxOutsideOutline.x &&
+          inBoxOutsideOutline.x <= region.selectedBounds.right &&
+          region.selectedBounds.top <= inBoxOutsideOutline.y &&
+          inBoxOutsideOutline.y <= region.selectedBounds.bottom,
+      isTrue,
+      reason: 'precondition: but it IS inside the drawn box',
+    );
+
+    await env.setTool(CanvasTool.move);
+    expect(region.selectedBounds.left, 20, reason: 'precondition');
+
+    await dragOnLayer(tester, const Offset(40, 90), const Offset(70, 90));
+
+    expect(
+      env.commands.movePending,
+      isTrue,
+      reason: 'the press inside the box started a move',
+    );
+    // …and what moved is the LASSO's own outline, +30 across: the box
+    // widened the door, it did not become the thing carried through it.
+    expect(env.commands.region!.selectedBounds.left, 50);
+    expect(env.commands.region!.selectedBounds.right, 150);
+  });
+
+  // TP5 (유저: 변형툴쓸때 확정하면 그림이 미세하게 바뀌거든? 살짝 움직이거나?).
+  //
+  // The confirm lands the stamp at `(centre - size/2).round()`, so a
+  // fractional centre snapped AT COMMIT TIME and the artwork stepped by up
+  // to half a canvas pixel the moment you pressed confirm. Zoom made it
+  // visible: at 400% half a canvas pixel is two screen pixels.
+  //
+  // 유저 확정 A — round the MOVE itself, so the drag can only ever ask for
+  // a whole-pixel translation and the preview is already standing where
+  // the commit will write ("바이트단위로 동일해야하니까").
+  testWidgets('a move asks for whole canvas pixels, so the confirm moves '
+      'nothing', (tester) async {
+    // Zoom 3: one screen pixel is a third of a canvas pixel, so a drag of
+    // 10 screen px is 3.33… canvas px — fractional by construction.
+    // ONE small dab at (40,40) — a 4px square, so "did it land a pixel
+    // off" is a question the raster can answer.
+    final env = await pumpSelectionPanel(
+      tester,
+      viewport: CanvasViewport(zoom: 3),
+      sourceDabs: [dab(40, 40)],
+    );
+    // Select it, then move: a selection makes the region's own bounds the
+    // thing to measure. Screen ÷ 3 = canvas, so this marquee is canvas
+    // 30..60 and the dab sits inside it.
+    await dragOnLayer(tester, const Offset(90, 90), const Offset(180, 180));
+    await env.setTool(CanvasTool.move);
+    expect(env.commands.region!.selectedBounds.left, 30, reason: 'start');
+
+    // 10 screen px = 3.33… canvas px: fractional by construction.
+    await dragOnLayer(tester, const Offset(135, 135), const Offset(145, 135));
+
+    final moved = env.commands.region!.selectedBounds.left - 30;
+    expect(
+      moved,
+      moved.roundToDouble(),
+      reason: 'the move asked for a whole number of canvas pixels',
+    );
+    expect(moved, isNot(0), reason: 'precondition: it did move');
+
+    // And the CEL lands on exactly that: the commit rounds
+    // `(centre - size/2)`, so a fractional ask would arrive a pixel away
+    // from where the float had been showing it all through the drag.
+    env.commands.confirmPendingMove();
+    await tester.pump();
+    await settle(tester);
+    final shift = moved.round();
+    expect(
+      inkAt(env.coordinator, 40 + shift, 40),
+      isNonZero,
+      reason: 'the ink is exactly where the preview promised',
+    );
+    expect(
+      inkAt(env.coordinator, 40 + shift + 3, 40),
+      0,
+      reason: 'and not one pixel past it',
+    );
+  });
+
   testWidgets('R26 #13: the MOVE tool with NO selection drags the WHOLE '
       'picture — implicit whole-canvas session, ONE confirmed entry, and '
       'the end returns to no selection', (tester) async {
