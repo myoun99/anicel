@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cursor_layer.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
@@ -100,6 +101,43 @@ void main() {
           )
           .chromeless,
       isTrue,
+    );
+  });
+
+  /// ⑨ — 「간편오버레이, **프레임셀쪽, 블록 뒤에 전체적으로 해당영역에 깔린
+  /// 바탕색은 없애라니까?**」 (재지시).
+  ///
+  /// 🚨The flag above was true the whole time and the ground was still
+  /// there, because `chromeless` reached the PAINTER and stopped: the row's
+  /// paper underlay is not painted per cell, it is two `ColoredBox`es laid
+  /// row-wide under the whole strip (UI-R21 #2 moved them there so that
+  /// switching the active layer re-rasterises nothing).
+  ///
+  /// So asking the widget whether it is chromeless is not enough — the test
+  /// has to ask whether the ground is THERE. The two colours are named
+  /// rather than sampled: a pixel test would pass on any theme whose
+  /// surface happens to be near the artwork's colour.
+  testWidgets('and chromeless means the row-wide GROUND is gone too, not '
+      'just the empty cells', (tester) async {
+    await pumpApp(tester);
+    await collapseBottom(tester);
+
+    final scheme = buildAppTheme().colorScheme;
+    final ground = {
+      scheme.surface,
+      timelineActiveRowWashColor(scheme),
+    };
+    final painted = tester
+        .widgetList<ColoredBox>(inOverlay(find.byType(ColoredBox)))
+        .where((box) => ground.contains(box.color))
+        .toList();
+
+    expect(
+      painted,
+      isEmpty,
+      reason: 'a folded row lies ON the artwork: no surface base, and no '
+          'active-row wash either — it is standing on the drawing, not on '
+          'a panel that could be the active one',
     );
   });
 
