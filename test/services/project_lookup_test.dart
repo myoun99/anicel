@@ -206,18 +206,18 @@ void main() {
   });
 
   group('what the project carries', () {
-    test('sounds, stills and PDFs pack; video never does', () {
-      // Blender's rule, adopted whole. It is about the KIND, not about
-      // size and not about what was picked at import: a reference movie
-      // can be three gigabytes, and a project that swallowed one would be
-      // unopenable and unsyncable.
-      expect(mediaKindBelongsInArchive(MediaAssetKind.audio), isTrue);
-      expect(mediaKindBelongsInArchive(MediaAssetKind.image), isTrue);
-      expect(mediaKindBelongsInArchive(MediaAssetKind.pdf), isTrue);
-      expect(mediaKindBelongsInArchive(MediaAssetKind.video), isFalse);
+    test('sounds, stills and PDFs are carried by default; video is not', () {
+      // Blender's rule as the DEFAULT — it was a ceiling until 08-14, when
+      // the user reversed it: a movie starts as a reference because three
+      // gigabytes should not land in a project by accident, and it can
+      // still be carried by someone who means it.
+      expect(mediaKindCarriedByDefault(MediaAssetKind.audio), isTrue);
+      expect(mediaKindCarriedByDefault(MediaAssetKind.image), isTrue);
+      expect(mediaKindCarriedByDefault(MediaAssetKind.pdf), isTrue);
+      expect(mediaKindCarriedByDefault(MediaAssetKind.video), isFalse);
     });
 
-    test('the pool decides, and a movie stays outside it', () {
+    test('the pool decides, and CARRIED is the whole answer', () {
       final project = _project(
         mediaAssets: [
           _asset('bgm.wav', MediaAssetKind.audio),
@@ -231,6 +231,10 @@ void main() {
         'bgm.wav',
         'board.png',
         'conte.pdf',
+        // The movie too, because this fixture says it is carried. The
+        // kind used to veto that here, which meant a flag the user had
+        // set said yes while the save said no.
+        'reference.mp4',
       });
     });
 
@@ -259,20 +263,21 @@ void main() {
       expect(projectArchivedMediaPaths(_project()), isEmpty);
     });
 
-    test('the toggle chooses UNDERNEATH the kind, both ways', () {
-      // The kind is a ceiling, not the whole answer: a sound the user
-      // deliberately left linked — because the original is shared with
-      // another tool — stays linked, and no setting can make the project
-      // swallow a movie.
+    test('the toggle decides, whatever the kind starts at', () {
+      // A sound the user deliberately left linked — the original is shared
+      // with another tool — stays linked, and a movie the user asked the
+      // project to hold is held. The kind is where each of them STARTED,
+      // and this list is about where they ended up.
       final project = _project(
         mediaAssets: [
           _asset('kept.wav', MediaAssetKind.audio),
           _asset('linked.wav', MediaAssetKind.audio, carried: false),
           _asset('movie.mp4', MediaAssetKind.video),
+          _asset('take.mp4', MediaAssetKind.video, carried: false),
         ],
       );
 
-      expect(projectArchivedMediaPaths(project), {'kept.wav'});
+      expect(projectArchivedMediaPaths(project), {'kept.wav', 'movie.mp4'});
     });
   });
 }

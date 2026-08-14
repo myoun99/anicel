@@ -1,14 +1,19 @@
 import '../../models/media_asset.dart';
+import '../../services/project_lookup.dart' show mediaKindCarriedByDefault;
 import '../../services/import/media_import_planner.dart' show ImportDestination;
-import '../../services/project_lookup.dart' show mediaKindBelongsInArchive;
 
 /// What one FILE in the import window is set to.
 ///
 /// The window used to hold one setting for the whole batch, and it lied
-/// three times over: a movie cannot be kept inside the project whatever the
-/// chip says, a sound cannot be rasterized, and an expanded PSD is baked by
-/// definition. A row per file with a column per question tells the truth by
-/// construction — the cell shows what THIS file will do.
+/// about whichever file the batch did not describe: a sound cannot be
+/// rasterized, and an expanded PSD is baked by definition. A row per file
+/// with a column per question tells the truth by construction — the cell
+/// shows what THIS file will do.
+///
+/// The kind decides DEFAULTS, not ceilings. A movie starts as a reference
+/// because that is what a three-gigabyte take should be, and it can still
+/// be carried by someone who means it (user decision 2026-08-14, reversing
+/// the ceiling set on 08-13).
 ///
 /// Everything here is pure so the rules can be tested without a window: the
 /// table renders these answers, it does not compute them.
@@ -94,6 +99,17 @@ class ImportFileSettings {
   int get hashCode => Object.hash(mode, into, fit, psd, inFrame, outFrame);
 }
 
+/// What a file of this [kind] answers before anyone has answered for it.
+///
+/// The one place the kind still speaks: a movie starts as a reference so
+/// that dropping a three-gigabyte take does not quietly make a
+/// three-gigabyte project, and everything else starts carried so that
+/// moving a folder does not break the project.
+ImportFileMode defaultImportMode(MediaAssetKind? kind) =>
+    kind == null || mediaKindCarriedByDefault(kind)
+    ? ImportFileMode.keepInside
+    : ImportFileMode.reference;
+
 /// Whether [path] is a Photoshop document — the only kind with a second
 /// way in.
 bool importPathIsPsd(String path) {
@@ -128,7 +144,11 @@ bool importModeAllowed({
       if (psdExpanding) {
         return false;
       }
-      return kind == null || mediaKindBelongsInArchive(kind);
+      // Every kind may be carried now. The kind still decides what a file
+      // answers by DEFAULT — a movie starts as a reference — but a person
+      // who wants a three-second take inside the project file gets to say
+      // so, with the size warning naming the cost before it lands.
+      return true;
     case ImportFileMode.reference:
       if (psdExpanding) {
         return false;

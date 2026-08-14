@@ -22,12 +22,25 @@ void main() {
   );
 
   group('what a kind refuses', () {
-    test('a movie is never kept inside, whatever the chip says', () {
+    test('a movie STARTS as a reference — that is a default, not a wall', () {
+      expect(
+        defaultImportMode(MediaAssetKind.video),
+        ImportFileMode.reference,
+      );
+      expect(
+        defaultImportMode(MediaAssetKind.audio),
+        ImportFileMode.keepInside,
+      );
+    });
+
+    test('and a movie the user asks for STAYS kept inside', () {
+      // The ceiling that refused this was reversed on 08-14: a person who
+      // wants a three-second take inside the project file gets to say so.
       final resolved = resolve(
         defaults.copyWith(mode: ImportFileMode.keepInside),
         kind: MediaAssetKind.video,
       );
-      expect(resolved.mode, ImportFileMode.reference);
+      expect(resolved.mode, ImportFileMode.keepInside);
     });
 
     test('a sound cannot be rasterized — it falls back to carried', () {

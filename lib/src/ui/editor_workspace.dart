@@ -2347,6 +2347,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               // RELINK-2: the loss banner reads the session's cached
               // answer rather than probing the disk per row.
               missingPaths: widget.session.missingMediaPaths,
+              modifiedTimes: widget.session.mediaModifiedTimes,
               onRelinkMissing: () =>
                   runMediaRelinkFlow(context, widget.session),
               onRemoveAsset: widget.session.removeMediaAsset,

@@ -265,7 +265,7 @@ void main() {
   });
 
   testWidgets('importCutFolder stamps the CARRY answer on its reference '
-      'registrations, under the kind ceiling', (tester) async {
+      'registrations — every kind of them', (tester) async {
     // 🚨 The planner is handed a folder, not a window, so it cannot know
     // the answer — and the session used to express it by copying the file
     // into `.assets/Media` and nothing else. The pool entry itself still
@@ -305,9 +305,13 @@ void main() {
     );
     expect(
       projectArchivedMediaPaths(s.repository.requireProject()),
-      {assets[MediaAssetKind.image]!.path},
-      reason: 'the kind ceiling keeps the 참고영상 out — that is where it '
-          'is applied, not by rewriting what the user asked for',
+      {
+        assets[MediaAssetKind.image]!.path,
+        // The 참고영상 too: the folder import's answer was CARRY and the
+        // kind stopped being a veto on 08-14. What the user asked for is
+        // what the save writes.
+        assets[MediaAssetKind.video]!.path,
+      },
     );
     expect(
       Directory('${tempDir.path}/csm_13_069_loeks.assets').existsSync(),
