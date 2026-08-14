@@ -24,8 +24,18 @@ class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
   final Map<CanvasTool, CanvasTool> _railTileByGroup =
       <CanvasTool, CanvasTool>{};
 
-  void _rememberRailTile() =>
-      _railTileByGroup[canvasToolRailGroup(value.tool)] = value.tool;
+  void _rememberRailTile() {
+    final tool = value.tool;
+    // The stamp is passed through rather than recorded — 유저 확정, see
+    // [canvasToolRailTileIsRemembered]. Skipping it here (not in
+    // [railEntry]) means the tile you were on BEFORE arming the stamp is
+    // still the one waiting: cut with the lasso, stamp a few copies, go
+    // paint, and the Cut button hands the lasso back.
+    if (!canvasToolRailTileIsRemembered(tool)) {
+      return;
+    }
+    _railTileByGroup[canvasToolRailGroup(tool)] = tool;
+  }
 
   /// The tool an entrance to [group] should arm — the tile that group was
   /// last left on, or the group's default when it has not been used yet.
@@ -48,7 +58,19 @@ class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
   ///
   /// Seeded in the constructor as well: this only sees CHANGES, and the
   /// state it is constructed with is already sitting on a tile.
-  CanvasTool railEntry(CanvasTool group) => _railTileByGroup[group] ?? group;
+  ///
+  /// ⚠️TWO rules, and they are not the same one. Already INSIDE the group
+  /// means stay exactly where you are — a press must never move a hand off
+  /// the tile it is working on, which is what kept the stamp from being
+  /// knocked back to the grab long before there was any memory. Coming
+  /// from OUTSIDE is what the memory answers.
+  CanvasTool railEntry(CanvasTool group) {
+    final current = value.tool;
+    if (canvasToolRailGroup(current) == group) {
+      return current;
+    }
+    return _railTileByGroup[group] ?? group;
+  }
 
   /// The tool-switch GUARD (R26 #13): returns a refusal MESSAGE to block
   /// the switch, null to allow it. Installed once by the shell — every

@@ -36,8 +36,10 @@ class ToolsPanel extends StatelessWidget {
   /// rather than a per-button `if`. CSP and Photoshop both restore the last
   /// sub-tool the same way.
   ///
-  /// Null falls back to that old rule, which is what a host with no tool
-  /// memory behind it (focused tests) can honestly answer.
+  /// ⚠️It answers the "already inside" half too — a press must not move a
+  /// hand off the tile it is working on. Null falls back to that half
+  /// alone, which is what a host with no tool memory behind it (focused
+  /// tests) can honestly answer.
   final CanvasTool Function(CanvasTool group)? groupEntry;
 
   /// Undo / redo / onion — the things a hand reaches for BETWEEN strokes,
@@ -195,12 +197,12 @@ class ToolsPanel extends StatelessWidget {
               // the glyph should say that even though the source survives.
               icon: Icons.content_cut,
               selected: canvasToolUsesCutPiece(tool),
-              // Re-enters on the tile the cut was last left on — the stamp
-              // is not knocked back to the grab by going away and coming
-              // back, any more than by pressing the button while it is
-              // already armed. The grab wears whatever outline it last wore
-              // either way, because that memory is the shape's, not this
-              // button's.
+              // Pressing it while the stamp is armed leaves the stamp
+              // alone; coming back from another tool lands on the GRAB,
+              // because the stamp is not one of the tiles the memory keeps
+              // (유저 확정 — 찍기는 성질이 다르다). The grab wears whatever
+              // outline it last wore either way, because that memory is
+              // the shape's, not this button's.
               onPressed: () => onToolChanged(_entryFor(CanvasTool.cut)),
             ),
             // 유저 확정 (rail-and-strip): 「컬러 스와치는 레일에서 빠진다」 —
