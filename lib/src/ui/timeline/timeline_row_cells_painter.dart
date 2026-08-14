@@ -954,11 +954,24 @@ Widget timelineRowCellsPaintArea({
         // transparent empties and carries no active state, so switching the
         // active layer re-rasters NOTHING (the wash is one ColoredBox on a
         // row that was rebuilding anyway).
+        //
+        // 🚨…and BOTH are ground, so a chromeless row has neither (⑨,
+        // 「블록 뒤에 전체적으로 해당영역에 깔린 바탕색은 없애라니까?」 —
+        // 「니까」 because it was confirmed on 2026-08-10 as 「no panel fill,
+        // no rail fill, no active-row wash」 and only half of it landed).
+        //
+        // ★The flag reached the PAINTER and stopped there. That is why the
+        // fix for the cells did not show: the empties went transparent and
+        // this pair went on covering the artwork behind them, row-wide,
+        // which is exactly the shape the user described. Chromeless is a
+        // property of the ROW, not of its cells — every layer that draws
+        // ground has to read it.
         child: Stack(
           fit: StackFit.expand,
           children: [
-            ColoredBox(color: Theme.of(context).colorScheme.surface),
-            if (active)
+            if (!chromeless)
+              ColoredBox(color: Theme.of(context).colorScheme.surface),
+            if (!chromeless && active)
               ColoredBox(
                 color: timelineActiveRowWashColor(
                   Theme.of(context).colorScheme,
