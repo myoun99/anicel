@@ -184,10 +184,14 @@ class CanvasSelectionCommands extends ChangeNotifier {
   VoidCallback? _resetTransform;
   VoidCallback? _applyTransform;
   bool Function()? _canEditTransform;
+  Object? _owner;
 
   bool _notifyScheduled = false;
 
-  void bind({
+  /// ⚠️Owner-scoped — see `TimelineLayerNavCommands.bind` for the failure
+  /// an unconditional `unbind()` produced (유저 #13, 2026-08-14).
+  void bind(
+    Object owner, {
     required bool Function() hasSelection,
     required void Function(double dx, double dy) nudge,
     required VoidCallback deselect,
@@ -213,6 +217,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     VoidCallback? applyTransform,
     bool Function()? canEditTransform,
   }) {
+    _owner = owner;
     _flipTransform = flipTransform;
     _resetTransform = resetTransform;
     _applyTransform = applyTransform;
@@ -234,7 +239,11 @@ class CanvasSelectionCommands extends ChangeNotifier {
     notifySessionChanged();
   }
 
-  void unbind() {
+  void unbind(Object owner) {
+    if (!identical(_owner, owner)) {
+      return;
+    }
+    _owner = null;
     _hasSelection = null;
     _nudge = null;
     _deselect = null;

@@ -26,6 +26,7 @@ void main() {
     final resampleHandler = onResampleModeChanged;
     final commands = CanvasSelectionCommands();
     commands.bind(
+      Object(),
       hasSelection: () => false,
       canEditTransform: () => canEdit,
       nudge: (_, _) {},

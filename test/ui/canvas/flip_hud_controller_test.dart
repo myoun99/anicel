@@ -11,6 +11,8 @@ import 'package:anicel/src/ui/input/app_input_settings.dart';
 
 /// The flip HUD's state: ONE haptic rule, and a window that never owns
 /// the cursor.
+final _testOwner = Object();
+
 void main() {
   tearDown(() {
     AppInput.settings.value = AppInputSettings.testCorpusBaseline;
@@ -51,6 +53,7 @@ void main() {
             hapticsEnabled: () => true,
             clock: () => clock,
           )..bind(
+            _testOwner,
             (_) => FlipHudSnapshot(
               rows: const [rowA, rowB],
               rowIndex: rowIndex,
@@ -146,6 +149,7 @@ void main() {
             hapticTick: () => ticks.add(ticks.length),
             hapticsEnabled: () => !quiet,
           )..bind(
+            _testOwner,
             (_) => FlipHudSnapshot(
               rows: const [rowA],
               rowIndex: 0,
@@ -179,6 +183,7 @@ void main() {
             // coalesce window.
             clock: () => DateTime(2026),
           )..bind(
+            _testOwner,
             (_) => FlipHudSnapshot(
               rows: const [rowA],
               rowIndex: 0,
@@ -235,6 +240,7 @@ void main() {
             hapticsEnabled: () => false,
             clock: () => clock,
           )..bind(
+            _testOwner,
             (_) => FlipHudSnapshot(
               rows: const [rowA],
               rowIndex: 0,
@@ -279,6 +285,7 @@ void main() {
       final controller =
           FlipHudController(hapticTick: () {}, hapticsEnabled: () => true)
             ..bind(
+            _testOwner,
               (_) => const FlipHudSnapshot(
                 rows: [rowA],
                 rowIndex: 0,
@@ -320,7 +327,7 @@ void main() {
       final controller = FlipHudController(
         hapticTick: () {},
         hapticsEnabled: () => true,
-      )..bind((_) => FlipHudSnapshot.empty);
+      )..bind(_testOwner, (_) => FlipHudSnapshot.empty);
       addTearDown(controller.dispose);
 
       controller.begin(
@@ -342,6 +349,7 @@ void main() {
       final controller =
           FlipHudController(hapticTick: () {}, hapticsEnabled: () => false)
             ..bind(
+            _testOwner,
               (_) => const FlipHudSnapshot(
                 rows: [rowA, rowB],
                 rowIndex: 0,
@@ -409,6 +417,7 @@ void main() {
       final controller =
           FlipHudController(hapticTick: () {}, hapticsEnabled: () => false)
             ..bind(
+            _testOwner,
               (_) => FlipHudSnapshot(
                 rows: rows,
                 rowIndex: 0,
