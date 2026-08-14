@@ -1263,7 +1263,7 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       session.selectedFrame != null,
       session.canCreateDrawingAtCurrentFrame,
       session.canRenameFrameAtCurrentFrame,
-      session.canCutExposureAtCurrentFrame,
+      session.canBlankExposureAtCurrentFrame,
       session.canToggleMarkAtCurrentFrame,
       session.canCopyFrameAtCurrentFrame,
       session.canPasteLinkedFrameAtCurrentFrame,

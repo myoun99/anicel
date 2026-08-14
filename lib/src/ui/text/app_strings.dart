@@ -559,6 +559,7 @@ class AppStrings {
   String get tlDropFolderInAttachFolder => _s('tlDropFolderInAttachFolder');
 
   String get tlDetachLayer => _s('tlDetachLayer');
+  String get tlCutRun => _s('tlCutRun');
   String get tlCopyFrame => _s('tlCopyFrame');
   String get tlPasteLinkedFrame => _s('tlPasteLinkedFrame');
 
@@ -1594,6 +1595,7 @@ class AppStrings {
     'tlDropDetachAttach': 'detach',
     'tlDropFolderInAttachFolder': 'a folder cannot go inside an attach folder',
     'tlDetachLayer': 'Detach from base',
+    'tlCutRun': 'Cut frames',
     'tlCopyFrame': 'Copy frame',
     'tlPasteLinkedFrame': 'Paste linked frame',
     'tlPasteIndependentFrame': 'Paste independent frame',
@@ -2366,6 +2368,7 @@ class AppStrings {
     'tlDropDetachAttach': '付属を解除',
     'tlDropFolderInAttachFolder': '付属フォルダーの中にフォルダーは入れられません',
     'tlDetachLayer': '付属を解除',
+    'tlCutRun': 'フレームを切り取り',
     'tlCopyFrame': 'フレームをコピー',
     'tlPasteLinkedFrame': 'リンクフレームを貼り付け',
     'tlPasteIndependentFrame': '独立フレームを貼り付け',
@@ -3130,6 +3133,7 @@ class AppStrings {
     'tlDropDetachAttach': '어태치 해제',
     'tlDropFolderInAttachFolder': '어태치 폴더 안에는 폴더를 넣을 수 없습니다',
     'tlDetachLayer': '어태치 해제',
+    'tlCutRun': '프레임 잘라내기',
     'tlCopyFrame': '프레임 복사',
     'tlPasteLinkedFrame': '링크 프레임 붙여넣기',
     'tlPasteIndependentFrame': '독립 프레임 붙여넣기',
@@ -3933,6 +3937,7 @@ class AppStrings {
     'tlDropDetachAttach': 'détacher',
     'tlDropFolderInAttachFolder': 'un dossier ne peut pas contenir de dossier dans un groupe attaché',
     'tlDetachLayer': 'Détacher de la base',
+    'tlCutRun': "Couper l'image",
     'tlCopyFrame': "Copier l'image",
     'tlPasteLinkedFrame': "Coller l'image liée",
     'tlPasteIndependentFrame': "Coller une image indépendante",
@@ -4674,6 +4679,7 @@ class AppStrings {
     'tlDropDetachAttach': '解除附属',
     'tlDropFolderInAttachFolder': '附属文件夹内不能再放文件夹',
     'tlDetachLayer': '解除附属',
+    'tlCutRun': '剪切帧',
     'tlCopyFrame': '复制帧',
     'tlPasteLinkedFrame': '粘贴链接帧',
     'tlPasteIndependentFrame': '粘贴独立帧',

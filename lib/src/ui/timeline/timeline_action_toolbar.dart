@@ -731,6 +731,8 @@ class TimelineActionToolbar extends StatelessWidget {
       session.deleteSubject,
       AppText.settings.value.programLanguage,
       // ㉕: the three that joined the delete read their own gates.
+      // T3 made it four — 잘라내기 asks the same question copy does.
+      session.canCutRunAtCurrentFrame,
       session.canCopyFrameAtCurrentFrame,
       session.canPasteLinkedFrameAtCurrentFrame,
       session.canPasteIndependentFrameAtCurrentFrame,
@@ -770,6 +772,21 @@ class TimelineActionToolbar extends StatelessWidget {
               : null,
         ),
         const PillDivider(),
+        // 🚨T3 신설 — 잘라내기, 「복사 버튼 왼쪽」 (유저 2026-08-13).
+        //
+        // Copy keeps the original and stores the clip; this one stores the
+        // clip and takes the original out, and the tail closes over the
+        // hole. It is the LIFT half of the one splice — the same half a
+        // paste-over-a-selection does before it puts the clip down — so it
+        // needed no placement rules of its own.
+        _iconButton(
+          key: const ValueKey<String>('cut-run-button'),
+          tooltip: AppText.strings.tlCutRun,
+          icon: Icons.content_cut,
+          onPressed: session.canCutRunAtCurrentFrame
+              ? session.cutRunAtCurrentFrame
+              : null,
+        ),
         _iconButton(
           key: const ValueKey<String>('copy-frame-button'),
           tooltip: AppText.strings.tlCopyFrame,
@@ -835,7 +852,7 @@ class TimelineActionToolbar extends StatelessWidget {
       _StaticCommandGroup(
         rebuildKey: (
           _canCreateInstance,
-          session.canCutExposureAtCurrentFrame,
+          session.canBlankExposureAtCurrentFrame,
           session.canToggleMarkAtCurrentFrame,
           session.languageSettings.value,
         ),
@@ -856,8 +873,8 @@ class TimelineActionToolbar extends StatelessWidget {
               key: const ValueKey<String>('blank-exposure-button'),
               tooltip: AppText.strings.tlBlankX,
               icon: Icons.close,
-              onPressed: session.canCutExposureAtCurrentFrame
-                  ? session.cutExposureAtCurrentFrame
+              onPressed: session.canBlankExposureAtCurrentFrame
+                  ? session.blankExposureAtCurrentFrame
                   : null,
             ),
             _iconButton(
