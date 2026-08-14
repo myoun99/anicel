@@ -95,6 +95,8 @@ import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
 import '../models/flip_column_step.dart';
 import '../models/timeline_exposure.dart';
+import '../controllers/cut_duplicate_helpers.dart' show duplicateFrameContent;
+import '../models/timeline_splice.dart';
 import '../models/delete_subject.dart';
 import '../models/edit_instance_subject.dart';
 import '../models/timeline_selection_kind.dart';
@@ -9285,6 +9287,15 @@ class EditorSessionManager extends ChangeNotifier {
       return false;
     }
 
+    // 🚨T3 — the clipboard may be holding cels the layer no longer has: a
+    // 잘라내기 lifted them out and orphaned them. They come BACK on the
+    // paste (same ids, so it is the same cel), and gating on "the layer
+    // still has it" would have made cut-then-paste-back impossible while
+    // the button sat lit.
+    if (copiedFrame.cels.any((cel) => cel.id == copiedFrame.frameId)) {
+      return _timelineController.currentFrameIndex >= 0;
+    }
+
     return _timelineController.canPasteLinkedFrameAt(
       layer: layer,
       frameIndex: _timelineController.currentFrameIndex,
@@ -9318,9 +9329,11 @@ class EditorSessionManager extends ChangeNotifier {
     return 'Links: $uses';
   }
 
-  /// The timesheet "X here" action: cuts the covering block's hold so the
+  /// The timesheet "X here" action: blanks the covering block's hold so the
   /// current cell (and the rest of the old hold) becomes empty.
-  bool get canCutExposureAtCurrentFrame {
+  ///
+  /// ⛔Renamed off "cut" in T3 — see [blankExposureAtCurrentFrame].
+  bool get canBlankExposureAtCurrentFrame {
     final layer = activeLayer;
     // SYNCED attach rows have no timing of their own (the base owns it);
     // free attach rows cut exposures like any drawing layer (UI-R21 #3).
@@ -10218,12 +10231,104 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
 
+    final run = _spliceRunOnActiveRow();
+    // 🚨T3 — the clip brings its LENGTH: 「내가 하고싶은건 프레임만 복붙이
+    // 아니라 코마까지 포함해서 블록 자체를 복붙한다는 느낌」. What travels is
+    // the run of cells, gaps and all, not one cel id that the destination
+    // then decides a length for.
+    final clip = run == null
+        ? null
+        : _timelineController.copyRunForLayer(
+            layerId: layer.id,
+            index: run.index,
+            count: run.count,
+          );
+    final cels = <FrameId>{
+      for (final exposure in clip?.exposures.values ?? const <TimelineExposure>[])
+        if (exposure.frameId != null) exposure.frameId!,
+    };
     _copiedFrame = _CopiedFrameReference(
       layerId: layer.id,
       frameId: frame.id,
       frameName: frame.name,
+      clip: clip,
+      cels: [
+        for (final cel in layer.frames)
+          if (cels.contains(cel.id)) cel,
+      ],
     );
     notifyListeners();
+  }
+
+  /// 🚨T3 신설 — 잘라내기: the same lift the paste does, with the clip going
+  /// to the clipboard instead of a row.
+  ///
+  /// 유저 확정 2026-08-13: 「잘라내기 버튼을 공용 알약에 신설 — 복사 버튼
+  /// 왼쪽. 복사=원본 남기고 클립 저장 · 잘라내기=원본 지우고 클립 저장」.
+  ///
+  /// ★It is literally copy followed by the lift half of [spliceTimeline],
+  /// which is why it needs no rules of its own.
+  bool get canCutRunAtCurrentFrame => canCopyFrameAtCurrentFrame;
+
+  void cutRunAtCurrentFrame() {
+    final layer = activeLayer;
+    if (layer == null || !canCutRunAtCurrentFrame) {
+      return;
+    }
+    final run = _spliceRunOnActiveRow();
+    if (run == null) {
+      return;
+    }
+    copyFrameAtCurrentFrame();
+    _timelineController.spliceRunsForLayers(
+      runs: [
+        (
+          layerId: layer.id,
+          index: run.index,
+          liftCount: run.count,
+          clip: null,
+          bornFrames: const <Frame>[],
+        ),
+      ],
+      description: 'Cut frames',
+    );
+    clearFrameRangeSelection();
+    notifyListeners();
+  }
+
+  /// WHERE a copy, cut or paste acts on the active row, in COMMIT keys.
+  ///
+  /// ★The one place the two halves of 「N칸을 들어내고 클립을 넣는다」 get
+  /// their N: a live selection says its own range, and with none the verb
+  /// means the block under the playhead. Copy, cut and paste all ask this,
+  /// so they cannot disagree about what "the run" is.
+  ///
+  /// ⚠️The ROW is the active layer's alone. T3's multi-row anchoring
+  /// (「선택의 첫 행을 현재 행에 맞춘다」) needs a rail-display-order source
+  /// the session does not have — [TimelineController.spliceRunsForLayers]
+  /// already takes a list so the extension is additive, but nothing here
+  /// pretends to do it yet.
+  ({int index, int count})? _spliceRunOnActiveRow() {
+    final layer = activeLayer;
+    if (layer == null) {
+      return null;
+    }
+    final selection = frameRangeSelection.value;
+    if (selection != null && selection.coversLayer(layer.id)) {
+      return (
+        index: _commitBlockStart(layer.id, selection.startIndex),
+        count: selection.lengthFrames,
+      );
+    }
+    final index = _timelineController.currentFrameIndex;
+    final covering = coveringDrawingBlockAt(layer.timeline, index);
+    if (covering == null) {
+      return (index: index, count: 1);
+    }
+    return (
+      index: covering.startIndex,
+      count: covering.endIndexExclusive - covering.startIndex,
+    );
   }
 
   /// ㉕: the copied cel's content here, as a cel of its own.
@@ -10242,18 +10347,7 @@ class EditorSessionManager extends ChangeNotifier {
         !canPasteIndependentFrameAtCurrentFrame) {
       return;
     }
-
-    _timelineController.pasteIndependentFrameForLayer(
-      layerId: layer.id,
-      frameId: copiedFrame.frameId,
-      // 🚨Through the MINT. `_nextFrameId` reads the sequence without
-      // advancing it, so two independent pastes inside one clock tick would
-      // come out as the SAME cel — which is not "two cels that look alike",
-      // it is one cel exposed twice, and the import round already paid for
-      // that lesson once.
-      newFrameId: _mintFrameId(layer.id),
-    );
-    notifyListeners();
+    _pasteRun(layer: layer, copied: copiedFrame, independent: true);
   }
 
   void pasteLinkedFrameAtCurrentFrame() {
@@ -10264,17 +10358,119 @@ class EditorSessionManager extends ChangeNotifier {
         !canPasteLinkedFrameAtCurrentFrame) {
       return;
     }
+    _pasteRun(layer: layer, copied: copiedFrame, independent: false);
+  }
 
-    _timelineController.pasteLinkedFrameForLayer(
-      layerId: layer.id,
-      frameId: copiedFrame.frameId,
+  /// 🚨★★★ BOTH pastes, because they differ in ONE thing.
+  ///
+  /// 유저 확정: 「링크 붙여넣기 = 겸용(링크) 생성 · 독립 붙여넣기 = 그냥 복제」.
+  /// That is the only difference — which cel the exposures end up pointing
+  /// at — so the PLACEMENT is written once. Where the two used to share a
+  /// private helper they now share the splice itself, and 「선택이 있으면
+  /// 갈아끼우기, 없으면 끼워넣기」 is the same sentence for both.
+  ///
+  /// ⚠️A cel is minted PER SOURCE CEL, not per cell: a clip holding one
+  /// drawing exposed three times pastes as one new drawing exposed three
+  /// times. Minting per cell would quietly unlink a block from itself.
+  void _pasteRun({
+    required Layer layer,
+    required _CopiedFrameReference copied,
+    required bool independent,
+  }) {
+    final clip =
+        copied.clip ??
+        TimelineClipRow(
+          exposures: {0: TimelineExposure.drawing(copied.frameId, length: 1)},
+          length: 1,
+        );
+    final run = _spliceRunOnActiveRow();
+    // ⛔A selection REPLACES what it covers; with none, nothing comes out.
+    // 「뭘 선택하든 덮어써버리면 선택범위를 조절하는 의미가 통째로 사라지잖아」
+    final selection = frameRangeSelection.value;
+    final replacing = selection != null && selection.coversLayer(layer.id);
+    final index = replacing
+        ? run!.index
+        : _timelineController.currentFrameIndex;
+    final liftCount = replacing ? run!.count : 0;
+
+    final bornFrames = <Frame>[
+      // A 잘라내기 orphaned the cels it lifted, so the layer no longer holds
+      // them; the clipboard does. Bringing back the SAME id is what makes
+      // cut-then-paste-back a move rather than a deletion — and re-adding
+      // only what is missing keeps a plain copy from duplicating anything.
+      if (!independent)
+        for (final cel in copied.cels)
+          if (!layer.frames.any((frame) => frame.id == cel.id)) cel,
+    ];
+    var placed = clip;
+    if (independent) {
+      final minted = <FrameId, FrameId>{};
+      final exposures = <int, TimelineExposure>{};
+      for (final entry in clip.exposures.entries) {
+        final sourceId = entry.value.frameId;
+        if (sourceId == null) {
+          continue;
+        }
+        final newId = minted.putIfAbsent(sourceId, () {
+          // 🚨Through the MINT. `_nextFrameId` reads the sequence without
+          // advancing it, so two independent pastes inside one clock tick
+          // would come out as the SAME cel — which is not "two cels that
+          // look alike", it is one cel exposed twice, and the import round
+          // already paid for that lesson once.
+          final id = _mintFrameId(layer.id);
+          final source = layer.frames
+              .where((frame) => frame.id == sourceId)
+              .firstOrNull;
+          if (source != null) {
+            // 🚨IT COMES OUT UNNAMED, and that is the point rather than an
+            // omission. A cel's name is its IDENTITY inside the layer — the
+            // rename path REFUSES a duplicate and offers to merge instead,
+            // which is this app's 「같은 이름 = 같은 그림」 rule. Carrying
+            // the source's name would assert the very link this verb exists
+            // to avoid, and do it behind that dialog's back.
+            bornFrames.add(
+              duplicateFrameContent(
+                frame: source,
+                newFrameId: id,
+              ).copyWith(name: null),
+            );
+          }
+          return id;
+        });
+        exposures[entry.key] = entry.value.copyWith(frameId: newId);
+      }
+      placed = TimelineClipRow(exposures: exposures, length: clip.length);
+    }
+
+    _timelineController.spliceRunsForLayers(
+      runs: [
+        (
+          layerId: layer.id,
+          index: index,
+          liftCount: liftCount,
+          clip: placed,
+          bornFrames: bornFrames,
+        ),
+      ],
+      description: independent ? 'Paste frames' : 'Paste linked frames',
     );
+    if (replacing) {
+      clearFrameRangeSelection();
+    }
     notifyListeners();
   }
 
-  void cutExposureAtCurrentFrame() {
+  /// The timesheet "X here" — ⛔NOT the clipboard's cut.
+  ///
+  /// 🚨T3 rename: this was `cutExposureAtCurrentFrame` while 「잘라내기」 was
+  /// a word nothing in the app used. Now that [cutRunAtCurrentFrame] exists,
+  /// two different verbs would answer to "cut". The UI never said 「cut」
+  /// here — the button is `×` (`blank-exposure-button`, tooltip `tlBlankX`)
+  /// — so the code name follows the button and the new verb takes the word
+  /// the user gave it.
+  void blankExposureAtCurrentFrame() {
     final layer = activeLayer;
-    if (layer == null || !canCutExposureAtCurrentFrame) {
+    if (layer == null || !canBlankExposureAtCurrentFrame) {
       return;
     }
 
@@ -17130,11 +17326,36 @@ class _CopiedFrameReference {
     required this.layerId,
     required this.frameId,
     required this.frameName,
+    this.clip,
+    this.cels = const [],
   });
 
   final LayerId layerId;
+
+  /// The ANCHOR cel — what the status line names and what the old one-cel
+  /// paste gate asks about. It is the clip's first drawing, kept as its own
+  /// field because "is there something to paste into this row" is a
+  /// question about a cel belonging to a layer, not about a run.
   final FrameId frameId;
   final String? frameName;
+
+  /// 🚨T3 — the run that was copied, 코마째. Null only for a clipboard
+  /// written before the run existed (no such writer remains); readers treat
+  /// null as "one cell of [frameId]", which is exactly what the retired
+  /// behaviour did.
+  final TimelineClipRow? clip;
+
+  /// 🚨The CELS the clip's exposures point at, carried by value.
+  ///
+  /// Without this a 잘라내기 is lossy: the lift orphans the cels it took
+  /// out, the layer drops them, and pasting them back finds nothing to point
+  /// at — cut-then-paste, the most ordinary thing anyone does with a
+  /// clipboard, would silently do nothing. A clipboard that does not hold
+  /// what was put on it is not one.
+  ///
+  /// ⛔Re-added only when MISSING. A copy leaves the originals where they
+  /// are, and adding them again would put one cel in the layer twice.
+  final List<Frame> cels;
 }
 
 /// Which verb an in-flight cut-edge drag belongs to (feedback #5/#9). One

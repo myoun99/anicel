@@ -408,7 +408,7 @@ void main() {
     s.createDrawingAtCurrentFrame();
     final attachId = s.activeLayer!.id;
 
-    expect(s.canCutExposureAtCurrentFrame, isFalse);
+    expect(s.canBlankExposureAtCurrentFrame, isFalse);
     expect(s.canToggleMarkAtCurrentFrame, isFalse);
     expect(s.canDeleteCellAtCurrentFrame, isFalse);
     expect(s.canPasteLinkedFrameAtCurrentFrame, isFalse);

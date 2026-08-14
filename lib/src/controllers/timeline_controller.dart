@@ -14,6 +14,7 @@ import '../models/timeline_coverage.dart';
 import 'cut_duplicate_helpers.dart' show duplicateFrameContent;
 import '../models/timeline_exposure.dart';
 import '../models/timeline_repeat.dart';
+import '../models/timeline_splice.dart';
 import '../services/command.dart';
 import '../services/commands/update_cut_durations_command.dart';
 import '../services/commands/update_layer_kind_command.dart';
@@ -779,63 +780,113 @@ class TimelineController {
   /// Puts [frameId]'s exposure at the edit index. [bornFrame] is the
   /// independent paste's new cel, which joins the layer before anything
   /// points at it; null is the linked paste, where reuse IS the point.
+  ///
+  /// 🚨T3 — this is [spliceRunsForLayers] with a one-cell clip and no lift.
+  /// It used to hold the three placement rules of its own (relink on a block
+  /// start, split inside a hold, fill an empty cell up to the next block),
+  /// and ⛔those are RETIRED: 「내가 하고싶은건 프레임만 복붙이 아니라 코마까지
+  /// 포함해서 블록 자체를 복붙한다는 느낌」. The clip brings its length and
+  /// the tail moves aside. Kept as a named entry point because the one-cel
+  /// paste is still a real verb, not because the old rules survive anywhere.
   void _pasteFrameForLayer({
     required LayerId layerId,
     required FrameId frameId,
     Frame? bornFrame,
   }) {
-    final before = _requireLayer(layerId);
-    final index = _editFrameIndexFor(layerId);
-
-    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
-      before.timeline,
+    spliceRunsForLayers(
+      runs: [
+        (
+          layerId: layerId,
+          index: _editFrameIndexFor(layerId),
+          liftCount: 0,
+          clip: TimelineClipRow(
+            exposures: {0: TimelineExposure.drawing(frameId, length: 1)},
+            length: 1,
+          ),
+          bornFrames: bornFrame == null ? const <Frame>[] : [bornFrame],
+        ),
+      ],
+      description: 'Paste frame',
     );
-    final covering = coveringDrawingBlockAt(before.timeline, index);
-    FrameId? replacedFrameId;
+  }
 
-    if (covering != null && covering.startIndex == index) {
-      // On a block start: relink the block to the pasted frame.
-      replacedFrameId = covering.frameId;
-      nextTimeline[index] = covering.entry.copyWith(frameId: frameId);
-    } else if (covering != null) {
-      // Inside a hold: split — the covering block ends here, the pasted
-      // frame holds for the rest of the old coverage.
-      nextTimeline[covering.startIndex] = covering.entry.copyWith(
-        length: index - covering.startIndex,
-      );
-      nextTimeline[index] = TimelineExposure.drawing(
-        frameId,
-        length: covering.endIndexExclusive - index,
-      );
-    } else {
-      // Empty cell: fill up to the next block (or a single frame).
-      final nextBlock = nextDrawingBlockAfter(before.timeline, index);
-      nextTimeline[index] = TimelineExposure.drawing(
-        frameId,
-        length: nextBlock == null ? 1 : nextBlock.startIndex - index,
-      );
-    }
+  // --- The one splice ----------------------------------------------------------
 
-    var nextFrames = bornFrame == null
-        ? before.frames
-        : [...before.frames, bornFrame];
-    if (replacedFrameId != null &&
-        replacedFrameId != frameId &&
-        !_timelineReferencesFrame(nextTimeline, replacedFrameId)) {
-      final removedFrameId = replacedFrameId;
-      nextFrames = nextFrames
-          .where((frame) => frame.id != removedFrameId)
-          .toList(growable: false);
-    }
+  /// Reads [count] cells off [layerId] without changing the row.
+  ///
+  /// Indexes are the EDIT axis, the same one the paste and the playhead use,
+  /// so a track-owned SE row reads at its shifted position rather than the
+  /// cut-local one.
+  TimelineClipRow copyRunForLayer({
+    required LayerId layerId,
+    required int index,
+    required int count,
+  }) {
+    return captureTimelineRun(
+      timeline: _requireLayer(layerId).timeline,
+      index: index,
+      count: count,
+    );
+  }
 
-    _applyLayerEdit(
-      before: before,
-      after: before.copyWith(
+  /// 🚨★★★ THE ONE SPLICE (T2·T3) — every row's lift and insert in ONE undo.
+  ///
+  /// 유저 확정 2026-08-13: 「N칸을 들어내고 클립을 넣는다」에서 **N만 다르다**
+  /// — 붙여넣기(선택 없음)는 N 0, 갈아끼우기는 N 선택길이, 잘라내기는 클립이
+  /// 없는 쪽. So there is one entry point and the callers differ only in what
+  /// they pass, rather than three verbs that have to be kept agreeing.
+  ///
+  /// ⛔The cut's length is never consulted. 「컷 길이는 소재와 관계없다」 —
+  /// blocks pushed past the end line belong past the end line.
+  ///
+  /// [bornFrames] are the independent paste's new cels, which join the layer
+  /// in the same command that first points at them.
+  void spliceRunsForLayers({
+    required List<
+      ({
+        LayerId layerId,
+        int index,
+        int liftCount,
+        TimelineClipRow? clip,
+        List<Frame> bornFrames,
+      })
+    >
+    runs,
+    required String description,
+  }) {
+    final commands = <Command>[];
+    for (final run in runs) {
+      final before = _requireLayer(run.layerId);
+      final nextTimeline = spliceTimeline(
+        timeline: before.timeline,
+        index: run.index,
+        liftCount: run.liftCount,
+        clip: run.clip,
+      );
+      // A cel nothing points at any more leaves with the exposure that was
+      // its last use — the same bookkeeping the retired relink branch did,
+      // now asked of the WHOLE row rather than of one replaced block.
+      //
+      // ⚠️Only cels THIS splice orphaned. A layer may legitimately hold a
+      // cel no exposure points at (drawn, then its block deleted), and
+      // "unreferenced after" alone would take those out with it — a splice
+      // three rows away silently emptying the bank.
+      final nextFrames = [
+        for (final frame in [...before.frames, ...run.bornFrames])
+          if (_timelineReferencesFrame(nextTimeline, frame.id) ||
+              !_timelineReferencesFrame(before.timeline, frame.id))
+            frame,
+      ];
+      final after = before.copyWith(
         frames: nextFrames,
         timeline: nextTimeline,
         audioClips: _audioClipsForFrames(before, nextFrames),
-      ),
-    );
+      );
+      if (before != after) {
+        commands.add(_layerEditCommand(before: before, after: after));
+      }
+    }
+    _executeCommands(commands, description: description);
   }
 
   // --- Frame rename / link -------------------------------------------------------
