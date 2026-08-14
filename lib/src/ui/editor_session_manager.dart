@@ -10503,6 +10503,25 @@ class EditorSessionManager extends ChangeNotifier {
         if (sourceId == null) {
           continue;
         }
+        // 🚨THE CLIPBOARD IS THE SECOND PLACE TO LOOK, and after a 잘라내기
+        // it is the ONLY one (유저 #3, 2026-08-14).
+        //
+        // A cut orphans the cels it lifted, so they are gone from
+        // `layer.frames` by the time this runs. Reading only the layer found
+        // nothing, minted an id anyway, and authored an exposure pointing at
+        // a cel that does not exist: a white block, `?` where the name goes,
+        // and every verb that resolves the cel refusing — 「완전한 버그상태」.
+        // The clipboard has carried these cels since the splice landed; only
+        // the LINKED branch was reading them.
+        final source =
+            layer.frames.where((frame) => frame.id == sourceId).firstOrNull ??
+            copied.cels.where((frame) => frame.id == sourceId).firstOrNull;
+        if (source == null) {
+          // ⛔An exposure with no cel behind it is the damage itself. Drop
+          // the cell rather than author a reference nothing can resolve —
+          // an empty cell is a state the row already knows how to be.
+          continue;
+        }
         final newId = minted.putIfAbsent(sourceId, () {
           // 🚨Through the MINT. `_nextFrameId` reads the sequence without
           // advancing it, so two independent pastes inside one clock tick
@@ -10510,23 +10529,18 @@ class EditorSessionManager extends ChangeNotifier {
           // look alike", it is one cel exposed twice, and the import round
           // already paid for that lesson once.
           final id = _mintFrameId(layer.id);
-          final source = layer.frames
-              .where((frame) => frame.id == sourceId)
-              .firstOrNull;
-          if (source != null) {
-            // 🚨IT COMES OUT UNNAMED, and that is the point rather than an
-            // omission. A cel's name is its IDENTITY inside the layer — the
-            // rename path REFUSES a duplicate and offers to merge instead,
-            // which is this app's 「같은 이름 = 같은 그림」 rule. Carrying
-            // the source's name would assert the very link this verb exists
-            // to avoid, and do it behind that dialog's back.
-            bornFrames.add(
-              duplicateFrameContent(
-                frame: source,
-                newFrameId: id,
-              ).copyWith(name: null),
-            );
-          }
+          // 🚨IT COMES OUT UNNAMED, and that is the point rather than an
+          // omission. A cel's name is its IDENTITY inside the layer — the
+          // rename path REFUSES a duplicate and offers to merge instead,
+          // which is this app's 「같은 이름 = 같은 그림」 rule. Carrying the
+          // source's name would assert the very link this verb exists to
+          // avoid, and do it behind that dialog's back.
+          bornFrames.add(
+            duplicateFrameContent(
+              frame: source,
+              newFrameId: id,
+            ).copyWith(name: null),
+          );
           return id;
         });
         exposures[entry.key] = entry.value.copyWith(frameId: newId);
