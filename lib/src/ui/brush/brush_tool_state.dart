@@ -169,6 +169,24 @@ CanvasTool canvasToolRailGroup(CanvasTool tool) => switch (tool) {
   CanvasTool.cut || CanvasTool.cutStamp => CanvasTool.cut,
 };
 
+/// Whether visiting [tool] is what its rail button should come BACK to.
+///
+/// True for every tile but the STAMP — 유저 확정 2026-08-15: *"찍기는 아예
+/// 성질이 다른거니까 그 외만 기억하도록."*
+///
+/// The rest of the tiles are settings you keep working in: the bucket and
+/// the shape fill are two ways of choosing an area, and picking one means
+/// "this is how I am filling today". The stamp is not a way of cutting at
+/// all — it is what you do with what a cut produced. And it does not need
+/// remembering, because the app already arms it at the one moment it is
+/// wanted (a fresh cut switches to it) and it does nothing at all with an
+/// empty slot, so restoring it could hand back a tool with no work in it.
+///
+/// ⚠️This is about COMING BACK. Pressing a button while already on the
+/// stamp still leaves you there — see [PaintToolStateNotifier.railEntry].
+bool canvasToolRailTileIsRemembered(CanvasTool tool) =>
+    !canvasToolStamps(tool);
+
 /// Editor-session state for the active brush tool options.
 ///
 /// This is UI/tool state owned by the editor session. It is intentionally

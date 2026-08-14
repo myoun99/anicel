@@ -87,16 +87,46 @@ void main() {
       expect(notifier.railEntry(CanvasTool.cut), CanvasTool.cut);
 
       notifier.value = notifier.value.copyWith(tool: CanvasTool.fillShape);
-      notifier.value = notifier.value.copyWith(tool: CanvasTool.cutStamp);
       notifier.value = notifier.value.copyWith(tool: CanvasTool.brush);
 
       expect(notifier.railEntry(CanvasTool.fill), CanvasTool.fillShape);
-      expect(notifier.railEntry(CanvasTool.cut), CanvasTool.cutStamp);
 
       // …and it follows the tile back, rather than preferring the shapes.
       notifier.value = notifier.value.copyWith(tool: CanvasTool.fill);
       notifier.value = notifier.value.copyWith(tool: CanvasTool.eraser);
       expect(notifier.railEntry(CanvasTool.fill), CanvasTool.fill);
+    });
+
+    test('the STAMP is passed through, not recorded', () {
+      // 유저 확정 2026-08-15: "찍기는 아예 성질이 다른거니까 그 외만
+      // 기억하도록." A fresh cut already arms it at the one moment it is
+      // wanted, and with an empty slot it does nothing — so bringing it
+      // back could hand over a tool with no work in it.
+      final notifier = PaintToolStateNotifier(BrushToolState.defaults);
+      addTearDown(notifier.dispose);
+
+      notifier.value = notifier.value.copyWith(tool: CanvasTool.cut);
+      notifier.value = notifier.value.copyWith(tool: CanvasTool.cutStamp);
+      notifier.value = notifier.value.copyWith(tool: CanvasTool.brush);
+
+      expect(
+        notifier.railEntry(CanvasTool.cut),
+        CanvasTool.cut,
+        reason: 'the tile from BEFORE the stamp is what waited',
+      );
+    });
+
+    test('already inside the group, a press stays put — even on the stamp', () {
+      // The other half of the rule, and the older one: a button must not
+      // move a hand off the tile it is working on.
+      final notifier = PaintToolStateNotifier(BrushToolState.defaults);
+      addTearDown(notifier.dispose);
+
+      notifier.value = notifier.value.copyWith(tool: CanvasTool.cutStamp);
+      expect(notifier.railEntry(CanvasTool.cut), CanvasTool.cutStamp);
+
+      notifier.value = notifier.value.copyWith(tool: CanvasTool.fillShape);
+      expect(notifier.railEntry(CanvasTool.fill), CanvasTool.fillShape);
     });
 
     test('the state it was CONSTRUCTED with counts as a visit', () {
@@ -121,6 +151,10 @@ void main() {
 
       notifier.value = notifier.value.copyWith(tool: CanvasTool.fillShape);
       expect(notifier.value.tool, CanvasTool.fill, reason: 'refused');
+
+      // Read from OUTSIDE the group, or the "stay put" half would answer
+      // and the memory would never be consulted.
+      notifier.value = notifier.value.copyWith(tool: CanvasTool.brush);
       expect(notifier.railEntry(CanvasTool.fill), CanvasTool.fill);
     });
   });

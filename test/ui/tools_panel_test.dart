@@ -231,7 +231,6 @@ void main() {
       final picked = <CanvasTool>[];
       const memory = <CanvasTool, CanvasTool>{
         CanvasTool.fill: CanvasTool.fillShape,
-        CanvasTool.cut: CanvasTool.cutStamp,
       };
       await tester.pumpWidget(
         _panel(
@@ -242,17 +241,16 @@ void main() {
       );
 
       await tester.tap(find.byKey(const ValueKey<String>('tool-fill-button')));
-      await tester.tap(find.byKey(const ValueKey<String>('tool-cut-button')));
-      expect(picked, [CanvasTool.fillShape, CanvasTool.cutStamp]);
-
       // A group with nothing remembered still lands on its default tile.
+      await tester.tap(find.byKey(const ValueKey<String>('tool-cut-button')));
+      expect(picked, [CanvasTool.fillShape, CanvasTool.cut]);
+
+      // With NO resolver at all (a host that owns no tool memory) the
+      // button still answers the half it can: stay if you are inside,
+      // otherwise the group's default.
       picked.clear();
       await tester.pumpWidget(
-        _panel(
-          tool: CanvasTool.brush,
-          onToolChanged: picked.add,
-          groupEntry: (group) => group,
-        ),
+        _panel(tool: CanvasTool.brush, onToolChanged: picked.add),
       );
       await tester.tap(find.byKey(const ValueKey<String>('tool-fill-button')));
       expect(picked, [CanvasTool.fill]);

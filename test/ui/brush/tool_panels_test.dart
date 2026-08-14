@@ -305,12 +305,45 @@ void main() {
           reason: '${entry.key}',
         );
       }
+      // Which tiles the button COMES BACK to. 유저 확정 2026-08-15: the
+      // stamp is not one of them — "찍기는 아예 성질이 다른거니까 그 외만
+      // 기억하도록."
+      const remembered = <CanvasTool, bool>{
+        CanvasTool.brush: true,
+        CanvasTool.eraser: true,
+        CanvasTool.eyedropper: true,
+        CanvasTool.fill: true,
+        CanvasTool.fillShape: true,
+        CanvasTool.cut: true,
+        CanvasTool.cutStamp: false,
+        CanvasTool.guide: true,
+        CanvasTool.select: true,
+        CanvasTool.move: true,
+      };
+      expect(
+        remembered.keys.toSet(),
+        CanvasTool.values.toSet(),
+        reason: 'a new tool must answer this one too',
+      );
+      for (final entry in remembered.entries) {
+        expect(
+          canvasToolRailTileIsRemembered(entry.key),
+          entry.value,
+          reason: '${entry.key}',
+        );
+      }
+
       for (final tool in CanvasTool.values) {
         final group = canvasToolRailGroup(tool);
         expect(
           canvasToolRailGroup(group),
           group,
           reason: 'a group is named by one of its own members ($tool)',
+        );
+        expect(
+          canvasToolRailTileIsRemembered(group),
+          isTrue,
+          reason: 'a group can always come back to its own default ($tool)',
         );
         // The predicates that LIGHT the two shared buttons have to agree
         // with the table that RE-ENTERS them, or a tile could highlight one
