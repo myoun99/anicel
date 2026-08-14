@@ -605,6 +605,8 @@ void main() {
     'tlDropFolderInAttachFolder': (s) => s.tlDropFolderInAttachFolder,
     'tlDetachLayer': (s) => s.tlDetachLayer,
     'tlCutRun': (s) => s.tlCutRun,
+    'tlDuplicateFrame': (s) => s.tlDuplicateFrame,
+    'tlLinkDuplicateFrame': (s) => s.tlLinkDuplicateFrame,
     'tlCopyFrame': (s) => s.tlCopyFrame,
     'tlPasteLinkedFrame': (s) => s.tlPasteLinkedFrame,
     'tlPasteIndependentFrame': (s) => s.tlPasteIndependentFrame,

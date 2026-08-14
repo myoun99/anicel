@@ -547,6 +547,27 @@ class TimelineActionToolbar extends StatelessWidget {
       // clearing the row selection first. That is what "하나의 딜리트"
       // means — the button asks what is selected instead of the reach
       // deciding for it.
+      //
+      // 🚨T2 복제 — and THIS is what the menu is for. 유저 확정 2026-08-13:
+      // 「복제는 현재 액티브인 대상을 상대로 적용하는 것 … 각각 독립복제 /
+      // 링크복제」, per noun, which is why it is here and not on the shared
+      // pill. The layer's pair and the cut's already lived in their own
+      // menus; the frame's had nowhere to be until T24 kept this `▾`
+      // (유저: 「남기고 나중에 기능추가할거야」).
+      PanelFlyoutItem(
+        keyValue: 'duplicate-frame-button',
+        label: AppText.strings.tlDuplicateFrame,
+        icon: Icons.copy_all_outlined,
+        enabled: session.canDuplicateActiveBlock,
+        onSelected: () => session.duplicateActiveBlock(linked: false),
+      ),
+      PanelFlyoutItem(
+        keyValue: 'link-duplicate-frame-button',
+        label: AppText.strings.tlLinkDuplicateFrame,
+        icon: Icons.link,
+        enabled: session.canDuplicateActiveBlock,
+        onSelected: () => session.duplicateActiveBlock(linked: true),
+      ),
     ];
   }
 

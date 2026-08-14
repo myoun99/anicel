@@ -138,6 +138,68 @@ void main() {
     );
   });
 
+  /// 🚨T2 복제 — 「복붙은 선택하고 붙여넣기가 기본이지만, **복제는 현재
+  /// 액티브인 대상**을 상대로 적용하는 것」. Two things make it its own verb
+  /// rather than a shortcut through the clipboard: it ignores the selection,
+  /// and it must leave the clipboard alone.
+  testWidgets('복제 duplicates the block you are standing on, at its END', (
+    tester,
+  ) async {
+    final session = await _pump(tester, 'AAABB');
+
+    _stand(session, 1); // mid-hold, deliberately
+    session.duplicateActiveBlock(linked: false);
+
+    expect(
+      _row(session),
+      'AAAPPPBB',
+      reason: 'the copy went after the block, not into the middle of it',
+    );
+  });
+
+  testWidgets('링크복제 makes no new cel', (tester) async {
+    final session = await _pump(tester, 'AAABB');
+
+    _stand(session, 0);
+    session.duplicateActiveBlock(linked: true);
+
+    expect(_row(session), 'AAAAAABB');
+    expect(_layer(session).frames.length, 2);
+  });
+
+  testWidgets('⛔복제 does not touch the clipboard', (tester) async {
+    final session = await _pump(tester, 'AAABB');
+
+    _stand(session, 3);
+    session.copyFrameAtCurrentFrame(); // B is on the clipboard
+    _stand(session, 0);
+    session.duplicateActiveBlock(linked: true); // duplicating A
+    _stand(session, 0);
+    session.pasteLinkedFrameAtCurrentFrame();
+
+    expect(
+      _row(session).startsWith('BB'),
+      isTrue,
+      reason: 'the paste still put B down, so 복제 left the clipboard alone',
+    );
+  });
+
+  testWidgets('⛔복제 ignores the selection — it acts on the active block', (
+    tester,
+  ) async {
+    final session = await _pump(tester, 'AAABB');
+
+    _select(session, 3, 5); // B is the selected RANGE…
+    session.selectFrameIndex(0); // …and the playhead stands back on A
+    session.duplicateActiveBlock(linked: true);
+
+    expect(
+      _row(session),
+      'AAAAAABB',
+      reason: 'B survived untouched; a paste here would have replaced it',
+    );
+  });
+
   testWidgets('undo puts the whole splice back in one step', (tester) async {
     final session = await _pump(tester, 'AABBBCC');
 
