@@ -112,6 +112,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.onShowSecondsChanged,
     this.railExtent,
     this.audioLane,
+    this.onDropMediaAssetOnLayer,
     this.isLayerSoloed,
     this.onOpenLayerMixer,
     this.attachArrowPlacementOf,
@@ -246,6 +247,10 @@ class XSheetTimelineGrid extends StatefulWidget {
 
   /// What the audio lane may ask the session to do; null = display-only.
   final TimelineAudioLaneCallbacks? audioLane;
+
+  /// A media-browser row dropped on a drawing column; null refuses the drag.
+  final void Function(LayerId layerId, int frameIndex, String path)?
+  onDropMediaAssetOnLayer;
 
   /// The SE column's mixer (R10 R3): its solo tint, and the speaker press
   /// that opens the window carrying mute/solo/fader/pan. Null hides the
@@ -1132,6 +1137,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       projectFrameRate: widget.projectFrameRate,
       showSeconds: widget.showSeconds,
       audioLane: widget.audioLane,
+      onDropMediaAssetOnLayer: widget.onDropMediaAssetOnLayer,
       seClipMarkerTooltip: widget.seClipMarkerTooltip,
       seSpillsIn: widget.seSpillInLayerIds.contains(layer.id),
       layer: layer,

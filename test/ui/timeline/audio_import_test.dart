@@ -598,4 +598,104 @@ void main() {
       );
     });
   });
+
+  testWidgets('a pool row dropped on a DRAWING layer reports the layer and '
+      'the frame it landed on', (tester) async {
+    final session = _session();
+    addTearDown(session.dispose);
+    const dragSourceKey = ValueKey<String>('drag-source-drawing');
+    const png = 'C:/art/BG_a12.png';
+    LayerId? droppedLayer;
+    int? droppedFrame;
+    String? droppedPath;
+
+    final drawing = session.requireActiveCut.layers.firstWhere(
+      (layer) => layer.id == _celLayerId,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              SizedBox(
+                height: 40,
+                child: Draggable<MediaAssetDragData>(
+                  data: const MediaAssetDragData(path: png, name: 'BG.png'),
+                  // Anchored the way the media browser's row anchors — the
+                  // frame the drop names is read off `details.offset`, and
+                  // that only equals the pointer under this strategy. The
+                  // pool row's own use of it is pinned in the media browser
+                  // suite; here it is what makes the frame below exact.
+                  dragAnchorStrategy: pointerDragAnchorStrategy,
+                  feedback: const SizedBox(width: 8, height: 8),
+                  child: Container(
+                    key: dragSourceKey,
+                    width: 40,
+                    height: 40,
+                    color: const Color(0xFF888888),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: ListenableBuilder(
+                  listenable: session,
+                  builder: (context, _) => TimelineTabHost(
+                    session: session,
+                    orientation: TimelineOrientation.horizontal,
+                    onOrientationChanged: (_) {},
+                    pixelsPerFrame: 48,
+                    onPixelsPerFrameChanged: (_) {},
+                    showSeconds: false,
+                    onShowSecondsChanged: (_) {},
+                    onPlaceMediaAsset: (layerId, frameIndex, path) {
+                      droppedLayer = layerId;
+                      droppedFrame = frameIndex;
+                      droppedPath = path;
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final dropTarget = find.byKey(
+      ValueKey<String>('timeline-layer-asset-drop-${drawing.id}'),
+    );
+    expect(dropTarget, findsOneWidget);
+    // A whole-row target is WIDER THAN THE SCREEN — it spans every frame of
+    // the cut — so its centre is off the 800x600 test view and a drag sent
+    // there lands on nothing. The drop goes three cells in from its leading
+    // edge, which is both on screen and unambiguously inside one cell.
+    const cell = 48.0; // pixelsPerFrame above
+    final target = tester.getRect(dropTarget);
+    final dropPoint = Offset(
+      target.left + cell * 3 + cell / 2,
+      target.center.dy,
+    );
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(dragSourceKey)),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await gesture.moveTo(dropPoint);
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(droppedLayer, drawing.id);
+    // WHERE it landed, not where the row starts: the drop fills the
+    // window's answers, and a drop at frame 3 that said 0 would make the
+    // user fix it every time.
+    expect(droppedFrame, 3);
+    expect(
+      droppedPath,
+      png,
+      reason: 'the drop reports; the window is what asks',
+    );
+  });
 }

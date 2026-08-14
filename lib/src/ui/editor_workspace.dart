@@ -2442,6 +2442,21 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             ]),
             builder: (context) => TimelineTabHost(
               session: widget.session,
+              // A pool row dropped on a drawing layer: select what it
+              // landed on, then open the place window with the file
+              // already decided. The drop FILLS the answers and the
+              // window still asks them — the round's rule, so a drop
+              // cannot commit something nobody looked at.
+              // A drop FILLS the window's answers rather than deciding for
+              // the user (§7): the row it landed on becomes the active
+              // layer and the cell it landed on becomes the playhead, and
+              // the window opens on top of that with the file already
+              // listed. Nothing imports until the window says so.
+              onPlaceMediaAsset: (layerId, frameIndex, path) {
+                widget.session.selectLayer(layerId);
+                widget.session.selectFrameIndex(frameIndex);
+                _openImportWindow(initialPaths: [path], placeOnly: true);
+              },
               orientation: _timelineOrientation.value,
               onOrientationChanged: (orientation) {
                 _timelineOrientation.value = orientation;

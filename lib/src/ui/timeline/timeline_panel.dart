@@ -69,6 +69,7 @@ class TimelinePanel extends StatefulWidget {
     this.audioPeaksFor,
     this.seClipMarkerTooltip,
     this.audioLane,
+    this.onDropMediaAssetOnLayer,
     this.isLayerSoloed,
     this.onOpenLayerMixer,
     required this.onAddLayer,
@@ -219,6 +220,10 @@ class TimelinePanel extends StatefulWidget {
   /// What the audio lane may ask the session to do, both orientations;
   /// null = display-only.
   final TimelineAudioLaneCallbacks? audioLane;
+
+  /// A media-browser row dropped on a drawing layer; null refuses the drag.
+  final void Function(LayerId layerId, int frameIndex, String path)?
+  onDropMediaAssetOnLayer;
 
   /// The SE row's mixer (R10 R3), both orientations: its solo tint, and
   /// the speaker press that opens the window carrying mute/solo/fader/pan.
@@ -548,6 +553,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onShowSecondsChanged: widget.onShowSecondsChanged,
                     railExtent: widget.timelineRailExtent,
                     audioLane: widget.audioLane,
+                    onDropMediaAssetOnLayer: widget.onDropMediaAssetOnLayer,
                     onAddLayer: widget.onAddLayer,
                     onOpenLayerMixer: widget.onOpenLayerMixer,
                     attachArrowPlacementOf: (layerId) => attachArrows[layerId],
@@ -628,6 +634,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onShowSecondsChanged: widget.onShowSecondsChanged,
                     railExtent: widget.xsheetRailExtent,
                     audioLane: widget.audioLane,
+                    onDropMediaAssetOnLayer: widget.onDropMediaAssetOnLayer,
                     onAddLayer: widget.onAddLayer,
                     onOpenLayerMixer: widget.onOpenLayerMixer,
                     // R10 R6: the sheet carries every column the rail does —

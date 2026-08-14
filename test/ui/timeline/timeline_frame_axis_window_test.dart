@@ -58,6 +58,27 @@ void main() {
       expect(zoomedIn.contentMainExtent == zoomedOut.contentMainExtent, isFalse,
           reason: 'sanity: the CONTENT did move');
     });
+
+    test('frameIndexAt reads edgeAt backwards, window and all', () {
+      // A drop names the frame it landed ON, so the two directions have to
+      // agree everywhere — including on a scrolled row, where row-local
+      // coordinates are window-local and the leading edge goes negative.
+      for (final geometry in [
+        base,
+        base.windowed(originPx: 960, extentPx: 3448),
+      ]) {
+        for (final frame in [0, 1, 39, 40, 199]) {
+          final edge = geometry.edgeAt(frame);
+          expect(geometry.frameIndexAt(edge), frame);
+          expect(geometry.frameIndexAt(edge + 23.9), frame,
+              reason: 'anywhere inside the cell is that cell');
+        }
+      }
+      // Past either end names the end frame — a drop cannot land on an
+      // index the row does not have.
+      expect(base.frameIndexAt(-500), 0);
+      expect(base.frameIndexAt(base.edgeAt(199) + 500), 199);
+    });
   });
 
   Future<EditorSessionManager> pumpTimeline(

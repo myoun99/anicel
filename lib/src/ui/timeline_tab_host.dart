@@ -57,6 +57,7 @@ class TimelineTabHost extends StatefulWidget {
   const TimelineTabHost({
     super.key,
     required this.session,
+    this.onPlaceMediaAsset,
     required this.orientation,
     required this.onOrientationChanged,
     required this.pixelsPerFrame,
@@ -82,6 +83,13 @@ class TimelineTabHost extends StatefulWidget {
   });
 
   final EditorSessionManager session;
+
+  /// A media-browser row dropped on a drawing layer — the host opens the
+  /// place window with the drop's answers filled in. Null leaves the rows
+  /// refusing the drag, which is what a surface with nowhere to open a
+  /// window should do.
+  final void Function(LayerId layerId, int frameIndex, String path)?
+  onPlaceMediaAsset;
   final TimelineOrientation orientation;
   final ValueChanged<TimelineOrientation> onOrientationChanged;
   final double pixelsPerFrame;
@@ -788,6 +796,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // release — the repo-live drag session rebuilt every panel per
             // move and made the slide feel heavy (R5-⑧); the session drag
             // API stays for callers that need the cross-panel mirror.
+            onDropMediaAssetOnLayer: widget.onPlaceMediaAsset,
             audioLane: TimelineAudioLaneCallbacks(
               // Media-browser drops: link the dragged sound to the block.
               onDropMediaAsset: (layerId, blockStartFrame, path) =>

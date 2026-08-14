@@ -9,6 +9,8 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_row_address.dart';
+import '../media/media_asset_drag_data.dart';
+import '../theme/app_theme.dart' show AppColors;
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_editor_policy.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -51,6 +53,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.instructionDefById,
     this.audioPeaksFor,
     this.projectFrameRate = ProjectFrameRate.fps24,
+    this.onDropMediaAssetOnLayer,
     this.seClipMarkerTooltip,
     this.showSeconds = false,
     this.audioLane,
@@ -141,6 +144,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// Waveform peaks resolver for SE rows' audio clips; null hides them.
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
   final ProjectFrameRate projectFrameRate;
+
+  /// A media-browser row dropped on THIS drawing layer. Null on the rows
+  /// that cannot take one (sound has its own block-level target).
+  final void Function(LayerId layerId, int frameIndex, String path)?
+  onDropMediaAssetOnLayer;
 
   /// Clipped-take marker tooltip (REC1-D); null = markers off (the
   /// clipping-notice toggle, threaded as the string itself).
@@ -458,6 +466,45 @@ class TimelineFrameCellsRow extends StatelessWidget {
           ),
         // Grips ride ABOVE the chrome so the edges keep comma-drag priority.
         if (spanGrips.isNotEmpty) spanLayer(spanGrips),
+        // A media-browser row dropped on a DRAWING layer opens the place
+        // window with this cut and this layer already answered — the drop
+        // FILLS the answers, and the window still asks them.
+        //
+        // TOP OF THE STACK, and that is the whole of it: mounted with the
+        // span overlays it sat UNDER the range-gesture layer and the edit
+        // chrome, both of which cover the row, and a drop landed on them
+        // instead. A DragTarget is translucent to hit testing and carries
+        // no recognizer of its own, so being on top costs the layers below
+        // nothing — the pan that selects a range still reaches them.
+        //
+        // Whole-row rather than per-cell: what a drop names here is the
+        // LAYER, and a target that only lit over exposed cels would refuse
+        // the empty stretch of a row nobody has drawn on yet.
+        if (!layerKindUsesSeSheetCells(layer.kind) &&
+            layerKindHoldsDrawings(layer.kind) &&
+            onDropMediaAssetOnLayer != null)
+          // Through the SPAN layout, not `Positioned.fill`: this row's box
+          // reports the whole content extent while it lays out and
+          // hit-tests only the geometry's WINDOW, so a filled child is
+          // mostly rectangle nobody can touch — its centre lands outside
+          // the window on any row long enough to scroll.
+          spanLayer([
+            TimelineFrameSpan(
+              placement: TimelineFrameSpanPlacement(
+                startIndex: frames.frameStartIndex,
+                endIndexExclusive: frames.frameEndIndexExclusive,
+              ),
+              child: _LayerAssetDropTarget(
+                dropKey: ValueKey<String>(
+                  '$keyPrefix-layer-asset-drop-${layer.id}',
+                ),
+                layerId: layer.id,
+                geometry: geometry,
+                axis: axis,
+                onDrop: onDropMediaAssetOnLayer!,
+              ),
+            ),
+          ]),
       ],
     );
     // THE row's box (zoom round): it reports the row's content extent, as it
@@ -478,5 +525,70 @@ class TimelineFrameCellsRow extends StatelessWidget {
     return axis == Axis.vertical
         ? SizedBox(width: crossAxisExtent, child: body)
         : body;
+  }
+}
+
+/// The whole-row target a media-browser row can be dropped on, and the one
+/// thing it has to work out: WHICH FRAME the drop landed on.
+///
+/// 🚨A drag in flight does not reach this row as pointer events — Flutter
+/// dispatches a down pointer's later events to the hit-test path recorded at
+/// pointer-DOWN, which is the pool row the drag started from. The only
+/// position a target is handed is [DragTargetDetails.offset], and that is
+/// `pointer - dragStartPoint`: it equals the pointer ONLY while the drag
+/// source anchors its feedback at the pointer. The pool row does
+/// (`pointerDragAnchorStrategy`, said there for this reason) — change that
+/// and this lands a frame or five off, silently.
+class _LayerAssetDropTarget extends StatelessWidget {
+  const _LayerAssetDropTarget({
+    required this.dropKey,
+    required this.layerId,
+    required this.geometry,
+    required this.axis,
+    required this.onDrop,
+  });
+
+  final Key dropKey;
+  final LayerId layerId;
+  final TimelineFrameGeometryHandle geometry;
+  final Axis axis;
+  final void Function(LayerId layerId, int frameIndex, String path) onDrop;
+
+  /// This widget's box IS the span that starts at the row's first frame, so
+  /// a local offset plus that frame's edge is a ROW-local one — which is the
+  /// coordinate space the geometry answers in, window and all.
+  int _frameIndexAt(BuildContext context, Offset globalPosition) {
+    final frames = geometry.value;
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) {
+      return frames.frameStartIndex;
+    }
+    final local = box.globalToLocal(globalPosition);
+    return frames.frameIndexAt(
+      frames.edgeAt(frames.frameStartIndex) +
+          (axis == Axis.horizontal ? local.dx : local.dy),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DragTarget<MediaAssetDragData>(
+      key: dropKey,
+      onAcceptWithDetails: (details) => onDrop(
+        layerId,
+        _frameIndexAt(context, details.offset),
+        details.data.path,
+      ),
+      // Only while a matching drag is in flight; an empty SizedBox absorbs
+      // no hit test, so taps and cell gestures keep falling through the rest
+      // of the time.
+      builder: (context, candidates, _) => candidates.isEmpty
+          ? const SizedBox.expand()
+          : DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.all(color: AppColors.accent, width: 2),
+              ),
+            ),
+    );
   }
 }

@@ -80,6 +80,23 @@ class TimelineFrameGeometry {
   bool contains(int frameIndex) =>
       frameIndex >= frameStartIndex && frameIndex < frameEndIndexExclusive;
 
+  /// The frame whose cell holds [mainOffset] — [edgeAt] read backwards, and
+  /// it lives beside it so the two cannot drift. Row-local coordinates, so a
+  /// windowed row's scrolled offsets answer without knowing about the window.
+  /// Clamped INTO the row: a drop past either end names the end frame rather
+  /// than an index the row does not have.
+  int frameIndexAt(double mainOffset) {
+    if (frameCellExtent <= 0 || frameEndIndexExclusive <= frameStartIndex) {
+      return frameStartIndex;
+    }
+    final cell = ((mainOffset - leadingFrameSpacerWidth) / frameCellExtent)
+        .floor();
+    return (frameStartIndex + cell).clamp(
+      frameStartIndex,
+      frameEndIndexExclusive - 1,
+    );
+  }
+
   /// The same geometry seen through a window starting at [originPx] and
   /// [extentPx] wide. Only the owner (the rows body) calls this.
   TimelineFrameGeometry windowed({
