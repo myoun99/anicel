@@ -4,6 +4,7 @@ import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer_effect.dart';
 import '../../models/delete_subject.dart';
+import '../../models/edit_instance_subject.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart';
 import '../cut_command_group.dart';
@@ -666,15 +667,20 @@ class TimelineActionToolbar extends StatelessWidget {
           onPressed: () => session.addLayerOfKind(LayerKind.animation),
           entriesBuilder: _addLayerEntries,
         ),
-        // ① 유저 확정: 「레이어 알약 밖으로: 레이어 이름변경」. Out of the
-        // menu and onto the pill, beside the ＋ and the 🗑 that were already
-        // out here.
-        _iconButton(
-          key: const ValueKey<String>('rename-layer-button'),
-          tooltip: AppText.strings.tlRenameLayer,
-          icon: Icons.drive_file_rename_outline,
-          onPressed: _canEditActiveLayer ? onRenameLayer : null,
-        ),
+        // ⛔THE LAYER RENAME IS GONE FROM HERE TOO — T25 (유저 2026-08-14:
+        // 「레이어 이름변경 버튼 필요없어지니 삭제」).
+        //
+        // ① had put it here, out of the menu and onto the pill. It leaves on
+        // the SAME condition the layer delete left on, one rung later: the
+        // shared verb has to already do this button's whole job.
+        //
+        // ✅It does, and it did before T25 started —
+        // `renameActiveLayerWithDialog` reads `renameableSelectedLayerIds`
+        // and commits `renameSelectedLayers`, which IS 확정 #20's batch
+        // (「선택된 편집가능 레이어 전부를 같은 이름으로 일괄 변경」). The
+        // shared Edit Instance routes to that exact function, so renaming a
+        // layer is now: select the row, press the one Edit Instance.
+        //
         // ⛔THE LAYER DELETE IS GONE FROM HERE — ⑰ is finished.
         //
         // It stood beside this `＋` on ONE stated condition: the shared
@@ -718,9 +724,22 @@ class TimelineActionToolbar extends StatelessWidget {
   /// ELSE happened to notify, so selecting rows left the one delete greyed
   /// out — the state was right and the button had not looked again (㉞'s
   /// shape, one floor up).
+  /// ⚠️And to the CURRENT ROW, for the same reason one floor along.
+  ///
+  /// T25 moved Edit Instance in here, and it brought its subscription with
+  /// it: `currentRow` publishes through its own notifier WITHOUT a session
+  /// notify (it moves per press), so a baked button that only re-reads on a
+  /// session notify shows the answer from whichever row you were standing on
+  /// last. Dropping this listener while moving the button is exactly how
+  /// ㉞'s shape comes back, and the storyboard's transition row caught it
+  /// immediately — its Edit Instance is enabled by the HOST's answer about
+  /// the standing row and nothing else.
   Widget _sharedPill() => ValueListenableBuilder<List<TimelineRowAddress>>(
     valueListenable: session.rowSelection,
-    builder: (context, _, _) => _sharedPillBody(),
+    builder: (context, _, _) => ValueListenableBuilder<TimelineRowAddress?>(
+      valueListenable: session.currentRowListenable,
+      builder: (context, _, _) => _sharedPillBody(),
+    ),
   );
 
   Widget _sharedPillBody() => _StaticCommandGroup(
@@ -731,10 +750,43 @@ class TimelineActionToolbar extends StatelessWidget {
       session.canCopyFrameAtCurrentFrame,
       session.canPasteLinkedFrameAtCurrentFrame,
       session.canPasteIndependentFrameAtCurrentFrame,
+      // T25: and the fifth resident reads its own subject, for the same
+      // reason the delete reads `deleteSubject` — the button's enablement
+      // and what the press DOES have to come from one answer.
+      session.editInstanceSubject,
+      // ...plus the HOST's answer, which no session getter can reach: the
+      // storyboard's standing row is separate state from its drawing target
+      // (유저 2026-07-27). Leaving it out bakes a stale enablement in
+      // exactly the case that has no other source.
+      onEditInstance != null && _canEditInstance,
     ),
     builder: (context) => CommandPill(
       key: const ValueKey<String>('timeline-toolbar-shared-group'),
       children: [
+        // 🚨T25 — Edit Instance, on the SHARED pill because its subject is
+        // 「지금 무엇이 선택됐나」 and that is what this pill is for.
+        //
+        // ⚠️It keeps the key it had on the frame pill. The button moved; it
+        // did not become a different button, and every test that reached it
+        // still does.
+        _iconButton(
+          key: const ValueKey<String>('rename-frame-button'),
+          tooltip: AppText.strings.tlEditInstance,
+          icon: Icons.edit_outlined,
+          // Two sources, and they are asking different things rather than
+          // the same thing twice: the SUBJECT is what the session has
+          // selected, while [_canEditInstance] carries what only a host can
+          // know — the storyboard's standing row is separate state from its
+          // drawing target (유저 2026-07-27), so no session getter can see
+          // it. Either being a yes is a yes.
+          onPressed:
+              onEditInstance != null &&
+                  (session.editInstanceSubject != EditInstanceSubject.nothing ||
+                      _canEditInstance)
+              ? onEditInstance
+              : null,
+        ),
+        const PillDivider(),
         _iconButton(
           key: const ValueKey<String>('copy-frame-button'),
           tooltip: AppText.strings.tlCopyFrame,
@@ -856,25 +908,15 @@ class TimelineActionToolbar extends StatelessWidget {
       // gate fresh, while a baked button only re-reads when something wakes
       // it — and `currentRow` publishes WITHOUT a session notify (it moves
       // per press). Same shape ⑰'s shared delete hit with `rowSelection`.
-      ValueListenableBuilder<TimelineRowAddress?>(
-        valueListenable: session.currentRowListenable,
-        builder: (context, _, _) => _StaticCommandGroup(
-          rebuildKey: (
-            onEditInstance != null && _canEditInstance,
-            session.languageSettings.value,
-          ),
-          builder: (context) => _iconButton(
-            key: const ValueKey<String>('rename-frame-button'),
-            tooltip: AppText.strings.tlEditInstance,
-            icon: Icons.edit_outlined,
-            // A host with no dispatch to offer greys it out — the same
-            // answer the enablement gate gives, from a different cause.
-            onPressed: onEditInstance != null && _canEditInstance
-                ? onEditInstance
-                : null,
-          ),
-        ),
-      ),
+      // ⛔EDIT INSTANCE HAS LEFT THIS PILL — it is on the SHARED one now
+      // (T25, 유저 2026-08-14: 「인스턴스 편집 버튼도 공통버튼으로 이동.
+      // 그래서 **선택범위 통해 동사통일화** 가능하게」).
+      //
+      // It belonged here while its subject was the frame under the playhead.
+      // With a selection to ask, the subject is whatever IS selected — a
+      // cut, some rows, or that frame — and "acts on whatever is selected"
+      // is the shared pill's entire definition. It walks the same ladder the
+      // shared delete already walks.
       const PillDivider(),
       // Design D: the rigid shove a drag used to do, aimed. Scope = the live
       // selection's rows, or the current row at the current cell. ONE pair

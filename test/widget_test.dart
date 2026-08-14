@@ -2776,9 +2776,19 @@ Line 8''';
       tester,
       const ValueKey<String>('paste-layer-button'),
     );
+    // T25: the loose rename is folded into the shared Edit Instance, whose
+    // subject is the selection — so the row is named first, exactly as the
+    // ONE delete already asks.
+    {
+      final session = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session;
+      session.beginRowSelection(LayerRowAddress(session.activeLayerId!));
+      await tester.pumpAndSettle();
+    }
     await _tapToolbarButton(
       tester,
-      const ValueKey<String>('rename-layer-button'),
+      const ValueKey<String>('rename-frame-button'),
     );
     await tester.enterText(
       find.byKey(const ValueKey<String>('rename-layer-text-field')),
@@ -2851,9 +2861,19 @@ Line 8''';
       tester,
       const ValueKey<String>('duplicate-layer-button'),
     );
+    // T25: the loose rename is folded into the shared Edit Instance, whose
+    // subject is the selection — so the row is named first, exactly as the
+    // ONE delete already asks.
+    {
+      final session = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session;
+      session.beginRowSelection(LayerRowAddress(session.activeLayerId!));
+      await tester.pumpAndSettle();
+    }
     await _tapToolbarButton(
       tester,
-      const ValueKey<String>('rename-layer-button'),
+      const ValueKey<String>('rename-frame-button'),
     );
     await tester.enterText(
       find.byKey(const ValueKey<String>('rename-layer-text-field')),

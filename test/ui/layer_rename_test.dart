@@ -13,12 +13,22 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/services/project_repository.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import 'flyout_test_helpers.dart';
 
-const _renameButtonKey = ValueKey<String>('rename-layer-button');
+/// 🚨T25 — renaming a layer goes through the SHARED pill's Edit Instance
+/// now (유저 2026-08-14: 「인스턴스 편집 버튼도 공통버튼으로 이동 … 그러고
+/// 레이어 이름변경 버튼 필요없어지니 삭제」).
+///
+/// ⛔`rename-layer-button` is gone, so this file follows the FLOW rather
+/// than the widget: **select the row, then press the one verb** — the same
+/// two steps the layer DELETE already took when ⑰ absorbed it. What the
+/// rename does once it opens has not changed at all.
+const _renameButtonKey = ValueKey<String>('rename-frame-button');
 const _dialogKey = ValueKey<String>('rename-layer-dialog');
 const _textFieldKey = ValueKey<String>('rename-layer-text-field');
 const _cancelButtonKey = ValueKey<String>('rename-layer-cancel-button');
@@ -31,14 +41,17 @@ const _layerBId = LayerId('layer-b');
 const _frameId = FrameId('frame-a');
 
 void main() {
-  testWidgets('Rename Layer is a button ON the layer pill and opens a '
-      'prefilled dialog', (tester) async {
+  testWidgets('a selected row makes the shared Edit Instance rename it, '
+      'prefilled', (tester) async {
     await tester.pumpWidget(const AnicelApp());
 
-    // ① moved it out of the menu (유저: 「레이어 알약 밖으로: 레이어
-    // 이름변경」), so it is reachable without opening anything — which is
-    // the whole of what "밖으로" asked for.
+    // ① took it out of the menu; T25 took it out of the LAYER pill. It is
+    // still reachable without opening anything — which is all 「밖으로」
+    // ever asked for — but the door is the shared one now, and which noun
+    // it means comes from the selection.
     expect(find.byKey(_renameButtonKey), findsOneWidget);
+
+    await _selectActiveRow(tester);
     expect(await readCommandEnabled(tester, _renameButtonKey), isTrue);
 
     await _tapKey(tester, _renameButtonKey);
@@ -47,9 +60,13 @@ void main() {
     expect(_fieldText(tester), 'A');
   });
 
-  testWidgets('Rename Layer is disabled without an active layer', (
+  testWidgets('with no layer at all there is nothing to rename', (
     tester,
   ) async {
+    // The subject ladder's bottom rung: no cut selection, no rows, no cell
+    // to name — `EditInstanceSubject.nothing`, and the one verb dims. It
+    // used to be the loose button's own `_canEditActiveLayer`; the answer
+    // is the same and now only one thing computes it.
     await _pumpHome(tester, project: _project(layers: const []));
 
     expect(await readCommandEnabled(tester, _renameButtonKey), isFalse);
@@ -83,6 +100,7 @@ void main() {
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
 
+    await _selectActiveRow(tester);
     await _tapKey(tester, _renameButtonKey);
     await tester.enterText(find.byKey(_textFieldKey), 'BG');
     await _tapKey(tester, _cancelButtonKey);
@@ -98,6 +116,7 @@ void main() {
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
 
+    await _selectActiveRow(tester);
     await _tapKey(tester, _renameButtonKey);
     await tester.enterText(find.byKey(_textFieldKey), '   ');
     await _tapKey(tester, _okButtonKey);
@@ -168,7 +187,20 @@ Future<void> _pumpHome(
 Future<void> _tapKey(WidgetTester tester, ValueKey<String> key) =>
     tapCommandButton(tester, key);
 
+/// T25's first step. `beginRowSelection` is the real verb the rail's select
+/// drag calls — it claims the selection domain as well as filling it, which
+/// poking the notifier would skip. Lifted from `layer_delete_test`, where
+/// the same two-step flow landed one rung earlier.
+Future<void> _selectActiveRow(WidgetTester tester) async {
+  final session = tester
+      .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+      .session;
+  session.beginRowSelection(LayerRowAddress(session.activeLayerId!));
+  await tester.pumpAndSettle();
+}
+
 Future<void> _renameLayer(WidgetTester tester, String name) async {
+  await _selectActiveRow(tester);
   await _tapKey(tester, _renameButtonKey);
   await tester.enterText(find.byKey(_textFieldKey), name);
   await _tapKey(tester, _okButtonKey);

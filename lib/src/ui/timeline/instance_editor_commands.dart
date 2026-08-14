@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
+import '../../models/edit_instance_subject.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
 import '../../models/media_asset.dart' show mediaAssetDefaultName;
@@ -16,6 +17,8 @@ import '../dialogs/text_cel_dialog.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
 import 'camera_key_edit.dart';
+import 'layer_name_commands.dart'
+    show renameActiveCutWithDialog, renameActiveLayerWithDialog;
 
 /// THE instance editor, in one place: what a double-tap on a cell opens, and
 /// what the frame pill's `Edit Instance` opens at the playhead.
@@ -94,6 +97,38 @@ Future<void> activateCellEditor(
       break;
     case LayerKind.animation || LayerKind.storyboard || LayerKind.image:
       await _renameSelectedFrame(context, session);
+  }
+}
+
+/// 🚨T25 — the SHARED pill's `Edit Instance`: whatever is selected, renamed.
+///
+/// 유저 확정 2026-08-14: 「인스턴스 편집 버튼도 공통버튼으로 이동. 그래서
+/// **선택범위 통해 동사통일화** 가능하게. 그러고 **레이어 이름변경 버튼
+/// 필요없어지니 삭제**」.
+///
+/// ★The ladder is delete's ([EditInstanceSubject]), and each rung was
+/// already a working verb — this gives the three of them one door.
+///
+/// ⚠️The layer rung in particular was ALREADY the batch confirmed #20 asks
+/// for (「선택된 편집가능 레이어 전부를 같은 이름으로 일괄 변경」):
+/// `renameActiveLayerWithDialog` reads `renameableSelectedLayerIds` and
+/// commits `renameSelectedLayers`. Deleting the loose rename button is safe
+/// BECAUSE of that — the successor does the predecessor's whole job, which
+/// is the condition [[duplication-program]] makes the last step wait for.
+Future<void> editSelectionInstance(
+  BuildContext context,
+  EditorSessionManager session, {
+  Axis previewAxis = Axis.horizontal,
+}) async {
+  switch (session.editInstanceSubject) {
+    case EditInstanceSubject.cuts:
+      await renameActiveCutWithDialog(context, session);
+    case EditInstanceSubject.layers:
+      await renameActiveLayerWithDialog(context, session);
+    case EditInstanceSubject.cells:
+      await editActiveInstance(context, session, previewAxis: previewAxis);
+    case EditInstanceSubject.nothing:
+      break;
   }
 }
 
