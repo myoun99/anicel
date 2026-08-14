@@ -136,9 +136,14 @@ void main() {
       expect(timeline.length, 3);
     });
 
-    test('a far drag is a reorder, not a landing in the space beyond', () {
-      // Rightward: a dragged well past b does not park in the empty space
-      // out there — it takes b's place, and b takes a's.
+    test('a drag that reaches the seat exchanges the pair', () {
+      // Rightward: a dragged onto b's seat takes b's place, and b takes a's.
+      // ⚠️This used to be asserted with a FAR drag (+8) and the name "not a
+      // landing in the space beyond", which pinned the old seat-and-stop:
+      // the run froze on its seat and the rest of the drag was ignored. The
+      // user asked for the opposite (UI 08-14 #5, 「앞뒤 넘어가고나서도 빈
+      // 프레임쪽 이동가능해야하는데 이동불가함」), so the exchange is now
+      // shown at the seat itself and the space beyond has its own test.
       final rightward = layerWith(
         'a',
         {
@@ -151,7 +156,7 @@ void main() {
         source: rightward,
         target: rightward,
         blockStartIndex: 0,
-        frameDelta: 8,
+        frameDelta: 5,
       );
       expect(right, isNotNull);
       // A clean exchange: a moves to 5 where b was, b to 0 where a was.
@@ -161,9 +166,9 @@ void main() {
       expect(right.sourceAfter.timeline.length, 2);
 
       // Leftward reads the same way, which is the case the user hit: with
-      // eighteen empty frames ahead of the pair, carrying the gaps along
-      // dropped the dragged block onto the head of the row instead of into
-      // its neighbour's place.
+      // empty frames ahead of the pair, carrying the gaps along dropped the
+      // dragged block onto the head of the row instead of into its
+      // neighbour's place.
       final leftward = layerWith(
         'a',
         {
@@ -176,13 +181,39 @@ void main() {
         source: leftward,
         target: leftward,
         blockStartIndex: 8,
-        frameDelta: -7,
+        frameDelta: -4,
       );
       expect(left, isNotNull);
       expect(left!.destinationStartIndex, 4);
       expect(left.sourceAfter.timeline[4]!.frameId, const FrameId('a-f2'));
       expect(left.sourceAfter.timeline[8]!.frameId, const FrameId('a-f1'));
       expect(left.sourceAfter.timeline.length, 2);
+    });
+
+    test('and the space beyond the seat stays reachable in the same drag', () {
+      // UI 08-14 #5: passing a neighbour is not the end of the drag. The
+      // timeline keys have to follow the hand past the seat, which is the
+      // half of the bug the layout planner alone cannot show.
+      final layer = layerWith(
+        'a',
+        {
+          0: const TimelineExposure.drawing(FrameId('a-f1'), length: 2),
+          5: const TimelineExposure.drawing(FrameId('a-f2'), length: 2),
+        },
+        frameIds: ['a-f1', 'a-f2'],
+      );
+      final plan = planDrawingBlockMove(
+        source: layer,
+        target: layer,
+        blockStartIndex: 0,
+        frameDelta: 8,
+      );
+
+      expect(plan, isNotNull);
+      expect(plan!.destinationStartIndex, 8, reason: 'where the hand is');
+      expect(plan.sourceAfter.timeline[0]!.frameId, const FrameId('a-f2'));
+      expect(plan.sourceAfter.timeline[8]!.frameId, const FrameId('a-f1'));
+      expect(plan.sourceAfter.timeline.length, 2);
     });
 
     test('R5 #13: the user\'s row — an empty head in front of the pair no '
@@ -204,9 +235,11 @@ void main() {
         source: layer,
         target: layer,
         blockStartIndex: 21,
-        // Past its neighbour's midpoint, which is what asks for a reorder;
-        // -3 alone lands exactly ON it and the rule keeps the order.
-        frameDelta: -4,
+        // Onto the seat its neighbour's length behind it, which is what
+        // asks for a reorder (F/T14). Dragging FURTHER now walks on into
+        // the empty head instead of stopping here — that is UI 08-14 #5 and
+        // it has its own test; this one is about WHOSE gap the head is.
+        frameDelta: -3,
       );
 
       expect(plan, isNotNull);
