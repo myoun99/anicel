@@ -222,6 +222,21 @@ class DisplayTileBuffer {
     _lastOverlay = Set<Object>.of(overlay);
   }
 
+  /// There is no live surface at all — an empty cel, or a host that never
+  /// had one.
+  ///
+  /// Then the composite is entirely static and the key alone is the correct
+  /// invalidation, so the tiles simply keep. The one thing to handle is the
+  /// TRANSITION: if a surface was there a paint ago its pixels are baked
+  /// into these tiles, and they have to go.
+  void syncWithoutLiveSurface() {
+    if (_lastCommitted != null || _lastOverlay != null) {
+      _dropTiles();
+      _lastCommitted = null;
+      _lastOverlay = null;
+    }
+  }
+
   Map<Object, Object>? _lastCommitted;
   Set<Object>? _lastOverlay;
 
