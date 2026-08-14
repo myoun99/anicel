@@ -13,12 +13,14 @@ import '../../models/pasteboard_bounds.dart';
 import '../../models/playback_quality.dart';
 import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
+import '../../models/tile_coord.dart';
 import '../debug/input_inspector.dart';
 import '../dev_profile.dart';
 import '../playback/layer_frame_image_cache.dart';
 import 'bitmap_surface_painter.dart';
 import 'composite_effect_paint.dart';
 import 'display_resample.dart';
+import 'display_tile_buffer.dart';
 import 'selection_float_overlay.dart';
 import 'static_composite_bake.dart';
 import 'layer_image_draw.dart';
@@ -276,6 +278,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
 
   /// 🚨(v) — the recording of everything a stroke cannot change.
   final StaticCompositeBake _bake = StaticCompositeBake();
+  final DisplayTileBuffer _tiles = DisplayTileBuffer();
 
   /// 🚨★★★ Bumped at EVERY `_images` mutation, and read into the bake's key.
   ///
@@ -300,6 +303,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     }
     _images.clear();
     _bake.dispose();
+    _tiles.dispose();
     super.dispose();
   }
 
@@ -502,16 +506,15 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     // The ACTIVE surface is absent on purpose: a stroke step changes its
     // pixels and nothing else, and its pixels are the one thing never
     // recorded. That absence IS the optimisation.
-    _bake.keepFor(
-      Object.hash(
-        _imagesRevision,
-        widget.canvasSize,
-        widget.viewport,
-        widget.paintPaper,
-        widget.paperBackground,
-        _LayerStackPainter.treeSignature(nodes),
-      ),
+    final compositeKey = Object.hash(
+      _imagesRevision,
+      widget.canvasSize,
+      widget.viewport,
+      widget.paintPaper,
+      widget.paperBackground,
+      _LayerStackPainter.treeSignature(nodes),
     );
+    _bake.keepFor(compositeKey);
     return IgnorePointer(
       child: CustomPaint(
         painter: _LayerStackPainter(
@@ -523,6 +526,13 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           paintPaper: widget.paintPaper,
           paperBackground: widget.paperBackground,
           bake: widget.debugDisableBake ? null : _bake,
+          tiles: widget.debugDisableBake ? null : _tiles,
+          // ⛔The tiles apply this in `paint`, not here: held by the State it
+          // belongs to whatever was last BUILT rather than to the painter
+          // doing the drawing, and an older painter then serves a newer
+          // picture — measured, two renders differing only in row opacity
+          // came back identical.
+          compositeKey: compositeKey,
           debugDisableSingleBuffer: widget.debugDisableSingleBuffer,
         ),
         child: const SizedBox.expand(),
@@ -637,6 +647,8 @@ class _LayerStackPainter extends CustomPainter {
     required this.paintPaper,
     required this.paperBackground,
     this.bake,
+    this.tiles,
+    required this.compositeKey,
     this.debugDisableSingleBuffer = false,
   }) : super(
          repaint: floatOverlay == null
@@ -660,6 +672,26 @@ class _LayerStackPainter extends CustomPainter {
   /// object every frame, so a cache held here would be recorded and thrown
   /// away in the same breath. Null keeps the original walk.
   final StaticCompositeBake? bake;
+
+  /// 🚨(v) — the tiled display buffer. Owned by the State like the bake, and
+  /// for one more reason of its own: it holds the "since the last paint"
+  /// snapshot of the live surface, and a stroke step repaints WITHOUT a
+  /// widget rebuild, so nothing above the painter ever sees that moment.
+  final DisplayTileBuffer? tiles;
+
+  /// What the tiles were composited against, applied in `paint`.
+  ///
+  /// 🚨A `CustomPainter` is meant to be a function of its own fields: a test
+  /// may hold two of them and rasterise both afterwards, and the framework
+  /// replays one whenever it likes. Keying the cache on whatever the State
+  /// last BUILT makes an older painter serve the newer painter's picture —
+  /// measured, not feared: two renders differing only in row opacity came
+  /// back identical, the opaque one wearing the faint one's alpha.
+  ///
+  /// ⛔The bake keeps its key in `build` and that stays right: it never
+  /// records the live surface, so its slots do not depend on which painter
+  /// is replaying. The tiles DO hold the live layer. That is the difference.
+  final Object compositeKey;
 
   /// Draws the ACTIVE layer's live surface in place. Its own repaint
   /// Listenable (tile cache + stroke overlay) drives this painter too, so
@@ -1080,6 +1112,75 @@ class _LayerStackPainter extends CustomPainter {
     // 25× what is on screen. It is not the canvas rect either: artwork
     // parked on the pasteboard is visible and must composite with the rest
     // (유저 2026-08-15, 「페이스트보드도 룰러할때 보이게」).
+    // 🚨★★★…and the buffer is TILED, so a stroke step pays only for the
+    // tiles it touched. Untiled, the rasterisation is a FIXED cost — a
+    // two-pixel dab and a full-canvas fill pay the same.
+    final tiles = this.tiles;
+    if (tiles != null && !debugDisableSingleBuffer && !groupBounds.isEmpty) {
+      tiles.keepFor(compositeKey);
+      final surfacePainter = activeSurfacePainter;
+      if (surfacePainter == null) {
+        // ⛔Not a fallback: with no live surface the composite is entirely
+        // static, so the key alone is the correct invalidation. Reaching for
+        // `activeSurfacePainter!` here is what threw during paint on an
+        // empty cel and took four widget tests with it — an exception in
+        // paint reads from outside as "the panel remounted".
+        tiles.syncWithoutLiveSurface();
+      } else {
+        final surfaceTileSize = surfacePainter.surface.tileSize.toDouble();
+        final overlay = surfacePainter.overlayModel;
+        final cache = surfacePainter.tileImageCache;
+        tiles.syncLiveSurface(
+          // ★The value is the DECODED IMAGE where there is one, and the tile
+          // itself where there is not. Comparing only the tile would miss a
+          // decode ARRIVING: the bytes were always there, the pixels on
+          // screen were not, and the surface changes under a cache that was
+          // watching the wrong object.
+          committed: {
+            for (final entry in surfacePainter.surface.tiles.entries)
+              entry.key: cache.imageFor(entry.value) ?? entry.value,
+          },
+          overlay: overlay?.tileImages.keys.toSet() ?? const <Object>{},
+          surfaceTileSize: surfaceTileSize,
+          rectOf: (coord) {
+            final tile = coord as TileCoord;
+            return Rect.fromLTWH(
+              tile.x * surfaceTileSize,
+              tile.y * surfaceTileSize,
+              surfaceTileSize,
+              surfaceTileSize,
+            );
+          },
+          // ⛔Three ways a tile-local answer stops being sound, and each one
+          // drops everything rather than guessing:
+          //   · the live layer is posed, or it or an enclosing folder blurs,
+          //     so a dab lands somewhere other than its own tile;
+          //   · a stamp sits at a free offset, and stand-ins and a settling
+          //     pass redraw tiles this comparison cannot see moving;
+          //   · the painter itself says it draws from state it does not
+          //     publish, which is the only honest answer a subclass drawing
+          //     from a private field can give.
+          spatiallyStable:
+              surfacePainter.drawsOnlyFromPublishedState &&
+              _liveSurfaceIsSpatiallyStable(nodes) &&
+              (overlay == null ||
+                  (overlay.stampImage == null &&
+                      !overlay.hasStandIns &&
+                      !overlay.settling)),
+        );
+      }
+      tiles.draw(
+        canvas,
+        bounds: groupBounds,
+        quality: filterQualityForDisplayScale(displayScaleOf(viewport.zoom)),
+        // The backdrop raster stays ONE image shared by every tile: the tile
+        // clips it, and a clipped draw the engine rejects costs nothing.
+        paintContent: (into) => paintContent(into, rasterRect: groupBounds),
+      );
+      canvas.restore();
+      return;
+    }
+
     final buffer = _composeDisplayBuffer(groupBounds, paintContent);
     if (buffer == null) {
       paintContent(canvas);
@@ -1157,6 +1258,35 @@ class _LayerStackPainter extends CustomPainter {
     } finally {
       picture.dispose();
     }
+  }
+
+  /// Whether a change to one of the live surface's tiles lands in that
+  /// tile's own place on the canvas.
+  ///
+  /// ⛔False means no tile-local invalidation is correct. A POSE puts the
+  /// surface's pixels somewhere else entirely, and an effect that SPREADS —
+  /// on the surface itself or on any folder enclosing it, because the
+  /// stroke's pixels pass through those buffers — smears a dab past its own
+  /// tile. Both are answered by dropping every tile: expensive in exactly
+  /// the documents that can least afford it, and still the only honest
+  /// answer, because narrowing it means mapping the pose and measuring the
+  /// spread rather than guessing at them.
+  static bool _liveSurfaceIsSpatiallyStable(List<_PaintNode> list) {
+    for (final node in list) {
+      if (node is _PaintActiveSurface) {
+        return node.pose == null && !resolvedEffectsSpreadPixels(node.effects);
+      }
+      if (node is _PaintGroup && node.children.any(_enclosesActiveSurface)) {
+        return !resolvedEffectsSpreadPixels(node.effects) &&
+            _liveSurfaceIsSpatiallyStable(node.children);
+      }
+      if (node is _PaintAdjustment &&
+          node.children.any(_enclosesActiveSurface)) {
+        return !resolvedEffectsSpreadPixels(node.effects) &&
+            _liveSurfaceIsSpatiallyStable(node.children);
+      }
+    }
+    return false;
   }
 
   /// Whether the live surface is this node, or anywhere inside it.
