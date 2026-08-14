@@ -348,11 +348,494 @@ QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
   return wrote;
 }
 
+#elif defined(__APPLE__)
+// ---------------------------------------------------------------------------
+// Apple: AVAssetImageGenerator, implemented in qa_video_apple.m
+// (Objective-C — the API is). This file only forwards, keeping the decode
+// surface in one portable TU, exactly as the export half does.
+
+extern int32_t qa_video_apple_decode_open(const char* utf8_path,
+                                          char* error,
+                                          int32_t error_capacity);
+extern int32_t qa_video_apple_decode_info(int32_t* width,
+                                          int32_t* height,
+                                          int64_t* frame_count,
+                                          int32_t* fps_num,
+                                          int32_t* fps_den);
+extern int32_t qa_video_apple_decode_frame(int64_t index,
+                                           uint8_t* rgba,
+                                           int32_t capacity,
+                                           char* error,
+                                           int32_t error_capacity);
+extern void qa_video_apple_decode_close(void);
+
+QA_EXPORT int32_t qa_video_decode_supported(void) { return 1; }
+
+QA_EXPORT int32_t qa_video_decode_open(const char* path) {
+  return qa_video_apple_decode_open(path, g_decode_error,
+                                    (int32_t)sizeof(g_decode_error));
+}
+
+QA_EXPORT int32_t qa_video_decode_info(int32_t* width,
+                                       int32_t* height,
+                                       int64_t* frame_count,
+                                       int32_t* fps_num,
+                                       int32_t* fps_den) {
+  return qa_video_apple_decode_info(width, height, frame_count, fps_num,
+                                    fps_den);
+}
+
+QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
+                                        uint8_t* rgba,
+                                        int32_t capacity) {
+  return qa_video_apple_decode_frame(index, rgba, capacity, g_decode_error,
+                                     (int32_t)sizeof(g_decode_error));
+}
+
+QA_EXPORT void qa_video_decode_close(void) { qa_video_apple_decode_close(); }
+
+#elif defined(__ANDROID__)
+// ---------------------------------------------------------------------------
+// Android: NDK AMediaExtractor + AMediaCodec, resolved with dlsym exactly
+// like the encoder half — libmediandk.so ships on every API 21+ device,
+// and a missing symbol is a capability answer rather than a crash.
+//
+// The colour conversion is ours here, which is the whole difficulty. A
+// decoder hands back YUV in whichever layout the vendor's hardware likes,
+// described by three numbers that are easy to assume and wrong to:
+// STRIDE (bytes per luma row, ≥ width), SLICE HEIGHT (rows between the Y
+// plane and the chroma that follows, ≥ height) and the colour format. The
+// two that matter in practice are planar I420 and semi-planar NV12; both
+// are handled, and anything else is refused by name instead of drawn as
+// noise.
+
+#include <dlfcn.h>
+#include <stdbool.h>  // the release/advance signatures
+
+// No NDK media headers, exactly like the encoder half: dlsym means no
+// link dependency, and forward declarations mean no dependency on which
+// NDK version the build has. The format keys are the same strings the
+// headers define.
+typedef struct AMediaExtractor AMediaExtractor;
+typedef struct AMediaCodec AMediaCodec;
+typedef struct AMediaFormat AMediaFormat;
+
+typedef struct {
+  int32_t offset;
+  int32_t size;
+  int64_t presentationTimeUs;
+  uint32_t flags;
+} qa_decode_buffer_info;
+
+#define QA_AMEDIA_OK 0
+#define QA_SEEK_PREVIOUS_SYNC 0
+#define QA_BUFFER_FLAG_END_OF_STREAM 4
+#define QA_KEY_MIME "mime"
+#define QA_KEY_WIDTH "width"
+#define QA_KEY_HEIGHT "height"
+#define QA_KEY_FRAME_RATE "frame-rate"
+#define QA_KEY_DURATION "durationUs"
+#define QA_KEY_COLOR_FORMAT "color-format"
+#define QA_KEY_STRIDE "stride"
+#define QA_KEY_SLICE_HEIGHT "slice-height"
+
+#define QA_COLOR_FORMAT_YUV420_PLANAR 19
+#define QA_COLOR_FORMAT_YUV420_SEMIPLANAR 21
+#define QA_COLOR_FORMAT_YUV420_FLEXIBLE 0x7F420888
+
+typedef struct {
+  void* handle;
+  AMediaExtractor* (*extractor_new)(void);
+  int32_t (*extractor_delete)(AMediaExtractor*);
+  int32_t (*extractor_set_source)(AMediaExtractor*, const char*);
+  size_t (*extractor_track_count)(AMediaExtractor*);
+  AMediaFormat* (*extractor_track_format)(AMediaExtractor*, size_t);
+  int32_t (*extractor_select_track)(AMediaExtractor*, size_t);
+  int32_t (*extractor_seek_to)(AMediaExtractor*, int64_t,
+                                      int32_t);
+  ssize_t (*extractor_read_sample)(AMediaExtractor*, uint8_t*, size_t);
+  int64_t (*extractor_sample_time)(AMediaExtractor*);
+  bool (*extractor_advance)(AMediaExtractor*);
+  AMediaCodec* (*codec_create_decoder)(const char*);
+  int32_t (*codec_delete)(AMediaCodec*);
+  int32_t (*codec_configure)(AMediaCodec*, const AMediaFormat*,
+                                    void*, void*, uint32_t);
+  int32_t (*codec_start)(AMediaCodec*);
+  int32_t (*codec_stop)(AMediaCodec*);
+  int32_t (*codec_flush)(AMediaCodec*);
+  ssize_t (*codec_dequeue_input)(AMediaCodec*, int64_t);
+  uint8_t* (*codec_input_buffer)(AMediaCodec*, size_t, size_t*);
+  int32_t (*codec_queue_input)(AMediaCodec*, size_t, int64_t, size_t,
+                                      uint64_t, uint32_t);
+  ssize_t (*codec_dequeue_output)(AMediaCodec*, qa_decode_buffer_info*,
+                                  int64_t);
+  uint8_t* (*codec_output_buffer)(AMediaCodec*, size_t, size_t*);
+  int32_t (*codec_release_output)(AMediaCodec*, size_t, bool);
+  AMediaFormat* (*codec_output_format)(AMediaCodec*);
+  bool (*format_get_int32)(AMediaFormat*, const char*, int32_t*);
+  bool (*format_get_int64)(AMediaFormat*, const char*, int64_t*);
+  bool (*format_get_string)(AMediaFormat*, const char*, const char**);
+  int32_t (*format_delete)(AMediaFormat*);
+} qa_ndk_decode_api;
+
+static qa_ndk_decode_api g_ndk_dec;
+
+static int qa_ndk_decode_load(void) {
+  if (g_ndk_dec.handle != NULL) {
+    return 1;
+  }
+  void* handle = dlopen("libmediandk.so", RTLD_NOW);
+  if (handle == NULL) {
+    return 0;
+  }
+#define QA_SYM(field, name)                          \
+  *(void**)(&g_ndk_dec.field) = dlsym(handle, name); \
+  if (g_ndk_dec.field == NULL) {                     \
+    dlclose(handle);                                 \
+    memset(&g_ndk_dec, 0, sizeof(g_ndk_dec));        \
+    return 0;                                        \
+  }
+  QA_SYM(extractor_new, "AMediaExtractor_new")
+  QA_SYM(extractor_delete, "AMediaExtractor_delete")
+  QA_SYM(extractor_set_source, "AMediaExtractor_setDataSource")
+  QA_SYM(extractor_track_count, "AMediaExtractor_getTrackCount")
+  QA_SYM(extractor_track_format, "AMediaExtractor_getTrackFormat")
+  QA_SYM(extractor_select_track, "AMediaExtractor_selectTrack")
+  QA_SYM(extractor_seek_to, "AMediaExtractor_seekTo")
+  QA_SYM(extractor_read_sample, "AMediaExtractor_readSampleData")
+  QA_SYM(extractor_sample_time, "AMediaExtractor_getSampleTime")
+  QA_SYM(extractor_advance, "AMediaExtractor_advance")
+  QA_SYM(codec_create_decoder, "AMediaCodec_createDecoderByType")
+  QA_SYM(codec_delete, "AMediaCodec_delete")
+  QA_SYM(codec_configure, "AMediaCodec_configure")
+  QA_SYM(codec_start, "AMediaCodec_start")
+  QA_SYM(codec_stop, "AMediaCodec_stop")
+  QA_SYM(codec_flush, "AMediaCodec_flush")
+  QA_SYM(codec_dequeue_input, "AMediaCodec_dequeueInputBuffer")
+  QA_SYM(codec_input_buffer, "AMediaCodec_getInputBuffer")
+  QA_SYM(codec_queue_input, "AMediaCodec_queueInputBuffer")
+  QA_SYM(codec_dequeue_output, "AMediaCodec_dequeueOutputBuffer")
+  QA_SYM(codec_output_buffer, "AMediaCodec_getOutputBuffer")
+  QA_SYM(codec_release_output, "AMediaCodec_releaseOutputBuffer")
+  QA_SYM(codec_output_format, "AMediaCodec_getOutputFormat")
+  QA_SYM(format_get_int32, "AMediaFormat_getInt32")
+  QA_SYM(format_get_int64, "AMediaFormat_getInt64")
+  QA_SYM(format_get_string, "AMediaFormat_getString")
+  QA_SYM(format_delete, "AMediaFormat_delete")
+#undef QA_SYM
+  g_ndk_dec.handle = handle;
+  return 1;
+}
+
+typedef struct {
+  AMediaExtractor* extractor;
+  AMediaCodec* codec;
+  int32_t track;
+  int32_t width;
+  int32_t height;
+  int32_t fps_num;
+  int32_t fps_den;
+  int64_t frame_count;
+  int32_t open;
+} qa_video_droid_decode;
+
+static qa_video_droid_decode g_droid_dec;
+
+QA_EXPORT void qa_video_decode_close(void) {
+  if (g_droid_dec.codec != NULL) {
+    g_ndk_dec.codec_stop(g_droid_dec.codec);
+    g_ndk_dec.codec_delete(g_droid_dec.codec);
+    g_droid_dec.codec = NULL;
+  }
+  if (g_droid_dec.extractor != NULL) {
+    g_ndk_dec.extractor_delete(g_droid_dec.extractor);
+    g_droid_dec.extractor = NULL;
+  }
+  g_droid_dec.open = 0;
+}
+
+QA_EXPORT int32_t qa_video_decode_supported(void) {
+  return qa_ndk_decode_load();
+}
+
+QA_EXPORT int32_t qa_video_decode_open(const char* path) {
+  qa_video_decode_close();
+  qa_decode_set_error(NULL);
+  if (!qa_ndk_decode_load()) {
+    qa_decode_set_error("no video decoder in this build");
+    return 0;
+  }
+  if (path == NULL || path[0] == '\0') {
+    qa_decode_set_error("no path");
+    return 0;
+  }
+  AMediaExtractor* extractor = g_ndk_dec.extractor_new();
+  if (extractor == NULL) {
+    qa_decode_set_error("could not open the container");
+    return 0;
+  }
+  if (g_ndk_dec.extractor_set_source(extractor, path) != QA_AMEDIA_OK) {
+    g_ndk_dec.extractor_delete(extractor);
+    qa_decode_set_error("could not open the container");
+    return 0;
+  }
+
+  const size_t tracks = g_ndk_dec.extractor_track_count(extractor);
+  int32_t video_track = -1;
+  AMediaFormat* format = NULL;
+  const char* mime = NULL;
+  for (size_t i = 0; i < tracks; i += 1) {
+    AMediaFormat* candidate = g_ndk_dec.extractor_track_format(extractor, i);
+    const char* candidate_mime = NULL;
+    if (candidate != NULL &&
+        g_ndk_dec.format_get_string(candidate, QA_KEY_MIME,
+                                    &candidate_mime) &&
+        candidate_mime != NULL && strncmp(candidate_mime, "video/", 6) == 0) {
+      video_track = (int32_t)i;
+      format = candidate;
+      mime = candidate_mime;
+      break;
+    }
+    if (candidate != NULL) {
+      g_ndk_dec.format_delete(candidate);
+    }
+  }
+  if (video_track < 0 || format == NULL || mime == NULL) {
+    g_ndk_dec.extractor_delete(extractor);
+    qa_decode_set_error("this file has no readable video stream");
+    return 0;
+  }
+
+  int32_t width = 0;
+  int32_t height = 0;
+  int32_t rate = 0;
+  int64_t duration_us = 0;
+  g_ndk_dec.format_get_int32(format, QA_KEY_WIDTH, &width);
+  g_ndk_dec.format_get_int32(format, QA_KEY_HEIGHT, &height);
+  g_ndk_dec.format_get_int32(format, QA_KEY_FRAME_RATE, &rate);
+  g_ndk_dec.format_get_int64(format, QA_KEY_DURATION, &duration_us);
+
+  AMediaCodec* codec = g_ndk_dec.codec_create_decoder(mime);
+  if (codec == NULL ||
+      g_ndk_dec.codec_configure(codec, format, NULL, NULL, 0) != QA_AMEDIA_OK ||
+      g_ndk_dec.codec_start(codec) != QA_AMEDIA_OK) {
+    if (codec != NULL) {
+      g_ndk_dec.codec_delete(codec);
+    }
+    g_ndk_dec.format_delete(format);
+    g_ndk_dec.extractor_delete(extractor);
+    qa_decode_set_error("no decoder for this codec");
+    return 0;
+  }
+  g_ndk_dec.format_delete(format);
+  g_ndk_dec.extractor_select_track(extractor, (size_t)video_track);
+
+  if (width <= 0 || height <= 0) {
+    g_ndk_dec.codec_delete(codec);
+    g_ndk_dec.extractor_delete(extractor);
+    qa_decode_set_error("the video stream has no frame size");
+    return 0;
+  }
+  if (rate <= 0) {
+    rate = 24;
+  }
+  g_droid_dec.extractor = extractor;
+  g_droid_dec.codec = codec;
+  g_droid_dec.track = video_track;
+  g_droid_dec.width = width;
+  g_droid_dec.height = height;
+  g_droid_dec.fps_num = rate;
+  g_droid_dec.fps_den = 1;
+  g_droid_dec.frame_count =
+      duration_us <= 0 ? 1 : (duration_us * (int64_t)rate) / 1000000LL;
+  if (g_droid_dec.frame_count < 1) {
+    g_droid_dec.frame_count = 1;
+  }
+  g_droid_dec.open = 1;
+  return 1;
+}
+
+QA_EXPORT int32_t qa_video_decode_info(int32_t* width,
+                                       int32_t* height,
+                                       int64_t* frame_count,
+                                       int32_t* fps_num,
+                                       int32_t* fps_den) {
+  if (!g_droid_dec.open) {
+    qa_decode_set_error("no document is open");
+    return 0;
+  }
+  if (width != NULL) *width = g_droid_dec.width;
+  if (height != NULL) *height = g_droid_dec.height;
+  if (frame_count != NULL) *frame_count = g_droid_dec.frame_count;
+  if (fps_num != NULL) *fps_num = g_droid_dec.fps_num;
+  if (fps_den != NULL) *fps_den = g_droid_dec.fps_den;
+  return 1;
+}
+
+/// YUV420 → RGBA. [stride] is bytes per luma row and [slice] the rows
+/// between the Y plane and the chroma after it; assuming either equals the
+/// picture size is the classic way to get a green-striped frame on one
+/// vendor's hardware and a correct one on another's.
+static void qa_droid_yuv_to_rgba(const uint8_t* data,
+                                 int32_t stride,
+                                 int32_t slice,
+                                 int semi_planar,
+                                 uint8_t* rgba) {
+  const int32_t width = g_droid_dec.width;
+  const int32_t height = g_droid_dec.height;
+  const uint8_t* y_plane = data;
+  const uint8_t* u_plane = data + (int64_t)stride * slice;
+  const uint8_t* v_plane =
+      semi_planar ? u_plane + 1
+                  : u_plane + ((int64_t)stride / 2) * (slice / 2);
+  const int32_t chroma_stride = semi_planar ? stride : stride / 2;
+  const int32_t chroma_step = semi_planar ? 2 : 1;
+
+  for (int32_t y = 0; y < height; y += 1) {
+    const uint8_t* y_row = y_plane + (int64_t)y * stride;
+    const int32_t cy = y / 2;
+    for (int32_t x = 0; x < width; x += 1) {
+      const int32_t cx = x / 2;
+      const int32_t luma = (int32_t)y_row[x] - 16;
+      const int32_t cb =
+          (int32_t)u_plane[(int64_t)cy * chroma_stride + cx * chroma_step] -
+          128;
+      const int32_t cr =
+          (int32_t)v_plane[(int64_t)cy * chroma_stride + cx * chroma_step] -
+          128;
+      // BT.601 limited range, the same matrix the encoder half writes.
+      int32_t r = (298 * luma + 409 * cr + 128) >> 8;
+      int32_t g = (298 * luma - 100 * cb - 208 * cr + 128) >> 8;
+      int32_t b = (298 * luma + 516 * cb + 128) >> 8;
+      r = r < 0 ? 0 : (r > 255 ? 255 : r);
+      g = g < 0 ? 0 : (g > 255 ? 255 : g);
+      b = b < 0 ? 0 : (b > 255 ? 255 : b);
+      uint8_t* out = rgba + ((int64_t)y * width + x) * 4;
+      out[0] = (uint8_t)r;
+      out[1] = (uint8_t)g;
+      out[2] = (uint8_t)b;
+      out[3] = 255;
+    }
+  }
+}
+
+QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
+                                        uint8_t* rgba,
+                                        int32_t capacity) {
+  if (!g_droid_dec.open) {
+    qa_decode_set_error("no document is open");
+    return 0;
+  }
+  if (rgba == NULL ||
+      capacity < g_droid_dec.width * g_droid_dec.height * 4) {
+    qa_decode_set_error("frame buffer too small");
+    return 0;
+  }
+  if (index < 0) {
+    index = 0;
+  }
+  const int64_t target_us =
+      (index * 1000000LL * (int64_t)g_droid_dec.fps_den) /
+      (int64_t)g_droid_dec.fps_num;
+  const int64_t frame_us =
+      (1000000LL * (int64_t)g_droid_dec.fps_den) /
+      (int64_t)g_droid_dec.fps_num;
+
+  // The extractor seeks to a SYNC frame at or before the target; the codec
+  // then decodes forward. Flushing first is what stops the frames from
+  // before the seek coming out of the other end.
+  g_ndk_dec.extractor_seek_to(g_droid_dec.extractor, target_us,
+                              QA_SEEK_PREVIOUS_SYNC);
+  g_ndk_dec.codec_flush(g_droid_dec.codec);
+
+  int32_t wrote = 0;
+  int input_done = 0;
+  for (int guard = 0; guard < 900 && !wrote; guard += 1) {
+    if (!input_done) {
+      const ssize_t in_index =
+          g_ndk_dec.codec_dequeue_input(g_droid_dec.codec, 2000);
+      if (in_index >= 0) {
+        size_t in_size = 0;
+        uint8_t* in_buffer = g_ndk_dec.codec_input_buffer(
+            g_droid_dec.codec, (size_t)in_index, &in_size);
+        const ssize_t read = g_ndk_dec.extractor_read_sample(
+            g_droid_dec.extractor, in_buffer, in_size);
+        if (read <= 0) {
+          g_ndk_dec.codec_queue_input(g_droid_dec.codec, (size_t)in_index, 0,
+                                      0, 0, QA_BUFFER_FLAG_END_OF_STREAM);
+          input_done = 1;
+        } else {
+          const int64_t sample_time =
+              g_ndk_dec.extractor_sample_time(g_droid_dec.extractor);
+          g_ndk_dec.codec_queue_input(g_droid_dec.codec, (size_t)in_index, 0,
+                                      (size_t)read, (uint64_t)sample_time, 0);
+          g_ndk_dec.extractor_advance(g_droid_dec.extractor);
+        }
+      }
+    }
+
+    qa_decode_buffer_info info;
+    const ssize_t out_index =
+        g_ndk_dec.codec_dequeue_output(g_droid_dec.codec, &info, 2000);
+    if (out_index < 0) {
+      continue; // Try again, or a format change we read below.
+    }
+    // Half a frame of slack, for the same reason the Windows path has it.
+    if (info.presentationTimeUs + frame_us / 2 < target_us) {
+      g_ndk_dec.codec_release_output(g_droid_dec.codec, (size_t)out_index,
+                                     false);
+      continue;
+    }
+    size_t out_size = 0;
+    uint8_t* out_buffer = g_ndk_dec.codec_output_buffer(
+        g_droid_dec.codec, (size_t)out_index, &out_size);
+    AMediaFormat* out_format =
+        g_ndk_dec.codec_output_format(g_droid_dec.codec);
+    int32_t colour = QA_COLOR_FORMAT_YUV420_FLEXIBLE;
+    int32_t stride = g_droid_dec.width;
+    int32_t slice = g_droid_dec.height;
+    if (out_format != NULL) {
+      g_ndk_dec.format_get_int32(out_format, QA_KEY_COLOR_FORMAT,
+                                 &colour);
+      g_ndk_dec.format_get_int32(out_format, QA_KEY_STRIDE,
+                                 &stride);
+      g_ndk_dec.format_get_int32(out_format, QA_KEY_SLICE_HEIGHT,
+                                 &slice);
+      g_ndk_dec.format_delete(out_format);
+    }
+    if (stride < g_droid_dec.width) {
+      stride = g_droid_dec.width;
+    }
+    if (slice < g_droid_dec.height) {
+      slice = g_droid_dec.height;
+    }
+    if (out_buffer != NULL &&
+        (colour == QA_COLOR_FORMAT_YUV420_PLANAR ||
+         colour == QA_COLOR_FORMAT_YUV420_SEMIPLANAR ||
+         colour == QA_COLOR_FORMAT_YUV420_FLEXIBLE)) {
+      qa_droid_yuv_to_rgba(
+          out_buffer, stride, slice,
+          colour == QA_COLOR_FORMAT_YUV420_SEMIPLANAR ? 1 : 0, rgba);
+      wrote = 1;
+    } else {
+      qa_decode_set_error("this device's decoder uses a colour format we "
+                          "do not read");
+    }
+    g_ndk_dec.codec_release_output(g_droid_dec.codec, (size_t)out_index,
+                                   false);
+    break;
+  }
+  if (!wrote && g_decode_error[0] == '\0') {
+    qa_decode_set_error("that frame could not be read");
+  }
+  return wrote;
+}
+
 #else
 
-// Every other platform, for now. The Apple and Android readers belong with
-// the devices that can verify them, and a decoder nobody has run is worse
-// than one that says it is not here.
+// Linux and anything else: no OS reader this app can lean on. The answer
+// is 0, and the window says "no decoder in this build" rather than failing
+// as a corrupt file.
 
 QA_EXPORT int32_t qa_video_decode_supported(void) { return 0; }
 
