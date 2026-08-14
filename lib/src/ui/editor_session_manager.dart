@@ -6540,11 +6540,6 @@ class EditorSessionManager extends ChangeNotifier {
     } on Object {
       return false;
     }
-    // Free, and taken at the one moment it is: these bytes were read to
-    // decode them. A REFERENCED image is the asset that can go missing and
-    // have to be found again, and `A1.png` repeats in every cut folder on
-    // a real drive — the length alone does not always break that tie.
-    rememberMediaFingerprint(path, anicelCrc32(bytes));
     final List<DecodedImageFrame> allFrames;
     try {
       allFrames = await decodeImageFrames(bytes);
@@ -6668,6 +6663,19 @@ class EditorSessionManager extends ChangeNotifier {
         ),
       );
     }
+    // 🔑 AFTER the registration, and only when there IS one. The bytes were
+    // read to decode them so the hash costs no I/O — but it is not free of
+    // CPU, and a RASTERIZING import registers no asset at all (§3: absorbed
+    // pixels register nothing), so hashing there would be a full pass over
+    // a large file on the UI isolate for a value the next save discards.
+    //
+    // Worth taking where it does register: a REFERENCED image is the asset
+    // that can go missing and have to be found again, and `A1.png` repeats
+    // in every cut folder on a real drive.
+    if (assets.isNotEmpty) {
+      rememberMediaFingerprint(source, bytes);
+    }
+
     // Bake pixels AFTER the structure exists (keys resolve the owner
     // track through the inserted cut). Duplicate folding compresses the
     // bake list, so every bake names its SOURCE frame index.
@@ -6732,7 +6740,6 @@ class EditorSessionManager extends ChangeNotifier {
     } on Object {
       return null;
     }
-    rememberMediaFingerprint(path, anicelCrc32(bytes));
     final canvasSize =
         targetCut?.canvasSize ??
         activeCutOrNull?.canvasSize ??
@@ -6966,6 +6973,11 @@ class EditorSessionManager extends ChangeNotifier {
           ),
         );
       }
+      // ⛔ No fingerprint here. A PDF is opened BY PATH and rendered page by
+      // page precisely so a hundred-page conte never lands in memory at
+      // once; reading it whole to hash it would undo the one thing this
+      // path is written to avoid. A PDF that goes missing stays findable by
+      // name and length like it was before.
 
       // Bake AFTER the structure exists, one page at a time: render the
       // page at exactly its placement size (the vector source rasters
@@ -8479,7 +8491,7 @@ class EditorSessionManager extends ChangeNotifier {
           _voiceRecordShelfPaths.add(file.path);
           // We just wrote these, so we know what they hash to without
           // reading anything back.
-          rememberMediaFingerprint(file.path, anicelCrc32(bytes));
+          rememberMediaFingerprint(file.path, bytes);
           return file.path;
         }
       }
@@ -8889,6 +8901,7 @@ class EditorSessionManager extends ChangeNotifier {
   void relinkMediaAsset(String oldPath, String newPath) {
     audioConformStore.invalidate(newPath);
     _cutCommandCoordinator.relinkMediaAsset(oldPath: oldPath, newPath: newPath);
+    _moveMediaFingerprints({oldPath: newPath});
     refreshMediaExistence();
     notifyListeners();
   }
@@ -8908,6 +8921,11 @@ class EditorSessionManager extends ChangeNotifier {
       audioConformStore.invalidate(newPath);
     }
     _cutCommandCoordinator.relinkMediaAssets(moves);
+    // 🚨 The fingerprints follow, or the next save erases the very facts
+    // this relink was decided by — the store is keyed by path and the save
+    // keeps only keys the pool still holds. Left out, the feature works
+    // exactly once per asset and only on the machine that imported it.
+    _moveMediaFingerprints(moves);
     refreshMediaExistence();
     notifyListeners();
   }
@@ -16154,8 +16172,25 @@ class EditorSessionManager extends ChangeNotifier {
   /// first would forfeit the one reading that is guaranteed free. What
   /// reaches the FILE is narrowed to the pool at save time instead, which
   /// is where the same filter has to run anyway for assets since removed.
-  void rememberMediaFingerprint(String poolPath, int crc32) {
-    _mediaFingerprints = _mediaFingerprints.remembering(poolPath, crc32);
+  void rememberMediaFingerprint(String poolPath, Uint8List bytes) {
+    _mediaFingerprints = _mediaFingerprints.remembering(
+      poolPath,
+      // Both halves from THESE bytes. Taking the length off the asset
+      // instead would weld a value imprinted at first registration onto a
+      // hash taken now, and a file edited in between would be described as
+      // a revision that never existed.
+      MediaIdentity(lengthBytes: bytes.length, crc32: anicelCrc32(bytes)),
+    );
+  }
+
+  /// Follows [moves] (old pool path → new) so a fingerprint survives its
+  /// asset being pointed somewhere else.
+  ///
+  /// 🚨 Called from every place a pool path changes. The store is keyed by
+  /// path and the save keeps only keys the pool still holds, so a move that
+  /// skips this does not merely mislay the fact — the next save DELETES it.
+  void _moveMediaFingerprints(Map<String, String> moves) {
+    _mediaFingerprints = _mediaFingerprints.moved(moves);
   }
 
   /// The fingerprints as the file should keep them: only for media the
@@ -16346,7 +16381,12 @@ class EditorSessionManager extends ChangeNotifier {
     // pool names that is NOT here is an ordinary outside reference and
     // resolves by path like it always did.
     _mediaEntryNames = result.mediaEntryNames;
-    _mediaFingerprints = result.mediaFingerprints;
+    // Through the bookmark move as well. The service already narrowed these
+    // against the RELATIVE-path remap it can see; this second move happens
+    // out here, after a bookmark resolved to a file the user renamed, and
+    // the service never learns about it. Two movers, both of which have to
+    // be followed — miss one and the next save deletes the fact.
+    _mediaFingerprints = result.mediaFingerprints.moved(movedByGrant);
     // R22-C: opens land every cel FILE-BACKED — pixels stay in the .anicel
     // until a cel is first shown (near-zero RAM for 1500-cut projects).
     // The conte ink namespace routes to its own stores (R5); a ROW entry

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
@@ -6,7 +7,7 @@ import '../../models/media_identity.dart';
 import '../../services/import/media_identity_reader.dart';
 import '../../services/media/media_relink_matcher.dart';
 import '../../services/persistence/anicel_incremental_writer.dart'
-    show anicelCrc32;
+    show anicelCrc32Finish, anicelCrc32Start, anicelCrc32Update;
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/folder_pick_flow.dart';
 import '../editor_session_manager.dart';
@@ -44,11 +45,13 @@ Future<void> runMediaRelinkFlow(
   if (!context.mounted) {
     return;
   }
+  final read = <String, MediaIdentity?>{};
   final plan = planMediaRelink(
     missingPaths: missing,
     candidatePaths: candidates,
     recordedIdentity: session.recordedMediaIdentity,
-    candidateIdentity: readCandidateIdentity,
+    candidateIdentity: (candidate, wanted) =>
+        readCandidateIdentity(candidate, wanted, memo: read),
   );
   final apply = await _confirm(
     context,
@@ -74,23 +77,62 @@ Future<void> runMediaRelinkFlow(
 ///
 /// What is left is the case that earns its read: same size, and something
 /// to compare a hash against.
-@visibleForTesting
-MediaIdentity? readCandidateIdentity(String candidate, MediaIdentity wanted) {
+MediaIdentity? readCandidateIdentity(
+  String candidate,
+  MediaIdentity wanted, {
+  Map<String, MediaIdentity?>? memo,
+}) {
   final onDisk = readMediaIdentity(candidate);
   if (onDisk == null ||
       onDisk.lengthBytes != wanted.lengthBytes ||
       wanted.crc32 == null) {
     return onDisk;
   }
+  // Every missing asset with the same file name reaches the same
+  // candidates, so without this a folder holding N ambiguous `A1.png`s
+  // reads each of them N times. Keyed by path alone because a file's hash
+  // does not depend on who is asking.
+  final cached = memo?[candidate];
+  if (cached != null) {
+    return cached;
+  }
   try {
-    return MediaIdentity(
+    final found = MediaIdentity(
       lengthBytes: onDisk.lengthBytes,
-      crc32: anicelCrc32(File(candidate).readAsBytesSync()),
+      crc32: _crc32OfFile(candidate),
     );
+    memo?[candidate] = found;
+    return found;
   } on Object {
     // Unreadable is not "different" — a permission error must not make the
     // matcher rule a file out that may be exactly the one.
     return onDisk;
+  }
+}
+
+/// CRC-32 of the file at [path], a chunk at a time.
+///
+/// ⚠️ Chunked rather than `readAsBytesSync`. The candidates here are the
+/// ones a tie survived to, and a tie is decided by SIZE — so every file
+/// this opens is exactly as big as the asset being hunted, which on this
+/// app's material means a video or a multi-hundred-megabyte plate. Pulling
+/// one whole into memory to hash it is the allocation that gets the app
+/// killed on the devices this project refuses to abandon.
+int _crc32OfFile(String path) {
+  final handle = File(path).openSync();
+  try {
+    var running = anicelCrc32Start;
+    final buffer = Uint8List(256 * 1024);
+    while (true) {
+      final read = handle.readIntoSync(buffer);
+      if (read <= 0) {
+        break;
+      }
+      running = anicelCrc32Update(running, buffer, read);
+    }
+    return anicelCrc32Finish(running);
+  } finally {
+    handle.closeSync();
   }
 }
 
