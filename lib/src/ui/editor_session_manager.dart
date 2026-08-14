@@ -27,7 +27,7 @@ import '../services/import/tvp_json_import_planner.dart';
 import '../services/input/wintab_pen_service.dart';
 import '../services/pdf/pdf_render_service.dart';
 import '../services/project_lookup.dart'
-    show cutIdOfLayer, mediaKindBelongsInArchive, projectAudioSourcePaths;
+    show cutIdOfLayer, projectAudioSourcePaths;
 import '../models/app_language.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
@@ -9016,18 +9016,40 @@ class EditorSessionManager extends ChangeNotifier {
   @visibleForTesting
   bool Function(String path)? debugMediaFileExists;
 
+  /// When each pool file was last written, for the browser's rows.
+  ///
+  /// Filled by the same sweep that answers "is it still there", because
+  /// the sweep is already touching every file: a row that asked the disk
+  /// for its own date would turn one repaint into one stat per asset, and
+  /// a panel repaints for reasons that have nothing to do with the file
+  /// system (the same argument that moved the existence probe here).
+  Map<String, DateTime> get mediaModifiedTimes => _mediaModifiedTimes;
+  Map<String, DateTime> _mediaModifiedTimes = const <String, DateTime>{};
+
   /// Re-probes the pool. Notifies only when the answer changed, so calling
   /// it after an import that touched nothing missing is free.
   void refreshMediaExistence() {
     final probe = debugMediaFileExists ?? (String path) => File(path).existsSync();
-    final missing = <String>{
-      for (final asset in mediaAssets)
-        if (!probe(asset.path)) asset.path,
-    };
-    if (setEquals(missing, _missingMediaPaths)) {
+    final missing = <String>{};
+    final modified = <String, DateTime>{};
+    for (final asset in mediaAssets) {
+      if (!probe(asset.path)) {
+        missing.add(asset.path);
+        continue;
+      }
+      try {
+        modified[asset.path] = File(asset.path).lastModifiedSync();
+      } on Object {
+        // Present but unreadable — a network share mid-reconnect. The row
+        // shows no date rather than a wrong one.
+      }
+    }
+    if (setEquals(missing, _missingMediaPaths) &&
+        mapEquals(modified, _mediaModifiedTimes)) {
       return;
     }
     _missingMediaPaths = missing;
+    _mediaModifiedTimes = modified;
     notifyListeners();
   }
 
@@ -9060,7 +9082,9 @@ class EditorSessionManager extends ChangeNotifier {
       if (asset.path != path) {
         continue;
       }
-      promotes = !asset.carried && mediaKindBelongsInArchive(asset.kind);
+      // Any kind: the kind decides the DEFAULT at import, and this verb is
+      // the user changing their mind afterwards.
+      promotes = !asset.carried;
       break;
     }
     if (!promotes) {

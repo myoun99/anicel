@@ -6,6 +6,7 @@ import '../../services/persistence/folder_grant.dart' show FolderGrant;
 import '../dialogs/app_prompt_dialog.dart';
 import '../dialogs/folder_pick_flow.dart';
 import '../text/app_strings.dart';
+import '../text/byte_size_label.dart';
 import '../theme/app_theme.dart' show AppColors;
 import '../widgets/panel_flyout.dart';
 import 'media_asset_drag_data.dart';
@@ -32,6 +33,7 @@ class MediaBrowserPanel extends StatelessWidget {
     this.onPlaceAsset,
     this.audioFilePicker,
     this.missingPaths = const <String>{},
+    this.modifiedTimes = const <String, DateTime>{},
     this.onRelinkMissing,
   });
 
@@ -103,6 +105,10 @@ class MediaBrowserPanel extends StatelessWidget {
   /// counts ghosts is worse than one that is a beat late.
   final Set<String> missingPaths;
 
+  /// When each pool file was last written — the session's sweep fills it,
+  /// so a row never stats the disk to draw itself.
+  final Map<String, DateTime> modifiedTimes;
+
   /// PICK-5: through the grant flow rather than `file_selector`, which
   /// copies the chosen file into a temporary directory on both mobile
   /// platforms — relinking to a copy that the next cache sweep deletes is
@@ -130,6 +136,32 @@ class MediaBrowserPanel extends StatelessWidget {
       return;
     }
     onRelinkAsset(path, next, grants);
+  }
+
+  /// `2.1 MB · 08-12 19:41` — as much of it as is known.
+  ///
+  /// The size comes from the asset's IDENTITY, which the pool already
+  /// holds: it is the length the file had when it was registered, so no
+  /// row has to touch the disk to draw itself. The date comes from the
+  /// session's sweep for the same reason.
+  String _subtitleFor(MediaAsset asset) {
+    final parts = <String>[];
+    final bytes = asset.identity?.lengthBytes;
+    if (bytes != null && bytes > 0) {
+      parts.add(byteSizeLabel(bytes));
+    }
+    final modified = modifiedTimes[asset.path];
+    if (modified != null) {
+      parts.add(
+        '${modified.month.toString().padLeft(2, '0')}-'
+        '${modified.day.toString().padLeft(2, '0')} '
+        '${modified.hour.toString().padLeft(2, '0')}:'
+        '${modified.minute.toString().padLeft(2, '0')}',
+      );
+    }
+    // Nothing known yet (a fresh pool before the first sweep): the path is
+    // better than an empty line.
+    return parts.isEmpty ? asset.path : parts.join(' · ');
   }
 
   Future<void> _rename(BuildContext context, MediaAsset asset) async {
@@ -370,13 +402,21 @@ class MediaBrowserPanel extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 12),
                   ),
-                  Text(
-                    asset.path,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 9,
-                      color: colorScheme.onSurfaceVariant,
+                  // SIZE and DATE, not the path. The path was here because
+                  // it was what the pool knew; what a person scanning a
+                  // pool actually asks is how big a file is and whether it
+                  // is the one they exported an hour ago. The path is one
+                  // hover away and no longer the only thing on offer.
+                  Tooltip(
+                    message: asset.path,
+                    child: Text(
+                      _subtitleFor(asset),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ],

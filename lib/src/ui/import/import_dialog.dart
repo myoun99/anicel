@@ -9,7 +9,7 @@ import '../../services/import/media_import_planner.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/project_lookup.dart'
-    show largeCarriedAssetBytes, mediaKindBelongsInArchive;
+    show largeCarriedAssetBytes;
 import '../../services/persistence/folder_grant.dart' show FolderGrant;
 import '../dialogs/folder_pick_flow.dart';
 import '../editor_session_manager.dart';
@@ -94,12 +94,18 @@ class _ImportDialogState extends State<ImportDialog> {
   /// it for as long as it is open.
   double _tableWidth = 420;
 
-  ImportFileSettings _settingsFor(String path) => resolvedImportSettings(
-    _settings[path] ?? const ImportFileSettings(),
-    kind: mediaAssetKindForPath(path),
-    isPsd: importPathIsPsd(path),
-    placing: _placing,
-  );
+  ImportFileSettings _settingsFor(String path) {
+    final kind = mediaAssetKindForPath(path);
+    return resolvedImportSettings(
+      // Untouched rows answer with their KIND's default — a movie starts
+      // as a reference. Seeding here rather than in the constructor keeps
+      // "what this kind does by default" one fact in one place.
+      _settings[path] ?? ImportFileSettings(mode: defaultImportMode(kind)),
+      kind: kind,
+      isPsd: importPathIsPsd(path),
+      placing: _placing,
+    );
+  }
 
   void _setSettings(
     Iterable<String> paths,
@@ -1255,10 +1261,10 @@ class _ImportDialogState extends State<ImportDialog> {
     if (_files.isNotEmpty) {
       return [
         for (final path in _files)
+          // Every kind can be carried now, so a big MOVIE warns too — which
+          // is the point: the ceiling that used to refuse it silently is
+          // gone, and this sentence is what took its place.
           if (_settingsFor(path).mode == ImportFileMode.keepInside &&
-              mediaKindBelongsInArchive(
-                mediaAssetKindForPath(path) ?? MediaAssetKind.image,
-              ) &&
               _sizeOf(path) >= largeCarriedAssetBytes)
             path,
       ];
@@ -1268,10 +1274,7 @@ class _ImportDialogState extends State<ImportDialog> {
     }
     return [
       for (final path in _registeredPaths())
-        if (mediaKindBelongsInArchive(
-              mediaAssetKindForPath(path) ?? MediaAssetKind.image,
-            ) &&
-            _sizeOf(path) > largeCarriedAssetBytes)
+        if (_sizeOf(path) > largeCarriedAssetBytes)
           path,
     ];
   }

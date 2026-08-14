@@ -1073,7 +1073,8 @@ void main() {
       );
     });
 
-    testWidgets('an answer the KIND refuses does not stick', (tester) async {
+    testWidgets('a movie starts as a reference and can be carried anyway',
+        (tester) async {
       final png = await tester.runAsync(() => writePng('a.png'));
       final movie = await tester.runAsync(() => writeMovie('ref.mp4'));
       await pump(tester, [png!, movie!]);
@@ -1081,22 +1082,43 @@ void main() {
       expect(
         cellText(tester, 'File', movie),
         'Ref',
-        reason: 'a movie is never carried, whatever the default says',
+        reason: 'three gigabytes should not land in a project by accident',
       );
+      expect(cellText(tester, 'File', png), 'Keep');
+
+      await pickCell(tester, column: 'File', path: movie, option: 'Keep');
+
+      expect(
+        cellText(tester, 'File', movie),
+        'Keep',
+        reason: 'the kind decides the DEFAULT, and the user decides this',
+      );
+    });
+
+    testWidgets('an answer the KIND refuses still does not stick',
+        (tester) async {
+      final png = await tester.runAsync(() => writePng('a.png'));
+      final wav = await tester.runAsync(() async {
+        final file = File('${tempDir.path}${Platform.pathSeparator}se.wav');
+        await file.writeAsBytes(const [0x52, 0x49, 0x46, 0x46]);
+        return file.path;
+      });
+      await pump(tester, [png!, wav!]);
+
       await tester.tap(
         find.byKey(const ValueKey<String>('import-column-File')),
       );
       await tester.pumpAndSettle();
       await tester.tap(
-        find.byKey(const ValueKey<String>('import-option-Keep')),
+        find.byKey(const ValueKey<String>('import-option-Raster')),
       );
       await tester.pumpAndSettle();
 
-      expect(cellText(tester, 'File', png), 'Keep');
+      expect(cellText(tester, 'File', png), 'Raster');
       expect(
-        cellText(tester, 'File', movie),
-        'Ref',
-        reason: 'the header asked, and this file still cannot',
+        cellText(tester, 'File', wav),
+        'Keep',
+        reason: 'the header asked, and a sound has no pixels to absorb',
       );
     });
 

@@ -105,8 +105,11 @@ void main() {
     session.dispose();
   });
 
-  test('the KIND sets the ceiling — a movie the user asked to carry stays '
-      'outside anyway', () async {
+  test('a movie the user asked to carry IS carried', () async {
+    // The kind used to veto this at the archive, which meant the flag the
+    // user set said yes and the save said no with nothing on screen
+    // explaining the disagreement. The kind decides the DEFAULT now (a
+    // movie starts as a reference) and the answer decides the bytes.
     final session = sessionWithFakeConforms();
     await session.saveProjectToFile('${directory.path}/scene.anicel');
     final movie = File('${directory.path}/reference.mp4')
@@ -116,18 +119,25 @@ void main() {
 
     final asset = session.mediaAssets.single;
     expect(asset.kind, MediaAssetKind.video);
-    expect(
-      asset.carried,
-      isTrue,
-      reason: 'the answer is recorded as given — the ceiling is applied '
-          'where the bytes are decided, not by rewriting what was asked',
-    );
+    expect(asset.carried, isTrue);
     expect(
       archived(session),
-      isEmpty,
-      reason: 'a three-gigabyte reference inside a project file is a '
-          'project nobody can open',
+      contains(asset.path),
+      reason: 'what the user answered is what the save writes',
     );
+    session.dispose();
+  });
+
+  test('and a movie left alone stays outside', () async {
+    final session = sessionWithFakeConforms();
+    await session.saveProjectToFile('${directory.path}/scene.anicel');
+    final movie = File('${directory.path}/take02.mp4')
+      ..writeAsBytesSync([0, 0, 0, 24]);
+
+    session.importMediaFiles([movie.path], copyIntoProject: false);
+
+    expect(session.mediaAssets.single.carried, isFalse);
+    expect(archived(session), isEmpty);
     session.dispose();
   });
 
@@ -194,11 +204,12 @@ void main() {
     session.dispose();
   });
 
-  test('promoting a MOVIE is refused — no answer makes it carryable',
-      () async {
-    // Offered on every row on purpose (hiding it would change the menu's
-    // shape for a reason the user cannot see), so the refusal has to be
-    // honest rather than a switch that flips and does nothing.
+  test('promoting a MOVIE works — the kind chose the default, not the '
+      'answer', () async {
+    // It used to be refused by kind. The user reversed that on 08-14: a
+    // three-second reference take is exactly the movie someone means to
+    // put inside the file, and a menu entry that flips and does nothing
+    // was the alternative.
     final session = sessionWithFakeConforms();
     await session.saveProjectToFile('${directory.path}/scene.anicel');
     final movie = File('${directory.path}/참고.mp4')
@@ -206,8 +217,13 @@ void main() {
     session.importMediaFiles([movie.path], copyIntoProject: false);
     final path = session.mediaAssets.single.path;
 
-    expect(session.promoteMediaAssetIntoProject(path), isFalse);
-    expect(session.mediaAssets.single.carried, isFalse);
+    expect(session.promoteMediaAssetIntoProject(path), isTrue);
+    expect(session.mediaAssets.single.carried, isTrue);
+    expect(
+      session.promoteMediaAssetIntoProject(path),
+      isFalse,
+      reason: 'and there is nothing left to promote the second time',
+    );
     session.dispose();
   });
 

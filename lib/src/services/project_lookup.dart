@@ -119,19 +119,28 @@ Set<String> projectAudioSourcePaths(Project project) => {
     if (asset.kind == MediaAssetKind.audio) asset.path,
 };
 
-/// Whether an asset of this [kind] belongs INSIDE the `.anicel`.
+/// Whether an asset of this [kind] is carried by DEFAULT.
 ///
-/// Blender's rule, adopted whole (user decision 2026-08-13): images and
-/// sounds pack, video does not. It is a rule about the KIND, not about
-/// size or about what the user picked at import — a reference movie can be
-/// three gigabytes and a project that swallowed one would be unopenable
-/// and unsyncable, while a sound the project does not carry is a sound
-/// that goes missing the first time someone moves a folder.
+/// Blender's rule as the starting point (user decision 2026-08-13): images
+/// and sounds pack, video does not — a reference movie can be three
+/// gigabytes, while a sound the project does not carry is a sound that
+/// goes missing the first time someone moves a folder.
+///
+/// 🚨 It was a CEILING until 2026-08-14 and is now only a default (user
+/// decision, same round as the video decoder): *"비디오도 그냥 유저가
+/// 선택하게 하면 좋을거같은데. 참조만 강요하는게아니라."* A movie that a
+/// person deliberately wants inside the file — a three-second reference
+/// take, a trimmed clip — was refused by a rule that could not hear them.
+///
+/// What the ceiling protected against did not go away, it moved: the
+/// import window says what carrying a file is about to cost, by name and
+/// by size, BEFORE it costs it ([largeCarriedAssetBytes]). A warning the
+/// user can answer beats a refusal they cannot.
 ///
 /// A PREDICATE rather than a switch at each call site, so the next kind
 /// answers here once instead of in every save path
 /// ([[predicates-before-new-kind]]).
-bool mediaKindBelongsInArchive(MediaAssetKind kind) => switch (kind) {
+bool mediaKindCarriedByDefault(MediaAssetKind kind) => switch (kind) {
   MediaAssetKind.audio || MediaAssetKind.image || MediaAssetKind.pdf => true,
   MediaAssetKind.video => false,
 };
@@ -163,6 +172,10 @@ const int largeCarriedAssetBytes = 100 * 1024 * 1024;
 /// project stores is what the pool holds, and a clip pointing at an
 /// unregistered file stays a reference like any other.
 Set<String> projectArchivedMediaPaths(Project project) => {
+  // `carried` is the whole answer now. It used to be ANDed with the kind,
+  // which meant a movie the user had explicitly asked the project to hold
+  // was dropped on the way to the archive — the flag said yes and the save
+  // said no, with nothing on screen explaining the disagreement.
   for (final asset in project.mediaAssets)
-    if (asset.carried && mediaKindBelongsInArchive(asset.kind)) asset.path,
+    if (asset.carried) asset.path,
 };
