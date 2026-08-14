@@ -17,7 +17,8 @@ Pod::Spec.new do |s|
   # on Apple); AVFoundation/CoreMedia/CoreVideo carry the video writer
   # (AUDIO-PRO R7).
   s.frameworks       = 'CoreFoundation', 'CoreAudio', 'AudioToolbox',
-                       'AVFoundation', 'CoreMedia', 'CoreVideo'
+                       'AVFoundation', 'CoreMedia', 'CoreVideo',
+                       'CoreGraphics'
   s.dependency 'Flutter'
   s.platform = :ios, '13.0'
   # -ffp-contract=off must be repeated here, NOT only in

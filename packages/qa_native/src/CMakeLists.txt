@@ -92,6 +92,9 @@ if(APPLE)
   target_link_libraries(qa_engine
     "-framework CoreFoundation" "-framework CoreAudio" "-framework AudioToolbox"
     "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
+    # CoreGraphics arrived with the DECODER: a CGImage from the image
+    # generator is drawn into a bitmap context to come out as RGBA.
+    "-framework CoreGraphics"
     "-framework Foundation")
 elseif(UNIX AND NOT ANDROID)
   find_package(Threads REQUIRED)
