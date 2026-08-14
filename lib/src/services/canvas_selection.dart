@@ -1134,6 +1134,49 @@ void _antiAliasMask(Uint8List mask, int width, int height) {
 /// HARD-EDGED (a pixel is in or out by its center, the same even-odd rule
 /// as [CanvasSelectionRegion.containsPoint]) — partial coverage would make
 /// erase + stamp lose paint at the seam.
+/// The coverage [region] has over `[left, left+width) x [top, top+height)`,
+/// with the selection tool's mask knobs applied.
+///
+/// Even-odd scanline rasterization folded step by step (R26 #16 — the
+/// composite region's own rasterizer): O(edges × rows + pixels), where the
+/// naive per-pixel ray cast made lasso lifts quadratic. The R26 post-passes
+/// are opt-in and leave the classic hard mask byte-identical; their order
+/// is resize the region first, then soften.
+///
+/// Shared with the PIXEL verbs (색 변환 / 픽셀 비우기) so a selection means
+/// the same pixels whichever verb reads it. ⚠️Callers that rasterize the
+/// mask in pieces must pad each piece by [SelectionMaskOptions.bboxPad] and
+/// keep only the middle: the post-passes read neighbours, so a piece
+/// rasterized without padding softens against its own edge and leaves a
+/// seam where the pieces meet.
+Uint8List buildSelectionMask({
+  required CanvasSelectionRegion region,
+  required SelectionMaskOptions options,
+  required int left,
+  required int top,
+  required int width,
+  required int height,
+}) {
+  final mask = region.maskFor(
+    left: left,
+    top: top,
+    width: width,
+    height: height,
+  );
+  if (!options.isHard) {
+    if (options.growPx != 0) {
+      _growShrinkMask(mask, width, height, options.growPx);
+    }
+    if (options.featherPx > 0) {
+      _featherMask(mask, width, height, options.featherPx);
+    }
+    if (options.antiAlias) {
+      _antiAliasMask(mask, width, height);
+    }
+  }
+  return mask;
+}
+
 SelectionLiftDabs? buildSelectionLiftDabs({
   required CanvasSelectionRegion region,
   required BitmapSurface surface,
@@ -1168,29 +1211,14 @@ SelectionLiftDabs? buildSelectionLiftDabs({
   final width = rightExclusive - left;
   final height = bottomExclusive - top;
 
-  // Even-odd scanline mask over the bbox, folded step by step (R26 #16 —
-  // the composite region's own rasterizer): O(edges × rows + pixels),
-  // where the naive per-pixel ray cast made lasso lifts quadratic.
-  final mask = region.maskFor(
+  final mask = buildSelectionMask(
+    region: region,
+    options: options,
     left: left,
     top: top,
     width: width,
     height: height,
   );
-
-  // R26 opt-in mask post-passes (defaults leave the classic hard mask
-  // byte-identical). Order: resize the region first, then soften.
-  if (!options.isHard) {
-    if (options.growPx != 0) {
-      _growShrinkMask(mask, width, height, options.growPx);
-    }
-    if (options.featherPx > 0) {
-      _featherMask(mask, width, height, options.featherPx);
-    }
-    if (options.antiAlias) {
-      _antiAliasMask(mask, width, height);
-    }
-  }
 
   // Lift the surface pixels under the mask (straight alpha, byte copies).
   final gathered = gatherMaskedSurfacePixels(

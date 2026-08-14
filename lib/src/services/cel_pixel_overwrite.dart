@@ -225,19 +225,26 @@ class _RestoreBuilder {
   }
 }
 
-/// The pixels one pass covers, handed over as tile-local addresses.
+/// The tiles one pass covers, each with the coverage over it.
 ///
-/// TILE-MAJOR, and the walk order IS the contract: a recipe stores values
-/// positionally, so the undo pass must visit the same pixels in the same
-/// order. Walking tiles (rather than destination rows) is also what keeps
+/// A `null` mask means the whole tile is covered — the "범위는 전체" case,
+/// which is the default gesture and would otherwise pay for a 64 KB buffer
+/// of 255s per tile. Otherwise the mask is one byte per tile pixel, in the
+/// tile's own row-major order.
+///
+/// ⛔TILE-GRANULAR ON PURPOSE, not pixel-granular. A whole-canvas pass over
+/// a shipping cel visits ~4 million pixels; handing those over one callback
+/// at a time spends more time on the calls than on the pixels. The walk
+/// names tiles, the kernel loops inside them.
+///
+/// TILE-MAJOR, and the walk ORDER is a contract: a recipe stores values
+/// positionally, so the undo pass must visit the same tiles in the same
+/// sequence. Walking tiles (rather than destination rows) is also what keeps
 /// the pass off the per-pixel [TileCoord] allocation and map lookup that
 /// made whole-picture lifts quadratic — the lesson
 /// `gatherMaskedSurfacePixels` records at length.
 typedef CelPixelWalk =
-    void Function(
-      void Function(TileCoord coord, int localX, int localY, int maskValue)
-      visit,
-    );
+    void Function(void Function(TileCoord coord, Uint8List? mask) visit);
 
 /// Applies [channel] over [surface] wherever [walk] reaches, writing
 /// [value] (blended by mask coverage) and returning the new surface
@@ -272,85 +279,72 @@ typedef CelPixelWalk =
   }
 
   final rebuilt = <TileCoord, BitmapTile>{};
-  // Tile-local scratch. Allocated LAZILY, at the first pixel that actually
-  // changes: a tile the walk crosses but never writes keeps its ORIGINAL
-  // object, and since the surface's tile map is immutable that tile is then
-  // literally shared with the old surface — the single biggest reason a
-  // whole-canvas pass over line art costs almost nothing.
-  Uint8List? scratch;
-  TileCoord? scratchCoord;
-  BitmapTile? scratchTile;
+  final pixelCount = surface.tileSize * surface.tileSize;
   var index = 0;
 
-  void flush() {
-    final coord = scratchCoord;
-    final pixels = scratch;
-    if (coord != null && pixels != null) {
-      rebuilt[coord] = BitmapTile(
-        coord: coord,
-        size: surface.tileSize,
-        pixels: pixels,
-      );
-    }
-    scratch = null;
-    scratchCoord = null;
-    scratchTile = null;
-  }
-
-  walk((coord, localX, localY, maskValue) {
-    if (scratchCoord != coord) {
-      flush();
-      scratchCoord = coord;
-      // Absent tile: nothing has ever been drawn here, so 색 변환 has no
-      // colour to replace and 비우기 has nothing to empty. It stays absent
-      // rather than materializing 256 KB of zeroes.
-      scratchTile = surface.tileAt(coord);
-    }
-    final tile = scratchTile;
+  walk((coord, mask) {
+    // Absent tile: nothing has ever been drawn here, so 색 변환 has no
+    // colour to replace and 비우기 has nothing to empty. It stays absent
+    // rather than materializing 256 KB of zeroes.
+    final tile = surface.tileAt(coord);
     if (tile == null) {
       return;
     }
-    final offset = tile.byteOffsetForPixel(x: localX, y: localY);
-    var pixels = scratch;
-    final alpha = pixels != null
-        ? pixels[offset + 3]
-        : tile.readPixels<int>((_, view) => view[offset + 3]);
-    if (!celPixelParticipates(
-      channel: channel,
-      alpha: alpha,
-      maskValue: maskValue,
-    )) {
-      return;
+    // Reads come from the tile's own bytes and writes go to the copy, so
+    // "the original value" stays available even after the pixel beside it
+    // has been overwritten. The copy is made LAZILY, at the first pixel
+    // that actually changes: a tile the walk crosses but never writes keeps
+    // its ORIGINAL object and, the tile map being immutable, is then shared
+    // with the old surface — the single biggest reason a whole-canvas pass
+    // over line art costs almost nothing.
+    final written = tile.readPixels<Uint8List?>((_, view) {
+      Uint8List? out;
+      for (var pixel = 0; pixel < pixelCount; pixel += 1) {
+        final maskValue = mask == null ? 255 : mask[pixel];
+        final offset = pixel * 4;
+        if (!celPixelParticipates(
+          channel: channel,
+          alpha: view[offset + 3],
+          maskValue: maskValue,
+        )) {
+          continue;
+        }
+        for (var byte = 0; byte < byteCount; byte += 1) {
+          original[byte] = view[offset + channel.byteOffset(byte)];
+        }
+        builder?.add(original);
+        if (restore != null) {
+          restore.readInto(incoming, index);
+        }
+        index += 1;
+        out ??= Uint8List.fromList(view);
+        for (var byte = 0; byte < byteCount; byte += 1) {
+          out[offset + channel.byteOffset(byte)] =
+              // 🚨UNDO WRITES, IT DOES NOT BLEND. The recipe already holds
+              // what the pixel was, so putting it back is a plain assignment
+              // at every coverage. Running the recipe through the blend
+              // instead only converges toward the original and never reaches
+              // it — a feathered recolour of flat black came back as
+              // [55, 61, 67] rather than [10, 20, 30], and a second undo
+              // would have drifted again.
+              restore != null || maskValue == 255
+              ? incoming[byte]
+              // Forward, partial coverage blends the VALUE, so a feathered
+              // edge fades between the old colour and the new one while the
+              // drawing's own alpha — its shape — is left alone.
+              : _blend(original[byte], incoming[byte], maskValue);
+        }
+      }
+      return out;
+    });
+    if (written != null) {
+      rebuilt[coord] = BitmapTile(
+        coord: coord,
+        size: surface.tileSize,
+        pixels: written,
+      );
     }
-    if (pixels == null) {
-      pixels = tile.readPixels<Uint8List>((_, view) => Uint8List.fromList(view));
-      scratch = pixels;
-    }
-    for (var byte = 0; byte < byteCount; byte += 1) {
-      original[byte] = pixels[offset + channel.byteOffset(byte)];
-    }
-    builder?.add(original);
-    if (restore != null) {
-      restore.readInto(incoming, index);
-    }
-    for (var byte = 0; byte < byteCount; byte += 1) {
-      pixels[offset + channel.byteOffset(byte)] =
-          // 🚨UNDO WRITES, IT DOES NOT BLEND. The recipe already holds what
-          // the pixel was, so putting it back is a plain assignment at every
-          // coverage. Running the recipe through the blend instead only
-          // converges toward the original and never reaches it — a feathered
-          // recolour of flat black came back as [55, 61, 67] rather than
-          // [10, 20, 30], and a second undo would have drifted again.
-          restore != null || maskValue == 255
-          ? incoming[byte]
-          // Forward, partial coverage blends the VALUE, so a feathered edge
-          // fades between the old colour and the new one while the drawing's
-          // own alpha — its shape — is left alone.
-          : _blend(original[byte], incoming[byte], maskValue);
-    }
-    index += 1;
   });
-  flush();
 
   if (rebuilt.isEmpty) {
     return (surface: surface, restore: null);

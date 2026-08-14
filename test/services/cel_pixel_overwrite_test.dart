@@ -8,19 +8,14 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/cel_pixel_overwrite.dart';
 
-/// One pixel a walk visits: tile, tile-local x/y, and mask coverage.
-typedef _Pixel = (TileCoord coord, int x, int y, int mask);
-
 void main() {
   const canvas = CanvasSize(width: 512, height: 512);
   final origin = TileCoord(x: 0, y: 0);
   final neighbour = TileCoord(x: 1, y: 0);
 
-  /// A tile whose pixel (x, y) carries [rgba], everything else transparent.
-  BitmapTile tileWith(
-    TileCoord coord,
-    Map<(int, int), List<int>> pixels,
-  ) {
+  /// A tile carrying [pixels] at the given tile-local coordinates,
+  /// everything else fully transparent.
+  BitmapTile tileWith(TileCoord coord, Map<(int, int), List<int>> pixels) {
     final bytes = Uint8List(256 * 256 * 4);
     for (final entry in pixels.entries) {
       final offset = ((entry.key.$2 * 256) + entry.key.$1) * 4;
@@ -42,9 +37,22 @@ void main() {
     );
   }
 
-  CelPixelWalk walk(List<_Pixel> pixels) => (visit) {
-    for (final pixel in pixels) {
-      visit(pixel.$1, pixel.$2, pixel.$3, pixel.$4);
+  /// Coverage over the named tile-local pixels; everything else 0.
+  Uint8List maskOver(Map<(int, int), int> coverage) {
+    final mask = Uint8List(256 * 256);
+    for (final entry in coverage.entries) {
+      mask[(entry.key.$2 * 256) + entry.key.$1] = entry.value;
+    }
+    return mask;
+  }
+
+  /// Full coverage of the named pixels.
+  Uint8List maskOverAll(Iterable<(int, int)> pixels) =>
+      maskOver({for (final pixel in pixels) pixel: 255});
+
+  CelPixelWalk walk(List<(TileCoord, Uint8List?)> tiles) => (visit) {
+    for (final tile in tiles) {
+      visit(tile.$1, tile.$2);
     }
   };
 
@@ -60,7 +68,9 @@ void main() {
       final result = overwriteCelPixels(
         surface: surface,
         channel: CelPixelChannel.colour,
-        walk: walk([(origin, 0, 0, 255), (origin, 1, 0, 255)]),
+        walk: walk([
+          (origin, maskOverAll([(0, 0), (1, 0)])),
+        ]),
         value: Uint8List.fromList([255, 0, 0]),
       );
 
@@ -80,13 +90,39 @@ void main() {
       final result = overwriteCelPixels(
         surface: surface,
         channel: CelPixelChannel.colour,
-        walk: walk([(origin, 0, 0, 255)]),
+        walk: walk([
+          (origin, maskOverAll([(0, 0)])),
+        ]),
         value: Uint8List.fromList([255, 0, 0]),
       );
 
       // Nothing participated, so nothing was rebuilt at all.
       expect(result.restore, isNull);
       expect(identical(result.surface, surface), isTrue);
+    });
+
+    test('a whole-tile pass with no mask touches only the ink', () {
+      final surface = surfaceOf([
+        tileWith(origin, {
+          (7, 3): [17, 17, 17, 255],
+          (8, 3): [17, 17, 17, 128],
+        }),
+      ]);
+
+      final result = overwriteCelPixels(
+        surface: surface,
+        channel: CelPixelChannel.colour,
+        // null mask = 범위는 전체.
+        walk: walk([(origin, null)]),
+        value: Uint8List.fromList([200, 30, 30]),
+      );
+
+      expect(pixelAt(result.surface, origin, 7, 3), [200, 30, 30, 255]);
+      expect(pixelAt(result.surface, origin, 8, 3), [200, 30, 30, 128]);
+      // The other 65534 transparent pixels stayed out of the recipe.
+      final restore = result.restore! as UniformCelPixelRestore;
+      expect(restore.value, [17, 17, 17]);
+      expect(restore.estimatedRetainedBytes, 3);
     });
 
     test('flat line art yields a three-byte recipe', () {
@@ -99,7 +135,9 @@ void main() {
       final result = overwriteCelPixels(
         surface: surface,
         channel: CelPixelChannel.colour,
-        walk: walk([for (var x = 0; x < 40; x += 1) (origin, x, 0, 255)]),
+        walk: walk([
+          (origin, maskOverAll([for (var x = 0; x < 40; x += 1) (x, 0)])),
+        ]),
         value: Uint8List.fromList([200, 30, 30]),
       );
 
@@ -117,22 +155,20 @@ void main() {
           (2, 0): [10, 20, 30, 7],
         }),
       ]);
-      final pixels = [
-        (origin, 0, 0, 255),
-        (origin, 1, 0, 255),
-        (origin, 2, 0, 255),
-      ];
+      final steps = walk([
+        (origin, maskOverAll([(0, 0), (1, 0), (2, 0)])),
+      ]);
 
       final forward = overwriteCelPixels(
         surface: before,
         channel: CelPixelChannel.colour,
-        walk: walk(pixels),
+        walk: steps,
         value: Uint8List.fromList([1, 2, 3]),
       );
       final undone = overwriteCelPixels(
         surface: forward.surface,
         channel: CelPixelChannel.colour,
-        walk: walk(pixels),
+        walk: steps,
         restore: forward.restore,
       );
 
@@ -159,10 +195,7 @@ void main() {
         surface: surface,
         channel: CelPixelChannel.colour,
         walk: walk([
-          (origin, 0, 0, 255),
-          (origin, 1, 0, 255),
-          (origin, 2, 0, 255),
-          (origin, 3, 0, 255),
+          (origin, maskOverAll([(0, 0), (1, 0), (2, 0), (3, 0)])),
         ]),
         value: Uint8List.fromList([0, 0, 255]),
       );
@@ -174,19 +207,20 @@ void main() {
 
     test('more than 256 colours falls back to raw channels', () {
       final pixels = <(int, int), List<int>>{};
-      final walked = <_Pixel>[];
+      final covered = <(int, int)>[];
       for (var index = 0; index < 300; index += 1) {
         final x = index % 256;
         final y = index ~/ 256;
         pixels[(x, y)] = [index & 0xFF, (index >> 4) & 0xFF, index % 251, 255];
-        walked.add((origin, x, y, 255));
+        covered.add((x, y));
       }
       final surface = surfaceOf([tileWith(origin, pixels)]);
+      final steps = walk([(origin, maskOverAll(covered))]);
 
       final result = overwriteCelPixels(
         surface: surface,
         channel: CelPixelChannel.colour,
-        walk: walk(walked),
+        walk: steps,
         value: Uint8List.fromList([0, 0, 0]),
       );
 
@@ -196,10 +230,13 @@ void main() {
       final undone = overwriteCelPixels(
         surface: result.surface,
         channel: CelPixelChannel.colour,
-        walk: walk(walked),
+        walk: steps,
         restore: restore,
       );
-      expect(pixelAt(undone.surface, origin, 5, 0), pixelAt(surface, origin, 5, 0));
+      expect(
+        pixelAt(undone.surface, origin, 5, 0),
+        pixelAt(surface, origin, 5, 0),
+      );
       expect(
         pixelAt(undone.surface, origin, 43, 1),
         pixelAt(surface, origin, 43, 1),
@@ -218,7 +255,9 @@ void main() {
       final result = overwriteCelPixels(
         surface: surface,
         channel: CelPixelChannel.colour,
-        walk: walk([(origin, 0, 0, 128)]),
+        walk: walk([
+          (origin, maskOver({(0, 0): 128})),
+        ]),
         value: Uint8List.fromList([255, 255, 255]),
       );
 
@@ -238,22 +277,20 @@ void main() {
           (2, 0): [10, 20, 30, 255],
         }),
       ]);
-      final pixels = [
-        (origin, 0, 0, 64),
-        (origin, 1, 0, 128),
-        (origin, 2, 0, 255),
-      ];
+      final steps = walk([
+        (origin, maskOver({(0, 0): 64, (1, 0): 128, (2, 0): 255})),
+      ]);
 
       final forward = overwriteCelPixels(
         surface: before,
         channel: CelPixelChannel.colour,
-        walk: walk(pixels),
+        walk: steps,
         value: Uint8List.fromList([250, 240, 230]),
       );
       final undone = overwriteCelPixels(
         surface: forward.surface,
         channel: CelPixelChannel.colour,
-        walk: walk(pixels),
+        walk: steps,
         restore: forward.restore,
       );
 
@@ -274,12 +311,14 @@ void main() {
           (1, 0): [40, 50, 60, 128],
         }),
       ]);
-      final pixels = [(origin, 0, 0, 255), (origin, 1, 0, 255)];
+      final steps = walk([
+        (origin, maskOverAll([(0, 0), (1, 0)])),
+      ]);
 
       final forward = overwriteCelPixels(
         surface: before,
         channel: CelPixelChannel.alpha,
-        walk: walk(pixels),
+        walk: steps,
         value: Uint8List.fromList([0]),
       );
 
@@ -289,7 +328,7 @@ void main() {
       final undone = overwriteCelPixels(
         surface: forward.surface,
         channel: CelPixelChannel.alpha,
-        walk: walk(pixels),
+        walk: steps,
         restore: forward.restore,
       );
       expect(pixelAt(undone.surface, origin, 0, 0), [10, 20, 30, 255]);
@@ -304,16 +343,14 @@ void main() {
           (2, 0): [0, 0, 0, 255],
         }),
       ]);
-      final pixels = [
-        (origin, 0, 0, 255),
-        (origin, 1, 0, 255),
-        (origin, 2, 0, 255),
-      ];
+      final steps = walk([
+        (origin, maskOverAll([(0, 0), (1, 0), (2, 0)])),
+      ]);
 
       final forward = overwriteCelPixels(
         surface: before,
         channel: CelPixelChannel.alpha,
-        walk: walk(pixels),
+        walk: steps,
         value: Uint8List.fromList([0]),
       );
       // All three took part — skipping the empty one would shift every
@@ -324,7 +361,7 @@ void main() {
       final undone = overwriteCelPixels(
         surface: forward.surface,
         channel: CelPixelChannel.alpha,
-        walk: walk(pixels),
+        walk: steps,
         restore: forward.restore,
       );
       expect(pixelAt(undone.surface, origin, 0, 0)[3], 255);
@@ -349,9 +386,9 @@ void main() {
         surface: surface,
         channel: CelPixelChannel.colour,
         walk: walk([
-          (origin, 0, 0, 255),
+          (origin, maskOverAll([(0, 0)])),
           // Crossed, but transparent there — nothing to recolour.
-          (neighbour, 5, 5, 255),
+          (neighbour, maskOverAll([(5, 5)])),
         ]),
         value: Uint8List.fromList([1, 1, 1]),
       );
@@ -361,8 +398,10 @@ void main() {
         isTrue,
         reason: 'an untouched tile must stay shared with the old surface',
       );
-      expect(identical(result.surface.tileAt(origin), surface.tileAt(origin)),
-          isFalse);
+      expect(
+        identical(result.surface.tileAt(origin), surface.tileAt(origin)),
+        isFalse,
+      );
     });
 
     test('an absent tile is never materialized', () {
@@ -375,7 +414,7 @@ void main() {
       final result = overwriteCelPixels(
         surface: surface,
         channel: CelPixelChannel.colour,
-        walk: walk([(origin, 0, 0, 255), (neighbour, 0, 0, 255)]),
+        walk: walk([(origin, null), (neighbour, null)]),
         value: Uint8List.fromList([2, 2, 2]),
       );
 
