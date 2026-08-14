@@ -555,6 +555,8 @@ class _ImportDialogState extends State<ImportDialog> {
                     rasterize: bake,
                     fit: settings.fit,
                     copyIntoProject: carry,
+                    inFrame: settings.inFrame,
+                    outFrame: settings.outFrame,
                     // A 100-page conte renders for seconds — the footer
                     // says where it is instead of looking hung.
                     onRenderProgress: (rendered, total) {

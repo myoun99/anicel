@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/import/raster_cel_import.dart';
 import '../../services/media/media_byte_source.dart';
+import '../../services/pdf/pdf_render_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/transport_bar.dart';
 
@@ -53,6 +54,14 @@ class _ImportPreviewState extends State<ImportPreview> {
   String? _loadedPath;
   int _position = 0;
 
+  /// A PDF is not decoded up front. A hundred-page conte rendered to look
+  /// at ONE page is the thing §6-m says not to do, so the document stays
+  /// open and the page under the playhead is drawn on demand.
+  PdfDocumentHandle? _pdf;
+  int _pdfPages = 0;
+  ui.Image? _pdfPage;
+  int _pdfPageShown = -1;
+
   @override
   void initState() {
     super.initState();
@@ -78,6 +87,44 @@ class _ImportPreviewState extends State<ImportPreview> {
       frame.dispose();
     }
     _frames = const [];
+    _pdfPage?.dispose();
+    _pdfPage = null;
+    _pdfPageShown = -1;
+    _pdfPages = 0;
+    final pdf = _pdf;
+    _pdf = null;
+    if (pdf != null) {
+      unawaited(pdf.dispose());
+    }
+  }
+
+  /// Draws the page under the playhead, once per page.
+  Future<void> _renderPdfPage(int page) async {
+    final pdf = _pdf;
+    if (pdf == null || page == _pdfPageShown) {
+      return;
+    }
+    _pdfPageShown = page;
+    ui.Image? image;
+    try {
+      final size = pdf.pageSize(page);
+      final scale = size.width <= 0 ? 1.0 : 640 / size.width;
+      image = await pdf.renderPage(
+        page,
+        width: (size.width * scale).round().clamp(1, 2048),
+        height: (size.height * scale).round().clamp(1, 2048),
+      );
+    } on Object {
+      image = null;
+    }
+    if (!mounted || _pdf != pdf) {
+      image?.dispose();
+      return;
+    }
+    setState(() {
+      _pdfPage?.dispose();
+      _pdfPage = image;
+    });
   }
 
   Future<void> _load() async {
@@ -90,6 +137,19 @@ class _ImportPreviewState extends State<ImportPreview> {
     _position = 0;
     if (path == null) {
       setState(() {});
+      return;
+    }
+    if (path.toLowerCase().endsWith('.pdf')) {
+      final pdf = await PdfRenderService.open(path);
+      if (!mounted || _loadedPath != path) {
+        unawaited(pdf?.dispose());
+        return;
+      }
+      setState(() {
+        _pdf = pdf;
+        _pdfPages = pdf?.pageCount ?? 0;
+      });
+      await _renderPdfPage(0);
       return;
     }
     List<ui.Image> frames = const [];
@@ -121,8 +181,15 @@ class _ImportPreviewState extends State<ImportPreview> {
 
   @override
   Widget build(BuildContext context) {
-    final frameCount = _frames.isEmpty ? 1 : _frames.length;
+    final frameCount = _pdfPages > 0
+        ? _pdfPages
+        : (_frames.isEmpty ? 1 : _frames.length);
     final out = widget.outFrame ?? frameCount - 1;
+    final shown = _pdfPages > 0
+        ? _pdfPage
+        : (_frames.isEmpty
+              ? null
+              : _frames[_position.clamp(0, _frames.length - 1)]);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -134,26 +201,13 @@ class _ImportPreviewState extends State<ImportPreview> {
               child: Center(
                 child: AspectRatio(
                   aspectRatio: 16 / 9,
-                  child: _frames.isEmpty
+                  child: shown == null
                       ? const SizedBox.shrink()
                       : FittedBox(
                           child: SizedBox(
-                            width: _frames[_position.clamp(
-                              0,
-                              _frames.length - 1,
-                            )].width.toDouble(),
-                            height: _frames[_position.clamp(
-                              0,
-                              _frames.length - 1,
-                            )].height.toDouble(),
-                            child: CustomPaint(
-                              painter: _FramePainter(
-                                _frames[_position.clamp(
-                                  0,
-                                  _frames.length - 1,
-                                )],
-                              ),
-                            ),
+                            width: shown.width.toDouble(),
+                            height: shown.height.toDouble(),
+                            child: CustomPaint(painter: _FramePainter(shown)),
                           ),
                         ),
                 ),
@@ -171,7 +225,12 @@ class _ImportPreviewState extends State<ImportPreview> {
             outFrame: out.clamp(0, frameCount - 1),
             playing: false,
             showRange: widget.rangeEditable && frameCount > 1,
-            onSeek: (frame) => setState(() => _position = frame),
+            onSeek: (frame) {
+              setState(() => _position = frame);
+              if (_pdfPages > 0) {
+                unawaited(_renderPdfPage(frame));
+              }
+            },
             // Playback belongs to the day a video arrives; stepping is what
             // a page or a GIF frame needs, and that is the scrub.
             onPlayPause: () {},
