@@ -63,13 +63,26 @@ class CommandPill extends StatelessWidget {
   /// with the [GripBand.hitExtent] of its `＋` reaching into the margin.
   static const double height = 28;
 
-  /// The breath after the LAST verb, so the pill is not open on one side.
+  /// The breath after the LAST verb — THE SAME one the head pays on its
+  /// leading edge.
   ///
-  /// It matches the smaller of the head's two paddings (4 for an icon name
-  /// cell, 6 for a text one) rather than picking the larger: the verbs
-  /// already carry a little of their own inside their 24px boxes, and the
-  /// complaint was a border touching a glyph, not a cramped row.
-  static const double _tailBreath = 4;
+  /// 🚨유저 #7 (2026-08-14): 「**1,2,3,4,N 에서 n버튼 오른쪽만 미묘하게 짧다**
+  /// 던가, **fx버튼의 오른쪽이 미묘하게 공간 있다**던가. 이런 미묘한 이상한
+  /// 패딩 싹 삭제」.
+  ///
+  /// ⛔A flat 4 was 「the smaller of the head's two paddings」, picked back
+  /// when the complaint was a border touching a glyph. But a name cell pays
+  /// `1 + (4 | 6)` on its leading edge, so a TEXT-headed pill measured 7 in
+  /// and 4 out — and `N`, a glyph with no bearing of its own, is exactly
+  /// where those three pixels went missing.
+  ///
+  /// ★So the tail READS the head rather than guessing at it. 「The pill owes
+  /// its contents the same margin on both ends」 is what the old note
+  /// already said; the constant just could not say it.
+  static double _tailBreathFor(Widget? head) =>
+      head is PillNameCell && head.label != null
+      ? PillNameCell.textBreath
+      : PillNameCell.iconBreath;
 
   @override
   Widget build(BuildContext context) {
@@ -104,7 +117,11 @@ class CommandPill extends StatelessWidget {
             // rather than in each bar: a trailing `SizedBox` in the frame
             // pill alone would have fixed the complaint and left cut, layer
             // and fx still lopsided.
-            const SizedBox(width: _tailBreath),
+            // ⛔None when there are no verbs. A head-only pill (fx) already
+            // pays its own trailing padding, and adding the tail on top of
+            // it is the 「fx버튼의 오른쪽이 미묘하게 공간 있다」 gap.
+            if (children.isNotEmpty)
+              SizedBox(width: _tailBreathFor(head)),
           ],
         ),
       ),
@@ -161,6 +178,20 @@ class PillNameCell extends StatelessWidget {
   final IconData? icon;
   final String? tooltip;
 
+  /// 🚨유저 #7 — the head's TOTAL leading breath, named so the pill's tail
+  /// can pay the same one instead of guessing at it.
+  ///
+  /// ⛔They are totals, not the inner padding: the cell also sits inside
+  /// [_outerInset], and it was that split that let a "4 vs 6" comparison
+  /// look symmetric while the pill measured 7 in and 4 out.
+  static const double iconBreath = 5;
+  static const double textBreath = 7;
+
+  /// The gap OUTSIDE the tappable cell, so two adjacent name cells never
+  /// touch. Part of the breath above, which is why it is subtracted from
+  /// the inner padding rather than added to it.
+  static const double _outerInset = 1;
+
   @override
   Widget build(BuildContext context) {
     final label = this.label;
@@ -199,14 +230,16 @@ class PillNameCell extends StatelessWidget {
           height: CommandPill.height - 4,
           constraints: const BoxConstraints(minWidth: 24),
           alignment: Alignment.center,
-          padding: EdgeInsets.symmetric(horizontal: label == null ? 4 : 6),
+          padding: EdgeInsets.symmetric(
+            horizontal: (label == null ? iconBreath : textBreath) - _outerInset,
+          ),
           child: content,
         ),
       ),
     );
     final tooltip = this.tooltip;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 1),
+      padding: const EdgeInsets.symmetric(horizontal: _outerInset),
       child: tooltip == null ? cell : Tooltip(message: tooltip, child: cell),
     );
   }
