@@ -294,9 +294,17 @@ void main() {
     });
   });
 
+  /// 🚨T3 — these three used to be the three PLACEMENT RULES, and the paste
+  /// no longer has any. ⛔Do not restore them: each one let the DESTINATION
+  /// decide the pasted length, and 「코마까지 포함해서 블록 자체를 복붙」
+  /// means the clip decides. What is left is one sentence — insert at the
+  /// index, everything after moves aside — so all three now assert the same
+  /// thing from three starting positions.
+  ///
+  /// Fixture: `a` holds 0..2, `b` holds 6..7.
   group('pasteLinkedFrameForLayer', () {
-    test('relinks the block when pasted on its start and collects the '
-        'orphaned frame', () {
+    test('on a block START it inserts BEFORE the block — ⛔no relink, and '
+        'the block it landed on survives', () {
       final fixture = _fixture();
       fixture.controller.selectFrameIndex(0);
 
@@ -308,15 +316,22 @@ void main() {
       final layer = fixture.layer;
       expect(
         layer.timeline[0],
-        TimelineExposure.drawing(const FrameId('b'), length: 3),
+        TimelineExposure.drawing(const FrameId('b'), length: 1),
+      );
+      expect(
+        layer.timeline[1],
+        TimelineExposure.drawing(const FrameId('a'), length: 3),
+        reason: 'a moved over by the clip length; the old rule ate it',
       );
       expect(
         layer.frames.map((frame) => frame.id),
-        isNot(contains(const FrameId('a'))),
+        contains(const FrameId('a')),
+        reason: 'nothing was orphaned, so nothing was collected',
       );
     });
 
-    test('splits the hold when pasted inside it', () {
+    test('INSIDE a hold it splits — but the tail keeps its own cel instead '
+        'of being handed to the clip', () {
       final fixture = _fixture();
       fixture.controller.selectFrameIndex(1);
 
@@ -329,11 +344,17 @@ void main() {
       expect(layer.timeline[0]!.length, 1);
       expect(
         layer.timeline[1],
-        TimelineExposure.drawing(const FrameId('b'), length: 2),
+        TimelineExposure.drawing(const FrameId('b'), length: 1),
+      );
+      expect(
+        layer.timeline[2],
+        TimelineExposure.drawing(const FrameId('a'), length: 2),
+        reason: 'the rest of a is still a',
       );
     });
 
-    test('fills an empty gap up to the next block', () {
+    test('on an EMPTY cell it takes the clip\'s length, not the distance to '
+        'the next block', () {
       final fixture = _fixture();
       fixture.controller.selectFrameIndex(3);
 
@@ -344,7 +365,13 @@ void main() {
 
       expect(
         fixture.layer.timeline[3],
-        TimelineExposure.drawing(const FrameId('a'), length: 3),
+        TimelineExposure.drawing(const FrameId('a'), length: 1),
+        reason: 'the old rule stretched it to 3, reaching b at 6',
+      );
+      expect(
+        fixture.layer.timeline[7],
+        TimelineExposure.drawing(const FrameId('b'), length: 2),
+        reason: 'b moved aside even though there was room',
       );
     });
 

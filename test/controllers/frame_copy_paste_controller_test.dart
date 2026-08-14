@@ -88,53 +88,77 @@ void main() {
       );
     });
 
-    test(
-      'replacing drawingStart removes old backing frame only when unreferenced',
-      () {
-        final fixture = _fixture(_layer());
-        fixture.controller.selectFrameIndex(5);
+    /// 🚨T3 — 「replacing drawingStart」 was the RELINK, and it is retired: a
+    /// paste on a block start inserts before that block rather than taking
+    /// it over. ⛔Do not restore it.
+    ///
+    /// The bookkeeping it carried does survive, because it was never really
+    /// about relinking: a cel that loses its last exposure leaves with it.
+    /// These two now reach that rule the way anything else does — the lift
+    /// half of the splice — instead of through a placement branch.
+    test('a cel the splice orphaned goes with it', () {
+      final fixture = _fixture(
+        _layer(
+          timeline: {
+            0: TimelineExposure.drawing(const FrameId('a'), length: 1),
+            5: TimelineExposure.drawing(const FrameId('b'), length: 1),
+          },
+        ),
+      );
 
-        fixture.controller.pasteLinkedFrameForLayer(
-          layerId: const LayerId('layer'),
-          frameId: const FrameId('a'),
-        );
-
-        expect(
-          _latestLayer(fixture.repository).frames.map((frame) => frame.id),
-          orderedEquals([const FrameId('a')]),
-        );
-      },
-    );
-
-    test(
-      'replacing drawingStart keeps old backing frame while still referenced',
-      () {
-        final fixture = _fixture(
-          _layer(
-            timeline: {
-              0: TimelineExposure.drawing(const FrameId('a'), length: 1),
-              5: TimelineExposure.drawing(const FrameId('b'), length: 1),
-              9: TimelineExposure.drawing(const FrameId('b'), length: 1),
-            },
+      fixture.controller.spliceRunsForLayers(
+        runs: [
+          (
+            layerId: const LayerId('layer'),
+            index: 5,
+            liftCount: 1,
+            clip: null,
+            bornFrames: const <Frame>[],
           ),
-        );
-        fixture.controller.selectFrameIndex(5);
+        ],
+        description: 'test',
+      );
 
-        fixture.controller.pasteLinkedFrameForLayer(
-          layerId: const LayerId('layer'),
-          frameId: const FrameId('a'),
-        );
+      expect(
+        _latestLayer(fixture.repository).frames.map((frame) => frame.id),
+        orderedEquals([const FrameId('a')]),
+      );
+    });
 
-        expect(
-          _latestLayer(fixture.repository).frames.map((frame) => frame.id),
-          orderedEquals([const FrameId('a'), const FrameId('b')]),
-        );
-        expect(
-          _latestLayer(fixture.repository).timeline[9]?.frameId,
-          const FrameId('b'),
-        );
-      },
-    );
+    test('a cel another exposure still points at stays', () {
+      final fixture = _fixture(
+        _layer(
+          timeline: {
+            0: TimelineExposure.drawing(const FrameId('a'), length: 1),
+            5: TimelineExposure.drawing(const FrameId('b'), length: 1),
+            9: TimelineExposure.drawing(const FrameId('b'), length: 1),
+          },
+        ),
+      );
+
+      fixture.controller.spliceRunsForLayers(
+        runs: [
+          (
+            layerId: const LayerId('layer'),
+            index: 5,
+            liftCount: 1,
+            clip: null,
+            bornFrames: const <Frame>[],
+          ),
+        ],
+        description: 'test',
+      );
+
+      expect(
+        _latestLayer(fixture.repository).frames.map((frame) => frame.id),
+        orderedEquals([const FrameId('a'), const FrameId('b')]),
+      );
+      expect(
+        _latestLayer(fixture.repository).timeline[8]?.frameId,
+        const FrameId('b'),
+        reason: 'the surviving b pulled one left when the hole closed',
+      );
+    });
 
     test(
       'paste linked frame on held drawing creates authored drawingStart',
@@ -301,7 +325,10 @@ void main() {
           ),
           2,
         );
-        expect(layer.timeline.keys, orderedEquals([0, 3, 5, 9]));
+        // 🚨T3: the keys after 3 each moved by the clip's one cell. The old
+        // paste dropped into the gap without disturbing anything, which is
+        // the same rule that decided its length for it.
+        expect(layer.timeline.keys, orderedEquals([0, 3, 6, 10]));
         expect(layer.frames, hasLength(2));
       },
     );
@@ -418,8 +445,8 @@ void main() {
       expect(names.toSet(), hasLength(names.length));
     });
 
-    test('it obeys the SAME placement rules — inside a hold it splits, '
-        'exactly as the linked paste does', () {
+    test('it lands the SAME way the linked paste does — one splice, and '
+        'only the cel differs', () {
       final fixture = _fixture(_layer());
       fixture.controller.selectFrameIndex(1);
 
@@ -433,9 +460,13 @@ void main() {
           .single
           .layers
           .single;
-      expect(layer.timeline[0]?.length, 1, reason: 'the hold ends here');
+      expect(layer.timeline[0]?.length, 1, reason: 'the hold splits here');
       expect(layer.timeline[1]?.frameId, const FrameId('b-copy'));
-      expect(layer.timeline[1]?.length, 2, reason: 'and the copy holds out');
+      // 🚨T3: the clip's length, not the rest of the hold it split. The old
+      // rule handed the tail's cells to the pasted cel; now the tail keeps
+      // them, still pointing at the cel that owned them.
+      expect(layer.timeline[1]?.length, 1);
+      expect(layer.timeline[2]?.frameId, const FrameId('a'));
     });
 
     test('a copied id the layer does not have is refused, like the linked '
