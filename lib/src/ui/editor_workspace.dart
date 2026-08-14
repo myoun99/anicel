@@ -3748,7 +3748,20 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       // 유저 확정: 레일 폭은 가로 스플리터를 그대로 따라간다 — the same
       // stored window the panel's own rail lays out against, so narrowing
       // one narrows the other by construction rather than by agreement.
-      railWidth: rail?.value ?? layerRailMinimumWindowExtent,
+      //
+      // 🚨⛔It used to hand over `rail?.value ?? layerRailMinimumWindowExtent`,
+      // and a null `value` does NOT mean the minimum — it means 「자연폭」.
+      // Reading it as the minimum sized the overlay's rail at
+      // `layerRailLeadingWidth + 14`: the leading cluster plus one letter of
+      // the name, which is the `▸ ▦ ● 🎞 A` in the user's photo. That one
+      // line made three complaints out of one bug — 「버튼이 없다」,
+      // 「길이가 다르다」, 「열이 안 맞는다」 — and the buttons were never
+      // removed, only cut off outside the window.
+      //
+      // Handing the OBJECT over lets `LayerRailWindow` answer it, the same
+      // way the panel's own rail does.
+      rail: rail,
+      naturalRailWidth: _collapsedMetrics().layerControlsWidth,
       pixelsPerFrame: _timelinePixelsPerFrame.value,
       framesPerSecond: widget.session.projectFrameRate.countingBase,
       railChild: _collapsedRailRow(),

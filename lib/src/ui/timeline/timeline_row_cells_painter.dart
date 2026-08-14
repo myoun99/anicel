@@ -185,10 +185,14 @@ class TimelineRowCellsPainter extends CustomPainter {
   /// confirmed appearance is being re-decided here, only re-hosted.
   final bool chromeless;
 
-  /// The translucency the collapsed row's blocks read at — `0x66` and `0x9E`
-  /// alpha, lifted verbatim from the painter this replaces.
-  static const double _chromelessBodyAlpha = 0x66 / 0xFF;
-  static const double _chromelessEdgeAlpha = 0x9E / 0xFF;
+  // ⛔The two per-cell alphas are GONE (유저 확정 2026-08-14): 「반투명 =
+  // 오버레이 루트 하나, 70%」. `0x66` on a block's body and `0x9E` on its
+  // edge came over verbatim from the painter this replaced, and two numbers
+  // meant the folded row carried an opacity SCHEME of its own — body and
+  // border fading by different amounts, so it never read as a dimmer copy of
+  // the open row, which is the only thing it is supposed to be. One value on
+  // the overlay root reads that way by construction, and it is one number to
+  // change.
 
   /// Physical resolution for the tiles (tiles raster at logical × DPR
   /// and draw 1:1, so hidpi rows stay crisp).
@@ -571,10 +575,11 @@ class TimelineRowCellsPainter extends CustomPainter {
       if (!covered) {
         return;
       }
-      background = background.withValues(alpha: _chromelessBodyAlpha);
-      borderColor = borderColor.withValues(
-        alpha: borderColor.a * _chromelessEdgeAlpha,
-      );
+      // The block keeps its OWN colours here. The row's translucency is one
+      // value on the overlay root now, so thinning a second time inside the
+      // cell would compound with it — and it was that second thinning, at two
+      // different strengths, that made the folded row a look of its own
+      // rather than the open row seen through glass.
     }
 
     final rect = cellRectFor(frameIndex);
