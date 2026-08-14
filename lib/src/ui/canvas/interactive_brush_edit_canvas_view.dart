@@ -1856,6 +1856,7 @@ class _InteractiveBrushEditCanvasViewState
         top: stampTop,
         width: stamp.width,
         height: stamp.height,
+        opacity: dab.opacity,
       );
       // The stamp is straight-alpha; the overlay pipeline (like the
       // tile images) uploads premultiplied. The fused C kernel does
@@ -1937,12 +1938,27 @@ class _InteractiveBrushEditCanvasViewState
     required int top,
     required int width,
     required int height,
+    double opacity = 1.0,
   }) {
     final region = widget.selectionRegion;
-    if (region == null) {
+    if (region == null && opacity >= 1.0) {
       return rgba;
     }
     final masked = Uint8List.fromList(rgba);
+    // TP1: the fill has an opacity now, and this preview does NOT go
+    // through the pre-blend kernel (see the caller) — so the multiply the
+    // commit will do has to be done here too, or a 50% fill previews at
+    // 100% and lands at 50%. The commit's own expression is
+    // `(stampA / 255) * dabOpacity`; scaling the alpha byte is that, in the
+    // one place this path has to say it.
+    if (opacity < 1.0) {
+      for (var offset = 3; offset < masked.length; offset += 4) {
+        masked[offset] = (masked[offset] * opacity).round().clamp(0, 255);
+      }
+    }
+    if (region == null) {
+      return masked;
+    }
     // The same rule the pre-blend kernel and the commit's clip run — a
     // fill only reaches a different function, never a different rule.
     applySelectionMaskToStrokeAlpha(

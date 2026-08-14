@@ -2470,7 +2470,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           if (piece == null) {
             return;
           }
-          _commitStampDabs([buildCutStampDab(piece: piece, center: point)]);
+          _commitStampDabs([buildCutStampDab(
+            piece: piece,
+            center: point,
+            opacity: widget.brushToolState.activeOpacity,
+          )]);
           // A press is also the start of a possible drag, and the drag
           // measures its spacing from the stamp that just landed.
           _lastStampCenter = point;
@@ -2626,7 +2630,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return;
     }
     for (final center in centers) {
-      _commitStampDabs([buildCutStampDab(piece: piece, center: center)]);
+      _commitStampDabs([
+        buildCutStampDab(
+          piece: piece,
+          center: center,
+          opacity: widget.brushToolState.activeOpacity,
+        ),
+      ]);
     }
     _lastStampCenter = centers.last;
   }

@@ -766,11 +766,24 @@ class _BrushValueBars extends StatelessWidget {
     return ValueListenableBuilder<BrushToolState>(
       valueListenable: brushTool,
       builder: (context, state, _) {
+        // TP2: one group, and each member is DIMMED rather than hidden when
+        // the armed tool has no use for it (유저: 뭐가 적용되고 뭐가
+        // 적용안되는지 몰라할거같으니까 … 적용안되는툴이나 모드면
+        // 비활성화시키도록). The table lives on the state — see
+        // [BrushToolState.supports] — so the strip cannot disagree with the
+        // commit about what a tool reads.
+        //
+        // Dimmed, never removed: a control that comes and goes is one you
+        // have to look for, and the layout would jump every tool switch.
+        final sizeOn = state.supports(ToolParameter.size);
+        final opacityOn = state.supports(ToolParameter.opacity);
+        final pressureOn = state.supports(ToolParameter.pressure);
         Widget pressure(BrushPressureTarget target, String title) {
           return PressureCurveButton(
             keyValue: 'brush-tool-pressure-${target.name}',
             title: title,
             curve: state.pressureCurveFor(target),
+            enabled: pressureOn,
             onChanged: (curve) =>
                 brushTool.value = state.withPressureCurve(target, curve),
           );
@@ -793,8 +806,12 @@ class _BrushValueBars extends StatelessWidget {
                 scale: FieldSliderScale.exponential,
                 valueText: '${state.size.round()} px',
                 height: _barHeight,
-                onChanged: (value) =>
-                    brushTool.value = brushTool.value.copyWith(size: value),
+                onChanged: sizeOn
+                    ? (value) =>
+                          brushTool.value = brushTool.value.copyWith(
+                            size: value,
+                          )
+                    : null,
               ),
             ),
             const SizedBox(width: 4),
@@ -806,13 +823,19 @@ class _BrushValueBars extends StatelessWidget {
               child: FieldSlider(
                 key: const ValueKey<String>('top-strip-opacity-bar'),
                 label: AppText.strings.brOpacity,
-                value: BrushToolState.clampOpacity(state.opacity),
+                // TP1: the ACTIVE tool's opacity — the fill and the stamp
+                // keep their own, so this bar stops being the brush's alone
+                // (유저: 툴마다 기억하게해서 필 툴도 불투명도 설정하면 그거대로
+                // 채워지게).
+                value: BrushToolState.clampOpacity(state.activeOpacity),
                 min: 0,
                 max: 1,
-                valueText: '${(state.opacity * 100).round()}%',
+                valueText: '${(state.activeOpacity * 100).round()}%',
                 height: _barHeight,
-                onChanged: (value) =>
-                    brushTool.value = brushTool.value.copyWith(opacity: value),
+                onChanged: opacityOn
+                    ? (value) => brushTool.value = brushTool.value
+                          .withActiveOpacity(value)
+                    : null,
               ),
             ),
             const SizedBox(width: 4),
@@ -879,13 +902,13 @@ class _BlendModeControl extends StatelessWidget {
       builder: (context, state, _) {
         final theme = Theme.of(context);
         final language = AppText.settings.value.programLanguage;
-        // Tools that composite nothing get NO control at all. It used to
-        // be shown for every one of them and the fill, the selection tools
-        // and move all ignored it — a dropdown that answered a question
-        // nobody downstream was asking.
-        if (!state.toolHasBlendMode) {
-          return const SizedBox(width: _groupWidth);
-        }
+        // TP2: tools that composite nothing get the control DIMMED, not an
+        // empty gap. It used to be shown for every one of them (a dropdown
+        // answering a question nobody downstream asked), then reserved as
+        // blank space — and blank space says nothing about why. Dim says
+        // "this exists and does not apply here", which is the question the
+        // user actually had: 뭐가 적용되고 뭐가 적용안되는지.
+        final blendOn = state.supports(ToolParameter.blend);
         // The ERASER tool locks it to 消去/Erase — the eraser IS the erase
         // blend — and that is not a blend CHOICE, so the flyout stands down.
         final toolLocked = state.tool == CanvasTool.eraser;
@@ -944,7 +967,7 @@ class _BlendModeControl extends StatelessWidget {
                 // button, and the quieter one was the one the padlock had
                 // just promised. Unlock, choose, lock again; the lock is
                 // one tap away and it is right beside this.
-                enabled: pinned == null,
+                enabled: blendOn && pinned == null,
                 // `expand` is what makes the fixed box hold: the label
                 // becomes Flexible inside it, so it ellipsizes rather than
                 // overflowing the width the strip budgeted.
@@ -997,10 +1020,14 @@ class _BlendModeControl extends StatelessWidget {
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
                 // Locking captures whatever is showing, so the stroke does
-                // not change under you at the moment you pin it.
-                onPressed: () => brushTool.value = state.withActiveBlendLock(
-                  pinned == null ? mode : null,
-                ),
+                // not change under you at the moment you pin it. Null while
+                // the tool composites nothing — pinning a blend it does not
+                // read would be pinning nothing (TP2).
+                onPressed: blendOn
+                    ? () => brushTool.value = state.withActiveBlendLock(
+                        pinned == null ? mode : null,
+                      )
+                    : null,
               ),
             ),
           ],

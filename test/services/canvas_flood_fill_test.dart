@@ -493,6 +493,41 @@ void main() {
       expect(dab.color, 0xFF3366CC);
     });
 
+    // TP1: 유저 — "필 툴도 불투명도 설정하면 그거대로 채워지게".
+    test('the fill carries an opacity, and defaults to full', () {
+      // The coverage MASK is untouched by opacity — a half-opaque fill is
+      // still the same shape. What carries it is the dab, because the
+      // stroke funnel multiplies a stamp dab by `BrushDab.opacity`; that
+      // multiply is why the cut stamp had to hard-code 1 before every tool
+      // had a field of its own.
+      final shape = CanvasSelectionShape.rect(
+        left: 0,
+        top: 0,
+        right: 10,
+        bottom: 10,
+      );
+      const options = FloodFillOptions(expandPx: 0, antiAlias: false);
+      final full = buildShapeFillDab(
+        shape: shape,
+        color: 0xFF000000,
+        options: options,
+      )!;
+      expect(full.opacity, 1.0, reason: 'unasked is unchanged');
+
+      final half = buildShapeFillDab(
+        shape: shape,
+        color: 0xFF000000,
+        opacity: 0.5,
+        options: options,
+      )!;
+      expect(half.opacity, 0.5);
+      expect(
+        alphaAt(half, 5, 5),
+        alphaAt(full, 5, 5),
+        reason: 'the mask is the shape, not the strength',
+      );
+    });
+
     test('the ellipse loses the box corners it was drawn in', () {
       final dab = buildShapeFillDab(
         shape: CanvasSelectionShape.ellipse(

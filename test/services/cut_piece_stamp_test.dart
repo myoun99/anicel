@@ -29,10 +29,13 @@ CutPiece _piece({
 
 void main() {
   group('the stamp dab', () {
-    test('never inherits the brush: opacity 1, no pressure ramp', () {
+    test('never inherits the brush: full by default, no pressure ramp', () {
       // 🚨The funnel MULTIPLIES by opacity, so a stamp that took the live
-      // brush state would silently carry whatever multiply was left over
-      // from shading. This is the assertion that keeps that out.
+      // BRUSH state would silently carry whatever multiply was left over
+      // from shading. That is still the thing being kept out — but the way
+      // it is kept out changed (TP1/TP3): the stamp has an opacity field of
+      // its own now, so the leak is structural rather than a constant, and
+      // asking for nothing still means 100%.
       final dab = buildCutStampDab(
         piece: _piece(),
         center: CanvasPoint(x: 50, y: 50),
@@ -41,6 +44,23 @@ void main() {
       expect(dab.flow, 1);
       expect(dab.hardness, 1);
       expect(dab.pressure, 1);
+    });
+
+    test('TP3: the stamp takes an opacity of its own', () {
+      // 유저: "잘라내기의 스탬프는 불투명도 쓸수있게하고싶어." The 08-12
+      // "100% 고정" was never the goal — it was the only way to block the
+      // brush's opacity while one field served every tool.
+      final dab = buildCutStampDab(
+        piece: _piece(),
+        center: CanvasPoint(x: 50, y: 50),
+        opacity: 0.4,
+      );
+      expect(dab.opacity, 0.4);
+      expect(
+        identical(dab.stamp, _piece().image),
+        isFalse,
+        reason: 'a fresh piece each call — identity is asserted next door',
+      );
     });
 
     test('carries the piece pixels and lands on the click point', () {
