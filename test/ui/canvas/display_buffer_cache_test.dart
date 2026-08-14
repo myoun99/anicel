@@ -33,7 +33,7 @@ void main() {
   test('a hit returns the very same image, not a copy of it', () async {
     final image = await makeImage(4);
     const rect = Rect.fromLTWH(0, 0, 4, 4);
-    cache.store('k', rect, image);
+    cache.store('k', 'static', rect, image);
 
     expect(identical(cache.imageFor('k', rect), image), isTrue);
     expect(cache.isWarm, isTrue);
@@ -42,7 +42,7 @@ void main() {
   test('a different key misses', () async {
     final image = await makeImage(4);
     const rect = Rect.fromLTWH(0, 0, 4, 4);
-    cache.store('k', rect, image);
+    cache.store('k', 'static', rect, image);
 
     expect(cache.imageFor('other', rect), isNull);
   });
@@ -52,7 +52,7 @@ void main() {
     // it has to re-raster even when nothing in the picture changed, because
     // the buffer covers a different part of the world.
     final image = await makeImage(4);
-    cache.store('k', const Rect.fromLTWH(0, 0, 4, 4), image);
+    cache.store('k', 'static', const Rect.fromLTWH(0, 0, 4, 4), image);
 
     expect(cache.imageFor('k', const Rect.fromLTWH(1, 0, 4, 4)), isNull);
   });
@@ -61,8 +61,8 @@ void main() {
     final first = await makeImage(4);
     final second = await makeImage(4);
     const rect = Rect.fromLTWH(0, 0, 4, 4);
-    cache.store('k', rect, first);
-    cache.store('k2', rect, second);
+    cache.store('k', 'static', rect, first);
+    cache.store('k2', 'static', rect, second);
 
     expect(identical(cache.imageFor('k2', rect), second), isTrue);
     expect(cache.imageFor('k', rect), isNull);
@@ -75,8 +75,8 @@ void main() {
     // handle it is about to draw with.
     final image = await makeImage(4);
     const rect = Rect.fromLTWH(0, 0, 4, 4);
-    cache.store('k', rect, image);
-    cache.store('k', rect, image);
+    cache.store('k', 'static', rect, image);
+    cache.store('k', 'static', rect, image);
 
     expect(identical(cache.imageFor('k', rect), image), isTrue);
     // A disposed image throws when drawn; drawing it here is the assertion.
@@ -88,7 +88,7 @@ void main() {
   test('invalidate empties it', () async {
     final image = await makeImage(4);
     const rect = Rect.fromLTWH(0, 0, 4, 4);
-    cache.store('k', rect, image);
+    cache.store('k', 'static', rect, image);
     cache.invalidate();
 
     expect(cache.isWarm, isFalse);
