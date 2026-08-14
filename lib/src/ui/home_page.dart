@@ -39,6 +39,7 @@ import 'editor_workspace.dart';
 import 'menu/editor_top_strip.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'playback/canvas_playback_controller.dart';
+import 'playback/playback_actuation_gate.dart';
 import 'playback/playback_transport_controls.dart'
     show toggleVoiceRecordingWithFeedback;
 import 'shortcuts/editor_action_registry.dart';
@@ -390,7 +391,38 @@ class _HomePageState extends State<HomePage> {
 
   /// Dispatches one registry action — the single funnel every shortcut
   /// lands in (menu items call the same session APIs directly).
+  /// 🚨T28-c's consuming half for BOUND actuations. Returns true when the
+  /// actuation's whole job was to stop playback.
+  ///
+  /// ⛔It stops here rather than at each action, and there is exactly one
+  /// exception it does NOT need: the playback toggle. Stopping is what that
+  /// key was going to do anyway, so being consumed and being obeyed look the
+  /// same from the outside.
+  bool _consumedByPlayback() {
+    if (!_session.playback.isPlaying) {
+      return false;
+    }
+    _session.playback.stop();
+    return true;
+  }
+
   void _invokeAction(String actionId) {
+    // 🚨T28-c — 「재생 중 첫 작동은 정지이고, **정지일 뿐이다**」.
+    //
+    // This funnel is where every BOUND actuation arrives: key bindings and
+    // multi-finger touch shortcuts both come through here, so one check
+    // covers both and no action needs to know about playback. The pointer
+    // half is [PlaybackActuationGate]'s `AbsorbPointer`; between them, the
+    // first actuation of any kind stops and does nothing else.
+    //
+    // ⚠️The gate's keyboard handler has already stopped playback by the time
+    // a bound key reaches here — Flutter dispatches the key message to the
+    // focus tree even when a `HardwareKeyboard` handler claims it, so
+    // returning true there stops the transport but does not eat the event.
+    // `_consumedActuation` is what actually eats it.
+    if (_consumedByPlayback()) {
+      return;
+    }
     switch (actionId) {
       case EditorActionIds.framePrevious:
         // PEN-7c: the one-frame step (Ctrl+arrows / comma) — always a
@@ -427,11 +459,12 @@ class _HomePageState extends State<HomePage> {
           _session.revealSelection();
         }
       case EditorActionIds.playbackToggle:
+        // 🚨T28: play or stop, and nothing in between. The middle branch
+        // used to resume a paused transport — a state that no longer
+        // exists.
         final playback = _session.playback;
-        if (playback.isActive && playback.isPlaying) {
-          playback.pause();
-        } else if (playback.isActive) {
-          playback.resume();
+        if (playback.isPlaying) {
+          playback.stop();
         } else {
           playback.play(
             scope: PlaybackScope.activeCut,
@@ -618,10 +651,16 @@ class _HomePageState extends State<HomePage> {
                 },
                 child: FocusScope(
                   autofocus: true,
-                  // Multi-finger touch shortcuts (R11-⑨) fire through the SAME
-                  // action funnel as key bindings; the layer only observes raw
-                  // touches, so drawing and pinch navigation are untouched.
-                  child: TouchShortcutLayer(
+                  // 🚨T28-c — the whole editor behind ONE gate: while
+                  // playing, the first actuation stops and is consumed.
+                  // ⛔Inside `Shortcuts` deliberately, so a key is eaten
+                  // rather than followed; see the widget's own note.
+                  child: PlaybackActuationGate(
+                    controller: _session.playback,
+                    // Multi-finger touch shortcuts (R11-⑨) fire through the SAME
+                    // action funnel as key bindings; the layer only observes raw
+                    // touches, so drawing and pinch navigation are untouched.
+                    child: TouchShortcutLayer(
                     onGesture: (gesture) {
                       final actionId = _shortcuts.actionIdForTouchGesture(
                         gesture,
@@ -708,6 +747,7 @@ class _HomePageState extends State<HomePage> {
                           ],
                         ),
                       ),
+                    ),
                     ),
                   ),
                 ),

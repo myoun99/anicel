@@ -8254,9 +8254,9 @@ class EditorSessionManager extends ChangeNotifier {
         if (!isVoiceRecording.value) {
           return;
         }
-        if (playback.isActive) {
-          playback.resume();
-        } else {
+        // 🚨T28: with pause gone, "active" already means rolling — there is
+        // nothing to resume, only a transport to start when there is none.
+        if (!playback.isPlaying) {
           playback.play(
             scope: PlaybackScope.allCuts,
             startGlobalFrame: rollStart,
@@ -8265,9 +8265,7 @@ class EditorSessionManager extends ChangeNotifier {
       });
     } else {
       _voiceRecordStartedRoll = true;
-      if (playback.isActive) {
-        playback.resume();
-      } else {
+      if (!playback.isPlaying) {
         playback.play(
           scope: PlaybackScope.allCuts,
           startGlobalFrame: rollStart,

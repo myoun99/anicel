@@ -130,31 +130,42 @@ void main() {
     c.detachTicker();
   });
 
-  testWidgets('pause preserves position and resume continues from it', (
+  /// 🚨★★★ T28 — this used to be 'pause preserves position and resume
+  /// continues from it'. ⛔Pause is GONE: 「비디오 재생이라면 일시정지가
+  /// 의미가 있겠지만 애니메이션에서는 애초에 재생아닌상태가 일시정지상태나
+  /// 다름없음」.
+  ///
+  /// What that old test was really protecting survives, and is what this one
+  /// asserts: **stopping leaves the playhead where it was.** That is the
+  /// entire argument for removing pause — if stop rewound, the two states
+  /// would not have been the same one after all.
+  testWidgets('there is no third state, and stopping stands where it stopped', (
     tester,
   ) async {
-    final c = controller();
+    PlaybackPosition? stoppedAt;
+    final c = controller(onStopped: (position) => stoppedAt = position);
     c.attachTicker(const TestVSync());
     addTearDown(c.dispose);
 
     c.play(scope: PlaybackScope.activeCut);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
-    c.pause();
-    final pausedAt = c.position!.globalFrameIndex;
-    expect(pausedAt, 2);
+    expect(c.position!.globalFrameIndex, 2);
+
+    // Active and playing are the same question now, and they answer alike
+    // in both states.
     expect(c.isActive, isTrue);
-    expect(c.isPlaying, isFalse);
-
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(c.position!.globalFrameIndex, pausedAt);
-
-    c.resume();
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(c.position!.globalFrameIndex, (pausedAt + 1) % 4);
+    expect(c.isPlaying, isTrue);
 
     c.stop();
+    expect(c.isActive, isFalse);
+    expect(c.isPlaying, isFalse);
+    expect(
+      stoppedAt?.globalFrameIndex,
+      2,
+      reason: 'stop handed back frame 2, not the beginning',
+    );
+
     c.detachTicker();
   });
 
@@ -221,22 +232,19 @@ void main() {
     c.detachTicker();
   });
 
-  testWidgets('seek while paused moves the shown frame without playing', (
-    tester,
-  ) async {
+  /// ⛔T28: this used to pause first. A scrub during playback lands the
+  /// frame it names, and the transport keeps rolling from there — that was
+  /// always the behaviour, and pausing was only the test's way of holding
+  /// the clock still to look at it.
+  testWidgets('a seek lands the frame it names', (tester) async {
     final c = controller();
     c.attachTicker(const TestVSync());
     addTearDown(c.dispose);
 
     c.play(scope: PlaybackScope.activeCut);
     await tester.pump();
-    c.pause();
 
     c.seekToLocalFrame(2);
-    expect(c.position!.localFrameIndex, 2);
-    expect(c.isPlaying, isFalse);
-
-    await tester.pump(const Duration(milliseconds: 300));
     expect(c.position!.localFrameIndex, 2);
 
     c.stop();
@@ -252,7 +260,7 @@ void main() {
 
     c.play(scope: PlaybackScope.allCuts);
     await tester.pump();
-    c.pause();
+    // ⛔T28: no pause. A seek is synchronous, so nothing needs holding.
 
     // cut-a covers frames 0-3, cut-b 4-9.
     c.seekToGlobalFrame(7);
@@ -280,7 +288,7 @@ void main() {
 
       c.play(scope: PlaybackScope.allCuts);
       await tester.pump();
-      c.pause();
+      // ⛔T28: no pause. A seek is synchronous, so nothing needs holding.
 
       // Local frame 2 of cut-a → local frame 2 of cut-b: the local
       // listenable stays silent (same value), the global one must not.

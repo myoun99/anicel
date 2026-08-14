@@ -175,26 +175,18 @@ void main() {
     expect(log, ['stop a.wav', 'stop b.wav', 'start a.wav @0ms']);
   });
 
-  test('pause/resume forward to playing clips; a paused seek restarts', () {
+  /// ⛔T28 — this was 'pause/resume forward to playing clips; a paused seek
+  /// restarts'. Both halves described the paused state, which no longer
+  /// exists. A seek while ROLLING is the case that survived, and it never
+  /// went through pause: it stops what is stale and starts what now
+  /// overlaps, in one step.
+  test('a seek while rolling swaps the clips under it', () {
     controller.play(scope: PlaybackScope.activeCut);
     log.clear();
 
-    controller.pause();
-    expect(log, ['pause a.wav']);
-
-    log.clear();
-    controller.resume();
-    expect(log, ['resume a.wav']);
-
-    // Positions go stale on a paused seek — stop now, restart on resume.
-    controller.pause();
-    log.clear();
     controller.seekToGlobalFrame(6);
-    expect(log, ['stop a.wav']);
 
-    log.clear();
-    controller.resume();
-    expect(log, ['start a.wav @600ms', 'start b.wav @0ms']);
+    expect(log, ['stop a.wav', 'start a.wav @600ms', 'start b.wav @0ms']);
   });
 
   test('stopping playback stops and disposes every player', () {

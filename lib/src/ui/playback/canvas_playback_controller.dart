@@ -123,7 +123,6 @@ class CanvasPlaybackController extends ChangeNotifier {
   List<StoryboardTimelineLayoutEntry>? _playlist;
   PlaybackScope _scope = PlaybackScope.activeCut;
   PlaybackLoopMode _loopMode = PlaybackLoopMode.loop;
-  bool _isPlaying = false;
   int _baseGlobalFrame = 0;
   int _currentGlobalFrame = 0;
   int _droppedFrames = 0;
@@ -135,11 +134,27 @@ class CanvasPlaybackController extends ChangeNotifier {
   /// and on play/seek.
   int get droppedFrames => _droppedFrames;
 
-  /// Playback mode is entered (playing or paused); the canvas shows the
-  /// playback view while active.
+  /// 🚨★★★ T28 — PLAYING, OR NOT. There is no third state.
+  ///
+  /// 유저 확정 2026-08-13: 「재생, 일시정지상태의 **필요성을 못느끼겠음**.
+  /// 삭제하고 **재생/정지 상태만** 남김 … 일시정지는 **버그도많고** 굳이?
+  /// tvp에서도 일시정지기능 한번도 활용안해봄 … **비디오 재생이라면
+  /// 일시정지가 의미가 있겠지만 애니메이션에서는 애초에 재생아닌상태가
+  /// 일시정지상태나 다름없음**」
+  ///
+  /// ★The argument is about the domain, not about a button. A video's
+  /// "where it stopped" is a state you have to keep; an animation's playhead
+  /// is ALWAYS standing somewhere, so 「정지」 and 「일시정지」 were two names
+  /// for one state. Removing pause deletes a state, not a feature.
+  ///
+  /// ⛔[isActive] and [isPlaying] are now the SAME question, and both stay
+  /// only because half the codebase asks it each way. Anything written as
+  /// `isActive && !isPlaying` describes a state that can no longer occur —
+  /// treat such a gate as a bug rather than bringing pause back to satisfy
+  /// it.
   bool get isActive => _playlist != null;
 
-  bool get isPlaying => _isPlaying;
+  bool get isPlaying => _playlist != null;
   PlaybackScope get scope => _scope;
 
   PlaybackLoopMode get loopMode => _loopMode;
@@ -169,7 +184,7 @@ class CanvasPlaybackController extends ChangeNotifier {
   /// before or after attachment (ticking starts once both are ready).
   void attachTicker(TickerProvider vsync) {
     _vsync = vsync;
-    if (_isPlaying && _ticker == null) {
+    if (isPlaying && _ticker == null) {
       _startTicker();
     }
   }
@@ -205,7 +220,7 @@ class CanvasPlaybackController extends ChangeNotifier {
       _playbackTotalFrames(playlist) - 1,
     );
     onPlaylistWarmRequested?.call(playlist, scope, _currentGlobalFrame);
-    _isPlaying = true;
+
     _startTicker();
     _syncFrameNotifiers();
     _isActiveNotifier.value = true;
@@ -243,7 +258,7 @@ class CanvasPlaybackController extends ChangeNotifier {
     }
     _currentGlobalFrame = globalFrameIndex.clamp(0, total - 1);
     _resetDropAccounting();
-    if (_isPlaying) {
+    if (isPlaying) {
       // Restart the ticker so its elapsed epoch rebases on the new frame.
       _startTicker();
     }
@@ -258,24 +273,11 @@ class CanvasPlaybackController extends ChangeNotifier {
     _lastLap = 0;
   }
 
-  void pause() {
-    if (!_isPlaying) {
-      return;
-    }
-    _stopTicker();
-    _isPlaying = false;
-    notifyListeners();
-  }
-
-  void resume() {
-    if (!isActive || _isPlaying) {
-      return;
-    }
-    _isPlaying = true;
-    _startTicker();
-    notifyListeners();
-  }
-
+  /// ⛔`pause()` and `resume()` are GONE (T28). They were the two doors of a
+  /// state this app does not have; see [isActive]. Stopping leaves the
+  /// playhead exactly where it was — 「재생아닌상태가 일시정지상태나
+  /// 다름없음」 is the whole argument, and it only holds if stop does not
+  /// rewind.
   void stop() {
     if (!isActive) {
       return;
@@ -284,7 +286,6 @@ class CanvasPlaybackController extends ChangeNotifier {
     final lastGlobal = _playlist == null ? null : _currentGlobalFrame;
     _stopTicker();
     _playlist = null;
-    _isPlaying = false;
     _syncFrameNotifiers();
     _isActiveNotifier.value = false;
     notifyListeners();

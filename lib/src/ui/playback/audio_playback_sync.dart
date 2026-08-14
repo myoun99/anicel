@@ -117,7 +117,6 @@ class AudioPlaybackSync {
   /// touches the platform channel when the value actually moves.
   final Map<int, double> _sentVolume = {};
   bool _wasActive = false;
-  bool _wasPlaying = false;
   int? _lastFrame;
   bool _attached = false;
 
@@ -144,9 +143,18 @@ class AudioPlaybackSync {
     _teardown();
   }
 
+  /// 🚨T28 — two states here now, not three.
+  ///
+  /// This used to carry a third branch for the playing↔paused transition
+  /// INSIDE an active transport: forward `pause()`/`resume()` to every
+  /// overlapping clip, and restart the ones a paused seek had stopped.
+  /// ⛔That transition can no longer happen — entering playback and playing
+  /// are the same event (see [CanvasPlaybackController.isActive]) — so the
+  /// branch was a limb nothing could reach, and the stale-player case it
+  /// existed for goes with it: a seek while rolling resyncs on the next tick.
   void _onControllerChanged() {
     final active = controller.isActive;
-    final playing = controller.isPlaying;
+
     if (active && !_wasActive) {
       _schedule = (deviceCarriesPlayback?.call() ?? false)
           ? const []
@@ -164,30 +172,14 @@ class AudioPlaybackSync {
         unawaited(_players[index].prepare(_schedule[index].filePath));
       }
       _lastFrame = controller.globalFrameIndexListenable.value;
-      if (playing) {
-        _resyncAt(_lastFrame ?? 0);
-      }
+      // ⛔T28: no `if (playing)` guard. Becoming active IS starting to play,
+      // so a transport that entered without rolling is a state that no
+      // longer exists.
+      _resyncAt(_lastFrame ?? 0);
     } else if (!active && _wasActive) {
       _teardown();
-    } else if (active) {
-      if (playing && !_wasPlaying) {
-        // Resume — unless a paused seek already stopped the stale players,
-        // in which case restart whatever overlaps the current frame.
-        if (_playing.isEmpty) {
-          _resyncAt(_lastFrame ?? 0);
-        } else {
-          for (final index in _playing) {
-            unawaited(_players[index].resume());
-          }
-        }
-      } else if (!playing && _wasPlaying) {
-        for (final index in _playing) {
-          unawaited(_players[index].pause());
-        }
-      }
     }
     _wasActive = active;
-    _wasPlaying = playing;
   }
 
   void _onFrameTick() {
