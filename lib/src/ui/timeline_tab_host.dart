@@ -1322,6 +1322,19 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
     super.initState();
     _actionsToken = _deriveActionsToken();
     widget.session.frameSeekCommitted.addListener(_handleExternalSignal);
+    // 🚨유저 #6 (2026-08-14): 「룰러로 이동할때 … 버튼 상태 바꼈으면 좋겠는데
+    // 안바뀜. **효율좋게** 하는데 … 해당 인덱스에 **버튼이 있으면 한번,
+    // 없으면 한번** 이런식으로?」
+    //
+    // ⛔`frameSeekCommitted` fires on the RELEASE, so for a whole ruler drag
+    // the toolbar kept whatever enablement it had when the drag began. A
+    // scrub deliberately raises no session notify — that is what keeps the
+    // drag cheap — so nothing else was ever going to re-ask.
+    //
+    // [EditorSessionManager.playheadHasCel] fires only when the ANSWER
+    // flips, so this costs one rebuild on the frame that reaches a block
+    // and one on the frame that leaves it, whatever the drag's length.
+    widget.session.playheadHasCel.addListener(_handleExternalSignal);
     // A language switch moves its own notifier and fires NO session notify,
     // so nothing else would ever re-derive the tokens for it.
     widget.session.languageSettings.addListener(_handleExternalSignal);
@@ -1337,11 +1350,13 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       oldWidget.session.frameSeekCommitted.removeListener(
         _handleExternalSignal,
       );
+      oldWidget.session.playheadHasCel.removeListener(_handleExternalSignal);
       oldWidget.session.languageSettings.removeListener(_handleExternalSignal);
       oldWidget.session.currentRowListenable.removeListener(
         _handleExternalSignal,
       );
       widget.session.frameSeekCommitted.addListener(_handleExternalSignal);
+      widget.session.playheadHasCel.addListener(_handleExternalSignal);
       widget.session.languageSettings.addListener(_handleExternalSignal);
       widget.session.currentRowListenable.addListener(_handleExternalSignal);
       _cachedActions = null;
@@ -1352,6 +1367,7 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
   @override
   void dispose() {
     widget.session.frameSeekCommitted.removeListener(_handleExternalSignal);
+    widget.session.playheadHasCel.removeListener(_handleExternalSignal);
     widget.session.languageSettings.removeListener(_handleExternalSignal);
     widget.session.currentRowListenable.removeListener(_handleExternalSignal);
     super.dispose();

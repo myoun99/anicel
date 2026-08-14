@@ -17126,6 +17126,7 @@ class EditorSessionManager extends ChangeNotifier {
     if (frameIndex != _timelineController.currentFrameIndex) {
       _timelineController.selectFrameIndex(frameIndex);
       editingFrameCursor.value = frameIndex;
+      _syncPlayheadHasCel();
       // Each crossed frame plays its slice of the mix (2D audio scrub).
       audioScrubber.onScrubFrame(frameIndex);
       if (!frameScrubActive.value) {
@@ -17138,6 +17139,31 @@ class EditorSessionManager extends ChangeNotifier {
     } else {
       editingFrameCursor.value = frameIndex;
     }
+  }
+
+  /// 🚨★★★ 유저 #6 (2026-08-14): 「룰러로 이동할때, **블록이 있으면 사용가능**
+  /// 타임라인버튼 활성화되는식으로 버튼 상태 바꼈으면 좋겠는데 안바뀜.
+  /// **효율좋게** 하는데 바뀌게 하고싶음. 갱신을 매 룰러 드래그마다가 아니라
+  /// **해당 인덱스에 버튼이 있으면 한번, 없으면 한번** 이런식으로?」
+  ///
+  /// ★The user named the mechanism, and this is it: a scrub deliberately
+  /// does NOT notify the session — 「Seeks are NOT session notifies」, which
+  /// is what keeps a ruler drag from rebuilding every panel per frame — so
+  /// the toolbar never re-asked its predicates and the buttons sat stale
+  /// for the whole gesture.
+  ///
+  /// A `ValueNotifier<bool>` costs one comparison per crossed frame and
+  /// fires only when the ANSWER flips, so a drag across twenty empty frames
+  /// rebuilds the toolbar零 times and the frame that reaches a block
+  /// rebuilds it once. That is 「있으면 한번, 없으면 한번」 exactly.
+  ///
+  /// ⛔One boolean rather than each button's own predicate: they nearly all
+  /// reduce to 「is there a cel under the playhead」, and a notifier per verb
+  /// would put the per-frame cost back that this exists to avoid.
+  final ValueNotifier<bool> playheadHasCel = ValueNotifier<bool>(false);
+
+  void _syncPlayheadHasCel() {
+    playheadHasCel.value = selectedFrame != null;
   }
 
   /// The scrub gesture's release: ends the preview and commits the
