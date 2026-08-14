@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart' show AppLanguage;
+import '../input/value_control_pointers.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
@@ -470,7 +471,7 @@ class LayerVisibilityToggleButton extends StatelessWidget {
     return SizedBox(
       width: size,
       height: 26,
-      child: IconButton(
+      child: RailControlPointer(child: IconButton(
         key: ValueKey<String>(keyValue),
         tooltip: isVisible ? 'Hide $subject' : 'Show $subject',
         padding: EdgeInsets.zero,
@@ -480,7 +481,7 @@ class LayerVisibilityToggleButton extends StatelessWidget {
           size: iconSize,
         ),
         onPressed: onToggle,
-      ),
+      )),
     );
   }
 }
@@ -869,6 +870,38 @@ class _MarkSwatch extends StatelessWidget {
         // to stand in for a missing fill has nothing left to describe.
         color: layerMarkColor(mark),
       ),
+    );
+  }
+}
+
+/// 🚨★★★ 유저 #1 (2026-08-14): 「액티브 레이어가 아닌 다른 레이어의 버튼
+/// 누르면 작동안함 … 레이어에 있는 **모든 버튼이나 편집이** 그럼」.
+///
+/// ★A press that lands on a control belongs to that control
+/// ([value_control_pointers.dart]). The rail row wraps its whole width in
+/// the PICK region, so without this a press on one of these buttons also
+/// moved the drawing target — which rebuilt the row out from under the
+/// gesture still running on it. A tap survived (it had already fired); a
+/// slider drag did not, and a button on a non-active row lost its release.
+///
+/// ⛔These are raw `IconButton`s rather than [AppIconButton] (which claims
+/// on its own), so the claim has to be said here. One wrapper rather than
+/// one per button: a control added to this file tomorrow gets it by
+/// standing in the same place.
+class RailControlPointer extends StatelessWidget {
+  const RailControlPointer({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: (event) => claimPointerForValueControl(event.pointer),
+      onPointerUp: (event) => releasePointerForValueControl(event.pointer),
+      // ⛔Cancel too: a claim that outlives its gesture silently deafens
+      // every later press handed the same pointer id.
+      onPointerCancel: (event) => releasePointerForValueControl(event.pointer),
+      child: child,
     );
   }
 }

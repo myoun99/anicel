@@ -1,6 +1,8 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
 import 'package:flutter/widgets.dart';
 
+import '../input/value_control_pointers.dart';
+
 /// A primary tap that does NOT wait out the double-tap window.
 ///
 /// Registering `onDoubleTap` anywhere makes the single tap wait for the
@@ -119,6 +121,25 @@ class _InstantTapRegionState extends State<InstantTapRegion> {
       behavior: widget.behavior,
       onPointerDown: (event) {
         if (!_isPrimary(event)) {
+          return;
+        }
+        // 🚨★★★ 유저 #1 (2026-08-14): 「액티브 레이어가 아닌 다른 레이어의
+        // 버튼 누르면 작동안함. 불투명도 슬라이더는 한번 움직이고 드래그가
+        // 풀림 … 레이어에 있는 **모든 버튼이나 편집이** 그럼」.
+        //
+        // ★The law is already written, one file over: 「a press that lands
+        // on a CONTROL belongs to that control」
+        // ([value_control_pointers.dart]). Only the pan recogniser was
+        // asking. This region — the rail row's PICK — was not, so a press
+        // on a row's button did both: it worked the button AND moved the
+        // drawing target, which rebuilt the row out from under the gesture
+        // that was still running. A tap survived that (it had already
+        // fired); a slider drag did not, and the button on a non-active row
+        // lost its release.
+        //
+        // Dispatch is deepest-first, so a control that claims on down has
+        // claimed by the time this runs.
+        if (valueControlOwnsPointer(event.pointer)) {
           return;
         }
         // Tracked whatever the device: the release still has something to
