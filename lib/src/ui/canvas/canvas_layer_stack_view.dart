@@ -805,6 +805,12 @@ class _LayerStackPainter extends CustomPainter {
     final groupBounds = visibleRect.isEmpty
         ? pasteboardRect
         : pasteboardRect.intersect(visibleRect);
+    // A3: the recordings depend on this rect and the build-time key cannot
+    // carry it (it is a layout fact). Declared HERE, before any slot is
+    // consulted, so a resized panel re-records instead of replaying
+    // closures that captured the old bounds — or worse, blitting the old
+    // raster with a src rect computed from the new dimensions.
+    bake?.ensureExtent(groupBounds);
 
     // The geometry field probe — the numbers every buffer decision depends
     // on and nobody has ever measured on a device: the logical view, the

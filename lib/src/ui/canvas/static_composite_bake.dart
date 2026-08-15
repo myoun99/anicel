@@ -39,9 +39,41 @@ class StaticCompositeBake {
   /// recorded yet".
   Object? _key;
 
+  /// The visible-rect world the recordings were made in.
+  ///
+  /// 🚨A3 — THE RECORDINGS DEPEND ON THE EXTENT AND THE KEY CANNOT SAY SO.
+  /// [keepFor]'s key is built at BUILD time from widget fields, but the
+  /// visible rect is a LAYOUT fact: resize the panel at a fixed zoom and
+  /// the key is unchanged while every recording is wrong — the record
+  /// closures captured the old `groupBounds` (folder `saveLayer` hints,
+  /// adjustment scope bounds), and [drawRaster] would take the OLD image
+  /// and blit it with a src rect computed from the NEW dimensions. Same
+  /// document, two pictures, decided by resize history — the render must
+  /// be a function of (artwork, viewport, canvas size), never of what the
+  /// panel did five minutes ago.
+  Rect? _extent;
+
+  /// Declares the paint-time extent. A change drops the recordings — but
+  /// NOT the key: the key is still true, and clearing it would make the
+  /// next build's [keepFor] invalidate a second time, throwing away the
+  /// slots this very paint just re-recorded.
+  void ensureExtent(Rect extent) {
+    if (_extent == extent) {
+      return;
+    }
+    _extent = extent;
+    _dropRecordings();
+  }
+
   /// Drops every recorded slot. Cheap and always safe: the next paint
   /// re-records, which is exactly what the code did before this existed.
   void invalidate() {
+    _dropRecordings();
+    _key = null;
+    _extent = null;
+  }
+
+  void _dropRecordings() {
     for (final picture in _slots.values) {
       picture.dispose();
     }
@@ -50,7 +82,6 @@ class StaticCompositeBake {
       image.dispose();
     }
     _rasters.clear();
-    _key = null;
   }
 
   /// Keeps the slots only while [key] is unchanged.
