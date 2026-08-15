@@ -6088,22 +6088,51 @@ class EditorSessionManager extends ChangeNotifier {
   /// black, or the のりしろ an animator gets by opening a gap in front of the
   /// only cut they were given), so the arithmetic that needs a cut answers
   /// wrong in precisely the case this row exists for.
-  bool get canCreateTransitionSpanAtPlayhead {
+  /// 🚨★★ 유저 #17 (2026-08-15): 「스토리보드패널의 **트랜지션레이어**,
+  /// 선택범위로 프레임생성누르면 **선택범위만큼 생성되는게 일반적인데 이
+  /// 레이어만 다름.** 대체 왜? **왜 이렇게 규칙을 가끔가다 통일안하는거지?**」
+  ///
+  /// WHERE a new span starts and HOW LONG it is: the selection when the
+  /// selection covers this row, the playhead and one frame otherwise. Null
+  /// when there is nowhere to put one.
+  ///
+  /// ★One sentence, read by both the gate below and the verb under it (T25:
+  /// 「버튼이 켜지는 근거와 눌렀을 때 도는 근거는 같은 문장 하나여야 한다.
+  /// 둘이면 반드시 갈라진다」). The length hard-coded to 1 was this row's
+  /// whole difference from every other row — everywhere else the count comes
+  /// from the range, so this was a special case with no rule behind it.
+  ///
+  /// ⛔A long range is not refused when something is already in the way:
+  /// [instructionMapWithEventAdded] clamps to the next span's start, so "the
+  /// room ran out" answers with a shorter span, never with a lit button that
+  /// does nothing.
+  ({int startFrame, int length})? get transitionSpanCreationOrNull {
     if (transitionInstructionDefs.isEmpty) {
-      return false;
+      return null;
     }
-    final frame = editingGlobalFrame;
-    if (frame < 0) {
-      return false;
+    final track = activeTrack;
+    final selection = trackFrameRangeSelection.value;
+    final overThisRow =
+        selection != null &&
+        selection.trackId == track.id &&
+        selection.coversRow(LayerRowAddress(track.transitionLayer.id));
+    final startFrame = overThisRow ? selection.startFrame : editingGlobalFrame;
+    final length = overThisRow ? selection.lengthFrames : 1;
+    if (startFrame < 0 || length < 1) {
+      return null;
     }
-    return instructionSpanCovering(
-          activeTrack.transitionLayer.instructions,
-          frame,
-        ) ==
-        null;
+    final covering = instructionSpanCovering(
+      track.transitionLayer.instructions,
+      startFrame,
+    );
+    return covering == null ? (startFrame: startFrame, length: length) : null;
   }
 
-  /// Starts a one-frame transition span at the playhead, on the GLOBAL axis.
+  bool get canCreateTransitionSpanAtPlayhead =>
+      transitionSpanCreationOrNull != null;
+
+  /// Starts a transition span on the GLOBAL axis, where and as long as
+  /// [transitionSpanCreationOrNull] says.
   ///
   /// Dialog-free like its direction-row twin (UI-R25 #2): it takes the first
   /// transition term and the Edit Instance dialog changes it afterwards. The
@@ -6111,17 +6140,18 @@ class EditorSessionManager extends ChangeNotifier {
   /// it has been dragged across a cut boundary, which is the rule the
   /// geometry enforces rather than this verb.
   void createTransitionSpanAtPlayhead() {
-    if (!canCreateTransitionSpanAtPlayhead) {
+    final plan = transitionSpanCreationOrNull;
+    if (plan == null) {
       return;
     }
     final track = activeTrack;
     final before = track.transitionLayer;
     final next = instructionMapWithEventAdded(
       before.instructions,
-      startIndex: editingGlobalFrame,
+      startIndex: plan.startFrame,
       event: InstructionEvent(
         instructionId: transitionInstructionDefs.first.id,
-        length: 1,
+        length: plan.length,
       ),
     );
     if (next == null) {

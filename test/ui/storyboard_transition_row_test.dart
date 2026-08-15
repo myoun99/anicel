@@ -258,6 +258,99 @@ void main() {
         aEnd + 4 + 1,
       ]);
     });
+
+    /// 🚨★★ 유저 #17 (2026-08-15): 「스토리보드패널의 **트랜지션레이어**,
+    /// 선택범위로 프레임생성누르면 **선택범위만큼 생성되는게 일반적인데 이
+    /// 레이어만 다름.** 대체 왜? **왜 이렇게 규칙을 가끔가다 통일안하는거지?**」
+    ///
+    /// The length was the literal `1`. Every other row takes its count from
+    /// the range, so this row was a special case with no rule behind it —
+    /// and a special case is exactly what "규칙을 통일 안 한다" describes.
+    group('a selection range says how long the span is', () {
+      (EditorSessionManager, void Function(int, int)) rangedSession() {
+        final session = EditorSessionManager(
+          initialProject: createDefaultProject(),
+        );
+        addTearDown(session.dispose);
+        void selectOverTransition(int from, int to) {
+          session.updateTrackRowRangeSelectionByFrame(
+            layerId: session.activeTrack.transitionLayer.id,
+            anchorGlobalFrame: from,
+            headGlobalFrame: to,
+          );
+        }
+
+        return (session, selectOverTransition);
+      }
+
+      test('the span is as long as the range, and starts where it starts', () {
+        final (session, selectOverTransition) = rangedSession();
+        selectOverTransition(4, 9);
+
+        expect(session.canCreateTransitionSpanAtPlayhead, isTrue);
+        session.createTransitionSpanAtPlayhead();
+
+        final spans = session.activeTrack.transitionLayer.instructions;
+        expect(spans.keys, [4]);
+        expect(
+          spans[4]!.length,
+          6,
+          reason: 'frames 4 through 9 inclusive — 선택범위만큼',
+        );
+      });
+
+      test('no range is still the playhead and one frame — this adds a rung, '
+          'it does not move the ladder', () {
+        final (session, _) = rangedSession();
+        session.selectGlobalFrame(3);
+
+        session.createTransitionSpanAtPlayhead();
+
+        final spans = session.activeTrack.transitionLayer.instructions;
+        expect(spans.keys, [3]);
+        expect(spans[3]!.length, 1);
+      });
+
+      test('a range whose start is already covered refuses — and the gate '
+          'says so with the SAME sentence the verb uses', () {
+        final (session, selectOverTransition) = rangedSession();
+        session.selectGlobalFrame(4);
+        session.createTransitionSpanAtPlayhead();
+        expect(session.activeTrack.transitionLayer.instructions.keys, [4]);
+
+        selectOverTransition(4, 9);
+        expect(
+          session.canCreateTransitionSpanAtPlayhead,
+          isFalse,
+          reason: 'the button must not light for a press that cannot land',
+        );
+        session.createTransitionSpanAtPlayhead();
+        expect(
+          session.activeTrack.transitionLayer.instructions[4]!.length,
+          1,
+          reason: 'and the press changed nothing',
+        );
+      });
+
+      test('a range that runs into an existing span lands SHORT rather than '
+          'refusing — the room ran out, the press did not', () {
+        final (session, selectOverTransition) = rangedSession();
+        session.selectGlobalFrame(8);
+        session.createTransitionSpanAtPlayhead();
+
+        selectOverTransition(4, 20);
+        expect(session.canCreateTransitionSpanAtPlayhead, isTrue);
+        session.createTransitionSpanAtPlayhead();
+
+        final spans = session.activeTrack.transitionLayer.instructions;
+        expect(spans.keys, [4, 8]);
+        expect(
+          spans[4]!.length,
+          4,
+          reason: 'clamped to where the next span starts, not refused',
+        );
+      });
+    });
   });
 
   group('sizing a transition span', () {
