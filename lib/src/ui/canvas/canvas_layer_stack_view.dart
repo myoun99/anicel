@@ -1293,6 +1293,7 @@ class _LayerStackPainter extends CustomPainter {
     // stroke step compared against nothing and fell back to a full raster —
     // measured, with the counter reading zero.
     final dirty = cache == null ? null : _liveDirtyCanvasRect();
+    cache?.lastDirtyRect = dirty;
     final recorder = ui.PictureRecorder();
     final into = Canvas(recorder);
     into.translate(-rect.left, -rect.top);
@@ -1407,20 +1408,30 @@ class _LayerStackPainter extends CustomPainter {
       tileSize,
       tileSize,
     );
-    // The overlay's tiles are the stroke in flight — every one of them is
-    // being drawn into right now, and one it LEFT has to lose its ink.
+    // The overlay's tiles carry the stroke in flight — but they ACCUMULATE
+    // for the stroke's whole life (nothing leaves the map until pen-up), so
+    // "every overlay coordinate" is the bounding box of the WHOLE STROKE by
+    // the third dab: a long line paid its full length again on every step.
+    // Identity per coordinate instead, exactly like the committed loop
+    // below — the overlay replaces a tile's image only when a dab touched
+    // it, so an unchanged image object IS "this tile did not move".
     final cacheState = bufferCache!;
-    for (final coord in cacheState.lastOverlayCoords) {
-      add(rectOf(coord as TileCoord));
+    final overlayNow = <TileCoord, Object>{};
+    final overlayImages =
+        overlay?.tileImages ?? const <TileCoord, ui.Image>{};
+    for (final entry in overlayImages.entries) {
+      overlayNow[entry.key] = entry.value;
+      if (!identical(cacheState.lastOverlayTokens[entry.key], entry.value)) {
+        add(rectOf(entry.key));
+      }
     }
-    for (final coord in const <TileCoord>[]) {
-      add(rectOf(coord));
+    // A coordinate the overlay LEFT has to lose its ink (pen-up, reset).
+    for (final coord in cacheState.lastOverlayTokens.keys) {
+      if (!overlayNow.containsKey(coord)) {
+        add(rectOf(coord as TileCoord));
+      }
     }
-    final now = overlay?.tileImages.keys ?? const <TileCoord>[];
-    for (final coord in now) {
-      add(rectOf(coord));
-    }
-    cacheState.lastOverlayCoords = now.toSet();
+    cacheState.lastOverlayTokens = overlayNow;
     // Committed tiles: a commit replaces the tile, and a decode replaces its
     // image. Both are identity changes on the same coordinate.
     final cache = surfacePainter.tileImageCache;

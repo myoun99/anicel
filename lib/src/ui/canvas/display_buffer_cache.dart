@@ -38,7 +38,12 @@ class DisplayBufferCache {
   /// repaints WITHOUT a widget rebuild, so neither the painter nor `build`
   /// can hold a "since last time". This object is the only thing on that
   /// path that outlives a frame.
-  Set<Object> lastOverlayCoords = const {};
+  /// Overlay coordinate → the tile IMAGE it held, so the next paint can
+  /// say which tiles a dab actually touched. A bare coordinate SET here
+  /// made every step dirty the whole stroke's bounding box — the overlay
+  /// accumulates for the stroke's life, so membership alone says "part of
+  /// the stroke", not "changed since last paint".
+  Map<Object, Object> lastOverlayTokens = const {};
   Map<Object, Object> lastTileTokens = const {};
 
   /// The kept image for [key] over [rect], or null when there is none.
@@ -73,6 +78,13 @@ class DisplayBufferCache {
   /// to be able to show.
   int patchedCount = 0;
   int fullCount = 0;
+
+  /// The dirty rect the last compose was confined to (canvas space, after
+  /// the hairline inflate); null when the compose was full. Probe surface
+  /// like the counters: a patch that quietly grows back to the stroke's
+  /// whole bounding box is invisible in `patchedCount` — it still counts
+  /// as one patch — and THIS is what says how big that patch really was.
+  Rect? lastDirtyRect;
 
   void store(
     Object key,
@@ -127,7 +139,7 @@ class DisplayBufferCache {
     // ⛔The snapshots go with the image. Kept across an invalidate they would
     // describe a frame nobody holds any more, and the next paint would
     // "find" a small dirty rect against a base that no longer exists.
-    lastOverlayCoords = const {};
+    lastOverlayTokens = const {};
     lastTileTokens = const {};
   }
 
