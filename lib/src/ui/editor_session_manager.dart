@@ -1,3 +1,4 @@
+import 'dart:async' show Timer;
 import 'dart:collection' show SplayTreeMap;
 import 'dart:io';
 import 'dart:math' as math;
@@ -1755,6 +1756,25 @@ class EditorSessionManager extends ChangeNotifier {
     );
   }
 
+  /// A5 — the trailing edge of an edit burst, so the warming queue
+  /// restarts ONCE per burst instead of once per dab commit. Only the
+  /// RESTART is deferred: the cache invalidations and the yield signal
+  /// stay synchronous, because a stale composite must be unservable the
+  /// instant the stroke lands. The window costs nothing in production —
+  /// warming cannot start until [PlaybackPrerenderScheduler.idleDelay]
+  /// (1200ms) of quiet anyway, so any window under that only merges
+  /// restarts it never delays.
+  Timer? _warmDebounce;
+
+  static final Duration _warmDebounceWindow =
+      Platform.environment['FLUTTER_TEST'] == 'true'
+      // Tests: next-turn, mirroring the scheduler's zero idleDelay — a
+      // pending 200ms timer at teardown trips the binding's timer
+      // invariant before the session's tearDown dispose runs. Zero still
+      // debounces: a synchronous burst re-arms one timer and fires once.
+      ? Duration.zero
+      : const Duration(milliseconds: 200);
+
   void _onBrushFrameInvalidated(BrushFrameCacheInvalidation invalidation) {
     layerFrameImageCache.invalidateFrame(invalidation.frameKey);
     cutFrameCompositeCache.invalidateWhereLayerFrame(
@@ -1763,7 +1783,14 @@ class EditorSessionManager extends ChangeNotifier {
     );
     // Warming yields to the edit and then re-renders the dirty frames.
     prerenderScheduler.notifyEditActivity();
-    _warmActiveCut();
+    _warmDebounce?.cancel();
+    _warmDebounce = Timer(_warmDebounceWindow, () {
+      _warmDebounce = null;
+      if (_disposed) {
+        return;
+      }
+      _warmActiveCut();
+    });
   }
 
   /// Warms the active cut's composites around the playhead ("navigate away
@@ -1795,6 +1822,7 @@ class EditorSessionManager extends ChangeNotifier {
     laneRangeSelection.removeListener(_publishCutLocalLaneRange);
     cutLocalLaneRangeSelection.dispose();
     revealSelectionTick.dispose();
+    _warmDebounce?.cancel();
     cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
     playback.globalFrameIndexListenable.removeListener(_followPlaybackCut);
     _historyManager.removeListener(_markProjectDirty);
