@@ -46,7 +46,15 @@ class _CompositeEntry {
   _CompositeEntry({required this.image});
 
   final ui.Image image;
-  int referenceCount = 0;
+
+  /// The index keys pointing at this image — the reference count AND the
+  /// reverse index in one. Eviction used to rediscover these by scanning
+  /// the whole index per candidate and comparing SIGNATURES, whose `==`
+  /// walks every layer node — O(candidates × index × layers), inside a
+  /// function that runs after every warmed frame.
+  final Set<(CutId, int, PlaybackQuality)> indexKeys =
+      <(CutId, int, PlaybackQuality)>{};
+
   int lastUsed = 0;
 }
 
@@ -76,6 +84,12 @@ class CutFrameCompositeCache {
   final Map<CutFrameCompositeSignature, _CompositeEntry> _images = {};
   int _useCounter = 0;
   bool _disposed = false;
+
+  /// Running byte total, adjusted where images enter and leave — the
+  /// getter used to WALK the whole map, and the eviction loop read it per
+  /// candidate: O(entries²) in a function that runs after every warmed
+  /// frame.
+  int _estimatedBytes = 0;
 
   CutFrameCompositeSignature _signatureFor(
     Cut cut,
@@ -190,6 +204,7 @@ class CutFrameCompositeCache {
     }
     final entry = _CompositeEntry(image: image)..lastUsed = ++_useCounter;
     _images[signature] = entry;
+    _estimatedBytes += estimatedImageBytes(image.width, image.height);
     _pointIndexAt(indexKey, signature);
     return image;
   }
@@ -378,50 +393,45 @@ class CutFrameCompositeCache {
     }
   }
 
-  int get estimatedBytes {
-    var total = 0;
-    for (final entry in _images.values) {
-      total += estimatedImageBytes(entry.image.width, entry.image.height);
-    }
-    return total;
-  }
+  int get estimatedBytes => _estimatedBytes;
 
   /// Evicts least-recently-used composites until at or under [maxBytes],
   /// never touching frames inside any of the [protect] ranges (the playing
   /// playlist may span several cuts).
+  ///
+  /// One pass over the IMAGES, using each entry's own reverse keys: no
+  /// signature is hashed or compared here at all. The old shape re-walked
+  /// the byte total per candidate and rediscovered each image's index keys
+  /// by scanning the whole index with signature `==` — `listEquals` over
+  /// every layer node — which made the enforcer O(entries² × layers) in
+  /// the function that runs after every warmed frame. At 1500 cuts it was
+  /// costlier than the work it freed.
   void enforceBudget({
     required int maxBytes,
     List<PlaybackProtectedRange> protect = const [],
   }) {
-    if (estimatedBytes <= maxBytes) {
+    if (_estimatedBytes <= maxBytes) {
       return;
     }
-    final protectedSignatures = <CutFrameCompositeSignature>{};
-    if (protect.isNotEmpty) {
-      for (final entry in _index.entries) {
-        final isProtected = protect.any(
-          (range) => range.contains(entry.key.$1, entry.key.$2, entry.key.$3),
-        );
-        if (isProtected) {
-          protectedSignatures.add(entry.value);
+    bool isProtected(_CompositeEntry entry) {
+      for (final key in entry.indexKeys) {
+        for (final range in protect) {
+          if (range.contains(key.$1, key.$2, key.$3)) {
+            return true;
+          }
         }
       }
+      return false;
     }
 
     final evictable =
-        _images.entries
-            .where((entry) => !protectedSignatures.contains(entry.key))
-            .toList()
-          ..sort((a, b) => a.value.lastUsed.compareTo(b.value.lastUsed));
+        _images.values.where((entry) => !isProtected(entry)).toList()
+          ..sort((a, b) => a.lastUsed.compareTo(b.lastUsed));
     for (final candidate in evictable) {
-      if (estimatedBytes <= maxBytes) {
+      if (_estimatedBytes <= maxBytes) {
         break;
       }
-      final stale = _index.entries
-          .where((entry) => entry.value == candidate.key)
-          .map((entry) => entry.key)
-          .toList();
-      for (final key in stale) {
+      for (final key in candidate.indexKeys.toList()) {
         _releaseIndexEntry(key);
       }
     }
@@ -443,27 +453,34 @@ class CutFrameCompositeCache {
       return;
     }
     if (previous != null) {
-      _releaseSignature(previous);
+      _releaseSignature(previous, indexKey);
     }
     _index[indexKey] = signature;
-    _images[signature]!.referenceCount += 1;
+    _images[signature]!.indexKeys.add(indexKey);
   }
 
   void _releaseIndexEntry((CutId, int, PlaybackQuality) indexKey) {
     final signature = _index.remove(indexKey);
     if (signature != null) {
-      _releaseSignature(signature);
+      _releaseSignature(signature, indexKey);
     }
   }
 
-  void _releaseSignature(CutFrameCompositeSignature signature) {
+  void _releaseSignature(
+    CutFrameCompositeSignature signature,
+    (CutId, int, PlaybackQuality) indexKey,
+  ) {
     final entry = _images[signature];
     if (entry == null) {
       return;
     }
-    entry.referenceCount -= 1;
-    if (entry.referenceCount <= 0) {
+    entry.indexKeys.remove(indexKey);
+    if (entry.indexKeys.isEmpty) {
       _images.remove(signature);
+      _estimatedBytes -= estimatedImageBytes(
+        entry.image.width,
+        entry.image.height,
+      );
       DeferredImageDisposer.instance.retire(entry.image);
     }
   }
