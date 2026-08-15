@@ -29,6 +29,7 @@ class AppWindowAction {
     required this.onPressed,
     this.actionKey,
     this.emphasis = AppWindowActionEmphasis.quiet,
+    this.tooltip,
   });
 
   final String label;
@@ -37,6 +38,15 @@ class AppWindowAction {
   final VoidCallback? onPressed;
   final Key? actionKey;
   final AppWindowActionEmphasis emphasis;
+
+  /// The consequence, for an action whose label cannot hold it.
+  ///
+  /// ⚠️ A SECOND line of defence, never the only one. A pen hovering an
+  /// iPad does raise a tooltip — but a finger never does, and nor does an
+  /// older tablet. So the label still has to carry the verb on its own;
+  /// this carries the detail that would not fit, for the pointer that
+  /// happens to be there.
+  final String? tooltip;
 }
 
 enum AppWindowActionEmphasis {
@@ -283,6 +293,12 @@ class AppWindow extends StatelessWidget {
   }
 
   Widget _actionButton(ThemeData theme, AppWindowAction action) {
+    final hint = action.tooltip;
+    final button = _actionButtonBody(theme, action);
+    return hint == null ? button : Tooltip(message: hint, child: button);
+  }
+
+  Widget _actionButtonBody(ThemeData theme, AppWindowAction action) {
     final colorScheme = theme.colorScheme;
     final label = Text(action.label);
     return switch (action.emphasis) {

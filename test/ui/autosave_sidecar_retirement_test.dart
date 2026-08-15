@@ -11,6 +11,7 @@ import 'package:anicel/src/services/persistence/recent_projects_store.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 /// A sidecar holds UNSAVED work, so it dies at every moment that work stops
 /// existing: a manual save (it landed in the file), a close WITHOUT saving
@@ -396,6 +397,57 @@ void main() {
         sidecar.existsSync(),
         isFalse,
         reason: 'left alive it re-asks at every open until the next save',
+      );
+    });
+
+    testWidgets('🚨 the button that DELETES the sidecar says so, and is '
+        'marked dangerous', (tester) async {
+      // The retirement above is right, and for one round it was invisible:
+      // this read as a plain preference between two files ("Open saved"),
+      // in the same quiet grey as a cancel, while it threw unsaved work
+      // away with no way back. A user who picked it to "look at the saved
+      // one first" lost the other one.
+      //
+      // ⚠️ The LABEL carries the verb and the tooltip only elaborates —
+      // a pen hovering an iPad DOES raise a tooltip, but a finger never
+      // does, and neither does an older tablet. The label is what every
+      // user gets; the tooltip is what most of them get.
+      writeRealProject(projectPath);
+      final sidecar = File(writeNewerSidecar(projectPath));
+      expect(sidecar.existsSync(), isTrue);
+      final seeded = const RecentProjects().withOpened(
+        RecentProject(path: projectPath),
+      );
+      AppRecent.projects.value = seeded;
+      RecentProjectsStore().save(seeded);
+
+      await tester.pumpWidget(const MaterialApp(home: HomePage()));
+      await tester.pumpAndSettle();
+      await openProjectMenu(tester);
+      await tester.tap(
+        find.byKey(ValueKey<String>('menu-recent-$projectPath')),
+      );
+      await tester.pumpAndSettle();
+
+      final discard = find.byKey(
+        const ValueKey<String>('recover-open-saved-button'),
+      );
+      // The ambient scheme, read where the button actually sits, so this
+      // asserts "the danger colour" rather than a colour that happens to
+      // match today.
+      final scheme = Theme.of(tester.element(discard)).colorScheme;
+      expect(
+        tester.widget<TextButton>(discard).style?.foregroundColor?.resolve({}),
+        scheme.error,
+        reason: 'a destructive action wears the danger ink, not cancel grey',
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('recover-autosave-dialog')),
+          matching: find.byTooltip(AppText.strings.recoverOpenSavedHint),
+        ),
+        findsOneWidget,
+        reason: 'the consequence is spelled out for anything with a pointer',
       );
     });
 
