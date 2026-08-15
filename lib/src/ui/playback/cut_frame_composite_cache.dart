@@ -11,6 +11,7 @@ import '../../services/playback/cut_frame_composite_signature.dart';
 import '../canvas/composite_effect_paint.dart';
 import '../canvas/deferred_image_disposal.dart';
 import '../canvas/layer_image_draw.dart';
+import '../debug/input_inspector.dart';
 import 'layer_frame_image_cache.dart';
 import 'playback_cache_budget.dart';
 
@@ -350,19 +351,40 @@ class CutFrameCompositeCache {
       }
     }
 
+    // S1 — the composite's cost, split at its only seam: the Dart-side
+    // walk (layer prepares included) versus the full-canvas
+    // rasterization. 「빔이 느리게 차」 is one number until this says which
+    // half it lives in. Inspector-gated: release builds pay nothing while
+    // it is hidden, and the release iPad is exactly where it must read.
+    // ⛔The watch wraps the awaited `toImage`, never a `toImageSync` —
+    // sync recording returns before the raster work runs and the watch
+    // would read ~0 (계측기 거짓말 세 번째 얼굴).
+    final walkWatch = InputInspector.visible.value
+        ? (Stopwatch()..start())
+        : null;
     await paintNodes(signature.nodes);
     if (aborted) {
       recorder.endRecording().dispose();
       return null;
     }
     final picture = recorder.endRecording();
+    walkWatch?.stop();
     try {
       // Last check before the big slice: the full-canvas rasterization is
       // the composite's dominant cost (raster-thread contention included).
       if (shouldAbort?.call() ?? false) {
         return null;
       }
-      return await picture.toImage(raster.width, raster.height);
+      final imageWatch = walkWatch == null ? null : (Stopwatch()..start());
+      final image = await picture.toImage(raster.width, raster.height);
+      if (walkWatch != null) {
+        InputInspector.note(
+          'cmp ${raster.width}x${raster.height} '
+          'walk ${walkWatch.elapsedMilliseconds}ms '
+          'img ${imageWatch!.elapsedMilliseconds}ms',
+        );
+      }
+      return image;
     } finally {
       picture.dispose();
     }
