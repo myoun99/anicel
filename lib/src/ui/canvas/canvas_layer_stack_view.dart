@@ -1098,6 +1098,10 @@ class _LayerStackPainter extends CustomPainter {
                   opacity: opacity,
                   blendMode: blendMode,
                   effects: effects,
+                  // A4: today's value, now in writing. `low` is bilinear —
+                  // the same sampling every non-active layer has always
+                  // taken on this route.
+                  filterQuality: ui.FilterQuality.low,
                   // Onion-skin Colors mode: the ghost CONVERTS fully to the
                   // tint — every drawn pixel takes the tint's RGB, only alpha
                   // survives (TVPaint's look, R11-①; modulate kept light
