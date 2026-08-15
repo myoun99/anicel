@@ -17145,16 +17145,27 @@ class EditorSessionManager extends ChangeNotifier {
   /// session notify.
   final ValueNotifier<int> frameSeekCommitted = ValueNotifier<int>(0);
 
-  /// True while a ruler scrub is in flight — the canvas swaps to the
-  /// composite-cache preview (the playback display machinery) until the
-  /// release commit.
+  /// True while a ruler scrub is in flight.
+  ///
+  /// 🚨★★★ #26 (2026-08-15): THIS NO LONGER SWAPS THE DISPLAY. It used to —
+  /// the canvas became the composite-cache preview until the release commit
+  /// — and the user's law retired that: 「그냥 액티브레이어급으로 그냥 원본
+  /// 보여주게하고싶어 … 그냥 항상 full」. A scrub shows the editing canvas,
+  /// which follows the cursor through the canvas area's retarget scope.
+  ///
+  /// ⛔What it still decides is the GAP ANSWER: a parked global reads as a
+  /// gap only while the gesture is live (the `_gapGlobalFrame` read below),
+  /// so the flag stays and the canvas rebuilds at enter and leave.
   final ValueNotifier<bool> frameScrubActive = ValueNotifier<bool>(false);
 
   /// A scrub move: repositions the playhead WITHOUT notifying — only the
   /// cursor listenables fire; the full session notify is deferred to
-  /// [commitFrameScrub] on release. The canvas preview engages on the
-  /// first move that actually changes the frame, so a same-frame tap
-  /// never flashes it.
+  /// [commitFrameScrub] on release.
+  ///
+  /// ⛔The cursor is not decoration: since #26 the editing canvas listens to
+  /// it, so this is what makes the scrub show the crossed frame. It fires on
+  /// the same-frame branch too — a tap that lands where it already was is a
+  /// no-op the retarget scope swallows by index.
   void scrubFrameIndex(int frameIndex) {
     // R15-⑤: scrubs are seeks too — refused under a live edit.
     if (editingInteractionBusy) {
@@ -17168,9 +17179,8 @@ class EditorSessionManager extends ChangeNotifier {
       audioScrubber.onScrubFrame(frameIndex);
       if (!frameScrubActive.value) {
         frameScrubActive.value = true;
-        // One warm per gesture: the preview reads the composite cache, so
-        // a cold cut starts filling immediately (per-move warms would only
-        // thrash the scheduler's ordering).
+        // One warm per gesture. A scrub is a seek and every other seek
+        // warms; per-move warms would only thrash the scheduler's ordering.
         _warmActiveCut();
       }
     } else {
