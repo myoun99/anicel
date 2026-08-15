@@ -500,6 +500,14 @@ class MediaBrowserPanel extends StatelessWidget {
     return Draggable<MediaAssetDragData>(
       key: ValueKey<String>('media-asset-row-${asset.path}'),
       data: MediaAssetDragData(path: asset.path, name: asset.name),
+      // 🚨The chip hangs at the POINTER, and a drop target depends on it:
+      // the only position a target is given is `details.offset`, which is
+      // the pointer minus this anchor. Anchored to the child instead — the
+      // default — that offset is short by however far into this row the
+      // grab happened, and the timeline's layer row would name a frame up
+      // to a row's width off. It also reads better: a small chip that
+      // follows the finger rather than one hanging off to the left.
+      dragAnchorStrategy: pointerDragAnchorStrategy,
       feedback: Material(
         elevation: 4,
         borderRadius: BorderRadius.circular(4),

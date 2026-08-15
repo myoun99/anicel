@@ -96,6 +96,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onShowSecondsChanged,
     this.railExtent,
     this.audioLane,
+    this.onDropMediaAssetOnLayer,
     this.isLayerSoloed,
     this.onOpenLayerMixer,
     this.attachArrowPlacementOf,
@@ -261,6 +262,11 @@ class LayerTimelineGrid extends StatefulWidget {
 
   /// What the audio lane may ask the session to do; null = display-only.
   final TimelineAudioLaneCallbacks? audioLane;
+
+  /// A media-browser row dropped on a DRAWING layer: the window opens with
+  /// this cut and this layer already answered.
+  final void Function(LayerId layerId, int frameIndex, String path)?
+  onDropMediaAssetOnLayer;
 
   /// The SE row's mixer (R10 R3): its solo tint, and the speaker press
   /// that opens the window carrying mute/solo/fader/pan. Null hides the
@@ -2264,6 +2270,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                         .projectFrameRate,
                                                                 audioLane: widget
                                                                     .audioLane,
+                                                                onDropMediaAssetOnLayer:
+                                                                    widget
+                                                                        .onDropMediaAssetOnLayer,
                                                                 showSeconds: widget
                                                                     .showSeconds,
                                                                 commaDrag: widget

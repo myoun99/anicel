@@ -62,6 +62,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.seClipMarkerTooltip,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.audioLane,
+    this.onDropMediaAssetOnLayer,
     this.showSeconds = false,
     this.commaDrag,
     this.rangeGesture,
@@ -137,6 +138,11 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
 
   /// What the audio lane may ask the session to do; null = display-only.
   final TimelineAudioLaneCallbacks? audioLane;
+
+  /// A media-browser row dropped on a DRAWING layer: the window opens with
+  /// this cut and this layer already answered.
+  final void Function(LayerId layerId, int frameIndex, String path)?
+  onDropMediaAssetOnLayer;
 
   /// The shared frames/seconds display toggle (block duration labels,
   /// R26 #7).
@@ -405,6 +411,7 @@ class _TimelineFrameRowsScrollBodyState
       projectFrameRate: widget.projectFrameRate,
       showSeconds: widget.showSeconds,
       audioLane: widget.audioLane,
+      onDropMediaAssetOnLayer: widget.onDropMediaAssetOnLayer,
       commaDrag: widget.commaDrag,
       rangeGesture: widget.rangeGesture,
       runEdit: widget.runEdit,

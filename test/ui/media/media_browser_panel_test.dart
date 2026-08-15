@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart' show kDoubleTapMinTime;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
 import 'package:anicel/src/ui/media/media_browser_panel.dart';
 
 class _Callbacks {
@@ -119,6 +120,24 @@ void main() {
       find.byKey(const ValueKey<String>(r'media-asset-linked-C:\snd\clap.wav')),
       findsNothing,
     );
+  });
+
+  testWidgets('the row drags its chip from the POINTER', (tester) async {
+    // 🚨Not a look: the drop targets are handed `details.offset`, which is
+    // the pointer MINUS this anchor, and it is the only position they get.
+    // Anchored to the child — the default — a drop on a timeline layer row
+    // would name a frame up to this row's width off, silently, because the
+    // grab happened somewhere inside a 260px row.
+    await _pump(
+      tester,
+      _Callbacks()..existingPaths = {foot},
+      assets: const [MediaAsset(path: foot, name: 'foot.wav')],
+    );
+
+    final draggable = tester.widget<Draggable<MediaAssetDragData>>(
+      find.byKey(const ValueKey<String>('media-asset-row-$foot')),
+    );
+    expect(draggable.dragAnchorStrategy, same(pointerDragAnchorStrategy));
   });
 
   testWidgets('the import button asks for the import WINDOW, not a picker', (
