@@ -35,7 +35,6 @@ import 'playback/canvas_playback_view.dart';
 import 'playback/canvas_track_stack_view.dart';
 import 'playback/recording_streamer_overlay.dart';
 import 'debug/input_inspector.dart';
-import 'playback/canvas_scrub_preview.dart';
 import 'text/app_strings.dart';
 import 'text/se_name_tag_paint.dart';
 import 'timeline/layer_label_controls.dart';
@@ -279,9 +278,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         return ValueListenableBuilder<bool>(
           valueListenable: session.playback.isActiveListenable,
           builder: (context, _, _) {
-            // Ruler scrubs swap the content the same way playback does
-            // (enter/leave only) — the per-move updates repaint just the
-            // preview painter through the cursor listenable.
+            // #26: a scrub no longer swaps the content — but the flag still
+            // decides WHAT THE GAP ANSWER IS: a parked global only reads as
+            // a gap while the gesture is live (`_gapGlobalFrame` is gated on
+            // this), so `inGap` below flips at enter and leave. Two rebuilds
+            // per gesture; the crossed frames come through the retarget
+            // scope, not through here.
             return ValueListenableBuilder<bool>(
               valueListenable: session.frameScrubActive,
               builder: (context, _, _) {
@@ -399,14 +401,19 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     required bool showCameraOverlay,
   }) {
     final isPlaybackActive = session.playback.isActive;
-    // A ruler scrub shows the composite-cache preview (playback display
-    // machinery) — the editing chrome (layer stacks, overlays, gizmo)
-    // holds off exactly like during playback.
-    final isScrubbing = !isPlaybackActive && session.frameScrubActive.value;
+    // 🚨★★★ #26 (2026-08-15): A RULER SCRUB IS NOT A SECOND DISPLAY MODE.
+    // 「그냥 액티브레이어급으로 그냥 원본 보여주게하고싶어 … 그냥 항상 full」
+    //
+    // A scrub used to swap the whole viewport to the composite-cache preview
+    // — playback's display machinery — and every piece of editing chrome
+    // below carried a `!isScrubbing` so it would not draw over a foreign
+    // picture. That is the ENTIRE reason those gates existed, so removing
+    // the stand-in removes them: PLAYBACK is the one thing that replaces the
+    // canvas, and a scrub just moves the playhead the canvas already
+    // follows (`_FrameRetargetScope`).
     // R16-⑥ (user semantics): a gap has NO cut — the canvas shows a
     // paperless VOID: no editable cel, no layer content, no paper.
-    final inGap =
-        !isPlaybackActive && !isScrubbing && session.editingPlayheadInGap;
+    final inGap = !isPlaybackActive && session.editingPlayheadInGap;
     // The camera overlay authors the ACTIVE cut's pose — with no cut (a
     // gap parking) there is nothing to author and reading the pose would
     // throw (requireActiveCut).
@@ -477,15 +484,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     // faded frames are worked with fx off). It is the track's static opacity
     // times the TRANSITION row's ramp now.
     final cutFadeOpacity = session.activeCutEditingFadeOpacity();
-    final showFadeWash =
-        !isPlaybackActive && !isScrubbing && cutFadeOpacity < 1;
+    final showFadeWash = !isPlaybackActive && cutFadeOpacity < 1;
     // The SE rows' on-canvas name tags (R5b, §6-z15) — the editing
-    // canvas's copy of what playback and export draw. Playback/scrub
-    // render their own (through the frame painter), so this stands down
-    // there exactly like the other editing chrome.
+    // canvas's copy of what playback and export draw. Playback renders its
+    // own (through the frame painter), so this stands down there exactly
+    // like the other editing chrome.
     final activeCutForTags = session.activeCutOrNull;
     final seNameTags =
-        isPlaybackActive || isScrubbing || activeCutForTags == null
+        isPlaybackActive || activeCutForTags == null
         ? const <ResolvedSeNameTag>[]
         : session.seNameTagsForCutFrame(
             activeCutForTags,
@@ -502,7 +508,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final activeLayer = session.activeLayer;
     final canPoseActiveLayer =
         !isPlaybackActive &&
-        !isScrubbing &&
         !isCameraLayerActive &&
         activeLayer != null &&
         // The gizmo COMMITS a transform track, so the row must actually
@@ -589,10 +594,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // MERGED canvas: we own the live-stroke overlay, so the
               // layer stack can paint the active layer inside the
               // composite tree and a folder's group buffer can enclose
-              // the layer being drawn on. Playback/scrub swap the whole
-              // viewport content, so merged mode stands down there (no
-              // underlay builder, no active painter).
-              activeStrokeOverlayModel: isPlaybackActive || isScrubbing
+              // the layer being drawn on. Playback swaps the whole viewport
+              // content, so merged mode stands down there (no underlay
+              // builder, no active painter).
+              activeStrokeOverlayModel: isPlaybackActive
                   ? null
                   : _activeStrokeOverlay,
               // Camera mode still needs artwork on screen: fall
@@ -758,7 +763,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // editing. During playback the composite covers everything. Under
               // an active CUT pose (R9-B) the paper splits out of the wrap: the
               // canvas is the static stage, only the content rides the pose.
-              viewportUnderlayBuilder: isPlaybackActive || isScrubbing
+              viewportUnderlayBuilder: isPlaybackActive
                   ? null
                   : (context, viewport, activeSurfacePainter, floatOverlay) {
                       final below = CanvasLayerStackView(
@@ -936,8 +941,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                                             widget.cameraViewEnabled.value
                                             ? widget.cameraDimOpacity.value
                                             : 0,
-                                        interactive:
-                                            isCameraLayerActive && !isScrubbing,
+                                        interactive: isCameraLayerActive,
                                         onPoseCommitted: session
                                             .setCameraKeyframeAtCurrentFrame,
                                       );
@@ -1090,35 +1094,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                         RecordingStreamerOverlay(session: session),
                       ],
                     )
-                  : isScrubbing
-                  ? (context, viewport) => CanvasScrubPreview(
-                      frameCursor: session.editingFrameCursor,
-                      compositeCache: session.cutFrameCompositeCache,
-                      // Null in the no-cut gap state: the preview voids.
-                      cut: session.activeCutOrNull,
-                      qualityOf: () => session.playbackQuality,
-                      // Gap scrubs park per move (UI-R7 #9): the preview
-                      // shows the parked track stack there (multitrack
-                      // display path) — with no covered track it stays
-                      // the void, never the owner cut's last frame.
-                      gapParking: session.gapParkingListenable,
-                      gapContentBuilder: (context) =>
-                          _buildTrackStackView(session, viewport),
-                      // The cut FADE follows the editing canvas per cursor
-                      // frame; it is the transition row's ramp times the
-                      // track's static opacity now, and there is no cut pose
-                      // left to sample.
-                      cutFadeOpacityAt: (frame) => session
-                          .activeCutEditingFadeOpacity(frameIndex: frame),
-                      seNameTagsAt: (frame) {
-                        final cut = session.activeCutOrNull;
-                        return cut == null
-                            ? const []
-                            : session.seNameTagsForCutFrame(cut, frame);
-                      },
-                      viewport: viewport,
-                      paperBackground: session.projectBackground,
-                    )
                   // The parked state (no active cut): the multitrack
                   // display path — every covered track's composite stacks
                   // where the void used to be, in its own CANVAS space (the
@@ -1217,6 +1192,19 @@ class _SeNameTagOverlayPainter extends CustomPainter {
 /// its original cel, and the canvas swaps to the new frame the moment the
 /// stroke ends. Retargeting mid-stroke used to tear the stroke down inside
 /// the build phase (red-screen) and could land the commit on the wrong cel.
+///
+/// 🚨★★★ #26: A RULER SCRUB RETARGETS HERE TOO, and that is what lets a scrub
+/// show the editing canvas instead of a stand-in. A scrub deliberately does
+/// NOT notify the session — that law is what keeps a ruler drag from
+/// rebuilding every panel per crossed frame — so the canvas used to sit on
+/// the frame the gesture STARTED on, and the picture only arrived on release.
+/// That law is about the PANELS; this scope is the canvas's own subscription,
+/// so following the cursor here obeys it.
+///
+/// ⛔The cursor is not a second mechanism: `scrubFrameIndex` moves the
+/// timeline controller, so [_retargetIfFrameChanged]'s existing question —
+/// did `currentFrameIndex` actually change — is already the right one, and
+/// the stroke deferral above covers a scrub exactly like a seek.
 class _FrameRetargetScope extends StatefulWidget {
   const _FrameRetargetScope({required this.session, required this.builder});
 
@@ -1235,6 +1223,7 @@ class _FrameRetargetScopeState extends State<_FrameRetargetScope> {
   void initState() {
     super.initState();
     widget.session.frameSeekCommitted.addListener(_onSeekCommitted);
+    widget.session.editingFrameCursor.addListener(_onSeekCommitted);
     widget.session.brushInputActive.addListener(_onBrushInputChanged);
   }
 
@@ -1243,8 +1232,10 @@ class _FrameRetargetScopeState extends State<_FrameRetargetScope> {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.session, widget.session)) {
       oldWidget.session.frameSeekCommitted.removeListener(_onSeekCommitted);
+      oldWidget.session.editingFrameCursor.removeListener(_onSeekCommitted);
       oldWidget.session.brushInputActive.removeListener(_onBrushInputChanged);
       widget.session.frameSeekCommitted.addListener(_onSeekCommitted);
+      widget.session.editingFrameCursor.addListener(_onSeekCommitted);
       widget.session.brushInputActive.addListener(_onBrushInputChanged);
     }
   }
@@ -1252,6 +1243,7 @@ class _FrameRetargetScopeState extends State<_FrameRetargetScope> {
   @override
   void dispose() {
     widget.session.frameSeekCommitted.removeListener(_onSeekCommitted);
+    widget.session.editingFrameCursor.removeListener(_onSeekCommitted);
     widget.session.brushInputActive.removeListener(_onBrushInputChanged);
     super.dispose();
   }

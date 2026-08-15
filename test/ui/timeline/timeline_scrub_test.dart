@@ -10,6 +10,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
@@ -200,7 +201,7 @@ void main() {
       expect(manager.currentFrameIndex, 9);
     });
 
-    test('a same-frame scrub never engages the preview', () {
+    test('a same-frame scrub never engages the gesture', () {
       final manager = session();
       addTearDown(manager.dispose);
 
@@ -208,7 +209,9 @@ void main() {
       expect(
         manager.frameScrubActive.value,
         isFalse,
-        reason: 'a plain tap must not flash the canvas preview',
+        reason: 'a plain tap is not a drag — the flag decides the GAP answer '
+            'now (#26 retired the preview it used to swap in), and a tap '
+            'must not turn a parked position into a live scrub',
       );
 
       manager.commitFrameScrub();
@@ -300,8 +303,30 @@ void main() {
       expect(manager.frameScrubActive.value, isFalse);
     });
 
-    testWidgets('canvas swaps to the scrub preview while scrubbing and '
-        'back on commit', (tester) async {
+    /// 🚨★★★ #26 — A SCRUB SHOWS THE EDITING CANVAS, AT THE CROSSED FRAME.
+    ///
+    /// 「그냥 액티브레이어급으로 그냥 원본 보여주게하고싶어 … 그냥 항상 full」
+    ///
+    /// This replaces the test that asserted the opposite — that the canvas
+    /// swapped to a composite-cache stand-in for the length of the gesture.
+    /// Both halves are here because shipping only the first one is what
+    /// failed on the user's build: the stand-in came out, the canvas stayed
+    /// — and stayed on the frame the gesture STARTED on, so 「룰러에서 손 떼야
+    /// 그림이 생기는데?」. A scrub does not notify the session, and nothing
+    /// else was asking the canvas for the new frame.
+    ///
+    /// ⛔The last expectation is the price tag, not a nicety: the canvas
+    /// follows the CURSOR now, and a drag spends most of its pointer events
+    /// inside one frame's width. Those must rebuild the canvas ZERO times,
+    /// or this traded a stand-in for a rebuild storm.
+    ///
+    /// ⚠️It pins the CHAIN, not one link — measured: today the same-frame
+    /// move is already dead at the notifier (a `ValueNotifier` set to the
+    /// value it holds tells nobody), so the retarget scope's own index guard
+    /// never even gets asked. Removing that guard leaves this green. Both
+    /// are worth having; neither is allowed to be the only one.
+    testWidgets('the editing canvas stays through a scrub and retargets to '
+        'the crossed frame — only when the frame changes', (tester) async {
       final manager = session();
       addTearDown(manager.dispose);
       final brushTool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
@@ -325,23 +350,54 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      const previewKey = ValueKey<String>('canvas-scrub-preview');
-      expect(find.byKey(previewKey), findsNothing);
+      final stackFinder = find.byType(CanvasLayerStackView);
+      CanvasLayerStackView stack() => tester.widget(stackFinder.first);
 
+      // ⛔The gesture must already BE a scrub before the interesting part:
+      // the very first move flips `frameScrubActive`, and that flag has its
+      // own builder, so a canvas rebuild there proves nothing about the
+      // cursor. Everything below happens with the flag already true.
       manager.scrubFrameIndex(4);
       await tester.pump();
       expect(
-        find.byKey(previewKey),
-        findsOneWidget,
-        reason: 'scrubbing shows the composite-cache preview',
+        stackFinder,
+        findsWidgets,
+        reason: 'the scrub shows the editing canvas — there is no stand-in '
+            'to swap to any more',
+      );
+      expect(manager.frameScrubActive.value, isTrue, reason: 'still a scrub');
+      final atFourth = stack();
+
+      // The drag keeps going. Only the cursor fires from here.
+      manager.scrubFrameIndex(7);
+      await tester.pump();
+      expect(manager.frameScrubActive.value, isTrue, reason: 'still a scrub');
+      final atSeventh = stack();
+      expect(
+        identical(atSeventh, atFourth),
+        isFalse,
+        reason: 'the crossed frame retargeted the canvas MID-GESTURE — this '
+            'is the work the release used to be doing',
+      );
+
+      // The pointer keeps moving inside frame 7's cell: the cursor fires,
+      // the frame does not change, and the canvas must not stir.
+      manager.scrubFrameIndex(7);
+      manager.scrubFrameIndex(7);
+      await tester.pump();
+      expect(
+        identical(stack(), atSeventh),
+        isTrue,
+        reason: 'same-frame cursor moves rebuild the canvas zero times',
       );
 
       manager.commitFrameScrub();
       await tester.pumpAndSettle();
+      expect(manager.currentFrameIndex, 7);
       expect(
-        find.byKey(previewKey),
-        findsNothing,
-        reason: 'the commit swaps back to the editing canvas',
+        stackFinder,
+        findsWidgets,
+        reason: 'the release changes nothing about WHAT is on screen',
       );
     });
 
@@ -587,9 +643,9 @@ void main() {
       expect(manager.frameScrubActive.value, isFalse);
     });
 
-    test('a drag that STARTS by crossing engages the scrub preview on its '
-        'first MOVE — the pointer-down alone never flashes it (a tap over '
-        'another cut must not swap presentations)', () {
+    test('a drag that STARTS by crossing engages the scrub on its first '
+        'MOVE — the pointer-down alone never does (a tap over another cut '
+        'must not become a live scrub)', () {
       final manager = twoCutSession();
       addTearDown(manager.dispose);
 
@@ -603,8 +659,8 @@ void main() {
       expect(manager.activeCutId, const CutId('cut-b'));
     });
 
-    test('a same-frame tap on an already-parked position never flashes '
-        'the preview', () {
+    test('a same-frame tap on an already-parked position never engages '
+        'the scrub', () {
       final manager = twoCutSession();
       addTearDown(manager.dispose);
       manager.scrubGlobalFrame(26);
