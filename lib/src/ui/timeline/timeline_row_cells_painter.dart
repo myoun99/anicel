@@ -80,6 +80,7 @@ class TimelineRowCellsPainter extends CustomPainter {
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.tileStore,
+    this.substrateGeneration = '',
     this.devicePixelRatio = 1.0,
     this.celContent,
     this.coverageIdentity,
@@ -109,6 +110,20 @@ class TimelineRowCellsPainter extends CustomPainter {
   /// auxiliary identity ([TimelineRowMemoAux]) — so nothing new is invented
   /// here; it just had to reach the painter as well as the memo.
   final Object? coverageIdentity;
+
+  /// #29: the (project, cut) world this painter's RESOLVERS answer from —
+  /// `'<projectId>:<cutId>'`, handed down by the host that knows the
+  /// session. The tile store keys and gates on it, because the resolvers
+  /// are live tear-offs: a tile request that outlives a cut switch would
+  /// otherwise be rastered against another cut's answers (grey where a
+  /// drawing exists), and a same-id row in another cut would be served
+  /// this cut's pixels.
+  ///
+  /// ⚠️A plain String compared with `==`, never an object rebuilt per
+  /// frame — R9 #16 is what a fresh-identity value here regresses to.
+  /// Empty means "no generation": correct-but-uncached hosts (tests, the
+  /// chromeless workspace row) simply behave as one world.
+  final String substrateGeneration;
 
   /// R26 #44: the unworked-block tint's fact AND its event. Null = no tint.
   final TimelineCelContentSource? celContent;
@@ -776,6 +791,7 @@ class TimelineRowCellsPainter extends CustomPainter {
       oldDelegate.frameNameForLayer != frameNameForLayer ||
       oldDelegate.celHasContentForLayer != celHasContentForLayer ||
       oldDelegate.celContentRevision != celContentRevision ||
+      oldDelegate.substrateGeneration != substrateGeneration ||
       !identical(oldDelegate.tileStore, tileStore) ||
       // T16: the ground rule is a painted fact like any other. One row can
       // switch (the collapsed overlay folds and unfolds under a live panel).
@@ -847,6 +863,7 @@ Widget timelineRowCellsPaintArea({
   ValueListenable<int>? windowBucket,
   double viewportMainExtent = 0,
   Object? coverageIdentity,
+  String substrateGeneration = '',
   bool chromeless = false,
 }) {
   final painter = TimelineRowCellsPainter(
@@ -872,6 +889,7 @@ Widget timelineRowCellsPaintArea({
     // bake key a new dimension it would then have to be trusted with. This
     // is one row on screen; the classic pass is the cheap answer here.
     tileStore: chromeless ? null : TimelineGridTileStore.instance,
+    substrateGeneration: substrateGeneration,
     devicePixelRatio: MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
   );
   // Read LIVE: the row that built this closure survives zoom steps now.

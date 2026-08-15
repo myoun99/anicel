@@ -156,7 +156,12 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.seClipMarkerTooltip,
     this.dragPreview,
     this.cutEndDrag,
+    this.substrateGeneration = '',
   });
+
+  /// #29: the (project, cut) world this grid's resolvers answer from —
+  /// see [TimelineRowCellsPainter.substrateGeneration].
+  final String substrateGeneration;
 
   final List<Layer> layers;
   final LayerId? activeLayerId;
@@ -1157,6 +1162,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       commaDrag: widget.commaDrag,
       rangeGesture: _rangeGesture,
       runEdit: widget.runEdit,
+      substrateGeneration: widget.substrateGeneration,
     );
   }
 

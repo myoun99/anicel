@@ -67,6 +67,23 @@ class TimelineGridTileStore {
   final Map<String, _TileRequest> _pending = <String, _TileRequest>{};
   bool _drainScheduled = false;
 
+  /// The substrate generation the LIVE paints carry — the newest
+  /// [TimelineRowCellsPainter.substrateGeneration] a [tileFor] call has
+  /// seen. Paints only happen for the live state, so the last generation
+  /// a paint carried IS the live one; no host wiring, no setter to race.
+  ///
+  /// 🚨#29 프레임 블록 회색 깜빡임: a request captures the painter, but the
+  /// painter's resolvers answer FROM THE LIVE SESSION at drain time
+  /// (`celHasContentForLayer` reads `activeCutOrNull`). The drain is
+  /// serial, up to 32 deep, with real async hops between rasters — so a
+  /// cut switch mid-queue made every remaining request bake the OLD
+  /// cut's rows against the NEW cut's answers: a miss, painted grey,
+  /// stored, and served again later as a perfectly valid hit. A drained
+  /// request whose generation is no longer live is DEAD, not stale —
+  /// rastering it would consult resolvers that no longer describe its
+  /// rows.
+  String _liveGeneration = '';
+
   /// Test hook.
   @visibleForTesting
   void clear() {
@@ -89,8 +106,18 @@ class TimelineGridTileStore {
     if (QaNativeEngine.instance == null) {
       return null;
     }
+    _liveGeneration = painter.substrateGeneration;
+    // 🚨The generation is IN the key, not only compared later: the key is
+    // deliberately the layer's ID (an edited layer is a NEW instance that
+    // must find its old tile and show it stale while re-rastering), and
+    // the same ID legitimately exists in other cuts — old files written
+    // before PR #1070 even carry duplicate ids across cuts. Without the
+    // generation, cut B's row was served cut A's pixels whenever the
+    // geometry happened to match, which after a mid-drain poisoning is
+    // exactly how a grey block went from "flicker" to "stays".
     final key =
-        '${painter.layer.id.value}:${painter.axis.index}:$spanStartIndex';
+        '${painter.substrateGeneration}|${painter.layer.id.value}:'
+        '${painter.axis.index}:$spanStartIndex';
     final entry = _entries.remove(key);
     if (entry != null) {
       _entries[key] = entry;
@@ -135,7 +162,13 @@ class TimelineGridTileStore {
     // now runs only when something genuinely changed, and it stays as the
     // graceful landing for those cases. The drain rasters the NEWEST look
     // within a frame or two, so content lags one beat at most.
+    // ⛔Both stale arms demand the GENERATION even though the key already
+    // carries it: stale-while-revalidate exists precisely for "same row,
+    // new instance", and without this term it is also "same id, other
+    // cut" — the alias that turned a mid-drain grey from a flicker into
+    // a resident.
     if (entry != null &&
+        entry.substrateGeneration == painter.substrateGeneration &&
         entry.frameCellExtent == painter.frameCellExtent &&
         entry.crossAxisExtent == painter.crossAxisExtent &&
         entry.spanEndIndexExclusive == spanEndIndexExclusive &&
@@ -151,6 +184,7 @@ class TimelineGridTileStore {
     // Bounded so an extreme jump (a 10× slider throw) still takes the
     // crisp path rather than showing mush.
     if (entry != null &&
+        entry.substrateGeneration == painter.substrateGeneration &&
         entry.spanEndIndexExclusive == spanEndIndexExclusive &&
         entry.devicePixelRatio == devicePixelRatio &&
         entry.crossAxisExtent == painter.crossAxisExtent &&
@@ -180,12 +214,22 @@ class TimelineGridTileStore {
     while (_pending.isNotEmpty) {
       final key = _pending.keys.first;
       final request = _pending.remove(key)!;
+      // A dead-generation request is discarded, not rastered: its
+      // painter's resolvers answer from the live session, which no longer
+      // describes its rows. ⛔This check and the resolver reads are one
+      // synchronous block — `_raster` emits the substrate and collects
+      // the glyph cells before its first await — so nothing can change
+      // the session between the check and the answers it guards.
+      if (request.painter.substrateGeneration != _liveGeneration) {
+        continue;
+      }
       final image = await _raster(engine, request);
       if (image == null) {
         continue;
       }
       _entries.remove(key)?.image.dispose();
       _entries[key] = _TileEntry(
+        substrateGeneration: request.painter.substrateGeneration,
         layer: request.painter.layer,
         coverageIdentity: request.painter.coverageIdentity,
         frameCellExtent: request.painter.frameCellExtent,
@@ -507,6 +551,7 @@ class _TileRequest {
 
 class _TileEntry {
   const _TileEntry({
+    required this.substrateGeneration,
     required this.layer,
     required this.coverageIdentity,
     required this.frameCellExtent,
@@ -521,6 +566,13 @@ class _TileEntry {
     required this.devicePixelRatio,
     required this.image,
   });
+
+  /// #29: the (project, cut) world this tile's resolvers answered from.
+  /// Redundant with the key today — and REQUIRED here anyway, so that if
+  /// the key ever loses its generation segment the stale arms below still
+  /// refuse to serve one cut's pixels to another. A silent regression is
+  /// the one failure mode a cache is not allowed to have.
+  final String substrateGeneration;
 
   final Object layer;
 
@@ -558,7 +610,8 @@ class _TileEntry {
     // The cut's LENGTH is deliberately absent: it is not baked into these
     // tiles any more (the out-of-cut wash became its own overlay), so a
     // cut-length drag re-rasters nothing.
-    return identical(layer, painter.layer) &&
+    return substrateGeneration == painter.substrateGeneration &&
+        identical(layer, painter.layer) &&
         coverageIdentity == painter.coverageIdentity &&
         frameCellExtent == painter.frameCellExtent &&
         crossAxisExtent == painter.crossAxisExtent &&

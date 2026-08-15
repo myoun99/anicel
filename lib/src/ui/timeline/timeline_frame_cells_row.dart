@@ -63,8 +63,15 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.seSpillsIn = false,
     this.windowBucket,
     this.viewportMainExtent = 0,
+    this.substrateGeneration = '',
     this.chromeless = false,
   });
+
+  /// #29: the (project, cut) world this row's resolvers answer from —
+  /// see [TimelineRowCellsPainter.substrateGeneration]. Rides the same
+  /// rebuild that carries the new cut's rows, so the tile store's live
+  /// generation can never skew from the rows on screen.
+  final String substrateGeneration;
 
   /// GROUND OFF — see [TimelineRowCellsPainter.chromeless] for the confirmed
   /// look and for why the flag lives on the row instead of in its caller.
@@ -363,6 +370,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
           axis: axis,
           windowBucket: windowBucket,
           viewportMainExtent: viewportMainExtent,
+          substrateGeneration: substrateGeneration,
           chromeless: chromeless,
           // R26 #7 / R27 #3: each block prints ITS OWN length at its end
           // cell. It rides the cells painter as a FOREGROUND pass — above
