@@ -650,6 +650,33 @@ class _DisplayBuffer {
   final bool owned;
 }
 
+/// The geometry field probe's state — the numbers every buffer decision
+/// depends on and nobody has ever measured on a device: the logical view,
+/// the device pixel ratio, the zoom actually worked at, and what the
+/// buffer costs there. The 1928×1200 that circulates is a comment in the
+/// bake, not a measurement.
+///
+/// Public and outside the painter because the painter class is private and
+/// a fresh object every frame — tests and a hands-on session need to reach
+/// the histogram, and the dedupe line needs to outlive a frame.
+abstract final class CanvasPaintGeometryProbe {
+  /// The last emitted line — the dedupe key, held across frames.
+  static String? lastLine;
+
+  /// Paints per zoom bucket (percent, 10% steps), counted while the
+  /// inspector is visible. Every byte figure in the composite plan hinges
+  /// on "what zoom is actually worked at", and nobody has measured a
+  /// distribution — "83%" is one observation and "400% is the working
+  /// posture" is a sentence in a brief. This counter turns either into a
+  /// fact.
+  static final Map<int, int> zoomHistogram = <int, int>{};
+
+  static void reset() {
+    lastLine = null;
+    zoomHistogram.clear();
+  }
+}
+
 class _LayerStackPainter extends CustomPainter {
   _LayerStackPainter({
     required this.nodes,
@@ -778,6 +805,52 @@ class _LayerStackPainter extends CustomPainter {
     final groupBounds = visibleRect.isEmpty
         ? pasteboardRect
         : pasteboardRect.intersect(visibleRect);
+
+    // The geometry field probe — the numbers every buffer decision depends
+    // on and nobody has ever measured on a device: the logical view, the
+    // device pixel ratio, the zoom actually worked at, and what the buffer
+    // costs there. The 1928×1200 that circulates is a comment in the bake,
+    // not a measurement.
+    //
+    // Same shape as the T12 probe above: release-visible (reports come from
+    // release builds), gated on the inspector, deduped through a static.
+    // ⛔The zoom is a continuous double — raw in the dedupe key it would
+    // emit on every drag frame, so it is bucketed to 10% steps, and the
+    // counters stay OUT of the key (they change on every stroke step).
+    if (InputInspector.visible.value) {
+      final bufWidth =
+          (groupBounds.right.ceilToDouble() - groupBounds.left.floorToDouble())
+              .round();
+      final bufHeight =
+          (groupBounds.bottom.ceilToDouble() - groupBounds.top.floorToDouble())
+              .round();
+      final capped = bufWidth > _maxBufferSide || bufHeight > _maxBufferSide;
+      final zoomBucket = ((viewport.zoom.abs() * 100) / 10).round() * 10;
+      CanvasPaintGeometryProbe.zoomHistogram[zoomBucket] =
+          (CanvasPaintGeometryProbe.zoomHistogram[zoomBucket] ?? 0) + 1;
+      final dpr =
+          ui.PlatformDispatcher.instance.implicitView?.devicePixelRatio;
+      final key =
+          'geom view=${size.width.round()}x${size.height.round()}'
+          ' dpr=${dpr?.toStringAsFixed(2) ?? '?'}'
+          ' zoom~$zoomBucket%'
+          ' buf=${(bufWidth * bufHeight * 4 / (1024 * 1024)).round()}MB'
+          ' capped=$capped';
+      if (key != CanvasPaintGeometryProbe.lastLine) {
+        CanvasPaintGeometryProbe.lastLine = key;
+        final counts = bufferCache == null
+            ? ''
+            : ' full=${bufferCache!.fullCount}'
+                  ' patched=${bufferCache!.patchedCount}';
+        final top =
+            (CanvasPaintGeometryProbe.zoomHistogram.entries.toList()
+                  ..sort((a, b) => b.value.compareTo(a.value)))
+                .take(3)
+                .map((entry) => '${entry.key}%:${entry.value}')
+                .join(' ');
+        InputInspector.note('$key$counts hist $top');
+      }
+    }
 
     /// 🚨(v) — the body, with WHO PAINTS THE CHILDREN left open.
     ///
