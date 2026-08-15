@@ -108,14 +108,14 @@ int? storyboardPlayheadFrame(
 /// the storyboard ruler's green bar. [layout] takes a prebuilt layout: the
 /// ruler asks PER VISIBLE FRAME per repaint, and rebuilding the whole
 /// track layout for each column was a fixed per-tick tax (R12-⑥).
-bool storyboardFrameCached(
+bool storyboardFrameReady(
   EditorSessionManager session,
   int globalFrame, {
   List<StoryboardTimelineLayoutEntry>? layout,
 }) {
   for (final entry in layout ?? storyboardActiveTrackLayout(session)) {
     if (globalFrame >= entry.startFrame && globalFrame < entry.endFrame) {
-      return session.isPlaybackFrameCachedForCut(
+      return session.isPlaybackFrameReadyForCut(
         entry.cut,
         globalFrame - entry.startFrame,
       );

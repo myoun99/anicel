@@ -130,7 +130,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      _grid(frameCount: 3, isFrameCached: (frameIndex) => frameIndex < 2),
+      _grid(frameCount: 3, isFrameReady: (frameIndex) => frameIndex < 2),
     );
 
     // The strip lives on the rail's cursor OVERLAY now (cached-ness is
@@ -149,7 +149,7 @@ void main() {
 
     // Frames 0-1 cached, 2 not — and frames past the playback range never
     // show the strip even when the resolver claims them cached.
-    expect(overlay.cachedRuns(), [(startIndex: 0, endIndexExclusive: 2)]);
+    expect(overlay.readyRuns(), [(startIndex: 0, endIndexExclusive: 2)]);
   });
 
   testWidgets('renders frame rows and cells', (tester) async {
@@ -608,7 +608,7 @@ Widget _grid({
   ValueChanged<LayerId>? onToggleLayerTimesheet,
   void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
-  bool Function(int frameIndex)? isFrameCached,
+  bool Function(int frameIndex)? isFrameReady,
 }) {
   return MaterialApp(
     home: Scaffold(
@@ -631,7 +631,7 @@ Widget _grid({
           onLayerOpacityChanged: onLayerOpacityChanged ?? (_, _) {},
           onToggleLayerTimesheet: onToggleLayerTimesheet ?? (_) {},
           onLayerMarkSelected: onLayerMarkSelected ?? (_, _) {},
-          isFrameCached: isFrameCached,
+          isFrameReady: isFrameReady,
         ),
       ),
     ),

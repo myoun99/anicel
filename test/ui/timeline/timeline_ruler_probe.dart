@@ -122,9 +122,9 @@ int? xsheetRailTintedFrame(WidgetTester tester) =>
 /// The cached RUNS the timeline ruler's overlay would draw.
 List<({int startIndex, int endIndexExclusive})> timelineRulerCachedRuns(
   WidgetTester tester,
-) => _overlayPainter(tester, 'timeline-ruler-cursor-overlay').cachedRuns();
+) => _overlayPainter(tester, 'timeline-ruler-cursor-overlay').readyRuns();
 
 /// The cached RUNS the X-sheet rail's overlay would draw.
 List<({int startIndex, int endIndexExclusive})> xsheetRailCachedRuns(
   WidgetTester tester,
-) => _overlayPainter(tester, 'xsheet-rail-cursor-overlay').cachedRuns();
+) => _overlayPainter(tester, 'xsheet-rail-cursor-overlay').readyRuns();

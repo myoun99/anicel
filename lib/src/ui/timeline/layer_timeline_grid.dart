@@ -74,7 +74,7 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.layers,
     required this.activeLayerId,
     required this.frameCursor,
-    this.frameCachedSignal,
+    this.frameReadySignal,
     this.revealSelectionTick,
     required this.playbackFrameCount,
     this.drawnFrameCount,
@@ -122,7 +122,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onRowSelectionSpan,
     this.selectedRows = const {},
     this.runEdit,
-    this.isFrameCached,
+    this.isFrameReady,
     this.metrics = TimelineGridMetrics.defaults,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
@@ -198,7 +198,7 @@ class LayerTimelineGrid extends StatefulWidget {
 
   /// Repaints the ruler's cached-range green strip as frames warm; never
   /// rebuilds anything else.
-  final Listenable? frameCachedSignal;
+  final Listenable? frameReadySignal;
 
   /// R5: the session's "bring the selection back into view" tick. Null
   /// leaves the grid scrolling only where the user put it, which is what a
@@ -357,7 +357,7 @@ class LayerTimelineGrid extends StatefulWidget {
   final TimelineRunEditCallbacks? runEdit;
 
   /// Cached-range resolver for the ruler's green strip.
-  final bool Function(int frameIndex)? isFrameCached;
+  final bool Function(int frameIndex)? isFrameReady;
 
   /// Grid geometry; the frame-axis cell width carries the panel zoom.
   final TimelineGridMetrics metrics;
@@ -1841,19 +1841,17 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                           playhead: widget
                                                               .frameCursor,
                                                           repaintSignal: widget
-                                                              .frameCachedSignal,
+                                                              .frameReadySignal,
                                                           windowBucket:
                                                               _frameWindowBucket,
                                                           viewportMainExtent:
                                                               viewportWidth,
                                                           renderedFrames:
                                                               _renderedFrameCount,
-                                                          contentFrames: widget
-                                                              .playbackFrameCount,
                                                           cellWidth: _metrics
                                                               .frameCellWidth,
-                                                          isFrameCached: widget
-                                                              .isFrameCached,
+                                                          isFrameReady: widget
+                                                              .isFrameReady,
                                                         ),
                                                       ),
                                                     ],

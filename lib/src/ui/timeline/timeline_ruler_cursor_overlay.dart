@@ -17,7 +17,7 @@ import 'timeline_frame_window.dart';
 /// - **Cost.** The static strip lays out a glyph per labeled frame. Keeping
 ///   the cursor tint in it meant every seek re-recorded all of that; here a
 ///   seek draws two rects.
-/// - **Correctness.** Whether a frame is cached is DERIVED state — the
+/// - **Correctness.** Whether a frame is READY is DERIVED state — the
 ///   playback composite self-validates against a signature, so nothing
 ///   raises an "invalidated" event when a cel is edited. There is no token
 ///   a gated painter could compare. The only honest answer is to keep the
@@ -34,9 +34,8 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter {
     required this.windowBucket,
     required this.viewportMainExtent,
     required this.renderedFrames,
-    required this.contentFrames,
     required this.cellWidth,
-    required this.isFrameCached,
+    required this.isFrameReady,
     this.axis = Axis.horizontal,
   }) : super(
          repaint: Listenable.merge([?playhead, ?repaintSignal, windowBucket]),
@@ -58,15 +57,14 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter {
   final ValueListenable<int> windowBucket;
   final double viewportMainExtent;
   final int renderedFrames;
-  final int contentFrames;
   final double cellWidth;
-  final bool Function(int globalFrame)? isFrameCached;
+  final bool Function(int globalFrame)? isFrameReady;
 
-  /// The AE-style cached-range green (the header cells' own strip color).
-  static const Color cachedBarColor = Color(0xFF54B435);
+  /// The AE-style ready-range green (the header cells' own strip color).
+  static const Color readyBarColor = Color(0xFF54B435);
 
   /// The strip's thickness along the ruler's bottom edge.
-  static const double cachedBarThickness = 3;
+  static const double readyBarThickness = 3;
 
   ({int startIndex, int endIndexExclusive}) _visibleWindow() {
     if (viewportMainExtent <= 0 || cellWidth <= 0) {
@@ -83,19 +81,26 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter {
     );
   }
 
-  /// The cached RUNS this overlay would draw — the probe surface tests read
+  /// The ready RUNS this overlay would draw — the probe surface tests read
   /// instead of scraping the canvas.
-  List<({int startIndex, int endIndexExclusive})> cachedRuns() {
-    final cached = isFrameCached;
+  ///
+  /// B1: the runs cover the whole RENDERED window — there is no
+  /// content-end clamp, deliberately (유저 2026-08-16: 「왜 콘텐츠끝너머가
+  /// 초록이되면 안되는거지? 재생가능한거잖아」). Past the drawings the
+  /// predicate answers "ready by definition", and clamping the bar here
+  /// would repaint that answer as "not ready" — the exact lie the
+  /// two-kind law retired.
+  List<({int startIndex, int endIndexExclusive})> readyRuns() {
+    final ready = isFrameReady;
     final runs = <({int startIndex, int endIndexExclusive})>[];
-    if (cached == null) {
+    if (ready == null) {
       return runs;
     }
     final window = _visibleWindow();
-    final end = math.min(window.endIndexExclusive, contentFrames);
+    final end = window.endIndexExclusive;
     var runStart = -1;
     for (var frame = window.startIndex; frame <= end; frame += 1) {
-      if (frame < end && cached(frame)) {
+      if (frame < end && ready(frame)) {
         runStart = runStart < 0 ? frame : runStart;
         continue;
       }
@@ -123,22 +128,22 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final horizontal = axis == Axis.horizontal;
-    final barPaint = Paint()..color = cachedBarColor;
-    for (final run in cachedRuns()) {
+    final barPaint = Paint()..color = readyBarColor;
+    for (final run in readyRuns()) {
       final start = run.startIndex * cellWidth;
       final extent = (run.endIndexExclusive - run.startIndex) * cellWidth;
       canvas.drawRect(
         horizontal
             ? Rect.fromLTWH(
                 start,
-                size.height - cachedBarThickness,
+                size.height - readyBarThickness,
                 extent,
-                cachedBarThickness,
+                readyBarThickness,
               )
             : Rect.fromLTWH(
-                size.width - cachedBarThickness,
+                size.width - readyBarThickness,
                 start,
-                cachedBarThickness,
+                readyBarThickness,
                 extent,
               ),
         barPaint,
@@ -164,7 +169,6 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter {
       !identical(oldDelegate.windowBucket, windowBucket) ||
       oldDelegate.viewportMainExtent != viewportMainExtent ||
       oldDelegate.renderedFrames != renderedFrames ||
-      oldDelegate.contentFrames != contentFrames ||
       oldDelegate.cellWidth != cellWidth ||
       oldDelegate.axis != axis ||
       !identical(oldDelegate.playhead, playhead) ||
@@ -172,7 +176,7 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter {
       // is a fresh object every build but compares EQUAL, so `identical`
       // here would repaint on every unrelated rebuild — the churn that hid
       // in the ruler painters.
-      oldDelegate.isFrameCached != isFrameCached;
+      oldDelegate.isFrameReady != isFrameReady;
 }
 
 /// The overlay, mounted the way both rulers want it: pointer-transparent
@@ -187,9 +191,8 @@ class TimelineRulerCursorOverlay extends StatelessWidget {
     required this.windowBucket,
     required this.viewportMainExtent,
     required this.renderedFrames,
-    required this.contentFrames,
     required this.cellWidth,
-    required this.isFrameCached,
+    required this.isFrameReady,
     this.axis = Axis.horizontal,
   });
 
@@ -200,9 +203,8 @@ class TimelineRulerCursorOverlay extends StatelessWidget {
   final ValueListenable<int> windowBucket;
   final double viewportMainExtent;
   final int renderedFrames;
-  final int contentFrames;
   final double cellWidth;
-  final bool Function(int globalFrame)? isFrameCached;
+  final bool Function(int globalFrame)? isFrameReady;
 
   @override
   Widget build(BuildContext context) {
@@ -216,9 +218,8 @@ class TimelineRulerCursorOverlay extends StatelessWidget {
             windowBucket: windowBucket,
             viewportMainExtent: viewportMainExtent,
             renderedFrames: renderedFrames,
-            contentFrames: contentFrames,
             cellWidth: cellWidth,
-            isFrameCached: isFrameCached,
+            isFrameReady: isFrameReady,
             axis: axis,
           ),
         ),

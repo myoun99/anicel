@@ -51,7 +51,7 @@ class TimelinePanel extends StatefulWidget {
     required this.layers,
     required this.activeLayerId,
     required this.frameCursor,
-    this.frameCachedSignal,
+    this.frameReadySignal,
     this.revealSelectionTick,
     required this.playbackFrameCount,
     this.drawnFrameCount,
@@ -94,7 +94,7 @@ class TimelinePanel extends StatefulWidget {
     this.onRowSelectionSpan,
     this.selectedRows = const {},
     this.runEdit,
-    this.isFrameCached,
+    this.isFrameReady,
     required this.orientation,
     required this.onOrientationChanged,
     this.timelineActionToolbar,
@@ -170,7 +170,7 @@ class TimelinePanel extends StatefulWidget {
   final ValueListenable<int> frameCursor;
 
   /// Repaints the rulers' cached-range green strip as frames warm.
-  final Listenable? frameCachedSignal;
+  final Listenable? frameReadySignal;
 
   /// R5: the session's "bring the selection back into view" tick, handed
   /// to whichever grid this panel is showing.
@@ -309,7 +309,7 @@ class TimelinePanel extends StatefulWidget {
 
   /// Cached-range resolver for the green strip (horizontal ruler and the
   /// X-sheet frame rail).
-  final bool Function(int frameIndex)? isFrameCached;
+  final bool Function(int frameIndex)? isFrameReady;
 
   final TimelineOrientation orientation;
   final ValueChanged<TimelineOrientation> onOrientationChanged;
@@ -536,7 +536,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     activeLayerId: widget.activeLayerId,
                     dragPreview: widget.dragPreview,
                     frameCursor: widget.frameCursor,
-                    frameCachedSignal: widget.frameCachedSignal,
+                    frameReadySignal: widget.frameReadySignal,
                     revealSelectionTick: widget.revealSelectionTick,
                     playbackFrameCount: widget.playbackFrameCount,
                     drawnFrameCount: widget.drawnFrameCount,
@@ -585,7 +585,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onRowSelectionSpan: widget.onRowSelectionSpan,
                     selectedRows: widget.selectedRows,
                     runEdit: widget.runEdit,
-                    isFrameCached: widget.isFrameCached,
+                    isFrameReady: widget.isFrameReady,
                     metrics: horizontalMetrics,
                     expandedLaneLayerIds: widget.expandedLaneLayerIds,
                     onToggleLayerLanes: widget.onToggleLayerLanes,
@@ -620,7 +620,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     seClipMarkerTooltip: widget.seClipMarkerTooltip,
                     dragPreview: widget.dragPreview,
                     frameCursor: widget.frameCursor,
-                    frameCachedSignal: widget.frameCachedSignal,
+                    frameReadySignal: widget.frameReadySignal,
                     revealSelectionTick: widget.revealSelectionTick,
                     frameCount: widget.playbackFrameCount,
                     drawnFrameCount: widget.drawnFrameCount,
@@ -671,7 +671,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onRowSelectionSpan: widget.onRowSelectionSpan,
                     selectedRows: widget.selectedRows,
                     runEdit: widget.runEdit,
-                    isFrameCached: widget.isFrameCached,
+                    isFrameReady: widget.isFrameReady,
                     metrics: xsheetMetrics,
                     expandedLaneLayerIds: widget.expandedLaneLayerIds,
                     onToggleLayerLanes: widget.onToggleLayerLanes,

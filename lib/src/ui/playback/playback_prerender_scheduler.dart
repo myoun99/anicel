@@ -1,12 +1,11 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
+import '../../models/cut_warm_extent.dart';
 import '../../models/playback_quality.dart';
-import '../../models/timeline_coverage.dart' show authoredTimelineExtent;
 import '../dev_profile.dart';
 import 'cut_frame_composite_cache.dart';
 
@@ -86,10 +85,11 @@ class PlaybackPrerenderScheduler {
     // The timeline's runway past the cut end takes drawings like any other
     // frame, and a frame the warm never visits misses in the cache forever
     // — which is how a drawing out there stayed invisible while scrubbing
-    // and appeared only on release. `duration` is the cut's 尺; the extent
-    // is where its pictures actually end, and the two are equal for every
-    // cut nobody has drawn past.
-    final frameCount = math.max(1, math.max(cut.duration, _authoredExtent(cut)));
+    // and appeared only on release. B1: the count is the SHARED law
+    // ([cutWarmFrameCount]) — budget protection derives from the same
+    // function now, so a runway frame this bakes can no longer be evicted
+    // as out-of-range by the enforcer that runs after every baked frame.
+    final frameCount = cutWarmFrameCount(cut);
     final center = aroundFrameIndex.clamp(0, frameCount - 1);
     final order = <(CutId, int)>[(cutId, center)];
     for (var distance = 1; distance < frameCount; distance += 1) {
@@ -101,19 +101,6 @@ class PlaybackPrerenderScheduler {
       }
     }
     _restart(order, quality);
-  }
-
-  /// The frame count [cut]'s drawings actually reach, over every layer —
-  /// past its duration when the runway has been drawn on.
-  static int _authoredExtent(Cut cut) {
-    var extent = 0;
-    for (final layer in cut.layers) {
-      final layerExtent = authoredTimelineExtent(layer.timeline);
-      if (layerExtent > extent) {
-        extent = layerExtent;
-      }
-    }
-    return extent;
   }
 
   /// Warms a multi-cut playlist sequentially (play-all).
