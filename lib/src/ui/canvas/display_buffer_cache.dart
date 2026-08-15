@@ -66,9 +66,12 @@ class DisplayBufferCache {
   /// walk that hashed every tile and still missed). The test asserts the
   /// SECOND stroke step patches — if the dirty rect stops being found, this
   /// number says so instead of the frame rate saying it later.
-  @visibleForTesting
+  ///
+  /// Not test-only: the geometry field probe reports both in RELEASE
+  /// builds (behind the Input Inspector toggle), because "the patch path
+  /// stopped running" is precisely the regression a hands-on report needs
+  /// to be able to show.
   int patchedCount = 0;
-  @visibleForTesting
   int fullCount = 0;
 
   void store(
