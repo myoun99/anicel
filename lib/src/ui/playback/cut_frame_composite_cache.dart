@@ -335,6 +335,9 @@ class CutFrameCompositeCache {
               blendMode: layer.blendMode,
               effects: layer.effects,
               rasterScale: scale,
+              // A4: today's value, now in writing — bilinear, as this
+              // route has always sampled.
+              filterQuality: ui.FilterQuality.low,
               // A canvas-extent image at this raster's resolution takes
               // the legacy whole-image draw, whose bytes the composite
               // parity suites pin. A pasteboard-extent one maps src onto

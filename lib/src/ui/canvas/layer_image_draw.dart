@@ -83,6 +83,14 @@ T withLayerPose<T>(
 /// their output is held to the pixel by composite parity suites, so
 /// switching them to the general path is a change of rendered bytes and
 /// does not belong in a convergence.
+///
+/// A4 — [filterQuality] is REQUIRED, deliberately. A default here is how
+/// the sampling drift this file exists to end comes back: a new route
+/// "just draws" and inherits a quality nobody chose. Requiring the
+/// argument blocks the CLASS, not the instance — every route answers the
+/// sampling question at its call site, in writing, and the source
+/// contract test (`layer_image_draw_contract_test.dart`) freezes the
+/// raw-draw census so new image draws have to come through here.
 void drawPosedLayerImage(
   ui.Canvas canvas, {
   required ui.Image image,
@@ -94,7 +102,7 @@ void drawPosedLayerImage(
   required LayerBlendMode blendMode,
   List<ResolvedLayerEffect> effects = const <ResolvedLayerEffect>[],
   double rasterScale = 1,
-  ui.FilterQuality filterQuality = ui.FilterQuality.low,
+  required ui.FilterQuality filterQuality,
   int? tint,
   bool drawAtOrigin = false,
 }) {
