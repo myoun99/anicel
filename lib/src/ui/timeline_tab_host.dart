@@ -699,6 +699,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           ) => TimelinePanel(
             layers: _displayLayers(),
             activeLayerId: _session.activeLayerId,
+            // #29: the (project, cut) world the rows' resolvers answer
+            // from. Travels WITH the rebuild that carries the new cut's
+            // rows — a setter could skew from what is on screen; a build
+            // argument cannot.
+            substrateGeneration:
+                '${_session.repository.requireProject().id.value}'
+                ':${_session.activeCutId?.value ?? '-'}',
             // ⑨: the rows the row verbs act on, banded on both surfaces.
             //
             // 🚨T1: ADDRESSES, not layer ids. T5 made every row kind

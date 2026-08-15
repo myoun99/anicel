@@ -144,6 +144,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.masterOpacityValue = 1.0,
     this.seSpillInLayerIds = const {},
     this.cutEndDrag,
+    this.substrateGeneration = '',
     this.memoAux = const TimelineRowMemoAux(),
     this.onLayerBlendModeSelected,
     this.blendLanguage = AppLanguage.en,
@@ -180,6 +181,10 @@ class LayerTimelineGrid extends StatefulWidget {
   /// Sparse-row memo identity tokens (UI-R20 #4) — see
   /// [TimelineFrameRowsScrollBody.memoAux].
   final TimelineRowMemoAux memoAux;
+
+  /// #29: the (project, cut) world the rows' resolvers answer from — see
+  /// [TimelineRowCellsPainter.substrateGeneration].
+  final String substrateGeneration;
 
   /// Track-SE rows whose display clone starts with a spill-in block
   /// (UI-R7 #6: `~` at the cut start, start grip stands down).
@@ -2292,6 +2297,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                         .seSpillInLayerIds,
                                                                 memoAux: widget
                                                                     .memoAux,
+                                                                substrateGeneration:
+                                                                    widget
+                                                                        .substrateGeneration,
                                                               ),
                                                               // UI-R13 #7: the
                                                               // beat lines span

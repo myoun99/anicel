@@ -74,8 +74,16 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.seSpillInLayerIds = const {},
     this.windowBucket,
     this.viewportMainExtent = 0,
+    this.substrateGeneration = '',
     this.memoAux = const TimelineRowMemoAux(),
   });
+
+  /// #29: the (project, cut) world the rows' resolvers answer from — see
+  /// [TimelineRowCellsPainter.substrateGeneration]. Joins the row MEMO key
+  /// too: linked cuts can share Layer instances, and a memoized row from
+  /// another generation would carry its old token into the tile store's
+  /// live-generation tracking.
+  final String substrateGeneration;
 
   /// Identity tokens for the sparse rows' EXTERNAL inputs (UI-R20 #4):
   /// the camera row reads the cut's camera track and instruction rows
@@ -201,6 +209,9 @@ typedef _RowMemoInputs = ({
   TimelineFrameGeometry? geometry,
   double crossAxisExtent,
   ProjectFrameRate projectFrameRate,
+  // #29: the substrate generation — linked cuts can share Layer
+  // instances, so layer identity alone cannot say "same world".
+  String substrateGeneration,
   TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
@@ -349,6 +360,7 @@ class _TimelineFrameRowsScrollBodyState
         a.geometry == b.geometry &&
         a.crossAxisExtent == b.crossAxisExtent &&
         a.projectFrameRate == b.projectFrameRate &&
+        a.substrateGeneration == b.substrateGeneration &&
         a.exposureStateForLayer == b.exposureStateForLayer &&
         a.frameNameForLayer == b.frameNameForLayer &&
         a.hasCommaDrag == b.hasCommaDrag &&
@@ -418,6 +430,7 @@ class _TimelineFrameRowsScrollBodyState
       seSpillsIn: widget.seSpillInLayerIds.contains(layer.id),
       windowBucket: widget.windowBucket,
       viewportMainExtent: widget.viewportMainExtent,
+      substrateGeneration: widget.substrateGeneration,
     );
   }
 
@@ -526,6 +539,7 @@ class _TimelineFrameRowsScrollBodyState
       geometry: null,
       crossAxisExtent: widget.metrics.layerRowHeight,
       projectFrameRate: widget.projectFrameRate,
+      substrateGeneration: widget.substrateGeneration,
       exposureStateForLayer: widget.exposureStateForLayer,
       frameNameForLayer: widget.frameNameForLayer,
       hasCommaDrag: widget.commaDrag != null,

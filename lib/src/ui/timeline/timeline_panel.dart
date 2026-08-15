@@ -125,6 +125,7 @@ class TimelinePanel extends StatefulWidget {
     this.dragPreview,
     this.seSpillInLayerIds = const {},
     this.cutEndDrag,
+    this.substrateGeneration = '',
     this.memoAux = const TimelineRowMemoAux(),
     this.onLayerBlendModeSelected,
     this.blendLanguage = AppLanguage.en,
@@ -154,6 +155,10 @@ class TimelinePanel extends StatefulWidget {
 
   /// Sparse-row memo identity tokens (UI-R20 #4).
   final TimelineRowMemoAux memoAux;
+
+  /// #29: the (project, cut) world the rows' resolvers answer from — see
+  /// [TimelineRowCellsPainter.substrateGeneration].
+  final String substrateGeneration;
 
   /// Track-SE rows whose display clone starts with a spill-in block
   /// (UI-R7 #6: `~` at the cut start, start grip stands down).
@@ -602,6 +607,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     seSpillInLayerIds: widget.seSpillInLayerIds,
                     cutEndDrag: widget.cutEndDrag,
                     memoAux: widget.memoAux,
+                    substrateGeneration: widget.substrateGeneration,
                     onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
                     blendLanguage: widget.blendLanguage,
                     layerOpacityOverrideOf: widget.layerOpacityOverrideOf,
@@ -609,6 +615,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                 : XSheetTimelineGrid(
                     layers: xsheetLayerDisplayOrder(widget.layers),
                     activeLayerId: widget.activeLayerId,
+                    substrateGeneration: widget.substrateGeneration,
                     seSpillInLayerIds: widget.seSpillInLayerIds,
                     seClipMarkerTooltip: widget.seClipMarkerTooltip,
                     dragPreview: widget.dragPreview,
