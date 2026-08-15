@@ -39,6 +39,7 @@ import '../services/persistence/app_save_settings_store.dart';
 import '../services/persistence/audio_sync_settings_store.dart';
 import 'brush/brush_tool_state.dart' show CanvasTool;
 import 'input/app_input_settings.dart';
+import 'session/drags/transition_edge_drag.dart';
 import 'session/editor_app_settings.dart';
 import 'session/editor_voice_recording.dart';
 import 'theme/app_accents.dart';
@@ -6161,17 +6162,11 @@ class EditorSessionManager extends ChangeNotifier {
 
   // --- The transition row's edge drags -------------------------------------
   //
-  // The grip widget, the callback shape and the pure span edit are the
-  // direction row's, unchanged. What differs is WHICH map the delta lands in
-  // (the track's, on the global axis) and which command commits it — so this
-  // is its own small verb rather than a branch inside the exposure drag,
-  // whose commit writes CUT layers and whose bulk/ripple/cut-sync machinery
-  // means nothing to a span that owns no cels.
+  // The drag itself is [TransitionEdgeDrag] — the pilot [EditorDragSession]:
+  // the gesture's state lives on a per-drag object, and the session keeps
+  // only WHICH drag is live. These verbs are the session's unchanged face.
 
-  Layer? _transitionEdgeBefore;
-  int? _transitionEdgeSpanStart;
-  TimelineBlockEdge? _transitionEdgeEdge;
-  Layer? _transitionEdgeAfter;
+  TransitionEdgeDrag? _transitionEdgeDrag;
 
   /// The transition row as the in-flight edge drag would leave it — the
   /// strip renders THIS while a grip is held, so the mark follows the hand
@@ -6179,74 +6174,42 @@ class EditorSessionManager extends ChangeNotifier {
   final ValueNotifier<Layer?> transitionEdgeDragPreview = ValueNotifier(null);
 
   /// Grabs [edge] of the transition span starting at [spanStartIndex]
-  /// (GLOBAL frame); false when no span starts there.
-  ///
-  /// [layerId], when given, must BE the active track's transition row. Every
-  /// verb here is active-track scoped (as `activeTrackTransitionSpans`, the
-  /// sheet and the compositor all are), so a grip belonging to another
-  /// track's row is refused rather than silently retiming this track's span.
-  /// Pressing a row selects its track, which is how that grip becomes
-  /// reachable.
+  /// (GLOBAL frame); false when no span starts there — see
+  /// [TransitionEdgeDrag.begin] for the active-track scoping rule.
   bool beginTransitionEdgeDrag({
     required int spanStartIndex,
     required TimelineBlockEdge edge,
     LayerId? layerId,
   }) {
-    final layer = activeTrack.transitionLayer;
-    if (layerId != null && layerId != layer.id) {
+    final drag = TransitionEdgeDrag.begin(
+      layer: activeTrack.transitionLayer,
+      spanStartIndex: spanStartIndex,
+      edge: edge,
+      layerId: layerId,
+      preview: transitionEdgeDragPreview,
+      commitInstructions: updateTransitionInstructions,
+    );
+    if (drag == null) {
+      // A refused grip leaves an in-flight drag exactly as it was — the
+      // slot is only ever cleared by the drag's own end/cancel.
       return false;
     }
-    if (!layer.instructions.containsKey(spanStartIndex)) {
-      return false;
-    }
-    _transitionEdgeBefore = layer;
-    _transitionEdgeSpanStart = spanStartIndex;
-    _transitionEdgeEdge = edge;
-    _transitionEdgeAfter = null;
+    _transitionEdgeDrag = drag;
     return true;
   }
 
-  void updateTransitionEdgeDrag(int cumulativeDelta) {
-    final before = _transitionEdgeBefore;
-    final spanStart = _transitionEdgeSpanStart;
-    final edge = _transitionEdgeEdge;
-    if (before == null || spanStart == null || edge == null) {
-      return;
-    }
-    final next = instructionMapWithEdgeShifted(
-      before.instructions,
-      spanStartIndex: spanStart,
-      startEdge: edge == TimelineBlockEdge.start,
-      delta: cumulativeDelta,
-    );
-    _transitionEdgeAfter = next == null
-        ? null
-        : before.copyWith(instructions: next);
-    transitionEdgeDragPreview.value = _transitionEdgeAfter;
-  }
+  void updateTransitionEdgeDrag(int cumulativeDelta) =>
+      _transitionEdgeDrag?.update(cumulativeDelta);
 
   /// Commits the drag as ONE undo step through the row's own writer.
   void endTransitionEdgeDrag() {
-    final before = _transitionEdgeBefore;
-    final after = _transitionEdgeAfter;
-    _clearTransitionEdgeDrag();
-    if (before == null || after == null || after == before) {
-      return;
-    }
-    updateTransitionInstructions(
-      after.instructions,
-      description: 'Resize transition',
-    );
+    _transitionEdgeDrag?.commit();
+    _transitionEdgeDrag = null;
   }
 
-  void cancelTransitionEdgeDrag() => _clearTransitionEdgeDrag();
-
-  void _clearTransitionEdgeDrag() {
-    _transitionEdgeBefore = null;
-    _transitionEdgeSpanStart = null;
-    _transitionEdgeEdge = null;
-    _transitionEdgeAfter = null;
-    transitionEdgeDragPreview.value = null;
+  void cancelTransitionEdgeDrag() {
+    _transitionEdgeDrag?.cancel();
+    _transitionEdgeDrag = null;
   }
 
   /// The instruction span covering [frameIndex] on [layerId], as
@@ -11018,6 +10981,14 @@ class EditorSessionManager extends ChangeNotifier {
 
   int? _movieEndBeforeTrailing;
 
+  /// The trailing-gap value the drag has arrived at, or null while the
+  /// preview shows "no change". The commit reads THIS, never [dragPreview]:
+  /// the channel is display, shared by every drag family, and a consumer
+  /// clearing it (or another family overwriting it) must not void the
+  /// commit — the same invariant the exposure-edge family states at its
+  /// own after-fields.
+  int? _movieEndAfterTrailing;
+
   /// The movie's content end: the last cut end across every track.
   int get movieContentEndFrame {
     var end = 0;
@@ -11037,6 +11008,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// gap on this timeline).
   bool beginMovieEndDrag() {
     _movieEndBeforeTrailing = _repository.requireProject().trailingFrames;
+    _movieEndAfterTrailing = null;
     return true;
   }
 
@@ -11048,6 +11020,7 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     final next = math.max(0, before + cumulativeDelta);
+    _movieEndAfterTrailing = next == before ? null : next;
     dragPreview.value = next == before
         ? null
         : MovieEndDragPreview(trailingFrames: next);
@@ -11055,16 +11028,17 @@ class EditorSessionManager extends ChangeNotifier {
 
   void endMovieEndDrag() {
     final before = _movieEndBeforeTrailing;
-    final preview = dragPreview.value;
+    final after = _movieEndAfterTrailing;
     _movieEndBeforeTrailing = null;
+    _movieEndAfterTrailing = null;
     dragPreview.value = null;
-    if (before == null || preview is! MovieEndDragPreview) {
+    if (before == null || after == null) {
       return;
     }
     _historyManager.execute(
       UpdateProjectTrailingFramesCommand(
         repository: _repository,
-        trailingFrames: preview.trailingFrames,
+        trailingFrames: after,
       ),
     );
     notifyListeners();
@@ -11072,6 +11046,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   void cancelMovieEndDrag() {
     _movieEndBeforeTrailing = null;
+    _movieEndAfterTrailing = null;
     dragPreview.value = null;
   }
 
@@ -11392,6 +11367,13 @@ class EditorSessionManager extends ChangeNotifier {
   /// #1: dragging inside the cut selection moves the whole run).
   int? _cutMoveGroupEndIndex;
 
+  /// The plan the last update arrived at, or null while it shows "no
+  /// change". The commit reads THIS, never [dragPreview]: the channel is
+  /// display, shared by every drag family, and a consumer clearing it (or
+  /// another family overwriting it) must not void the commit — the same
+  /// invariant the exposure-edge family states at its own after-fields.
+  CutMovePlan? _cutMoveAfterPlan;
+
   /// Starts a whole-block move drag on [cutId].
   ///
   /// Where it ends up is [planCutMove]'s answer: a drag that stays in its
@@ -11426,6 +11408,7 @@ class EditorSessionManager extends ChangeNotifier {
       ];
       _cutMoveIndex = index;
       _cutMoveGroupEndIndex = null;
+      _cutMoveAfterPlan = null;
       // Dragging inside the cut SELECTION slides the whole run (UI-R18
       // #1): anchor at the run's first cut, compensate past its last.
       final selection = storyboardSelectedCutIds;
@@ -11457,12 +11440,14 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     if (plan.isReorder) {
+      _cutMoveAfterPlan = plan;
       dragPreview.value = CutTrimDragPreview(
         previewDurations: const {},
         previewOrder: {trackId: plan.order!},
       );
       return;
     }
+    _cutMoveAfterPlan = plan.gaps.isEmpty ? null : plan;
     dragPreview.value = plan.gaps.isEmpty
         ? null
         : CutTrimDragPreview(
@@ -11491,18 +11476,18 @@ class EditorSessionManager extends ChangeNotifier {
   void endCutMoveDrag() {
     final slots = _cutMoveSlots;
     final trackId = _cutMoveTrackId;
-    final preview = dragPreview.value;
+    final plan = _cutMoveAfterPlan;
     _cutMoveTrackId = null;
     _cutMoveSlots = null;
     _cutMoveIndex = null;
     _cutMoveGroupEndIndex = null;
+    _cutMoveAfterPlan = null;
     dragPreview.value = null;
-    if (slots == null || trackId == null || preview is! CutTrimDragPreview) {
+    if (slots == null || trackId == null || plan == null) {
       return;
     }
-    final order = preview.previewOrder[trackId];
-    if (order != null) {
-      _cutCommandCoordinator.setCutOrder(trackId: trackId, order: order);
+    if (plan.isReorder) {
+      _cutCommandCoordinator.setCutOrder(trackId: trackId, order: plan.order!);
       _refreshAfterCutCommand();
       notifyListeners();
       return;
@@ -11512,7 +11497,7 @@ class EditorSessionManager extends ChangeNotifier {
     };
     final afterGaps = {
       for (final id in beforeGaps.keys)
-        id: preview.previewGaps[id] ?? beforeGaps[id]!,
+        id: plan.gaps[id] ?? beforeGaps[id]!,
     };
     final changed = afterGaps.entries.any(
       (entry) => beforeGaps[entry.key] != entry.value,
@@ -11536,6 +11521,7 @@ class EditorSessionManager extends ChangeNotifier {
     _cutMoveSlots = null;
     _cutMoveIndex = null;
     _cutMoveGroupEndIndex = null;
+    _cutMoveAfterPlan = null;
     dragPreview.value = null;
   }
 
