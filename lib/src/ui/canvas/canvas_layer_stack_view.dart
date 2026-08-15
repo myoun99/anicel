@@ -304,6 +304,12 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   late final DisplayBufferCache _bufferCache =
       widget.debugBufferCache ?? DisplayBufferCache();
 
+  /// The bake, for tests that pin WHICH mechanism held the backdrop —
+  /// a picture and a raster paint the same pixels by design (S7), so
+  /// only the slot counters can say the predicate chose.
+  @visibleForTesting
+  StaticCompositeBake get debugBake => _bake;
+
   /// 🚨★★★ Bumped at EVERY `_images` mutation, and read into the bake's key.
   ///
   /// ⛔This is not belt-and-braces on top of the tree comparison. A recorded
@@ -577,6 +583,23 @@ sealed class _PaintNode {
   const _PaintNode();
 }
 
+/// How many ops the engine replays to draw [list] — one per leaf, one
+/// more per group's `saveLayer`. This is the S7 predicate's input: it is
+/// a static fact of the node tree, so the backdrop decision needs no
+/// clock and cannot flap within a key.
+int _replayOpsOf(List<_PaintNode> list) {
+  var ops = 0;
+  for (final node in list) {
+    ops += switch (node) {
+      _PaintImage() => 1,
+      _PaintActiveSurface() => 1,
+      _PaintGroup(:final children) => 1 + _replayOpsOf(children),
+      _PaintAdjustment(:final children) => 1 + _replayOpsOf(children),
+    };
+  }
+  return ops;
+}
+
 final class _PaintImage extends _PaintNode {
   const _PaintImage({
     required this.image,
@@ -774,6 +797,16 @@ class _LayerStackPainter extends CustomPainter {
   /// always correct, so falling back to it costs only the sampling law, and
   /// only in a view where everything is tiny anyway.
   static const int _maxBufferSide = 8192;
+
+  /// S7 — the fewest engine ops the backdrop raster must be collapsing
+  /// before holding a visible-rect image is worth it. See
+  /// `paintBackdropSplit` for the arithmetic; the short version is that
+  /// per stroke step the raster saves (ops − 1) draws and costs one blit,
+  /// so single-digit stacks save almost nothing while still paying the
+  /// image's megabytes and a re-raster per key change. Eight is paper
+  /// plus seven draws — comfortably past "almost nothing", far below the
+  /// hundreds-of-layers case the raster exists for.
+  static const int _backdropRasterMinReplayOps = 8;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1140,13 +1173,26 @@ class _LayerStackPainter extends CustomPainter {
       }
     }
 
-    /// 🚨★★★ (v) 2단계 후반부 — THE BOTTOM OF THE STACK IS ONE BLIT.
+    /// 🚨★★★ (v) 2단계 후반부 — THE BOTTOM OF THE STACK IS ONE BLIT,
+    /// WHEN THE BLIT PAYS.
     ///
     /// Stage 1 stopped the DART walk; the engine still replayed every draw
     /// in the recording, so a stroke on top of 500 layers re-executed 500
     /// draws and every folder's `saveLayer` per step. Rasterising the
     /// bottom collapses all of it to one image, and the raster is redone
     /// only when the bake key moves — which a stroke step never does.
+    ///
+    /// ★S7 — the raster is a TRADE and the predicate is its price check.
+    /// It swaps N replay ops for one blit, at the cost of a visible-rect
+    /// image resident (4·area bytes, ~9MB at a 1928×1200 view) plus a
+    /// re-rasterisation every time the key moves. Per step, BOTH sides of
+    /// the comparison scale with the same visible area — N draws over the
+    /// rect versus one blit of the rect — so the area term cancels and
+    /// the judgment is the op count alone, decidable statically from the
+    /// node tree with no clock. Below the threshold (a paper-and-two-
+    /// layers document) the picture already replays within a handful of
+    /// engine ops of the blit itself, and the image would buy that
+    /// nothing at megabytes each and a re-raster per key change.
     ///
     /// ⛔The BOTTOM only. Everything above the live surface stays a picture:
     /// a multiply up there has to blend against the stroke, and an image
@@ -1155,14 +1201,30 @@ class _LayerStackPainter extends CustomPainter {
     /// exactly what the parity suite pins.
     void paintBackdropSplit(Canvas into, Rect rect) {
       final at = nodes.indexWhere(_enclosesActiveSurface);
+      final below = at < 0 ? nodes : nodes.sublist(0, at);
+      final rasterPays =
+          (paintPaper ? 1 : 0) + _replayOpsOf(below) >=
+          _LayerStackPainter._backdropRasterMinReplayOps;
+      // One body, two mechanisms: the record closure is identical either
+      // way, so the fallback cannot drift from the raster — `drawRaster`
+      // records the same ops shifted into the rect and blits them back to
+      // it, which lands pixel-for-pixel where the replay would have.
+      void drawBackdrop(String id, void Function(Canvas c) record) {
+        if (rasterPays) {
+          bake!.drawRaster(into, id, rect, record);
+        } else {
+          bake!.draw(into, id, record);
+        }
+      }
+
       if (at < 0) {
-        bake!.drawRaster(into, 'd0:backdrop-all', rect, (c) {
+        drawBackdrop('d0:backdrop-all', (c) {
           paintPaperInto(c);
           paintNodes(c, nodes);
         });
         return;
       }
-      bake!.drawRaster(into, 'd0:backdrop', rect, (c) {
+      drawBackdrop('d0:backdrop', (c) {
         paintPaperInto(c);
         paintNodes(c, nodes.sublist(0, at));
       });
