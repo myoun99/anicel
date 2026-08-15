@@ -280,6 +280,21 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   @override
   void didUpdateWidget(covariant CanvasLayerStackView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // A6: the pins live on the CACHE, so a swapped cache MOVES them —
+    // released where they were taken (releasing on the new one would be
+    // an unbalanced release of pins it never saw), retained on the cache
+    // every later [_dropImage] will release against. The clones stay:
+    // they outlive their source by design, and dropping them here would
+    // blank every layer until the new cache decodes. ⛔No revision bump —
+    // the picture did not change, and a bump here turned every cache
+    // swap into a full recompose (measured: the stroke-patch contract
+    // went to zero on a fixture with no images at all).
+    if (!identical(oldWidget.imageCache, widget.imageCache)) {
+      for (final key in _images.keys) {
+        oldWidget.imageCache.releasePin(key, PlaybackQuality.full);
+        widget.imageCache.retainPin(key, PlaybackQuality.full);
+      }
+    }
     _syncImagesWithCache();
     _ensureImages();
   }
@@ -300,15 +315,22 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// impossible rather than merely unlikely.
   int _imagesRevision = 0;
 
-  void _dropImage(({ui.Image source, ui.Image clone, Rect worldRect}) held) {
+  void _dropImage(
+    BrushFrameKey key,
+    ({ui.Image source, ui.Image clone, Rect worldRect}) held,
+  ) {
+    // A6: the pin travels with the clone — held pixels are declared
+    // pixels, and the declaration ends exactly when the hold does.
+    widget.imageCache.releasePin(key, PlaybackQuality.full);
     held.clone.dispose();
     _imagesRevision += 1;
   }
 
   @override
   void dispose() {
-    for (final entry in _images.values) {
-      entry.clone.dispose();
+    for (final entry in _images.entries) {
+      widget.imageCache.releasePin(entry.key, PlaybackQuality.full);
+      entry.value.clone.dispose();
     }
     _images.clear();
     _bake.dispose();
@@ -336,7 +358,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     };
     for (final key in _images.keys.toList()) {
       if (!wanted.contains(key)) {
-        _dropImage(_images.remove(key)!);
+        _dropImage(key, _images.remove(key)!);
       }
     }
     for (final layer in widget.layers) {
@@ -354,7 +376,8 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       }
       final held = _images[layer.frameKey];
       if (held == null || !identical(held.source, image.image)) {
-        if (held != null) _dropImage(held);
+        if (held != null) _dropImage(layer.frameKey, held);
+        widget.imageCache.retainPin(layer.frameKey, PlaybackQuality.full);
         _images[layer.frameKey] = (
           source: image.image,
           clone: image.image.clone(),
@@ -390,14 +413,18 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           final held = _images[layer.frameKey];
           if (image == null) {
             if (held != null) {
-              _dropImage(held);
+              _dropImage(layer.frameKey, held);
               _images.remove(layer.frameKey);
               changed = true;
             }
             continue;
           }
           if (held == null || !identical(held.source, image.image)) {
-            if (held != null) _dropImage(held);
+            if (held != null) _dropImage(layer.frameKey, held);
+            widget.imageCache.retainPin(
+              layer.frameKey,
+              PlaybackQuality.full,
+            );
             _images[layer.frameKey] = (
               source: image.image,
               clone: image.image.clone(),
@@ -408,7 +435,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         }
         for (final key in _images.keys.toList()) {
           if (!wanted.contains(key)) {
-            _dropImage(_images.remove(key)!);
+            _dropImage(key, _images.remove(key)!);
             changed = true;
           }
         }
