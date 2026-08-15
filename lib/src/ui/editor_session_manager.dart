@@ -39,6 +39,9 @@ import '../services/persistence/app_save_settings_store.dart';
 import '../services/persistence/audio_sync_settings_store.dart';
 import 'brush/brush_tool_state.dart' show CanvasTool;
 import 'input/app_input_settings.dart';
+import 'session/drags/audio_clip_offset_drag.dart';
+import 'session/drags/cut_move_drag.dart';
+import 'session/drags/movie_end_drag.dart';
 import 'session/drags/transition_edge_drag.dart';
 import 'session/editor_app_settings.dart';
 import 'session/editor_voice_recording.dart';
@@ -67,7 +70,6 @@ import '../models/drawing_guide.dart';
 import '../models/transform_track.dart';
 import '../models/cut_id.dart';
 import '../models/cut_lead_edge_plan.dart';
-import '../models/cut_move_plan.dart';
 import '../models/exposure_memo.dart';
 import '../models/layer_folder.dart';
 import '../models/frame.dart';
@@ -7723,110 +7725,54 @@ class EditorSessionManager extends ChangeNotifier {
 
   // --- Audio offset live drags (comma-drag idiom) --------------------------
 
-  List<AudioClip>? _audioOffsetDragBefore;
-  LayerId? _audioOffsetDragLayerId;
-  int? _audioOffsetDragClipIndex;
+  /// The in-flight slide ([AudioClipOffsetDrag]), or null. The repo-direct
+  /// idiom's rationale lives on the drag class.
+  AudioClipOffsetDrag? _audioOffsetDrag;
 
-  /// Starts a live slide of [layerId]'s [clipIndex]th sound: the drag
-  /// previews repo-direct (every waveform view repaints from the model in
-  /// real time) and [endAudioClipOffsetDrag] commits ONE undo step.
   bool beginAudioClipOffsetDrag({
     required LayerId layerId,
     required int clipIndex,
   }) {
-    final layer = _layerById(layerId);
-    if (layer == null ||
-        layer.kind != LayerKind.se ||
-        clipIndex < 0 ||
-        clipIndex >= layer.audioClips.length) {
+    final drag = AudioClipOffsetDrag.begin(
+      layerId: layerId,
+      clipIndex: clipIndex,
+      layerById: _layerById,
+      previewClips: ({required layerId, required audioClips}) {
+        _repository.updateLayerAudioClips(
+          cutId: requireActiveCut.id,
+          layerId: layerId,
+          audioClips: audioClips,
+        );
+      },
+      commitClips: ({required layerId, required audioClips}) {
+        _cutCommandCoordinator.updateLayerAudioClips(
+          cutId: requireActiveCut.id,
+          layerId: layerId,
+          audioClips: audioClips,
+          description: 'Slide sound',
+        );
+      },
+      notify: notifyListeners,
+    );
+    if (drag == null) {
+      // A refused grip leaves an in-flight drag exactly as it was.
       return false;
     }
-    _audioOffsetDragBefore = layer.audioClips;
-    _audioOffsetDragLayerId = layerId;
-    _audioOffsetDragClipIndex = clipIndex;
+    _audioOffsetDrag = drag;
     return true;
   }
 
-  /// Applies the dragged ABSOLUTE offset as a live preview (clamped ≥ 0);
-  /// no-op while no drag is in flight or the value is unchanged.
-  void updateAudioClipOffsetDrag(int offsetFrames) {
-    final layerId = _audioOffsetDragLayerId;
-    final clipIndex = _audioOffsetDragClipIndex;
-    if (layerId == null || clipIndex == null) {
-      return;
-    }
-    final layer = _layerById(layerId);
-    if (layer == null || clipIndex >= layer.audioClips.length) {
-      return;
-    }
-    final clamped = offsetFrames < 0 ? 0 : offsetFrames;
-    if (layer.audioClips[clipIndex].offsetFrames == clamped) {
-      return;
-    }
-    final next = [...layer.audioClips];
-    next[clipIndex] = next[clipIndex].copyWith(offsetFrames: clamped);
-    _repository.updateLayerAudioClips(
-      cutId: requireActiveCut.id,
-      layerId: layerId,
-      audioClips: next,
-    );
-    notifyListeners();
-  }
+  void updateAudioClipOffsetDrag(int offsetFrames) =>
+      _audioOffsetDrag?.update(offsetFrames);
 
-  /// Commits the slide as a single undo step: the preview reverts
-  /// silently, then the normal clip command applies the final list (its
-  /// before-snapshot stays correct).
   void endAudioClipOffsetDrag() {
-    final before = _audioOffsetDragBefore;
-    final layerId = _audioOffsetDragLayerId;
-    _audioOffsetDragBefore = null;
-    _audioOffsetDragLayerId = null;
-    _audioOffsetDragClipIndex = null;
-    if (before == null || layerId == null) {
-      return;
-    }
-    final layer = _layerById(layerId);
-    if (layer == null) {
-      return;
-    }
-    final after = layer.audioClips;
-    if (listEquals(after, before)) {
-      return;
-    }
-    _repository.updateLayerAudioClips(
-      cutId: requireActiveCut.id,
-      layerId: layerId,
-      audioClips: before,
-    );
-    _cutCommandCoordinator.updateLayerAudioClips(
-      cutId: requireActiveCut.id,
-      layerId: layerId,
-      audioClips: after,
-      description: 'Slide sound',
-    );
-    notifyListeners();
+    _audioOffsetDrag?.commit();
+    _audioOffsetDrag = null;
   }
 
-  /// Reverts an in-flight slide preview without touching history.
   void cancelAudioClipOffsetDrag() {
-    final before = _audioOffsetDragBefore;
-    final layerId = _audioOffsetDragLayerId;
-    _audioOffsetDragBefore = null;
-    _audioOffsetDragLayerId = null;
-    _audioOffsetDragClipIndex = null;
-    if (before == null || layerId == null) {
-      return;
-    }
-    final layer = _layerById(layerId);
-    if (layer == null || listEquals(layer.audioClips, before)) {
-      return;
-    }
-    _repository.updateLayerAudioClips(
-      cutId: requireActiveCut.id,
-      layerId: layerId,
-      audioClips: before,
-    );
-    notifyListeners();
+    _audioOffsetDrag?.cancel();
+    _audioOffsetDrag = null;
   }
 
   /// Sets the [clipIndex]th clip's fade lengths (the audio lane's edge
@@ -10979,15 +10925,8 @@ class EditorSessionManager extends ChangeNotifier {
 
   // --- Movie-end drag (UI-R20 #3) -------------------------------------------
 
-  int? _movieEndBeforeTrailing;
-
-  /// The trailing-gap value the drag has arrived at, or null while the
-  /// preview shows "no change". The commit reads THIS, never [dragPreview]:
-  /// the channel is display, shared by every drag family, and a consumer
-  /// clearing it (or another family overwriting it) must not void the
-  /// commit — the same invariant the exposure-edge family states at its
-  /// own after-fields.
-  int? _movieEndAfterTrailing;
+  /// The in-flight end-line drag ([MovieEndDrag]), or null.
+  MovieEndDrag? _movieEndDrag;
 
   /// The movie's content end: the last cut end across every track.
   int get movieContentEndFrame {
@@ -11007,47 +10946,33 @@ class EditorSessionManager extends ChangeNotifier {
   /// the cuts themselves (the tail gap is as first-class as any other
   /// gap on this timeline).
   bool beginMovieEndDrag() {
-    _movieEndBeforeTrailing = _repository.requireProject().trailingFrames;
-    _movieEndAfterTrailing = null;
+    _movieEndDrag = MovieEndDrag(
+      beforeTrailing: _repository.requireProject().trailingFrames,
+      preview: dragPreview,
+      commitTrailing: (trailingFrames) {
+        _historyManager.execute(
+          UpdateProjectTrailingFramesCommand(
+            repository: _repository,
+            trailingFrames: trailingFrames,
+          ),
+        );
+        notifyListeners();
+      },
+    );
     return true;
   }
 
-  /// Applies the cumulative frame delta as a live preview (the movie end
-  /// never dips below the content end: the trailing gap clamps at 0).
-  void updateMovieEndDrag(int cumulativeDelta) {
-    final before = _movieEndBeforeTrailing;
-    if (before == null) {
-      return;
-    }
-    final next = math.max(0, before + cumulativeDelta);
-    _movieEndAfterTrailing = next == before ? null : next;
-    dragPreview.value = next == before
-        ? null
-        : MovieEndDragPreview(trailingFrames: next);
-  }
+  void updateMovieEndDrag(int cumulativeDelta) =>
+      _movieEndDrag?.update(cumulativeDelta);
 
   void endMovieEndDrag() {
-    final before = _movieEndBeforeTrailing;
-    final after = _movieEndAfterTrailing;
-    _movieEndBeforeTrailing = null;
-    _movieEndAfterTrailing = null;
-    dragPreview.value = null;
-    if (before == null || after == null) {
-      return;
-    }
-    _historyManager.execute(
-      UpdateProjectTrailingFramesCommand(
-        repository: _repository,
-        trailingFrames: after,
-      ),
-    );
-    notifyListeners();
+    _movieEndDrag?.commit();
+    _movieEndDrag = null;
   }
 
   void cancelMovieEndDrag() {
-    _movieEndBeforeTrailing = null;
-    _movieEndAfterTrailing = null;
-    dragPreview.value = null;
+    _movieEndDrag?.cancel();
+    _movieEndDrag = null;
   }
 
   // --- Storyboard cut RANGE selection (UI-R18 #1, O2c) ----------------------
@@ -11359,170 +11284,53 @@ class EditorSessionManager extends ChangeNotifier {
 
   // --- Storyboard cut-block MOVE drags (R10-④) ----------------------------
 
-  TrackId? _cutMoveTrackId;
-  List<CutMoveSlot>? _cutMoveSlots;
-  int? _cutMoveIndex;
+  /// The in-flight whole-block move ([CutMoveDrag]), or null. The move's
+  /// own doc — re-time vs reorder, the contiguous-run rule — lives on the
+  /// drag class.
+  CutMoveDrag? _cutMoveDrag;
 
-  /// The selected run's LAST index while a group slide is live (UI-R18
-  /// #1: dragging inside the cut selection moves the whole run).
-  int? _cutMoveGroupEndIndex;
-
-  /// The plan the last update arrived at, or null while it shows "no
-  /// change". The commit reads THIS, never [dragPreview]: the channel is
-  /// display, shared by every drag family, and a consumer clearing it (or
-  /// another family overwriting it) must not void the commit — the same
-  /// invariant the exposure-edge family states at its own after-fields.
-  CutMovePlan? _cutMoveAfterPlan;
-
-  /// Starts a whole-block move drag on [cutId].
-  ///
-  /// Where it ends up is [planCutMove]'s answer: a drag that stays in its
-  /// own free space re-times (its leading gap grows or shrinks, the
-  /// neighbours hold still), and a drag that reaches the seat BEYOND a
-  /// neighbour REORDERS the track instead. Sliding used to shove the
-  /// followers along on contact; that whole-track shove is what the
-  /// push/pull buttons are for, and a drag that could only shove could
-  /// never say "put this cut after that one".
-  ///
-  /// ⚠️The shared rule now also re-times a run AFTER it has reordered (UI
-  /// 08-14 #5), but THIS axis cannot show it: [planCutMove] answers a
-  /// reorder with the sequence alone and this drag commits that sequence,
-  /// so a swapped cut still seats itself. Carrying it here means giving
-  /// `CutMovePlan.reorder` its gaps and re-keying them by the cut that ends
-  /// up in each position — a separate change, not done.
   bool beginCutMoveDrag(CutId cutId) {
-    final project = _repository.requireProject();
-    for (final track in project.tracks) {
-      final index = track.cuts.indexWhere((cut) => cut.id == cutId);
-      if (index < 0) {
-        continue;
-      }
-      _cutMoveTrackId = track.id;
-      _cutMoveSlots = [
-        for (final cut in track.cuts)
-          (
-            id: cut.id,
-            leadingGapFrames: cut.leadingGapFrames,
-            duration: cut.duration,
-          ),
-      ];
-      _cutMoveIndex = index;
-      _cutMoveGroupEndIndex = null;
-      _cutMoveAfterPlan = null;
-      // Dragging inside the cut SELECTION slides the whole run (UI-R18
-      // #1): anchor at the run's first cut, compensate past its last.
-      final selection = storyboardSelectedCutIds;
-      if (selection.contains(cutId)) {
-        final order = [for (final cut in track.cuts) cut.id];
-        final indexes = [for (final id in selection) order.indexOf(id)]
-          ..removeWhere((value) => value < 0);
-        if (indexes.length > 1) {
-          indexes.sort();
-          // Only a CONTIGUOUS run travels as one — a selection with a hole
-          // in it has no single length to carry.
-          if (indexes.last - indexes.first == indexes.length - 1) {
-            _cutMoveIndex = indexes.first;
-            _cutMoveGroupEndIndex = indexes.last;
-          }
-        }
-      }
-      return true;
-    }
-    return false;
-  }
-
-  /// Applies the move's cumulative frame delta as a live preview on
-  /// [dragPreview] (the repository is NOT touched).
-  void updateCutMoveDrag(int cumulativeDelta) {
-    final plan = _cutMovePlanFor(cumulativeDelta);
-    final trackId = _cutMoveTrackId;
-    if (plan == null || trackId == null) {
-      return;
-    }
-    if (plan.isReorder) {
-      _cutMoveAfterPlan = plan;
-      dragPreview.value = CutTrimDragPreview(
-        previewDurations: const {},
-        previewOrder: {trackId: plan.order!},
-      );
-      return;
-    }
-    _cutMoveAfterPlan = plan.gaps.isEmpty ? null : plan;
-    dragPreview.value = plan.gaps.isEmpty
-        ? null
-        : CutTrimDragPreview(
-            previewDurations: const {},
-            previewGaps: plan.gaps,
-          );
-  }
-
-  CutMovePlan? _cutMovePlanFor(int cumulativeDelta) {
-    final slots = _cutMoveSlots;
-    final index = _cutMoveIndex;
-    if (slots == null || index == null) {
-      return null;
-    }
-    return planCutMove(
-      slots: slots,
-      runStart: index,
-      runEnd: _cutMoveGroupEndIndex ?? index,
-      frameDelta: cumulativeDelta,
+    final drag = CutMoveDrag.begin(
+      cutId: cutId,
+      tracks: _repository.requireProject().tracks,
+      selectedCutIds: storyboardSelectedCutIds,
+      preview: dragPreview,
+      commitOrder: ({required trackId, required order}) {
+        _cutCommandCoordinator.setCutOrder(trackId: trackId, order: order);
+        _refreshAfterCutCommand();
+        notifyListeners();
+      },
+      commitGaps: ({required beforeGaps, required afterGaps}) {
+        _cutCommandCoordinator.commitCutDurationDrag(
+          beforeDurations: const {},
+          afterDurations: const {},
+          beforeGaps: beforeGaps,
+          afterGaps: afterGaps,
+        );
+        _refreshAfterCutCommand();
+        notifyListeners();
+      },
     );
+    if (drag == null) {
+      // A refused grip leaves an in-flight drag exactly as it was.
+      return false;
+    }
+    _cutMoveDrag = drag;
+    return true;
   }
 
-  /// Commits the move as a single undo step (no-op when nothing changed):
-  /// a re-time lands as gaps, a reorder as the track's new sequence.
-  /// Durations are untouched either way, so no fade re-anchor is needed.
+  void updateCutMoveDrag(int cumulativeDelta) =>
+      _cutMoveDrag?.update(cumulativeDelta);
+
   void endCutMoveDrag() {
-    final slots = _cutMoveSlots;
-    final trackId = _cutMoveTrackId;
-    final plan = _cutMoveAfterPlan;
-    _cutMoveTrackId = null;
-    _cutMoveSlots = null;
-    _cutMoveIndex = null;
-    _cutMoveGroupEndIndex = null;
-    _cutMoveAfterPlan = null;
-    dragPreview.value = null;
-    if (slots == null || trackId == null || plan == null) {
-      return;
-    }
-    if (plan.isReorder) {
-      _cutCommandCoordinator.setCutOrder(trackId: trackId, order: plan.order!);
-      _refreshAfterCutCommand();
-      notifyListeners();
-      return;
-    }
-    final beforeGaps = {
-      for (final slot in slots) slot.id: slot.leadingGapFrames,
-    };
-    final afterGaps = {
-      for (final id in beforeGaps.keys)
-        id: plan.gaps[id] ?? beforeGaps[id]!,
-    };
-    final changed = afterGaps.entries.any(
-      (entry) => beforeGaps[entry.key] != entry.value,
-    );
-    if (!changed) {
-      return;
-    }
-    _cutCommandCoordinator.commitCutDurationDrag(
-      beforeDurations: const {},
-      afterDurations: const {},
-      beforeGaps: beforeGaps,
-      afterGaps: afterGaps,
-    );
-    _refreshAfterCutCommand();
-    notifyListeners();
+    _cutMoveDrag?.commit();
+    _cutMoveDrag = null;
   }
 
   /// Drops an in-flight move preview without touching history.
   void cancelCutMoveDrag() {
-    _cutMoveTrackId = null;
-    _cutMoveSlots = null;
-    _cutMoveIndex = null;
-    _cutMoveGroupEndIndex = null;
-    _cutMoveAfterPlan = null;
-    dragPreview.value = null;
+    _cutMoveDrag?.cancel();
+    _cutMoveDrag = null;
   }
 
   /// Drops an in-flight drag preview without touching history (the
