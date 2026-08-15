@@ -716,6 +716,40 @@ class EditorSessionManager extends ChangeNotifier {
 
   int _layerSequence = 1;
   int _frameSequence = 0;
+
+  /// The next unused `default-layer-N`.
+  ///
+  /// The counter alone is not enough, and the reason is that it is SESSION
+  /// state while the project can arrive from DISK. Open a file that already
+  /// holds `default-layer-2` and the counter is still 1, so the next added
+  /// layer is minted straight on top of an existing row: two layers, one id.
+  /// It surfaced as a red screen from the rail (`multiple children with key
+  /// …default-layer-2-row`), which is why the fix is here and not there — a
+  /// duplicate key is what a duplicate id looks like downstream.
+  ///
+  /// So the project has the last word, exactly as it already does for
+  /// imported cut ids ([_importIdMint]). The counter still carries a BATCH,
+  /// where ids minted a moment ago are not in the project yet.
+  ///
+  /// [usedIds] lets a caller minting MANY ids hand the scan in once; see
+  /// [_importIdMint], which is the only such caller.
+  LayerId _mintLayerId({Set<String>? usedIds}) {
+    final used = usedIds ?? _usedLayerIdValues();
+    _layerSequence += 1;
+    var candidate = defaultLayerIdForSequence(_layerSequence);
+    while (used.contains(candidate.value)) {
+      _layerSequence += 1;
+      candidate = defaultLayerIdForSequence(_layerSequence);
+    }
+    return candidate;
+  }
+
+  Set<String> _usedLayerIdValues() => {
+    for (final track in _repository.requireProject().tracks)
+      for (final cut in track.cuts)
+        for (final layer in cut.layers) layer.id.value,
+  };
+
   _CopiedFrameReference? _copiedFrame;
   LayerCopyPayload? _layerClipboard;
 
@@ -4665,8 +4699,7 @@ class EditorSessionManager extends ChangeNotifier {
     if (!canAddLayerOfKind(kind)) {
       return; // The cut already holds its one row of a singleton kind.
     }
-    _layerSequence += 1;
-    final layerId = defaultLayerIdForSequence(_layerSequence);
+    final layerId = _mintLayerId();
     switch (kind) {
       case LayerKind.transition:
         // A track fixture, created with the track — "Add layer" never makes
@@ -4830,8 +4863,7 @@ class EditorSessionManager extends ChangeNotifier {
     final base = isAttachedLayer(active)
         ? attachedBaseOf(active, cut.layers)!
         : active;
-    _layerSequence += 1;
-    final layerId = defaultLayerIdForSequence(_layerSequence);
+    final layerId = _mintLayerId();
     final baseIndex = cut.layers.indexWhere((layer) => layer.id == base.id);
     if (baseIndex == -1) {
       return;
@@ -6464,33 +6496,39 @@ class EditorSessionManager extends ChangeNotifier {
 
   int _importCutSequence = 0;
 
-  ImportIdMint _importIdMint() => ImportIdMint(
-    nextLayerId: () {
-      _layerSequence += 1;
-      return defaultLayerIdForSequence(_layerSequence);
-    },
-    // Through the MINT, not the formatter. `_nextFrameId` reads
-    // `_frameSequence` and does not advance it, so calling it directly
-    // leaves the wall clock as the only thing telling two cels apart —
-    // and an import mints a whole layer inside one clock tick. Every cel
-    // of that layer came out with the SAME id, which is not "cels that
-    // look alike": it is one drawing exposed N times. A 10-drawing layer
-    // arrived as one drawing.
-    nextFrameId: _mintFrameId,
-    nextCutId: () {
-      _importCutSequence += 1;
-      final usedIds = {
-        for (final track in _repository.requireProject().tracks)
-          for (final cut in track.cuts) cut.id.value,
-      };
-      var candidate = 'import-cut-$_importCutSequence';
-      while (usedIds.contains(candidate)) {
+  ImportIdMint _importIdMint() {
+    // ONE scan for the whole batch. An import mints an id per layer and per
+    // cut it brings in, and scanning the project inside each of those turns
+    // a 200-layer PSD landing in a heavy project into 200 walks of every
+    // layer in it. The snapshot stays correct because the counters only
+    // climb: an id minted a moment ago is not in this set, and it is not
+    // reachable again either.
+    final usedLayerIds = _usedLayerIdValues();
+    final usedCutIds = {
+      for (final track in _repository.requireProject().tracks)
+        for (final cut in track.cuts) cut.id.value,
+    };
+    return ImportIdMint(
+      nextLayerId: () => _mintLayerId(usedIds: usedLayerIds),
+      // Through the MINT, not the formatter. `_nextFrameId` reads
+      // `_frameSequence` and does not advance it, so calling it directly
+      // leaves the wall clock as the only thing telling two cels apart —
+      // and an import mints a whole layer inside one clock tick. Every cel
+      // of that layer came out with the SAME id, which is not "cels that
+      // look alike": it is one drawing exposed N times. A 10-drawing layer
+      // arrived as one drawing.
+      nextFrameId: _mintFrameId,
+      nextCutId: () {
         _importCutSequence += 1;
-        candidate = 'import-cut-$_importCutSequence';
-      }
-      return CutId(candidate);
-    },
-  );
+        var candidate = 'import-cut-$_importCutSequence';
+        while (usedCutIds.contains(candidate)) {
+          _importCutSequence += 1;
+          candidate = 'import-cut-$_importCutSequence';
+        }
+        return CutId(candidate);
+      },
+    );
+  }
 
   /// Imports one still or animated image file (PNG/JPEG/GIF…) — the
   /// import window's core verb. Reference mode (default) copies into
