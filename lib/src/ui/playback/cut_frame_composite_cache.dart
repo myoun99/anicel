@@ -415,6 +415,13 @@ class CutFrameCompositeCache {
     }
     bool isProtected(_CompositeEntry entry) {
       for (final key in entry.indexKeys) {
+        // A pinned frame is on screen through a holder's clone —
+        // playback's held frame, the parked track stack. Evicting it
+        // returns no bytes and re-composites the exact picture being
+        // shown.
+        if (_pins.containsKey(key)) {
+          return true;
+        }
         for (final range in protect) {
           if (range.contains(key.$1, key.$2, key.$3)) {
             return true;
@@ -442,6 +449,50 @@ class CutFrameCompositeCache {
     for (final key in _index.keys.toList()) {
       _releaseIndexEntry(key);
     }
+  }
+
+  // --- Display pins (A6) ----------------------------------------------
+  //
+  // Same contract as [LayerFrameImageCache]'s pins: a holder that clones
+  // a composite (playback's held frame, the parked track stack) declares
+  // the slot, eviction refuses it, and [pinnedBytes] reports what the
+  // screen is actually holding.
+
+  final Map<(CutId, int, PlaybackQuality), int> _pins = {};
+
+  void retainPin((CutId, int, PlaybackQuality) indexKey) {
+    _pins[indexKey] = (_pins[indexKey] ?? 0) + 1;
+  }
+
+  void releasePin((CutId, int, PlaybackQuality) indexKey) {
+    final count = _pins[indexKey];
+    if (count == null) {
+      assert(false, 'releasePin without a matching retainPin: $indexKey');
+      return;
+    }
+    if (count <= 1) {
+      _pins.remove(indexKey);
+    } else {
+      _pins[indexKey] = count - 1;
+    }
+  }
+
+  /// The bytes of every pinned slot's current image, counted once per
+  /// DISTINCT image — held exposures share one image under many keys.
+  int get pinnedBytes {
+    var total = 0;
+    final seen = <_CompositeEntry>{};
+    for (final key in _pins.keys) {
+      final signature = _index[key];
+      if (signature == null) {
+        continue;
+      }
+      final entry = _images[signature];
+      if (entry != null && seen.add(entry)) {
+        total += estimatedImageBytes(entry.image.width, entry.image.height);
+      }
+    }
+    return total;
   }
 
   void _pointIndexAt(

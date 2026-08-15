@@ -160,6 +160,26 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
   /// not stretch into a RESIZED cut's rect (the playback view's guard).
   final Map<CutId, CanvasSize> _heldCanvasSizes = <CutId, CanvasSize>{};
 
+  /// A6: the slot each held clone came from, pinned in the composite
+  /// cache for as long as the hold lasts. The parked stack shows OTHER
+  /// cuts' composites, which the non-playing protection range (the active
+  /// cut only) never covered — without the pins the budget could evict
+  /// the exact frames this widget is displaying.
+  final Map<CutId, (CutId, int, PlaybackQuality)> _heldPins = {};
+
+  void _swapHeldPin(CutId cutId, (CutId, int, PlaybackQuality)? next) {
+    final previous = _heldPins[cutId];
+    if (previous != null) {
+      widget.compositeCache.releasePin(previous);
+    }
+    if (next != null) {
+      _heldPins[cutId] = next;
+      widget.compositeCache.retainPin(next);
+    } else {
+      _heldPins.remove(cutId);
+    }
+  }
+
   /// ONE in-flight compose per track (per cut), latest-frame-wins: a fast
   /// gap scrub crosses many cold frames, and unbounded fire-and-forget
   /// composes would contend with the live drag long after the parking
@@ -192,6 +212,10 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
     for (final image in _heldFrames.values) {
       image.dispose();
     }
+    for (final pin in _heldPins.values) {
+      widget.compositeCache.releasePin(pin);
+    }
+    _heldPins.clear();
     super.dispose();
   }
 
@@ -244,6 +268,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
       image.dispose();
       _heldSources.remove(cutId);
       _heldCanvasSizes.remove(cutId);
+      _swapHeldPin(cutId, null);
       return true;
     });
     _wantedFrame.removeWhere((cutId, _) => !keep.contains(cutId));
@@ -306,6 +331,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
         _heldSources[cut.id] = composite;
         _heldFrames[cut.id] = composite.clone();
         _heldCanvasSizes[cut.id] = cut.canvasSize;
+        _swapHeldPin(cut.id, (cut.id, localFrame, quality));
       }
 
       final cutFxEnabled = widget.cutFxEnabledOf?.call(cut.id) ?? true;

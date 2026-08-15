@@ -231,12 +231,68 @@ class LayerFrameImageCache {
       if (bytes <= targetBytes) {
         break;
       }
+      // ⛔A pinned slot is ON SCREEN. Evicting it returns zero bytes
+      // anyway (the holder's clone shares the pixels) and puts the very
+      // image the canvas is drawing back on the cold path — the "worked
+      // harder, got emptier" loop PR #1065 documented. Recency cannot
+      // express "someone is holding this"; only the pin can.
+      if (_pins.containsKey(entry.key)) {
+        continue;
+      }
       bytes -= estimatedImageBytes(
         entry.value.image.width,
         entry.value.image.height,
       );
       _dropEntry(entry.key);
     }
+  }
+
+  // --- Display pins (A6) ----------------------------------------------
+  //
+  // The editing canvas holds CLONES of cache images, and a clone shares
+  // pixels: dropping the entry "freed" bytes that stayed fully alive, so
+  // every budget figure downstream was fiction — the reserve PR #1065
+  // added was sized by an estimate that saturated at twenty layers. The
+  // pin is the holder saying "these pixels are on screen": eviction skips
+  // the slot, and [pinnedBytes] is the MEASURED reserve that replaces the
+  // estimate.
+
+  final Map<(BrushFrameKey, PlaybackQuality), int> _pins = {};
+
+  /// Declares a holder of [key]'s image at [quality]. Balanced by
+  /// [releasePin]; counts nest, because two widgets may hold the same
+  /// slot's clone.
+  void retainPin(BrushFrameKey key, PlaybackQuality quality) {
+    final slot = (key, quality);
+    _pins[slot] = (_pins[slot] ?? 0) + 1;
+  }
+
+  void releasePin(BrushFrameKey key, PlaybackQuality quality) {
+    final slot = (key, quality);
+    final count = _pins[slot];
+    if (count == null) {
+      assert(false, 'releasePin without a matching retainPin: $slot');
+      return;
+    }
+    if (count <= 1) {
+      _pins.remove(slot);
+    } else {
+      _pins[slot] = count - 1;
+    }
+  }
+
+  /// The bytes of every pinned slot's CURRENT entry — what the screen is
+  /// actually holding, measured, not estimated. Walks the pins, not the
+  /// entries: the pin set is the visible layer count.
+  int get pinnedBytes {
+    var total = 0;
+    for (final slot in _pins.keys) {
+      final entry = _entries[slot];
+      if (entry != null) {
+        total += estimatedImageBytes(entry.image.width, entry.image.height);
+      }
+    }
+    return total;
   }
 
   void dispose() {

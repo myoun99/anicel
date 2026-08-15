@@ -128,6 +128,23 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
   ui.Image? _heldSource;
   CanvasSize? _heldCanvasSize;
 
+  /// A6: the slot the held clone came from, pinned in the composite cache
+  /// for as long as the hold lasts — held pixels are declared pixels, so
+  /// the budget stops evicting the very frame on screen and
+  /// [CutFrameCompositeCache.pinnedBytes] can report it.
+  (CutId, int, PlaybackQuality)? _heldPin;
+
+  void _swapHeldPin((CutId, int, PlaybackQuality)? next) {
+    final previous = _heldPin;
+    if (previous != null) {
+      widget.compositeCache.releasePin(previous);
+    }
+    if (next != null) {
+      widget.compositeCache.retainPin(next);
+    }
+    _heldPin = next;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -139,6 +156,7 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
   void dispose() {
     widget.controller.removeListener(_onPlaybackChanged);
     widget.controller.detachTicker();
+    _swapHeldPin(null);
     _heldFrame?.dispose();
     super.dispose();
   }
@@ -176,6 +194,11 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
         _heldSource = composite;
         _heldFrame = composite.clone();
         _heldCanvasSize = position.cut.canvasSize;
+        _swapHeldPin((
+          position.cut.id,
+          position.localFrameIndex,
+          widget.qualityOf(),
+        ));
       }
     }
 
