@@ -50,6 +50,21 @@ void main() {
     expect(json['trailingFrames'], 7);
   });
 
+  test('the commit survives the display channel being cleared', () {
+    // [dragPreview] is DISPLAY, shared by every drag family; a consumer may
+    // clear it mid-flight. The commit reads the family's own stored
+    // after-state — this dies if endMovieEndDrag goes back to the channel.
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+
+    s.beginMovieEndDrag();
+    s.updateMovieEndDrag(10);
+    s.dragPreview.value = null; // A consumer dropped the preview.
+    s.endMovieEndDrag();
+
+    expect(s.repository.requireProject().trailingFrames, 10);
+  });
+
   test('cancel leaves no trace', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);

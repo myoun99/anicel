@@ -458,6 +458,44 @@ void main() {
         isFalse,
       );
     });
+
+    test('a refused grip leaves an in-flight drag exactly as it was', () {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      session.selectGlobalFrame(3);
+      session.createTransitionSpanAtPlayhead();
+
+      expect(
+        session.beginTransitionEdgeDrag(
+          spanStartIndex: 3,
+          edge: TimelineBlockEdge.end,
+        ),
+        isTrue,
+      );
+      session.updateTransitionEdgeDrag(5);
+
+      // A second grip lands where no span starts: refused — and the drag
+      // already in flight neither loses its preview nor its commit.
+      expect(
+        session.beginTransitionEdgeDrag(
+          spanStartIndex: 9,
+          edge: TimelineBlockEdge.end,
+        ),
+        isFalse,
+      );
+      expect(
+        session.transitionEdgeDragPreview.value!.instructions[3]!.length,
+        6,
+        reason: 'the refusal must not clear the live preview',
+      );
+
+      session.updateTransitionEdgeDrag(7);
+      session.endTransitionEdgeDrag();
+      expect(session.transitionEdgeDragPreview.value, isNull);
+      expect(session.activeTrack.transitionLayer.instructions[3]!.length, 8);
+    });
   });
 
   group('naming and removing a span', () {

@@ -575,6 +575,61 @@ void main() {
       );
     });
 
+    // [dragPreview] is DISPLAY, shared by every drag family; any consumer
+    // may clear it and another family may overwrite it mid-flight. The
+    // commit must read the family's own stored after-state — the invariant
+    // the exposure-edge family documents at its after-fields. These three
+    // die if endCutMoveDrag goes back to reading the channel.
+    test('a re-time commit survives the display channel being cleared', () {
+      final (s, first, second) = twoCutSession();
+      final firstStart = layoutStart(s, first);
+      openGapBefore(s, second, 3);
+
+      expect(s.beginCutMoveDrag(first), isTrue);
+      s.updateCutMoveDrag(5);
+      s.dragPreview.value = null; // A consumer dropped the preview.
+      s.endCutMoveDrag();
+
+      expect(layoutStart(s, first), firstStart + 3);
+    });
+
+    test('a reorder commit survives the display channel being cleared', () {
+      final (s, first, second, third) = threeCutSession();
+
+      expect(s.beginCutMoveDrag(first), isTrue);
+      s.updateCutMoveDrag(24);
+      s.dragPreview.value = null; // A consumer dropped the preview.
+      s.endCutMoveDrag();
+
+      expect(
+        [
+          for (final cut in s.repository.requireProject().tracks.first.cuts)
+            cut.id,
+        ],
+        [second, first, third],
+      );
+    });
+
+    test('a foreign preview on the channel does not leak into the commit',
+        () {
+      final (s, first, second) = twoCutSession();
+      final firstStart = layoutStart(s, first);
+      openGapBefore(s, second, 3);
+
+      expect(s.beginCutMoveDrag(first), isTrue);
+      s.updateCutMoveDrag(5);
+      // Another family overwrites the shared channel mid-flight.
+      s.dragPreview.value = CutTrimDragPreview(
+        previewDurations: const {},
+        previewGaps: {second: 9},
+      );
+      s.endCutMoveDrag();
+
+      // The commit is this drag's own plan — not the impostor's gaps.
+      expect(layoutStart(s, first), firstStart + 3);
+      expect(s.cutById(second)!.leadingGapFrames, isNot(9));
+    });
+
     test('with follower slack the run slides INTO the gap: members keep '
         'formation, the follower holds still', () {
       final (s, first, second, third) = threeCutSession();
