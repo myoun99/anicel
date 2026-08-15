@@ -37,6 +37,9 @@ jobs:
   apple:
     name: macOS app + iOS simulator + native C
     runs-on: macos-latest
+    # apple.yml runs the whole suite on a Mac and legitimately takes
+    # 20-32 minutes; 60 bounds a hang without ever touching a real run.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
 

@@ -26,6 +26,10 @@ jobs:
   testflight:
     name: Signed device build -> TestFlight
     runs-on: macos-latest
+    # Measured 7-12 minutes including the parity check; 30 bounds a hang.
+    # A build that stalls must not sit for six hours holding the
+    # `testflight` concurrency group and blocking the nightly behind it.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
 
