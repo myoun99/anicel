@@ -111,18 +111,39 @@ class CutFrameCompositeCache {
 
   /// The cached composite when its stored signature still matches the cut's
   /// current state; `null` on miss or staleness.
+  ///
+  /// C2 — THE SIGNATURE IS THE ADDRESS, AND THE INDEX IS ONLY THE
+  /// ACCELERATOR. A frame whose index key was never filed can still be
+  /// answered by content: held exposures share one signature, so the
+  /// image baked for frame 0 IS frame 1's image, and a covering-layer cut
+  /// is one entry answering every frame. Before this, those frames read
+  /// "cold" until the warm loop visited each one just to file a key —
+  /// the readiness bar lied by omission at exactly the frames that were
+  /// already paid for.
+  ///
+  /// The hit adopts the key (`_pointIndexAt`), which is load-bearing, not
+  /// cosmetic: pins and protected ranges test an entry's `indexKeys`, so
+  /// an unfiled frame would be an unprotectable frame.
+  ///
+  /// ⚠️Cost shape: a MISS now computes one signature where the bare index
+  /// miss used to return free — but every miss path that matters was
+  /// already paying it (prepare computes the signature to build; the
+  /// readiness bar resolves the same shared visit for its empty-frame
+  /// answer). The hit path pays exactly what it always did: one
+  /// signature, one compare.
   ui.Image? validCompositeOrNull({
     required Cut cut,
     required int frameIndex,
     required PlaybackQuality quality,
   }) {
-    final stored = _index[(cut.id, frameIndex, quality)];
-    if (stored == null) {
+    final indexKey = (cut.id, frameIndex, quality);
+    final fresh = _signatureFor(cut, frameIndex, quality);
+    final entry = _images[fresh];
+    if (entry == null) {
       return null;
     }
-    final entry = _images[stored];
-    if (entry == null || stored != _signatureFor(cut, frameIndex, quality)) {
-      return null;
+    if (_index[indexKey] != fresh) {
+      _pointIndexAt(indexKey, fresh);
     }
     entry.lastUsed = ++_useCounter;
     return entry.image;
