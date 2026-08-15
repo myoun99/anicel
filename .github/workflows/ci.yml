@@ -29,9 +29,25 @@ jobs:
   # The C core compiled by a THIRD compiler (gcc) on a different OS —
   # the fastest way to catch portability breakage before the platform
   # builds get involved. Two minutes, every push.
+  # Every job below carries a timeout-minutes, and the reason is that
+  # GitHub's default is 360. On 2026-08-15 one Windows shard stopped
+  # inside `flutter test` and sat there: eleven of twelve jobs were green
+  # in under eight minutes, queue was four seconds, and the run had been
+  # open for half an hour with nothing to show — a hang has no signal of
+  # its own, it just looks like slowness that never ends. Left alone it
+  # would have held the check for six hours and produced no log, because
+  # the log blob only appears once the job finishes.
+  #
+  # The numbers are 2-3x the measured maximum over the last 15 runs, so a
+  # slow-but-real job is never killed: Windows shards peak at 10.2 min
+  # (89 samples), Linux shards 5.9, Windows app build 4.7, Android 3.8,
+  # native C 0.9. The hang was at 31 minutes and climbing when it was
+  # noticed, which is what makes the boundary easy — a stuck job is not
+  # near the healthy range, it is several times past it.
   native-portability:
     name: native C (gcc + clang)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
       - name: Build with gcc
@@ -71,6 +87,7 @@ jobs:
   analyze-and-test:
     name: analyze + full test suite (shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       # Without this one red shard hides the others, and the point of
       # splitting is to learn everything each run has to tell us.
@@ -130,6 +147,7 @@ jobs:
   android:
     name: Android build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       # Gradle re-resolved every dependency on every run; setup-java already
@@ -167,6 +185,7 @@ jobs:
   windows-app:
     name: Windows app build
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
@@ -213,6 +232,7 @@ jobs:
   windows:
     name: Windows + native DLL (shard ${{ matrix.shard }})
     runs-on: windows-latest
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
