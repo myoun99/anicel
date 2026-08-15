@@ -157,6 +157,7 @@ void main() {
     'recoverAutosaveTitle': (s) => s.recoverAutosaveTitle,
     'recoverAutosaveBody': (s) => s.recoverAutosaveBody,
     'recoverOpenSaved': (s) => s.recoverOpenSaved,
+    'recoverOpenSavedHint': (s) => s.recoverOpenSavedHint,
     'recoverAction': (s) => s.recoverAction,
     'closeProjectTitle': (s) => s.closeProjectTitle,
     'closeProjectBody': (s) => s.closeProjectBody,

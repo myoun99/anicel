@@ -188,9 +188,19 @@ class EditorTopStrip extends StatelessWidget {
           titleIcon: Icons.restore_outlined,
           message: AppText.strings.recoverAutosaveBody,
           actions: [
+            // 🚨 The DESTRUCTIVE half, and it did not look like it. Saying
+            // "open the saved one" is only half of what this does: the
+            // snapshot is deleted on the way past (see the retirement
+            // below), because leaving it would re-ask the same question at
+            // every open until the next save. That is the right behaviour
+            // and it was invisible — a plain second button, worded as a
+            // preference between two files, that throws unsaved work away
+            // and cannot be undone.
             AppWindowAction(
               label: AppText.strings.recoverOpenSaved,
               actionKey: const ValueKey<String>('recover-open-saved-button'),
+              emphasis: AppWindowActionEmphasis.danger,
+              tooltip: AppText.strings.recoverOpenSavedHint,
               onPressed: () => Navigator.of(context).pop(false),
             ),
             AppWindowAction(

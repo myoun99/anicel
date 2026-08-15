@@ -287,7 +287,12 @@ class AppStrings {
   // --- Project lifecycle confirmations ---
   String get recoverAutosaveTitle => _s('recoverAutosaveTitle');
   String get recoverAutosaveBody => _s('recoverAutosaveBody');
+  /// The button that does NOT recover — and deletes the snapshot doing it.
+  ///
+  /// The label carries the verb on its own, because [recoverOpenSavedHint]
+  /// needs a pointer: a pen hovering an iPad raises it, a finger does not.
   String get recoverOpenSaved => _s('recoverOpenSaved');
+  String get recoverOpenSavedHint => _s('recoverOpenSavedHint');
   String get recoverAction => _s('recoverAction');
   String get closeProjectTitle => _s('closeProjectTitle');
   String get closeProjectBody => _s('closeProjectBody');
@@ -1098,7 +1103,10 @@ class AppStrings {
     'recoverAutosaveBody':
         'A newer autosave exists for this project. Recover it, or open the '
         'file as last saved?',
-    'recoverOpenSaved': 'Open saved',
+    'recoverOpenSaved': 'Discard and open',
+    'recoverOpenSavedHint':
+        'Deletes the autosave and opens the file as it was last saved. '
+        'This cannot be undone.',
     'recoverAction': 'Recover',
     'closeProjectTitle': 'Close project?',
     'closeProjectBody': 'Your changes are not saved. Close anyway?',
@@ -1792,7 +1800,9 @@ class AppStrings {
     'recoverAutosaveBody':
         'このプロジェクトには、より新しい自動保存があります。それを復元'
         'しますか、それとも最後に保存したファイルを開きますか？',
-    'recoverOpenSaved': '保存済みを開く',
+    'recoverOpenSaved': '破棄して開く',
+    'recoverOpenSavedHint':
+        '自動保存を削除し、最後に保存した状態のファイルを開きます。元に戻せません。',
     'recoverAction': '復元',
     'closeProjectTitle': 'プロジェクトを閉じますか？',
     'closeProjectBody': '変更は保存されていません。閉じますか？',
@@ -2570,7 +2580,9 @@ class AppStrings {
     'recoverAutosaveBody':
         '이 프로젝트에 더 최신인 자동 저장이 있습니다. 그것을 복구할까요, '
         '아니면 마지막으로 저장된 파일을 열까요?',
-    'recoverOpenSaved': '저장본 열기',
+    'recoverOpenSaved': '버리고 열기',
+    'recoverOpenSavedHint':
+        '자동 저장을 삭제하고 마지막으로 저장된 상태의 파일을 엽니다. 되돌릴 수 없습니다.',
     'recoverAction': '복구',
     'closeProjectTitle': '프로젝트를 닫을까요?',
     'closeProjectBody': '변경 사항이 저장되지 않았습니다. 그래도 닫을까요?',
@@ -3347,7 +3359,10 @@ class AppStrings {
     'recoverAutosaveBody':
         'Une sauvegarde automatique plus récente existe pour ce projet. La '
         'récupérer, ou ouvrir le fichier tel quel ?',
-    'recoverOpenSaved': 'Ouvrir la version enregistrée',
+    'recoverOpenSaved': 'Ignorer et ouvrir',
+    'recoverOpenSavedHint':
+        'Supprime la sauvegarde automatique et ouvre le fichier tel qu\'il '
+        'a été enregistré. Irréversible.',
     'recoverAction': 'Récupérer',
     'closeProjectTitle': 'Fermer le projet ?',
     'closeProjectBody':
@@ -4140,7 +4155,8 @@ class AppStrings {
     'guideMakeVertical': '设为完全垂直',
     'recoverAutosaveTitle': '要恢复自动保存的更改吗？',
     'recoverAutosaveBody': '此项目存在更新的自动保存。是恢复它，还是打开上次保存的文件？',
-    'recoverOpenSaved': '打开已保存版本',
+    'recoverOpenSaved': '丢弃并打开',
+    'recoverOpenSavedHint': '删除自动保存，并打开上次保存状态的文件。此操作无法撤销。',
     'recoverAction': '恢复',
     'closeProjectTitle': '关闭项目？',
     'closeProjectBody': '你的更改尚未保存。仍要关闭吗？',
