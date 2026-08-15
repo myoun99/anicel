@@ -1,4 +1,4 @@
-import 'dart:async' show Timer, unawaited;
+import 'dart:async' show Timer;
 import 'dart:collection' show SplayTreeMap;
 import 'dart:io';
 import 'dart:math' as math;
@@ -24,11 +24,13 @@ import '../services/import/media_import_planner.dart';
 import '../services/import/psd_expand_import.dart';
 import '../services/import/raster_cel_import.dart';
 import '../services/import/tvp_json_import_planner.dart';
-import '../services/input/wintab_pen_service.dart';
 import '../services/pdf/pdf_render_service.dart';
 import '../services/project_lookup.dart'
     show cutIdOfLayer, projectAudioSourcePaths;
 import '../models/app_language.dart';
+// The six settings stores are injected THROUGH this class into
+// [EditorAppSettings], so their types stay in this file's constructor
+// signature even though nothing here reads them.
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
 import '../services/persistence/app_workspace_colors_store.dart';
@@ -39,9 +41,8 @@ import '../services/persistence/app_save_settings_store.dart';
 import '../services/persistence/audio_sync_settings_store.dart';
 import 'brush/brush_tool_state.dart' show CanvasTool;
 import 'input/app_input_settings.dart';
+import 'session/editor_app_settings.dart';
 import 'theme/app_accents.dart';
-import 'theme/app_theme.dart' show AppColors;
-import 'theme/app_workspace_colors.dart';
 import '../controllers/active_cut_helpers.dart';
 import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
@@ -279,19 +280,16 @@ class EditorSessionManager extends ChangeNotifier {
     AppWorkspaceColorsStore? workspaceColorsStore,
   }) : _editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioConformStore = audioConformStore,
-       _audioSyncSettingsStore = audioSyncSettingsStore,
-       _languageSettingsStore = languageSettingsStore,
-       _accentSettingsStore = accentSettingsStore,
-       _inputSettingsStore = inputSettingsStore,
-       _saveSettingsStore = saveSettingsStore,
-       _workspaceColorsStore = workspaceColorsStore,
+       _appSettings = EditorAppSettings(
+         languageSettingsStore: languageSettingsStore,
+         accentSettingsStore: accentSettingsStore,
+         workspaceColorsStore: workspaceColorsStore,
+         inputSettingsStore: inputSettingsStore,
+         saveSettingsStore: saveSettingsStore,
+         audioSyncSettingsStore: audioSyncSettingsStore,
+       ),
        _repository = ProjectRepository(initialProject: initialProject) {
-    unawaited(_restoreLanguageSettings());
-    unawaited(_restoreAccentSettings());
-    unawaited(_restoreWorkspaceColors());
-    unawaited(_restoreInputSettings());
-    unawaited(_restoreSaveSettings());
-    unawaited(_restoreAudioSyncSettings());
+    _appSettings.restore();
     _historyManager = HistoryManager();
     _cutCommandCoordinator = CutCommandCoordinator(
       repository: _repository,
@@ -334,83 +332,50 @@ class EditorSessionManager extends ChangeNotifier {
   final EditingSessionState _editingSession;
   final ProjectRepository _repository;
 
-  // --- Language settings (UI-R10 #7) ----------------------------------------
+  // --- App settings: language, accents, input, save, A/V offset -------------
 
-  /// Injectable persistence; null (tests) keeps the in-memory defaults.
-  final AppLanguageSettingsStore? _languageSettingsStore;
+  /// The app-level settings stores and their restore/persist path, which
+  /// stopped being session code: see [EditorAppSettings] for what each one
+  /// keeps and why the live values sit on app-wide notifiers instead.
+  ///
+  /// Everything below is this session's unchanged face on it.
+  final EditorAppSettings _appSettings;
 
   /// The program + notation languages — a value-only channel (widgets
   /// subscribe where they read strings; no whole-session notify).
-  ///
-  /// The notifier itself lives app-wide on [AppText.settings], so canvas
-  /// widgets that hold no session still read the chosen language; this is
-  /// that same object, not a copy.
-  ValueNotifier<AppLanguageSettings> get languageSettings => AppText.settings;
+  ValueNotifier<AppLanguageSettings> get languageSettings =>
+      _appSettings.languageSettings;
 
   /// The PROGRAM-language string table, read at call time — for session
   /// verbs that produce user-facing messages and for widgets that already
   /// hold the session.
-  AppStrings get uiStrings =>
-      AppStrings.of(languageSettings.value.programLanguage);
+  AppStrings get uiStrings => _appSettings.uiStrings;
 
-  Future<void> _restoreLanguageSettings() async {
-    final restored = await _languageSettingsStore?.load();
-    if (restored != null) {
-      languageSettings.value = restored;
-    }
-  }
+  void setLanguageSettings(AppLanguageSettings settings) =>
+      _appSettings.setLanguageSettings(settings);
 
-  void setLanguageSettings(AppLanguageSettings settings) {
-    if (settings == languageSettings.value) {
-      return;
-    }
-    languageSettings.value = settings;
-    final store = _languageSettingsStore;
-    if (store != null) {
-      unawaited(store.save(settings));
-    }
-  }
+  void setAccentSettings(AppAccentSettings settings) =>
+      _appSettings.setAccentSettings(settings);
 
-  // --- Accent settings (UI-R22 #5) ------------------------------------------
+  void setInputSettings(AppInputSettings settings) =>
+      _appSettings.setInputSettings(settings);
 
-  /// Injectable persistence; null (tests) keeps the in-memory defaults.
-  final AppAccentSettingsStore? _accentSettingsStore;
+  void setSaveSettings(AppSaveSettings settings) =>
+      _appSettings.setSaveSettings(settings);
 
-  /// The LIVE accents live app-wide on [AppColors.accentSettings] (the
-  /// theme root rebuilds off it); the session only restores/persists.
-  Future<void> _restoreAccentSettings() async {
-    final restored = await _accentSettingsStore?.load();
-    if (restored != null) {
-      AppColors.accentSettings.value = restored;
-    }
-  }
+  /// The user's A/V offset — the residual correction for THIS machine's
+  /// output path (screen pipeline, Bluetooth, an AV receiver).
+  ValueNotifier<AudioSyncSettings> get audioSyncSettings =>
+      _appSettings.audioSyncSettings;
 
-  void setAccentSettings(AppAccentSettings settings) {
-    if (settings == AppColors.accentSettings.value) {
-      return;
-    }
-    AppColors.accentSettings.value = settings;
-    final store = _accentSettingsStore;
-    if (store != null) {
-      unawaited(store.save(settings));
-    }
-  }
+  void setAudioSyncSettings(AudioSyncSettings settings) =>
+      _appSettings.setAudioSyncSettings(settings);
 
-  // --- Workspace colors (R28 #9) --------------------------------------------
-
-  /// Injectable persistence; null (tests) keeps the in-memory defaults.
-  final AppWorkspaceColorsStore? _workspaceColorsStore;
-
-  /// The app-level workspace colors are the NEW-PROJECT DEFAULTS now
-  /// (R3b): the pasteboard itself became project data — it prints, so it
-  /// travels with the project (R28 #9 reversed by the user, 2026-07-29).
-  /// This restore keeps the stored default alive for the next project.
-  Future<void> _restoreWorkspaceColors() async {
-    final restored = await _workspaceColorsStore?.load();
-    if (restored != null) {
-      AppWorkspaceColors.settings.value = restored;
-    }
-  }
+  // --- Workspace colors: the PROJECT half (R28 #9) --------------------------
+  //
+  // The app-level half — the NEW-PROJECT defaults and their store — lives in
+  // [EditorAppSettings]. These three are project data (R3b): they print, so
+  // they travel with the project and each is one undo step.
 
   /// One undo step; no-op when unchanged. Writes the PROJECT's pasteboard
   /// (R3b promotion) — and remembers the choice as the app-level default
@@ -419,17 +384,7 @@ class EditorSessionManager extends ChangeNotifier {
   void setPasteboardColor(int argb) {
     _cutCommandCoordinator.setProjectPasteboard(argb);
     notifyListeners();
-    final next = AppWorkspaceColors.settings.value.copyWith(
-      pasteboardArgb: argb,
-    );
-    if (next == AppWorkspaceColors.settings.value) {
-      return;
-    }
-    AppWorkspaceColors.settings.value = next;
-    final store = _workspaceColorsStore;
-    if (store != null) {
-      unawaited(store.save(next));
-    }
+    _appSettings.rememberPasteboardDefault(argb);
   }
 
   /// One undo step; no-op when unchanged. The BACKDROP (R3b): the stage's
@@ -448,33 +403,6 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- Input settings (UI-R22 #6) -------------------------------------------
-
-  /// Injectable persistence; null (tests) keeps the in-memory defaults.
-  final AppInputSettingsStore? _inputSettingsStore;
-
-  Future<void> _restoreInputSettings() async {
-    // The Wintab guard decides WHEN the tablet path went dead; persisting
-    // that demotion is this side's half. Without it the dead choice
-    // reloads on the next launch — with no working pointer to undo it.
-    WintabPenService.instance.persistSettings = setInputSettings;
-    final restored = await _inputSettingsStore?.load();
-    if (restored != null) {
-      AppInput.settings.value = restored;
-    }
-  }
-
-  void setInputSettings(AppInputSettings settings) {
-    if (settings == AppInput.settings.value) {
-      return;
-    }
-    AppInput.settings.value = settings;
-    final store = _inputSettingsStore;
-    if (store != null) {
-      unawaited(store.save(settings));
-    }
-  }
-
   /// The tool a temporary hold sprang FROM; null = no hold live.
   ///
   /// It lives here rather than in the canvas area's State because the PEN
@@ -484,58 +412,6 @@ class EditorSessionManager extends ChangeNotifier {
   /// back to, and leave the user holding an eraser with nothing to undo
   /// it. Not a listenable: only the release path reads it.
   CanvasTool? heldOriginalTool;
-
-  // --- Save settings (SAVE-1) -----------------------------------------------
-
-  /// Injectable persistence; null (tests) keeps the in-memory defaults.
-  final AppSaveSettingsStore? _saveSettingsStore;
-
-  Future<void> _restoreSaveSettings() async {
-    final restored = await _saveSettingsStore?.load();
-    if (restored != null) {
-      AppSave.settings.value = restored;
-    }
-  }
-
-  void setSaveSettings(AppSaveSettings settings) {
-    if (settings == AppSave.settings.value) {
-      return;
-    }
-    AppSave.settings.value = settings;
-    final store = _saveSettingsStore;
-    if (store != null) {
-      unawaited(store.save(settings));
-    }
-  }
-
-  // --- A/V offset (audio program 2D) ----------------------------------------
-
-  /// Injectable persistence; null (tests) keeps the in-memory defaults.
-  final AudioSyncSettingsStore? _audioSyncSettingsStore;
-
-  /// The user's A/V offset — the residual correction for THIS machine's
-  /// output path (screen pipeline, Bluetooth, an AV receiver). App state,
-  /// not project state: a rig's delay must not travel inside a `.anicel`.
-  final ValueNotifier<AudioSyncSettings> audioSyncSettings =
-      ValueNotifier<AudioSyncSettings>(AudioSyncSettings.defaults);
-
-  Future<void> _restoreAudioSyncSettings() async {
-    final restored = await _audioSyncSettingsStore?.load();
-    if (restored != null) {
-      audioSyncSettings.value = restored;
-    }
-  }
-
-  void setAudioSyncSettings(AudioSyncSettings settings) {
-    if (settings == audioSyncSettings.value) {
-      return;
-    }
-    audioSyncSettings.value = settings;
-    final store = _audioSyncSettingsStore;
-    if (store != null) {
-      unawaited(store.save(settings));
-    }
-  }
 
   /// App-level brush stroke store shared with the canvas host, so commands
   /// (e.g. anchored canvas resize) can transform stroke data.
@@ -1934,9 +1810,7 @@ class EditorSessionManager extends ChangeNotifier {
     cutFrameCompositeCache.dispose();
     layerFrameImageCache.dispose();
     audioConformStore.dispose();
-    // languageSettings is NOT disposed here: it lives on AppText, app-wide,
-    // and outlives this session (as the accent settings do).
-    audioSyncSettings.dispose();
+    _appSettings.dispose();
     soloedSeLayerIds.dispose();
     editingFrameCursor.dispose();
     frameScrubActive.dispose();
