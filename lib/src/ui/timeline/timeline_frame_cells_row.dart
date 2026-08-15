@@ -9,8 +9,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_row_address.dart';
-import '../media/media_asset_drag_data.dart';
-import '../theme/app_theme.dart' show AppColors;
+import '../media/media_asset_drop_target.dart';
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_editor_policy.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -528,17 +527,12 @@ class TimelineFrameCellsRow extends StatelessWidget {
   }
 }
 
-/// The whole-row target a media-browser row can be dropped on, and the one
-/// thing it has to work out: WHICH FRAME the drop landed on.
+/// The row's share of a place entrance ([MediaAssetDropTarget] is the
+/// entrance itself): the one thing a drop on a LAYER row has to work out is
+/// WHICH FRAME it landed on.
 ///
-/// 🚨A drag in flight does not reach this row as pointer events — Flutter
-/// dispatches a down pointer's later events to the hit-test path recorded at
-/// pointer-DOWN, which is the pool row the drag started from. The only
-/// position a target is handed is [DragTargetDetails.offset], and that is
-/// `pointer - dragStartPoint`: it equals the pointer ONLY while the drag
-/// source anchors its feedback at the pointer. The pool row does
-/// (`pointerDragAnchorStrategy`, said there for this reason) — change that
-/// and this lands a frame or five off, silently.
+/// The coordinate it reads comes with the anchor caveat the shared target
+/// documents — this is the host that depends on it.
 class _LayerAssetDropTarget extends StatelessWidget {
   const _LayerAssetDropTarget({
     required this.dropKey,
@@ -572,23 +566,10 @@ class _LayerAssetDropTarget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DragTarget<MediaAssetDragData>(
+    return MediaAssetDropTarget(
       key: dropKey,
-      onAcceptWithDetails: (details) => onDrop(
-        layerId,
-        _frameIndexAt(context, details.offset),
-        details.data.path,
-      ),
-      // Only while a matching drag is in flight; an empty SizedBox absorbs
-      // no hit test, so taps and cell gestures keep falling through the rest
-      // of the time.
-      builder: (context, candidates, _) => candidates.isEmpty
-          ? const SizedBox.expand()
-          : DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border.all(color: AppColors.accent, width: 2),
-              ),
-            ),
+      onDrop: (path, globalPosition) =>
+          onDrop(layerId, _frameIndexAt(context, globalPosition), path),
     );
   }
 }

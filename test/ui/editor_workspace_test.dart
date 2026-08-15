@@ -546,6 +546,25 @@ void main() {
       expect(find.byType(TimelinePanel), findsOneWidget);
     });
 
+    testWidgets('the stage is a place entrance, covering all of it', (
+      tester,
+    ) async {
+      await _pumpHome(tester);
+
+      // §7: a pool row can be dropped on the stage. The entrance is a
+      // permanent slot over the canvas rather than something mounted while
+      // a drag runs — the canvas is a GlobalKey subtree, and re-parenting
+      // it mid-drag would tear it down. That it takes no pointer while it
+      // sits there is [MediaAssetDropTarget]'s own suite.
+      final entrance = find.byKey(const ValueKey<String>('canvas-asset-drop'));
+      expect(entrance, findsOneWidget);
+      expect(
+        tester.getRect(entrance),
+        tester.getRect(find.byType(EditorCanvasArea)),
+        reason: 'the whole drawing surface, not a corner of it',
+      );
+    });
+
     testWidgets('the top strip switches what the app is lying on', (
       tester,
     ) async {
