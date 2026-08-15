@@ -88,8 +88,18 @@ if [ "$prstate" != "OPEN" ]; then
   exit 2
 fi
 
+# Counted apart, because "has not finished" and "went wrong" are different
+# news and putting them in one number reads as the worse one. This printed
+# "13 total, 12 not SUCCESS" while nothing had failed at all — twelve jobs
+# were simply still running — and the first reading of that was a broken
+# branch. The same confusion cost an hour on 2026-08-15 elsewhere: a hung
+# job shows up as `pending 0` in `gh pr checks`, indistinguishable from one
+# that has not started.
 total=$(printf '%s' "$checks" | tr ',' '\n' | grep -c .)
-bad=$(printf '%s' "$checks" | tr ',' '\n' | grep -cv '^SUCCESS$')
+pending=$(printf '%s' "$checks" | tr ',' '\n' | grep -c '^PENDING$')
+failed=$(printf '%s' "$checks" | tr ',' '\n' | grep -cv '^SUCCESS$\|^PENDING$')
+# The verdict below still turns on "not green", which is both of them.
+bad=$((pending + failed))
 # Compared the other way round on purpose: base=branch, head=master makes
 # `ahead_by` the number of commits this branch is BEHIND, and hands back the
 # files THOSE commits touched in the same response. One call, two answers.
@@ -153,7 +163,11 @@ overlaps=$(printf '%s\n' "$others" | awk -F'\t' -v me="$PR" -v mine="$myfiles" '
 
 echo "PR #$PR  ($branch)  in $REPO"
 echo "  mergeable state : $state"
-echo "  checks          : $total total, $bad not SUCCESS"
+if [ "$bad" -eq 0 ]; then
+  echo "  checks          : $total, all green"
+else
+  echo "  checks          : $total — $failed failed, $pending still running"
+fi
 if [ "$behind" = "0" ] || [ "$behind" = "?" ]; then
   echo "  behind master   : $behind commit(s)"
 elif [ "$collided_count" -eq 0 ] && [ "$truncated" = "no" ]; then
@@ -213,7 +227,8 @@ case "$state" in
     echo "  - GitHub says $state."
     ;;
 esac
-[ "$bad" -ne 0 ] && echo "  - $bad check(s) are not SUCCESS."
+[ "$failed" -ne 0 ] && echo "  - $failed check(s) FAILED."
+[ "$pending" -ne 0 ] && echo "  - $pending check(s) have not finished — this is a wait, not a break."
 if [ "$behind" != "0" ] && [ "$behind" != "?" ]; then
   if [ "$collided_count" -gt 0 ]; then
     echo "  - $behind commit(s) behind master, and they changed" \
