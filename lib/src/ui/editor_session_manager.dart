@@ -42,6 +42,7 @@ import 'input/app_input_settings.dart';
 import 'session/drags/audio_clip_offset_drag.dart';
 import 'session/drags/cut_move_drag.dart';
 import 'session/drags/movie_end_drag.dart';
+import 'session/drags/run_frames_add_drag.dart';
 import 'session/drags/transition_edge_drag.dart';
 import 'session/editor_app_settings.dart';
 import 'session/editor_voice_recording.dart';
@@ -106,7 +107,6 @@ import '../models/timeline_selection_kind.dart';
 import '../models/timeline_frame_range.dart';
 import '../models/timeline_repeat.dart';
 import '../models/timeline_row_address.dart';
-import '../models/timeline_run_edit.dart';
 import '../models/track.dart';
 import '../models/track_frame_range.dart';
 import '../models/track_id.dart';
@@ -13920,40 +13920,10 @@ class EditorSessionManager extends ChangeNotifier {
 
   // --- Run-edge NEW FRAMES drag (UI-R8 [+] handle) --------------------------
 
-  Layer? _addFramesBefore;
-  int? _addFramesBlockStart;
-  bool _addFramesAtEnd = true;
-  Layer? _addFramesAfter;
-  final List<FrameId> _addFramesReservedIds = [];
-
-  /// Reserves project-unique frame ids for the drag, deterministically:
-  /// the same ordinal always resolves the same id, so every preview step
-  /// and the commit agree.
-  FrameId _reservedNewFrameId(int ordinal) {
-    while (_addFramesReservedIds.length <= ordinal) {
-      final used = <String>{for (final id in _addFramesReservedIds) id.value};
-      for (final track in _repository.requireProject().tracks) {
-        for (final layer in track.seLayers) {
-          for (final frame in layer.frames) {
-            used.add(frame.id.value);
-          }
-        }
-        for (final cut in track.cuts) {
-          for (final layer in cut.layers) {
-            for (final frame in layer.frames) {
-              used.add(frame.id.value);
-            }
-          }
-        }
-      }
-      var candidate = 1;
-      while (used.contains('frame-$candidate')) {
-        candidate += 1;
-      }
-      _addFramesReservedIds.add(FrameId('frame-$candidate'));
-    }
-    return _addFramesReservedIds[ordinal];
-  }
+  /// The in-flight "+ add frames" drag ([RunFramesAddDrag]), or null. The
+  /// deterministic id reservation that keeps preview == commit lives on
+  /// the drag class.
+  RunFramesAddDrag? _runFramesAddDrag;
 
   /// Starts a "+ add frames" drag at the run edge (UI-R8): [atEnd] picks
   /// the side. Returns false when the row stands down or there is no run.
@@ -13962,75 +13932,42 @@ class EditorSessionManager extends ChangeNotifier {
     required int blockStartIndex,
     required bool atEnd,
   }) {
-    if (!_blockMoveEligible(layerId)) {
+    final drag = RunFramesAddDrag.begin(
+      layerId: layerId,
+      blockStartIndex: blockStartIndex,
+      atEnd: atEnd,
+      blockMoveEligible: _blockMoveEligible,
+      layerById: _layerById,
+      tracksNow: () => _repository.requireProject().tracks,
+      activeCutFrameCount: () => _activeCutFrameCount,
+      preview: dragPreview,
+      commitLayerDrag: ({required before, required after}) {
+        _timelineController.commitLayerTimelineDrag(
+          before: before,
+          after: after,
+        );
+        _warmActiveCut();
+        notifyListeners();
+      },
+    );
+    if (drag == null) {
+      // A refused grip leaves an in-flight drag exactly as it was.
       return false;
     }
-    final layer = _layerById(layerId);
-    if (layer == null || gluedRunAt(layer, blockStartIndex) == null) {
-      return false;
-    }
-    _addFramesBefore = layer;
-    _addFramesBlockStart = blockStartIndex;
-    _addFramesAtEnd = atEnd;
-    _addFramesAfter = null;
-    _addFramesReservedIds.clear();
+    _runFramesAddDrag = drag;
     return true;
   }
 
-  /// Live preview: [count] new one-frame drawings at the run edge (0 shows
-  /// the committed state).
-  void updateRunFramesAddDrag(int count) {
-    final before = _addFramesBefore;
-    final blockStart = _addFramesBlockStart;
-    if (before == null || blockStart == null) {
-      return;
-    }
-    if (count < 1) {
-      _addFramesAfter = null;
-      dragPreview.value = null;
-      return;
-    }
-    final result = layerWithNewFramesAtRunEdge(
-      before,
-      blockStartIndex: blockStart,
-      atEnd: _addFramesAtEnd,
-      count: count,
-      frameIdAt: _reservedNewFrameId,
-    );
-    _addFramesAfter = result == null
-        ? null
-        : rederiveRunBehaviors(
-            result.layer,
-            cutFrameCount: _activeCutFrameCount,
-          );
-    dragPreview.value = _addFramesAfter == null
-        ? null
-        : ExposureEdgeDragPreview(previewLayer: _addFramesAfter!);
-  }
+  void updateRunFramesAddDrag(int count) => _runFramesAddDrag?.update(count);
 
-  /// Commits the added frames as ONE undo step.
   void endRunFramesAddDrag() {
-    final before = _addFramesBefore;
-    final after = _addFramesAfter;
-    _addFramesBefore = null;
-    _addFramesBlockStart = null;
-    _addFramesAfter = null;
-    _addFramesReservedIds.clear();
-    dragPreview.value = null;
-    if (before == null || after == null || after == before) {
-      return;
-    }
-    _timelineController.commitLayerTimelineDrag(before: before, after: after);
-    _warmActiveCut();
-    notifyListeners();
+    _runFramesAddDrag?.commit();
+    _runFramesAddDrag = null;
   }
 
   void cancelRunFramesAddDrag() {
-    _addFramesBefore = null;
-    _addFramesBlockStart = null;
-    _addFramesAfter = null;
-    _addFramesReservedIds.clear();
-    dragPreview.value = null;
+    _runFramesAddDrag?.cancel();
+    _runFramesAddDrag = null;
   }
 
   // --- Run-edge properties (UI-R9 #10 N/H/R tags) ----------------------------
