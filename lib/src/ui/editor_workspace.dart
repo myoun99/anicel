@@ -55,6 +55,7 @@ import 'export/export_frame_renderer.dart';
 import 'export/export_plan.dart';
 import 'import/import_dialog.dart';
 import 'media/media_asset_drag_data.dart';
+import 'media/media_asset_drop_target.dart';
 import 'media/media_browser_panel.dart';
 import 'media/media_relink_flow.dart';
 import 'media/media_viewer_tab_host.dart';
@@ -2042,23 +2043,45 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           // need it: with every panel closed, a canvas full of artwork
           // measured 2.5 ms hovering and 4.9 ms mid-stroke.
           staticRaster: false,
-          builder: (context) => EditorCanvasArea(
-            key: _canvasAreaKey,
-            onInvokeAction: widget.onInvokeAction,
-            session: widget.session,
-            brushToolState: _brushTool,
-            onBrushToolStateChanged: (state) => _brushTool.value = state,
-            canvasViewCommands: widget.canvasViewCommands,
-            canvasSelectionCommands: widget.canvasSelectionCommands,
-            cutPieceSlot: _cutPieceSlot,
-            cameraViewEnabled: _cameraViewEnabled,
-            cameraDimOpacity: _cameraDimOpacity,
-            expandedLaneLayerIds: _expandedLaneLayerIds,
-            fillOptions: _fillOptions,
-            selectionMaskOptions: _selectionMaskOptions,
-            transformOptions: _transformOptions,
-            eyedropperSource: _eyedropperSource,
-            flipHud: widget.flipHud,
+          builder: (context) => Stack(
+            fit: StackFit.expand,
+            children: [
+              EditorCanvasArea(
+                key: _canvasAreaKey,
+                onInvokeAction: widget.onInvokeAction,
+                session: widget.session,
+                brushToolState: _brushTool,
+                onBrushToolStateChanged: (state) => _brushTool.value = state,
+                canvasViewCommands: widget.canvasViewCommands,
+                canvasSelectionCommands: widget.canvasSelectionCommands,
+                cutPieceSlot: _cutPieceSlot,
+                cameraViewEnabled: _cameraViewEnabled,
+                cameraDimOpacity: _cameraDimOpacity,
+                expandedLaneLayerIds: _expandedLaneLayerIds,
+                fillOptions: _fillOptions,
+                selectionMaskOptions: _selectionMaskOptions,
+                transformOptions: _transformOptions,
+                eyedropperSource: _eyedropperSource,
+                flipHud: widget.flipHud,
+              ),
+              // A pool row dropped on the STAGE (§7): the cut and the layer
+              // are the ones already under the cursor, so this entrance
+              // fills nothing extra — it opens the place window with the
+              // file listed and lets the window ask the rest.
+              //
+              // A permanent slot rather than a target mounted while a drag
+              // runs: the canvas is a GlobalKey subtree, and a structure
+              // that appears mid-drag would re-parent it. It costs nothing
+              // to keep — the target draws nothing and absorbs no hit test
+              // until a matching drag is in flight.
+              Positioned.fill(
+                child: MediaAssetDropTarget(
+                  key: const ValueKey<String>('canvas-asset-drop'),
+                  onDrop: (path, _) =>
+                      _openImportWindow(initialPaths: [path], placeOnly: true),
+                ),
+              ),
+            ],
           ),
         );
       case EditorWorkspace.brushesTabId:
