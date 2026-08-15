@@ -186,9 +186,19 @@ void main() {
                 height: 8,
                 child: CanvasLayerStackView(
                   nodes: [
-                    CanvasLayerImageNode(
-                      CanvasLayerImageRequest(frameKey: frameKey, opacity: 1),
-                    ),
+                    // ⛔SEVEN copies are load-bearing: paper + 7 draws is
+                    // exactly the S7 threshold, and below it the backdrop
+                    // stays a PICTURE — which is extent-INSENSITIVE (an
+                    // unclipped display list replays fine at any size), so
+                    // this test would pass with `ensureExtent` deleted.
+                    // The raster is the mechanism whose extent this pins.
+                    for (var i = 0; i < 7; i += 1)
+                      CanvasLayerImageNode(
+                        CanvasLayerImageRequest(
+                          frameKey: frameKey,
+                          opacity: 1,
+                        ),
+                      ),
                     const CanvasActiveLayerNode(opacity: 1),
                   ],
                   imageCache: cache,
