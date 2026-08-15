@@ -127,7 +127,13 @@ void main() {
 /// playback_frame_painter, layer_frame_image_cache, media_viewer_tab_host,
 /// import_preview, static_composite_bake (backdrop raster blit, none),
 /// selection_float_overlay, raster_cel_import.
-const int _knownRawDraws = 32;
+/// **35** at ⓔ stage 4a: +3 in active_layer_flat_projection — the flat
+/// assembly's 1:1 integer blits (build, patch base carry-over, coordinate
+/// replacement), all FilterQuality.none/BlendMode.src by construction and
+/// byte-parity-pinned against the walk. Exactly the quality-owning-leaf
+/// class the allowlist describes — and the ratchet catching its own
+/// author on the very next canvas PR is the mechanism working.
+const int _knownRawDraws = 35;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',
