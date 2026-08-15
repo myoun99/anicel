@@ -26,8 +26,12 @@
 ///   the preview channel null; the session forgets the object right after
 ///   calling either, so neither is ever called twice.
 abstract class EditorDragSession {
-  /// Recomputes the after-state for the drag's cumulative delta and
-  /// publishes the preview. A no-op when the delta lands on "no change".
+  /// Recomputes the after-state for the drag's scalar input and publishes
+  /// the preview. A no-op when the input lands on "no change".
+  ///
+  /// The scalar's MEANING is the family's: a cumulative frame delta for
+  /// most timeline drags, the dragged absolute offset for the audio slide.
+  /// What the type fixes is the lifecycle, not the unit.
   void update(int cumulativeDelta);
 
   /// Lands the drag's one undo step from stored after-state, or nothing
