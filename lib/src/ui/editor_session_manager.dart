@@ -72,6 +72,7 @@ import '../models/cut_camera.dart';
 import '../models/drawing_guide.dart';
 import '../models/transform_track.dart';
 import '../models/cut_id.dart';
+import '../models/cut_warm_extent.dart';
 import '../models/cut_lead_edge_plan.dart';
 import '../models/exposure_memo.dart';
 import '../models/layer_folder.dart';
@@ -483,6 +484,15 @@ class EditorSessionManager extends ChangeNotifier {
   /// What budget eviction must never touch: the full PLAYING playlist while
   /// playback is active (a looping pass must keep every cut warm so the
   /// second pass plays fully cached), otherwise the active cut's range.
+  ///
+  /// B1: the non-playing range DERIVES from [cutWarmFrameCount] — the same
+  /// law the warm bakes over — because the two disagreeing was not
+  /// hypothetical: warming baked the runway past the end line while this
+  /// stopped AT the line, so every runway composite was evictable the
+  /// moment it landed, by the enforcer that runs after every baked frame.
+  /// The PLAYING branch stays on `entry.duration` on purpose: a playlist
+  /// plays exactly its duration, and protecting more than plays would
+  /// starve the budget during the one activity that needs it most.
   List<PlaybackProtectedRange> _playbackProtectedRanges() {
     if (playback.isActive) {
       return [
@@ -504,11 +514,18 @@ class EditorSessionManager extends ChangeNotifier {
       PlaybackProtectedRange(
         cutId: cut.id,
         startFrame: 0,
-        endFrame: math.max(0, cut.duration - 1),
+        endFrame: cutWarmFrameCount(cut) - 1,
         quality: playbackQuality,
       ),
     ];
   }
+
+  /// [_playbackProtectedRanges], for the tests that pin the one-law
+  /// derivation (warm count == protected count) — the production reader
+  /// stays [enforcePlaybackCacheBudget].
+  @visibleForTesting
+  List<PlaybackProtectedRange> debugPlaybackProtectedRanges() =>
+      _playbackProtectedRanges();
 
   /// Playback preview quality (Premiere/AE monitor resolution analogue).
   PlaybackQuality playbackQuality = defaultPlaybackQuality;
@@ -2790,25 +2807,43 @@ class EditorSessionManager extends ChangeNotifier {
         );
   }
 
-  /// Whether the playback composite for [frameIndex] is warmed at the
-  /// current quality (the timeline's cached-range "green bar").
-  bool isPlaybackFrameCached(int frameIndex) {
+  /// Whether [frameIndex] is READY to play at the current quality — the
+  /// timeline ruler's green bar.
+  bool isPlaybackFrameReady(int frameIndex) {
     final cut = activeCutOrNull;
     if (cut == null) {
       return false;
     }
-    return isPlaybackFrameCachedForCut(cut, frameIndex);
+    return isPlaybackFrameReadyForCut(cut, frameIndex);
   }
 
-  /// [isPlaybackFrameCached] for an arbitrary cut — the storyboard's green
+  /// [isPlaybackFrameReady] for an arbitrary cut — the storyboard's green
   /// bar spans every cut of the track.
-  bool isPlaybackFrameCachedForCut(Cut cut, int frameIndex) {
-    return cutFrameCompositeCache.validCompositeOrNull(
+  ///
+  /// TWO kinds of frame, one bar (유저 2026-08-16, 「왜 콘텐츠끝너머가
+  /// 초록이되면 안되는거지? 재생가능한거잖아」):
+  ///  * a frame with something to compose is green when its composite is
+  ///    warmed — the bake IS its readiness;
+  ///  * a frame that composes to NOTHING (a hole between blocks, the
+  ///    runway past the drawings, hidden or faded-out layers) is not an
+  ///    exception the bar skips — it is ready BY DEFINITION. Playback at
+  ///    that frame draws exactly what its composite would hold: nothing.
+  ///
+  /// The empty answer reads the same shared visit the signature rides, so
+  /// it cannot disagree with what the compose loop would actually paint.
+  bool isPlaybackFrameReadyForCut(Cut cut, int frameIndex) {
+    if (cutFrameCompositeCache.validCompositeOrNull(
           cut: cut,
           frameIndex: frameIndex,
           quality: playbackQuality,
         ) !=
-        null;
+        null) {
+      return true;
+    }
+    return resolveCutFrameCompositeTree(
+      cut: cut,
+      frameIndex: frameIndex,
+    ).isEmpty;
   }
 
   /// The drawable artwork of one layer frame in the active cut; `null` when

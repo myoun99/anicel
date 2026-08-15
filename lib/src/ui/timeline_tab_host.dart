@@ -178,7 +178,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     revision: _session.celTintRevision,
   );
 
-  late final Listenable _frameCachedSignal = Listenable.merge([
+  late final Listenable _frameReadySignal = Listenable.merge([
     _session.prerenderScheduler.progress,
     _session.brushFrameStore.celPixelRevision,
   ]);
@@ -717,9 +717,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // never this host (the release commit is the one session notify).
             dragPreview: _session.dragPreview,
             frameCursor: _frameCursor,
-            frameCachedSignal: _frameCachedSignal,
+            frameReadySignal: _frameReadySignal,
             revealSelectionTick: _session.revealSelectionTick,
-            isFrameCached: _session.isPlaybackFrameCached,
+            isFrameReady: _session.isPlaybackFrameReady,
             playbackFrameCount: _session.activeCutPlaybackFrameCount,
             // The のりしろ: how far past the cut's end line it is DRAWN, and
             // the word the ruler spells across that. Same derivation the

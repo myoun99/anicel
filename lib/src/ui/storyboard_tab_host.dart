@@ -135,7 +135,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// edits (composites self-validate by signature, so an edit raises no
   /// event of its own). The ruler's green bar repaints off this; the
   /// timeline host carries the identical signal.
-  late final Listenable _frameCachedSignal = Listenable.merge([
+  late final Listenable _frameReadySignal = Listenable.merge([
     _session.prerenderScheduler.progress,
     _session.brushFrameStore.celPixelRevision,
   ]);
@@ -677,7 +677,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   ),
                   playheadFrame: _playheadGlobalFrame,
                   revealSelectionTick: _session.revealSelectionTick,
-                  frameCachedSignal: _frameCachedSignal,
+                  frameReadySignal: _frameReadySignal,
                   onSeekGlobalFrame: (frame) =>
                       seekStoryboardGlobalFrame(_session, frame),
                   // Ruler drags ride the cursor path (the host rebuilds
@@ -686,7 +686,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   onScrubGlobalFrame: (frame) =>
                       scrubStoryboardGlobalFrame(_session, frame),
                   onScrubEnd: () => commitStoryboardScrub(_session),
-                  isFrameCached: (frame) => storyboardFrameCached(
+                  isFrameReady: (frame) => storyboardFrameReady(
                     _session,
                     frame,
                     layout: _activeTrackLayout(),

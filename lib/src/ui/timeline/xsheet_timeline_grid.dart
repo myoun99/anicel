@@ -91,7 +91,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     required this.layers,
     required this.activeLayerId,
     required this.frameCursor,
-    this.frameCachedSignal,
+    this.frameReadySignal,
     this.revealSelectionTick,
     required this.frameCount,
     this.drawnFrameCount,
@@ -138,7 +138,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.selectedRows = const {},
     this.onRowSelectionSpan,
     this.runEdit,
-    this.isFrameCached,
+    this.isFrameReady,
     this.metrics = defaultMetrics,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
@@ -193,7 +193,7 @@ class XSheetTimelineGrid extends StatefulWidget {
   final ValueListenable<int> frameCursor;
 
   /// Repaints the frame rail's cached-range green strip as frames warm.
-  final Listenable? frameCachedSignal;
+  final Listenable? frameReadySignal;
 
   /// R5: the session's "bring the selection back into view" tick.
   final ValueListenable<int>? revealSelectionTick;
@@ -339,7 +339,7 @@ class XSheetTimelineGrid extends StatefulWidget {
 
   /// Cached-range resolver for the frame rail's green strip (the transposed
   /// counterpart of the horizontal ruler's strip).
-  final bool Function(int frameIndex)? isFrameCached;
+  final bool Function(int frameIndex)? isFrameReady;
 
   /// Grid geometry (transposed); frameCellWidth carries the frame-axis zoom
   /// as the frame ROW height here.
@@ -1546,20 +1546,17 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                             playhead: widget
                                                                 .frameCursor,
                                                             repaintSignal: widget
-                                                                .frameCachedSignal,
+                                                                .frameReadySignal,
                                                             windowBucket:
                                                                 _frameWindowBucket,
                                                             viewportMainExtent:
                                                                 bodyViewportHeight,
                                                             renderedFrames:
                                                                 _renderedFrameCount,
-                                                            contentFrames:
-                                                                widget
-                                                                    .frameCount,
                                                             cellWidth: _metrics
                                                                 .frameCellWidth,
-                                                            isFrameCached: widget
-                                                                .isFrameCached,
+                                                            isFrameReady: widget
+                                                                .isFrameReady,
                                                           ),
                                                         ),
                                                         // UI-R18 #14: the rail's

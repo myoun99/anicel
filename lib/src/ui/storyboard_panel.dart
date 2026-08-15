@@ -389,11 +389,11 @@ class StoryboardPanel extends StatefulWidget {
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.playheadFrame,
     this.revealSelectionTick,
-    this.frameCachedSignal,
+    this.frameReadySignal,
     this.onSeekGlobalFrame,
     this.onScrubGlobalFrame,
     this.onScrubEnd,
-    this.isFrameCached,
+    this.isFrameReady,
     this.thumbnailFor,
     this.audioPeaksFor,
     this.seClipMarkerTooltip,
@@ -639,7 +639,7 @@ class StoryboardPanel extends StatefulWidget {
 
   /// Repaints the ruler's cached-range (green) bar as the prerender cache
   /// fills; null leaves the bar static per build.
-  final Listenable? frameCachedSignal;
+  final Listenable? frameReadySignal;
 
   /// Tapping or scrubbing the ruler reports the track-global frame under
   /// the pointer. Null makes the ruler display-only.
@@ -653,7 +653,7 @@ class StoryboardPanel extends StatefulWidget {
 
   /// Cached-range resolver in track-global frames for the ruler's green
   /// strip (same look as the timeline header's).
-  final bool Function(int globalFrame)? isFrameCached;
+  final bool Function(int globalFrame)? isFrameReady;
 
   /// Build-time resolver for the cut blocks' first-frame thumbnails (the
   /// store behind it kicks async renders and re-notifies). The image stays
@@ -3040,7 +3040,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                   renderedFrames: renderedFrames,
                                   contentFrames: totalFrames,
                                   playhead: playheadListenable,
-                                  frameCachedSignal: widget.frameCachedSignal,
+                                  frameReadySignal: widget.frameReadySignal,
                                   viewportOffset: _horizontalScrollOffset,
                                   windowBucket: _horizontalWindowBucket,
                                   viewportWidth: viewportWidth,
@@ -3048,7 +3048,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                   onSeekGlobalFrame: widget.onSeekGlobalFrame,
                                   onScrubGlobalFrame: widget.onScrubGlobalFrame,
                                   onScrubEnd: widget.onScrubEnd,
-                                  isFrameCached: widget.isFrameCached,
+                                  isFrameReady: widget.isFrameReady,
                                   onEdgeAutoPan: _autoPanRulerEdge,
                                   framesPerSecond: _countingFps,
                                   showSeconds: widget.showSeconds,
@@ -3434,7 +3434,7 @@ class _StoryboardRuler extends StatefulWidget {
     required this.renderedFrames,
     required this.contentFrames,
     required this.playhead,
-    required this.frameCachedSignal,
+    required this.frameReadySignal,
     required this.viewportOffset,
     required this.windowBucket,
     required this.viewportWidth,
@@ -3442,7 +3442,7 @@ class _StoryboardRuler extends StatefulWidget {
     required this.onSeekGlobalFrame,
     required this.onScrubGlobalFrame,
     required this.onScrubEnd,
-    required this.isFrameCached,
+    required this.isFrameReady,
     this.onEdgeAutoPan,
     this.framesPerSecond = 24,
     this.showSeconds = false,
@@ -3463,7 +3463,7 @@ class _StoryboardRuler extends StatefulWidget {
   /// there are far more of them than in the timeline, which is exactly
   /// why the old rebuild-per-tick ruler showed up as fixed frame drops.
   final ValueListenable<int?>? playhead;
-  final Listenable? frameCachedSignal;
+  final Listenable? frameReadySignal;
 
   /// The live horizontal offset (UI-R15): the strip builds ONCE with the
   /// full frame bounds; the edge-pan test reads the live offset, while
@@ -3481,7 +3481,7 @@ class _StoryboardRuler extends StatefulWidget {
   final ValueChanged<int>? onScrubGlobalFrame;
   final VoidCallback? onScrubEnd;
 
-  final bool Function(int globalFrame)? isFrameCached;
+  final bool Function(int globalFrame)? isFrameReady;
 
   /// Edge auto-pan sink (UI-R12 #16, unified with the timeline ruler): a
   /// scrub within 24px of the viewport edge reports a pan delta; the
@@ -3627,19 +3627,18 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
                 viewportMainExtent: widget.viewportWidth,
               ),
               // The moving parts REPAINT only: current-frame tint + green
-              // cached bar, one thin isolated layer. Shared with the
+              // ready bar, one thin isolated layer. Shared with the
               // timeline ruler, which needs the very same split.
               Positioned.fill(
                 child: TimelineRulerCursorOverlay(
                   keyValue: 'storyboard-ruler-cursor-overlay',
                   playhead: widget.playhead,
-                  repaintSignal: widget.frameCachedSignal,
+                  repaintSignal: widget.frameReadySignal,
                   windowBucket: widget.windowBucket,
                   viewportMainExtent: widget.viewportWidth,
                   renderedFrames: widget.renderedFrames,
-                  contentFrames: widget.contentFrames,
                   cellWidth: cellWidth,
-                  isFrameCached: widget.isFrameCached,
+                  isFrameReady: widget.isFrameReady,
                 ),
               ),
             ],

@@ -104,24 +104,31 @@ int? storyboardPlayheadFrame(
   return null;
 }
 
-/// Whether the track-global [globalFrame]'s playback composite is warmed —
-/// the storyboard ruler's green bar. [layout] takes a prebuilt layout: the
+/// Whether the track-global [globalFrame] is READY to play — the
+/// storyboard ruler's green bar. [layout] takes a prebuilt layout: the
 /// ruler asks PER VISIBLE FRAME per repaint, and rebuilding the whole
 /// track layout for each column was a fixed per-tick tax (R12-⑥).
-bool storyboardFrameCached(
+///
+/// B1: a frame no cut owns is a GAP, and playback at a gap draws the
+/// background only — no picture, no fade ([CanvasPlaybackView]'s own
+/// contract) — so there is nothing to prepare and the gap is ready BY
+/// DEFINITION, the same two-kind law the in-cut answer follows. (The
+/// multitrack gap-PARKED preview showing other tracks is the EDITING
+/// path, not playback — this bar answers for playback.)
+bool storyboardFrameReady(
   EditorSessionManager session,
   int globalFrame, {
   List<StoryboardTimelineLayoutEntry>? layout,
 }) {
   for (final entry in layout ?? storyboardActiveTrackLayout(session)) {
     if (globalFrame >= entry.startFrame && globalFrame < entry.endFrame) {
-      return session.isPlaybackFrameCachedForCut(
+      return session.isPlaybackFrameReadyForCut(
         entry.cut,
         globalFrame - entry.startFrame,
       );
     }
   }
-  return false;
+  return true;
 }
 
 /// The layout entry that OWNS [globalFrame] — delegates to the ONE
