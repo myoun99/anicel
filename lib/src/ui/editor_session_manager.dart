@@ -612,8 +612,36 @@ class EditorSessionManager extends ChangeNotifier {
   /// on-demand build (its composites would otherwise grow the cache with
   /// nothing trimming until the next warm run). LRU: what is on screen was
   /// just touched, so it survives its own trim; held clones cover the rest.
-  void enforcePlaybackCacheBudget() =>
-      _playbackCacheBudgetEnforcer.enforce(protect: _playbackProtectedRanges());
+  void enforcePlaybackCacheBudget() => _playbackCacheBudgetEnforcer.enforce(
+    protect: _playbackProtectedRanges(),
+    reservedForDisplayBytes: _editingStackDisplayBytes(),
+  );
+
+  /// What the EDITING canvas needs to keep holding its picture — one
+  /// full-resolution image per layer of the active cut.
+  ///
+  /// 🚨★★ Zero while playing: the composite is the screen then, and a
+  /// reserve here would hold pixels nobody is looking at. Non-zero the rest
+  /// of the time, including a ruler scrub, because since #26 the scrub is
+  /// the editing canvas and these images ARE what it draws.
+  ///
+  /// ⛔An estimate, deliberately: the exact set the stack holds lives in a
+  /// widget, and a budget that had to ask the widget tree what it was
+  /// showing would be a cache reaching into the UI. Layer count times a
+  /// full-res canvas is the same shape the stack allocates, and the
+  /// enforcer clamps it — being wrong high costs warm throughput, being
+  /// wrong low costs the blank the reserve exists to stop.
+  int _editingStackDisplayBytes() {
+    if (playback.isActive) {
+      return 0;
+    }
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return 0;
+    }
+    final size = cut.canvasSize;
+    return cut.layers.length * estimatedImageBytes(size.width, size.height);
+  }
 
   /// What budget eviction must never touch: the full PLAYING playlist while
   /// playback is active (a looping pass must keep every cut warm so the
