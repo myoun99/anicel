@@ -14,6 +14,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 
 /// B1 — WARMING, PROTECTION AND THE BAR REASON OVER ONE NUMBER.
 ///
@@ -181,5 +182,18 @@ void main() {
       );
       expect(s.isPlaybackFrameReadyForCut(activeCut, 5), isTrue);
     });
+  });
+
+  testWidgets('a track gap is ready by definition — playback there draws '
+      'the background and nothing else', (tester) async {
+    final s = session();
+    addTearDown(s.dispose);
+
+    expect(
+      storyboardFrameReady(s, 999, layout: const []),
+      isTrue,
+      reason: 'no cut owns the frame, so there is nothing to prepare — '
+          'the same two-kind law the in-cut answer follows',
+    );
   });
 }
