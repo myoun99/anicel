@@ -205,30 +205,23 @@ class TimelineActionToolbar extends StatelessWidget {
   final Set<TimelineSection> hiddenSections;
   final ValueChanged<TimelineSection>? onToggleSection;
 
-  /// Whether the Add button applies to the active layer's cell: drawing
-  /// kinds keep their old any-cell gate, SE needs an EMPTY cell (covered
-  /// cells edit instead), camera/instruction key/upsert anywhere.
+  /// Whether the Add button has anywhere to go.
+  ///
+  /// 🚨The host answers FIRST, for the same reason Edit Instance does: the
+  /// storyboard rail's standing row is separate state from the cut's
+  /// drawing target (user 2026-07-27), so a row that lives only on that
+  /// rail — the transition row — is invisible to anything reading
+  /// `activeLayer` (⑬, #925's lesson applied to `＋`).
+  ///
+  /// #17 잔여 — everything else is the SESSION's one sentence
+  /// ([EditorSessionManager.canCreateInstance], T25): the switch that
+  /// used to live here did not know the selection rungs and lit the
+  /// button on rows whose dispatch is a documented no-op.
   bool get _canCreateInstance {
-    // ⑬ 유저 2026-08-12: 「스토리보드패널 트랜지션레이어 왜 프레임 추가버튼
-    // 불가능하지?」
-    //
-    // 🚨The host answers FIRST, for the same reason Edit Instance does: the
-    // storyboard rail's standing row is separate state from the cut's drawing
-    // target (user 2026-07-27), so a row that lives only on that rail — the
-    // transition row — is invisible to anything reading `activeLayer`. #925
-    // taught Edit Instance to ask; `＋` was left behind and went on greying
-    // out on the one row the user was standing on.
     if (resolveCanEditInstance?.call() case true) {
       return true;
     }
-    final layer = session.activeLayer;
-    if (layer == null || !session.hasActiveNonNegativeCell) {
-      return false;
-    }
-    return switch (layer.kind) {
-      LayerKind.se => session.canCreateDrawingAtCurrentFrame,
-      _ => true,
-    };
+    return session.canCreateInstance;
   }
 
   /// The one thing about Edit Instance a SESSION cannot answer: the
