@@ -212,6 +212,16 @@ typedef _RowMemoInputs = ({
   // #29: the substrate generation — linked cuts can share Layer
   // instances, so layer identity alone cannot say "same world".
   String substrateGeneration,
+  // THE RESIZE LAW (device report 2026-08-17): the painted rows' request
+  // set — the frame window their painters draw and request substrate
+  // tiles for — is computed FROM this scalar, frozen into the painter at
+  // build time. A viewport that widens must therefore rebuild the row,
+  // or the newly exposed cells stay outside every request set forever:
+  // opening a project in a small window and enlarging it left the new
+  // width's blocks unrendered until a cut round-trip rebuilt the rows.
+  // Zoom steps do not move it (it is a pixel quantity), so the zoom
+  // memo-keep this record exists for is untouched.
+  double viewportMainExtent,
   TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
@@ -361,6 +371,7 @@ class _TimelineFrameRowsScrollBodyState
         a.crossAxisExtent == b.crossAxisExtent &&
         a.projectFrameRate == b.projectFrameRate &&
         a.substrateGeneration == b.substrateGeneration &&
+        a.viewportMainExtent == b.viewportMainExtent &&
         a.exposureStateForLayer == b.exposureStateForLayer &&
         a.frameNameForLayer == b.frameNameForLayer &&
         a.hasCommaDrag == b.hasCommaDrag &&
@@ -540,6 +551,7 @@ class _TimelineFrameRowsScrollBodyState
       crossAxisExtent: widget.metrics.layerRowHeight,
       projectFrameRate: widget.projectFrameRate,
       substrateGeneration: widget.substrateGeneration,
+      viewportMainExtent: widget.viewportMainExtent,
       exposureStateForLayer: widget.exposureStateForLayer,
       frameNameForLayer: widget.frameNameForLayer,
       hasCommaDrag: widget.commaDrag != null,

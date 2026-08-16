@@ -298,8 +298,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// SILENT — the picture disappeared for one frame per layer. The image
   /// this stack held for that very cel the frame before (the
   /// [CanvasLayerImageNode] route) is truth pixels for it, so the active
-  /// slot draws it until the first decode lands — and never after (truth
-  /// always outranks the stand-in; see [_ActiveLayerStandIn.shouldStandInFor]).
+  /// slot draws it until EVERY tile's decode has landed — and dies the
+  /// instant an edit could exist (overlay activity, a new surface
+  /// instance; see [_ActiveLayerStandIn.shouldStandInFor]).
   _ActiveLayerStandIn? _activeStandIn;
 
   @override
@@ -771,15 +772,24 @@ final class _PaintImage extends _PaintNode {
 /// the swap window still open".
 ///
 /// The window opens armed (zero pictures existed at arm time) and the latch
-/// is ONE-WAY: the first paint that finds ANY picture for a committed tile,
-/// an overlay with anything to show, or a different surface kills it for
-/// good. Truth must never be outranked, and a dead stand-in must not come
-/// back — the picture it holds only ages.
+/// is ONE-WAY: it dies for good, never re-arms. What kills it —
+/// - an overlay with anything to show, or a different surface instance,
+///   INSTANTLY (those are the only doors an edit can arrive through);
+/// - EVERY committed tile having a picture (the walk is whole from there).
+///
+/// ⛔Not "the first picture" (device report 2026-08-17, second round): an
+/// any-decode death handed the walk a partially decoded surface, and the
+/// budgets' silence re-appeared as per-tile holes. Holding through the
+/// partial states is sound precisely because the window armed pre-edit —
+/// the held image and the landing decodes are the same committed bytes,
+/// and anything that could make them differ kills the window in the same
+/// paint that shows it.
 ///
 /// Paint-time, not build-time, because decodes land between builds: the
 /// tile cache notifies, the painter repaints, and the very same repaint
-/// must already prefer the truth. A build-time answer would keep serving
-/// the stand-in until some unrelated rebuild came along.
+/// must already answer with the walk once it can draw everything. A
+/// build-time answer would keep serving the stand-in until some unrelated
+/// rebuild came along.
 class _ActiveLayerStandIn {
   _ActiveLayerStandIn({
     required this.frameKey,
@@ -836,15 +846,29 @@ class _ActiveLayerStandIn {
       _dead = true;
       return false;
     }
+    // The window closes when EVERY committed tile has a picture — not on
+    // the first one (device report 2026-08-17, second round: the one-way
+    // any-decode latch handed off after the FIRST landing, and the walk
+    // then showed the budgets' worth and left the rest as holes: "whole
+    // picture blank" had merely become "some tiles blank").
+    //
+    // What keeps the longer hold truthful: this stand-in only ever ARMS
+    // when zero pictures exist — pre-edit, so the held image IS the
+    // committed bytes — and an edit can only arrive through the overlay
+    // or through a commit's new surface instance, both of which kill the
+    // window above INSTANTLY. So every decode that lands while it is open
+    // is a decode of the very pixels already on screen; holding over a
+    // partial set of them changes nothing per-pixel, and the handoff
+    // below swaps to a walk that can draw every coordinate.
     for (final tile in tiles) {
-      if (tileImages.displayImageFor(tile) != null) {
-        // The first picture landed: the surface can speak for itself from
-        // here, and the stand-in must never outrank it.
-        _dead = true;
-        return false;
+      if (tileImages.displayImageFor(tile) == null) {
+        return true;
       }
     }
-    return true;
+    // Every tile can speak for itself now: the walk is whole from here,
+    // and the stand-in must never outlive that.
+    _dead = true;
+    return false;
   }
 }
 
@@ -1390,14 +1414,16 @@ class _LayerStackPainter extends CustomPainter {
                   );
                 } else if (standIn != null &&
                     standIn.shouldStandInFor(activeSurfacePainter!)) {
-                  // The FIRST-ACTIVATION swap frame: the promoted surface
-                  // has zero decoded tile images, so the walk could show
-                  // only its budgets' worth and leave the rest silent —
-                  // the one-frame blank. The held image is the SAME pixels
-                  // the previous frame drew for this cel at the same rect
-                  // with the same sampling, so standing in is seamless;
-                  // the paint-time predicate above hands back to the walk
-                  // the moment any truth exists.
+                  // The FIRST-ACTIVATION swap window: while any of the
+                  // promoted surface's tiles is still undecoded, the walk
+                  // could show only its budgets' worth and leave the rest
+                  // silent — the blank (whole on the swap frame, per-tile
+                  // once the first decodes landed). The held image is the
+                  // SAME pixels the previous frame drew for this cel at
+                  // the same rect with the same sampling, so standing in
+                  // is seamless; the paint-time predicate above hands
+                  // back to the walk once every tile can speak for itself
+                  // — and instantly the moment an edit could exist.
                   if (activeSurfacePainter!.showTransparentBackground) {
                     // Parity with [BitmapSurfacePainter.paintContentInto]'s
                     // own opening block (the merged stack passes false and
