@@ -10,6 +10,7 @@ import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_row_address.dart';
 import '../media/media_asset_drop_target.dart';
+import 'layer_label_controls.dart' show layerMarkColor;
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_editor_policy.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -387,6 +388,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
                   showSeconds: showSeconds,
                   countingBase: projectFrameRate.countingBase,
                   axis: axis,
+                  // The label's GROUND (the text law, 2026-08-17): an
+                  // unworked block is the 43%-alpha paper over the row's
+                  // underlay, and its number flips to the light ink there.
+                  celContent: celContent,
+                  backdropColor: Theme.of(context).colorScheme.surface,
                 )
               : null,
           // Instruction-carrying rows have no timeline entries — their events
@@ -456,6 +462,10 @@ class TimelineFrameCellsRow extends StatelessWidget {
               resolver: chromeResolver,
               geometry: geometry,
               axis: axis,
+              // The grips sit on THIS row's blocks, and the blocks are the
+              // layer's color label (⑲) — so a purple row's bars go black
+              // by the same ground law its numbers follow.
+              gripGround: layerMarkColor(layer.mark),
               // The row closes its LayerId into the identity-free grip
               // hooks — the chrome layer serves cut rows too now, and a
               // grip drag is the same gesture on both.

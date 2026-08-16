@@ -664,12 +664,12 @@ class TimelineRowCellsPainter extends CustomPainter {
   /// The glyph's resolved text style (ink + the bold rule) — the shared
   /// glyph cache and the tile emitter's bake key both read this.
   ///
-  /// Deliberately a PLAIN fill (#15's one deviation, unchanged when the
-  /// outline rule became the self-inverting rule on 2026-08-17): the tile
-  /// emitter bakes cell glyphs as single-tint A8 coverage, which carries
-  /// one flat color and no blend, and special-casing only the classic pass
-  /// would break the classic↔tile swap parity. These glyphs sit on the
-  /// near-white paper blocks, where the plain ink already reads.
+  /// Deliberately a PLAIN fill (#15's one deviation, unchanged through the
+  /// difference-blend round and its ground-law successor, 2026-08-17): the
+  /// tile emitter bakes cell glyphs as single-tint A8 coverage, which
+  /// carries one flat color and no blend, and special-casing only the
+  /// classic pass would break the classic↔tile swap parity. These glyphs
+  /// sit INSIDE the paper blocks, where this ink already reads.
   TextStyle glyphStyleFor(TimelineRowCellModel model) {
     final isEmptyX = model.exposureState == TimelineCellExposureState.uncovered;
     return baseTextStyle.copyWith(

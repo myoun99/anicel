@@ -402,10 +402,11 @@ class StoryboardCutBlocksPainter extends CustomPainter {
 
   // The CELLS' writing convention on every cut-block label too (user
   // 2026-07-29, "cut blocks and storyboard blocks read as one"): panel ink
-  // carried by the shared self-inverting fill (2026-08-17, the outline's
-  // successor) — one rule on any ground, band or picture, in place of
-  // scrims and per-surface colours. The styles' colors are layout/cache
-  // identity; the paint is the difference blend.
+  // carried by the shared GROUND LAW (2026-08-17, the difference blend's
+  // successor) — one solid, black or white by the luminance of the fill
+  // each label sits on, in place of scrims, halos and per-surface colours.
+  // The styles' colors are layout/cache identity; the paint resolves the
+  // real ink through [paintTimelineGlyphOnGround].
   TextStyle get _titleStyle => _labelStyle.copyWith(
     color: timelineDrawingInkColor,
     fontWeight: FontWeight.bold,
@@ -420,6 +421,32 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     // R27 #3: bold — the readout was too easy to miss.
     fontWeight: FontWeight.w700,
   );
+
+  /// The BANDS' composited fill — the ground their writing sits on. Bands
+  /// wear the range tint whenever the block is range-selected (folded
+  /// blocks tint whole, unfolded ones tint exactly the bands), so this is
+  /// one expression of the same fills [_paintBlock] lays down.
+  Color _bandGround(StoryboardCutBlockVisual block) =>
+      storyboardCutBlockBackgroundColor(
+        colorScheme,
+        active: block.isActive,
+        hovered: block.isHovered,
+        rangeSelected: block.isRangeSelected,
+      );
+
+  /// The STRIP's underlay — the ground for writing that rides the picture
+  /// area (panel names and commas, the folded block's labels). A range
+  /// selection only reaches the strip when the bands folded (design: the
+  /// selection colours what is NOT the picture). The thumbnails above it
+  /// are unknowable pixels; the deterministic plate beneath them (also the
+  /// pending placeholder's shade) is the honest ground.
+  Color _stripGround(StoryboardCutBlockVisual block) =>
+      storyboardCutBlockBackgroundColor(
+        colorScheme,
+        active: block.isActive,
+        hovered: block.isHovered,
+        rangeSelected: block.isRangeSelected && block.bandsFolded,
+      );
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -502,9 +529,10 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     }
     if (block.bandsFolded) {
       // FOLDED: nowhere to put the writing but over the picture — the
-      // shared self-inverting fill keeps it readable there, exactly as it
-      // does on every panel cell (the scrim this replaced was a second
-      // answer to the same question).
+      // shared ground law keeps it readable there against the strip's
+      // plate, exactly as it does on every panel cell (the scrim this
+      // replaced was a second answer to the same question).
+      final ground = _stripGround(block);
       canvas.save();
       canvas.clipRect(inner);
       _paintAnchoredLabel(
@@ -515,6 +543,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
         anchor: inner.topLeft,
         alignRight: false,
         alignBottom: false,
+        ground: ground,
       );
       final total = block.total;
       if (total != null) {
@@ -526,6 +555,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
           anchor: inner.bottomRight,
           alignRight: true,
           alignBottom: true,
+          ground: ground,
         );
       }
       canvas.restore();
@@ -537,6 +567,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     // bottom band's right end: the conte sheet's CUT and TIME columns sit
     // outside the picture cell exactly this way, one above and one below,
     // and this is that sheet turned on its side.
+    final bandGround = _bandGround(block);
     canvas.save();
     canvas.clipRect(block.topBand);
     _paintBandText(
@@ -545,6 +576,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       style: _titleStyle,
       band: block.topBand,
       alignRight: false,
+      ground: bandGround,
     );
     canvas.restore();
 
@@ -557,6 +589,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
         style: _emptyLayerStyle,
         band: block.bottomBand,
         alignRight: false,
+        ground: bandGround,
       );
     }
     final total = block.total;
@@ -567,6 +600,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
         style: _totalStyle,
         band: block.bottomBand,
         alignRight: true,
+        ground: bandGround,
       );
     }
     canvas.restore();
@@ -578,6 +612,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     required TextStyle style,
     required Rect band,
     required bool alignRight,
+    required Color ground,
   }) {
     if (text.isEmpty || band.width <= 0) {
       return;
@@ -587,17 +622,18 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     final dx = alignRight
         ? band.right - _padding - glyph.width
         : band.left + _padding;
-    paintTimelineInvertingGlyph(
+    paintTimelineGlyphOnGround(
       canvas,
       Offset(dx, band.top + (band.height - glyph.height) / 2),
       text,
       style,
+      ground: ground,
       maxWidth: maxWidth,
     );
   }
 
-  /// A corner-anchored self-inverting label — the folded block's writing
-  /// (and nothing else's: band text centres itself vertically instead).
+  /// A corner-anchored ground-law label — the folded block's writing (and
+  /// nothing else's: band text centres itself vertically instead).
   void _paintAnchoredLabel(
     Canvas canvas, {
     required String text,
@@ -606,6 +642,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     required Offset anchor,
     required bool alignRight,
     required bool alignBottom,
+    required Color ground,
   }) {
     if (text.isEmpty || maxWidth <= 0) {
       return;
@@ -613,11 +650,12 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     final glyph = timelineGlyphPainter(text, style, maxWidth: maxWidth);
     final left = alignRight ? anchor.dx - glyph.width : anchor.dx;
     final top = alignBottom ? anchor.dy - glyph.height : anchor.dy;
-    paintTimelineInvertingGlyph(
+    paintTimelineGlyphOnGround(
       canvas,
       Offset(left, top),
       text,
       style,
+      ground: ground,
       maxWidth: maxWidth,
     );
   }
@@ -689,10 +727,9 @@ class StoryboardCutBlocksPainter extends CustomPainter {
 
   /// A panel's own writing (#15, the timeline row's conventions carried
   /// over): the frame NAME centred in the panel's first frame cell, the
-  /// COMMA COUNT bottom-centred in its last — both self-inverting, so they
-  /// read over the picture pixel-by-pixel. Folded bands omit all of it
-  /// (the caller's gate): folding that far means watching the cuts, not
-  /// the panels.
+  /// COMMA COUNT bottom-centred in its last — both through the ground law,
+  /// against the strip's plate. Folded bands omit all of it (the caller's
+  /// gate): folding that far means watching the cuts, not the panels.
   void _paintPanelWriting(
     Canvas canvas,
     StoryboardCutBlockVisual block,
@@ -719,11 +756,12 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       // thumbnail-display writing sits where the sheet's cut number does,
       // not centred the way block-display glyphs are — the two thumbnail
       // surfaces read as one.
-      paintTimelineInvertingGlyph(
+      paintTimelineGlyphOnGround(
         canvas,
         Offset(slot.left + _padding / 2, slot.top + 1),
         name,
         nameStyle,
+        ground: _stripGround(block),
       );
     }
     final comma = block.cellCommaLabels[index];
@@ -742,7 +780,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       // run label's anchor, in the panel's own coordinates (the slot's
       // edges ARE the cell edges: panels tile the strip).
       final lastCellCentre = slot.right - _cellExtent / 2;
-      paintTimelineInvertingGlyph(
+      paintTimelineGlyphOnGround(
         canvas,
         Offset(
           lastCellCentre - glyph.width / 2,
@@ -750,6 +788,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
         ),
         comma,
         commaStyle,
+        ground: _stripGround(block),
       );
     }
   }

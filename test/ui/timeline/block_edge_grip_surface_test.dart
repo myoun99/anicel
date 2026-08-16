@@ -8,21 +8,26 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerMarkColor;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart';
 
 import 'timeline_row_chrome_probe.dart';
 
-/// An edge has two inks, and which one it takes is decided by what it sits
-/// ON, not by the theme (feedback #11): the timeline's blocks are near-white
-/// paper in every theme, while the storyboard strip is the cut block, which
-/// follows the theme and goes dark.
+/// An edge's ink is decided by the COLOR it sits on, not by the theme
+/// (feedback #11 gave it two inks by surface; 2026-08-17 unified the pick
+/// with the block text's ground law): a paper block — the purple paper
+/// included — takes the black bar, the dark cut-block plate takes the
+/// white one, and no bar wears an outline anywhere.
 const _trackId = TrackId('ink-track');
 
 Project _project() => Project(
@@ -61,50 +66,66 @@ Project _project() => Project(
 );
 
 void main() {
-  group('the bar has two inks', () {
-    test('a dark surface takes the LIGHT ink, a light one the dark ink', () {
+  group('the bar\'s ink is the ground law\'s pick', () {
+    test('a dark ground takes the LIGHT ink, a light one the dark ink', () {
       final onPaper = blockEdgeGripBarColor(BlockEdgeGripInk.rest);
-      final onLane = blockEdgeGripBarColor(
+      final onPlate = blockEdgeGripBarColor(
         BlockEdgeGripInk.rest,
-        surface: Brightness.dark,
+        ground: AppColors.washUp,
       );
 
-      expect(onPaper, isNot(onLane));
-      expect(onPaper.r, timelineDrawingInkColor.r);
-      expect(onLane.r, timelineLaneInkColor.r);
+      expect(onPaper, isNot(onPlate));
+      expect(onPaper.withValues(alpha: 1), timelineTextOnLightGroundColor);
+      expect(onPlate.withValues(alpha: 1), timelineTextOnDarkGroundColor);
       // The light bar is genuinely lighter, which is the whole point: the
       // near-black one vanished against a dark cut block.
       expect(
-        onLane.computeLuminance(),
+        onPlate.computeLuminance(),
         greaterThan(onPaper.computeLuminance()),
       );
     });
 
-    test('the timeline\'s own pixels do not move — paper is the default', () {
-      expect(
-        blockEdgeGripBarColor(BlockEdgeGripInk.rest),
-        timelineDrawingInkColor.withValues(alpha: 0.38),
+    test('the PURPLE paper takes the dark bar — the same pick its numbers '
+        'make, one law for text and edges', () {
+      final onPurple = blockEdgeGripBarColor(
+        BlockEdgeGripInk.rest,
+        ground: layerMarkColor(LayerMark.purple),
       );
+      expect(onPurple.withValues(alpha: 1), timelineTextOnLightGroundColor);
       expect(
-        blockEdgeGripBarColor(BlockEdgeGripInk.hovered),
-        timelineDrawingInkColor.withValues(alpha: 0.95),
+        onPurple,
+        blockEdgeGripBarColor(BlockEdgeGripInk.rest),
+        reason:
+            'purple sits on the same side of the crossover as the plain '
+            'paper, so the bar does not change weight between them',
       );
     });
 
-    test('a LIVE drag keeps the accent on both surfaces — a drag in flight '
+    test('the paper default keeps the dark bar\'s weights', () {
+      expect(
+        blockEdgeGripBarColor(BlockEdgeGripInk.rest),
+        timelineTextOnLightGroundColor.withValues(alpha: 0.38),
+      );
+      expect(
+        blockEdgeGripBarColor(BlockEdgeGripInk.hovered),
+        timelineTextOnLightGroundColor.withValues(alpha: 0.95),
+      );
+    });
+
+    test('a LIVE drag keeps the accent on both grounds — a drag in flight '
         'must not change colour with its row', () {
       expect(
         blockEdgeGripBarColor(BlockEdgeGripInk.dragging),
         blockEdgeGripBarColor(
           BlockEdgeGripInk.dragging,
-          surface: Brightness.dark,
+          ground: AppColors.washUp,
         ),
       );
     });
   });
 
-  testWidgets('the storyboard strip asks for the THEME\'s brightness while '
-      'the timeline row stays on paper', (tester) async {
+  testWidgets('the storyboard strip hands its grips the cut-block plate '
+      'while the timeline row hands them its layer\'s paper', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1500, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -115,10 +136,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // The cut-internal timeline's storyboard row: paper, whatever the theme.
+    // The cut-internal timeline's storyboard row: its own (unmarked) paper.
     expect(
-      timelineRowChromePainter(tester, 'cut-1-sb')!.gripSurface,
-      Brightness.light,
+      timelineRowChromePainter(tester, 'cut-1-sb')!.gripGround,
+      layerMarkColor(LayerMark.none),
     );
 
     await tester.tap(
@@ -126,14 +147,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // The strip's grips sit on the cut block, which went dark with the theme.
+    // The strip's grips sit on the cut block's resting plate, which is
+    // dark — so the ground law gives them the light bar there.
     expect(
       timelineRowChromePainter(
         tester,
         _trackId.value,
         prefix: 'storyboard',
-      )!.gripSurface,
-      Brightness.dark,
+      )!.gripGround,
+      AppColors.washUp,
     );
   });
 }

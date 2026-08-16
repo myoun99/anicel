@@ -12,6 +12,7 @@ import '../../models/layer_id.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/timeline_repeat.dart';
 import '../widgets/panel_flyout.dart';
+import 'timeline_cell_style.dart' show timelineDrawingHeldColor;
 import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_geometry.dart';
@@ -386,7 +387,7 @@ class TimelineRowEditChromePainter extends CustomPainter {
     required this.hoveredId,
     required this.operatingId,
     required this.draggingGripId,
-    this.gripSurface = Brightness.light,
+    this.gripGround = timelineDrawingHeldColor,
   }) : super(repaint: geometry);
 
   final TimelineRowChromeResolver resolver;
@@ -409,9 +410,10 @@ class TimelineRowEditChromePainter extends CustomPainter {
   /// The grip currently being comma-dragged.
   final String? draggingGripId;
 
-  /// The brightness of what the grips sit ON (feedback #11) — the paper of
-  /// a timeline row, or the cut block under the storyboard strip.
-  final Brightness gripSurface;
+  /// The color of what the grips sit ON (feedback #11, re-picked by the
+  /// ground law 2026-08-17) — the row's block paper on a timeline row, or
+  /// the cut-block plate under the storyboard strip.
+  final Color gripGround;
 
   /// Every target this row would draw, in hit order — THE probe surface,
   /// the successor of `find.byKey` on the widgets these replaced.
@@ -441,7 +443,7 @@ class TimelineRowEditChromePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final model = this.model;
     for (final span in model.patternSpans) {
-      paintTimelineRunPatternSpan(canvas, span, surface: gripSurface);
+      paintTimelineRunPatternSpan(canvas, span, ground: gripGround);
     }
     final glyphSize = timelineRunClusterGlyphSize(frameCellExtent);
     for (final target in model.targets) {
@@ -455,7 +457,7 @@ class TimelineRowEditChromePainter extends CustomPainter {
                 : target.id == hoveredId
                 ? BlockEdgeGripInk.hovered
                 : BlockEdgeGripInk.rest,
-            surface: gripSurface,
+            ground: gripGround,
           );
         case TimelineRowRunAddTarget():
           paintTimelineRunGlyph(
@@ -496,7 +498,7 @@ class TimelineRowEditChromePainter extends CustomPainter {
       oldDelegate.hoveredId != hoveredId ||
       oldDelegate.operatingId != operatingId ||
       oldDelegate.draggingGripId != draggingGripId ||
-      oldDelegate.gripSurface != gripSurface;
+      oldDelegate.gripGround != gripGround;
 
   @override
   SemanticsBuilderCallback get semanticsBuilder =>
@@ -570,7 +572,7 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
     required this.axis,
     required this.grips,
     required this.runEdit,
-    this.gripSurface = Brightness.light,
+    this.gripGround = timelineDrawingHeldColor,
   });
 
   /// Key placed on the [CustomPaint] itself: tests read the painter (and
@@ -598,11 +600,11 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
   /// Run-edge hooks; null when the row has no run targets.
   final TimelineRunEditCallbacks? runEdit;
 
-  /// The brightness of the surface under the grips (feedback #11). The
-  /// default is the timeline's paper, which is near-white in every theme;
-  /// the storyboard strip passes the theme's, because its cut blocks
-  /// follow it.
-  final Brightness gripSurface;
+  /// The color under the grips (feedback #11, re-picked by the ground law
+  /// 2026-08-17). The default is the timeline's plain paper; a row whose
+  /// blocks wear a color label passes that paper, and the storyboard strip
+  /// passes its cut-block plate.
+  final Color gripGround;
 
   @override
   State<TimelineRowEditChromeLayer> createState() =>
@@ -1035,7 +1037,7 @@ class _TimelineRowEditChromeLayerState
         // R9 #12: pressed reads as engaged from the pointer DOWN, not from
         // the moment the drag recognizer wins.
         draggingGripId: _gripDragging ? _gripTarget?.id : _pressedId,
-        gripSurface: widget.gripSurface,
+        gripGround: widget.gripGround,
       ),
       child: _ChromeHitGate(
         // Off-target pixels belong to the cells: the gate keeps the

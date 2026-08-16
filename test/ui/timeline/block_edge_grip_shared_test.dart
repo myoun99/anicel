@@ -1,10 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
-import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
-    show timelineOutlineWidthFor;
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
@@ -128,7 +128,8 @@ void main() {
     expect(
       barPainter(tester).ink,
       BlockEdgeGripInk.dragging,
-      reason: 'the accent used to wait for the drag to win the arena, which '
+      reason:
+          'the accent used to wait for the drag to win the arena, which '
           'is after the slop — so a press looked like nothing was grabbed',
     );
     expect(began, greaterThanOrEqualTo(0));
@@ -142,14 +143,13 @@ void main() {
     );
   });
 
-  testWidgets('R9 #11: the grip bar wears the OUTLINE the frame names and '
-      'comma counts wear — one outline setting', (tester) async {
+  testWidgets('2026-08-17: the grip bar\'s OUTLINE arm is gone — the bar '
+      'reads by the text\'s own ground law, no white silhouette left on '
+      'any block ("애초에 통일하기로 했잖아")', (tester) async {
     await tester.pumpWidget(harness(hooks: inertHooks()));
     await tester.pumpAndSettle();
 
-    // R10 put the core back to 3.5. R9 #11 widened it to 4.5 believing the
-    // outline ate into the bar, but the stroke rides the bar's OUTER edge
-    // (`barRect.inflate(w / 2)` stroked at `w`), so it only ever adds.
+    // The core geometry did not move with the outline's removal.
     final bar = blockEdgeGripBarRect(
       edge: TimelineBlockEdge.end,
       hitExtent: 12,
@@ -157,25 +157,34 @@ void main() {
       axis: Axis.horizontal,
     );
     expect(bar.width, 3.5);
+
+    // THE edge pin: the drawing source has exactly one arm — the ground-law
+    // fill. A stroke pass or the outline pair coming back is the white
+    // silhouette coming back.
+    final source = File(
+      'lib/src/ui/timeline/timeline_exposure_comma_drag_handle.dart',
+    ).readAsStringSync();
     expect(
-      timelineOutlineWidthFor(bar.shortestSide),
-      timelineOutlineWidthFor(4.5),
-      reason: 'the grips call the glyphs\' own width rule, so a second '
-          'outline setting cannot come into being — and both weights land '
-          'on its 1.0 floor, so nothing sharing the setting moved',
+      source,
+      isNot(contains('PaintingStyle.stroke')),
+      reason: 'no stroke pass in the grip bar painter',
     );
     expect(
-      blockEdgeGripOutlineColor(surface: Brightness.light),
-      isNot(blockEdgeGripBarColor(BlockEdgeGripInk.rest)),
-      reason: 'the outline is the other side of the ink pair, so it reads '
-          'against the core on either surface',
+      source,
+      isNot(contains('blockEdgeGripOutlineColor')),
+      reason: 'the outline ink left with the outline',
     );
     expect(
-      blockEdgeGripOutlineColor(surface: Brightness.dark),
-      isNot(
-        blockEdgeGripOutlineColor(surface: Brightness.light),
-      ),
-      reason: 'the storyboard\'s cut block follows the theme',
+      source,
+      isNot(contains('timelineOutlineWidthFor')),
+      reason: 'the outline width rule has no wearer left',
+    );
+    expect(
+      source,
+      contains('timelineTextOnColor'),
+      reason:
+          'the bar\'s ink is the ground law\'s pick, unified with the '
+          'block text',
     );
   });
 

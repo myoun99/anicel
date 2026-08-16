@@ -16,12 +16,10 @@ import 'timeline_frame_span_layout.dart';
 /// ink (R28 #3) — geometry is constant, so this is the whole visual state.
 enum BlockEdgeGripInk { rest, hovered, dragging }
 
-/// Back to 3.5 (R10). R9 #11 widened it to 4.5 on the theory that the new
-/// outline eats into the bar from both sides, but the outline is STROKED
-/// on the bar's own edge — it adds weight rather than taking it, and 4.5
-/// read as a fat rung across the block. The outline width is unchanged:
-/// [timelineOutlineWidthFor] floors at 1.0, and both 3.5 and 4.5 land
-/// there, so nothing else that shares the setting moves.
+/// Back to 3.5 (R10). R9 #11 widened it to 4.5 on the theory that the
+/// then-outline ate into the bar from both sides, and 4.5 read as a fat
+/// rung across the block either way. The outline itself is gone now
+/// (2026-08-17): the bar reads by the ground law's ink instead.
 const double _gripBarThickness = 3.5;
 const double _gripBarInset = 2.5;
 
@@ -109,67 +107,50 @@ Rect blockEdgeGripBarRect({
 /// Quiet at rest, full on hover, accent while dragging — state carried by
 /// ink ALONE (R28 #3).
 ///
-/// [surface] is the brightness of what the bar sits ON, not the theme's
-/// (feedback #11). The timeline's blocks are fixed near-white paper
-/// whatever the theme, so their grips stay dark; the storyboard strip is
-/// the cut block, which follows the theme and goes dark — and a near-black
-/// bar disappeared there. The accent of a live drag reads on both and is
+/// [ground] is the color of what the bar sits ON, not the theme's
+/// brightness (feedback #11 gave it two inks by surface; 2026-08-17 made
+/// the pick the text's own ground law, [timelineTextOnColor]). A paper
+/// block takes the black bar — the purple paper included — and the dark
+/// cut-block strip takes the white one. The white OUTLINE the bar used to
+/// wear went with the pick ("애초에 통일하기로 했잖아"): the ink already
+/// contrasts with the ground it was chosen against, so a silhouette had
+/// nothing left to say. The accent of a live drag reads on both and is
 /// left alone: a drag in progress must not change colour with its row.
 Color blockEdgeGripBarColor(
   BlockEdgeGripInk ink, {
-  Brightness surface = Brightness.light,
+  Color ground = timelineDrawingHeldColor,
 }) {
   if (ink == BlockEdgeGripInk.dragging) {
     return timelineSelectedFrameBorderColor;
   }
-  final onDark = surface == Brightness.dark;
-  final base = onDark ? timelineLaneInkColor : timelineDrawingInkColor;
+  final base = timelineTextOnColor(ground);
+  final lightBar = base == timelineTextOnDarkGroundColor;
   // A light bar needs more alpha than a dark one to read as the same
   // weight — the same asymmetry [storyboardCutBlockEdgeColor] carries.
   return base.withValues(
     alpha: ink == BlockEdgeGripInk.hovered
-        ? (onDark ? 0.98 : 0.95)
-        : (onDark ? 0.55 : 0.38),
+        ? (lightBar ? 0.98 : 0.95)
+        : (lightBar ? 0.55 : 0.38),
   );
 }
-
-/// The bar's OUTLINE ink (R9 #11): the other side of the pair
-/// [blockEdgeGripBarColor] picks from, so the outline always contrasts
-/// with the core whichever surface the bar sits on.
-Color blockEdgeGripOutlineColor({Brightness surface = Brightness.light}) =>
-    surface == Brightness.dark ? timelineDrawingInkColor : timelineLaneInkColor;
 
 /// Draws one grip bar at [barRect]. THE drawing source, shared by the widget
 /// grip and the dense rows' row-wide chrome painter.
 ///
-/// R9 #11: the bar carries an OUTLINE, because a grip resting quietly on a
-/// busy block was invisible until you found it with the pointer — and the
-/// user needs to see the handles before deciding to reach for one. It was
-/// the SAME outline the frame names and comma counts wore (`#15`) until the
-/// TEXT went self-inverting (2026-08-17) and left the bars as the outline's
-/// last wearer; [timelineOutlineWidthFor] stays one setting for every mark
-/// that still carries one, per the user's rule when #11 was decided.
+/// ⛔No outline arm (2026-08-17). R9 #11 wrapped the bar in the text's
+/// white outline so a resting grip read on a busy block; #1104 took the
+/// text's outline off and the bar kept its — the last white silhouette on
+/// the blocks, which the user called out on device. The ground law is the
+/// visibility answer now, for the bar exactly as for the writing.
 void paintBlockEdgeGripBar(
   Canvas canvas,
   Rect barRect,
   BlockEdgeGripInk ink, {
-  Brightness surface = Brightness.light,
+  Color ground = timelineDrawingHeldColor,
 }) {
-  const radius = Radius.circular(2);
-  final outlineWidth = timelineOutlineWidthFor(barRect.shortestSide);
   canvas.drawRRect(
-    RRect.fromRectAndRadius(
-      barRect.inflate(outlineWidth / 2),
-      const Radius.circular(2 + 1),
-    ),
-    Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = outlineWidth
-      ..color = blockEdgeGripOutlineColor(surface: surface),
-  );
-  canvas.drawRRect(
-    RRect.fromRectAndRadius(barRect, radius),
-    Paint()..color = blockEdgeGripBarColor(ink, surface: surface),
+    RRect.fromRectAndRadius(barRect, const Radius.circular(2)),
+    Paint()..color = blockEdgeGripBarColor(ink, ground: ground),
   );
 }
 

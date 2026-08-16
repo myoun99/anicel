@@ -54,11 +54,37 @@ BoxDecoration get timelineStandingCellDecoration => BoxDecoration(
 /// blocks; the usual light on-surface text would vanish there.
 const Color timelineDrawingInkColor = Color(0xFF26282B);
 
-/// The mirror of [timelineDrawingInkColor] for chrome that sits on a DARK
-/// lane instead of on the paper — the storyboard strip's cut blocks
-/// (feedback #11: "배경이 흰색일경우의 엣지랑 컷블록처럼 배경이 어두울
-/// 때의 엣지"). The near-black bar vanished against them.
-const Color timelineLaneInkColor = Color(0xFFF2F4F6);
+/// THE text-on-ground law (2026-08-17, the difference blend's successor —
+/// device verdict: white ink in [BlendMode.difference] read as navy over
+/// the PURPLE blocks). The blocks are painted by our own code with KNOWN
+/// colors, so the writing simply picks solid BLACK or WHITE by the
+/// luminance of the ground it sits on: crisp glyphs, no halo, no blend.
+const Color timelineTextOnLightGroundColor = Color(0xFF000000);
+const Color timelineTextOnDarkGroundColor = Color(0xFFFFFFFF);
+
+/// The crossover luminance where black's WCAG contrast overtakes white's:
+/// black wins iff (L+0.05)² > 0.05×1.05, i.e. L > √0.0525−0.05 ≈ 0.1791.
+/// Sitting exactly there makes every pick the higher-contrast one by
+/// construction — every layer-mark paper lands BLACK (purple, the reported
+/// regression, is L≈0.22 where white manages only 3.9:1 against black's
+/// 5.4:1), the dark lanes land WHITE (15:1+), and the 43%-alpha empty-cel
+/// blends land WHITE for every colored mark (purple's is L≈0.07, white
+/// 9.0:1) — only the plain paper's blend sits a hair ABOVE the crossover
+/// (L≈0.181), where the two inks are equal anyway (4.6:1 vs 4.5:1).
+const double timelineTextGroundLuminanceCrossover = 0.179;
+
+/// Whether [ground] takes the DARK ink under the law above.
+bool timelineGroundIsLight(Color ground) =>
+    ground.computeLuminance() > timelineTextGroundLuminanceCrossover;
+
+/// The block/코마 writing's ink over [ground] — ONE rule on every surface
+/// (run duration labels, storyboard band text, panel writing, the edge
+/// grip bars). [ground] must be the COMPOSITED color the mark actually
+/// sits on: a translucent paper is blended over its backdrop first
+/// (`computeLuminance` ignores alpha).
+Color timelineTextOnColor(Color ground) => timelineGroundIsLight(ground)
+    ? timelineTextOnLightGroundColor
+    : timelineTextOnDarkGroundColor;
 
 /// R26 #44 / R27 #13: ACTION-section blocks whose cel holds NO picture
 /// yet read as the paper at LOW OPACITY — the user's ask ("흰색에서 그냥
@@ -120,18 +146,12 @@ double timelineFittedGlyphFontSize(
   return main < cross ? main : cross;
 }
 
-/// THE outline width rule (#15, extended by R9 #11): proportional to the
-/// mark's own weight, so the floor-sized marks are not swallowed by their
-/// own outline.
-///
-/// [markWeight] is the mark's weight — a grip bar's thickness since the
-/// TEXT stopped wearing outlines (2026-08-17, the self-inverting fill; it
-/// used to be a glyph's font size too). The grips took this same function
-/// rather than growing an outline setting of their own — the user's rule
-/// when #11 was decided: "통일화로서야", a second outline setting is new
-/// debt the day it is written.
-double timelineOutlineWidthFor(double markWeight) =>
-    (markWeight / 4.5).clamp(1.0, 2.0);
+// ⛔The outline width rule is GONE (2026-08-17, with the outline itself).
+// #15 dressed the block text in a white stroke, #1104 took the text's off,
+// and the grip bars were its last wearer — until the user called the white
+// silhouette out on device ("애초에 통일하기로 했잖아"): every mark on a
+// block now reads through [timelineTextOnColor], and nothing wears an
+// outline that could need a width.
 
 /// The plain grid's border ink — FLAT faint (UI-R18 #8: the zoom fade is
 /// gone; density is handled by [timelineGridLineEveryFrames]).

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
 import '../../models/layer.dart';
+import '../theme/app_theme.dart' show AppColors;
+import 'layer_label_controls.dart' show layerMarkColor;
+import 'timeline_cel_content_source.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_range_policy.dart' show timelineDurationLabel;
@@ -66,9 +69,31 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
     required this.showSeconds,
     required this.countingBase,
     this.axis = Axis.horizontal,
-  }) : super(repaint: geometry);
+    this.celContent,
+    this.backdropColor = AppColors.surface,
+  }) : super(repaint: Listenable.merge([geometry, ?celContent?.revision]));
 
   final Layer layer;
+
+  /// The unworked-block tint's source (R26 #44), shared with the cells
+  /// painter: a block whose cel holds no picture is the 43%-alpha paper
+  /// over [backdropColor], and its label's GROUND is that blend — over the
+  /// dark lane it lands on the light-ink side of [timelineTextOnColor]
+  /// where the opaque paper takes the dark one. Null = every block reads
+  /// as full paper (rows the tint never applies to).
+  final TimelineCelContentSource? celContent;
+
+  /// What an empty-cel block's translucent paper composites over — the
+  /// row's underlay (`colorScheme.surface` in production).
+  final Color backdropColor;
+
+  /// Read LIVE like the cells painter's: the row repaints on a revision
+  /// bump rather than rebuilding, so a captured value would hold
+  /// yesterday's tint forever.
+  int get celContentRevision => celContent?.revision.value ?? 0;
+
+  bool Function(Layer layer, int frameIndex)? get celHasContent =>
+      celContent?.hasContent;
 
   /// The LIVE frame-axis geometry (R28 #4): a zoom step repaints this
   /// painter rather than rebuilding the row that built it.
@@ -88,9 +113,9 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
   /// The resolved label style — public so the bold/scale contract stays
   /// assertable now that there is no `Text` widget to read it off.
   ///
-  /// The COLOR is layout/cache identity only: paint() draws the label as
-  /// self-inverting ink ([paintTimelineInvertingGlyph]), whose white
-  /// difference fill supersedes any style color.
+  /// The COLOR is layout/cache identity only: paint() draws the label
+  /// through the ground law ([paintTimelineGlyphOnGround]), whose resolved
+  /// black/white solid supersedes any style color.
   TextStyle get labelStyle => TextStyle(
     fontSize: timelineFittedGlyphFontSize(
       9,
@@ -142,6 +167,19 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
     return labels;
   }
 
+  /// The COMPOSITED color under the block's label — THE ground the text
+  /// law reads ([timelineTextOnColor]). A worked block is its layer's
+  /// paper (⑲: the color label); an unworked one is that paper at the
+  /// empty-cel alpha over the row's backdrop, blended here because
+  /// luminance is a property of the pixels, not of a translucent color.
+  Color groundForBlockAt(int startIndex) {
+    final paper = layerMarkColor(layer.mark);
+    if (celContent?.hasContent(layer, startIndex) ?? true) {
+      return paper;
+    }
+    return Color.alphaBlend(timelineEmptyCelPaperColor(paper), backdropColor);
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     final style = labelStyle;
@@ -169,13 +207,18 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
               crossAxisExtent - glyph.width - 1,
               label.anchor.dy - glyph.height / 2,
             );
-      // Self-inverting (2026-08-17, one rule on every surface — the #15
-      // outline replaced): a single white fill in BlendMode.difference
-      // flips pixel-by-pixel against the block beneath, dark on the
-      // near-white paper, light over dark lanes. This painter rides the
-      // cells painter as its FOREGROUND pass, so the blocks are already
-      // in this raster when the number lands.
-      paintTimelineInvertingGlyph(canvas, offset, label.text, style);
+      // The ground law (2026-08-17, one rule on every surface — the
+      // difference blend replaced after it read navy on purple blocks):
+      // solid black or white by the luminance of the block this label
+      // sits on, which this painter KNOWS — the same layer paper the
+      // cells painter fills beneath it.
+      paintTimelineGlyphOnGround(
+        canvas,
+        offset,
+        label.text,
+        style,
+        ground: groundForBlockAt(label.startIndex),
+      );
       canvas.restore();
     }
   }
@@ -187,7 +230,13 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
       oldDelegate.crossAxisExtent != crossAxisExtent ||
       oldDelegate.showSeconds != showSeconds ||
       oldDelegate.countingBase != countingBase ||
-      oldDelegate.axis != axis;
+      oldDelegate.axis != axis ||
+      // Value-compared like the cells painter's: the tear-off bundle is a
+      // fresh-but-equal object per build, but a moved REVISION is a moved
+      // ground (the empty-cel blend) and must repaint the label's ink.
+      oldDelegate.celHasContent != celHasContent ||
+      oldDelegate.celContentRevision != celContentRevision ||
+      oldDelegate.backdropColor != backdropColor;
 
   @override
   SemanticsBuilderCallback get semanticsBuilder => (size) {
