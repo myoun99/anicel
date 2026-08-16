@@ -17,13 +17,45 @@ class CreateCutCommand implements Command {
     required LayerId layerId,
     required String name,
     this.index,
+    // #18 — a gap landing walks INTO the gap: the distance from the
+    // gap's start becomes the new cut's own leading gap, and a range
+    // landing names its own duration. Both ride the SAME absorption
+    // arithmetic below (#19): the footprint is leadingGap + duration
+    // either way.
+    int leadingGapFrames = 0,
+    int? duration,
     CanvasSize canvasSize = defaultCutCanvasSize,
-  }) : cut = createDefaultCut(
+  }) : cut = _plannedCut(
          cutId: cutId,
          name: name,
          layerId: layerId,
          canvasSize: canvasSize,
+         leadingGapFrames: leadingGapFrames,
+         duration: duration,
        );
+
+  static Cut _plannedCut({
+    required CutId cutId,
+    required String name,
+    required LayerId layerId,
+    required CanvasSize canvasSize,
+    required int leadingGapFrames,
+    required int? duration,
+  }) {
+    final base = createDefaultCut(
+      cutId: cutId,
+      name: name,
+      layerId: layerId,
+      canvasSize: canvasSize,
+    );
+    if (leadingGapFrames == 0 && duration == null) {
+      return base;
+    }
+    return base.copyWith(
+      leadingGapFrames: leadingGapFrames,
+      duration: duration ?? base.duration,
+    );
+  }
 
   final ProjectRepository repository;
   final EditingSessionState editingSession;
@@ -85,10 +117,15 @@ class CreateCutCommand implements Command {
 
   @override
   void undo() {
-    final previousActiveCutId = _previousActiveCutId;
-    if (!_hasExecuted || previousActiveCutId == null) {
+    // ⛔Executed-ness is the ONLY guard: a null previous active cut is a
+    // legitimate recorded state, not a not-run marker — creation from a
+    // GAP PARKING (no cut is active there, #18) and the project's very
+    // first cut both start from null, and treating null as "never ran"
+    // made their undo throw.
+    if (!_hasExecuted) {
       throw StateError('Command has not been executed.');
     }
+    final previousActiveCutId = _previousActiveCutId;
 
     repository.removeCut(cutId: cut.id);
     // ⛔The gap goes back BEFORE the active cut does, and it goes back to the

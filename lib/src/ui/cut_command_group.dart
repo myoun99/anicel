@@ -216,6 +216,17 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
       ),
       children: [
         const PillDivider(),
+        // #18 — the button reads the SAME sentence the verb runs on
+        // ([EditorSessionManager.cutCreationPlan], the T25 law). The bare
+        // tear-off before this could never go null, so the button lit in
+        // exactly the states where pressing it did something other than
+        // it promised — a gap press appended at the track's end, and the
+        // frame buttons lit for that far-away cut. (Comment sits ABOVE
+        // the button, and names the add glyph only in prose: the ＋-accent
+        // source contract reads a ±320-char window around the glyph
+        // constant — prose between it and its `accent:` pushes the answer
+        // out of the window, and the constant's literal name inside a
+        // comment is a match of its own.)
         StrapIconButton(
           buttonKey: 'new-cut-button',
           menuKey: 'new-cut-menu',
@@ -224,7 +235,7 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
           // the same glyph (유저 확정).
           icon: Icons.add,
           tooltip: AppText.strings.cutNewCut,
-          onPressed: session.createCut,
+          onPressed: session.canCreateCut ? session.createCut : null,
           entriesBuilder: _addEntries,
           accent: true,
         ),
