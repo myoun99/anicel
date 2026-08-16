@@ -47,11 +47,22 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 ///
 /// THE LAW: the active slot draws the held image of step 1 — truth pixels
 /// for exactly this cel, drawn at the same rect with the same sampling as
-/// the frame before, so the handoff has no seam — while ZERO decoded tile
-/// images exist for the promoted surface. That predicate is precisely the
-/// first-activation frame, and it is checked at PAINT time: the moment ANY
-/// picture exists the walk takes over, so the stand-in can never outrank
-/// truth (the third test pins that with an edit).
+/// the frame before, so the handoff has no seam — and KEEPS drawing it
+/// until EVERY tile of the promoted surface has a picture (device report
+/// 2026-08-17, second round: the one-way latch died on the FIRST decode,
+/// which re-exposed every not-yet-decoded tile as a hole — "whole picture
+/// blank" had merely become "some tiles blank"). The swap frame and every
+/// frame after it, until the decodes complete, must be whole.
+///
+/// What keeps the longer hold truthful: the stand-in only ever ARMS when
+/// zero pictures exist (pre-edit, so held pixels == committed bytes), and
+/// it dies INSTANTLY on any overlay activity or surface identity change —
+/// the only doors an edit can arrive through. So every decode that lands
+/// inside the window is a decode of the very bytes the held image already
+/// shows; a decode that could disagree cannot exist in the window. The
+/// second test pins the arming side of that: with ANY decoded picture
+/// present at arm time the stand-in never arms, and the walk's decoded
+/// truth shows.
 ///
 /// The magenta oracle (MeasurementMode.showUnpaintedTiles) fills exactly
 /// the coordinates the painter could not draw.
@@ -156,6 +167,14 @@ void main() {
                 canvasSize: canvasSize,
                 viewport: CanvasViewport(),
                 activeSurfacePainter: activeSurfacePainter,
+                // The LAW under test is what the paint BODY draws on each
+                // frame. The kept composite buffer can only blit or patch
+                // what some body run produced — and between cache
+                // notifications (post-frame coalesced, so they never fire
+                // under a direct painter.paint) it happily re-serves
+                // yesterday's whole picture, hiding exactly the mid-decode
+                // frames these tests exist to pin.
+                debugDisableBake: true,
               ),
             ),
           ),
@@ -325,29 +344,40 @@ void main() {
     }
 
     // ---- decodes land (they MUST have been started by the stand-in
-    // frame — the walk that normally starts them was covered) ------------
-    await tester.runAsync(() async {
-      final deadline = DateTime.now().add(const Duration(seconds: 10));
-      while (!tileCache.allDecoded(promoted.tiles.values)) {
-        if (DateTime.now().isAfter(deadline)) {
-          fail(
-            'timed out waiting for tile decodes — the stand-in frame did '
-            'not start them, so it could never hand off',
-          );
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-      }
-    });
-
-    // ---- the handoff: same pixels from the surface\'s own tiles --------
-    final second = await paintStack(tester, size);
-    expect(unpaintedTileCount(second, size.width.toInt(), tileCount), 0);
-    for (var tile = 0; tile < tileCount; tile += 1) {
+    // frame — the walk that normally starts them was covered), and EVERY
+    // frame on the way is whole: partial decode states hold the stand-in
+    // (the one-way latch used to die on the first decode and re-expose
+    // the rest as holes) ------------------------------------------------
+    final deadline = DateTime.now().add(const Duration(seconds: 10));
+    var frame = 0;
+    while (true) {
+      final done = tileCache.allDecoded(promoted.tiles.values);
+      final pixels = await paintStack(tester, size);
       expect(
-        blueAt(second, size.width.toInt(), tile * tileSize + 8, 8),
-        isTrue,
-        reason: 'tile $tile after handoff — no seam, same pixel source',
+        unpaintedTileCount(pixels, size.width.toInt(), tileCount),
+        0,
+        reason: 'mid-decode frame $frame must be whole',
       );
+      for (var tile = 0; tile < tileCount; tile += 1) {
+        expect(
+          blueAt(pixels, size.width.toInt(), tile * tileSize + 8, 8),
+          isTrue,
+          reason: 'tile $tile shows truth pixels on mid-decode frame $frame',
+        );
+      }
+      if (done) {
+        break;
+      }
+      if (DateTime.now().isAfter(deadline)) {
+        fail(
+          'timed out waiting for tile decodes — the stand-in frames did '
+          'not start them, so the hold could never hand off',
+        );
+      }
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 5)),
+      );
+      frame += 1;
     }
 
     // ---- why it never happens again for this layer ----------------------
@@ -364,6 +394,159 @@ void main() {
           '...whose tile objects still hold their decoded images — the '
           'first paint after a re-activation is whole',
     );
+  });
+
+  testWidgets('Skia shape, mid-decode: with the cel past every budget '
+      '(150 tiles, decode starts capped at 32 per paint) the frames BETWEEN '
+      'the first decode landing and the last are still WHOLE — the latch '
+      'holds until ALL tiles have pictures', (tester) async {
+    // Enough tiles that the paints BEFORE the mid-decode probe (the mount
+    // pump's tree paint, the explicit swap-frame paint, plus margin)
+    // cannot have STARTED them all: unstarted tiles cannot decode, so the
+    // partial state below is guaranteed rather than raced-for.
+    const tileCount = 150;
+    expect(
+      tileCount,
+      greaterThan(4 * BitmapSurfacePainter.decodeStartBudget),
+      reason: 'the fixture must not fit the pre-probe decode-start rounds, '
+          'or the partial state this test exists for never occurs',
+    );
+    final canvasSize = CanvasSize(
+      width: tileCount * tileSize,
+      height: tileSize,
+    );
+    final size = Size(
+      canvasSize.width.toDouble(),
+      canvasSize.height.toDouble(),
+    );
+    final store = openShapedStore(drawnSurface(tileCount));
+
+    final imageCache = LayerFrameImageCache(frameStore: store);
+    final prepared = await tester.runAsync(
+      () => imageCache.prepare(
+        key: key,
+        canvasSize: canvasSize,
+        quality: PlaybackQuality.full,
+      ),
+    );
+    expect(prepared, isNotNull);
+
+    await pumpStack(
+      tester,
+      nodes: const [
+        CanvasLayerImageNode(
+          CanvasLayerImageRequest(frameKey: key, opacity: 1),
+        ),
+      ],
+      imageCache: imageCache,
+      canvasSize: canvasSize,
+    );
+
+    final promoted = store.bakedSurfaceOrNull(key)!;
+    final tileCache = BitmapTileImageCache();
+    final painter = BitmapSurfacePainter(
+      surface: promoted,
+      showTransparentBackground: false,
+      staleScope: 'cel-under-test',
+      tileImageCache: tileCache,
+    );
+    await pumpStack(
+      tester,
+      nodes: const [CanvasActiveLayerNode(opacity: 1, frameKey: key)],
+      imageCache: imageCache,
+      canvasSize: canvasSize,
+      activeSurfacePainter: painter,
+    );
+
+    // The swap frame: whole, and its stand-in paint starts the first
+    // decode round (capped at the budget — the rest have not even begun).
+    final first = await paintStack(tester, size);
+    expect(unpaintedTileCount(first, size.width.toInt(), tileCount), 0);
+
+    // Wait for at least one decode to LAND. All tiles cannot be decoded
+    // yet: only [decodeStartBudget] starts exist, and starting the rest
+    // takes another paint, which this test controls.
+    await tester.runAsync(() async {
+      final deadline = DateTime.now().add(const Duration(seconds: 10));
+      while (!promoted.tiles.values.any(
+        (tile) => tileCache.imageFor(tile) != null,
+      )) {
+        if (DateTime.now().isAfter(deadline)) {
+          fail('timed out waiting for the first decode');
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+    });
+    expect(
+      tileCache.allDecoded(promoted.tiles.values),
+      isFalse,
+      reason: 'sanity: this IS the partial state — decodes landed, but '
+          'tiles past the start budget cannot have',
+    );
+
+    // THE frame this test exists for: some tiles decoded, some not. The
+    // one-way latch died right here — the walk drew the decoded few plus
+    // the per-pixel budget and left the rest as holes ("some tiles
+    // blank", the device's second report).
+    final mid = await paintStack(tester, size);
+    expect(
+      unpaintedTileCount(mid, size.width.toInt(), tileCount),
+      0,
+      reason:
+          'the mid-decode frame must be whole: the stand-in holds until '
+          'EVERY tile has a picture, not until the first one does',
+    );
+    for (var tile = 0; tile < tileCount; tile += 1) {
+      expect(
+        blueAt(mid, size.width.toInt(), tile * tileSize + 8, 8),
+        isTrue,
+        reason: 'tile $tile shows truth pixels on the mid-decode frame',
+      );
+    }
+
+    // And every frame from here to convergence: each stand-in paint
+    // starts the next decode round, so the hold drains itself and hands
+    // off whole.
+    final deadline = DateTime.now().add(const Duration(seconds: 10));
+    var frame = 0;
+    while (true) {
+      final done = tileCache.allDecoded(promoted.tiles.values);
+      final pixels = await paintStack(tester, size);
+      expect(
+        unpaintedTileCount(pixels, size.width.toInt(), tileCount),
+        0,
+        reason: 'convergence frame $frame must be whole',
+      );
+      if (done) {
+        break;
+      }
+      if (DateTime.now().isAfter(deadline)) {
+        final decoded = promoted.tiles.values
+            .where((tile) => tileCache.imageFor(tile) != null)
+            .length;
+        final starts = promoted.tiles.values
+            .where((tile) => tileCache.needsDecodeStart(tile))
+            .length;
+        fail(
+          'timed out converging the decodes under the hold '
+          '(decoded $decoded/$tileCount, needsDecodeStart $starts)',
+        );
+      }
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 5)),
+      );
+      frame += 1;
+    }
+    // The handoff frame drew the walk: every pixel from the tiles' own
+    // decoded images.
+    final after = await paintStack(tester, size);
+    for (var tile = 0; tile < tileCount; tile += 1) {
+      expect(
+        blueAt(after, size.width.toInt(), tile * tileSize + 8, 8),
+        isTrue,
+        reason: 'tile $tile after handoff — no seam, same pixel source',
+      );
+    }
   });
 
   testWidgets('the stand-in never outranks truth: with ANY decoded tile image '
@@ -532,5 +715,36 @@ void main() {
       blueAt(first, size.width.toInt(), (tileCount - 1) * tileSize + 8, 8),
       isTrue,
     );
+
+    // Every frame until the decodes complete is whole on this renderer
+    // shape too — the hold owes nothing to the sync-upload budget either.
+    final deadline = DateTime.now().add(const Duration(seconds: 10));
+    var frame = 0;
+    while (true) {
+      final done = tileCache.allDecoded(promoted.tiles.values);
+      final pixels = await paintStack(tester, size);
+      expect(
+        unpaintedTileCount(pixels, size.width.toInt(), tileCount),
+        0,
+        reason: 'mid-decode frame $frame must be whole',
+      );
+      for (var tile = 0; tile < tileCount; tile += 1) {
+        expect(
+          blueAt(pixels, size.width.toInt(), tile * tileSize + 8, 8),
+          isTrue,
+          reason: 'tile $tile shows truth pixels on mid-decode frame $frame',
+        );
+      }
+      if (done) {
+        break;
+      }
+      if (DateTime.now().isAfter(deadline)) {
+        fail('timed out waiting for tile decodes under the hold');
+      }
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 5)),
+      );
+      frame += 1;
+    }
   });
 }
