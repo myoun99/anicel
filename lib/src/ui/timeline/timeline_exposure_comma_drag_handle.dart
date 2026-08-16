@@ -144,11 +144,11 @@ Color blockEdgeGripOutlineColor({Brightness surface = Brightness.light}) =>
 ///
 /// R9 #11: the bar carries an OUTLINE, because a grip resting quietly on a
 /// busy block was invisible until you found it with the pointer — and the
-/// user needs to see the handles before deciding to reach for one. It is
-/// the SAME outline the frame names and comma counts wear (`#15`), through
-/// the same [timelineOutlineWidthFor]: one outline setting for every mark
-/// the timeline has to keep readable, per the user's rule when #11 was
-/// decided.
+/// user needs to see the handles before deciding to reach for one. It was
+/// the SAME outline the frame names and comma counts wore (`#15`) until the
+/// TEXT went self-inverting (2026-08-17) and left the bars as the outline's
+/// last wearer; [timelineOutlineWidthFor] stays one setting for every mark
+/// that still carries one, per the user's rule when #11 was decided.
 void paintBlockEdgeGripBar(
   Canvas canvas,
   Rect barRect,

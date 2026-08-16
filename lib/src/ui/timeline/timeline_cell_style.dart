@@ -124,10 +124,12 @@ double timelineFittedGlyphFontSize(
 /// mark's own weight, so the floor-sized marks are not swallowed by their
 /// own outline.
 ///
-/// [markWeight] is the glyph's font size, or a bar's thickness. The grips
-/// took this same function rather than growing an outline setting of their
-/// own — the user's rule when #11 was decided: "통일화로서야", a second
-/// outline setting is new debt the day it is written.
+/// [markWeight] is the mark's weight — a grip bar's thickness since the
+/// TEXT stopped wearing outlines (2026-08-17, the self-inverting fill; it
+/// used to be a glyph's font size too). The grips took this same function
+/// rather than growing an outline setting of their own — the user's rule
+/// when #11 was decided: "통일화로서야", a second outline setting is new
+/// debt the day it is written.
 double timelineOutlineWidthFor(double markWeight) =>
     (markWeight / 4.5).clamp(1.0, 2.0);
 

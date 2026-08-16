@@ -87,6 +87,10 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
 
   /// The resolved label style — public so the bold/scale contract stays
   /// assertable now that there is no `Text` widget to read it off.
+  ///
+  /// The COLOR is layout/cache identity only: paint() draws the label as
+  /// self-inverting ink ([paintTimelineInvertingGlyph]), whose white
+  /// difference fill supersedes any style color.
   TextStyle get labelStyle => TextStyle(
     fontSize: timelineFittedGlyphFontSize(
       9,
@@ -165,17 +169,13 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
               crossAxisExtent - glyph.width - 1,
               label.anchor.dy - glyph.height / 2,
             );
-      // Outlined (#15, one rule on every surface): the bright stroke
-      // carries the number over pictures; on the near-white paper here it
-      // sinks in unseen.
-      paintTimelineOutlinedGlyph(
-        canvas,
-        offset,
-        label.text,
-        style,
-        outlineColor: timelineLaneInkColor,
-        outlineWidth: timelineOutlineWidthFor(style.fontSize ?? 9),
-      );
+      // Self-inverting (2026-08-17, one rule on every surface — the #15
+      // outline replaced): a single white fill in BlendMode.difference
+      // flips pixel-by-pixel against the block beneath, dark on the
+      // near-white paper, light over dark lanes. This painter rides the
+      // cells painter as its FOREGROUND pass, so the blocks are already
+      // in this raster when the number lands.
+      paintTimelineInvertingGlyph(canvas, offset, label.text, style);
       canvas.restore();
     }
   }

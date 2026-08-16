@@ -4,8 +4,8 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
 
 /// #15: the fitted glyph size takes BOTH axes ("빡빡한 쪽으로" — whichever
-/// is tighter wins, floor 4.0 kept), and outlined glyph rasters never
-/// share a cache slot with plain ones.
+/// is tighter wins, floor 4.0 kept), and self-inverting glyph rasters
+/// never share a cache slot with plain ones.
 void main() {
   group('timelineFittedGlyphFontSize', () {
     test('wide cells keep the base size — the pre-#15 behaviour', () {
@@ -43,26 +43,16 @@ void main() {
     });
   });
 
-  group('outlined glyphs', () {
-    test('the outline params join the cache key: outlined and plain runs '
+  group('self-inverting glyphs', () {
+    test('the inverting flag joins the cache key: inverting and plain runs '
         'of one string never serve each other\'s raster', () {
       const style = TextStyle(fontSize: 11, color: Color(0xFF26282B));
       final plain = timelineGlyphPainter('24', style);
-      final outlined = timelineGlyphPainter(
-        '24',
-        style,
-        outlineColor: const Color(0xFFF2F4F6),
-        outlineWidth: 2,
-      );
-      final outlinedAgain = timelineGlyphPainter(
-        '24',
-        style,
-        outlineColor: const Color(0xFFF2F4F6),
-        outlineWidth: 2,
-      );
+      final inverting = timelineGlyphPainter('24', style, inverting: true);
+      final invertingAgain = timelineGlyphPainter('24', style, inverting: true);
 
-      expect(identical(plain, outlined), isFalse);
-      expect(identical(outlined, outlinedAgain), isTrue, reason: 'cached');
+      expect(identical(plain, inverting), isFalse);
+      expect(identical(inverting, invertingAgain), isTrue, reason: 'cached');
       expect(
         identical(plain, timelineGlyphPainter('24', style)),
         isTrue,
@@ -70,8 +60,8 @@ void main() {
       );
     });
 
-    test('the outline width scales with the type and never swallows the '
-        'floor-sized marks', () {
+    test('the outline width rule survives for the NON-TEXT marks (the grip '
+        'bars) and never swallows the floor-sized ones', () {
       expect(timelineOutlineWidthFor(9), 2.0);
       expect(timelineOutlineWidthFor(12), 2.0);
       expect(timelineOutlineWidthFor(4), 1.0, reason: 'the 1px floor');

@@ -96,10 +96,11 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
-/// Records every paragraph the painter lays down. An OUTLINED glyph is two
-/// paragraphs at one offset (outline pass + fill pass); a plain one is a
-/// single paragraph — so "two at the same spot" is the outline's
-/// fingerprint, and the offset itself is the anchor contract.
+/// Records every paragraph the painter lays down. A SELF-INVERTING glyph
+/// (2026-08-17, the outline's successor) is exactly ONE paragraph — two
+/// paragraphs at one offset was the retired outline's fingerprint
+/// (stroke pass + fill pass), so "one at the spot, never two" is both the
+/// anchor contract and the outline-gone proof.
 class _ParagraphOffsetSpy implements Canvas {
   final List<Offset> offsets = [];
 
@@ -283,8 +284,8 @@ void main() {
 
   group('#15 R3 — the writing anchors (user 2026-07-29)', () {
     testWidgets('a panel\'s frame name sits at its slot\'s TOP-LEFT — the '
-        'cut block title\'s anchor — and is OUTLINED: two paragraphs share '
-        'the offset', (tester) async {
+        'cut block title\'s anchor — as ONE self-inverting pass: a second '
+        'paragraph at the offset would be the outline back', (tester) async {
       await _pump(
         tester,
         storyboardLayer: _dividedStoryboardLayer('cut-1'),
@@ -303,21 +304,21 @@ void main() {
       );
       expect(
         _paragraphsAt(offsets, (o) => (o - expected).distance < 0.01),
-        greaterThanOrEqualTo(2),
-        reason: 'outline pass + fill pass, one anchor',
+        1,
+        reason: 'one self-inverting fill, no second stroke/outline pass',
       );
     });
 
-    testWidgets('the cut TITLE is outlined too — the cells\' one writing '
-        'rule on every label, no scrim anywhere', (tester) async {
+    testWidgets('the cut TITLE is self-inverting too — the cells\' one '
+        'writing rule on every label, no scrim anywhere', (tester) async {
       await _pump(tester, storyboardLayer: _dividedStoryboardLayer('cut-1'));
       final block = requireCutBlock(tester, 'cut-1');
       final offsets = _paintedParagraphOffsets(tester);
 
       // The title hangs at the top band's left end (padding 4). Its glyph
       // height floats with the theme — a glyph taller than the band
-      // centres a hair ABOVE its top — so the pin is the column plus "two
-      // paragraphs, one offset" in the band's neighbourhood over the strip.
+      // centres a hair ABOVE its top — so the pin is the column plus "one
+      // paragraph, one offset" in the band's neighbourhood over the strip.
       final titleHits = offsets
           .where(
             (o) =>
@@ -325,12 +326,7 @@ void main() {
                 o.dy < block.strip.top,
           )
           .toList();
-      expect(titleHits.length, greaterThanOrEqualTo(2));
-      expect(
-        titleHits.toSet().length,
-        lessThan(titleHits.length),
-        reason: 'at least one offset carries BOTH passes',
-      );
+      expect(titleHits.length, 1, reason: 'the fill pass and nothing under it');
     });
   });
 }
