@@ -165,20 +165,28 @@ abstract final class ActiveLayerFlatProjection {
     required BitmapTileImageCache tileImages,
     ActiveStrokeOverlayModel? overlay,
   }) {
-    final overlayOwns =
-        overlay != null && overlay.hasStrokeContent
-        ? overlay.tileImages
-        : const <TileCoord, ui.Image>{};
-    if (overlay != null && overlay.hasStrokeContent) {
-      final aligned =
-          overlay.preBlended && overlay.tileSize == surface.tileSize;
-      if (!aligned ||
-          overlay.stampImage != null ||
+    if (overlay != null) {
+      // The arbitration windows are per-coordinate REGARDLESS of whether
+      // stroke images are currently held: settling and stand-ins cover
+      // COMMITTED tiles through a transition the walk arbitrates tile by
+      // tile, and a fill stamp is its own geometry. Gating these on
+      // hasStrokeContent left them unreachable the moment the stroke
+      // map emptied — the probe caught the knee path composing straight
+      // through a settling window.
+      if (overlay.stampImage != null ||
           overlay.settling ||
           overlay.hasStandIns) {
         return null;
       }
+      if (overlay.hasStrokeContent &&
+          (!overlay.preBlended || overlay.tileSize != surface.tileSize)) {
+        return null;
+      }
     }
+    final overlayOwns =
+        overlay != null && overlay.hasStrokeContent
+        ? overlay.tileImages
+        : const <TileCoord, ui.Image>{};
     final operands = <TileCoord, ui.Image>{};
     for (final entry in overlayOwns.entries) {
       operands[entry.key] = entry.value;
