@@ -8249,6 +8249,16 @@ class EditorSessionManager extends ChangeNotifier {
   /// - Lane selection: the lane freezes a key on every unkeyed frame of
   ///   the range (one undo) — the navigator toggle's range form.
   bool createInstancesForSelection() {
+    // #16 — THE TRACK RANGE SPEAKS FIRST, like it does for delete and
+    // edit (유저: 「스토리보드패널에서 S행의 프레임생성이 안됨」). The S-row
+    // drag writes trackFrameRangeSelection and its claim CLEARS the
+    // cut-local selection this verb used to read, so creation fell
+    // through to the stale active layer — the wrong row entirely. The
+    // ladder rung was simply missing.
+    final trackRange = trackFrameRangeSelection.value;
+    if (trackRange != null && _createTrackSeEntriesForRange(trackRange)) {
+      return true;
+    }
     // R10 #19: a live lane SPAN, or the property row you are STANDING on
     // as a one-frame span at the playhead — one verb either way, which is
     // what makes a group HEADER key its whole member set and an effect
@@ -8349,16 +8359,26 @@ class EditorSessionManager extends ChangeNotifier {
   List<({int startIndex, int length})> _emptyGapsInRange(
     Layer layer,
     TimelineFrameRangeSelection selection,
+  ) => _emptyGapsBetween(
+    layer,
+    selection.startIndex,
+    selection.endIndexExclusive,
+  );
+
+  /// The uncovered runs of [layer]'s timeline inside `[start, end)` — the
+  /// index space is whatever the timeline's own keys speak (cut-local for
+  /// cut layers, GLOBAL for track SE rows), which is what lets #16's
+  /// track rung and the cell path share one walk.
+  List<({int startIndex, int length})> _emptyGapsBetween(
+    Layer layer,
+    int startIndex,
+    int endIndexExclusive,
   ) {
     final gaps = <({int startIndex, int length})>[];
     int? gapStart;
-    for (
-      var index = selection.startIndex;
-      index <= selection.endIndexExclusive;
-      index += 1
-    ) {
+    for (var index = startIndex; index <= endIndexExclusive; index += 1) {
       final covered =
-          index >= selection.endIndexExclusive ||
+          index >= endIndexExclusive ||
           index < 0 ||
           coveringDrawingBlockAt(layer.timeline, index) != null;
       if (!covered) {
@@ -8371,6 +8391,84 @@ class EditorSessionManager extends ChangeNotifier {
       }
     }
     return gaps;
+  }
+
+  /// #16 — creation on the TRACK axis: the S rows the range names get one
+  /// blank dialogue entry per uncovered run, in one undo step. Returns
+  /// false when the range names no track SE row (a cut-row range is the
+  /// cut pill's business, #18) — the verb then falls down its ladder.
+  ///
+  /// Track SE timelines are GLOBAL-keyed, and the fills carry explicit
+  /// indexes, so no cut-start lens is involved — the same reason the
+  /// storyboard could never reach these rows through the cut-local
+  /// selection object.
+  bool _createTrackSeEntriesForRange(TrackFrameRangeSelection range) {
+    Track? track;
+    for (final candidate in _repository.requireProject().tracks) {
+      if (candidate.id == range.trackId) {
+        track = candidate;
+        break;
+      }
+    }
+    if (track == null) {
+      return false;
+    }
+    final targetIds = <LayerId>{
+      for (final row in [range.anchorRow, ...range.rows])
+        if (row is LayerRowAddress) row.layerId,
+    };
+    final fills =
+        <
+          LayerId,
+          List<({int startIndex, int length, FrameId frameId, String? name})>
+        >{};
+    for (final layer in track.seLayers) {
+      if (!targetIds.contains(layer.id)) {
+        continue;
+      }
+      final layerFills =
+          <({int startIndex, int length, FrameId frameId, String? name})>[];
+      // ⚠️The fills funnel re-applies the track-SE display lens
+      // (`frameOffsetForLayer` adds the active cut's global start on the
+      // way in), because its usual callers speak CUT-LOCAL indexes. These
+      // gaps are already GLOBAL — pre-subtract the SAME expression the
+      // lens uses, or every entry lands double-shifted.
+      final lensOffset = isTrackSeLayerId(layer.id)
+          ? activeCutGlobalStartFrame
+          : 0;
+      for (final gap in _emptyGapsBetween(
+        layer,
+        range.startFrame,
+        range.endFrameExclusive,
+      )) {
+        _frameSequence += 1;
+        layerFills.add((
+          startIndex: gap.startIndex - lensOffset,
+          length: gap.length,
+          frameId: FrameId(_nextFrameId(layer.id)),
+          // A blank DIALOGUE, like the cut-scope SE creation makes — the
+          // entry exists to be written into.
+          name: '',
+        ));
+      }
+      if (layerFills.isNotEmpty) {
+        fills[layer.id] = layerFills;
+      }
+    }
+    if (fills.isEmpty) {
+      return false;
+    }
+    final commands = _timelineController.drawingFramesCommandsForLayers(fills);
+    _historyManager.execute(
+      commands.length == 1
+          ? commands.single
+          : CompositeCommand(
+              description: 'Create SE entries',
+              commands: commands,
+            ),
+    );
+    notifyListeners();
+    return true;
   }
 
   Command? _cameraKeysCommandForRange(TimelineFrameRangeSelection selection) {
