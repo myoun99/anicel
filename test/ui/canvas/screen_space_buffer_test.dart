@@ -235,12 +235,17 @@ void main() {
       into.translate(-rect.left, -rect.top);
       paintProjectPaper(
         into,
+        // #15 — the scaled recording insets the paper by ONE BUFFER PIXEL
+        // (1/s canvas px): separately-resampled paper and ink edges
+        // disagree at fractional phases, and the inset keeps the plate
+        // under the ink's solid region. The reference carries the same
+        // law or the byte equality would pin its absence.
         Rect.fromLTWH(
           0,
           0,
           canvasSize.width.toDouble(),
           canvasSize.height.toDouble(),
-        ),
+        ).deflate(1 / s),
         const ProjectBackground.color(0xFF00FF00),
       );
       into.drawImageRect(
