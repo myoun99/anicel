@@ -39,8 +39,16 @@ void main() {
     }
   });
 
-  EditorSessionManager session() =>
-      EditorSessionManager(initialProject: createDefaultProject());
+  EditorSessionManager session() {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    // Disposal is load-bearing here, not hygiene: an open kicks the warm
+    // run, the #31 lookahead extends it into the NEXT cut's FILE-BACKED
+    // cels, and an undisposed session still reading them races the temp
+    // directory's teardown delete — the read then throws into a test that
+    // already finished.
+    addTearDown(s.dispose);
+    return s;
+  }
 
   List<String> celEntriesOf(String path) => [
     for (final entry in parseAnicelZipLayoutFile(path).entries)

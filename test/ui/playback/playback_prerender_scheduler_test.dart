@@ -1,4 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
@@ -13,6 +17,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
@@ -362,6 +367,154 @@ void main() {
       expect(identical(before, after), isFalse);
       scheduler.dispose();
       f.composites.dispose();
+    });
+  });
+
+  group('#31 lookahead — the NEXT cut rides the same run', () {
+    // Duration 2, but a drawing parked out at index 3: the lookahead must
+    // obey the SAME warm law as the active cut ([cutWarmFrameCount], the
+    // authored extent) — a next cut whose runway drawing never warms would
+    // re-create the exact asymmetry B1 closed.
+    Cut nextCut() => Cut(
+      id: const CutId('cut-b'),
+      name: 'Next',
+      duration: 2,
+      canvasSize: canvasSize,
+      layers: [
+        Layer(
+          id: const LayerId('layer-b'),
+          name: 'B',
+          frames: [
+            Frame(id: const FrameId('frame-b'), duration: 1, strokes: const []),
+          ],
+          timeline: {
+            0: const TimelineExposure.drawing(FrameId('frame-b'), length: 1),
+            3: const TimelineExposure.drawing(FrameId('frame-b'), length: 1),
+          },
+        ),
+      ],
+    );
+
+    BitmapSurface inkedSurface() {
+      final pixels = Uint8List(4 * 4 * 4);
+      for (var i = 0; i < pixels.length; i += 1) {
+        pixels[i] = (i * 31 + 7) & 0xFF;
+      }
+      return BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: 4,
+        tiles: {
+          TileCoord(x: 0, y: 0): BitmapTile(
+            coord: TileCoord(x: 0, y: 0),
+            size: 4,
+            pixels: pixels,
+          ),
+        },
+      );
+    }
+
+    testWidgets('warms the next cut start-to-end, BEHIND every active '
+        'frame', (tester) async {
+      await tester.runAsync(() async {
+        final f = fixture();
+        // The next cut's content enters the shared store the way an open
+        // does — a baked donation under ITS key.
+        f.store.storeBakedSurface(
+          frameKey(nextCut(), const LayerId('layer-b'), const FrameId('frame-b')),
+          inkedSurface(),
+        );
+        final resolved = <String>[];
+        var recording = false;
+        final scheduler = PlaybackPrerenderScheduler(
+          composites: f.composites,
+          resolveCut: (id) {
+            if (recording) {
+              resolved.add(id.value);
+            }
+            return id == const CutId('cut-b') ? nextCut() : cut();
+          },
+          idleDelay: Duration.zero,
+        );
+
+        scheduler.requestWarmCut(
+          cutId: const CutId('cut'),
+          quality: PlaybackQuality.quarter,
+          aroundFrameIndex: 2,
+          followedByCutId: const CutId('cut-b'),
+        );
+        // requestWarmCut resolves synchronously while building the order;
+        // everything after this line is the RUN's own resolution sequence.
+        recording = true;
+        await scheduler.idle;
+
+        for (var index = 0; index < 4; index += 1) {
+          expect(
+            f.composites.validCompositeOrNull(
+              cut: nextCut(),
+              frameIndex: index,
+              quality: PlaybackQuality.quarter,
+            ),
+            isNotNull,
+            reason: 'next-cut frame $index warms on the same run — index 3 '
+                'is the RUNWAY drawing, covered because the lookahead reads '
+                'the same warm law as the active cut',
+          );
+        }
+        expect(
+          scheduler.progress.value,
+          const PrerenderProgress(cached: 8, total: 8),
+          reason: '4 active + 4 next (duration 2, authored extent 4)',
+        );
+        final firstNext = resolved.indexOf('cut-b');
+        expect(firstNext, isNot(-1));
+        expect(
+          resolved.sublist(firstNext).contains('cut'),
+          isFalse,
+          reason: 'PRIORITY: every active-cut frame precedes the first '
+              'next-cut frame — the lookahead never steals the budget or '
+              'the thread from the cut being edited',
+        );
+        scheduler.dispose();
+        f.composites.dispose();
+      });
+    });
+
+    testWidgets('a self or unresolvable lookahead adds nothing',
+        (tester) async {
+      await tester.runAsync(() async {
+        final f = fixture();
+        final scheduler = PlaybackPrerenderScheduler(
+          composites: f.composites,
+          resolveCut: (id) => id == const CutId('cut') ? cut() : null,
+          idleDelay: Duration.zero,
+        );
+
+        scheduler.requestWarmCut(
+          cutId: const CutId('cut'),
+          quality: PlaybackQuality.quarter,
+          followedByCutId: const CutId('cut'),
+        );
+        await scheduler.idle;
+        expect(
+          scheduler.progress.value.total,
+          4,
+          reason: 'a cut must not warm itself twice through the lookahead',
+        );
+
+        scheduler.requestWarmCut(
+          cutId: const CutId('cut'),
+          quality: PlaybackQuality.quarter,
+          followedByCutId: const CutId('gone'),
+        );
+        await scheduler.idle;
+        expect(
+          scheduler.progress.value.total,
+          4,
+          reason: 'a deleted next cut degrades to no lookahead, not a crash',
+        );
+        scheduler.dispose();
+        f.composites.dispose();
+      });
     });
   });
 }
