@@ -17,8 +17,11 @@ import '../../models/tile_coord.dart';
 import '../debug/input_inspector.dart';
 import '../dev_profile.dart';
 import '../playback/layer_frame_image_cache.dart';
+import 'active_layer_flat_projection.dart';
 import 'bitmap_surface_painter.dart';
+import 'bitmap_tile_image_cache.dart';
 import 'composite_effect_paint.dart';
+import 'deferred_image_disposal.dart';
 import 'display_buffer_cache.dart';
 import 'display_resample.dart';
 import 'selection_float_overlay.dart';
@@ -570,6 +573,12 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           bake: widget.debugDisableBake ? null : _bake,
           bufferCache: widget.debugDisableBake ? null : _bufferCache,
           compositeKey: compositeKey,
+          // ⓔ 5단계: the knee's s = zoom·DPR, and the DPR belongs to the
+          // VIEW this widget sits in — MediaQuery is the source that both
+          // tracks monitor moves (this build re-runs) and answers per
+          // view, where the raw PlatformDispatcher singleton does
+          // neither.
+          devicePixelRatio: MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
           debugDisableSingleBuffer: widget.debugDisableSingleBuffer,
         ),
         child: const SizedBox.expand(),
@@ -739,6 +748,7 @@ class _LayerStackPainter extends CustomPainter {
     this.bake,
     this.bufferCache,
     required this.compositeKey,
+    this.devicePixelRatio = 1.0,
     this.debugDisableSingleBuffer = false,
   }) : super(
          repaint: floatOverlay == null
@@ -787,6 +797,20 @@ class _LayerStackPainter extends CustomPainter {
 
   /// See [CanvasLayerStackView.debugDisableSingleBuffer].
   final bool debugDisableSingleBuffer;
+
+  /// The view's DPR, from MediaQuery at build time — the knee's
+  /// `s = zoom·dpr` axis. A monitor move re-runs the build, so a fresh
+  /// painter always carries the current value.
+  final double devicePixelRatio;
+
+  /// ⓔ 5단계 — set ONLY while the SCALED buffer records, consumed by the
+  /// active-surface arm: below the knee every layer must be ONE image
+  /// under one uniform filter, and this is the active layer's
+  /// ([ActiveLayerFlatProjection]). Mutable painter state is safe here
+  /// because a painter lives one frame and paint is single-threaded; it
+  /// is cleared in the same call that set it, so the s=1 paths can never
+  /// see it.
+  ActiveLayerFlatImage? _activeFlatForRecording;
 
   /// The largest buffer side worth allocating, in canvas pixels.
   ///
@@ -862,9 +886,33 @@ class _LayerStackPainter extends CustomPainter {
       canvasSize.pasteboardRightExclusive.toDouble(),
       canvasSize.pasteboardBottomExclusive.toDouble(),
     );
-    final groupBounds = visibleRect.isEmpty
-        ? pasteboardRect
-        : pasteboardRect.intersect(visibleRect);
+    // Hole ① of the clamp plan: NOT ON SCREEN means NOT PAINTED. This used
+    // to fall back to the whole pasteboard — 25× the canvas — so a
+    // collapsed panel or a parked-away viewport asked the engine for the
+    // largest buffers this painter can request, to draw pixels nobody can
+    // see. Nothing intersects the screen, so drawing nothing is
+    // pixel-identical on it.
+    // Hole ① of the clamp plan: NOT ON SCREEN means NOT PAINTED, and one
+    // law covers both ways off-screen happens — a degenerate view
+    // (collapsed panel: empty visibleRect, which used to substitute the
+    // WHOLE 25× pasteboard) and a parked-away viewport (huge visibleRect
+    // that misses the pasteboard entirely, which used to walk the full
+    // stack into a clip that discards every op). The intersection is
+    // empty in both, nothing intersects the screen, and drawing nothing
+    // is pixel-identical on it.
+    // Hole ① of the clamp plan: NOT ON SCREEN means NOT PAINTED, and one
+    // law covers both ways off-screen happens — a degenerate view
+    // (collapsed panel: empty visibleRect, which used to substitute the
+    // WHOLE 25× pasteboard) and a parked-away viewport (huge visibleRect
+    // that misses the pasteboard entirely, which used to walk the full
+    // stack into a clip that discards every op). The intersection is
+    // empty in both, nothing intersects the screen, and drawing nothing
+    // is pixel-identical on it.
+    final groupBounds = pasteboardRect.intersect(visibleRect);
+    if (groupBounds.isEmpty) {
+      canvas.restore();
+      return;
+    }
     // A3: the recordings depend on this rect and the build-time key cannot
     // carry it (it is a layout fact). Declared HERE, before any slot is
     // consulted, so a resized panel re-records instead of replaying
@@ -1055,7 +1103,27 @@ class _LayerStackPainter extends CustomPainter {
                 }
                 canvas.save();
                 canvas.clipRect(activeSurfacePainter!.pasteboardRect);
-                activeSurfacePainter!.paintContentInto(canvas);
+                final flat = _activeFlatForRecording;
+                if (flat != null) {
+                  // ⓔ 5단계: under the scaled recording the active layer is
+                  // ONE image like every other layer, resampled by the
+                  // recording's transform under the SAME filter — that
+                  // uniformity is what closes T21 below the knee. 1:1
+                  // src/dst; the one resample comes from the CTM.
+                  canvas.drawImageRect(
+                    flat.image,
+                    Rect.fromLTWH(
+                      0,
+                      0,
+                      flat.image.width.toDouble(),
+                      flat.image.height.toDouble(),
+                    ),
+                    flat.worldRect,
+                    Paint()..filterQuality = ui.FilterQuality.low,
+                  );
+                } else {
+                  activeSurfacePainter!.paintContentInto(canvas);
+                }
                 // 🚨TS1: the selection's FLOAT belongs here, right on top of
                 // the surface it was lifted out of and UNDER everything
                 // above that row. Drawn inside this slot's clip and its
@@ -1345,9 +1413,20 @@ class _LayerStackPainter extends CustomPainter {
     );
     final width = rect.width.round();
     final height = rect.height.round();
-    if (width <= 0 || height <= 0 || width > _maxBufferSide ||
-        height > _maxBufferSide) {
+    if (width <= 0 || height <= 0) {
       return null;
+    }
+    if (width > _maxBufferSide || height > _maxBufferSide) {
+      // ⓔ 5단계 — the region past the old cap is the KNEE'S UNDERSIDE. The
+      // direct-walk fallback here was T21 territory: each layer resampled
+      // separately, the active one at nearest beside its neighbours at
+      // bilinear. A SCREEN-SPACE buffer draws every layer as one image
+      // under one filter and costs what the screen costs, not what the
+      // canvas costs (유저 확정 ①: 무릎 아래는 균일 필터, 겹침 색차 수용).
+      // Null keeps the walk — rotation/flip, or an active layer the flat
+      // projection refuses (settling, stand-ins, stamp, cold truth). The
+      // walk was always correct; the buffer is only ever an optimisation.
+      return _composeScaledBuffer(rect, paintContent);
     }
     // 🚨(v) — KEEP IT WHILE NOTHING HAS CHANGED. Every paint used to
     // rasterise this again, including the ones where nothing had moved: a
@@ -1431,6 +1510,134 @@ class _LayerStackPainter extends CustomPainter {
         image,
         patched: base != null && dirty != null,
       );
+      return _DisplayBuffer(
+        image: image,
+        rect: rect,
+        pixelWidth: width.toDouble(),
+        pixelHeight: height.toDouble(),
+        owned: false,
+      );
+    }
+    return _DisplayBuffer(
+      image: image,
+      rect: rect,
+      pixelWidth: width.toDouble(),
+      pixelHeight: height.toDouble(),
+    );
+  }
+
+  /// ⓔ 5단계 — the buffer BELOW the knee: [rect] rendered at
+  /// `s = min(1, zoom·dpr)` instead of canvas resolution, every layer one
+  /// image under one uniform filter.
+  ///
+  /// What makes this legal where every scale-in-the-recorder design died:
+  /// the s=1 path above the knee is UNTOUCHED (same code, same bytes),
+  /// and below the knee the user closed the color question (결정 ① —
+  /// uniform filtering, overlap tint accepted). The active layer enters
+  /// as [ActiveLayerFlatProjection]'s single image; when the projection
+  /// refuses (settling, stand-ins, stamp, missing truth) this returns
+  /// null and the caller keeps the direct walk — correctness never
+  /// depends on this path.
+  ///
+  /// 구멍 대응: ① lives in `paint` (empty visible = nothing painted);
+  /// ② `s` folds zoom AND dpr into the cache key, so a monitor/DPR move
+  /// re-rasters instead of stretching the old image; ③ there is NO patch
+  /// down here — a change re-rasters the whole SCREEN-RES buffer, which
+  /// is the cheap direction (결정 ⑤: 무릎 아래 획 정밀도 불요), so the
+  /// fractional-grid AA family never gets a foothold; ④ the recording
+  /// takes the PICTURE route (`rasterRect: null`), never the backdrop
+  /// raster — a 1:1 `none` blit under scale would nearest-downsample the
+  /// whole backdrop.
+  ///
+  /// ⏸5b: per-dab strokes below the knee currently rebuild flat+buffer
+  /// per batch (correct, unpatched). The flat's patch mechanism exists
+  /// ([ActiveLayerFlatProjection.patchOrNull]) and lands with the dirty
+  /// channel wiring.
+  _DisplayBuffer? _composeScaledBuffer(
+    Rect rect,
+    void Function(Canvas into, {Rect? rasterRect}) paintContent,
+  ) {
+    if (viewport.rotationDegrees != 0 ||
+        viewport.flipHorizontal ||
+        viewport.flipVertical) {
+      return null;
+    }
+    var s = viewport.zoom.abs() * devicePixelRatio;
+    if (s >= 1) {
+      s = 1;
+    }
+    final longSide = rect.width > rect.height ? rect.width : rect.height;
+    if (longSide * s > _maxBufferSide) {
+      // A screen so large even zoom·dpr overflows the cap: shrink further.
+      // Still one uniform resample — softer, never seamed.
+      s = _maxBufferSide / longSide;
+    }
+    final width = (rect.width * s).ceil();
+    final height = (rect.height * s).ceil();
+    if (width <= 0 || height <= 0) {
+      return null;
+    }
+    final cache = bufferCache;
+    final baseKey = cache == null ? null : _bufferKey();
+    // ② `s` is in the key: zoom already rides [compositeKey], but dpr does
+    // not exist anywhere else — fold the resolved scale itself.
+    final key = baseKey == null ? null : Object.hash(baseKey, s);
+    if (cache != null && key != null) {
+      final kept = cache.imageFor(key, rect);
+      if (kept != null) {
+        return _DisplayBuffer(
+          image: kept,
+          rect: rect,
+          pixelWidth: kept.width.toDouble(),
+          pixelHeight: kept.height.toDouble(),
+          owned: false,
+        );
+      }
+    }
+    ActiveLayerFlatImage? flat;
+    if (activeSurfacePainter != null) {
+      flat = ActiveLayerFlatProjection.buildOrNull(
+        surface: activeSurfacePainter!.surface,
+        tileImages: BitmapTileImageCache.instance,
+        overlay: activeSurfacePainter!.overlayModel,
+      );
+      if (flat == null) {
+        return null;
+      }
+    }
+    // The probe writes HERE — after the refusal gate, before any raster —
+    // so it means "the knee path actually drew", including the uncached
+    // composes a null buffer key forces (settling would be one, if the
+    // projection ever let one through). A refusal must leave it untouched
+    // or the probe claims a run that fell back to the walk.
+    bufferCache?.lastBufferScale = s;
+    final recorder = ui.PictureRecorder();
+    final into = Canvas(recorder);
+    into.scale(s);
+    into.translate(-rect.left, -rect.top);
+    _activeFlatForRecording = flat;
+    try {
+      // The PICTURE route through the very same walk the s=1 buffer
+      // records — one body, so folders, adjustments, effects and the
+      // float cannot drift between the two resolutions.
+      paintContent(into, rasterRect: null);
+    } finally {
+      _activeFlatForRecording = null;
+    }
+    final picture = recorder.endRecording();
+    final ui.Image image;
+    try {
+      image = picture.toImageSync(width, height);
+    } finally {
+      picture.dispose();
+    }
+    if (flat != null) {
+      // The recording holds its reference through the deferred raster;
+      // direct dispose is the one-frame black-flash race.
+      DeferredImageDisposer.instance.retire(flat.image);
+    }
+    if (cache != null && key != null) {
+      cache.store(key, compositeKey, rect, image, patched: false);
       return _DisplayBuffer(
         image: image,
         rect: rect,
@@ -1647,6 +1854,9 @@ class _LayerStackPainter extends CustomPainter {
         // this costs an int compare, not an identity miss every frame — and
         // the sibling `playback_frame_painter` already gates on it.
         oldDelegate.paperBackground != paperBackground ||
+        // ⓔ 5단계: the knee's s reads this — a monitor move must repaint,
+        // not stretch the old scaled buffer.
+        oldDelegate.devicePixelRatio != devicePixelRatio ||
         !identical(oldDelegate.activeSurfacePainter, activeSurfacePainter) ||
         !_treesMatch(oldDelegate.nodes, nodes);
   }

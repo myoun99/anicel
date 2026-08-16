@@ -133,7 +133,12 @@ void main() {
 /// byte-parity-pinned against the walk. Exactly the quality-owning-leaf
 /// class the allowlist describes — and the ratchet catching its own
 /// author on the very next canvas PR is the mechanism working.
-const int _knownRawDraws = 35;
+/// **36** at ⓔ stage 5a: +1 in canvas_layer_stack_view — the scaled
+/// buffer's active-flat blit, 1:1 src/dst at FilterQuality.low: LOW on
+/// purpose and on its own Paint, because under the scaled recording the
+/// active layer must resample under the SAME filter as every other
+/// layer's image — that uniformity is the T21 closure below the knee.
+const int _knownRawDraws = 36;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

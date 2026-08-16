@@ -86,6 +86,13 @@ class DisplayBufferCache {
   /// as one patch — and THIS is what says how big that patch really was.
   Rect? lastDirtyRect;
 
+  /// ⓔ 5단계 probe: the resolved scale of the last SCALED (below-knee)
+  /// store. The s=1 path never touches it — it answers "when the knee
+  /// path last ran, what s did it run at", because a scaled path that
+  /// silently stops running looks exactly like one that works (the
+  /// counters' own law).
+  double? lastBufferScale;
+
   void store(
     Object key,
     Object staticKey,
