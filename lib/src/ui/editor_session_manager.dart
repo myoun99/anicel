@@ -8402,7 +8402,47 @@ class EditorSessionManager extends ChangeNotifier {
   /// indexes, so no cut-start lens is involved — the same reason the
   /// storyboard could never reach these rows through the cut-local
   /// selection object.
-  bool _createTrackSeEntriesForRange(TrackFrameRangeSelection range) {
+  /// #17 잔여 — THE CREATE BUTTON'S ONE SENTENCE (T25). Mirrors
+  /// [createActiveInstance]'s ladder rung for rung: the selection rungs
+  /// first (track S rows → lane span → cut-local range), then the
+  /// current-frame capability the kind dispatch actually has.
+  ///
+  /// The toolbar used to keep its OWN switch, and it disagreed with the
+  /// dispatch in both directions: it did not know the selection rungs
+  /// (the S-row range #16 just taught the verb), and its `_ => true` arm
+  /// lit the button on folder/adjustment/transition rows whose dispatch
+  /// is a documented no-op — the #18 lie, one pill over.
+  bool get canCreateInstance {
+    final trackRange = trackFrameRangeSelection.value;
+    if (trackRange != null && _trackSeCreationGaps(trackRange).isNotEmpty) {
+      return true;
+    }
+    if (_laneVerbRange != null) {
+      return true;
+    }
+    if (frameRangeSelection.value != null) {
+      return true;
+    }
+    final layer = activeLayer;
+    if (layer == null || !hasActiveNonNegativeCell) {
+      return false;
+    }
+    return switch (layer.kind) {
+      LayerKind.se => canCreateDrawingAtCurrentFrame,
+      LayerKind.folder ||
+      LayerKind.adjustment ||
+      LayerKind.transition => false,
+      _ => true,
+    };
+  }
+
+  /// The PLAN half of the track rung, mutation-free: which S rows the
+  /// range names and which uncovered runs they hold. Split out so the
+  /// button's enabled ([canCreateInstance]) and the verb read the SAME
+  /// walk — a twin implementation is how enabled and dispatch drift.
+  Map<Layer, List<({int startIndex, int length})>> _trackSeCreationGaps(
+    TrackFrameRangeSelection range,
+  ) {
     Track? track;
     for (final candidate in _repository.requireProject().tracks) {
       if (candidate.id == range.trackId) {
@@ -8411,23 +8451,38 @@ class EditorSessionManager extends ChangeNotifier {
       }
     }
     if (track == null) {
-      return false;
+      return const {};
     }
     final targetIds = <LayerId>{
       for (final row in [range.anchorRow, ...range.rows])
         if (row is LayerRowAddress) row.layerId,
     };
+    final gaps = <Layer, List<({int startIndex, int length})>>{};
+    for (final layer in track.seLayers) {
+      if (!targetIds.contains(layer.id)) {
+        continue;
+      }
+      final layerGaps = _emptyGapsBetween(
+        layer,
+        range.startFrame,
+        range.endFrameExclusive,
+      );
+      if (layerGaps.isNotEmpty) {
+        gaps[layer] = layerGaps;
+      }
+    }
+    return gaps;
+  }
+
+  bool _createTrackSeEntriesForRange(TrackFrameRangeSelection range) {
+    final gapsByLayer = _trackSeCreationGaps(range);
     final fills =
         <
           LayerId,
           List<({int startIndex, int length, FrameId frameId, String? name})>
         >{};
-    for (final layer in track.seLayers) {
-      if (!targetIds.contains(layer.id)) {
-        continue;
-      }
-      final layerFills =
-          <({int startIndex, int length, FrameId frameId, String? name})>[];
+    for (final entry in gapsByLayer.entries) {
+      final layer = entry.key;
       // ⚠️The fills funnel re-applies the track-SE display lens
       // (`frameOffsetForLayer` adds the active cut's global start on the
       // way in), because its usual callers speak CUT-LOCAL indexes. These
@@ -8436,11 +8491,9 @@ class EditorSessionManager extends ChangeNotifier {
       final lensOffset = isTrackSeLayerId(layer.id)
           ? activeCutGlobalStartFrame
           : 0;
-      for (final gap in _emptyGapsBetween(
-        layer,
-        range.startFrame,
-        range.endFrameExclusive,
-      )) {
+      final layerFills =
+          <({int startIndex, int length, FrameId frameId, String? name})>[];
+      for (final gap in entry.value) {
         _frameSequence += 1;
         layerFills.add((
           startIndex: gap.startIndex - lensOffset,
@@ -8451,9 +8504,7 @@ class EditorSessionManager extends ChangeNotifier {
           name: '',
         ));
       }
-      if (layerFills.isNotEmpty) {
-        fills[layer.id] = layerFills;
-      }
+      fills[layer.id] = layerFills;
     }
     if (fills.isEmpty) {
       return false;
