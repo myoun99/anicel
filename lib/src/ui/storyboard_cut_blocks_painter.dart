@@ -402,8 +402,10 @@ class StoryboardCutBlocksPainter extends CustomPainter {
 
   // The CELLS' writing convention on every cut-block label too (user
   // 2026-07-29, "cut blocks and storyboard blocks read as one"): panel ink
-  // carried by the shared outline — one rule on any ground, band or
-  // picture, in place of scrims and per-surface colours.
+  // carried by the shared self-inverting fill (2026-08-17, the outline's
+  // successor) — one rule on any ground, band or picture, in place of
+  // scrims and per-surface colours. The styles' colors are layout/cache
+  // identity; the paint is the difference blend.
   TextStyle get _titleStyle => _labelStyle.copyWith(
     color: timelineDrawingInkColor,
     fontWeight: FontWeight.bold,
@@ -500,9 +502,9 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     }
     if (block.bandsFolded) {
       // FOLDED: nowhere to put the writing but over the picture — the
-      // shared outline keeps it readable there, exactly as it does on
-      // every panel cell (the scrim this replaced was a second answer to
-      // the same question).
+      // shared self-inverting fill keeps it readable there, exactly as it
+      // does on every panel cell (the scrim this replaced was a second
+      // answer to the same question).
       canvas.save();
       canvas.clipRect(inner);
       _paintAnchoredLabel(
@@ -585,19 +587,17 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     final dx = alignRight
         ? band.right - _padding - glyph.width
         : band.left + _padding;
-    paintTimelineOutlinedGlyph(
+    paintTimelineInvertingGlyph(
       canvas,
       Offset(dx, band.top + (band.height - glyph.height) / 2),
       text,
       style,
       maxWidth: maxWidth,
-      outlineColor: timelineLaneInkColor,
-      outlineWidth: timelineOutlineWidthFor(style.fontSize ?? 11),
     );
   }
 
-  /// A corner-anchored outlined label — the folded block's writing (and
-  /// nothing else's: band text centres itself vertically instead).
+  /// A corner-anchored self-inverting label — the folded block's writing
+  /// (and nothing else's: band text centres itself vertically instead).
   void _paintAnchoredLabel(
     Canvas canvas, {
     required String text,
@@ -613,14 +613,12 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     final glyph = timelineGlyphPainter(text, style, maxWidth: maxWidth);
     final left = alignRight ? anchor.dx - glyph.width : anchor.dx;
     final top = alignBottom ? anchor.dy - glyph.height : anchor.dy;
-    paintTimelineOutlinedGlyph(
+    paintTimelineInvertingGlyph(
       canvas,
       Offset(left, top),
       text,
       style,
       maxWidth: maxWidth,
-      outlineColor: timelineLaneInkColor,
-      outlineWidth: timelineOutlineWidthFor(style.fontSize ?? 11),
     );
   }
 
@@ -691,9 +689,10 @@ class StoryboardCutBlocksPainter extends CustomPainter {
 
   /// A panel's own writing (#15, the timeline row's conventions carried
   /// over): the frame NAME centred in the panel's first frame cell, the
-  /// COMMA COUNT bottom-centred in its last — both outlined, so they read
-  /// over the picture. Folded bands omit all of it (the caller's gate):
-  /// folding that far means watching the cuts, not the panels.
+  /// COMMA COUNT bottom-centred in its last — both self-inverting, so they
+  /// read over the picture pixel-by-pixel. Folded bands omit all of it
+  /// (the caller's gate): folding that far means watching the cuts, not
+  /// the panels.
   void _paintPanelWriting(
     Canvas canvas,
     StoryboardCutBlockVisual block,
@@ -720,13 +719,11 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       // thumbnail-display writing sits where the sheet's cut number does,
       // not centred the way block-display glyphs are — the two thumbnail
       // surfaces read as one.
-      paintTimelineOutlinedGlyph(
+      paintTimelineInvertingGlyph(
         canvas,
         Offset(slot.left + _padding / 2, slot.top + 1),
         name,
         nameStyle,
-        outlineColor: timelineLaneInkColor,
-        outlineWidth: timelineOutlineWidthFor(nameStyle.fontSize ?? 12),
       );
     }
     final comma = block.cellCommaLabels[index];
@@ -745,7 +742,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       // run label's anchor, in the panel's own coordinates (the slot's
       // edges ARE the cell edges: panels tile the strip).
       final lastCellCentre = slot.right - _cellExtent / 2;
-      paintTimelineOutlinedGlyph(
+      paintTimelineInvertingGlyph(
         canvas,
         Offset(
           lastCellCentre - glyph.width / 2,
@@ -753,8 +750,6 @@ class StoryboardCutBlocksPainter extends CustomPainter {
         ),
         comma,
         commaStyle,
-        outlineColor: timelineLaneInkColor,
-        outlineWidth: timelineOutlineWidthFor(commaStyle.fontSize ?? 9),
       );
     }
   }
