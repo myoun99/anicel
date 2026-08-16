@@ -275,7 +275,34 @@ double cutOpacityAt({
   if (globalFrame < media.start || globalFrame >= media.end) {
     return 0;
   }
+  return cutTransitionRampAt(
+    cutStart: cutStart,
+    cutEnd: cutEnd,
+    spans: spans,
+    globalFrame: globalFrame,
+  );
+}
 
+/// The RAMP half of [cutOpacityAt], without the material clamp: 1 wherever
+/// no span covers [globalFrame], thinning only while a transition actually
+/// crosses one of this cut's boundaries.
+///
+/// 🚨Two questions live in [cutOpacityAt] and only one of them is about
+/// compositing MATERIAL. "0 outside the frames it has material for" is the
+/// compositor's term: a playlist must not draw a picture where the cut has
+/// nothing to show. The EDITING canvas asks the other question — how thin
+/// does the transition make the frame I am STANDING on — and standing is
+/// not compositing. The playhead is unclamped (T12: 컷 길이는 소재와 관계가
+/// 없다 — past the end line is ordinary space), so feeding it the material
+/// term turned every frame past the media end into an opaque backdrop wash:
+/// the canvas "abandoned the paper" exactly the way the unclamped `isGap`
+/// term did, one law over.
+double cutTransitionRampAt({
+  required int cutStart,
+  required int cutEnd,
+  required Iterable<TransitionSpan> spans,
+  required int globalFrame,
+}) {
   var alpha = 1.0;
   for (final span in spans) {
     final progress = transitionProgressAt(span, globalFrame);

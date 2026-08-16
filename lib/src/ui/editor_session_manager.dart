@@ -2908,6 +2908,16 @@ class EditorSessionManager extends ChangeNotifier {
   /// toward its end), so this is the track's STATIC opacity times the cut's
   /// own transition ramp. R9 #21 still holds for the static half: it is not an
   /// fx, so the fx bypass does not touch it.
+  ///
+  /// 🚨The RAMP, not [cutOpacityAt]. That one also answers the compositor's
+  /// material question — 0 outside the cut's media range — and the playhead
+  /// is unclamped (T12), so standing past the end line handed the fade wash
+  /// a 0 and the wash painted an opaque backdrop plate over the paper and
+  /// every drawing under it: 「캔버스가 용지나 그림이 사라짐」, with the
+  /// paper's antialiased edge peeking past the plate as the stray white
+  /// outline. Standing somewhere is not compositing a playlist; the frames
+  /// past the end line are ordinary space and only a covering span may thin
+  /// them.
   double activeCutEditingFadeOpacity({int? frameIndex}) {
     final cut = activeCutOrNull;
     if (cut == null) {
@@ -2916,7 +2926,7 @@ class EditorSessionManager extends ChangeNotifier {
     final static = trackStaticOpacityForCut(cut.id);
     final start = activeCutGlobalStartFrame;
     return static *
-        cutOpacityAt(
+        cutTransitionRampAt(
           cutStart: start,
           cutEnd: start + cut.duration,
           spans: activeTrackTransitionSpans,
