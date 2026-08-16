@@ -506,13 +506,51 @@ class CutCommandCoordinator {
       return;
     }
 
+    // #23 — 유저: 「주인 레이어의 이름 바꾸면 어태치레이어도 적용시키고싶음.
+    // 다만 (…) 어태치레이어들은 **이름이 기본값이면 바뀌도록**」.
+    //
+    // ★"Default" is DERIVED, not stored — the attach default is
+    // `base.name±N` ([nextAttachedLayerName]) — so the only moment the
+    // question can be answered is RIGHT HERE, against the OLD base name.
+    // Ask later and the old default is gone with the name it hung off.
+    // A hand-touched name never matches the pattern and is never touched;
+    // the suffix rides over verbatim (numbers may be non-contiguous after
+    // deletions, and re-numbering would be inventing state).
+    final followers = <Command>[];
+    final defaultPattern = RegExp(
+      '^${RegExp.escape(layer.name)}([+-]\\d+)\$',
+    );
+    for (final attached in attachedLayersOf(
+      layerId,
+      _requireCut(cutId).layers,
+    )) {
+      final match = defaultPattern.firstMatch(attached.name);
+      if (match == null) {
+        continue;
+      }
+      followers.add(
+        UpdateLayerNameCommand(
+          repository: repository,
+          cutId: cutId,
+          layerId: attached.id,
+          name: '$trimmedName${match.group(1)}',
+        ),
+      );
+    }
+
+    final rename = UpdateLayerNameCommand(
+      repository: repository,
+      cutId: cutId,
+      layerId: layerId,
+      name: trimmedName,
+    );
     historyManager.execute(
-      UpdateLayerNameCommand(
-        repository: repository,
-        cutId: cutId,
-        layerId: layerId,
-        name: trimmedName,
-      ),
+      followers.isEmpty
+          ? rename
+          : CompositeCommand(
+              description: 'Rename layer and its default-named attaches',
+              commands: [rename, ...followers],
+            ),
     );
   }
 
