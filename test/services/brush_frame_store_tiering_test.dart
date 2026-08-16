@@ -589,4 +589,64 @@ void main() {
       reason: 'top-left anchored resize keeps the tile bytes',
     );
   });
+
+  test('an empty donation kills the cel in EVERY tier — a cold blob or a '
+      'file ref must not resurrect the deleted picture through a save',
+      () async {
+    // The empty arm (an all-undone/all-erased cel) was pinned on the HOT
+    // tier only; the cold and file arms carried the resurrection risk: a
+    // leftover blob or ref rides the next save, and the reload's
+    // first-sight trust cements the deleted picture back into the file.
+
+    // COLD arm.
+    final store = BrushFrameStore();
+    final k = key(frame: 'cold-victim');
+    store.restoreBaked({k: blobOf(k, inkSurface())});
+    expect(store.isCelCold(k), isTrue, reason: 'fixture: really cold');
+    store.storeBakedSurface(k, BitmapSurface(canvasSize: canvasSize));
+    expect(store.celHasRenderableContent(k), isFalse);
+    expect(store.bakedSurfaceOrNull(k), isNull);
+    final coldSnap = store.bakedSnapshotForSave();
+    expect(
+      coldSnap.cold.containsKey(k),
+      isFalse,
+      reason: 'the blob must die with the cel or the save resurrects it',
+    );
+    expect(
+      store.dirtyCelKeysSinceSave,
+      contains(k),
+      reason: 'the removal is a CHANGE — an incremental save that does '
+          'not see it keeps the old bytes in the archive',
+    );
+
+    // FILE arm.
+    final directory = await Directory.systemTemp.createTemp('qa-empty-arm');
+    addTearDown(() => directory.delete(recursive: true));
+    final fileStore = BrushFrameStore();
+    final fk = key(frame: 'file-victim');
+    final blob = blobOf(fk, inkSurface(seed: 7));
+    final path = '${directory.path}/cel.bin';
+    File(path).writeAsBytesSync(blob.bytes);
+    fileStore.restoreFromFile({
+      fk: AnicelCelFileRef(
+        filePath: path,
+        dataOffset: 0,
+        length: blob.bytes.length,
+        canvasSize: canvasSize,
+        tileSize: blob.tileSize,
+      ),
+    });
+    expect(fileStore.isCelFileBacked(fk), isTrue, reason: 'fixture');
+    fileStore.storeBakedSurface(fk, BitmapSurface(canvasSize: canvasSize));
+    expect(fileStore.celHasRenderableContent(fk), isFalse);
+    expect(fileStore.bakedSurfaceOrNull(fk), isNull);
+    final fileSnap = fileStore.bakedSnapshotForSave();
+    expect(
+      fileSnap.fileRefs.containsKey(fk),
+      isFalse,
+      reason: 'a leftover ref points the NEXT save at the deleted '
+          'picture\'s bytes inside the old archive',
+    );
+    expect(fileStore.dirtyCelKeysSinceSave, contains(fk));
+  });
 }
