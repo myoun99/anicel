@@ -510,6 +510,31 @@ class BitmapSurfacePainter extends CustomPainter {
   /// many frames a full-canvas convergence takes.
   static const int decodeStartBudget = BitmapTileImageCache.decodeStartBudget;
 
+  /// Starts the decode work [paintContentInto]'s collect pass would have
+  /// started — budgeted and visible-first exactly the same way — WITHOUT
+  /// drawing anything.
+  ///
+  /// For the frame(s) the merged stack covers this surface with the
+  /// first-activation stand-in: the walk is skipped there, and the
+  /// stand-in can only ever hand off if the decodes it is waiting on
+  /// actually begin. [canvas] provides the visibility priority (the same
+  /// clip read the paint itself uses).
+  void startPendingDecodes(Canvas canvas) {
+    List<BitmapTile>? pending;
+    for (final tile in surface.tiles.values) {
+      if (tileImageCache.needsDecodeStart(tile)) {
+        (pending ??= <BitmapTile>[]).add(tile);
+      }
+    }
+    if (pending == null) {
+      return;
+    }
+    _startPrioritizedDecodes(
+      pending,
+      _visibleCanvasRect(canvas, pasteboardRect),
+    );
+  }
+
   /// The part of CANVAS space this paint can actually reach, read off the
   /// canvas's own clip.
   ///

@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 
 import '../../core/collection_equality.dart';
+import '../../models/bitmap_surface.dart';
+import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
 import '../../models/layer_blend_mode.dart';
@@ -57,11 +59,26 @@ final class CanvasLayerImageNode extends CanvasLayerStackNode {
 final class CanvasActiveLayerNode extends CanvasLayerStackNode {
   const CanvasActiveLayerNode({
     required this.opacity,
+    this.frameKey,
     this.blendMode = LayerBlendMode.normal,
     this.pose,
     this.anchorPoint,
     this.effects = const [],
   });
+
+  /// The active row's CEL — the same key its cached twin
+  /// [CanvasLayerImageRequest.frameKey] carried the frame before this row
+  /// became active. Null when the row has nothing exposed here (nothing to
+  /// stand in for).
+  ///
+  /// This is what lets the stack keep the just-deactivated route's layer
+  /// image as the FIRST-ACTIVATION stand-in: activation promotes a
+  /// file-backed cel to a surface of all-fresh tile objects, the tile
+  /// image cache has no images for them, and the sync/pixel budgets leave
+  /// the rest of the cel SILENT for one frame. The held image is truth
+  /// pixels for exactly this cel, so drawing it while zero decoded tile
+  /// images exist closes the one-frame blank without a seam.
+  final BrushFrameKey? frameKey;
 
   /// The active row's effective opacity (the interactive view used to
   /// apply this itself, through the panel's content-opacity wrap).
@@ -274,9 +291,21 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   bool _preparing = false;
   bool _rerunRequested = false;
 
+  /// The FIRST-ACTIVATION stand-in (device report 2026-08-17): activation
+  /// promotes a file-backed cel to a surface of all-fresh tile objects,
+  /// [BitmapTileImageCache] keys images by tile identity so it has none of
+  /// them, and the sync-upload/per-pixel budgets leave everything else
+  /// SILENT — the picture disappeared for one frame per layer. The image
+  /// this stack held for that very cel the frame before (the
+  /// [CanvasLayerImageNode] route) is truth pixels for it, so the active
+  /// slot draws it until the first decode lands — and never after (truth
+  /// always outranks the stand-in; see [_ActiveLayerStandIn.shouldStandInFor]).
+  _ActiveLayerStandIn? _activeStandIn;
+
   @override
   void initState() {
     super.initState();
+    _syncActiveStandIn();
     _syncImagesWithCache();
     _ensureImages();
   }
@@ -299,8 +328,84 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         widget.imageCache.retainPin(key, PlaybackQuality.full);
       }
     }
+    // ⛔BEFORE the sweep: arming borrows the image the just-activated
+    // layer held on the previous frame, and the sweep is exactly what
+    // would drop it (the activated layer leaves the request set).
+    _syncActiveStandIn();
     _syncImagesWithCache();
     _ensureImages();
+  }
+
+  /// Arms the stand-in on the activation frame, keeps it while its window
+  /// is open, and drops it the build after it dies.
+  ///
+  /// Arming asks the promoted surface itself: a stand-in exists only when
+  /// ZERO of the surface's committed tiles have any picture yet — which is
+  /// precisely the first-activation swap frame. A hot re-activation (tile
+  /// objects still hold their decoded images) or an edited cel (commit
+  /// adoption gave its tiles pictures) never arms.
+  void _syncActiveStandIn() {
+    final painter = widget.activeSurfacePainter;
+    final key = _activeNodeFrameKey(widget.nodes);
+    final current = _activeStandIn;
+    if (current != null) {
+      if (painter != null &&
+          key == current.frameKey &&
+          identical(painter.surface, current.surface) &&
+          current.isLive) {
+        return; // The same swap window, still open.
+      }
+      _activeStandIn = null;
+    }
+    if (painter == null || key == null) {
+      return;
+    }
+    final held = _images[key];
+    if (held == null) {
+      return;
+    }
+    final surface = painter.surface;
+    if (surface.tiles.isEmpty) {
+      return;
+    }
+    // ⛔Captured ONCE: the surface is immutable, and `surface.tiles` is a
+    // defensive whole-map copy per read — per-paint reads of it are the
+    // measured 82.7ms cliff the painter's own walk had to leave behind.
+    final tiles = List<BitmapTile>.of(surface.tiles.values);
+    final tileImages = painter.tileImageCache;
+    for (final tile in tiles) {
+      if (tileImages.displayImageFor(tile) != null) {
+        // Some picture already exists: not the first-activation frame.
+        return;
+      }
+    }
+    _activeStandIn = _ActiveLayerStandIn(
+      frameKey: key,
+      image: held.clone,
+      worldRect: held.worldRect,
+      surface: surface,
+      tiles: tiles,
+      tileImages: tileImages,
+    );
+  }
+
+  /// The active node's cel key, wherever the node sits in the tree.
+  static BrushFrameKey? _activeNodeFrameKey(List<CanvasLayerStackNode> nodes) {
+    for (final node in nodes) {
+      switch (node) {
+        case CanvasActiveLayerNode(:final frameKey):
+          return frameKey;
+        case CanvasLayerGroupNode(:final children):
+        case CanvasLayerAdjustmentNode(:final children):
+          final inner = _activeNodeFrameKey(children);
+          if (inner != null) {
+            return inner;
+          }
+        case CanvasLayerImageNode():
+          break;
+      }
+    }
+    return null;
   }
 
   /// 🚨(v) — the recording of everything a stroke cannot change.
@@ -365,6 +470,11 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   void _syncSweepBody() {
     final wanted = <BrushFrameKey>{
       for (final layer in widget.layers) layer.frameKey,
+      // The stand-in borrows the just-activated layer's held image, whose
+      // request left the set on this very frame — hold it while the swap
+      // window is open, or the sweep disposes the one truth the active
+      // slot can draw.
+      ?_activeStandIn?.frameKey,
     };
     for (final key in _images.keys.toList()) {
       if (!wanted.contains(key)) {
@@ -443,6 +553,12 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
             changed = true;
           }
         }
+        final standInHold = _activeStandIn?.frameKey;
+        if (standInHold != null) {
+          // The same hold the sync sweep applies — the async pass must not
+          // drop what the paint phase is standing in with.
+          wanted.add(standInHold);
+        }
         for (final key in _images.keys.toList()) {
           if (!wanted.contains(key)) {
             _dropImage(key, _images.remove(key)!);
@@ -500,6 +616,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
               pose: pose,
               anchorPoint: anchorPoint,
               effects: effects,
+              standIn: _activeStandIn,
             ),
           );
         case CanvasLayerGroupNode(
@@ -649,6 +766,88 @@ final class _PaintImage extends _PaintNode {
   final List<ResolvedLayerEffect> effects;
 }
 
+/// The first-activation stand-in: the just-deactivated route's layer image,
+/// plus everything needed to answer — at PAINT time, on every paint — "is
+/// the swap window still open".
+///
+/// The window opens armed (zero pictures existed at arm time) and the latch
+/// is ONE-WAY: the first paint that finds ANY picture for a committed tile,
+/// an overlay with anything to show, or a different surface kills it for
+/// good. Truth must never be outranked, and a dead stand-in must not come
+/// back — the picture it holds only ages.
+///
+/// Paint-time, not build-time, because decodes land between builds: the
+/// tile cache notifies, the painter repaints, and the very same repaint
+/// must already prefer the truth. A build-time answer would keep serving
+/// the stand-in until some unrelated rebuild came along.
+class _ActiveLayerStandIn {
+  _ActiveLayerStandIn({
+    required this.frameKey,
+    required this.image,
+    required this.worldRect,
+    required this.surface,
+    required this.tiles,
+    required this.tileImages,
+  });
+
+  final BrushFrameKey frameKey;
+
+  /// The held clone from the state's `_images` — owned THERE (the wanted
+  /// hold keeps the record alive while this object does), never disposed
+  /// here.
+  final ui.Image image;
+  final Rect worldRect;
+
+  /// The promoted surface this window belongs to, by identity.
+  final BitmapSurface surface;
+
+  /// The surface's committed tiles, captured once (the surface is
+  /// immutable; `surface.tiles` is a defensive whole-map copy per read).
+  final List<BitmapTile> tiles;
+
+  final BitmapTileImageCache tileImages;
+
+  bool _dead = false;
+
+  /// Whether the window has not been killed yet (bookkeeping for the
+  /// state's keep/drop decision — the paint-time question is
+  /// [shouldStandInFor]).
+  bool get isLive => !_dead;
+
+  /// The paint-time predicate: draw the stand-in instead of the tile walk?
+  bool shouldStandInFor(BitmapSurfacePainter painter) {
+    if (_dead) {
+      return false;
+    }
+    if (!identical(painter.surface, surface)) {
+      _dead = true;
+      return false;
+    }
+    final overlay = painter.overlayModel;
+    if (overlay != null &&
+        (overlay.hasStrokeContent ||
+            overlay.stampImage != null ||
+            overlay.settling ||
+            overlay.hasStandIns ||
+            (overlay.settleHoldTiles?.isNotEmpty ?? false))) {
+      // In-flight ink (or a settle window) must reach the screen, and the
+      // walk is the only body that draws it — and a settle window means
+      // this was never the first-activation frame to begin with.
+      _dead = true;
+      return false;
+    }
+    for (final tile in tiles) {
+      if (tileImages.displayImageFor(tile) != null) {
+        // The first picture landed: the surface can speak for itself from
+        // here, and the stand-in must never outrank it.
+        _dead = true;
+        return false;
+      }
+    }
+    return true;
+  }
+}
+
 final class _PaintActiveSurface extends _PaintNode {
   const _PaintActiveSurface({
     required this.opacity,
@@ -656,6 +855,7 @@ final class _PaintActiveSurface extends _PaintNode {
     required this.pose,
     required this.anchorPoint,
     required this.effects,
+    this.standIn,
   });
 
   /// ㊱: the active row's display opacity. It reached the node all along and
@@ -671,6 +871,16 @@ final class _PaintActiveSurface extends _PaintNode {
   final TransformPose? pose;
   final CanvasPoint? anchorPoint;
   final List<ResolvedLayerEffect> effects;
+
+  /// The first-activation stand-in, or null outside the swap window.
+  ///
+  /// ⛔Deliberately absent from [_LayerStackPainter._treesMatch] and
+  /// [_LayerStackPainter.treeSignature], for the same reason the active
+  /// surface's pixels are: this IS active-slot content, its every visible
+  /// change rides the tile cache's notification (arming coincides with the
+  /// activation rebuild; the latch dies exactly when a decode notifies),
+  /// and the bake never records the slot it is drawn in.
+  final _ActiveLayerStandIn? standIn;
 }
 
 final class _PaintGroup extends _PaintNode {
@@ -1114,6 +1324,7 @@ class _LayerStackPainter extends CustomPainter {
                 :final opacity,
                 :final blendMode,
                 :final effects,
+                :final standIn,
               ):
                 // The live surface, drawn by the SAME painter the standalone
                 // interactive view uses — the canvas is already
@@ -1177,6 +1388,51 @@ class _LayerStackPainter extends CustomPainter {
                     flat.worldRect,
                     Paint()..filterQuality = ui.FilterQuality.low,
                   );
+                } else if (standIn != null &&
+                    standIn.shouldStandInFor(activeSurfacePainter!)) {
+                  // The FIRST-ACTIVATION swap frame: the promoted surface
+                  // has zero decoded tile images, so the walk could show
+                  // only its budgets' worth and leave the rest silent —
+                  // the one-frame blank. The held image is the SAME pixels
+                  // the previous frame drew for this cel at the same rect
+                  // with the same sampling, so standing in is seamless;
+                  // the paint-time predicate above hands back to the walk
+                  // the moment any truth exists.
+                  if (activeSurfacePainter!.showTransparentBackground) {
+                    // Parity with [BitmapSurfacePainter.paintContentInto]'s
+                    // own opening block (the merged stack passes false and
+                    // paints paper itself; standalone hosts rely on this).
+                    canvas.drawRect(
+                      Rect.fromLTWH(
+                        0,
+                        0,
+                        canvasSize.width.toDouble(),
+                        canvasSize.height.toDouble(),
+                      ),
+                      Paint()
+                        ..color = const Color(
+                          ProjectBackground.defaultPaperArgb,
+                        ),
+                    );
+                  }
+                  canvas.drawImageRect(
+                    standIn.image,
+                    Rect.fromLTWH(
+                      0,
+                      0,
+                      standIn.image.width.toDouble(),
+                      standIn.image.height.toDouble(),
+                    ),
+                    standIn.worldRect,
+                    // `low`, exactly like the cached-image route this
+                    // image was drawn by one frame ago — the handoff into
+                    // the stand-in must be byte-identical.
+                    Paint()..filterQuality = ui.FilterQuality.low,
+                  );
+                  // ⛔The stand-in can only hand off if the decodes it is
+                  // waiting on actually start — the walk's collect pass is
+                  // skipped this frame, so its decode starts must not be.
+                  activeSurfacePainter!.startPendingDecodes(canvas);
                 } else {
                   activeSurfacePainter!.paintContentInto(canvas);
                 }

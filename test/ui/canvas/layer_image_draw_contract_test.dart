@@ -138,7 +138,13 @@ void main() {
 /// purpose and on its own Paint, because under the scaled recording the
 /// active layer must resample under the SAME filter as every other
 /// layer's image — that uniformity is the T21 closure below the knee.
-const int _knownRawDraws = 36;
+/// **37** at the open-staleness round: +1 in canvas_layer_stack_view —
+/// the FIRST-ACTIVATION stand-in blit in the active slot, LOW on its own
+/// Paint on purpose: it is the very image the cached-image route drew one
+/// frame earlier at the same rect, and the handoff into the stand-in must
+/// be byte-identical (the same sampling the [_PaintImage] route states
+/// through drawPosedLayerImage).
+const int _knownRawDraws = 37;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',
