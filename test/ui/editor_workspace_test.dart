@@ -1,6 +1,5 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/cut_piece.dart';
@@ -998,5 +997,31 @@ void main() {
 
       expect(panbar().viewport.zoom, 1.75);
     });
+  });
+
+  testWidgets('the OS memory-pressure signal reaches the session through '
+      'the workspace observer — driven as the REAL system channel message, '
+      'not a direct method call', (tester) async {
+    await _pumpHome(tester);
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    session.brushFrameStore.hotCelByteBudget = 1024 * 1024 * 1024;
+
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .handlePlatformMessage(
+          SystemChannels.system.name,
+          SystemChannels.system.codec.encodeMessage(
+            const <String, dynamic>{'type': 'memoryPressure'},
+          ),
+          (_) {},
+        );
+
+    expect(
+      session.brushFrameStore.hotCelByteBudget,
+      512 * 1024 * 1024,
+      reason: 'addObserver + didHaveMemoryPressure + the session forward '
+          'must all hold for the halving to land',
+    );
   });
 }

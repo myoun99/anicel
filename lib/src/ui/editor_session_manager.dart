@@ -170,6 +170,7 @@ import '../services/persistence/project_autosave_service.dart';
 import '../services/persistence/anicel_file_service.dart';
 import '../services/commands/cut_reorder_planner.dart';
 import '../native/qa_audio_device.dart' show QaAudioDevice;
+import '../native/qa_native_engine.dart' show QaNativeEngine;
 import 'playback/audio_input_monitor.dart';
 import 'playback/audio_playback_schedule.dart' show ScheduledAudioClip;
 import '../services/audio/audio_conform_pipeline.dart' show ConformCacheLayout;
@@ -399,10 +400,25 @@ class EditorSessionManager extends ChangeNotifier {
   /// The link resolver reads the CURRENT project's registry on every
   /// resolve (L1) — link edits need no event plumbing to reach the store.
   late final BrushFrameStore brushFrameStore = BrushFrameStore()
+    // 유저 확정 (2026-08-16): the hot budget scales to the MACHINE —
+    // RAM/4 clamped — instead of assuming a desktop. Unknown RAM (no
+    // engine: tests, host) keeps the old 1536MB, byte-for-byte.
+    ..hotCelByteBudget = deviceScaledHotCelBudget(
+      physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
+    )
     ..setLinkResolver(
       (key) =>
           _repository.currentProject?.linkRegistry.canonicalCelKey(key) ?? key,
     );
+
+  /// The OS memory-pressure signal, forwarded by the workspace's binding
+  /// observer: the hot cel tier halves and cools, and the playback caches
+  /// re-run their budget against the shrunken world. Standing down is
+  /// lossless by construction — cels encode to cold, dirty ones stay.
+  void respondToMemoryPressure() {
+    brushFrameStore.respondToMemoryPressure();
+    enforcePlaybackCacheBudget();
+  }
 
   /// The conte sheet ink's cel stores (R5) — SESSION-owned so the .anicel
   /// archive can persist them (the second cel namespace), while the ink

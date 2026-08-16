@@ -17,6 +17,19 @@
 #include <stdint.h>
 #include <string.h>
 
+// qa_physical_memory_bytes is the one OS-API call in this file: each
+// platform answers "how much RAM does this machine have" its own way,
+// and keeping the three arms here means Dart needs no method channel and
+// the answer works from any isolate.
+#if defined(_WIN32)
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <sys/sysctl.h>
+#include <sys/types.h>
+#else
+#include <sys/sysinfo.h>
+#endif
+
 #if defined(_WIN32)
 #define QA_EXPORT __declspec(dllexport)
 #else
@@ -4545,6 +4558,35 @@ QA_EXPORT int32_t qa_resample_rgba(
   return 0;
 }
 
+// The device's physical RAM in bytes; 0 when the platform refuses to
+// answer. The hot cel budget scales from this instead of assuming a
+// desktop-class machine (a 3GB tablet was being asked to hold 1.5GB of
+// hot cels).
+QA_EXPORT int64_t qa_physical_memory_bytes(void) {
+#if defined(_WIN32)
+  MEMORYSTATUSEX status;
+  status.dwLength = sizeof(status);
+  if (GlobalMemoryStatusEx(&status)) {
+    return (int64_t)status.ullTotalPhys;
+  }
+  return 0;
+#elif defined(__APPLE__)
+  int64_t bytes = 0;
+  size_t length = sizeof(bytes);
+  int mib[2] = {CTL_HW, HW_MEMSIZE};
+  if (sysctl(mib, 2, &bytes, &length, NULL, 0) == 0) {
+    return bytes;
+  }
+  return 0;
+#else
+  struct sysinfo info;
+  if (sysinfo(&info) == 0) {
+    return (int64_t)info.totalram * (int64_t)info.mem_unit;
+  }
+  return 0;
+#endif
+}
+
 // Engine ABI version - ONE number for this whole binary, and the Dart
 // loader refuses a mismatched one.
 //
@@ -4558,4 +4600,7 @@ QA_EXPORT int32_t qa_resample_rgba(
 // v26: qa_resample_rgba gained clip_x/clip_y - where the destination
 // buffer sits inside the full output rect, so a caller can compute one
 // window of it bit-identically. Zero is the whole rect.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 27; }
+// v27: qa_video_decode_* - the export path's mirror (qa_video_decode.c).
+// v28: qa_physical_memory_bytes - the device's RAM, for the hot cel
+// budget.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 28; }

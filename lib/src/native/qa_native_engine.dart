@@ -38,6 +38,7 @@ class QaNativeEngine {
     this._tileFree,
     this._tileFreePointer,
     this._tilePoolCachedBytes,
+    this._physicalMemoryBytes,
     this._fillGapCloseRun,
     this._floodFillWave,
     this._fillComposeBatch,
@@ -181,6 +182,16 @@ class QaNativeEngine {
 
   /// Bytes currently parked in the C free lists (tests/diagnostics).
   int debugTilePoolCachedBytes() => _tilePoolCachedBytes();
+
+  final int Function() _physicalMemoryBytes;
+
+  /// The device's physical RAM, or null when the platform refused to
+  /// answer — callers keep their desktop-class default then. This is what
+  /// lets the hot cel budget scale to the machine (v28).
+  int? get physicalMemoryBytes {
+    final bytes = _physicalMemoryBytes();
+    return bytes <= 0 ? null : bytes;
+  }
 
   final int Function(
     Pointer<Uint8> rgb,
@@ -957,6 +968,10 @@ class QaNativeEngine {
           .lookupFunction<Int64 Function(), int Function()>(
             'qa_tile_pool_cached_bytes',
           );
+      final physicalMemoryBytes = library
+          .lookupFunction<Int64 Function(), int Function()>(
+            'qa_physical_memory_bytes',
+          );
       final fillGapCloseRun = library
           .lookupFunction<
             Int32 Function(
@@ -1144,6 +1159,7 @@ class QaNativeEngine {
         tileFree,
         tileFreePointer,
         tilePoolCachedBytes,
+        physicalMemoryBytes,
         fillGapCloseRun,
         floodFillWave,
         fillComposeBatch,
