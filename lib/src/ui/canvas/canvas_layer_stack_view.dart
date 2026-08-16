@@ -562,42 +562,42 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     );
     _bake.keepFor(compositeKey);
     return IgnorePointer(
-      // The A/B for the transition pixel jump (2026-08-16 실기): Skia's
-      // raster cache snaps a picture to INTEGRAL device translation once
-      // it has sat stable ~3 frames, and renders it fractionally while it
-      // repaints — pen-down/pen-up/layer-switch are exactly the moments
-      // the cache engages/disengages, so axis-aligned edges hop 1px at
-      // fractional pan phase. `willChange: true` asks the engine not to
-      // cache this picture: if the hop vanishes with the switch ON, the
-      // mechanism is confirmed (and the durable fix is snapping OUR
-      // translation, not keeping this on — an uncached idle canvas
-      // re-rasterizes every composited frame).
-      child: ValueListenableBuilder<bool>(
-        valueListenable: MeasurementMode.bypassCanvasRasterCache,
-        builder: (context, bypass, _) => CustomPaint(
-          willChange: bypass,
-          painter: _LayerStackPainter(
-            nodes: nodes,
-            activeSurfacePainter: widget.activeSurfacePainter,
-            floatOverlay: widget.floatOverlay,
-            canvasSize: widget.canvasSize,
-            viewport: widget.viewport,
-            paintPaper: widget.paintPaper,
-            paperBackground: widget.paperBackground,
-            bake: widget.debugDisableBake ? null : _bake,
-            bufferCache: widget.debugDisableBake ? null : _bufferCache,
-            compositeKey: compositeKey,
-            // ⓔ 5단계: the knee's s = zoom·DPR, and the DPR belongs to the
-            // VIEW this widget sits in — MediaQuery is the source that both
-            // tracks monitor moves (this build re-runs) and answers per
-            // view, where the raw PlatformDispatcher singleton does
-            // neither.
-            devicePixelRatio:
-                MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
-            debugDisableSingleBuffer: widget.debugDisableSingleBuffer,
-          ),
-          child: const SizedBox.expand(),
+      // ⛔willChange stays TRUE, permanently. Skia's raster cache snaps a
+      // stable picture to INTEGRAL device translation and renders it
+      // fractionally while it repaints, so every engage/disengage moment
+      // (pen-down, pen-up, layer switch, a tool button rebuilding this
+      // widget) hopped axis-aligned edges by 1px. Snapping OUR transform
+      // (#1101) could not close it: the cache snaps the picture LAYER's
+      // device offset — panel layout above this widget — which no
+      // in-picture transform can see. Device A/B (2026-08-17) confirmed
+      // the hint removes the hop entirely, with no observed cost: the
+      // display buffer already reduces this picture to a couple of image
+      // blits, so the engine cache was saving almost nothing here.
+      // Fallback if an old device ever shows idle cost: align the LAYER
+      // offset itself, not the picture content.
+      child: CustomPaint(
+        willChange: true,
+        painter: _LayerStackPainter(
+          nodes: nodes,
+          activeSurfacePainter: widget.activeSurfacePainter,
+          floatOverlay: widget.floatOverlay,
+          canvasSize: widget.canvasSize,
+          viewport: widget.viewport,
+          paintPaper: widget.paintPaper,
+          paperBackground: widget.paperBackground,
+          bake: widget.debugDisableBake ? null : _bake,
+          bufferCache: widget.debugDisableBake ? null : _bufferCache,
+          compositeKey: compositeKey,
+          // ⓔ 5단계: the knee's s = zoom·DPR, and the DPR belongs to the
+          // VIEW this widget sits in — MediaQuery is the source that both
+          // tracks monitor moves (this build re-runs) and answers per
+          // view, where the raw PlatformDispatcher singleton does
+          // neither.
+          devicePixelRatio:
+              MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
+          debugDisableSingleBuffer: widget.debugDisableSingleBuffer,
         ),
+        child: const SizedBox.expand(),
       ),
     );
   }

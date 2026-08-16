@@ -82,21 +82,6 @@ void main() {
     );
   });
 
-  test('the raster-cache bypass is off unless seeded, and resets — it is '
-      'an A/B, and left ON it makes the idle canvas re-rasterize', () {
-    expect(MeasurementMode.startWithBypassCanvasRasterCache, isFalse);
-    expect(
-      MeasurementMode.bypassCanvasRasterCache.value,
-      MeasurementMode.startWithBypassCanvasRasterCache,
-    );
-    MeasurementMode.bypassCanvasRasterCache.value = true;
-    MeasurementMode.reset();
-    expect(
-      MeasurementMode.bypassCanvasRasterCache.value,
-      MeasurementMode.startWithBypassCanvasRasterCache,
-    );
-  });
-
   test('the unpainted-tile marker is off unless seeded, and resets', () {
     expect(
       MeasurementMode.startWithUnpaintedTiles,
