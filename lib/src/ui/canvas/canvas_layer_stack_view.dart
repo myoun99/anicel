@@ -562,21 +562,23 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     );
     _bake.keepFor(compositeKey);
     return IgnorePointer(
-      // ⛔willChange stays TRUE, permanently. Skia's raster cache snaps a
-      // stable picture to INTEGRAL device translation and renders it
-      // fractionally while it repaints, so every engage/disengage moment
-      // (pen-down, pen-up, layer switch, a tool button rebuilding this
-      // widget) hopped axis-aligned edges by 1px. Snapping OUR transform
-      // (#1101) could not close it: the cache snaps the picture LAYER's
-      // device offset — panel layout above this widget — which no
-      // in-picture transform can see. Device A/B (2026-08-17) confirmed
-      // the hint removes the hop entirely, with no observed cost: the
-      // display buffer already reduces this picture to a couple of image
-      // blits, so the engine cache was saving almost nothing here.
-      // Fallback if an old device ever shows idle cost: align the LAYER
-      // offset itself, not the picture content.
+      // ★No willChange hint — the engine raster cache is ON again. Skia's
+      // cache snaps a stable picture's LAYER to INTEGRAL device
+      // translation and renders it fractionally while it repaints, so
+      // every engage/disengage moment (pen-down, pen-up, layer switch, a
+      // tool button rebuilding this widget) hopped axis-aligned edges by
+      // 1px. Snapping OUR transform (#1101) could not close it — the
+      // cache snaps the picture LAYER's device offset, which panel layout
+      // above this widget owns and no in-picture transform can see — and
+      // `willChange: true` (#1103) only refused the cache. The law now
+      // lives where the offset does: `IntegralLayerOffset` (above the
+      // canvas content boundary in `brush_canvas_panel.dart`) holds the
+      // layer's device offset integral, so the snapped replay and the
+      // live render are the same pixels and the cache is free to help.
+      // #1101's in-picture pan snap stays untouched — it owns pan jitter,
+      // which is recorded INSIDE the picture where no layer offset
+      // reaches.
       child: CustomPaint(
-        willChange: true,
         painter: _LayerStackPainter(
           nodes: nodes,
           activeSurfacePainter: widget.activeSurfacePainter,
