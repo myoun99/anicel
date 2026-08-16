@@ -246,6 +246,11 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
                   : null,
               canvasSize: canvasSize,
               viewport: widget.viewport,
+              // The pan-phase snap's device grid — the editing stack snaps
+              // to the same one, so entering playback cannot hop the
+              // picture by a sub-pixel.
+              devicePixelRatio:
+                  MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
               cameraPose:
                   widget.cameraViewEnabled && cut != null && position != null
                   ? widget.cameraPoseOf(cut, position.localFrameIndex)

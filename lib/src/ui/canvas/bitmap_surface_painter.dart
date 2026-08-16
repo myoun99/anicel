@@ -35,6 +35,7 @@ class BitmapSurfacePainter extends CustomPainter {
     this.overlayModel,
     this.showTransparentBackground = true,
     this.staleScope,
+    this.devicePixelRatio = 1.0,
     BitmapTileImageCache? tileImageCache,
   }) : tileImageCache = tileImageCache ?? BitmapTileImageCache.instance,
        super(
@@ -52,6 +53,12 @@ class BitmapSurfacePainter extends CustomPainter {
 
   /// Zoom/pan applied inside the picture; `null` paints at identity.
   final CanvasViewport? viewport;
+
+  /// The view's DPR, for [applyViewportTransform]'s pan-phase snap. Only
+  /// the standalone route reads it ([viewport] non-null); the merged stack
+  /// draws this painter through [paintContentInto] under its own snapped
+  /// transform, so the null-viewport painters never need it.
+  final double devicePixelRatio;
 
   /// Live in-progress stroke; drawn above the committed tiles with plain
   /// source-over. Its notifications repaint this painter directly.
@@ -88,7 +95,11 @@ class BitmapSurfacePainter extends CustomPainter {
     canvas.save();
     final resolvedViewport = viewport;
     if (resolvedViewport != null) {
-      applyViewportTransform(canvas, resolvedViewport);
+      applyViewportTransform(
+        canvas,
+        resolvedViewport,
+        devicePixelRatio: devicePixelRatio,
+      );
     }
     // The clip is the PASTEBOARD: artwork past the canvas edge stays
     // visible while editing (dimmed below); composite/export raster at
@@ -642,6 +653,9 @@ class BitmapSurfacePainter extends CustomPainter {
     return !identical(oldDelegate.surface, surface) ||
         oldDelegate.showTransparentBackground != showTransparentBackground ||
         oldDelegate.viewport != viewport ||
+        // The pan-phase snap reads it — a monitor move must repaint, not
+        // keep the old phase.
+        oldDelegate.devicePixelRatio != devicePixelRatio ||
         !identical(oldDelegate.overlayModel, overlayModel);
   }
 }

@@ -413,6 +413,9 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
         image: null,
         canvasSize: widget.canvasSize,
         viewport: viewport,
+        // The pan-phase snap's device grid — the blank-canvas paper must
+        // sit exactly where the editing stack's paper lands.
+        devicePixelRatio: MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
       ),
       child: const SizedBox.expand(),
     );

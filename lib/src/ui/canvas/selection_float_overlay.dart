@@ -137,20 +137,35 @@ typedef SelectionFloatOverlay = ValueNotifier<SelectionFloatPaint?>;
 /// already applied it. Same bytes, same rects, one implementation of the
 /// drawing.
 class SelectionFloatPainter extends CustomPainter {
-  SelectionFloatPainter({required this.float, required this.viewport});
+  SelectionFloatPainter({
+    required this.float,
+    required this.viewport,
+    this.devicePixelRatio = 1.0,
+  });
 
   final SelectionFloatPaint float;
   final CanvasViewport viewport;
 
+  /// The pan-phase snap's device grid — the ink view behind this float
+  /// snaps its translation, and a float on the raw transform would sit a
+  /// sub-pixel off the pixels it is about to land in.
+  final double devicePixelRatio;
+
   @override
   void paint(Canvas canvas, Size size) {
     canvas.save();
-    canvas.transform(viewportTransformMatrix(viewport).storage);
+    applyViewportTransform(
+      canvas,
+      viewport,
+      devicePixelRatio: devicePixelRatio,
+    );
     float.paintInto(canvas);
     canvas.restore();
   }
 
   @override
   bool shouldRepaint(covariant SelectionFloatPainter oldDelegate) =>
-      oldDelegate.float != float || oldDelegate.viewport != viewport;
+      oldDelegate.float != float ||
+      oldDelegate.viewport != viewport ||
+      oldDelegate.devicePixelRatio != devicePixelRatio;
 }

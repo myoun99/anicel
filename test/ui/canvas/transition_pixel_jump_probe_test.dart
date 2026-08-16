@@ -34,8 +34,13 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 /// any nonzero diff is a repro of a one-frame jump, and the phase where
 /// it appears names the mechanism.
 ///
-/// Output goes through debugPrint as `PROBE ...` lines; the only hard
-/// assertion is baseline stability (two steady paints byte-identical).
+/// Output goes through debugPrint as `PROBE ...` lines; the hard
+/// assertions are baseline stability (two steady paints byte-identical)
+/// and the route flip (step 8): buffer route vs direct walk must be
+/// byte-identical at ANY pan phase. Pre-snap, the fractional-pan run put
+/// a one-pixel 290px strip between the routes while the integer-pan run
+/// read zero — the render translation is snapped to whole device pixels
+/// now ([renderSnappedViewport]), so both runs must read zero.
 void main() {
   const canvasSize = CanvasSize(width: 512, height: 512);
   const tileSize = 256;
@@ -189,10 +194,10 @@ void main() {
 
     Uint8List? baseline;
 
-    void report(String phase, Uint8List probe) {
+    int report(String phase, Uint8List probe) {
       final base = baseline;
       if (base == null) {
-        return;
+        return 0;
       }
       var diff = 0;
       var onLineEdge = 0;
@@ -255,6 +260,7 @@ void main() {
         'dirty=${cache.lastDirtyRect} '
         '${samples.isEmpty ? '' : 'samples=${samples.join(' ')}'}',
       );
+      return diff;
     }
 
     // ------------------------------------------------------------------
@@ -368,10 +374,30 @@ void main() {
       painterFor(surface3),
       disableBuffer: true,
     );
-    report('direct-walk(route-flip)', await paintBytes(tester, walkPainter));
+    final walkDiff = report(
+      'direct-walk(route-flip)',
+      await paintBytes(tester, walkPainter),
+    );
+    // The pan-phase snap's oracle: both routes render under the SAME
+    // snapped translation, so the fractional-pan strip cannot exist any
+    // more — it is structurally impossible, not merely unobserved. The
+    // integer-pan run pins the zero the routes always had.
+    expect(
+      walkDiff,
+      0,
+      reason: 'buffer route vs direct walk must be byte-identical at any '
+          'pan phase — a nonzero diff is the transition route-flip jump',
+    );
   }
 
+  // Logical == device pixels for both probes: [paintBytes] rasterises at
+  // the LOGICAL size, while the painter's snap counts DEVICE pixels
+  // through MediaQuery's DPR — at the test binding's default DPR of 3 the
+  // snapped phase would still be fractional in the 1:1 raster, a mixed
+  // geometry no screen shows.
   testWidgets('fractional pan: zoom 1.5, pan (10.37, 3.71)', (tester) async {
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetDevicePixelRatio);
     await runSequence(
       tester,
       tag: 'frac',
@@ -380,6 +406,8 @@ void main() {
   });
 
   testWidgets('integer pan: zoom 1.5, pan (10, 4)', (tester) async {
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetDevicePixelRatio);
     await runSequence(
       tester,
       tag: 'int',
