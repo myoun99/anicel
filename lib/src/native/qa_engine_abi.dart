@@ -93,7 +93,13 @@ import 'dart:io';
 ///   reads through Media Foundation's Source Reader; the other platforms
 ///   answer `qa_video_decode_supported() == 0` until their reader is
 ///   written on a device that can verify it.
-const int kQaEngineAbiVersion = 27;
+///
+/// - v28: `qa_physical_memory_bytes` — the device's RAM, so the hot cel
+///   budget scales to the machine instead of assuming a desktop-class one
+///   (유저 확정 2026-08-16: RAM 비례 기본값 + 메모리 압박 반응). Zero when
+///   the platform refuses to answer; callers treat that as "unknown" and
+///   keep the desktop default.
+const int kQaEngineAbiVersion = 28;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

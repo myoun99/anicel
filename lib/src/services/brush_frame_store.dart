@@ -14,6 +14,27 @@ import '../models/dirty_tile_set.dart';
 import 'bitmap_surface_geometry.dart';
 import 'persistence/brush_drawing_binary_codec.dart';
 
+/// The hot-tier default for THIS machine: a quarter of physical RAM,
+/// clamped to [384MB, 1536MB]. Null/zero RAM (the platform refused, or
+/// no engine — tests, host runs) keeps the desktop-class 1536MB, which
+/// is exactly what every machine got before this existed.
+///
+/// 유저 확정 (2026-08-16): 「추천대로」 — RAM 비례 기본값 + 압박 반응.
+/// A 3GB tablet lands at ~768MB instead of being asked to hold a
+/// desktop's 1.5GB of hot cels; a 12GB iPad keeps today's number.
+int deviceScaledHotCelBudget({required int? physicalMemoryBytes}) {
+  const desktopDefault = 1536 * 1024 * 1024;
+  const floor = 384 * 1024 * 1024;
+  if (physicalMemoryBytes == null || physicalMemoryBytes <= 0) {
+    return desktopDefault;
+  }
+  final quarter = physicalMemoryBytes ~/ 4;
+  if (quarter < floor) {
+    return floor;
+  }
+  return quarter > desktopDefault ? desktopDefault : quarter;
+}
+
 class BrushFrameStore {
   BrushFrameStore();
 
@@ -155,8 +176,28 @@ class BrushFrameStore {
       Set.unmodifiable(_dirtySinceSave);
 
   /// Hot-tier byte budget. Cels beyond it cool (encode + deflate) in LRU
-  /// order in a background isolate. Test-settable.
+  /// order in a background isolate. Test-settable; the session seeds it
+  /// with [deviceScaledHotCelBudget] at construction (유저 확정
+  /// 2026-08-16: RAM 비례 + 메모리 압박 반응 — a 3GB tablet was being
+  /// asked to hold a desktop's 1.5GB of hot cels).
   int hotCelByteBudget = 1536 * 1024 * 1024;
+
+  /// The OS said memory is tight (`didHaveMemoryPressure`): halve the
+  /// budget — floored so the working set never thrashes — and cool NOW.
+  /// Lowering the budget loses nothing: over-budget cels encode to the
+  /// cold tier, and dirty cels never leave RAM by design.
+  void respondToMemoryPressure() {
+    const floor = 256 * 1024 * 1024;
+    final halved = hotCelByteBudget ~/ 2;
+    final lowered = halved < floor ? floor : halved;
+    // Pressure only ever LOWERS: a budget already under the floor
+    // (a test, or a deliberately tight caller) must not be raised by
+    // the very signal that says memory is scarce.
+    if (lowered < hotCelByteBudget) {
+      hotCelByteBudget = lowered;
+    }
+    _scheduleCooling();
+  }
 
   /// Bytes currently resident in the hot tier (diagnostics/tests).
   int get hotBakedBytes => _hotBytes;

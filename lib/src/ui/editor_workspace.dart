@@ -325,7 +325,17 @@ class EditorWorkspace extends StatefulWidget {
   State<EditorWorkspace> createState() => _EditorWorkspaceState();
 }
 
-class _EditorWorkspaceState extends State<EditorWorkspace> {
+class _EditorWorkspaceState extends State<EditorWorkspace>
+    with WidgetsBindingObserver {
+  /// The OS says memory is tight: the session stands its caches down —
+  /// hot cels halve and cool, playback re-runs its budget. The workspace
+  /// hosts the observer because its lifetime IS the session being on
+  /// screen; nothing else in lib listens to the binding.
+  @override
+  void didHaveMemoryPressure() {
+    widget.session.respondToMemoryPressure();
+  }
+
   /// The factory-default arrangement (also the validation baseline when a
   /// saved layout is restored: it names every known tab and its home dock).
   ///
@@ -1158,6 +1168,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tipLibrary = BrushTipLibrary(service: widget.tipLibraryService);
     _presetLibrary = BrushPresetLibrary(
       fileService: widget.presetFileService,
@@ -1760,6 +1771,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _storyboardThumbnails.dispose();
     _presetLibrary.dispose();
     _tipLibrary.dispose();
