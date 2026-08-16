@@ -157,36 +157,6 @@ abstract final class MeasurementMode {
     startWithKneeAtOne,
   );
 
-  /// Diagnosis A/B for the transition pixel jump (Settings ▸ Bypass
-  /// Raster Cache): hints the engine not to raster-cache the canvas
-  /// stack's picture.
-  ///
-  /// The jump under investigation (2026-08-16 실기, Windows): at
-  /// fractional pan phase, axis-aligned edges hop 1px for a frame at
-  /// pen-down/pen-up/layer-switch. The compose path was exonerated
-  /// byte-for-byte (transition_pixel_jump_probe_test); the remaining
-  /// suspect is Skia's raster cache, which snaps a stable picture to
-  /// integral device translation while live repaints render fractional
-  /// — and those transitions are exactly its engage/disengage moments.
-  /// ON removes the cache from the equation: jump gone = confirmed.
-  ///
-  /// ⚠️A/B switch, not a fix — ON makes the idle canvas re-rasterize
-  /// every composited frame. The durable fix on confirmation is
-  /// snapping OUR canvas translation to device pixels so the cached and
-  /// live renders agree. Impeller (iPad/Android) has no picture raster
-  /// cache, so this switch should change nothing there.
-  static final ValueNotifier<bool> bypassCanvasRasterCache =
-      ValueNotifier<bool>(startWithBypassCanvasRasterCache);
-
-  /// Seeds [bypassCanvasRasterCache]:
-  ///
-  /// ```
-  /// flutter run --dart-define=QA_BYPASS_RASTER_CACHE=true
-  /// ```
-  static const bool startWithBypassCanvasRasterCache = bool.fromEnvironment(
-    'QA_BYPASS_RASTER_CACHE',
-  );
-
   /// Seeds [kneeAtOne]:
   ///
   /// ```
@@ -244,6 +214,5 @@ abstract final class MeasurementMode {
     frameStats.value = startWithFrameStats;
     showRepaints.value = startWithShowRepaints;
     kneeAtOne.value = startWithKneeAtOne;
-    bypassCanvasRasterCache.value = startWithBypassCanvasRasterCache;
   }
 }

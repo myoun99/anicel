@@ -656,20 +656,6 @@ class EditorTopStrip extends StatelessWidget {
         MeasurementMode.kneeAtOne.value = !MeasurementMode.kneeAtOne.value;
       },
     ),
-    // Transition-pixel-jump A/B: asks the engine not to raster-cache the
-    // canvas picture. Jump gone with this ON = Skia raster cache
-    // confirmed as the mechanism. See [MeasurementMode.
-    // bypassCanvasRasterCache] — an A/B, not a fix to leave on.
-    _item(
-      id: 'edit-bypass-raster-cache',
-      label: 'Bypass Raster Cache',
-      icon: Icons.grid_goldenratio,
-      checked: MeasurementMode.bypassCanvasRasterCache.value,
-      onPressed: () {
-        MeasurementMode.bypassCanvasRasterCache.value =
-            !MeasurementMode.bypassCanvasRasterCache.value;
-      },
-    ),
     // And the marker for where the canvas painter had NO picture for a
     // coordinate it was asked to draw. The whole stale-tile family is
     // that one event, and it is invisible because the painter's answer
