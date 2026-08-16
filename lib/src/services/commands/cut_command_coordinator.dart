@@ -102,10 +102,21 @@ class CutCommandCoordinator {
     required TrackId trackId,
     String? name,
     CanvasSize? canvasSize,
+    // #18 — an EXPLICIT landing (gap parking, range selection): the index
+    // to insert at, the walk-in distance into the gap as the new cut's
+    // own leading gap, and an optional duration (a range names its own
+    // length, the way the transition span's selection does). Null keeps
+    // the classic anchor: right of the active cut, else the track's end.
+    ({int? index, int leadingGapFrames, int? duration})? placement,
   }) {
     final project = repository.requireProject();
     final plan = planCreateCutCommandInput(project);
-    final anchor = _insertionAnchorFor(project, trackId);
+    final anchor = placement == null
+        ? _insertionAnchorFor(project, trackId)
+        : (
+            index: placement.index,
+            referenceName: _referenceNameAt(project, trackId, placement.index),
+          );
 
     historyManager.execute(
       CreateCutCommand(
@@ -116,9 +127,29 @@ class CutCommandCoordinator {
         layerId: plan.layerId,
         name: name ?? nextCutNameAfter(project, anchor.referenceName),
         index: anchor.index,
+        leadingGapFrames: placement?.leadingGapFrames ?? 0,
+        duration: placement?.duration,
         canvasSize: canvasSize ?? defaultCutCanvasSize,
       ),
     );
+  }
+
+  /// The name an EXPLICIT landing counts from: the cut in front of it —
+  /// the same "to the right of" reading the classic anchor gives.
+  String? _referenceNameAt(Project project, TrackId trackId, int? index) {
+    for (final track in project.tracks) {
+      if (track.id != trackId) {
+        continue;
+      }
+      if (track.cuts.isEmpty) {
+        return null;
+      }
+      if (index == null || index > track.cuts.length) {
+        return track.cuts.last.name;
+      }
+      return index == 0 ? null : track.cuts[index - 1].name;
+    }
+    return null;
   }
 
   /// Where a new cut lands on [trackId], and which name it counts from: to

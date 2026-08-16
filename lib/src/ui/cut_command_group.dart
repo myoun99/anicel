@@ -224,7 +224,13 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
           // the same glyph (유저 확정).
           icon: Icons.add,
           tooltip: AppText.strings.cutNewCut,
-          onPressed: session.createCut,
+          // #18 — the button reads the SAME sentence the verb runs on
+          // ([EditorSessionManager.cutCreationPlan], the T25 law). The
+          // bare tear-off before this could never go null, so the button
+          // lit in exactly the states where pressing it did something
+          // other than it promised — a gap press appended at the track's
+          // end, and the frame buttons lit for that far-away cut.
+          onPressed: session.canCreateCut ? session.createCut : null,
           entriesBuilder: _addEntries,
           accent: true,
         ),
