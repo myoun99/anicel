@@ -222,9 +222,11 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
         // exactly the states where pressing it did something other than
         // it promised — a gap press appended at the track's end, and the
         // frame buttons lit for that far-away cut. (Comment sits ABOVE
-        // the button: the ＋-accent source contract reads a ±320-char
-        // window around `Icons.add`, and prose between the glyph and its
-        // `accent:` pushes the answer out of the window.)
+        // the button, and names the add glyph only in prose: the ＋-accent
+        // source contract reads a ±320-char window around the glyph
+        // constant — prose between it and its `accent:` pushes the answer
+        // out of the window, and the constant's literal name inside a
+        // comment is a match of its own.)
         StrapIconButton(
           buttonKey: 'new-cut-button',
           menuKey: 'new-cut-menu',
