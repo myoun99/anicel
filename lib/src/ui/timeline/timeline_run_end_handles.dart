@@ -7,7 +7,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_repeat.dart';
 import 'timeline_cell_style.dart'
-    show timelineDrawingInkColor, timelineLaneInkColor;
+    show timelineDrawingHeldColor, timelineTextOnColor;
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_glyph_cache.dart';
 
@@ -394,20 +394,18 @@ void paintTimelineRunGlyph(
 /// at 0.18 behind a 2px solid accent border, so an accent span would be
 /// impersonating the thing it exists to differ from.
 ///
-/// A pattern span is a MARK ON PAPER, so it wears the paper's own ink, the
-/// way the block-edge grips beside it already do — [surface] is the
-/// brightness of what it sits on, not the theme's. And it is DASHED, because
-/// a repeat pattern should say what it is rather than merely that it is not
-/// a selection. It now differs from a selection in ink and in edge, where it
-/// used to differ in hue and nothing.
+/// A pattern span is a MARK ON PAPER, so it wears the ground law's ink,
+/// the way the block-edge grips beside it already do — [ground] is the
+/// color of what it sits on, not the theme's brightness. And it is DASHED,
+/// because a repeat pattern should say what it is rather than merely that
+/// it is not a selection. It now differs from a selection in ink and in
+/// edge, where it used to differ in hue and nothing.
 void paintTimelineRunPatternSpan(
   Canvas canvas,
   Rect rect, {
-  Brightness surface = Brightness.light,
+  Color ground = timelineDrawingHeldColor,
 }) {
-  final ink = surface == Brightness.dark
-      ? timelineLaneInkColor
-      : timelineDrawingInkColor;
+  final ink = timelineTextOnColor(ground);
   final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(6));
   canvas.drawRRect(rrect, Paint()..color = ink.withValues(alpha: 0.06));
   final stroke = Paint()

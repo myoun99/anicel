@@ -284,7 +284,7 @@ void main() {
 
   group('#15 R3 — the writing anchors (user 2026-07-29)', () {
     testWidgets('a panel\'s frame name sits at its slot\'s TOP-LEFT — the '
-        'cut block title\'s anchor — as ONE self-inverting pass: a second '
+        'cut block title\'s anchor — as ONE ground-law pass: a second '
         'paragraph at the offset would be the outline back', (tester) async {
       await _pump(
         tester,
@@ -305,11 +305,11 @@ void main() {
       expect(
         _paragraphsAt(offsets, (o) => (o - expected).distance < 0.01),
         1,
-        reason: 'one self-inverting fill, no second stroke/outline pass',
+        reason: 'one ground-law fill, no second stroke/outline pass',
       );
     });
 
-    testWidgets('the cut TITLE is self-inverting too — the cells\' one '
+    testWidgets('the cut TITLE follows the ground law too — the cells\' one '
         'writing rule on every label, no scrim anywhere', (tester) async {
       await _pump(tester, storyboardLayer: _dividedStoryboardLayer('cut-1'));
       final block = requireCutBlock(tester, 'cut-1');

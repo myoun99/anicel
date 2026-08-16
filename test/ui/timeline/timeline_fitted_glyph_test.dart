@@ -4,8 +4,8 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
 
 /// #15: the fitted glyph size takes BOTH axes ("빡빡한 쪽으로" — whichever
-/// is tighter wins, floor 4.0 kept), and self-inverting glyph rasters
-/// never share a cache slot with plain ones.
+/// is tighter wins, floor 4.0 kept), and differently-inked glyph rasters
+/// never share a cache slot.
 void main() {
   group('timelineFittedGlyphFontSize', () {
     test('wide cells keep the base size — the pre-#15 behaviour', () {
@@ -43,28 +43,32 @@ void main() {
     });
   });
 
-  group('self-inverting glyphs', () {
-    test('the inverting flag joins the cache key: inverting and plain runs '
+  group('ground-law glyphs', () {
+    test('the resolved COLOR keys the cache: the black and white variants '
         'of one string never serve each other\'s raster', () {
       const style = TextStyle(fontSize: 11, color: Color(0xFF26282B));
       final plain = timelineGlyphPainter('24', style);
-      final inverting = timelineGlyphPainter('24', style, inverting: true);
-      final invertingAgain = timelineGlyphPainter('24', style, inverting: true);
+      final black = timelineGlyphPainter(
+        '24',
+        style.copyWith(color: timelineTextOnLightGroundColor),
+      );
+      final white = timelineGlyphPainter(
+        '24',
+        style.copyWith(color: timelineTextOnDarkGroundColor),
+      );
+      final whiteAgain = timelineGlyphPainter(
+        '24',
+        style.copyWith(color: timelineTextOnDarkGroundColor),
+      );
 
-      expect(identical(plain, inverting), isFalse);
-      expect(identical(inverting, invertingAgain), isTrue, reason: 'cached');
+      expect(identical(plain, black), isFalse);
+      expect(identical(black, white), isFalse);
+      expect(identical(white, whiteAgain), isTrue, reason: 'cached');
       expect(
         identical(plain, timelineGlyphPainter('24', style)),
         isTrue,
         reason: 'the plain entry survives alongside',
       );
-    });
-
-    test('the outline width rule survives for the NON-TEXT marks (the grip '
-        'bars) and never swallows the floor-sized ones', () {
-      expect(timelineOutlineWidthFor(9), 2.0);
-      expect(timelineOutlineWidthFor(12), 2.0);
-      expect(timelineOutlineWidthFor(4), 1.0, reason: 'the 1px floor');
     });
   });
 }

@@ -66,6 +66,7 @@ import 'widgets/instant_tap_region.dart' show InstantTapRegion;
 import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_cell_style.dart'
     show
+        storyboardCutBlockBackgroundColor,
         timelineBaseGridAlpha,
         timelineDrawingInkColor,
         timelineRangeSelectionBandDecoration,
@@ -5709,9 +5710,14 @@ class _StoryboardTrackRow extends StatelessWidget {
                     'storyboard-edit-chrome-${track.id.value}',
                   ),
                   // These grips sit on the CUT BLOCK, not on paper
-                  // (feedback #11): its background follows the theme, so
-                  // the bars take the light ink where it goes dark.
-                  gripSurface: Theme.of(context).brightness,
+                  // (feedback #11): the ground law reads the block's own
+                  // resting plate, so the bars go light on the dark strip.
+                  gripGround: storyboardCutBlockBackgroundColor(
+                    Theme.of(context).colorScheme,
+                    active: false,
+                    hovered: false,
+                    rangeSelected: false,
+                  ),
                   // No layer: these blocks are panels of many cuts, and the
                   // row has no run edges for a LayerId to name.
                   layerId: null,
