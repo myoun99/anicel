@@ -60,6 +60,28 @@ void main() {
     );
   });
 
+  test('the knee A/B is off unless seeded, and resets — a default build '
+      'composes exactly as it did before stage 6 existed', () {
+    expect(
+      MeasurementMode.startWithKneeAtOne,
+      isFalse,
+      reason: 'the knee stays parked at the cap until the device A/B says '
+          'otherwise — flipping the default IS the stage-6 landing',
+    );
+    expect(
+      MeasurementMode.kneeAtOne.value,
+      MeasurementMode.startWithKneeAtOne,
+    );
+    MeasurementMode.kneeAtOne.value = true;
+    MeasurementMode.reset();
+    expect(
+      MeasurementMode.kneeAtOne.value,
+      MeasurementMode.startWithKneeAtOne,
+      reason: 'test hygiene — a switch reset misses is a switch that '
+          'leaks into every later test in the file',
+    );
+  });
+
   test('the unpainted-tile marker is off unless seeded, and resets', () {
     expect(
       MeasurementMode.startWithUnpaintedTiles,

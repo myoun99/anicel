@@ -15,6 +15,7 @@ import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
 import '../../models/tile_coord.dart';
 import '../debug/input_inspector.dart';
+import '../debug/measurement_mode.dart';
 import '../dev_profile.dart';
 import '../playback/layer_frame_image_cache.dart';
 import 'active_layer_flat_projection.dart';
@@ -751,12 +752,14 @@ class _LayerStackPainter extends CustomPainter {
     this.devicePixelRatio = 1.0,
     this.debugDisableSingleBuffer = false,
   }) : super(
-         repaint: floatOverlay == null
-             ? activeSurfacePainter
-             : Listenable.merge(<Listenable?>[
-                 activeSurfacePainter,
-                 floatOverlay,
-               ]),
+         // The knee A/B rides the repaint merge so flipping the switch
+         // repaints the SAME view — the whole point of an in-build A/B
+         // is two readings of one picture, not "pan until it rebuilds".
+         repaint: Listenable.merge(<Listenable?>[
+           activeSurfacePainter,
+           floatOverlay,
+           MeasurementMode.kneeAtOne,
+         ]),
        );
 
   /// The last line the T12 probe in [paint] emitted. Static: a
@@ -1427,6 +1430,21 @@ class _LayerStackPainter extends CustomPainter {
       // projection refuses (settling, stand-ins, stamp, cold truth). The
       // walk was always correct; the buffer is only ever an optimisation.
       return _composeScaledBuffer(rect, paintContent);
+    }
+    // ⓔ 6단계 A/B ([MeasurementMode.kneeAtOne]) — the knee moved from the
+    // cap to 1: WITHIN the cap, any view where the artwork has more
+    // pixels than the screen composes at screen scale too. A refusal
+    // here falls THROUGH to the canvas-resolution buffer below — inside
+    // the cap that buffer is legal and strictly better than the walk
+    // (the above-cap arm has no such floor, which is why it returns).
+    // At `s >= 1` this gate never fires, and that non-firing IS the
+    // above-100% byte-invariance check-point: same code, same bytes.
+    if (MeasurementMode.kneeAtOne.value &&
+        viewport.zoom.abs() * devicePixelRatio < 1) {
+      final scaled = _composeScaledBuffer(rect, paintContent);
+      if (scaled != null) {
+        return scaled;
+      }
     }
     // 🚨(v) — KEEP IT WHILE NOTHING HAS CHANGED. Every paint used to
     // rasterise this again, including the ones where nothing had moved: a

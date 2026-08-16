@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/canvas/paper_background.dart';
 import 'package:anicel/src/ui/canvas/static_composite_bake.dart';
+import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 /// ⓔ 5단계 — BELOW THE KNEE THE BUFFER RUNS AT SCREEN SCALE.
@@ -390,5 +391,119 @@ void main() {
 
     expect(rig.cache.lastBufferScale, isNull);
     expect(rig.cache.fullCount, 0);
+  });
+
+  group('ⓔ 6단계 A/B — MeasurementMode.kneeAtOne', () {
+    // Zoom 0.1 on the 12000px canvas: the visible rect is ~3000 canvas px
+    // — WITHIN the 8192 cap, so without the toggle this view takes the
+    // canvas-resolution buffer. s = 0.1 · dpr 3.0 = 0.3 < 1, so with the
+    // knee at 1 it belongs to the screen-scale path.
+    final withinCap = CanvasViewport(zoom: 0.1);
+
+    testWidgets('OFF (default) is byte-for-byte today: the within-cap '
+        'view takes the canvas-res buffer, never the scaled path',
+        (tester) async {
+      final surface = inkedSurface();
+      await tester.runAsync(() => decodeAll(surface));
+      final rig = await pump(tester, surface: surface, viewport: withinCap);
+      await paintBytes(tester, rig.painter, const Size(300, 8));
+
+      expect(rig.cache.fullCount, greaterThan(0),
+          reason: 'the canvas-res buffer composed');
+      expect(
+        rig.cache.lastBufferScale,
+        isNull,
+        reason: 'with the switch off the scaled path must never run '
+            'within the cap — OFF means the build behaves as before '
+            'stage 6 existed',
+      );
+    });
+
+    testWidgets('ON: the same view composes at screen scale', (tester) async {
+      MeasurementMode.kneeAtOne.value = true;
+      addTearDown(MeasurementMode.reset);
+      final surface = inkedSurface();
+      await tester.runAsync(() => decodeAll(surface));
+      final rig = await pump(tester, surface: surface, viewport: withinCap);
+      await paintBytes(tester, rig.painter, const Size(300, 8));
+
+      expect(
+        rig.cache.lastBufferScale,
+        moreOrLessEquals(0.1 * tester.view.devicePixelRatio),
+        reason: 'within the cap nothing shrinks s further — the scale is '
+            'exactly zoom·dpr',
+      );
+    });
+
+    testWidgets('ON at s >= 1: the gate never fires — above 100% is the '
+        'same code and the same bytes', (tester) async {
+      MeasurementMode.kneeAtOne.value = true;
+      addTearDown(MeasurementMode.reset);
+      final surface = inkedSurface();
+      await tester.runAsync(() => decodeAll(surface));
+      // zoom 0.5 · dpr 3.0 = s 1.5.
+      final rig = await pump(
+        tester,
+        surface: surface,
+        viewport: CanvasViewport(zoom: 0.5),
+      );
+      await paintBytes(tester, rig.painter, const Size(300, 8));
+
+      expect(rig.cache.fullCount, greaterThan(0));
+      expect(
+        rig.cache.lastBufferScale,
+        isNull,
+        reason: 'the above-100% byte-invariance check-point is structural: '
+            'the gate must not run the scaled path when the artwork has '
+            'no more pixels than the screen',
+      );
+    });
+
+    testWidgets('ON + a refusal WITHIN the cap falls through to the '
+        'canvas-res buffer, not the walk', (tester) async {
+      MeasurementMode.kneeAtOne.value = true;
+      addTearDown(MeasurementMode.reset);
+      final surface = inkedSurface();
+      await tester.runAsync(() => decodeAll(surface));
+      // Rotation is the scaled buffer's own refusal (the blit could not
+      // be 1:1) — but inside the cap the canvas-res buffer handles any
+      // viewport transform, so stepping all the way down to the walk
+      // would pay T21 for nothing.
+      final rig = await pump(
+        tester,
+        surface: surface,
+        viewport: CanvasViewport(zoom: 0.1, rotationDegrees: 30),
+      );
+      await paintBytes(tester, rig.painter, const Size(300, 8));
+
+      expect(rig.cache.lastBufferScale, isNull,
+          reason: 'the scaled path refused (rotation)');
+      expect(
+        rig.cache.fullCount,
+        greaterThan(0),
+        reason: 'the refusal must land on the canvas-res buffer — a walk '
+            'stores nothing, and a zero here means the A/B quietly '
+            'degrades rotated views instead of measuring them',
+      );
+    });
+
+    testWidgets('flipping the switch repaints the SAME view — the A/B is '
+        'two readings of one picture', (tester) async {
+      final surface = inkedSurface();
+      await tester.runAsync(() => decodeAll(surface));
+      final rig = await pump(tester, surface: surface, viewport: withinCap);
+      expect(rig.cache.lastBufferScale, isNull, reason: 'fixture: OFF');
+
+      MeasurementMode.kneeAtOne.value = true;
+      addTearDown(MeasurementMode.reset);
+      await tester.pump();
+
+      expect(
+        rig.cache.lastBufferScale,
+        isNotNull,
+        reason: 'the switch rides the painter\'s repaint merge — without '
+            'it the flip does nothing until something else moves',
+      );
+    });
   });
 }

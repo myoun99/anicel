@@ -641,6 +641,21 @@ class EditorTopStrip extends StatelessWidget {
             !StaticRaster.globallyEnabled.value;
       },
     ),
+    // The other in-build A/B: the compose knee at 1. ON composes at
+    // screen resolution whenever the artwork has more pixels than the
+    // screen; OFF is today's canvas-resolution buffer. Same build, same
+    // view, two readings — the device evidence stage 6's default flip
+    // is waiting on. See [MeasurementMode.kneeAtOne] for the four
+    // check-points the A/B is looking at.
+    _item(
+      id: 'edit-knee-at-one',
+      label: 'Screen-Res Buffer',
+      icon: Icons.photo_size_select_small_outlined,
+      checked: MeasurementMode.kneeAtOne.value,
+      onPressed: () {
+        MeasurementMode.kneeAtOne.value = !MeasurementMode.kneeAtOne.value;
+      },
+    ),
     // And the marker for where the canvas painter had NO picture for a
     // coordinate it was asked to draw. The whole stale-tile family is
     // that one event, and it is invisible because the painter's answer

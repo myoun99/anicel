@@ -127,6 +127,45 @@ abstract final class MeasurementMode {
     startWithShowRepaints,
   );
 
+  /// ⓔ 6단계 A/B — the compose KNEE at 1 (Settings ▸ Screen-Res Buffer).
+  ///
+  /// OFF (default, today): the screen-scale buffer runs only past the
+  /// 8192 cap, where the alternative was the direct walk. ON: it runs
+  /// whenever the artwork has more pixels than the screen (`zoom·dpr
+  /// < 1`), which is stage 6's whole content — one constant's worth of
+  /// change, behind a switch so a tablet can A/B it in the SAME build
+  /// without a rebuild and reinstall.
+  ///
+  /// What the device A/B is looking at, per the plan's four check-points
+  /// (유저 질문 「e6단계 확인은 어떻게하지?」, 2026-08-16):
+  ///
+  ///  1. BELOW 100%: overall lightness/weight of the picture — the
+  ///     buffer resamples ONCE uniformly where the walk resampled per
+  ///     layer.
+  ///  2. The T21 feel: active layer and neighbours under one filter —
+  ///     the active layer must stop reading crisper/rougher than the
+  ///     layers beside it while zoomed out.
+  ///  3. The ACCEPTED cost (결정 ①): semi-transparent overlaps may tint
+  ///     slightly differently below 100%. Expected, not a bug.
+  ///  4. AT/ABOVE 100%: nothing may change, byte for byte — the gate
+  ///     never fires at `s >= 1`, so any difference seen there is a
+  ///     defect.
+  ///
+  /// Flipping the default to ON later IS stage 6's landing; this switch
+  /// is how that decision gets its device evidence first.
+  static final ValueNotifier<bool> kneeAtOne = ValueNotifier<bool>(
+    startWithKneeAtOne,
+  );
+
+  /// Seeds [kneeAtOne]:
+  ///
+  /// ```
+  /// flutter run --dart-define=QA_KNEE_AT_ONE=true
+  /// ```
+  static const bool startWithKneeAtOne = bool.fromEnvironment(
+    'QA_KNEE_AT_ONE',
+  );
+
   /// Seeds [showRepaints]:
   ///
   /// ```
@@ -174,5 +213,6 @@ abstract final class MeasurementMode {
     showUnpaintedTiles.value = startWithUnpaintedTiles;
     frameStats.value = startWithFrameStats;
     showRepaints.value = startWithShowRepaints;
+    kneeAtOne.value = startWithKneeAtOne;
   }
 }
