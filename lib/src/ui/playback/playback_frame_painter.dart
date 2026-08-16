@@ -50,6 +50,7 @@ class PlaybackFramePainter extends CustomPainter {
     this.paintPaper = true,
     this.paintLetterbox = true,
     this.seNameTags = const [],
+    this.devicePixelRatio = 1.0,
   }) : assert(
          cameraPose == null || cameraFrameSize != null,
          'Camera mode needs the camera frame size.',
@@ -134,6 +135,13 @@ class PlaybackFramePainter extends CustomPainter {
   /// the bottom one letterboxes, the ones above composite over it.
   final bool paintLetterbox;
 
+  /// The view's DPR, for [applyViewportTransform]'s pan-phase snap. The
+  /// canvas panel wires it so playback frames land on the SAME device
+  /// grid the editing stack snaps to — entering/leaving playback must not
+  /// hop the picture by a sub-pixel. Export passes no [viewport], so the
+  /// default never reaches pixels there.
+  final double devicePixelRatio;
+
   /// The SE rows' on-canvas NAME TAGS at this frame (R5b, §6-z15), drawn
   /// in canvas space directly over the composite — never baked into it
   /// (the camera's rule): the text comes from the SE frames themselves,
@@ -171,7 +179,11 @@ class PlaybackFramePainter extends CustomPainter {
     }
     final resolvedViewport = viewport;
     if (resolvedViewport != null) {
-      applyViewportTransform(canvas, resolvedViewport);
+      applyViewportTransform(
+        canvas,
+        resolvedViewport,
+        devicePixelRatio: devicePixelRatio,
+      );
     }
     final canvasRect = Rect.fromLTWH(
       0,
@@ -315,6 +327,9 @@ class PlaybackFramePainter extends CustomPainter {
       oldDelegate.pasteboardColor != pasteboardColor ||
       oldDelegate.paintPaper != paintPaper ||
       oldDelegate.paintLetterbox != paintLetterbox ||
+      // The pan-phase snap reads it — a monitor move must repaint, not
+      // keep the old phase.
+      oldDelegate.devicePixelRatio != devicePixelRatio ||
       seNameTagSignature(oldDelegate.seNameTags) !=
           seNameTagSignature(seNameTags);
 }

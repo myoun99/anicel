@@ -854,7 +854,11 @@ class _LayerStackPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     canvas.save();
     canvas.clipRect(Offset.zero & size);
-    applyViewportTransform(canvas, viewport);
+    applyViewportTransform(
+      canvas,
+      viewport,
+      devicePixelRatio: devicePixelRatio,
+    );
 
     final canvasRect = Rect.fromLTWH(
       0,
@@ -895,7 +899,13 @@ class _LayerStackPainter extends CustomPainter {
     // ON SCREEN can matter, so intersect with the visible canvas-space
     // rect (the same rect the surface painter uses to prioritise decodes).
     final visibleRect = MatrixUtils.transformRect(
-      viewportInverseTransformMatrix(viewport),
+      // The inverse of the transform APPLIED above — the SNAPPED one.
+      // Pulled back through the raw viewport, the coverage rect could stop
+      // a sub-pixel short of the screen edge the snap shifted content
+      // toward, and the buffer would clip a sliver the CTM shows.
+      viewportInverseTransformMatrix(
+        renderSnappedViewport(viewport, devicePixelRatio),
+      ),
       Offset.zero & size,
     );
     final pasteboardRect = Rect.fromLTRB(

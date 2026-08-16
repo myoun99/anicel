@@ -356,6 +356,10 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
                 : null,
             canvasSize: cut.canvasSize,
             viewport: widget.viewport,
+            // The pan-phase snap's device grid — one phase across the
+            // whole stack and the editing canvas it stands in for.
+            devicePixelRatio:
+                MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
             // Camera view off: the cut sits in its own canvas space, uncropped
             // and unprojected — the editing framing, which is what a ruler
             // scrub should keep showing.

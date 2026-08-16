@@ -3793,6 +3793,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                   painter: SelectionFloatPainter(
                     float: floatPaint,
                     viewport: widget.viewport,
+                    // The pan-phase snap's device grid — same source the
+                    // ink view behind this fallback reads.
+                    devicePixelRatio:
+                        MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
                   ),
                   child: const SizedBox.expand(),
                 ),

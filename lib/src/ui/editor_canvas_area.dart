@@ -873,6 +873,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                                   viewport: viewport,
                                   canvasSize: canvasSize,
                                   tags: seNameTags,
+                                  devicePixelRatio:
+                                      MediaQuery.maybeDevicePixelRatioOf(
+                                        context,
+                                      ) ??
+                                      1.0,
                                 ),
                               ),
                             ),
@@ -902,6 +907,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                                           1.0,
                                         ),
                                       ),
+                                  devicePixelRatio:
+                                      MediaQuery.maybeDevicePixelRatioOf(
+                                        context,
+                                      ) ??
+                                      1.0,
                                 ),
                               ),
                             ),
@@ -1120,17 +1130,26 @@ class _CutFadeWashPainter extends CustomPainter {
     required this.viewport,
     required this.canvasSize,
     required this.color,
+    required this.devicePixelRatio,
   });
 
   final CanvasViewport viewport;
   final CanvasSize canvasSize;
   final Color color;
 
+  /// The pan-phase snap's device grid — the wash covers the canvas rect
+  /// the snapped stack painted, not a sub-pixel beside it.
+  final double devicePixelRatio;
+
   @override
   void paint(Canvas canvas, Size size) {
     canvas.save();
     canvas.clipRect(Offset.zero & size);
-    applyViewportTransform(canvas, viewport);
+    applyViewportTransform(
+      canvas,
+      viewport,
+      devicePixelRatio: devicePixelRatio,
+    );
     canvas.drawRect(
       Rect.fromLTWH(
         0,
@@ -1147,7 +1166,8 @@ class _CutFadeWashPainter extends CustomPainter {
   bool shouldRepaint(covariant _CutFadeWashPainter oldDelegate) =>
       oldDelegate.viewport != viewport ||
       oldDelegate.canvasSize != canvasSize ||
-      oldDelegate.color != color;
+      oldDelegate.color != color ||
+      oldDelegate.devicePixelRatio != devicePixelRatio;
 }
 
 /// The editing canvas's SE name tags (R5b): the same canvas-space draw
@@ -1158,17 +1178,26 @@ class _SeNameTagOverlayPainter extends CustomPainter {
     required this.viewport,
     required this.canvasSize,
     required this.tags,
+    required this.devicePixelRatio,
   });
 
   final CanvasViewport viewport;
   final CanvasSize canvasSize;
   final List<ResolvedSeNameTag> tags;
 
+  /// The pan-phase snap's device grid — the tags annotate the snapped
+  /// picture, so they ride the same phase.
+  final double devicePixelRatio;
+
   @override
   void paint(Canvas canvas, Size size) {
     canvas.save();
     canvas.clipRect(Offset.zero & size);
-    applyViewportTransform(canvas, viewport);
+    applyViewportTransform(
+      canvas,
+      viewport,
+      devicePixelRatio: devicePixelRatio,
+    );
     paintSeNameTags(canvas, tags: tags, canvasSize: canvasSize);
     canvas.restore();
   }
@@ -1177,6 +1206,7 @@ class _SeNameTagOverlayPainter extends CustomPainter {
   bool shouldRepaint(covariant _SeNameTagOverlayPainter oldDelegate) =>
       oldDelegate.viewport != viewport ||
       oldDelegate.canvasSize != canvasSize ||
+      oldDelegate.devicePixelRatio != devicePixelRatio ||
       seNameTagSignature(oldDelegate.tags) != seNameTagSignature(tags);
 }
 
