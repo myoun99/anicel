@@ -35,6 +35,7 @@ import '../canvas/selection_float_overlay.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../canvas/flip_hud_overlay.dart';
+import '../canvas/integral_layer_offset.dart';
 import 'canvas_floor_insets.dart';
 import '../input/app_input_settings.dart';
 import '../../models/brush_blend_mode.dart';
@@ -1605,19 +1606,41 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                             // the story.
                             clipBehavior: Clip.none,
                             children: [
-                              RepaintBoundary(
-                                key: const ValueKey<String>(
-                                  'canvas-content-boundary',
-                                ),
-                                // The stage's outer planes (R3b): the BACKDROP
-                                // fills the panel and the PASTEBOARD lies on it
-                                // where the pasteboard actually is, RGBA and
-                                // project data (R28 #9 reversed) — thinning it
-                                // reveals the floor, on screen exactly as in an
-                                // export. The alpha-preview toggle swaps BOTH for
-                                // the checkerboard: an alpha export excludes them,
-                                // so the preview must too.
-                                child: _StagePlanes(
+                              // ★The artwork layer sits on the DEVICE-PIXEL
+                              // grid. Panel layout above this point lands the
+                              // boundary below at fractional device offsets,
+                              // and Skia's raster cache snaps a stable
+                              // picture's layer to integral translation while
+                              // live repaints render it fractional — the 1px
+                              // edge hop at every pen-down/pen-up/layer
+                              // switch. The wrapper measures its accumulated
+                              // offset each frame and cancels the fraction,
+                              // so cached and live renders are the same
+                              // pixels and the engine cache stays ON (the
+                              // willChange bypass of #1103 is retired).
+                              //
+                              // ⛔ORDER IS THE LAW: the wrapper must sit
+                              // ABOVE the content boundary. Below it the
+                              // shift would be recorded in-picture, and the
+                              // cache replays the same picture at a snapped
+                              // CTM — an in-picture correction contradicts
+                              // itself (why #1101's snap could not close
+                              // this; its in-picture PAN snap still owns pan
+                              // jitter and stays).
+                              IntegralLayerOffset(
+                                child: RepaintBoundary(
+                                  key: const ValueKey<String>(
+                                    'canvas-content-boundary',
+                                  ),
+                                  // The stage's outer planes (R3b): the BACKDROP
+                                  // fills the panel and the PASTEBOARD lies on it
+                                  // where the pasteboard actually is, RGBA and
+                                  // project data (R28 #9 reversed) — thinning it
+                                  // reveals the floor, on screen exactly as in an
+                                  // export. The alpha-preview toggle swaps BOTH for
+                                  // the checkerboard: an alpha export excludes them,
+                                  // so the preview must too.
+                                  child: _StagePlanes(
                                   backdropArgb: _stageBackdropArgb,
                                   pasteboardArgb: _stagePasteboardArgb,
                                   pasteboardMargin: _stagePasteboardMargin,
@@ -2122,6 +2145,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                             ),
                                     ),
                                   ),
+                                ),
                                 ),
                               ),
                               ..._toolCursorLayers(),
