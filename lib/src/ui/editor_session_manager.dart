@@ -1814,7 +1814,11 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// Warms the active cut's composites around the playhead ("navigate away
-  /// from a frame and it gets pre-rendered").
+  /// from a frame and it gets pre-rendered") — and the NEXT cut behind it
+  /// (#31, 유저 확정: 스토리보드 프로의 룩어헤드를 따른다). The next cut
+  /// is next in STORYBOARD order, the same order play-all and the panel
+  /// read, so the bar that goes green is the bar beside the one you are
+  /// on.
   void _warmActiveCut() {
     final cut = activeCutOrNull;
     if (cut == null) {
@@ -1824,7 +1828,19 @@ class EditorSessionManager extends ChangeNotifier {
       cutId: cut.id,
       quality: playbackQuality,
       aroundFrameIndex: _timelineController.currentFrameIndex,
+      followedByCutId: _nextCutIdInStoryboardOrder(cut.id),
     );
+  }
+
+  /// The cut after [cutId] in storyboard order, or null at the end.
+  CutId? _nextCutIdInStoryboardOrder(CutId cutId) {
+    final layout = _projectLayout();
+    for (var index = 0; index < layout.length; index += 1) {
+      if (layout[index].cutId == cutId) {
+        return index + 1 < layout.length ? layout[index + 1].cutId : null;
+      }
+    }
+    return null;
   }
 
   @override

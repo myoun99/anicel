@@ -71,11 +71,31 @@ class PlaybackPrerenderScheduler {
   /// (test hook).
   Future<void> get idle => _current;
 
-  /// Warms one cut, playhead-outward from [aroundFrameIndex].
+  /// Warms one cut, playhead-outward from [aroundFrameIndex] — and then,
+  /// when [followedByCutId] names a next cut, that cut start-to-end on
+  /// the same run (#31, 유저 확정 2026-08-16: 스토리보드 프로 따라서).
+  ///
+  /// The lookahead is Storyboard Pro's shape mapped onto this pipeline:
+  /// background, idle-gated, one direction (the cut you are about to
+  /// enter), and it rides BEHIND every active-cut frame in the order, so
+  /// the active cut always wins the budget and the thread. What it bakes
+  /// is the COMPOSITE — the one image per frame the readiness bar and
+  /// playback actually read — not per-layer intermediates; those pass
+  /// through the layer-image LRU and age out on their own. The run's
+  /// already-cached skip plus content-addressed adoption (C2) mean a
+  /// held or covering next cut costs its DISTINCT pictures, not its
+  /// frame count.
+  ///
+  /// Next-cut frames are deliberately NOT budget-protected: under
+  /// pressure the enforcer that runs after every baked frame reclaims
+  /// the lookahead first and the active cut keeps its range — standing
+  /// down is the correct order, and the waste is bounded by one warm
+  /// run per debounced restart.
   void requestWarmCut({
     required CutId cutId,
     required PlaybackQuality quality,
     int aroundFrameIndex = 0,
+    CutId? followedByCutId,
   }) {
     final cut = resolveCut(cutId);
     if (cut == null) {
@@ -98,6 +118,18 @@ class PlaybackPrerenderScheduler {
       }
       if (center - distance >= 0) {
         order.add((cutId, center - distance));
+      }
+    }
+    final next = followedByCutId == null
+        ? null
+        : resolveCut(followedByCutId);
+    if (next != null && followedByCutId != cutId) {
+      // Start-to-end, not playhead-outward: a next cut is entered at its
+      // first frame. The same warm law as the active cut (runway
+      // included) so the two never disagree about what "the cut" is.
+      final nextCount = cutWarmFrameCount(next);
+      for (var index = 0; index < nextCount; index += 1) {
+        order.add((followedByCutId!, index));
       }
     }
     _restart(order, quality);

@@ -42,8 +42,13 @@ void main() {
     }
   });
 
-  EditorSessionManager session() =>
-      EditorSessionManager(initialProject: createDefaultProject());
+  EditorSessionManager session() {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    // Same leak recovery_overlay_test paid for: a session's warm run and
+    // scheduler timers must not outlive the test that made them.
+    addTearDown(s.dispose);
+    return s;
+  }
 
   void drawOnCurrentFrame(EditorSessionManager s) {
     s.createDrawingAtCurrentFrame();
