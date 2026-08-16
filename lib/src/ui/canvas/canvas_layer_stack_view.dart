@@ -830,6 +830,32 @@ class _LayerStackPainter extends CustomPainter {
   /// see it.
   ActiveLayerFlatImage? _activeFlatForRecording;
 
+  /// #15 — the paper inset, in CANVAS px, the scaled recording draws
+  /// with; null on every s=1 path. Same one-frame window and the same
+  /// safety argument as [_activeFlatForRecording] above.
+  ///
+  /// In the scaled recording every element is resampled SEPARATELY at
+  /// s < 1, so the paper's edge is analytic rect coverage (a ramp one
+  /// buffer px wide) while the ink's edge over it is a bilinear window
+  /// on canvas-resolution texels (a ramp s buffer px wide) — two
+  /// rasterizations of the same geometric line that disagree in width
+  /// and phase. Composited, the paper stays white where the ink has
+  /// already thinned: a 1px bright ring around a canvas whose every
+  /// pixel is opaque ink. The s=1 buffer cannot do this — paper and ink
+  /// land jointly on integral canvas pixels and the display resample
+  /// sees finished pixels — which is why the device saw the line appear
+  /// exactly where the visible rect crosses [_maxBufferSide] and this
+  /// path takes over (~29% on a ~2500px view) and vanish at ~32%.
+  ///
+  /// ONE BUFFER PIXEL bounds every edge mechanism this recording uses:
+  /// analytic coverage reaches half a pixel past the line, a sampling
+  /// window half a texel more — so a paper that ends one buffer pixel
+  /// early sits entirely under the ink's solid region wherever ink
+  /// covers the canvas, at every fractional phase. Where no ink covers,
+  /// the plate ends one buffer pixel short against the pasteboard — a
+  /// device-pixel concession, only below the knee.
+  double? _paperInsetForRecording;
+
   /// The largest buffer side worth allocating, in canvas pixels.
   ///
   /// Not a quality setting — a floor under "is this still a good idea". A
@@ -1268,9 +1294,18 @@ class _LayerStackPainter extends CustomPainter {
     /// the same body — a second copy is how "the buffer path draws something
     /// slightly different" starts.
     void paintPaperInto(Canvas into) {
-      if (paintPaper) {
-        paintProjectPaper(into, canvasRect, paperBackground);
+      if (!paintPaper) {
+        return;
       }
+      // #15 — under a scaled recording the paper yields one buffer pixel
+      // to the reduced resample (see [_paperInsetForRecording]); on every
+      // s=1 path the inset is null and the paper is the exact canvas rect.
+      final inset = _paperInsetForRecording;
+      final rect = inset == null ? canvasRect : canvasRect.deflate(inset);
+      if (rect.isEmpty) {
+        return;
+      }
+      paintProjectPaper(into, rect, paperBackground);
     }
 
     /// 🚨★★★ (v) 2단계 후반부 — THE BOTTOM OF THE STACK IS ONE BLIT,
@@ -1659,6 +1694,9 @@ class _LayerStackPainter extends CustomPainter {
     into.scale(s);
     into.translate(-rect.left, -rect.top);
     _activeFlatForRecording = flat;
+    // #15 — one buffer pixel, expressed in the canvas units the paper
+    // draws in.
+    _paperInsetForRecording = 1 / s;
     try {
       // The PICTURE route through the very same walk the s=1 buffer
       // records — one body, so folders, adjustments, effects and the
@@ -1666,6 +1704,7 @@ class _LayerStackPainter extends CustomPainter {
       paintContent(into, rasterRect: null);
     } finally {
       _activeFlatForRecording = null;
+      _paperInsetForRecording = null;
     }
     final picture = recorder.endRecording();
     final ui.Image image;
