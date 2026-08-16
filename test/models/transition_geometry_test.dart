@@ -458,4 +458,54 @@ void main() {
       );
     });
   });
+
+  group('the ramp alone (the editing canvas\'s half)', () {
+    // The split: [cutOpacityAt] = material clamp × ramp. The compositor
+    // keeps both; a standing playhead reads only the ramp, because the
+    // frames past the end line are ordinary space (T12) and "no material to
+    // COMPOSE" must not become "an opaque wash over the paper you stand on".
+    test('past the media end the ramp is 1 where the material term is 0', () {
+      expect(
+        cutOpacityAt(
+          cutStart: c20Start,
+          cutEnd: c20End,
+          spans: const <TransitionSpan>[],
+          globalFrame: c20End + 5,
+        ),
+        0.0,
+        reason: 'the compositor really has nothing to draw there',
+      );
+      expect(
+        cutTransitionRampAt(
+          cutStart: c20Start,
+          cutEnd: c20End,
+          spans: const <TransitionSpan>[],
+          globalFrame: c20End + 5,
+        ),
+        1.0,
+        reason: 'but no transition covers the frame, so nothing thins it',
+      );
+    });
+
+    test('inside the media range the two answers are the same number', () {
+      for (final frame in [0, 36, 42, 48, 54, 59]) {
+        expect(
+          cutTransitionRampAt(
+            cutStart: c20Start,
+            cutEnd: c20End,
+            spans: const [ol],
+            globalFrame: frame,
+          ),
+          cutOpacityAt(
+            cutStart: c20Start,
+            cutEnd: c20End,
+            spans: const [ol],
+            globalFrame: frame,
+          ),
+          reason: 'frame $frame — the clamp is the ONLY thing the split '
+              'removed, so wherever it does not fire the ramp IS the opacity',
+        );
+      }
+    });
+  });
 }
