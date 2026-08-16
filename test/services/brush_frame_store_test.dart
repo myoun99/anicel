@@ -198,6 +198,75 @@ void main() {
     expect(store.frameOrNull(to)?.key, to);
   });
 
+  test('rekeyFrames is a content CROSSING the timeline hears: '
+      'celContentRevision bumps for both ends of the move', () {
+    final store = BrushFrameStore();
+    final from = key(layer: 'a');
+    final to = key(layer: 'b');
+    store.storeBakedSurface(from, surfaceWithInk());
+
+    final before = store.celContentRevision.value;
+    store.rekeyFrames([(from, to)]);
+    expect(
+      store.celContentRevision.value,
+      greaterThan(before),
+      reason:
+          'the move flips [from] to empty and [to] to has-picture; without '
+          'a bump the timeline tile store keeps serving tiles whose pixels '
+          'answered for the pre-move world (the open-staleness family)',
+    );
+
+    // The inverse pair crosses back — same law, same signal.
+    final beforeUndo = store.celContentRevision.value;
+    store.rekeyFrames([(to, from)]);
+    expect(store.celContentRevision.value, greaterThan(beforeUndo));
+
+    // A move of NOTHING is not a crossing: no content, no bump.
+    final beforeNoop = store.celContentRevision.value;
+    store.rekeyFrames([(key(layer: 'empty-1'), key(layer: 'empty-2'))]);
+    expect(store.celContentRevision.value, beforeNoop);
+  });
+
+  test('adoptSavedFile re-registering a cel that lost every tier is a '
+      'crossing; the everyday save of a still-hot cel is not', () {
+    final store = BrushFrameStore();
+    final k = key();
+    final ref = AnicelCelFileRef(
+      filePath: 'unused.anicel',
+      dataOffset: 0,
+      length: 1,
+      canvasSize: const CanvasSize(width: 4, height: 4),
+      tileSize: 4,
+    );
+
+    // Everyday save: the cel is hot before and after — no crossing.
+    store.storeBakedSurface(k, surfaceWithInk());
+    final beforeClean = store.celContentRevision.value;
+    store.adoptSavedFile({k: ref});
+    expect(store.celContentRevision.value, beforeClean);
+
+    // The cel empties between the save snapshot and the adoption: the ref
+    // landing makes it renderable again, and the timeline must hear it.
+    store.storeBakedSurface(
+      k,
+      BitmapSurface(
+        canvasSize: const CanvasSize(width: 4, height: 4),
+        tileSize: 4,
+      ),
+    );
+    expect(store.celHasRenderableContent(k), isFalse);
+    final beforeAdopt = store.celContentRevision.value;
+    store.adoptSavedFile({k: ref});
+    expect(store.celHasRenderableContent(k), isTrue);
+    expect(
+      store.celContentRevision.value,
+      greaterThan(beforeAdopt),
+      reason:
+          'a silent tier move: the ref flipped the content answer and '
+          'nothing else tells the timeline to look again',
+    );
+  });
+
   test('bakedSnapshotForSave is a reference-cheap copy of the truth', () {
     final store = BrushFrameStore();
     final k = key();

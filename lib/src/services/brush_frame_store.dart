@@ -392,6 +392,12 @@ class BrushFrameStore {
         _coldBytes -= cold.bytes.length;
       }
       _fileCels[entry.key] = entry.value;
+      // R27 #13: a ref landing on a key that held no tier at all is a
+      // crossing (the cel emptied between the save snapshot and this
+      // adoption), and this was the other silent tier move the timeline
+      // never heard. No-op for the everyday save, where the cel is
+      // already hot or cold.
+      _noteCelContent(entry.key);
     }
     _dirtySinceSave.clear();
   }
@@ -537,6 +543,13 @@ class BrushFrameStore {
         _dirtySinceSave.add(from);
         _dirtySinceSave.add(to);
       }
+      // R27 #13, rekey edition: the move crosses the empty ↔ has-picture
+      // line at BOTH ends ([from] always empties; [to] usually gains its
+      // first content), and nothing else tells the timeline's content
+      // tint to look again — a rekey was a silent tier move whose tiles
+      // kept answering for the old world. No-ops when nothing crossed.
+      _noteCelContent(from);
+      _noteCelContent(to);
     }
   }
 

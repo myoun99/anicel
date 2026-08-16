@@ -223,8 +223,8 @@ class TimelineGridTileStore {
       if (request.painter.substrateGeneration != _liveGeneration) {
         continue;
       }
-      final image = await _raster(engine, request);
-      if (image == null) {
+      final rastered = await _raster(engine, request);
+      if (rastered == null) {
         continue;
       }
       _entries.remove(key)?.image.dispose();
@@ -238,11 +238,19 @@ class TimelineGridTileStore {
         exposureStateForLayer: request.painter.exposureStateForLayer,
         frameNameForLayer: request.painter.frameNameForLayer,
         celHasContentForLayer: request.painter.celHasContentForLayer,
-        celContentRevision: request.painter.celContentRevision,
+        // ⛔The revision the RASTER sampled, never a live read. `_raster`
+        // suspends between its content reads and this landing (the glyph
+        // A8 bake, the ImmutableBuffer upload are real awaits), so a
+        // crossing that bumps the revision inside that window would give
+        // pixels of revision N a stamp of N+1 — and `matches()` compares
+        // the NUMBER, so the poisoned tile was served as fresh forever
+        // (the LRU survives cut trips and the 'projectId:cutId' string is
+        // reproduced exactly on return; only the NEXT bump healed it).
+        celContentRevision: rastered.celContentRevision,
         baseTextStyle: request.painter.baseTextStyle,
         spanEndIndexExclusive: request.spanEndIndexExclusive,
         devicePixelRatio: request.devicePixelRatio,
-        image: image,
+        image: rastered.image,
       );
       while (_entries.length > capacity) {
         _entries.remove(_entries.keys.first)!.image.dispose();
@@ -327,7 +335,14 @@ class TimelineGridTileStore {
     );
   }
 
-  Future<ui.Image?> _raster(QaNativeEngine engine, _TileRequest request) async {
+  /// Rasters the request and returns the image TOGETHER WITH the content
+  /// revision the raster's answers described — sampled in the same
+  /// synchronous block as the substrate emit, so pixels and stamp can
+  /// never disagree.
+  Future<({ui.Image image, int celContentRevision})?> _raster(
+    QaNativeEngine engine,
+    _TileRequest request,
+  ) async {
     final painter = request.painter;
     final dpr = request.devicePixelRatio;
     final spanCells = request.spanEndIndexExclusive - request.spanStartIndex;
@@ -341,6 +356,11 @@ class TimelineGridTileStore {
     final tileHeight = horizontal ? height : width;
 
     final writer = TimelineGridTileOpWriter();
+    // Sampled HERE — the substrate emit below reads every content answer
+    // (`celHasContentForLayer` per cell) in this same synchronous block,
+    // and nothing can bump the revision inside one block. This value is
+    // what the pixels actually describe; the drain stamps it verbatim.
+    final sampledCelContentRevision = painter.celContentRevision;
     timelineGridEmitSubstrate(
       writer,
       painter: painter,
@@ -373,7 +393,8 @@ class TimelineGridTileStore {
       return null;
     }
 
-    return _upload(pixels, tileWidth, tileHeight);
+    final image = await _upload(pixels, tileWidth, tileHeight);
+    return (image: image, celContentRevision: sampledCelContentRevision);
   }
 
   /// Bakes and emits the span's FOREGROUND ink (T3): hold-dash capsules
@@ -591,7 +612,10 @@ class _TileEntry {
   /// The RESOLVER above answers per cell, so its identity says nothing
   /// about whether a cel just gained pixels — a fresh stroke left this
   /// tile "matching" and serving the old grey back. The revision is the
-  /// content's own version.
+  /// content's own version — the value `_raster` SAMPLED alongside its
+  /// content reads, never a live read at store time (a crossing landing
+  /// mid-raster would stamp pre-crossing pixels as post-crossing and
+  /// `matches` would serve them fresh forever).
   final int celContentRevision;
 
   final TextStyle baseTextStyle;
