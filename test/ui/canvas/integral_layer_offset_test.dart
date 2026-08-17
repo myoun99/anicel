@@ -24,16 +24,19 @@ import '../../helpers/brush_canvas_fixture.dart';
 /// in-picture transform can close that gap (the cache replays the SAME
 /// picture at a snapped CTM, so an in-picture correction is replayed
 /// snapped too); the only agreeable coordinate is the layer offset
-/// itself. Holding it integral is what allowed `willChange: true` (#1103)
-/// to be retired — see `bypass_raster_cache_wiring_test.dart` for that
-/// side of the contract.
+/// itself.
 ///
-/// ⚠️Known one-frame honesty (documented, deliberately NOT pinned): the
-/// frame right after a layout change still paints with the previous
-/// compensation, so the offset can sit fractional for that single frame.
-/// That frame is a raster-cache miss anyway — the correction lands with
-/// the next frame, which is why every expectation below sits after a
-/// `pumpAndSettle`.
+/// 🚨What this law does NOT cover — and why `willChange: true` came back
+/// (`bypass_raster_cache_wiring_test.dart` owns that half): the wrapper's
+/// measurement is a post-frame chain, so the frame OF an ancestor layout
+/// change paints with the PREVIOUS compensation and the boundary sits
+/// fractional for exactly that frame — while its unchanged picture is
+/// still stable-CACHED, so the snap is live on precisely that frame. Tool
+/// panels opening, wheel-click chrome, active-layer switches are ancestor
+/// layout changes, which is how #1106 (wrapper alone, hint retired) put
+/// the device jumps back. The one-frame gap is PINNED AND QUANTIFIED
+/// below at the device's own DPR shape (1.25), as the standing proof that
+/// the wrapper composes with the hint instead of replacing it.
 void main() {
   const dpr = 3.0;
 
@@ -162,6 +165,90 @@ void main() {
         tester.renderObject(find.byType(CanvasLayerStackView)) as RenderBox,
       ),
       'the canvas stack after the move',
+    );
+  });
+
+  group('the one-frame gap, quantified at the device DPR shape (1.25)', () {
+    // DPR 1.25 is the Windows-device shape: EVERY logical-integer layout
+    // offset is device-fractional unless it is a multiple of 4 logical
+    // pixels, so ordinary chrome relayouts (a tool panel opening, wheel-
+    // click chrome) move the canvas to a new fractional phase constantly.
+    const deviceDpr = 1.25;
+
+    /// The accumulated paint translation of [box] at [deviceDpr].
+    Offset deviceOffsetAt(RenderBox box) {
+      final transform = box.getTransformTo(null);
+      return Offset(
+        transform.storage[12] * deviceDpr,
+        transform.storage[13] * deviceDpr,
+      );
+    }
+
+    testWidgets(
+      'the frame OF an ancestor layout change paints with the PREVIOUS '
+      'compensation — fractional by exactly (new phase − old phase)',
+      (tester) async {
+        tester.view.devicePixelRatio = deviceDpr;
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        // Padding A: (10.1, 3.3) logical × 1.25 = (12.625, 4.125) device —
+        // fractional parts (0.625, 0.125), so the settled compensation is
+        // (−0.625, −0.125) device.
+        await tester.pumpWidget(
+          stackUnderPadding(const EdgeInsets.only(left: 10.1, top: 3.3)),
+        );
+        await tester.pumpAndSettle();
+        expectIntegral(
+          deviceOffsetAt(
+            tester.renderObject(find.byType(CanvasLayerStackView))
+                as RenderBox,
+          ),
+          'the settled boundary at DPR 1.25',
+        );
+
+        // Padding B: (20.3, 7.5) logical × 1.25 = (25.375, 9.375) device.
+        // THE FRAME OF THE CHANGE still carries A's compensation, so the
+        // boundary lands at (25.375 − 0.625, 9.375 − 0.125) =
+        // (24.75, 9.25): 0.25 device pixels off the grid on both axes. This
+        // is the frame the raster cache snaps — the picture did not
+        // change, only its offset did — and it is the frame every
+        // chrome-driven jump moment produces. The wrapper CANNOT close
+        // it; `willChange: true` on the artwork pictures is what does
+        // (`bypass_raster_cache_wiring_test.dart`).
+        await tester.pumpWidget(
+          stackUnderPadding(const EdgeInsets.only(left: 20.3, top: 7.5)),
+        );
+        final staleFrame = deviceOffsetAt(
+          tester.renderObject(find.byType(CanvasLayerStackView)) as RenderBox,
+        );
+        expect(
+          (staleFrame.dx - staleFrame.dx.roundToDouble()).abs(),
+          moreOrLessEquals(0.25, epsilon: 1e-3),
+          reason: 'the change frame must sit at the STALE phase '
+              '(24.75 device px → 0.25 from the grid) — an integral '
+              'reading here would mean the compensation somehow landed '
+              'same-frame and the one-frame gap is closed '
+              '(got ${staleFrame.dx})',
+        );
+        expect(
+          (staleFrame.dy - staleFrame.dy.roundToDouble()).abs(),
+          moreOrLessEquals(0.25, epsilon: 1e-3),
+          reason: 'the change frame must sit at the STALE phase in y '
+              '(9.25 device px → 0.25 from the grid) '
+              '(got ${staleFrame.dy})',
+        );
+
+        // One more frame: the post-frame measurement from the change
+        // frame lands its setState, and the boundary is integral again.
+        await tester.pump();
+        expectIntegral(
+          deviceOffsetAt(
+            tester.renderObject(find.byType(CanvasLayerStackView))
+                as RenderBox,
+          ),
+          'the boundary one frame after the change',
+        );
+      },
     );
   });
 

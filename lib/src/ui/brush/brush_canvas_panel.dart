@@ -1614,10 +1614,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                               // live repaints render it fractional — the 1px
                               // edge hop at every pen-down/pen-up/layer
                               // switch. The wrapper measures its accumulated
-                              // offset each frame and cancels the fraction,
-                              // so cached and live renders are the same
-                              // pixels and the engine cache stays ON (the
-                              // willChange bypass of #1103 is retired).
+                              // offset each frame and cancels the fraction —
+                              // in the SETTLED state. Its measurement is a
+                              // post-frame chain, so the frame OF an
+                              // ancestor layout change (tool panels, wheel-
+                              // click chrome) still paints fractional, which
+                              // is why retiring the willChange bypass on the
+                              // wrapper's strength (#1106) failed on device
+                              // (2026-08-17): the artwork pictures carry
+                              // `willChange: true` again (the final law —
+                              // `canvas_layer_stack_view.dart`) and the
+                              // wrapper stays for every OTHER picture under
+                              // this boundary the engine may still cache.
                               //
                               // ⛔ORDER IS THE LAW: the wrapper must sit
                               // ABOVE the content boundary. Below it the

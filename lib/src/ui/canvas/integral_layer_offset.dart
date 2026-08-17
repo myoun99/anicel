@@ -31,13 +31,27 @@ import 'package:flutter/widgets.dart';
 /// shift would be recorded in-picture, which the paragraph above proves
 /// useless.
 ///
-/// ⚠️One-frame honesty: the frame right AFTER a layout change still paints
-/// with the previous compensation, so the layer can sit fractional for
-/// that single frame. That frame is a raster-cache miss anyway — the
-/// picture or its position just changed — so what appears is the live
-/// render, internally consistent; the correction lands with the next
-/// frame and costs a re-composite, not a re-record (the boundary's layer
-/// is reused at the new offset).
+/// 🚨One-frame honesty — AND WHY IT LOST ON DEVICE (2026-08-17): the
+/// frame OF a layout change still paints with the previous compensation,
+/// so the layer sits fractional for that single frame. The original text
+/// here claimed that frame "is a raster-cache miss anyway"; that was
+/// FALSE. A layout change moves the boundary's OFFSET without touching
+/// its picture — the picture stays stable, stays CACHED, and the engine
+/// replays it SNAPPED on exactly the frame the compensation is stale.
+/// Tool panels opening, wheel-click chrome, active-layer switches — the
+/// device's jump moments — are precisely ancestor-layout-change frames,
+/// so the wrapper alone could not close them (device 2026-08-17, zoom >=
+/// 100% where the nearest display filter makes the phase flip a hard 1px
+/// jump). `integral_layer_offset_test.dart` quantifies the gap on the
+/// frame of the change.
+///
+/// ⇒ The shipping law therefore has TWO halves that compose: the canvas
+/// content pictures carry `willChange: true` (the artwork never meets the
+/// snap — `canvas_layer_stack_view.dart`, the #1100→#1106 history), and
+/// this wrapper holds the settled-state offset integral for every OTHER
+/// picture under the boundary the engine may still cache. Neither half
+/// replaces the other; retiring the hint on the strength of this wrapper
+/// was tried (#1106) and device-refuted.
 ///
 /// ⛔Gate: the panel chrome above the canvas is axis-aligned. Under an
 /// ancestor rotation or scale "one device pixel" stops being one
