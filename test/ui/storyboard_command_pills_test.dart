@@ -137,12 +137,12 @@ void main() {
   ) async {
     // It shipped greyed out for one commit, because the kind-dispatch lived
     // in the timeline's host and there was no way to reach it from here.
-    // Now it is [instance_editor_commands.dart] and both panels call it.
+    // B8 made the dispatch the PANEL's own: standing on the V row (the
+    // default), the instance under the cursor is the CUT, so the press
+    // opens its rename dialog. The SE and transition standings are pinned
+    // in storyboard_toolbar_panel_scope_test.dart.
     final manager = await pumpStoryboard(tester);
-    // A drawing row at a named cell is the plainest thing the dispatch can
-    // open — the frame-rename branch.
     manager.selectFrameIndex(0);
-    manager.createDrawingAtCurrentFrame();
     await tester.pumpAndSettle();
 
     // ① took it out of the frame menu and onto the pill, so there is

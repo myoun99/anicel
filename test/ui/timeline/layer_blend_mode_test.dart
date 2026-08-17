@@ -11,6 +11,7 @@ import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/playback/cut_frame_composite_signature.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
+import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
@@ -159,6 +160,7 @@ void main() {
         home: Material(
           child: TimelineActionToolbar(
             session: s,
+            panelContext: TimelineToolbarPanelContext(s),
             onAddLayer: () {},
             onRenameLayer: () {},
             onDeleteLayer: () {},

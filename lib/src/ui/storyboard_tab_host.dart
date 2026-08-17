@@ -9,10 +9,10 @@ import '../models/timeline_row_address.dart';
 import '../models/track.dart';
 import '../models/track_transform_lane_carrier.dart';
 import '../models/transform_track.dart';
-import 'editor_command_actions.dart' show createActiveInstance;
 import 'timeline/instance_editor_commands.dart';
 import 'timeline/layer_name_commands.dart';
 import 'timeline/timeline_action_toolbar.dart';
+import 'timeline/toolbar_panel_context.dart';
 import 'editor_session_manager.dart';
 import 'panels/panel_collapsed_scope.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
@@ -337,6 +337,13 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   Future<void> _editTransitionSpan(int globalFrame) =>
       editTransitionSpanInstance(context, _session, globalFrame: globalFrame);
 
+  /// B8: THIS PANEL's dispatch context for the shared toolbar — the standing
+  /// row crossed with the track-global playhead, instead of the session's
+  /// cut-local reads. Rebuilt per access (a stateless wrapper over the
+  /// session), so it can never hold a stale answer.
+  StoryboardToolbarPanelContext get _toolbarPanel =>
+      StoryboardToolbarPanelContext(_session);
+
   /// The transition row as the RAIL sees it, or null when the user is standing
   /// somewhere else.
   ///
@@ -350,49 +357,51 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
         _session.isTrackTransitionLayerId(row.layerId);
   }
 
-  /// ③ Edit Instance on THIS panel: the transition row gets the span editor
-  /// (create on an empty frame, edit or delete on a covered one), every other
-  /// row keeps the shared kind dispatch. One verb, so the rail needs no
-  /// creation button of its own — 유저 2026-08-11: 「인스턴스편집버튼으로
-  /// 작동하도록. 삭제나 그런거 다 똑같이」.
+  /// ③/B8 Edit Instance on THIS panel: THE BLOCK UNDER THE CURSOR, whatever
+  /// the standing row holds — the cut's rename, the SE entry's dialog, the
+  /// transition span's editor, a lane key's rename. One resolver
+  /// ([StoryboardToolbarPanelContext.editTarget]) feeds the button's gate
+  /// AND this dispatch, so lit and does-something cannot come apart (T25).
   void _editInstanceHere() {
-    if (_standingOnTransitionRow) {
-      unawaited(editTransitionSpanInstance(context, _session));
-      return;
+    switch (_toolbarPanel.editTarget) {
+      case StoryboardEditCut():
+        unawaited(renameActiveCutWithDialog(context, _session));
+      case StoryboardEditSeEntry(:final layerId, :final globalFrame):
+        unawaited(
+          editSeEntryInstance(
+            context,
+            _session,
+            layerId: layerId,
+            globalFrame: globalFrame,
+          ),
+        );
+      case StoryboardEditTransitionSpan():
+        unawaited(editTransitionSpanInstance(context, _session));
+      case StoryboardEditLaneKey():
+        // Lane-key state is session-shared, so the shared cell entrance
+        // serves it from this panel too.
+        unawaited(editActiveInstance(context, _session));
+      case null:
+        break;
     }
-    // 🚨T25: the SELECTION's instance. The transition fork stays above it —
-    // that row kind is this panel's own — but everything past it now walks
-    // delete's ladder (cut, then rows, then the cell at the playhead), so
-    // the button asks the same question on both panels.
-    unawaited(editSelectionInstance(context, _session));
   }
 
-  /// ⑬ CREATE on this panel — the same fork as [_editInstanceHere].
-  ///
-  /// On the transition row the two verbs are one: `editTransitionSpanInstance`
-  /// creates on an empty frame and edits on a covered one, which is exactly
-  /// what the user asked for when the rail's own `＋` was retired (「그게아니라
-  /// 인스턴스편집버튼으로 작동하도록」). So `＋` here is not a second door — it
-  /// is the same door with a shorter walk.
+  /// ⑬/B8 CREATE on this panel: the selection rungs first (this panel's own
+  /// selections — the S-row range, a lane span, the strip's cut-local
+  /// range), then the standing row. On the transition row the two verbs are
+  /// one: `editTransitionSpanInstance` creates on an empty frame and edits
+  /// on a covered one (「그게아니라 인스턴스편집버튼으로 작동하도록」); on
+  /// an S row the `＋` authors a fresh entry at the cursor.
   void _createInstanceHere() {
+    if (_session.createInstancesForSelection()) {
+      return;
+    }
     if (_standingOnTransitionRow) {
       unawaited(editTransitionSpanInstance(context, _session));
       return;
     }
-    createActiveInstance(_session);
-  }
-
-  /// The enablement half: a span to edit, or an empty frame to create into.
-  ///
-  /// ⚠️The frame is the track-GLOBAL playhead. `hasActiveNonNegativeCell` and
-  /// friends are cut-local and answer no in a gap — which is a legal place for a
-  /// span, since a gap is a legitimate transition partner.
-  bool _canEditTransitionInstanceHere() {
-    if (!_standingOnTransitionRow) {
-      return false;
-    }
-    return _session.transitionSpanAt(_session.editingGlobalFrame) != null ||
-        _session.canCreateTransitionSpanAtPlayhead;
+    // Self-gated: only a standing S row with an EMPTY cursor frame authors.
+    _session.createSeEntryAtStoryboardCursor();
   }
 
   /// ONE command-bar row — the timeline's own widget now, not a parallel
@@ -417,30 +426,40 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
           // data nests, and every verb on them works here: the instance
           // editor is a free function now, so `Edit Instance` opens on this
           // panel too.
-          TimelineActionToolbar(
+          // B8: the bar's gates read the CURSOR now (standing row × global
+          // playhead), and neither a committed seek nor a standing move is
+          // a session notify — so the toolbar re-derives through its own
+          // token gate, the timeline host's pattern said of this panel.
+          _CursorGatedStoryboardToolbar(
             session: _session,
-            onAddLayer: _session.addLayer,
-            onRenameLayer: () =>
-                unawaited(renameActiveLayerWithDialog(context, _session)),
-            onDeleteLayer: () =>
-                unawaited(deleteActiveLayerWithDialog(context, _session)),
-            // F: the shared delete's ROW rung, confirmation included.
-            onDeleteRowSelection: () =>
-                unawaited(deleteRowSelectionWithDialog(context, _session)),
-            // ⑬: the same dispatch Edit Instance takes. Standing on the
-            // transition row, `＋` makes a span — that row's only creation
-            // verb, and the one the rail's own `＋` carried before #926
-            // retired it.
-            onCreateInstance: _createInstanceHere,
-            // This panel reads left-to-right like the horizontal timeline,
-            // so its dialogs' miniatures do too.
-            onEditInstance: _editInstanceHere,
-            resolveCanEditInstance: _canEditTransitionInstanceHere,
-            // Which rail is asking: with nothing selected the frame pill's
-            // shove aims at the row THIS rail is standing on (a cut row
-            // shoves cuts, an S row shoves sounds), which is not the
-            // session's active-layer fallback.
-            currentRow: _session.selectedRow,
+            actionsBuilder: (context) => TimelineActionToolbar(
+              session: _session,
+              // B8: THIS panel's dispatch context — every layer/frame/
+              // shared/fx verb acts against the storyboard's standing row
+              // and global cursor, or greys out honestly.
+              panelContext: _toolbarPanel,
+              onAddLayer: _session.addLayer,
+              onRenameLayer: () =>
+                  unawaited(renameActiveLayerWithDialog(context, _session)),
+              onDeleteLayer: () =>
+                  unawaited(deleteActiveLayerWithDialog(context, _session)),
+              // F: the shared delete's ROW rung, confirmation included.
+              onDeleteRowSelection: () =>
+                  unawaited(deleteRowSelectionWithDialog(context, _session)),
+              // ⑬: the same dispatch Edit Instance takes. Standing on the
+              // transition row, `＋` makes a span — that row's only creation
+              // verb, and the one the rail's own `＋` carried before #926
+              // retired it.
+              onCreateInstance: _createInstanceHere,
+              // This panel reads left-to-right like the horizontal timeline,
+              // so its dialogs' miniatures do too.
+              onEditInstance: _editInstanceHere,
+              // Which rail is asking: with nothing selected the frame pill's
+              // shove aims at the row THIS rail is standing on (a cut row
+              // shoves cuts, an S row shoves sounds), which is not the
+              // session's active-layer fallback.
+              currentRow: _session.selectedRow,
+            ),
           ),
           // ⛔The storyboard's own tail is GONE (B7, 유저 2026-08-17: 「완전
           // 동일 버튼 2개 — 삭제」): the 'V' fx pill duplicated the shared
@@ -975,4 +994,124 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       ),
     );
   }
+}
+
+/// B8: caches the storyboard's action toolbar and rebuilds it ONLY when
+/// what its buttons SHOW changes — the timeline host's seek-gate pattern
+/// (`_SeekGatedTimelineToolbar`), said of THIS panel's gates.
+///
+/// It has to exist here now: the bar used to render nothing a committed
+/// seek could change (the old comment on [_StoryboardTabHostState.build]),
+/// but B8 made the frame/shared gates read the CURSOR — the standing row ×
+/// the global playhead — and neither a seek, a standing move, a gap
+/// parking, nor a selection change is a session notify.
+///
+/// COMPLETENESS CONTRACT (the timeline gate's, restated): any NEW
+/// directly-rendered value the storyboard context serves MUST join
+/// [_CursorGatedStoryboardToolbarState._deriveToken], and if its source
+/// does not travel through a host rebuild it needs a listener too.
+class _CursorGatedStoryboardToolbar extends StatefulWidget {
+  const _CursorGatedStoryboardToolbar({
+    required this.session,
+    required this.actionsBuilder,
+  });
+
+  final EditorSessionManager session;
+  final WidgetBuilder actionsBuilder;
+
+  @override
+  State<_CursorGatedStoryboardToolbar> createState() =>
+      _CursorGatedStoryboardToolbarState();
+}
+
+class _CursorGatedStoryboardToolbarState
+    extends State<_CursorGatedStoryboardToolbar> {
+  // Eager for the timeline gate's reason: a `late` initializer would run on
+  // first access, which can coincide with the very signal it must catch.
+  late Object _token;
+
+  Widget? _cached;
+
+  /// Every signal that can move a gate WITHOUT a session notify. The host
+  /// rebuild (a notify) funnels through [didUpdateWidget].
+  List<Listenable> get _signals => _signalsOf(widget);
+
+  /// Every value the toolbar's directly-rendered widgets read from THIS
+  /// panel's context. The constant-false gates (blank X, mark, the cell
+  /// clipboard four) are deliberately absent — a constant cannot change.
+  Object _deriveToken() {
+    final panel = StoryboardToolbarPanelContext(widget.session);
+    return (
+      panel.canCreateInstance,
+      panel.canSetComma,
+      panel.canEditInstance,
+      panel.deleteSubject,
+      // The shift pair aims at the standing row, passed by VALUE.
+      widget.session.selectedRow,
+      widget.session.languageSettings.value,
+    );
+  }
+
+  void _handleExternalSignal() {
+    final next = _deriveToken();
+    if (next != _token) {
+      setState(() {
+        _token = next;
+        _cached = null;
+      });
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _token = _deriveToken();
+    for (final signal in _signals) {
+      signal.addListener(_handleExternalSignal);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _CursorGatedStoryboardToolbar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.session, widget.session)) {
+      for (final signal in _signalsOf(oldWidget)) {
+        signal.removeListener(_handleExternalSignal);
+      }
+      for (final signal in _signals) {
+        signal.addListener(_handleExternalSignal);
+      }
+      _cached = null;
+    }
+    final next = _deriveToken();
+    if (next != _token) {
+      _token = next;
+      _cached = null;
+    }
+  }
+
+  static List<Listenable> _signalsOf(_CursorGatedStoryboardToolbar widget) => [
+    widget.session.frameSeekCommitted,
+    widget.session.gapParkingListenable,
+    widget.session.currentRowListenable,
+    widget.session.languageSettings,
+    // The selections the gates read are notifiers on purpose (they grow
+    // per pointer move): the S-row/cut range, the strip's cut-local range,
+    // and lane spans.
+    widget.session.trackFrameRangeSelection,
+    widget.session.frameRangeSelection,
+    widget.session.laneRangeSelection,
+  ];
+
+  @override
+  void dispose() {
+    for (final signal in _signals) {
+      signal.removeListener(_handleExternalSignal);
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      _cached ??= widget.actionsBuilder(context);
 }

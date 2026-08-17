@@ -38,6 +38,7 @@ import 'timeline/se_audio_lane.dart';
 import 'timeline/instance_editor_commands.dart';
 import 'timeline/layer_name_commands.dart';
 import 'timeline/timeline_action_toolbar.dart';
+import 'timeline/toolbar_panel_context.dart';
 import 'timeline/timeline_frame_range_gesture.dart';
 import 'timeline/timeline_run_end_handles.dart';
 import 'timeline/timeline_exposure_comma_drag_policy.dart';
@@ -1193,6 +1194,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       // reaches into THIS panel's own contents.
       actionsBuilder: (context) => TimelineActionToolbar(
         session: _session,
+        // B8: this panel's dispatch context — the session's cut-local
+        // verbs, verbatim (the baseline the storyboard's own context
+        // diverges from).
+        panelContext: TimelineToolbarPanelContext(_session),
         onAddLayer: _session.addLayer,
         onRenameLayer: () =>
             unawaited(renameActiveLayerWithDialog(context, _session)),
