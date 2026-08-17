@@ -1300,6 +1300,12 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                             selection.contains(frameIndex);
                       },
                       // Cross-row select (UI-R17 #8), transposed like the moves.
+                      //
+                      // 🚨[_dragRows] at CALL time, never the build-local
+                      // list: the cells columns are memoized, and a memo
+                      // hit serves an older build's gesture bundle — see
+                      // the horizontal grid's twin for the stale-rows bug
+                      // this closes.
                       onSelectUpdate:
                           (row, anchorIndex, headIndex, headCrossOffset) {
                             if (row is! LayerRowAddress) {
@@ -1318,7 +1324,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                               headLayerId: headRowDelta == 0
                                   ? null
                                   : resolveBlockMoveTargetLayer(
-                                      rows: entries,
+                                      rows: _dragRows,
                                       sourceLayerId: row.layerId,
                                       rowDelta: headRowDelta,
                                     ),
@@ -1351,7 +1357,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                             final escalation = rangeHooks == null
                                 ? null
                                 : resolveLaneSpanEscalation(
-                                    rows: entries,
+                                    rows: _dragRows,
                                     layerId: layerId,
                                     laneId: laneId,
                                     rowDelta: headRowDelta,

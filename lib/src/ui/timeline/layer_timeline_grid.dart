@@ -1527,6 +1527,17 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
             },
             // Cross-row select (UI-R17 #8): the gesture's row delta maps
             // onto the display rows exactly like the move drags do.
+            //
+            // 🚨Resolved against the STATE-HELD [_dragRows] at CALL time,
+            // never the build-local list. The cells rows are MEMOIZED: a
+            // memo hit hands back the widget of an older build, and that
+            // widget's gesture bundle carries THESE closures. Capturing
+            // `rows` froze the row list as of the build the row was cached
+            // in — twirl a lane group open and a memo-kept row's drag still
+            // swept yesterday's three rows (the engine shards caught it
+            // first: their tile inputs keep the memo warm). The MOVE path
+            // never had the bug because [_rangeMoveResolver] is exactly
+            // this pattern — one State-held object, refreshed per build.
             onSelectUpdate: (row, anchorIndex, headIndex, headCrossOffset) {
               // ⛔No kind gate on the anchor. WHICH rows a drag may sweep is
               // answered by the row LIST below and by nothing else — a test
@@ -1556,7 +1567,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
               final head = headRowDelta == 0
                   ? null
                   : resolveSelectionSpanHead(
-                      rows: rows,
+                      rows: _dragRows,
                       sourceLayerId: layerId,
                       rowDelta: headRowDelta,
                     );
@@ -1568,7 +1579,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                 headLaneId: head?.laneId,
                 // 🚨★ THE SPAN, sliced off what this grid actually drew.
                 spanRows: resolveSelectionSpanRows(
-                  rows: rows,
+                  rows: _dragRows,
                   anchor: row,
                   rowDelta: headRowDelta,
                 ),
@@ -1594,10 +1605,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
             selection: hostLaneRange.selection,
             onSelectUpdate:
                 (layerId, laneId, anchorIndex, headIndex, headRowDelta) {
+                  // [_dragRows], not the build-local list — the same
+                  // stale-closure rule as the cells handler above (lane
+                  // rows are not memoized today, but the bundle they mount
+                  // must not depend on that staying true).
                   final escalation = rangeHooks == null
                       ? null
                       : resolveLaneSpanEscalation(
-                          rows: rows,
+                          rows: _dragRows,
                           layerId: layerId,
                           laneId: laneId,
                           rowDelta: headRowDelta,
