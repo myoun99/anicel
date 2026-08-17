@@ -9,12 +9,19 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/storyboard_tab_host.dart';
 
 /// The V row's height is the user's to set, all the way down to the floor —
 /// and the floor has to be a height the row actually fits in (feedback #8:
 /// "v행 최대로줄이면 bottom 오버플로우 9픽셀남").
+///
+/// ⛔The bar's height STEPPERS are gone (B7, 유저 2026-08-17) — the planned
+/// V-track splitter is the height's next writer — so the floor is driven
+/// through the host's [StoryboardTabHost.trackLaneHeight] directly: the
+/// contract is about the ROW at the floor, not about the control that
+/// walked it there.
 const _trackId = TrackId('h-track');
 
 Project _project() => Project(
@@ -47,15 +54,28 @@ Project _project() => Project(
   ],
 );
 
-Future<void> _openStoryboard(WidgetTester tester) async {
+Future<void> _openStoryboardAtFloor(WidgetTester tester) async {
   await tester.binding.setSurfaceSize(const Size(1500, 800));
   addTearDown(() => tester.binding.setSurfaceSize(null));
+  final manager = EditorSessionManager(initialProject: _project());
+  addTearDown(manager.dispose);
   await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project())),
-  );
-  await tester.pumpAndSettle();
-  await tester.tap(
-    find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+    MaterialApp(
+      home: Scaffold(
+        body: ListenableBuilder(
+          listenable: manager,
+          builder: (context, _) => StoryboardTabHost(
+            session: manager,
+            pixelsPerFrame: 12,
+            onPixelsPerFrameChanged: (_) {},
+            showSeconds: false,
+            onShowSecondsChanged: (_) {},
+            trackLaneHeight: StoryboardPanel.minTrackLaneHeight,
+            thumbnailFor: null,
+          ),
+        ),
+      ),
+    ),
   );
   await tester.pumpAndSettle();
 }
@@ -69,52 +89,20 @@ double _railHeight(WidgetTester tester) => tester
     .height;
 
 void main() {
-  testWidgets('the rail row fits at the SHORTEST height the stepper reaches', (
-    tester,
-  ) async {
-    await _openStoryboard(tester);
-
-    final shorter = find.byKey(
-      const ValueKey<String>('storyboard-row-shorter-button'),
-    );
-    // Walk all the way to the floor: the stepper stops there on its own.
-    var previous = -1.0;
-    while (_railHeight(tester) != previous) {
-      previous = _railHeight(tester);
-      // 🚨SCROLL TO IT FIRST. The command bar scrolls horizontally by design
-      // (유저: 「버튼 사라지기 시작하면 생기는 스크롤바」), so a bar with
-      // enough on it puts this stepper past the right edge — and a tap on an
-      // off-screen widget MISSES SILENTLY, which reads here as "the stepper
-      // hit its floor" rather than "the tap never landed".
-      await tester.ensureVisible(shorter);
-      await tester.pumpAndSettle();
-      await tester.tap(shorter);
-      await tester.pumpAndSettle();
-      expect(
-        tester.takeException(),
-        isNull,
-        reason: 'the rail row overflowed at ${_railHeight(tester)}px',
-      );
-    }
+  testWidgets('the rail row fits at the FLOOR height', (tester) async {
+    await _openStoryboardAtFloor(tester);
 
     expect(_railHeight(tester), StoryboardPanel.minTrackLaneHeight);
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: 'the rail row overflowed at ${_railHeight(tester)}px',
+    );
   });
 
   testWidgets('a track NAME does not make the short row overflow — it is the '
       'line that stands down', (tester) async {
-    await _openStoryboard(tester);
-
-    final shorter = find.byKey(
-      const ValueKey<String>('storyboard-row-shorter-button'),
-    );
-    for (var i = 0; i < 12; i += 1) {
-      // Same reason as the test above: the bar may have scrolled it away.
-      await tester.ensureVisible(shorter);
-      await tester.pumpAndSettle();
-      await tester.tap(shorter);
-      await tester.pumpAndSettle();
-    }
-    expect(_railHeight(tester), StoryboardPanel.minTrackLaneHeight);
+    await _openStoryboardAtFloor(tester);
 
     // The track's LABEL is what a row must always show; its name is the
     // detail that yields when there is no room for two lines.

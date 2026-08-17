@@ -2586,10 +2586,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                 _showSecondsDisplay.value = show;
               },
               railExtent: _railExtents[LayerRailId.storyboard],
+              // ⛔No height setter any more (B7): the steppers left the bar,
+              // and the planned V-track splitter is the next writer.
               trackLaneHeight: _storyboardTrackLaneHeight.value,
-              onTrackLaneHeightChanged: (value) {
-                _storyboardTrackLaneHeight.value = value;
-              },
               thumbnailFor: _storyboardThumbnails.thumbnailFor,
               // ⛔The camera-view notifier no longer comes through here:
               // R28 #1's toggle rides the sill with the transport now

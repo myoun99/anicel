@@ -67,6 +67,7 @@ import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_cell_style.dart'
     show
         storyboardCutBlockBackgroundColor,
+        storyboardPanelPictureGroundColor,
         timelineBaseGridAlpha,
         timelineDrawingInkColor,
         timelineRangeSelectionBandDecoration,
@@ -500,9 +501,10 @@ class StoryboardPanel extends StatefulWidget {
   /// on purpose: shrinking past it FOLDS the bands, which is the compact
   /// look, not a broken one.
   static const double defaultTrackLaneHeight = 64;
+  // Min/max are the height's LEGAL RANGE — the bar's steppers died with B7
+  // (2026-08-17), but the planned V-track splitter clamps to the same pair.
   static const double minTrackLaneHeight = 28;
   static const double maxTrackLaneHeight = 160;
-  static const double trackLaneHeightStep = 12;
 
   /// The vertical scrollbar's lane width — the TIMELINE's
   /// [TimelineGridMetrics.verticalScrollbarWidth] by value (UI-R10 #15/#21
@@ -5709,15 +5711,22 @@ class _StoryboardTrackRow extends StatelessWidget {
                   paintKey: ValueKey<String>(
                     'storyboard-edit-chrome-${track.id.value}',
                   ),
-                  // These grips sit on the CUT BLOCK, not on paper
-                  // (feedback #11): the ground law reads the block's own
-                  // resting plate, so the bars go light on the dark strip.
-                  gripGround: storyboardCutBlockBackgroundColor(
-                    Theme.of(context).colorScheme,
-                    active: false,
-                    hovered: false,
-                    rangeSelected: false,
-                  ),
+                  // The ground is what the grips actually SIT ON (B1
+                  // 2026-08-17). With thumbnails shown the strip band is
+                  // panel pictures — paper-white composites, so the plate
+                  // ground made the bars light and invisible over them.
+                  // Same predicate as the blocks painter's `showThumbnails`,
+                  // so the ground and the picture cannot drift apart.
+                  gripGround: thumbnailFor != null
+                      ? storyboardPanelPictureGroundColor
+                      // Thumbnails off: the strip is the block's own
+                      // resting plate (feedback #11), dark, light bars.
+                      : storyboardCutBlockBackgroundColor(
+                          Theme.of(context).colorScheme,
+                          active: false,
+                          hovered: false,
+                          rangeSelected: false,
+                        ),
                   // No layer: these blocks are panels of many cuts, and the
                   // row has no run edges for a LayerId to name.
                   layerId: null,

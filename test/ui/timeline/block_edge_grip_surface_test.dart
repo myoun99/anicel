@@ -14,7 +14,9 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerMarkColor;
@@ -124,8 +126,9 @@ void main() {
     });
   });
 
-  testWidgets('the storyboard strip hands its grips the cut-block plate '
-      'while the timeline row hands them its layer\'s paper', (tester) async {
+  testWidgets('B1: a strip grip over the THUMBNAILS reads the picture '
+      'ground — dark bar over the paper-white panels, while the timeline '
+      'row hands its grips its layer\'s paper', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1500, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -147,8 +150,53 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // The strip's grips sit on the cut block's resting plate, which is
-    // dark — so the ground law gives them the light bar there.
+    // The workspace serves thumbnails, so the strip band under these grips
+    // is panel PICTURES — paper-white composites, not the cut-block plate.
+    // The plate ground here was the device report (B1 2026-08-17): light
+    // bars, invisible over white boards.
+    final ground = timelineRowChromePainter(
+      tester,
+      _trackId.value,
+      prefix: 'storyboard',
+    )!.gripGround;
+    expect(ground, storyboardPanelPictureGroundColor);
+    // And the ground law turns it into the DARK ink — the pixel the user
+    // actually looks at.
+    expect(
+      blockEdgeGripBarColor(
+        BlockEdgeGripInk.rest,
+        ground: ground,
+      ).withValues(alpha: 1),
+      timelineTextOnLightGroundColor,
+    );
+  });
+
+  testWidgets('with thumbnails OFF the strip is the plate again, and the '
+      'plate stays the grips\' ground', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1500, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final manager = EditorSessionManager(initialProject: _project());
+    addTearDown(manager.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(brightness: Brightness.dark),
+        home: Scaffold(
+          body: ListenableBuilder(
+            listenable: manager,
+            builder: (context, _) => StoryboardTabHost(
+              session: manager,
+              pixelsPerFrame: 12,
+              onPixelsPerFrameChanged: (_) {},
+              showSeconds: false,
+              onShowSecondsChanged: (_) {},
+              thumbnailFor: null,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
     expect(
       timelineRowChromePainter(
         tester,
