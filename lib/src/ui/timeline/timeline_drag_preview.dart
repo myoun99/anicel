@@ -63,6 +63,7 @@ class ExposureEdgeDragPreview extends TimelineDragPreview {
 class BlockMoveDragPreview extends TimelineDragPreview {
   const BlockMoveDragPreview({
     required this.previewLayers,
+    this.previewGlobalLayers = const {},
     this.previewTrackTransforms,
     this.previewTrackEffects,
     this.cameraCutId,
@@ -71,6 +72,15 @@ class BlockMoveDragPreview extends TimelineDragPreview {
   });
 
   final Map<LayerId, Layer> previewLayers;
+
+  /// Track-SE moves only (C2 2026-08-17): the GLOBAL-axis form of each
+  /// moved track-SE layer — the same second form [ExposureEdgeDragPreview]
+  /// has always carried for its edge drags, so the storyboard's
+  /// track-global SE strips follow a MOVE live exactly as they follow a
+  /// comma drag. [previewLayers] keeps the active-cut display clones for
+  /// the timeline row gates; cut-owned layers appear only there (both
+  /// forms are the same).
+  final Map<LayerId, Layer> previewGlobalLayers;
 
   /// A V-track LANE key move in flight (R4b): the previewed
   /// [Track.transformTrack] per track — the storyboard's continuous lane
@@ -97,6 +107,7 @@ class BlockMoveDragPreview extends TimelineDragPreview {
   bool operator ==(Object other) =>
       other is BlockMoveDragPreview &&
       mapEquals(other.previewLayers, previewLayers) &&
+      mapEquals(other.previewGlobalLayers, previewGlobalLayers) &&
       mapEquals(other.previewTrackTransforms, previewTrackTransforms) &&
       _trackEffectsEqual(other.previewTrackEffects, previewTrackEffects) &&
       other.cameraCutId == cameraCutId &&
@@ -107,6 +118,9 @@ class BlockMoveDragPreview extends TimelineDragPreview {
   int get hashCode => Object.hash(
     Object.hashAllUnordered(
       previewLayers.entries.map((e) => Object.hash(e.key, e.value)),
+    ),
+    Object.hashAllUnordered(
+      previewGlobalLayers.entries.map((e) => Object.hash(e.key, e.value)),
     ),
     previewTrackTransforms == null
         ? null
@@ -262,12 +276,20 @@ Layer? timelineDragPreviewLayerFor(
 /// The GLOBAL-axis preview layer for [layerId] (track-global hosts — the
 /// storyboard SE strips), or null when [preview] does not target it or
 /// carries no global form.
+///
+/// C2 (2026-08-17): a BLOCK MOVE answers here too. The storyboard SE rows
+/// resolve every drag through this one function, and the move used to be
+/// the one drag with no global form — so an edge drag followed the hand
+/// live while a move sat still until release, on the same row.
 Layer? timelineDragPreviewGlobalLayerFor(
   TimelineDragPreview? preview,
   LayerId layerId,
 ) {
   if (preview is ExposureEdgeDragPreview && preview.layerId == layerId) {
     return preview.globalPreviewLayer;
+  }
+  if (preview is BlockMoveDragPreview) {
+    return preview.previewGlobalLayers[layerId];
   }
   return null;
 }

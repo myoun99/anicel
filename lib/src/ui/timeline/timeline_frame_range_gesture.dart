@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../input/app_input_settings.dart' show AppInput;
 import '../input/eager_pan_gesture_recognizer.dart';
 import '../debug/input_inspector.dart' show InputInspector;
+import '../widgets/instant_tap_region.dart' show InstantTapRegion;
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -476,14 +477,19 @@ class TimelineLaneRangeCallbacks {
   )
   onSelectUpdate;
 
-  /// A plain tap on the band: STAND on [frameIndex] of this (layer, lane)
-  /// — seek there, take the lane as the current row, and drop the lane
-  /// selection.
+  /// A press on the band: STAND on [frameIndex] of this (layer, lane) —
+  /// seek there and take the lane as the current row. Whether it also
+  /// clears the selection is the session's question (`standOnRow`'s T10
+  /// guard: outside clears, inside holds for the move).
   ///
   /// R10: a lane band paints its cells rather than mounting cell widgets,
   /// and the seek lived on the cell widget, so property rows were the one
   /// place with visible frame cells that the playhead could not be put on.
   /// One rule instead: wherever frame cells exist, you can stand.
+  ///
+  /// C6 (2026-08-17): fired by the cells' shared press region — pen/mouse
+  /// on the DOWN, before a pan may follow — so ranging on an fx row stands
+  /// first exactly as ranging on a cells row does.
   final void Function(LayerId layerId, String laneId, int frameIndex) onTapAt;
 
   final bool Function() onMoveBegin;
@@ -653,12 +659,24 @@ class _TimelineLaneRangeGestureLayerState
       key: ValueKey<String>(
         'timeline-lane-range-layer-${widget.layer.id}-${widget.laneId}',
       ),
-      child: GestureDetector(
+      // 🚨C6 (2026-08-17): STANDING rides the CELLS' own press region — the
+      // shared [InstantTapRegion] with the shared device gate, exactly as
+      // `timelineRowCellsPaintArea` mounts it. It used to be a
+      // GestureDetector tap, which fires only on a settled RELEASE — so a
+      // range drag on an fx header/member selected without ever standing,
+      // while every cells row stood first and then ranged (「일반 행은
+      // 해당 인덱스에 서고 → 범위」). Pen/mouse stand on the DOWN now, a
+      // finger on its settled release, and whether the press CLEARS is
+      // still the session's one question (`standOnRow`'s T10 guard), so a
+      // press inside the lane selection stands without wiping the move it
+      // is starting.
+      child: InstantTapRegion(
         behavior: HitTestBehavior.translucent,
-        onTapUp: (details) => widget.callbacks.onTapAt(
+        pressSeeksFor: AppInput.timelineCellPressSeeks,
+        onTap: (localPosition) => widget.callbacks.onTapAt(
           widget.layer.id,
           widget.laneId,
-          _frameAt(details.localPosition),
+          _frameAt(localPosition),
         ),
         child: RawGestureDetector(
           behavior: HitTestBehavior.translucent,

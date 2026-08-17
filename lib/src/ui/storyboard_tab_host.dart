@@ -760,18 +760,23 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // subject — the rail label was the only half of
                     // "stand" this panel had.
                     //
-                    // ⛔`selectLayer` is deliberately absent, unlike the
-                    // timeline's twin: a V row's lanes hang off a SYNTHETIC
-                    // carrier id (the track's transform substrate), and
-                    // handing that to the layer selection would name a
-                    // layer that does not exist. The label press next door
-                    // has always taken this shape for the same reason;
-                    // what the BAND adds over it is the seek.
-                    onTapAt: (layerId, laneId, globalFrame) {
-                      _session.clearLaneRangeSelection();
-                      _session.selectGlobalFrame(globalFrame);
-                      _session.selectRow(LaneRowAddress(layerId, laneId));
-                    },
+                    // C6 (2026-08-17): through THE standing verb, like the
+                    // timeline's twin — the hand-rolled clear+seek that
+                    // stood here restated `standOnRow` without its T10
+                    // guard, and with standing on the DOWN now (the cells'
+                    // press law) an unguarded clear would wipe the very
+                    // lane selection a move-press was about to slide.
+                    //
+                    // `takesLayerActive: false` is this rail's one stated
+                    // difference (유저 2026-07-27) — it also keeps a V
+                    // row's SYNTHETIC carrier id out of the layer
+                    // selection, which was the old shape's whole reason.
+                    onTapAt: (layerId, laneId, globalFrame) =>
+                        _session.standOnRow(
+                          LaneRowAddress(layerId, laneId),
+                          globalFrameIndex: globalFrame,
+                          takesLayerActive: false,
+                        ),
                     onMoveBegin: _session.beginLaneRangeMoveDrag,
                     onMoveUpdate: (frameDelta) => _session
                         .updateLaneRangeMoveDrag(frameDelta: frameDelta),
