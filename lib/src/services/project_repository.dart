@@ -789,7 +789,9 @@ class ProjectRepository {
   }
 
   void updateLayerTimesheet({
-    required CutId cutId,
+    // Unread — the write is layer-addressed; null from gap-state flips of
+    // track fixtures (B5③).
+    required CutId? cutId,
     required LayerId layerId,
     required bool onTimesheet,
   }) {
@@ -878,7 +880,9 @@ class ProjectRepository {
   }
 
   void updateLayerAudioClips({
-    required CutId cutId,
+    // Unread — the write is layer-addressed; null from gap-state edits of
+    // track fixtures (B6).
+    required CutId? cutId,
     required LayerId layerId,
     required List<AudioClip> audioClips,
   }) {

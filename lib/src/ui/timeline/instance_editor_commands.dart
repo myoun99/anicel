@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
 import '../../models/edit_instance_subject.dart';
+import '../../models/frame.dart' show Frame;
 import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
 import '../../models/media_asset.dart' show mediaAssetDefaultName;
 import '../../models/text_cel_style.dart';
+import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../../services/camera_pose_resolver.dart';
+import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../dialogs/camera_key_dialog.dart';
 import '../dialogs/frame_name_conflict_dialog.dart';
 import '../dialogs/instruction_event_dialog.dart';
@@ -223,17 +226,103 @@ Future<void> _editSeLabel(
   // token — a clip has no id, and it is read once here so the dialog and the
   // unlink below address the same list.
   final linked = session.selectedSeAudioClips;
+  await _editSeEntryWithDialog(
+    context,
+    initialSeName: session.selectedFrameSeName ?? '',
+    initialDialogue: session.selectedFrameName ?? '',
+    linkedAudio: [
+      for (final entry in linked)
+        (label: mediaAssetDefaultName(entry.clip.filePath), token: entry.index),
+    ],
+    previewAxis: previewAxis,
+    commit: (dialogue, seName) =>
+        session.updateSelectedSeEntry(dialogue: dialogue, seName: seName),
+    unlink: session.unlinkAudioClipsFromActiveLayer,
+  );
+}
+
+/// The SE instance editor addressed on the GLOBAL axis — the storyboard's
+/// door (B6 2026-08-17: 「스토리보드 SE 레이어 … 더블클릭 편집창 미동작」).
+///
+/// The SAME dialog and the same commits as the timeline's cell double-tap
+/// ([_editSeLabel]), addressed by (layer, global frame) because the
+/// storyboard rail's standing row never moves the drawing target (유저
+/// 2026-07-27) — the transition row's [editTransitionSpanInstance] pattern,
+/// said of sounds. COVERED frames only: creation stays the timeline's
+/// cut-scoped entrance, exactly as the transition row keeps creation on its
+/// own verb.
+Future<void> editSeEntryInstance(
+  BuildContext context,
+  EditorSessionManager session, {
+  required LayerId layerId,
+  required int globalFrame,
+  Axis previewAxis = Axis.horizontal,
+}) async {
+  final layer = layerAnywhereOrNull(
+    session.repository.requireProject(),
+    layerId,
+  );
+  if (layer == null || layer.kind != LayerKind.se) {
+    return;
+  }
+  final block = coveringDrawingBlockAt(layer.timeline, globalFrame);
+  if (block == null) {
+    return;
+  }
+  Frame? entry;
+  for (final frame in layer.frames) {
+    if (frame.id == block.frameId) {
+      entry = frame;
+      break;
+    }
+  }
+  if (entry == null) {
+    return;
+  }
+  final entryId = entry.id;
+  await _editSeEntryWithDialog(
+    context,
+    initialSeName: entry.seName ?? '',
+    initialDialogue: entry.name ?? '',
+    linkedAudio: [
+      for (var index = 0; index < layer.audioClips.length; index += 1)
+        if (layer.audioClips[index].frameId == entryId)
+          (
+            label: mediaAssetDefaultName(layer.audioClips[index].filePath),
+            token: index,
+          ),
+    ],
+    previewAxis: previewAxis,
+    commit: (dialogue, seName) => session.updateSeEntryForLayer(
+      layerId,
+      entryId,
+      dialogue: dialogue,
+      seName: seName,
+    ),
+    unlink: (tokens) => session.unlinkAudioClipsFromLayer(layerId, tokens),
+  );
+}
+
+/// The dialog + commit core BOTH SE entrances share — the timeline's
+/// standing-addressed one and the storyboard's row-addressed one. One body,
+/// so "delete works from one door but not the other" has nowhere to start.
+Future<void> _editSeEntryWithDialog(
+  BuildContext context, {
+  required String initialSeName,
+  required String initialDialogue,
+  required List<({String label, int token})> linkedAudio,
+  required Axis previewAxis,
+  required void Function(String dialogue, String? seName) commit,
+  required void Function(Iterable<int> tokens) unlink,
+}) async {
   final result = await showDialog<SeInstanceDialogResult>(
     context: context,
     builder: (context) => SeInstanceDialog(
       creating: false,
-      initialSeName: session.selectedFrameSeName ?? '',
-      initialDialogue: session.selectedFrameName ?? '',
+      initialSeName: initialSeName,
+      initialDialogue: initialDialogue,
       previewAxis: previewAxis,
-      linkedAudio: [
-        for (final entry in linked)
-          (label: mediaAssetDefaultName(entry.clip.filePath), token: entry.index),
-      ],
+      linkedAudio: linkedAudio,
     ),
   );
   if (!context.mounted || result == null) {
@@ -242,9 +331,9 @@ Future<void> _editSeLabel(
 
   final seName = result.seName.isEmpty ? null : result.seName;
   // SE edits never hit the link-conflict flow (duplicates allowed).
-  session.updateSelectedSeEntry(dialogue: result.dialogue, seName: seName);
+  commit(result.dialogue, seName);
   if (result.unlinkedAudioTokens.isNotEmpty) {
-    session.unlinkAudioClipsFromActiveLayer(result.unlinkedAudioTokens);
+    unlink(result.unlinkedAudioTokens);
   }
 }
 

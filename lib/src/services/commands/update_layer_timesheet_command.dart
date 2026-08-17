@@ -13,7 +13,11 @@ class UpdateLayerTimesheetCommand implements Command {
   });
 
   final ProjectRepository repository;
-  final CutId cutId;
+
+  /// Bookkeeping only — the write is layer-addressed (anywhere lookup);
+  /// null when the flip lands from a gap (no active cut, B5③ 2026-08-17:
+  /// the storyboard rail flips TRACK fixtures' flags).
+  final CutId? cutId;
   final LayerId layerId;
   final bool onTimesheet;
 

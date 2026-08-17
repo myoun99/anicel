@@ -63,6 +63,8 @@ import 'timeline/transform_lane_policy.dart'
         transformPropertyLanes;
 import 'input/app_input_settings.dart' show AppInput;
 import 'widgets/instant_tap_region.dart' show InstantTapRegion;
+import 'timeline/timeline_cell_double_tap.dart'
+    show timelineCellDoubleTapActivation, timelineCellDoubleTapRecord;
 import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_cell_style.dart'
     show
@@ -421,6 +423,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
     this.onLayerMarkSelected,
+    this.onToggleLayerTimesheet,
     this.layerFxStateOf,
     this.onToggleLayerFx,
     this.cutPictureVisibleOf,
@@ -439,6 +442,7 @@ class StoryboardPanel extends StatefulWidget {
     this.transitionPreview,
     this.transitionCommaDrag,
     this.onEditTransitionSpan,
+    this.onEditSeEntry,
     this.dragPreview,
     this.legend,
     this.rowFilter = TimelineRowFilter.none,
@@ -769,6 +773,11 @@ class StoryboardPanel extends StatefulWidget {
 
   final void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected;
 
+  /// B5③ (2026-08-17, ordered twice before): the timeline rows' timesheet
+  /// toggle on this rail's rows too — the SAME session verb the timeline
+  /// wires, flipping [Layer.onTimesheet].
+  final ValueChanged<LayerId>? onToggleLayerTimesheet;
+
   final LayerFxState Function(LayerId layerId)? layerFxStateOf;
   final ValueChanged<LayerId>? onToggleLayerFx;
 
@@ -871,6 +880,11 @@ class StoryboardPanel extends StatefulWidget {
   /// verb as editing now (an empty frame creates), so the panel takes ONE
   /// callback and the row grew no second door.
   final void Function(int globalFrame)? onEditTransitionSpan;
+
+  /// B6 (2026-08-17): opens the SE instance dialog for the sound block
+  /// covering this GLOBAL frame on [LayerId] — the timeline SE cells'
+  /// entrance, reached by the frame blocks' same-cell double tap.
+  final void Function(LayerId layerId, int globalFrame)? onEditSeEntry;
 
   /// The per-S-row view-state key: `<trackId>-<slot>`.
   static String seRowKey(Track track, int slot) => '${track.id.value}-$slot';
@@ -1505,10 +1519,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     return _draggableSeRow(track, slot, trackLayer, _seLabel(track, slot));
   }
 
-  /// The transition row's rail label — a name and a selection highlight, and
-  /// no verb. Everything this row can do is already a gesture on the strip
-  /// (grips size the span, a press opens its term dialog) or the shared Edit
-  /// Instance verb, which creates on an empty frame.
+  /// The transition row's rail label — the timeline row's chrome (sheet,
+  /// mark, eye — B5③) and no creation verb of its own. Everything else this
+  /// row can do is already a gesture on the strip (grips size the span, a
+  /// press opens its term dialog) or the shared Edit Instance verb, which
+  /// creates on an empty frame.
   Widget _transitionLabelRow(Track track) {
     final layer = track.transitionLayer;
     return _StoryboardTransitionLabel(
@@ -1516,6 +1531,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       layer: layer,
       active: widget.selectedRow == LayerRowAddress(layer.id),
       onSelectLayer: widget.onSelectLayer,
+      onToggleLayerVisibility: widget.onToggleLayerVisibility,
+      onLayerMarkSelected: widget.onLayerMarkSelected,
+      onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
     );
   }
 
@@ -1631,6 +1649,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       onLayerOpacityChanged: widget.onLayerOpacityChanged,
       onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
       onLayerMarkSelected: widget.onLayerMarkSelected,
+      onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
       layerFxStateOf: widget.layerFxStateOf,
       onToggleLayerFx: widget.onToggleLayerFx,
       opacityDragPreview: widget.opacityDragPreview,
@@ -2599,6 +2618,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       projectFrameRate: widget.projectFrameRate,
       audioPeaksFor: widget.audioPeaksFor,
       onRowFramePress: widget.onRowFramePress,
+      onEditSeEntry: widget.onEditSeEntry,
       seCommaDrag: widget.seCommaDrag,
       seSelect: widget.seSelect,
       frameGeometry: _frameGeometry,
@@ -3706,6 +3726,7 @@ class _StoryboardSeLabel extends StatelessWidget {
     this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
     this.onLayerMarkSelected,
+    this.onToggleLayerTimesheet,
     this.layerFxStateOf,
     this.onToggleLayerFx,
     this.opacityDragPreview,
@@ -3746,6 +3767,9 @@ class _StoryboardSeLabel extends StatelessWidget {
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
 
   final void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected;
+
+  /// B5③: the timeline rows' sheet toggle, on this rail too.
+  final ValueChanged<LayerId>? onToggleLayerTimesheet;
 
   final LayerFxState Function(LayerId layerId)? layerFxStateOf;
   final ValueChanged<LayerId>? onToggleLayerFx;
@@ -3829,11 +3853,23 @@ class _StoryboardSeLabel extends StatelessWidget {
                           ),
                         ),
                       ),
-                // NO sheet toggle here (UI-R9 #5): the timesheet flag is a
-                // CUT-scoped setting ("drop this layer from THIS cut's
-                // sheet") and the storyboard rail is track-global — the
-                // slot stays reserved (empty) so the grid keeps lining up
-                // and a future control can move in.
+                // B5③ (2026-08-17, superseding UI-R9 #5's empty slot —
+                // ordered twice): the timeline rows' sheet toggle, same
+                // widget, same kind gate, same session verb. The flag is a
+                // LAYER field ([Layer.onTimesheet]) and this row's layer is
+                // track-owned, so the toggle needs no cut to act.
+                timesheet:
+                    layer != null &&
+                        onToggleLayerTimesheet != null &&
+                        layerKindEligibleForTimesheetToggle(layer.kind) &&
+                        layer.attachedToLayerId == null
+                    ? LayerTimesheetToggleButton(
+                        keyPrefix: 'storyboard',
+                        layerId: layer.id,
+                        onTimesheet: layer.onTimesheet,
+                        onToggle: onToggleLayerTimesheet!,
+                      )
+                    : null,
                 mark: layer != null && onLayerMarkSelected != null
                     ? LayerMarkChip(
                         keyPrefix: 'storyboard',
@@ -3951,10 +3987,15 @@ class _StoryboardSeLabel extends StatelessWidget {
 
 /// The TRANSITION row's rail label — the track's O.L / F.I / F.O row.
 ///
-/// The rail's shared column skeleton, like every other row, but most slots
-/// stay empty on purpose: the row carries no picture, so it has no eye, no
-/// opacity, no fx and no mark ([layerKindHasPictureOpacity] and friends
-/// answer false for [LayerKind.transition]).
+/// The rail's shared column skeleton, like every other row — and the
+/// timeline row's three controls with it (B5③ 2026-08-17, ordered twice):
+/// the sheet toggle (the kind is eligible — it prints), the mark chip (⑲:
+/// the strip's blocks are painted in the mark colour, so the chip IS this
+/// row's color label), and the eye, whose subject is the layer's COMPOSITE
+/// CONTRIBUTION — a hidden transition row stops feeding its fades to
+/// playback ([EditorSessionManager.transitionSpansOfTrack]). fx/opacity
+/// stay absent by KIND, the same [layerKindShowsFxToggle]/
+/// [layerKindShowsOpacityControl] answers the timeline row reads.
 ///
 /// ⛔It carries **no verb of its own** either. It used to hold a `＋` reading
 /// "make one at the playhead", and that button is what the user was pointing
@@ -3969,6 +4010,9 @@ class _StoryboardTransitionLabel extends StatelessWidget {
     required this.layer,
     required this.active,
     this.onSelectLayer,
+    this.onToggleLayerVisibility,
+    this.onLayerMarkSelected,
+    this.onToggleLayerTimesheet,
   });
 
   final Track track;
@@ -3977,6 +4021,11 @@ class _StoryboardTransitionLabel extends StatelessWidget {
   /// Whether this row is THE selected row (same highlight as every other).
   final bool active;
   final ValueChanged<LayerId>? onSelectLayer;
+
+  /// B5③: the timeline row's three controls, same verbs (see class doc).
+  final ValueChanged<LayerId>? onToggleLayerVisibility;
+  final void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected;
+  final ValueChanged<LayerId>? onToggleLayerTimesheet;
 
   @override
   Widget build(BuildContext context) {
@@ -4013,6 +4062,27 @@ class _StoryboardTransitionLabel extends StatelessWidget {
           child: Row(
             children: [
               ...layerRailLeadingCells(
+                // B5③: the timeline row's sheet toggle and mark chip in
+                // their shared slots — same widgets, same gates.
+                timesheet:
+                    onToggleLayerTimesheet != null &&
+                        layerKindEligibleForTimesheetToggle(layer.kind) &&
+                        layer.attachedToLayerId == null
+                    ? LayerTimesheetToggleButton(
+                        keyPrefix: 'storyboard',
+                        layerId: layer.id,
+                        onTimesheet: layer.onTimesheet,
+                        onToggle: onToggleLayerTimesheet!,
+                      )
+                    : null,
+                mark: onLayerMarkSelected != null
+                    ? LayerMarkChip(
+                        keyPrefix: 'storyboard',
+                        layerId: layer.id,
+                        mark: layer.mark,
+                        onMarkSelected: onLayerMarkSelected!,
+                      )
+                    : null,
                 typeButton: LayerTypeButton(
                   keyPrefix: 'storyboard',
                   idValue: '${track.id.value}-transition',
@@ -4035,6 +4105,19 @@ class _StoryboardTransitionLabel extends StatelessWidget {
                     ),
                   ),
                 ),
+              ),
+              ...layerRailTrailingCells(
+                // The eye: include/exclude this row's composite
+                // contribution (B5③ — 「비지블 = 해당 합성 반영/미반영」).
+                // fx and opacity stay kind-gated off, exactly like the
+                // timeline row's slots for this kind.
+                visibility: onToggleLayerVisibility != null
+                    ? LayerVisibilityToggleButton(
+                        keyValue: 'storyboard-layer-visibility-${layer.id}',
+                        isVisible: layer.isVisible,
+                        onToggle: () => onToggleLayerVisibility!(layer.id),
+                      )
+                    : null,
               ),
             ],
           ),
@@ -4220,6 +4303,13 @@ class _StoryboardTransitionRow extends StatelessWidget {
     // or a span deleted. Creation stays the rail's + button, so no boundary
     // gains an O.L by being brushed past. Mounted BEFORE the grips so the
     // edges keep drag priority.
+    //
+    // 🚨B5① (2026-08-17): the double tap rides the FRAME BLOCKS' shared
+    // gate now — both taps must land on the SAME cell, or two seeks along
+    // one span (click 1, click 3) opened the editor through the
+    // recognizer's 100px slop. The record half arms on the press below,
+    // exactly as `timelineRowCellsPaintArea` does; a covered-cell check is
+    // this row's own subject guard, applied AFTER the shared law.
     final onRowFramePress = this.onRowFramePress;
     final onEditSpan = this.onEditSpan;
     if (onRowFramePress != null || onEditSpan != null) {
@@ -4229,62 +4319,55 @@ class _StoryboardTransitionRow extends StatelessWidget {
       spans.add(
         Positioned.fill(
           key: ValueKey<String>('storyboard-transition-press-${layer.id}'),
-          child: GestureDetector(
+          // ⚠️NESTING IS LOAD-BEARING, the dense rows' exact order: the
+          // press region OUTSIDE, the double-tap detector INSIDE. The hit
+          // path runs innermost-first, so the recognizer consults the gate
+          // against the FIRST tap's record before the second press
+          // re-records — swapped, the second down records itself and the
+          // gate compares a cell to itself.
+          //
+          // ㉟-b: the strip PICKS ON THE RELEASE, like every other cell in
+          // the app (유저 08-12: 「스토리보드 띠도 탭으로 맞춰줘」). It used
+          // to be a raw pointer-down of its own — the third hand-written
+          // copy of a policy the timeline had already named — so it takes
+          // the shared region instead of a fourth.
+          child: InstantTapRegion(
             behavior: HitTestBehavior.translucent,
-            onDoubleTapDown: onEditSpan == null
-                ? null
-                : (details) {
-                    final frame = frameAt(details.localPosition);
-                    if (frame == null ||
-                        instructionSpanCovering(layer.instructions, frame) ==
-                            null) {
-                      return;
-                    }
-                    onEditSpan(frame);
-                  },
-            // ㉟-b: the strip PICKS ON THE RELEASE, like every other cell in
-            // the app (유저 08-12: 「스토리보드 띠도 탭으로 맞춰줘」). It used
-            // to be a raw pointer-down of its own — the third hand-written
-            // copy of a policy the timeline had already named — so it takes
-            // the shared region instead of a fourth.
-            child: InstantTapRegion(
+            pressSeeksFor: AppInput.timelineCellPressSeeks,
+            onPressDown: timelineCellDoubleTapRecord(
+              layerId: layer.id,
+              frameAt: frameAt,
+            ),
+            onTap: (localPosition) {
+              final frame = frameAt(localPosition);
+              if (frame == null) {
+                return;
+              }
+              onRowFramePress?.call(LayerRowAddress(layer.id), frame);
+            },
+            child: GestureDetector(
               behavior: HitTestBehavior.translucent,
-              pressSeeksFor: AppInput.timelineCellPressSeeks,
-              onTap: (localPosition) {
-                final frame = frameAt(localPosition);
-                if (frame == null) {
-                  return;
-                }
-                onRowFramePress?.call(LayerRowAddress(layer.id), frame);
-              },
+              onDoubleTapDown: onEditSpan == null
+                  ? null
+                  : timelineCellDoubleTapActivation(
+                      layerId: layer.id,
+                      frameAt: frameAt,
+                      onActivate: (frame) {
+                        if (instructionSpanCovering(
+                              layer.instructions,
+                              frame,
+                            ) ==
+                            null) {
+                          return;
+                        }
+                        onEditSpan(frame);
+                      },
+                    ),
               child: const SizedBox.expand(),
             ),
           ),
         ),
       );
-    }
-    final commaDrag = this.commaDrag;
-    if (commaDrag != null && _frameEndExclusive > 0) {
-      final grips = timelineRowInstructionEdgeGrips(
-        layer: layer,
-        frameStartIndex: 0,
-        frameEndIndexExclusive: _frameEndExclusive,
-        resolveFrameCellExtent: () => timelineScale.pixelsPerFrame,
-        commaDrag: commaDrag,
-        axis: Axis.horizontal,
-      );
-      if (grips.isNotEmpty) {
-        spans.add(
-          Positioned.fill(
-            child: TimelineFixedFrameSpanLayer(
-              geometry: _geometry,
-              crossAxisExtent: _transitionRowHeight,
-              axis: Axis.horizontal,
-              children: grips,
-            ),
-          ),
-        );
-      }
     }
     // THE range gesture — the SE row's, verbatim, addressed to this row. It was
     // the one row of this rail a range drag could not touch (user 2026-08-11),
@@ -4294,6 +4377,12 @@ class _StoryboardTransitionRow extends StatelessWidget {
     // row reads; sliding it would be authoring on a row whose local placement
     // is a projection ([layerKindIsReadOnlyInCut]). Mounted UNDER the grips so
     // the edges keep their drag priority, exactly as the SE row's is.
+    //
+    // 🚨B5② (2026-08-17): "mounted UNDER" is STACK ORDER, and this block used
+    // to sit AFTER the grips in [spans] — on top of them — so its eager pan
+    // took every edge drag and the commas never moved. The SE row one class
+    // down had the order right all along; this row now matches it, and the
+    // grips go in LAST below.
     final select = this.select;
     if (select != null && _frameEndExclusive > 0) {
       spans.add(
@@ -4329,6 +4418,32 @@ class _StoryboardTransitionRow extends StatelessWidget {
         ),
       );
     }
+    // …and the edge grips LAST, so they sit above the range gesture and the
+    // press — the frame blocks' arbitration (edges keep comma-drag
+    // priority), the same order the SE row and the cut row already mount.
+    final commaDrag = this.commaDrag;
+    if (commaDrag != null && _frameEndExclusive > 0) {
+      final grips = timelineRowInstructionEdgeGrips(
+        layer: layer,
+        frameStartIndex: 0,
+        frameEndIndexExclusive: _frameEndExclusive,
+        resolveFrameCellExtent: () => timelineScale.pixelsPerFrame,
+        commaDrag: commaDrag,
+        axis: Axis.horizontal,
+      );
+      if (grips.isNotEmpty) {
+        spans.add(
+          Positioned.fill(
+            child: TimelineFixedFrameSpanLayer(
+              geometry: _geometry,
+              crossAxisExtent: _transitionRowHeight,
+              axis: Axis.horizontal,
+              children: grips,
+            ),
+          ),
+        );
+      }
+    }
     return SizedBox(
       key: ValueKey<String>('storyboard-transition-row-${track.id.value}'),
       width: width,
@@ -4353,6 +4468,7 @@ class _StoryboardSeRow extends StatelessWidget {
     required this.projectFrameRate,
     this.audioPeaksFor,
     this.onRowFramePress,
+    this.onEditSeEntry,
     this.seCommaDrag,
     this.seSelect,
     this.frameGeometry,
@@ -4388,6 +4504,13 @@ class _StoryboardSeRow extends StatelessWidget {
   /// included) and EVERY block carries the comma edge grips (UI-R7 #5 —
   /// global starts, any cut).
   final StoryboardRowFramePress? onRowFramePress;
+
+  /// B6 (2026-08-17): double-tapping the SAME cell of a sound block opens
+  /// its instance editor — the timeline SE row's entrance, gated by the
+  /// frame blocks' shared [TimelineCellDoubleTapGate]. Global frames,
+  /// because that is this row's axis. Null keeps the row press-only.
+  final void Function(LayerId layerId, int globalFrame)? onEditSeEntry;
+
   final TimelineCommaDragCallbacks? seCommaDrag;
 
   /// Range selection on this row — the SAME shared gesture and the same
@@ -4574,24 +4697,57 @@ class _StoryboardSeRow extends StatelessWidget {
           ),
         );
       }
-      if (onRowFramePress != null) {
+      if (onRowFramePress != null || onEditSeEntry != null) {
+        final onEditSeEntry = this.onEditSeEntry;
+        int? frameAt(Offset local) => timelineScale.pixelsPerFrame <= 0
+            ? null
+            : (local.dx / timelineScale.pixelsPerFrame).floor();
         spans.add(
           Positioned.fill(
             key: ValueKey<String>('storyboard-se-press-${layer.id}'),
+            // B6 (2026-08-17): the SE editor's entrance is the frame
+            // blocks' — a double tap on the SAME cell (the shared gate),
+            // covered cells only, opening the same instance dialog the
+            // timeline's SE cells open. The transition row one class up
+            // mounts the identical pair.
+            //
+            // ⚠️NESTING IS LOAD-BEARING (the dense rows' order): press
+            // region OUTSIDE, double-tap detector INSIDE — innermost-first
+            // dispatch lets the recognizer consult the gate before the
+            // second press re-records.
+            //
             // ㉟-b, the SE strip's half — same shared region, same reason.
             child: InstantTapRegion(
               behavior: HitTestBehavior.translucent,
               pressSeeksFor: AppInput.timelineCellPressSeeks,
+              onPressDown: timelineCellDoubleTapRecord(
+                layerId: layer.id,
+                frameAt: frameAt,
+              ),
               onTap: (localPosition) {
-                if (timelineScale.pixelsPerFrame <= 0) {
+                final frame = frameAt(localPosition);
+                if (frame == null) {
                   return;
                 }
-                onRowFramePress!(
-                  LayerRowAddress(layer.id),
-                  (localPosition.dx / timelineScale.pixelsPerFrame).floor(),
-                );
+                onRowFramePress?.call(LayerRowAddress(layer.id), frame);
               },
-              child: const SizedBox.expand(),
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onDoubleTapDown: onEditSeEntry == null
+                    ? null
+                    : timelineCellDoubleTapActivation(
+                        layerId: layer.id,
+                        frameAt: frameAt,
+                        onActivate: (frame) {
+                          if (coveringDrawingBlockAt(layer.timeline, frame) ==
+                              null) {
+                            return;
+                          }
+                          onEditSeEntry(layer.id, frame);
+                        },
+                      ),
+                child: const SizedBox.expand(),
+              ),
             ),
           ),
         );

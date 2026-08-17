@@ -1,3 +1,6 @@
+import 'package:flutter/gestures.dart' show GestureTapDownCallback;
+import 'package:flutter/widgets.dart' show Offset;
+
 import '../../models/layer_id.dart';
 
 /// R26 #37: the cell editor opens only when BOTH taps land on the SAME
@@ -44,4 +47,46 @@ class TimelineCellDoubleTapGate {
     _layerId = null;
     _frameIndex = null;
   }
+}
+
+/// The RECORD half of the frame-block activation law, as the one closure
+/// every cell surface mounts on its press region's `onPressDown`.
+///
+/// [frameAt] answers which cell a local position is — null for positions
+/// that are no cell at all (outside the visible window, a zero-width
+/// zoom). The dense timeline rows and the storyboard's sparse strips both
+/// build their handler HERE, so "which press arms the gate" cannot fork
+/// per surface again (절대명령 2026-08-17: reuse the frame-block law, never
+/// invent a sibling of it).
+void Function(Offset localPosition) timelineCellDoubleTapRecord({
+  required LayerId layerId,
+  required int? Function(Offset localPosition) frameAt,
+}) {
+  return (localPosition) {
+    final frameIndex = frameAt(localPosition);
+    if (frameIndex != null) {
+      TimelineCellDoubleTapGate.recordTapDown(layerId, frameIndex);
+    }
+  };
+}
+
+/// The ACTIVATION half: an `onDoubleTapDown` that fires [onActivate] only
+/// when the gate agrees BOTH taps hit the same cell (R26 #37 — two taps on
+/// different frames of one block are two seeks, never an editor).
+///
+/// [frameAt] must be the SAME resolver the record half uses, or the two
+/// halves describe two different grids and the gate compares apples to
+/// pears.
+GestureTapDownCallback timelineCellDoubleTapActivation({
+  required LayerId layerId,
+  required int? Function(Offset localPosition) frameAt,
+  required void Function(int frameIndex) onActivate,
+}) {
+  return (details) {
+    final frameIndex = frameAt(details.localPosition);
+    if (frameIndex != null &&
+        TimelineCellDoubleTapGate.acceptsActivation(layerId, frameIndex)) {
+      onActivate(frameIndex);
+    }
+  };
 }
