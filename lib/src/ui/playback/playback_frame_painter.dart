@@ -11,6 +11,7 @@ import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
 import '../../services/se_name_tag_plan.dart';
 import '../canvas/composite_effect_paint.dart' show CompositeEffectPaint;
+import '../canvas/display_resample.dart';
 import '../canvas/layer_pose_paint.dart';
 import '../canvas/paper_background.dart';
 import '../canvas/viewport_canvas_transform.dart';
@@ -260,8 +261,36 @@ class PlaybackFramePainter extends CustomPainter {
     }
     final composite = image;
     if (composite != null && imageOpacity > 0) {
+      // 🚨SCRUB ↔ STILL PARITY (device report B2, 2026-08-17): in canvas
+      // mode with a canvas-resolution composite this draw IS the editing
+      // canvas's one resample — the same canvas-space pixels, under the
+      // same snapped viewport transform, standing in for the editing
+      // stack's buffer blit during a scrub. It must therefore follow the
+      // same T21 display law ([filterQualityForDisplayScale]: magnified
+      // and 1:1 sample `none`, reduced filters) — hardcoded `low` here
+      // made every axis-aligned edge land bilinear on this route and
+      // nearest on the editing one, a whole-picture 1px "반올림" at any
+      // fractional device phase (DPR 1.25/1.5 makes even 100% zoom one).
+      //
+      // The law's premise is a canvas-resolution image (displayScaleOf's
+      // contract: "the buffer is at canvas resolution"). A Half/Quarter
+      // cache upscales to canvas size inside this same draw, and that
+      // upscale keeps its bilinear sampling — today's value for the
+      // degraded tiers, which can never be byte-equal to the editing
+      // canvas anyway. Camera mode (and the unexercised cut pose) project
+      // through transforms the editing canvas never renders, so they too
+      // keep the sampling they always had.
+      final editingResample =
+          pose == null &&
+          resolvedCutPose == null &&
+          composite.width == canvasSize.width &&
+          composite.height == canvasSize.height;
       final imagePaint = Paint()
-        ..filterQuality = FilterQuality.low
+        ..filterQuality = editingResample
+            ? filterQualityForDisplayScale(
+                displayScaleOf(resolvedViewport?.zoom ?? 1),
+              )
+            : FilterQuality.low
         ..color = Color.fromRGBO(0, 0, 0, imageOpacity.clamp(0.0, 1.0));
       // The V row's chain filters the picture on its way onto the stage.
       cutEffects.applyTo(imagePaint);
