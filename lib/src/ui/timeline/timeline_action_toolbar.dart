@@ -4,7 +4,6 @@ import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer_effect.dart';
 import '../../models/delete_subject.dart';
-import '../../models/edit_instance_subject.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart';
 import '../cut_command_group.dart';
@@ -16,6 +15,7 @@ import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
 import 'layer_label_controls.dart' show layerKindIcon;
 import 'timeline_section_policy.dart';
+import 'toolbar_panel_context.dart';
 import '../theme/app_theme.dart';
 import '../text/app_strings.dart';
 import '../dialogs/app_prompt_dialog.dart';
@@ -23,10 +23,15 @@ import '../dialogs/app_prompt_dialog.dart';
 /// The N-comma input (UI-R17 #7): asks for an exposure count and applies
 /// it to the selection (or the current block). Shared by the toolbar's N
 /// button and the digit-5 shortcut.
+///
+/// B8: the toolbar's button passes its [panel] so the count lands where
+/// the 1–4 presses land — the panel the button was pressed in. The digit
+/// shortcut passes none and keeps the session's cut-local verb.
 Future<void> showTimelineCommaCountDialog(
   BuildContext context,
-  EditorSessionManager session,
-) async {
+  EditorSessionManager session, {
+  ToolbarPanelContext? panel,
+}) async {
   final strings = AppText.strings;
   final entered = await showDialog<String>(
     context: context,
@@ -44,7 +49,11 @@ Future<void> showTimelineCommaCountDialog(
   );
   final comma = int.tryParse(entered ?? '');
   if (comma != null && comma >= 1) {
-    session.setCommaForSelectionOrCurrent(comma);
+    if (panel != null) {
+      panel.setComma(comma);
+    } else {
+      session.setCommaForSelectionOrCurrent(comma);
+    }
   }
 }
 
@@ -137,12 +146,12 @@ class TimelineActionToolbar extends StatelessWidget {
   const TimelineActionToolbar({
     super.key,
     required this.session,
+    required this.panelContext,
     required this.onAddLayer,
     required this.onRenameLayer,
     this.onDeleteRowSelection,
     required this.onDeleteLayer,
     this.onEditInstance,
-    this.resolveCanEditInstance,
     required this.onCreateInstance,
     this.currentRow,
     this.hiddenSections = const {},
@@ -150,6 +159,12 @@ class TimelineActionToolbar extends StatelessWidget {
   });
 
   final EditorSessionManager session;
+
+  /// B8 — WHICH PANEL is pressing. Every layer/frame/shared/fx verb and
+  /// gate on this bar reads the host's context rather than the session's
+  /// cut-local one, so the same bar acts against the panel it is mounted
+  /// in. The cut group is the stated exception (already panel-correct).
+  final ToolbarPanelContext panelContext;
 
   /// ⛔KEPT FOR ITS HOSTS, NO LONGER THE `＋`'s ACTION.
   ///
@@ -177,14 +192,10 @@ class TimelineActionToolbar extends StatelessWidget {
   /// able to say so rather than hand over one that does nothing.
   final VoidCallback? onEditInstance;
 
-  /// A host's answer for its own standing row, asked BEFORE the kind switch and
-  /// only able to say yes.
-  ///
-  /// It exists because the storyboard rail's standing row is separate state from
-  /// the drawing target (user 2026-07-27), so a row that lives only on that rail
-  /// — the transition row — is invisible to a gate reading `activeLayer`. Null
-  /// keeps the kind switch as the whole answer, which is the timeline's case.
-  final bool Function()? resolveCanEditInstance;
+  // ⛔`resolveCanEditInstance` is GONE (B8): it was a one-question side
+  // channel for the storyboard's transition row, and the panel context now
+  // carries that answer with every other panel-scoped gate — one interface
+  // instead of a hook per question.
 
   /// Kind-dispatched creation: new frame / camera key / SE entry /
   /// instruction event.
@@ -205,37 +216,13 @@ class TimelineActionToolbar extends StatelessWidget {
   final Set<TimelineSection> hiddenSections;
   final ValueChanged<TimelineSection>? onToggleSection;
 
-  /// Whether the Add button has anywhere to go.
-  ///
-  /// 🚨The host answers FIRST, for the same reason Edit Instance does: the
-  /// storyboard rail's standing row is separate state from the cut's
-  /// drawing target (user 2026-07-27), so a row that lives only on that
-  /// rail — the transition row — is invisible to anything reading
-  /// `activeLayer` (⑬, #925's lesson applied to `＋`).
-  ///
-  /// #17 잔여 — everything else is the SESSION's one sentence
-  /// ([EditorSessionManager.canCreateInstance], T25): the switch that
-  /// used to live here did not know the selection rungs and lit the
-  /// button on rows whose dispatch is a documented no-op.
-  bool get _canCreateInstance {
-    if (resolveCanEditInstance?.call() case true) {
-      return true;
-    }
-    return session.canCreateInstance;
-  }
-
-  /// The one thing about Edit Instance a SESSION cannot answer: the
-  /// storyboard's rail row is separate state from the drawing target (user
-  /// 2026-07-27), so its transition row is invisible through
-  /// [EditorSessionManager.activeLayer] and only the surface knows it.
-  ///
-  /// 🚨T25 — everything else moved to
-  /// [EditorSessionManager.canEditCellInstanceAtCurrentFrame]. The kind
-  /// switch used to live here, next to the button, while the DISPATCH read
-  /// [EditorSessionManager.editInstanceSubject]: enablement and action came
-  /// from two predicates that disagreed for camera, direction and SE cells,
-  /// so the button lit up and the press did nothing.
-  bool get _hostCanEditInstance => resolveCanEditInstance?.call() ?? false;
+  /// Whether the Add button has anywhere to go — THE PANEL's one sentence
+  /// (B8). The host-answers-first side channel and the session read both
+  /// live inside [ToolbarPanelContext.canCreateInstance] now: the timeline
+  /// context is [EditorSessionManager.canCreateInstance] verbatim, the
+  /// storyboard's asks its own standing row (transition span, S-row entry)
+  /// after the shared selection rungs.
+  bool get _canCreateInstance => panelContext.canCreateInstance;
 
   /// The key suffix each kind's Add entry has always used — spelled out
   /// rather than derived from `kind.name`, so a rename of the enum cannot
@@ -304,8 +291,10 @@ class TimelineActionToolbar extends StatelessWidget {
           icon: layerKindIcon(kind),
           // R9 #7: one storyboard row per cut — the entry greys out once the
           // cut has it, instead of accepting the tap and doing nothing.
-          enabled: session.canAddLayerOfKind(kind),
-          onSelected: () => session.addLayerOfKind(kind),
+          // B8: and the PANEL answers first — on the storyboard only the S
+          // row is this rail's to add, so the cut-scoped kinds grey out.
+          enabled: panelContext.canAddLayerOfKind(kind),
+          onSelected: () => panelContext.addLayerOfKind(kind),
         ),
       // Attach layers (W5, UI-R20 #8 / UI-R21 #3): the same entrance the
       // Layer menu has — own cels riding the base's FX. FREE authors its
@@ -321,8 +310,8 @@ class TimelineActionToolbar extends StatelessWidget {
         label: AppText.strings.tlAttachFreeAbove,
         icon: Icons.subdirectory_arrow_right,
         iconFlipY: true,
-        enabled: session.canAddAttachedLayerToActive,
-        onSelected: () => session.addAttachedLayer(
+        enabled: panelContext.canAddAttachedLayer,
+        onSelected: () => panelContext.addAttachedLayer(
           AttachedPlacement.above,
           mode: AttachedMode.free,
         ),
@@ -331,8 +320,8 @@ class TimelineActionToolbar extends StatelessWidget {
         keyValue: 'add-layer-attach-free-below',
         label: AppText.strings.tlAttachFreeBelow,
         icon: Icons.subdirectory_arrow_right,
-        enabled: session.canAddAttachedLayerToActive,
-        onSelected: () => session.addAttachedLayer(
+        enabled: panelContext.canAddAttachedLayer,
+        onSelected: () => panelContext.addAttachedLayer(
           AttachedPlacement.below,
           mode: AttachedMode.free,
         ),
@@ -342,15 +331,17 @@ class TimelineActionToolbar extends StatelessWidget {
         label: AppText.strings.tlAttachSyncedAbove,
         icon: Icons.subdirectory_arrow_right,
         iconFlipY: true,
-        enabled: session.canAddAttachedLayerToActive,
-        onSelected: () => session.addAttachedLayer(AttachedPlacement.above),
+        enabled: panelContext.canAddAttachedLayer,
+        onSelected: () =>
+            panelContext.addAttachedLayer(AttachedPlacement.above),
       ),
       PanelFlyoutItem(
         keyValue: 'add-layer-attach-below',
         label: AppText.strings.tlAttachSyncedBelow,
         icon: Icons.subdirectory_arrow_right,
-        enabled: session.canAddAttachedLayerToActive,
-        onSelected: () => session.addAttachedLayer(AttachedPlacement.below),
+        enabled: panelContext.canAddAttachedLayer,
+        onSelected: () =>
+            panelContext.addAttachedLayer(AttachedPlacement.below),
       ),
     ];
   }
@@ -362,6 +353,11 @@ class TimelineActionToolbar extends StatelessWidget {
   /// the row's FX lanes, which is why this is a menu and not a control on
   /// an already crowded row.
   List<PanelFlyoutEntry> _effectEntries() {
+    // B8: the chain shown and edited here is the CUT's active layer's — the
+    // timeline panel's noun. On the storyboard every entry greys out
+    // honestly (its rows' chains have no add entrance on this pill yet, and
+    // a lit entry would edit a row that panel is not showing).
+    final serves = panelContext.servesActiveLayerVerbs;
     final effects = session.activeLayer?.effects ?? const <LayerEffect>[];
     return [
       PanelFlyoutHeader(AppText.strings.tlEffects),
@@ -373,7 +369,7 @@ class TimelineActionToolbar extends StatelessWidget {
             kind.labelFor(AppText.language),
           ),
           icon: Icons.auto_fix_high_outlined,
-          enabled: session.canAddEffectToActiveLayer,
+          enabled: serves && session.canAddEffectToActiveLayer,
           onSelected: () => session.addEffectToActiveLayer(kind),
         ),
       if (effects.isNotEmpty) const PanelFlyoutDivider(),
@@ -386,6 +382,7 @@ class TimelineActionToolbar extends StatelessWidget {
           ),
           icon: Icons.remove_circle_outline,
           danger: true,
+          enabled: serves,
           onSelected: () => session.removeEffectFromActiveLayer(effect.id),
         ),
     ];
@@ -405,7 +402,11 @@ class TimelineActionToolbar extends StatelessWidget {
 
   List<PanelFlyoutEntry> _layerEntries(BuildContext context) {
     final active = session.activeLayer;
-    final editable = _canEditActiveLayer;
+    // B8: every verb below acts on the CUT's active layer — the timeline
+    // panel's noun — so the storyboard's menu greys them all out honestly
+    // instead of editing a row that panel is not showing.
+    final serves = panelContext.servesActiveLayerVerbs;
+    final editable = serves && _canEditActiveLayer;
     return [
       // ⛔RENAME IS NOT HERE — ① moved it onto the pill itself (유저 확정:
       // 「레이어 알약 밖으로: 레이어 이름변경」). "밖으로" means out of the
@@ -423,7 +424,7 @@ class TimelineActionToolbar extends StatelessWidget {
         keyValue: 'copy-layer-button',
         label: AppText.strings.tlCopyLayer,
         icon: Icons.content_copy,
-        enabled: active != null,
+        enabled: serves && active != null,
         onSelected: session.copyActiveLayer,
       ),
       PanelFlyoutItem(
@@ -432,7 +433,7 @@ class TimelineActionToolbar extends StatelessWidget {
             ? 'Paste layer'
             : 'Paste layer (${session.layerClipboardName})',
         icon: Icons.content_paste,
-        enabled: session.hasLayerClipboard,
+        enabled: serves && session.hasLayerClipboard,
         onSelected: session.pasteLayerFromClipboard,
       ),
       // R5 #5: the row-order STEP verbs are gone, session methods and all
@@ -452,7 +453,7 @@ class TimelineActionToolbar extends StatelessWidget {
         keyValue: 'timeline-detach-layer-button',
         label: AppText.strings.tlDetachLayer,
         icon: Icons.link_off,
-        enabled: session.canDetachActiveLayer,
+        enabled: serves && session.canDetachActiveLayer,
         onSelected: session.detachActiveLayer,
       ),
       // R5 #5: IMPORT AUDIO left. The media browser is the one entrance —
@@ -472,7 +473,7 @@ class TimelineActionToolbar extends StatelessWidget {
         keyValue: 'timeline-rasterize-layer-button',
         label: AppText.strings.menuLabel('layer-rasterize', 'Rasterize layer'),
         icon: Icons.texture_outlined,
-        enabled: session.canRasterizeActiveLayer,
+        enabled: serves && session.canRasterizeActiveLayer,
         onSelected: session.rasterizeActiveLayer,
       ),
       // 'SE name tag…' opened a window. R5 #7 put every control it held on
@@ -482,14 +483,14 @@ class TimelineActionToolbar extends StatelessWidget {
         keyValue: 'timeline-link-duplicate-button',
         label: AppText.strings.tlLinkDuplicateLayer,
         icon: Icons.link,
-        enabled: session.canLinkDuplicateActiveLayer,
+        enabled: serves && session.canLinkDuplicateActiveLayer,
         onSelected: session.linkDuplicateActiveLayer,
       ),
       PanelFlyoutItem(
         keyValue: 'timeline-unlink-layer-button',
         label: AppText.strings.tlUnlinkLayer,
         icon: Icons.link_off,
-        enabled: session.canUnlinkActiveLayer,
+        enabled: serves && session.canUnlinkActiveLayer,
         onSelected: session.unlinkActiveLayer,
       ),
       const PanelFlyoutDivider(),
@@ -497,7 +498,7 @@ class TimelineActionToolbar extends StatelessWidget {
         keyValue: 'toggle-storyboard-layer-button',
         label: AppText.strings.tlStoryboardLayer,
         icon: Icons.auto_stories_outlined,
-        enabled: session.canToggleTargetLayerKind,
+        enabled: serves && session.canToggleTargetLayerKind,
         checked: active?.kind == LayerKind.storyboard ? true : null,
         onSelected: session.toggleTargetLayerKind,
       ),
@@ -547,18 +548,25 @@ class TimelineActionToolbar extends StatelessWidget {
       // pill. The layer's pair and the cut's already lived in their own
       // menus; the frame's had nowhere to be until T24 kept this `▾`
       // (유저: 「남기고 나중에 기능추가할거야」).
+      // B8: 「복제는 현재 액티브인 대상」 — the active BLOCK is the cut
+      // timeline's noun, so the storyboard's menu greys the pair out
+      // (no block-under-cursor duplicate exists on the global axis yet).
       PanelFlyoutItem(
         keyValue: 'duplicate-frame-button',
         label: AppText.strings.tlDuplicateFrame,
         icon: Icons.copy_all_outlined,
-        enabled: session.canDuplicateActiveBlock,
+        enabled:
+            panelContext.servesActiveLayerVerbs &&
+            session.canDuplicateActiveBlock,
         onSelected: () => session.duplicateActiveBlock(linked: false),
       ),
       PanelFlyoutItem(
         keyValue: 'link-duplicate-frame-button',
         label: AppText.strings.tlLinkDuplicateFrame,
         icon: Icons.link,
-        enabled: session.canDuplicateActiveBlock,
+        enabled:
+            panelContext.servesActiveLayerVerbs &&
+            session.canDuplicateActiveBlock,
         onSelected: () => session.duplicateActiveBlock(linked: true),
       ),
     ];
@@ -677,7 +685,9 @@ class TimelineActionToolbar extends StatelessWidget {
           // ⑥: ONE kind, always — 유저 「선택된 레이어 기준이아니라 애니메이션
           // 레이어 생성」. Placement is unchanged (above the selected row, and
           // the top of the action section when that is not a legal home).
-          onPressed: () => session.addLayerOfKind(LayerKind.animation),
+          // B8: WHICH one kind is the panel's word — the timeline's context
+          // says animation, the storyboard's says the S row it can grow.
+          onPressed: panelContext.addLayer,
           entriesBuilder: _addLayerEntries,
         ),
         // ⛔THE LAYER RENAME IS GONE FROM HERE TOO — T25 (유저 2026-08-14:
@@ -757,23 +767,22 @@ class TimelineActionToolbar extends StatelessWidget {
 
   Widget _sharedPillBody() => _StaticCommandGroup(
     rebuildKey: (
-      session.deleteSubject,
+      panelContext.deleteSubject,
       AppText.settings.value.programLanguage,
       // ㉕: the three that joined the delete read their own gates.
       // T3 made it four — 잘라내기 asks the same question copy does.
-      session.canCutRunAtCurrentFrame,
-      session.canCopyFrameAtCurrentFrame,
-      session.canPasteLinkedFrameAtCurrentFrame,
-      session.canPasteIndependentFrameAtCurrentFrame,
+      // B8: every gate is the PANEL's now — the timeline context answers
+      // with the session getters this key used to name, the storyboard's
+      // with its standing row, host answer included (the side channel this
+      // key used to carry as its last entry).
+      panelContext.canCutRun,
+      panelContext.canCopyFrame,
+      panelContext.canPasteLinkedFrame,
+      panelContext.canPasteIndependentFrame,
       // T25: and the fifth resident reads its own subject, for the same
       // reason the delete reads `deleteSubject` — the button's enablement
       // and what the press DOES have to come from one answer.
-      session.editInstanceSubject,
-      // ...plus the HOST's answer, which no session getter can reach: the
-      // storyboard's standing row is separate state from its drawing target
-      // (유저 2026-07-27). Leaving it out bakes a stale enablement in
-      // exactly the case that has no other source.
-      onEditInstance != null && _hostCanEditInstance,
+      onEditInstance != null && panelContext.canEditInstance,
     ),
     builder: (context) => CommandPill(
       key: const ValueKey<String>('timeline-toolbar-shared-group'),
@@ -788,15 +797,12 @@ class TimelineActionToolbar extends StatelessWidget {
           key: const ValueKey<String>('shared-edit-button'),
           tooltip: AppText.strings.tlSharedEdit,
           icon: Icons.edit_outlined,
-          // Two sources, and they are asking different things rather than
-          // the same thing twice: the SUBJECT is what the session has
-          // selected — the same answer [editSelectionInstance] dispatches on,
-          // so lit and does-something cannot come apart — while the host
-          // carries what only a surface can know. Either being a yes is a yes.
-          onPressed:
-              onEditInstance != null &&
-                  (session.editInstanceSubject != EditInstanceSubject.nothing ||
-                      _hostCanEditInstance)
+          // B8: ONE source — the panel. The timeline's context answers with
+          // the session's subject (the same answer [editSelectionInstance]
+          // dispatches on, so lit and does-something cannot come apart);
+          // the storyboard's answers with its standing row's block, from
+          // the SAME resolver its host dispatches on.
+          onPressed: onEditInstance != null && panelContext.canEditInstance
               ? onEditInstance
               : null,
         ),
@@ -812,17 +818,13 @@ class TimelineActionToolbar extends StatelessWidget {
           key: const ValueKey<String>('shared-cut-button'),
           tooltip: AppText.strings.tlSharedCut,
           icon: Icons.content_cut,
-          onPressed: session.canCutRunAtCurrentFrame
-              ? session.cutRunAtCurrentFrame
-              : null,
+          onPressed: panelContext.canCutRun ? panelContext.cutRun : null,
         ),
         _iconButton(
           key: const ValueKey<String>('shared-copy-button'),
           tooltip: AppText.strings.tlSharedCopy,
           icon: Icons.content_copy,
-          onPressed: session.canCopyFrameAtCurrentFrame
-              ? session.copyFrameAtCurrentFrame
-              : null,
+          onPressed: panelContext.canCopyFrame ? panelContext.copyFrame : null,
         ),
         // ㉕ 확정 #8: the paste that makes a REAL frame, not a link. Two
         // buttons rather than one with a modifier, because which one you
@@ -833,16 +835,16 @@ class TimelineActionToolbar extends StatelessWidget {
           key: const ValueKey<String>('shared-paste-independent-button'),
           tooltip: AppText.strings.tlSharedPasteIndependent,
           icon: Icons.content_paste,
-          onPressed: session.canPasteIndependentFrameAtCurrentFrame
-              ? session.pasteIndependentFrameAtCurrentFrame
+          onPressed: panelContext.canPasteIndependentFrame
+              ? panelContext.pasteIndependentFrame
               : null,
         ),
         _iconButton(
           key: const ValueKey<String>('shared-paste-linked-button'),
           tooltip: AppText.strings.tlSharedPasteLinked,
           icon: Icons.link,
-          onPressed: session.canPasteLinkedFrameAtCurrentFrame
-              ? session.pasteLinkedFrameAtCurrentFrame
+          onPressed: panelContext.canPasteLinkedFrame
+              ? panelContext.pasteLinkedFrame
               : null,
         ),
         _iconButton(
@@ -854,11 +856,11 @@ class TimelineActionToolbar extends StatelessWidget {
           // layer button this round folded in — a delete that used to
           // confirm must not stop confirming because its button moved. The
           // cell rung goes straight through, as it always has.
-          onPressed: switch (session.deleteSubject) {
+          onPressed: switch (panelContext.deleteSubject) {
             DeleteSubject.nothing => null,
             DeleteSubject.layers when onDeleteRowSelection != null =>
               onDeleteRowSelection,
-            _ => session.deleteSelectionSubject,
+            _ => panelContext.deleteSelectionSubject,
           },
         ),
       ],
@@ -881,8 +883,8 @@ class TimelineActionToolbar extends StatelessWidget {
       _StaticCommandGroup(
         rebuildKey: (
           _canCreateInstance,
-          session.canBlankExposureAtCurrentFrame,
-          session.canToggleMarkAtCurrentFrame,
+          panelContext.canBlankExposure,
+          panelContext.canToggleMark,
           session.languageSettings.value,
         ),
         builder: (context) => Row(
@@ -902,16 +904,16 @@ class TimelineActionToolbar extends StatelessWidget {
               key: const ValueKey<String>('blank-exposure-button'),
               tooltip: AppText.strings.tlBlankX,
               icon: Icons.close,
-              onPressed: session.canBlankExposureAtCurrentFrame
-                  ? session.blankExposureAtCurrentFrame
+              onPressed: panelContext.canBlankExposure
+                  ? panelContext.blankExposure
                   : null,
             ),
             _iconButton(
               key: const ValueKey<String>('toggle-mark-button'),
               tooltip: AppText.strings.tlMark,
               icon: Icons.circle,
-              onPressed: session.canToggleMarkAtCurrentFrame
-                  ? session.toggleMarkAtCurrentFrame
+              onPressed: panelContext.canToggleMark
+                  ? panelContext.toggleMark
                   : null,
             ),
           ],
@@ -966,12 +968,16 @@ class TimelineActionToolbar extends StatelessWidget {
       // buttons and rebuilt all 10.
       _StaticCommandGroup(
         rebuildKey: (
-          session.canSetCommaForSelectionOrCurrent,
+          panelContext.canSetComma,
           session.languageSettings.value,
         ),
         builder: (context) => Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // B8: the press lands on THE PANEL's block — the timeline's
+            // selection-or-current, or the storyboard's block under the
+            // cursor (컷블록 위 4 = 컷길이 4), one rule per panel for every
+            // block kind.
             for (var comma = 1; comma <= 4; comma += 1)
               _commaButton(
                 key: ValueKey<String>('set-comma-$comma-button'),
@@ -980,8 +986,8 @@ class TimelineActionToolbar extends StatelessWidget {
                   '{n}',
                   '$comma',
                 ),
-                onPressed: session.canSetCommaForSelectionOrCurrent
-                    ? () => session.setCommaForSelectionOrCurrent(comma)
+                onPressed: panelContext.canSetComma
+                    ? () => panelContext.setComma(comma)
                     : null,
               ),
             Builder(
@@ -989,8 +995,12 @@ class TimelineActionToolbar extends StatelessWidget {
                 key: const ValueKey<String>('set-comma-n-button'),
                 label: 'N',
                 tooltip: AppText.strings.tlSetCommasN,
-                onPressed: session.canSetCommaForSelectionOrCurrent
-                    ? () => showTimelineCommaCountDialog(context, session)
+                onPressed: panelContext.canSetComma
+                    ? () => showTimelineCommaCountDialog(
+                        context,
+                        session,
+                        panel: panelContext,
+                      )
                     : null,
               ),
             ),

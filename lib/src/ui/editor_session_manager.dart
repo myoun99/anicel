@@ -8471,14 +8471,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// lit the button on folder/adjustment/transition rows whose dispatch
   /// is a documented no-op — the #18 lie, one pill over.
   bool get canCreateInstance {
-    final trackRange = trackFrameRangeSelection.value;
-    if (trackRange != null && _trackSeCreationGaps(trackRange).isNotEmpty) {
-      return true;
-    }
-    if (_laneVerbRange != null) {
-      return true;
-    }
-    if (frameRangeSelection.value != null) {
+    if (canCreateInstanceForSelection) {
       return true;
     }
     final layer = activeLayer;
@@ -8492,6 +8485,21 @@ class EditorSessionManager extends ChangeNotifier {
       LayerKind.transition => false,
       _ => true,
     };
+  }
+
+  /// The SELECTION rungs of [canCreateInstance], alone — the panel-shared
+  /// half (B8). [createInstancesForSelection] is their dispatch, rung for
+  /// rung; the storyboard's toolbar context reads THIS and then asks its
+  /// own standing row, where the timeline falls to the active layer.
+  bool get canCreateInstanceForSelection {
+    final trackRange = trackFrameRangeSelection.value;
+    if (trackRange != null && _trackSeCreationGaps(trackRange).isNotEmpty) {
+      return true;
+    }
+    if (_laneVerbRange != null) {
+      return true;
+    }
+    return frameRangeSelection.value != null;
   }
 
   /// The PLAN half of the track rung, mutation-free: which S rows the
@@ -14367,17 +14375,23 @@ class EditorSessionManager extends ChangeNotifier {
     }
   }
 
+  /// The SELECTION-borne rungs of the cell delete, alone (B8): lane keys
+  /// under the lane-verb context, or a live selection's real blocks —
+  /// either axis. [deleteCellAtCurrentFrame] dispatches both before it ever
+  /// asks the active layer, so a caller gated on THIS can hand the press to
+  /// that verb without the active-layer rung becoming reachable.
+  bool get canDeleteCellForSelection =>
+      // R10 #19: the same rule Add follows — when the subject is a PROPERTY
+      // row, Delete removes its keys, not a cel. It also closes a gap the
+      // other way round: a live LANE span used to fall through to the cell
+      // path and delete the active layer's cel instead of the keys under it.
+      _laneVerbRangeHasKeys ||
+      // A live selection is deletable wherever the playhead stands (UI-R17
+      // #2).
+      _selectionBlockStartsByLayer() != null;
+
   bool get canDeleteCellAtCurrentFrame {
-    // R10 #19: the same rule Add follows — when the subject is a PROPERTY
-    // row, Delete removes its keys, not a cel. It also closes a gap the
-    // other way round: a live LANE span used to fall through to the cell
-    // path and delete the active layer's cel instead of the keys under it.
-    if (_laneVerbRangeHasKeys) {
-      return true;
-    }
-    // A live selection is deletable wherever the playhead stands (UI-R17
-    // #2).
-    if (_selectionBlockStartsByLayer() != null) {
+    if (canDeleteCellForSelection) {
       return true;
     }
     final layer = activeLayer;
@@ -14785,6 +14799,240 @@ class EditorSessionManager extends ChangeNotifier {
             endIndexExclusive: end,
             layerIds: selection.layerIds,
           );
+  }
+
+  // --- B8: the frame verbs, addressed by the STORYBOARD cursor --------------
+  //
+  // The storyboard's standing row × the track-global playhead. The rail's
+  // standing row is separate state from the cut's drawing target (유저
+  // 2026-07-27), so the cut-local verbs above cannot carry these — and the
+  // toolbar pressed on that panel must not fall back to them (B8
+  // 2026-08-17: 「누른 패널 기준으로 동작」, 「블록 종류 불문 같은 규칙」).
+
+  /// The BLOCK under the storyboard cursor, whatever its kind: the standing
+  /// V row's cut, the standing S row's SE block, or the transition row's
+  /// span. Null where the cursor covers nothing (a gap is an honest
+  /// nothing, not a fallback to the other panel's subject).
+  _StoryboardCursorBlock? _storyboardCursorBlockOrNull() {
+    switch (selectedRow) {
+      case LayerRowAddress(:final layerId)
+          when isTrackTransitionLayerId(layerId):
+        final span = transitionSpanAt(editingGlobalFrame);
+        if (span == null) {
+          return null;
+        }
+        return _StoryboardCursorTransitionSpan(span.key, span.value.length);
+      case LayerRowAddress(:final layerId):
+        final global = trackSeGlobalLayerById(layerId);
+        final frame = editingGlobalFrame;
+        if (global == null || frame < 0) {
+          return null;
+        }
+        final block = coveringDrawingBlockAt(global.timeline, frame);
+        if (block == null || block.entry.ghost) {
+          return null;
+        }
+        return _StoryboardCursorSeBlock(layerId, block.startIndex);
+      case LaneRowAddress():
+        // A lane row holds keys, not blocks — the lane-verb family owns it.
+        return null;
+      case TrackRowAddress():
+        // Not parked in a gap ⇒ the cut-local playhead sits inside the
+        // ACTIVE cut, so the cut under the cursor is that cut by
+        // construction (the storyboard's cell press promotes it).
+        if (editingPlayheadInGap) {
+          return null;
+        }
+        final cut = activeCutOrNull;
+        return cut == null ? null : _StoryboardCursorCutBlock(cut);
+    }
+  }
+
+  /// Whether the storyboard's comma press (1/2/3/4/N) has a target: a live
+  /// selection's blocks — either axis — else the block under the cursor.
+  bool get canSetCommaForStoryboardCursor {
+    if (_selectionBlockStartsByLayer() != null) {
+      return true;
+    }
+    return switch (_storyboardCursorBlockOrNull()) {
+      null => false,
+      // The controller resolves track-SE commit layers through the active
+      // cut's lens machinery; a parked playhead has no cut to lens through.
+      _StoryboardCursorSeBlock() => activeCutOrNull != null,
+      _StoryboardCursorCutBlock() || _StoryboardCursorTransitionSpan() => true,
+    };
+  }
+
+  /// The storyboard's comma press: the selection's blocks, else THE BLOCK
+  /// UNDER THE CURSOR takes length [comma] — one rule for every block kind
+  /// (B8: 「컷블록 위 4 = 컷길이 4」), each kind through the SAME machinery
+  /// its own grips already commit with:
+  ///
+  /// - a CUT block rides the trailing-edge drag verbs, so a conte row's
+  ///   last comma and the following gap behave exactly as if the edge had
+  ///   been dragged to frame [comma];
+  /// - an SE block takes the timeline comma buttons' own retime
+  ///   ([TimelineController.retimeBlocksForLayers]), stated in global keys;
+  /// - a TRANSITION span rides its edge-drag verbs (the grips own length).
+  void setCommaForStoryboardCursor(int comma) {
+    if (comma < 1) {
+      return;
+    }
+    // The strip's cut-local selection: the shared verb's selection branch,
+    // verbatim. ⚠️Guarded so its active-layer fallback — the other panel's
+    // subject — stays unreachable from this panel.
+    final selection = frameRangeSelection.value;
+    if (selection != null) {
+      final targets = _cutLocalSelectionBlockStartsByLayer();
+      final retimable =
+          targets != null &&
+          targets.keys.any((id) => !_isSingleCelLayerId(id));
+      if (retimable) {
+        setCommaForSelectionOrCurrent(comma);
+      }
+      return;
+    }
+    // The S rows' track-axis selection: the same retime, already in global
+    // commit keys (the shared verb never had this rung — its selection
+    // branch reads the cut-local notifier alone).
+    final trackTargets = _trackSelectionBlockStartsByLayer();
+    if (trackTargets != null) {
+      if (activeCutOrNull == null) {
+        return;
+      }
+      _timelineController.retimeBlocksForLayers({
+        for (final entry in trackTargets.entries)
+          entry.key: {for (final start in entry.value) start: comma},
+      });
+      _warmActiveCut();
+      notifyListeners();
+      return;
+    }
+    switch (_storyboardCursorBlockOrNull()) {
+      case null:
+        return;
+      case _StoryboardCursorCutBlock(:final cut):
+        if (comma == cut.duration) {
+          return; // A no-move drag must not land an undo step.
+        }
+        if (!beginCutEdgeDrag(cutId: cut.id, edge: TimelineBlockEdge.end)) {
+          return;
+        }
+        updateCutEdgeDrag(comma - cut.duration);
+        endCutEdgeDrag();
+      case _StoryboardCursorSeBlock(:final layerId, :final blockStartIndex):
+        if (activeCutOrNull == null) {
+          return;
+        }
+        _timelineController.retimeBlocksForLayers({
+          layerId: {blockStartIndex: comma},
+        });
+        _warmActiveCut();
+        notifyListeners();
+      case _StoryboardCursorTransitionSpan(
+        :final spanStartIndex,
+        :final spanLength,
+      ):
+        if (comma == spanLength) {
+          return;
+        }
+        if (!beginTransitionEdgeDrag(
+          spanStartIndex: spanStartIndex,
+          edge: TimelineBlockEdge.end,
+        )) {
+          return;
+        }
+        updateTransitionEdgeDrag(comma - spanLength);
+        endTransitionEdgeDrag();
+    }
+  }
+
+  /// Whether the storyboard's delete has a block under the cursor (its
+  /// selection rungs are asked separately — see the toolbar context).
+  bool get canDeleteBlockAtStoryboardCursor =>
+      switch (_storyboardCursorBlockOrNull()) {
+        null => false,
+        _StoryboardCursorSeBlock() => activeCutOrNull != null,
+        _StoryboardCursorCutBlock() ||
+        _StoryboardCursorTransitionSpan() => true,
+      };
+
+  /// Deletes THE BLOCK UNDER THE CURSOR, whatever its kind — the cut, the
+  /// SE block, or the transition span, each through its own existing
+  /// removal verb. One undo step each, like the cell delete it mirrors.
+  void deleteBlockAtStoryboardCursor() {
+    switch (_storyboardCursorBlockOrNull()) {
+      case null:
+        return;
+      case _StoryboardCursorCutBlock():
+        deleteActiveCut();
+      case _StoryboardCursorSeBlock(:final layerId, :final blockStartIndex):
+        if (activeCutOrNull == null) {
+          return;
+        }
+        _timelineController.deleteBlocksForLayers({
+          layerId: [blockStartIndex],
+        });
+        notifyListeners();
+      case _StoryboardCursorTransitionSpan():
+        removeTransitionSpanAt(editingGlobalFrame);
+    }
+  }
+
+  /// Whether the frame `＋` can author a fresh SE entry on the standing S
+  /// row: standing there, an EMPTY cursor frame, and an active cut for the
+  /// fills funnel's lens to resolve through.
+  bool get canCreateSeEntryAtStoryboardCursor {
+    if (activeCutOrNull == null) {
+      return false;
+    }
+    final row = selectedRow;
+    if (row is! LayerRowAddress || isTrackTransitionLayerId(row.layerId)) {
+      return false;
+    }
+    final global = trackSeGlobalLayerById(row.layerId);
+    final frame = editingGlobalFrame;
+    return global != null &&
+        frame >= 0 &&
+        coveringDrawingBlockAt(global.timeline, frame) == null;
+  }
+
+  /// One blank one-frame dialogue entry at the cursor — the cut-scoped SE
+  /// creation ([createSeEntryAtCurrentFrame]) said of the standing row, via
+  /// the SAME fills funnel the track-range create commits through.
+  void createSeEntryAtStoryboardCursor() {
+    if (!canCreateSeEntryAtStoryboardCursor) {
+      return;
+    }
+    final row = selectedRow as LayerRowAddress;
+    final layerId = row.layerId;
+    _frameSequence += 1;
+    // ⚠️The fills funnel re-applies the track-SE display lens on the way in
+    // (the active cut's global start) — pre-subtract the SAME expression,
+    // exactly as [_createTrackSeEntriesForRange] does, or the entry lands
+    // double-shifted.
+    final commands = _timelineController.drawingFramesCommandsForLayers({
+      layerId: [
+        (
+          startIndex: editingGlobalFrame - activeCutGlobalStartFrame,
+          length: 1,
+          frameId: FrameId(_nextFrameId(layerId)),
+          name: '',
+        ),
+      ],
+    });
+    if (commands.isEmpty) {
+      return;
+    }
+    _historyManager.execute(
+      commands.length == 1
+          ? commands.single
+          : CompositeCommand(
+              description: 'Create SE entry',
+              commands: commands,
+            ),
+    );
+    notifyListeners();
   }
 
   int get currentFrameIndex => _timelineController.currentFrameIndex;
@@ -16559,4 +16807,34 @@ class _LaneMoveSubject {
   /// own Layer, so the preview cannot travel in [previewTransform]'s
   /// payload. Only the camera has one today.
   final void Function(TransformTrack next)? onPreviewTransform;
+}
+
+/// B8 — the block under the STORYBOARD cursor (standing row × track-global
+/// playhead), resolved once per verb so the gates and the dispatches read
+/// one answer. Kinds, not rules: every kind takes the same verbs (comma =
+/// length, delete = removal), each through its own existing machinery.
+sealed class _StoryboardCursorBlock {
+  const _StoryboardCursorBlock();
+}
+
+class _StoryboardCursorCutBlock extends _StoryboardCursorBlock {
+  const _StoryboardCursorCutBlock(this.cut);
+
+  final Cut cut;
+}
+
+class _StoryboardCursorSeBlock extends _StoryboardCursorBlock {
+  const _StoryboardCursorSeBlock(this.layerId, this.blockStartIndex);
+
+  final LayerId layerId;
+
+  /// GLOBAL — the S rows' timelines live on the track's axis.
+  final int blockStartIndex;
+}
+
+class _StoryboardCursorTransitionSpan extends _StoryboardCursorBlock {
+  const _StoryboardCursorTransitionSpan(this.spanStartIndex, this.spanLength);
+
+  final int spanStartIndex;
+  final int spanLength;
 }

@@ -16,6 +16,8 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart'
     show TimelineActionToolbar;
+import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart'
+    show StoryboardToolbarPanelContext;
 
 import 'flyout_test_helpers.dart' show readCommandEnabled;
 
@@ -582,7 +584,12 @@ void main() {
         find.byType(TimelineActionToolbar),
       );
       expect(
-        toolbar.resolveCanEditInstance?.call(),
+        toolbar.panelContext,
+        isA<StoryboardToolbarPanelContext>(),
+        reason: 'the storyboard must mount ITS OWN dispatch context (B8)',
+      );
+      expect(
+        toolbar.panelContext.canEditInstance,
         isTrue,
         reason: 'the pill has to be ENABLED, or the wiring is unreachable',
       );
