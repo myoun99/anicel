@@ -411,8 +411,9 @@ class TimelineRowEditChromePainter extends CustomPainter {
   final String? draggingGripId;
 
   /// The color of what the grips sit ON (feedback #11, re-picked by the
-  /// ground law 2026-08-17) — the row's block paper on a timeline row, or
-  /// the cut-block plate under the storyboard strip.
+  /// ground law 2026-08-17) — the row's block paper on a timeline row; the
+  /// storyboard strip passes its panel-picture ground while thumbnails are
+  /// shown (B1) and its cut-block plate otherwise.
   final Color gripGround;
 
   /// Every target this row would draw, in hit order — THE probe surface,
@@ -603,7 +604,8 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
   /// The color under the grips (feedback #11, re-picked by the ground law
   /// 2026-08-17). The default is the timeline's plain paper; a row whose
   /// blocks wear a color label passes that paper, and the storyboard strip
-  /// passes its cut-block plate.
+  /// passes what its band actually shows — the panel-picture ground while
+  /// thumbnails are shown (B1), the cut-block plate otherwise.
   final Color gripGround;
 
   @override

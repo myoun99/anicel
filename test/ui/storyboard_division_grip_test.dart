@@ -254,7 +254,8 @@ void main() {
     expect(_cutById(tester, 'cut-3').duration, 8);
   });
 
-  testWidgets('the V rows share ONE height, and the steppers change it', (
+  testWidgets('the V rows share ONE height — rail and strip are one row '
+      '(the bar\'s steppers left with B7; the splitter is the next writer)', (
     tester,
   ) async {
     await _openStoryboard(tester);
@@ -276,23 +277,8 @@ void main() {
         )
         .height;
 
-    final before = rowHeight();
-    expect(railHeight(), before, reason: 'rail and strip are one row');
-
-    await tester.tap(
-      find.byKey(const ValueKey<String>('storyboard-row-taller-button')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(rowHeight(), greaterThan(before));
-    expect(railHeight(), rowHeight());
-
-    await tester.tap(
-      find.byKey(const ValueKey<String>('storyboard-row-shorter-button')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(rowHeight(), before);
+    expect(railHeight(), rowHeight(), reason: 'rail and strip are one row');
+    expect(rowHeight(), StoryboardPanel.defaultTrackLaneHeight);
   });
 
   testWidgets('ANY cut\'s inner edges drag, not only the active one\'s — '

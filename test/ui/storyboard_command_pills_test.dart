@@ -69,6 +69,33 @@ void main() {
     }
   });
 
+  testWidgets('B7: the bar carries NO storyboard-only tail — the duplicate '
+      'fx pill and the row-height steppers are gone', (tester) async {
+    await pumpStoryboard(tester);
+
+    // 유저 2026-08-17: 「완전 동일 버튼 2개 — 삭제」. The 'V' pill duplicated
+    // the shared toolbar's Fx entrance, and the narrow/wide steppers go with
+    // it (the V-track splitter is the height's next writer). ⛔Not kept for
+    // a hypothetical storyboard-specific fx — that objection was explicitly
+    // refused.
+    for (final keyValue in [
+      'storyboard-track-fx-menu-button',
+      'storyboard-row-shorter-button',
+      'storyboard-row-taller-button',
+    ]) {
+      expect(
+        find.byKey(ValueKey<String>(keyValue)),
+        findsNothing,
+        reason: '$keyValue was deleted (B7) and must not come back',
+      );
+    }
+    // The ONE fx entrance that remains is the shared toolbar's.
+    expect(
+      find.byKey(const ValueKey<String>('timeline-effects-button')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('the frame verbs are here — this is what 프레임 조절 means', (
     tester,
   ) async {

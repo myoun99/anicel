@@ -32,12 +32,10 @@ import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'storyboard_playhead_mapping.dart';
 import 'storyboard_timeline_layout.dart';
-import 'text/app_strings.dart';
 import 'timeline/timeline_frame_range_gesture.dart'
     show TimelineLaneRangeCallbacks;
 import 'timeline/timeline_command_bar.dart';
 import 'timeline/timeline_view_cluster.dart';
-import 'track_fx_command_group.dart';
 import 'timeline/transform_lane_editing.dart';
 import 'timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder;
@@ -56,7 +54,6 @@ class StoryboardTabHost extends StatefulWidget {
     required this.onShowSecondsChanged,
     this.railExtent,
     this.trackLaneHeight = StoryboardPanel.defaultTrackLaneHeight,
-    this.onTrackLaneHeightChanged,
     required this.thumbnailFor,
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
@@ -88,10 +85,10 @@ class StoryboardTabHost extends StatefulWidget {
   final LayerRailExtent? railExtent;
 
   /// The V rows' shared height, owned above the tabs so it survives a tab
-  /// switch like the zoom does. A null setter keeps the rows fixed and
-  /// stands the steppers down.
+  /// switch like the zoom does. ⛔No setter and no steppers any more (B7,
+  /// 유저 2026-08-17): the bar's push/pull height pair is deleted, and the
+  /// height's next writer is the planned V-track splitter.
   final double trackLaneHeight;
-  final ValueChanged<double>? onTrackLaneHeightChanged;
 
   /// Build-time thumbnail resolver, owned above the tabs so the cache
   /// survives tab switches.
@@ -445,19 +442,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
             // session's active-layer fallback.
             currentRow: _session.selectedRow,
           ),
-          const SizedBox(width: 6),
-          // The V row's fx (user 2026-08-08): a chain over the whole
-          // composited cut, authored from this panel.
-          TrackFxCommandGroup(session: _session),
-          const SizedBox(width: 4),
-          // V ROW HEIGHT — one pair for every V track, because there is one
-          // height (user's rule). Steppers rather than a slider: this panel
-          // is worked on an iPad, and the push/pull pair beside it already
-          // reads that way.
-          _TrackLaneHeightButtons(
-            height: widget.trackLaneHeight,
-            onChanged: widget.onTrackLaneHeightChanged,
-          ),
+          // ⛔The storyboard's own tail is GONE (B7, 유저 2026-08-17: 「완전
+          // 동일 버튼 2개 — 삭제」): the 'V' fx pill duplicated the shared
+          // toolbar's Fx entrance, and the row-height steppers leave with it
+          // — the V-track height's next writer is the planned splitter. The
+          // bar carries exactly what the timeline's does.
         ],
       ),
       cluster: TimelineViewCluster(
@@ -969,58 +958,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
           ],
         ),
       ),
-    );
-  }
-}
-
-/// The V rows' height stepper — one pair for every V track.
-///
-/// Steppers rather than a slider: the panel is worked on an iPad, where a
-/// thin slider handle is the worst target on the bar, and the push/pull
-/// pair beside it already reads as "two buttons, one dimension".
-class _TrackLaneHeightButtons extends StatelessWidget {
-  const _TrackLaneHeightButtons({
-    required this.height,
-    required this.onChanged,
-  });
-
-  final double height;
-  final ValueChanged<double>? onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final onChanged = this.onChanged;
-    void step(double delta) => onChanged!(
-      (height + delta).clamp(
-        StoryboardPanel.minTrackLaneHeight,
-        StoryboardPanel.maxTrackLaneHeight,
-      ),
-    );
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          key: const ValueKey<String>('storyboard-row-shorter-button'),
-          tooltip: AppText.strings.sbShorterRows,
-          onPressed:
-              onChanged == null || height <= StoryboardPanel.minTrackLaneHeight
-              ? null
-              : () => step(-StoryboardPanel.trackLaneHeightStep),
-          icon: const Icon(Icons.unfold_less, size: 18),
-          visualDensity: VisualDensity.compact,
-        ),
-        IconButton(
-          key: const ValueKey<String>('storyboard-row-taller-button'),
-          tooltip: AppText.strings.sbTallerRows,
-          onPressed:
-              onChanged == null || height >= StoryboardPanel.maxTrackLaneHeight
-              ? null
-              : () => step(StoryboardPanel.trackLaneHeightStep),
-          icon: const Icon(Icons.unfold_more, size: 18),
-          visualDensity: VisualDensity.compact,
-        ),
-      ],
     );
   }
 }

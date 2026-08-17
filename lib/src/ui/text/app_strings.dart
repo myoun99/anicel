@@ -580,6 +580,11 @@ class AppStrings {
   /// NOT link, named for what it makes rather than for what it is not.
   String get tlSharedPasteIndependent => _s('tlSharedPasteIndependent');
   String get tlSharedDelete => _s('tlSharedDelete');
+
+  /// ⛔No trailing '…' on a BAR BUTTON's writing (B9, 유저 2026-08-17:
+  /// 「심플하게 編集」) — this one and [tlSetCommasN] wore it and read as
+  /// ellipsized labels on device. The '…' convention belongs to menu
+  /// ENTRIES that open a dialog, not to the buttons themselves.
   String get tlSharedEdit => _s('tlSharedEdit');
   String get tlAdd => _s('tlAdd');
   String get tlBlankX => _s('tlBlankX');
@@ -591,11 +596,6 @@ class AppStrings {
   String get tlPush => _s('tlPush');
   String get tlPull => _s('tlPull');
   String get tlSetCommasN => _s('tlSetCommasN');
-
-  /// The storyboard's V rows share ONE height; these step it.
-  String get sbShorterRows => _s('sbShorterRows');
-  String get sbTallerRows => _s('sbTallerRows');
-  String get sbTrackFxCommands => _s('sbTrackFxCommands');
 
   /// Refused: a cut holds at most one storyboard row.
   String get sbOneStoryboardRowPerCut => _s('sbOneStoryboardRowPerCut');
@@ -1287,7 +1287,6 @@ class AppStrings {
     'instructionMemoLabel': 'Memo (timesheet memo band)',
     'instructionEditSetButton': 'Edit instructions…',
     'cutCommands': 'Cut commands',
-    'sbTrackFxCommands': 'V track effects (over the whole cut)',
     'cutAddCut': 'Add cut',
     'cutNewCut': 'New cut',
     'cutDuplicateCut': 'Duplicate cut',
@@ -1621,12 +1620,10 @@ class AppStrings {
     'tlSharedPasteLinked': 'Paste linked',
     'tlSharedPasteIndependent': 'Paste independent',
     'tlSharedDelete': 'Delete',
-    'tlSharedEdit': 'Edit…',
+    'tlSharedEdit': 'Edit',
     'tlAdd': 'Add',
     'tlPush': 'Push (open frames)',
     'tlPull': 'Pull (close frames)',
-    'sbShorterRows': 'Shorter rows',
-    'sbTallerRows': 'Taller rows',
     'sbOneStoryboardRowPerCut':
         'This cut already has a storyboard row. A cut can hold only one.',
     'cnPreviousPage': 'Previous page',
@@ -1635,7 +1632,7 @@ class AppStrings {
     'cnConte': 'Conte',
     'tlBlankX': 'Blank / X',
     'tlMark': 'Mark ●',
-    'tlSetCommasN': 'Set N commas…',
+    'tlSetCommasN': 'Set N commas',
     'tlSetCommaTemplate': 'Set {n} comma exposure',
     'tlProjectAudioRate': 'Project audio sample rate',
     'tlCustom': 'Custom…',
@@ -2069,7 +2066,6 @@ class AppStrings {
     'shortcutAction.timeline-push-blocks': '押し出し（コマを開ける）',
     'shortcutAction.timeline-pull-blocks': '詰め（コマを詰める）',
     'cutCommands': 'カット操作',
-    'sbTrackFxCommands': 'Vトラックのエフェクト（カット全体に）',
     'cutAddCut': 'カットを追加',
     'cutNewCut': 'カットを新規作成',
     'cutDuplicateCut': 'カットを複製',
@@ -2401,12 +2397,10 @@ class AppStrings {
     'tlSharedPasteLinked': 'リンクして貼り付け',
     'tlSharedPasteIndependent': '独立して貼り付け',
     'tlSharedDelete': '削除',
-    'tlSharedEdit': '編集…',
+    'tlSharedEdit': '編集',
     'tlAdd': '追加',
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
-    'sbShorterRows': '行を低く',
-    'sbTallerRows': '行を高く',
     'sbOneStoryboardRowPerCut': 'このカットには既に絵コンテレイヤーがあります。カットにつき1つだけです。',
     'cnPreviousPage': '前のページ',
     'cnNextPage': '次のページ',
@@ -2414,7 +2408,7 @@ class AppStrings {
     'cnConte': '絵コンテ',
     'tlBlankX': '中割なし / ×',
     'tlMark': 'マーク ●',
-    'tlSetCommasN': 'Nコマに設定…',
+    'tlSetCommasN': 'Nコマに設定',
     'tlSetCommaTemplate': '{n}コマに設定',
     'tlProjectAudioRate': 'プロジェクトの音声サンプルレート',
     'tlCustom': 'カスタム…',
@@ -2847,7 +2841,6 @@ class AppStrings {
     'shortcutAction.timeline-push-blocks': '밀기(칸 열기)',
     'shortcutAction.timeline-pull-blocks': '당기기(칸 닫기)',
     'cutCommands': '컷 명령',
-    'sbTrackFxCommands': 'V 트랙 이펙트 (컷 전체에)',
     'cutAddCut': '컷 추가',
     'cutNewCut': '새 컷',
     'cutDuplicateCut': '컷 복제',
@@ -3173,12 +3166,10 @@ class AppStrings {
     'tlSharedPasteLinked': '링크 붙여넣기',
     'tlSharedPasteIndependent': '독립 붙여넣기',
     'tlSharedDelete': '삭제',
-    'tlSharedEdit': '편집…',
+    'tlSharedEdit': '편집',
     'tlAdd': '추가',
     'tlPush': '밀기(칸 열기)',
     'tlPull': '당기기(칸 닫기)',
-    'sbShorterRows': '행 낮게',
-    'sbTallerRows': '행 높게',
     'sbOneStoryboardRowPerCut': '이 컷에는 이미 스토리보드 레이어가 있습니다. 컷당 하나만 가능합니다.',
     'cnPreviousPage': '이전 페이지',
     'cnNextPage': '다음 페이지',
@@ -3186,7 +3177,7 @@ class AppStrings {
     'cnConte': '콘티',
     'tlBlankX': '중간 없음 / ×',
     'tlMark': '마크 ●',
-    'tlSetCommasN': 'N코마로 설정…',
+    'tlSetCommasN': 'N코마로 설정',
     'tlSetCommaTemplate': '{n}코마로 설정',
     'tlProjectAudioRate': '프로젝트 오디오 샘플레이트',
     'tlCustom': '사용자 지정…',
@@ -3645,7 +3636,6 @@ class AppStrings {
     'shortcutAction.timeline-push-blocks': 'Pousser (ouvrir des images)',
     'shortcutAction.timeline-pull-blocks': 'Tirer (fermer des images)',
     'cutCommands': 'Commandes de plan',
-    'sbTrackFxCommands': 'Effets de la piste V (sur tout le plan)',
     'cutAddCut': 'Ajouter un plan',
     'cutNewCut': 'Nouveau plan',
     'cutDuplicateCut': 'Dupliquer le plan',
@@ -3985,12 +3975,10 @@ class AppStrings {
     'tlSharedPasteLinked': 'Coller lié',
     'tlSharedPasteIndependent': 'Coller indépendant',
     'tlSharedDelete': 'Supprimer',
-    'tlSharedEdit': 'Modifier…',
+    'tlSharedEdit': 'Modifier',
     'tlAdd': 'Ajouter',
     'tlPush': 'Pousser (ouvrir des images)',
     'tlPull': 'Tirer (fermer des images)',
-    'sbShorterRows': 'Lignes plus basses',
-    'sbTallerRows': 'Lignes plus hautes',
     'sbOneStoryboardRowPerCut':
         'Ce plan a déjà un calque storyboard. Un seul par plan.',
     'cnPreviousPage': 'Page précédente',
@@ -3999,7 +3987,7 @@ class AppStrings {
     'cnConte': 'Storyboard',
     'tlBlankX': 'Vide / X',
     'tlMark': 'Repère ●',
-    'tlSetCommasN': 'Régler sur N commas…',
+    'tlSetCommasN': 'Régler sur N commas',
     'tlSetCommaTemplate': 'Régler sur {n} comma',
     'tlProjectAudioRate': "Fréquence d'échantillonnage du projet",
     'tlCustom': 'Personnalisé…',
@@ -4406,7 +4394,6 @@ class AppStrings {
     'shortcutAction.timeline-push-blocks': '推出（空出帧）',
     'shortcutAction.timeline-pull-blocks': '拉回（收拢帧）',
     'cutCommands': '镜头命令',
-    'sbTrackFxCommands': 'V 轨道效果（作用于整个镜头）',
     'cutAddCut': '添加镜头',
     'cutNewCut': '新建镜头',
     'cutDuplicateCut': '复制镜头',
@@ -4732,12 +4719,10 @@ class AppStrings {
     'tlSharedPasteLinked': '粘贴链接',
     'tlSharedPasteIndependent': '粘贴独立',
     'tlSharedDelete': '删除',
-    'tlSharedEdit': '编辑…',
+    'tlSharedEdit': '编辑',
     'tlAdd': '添加',
     'tlPush': '推出（空出帧）',
     'tlPull': '拉回（收拢帧）',
-    'sbShorterRows': '行更矮',
-    'sbTallerRows': '行更高',
     'sbOneStoryboardRowPerCut': '该镜头已有分镜图层，每个镜头只能有一个。',
     'cnPreviousPage': '上一页',
     'cnNextPage': '下一页',
@@ -4745,7 +4730,7 @@ class AppStrings {
     'cnConte': '分镜',
     'tlBlankX': '空 / ×',
     'tlMark': '标记 ●',
-    'tlSetCommasN': '设为 N 格…',
+    'tlSetCommasN': '设为 N 格',
     'tlSetCommaTemplate': '设为 {n} 格',
     'tlProjectAudioRate': '项目音频采样率',
     'tlCustom': '自定义…',

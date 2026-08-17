@@ -298,7 +298,6 @@ void main() {
     'instructionMemoLabel': (s) => s.instructionMemoLabel,
     'instructionEditSetButton': (s) => s.instructionEditSetButton,
     'cutCommands': (s) => s.cutCommands,
-    'sbTrackFxCommands': (s) => s.sbTrackFxCommands,
     'cutAddCut': (s) => s.cutAddCut,
     'cutNewCut': (s) => s.cutNewCut,
     'cutDuplicateCut': (s) => s.cutDuplicateCut,
@@ -627,8 +626,6 @@ void main() {
     'tlPush': (s) => s.tlPush,
     'tlPull': (s) => s.tlPull,
     'sbOneStoryboardRowPerCut': (s) => s.sbOneStoryboardRowPerCut,
-    'sbTallerRows': (s) => s.sbTallerRows,
-    'sbShorterRows': (s) => s.sbShorterRows,
     'cnConte': (s) => s.cnConte,
     'cnActionColumn': (s) => s.cnActionColumn,
     'cnPreviousPage': (s) => s.cnPreviousPage,
@@ -707,5 +704,28 @@ void main() {
       isEmpty,
       reason: 'read here but no longer declared in AppStrings',
     );
+  });
+
+  test('B9: bar-button writing carries no trailing ellipsis — 編集, not '
+      '編集… (유저 2026-08-17: 「심플하게 編集」)', () {
+    // The '…' convention belongs to menu ENTRIES that open a dialog; on a
+    // bar button it reads as an ellipsized label. These two are the bar
+    // buttons that wore it.
+    for (final language in AppLanguage.values) {
+      final strings = AppStrings.of(language);
+      for (final entry in {
+        'tlSharedEdit': strings.tlSharedEdit,
+        'tlSetCommasN': strings.tlSetCommasN,
+      }.entries) {
+        expect(
+          entry.value.endsWith('…') || entry.value.endsWith('...'),
+          isFalse,
+          reason: '${entry.key} in ${language.name} ends with an ellipsis',
+        );
+      }
+    }
+    // The reported case, verbatim: the edit button says 編集 and nothing
+    // more.
+    expect(AppStrings.of(AppLanguage.ja).tlSharedEdit, '編集');
   });
 }
