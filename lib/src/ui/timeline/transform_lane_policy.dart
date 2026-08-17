@@ -1,6 +1,11 @@
 import 'dart:ui' show Offset;
 
 import '../../models/canvas_point.dart';
+import '../../models/key_range_move.dart'
+    show
+        transformKeyFrameUnion,
+        transformKeyHoldUnion,
+        transformKeyNameUnion;
 import '../../models/layer_id.dart';
 import '../../models/property_track.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
@@ -30,6 +35,7 @@ const PropertyLaneRow transformGroupHeaderLane = PropertyLaneRow(
 PropertyLaneRow transformGroupHeader({
   required bool expanded,
   Set<int> keyedFrames = const {},
+  Set<int> holdOutFrames = const {},
   Map<int, String> keyNames = const {},
   bool? enabled,
 }) {
@@ -37,6 +43,8 @@ PropertyLaneRow transformGroupHeader({
     laneId: transformGroupHeaderLane.laneId,
     label: transformGroupHeaderLane.label,
     keyedFrames: keyedFrames,
+    // The all-hold frames — see [transformKeyHoldUnion] (the ■ law).
+    holdOutFrames: holdOutFrames,
     // ㉚: the members' name where they agree, `...` where they do not —
     // see [transformKeyNameUnion].
     keyNames: keyNames,
@@ -48,6 +56,31 @@ PropertyLaneRow transformGroupHeader({
     // transform of their own to bypass (the camera moves through the cut's
     // camera track; its row-level switch covers that).
     groupEnabled: enabled,
+  );
+}
+
+/// THE union summary of [track] as a lane row — keyed union, all-hold
+/// union, name union — the ONE derivation behind every union mark
+/// (2026-08-17 B4: 「한 로직으로 통일이 요구의 본체」).
+///
+/// Two rows draw it: the fx TRANSFORM GROUP HEADER (its collapsed summary,
+/// UI-R20 #13) and the CAMERA row, which since ㉙ *is* its own transform
+/// group header. Both build their union through this function, so the mark
+/// they draw — which frames key, which read as hold squares, what they are
+/// called — can never drift apart again. The camera's used to be a text
+/// glyph channel with its own ◆/■/○ table, and the ○ is exactly what a
+/// second derivation grows when nobody is looking.
+PropertyLaneRow transformUnionHeader({
+  required TransformTrack track,
+  required bool expanded,
+  bool? enabled,
+}) {
+  return transformGroupHeader(
+    expanded: expanded,
+    keyedFrames: transformKeyFrameUnion(track),
+    holdOutFrames: transformKeyHoldUnion(track),
+    keyNames: transformKeyNameUnion(track),
+    enabled: enabled,
   );
 }
 

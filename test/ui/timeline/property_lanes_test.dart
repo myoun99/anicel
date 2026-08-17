@@ -24,6 +24,10 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineDrawingStartColor;
+import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
+    show TimelineGridMetrics;
+import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
+    show TimelineLaneKeyMarker, timelineLaneUnionKeyMarkerSize;
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
@@ -686,26 +690,43 @@ void main() {
   });
 
   group('collapsed camera row key-union summary', () {
-    // The camera row PAINTS its cells (R28 #4), so the glyph is read off the
-    // row painter's model rather than from a per-cell Text widget.
+    // The camera row PAINTS its cells (R28 #4); the key summary rides the
+    // SHARED lane key markers since B4 (2026-08-17) — the same
+    // [TimelineLaneKeyMarker] the fx transform header's union draws — so
+    // the text-glyph channel stays empty on this row.
     String cameraGlyph(WidgetTester tester, int frame) =>
         timelineCellModel(tester, 'lane-cam-layer', frame).glyph;
 
-    testWidgets('keyed frames show ◆ markers instead of paper cells', (
-      tester,
-    ) async {
+    TimelineLaneKeyMarker cameraUnionMarker(WidgetTester tester, int frame) =>
+        tester.widget<TimelineLaneKeyMarker>(
+          find.byKey(
+            ValueKey<String>(
+              'timeline-lane-key-lane-cam-layer-transform-group-$frame',
+            ),
+          ),
+        );
+
+    testWidgets('keyed frames show the shared union diamonds instead of '
+        'paper cells', (tester) async {
       await _pump(
         tester,
         _project(camera: CutCamera(keyframes: {0: _pose(0), 8: _pose(80)})),
       );
 
-      expect(cameraGlyph(tester, 0), '◆');
-      expect(cameraGlyph(tester, 8), '◆');
-      expect(cameraGlyph(tester, 4), '');
-      // The old paper-cell ○ glyph is gone from the camera row, and the
-      // cells carry no block chrome — the marker rides empty-cell styling.
+      // The union marks are the SHARED widget at the SHARED union size —
+      // not a text glyph of their own any more.
+      expect(cameraUnionMarker(tester, 0).hold, isFalse);
+      expect(cameraUnionMarker(tester, 8).hold, isFalse);
+      expect(
+        cameraUnionMarker(tester, 0).markerSize,
+        timelineLaneUnionKeyMarkerSize(
+          TimelineGridMetrics.defaults.layerRowHeight,
+        ),
+      );
+      // The text channel says NOTHING on a camera row — no ◆/■, and never
+      // the paper-cell ○; the cells carry no block chrome either.
       for (var frame = 0; frame < 12; frame += 1) {
-        expect(cameraGlyph(tester, frame), isNot('○'), reason: 'frame $frame');
+        expect(cameraGlyph(tester, frame), '', reason: 'frame $frame');
         expect(
           timelineCellDecoration(tester, 'lane-cam-layer', frame).borderRadius,
           isNull,
@@ -727,7 +748,9 @@ void main() {
       semantics.dispose();
     });
 
-    testWidgets('a frame whose keyed lanes ALL hold shows ■', (tester) async {
+    testWidgets('a frame whose keyed lanes ALL hold shows the hold SQUARE', (
+      tester,
+    ) async {
       await _pump(
         tester,
         _project(
@@ -746,10 +769,11 @@ void main() {
         ),
       );
 
-      expect(cameraGlyph(tester, 4), '■');
+      expect(cameraUnionMarker(tester, 4).hold, isTrue);
       // A linear key (the second withKey overwrote hold with the default
-      // linear) reads ◆ even when another lane would hold elsewhere.
-      expect(cameraGlyph(tester, 8), '◆');
+      // linear) reads as a diamond even when another lane would hold
+      // elsewhere — [transformKeyHoldUnion], the one ■ law.
+      expect(cameraUnionMarker(tester, 8).hold, isFalse);
     });
   });
 

@@ -68,6 +68,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.rangeGesture,
     this.laneRange,
     this.lanesForLayer,
+    this.unionLaneForLayer,
     this.runEdit,
     this.laneEdit,
     this.dragPreview,
@@ -171,6 +172,12 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// previewed layer (R10), so the band's keys follow the drag per step
   /// instead of sitting where they were when the row was built.
   final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
+
+  /// The union-summary provider (the CAMERA row, B4) — resolved per row
+  /// BUILD, so the drag gate's per-step rebuild re-derives the union from
+  /// the session's preview-aware camera track exactly as [lanesForLayer]
+  /// re-derives the member lanes. Null = no union overlays.
+  final PropertyLaneRow? Function(Layer layer)? unionLaneForLayer;
 
   /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
   final TimelineRunEditCallbacks? runEdit;
@@ -442,6 +449,9 @@ class _TimelineFrameRowsScrollBodyState
       windowBucket: widget.windowBucket,
       viewportMainExtent: widget.viewportMainExtent,
       substrateGeneration: widget.substrateGeneration,
+      // Resolved from the GATE's layer, per rebuild — a drag step
+      // re-derives the union like the lanes re-derive (B4).
+      unionLane: widget.unionLaneForLayer?.call(layer),
     );
   }
 

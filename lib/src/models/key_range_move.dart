@@ -56,6 +56,37 @@ Set<int> transformKeyFrameUnion(TransformTrack track) => {
   ...track.opacity.keys.keys,
 };
 
+/// The union frames whose keyed lanes ALL hold — the union mark draws the
+/// AE hold square there, a diamond everywhere else.
+///
+/// This was the camera row's ■ rule alone while its summary was a text
+/// glyph; the 2026-08-17 unification (B4) made it the ONE law every union
+/// mark reads — camera row and transform group header alike — through
+/// [transformUnionHeader]'s hold set.
+Set<int> transformKeyHoldUnion(TransformTrack track) {
+  final lanes = [
+    track.anchorPoint,
+    track.position,
+    track.scale,
+    track.rotation,
+    track.opacity,
+  ];
+  final holds = <int>{};
+  for (final frame in transformKeyFrameUnion(track)) {
+    final interpolations = [
+      for (final lane in lanes)
+        if (lane.keyAt(frame) case final key?) key.interpolation,
+    ];
+    if (interpolations.isNotEmpty &&
+        interpolations.every(
+          (interpolation) => interpolation == PropertyKeyInterpolation.hold,
+        )) {
+      holds.add(frame);
+    }
+  }
+  return holds;
+}
+
 /// The union header's NAME at each frame.
 ///
 /// ㉚ (user, 2026-08-12): 「유니언 그룹 이름 규칙 — 해당 인덱스 멤버들 이름이
