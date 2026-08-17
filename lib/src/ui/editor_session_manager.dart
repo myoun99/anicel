@@ -227,6 +227,8 @@ import 'timeline/transform_lane_editing.dart'
         transformTrackWithLaneKeyToggled,
         transformTrackWithLaneSpanKeysShifted,
         transformTrackWithGroupReset;
+import 'timeline/se_name_tag_lane_policy.dart'
+    show laneIsSeNameTag, seNameTagLaneSpan;
 import 'timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder, transformLaneSpan;
 
@@ -969,13 +971,18 @@ class EditorSessionManager extends ChangeNotifier {
   /// selection can answer. [standOnRow] does not pass null — it substitutes
   /// the playhead, because standing on a row without naming a frame IS
   /// standing there at the playhead.
-  bool standingInsideSelection(TimelineRowAddress row, [int? frameIndex]) {
+  bool standingInsideSelection(
+    TimelineRowAddress row, [
+    int? frameIndex,
+    bool frameIsGlobal = false,
+  ]) {
     if (rowIsSelected(row)) {
       return true;
     }
     final cells = frameRangeSelection.value;
     if (cells != null &&
         frameIndex != null &&
+        !frameIsGlobal &&
         cells.coversRow(row) &&
         frameIndex >= cells.startIndex &&
         frameIndex < cells.endIndexExclusive) {
@@ -984,13 +991,34 @@ class EditorSessionManager extends ChangeNotifier {
     // ⚠️A lane selection has no `coversRow` — it names its rows by LANE
     // (`coversLane`), which is why this arm reads differently from the one
     // above rather than sharing it.
+    //
+    // C6 (2026-08-17): asked on the AXIS the span lives on. A track-SE
+    // row's lane span is stored GLOBAL ([updateLaneRangeSelectionDrag]'s
+    // own translation), while the cut panel presses in window frames — so
+    // a window frame converts exactly as the drag's did, or a press inside
+    // the very selection it made reads as outside and the standing clear
+    // (now on the DOWN) would wipe the move it was starting.
     final lanes = laneRangeSelection.value;
-    if (lanes != null &&
+    if (lanes != null && frameIndex != null && row is LaneRowAddress) {
+      final laneAxisFrame =
+          !frameIsGlobal && isTrackSeLayerId(row.layerId)
+          ? frameIndex + activeCutGlobalStartFrame
+          : frameIndex;
+      if (lanes.coversLane(row.layerId, row.laneId) &&
+          laneAxisFrame >= lanes.startIndex &&
+          laneAxisFrame < lanes.endIndexExclusive) {
+        return true;
+      }
+    }
+    // The TRACK-axis selection (the storyboard's rows) answers for the
+    // global-frame callers the same way the cut-local ones answer above.
+    final trackSpan = trackFrameRangeSelection.value;
+    if (trackSpan != null &&
         frameIndex != null &&
-        row is LaneRowAddress &&
-        lanes.coversLane(row.layerId, row.laneId) &&
-        frameIndex >= lanes.startIndex &&
-        frameIndex < lanes.endIndexExclusive) {
+        frameIsGlobal &&
+        trackSpan.coversRow(row) &&
+        frameIndex >= trackSpan.startFrame &&
+        frameIndex < trackSpan.endFrameExclusive) {
       return true;
     }
     return false;
@@ -1099,6 +1127,11 @@ class EditorSessionManager extends ChangeNotifier {
   /// surfaces where standing and seeking are one gesture (a lane band's
   /// cells). A label press leaves it null — a label names a ROW, and the
   /// frame stays where it was.
+  /// [globalFrameIndex] is the same seek stated on the TRACK's global axis
+  /// — the storyboard's rows press in global frames (C6 2026-08-17: their
+  /// lane bands stand through THIS verb now instead of a hand-rolled
+  /// clear-and-seek that restated the law without the T10 guard). At most
+  /// one of the two frames is passed.
   /// [takesLayerActive] is false on the STORYBOARD's rails, where the row you
   /// stand on and the layer you draw on are separate states (유저
   /// 2026-07-27). It is a parameter rather than a second verb because the
@@ -1108,6 +1141,7 @@ class EditorSessionManager extends ChangeNotifier {
   void standOnRow(
     TimelineRowAddress row, {
     int? frameIndex,
+    int? globalFrameIndex,
     bool takesLayerActive = true,
   }) {
     // 🚨T10. T4's law is untouched by this: the clearing still lives INSIDE
@@ -1126,7 +1160,9 @@ class EditorSessionManager extends ChangeNotifier {
     // at all: the surfaces reach this verb through a `ValueChanged<LayerId>`
     // that carries no frame, and a null there would make the guard blind to
     // exactly the selection it exists to protect.
-    if (!standingInsideSelection(row, frameIndex ?? currentFrameIndex)) {
+    if (globalFrameIndex != null
+        ? !standingInsideSelection(row, globalFrameIndex, true)
+        : !standingInsideSelection(row, frameIndex ?? currentFrameIndex)) {
       clearAllSelections();
     }
     switch (row) {
@@ -1151,6 +1187,9 @@ class EditorSessionManager extends ChangeNotifier {
     }
     if (frameIndex != null) {
       selectFrameIndex(frameIndex);
+    }
+    if (globalFrameIndex != null) {
+      selectGlobalFrame(globalFrameIndex);
     }
   }
 
@@ -11857,15 +11896,22 @@ class EditorSessionManager extends ChangeNotifier {
     if (endExclusive <= start) {
       return;
     }
-    // R6: effect lanes span within their own effect; every other lane id
-    // resolves against the transform order. The chain may be a layer's or
-    // the V TRACK's — the carrier id says which.
+    // R6: effect lanes span within their own effect; the NAME-TAG group
+    // spans within its own order (C3 2026-08-17 — [seNameTagLaneSpan] was
+    // "a complete twin of transformLaneSpan" that this switch never
+    // consulted, so a drag across the tag's members folded to the one row
+    // it started on: the T13 imprisonment, back on one more family);
+    // every other lane id resolves against the transform order. The chain
+    // may be a layer's or the V TRACK's — the carrier id says which.
     final span =
         effectLaneSpan(
           _effectChainOf(layerId) ?? const [],
           laneId,
           headLaneId ?? laneId,
         ) ??
+        (laneIsSeNameTag(laneId)
+            ? seNameTagLaneSpan(laneId, headLaneId ?? laneId)
+            : null) ??
         transformLaneSpan(laneId, headLaneId ?? laneId);
     laneRangeSelection.value = TimelineLaneSelection(
       layerId: layerId,
@@ -12758,8 +12804,24 @@ class EditorSessionManager extends ChangeNotifier {
       return false;
     }
     final sources = <({Layer commit, int offset})>[];
+    // C1 (2026-08-17): the TRANSITION row is a movable subject on THIS
+    // axis — its spans live global, and this rail is their one author
+    // (the cut timeline's clone stays the read-only projection). It rides
+    // the move machine's existing INSTRUCTION-source arm, exactly as the
+    // cut-local instruction rows do in [beginFrameRangeMoveDrag].
+    final instructionSources = <Layer>[];
     for (final row in live.spanRows) {
       if (row is! LayerRowAddress) {
+        continue;
+      }
+      final transition = _trackTransitionOwner(row.layerId)?.transitionLayer;
+      if (transition != null) {
+        final hasSpan = transition.instructions.keys.any(
+          (key) => key >= live.startFrame && key < live.endFrameExclusive,
+        );
+        if (hasSpan) {
+          instructionSources.add(transition);
+        }
         continue;
       }
       final commit = trackSeGlobalLayerById(row.layerId);
@@ -12778,7 +12840,7 @@ class EditorSessionManager extends ChangeNotifier {
         sources.add((commit: commit, offset: 0));
       }
     }
-    if (sources.isEmpty) {
+    if (sources.isEmpty && instructionSources.isEmpty) {
       return false;
     }
     _rangeMoveGrabLayerId = grabLayerId;
@@ -12790,7 +12852,9 @@ class EditorSessionManager extends ChangeNotifier {
     _rangeMoveMultiSeRowChanges = null;
     _rangeMoveCameraBefore = null;
     _rangeMoveCameraLayerId = null;
-    _rangeMoveInstructionSources = null;
+    _rangeMoveInstructionSources = instructionSources.isEmpty
+        ? null
+        : instructionSources;
     _rangeMoveCameraShifted = null;
     _rangeMoveInstructionShifted = null;
     _rangeMoveSeRowChange = null;
@@ -13010,6 +13074,12 @@ class EditorSessionManager extends ChangeNotifier {
         previewLayers: {
           selection.layerId: trackSeWindow.displayLayer(plan.sourceAfter),
           targetLayerId: trackSeWindow.displayLayer(plan.targetAfter),
+        },
+        // C2: the plans ARE the global forms — the storyboard strips
+        // follow the cross-row drop live through the same one gate.
+        previewGlobalLayers: {
+          selection.layerId: plan.sourceAfter,
+          targetLayerId: plan.targetAfter,
         },
       );
       followOutline();
@@ -13358,6 +13428,13 @@ class EditorSessionManager extends ChangeNotifier {
               entry.key,
             )!.copyWith(instructions: entry.value),
       },
+      // C2: the SE passengers' global forms, for the storyboard strips.
+      previewGlobalLayers: {
+        for (final se in sePlans) ...{
+          se.sourceId: se.sourceAfter,
+          se.targetId: se.targetAfter,
+        },
+      },
       cameraCutId: cameraShifted == null ? null : activeCutOrNull?.id,
       cameraKeyframes: cameraShifted,
       // A FRESH CLONE per step (the P3b-2 contract) — the gate compares
@@ -13369,6 +13446,10 @@ class EditorSessionManager extends ChangeNotifier {
           ? null
           : _layerById(_rangeMoveCameraLayerId!)?.copyWith(),
     );
+    // C1: the transition channel follows every published step — this
+    // path's shift map never carries a transition entry, so the write is
+    // the CLEAR that keeps a stale plain-slide form from lingering.
+    _publishRangeMoveTransitionPreview(instructionShifted);
     // The outline rides the rigid shift to the target rows (rows that
     // carried nothing — off the lattice or shifted off it — drop out of
     // the outline; only the moved frames' landings read selected).
@@ -13474,10 +13555,35 @@ class EditorSessionManager extends ChangeNotifier {
     _rangeMoveInstructionShifted = null;
     _cameraKeysDragPreview = null;
     dragPreview.value = null;
+    transitionEdgeDragPreview.value = null;
     final selection = _rangeMoveSelectionBefore;
     if (selection != null) {
       _rangeMoveSelection = selection;
     }
+  }
+
+  /// C1 (2026-08-17): the in-flight form of a range-moved TRANSITION row,
+  /// published on [transitionEdgeDragPreview] — the channel the row's edge
+  /// drags already preview on and the storyboard's transition strip
+  /// already renders. One preview channel per row family: the move joins
+  /// the edge drag instead of growing a second gate.
+  ///
+  /// A step whose shift map carries no transition entry CLEARS the channel
+  /// (a null write on an already-null notifier is a silent no-op), so an
+  /// ordinary cell move can never leave a stale transition form standing.
+  void _publishRangeMoveTransitionPreview(
+    Map<LayerId, Map<int, InstructionEvent>> instructionShifted,
+  ) {
+    Layer? preview;
+    for (final entry in instructionShifted.entries) {
+      final owner = _trackTransitionOwner(entry.key);
+      if (owner != null) {
+        preview = owner.transitionLayer.copyWith(
+          instructions: SplayTreeMap<int, InstructionEvent>.from(entry.value),
+        );
+      }
+    }
+    transitionEdgeDragPreview.value = preview;
   }
 
   /// A range-move drag step: live preview on [dragPreview] (repository
@@ -13592,35 +13698,52 @@ class EditorSessionManager extends ChangeNotifier {
       final cameraMarker = cameraShifted == null
           ? null
           : _layerById(_rangeMoveCameraLayerId!)?.copyWith();
-      final previewLayers = <LayerId, Layer>{
-        for (final plan in plans)
-          // Track-SE rows preview in their DISPLAY form (UI-R18
-          // #1 seam); commits keep the global form.
-          plan.sourceAfter.id: isTrackSeLayerId(plan.sourceAfter.id)
-              ? trackSeWindow.displayLayer(
-                  rederiveRunBehaviors(
-                    plan.sourceAfter,
-                    cutFrameCount: _activeCutFrameCount,
-                  ),
-                )
-              : rederiveRunBehaviors(
-                  plan.sourceAfter,
-                  cutFrameCount: _activeCutFrameCount,
-                ),
-        // Instruction rows preview with their shifted spans —
-        // the cells row renders straight off layer.instructions.
-        for (final entry in instructionShifted.entries)
-          if (_layerById(entry.key) != null)
-            entry.key: _layerById(
-              entry.key,
-            )!.copyWith(instructions: entry.value),
-      };
+      final previewLayers = <LayerId, Layer>{};
+      // C2 (2026-08-17): the GLOBAL forms ride the same preview — the
+      // storyboard's track-global SE strips resolve THIS map, exactly as
+      // they resolve an edge drag's global form, so a move follows the
+      // hand live there too instead of jumping on release.
+      final previewGlobalLayers = <LayerId, Layer>{};
+      for (final plan in plans) {
+        // The commit form is computed ONCE; the display clone is that
+        // form windowed (UI-R18 #1 seam) — the two can never disagree.
+        final commitForm = rederiveRunBehaviors(
+          plan.sourceAfter,
+          cutFrameCount: _activeCutFrameCount,
+        );
+        if (isTrackSeLayerId(plan.sourceAfter.id)) {
+          previewLayers[plan.sourceAfter.id] = trackSeWindow.displayLayer(
+            commitForm,
+          );
+          previewGlobalLayers[plan.sourceAfter.id] = commitForm;
+        } else {
+          previewLayers[plan.sourceAfter.id] = commitForm;
+        }
+      }
+      // Instruction rows preview with their shifted spans — the cells row
+      // renders straight off layer.instructions. The track-owned
+      // TRANSITION row is not a cut layer, so it is absent from
+      // [_layerById] and skips this map; it previews on its own channel
+      // below instead.
+      for (final entry in instructionShifted.entries) {
+        final layer = _layerById(entry.key);
+        if (layer != null) {
+          previewLayers[entry.key] = layer.copyWith(
+            instructions: entry.value,
+          );
+        }
+      }
       dragPreview.value = BlockMoveDragPreview(
         previewLayers: previewLayers,
+        previewGlobalLayers: previewGlobalLayers,
         cameraCutId: cameraShifted == null ? null : activeCutOrNull?.id,
         cameraKeyframes: cameraShifted,
         cameraMarkerLayer: cameraMarker,
       );
+      // C1 (2026-08-17): a moved TRANSITION row previews on the row's own
+      // channel — the SAME one its edge drags publish to, which is what
+      // the storyboard's transition strip already renders live.
+      _publishRangeMoveTransitionPreview(instructionShifted);
       final newStart = selection.startIndex + frameDelta;
       if (newStart >= 0) {
         _rangeMoveSelection = TimelineFrameRangeSelection(
@@ -13729,6 +13852,7 @@ class EditorSessionManager extends ChangeNotifier {
     _rangeMoveInstructionRowChange = null;
     _cameraKeysDragPreview = null;
     dragPreview.value = null;
+    transitionEdgeDragPreview.value = null;
     // ROW-CHANGE commits (P3b-4): the planned pair replaces both rows in
     // one composite undo; the selection follows the landing row.
     if (selection != null && seRowChange != null) {
@@ -13909,15 +14033,33 @@ class EditorSessionManager extends ChangeNotifier {
                 cutFrameCount: _activeCutFrameCount,
               ),
             ),
-        if (instructionShifted != null && cut != null)
+        if (instructionShifted != null)
           for (final entry in instructionShifted.entries)
-            UpdateLayerInstructionsCommand(
-              repository: _repository,
-              cutId: cut.id,
-              layerId: entry.key,
-              instructions: entry.value,
-              description: 'Move instruction keys',
-            ),
+            // C1 (2026-08-17): the TRANSITION row's shifted spans land
+            // through the row's own track-owned writer (the edge drags'
+            // command) — it has no cut to be addressed by, so the cut
+            // gate below must not swallow it. Cut-local instruction rows
+            // keep the cut-addressed command they always had.
+            if (_trackTransitionOwner(entry.key) case final owner?)
+              UpdateTrackTransitionLayerCommand(
+                repository: _repository,
+                trackId: owner.id,
+                before: owner.transitionLayer,
+                after: owner.transitionLayer.copyWith(
+                  instructions: SplayTreeMap<int, InstructionEvent>.from(
+                    entry.value,
+                  ),
+                ),
+                label: 'Move transition',
+              )
+            else if (cut != null)
+              UpdateLayerInstructionsCommand(
+                repository: _repository,
+                cutId: cut.id,
+                layerId: entry.key,
+                instructions: entry.value,
+                description: 'Move instruction keys',
+              ),
         if (cameraShifted != null && cut != null)
           UpdateCutCameraCommand(
             repository: _repository,
@@ -13987,6 +14129,7 @@ class EditorSessionManager extends ChangeNotifier {
     _rangeMoveInstructionRowChange = null;
     _cameraKeysDragPreview = null;
     dragPreview.value = null;
+    transitionEdgeDragPreview.value = null;
     if (selection != null) {
       _rangeMoveSelection = selection;
     }

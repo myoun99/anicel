@@ -39,7 +39,7 @@ import 'timeline/property_lane_model.dart'
     show PropertyLaneEditCallbacks, PropertyLaneRow, TimelineDisplayRow;
 import 'timeline/timeline_row_span_resolver.dart'
     show resolveBlockMoveTargetLayer;
-import 'timeline/se_audio_lane.dart' show SeAudioLaneFrameRow;
+import 'timeline/se_audio_lane.dart' show SeAudioLaneFrameRow, seAudioLanesFor;
 import 'timeline/timeline_lane_rows.dart'
     show TimelineLaneControlsRow, TimelineLaneFrameRow;
 import 'timeline/effect_lane_policy.dart'
@@ -1701,6 +1701,22 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     );
   }
 
+  /// C5 (2026-08-17): whether the [slot]th S row's twirl-down shows the
+  /// Audio (waveform) lane — the row is twirled open AND the TIMELINE's
+  /// own lane law emits one ([seAudioLanesFor]: an SE row with no sounds
+  /// imported has no Audio lane there, so it has none here either). The
+  /// storyboard used to mount the lane off the twirl alone, which is how
+  /// an empty S row showed a waveform strip this rail's twin never draws.
+  bool _seAudioLaneOpen(Track track, int slot) {
+    if (!widget.expandedSeAudioRows.contains(
+      StoryboardPanel.seRowKey(track, slot),
+    )) {
+      return false;
+    }
+    final layer = _trackSeAt(track, slot);
+    return layer != null && seAudioLanesFor(layer).isNotEmpty;
+  }
+
   /// How tall ONE S ROW stands on the rail: the row, plus its Audio lane
   /// and Transform lanes when twirled open. The same construction
   /// `_railRowsForTrack` lays out, read back as a number.
@@ -1709,7 +1725,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     if (widget.expandedSeAudioRows.contains(
       StoryboardPanel.seRowKey(track, slot),
     )) {
-      extent += _audioLaneHeight;
+      if (_seAudioLaneOpen(track, slot)) {
+        extent += _audioLaneHeight;
+      }
       extent +=
           _seTransformLanes(track, slot, _trackSeAt(track, slot)).length *
           _transformLaneHeight;
@@ -1802,15 +1820,17 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           )) ...[
           // Audio leads the S twirl-down (the row's main tool, timeline
           // parity); the Transform group sits below, collapsed default.
-          _StoryboardLaneLabel(
-            laneKey:
-                'storyboard-lane-label-'
-                '${track.id.value}'
-                '-s${slot + 1}-audio',
-            label: 'Audio',
-            icon: Icons.graphic_eq,
-            height: _audioLaneHeight,
-          ),
+          // C5: present exactly when the timeline's lane law emits it.
+          if (_seAudioLaneOpen(track, slot))
+            _StoryboardLaneLabel(
+              laneKey:
+                  'storyboard-lane-label-'
+                  '${track.id.value}'
+                  '-s${slot + 1}-audio',
+              label: 'Audio',
+              icon: Icons.graphic_eq,
+              height: _audioLaneHeight,
+            ),
           ..._transformLaneLabels(
             carrier:
                 _trackSeAt(track, slot) ??
@@ -2442,12 +2462,16 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       if (widget.expandedSeAudioRows.contains(
         StoryboardPanel.seRowKey(track, slot),
       )) {
-        slots.add((
-          row: null,
-          laneRow: null,
-          bandRow: false,
-          height: _audioLaneHeight,
-        ));
+        // C5: the audio slot exists exactly when the lane is drawn — a
+        // phantom slot here would shift every row under it.
+        if (_seAudioLaneOpen(track, slot)) {
+          slots.add((
+            row: null,
+            laneRow: null,
+            bandRow: false,
+            height: _audioLaneHeight,
+          ));
+        }
         // The SE transform strips: the group header, plus the property
         // lanes when twirled open ([_seTransformLaneStrips]'s shape).
         void seLane(String laneId) => slots.add((
@@ -2644,21 +2668,25 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         if (widget.expandedSeAudioRows.contains(
           StoryboardPanel.seRowKey(track, slot),
         )) ...[
-          _stripRowLine(
-            _StoryboardAudioLaneRow(
-              trackIndex: index,
-              slot: slot,
-              layer: _seDisplayAt(track, slot),
-              layoutEntries: entries,
-              width: width,
-              timelineScale: scale,
-              projectFrameRate: widget.projectFrameRate,
-              audioPeaksFor: widget.audioPeaksFor,
-              seClipMarkerTooltip: widget.seClipMarkerTooltip,
-              activeCutId: widget.activeCutId,
-              onSetAudioClipOffset: widget.onSetAudioClipOffset,
+          // C5: the waveform strip exists exactly when the timeline's lane
+          // law emits an Audio lane ([_seAudioLaneOpen]) — never for a row
+          // with nothing imported.
+          if (_seAudioLaneOpen(track, slot))
+            _stripRowLine(
+              _StoryboardAudioLaneRow(
+                trackIndex: index,
+                slot: slot,
+                layer: _seDisplayAt(track, slot),
+                layoutEntries: entries,
+                width: width,
+                timelineScale: scale,
+                projectFrameRate: widget.projectFrameRate,
+                audioPeaksFor: widget.audioPeaksFor,
+                seClipMarkerTooltip: widget.seClipMarkerTooltip,
+                activeCutId: widget.activeCutId,
+                onSetAudioClipOffset: widget.onSetAudioClipOffset,
+              ),
             ),
-          ),
           for (final strip in _seTransformLaneStrips(
             track,
             index,
@@ -4215,9 +4243,9 @@ class _StoryboardTransitionRow extends StatelessWidget {
   final StoryboardRowFramePress? onRowFramePress;
   final void Function(int globalFrame)? onEditSpan;
 
-  /// Range selection, the SE row's own bundle: the transition row is a
-  /// track-owned rail row like an S row, so it selects through the same verb.
-  /// Its `move` half is deliberately ignored here — see the mount.
+  /// Range selection AND move, the SE row's own bundle: the transition row
+  /// is a track-owned rail row like an S row, so it selects — and slides
+  /// its selection (C1 2026-08-17) — through the same verbs.
   final StoryboardSeSelectCallbacks? select;
 
   /// The rail's row lookup, so a select-drag can reach across rows exactly as
@@ -4373,18 +4401,28 @@ class _StoryboardTransitionRow extends StatelessWidget {
     // the one row of this rail a range drag could not touch (user 2026-08-11),
     // and the reason was simply that nothing mounted it here.
     //
-    // ⚠️SELECT ONLY: no `move` half. Selecting is reading, and the transition
-    // row reads; sliding it would be authoring on a row whose local placement
-    // is a projection ([layerKindIsReadOnlyInCut]). Mounted UNDER the grips so
-    // the edges keep their drag priority, exactly as the SE row's is.
+    // Mounted UNDER the grips so the edges keep their drag priority, exactly
+    // as the SE row's is.
     //
     // 🚨B5② (2026-08-17): "mounted UNDER" is STACK ORDER, and this block used
     // to sit AFTER the grips in [spans] — on top of them — so its eager pan
     // took every edge drag and the commas never moved. The SE row one class
     // down had the order right all along; this row now matches it, and the
     // grips go in LAST below.
+    //
+    // 🚨C1 (2026-08-17): the MOVE half too — the SE row's, verbatim. It used
+    // to refuse (`onMoveBegin: false`) on [layerKindIsReadOnlyInCut]'s
+    // reasoning, but that law is about the CUT timeline's projection; THIS
+    // rail is the global axis the spans really live on — their one authoring
+    // surface, where the edge grips already edit. The row list handed to the
+    // move resolver holds only this row, which is the whole kind guard: a
+    // transition span has no sibling row to land on, so the drag slides
+    // frames and never changes rows (the SE rows' own clamp construction).
     final select = this.select;
     if (select != null && _frameEndExclusive > 0) {
+      final ownRow = <TimelineDisplayRow>[
+        TimelineDisplayRow.layer(layer, layerIndex: 0),
+      ];
       spans.add(
         TimelineFrameRangeGestureLayer(
           key: ValueKey<String>(
@@ -4406,14 +4444,17 @@ class _StoryboardTransitionRow extends StatelessWidget {
                   ),
                 ),
             onTapClear: (_) => select.onClear(),
-            // The move half REFUSES rather than being absent: the gesture
-            // needs an answer at drag start, and "false" is the read-only
-            // answer — the press falls through to a fresh select instead of
-            // sliding a projection.
-            onMoveBegin: (_, _) => false,
-            onMoveUpdate: (_, _) {},
-            onMoveEnd: () {},
-            onMoveCancel: () {},
+            onMoveBegin: (_, _) => select.move?.onBegin(layer.id) ?? false,
+            onMoveUpdate: (frameDelta, rowDelta) => select.move?.onUpdate(
+              frameDelta,
+              resolveBlockMoveTargetLayer(
+                rows: ownRow,
+                sourceLayerId: layer.id,
+                rowDelta: rowDelta,
+              ),
+            ),
+            onMoveEnd: () => select.move?.onEnd(),
+            onMoveCancel: () => select.move?.onCancel(),
           ),
         ),
       );
