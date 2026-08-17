@@ -331,7 +331,7 @@ class LayerBlendModeChip extends StatelessWidget {
       // Centered in the slot so the button lines up under the legend's
       // BLND column header (R28 #2).
       child: Center(
-        child: PanelFlyoutButton(
+        child: RailControlPointer(child: PanelFlyoutButton(
           key: ValueKey<String>(keyValue),
           axis: axis,
           label: blendMode.labelFor(language),
@@ -355,7 +355,7 @@ class LayerBlendModeChip extends StatelessWidget {
                 onSelected: () => onBlendModeSelected(mode),
               ),
           ],
-        ),
+        )),
       ),
     );
   }
@@ -525,7 +525,7 @@ class LayerMuteToggleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
+    return RailControlPointer(child: IconButton(
       key: ValueKey<String>(keyValue),
       // One meaning on all three rails, so the label is the control's, not
       // the host's. It also carries the button's semantics name — the
@@ -540,7 +540,7 @@ class LayerMuteToggleButton extends StatelessWidget {
         color: soloed ? Theme.of(context).colorScheme.primary : null,
       ),
       onPressed: () => onOpenMixer(context),
-    );
+    ));
   }
 }
 
@@ -586,7 +586,7 @@ class FxToggleButton extends StatelessWidget {
     return SizedBox(
       width: size,
       height: 26,
-      child: IconButton(
+      child: RailControlPointer(child: IconButton(
         key: ValueKey<String>(keyValue),
         tooltip: switch (state) {
           LayerFxState.mixed => 'Bypass all $subject FX (some are off)',
@@ -601,7 +601,7 @@ class FxToggleButton extends StatelessWidget {
           mixed: mixed,
         ),
         onPressed: onToggle,
-      ),
+      )),
     );
   }
 }
@@ -712,7 +712,7 @@ class LayerTimesheetToggleButton extends StatelessWidget {
     return SizedBox(
       width: layerTimesheetSlotWidth,
       height: layerTimesheetSlotWidth,
-      child: IconButton(
+      child: RailControlPointer(child: IconButton(
         key: ValueKey<String>('$keyPrefix-layer-timesheet-$layerId'),
         tooltip: onTimesheet ? 'Remove from timesheet' : 'Add to timesheet',
         padding: EdgeInsets.zero,
@@ -728,7 +728,7 @@ class LayerTimesheetToggleButton extends StatelessWidget {
               : colorScheme.onSurface.withValues(alpha: 0.35),
         ),
         onPressed: () => onToggle(layerId),
-      ),
+      )),
     );
   }
 }
@@ -828,7 +828,7 @@ class LayerMarkChip extends StatelessWidget {
     // because its rows name COLOURS, and the shared list had no way to show
     // one — see [PanelFlyoutItem.swatch]. Its own row height was 36, a sixth
     // number in a menu system that was supposed to have one.
-    return PanelFlyoutTrigger(
+    return RailControlPointer(child: PanelFlyoutTrigger(
       key: ValueKey<String>('$keyPrefix-layer-mark-$layerId'),
       tooltip: AppText.strings.tlLayerMark,
       // ZERO, not the trigger's usual 8: the mark sits in a fixed
@@ -849,7 +849,7 @@ class LayerMarkChip extends StatelessWidget {
         button: true,
         child: _MarkSwatch(mark: mark),
       ),
-    );
+    ));
   }
 }
 
@@ -888,6 +888,13 @@ class _MarkSwatch extends StatelessWidget {
 /// on its own), so the claim has to be said here. One wrapper rather than
 /// one per button: a control added to this file tomorrow gets it by
 /// standing in the same place.
+///
+/// 🚨B3 (유저 2026-08-17): 「과거 주문 = 비지블·불투명도 **포함 모든 버튼**
+/// 비액티브 레이어에서 조작 가능 — 비지블·불투명도만 구현돼 있음」. The eye
+/// wore this wrapper and the opacity slider takes the STRONG claim inside
+/// [FieldSlider]; every other rail control was still bare, so its press
+/// also fired the row's PICK and moved the drawing target. EVERY control in
+/// this file — and the row's inline chevrons/toggles — wears the claim now.
 class RailControlPointer extends StatelessWidget {
   const RailControlPointer({super.key, required this.child});
 

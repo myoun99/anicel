@@ -301,7 +301,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 // attached to" with a different noun (R5 #18).
                 nestingArrow: attachArrowPlacement == null,
                 laneToggle: hasLanes && onToggleLanes != null
-                    ? InkWell(
+                    // RailControlPointer on every row control (B3): the
+                    // twirl acts on ITS row without moving the drawing
+                    // target — the eye's law, worn by the whole rail now.
+                    ? RailControlPointer(child: InkWell(
                         key: ValueKey<String>(
                           'timeline-lane-toggle-${layer.id}',
                         ),
@@ -319,7 +322,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
                             size: 16,
                           ),
                         ),
-                      )
+                      ))
                     : null,
                 // Timesheet + mark chips lead the label. Attach rows (W5)
                 // hide the sheet toggle — they are display accessories of
@@ -399,7 +402,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
                         // when the group exists — same chevron pair as the
                         // lane twirl.
                         if (hasGroupFold && onToggleGroupFold != null)
-                          InkWell(
+                          RailControlPointer(child: InkWell(
                             key: ValueKey<String>(
                               layerKindGroupsLayers(layer.kind)
                                   ? 'timeline-folder-twirl-${layer.id}'
@@ -417,7 +420,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
                                 size: 16,
                               ),
                             ),
-                          ),
+                          )),
                       ],
                     ),
                   ),
@@ -433,7 +436,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
                         layer.kind == LayerKind.animation
                     ? SizedBox(
                         height: 26,
-                        child: IconButton(
+                        child: RailControlPointer(child: IconButton(
                           key: ValueKey<String>(
                             'timeline-layer-fill-reference-${layer.id}',
                           ),
@@ -454,7 +457,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
                           ),
                           onPressed: () =>
                               onToggleLayerFillReference!(layer.id),
-                        ),
+                        )),
                       )
                     : null,
                 // Attach rows and their 공정 organizer folder hide the fx
@@ -479,7 +482,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
                         layerKindAcceptsBrushInput(layer.kind)
                     ? SizedBox(
                         height: 26,
-                        child: IconButton(
+                        child: RailControlPointer(child: IconButton(
                           key: ValueKey<String>(
                             'timeline-layer-onion-${layer.id}',
                           ),
@@ -499,7 +502,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
                                 : colorScheme.outline.withValues(alpha: 0.45),
                           ),
                           onPressed: () => onToggleLayerOnionSkin!(layer.id),
-                        ),
+                        )),
                       )
                     : null,
                 visibility: LayerVisibilityToggleButton(
