@@ -41,6 +41,16 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 /// a one-pixel 290px strip between the routes while the integer-pan run
 /// read zero — the render translation is snapped to whole device pixels
 /// now ([renderSnappedViewport]), so both runs must read zero.
+///
+/// 📌Where this probe's verdict landed (the final law): every phase above
+/// read ZERO, which exonerated OUR compose state machine and left the
+/// ENGINE raster cache's integral-translation snap as the only suspect —
+/// device-confirmed by the #1100 A/B. The shipping answer is
+/// `willChange: true` on the artwork pictures (refuse the cache —
+/// `bypass_raster_cache_wiring_test.dart`, restored 2026-08-17 after the
+/// #1106 wrapper-only attempt was device-refuted) composed with
+/// `IntegralLayerOffset` for the settled-state layer offset
+/// (`integral_layer_offset_test.dart`, one-frame gap quantified there).
 void main() {
   const canvasSize = CanvasSize(width: 512, height: 512);
   const tileSize = 256;

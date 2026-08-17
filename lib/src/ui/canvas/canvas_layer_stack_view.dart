@@ -680,23 +680,46 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     );
     _bake.keepFor(compositeKey);
     return IgnorePointer(
-      // ★No willChange hint — the engine raster cache is ON again. Skia's
-      // cache snaps a stable picture's LAYER to INTEGRAL device
-      // translation and renders it fractionally while it repaints, so
-      // every engage/disengage moment (pen-down, pen-up, layer switch, a
-      // tool button rebuilding this widget) hopped axis-aligned edges by
-      // 1px. Snapping OUR transform (#1101) could not close it — the
-      // cache snaps the picture LAYER's device offset, which panel layout
-      // above this widget owns and no in-picture transform can see — and
-      // `willChange: true` (#1103) only refused the cache. The law now
-      // lives where the offset does: `IntegralLayerOffset` (above the
-      // canvas content boundary in `brush_canvas_panel.dart`) holds the
-      // layer's device offset integral, so the snapped replay and the
-      // live render are the same pixels and the cache is free to help.
-      // #1101's in-picture pan snap stays untouched — it owns pan jitter,
-      // which is recorded INSIDE the picture where no layer offset
-      // reaches.
+      // ★★FINAL LAW — `willChange: true`: this picture refuses the desktop
+      // (Skia) engine raster cache, PERMANENTLY. Full flip-flop history,
+      // kept because each leg was device-verified and the losing legs keep
+      // getting re-proposed:
+      //
+      //  · #1100 A/B — the 1px axis-aligned edge hop at pen-down / pen-up /
+      //    layer switch / tool buttons was device-confirmed to be Skia's
+      //    picture raster cache: it snaps a STABLE picture's layer to
+      //    integral device translation and replays the cached raster there,
+      //    while live repaints render at the fractional offset panel layout
+      //    produced. Every engage/disengage moment flips between the two.
+      //  · #1101 — in-picture pan snap. Fixed PAN jitter (our own
+      //    fractional-phase blit, recorded inside the picture) and stays;
+      //    could NOT fix the transition hop, because the cache snaps the
+      //    picture LAYER's device offset, which panel layout owns and no
+      //    in-picture transform can see.
+      //  · #1103 — `willChange: true` here. Device-verified: ALL transition
+      //    hops gone.
+      //  · #1106 — replaced the hint with `IntegralLayerOffset` (above the
+      //    canvas content boundary in `brush_canvas_panel.dart`) and turned
+      //    the cache back on. Device 2026-08-17: the hops CAME BACK
+      //    (active-layer switch, tool change, wheel-click pan start — at
+      //    zoom >= 100% only, the nearest-filter half of the display law).
+      //    The wrapper's measurement is a post-frame chain, so the frame OF
+      //    an ancestor layout change still paints with the PREVIOUS
+      //    compensation — the exact frame those chrome actions produce —
+      //    and on that frame the boundary sits fractional while this
+      //    picture is stable-cached: the snap is live again
+      //    (`integral_layer_offset_test.dart` quantifies the gap).
+      //
+      // ⇒ Proven-on-device beats theoretically-clean: the hint returns and
+      // is the LAW; `IntegralLayerOffset` STAYS (they compose — the wrapper
+      // keeps the boundary integral for every OTHER picture under it that
+      // the engine may still cache, and holds the settled-state phase).
+      // Cost of the hint is ~0: an idle canvas schedules no frames, and a
+      // neighboring repaint replays a few buffer blits, not a re-record.
+      // ⛔Do not retire this hint again without a device-verified
+      // replacement for the layout-change frame.
       child: CustomPaint(
+        willChange: true,
         painter: _LayerStackPainter(
           nodes: nodes,
           activeSurfacePainter: widget.activeSurfacePainter,
