@@ -16,7 +16,10 @@ class UpdateLayerAudioClipsCommand implements Command {
   });
 
   final ProjectRepository repository;
-  final CutId cutId;
+
+  /// Bookkeeping only — the write is layer-addressed (anywhere lookup);
+  /// null when the edit lands from a gap (no active cut, B6).
+  final CutId? cutId;
   final LayerId layerId;
   final List<AudioClip> audioClips;
 

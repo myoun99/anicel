@@ -811,6 +811,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   onLayerOpacityChanged: _session.previewLayerOpacity,
                   onLayerOpacityChangeEnd: _session.commitLayerOpacity,
                   onLayerMarkSelected: _session.setLayerMark,
+                  // B5③ (ordered twice): the timeline rows' sheet toggle on
+                  // this rail too — the same session verb.
+                  onToggleLayerTimesheet: _session.toggleLayerTimesheet,
                   layerFxStateOf: _session.layerFxState,
                   onToggleLayerFx: _session.toggleLayerFx,
                   // The timeline's rail legend on this panel too (UI-R5): the
@@ -951,6 +954,18 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onCancel: _session.cancelTransitionEdgeDrag,
                   ),
                   onEditTransitionSpan: _editTransitionSpan,
+                  // B6: the SE blocks' same-cell double tap opens the SAME
+                  // instance dialog the timeline's SE cells open, addressed
+                  // on the global axis (this rail's standing row never
+                  // moves the drawing target).
+                  onEditSeEntry: (layerId, globalFrame) => unawaited(
+                    editSeEntryInstance(
+                      context,
+                      _session,
+                      layerId: layerId,
+                      globalFrame: globalFrame,
+                    ),
+                  ),
                 ),
                 ),
               ),

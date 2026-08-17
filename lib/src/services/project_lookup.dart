@@ -75,16 +75,16 @@ CutId? cutIdOfLayer(Project project, LayerId layerId) {
 /// updateLayerAnywhere seam). Layer ids are globally unique, so the flag
 /// commands (mark/timesheet/fill-reference) resolve through this instead of
 /// the cut-scoped [requireLayer], which track SE rows are not in.
-Layer requireLayerAnywhere(Project project, LayerId layerId) {
+/// [requireLayerAnywhere] that answers null instead of throwing — for the
+/// read paths (the storyboard's row-addressed editors) where a stale id is
+/// a no-op, not a crash.
+Layer? layerAnywhereOrNull(Project project, LayerId layerId) {
   for (final track in project.tracks) {
     for (final layer in track.seLayers) {
       if (layer.id == layerId) {
         return layer;
       }
     }
-    // The TRANSITION row is track-owned too, and it reaches a cut's row
-    // list as a display clone — so an id arriving here from the rows the
-    // user can see may well be this one.
     if (track.transitionLayer.id == layerId) {
       return track.transitionLayer;
     }
@@ -96,8 +96,18 @@ Layer requireLayerAnywhere(Project project, LayerId layerId) {
       }
     }
   }
+  return null;
+}
 
-  throw StateError('Layer not found: $layerId');
+Layer requireLayerAnywhere(Project project, LayerId layerId) {
+  // The TRANSITION row is track-owned too, and it reaches a cut's row
+  // list as a display clone — so an id arriving here from the rows the
+  // user can see may well be that one; [layerAnywhereOrNull] walks them all.
+  final layer = layerAnywhereOrNull(project, layerId);
+  if (layer == null) {
+    throw StateError('Layer not found: $layerId');
+  }
+  return layer;
 }
 
 /// Every path in [project] the audio conform can serve: the SE clips, which

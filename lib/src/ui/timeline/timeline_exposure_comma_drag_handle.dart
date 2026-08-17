@@ -56,13 +56,19 @@ double blockEdgeGripHitExtent(double frameCellExtent, {double? blockExtent}) {
 /// at with a finger on a zoomed-out row.
 const double _minimumHitExtent = 6;
 
-/// Where a block-edge grip sits on a SPARSE row, as a frame-span placement:
-/// a third of the edge cell capped at [TimelineBlockEdgeGrip.hitExtent].
+/// Where a block-edge grip sits on a SPARSE row, as a frame-span placement
+/// that resolves to [blockEdgeGripHitExtent]'s EXACT width — a third of the
+/// edge cell, floored at min([_minimumHitExtent], a third of the block),
+/// capped at [TimelineBlockEdgeGrip.hitExtent].
 ///
-/// Still measured on the CELL, unlike [blockEdgeGripHitExtent]: the rows
-/// that use this form (instruction spans, the storyboard's SE strips) draw
-/// crossing marks and run tags in the same cells, and widening the grips
-/// there covers them.
+/// ⛔This form used to skip the block floor on purpose ("the sparse rows
+/// draw crossing marks in the same cells") — and that exemption is what the
+/// user reported as B5②/B6 (2026-08-17): at the storyboard's 8px-a-frame
+/// zoom a third of a cell is under three pixels, so the visible grip bar
+/// sat OUTSIDE its own hit strip and the edges read as answering "at the
+/// block's tip, not at the edge". One law now; the dense rows' chrome and
+/// this placement resolve the same zone (`block_edge_grip_placement_parity`
+/// pins them together).
 TimelineFrameSpanPlacement timelineBlockEdgeGripPlacement({
   required TimelineBlockEdge edge,
   required int startIndex,
@@ -71,6 +77,8 @@ TimelineFrameSpanPlacement timelineBlockEdgeGripPlacement({
   startIndex: edge == TimelineBlockEdge.start ? startIndex : endIndexExclusive,
   mainExtentCells: 1 / 3,
   maxMainExtent: TimelineBlockEdgeGrip.hitExtent,
+  minMainExtent: _minimumHitExtent,
+  minMainExtentCells: (endIndexExclusive - startIndex) / 3,
   anchorAtTrailingEdge: edge == TimelineBlockEdge.end,
 );
 

@@ -908,6 +908,14 @@ Widget timelineRowCellsPaintArea({
     onSelectLayer(layer.id);
   }
 
+  // The frame-block activation law's cell resolver: a position is a cell
+  // only inside the visible window. Both halves of the shared double-tap
+  // law read THIS one function (R26 #37).
+  int? cellAt(Offset localPosition) {
+    final frameIndex = painter.frameIndexAt(localPosition);
+    return inWindow(frameIndex) ? frameIndex : null;
+  }
+
   // The pick rides the raw pointer, never the arena — see the shared
   // [InstantTapRegion], which R10 lifted out of the two copies the
   // timeline had written of it (this one and TimelineFrameCell's). ㉟ made
@@ -918,12 +926,10 @@ Widget timelineRowCellsPaintArea({
     pressSeeksFor: AppInput.timelineCellPressSeeks,
     // R26 #37: remember WHICH cell this press hit, whatever the device —
     // the double-tap recognizer only reports the second tap's position.
-    onPressDown: (localPosition) {
-      final frameIndex = painter.frameIndexAt(localPosition);
-      if (inWindow(frameIndex)) {
-        TimelineCellDoubleTapGate.recordTapDown(layer.id, frameIndex);
-      }
-    },
+    onPressDown: timelineCellDoubleTapRecord(
+      layerId: layer.id,
+      frameAt: cellAt,
+    ),
     onTap: (localPosition) {
       final frameIndex = painter.frameIndexAt(localPosition);
       if (!inWindow(frameIndex)) {
@@ -943,22 +949,20 @@ Widget timelineRowCellsPaintArea({
     child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {},
+      // R26 #37: two taps on DIFFERENT cells of the same block are two
+      // seeks, not a rename — the recognizer's 100px slop made them one
+      // double tap. The gate ride is the SHARED builder now, so the
+      // storyboard's strips and this row cannot answer differently again.
       onDoubleTapDown: onActivateCell == null
           ? null
-          : (details) {
-              final frameIndex = painter.frameIndexAt(details.localPosition);
-              // R26 #37: two taps on DIFFERENT cells of the same block are
-              // two seeks, not a rename — the recognizer's 100px slop made
-              // them one double tap.
-              if (inWindow(frameIndex) &&
-                  TimelineCellDoubleTapGate.acceptsActivation(
-                    layer.id,
-                    frameIndex,
-                  )) {
+          : timelineCellDoubleTapActivation(
+              layerId: layer.id,
+              frameAt: cellAt,
+              onActivate: (frameIndex) {
                 select(frameIndex);
                 onActivateCell(layer.id, frameIndex);
-              }
-            },
+              },
+            ),
       onDoubleTap: onActivateCell == null ? null : () {},
       child: RepaintBoundary(
         // The main-axis size arrives from the row's frame-axis box, which

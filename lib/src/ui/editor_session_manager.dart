@@ -26,7 +26,7 @@ import '../services/import/raster_cel_import.dart';
 import '../services/import/tvp_json_import_planner.dart';
 import '../services/pdf/pdf_render_service.dart';
 import '../services/project_lookup.dart'
-    show cutIdOfLayer, projectAudioSourcePaths;
+    show cutIdOfLayer, projectAudioSourcePaths, requireLayerAnywhere;
 import '../models/app_language.dart';
 // The six settings stores are injected THROUGH this class into
 // [EditorAppSettings], so their types stay in this file's constructor
@@ -5623,11 +5623,18 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Flips whether [layerId] is recorded on the timesheet output. One undo
   /// step; no controller rebuild — the flag never affects rendering.
+  ///
+  /// ANYWHERE lookup and a nullable cut (B5③ 2026-08-17): the storyboard
+  /// rail reaches this for TRACK fixtures — S rows and the transition row —
+  /// whose flag is the layer's own and must flip from a gap too. The cut id
+  /// is command bookkeeping the write never reads.
   void toggleLayerTimesheet(LayerId layerId) {
-    final layer = layers.firstWhere((layer) => layer.id == layerId);
-    // A resolvable row implies an active cut (gap state has no rows).
+    final layer = requireLayerAnywhere(
+      _repository.requireProject(),
+      layerId,
+    );
     _cutCommandCoordinator.setLayerTimesheet(
-      cutId: requireActiveCut.id,
+      cutId: activeCutOrNull?.id,
       layerId: layerId,
       onTimesheet: !layer.onTimesheet,
     );
@@ -14391,6 +14398,14 @@ class EditorSessionManager extends ChangeNotifier {
     if (layer == null) {
       return;
     }
+    unlinkAudioClipsFromLayer(layer.id, clipIndexes);
+  }
+
+  /// The same unlink addressed by ROW (B6 2026-08-17): the storyboard's SE
+  /// instance editor takes sounds off a TRACK fixture whose row is never
+  /// the drawing target. One removal body with the active form above.
+  void unlinkAudioClipsFromLayer(LayerId layerId, Iterable<int> clipIndexes) {
+    final layer = requireLayerAnywhere(_repository.requireProject(), layerId);
     final ordered = clipIndexes.toList()..sort((a, b) => b.compareTo(a));
     final next = [...layer.audioClips];
     for (final index in ordered) {
@@ -14402,8 +14417,8 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     _cutCommandCoordinator.updateLayerAudioClips(
-      cutId: requireActiveCut.id,
-      layerId: layer.id,
+      cutId: activeCutOrNull?.id,
+      layerId: layerId,
       audioClips: next,
       description: 'Unlink audio',
     );
@@ -14491,14 +14506,31 @@ class EditorSessionManager extends ChangeNotifier {
     final frame = selectedFrame;
     if (layer == null ||
         frame == null ||
-        layer.kind != LayerKind.se ||
         !canRenameFrameAtCurrentFrame) {
       return;
     }
+    updateSeEntryForLayer(layer.id, frame.id, dialogue: dialogue, seName: seName);
+  }
 
+  /// The same edit addressed by ROW + ENTRY instead of by standing (B6
+  /// 2026-08-17): the storyboard's SE editor commits here, because that
+  /// rail's standing row never moves the drawing target (유저 2026-07-27)
+  /// and so [activeLayer]/[selectedFrame] cannot carry its answer. The
+  /// timeline's [updateSelectedSeEntry] funnels into this too — one commit
+  /// body, two addressings.
+  void updateSeEntryForLayer(
+    LayerId layerId,
+    FrameId frameId, {
+    required String dialogue,
+    String? seName,
+  }) {
+    final layer = requireLayerAnywhere(_repository.requireProject(), layerId);
+    if (layer.kind != LayerKind.se) {
+      return;
+    }
     _timelineController.renameFrameForLayer(
-      layerId: layer.id,
-      frameId: frame.id,
+      layerId: layerId,
+      frameId: frameId,
       name: dialogue,
       allowDuplicateName: true,
       seName: seName,
@@ -14959,11 +14991,23 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// One track's transition spans on its own global axis. Falls back to no
   /// spans for a track id the project no longer holds.
+  ///
+  /// A hidden transition row contributes NOTHING (B5③ 2026-08-17: 「비지블
+  /// = 해당 합성 반영/미반영」) — the composite plan's own visibility law,
+  /// said of the one row whose contribution is fades instead of pixels.
+  /// The row still draws its spans; only playback stops fading. Asked as
+  /// `rowVisible` (the hidden-folder law's one door, ratcheted by
+  /// `hidden_folder_is_hidden_test`); the fixture lives in no folder, so
+  /// the singleton stack it stands in is its own.
   List<TransitionSpan> transitionSpansOfTrack(TrackId trackId) {
     for (final track in _repository.requireProject().tracks) {
       if (track.id == trackId) {
+        final transition = track.transitionLayer;
+        if (!<Layer>[transition].rowVisible(transition)) {
+          return const [];
+        }
         return [
-          for (final entry in track.transitionLayer.instructions.entries)
+          for (final entry in transition.instructions.entries)
             _transitionSpanOf(entry),
         ];
       }

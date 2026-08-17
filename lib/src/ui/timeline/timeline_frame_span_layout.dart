@@ -16,6 +16,8 @@ class TimelineFrameSpanPlacement {
     this.mainExtentCells,
     this.mainExtent,
     this.maxMainExtent,
+    this.minMainExtent,
+    this.minMainExtentCells,
     this.mainInsetCells = 0,
     this.mainInset = 0,
     this.anchorAtTrailingEdge = false,
@@ -46,6 +48,17 @@ class TimelineFrameSpanPlacement {
   /// Pixel cap on a [mainExtentCells] size.
   final double? maxMainExtent;
 
+  /// A FLOOR under the resolved extent, in pixels — how an edge grip keeps
+  /// a usable hit width when the zoom shrinks a cell below it. Applied
+  /// before [maxMainExtent], exactly like [blockEdgeGripHitExtent]'s floor,
+  /// whose law this pair exists to state in placement terms.
+  final double? minMainExtent;
+
+  /// A cells-measured CAP on that floor: the floor may not outgrow this
+  /// many cells — a one-frame block's grip must leave the block's body
+  /// tappable. Null leaves [minMainExtent] uncapped.
+  final double? minMainExtentCells;
+
   /// Extra offset from the anchor edge in CELLS — how a glyph centers on its
   /// cell (0.5) at any zoom.
   final double mainInsetCells;
@@ -69,6 +82,8 @@ class TimelineFrameSpanPlacement {
       other.mainExtentCells == mainExtentCells &&
       other.mainExtent == mainExtent &&
       other.maxMainExtent == maxMainExtent &&
+      other.minMainExtent == minMainExtent &&
+      other.minMainExtentCells == minMainExtentCells &&
       other.mainInsetCells == mainInsetCells &&
       other.mainInset == mainInset &&
       other.anchorAtTrailingEdge == anchorAtTrailingEdge &&
@@ -82,6 +97,8 @@ class TimelineFrameSpanPlacement {
     mainExtentCells,
     mainExtent,
     maxMainExtent,
+    minMainExtent,
+    minMainExtentCells,
     mainInsetCells,
     mainInset,
     anchorAtTrailingEdge,
@@ -308,6 +325,19 @@ class RenderTimelineFrameSpanLayout extends RenderBox
         : cells != null
         ? cells * cellExtent
         : placement.mainExtent!;
+    // The floor first, the cap second — [blockEdgeGripHitExtent]'s order,
+    // so a grip stated as a placement resolves to that law's exact width.
+    final minPx = placement.minMainExtent;
+    if (minPx != null) {
+      var floor = minPx;
+      final minCells = placement.minMainExtentCells;
+      if (minCells != null && minCells * cellExtent < floor) {
+        floor = minCells * cellExtent;
+      }
+      if (mainExtent < floor) {
+        mainExtent = floor;
+      }
+    }
     final cap = placement.maxMainExtent;
     if (cap != null && mainExtent > cap) {
       mainExtent = cap;

@@ -1080,7 +1080,10 @@ class CutCommandCoordinator {
   }
 
   void setLayerTimesheet({
-    required CutId cutId,
+    // Nullable (B5③): the storyboard rail flips TRACK fixtures' flags from
+    // a gap, where no cut is active — the write is layer-addressed and
+    // never reads the cut.
+    required CutId? cutId,
     required LayerId layerId,
     required bool onTimesheet,
   }) {
@@ -1189,7 +1192,10 @@ class CutCommandCoordinator {
   /// Replaces an SE layer's audio clip list; one undo step, no-op when
   /// unchanged.
   void updateLayerAudioClips({
-    required CutId cutId,
+    // Nullable (B6): the storyboard's SE instance editor unlinks sounds
+    // from a TRACK fixture, which may happen with the playhead parked in a
+    // gap — the write is layer-addressed and never reads the cut.
+    required CutId? cutId,
     required LayerId layerId,
     required List<AudioClip> audioClips,
     String description = 'Edit audio clips',
