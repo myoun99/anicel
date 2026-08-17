@@ -17,7 +17,10 @@ import '../../models/timeline_row_address.dart';
 import 'timeline_row_cross_offset.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import 'timeline_row_span_resolver.dart'
-    show resolveSelectionSpanHead, resolveSelectionSpanRows;
+    show
+        resolveLaneSpanEscalation,
+        resolveSelectionSpanHead,
+        resolveSelectionSpanRows;
 import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'layer_drop_policy.dart'
     show effectHeaderRowsOf, effectStepsBetween, slotForSteps;
@@ -127,6 +130,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
     this.lanesForLayer,
+    this.unionLaneForLayer,
     this.laneEdit,
     this.onToggleLaneGroup,
     this.onToggleLaneGroupEnabled,
@@ -367,6 +371,10 @@ class LayerTimelineGrid extends StatefulWidget {
   final Set<LayerId> expandedLaneLayerIds;
   final ValueChanged<LayerId>? onToggleLayerLanes;
   final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
+
+  /// The union-summary provider (the CAMERA row's key markers, B4) — see
+  /// [TimelineFrameRowsScrollBody.unionLaneForLayer].
+  final PropertyLaneRow? Function(Layer layer)? unionLaneForLayer;
 
   /// Lane key editing hooks (navigator toggle, marker drags, hold/delete).
   final PropertyLaneEditCallbacks? laneEdit;
@@ -1574,6 +1582,52 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
             onMoveCancel: _rangeMoveResolver.cancel,
           );
 
+    // 🚨B4-④: a lane-anchored select drag that leaves its own lane group
+    // JOINS the cells law above — same display-row slice, same hooks, same
+    // arguments a cells anchor would report (유저: 「선택범위는 어떤
+    // 레이어를 건너든 자유롭게, 규칙 두지 말 것」). Inside the group the
+    // host's lane-span path keeps the drag, unchanged.
+    final hostLaneRange = widget.laneRange;
+    final laneRange = hostLaneRange == null
+        ? null
+        : TimelineLaneRangeCallbacks(
+            selection: hostLaneRange.selection,
+            onSelectUpdate:
+                (layerId, laneId, anchorIndex, headIndex, headRowDelta) {
+                  final escalation = rangeHooks == null
+                      ? null
+                      : resolveLaneSpanEscalation(
+                          rows: rows,
+                          layerId: layerId,
+                          laneId: laneId,
+                          rowDelta: headRowDelta,
+                        );
+                  if (escalation == null) {
+                    hostLaneRange.onSelectUpdate(
+                      layerId,
+                      laneId,
+                      anchorIndex,
+                      headIndex,
+                      headRowDelta,
+                    );
+                    return;
+                  }
+                  rangeHooks!.onSelectUpdate(
+                    layerId,
+                    anchorIndex,
+                    headIndex,
+                    headLayerId: escalation.headLayerId,
+                    headLaneId: escalation.headLaneId,
+                    spanRows: escalation.spanRows,
+                  );
+                },
+            onTapAt: hostLaneRange.onTapAt,
+            onMoveBegin: hostLaneRange.onMoveBegin,
+            onMoveUpdate: hostLaneRange.onMoveUpdate,
+            onMoveEnd: hostLaneRange.onMoveEnd,
+            onMoveCancel: hostLaneRange.onMoveCancel,
+          );
+
     // PEN-9: a stylus approach stops a coasting fling — mid-glide the
     // viewports ignore-pointer their children, so without the stop a pen
     // landing right after a touch fling scrolls instead of selecting.
@@ -2282,10 +2336,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                     .commaDrag,
                                                                 rangeGesture:
                                                                     rangeGesture,
-                                                                laneRange: widget
-                                                                    .laneRange,
+                                                                laneRange:
+                                                                    laneRange,
                                                                 lanesForLayer:
                                                                     _lanesFor,
+                                                                unionLaneForLayer:
+                                                                    widget
+                                                                        .unionLaneForLayer,
                                                                 runEdit: widget
                                                                     .runEdit,
                                                                 laneEdit: widget

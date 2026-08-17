@@ -1,6 +1,5 @@
 import '../../models/attached_layer_resolve.dart';
-import '../../models/key_range_move.dart'
-    show transformKeyFrameUnion, transformKeyNameUnion;
+import '../../models/cut_camera.dart' show CutCamera;
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/se_name_tag.dart' show SeNameTag;
@@ -14,9 +13,9 @@ import 'se_name_tag_lane_policy.dart'
     show seNameTagGroupLaneId, seNameTagPropertyLanes;
 import 'transform_lane_policy.dart'
     show
-        transformGroupHeader,
         transformGroupHeaderLane,
-        transformPropertyLanes;
+        transformPropertyLanes,
+        transformUnionHeader;
 
 /// THE property lanes a layer contributes, in display order.
 ///
@@ -66,14 +65,13 @@ List<PropertyLaneRow> timelineLanesForLayer({
       laneGroupKey(layer.id, transformGroupHeaderLane.laneId),
     );
     return [
-      // The header carries the member lanes' KEY UNION (UI-R20 #13, the
-      // camera row's summary pattern) — one glance shows where the layer's
-      // transform keys sit even while the group is collapsed.
-      transformGroupHeader(
+      // The header carries the member lanes' KEY UNION (UI-R20 #13) —
+      // one glance shows where the layer's transform keys sit even while
+      // the group is collapsed. [transformUnionHeader] is THE union
+      // derivation, shared with the camera row's summary markers (B4).
+      transformUnionHeader(
+        track: laneTrackOf(layer),
         expanded: expanded,
-        keyedFrames: transformKeyFrameUnion(laneTrackOf(layer)),
-        // ㉚: and what those keys are CALLED, where the members agree.
-        keyNames: transformKeyNameUnion(laneTrackOf(layer)),
         // R8: the group's own switch — on every row that owns a transform.
         // The camera's lives on the cut's track, so its header shows none
         // and the row-level master covers it.
@@ -128,10 +126,19 @@ List<PropertyLaneRow> timelineLanesForLayer({
       // the member keys' union — the entire job a Transform header does for
       // every other row — so a header on top of it said the same noun twice
       // and cost a twirl to reach lanes the row was already summarising.
+      //
+      // 🚨B4-② (2026-08-17): through [laneTrackOf], NEVER `cut.camera.track`
+      // directly. That is the preview-aware channel every other row gets
+      // for free from its previewed Layer — reading the cut here is exactly
+      // why camera member lanes sat still while every other transform lane
+      // followed its drag live.
+      final cameraTrack = laneTrackOf(layer);
       return transformPropertyLanes(
-        cut.camera.track,
+        cameraTrack,
         poseAt: (frameIndex) => resolveCameraPoseAt(
-          camera: cut.camera,
+          // The SAME track the lanes are built from, so the value column
+          // follows an in-flight key move like the diamonds do.
+          camera: CutCamera.fromTrack(cameraTrack),
           canvasSize: cut.canvasSize,
           frameIndex: frameIndex,
         ),
@@ -184,4 +191,36 @@ List<PropertyLaneRow> timelineLanesForLayer({
         ...collapsibleTransformGroup(layerTransformLanes()),
       ];
   }
+}
+
+/// The CAMERA row's union summary lane — the row band's key markers.
+///
+/// ㉙ made the camera row its own transform group header, and B4
+/// (2026-08-17) made that literal: the summary is a [transformUnionHeader]
+/// lane, THE same constructor the fx transform header builds its union
+/// from, drawn by the same marker widgets ([TimelineLaneKeyMarker]) at the
+/// same union size. It read a private ◆/■ text-glyph table before, which
+/// is how the mark could turn into a ○ mid-drag and sit at a subtly
+/// different size than every other union mark.
+///
+/// Built from [EditorSessionManager.activeCutCameraTrack] — the
+/// preview-aware channel — so an in-flight key move (lane move or block
+/// ride) moves these markers live, exactly as a previewed Layer moves a
+/// transform header's.
+///
+/// Null for every non-camera row: their union already rides their
+/// transform group header lane.
+PropertyLaneRow? timelineCameraUnionLane({
+  required Layer layer,
+  required EditorSessionManager session,
+}) {
+  if (layer.kind != LayerKind.camera) {
+    return null;
+  }
+  final track =
+      session.activeCutCameraTrack ?? session.activeCutOrNull?.camera.track;
+  if (track == null) {
+    return null;
+  }
+  return transformUnionHeader(track: track, expanded: false);
 }

@@ -4061,6 +4061,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
             frameNameForLayer: session.frameNameForLayer,
             celContent: _collapsedCelContent,
             projectFrameRate: session.projectFrameRate,
+            // The CAMERA row's union summary (B4) — the same shared
+            // markers the timeline row mounts; ⑩ root C says this overlay
+            // mounts the real row, columns and all.
+            unionLane: timelineCameraUnionLane(layer: layer, session: session),
             // `commaDrag`/`rangeGesture` stay null — display-only, same
             // reason.
             onSelectLayer: (_) {},

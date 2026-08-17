@@ -309,10 +309,13 @@ String _markerForCell({
           ? ''
           : 'X',
     // SE entries and instruction events draw their writing through the
-    // row-level span overlays; the cells stay glyph-free paper.
+    // row-level span overlays; the cells stay glyph-free paper. Camera key
+    // summaries ride the shared lane key markers since B4
+    // ([timelineUnionKeyMarkerSpans]) — never a text glyph, never the ○.
     TimelineCellExposureState.drawingStart =>
       layerKindUsesSeSheetCells(layer.kind) ||
-              layerKindCarriesInstructions(layer.kind)
+              layerKindCarriesInstructions(layer.kind) ||
+              layer.kind == LayerKind.camera
           ? ''
           : frameName == null || frameName.isEmpty
           ? '○'

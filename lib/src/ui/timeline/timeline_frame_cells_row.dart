@@ -19,6 +19,8 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_frame_span_layout.dart';
+import 'property_lane_model.dart' show PropertyLaneRow;
+import 'timeline_lane_rows.dart' show timelineUnionKeyMarkerSpans;
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_row_cells_painter.dart';
 import 'timeline_row_edit_chrome.dart';
@@ -66,7 +68,15 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.viewportMainExtent = 0,
     this.substrateGeneration = '',
     this.chromeless = false,
+    this.unionLane,
   });
+
+  /// The row's UNION key summary (the CAMERA row, B4 2026-08-17): a
+  /// [transformUnionHeader] lane whose keys this row draws with the SHARED
+  /// lane key markers — the same drawing, metric law and union data as the
+  /// fx transform header's band. Null on every row whose union lives on a
+  /// real lane row (or that has none).
+  final PropertyLaneRow? unionLane;
 
   /// #29: the (project, cut) world this row's resolvers answer from —
   /// see [TimelineRowCellsPainter.substrateGeneration]. Rides the same
@@ -321,6 +331,17 @@ class TimelineFrameCellsRow extends StatelessWidget {
           axis: axis,
           defById: instructionDefById!,
           keyPrefix: keyPrefix,
+        ),
+      // The CAMERA row's union key markers (B4): THE shared lane key
+      // marker drawing at THE union size, placed by the span layout so the
+      // row's memo survives zoom steps. Display-only — the range gesture
+      // layer above owns every pointer, exactly like the lane bands'.
+      if (unionLane != null)
+        ...timelineUnionKeyMarkerSpans(
+          keyPrefix: keyPrefix,
+          layer: layer,
+          lane: unionLane!,
+          crossExtent: crossAxisExtent,
         ),
     ];
     final spanGrips = <Widget>[

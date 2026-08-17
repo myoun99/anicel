@@ -40,7 +40,8 @@ import 'layer_drop_policy.dart'
 import 'layer_row_drag.dart';
 import 'timeline_current_row.dart';
 import 'timeline_edge_auto_pan.dart';
-import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
+import 'timeline_row_span_resolver.dart'
+    show resolveBlockMoveTargetLayer, resolveLaneSpanEscalation;
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_ruler_cursor_overlay.dart';
 import 'timeline_run_end_handles.dart';
@@ -143,6 +144,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
     this.lanesForLayer,
+    this.unionLaneForLayer,
     this.laneEdit,
     this.onToggleLaneGroup,
     this.onToggleLaneGroupEnabled,
@@ -351,6 +353,11 @@ class XSheetTimelineGrid extends StatefulWidget {
   final Set<LayerId> expandedLaneLayerIds;
   final ValueChanged<LayerId>? onToggleLayerLanes;
   final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
+
+  /// The union-summary provider (the CAMERA column's key markers, B4) —
+  /// see [TimelineFrameRowsScrollBody.unionLaneForLayer].
+  final PropertyLaneRow? Function(Layer layer)? unionLaneForLayer;
+
   final PropertyLaneEditCallbacks? laneEdit;
 
   /// Group headers: tapping twirls the group's member lanes (AE collapse).
@@ -563,6 +570,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// The per-build gesture bundle (rebuilt in [build], consumed by the
   /// column builder).
   TimelineRangeGestureCallbacks? _rangeGesture;
+
+  /// The per-build LANE gesture bundle (B4-④): the host's callbacks with
+  /// the escalation seam wrapped in — a lane-anchored drag that leaves its
+  /// own group joins the cells law, exactly as on the horizontal grid.
+  TimelineLaneRangeCallbacks? _laneRange;
 
   late final ScrollController _frameScrollController;
   late final ScrollController _layerScrollController;
@@ -1125,7 +1137,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               // The LANE selection domain (UI-R23 #3 part 2) — EVERY row's
               // lanes now, camera included (2026-08-08; see the rail's
               // twin for why it stood down and why the reason was wrong).
-              laneRange: widget.laneRange,
+              // Through the B4-④ escalation wrap, like the horizontal grid.
+              laneRange: _laneRange,
             );
     }
     // PRO-TIMELINE scrolling (UI-R15→R16, transposed): the cells column
@@ -1163,6 +1176,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       rangeGesture: _rangeGesture,
       runEdit: widget.runEdit,
       substrateGeneration: widget.substrateGeneration,
+      // The CAMERA column's union key markers (B4) — the shared lane key
+      // marker code, resolved per rebuild like the lanes are.
+      unionLane: widget.unionLaneForLayer?.call(layer),
     );
   }
 
@@ -1315,6 +1331,55 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                       onMoveUpdate: _rangeMoveResolver.update,
                       onMoveEnd: _rangeMoveResolver.end,
                       onMoveCancel: _rangeMoveResolver.cancel,
+                    );
+              // 🚨B4-④, transposed: the lane-anchored drag joins the cells
+              // law the moment it leaves its own lane group — the same
+              // wrap the horizontal grid applies (one law, both axes).
+              final hostLaneRange = widget.laneRange;
+              _laneRange = hostLaneRange == null
+                  ? null
+                  : TimelineLaneRangeCallbacks(
+                      selection: hostLaneRange.selection,
+                      onSelectUpdate:
+                          (
+                            layerId,
+                            laneId,
+                            anchorIndex,
+                            headIndex,
+                            headRowDelta,
+                          ) {
+                            final escalation = rangeHooks == null
+                                ? null
+                                : resolveLaneSpanEscalation(
+                                    rows: entries,
+                                    layerId: layerId,
+                                    laneId: laneId,
+                                    rowDelta: headRowDelta,
+                                  );
+                            if (escalation == null) {
+                              hostLaneRange.onSelectUpdate(
+                                layerId,
+                                laneId,
+                                anchorIndex,
+                                headIndex,
+                                headRowDelta,
+                              );
+                              return;
+                            }
+                            rangeHooks!.onSelectUpdate(
+                              layerId,
+                              anchorIndex,
+                              headIndex,
+                              headLayerId: escalation.headLayerId,
+                              headLaneId: escalation.headLaneId,
+                              spanRows: escalation.spanRows,
+                            );
+                          },
+                      onTapAt: hostLaneRange.onTapAt,
+                      onMoveBegin: hostLaneRange.onMoveBegin,
+                      onMoveUpdate: hostLaneRange.onMoveUpdate,
+                      onMoveEnd: hostLaneRange.onMoveEnd,
+                      onMoveCancel: hostLaneRange.onMoveCancel,
                     );
               final sectionRuns = timelineSectionRuns(entries);
 

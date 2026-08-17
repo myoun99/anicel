@@ -1090,6 +1090,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               onSetBlendModeForDisplayed: _session.setBlendModeForLayers,
             ),
             lanesForLayer: _lanesForLayer,
+            // The CAMERA row's union summary (B4): the shared
+            // transform-header union lane, re-derived per row rebuild from
+            // the session's preview-aware camera track.
+            unionLaneForLayer: (layer) =>
+                timelineCameraUnionLane(layer: layer, session: _session),
             laneEdit: _laneEdit,
             // A group header's twirl (AE collapse) — Transform or one of the
             // row's effects, told apart by the lane the tap carries.

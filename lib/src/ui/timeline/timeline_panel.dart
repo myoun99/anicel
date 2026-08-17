@@ -108,6 +108,7 @@ class TimelinePanel extends StatefulWidget {
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
     this.lanesForLayer,
+    this.unionLaneForLayer,
     this.laneEdit,
     this.onToggleLaneGroup,
     this.onToggleLaneGroupEnabled,
@@ -397,6 +398,11 @@ class TimelinePanel extends StatefulWidget {
   final Set<LayerId> expandedLaneLayerIds;
   final ValueChanged<LayerId>? onToggleLayerLanes;
   final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
+
+  /// The union-summary provider (the CAMERA row's key markers, B4) — see
+  /// [TimelineFrameRowsScrollBody.unionLaneForLayer].
+  final PropertyLaneRow? Function(Layer layer)? unionLaneForLayer;
+
   final PropertyLaneEditCallbacks? laneEdit;
 
   /// Group headers: tapping twirls the group's member lanes (AE collapse),
@@ -590,6 +596,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     expandedLaneLayerIds: widget.expandedLaneLayerIds,
                     onToggleLayerLanes: widget.onToggleLayerLanes,
                     lanesForLayer: widget.lanesForLayer,
+                    unionLaneForLayer: widget.unionLaneForLayer,
                     laneEdit: widget.laneEdit,
                     onToggleLaneGroup: widget.onToggleLaneGroup,
                     onToggleLaneGroupEnabled: widget.onToggleLaneGroupEnabled,
@@ -676,6 +683,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     expandedLaneLayerIds: widget.expandedLaneLayerIds,
                     onToggleLayerLanes: widget.onToggleLayerLanes,
                     lanesForLayer: widget.lanesForLayer,
+                    unionLaneForLayer: widget.unionLaneForLayer,
                     laneEdit: widget.laneEdit,
                     onToggleLaneGroup: widget.onToggleLaneGroup,
                     onToggleLaneGroupEnabled: widget.onToggleLaneGroupEnabled,

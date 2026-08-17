@@ -30,6 +30,8 @@ import 'timeline_cell_style.dart'
         timelineFittedGlyphFontSize;
 import 'timeline_frame_range_gesture.dart'
     show TimelineLaneRangeCallbacks, TimelineLaneRangeGestureLayer;
+import 'timeline_frame_span_layout.dart'
+    show TimelineFrameSpan, TimelineFrameSpanPlacement;
 import 'timeline_grid_metrics.dart';
 
 /// A selected lane key rings in ACCENT 1 with a thin silhouette stroke
@@ -1007,16 +1009,11 @@ class TimelineLaneFrameRow extends StatelessWidget {
     final crossExtent = metrics.layerRowHeight;
     final visibleExtent =
         (frameEndIndexExclusive - frameStartIndex) * cellExtent;
-    // ㉗ (user, 2026-08-12): 「fx(트랜스폼) 헤더의 유니언 마크를 카메라처럼
-    // 크게. 멤버 유니언들의 합이라는 느낌이 나야 한다」 — a summary mark
-    // stands for several keys at once, so drawing it the size of one of
-    // them said the opposite. Relational rather than a second literal: a
-    // union is HALF AGAIN a member's key, and it can never outgrow the row
-    // it sits in.
-    final memberMarkerSize = (crossExtent * 0.32).clamp(6.0, 11.0).toDouble();
+    // ONE metric law for every marker on this axis — see
+    // [timelineLaneKeyMarkerSize] / [timelineLaneUnionKeyMarkerSize].
     final markerSize = lane.isGroupHeader
-        ? (memberMarkerSize * 1.5).clamp(6.0, crossExtent).toDouble()
-        : memberMarkerSize;
+        ? timelineLaneUnionKeyMarkerSize(crossExtent)
+        : timelineLaneKeyMarkerSize(crossExtent);
     final hitSize = (markerSize + 8).clamp(14.0, crossExtent).toDouble();
     final horizontal = axis == Axis.horizontal;
 
@@ -1063,7 +1060,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
                       hitSize / 2,
             width: hitSize,
             height: hitSize,
-            child: _LaneKeyMarker(
+            child: TimelineLaneKeyMarker(
               key: ValueKey<String>(
                 '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
               ),
@@ -1281,12 +1278,83 @@ class _LaneKeyName extends StatelessWidget {
   }
 }
 
+/// ㉗ (user, 2026-08-12): 「fx(트랜스폼) 헤더의 유니언 마크를 카메라처럼
+/// 크게. 멤버 유니언들의 합이라는 느낌이 나야 한다」 — a summary mark
+/// stands for several keys at once, so drawing it the size of one of
+/// them said the opposite. Relational rather than a second literal: a
+/// union is HALF AGAIN a member's key, and it can never outgrow the row
+/// it sits in.
+///
+/// 🚨B4-③ (2026-08-17): these two functions are THE metric law for every
+/// key marker on the frame axis — member lanes, the fx transform header's
+/// union, and the CAMERA row's union summary. The camera's used to be a
+/// text glyph sized by the cell-fit font rule, which is exactly the
+/// "subtly different size" the device showed. One constant path now; a
+/// size change lands on every mark or on none.
+double timelineLaneKeyMarkerSize(double crossExtent) =>
+    (crossExtent * 0.32).clamp(6.0, 11.0).toDouble();
+
+/// The UNION mark's size — half again a member's key (㉗), capped by the
+/// row.
+double timelineLaneUnionKeyMarkerSize(double crossExtent) =>
+    (timelineLaneKeyMarkerSize(crossExtent) * 1.5)
+        .clamp(6.0, crossExtent)
+        .toDouble();
+
+/// The UNION summary markers of one row, as [TimelineFrameSpan] children
+/// for the row's span layout — the CAMERA row's key marks (B4).
+///
+/// The same drawing ([TimelineLaneKeyMarker]), the same metric law
+/// ([timelineLaneUnionKeyMarkerSize]) and the same union data
+/// ([transformUnionHeader] builds [lane]) as the fx transform header's
+/// band. Only the POSITIONING differs by necessity: a cells row keeps its
+/// memo through zoom steps, so the markers ride the span layout (placed at
+/// LAYOUT time off the live geometry) instead of build-time `Positioned`
+/// math.
+List<Widget> timelineUnionKeyMarkerSpans({
+  required String keyPrefix,
+  required Layer layer,
+  required PropertyLaneRow lane,
+  required double crossExtent,
+}) {
+  final markerSize = timelineLaneUnionKeyMarkerSize(crossExtent);
+  return [
+    for (final frame in lane.keyedFrames.toList()..sort())
+      TimelineFrameSpan(
+        key: ValueKey<String>(
+          '$keyPrefix-lane-key-span-${layer.id}-${lane.laneId}-$frame',
+        ),
+        placement: TimelineFrameSpanPlacement(
+          startIndex: frame,
+          // A marker-sized box centered on its cell at any zoom — the
+          // lane band's own centering, restated in span vocabulary.
+          mainInsetCells: 0.5,
+          mainInset: -markerSize / 2,
+          mainExtent: markerSize,
+          crossInset: (crossExtent - markerSize) / 2,
+          crossExtent: markerSize,
+        ),
+        child: TimelineLaneKeyMarker(
+          key: ValueKey<String>(
+            '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
+          ),
+          hold: lane.holdOutFrames.contains(frame),
+          markerSize: markerSize,
+        ),
+      ),
+  ];
+}
+
 /// [IgnorePointer] is load-bearing, not tidiness: `RenderDecoratedBox`
 /// answers hit tests TRUE anywhere inside its decoration, so a drawn
 /// diamond is a hit target in its own right and the Stack would stop at it
 /// with the band never seeing the pointer.
-class _LaneKeyMarker extends StatelessWidget {
-  const _LaneKeyMarker({
+///
+/// PUBLIC since B4 (2026-08-17): the camera row's union summary mounts this
+/// same drawing — one shape law (linear = diamond, hold = square, the
+/// frame-block white body) for every key mark on the frame axis.
+class TimelineLaneKeyMarker extends StatelessWidget {
+  const TimelineLaneKeyMarker({
     super.key,
     required this.hold,
     required this.markerSize,

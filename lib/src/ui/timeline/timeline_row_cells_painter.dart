@@ -375,10 +375,15 @@ class TimelineRowCellsPainter extends CustomPainter {
             ? ''
             : 'X',
       // SE entries and instruction events draw their writing through the
-      // row-level span overlays; the cells stay glyph-free paper.
+      // row-level span overlays; the cells stay glyph-free paper. Camera
+      // key summaries are span overlays too since B4 — the shared lane key
+      // markers ([timelineUnionKeyMarkerSpans]) — so the text channel says
+      // nothing there, and in particular never the paper-cell ○ that used
+      // to surface mid-drag when the preview outran the committed name.
       TimelineCellExposureState.drawingStart =>
         layerKindUsesSeSheetCells(layer.kind) ||
-                layerKindCarriesInstructions(layer.kind)
+                layerKindCarriesInstructions(layer.kind) ||
+                _cameraSummaryRow
             ? ''
             : frameName == null || frameName.isEmpty
             ? '○'

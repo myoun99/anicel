@@ -11948,10 +11948,13 @@ class EditorSessionManager extends ChangeNotifier {
           // track, not the row's layer), so its preview is a session field
           // the lane provider reads — see [activeCutCameraTrack]. The
           // marker layer is here only to trip the row's preview gate, the
-          // P3b-2 trick.
+          // P3b-2 trick — and it must be a FRESH CLONE per step (the P3b-2
+          // contract): the gate compares identities, so handing it the
+          // repository instance tripped nothing and the camera's rows sat
+          // still for the whole drag (B4-②).
           ? (next) => BlockMoveDragPreview(
               previewLayers: const {},
-              cameraMarkerLayer: _layerById(layer.id),
+              cameraMarkerLayer: _layerById(layer.id)?.copyWith(),
             )
           : (next) => BlockMoveDragPreview(
               previewLayers: {layer.id: layer.copyWith(transformTrack: next)},
@@ -12138,11 +12141,36 @@ class EditorSessionManager extends ChangeNotifier {
   /// for the camera ROW's block move (P3b-2).
   TransformTrack? _cameraLaneTrackPreview;
 
-  /// The active cut's camera track — the in-flight lane-move preview while
-  /// one is running, the committed track otherwise. The lane provider reads
-  /// THIS, so a camera key follows the drag instead of jumping on release.
+  /// [_cameraKeysDragPreview] as a [TransformTrack], memoized by the map's
+  /// identity — the getter below is read per cell during paints, and
+  /// rebuilding a SplayTreeMap track per read would be O(cells·keys).
+  Map<int, CameraPose>? _cameraBlockPreviewTrackSource;
+  TransformTrack? _cameraBlockPreviewTrackMemo;
+  TransformTrack? get _cameraBlockPreviewTrack {
+    final keys = _cameraKeysDragPreview;
+    if (keys == null) {
+      return null;
+    }
+    if (!identical(keys, _cameraBlockPreviewTrackSource)) {
+      _cameraBlockPreviewTrackSource = keys;
+      // The pose-facade form — the exact shape the block-ride commit lands
+      // (`CutCamera(keyframes: cameraShifted)`), so the preview can never
+      // promise a landing the release won't keep.
+      _cameraBlockPreviewTrackMemo = TransformTrack(keyframes: keys);
+    }
+    return _cameraBlockPreviewTrackMemo;
+  }
+
+  /// The camera track THE DISPLAY reads — the in-flight LANE-move preview,
+  /// the in-flight BLOCK-ride preview (P3b-2), or the committed track. The
+  /// lane provider, the union summary markers and the row's exposure states
+  /// all read THIS one answer (B4, 2026-08-17), so a camera key follows any
+  /// drag live instead of jumping on release — and every reader moves in
+  /// the same frame.
   TransformTrack? get activeCutCameraTrack =>
-      _cameraLaneTrackPreview ?? activeCutOrNull?.camera.track;
+      _cameraLaneTrackPreview ??
+      _cameraBlockPreviewTrack ??
+      activeCutOrNull?.camera.track;
 
   /// Whether [layerId] can take part in a RANGE selection (UI-R20 #2:
   /// cells are cells — EVERY layer row selects, camera and instruction
@@ -13324,10 +13352,14 @@ class EditorSessionManager extends ChangeNotifier {
       },
       cameraCutId: cameraShifted == null ? null : activeCutOrNull?.id,
       cameraKeyframes: cameraShifted,
+      // A FRESH CLONE per step (the P3b-2 contract) — the gate compares
+      // identities, and the repository instance trips nothing (B4-①: the
+      // multi-row rigid path was the one place still handing it over raw,
+      // so a union drag spanning rows froze the camera's markers).
       cameraMarkerLayer:
           cameraShifted == null || _rangeMoveCameraLayerId == null
           ? null
-          : _layerById(_rangeMoveCameraLayerId!),
+          : _layerById(_rangeMoveCameraLayerId!)?.copyWith(),
     );
     // The outline rides the rigid shift to the target rows (rows that
     // carried nothing — off the lattice or shifted off it — drop out of
@@ -16165,29 +16197,16 @@ class EditorSessionManager extends ChangeNotifier {
     return _timelineController.hasMarkAt(layer: layer, frameIndex: frameIndex);
   }
 
-  /// Camera rows summarize their property lanes Blender-dopesheet style:
-  /// the union of lane keys per frame, ■ when every keyed lane holds there
-  /// and ◆ otherwise. The glyph rides the frame-name channel — the cell
-  /// renders it marker-styled (no paper block).
   String? frameNameForLayer(Layer layer, int frameIndex) {
     if (layer.kind == LayerKind.camera) {
-      // A camera row exists only with a cut on screen.
-      final track = requireActiveCut.camera.track;
-      final interpolations = [
-        track.anchorPoint.keyAt(frameIndex)?.interpolation,
-        track.position.keyAt(frameIndex)?.interpolation,
-        track.scale.keyAt(frameIndex)?.interpolation,
-        track.rotation.keyAt(frameIndex)?.interpolation,
-        track.opacity.keyAt(frameIndex)?.interpolation,
-      ].whereType<PropertyKeyInterpolation>().toList();
-      if (interpolations.isEmpty) {
-        return null;
-      }
-      return interpolations.every(
-            (interpolation) => interpolation == PropertyKeyInterpolation.hold,
-          )
-          ? '■'
-          : '◆';
+      // B4 (2026-08-17): the camera row's key summary no longer rides the
+      // frame-name channel as a private ◆/■ text table. It is a
+      // [transformUnionHeader] lane drawn by the shared lane key markers
+      // ([timelineCameraUnionLane]) — the same code as the fx transform
+      // header's union, which is what keeps its glyph a diamond mid-drag
+      // and its size the one union constant. A camera layer has no cel
+      // names, so the channel answers nothing here.
+      return null;
     }
     // SYNCED attach mirrors PRINT THE BASE's cel name (UI-R24 #2 — the
     // name follows the owner; mirror cels are unnameable): the mirror row
@@ -16221,16 +16240,11 @@ class EditorSessionManager extends ChangeNotifier {
           : TimelineCellExposureState.uncovered;
     }
     if (layer.kind == LayerKind.camera) {
-      // The camera row's cells mirror the cut's camera keyframes — or
-      // the in-flight key-range move's preview keys (P3b-2), so the row
-      // follows the drag while the repository stays untouched.
-      final previewKeys = _cameraKeysDragPreview;
-      if (previewKeys != null) {
-        return previewKeys.containsKey(frameIndex)
-            ? TimelineCellExposureState.drawingStart
-            : TimelineCellExposureState.uncovered;
-      }
-      return activeCutOrNull?.camera.keyframeAt(frameIndex) != null
+      // The camera row's cells mirror [activeCutCameraTrack] — the ONE
+      // preview-aware answer (lane move, block ride, or committed), the
+      // same track the member lanes and the union markers read (B4), so
+      // the row follows any drag while the repository stays untouched.
+      return activeCutCameraTrack?.keyframeAt(frameIndex) != null
           ? TimelineCellExposureState.drawingStart
           : TimelineCellExposureState.uncovered;
     }
