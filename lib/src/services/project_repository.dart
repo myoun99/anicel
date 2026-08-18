@@ -370,15 +370,17 @@ class ProjectRepository {
   }
 
   /// D5 (R7): a resize's ONE model write per cut — the new canvas size
-  /// plus the content follow (camera keyframes, guides and layer
-  /// transform coordinates translated by the anchor's content offset,
-  /// [translateCutContentModel]). One write per cut keeps the resize
+  /// plus the content follow (camera keyframes, guides, text anchors and
+  /// layer transform coordinates, [translateCutContentModel] — see its
+  /// doc for the two offsets). One write per cut keeps the resize
   /// command's single history entry looking at coherent cuts.
   void resizeCutCanvasContent({
     required CutId cutId,
     required CanvasSize canvasSize,
     required double dx,
     required double dy,
+    required double centreDx,
+    required double centreDy,
   }) {
     updateProject((project) {
       final next = updateCutAnywhere(
@@ -386,8 +388,10 @@ class ProjectRepository {
         cutId,
         (cut) => translateCutContentModel(
           cut,
-          dx,
-          dy,
+          dx: dx,
+          dy: dy,
+          centreDx: centreDx,
+          centreDy: centreDy,
         ).copyWith(canvasSize: canvasSize),
       );
       if (next == null) {

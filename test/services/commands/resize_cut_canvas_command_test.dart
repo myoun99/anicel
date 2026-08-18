@@ -226,6 +226,21 @@ void main() {
       );
     });
 
+    test('D3: a top-left GROW retains ~nothing — the live surface shares '
+        'every snapshot tile; phantom full-count bytes were evicting '
+        'real undo history', () {
+      final store = _storeWithInkAt(x: 500, y: 400);
+      final resize = ResizeCutCanvasCommand(
+        repository: _repository(),
+        cutId: const CutId('cut-target'),
+        canvasSize: const CanvasSize(width: 2120, height: 1280),
+        anchor: CanvasResizeAnchor.topLeft,
+        brushFrameStore: store,
+      );
+      resize.execute();
+      expect(resize.estimatedRetainedBytes, 0);
+    });
+
     test('D5: the model follows the picture — camera keyframes, guides '
         'and layer transform keys move by the content offset; undo '
         'restores them exactly', () {

@@ -700,6 +700,13 @@ class BrushFrameStore {
     }
   }
 
+  /// The HOT surface for [key], or null — NO materialization: cold and
+  /// file cels answer null. The resize command's retained-bytes account
+  /// reads this to identity-diff its snapshot against the live tiles
+  /// without pulling anything hot as a side effect.
+  BitmapSurface? hotBakedSurfaceOrNull(BrushFrameKey key) =>
+      _bakedSurfaces[_canonicalize(key)];
+
   /// The cut's baked surfaces by key — cold cels of the cut materialize
   /// (cut-scoped = bounded); surfaces are immutable, so the snapshot is
   /// reference-cheap from there (the anchored-resize command keeps one

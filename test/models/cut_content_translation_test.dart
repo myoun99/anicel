@@ -4,9 +4,12 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_content_translation.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/transform_track.dart';
 
 /// D5 (R7): the model half of a canvas resize — everything stored in
@@ -100,8 +103,10 @@ void main() {
     expect(lines.second.a.x, 12);
   });
 
-  test('layer transform: position keys and EXPLICIT anchor keys move; a '
-      'null (unkeyed) anchor stays null', () {
+  test('layer transform: EXPLICIT anchors move with the content offset '
+      '(position too); a NULL anchor moves its position by Δcentre — the '
+      'pose subtracts the canvas centre, so that is what keeps the '
+      'render pinned to the picture', () {
     final keyed = Layer(
       id: const LayerId('keyed'),
       name: 'K',
@@ -117,11 +122,42 @@ void main() {
       ),
     );
 
-    final moved = translateLayerTransform(keyed, 5, 6);
+    final moved = translateLayerForResize(
+      keyed,
+      dx: 5,
+      dy: 6,
+      centreDx: 99,
+      centreDy: 99,
+    );
     expect(moved.transformTrack.position.keyAt(0)!.value.x, 45);
     expect(moved.transformTrack.position.keyAt(0)!.value.y, 56);
     expect(moved.transformTrack.anchorPoint.keyAt(0)!.value.x, 17);
     expect(moved.transformTrack.anchorPoint.keyAt(0)!.value.y, 19);
+
+    // Null anchor + position keys: a topLeft EXTENSION (content offset
+    // 0) still moves the implicit anchor — the canvas centre — so the
+    // position keys must follow Δcentre or the layer visibly jumps.
+    final nullAnchored = Layer(
+      id: const LayerId('null-anchored'),
+      name: 'N',
+      frames: const [],
+      timeline: const {},
+      transformTrack: TransformTrack.empty().copyWith(
+        position: PropertyTrack(
+          keys: {0: PropertyKey(CanvasPoint(x: 40, y: 50))},
+        ),
+      ),
+    );
+    final followed = translateLayerForResize(
+      nullAnchored,
+      dx: 0,
+      dy: 0,
+      centreDx: 200,
+      centreDy: 0,
+    );
+    expect(followed.transformTrack.position.keyAt(0)!.value.x, 240);
+    expect(followed.transformTrack.position.keyAt(0)!.value.y, 50);
+    expect(followed.transformTrack.anchorPoint.isEmpty, isTrue);
 
     final unkeyed = Layer(
       id: const LayerId('unkeyed'),
@@ -130,10 +166,86 @@ void main() {
       timeline: const {},
     );
     expect(
-      identical(translateLayerTransform(unkeyed, 5, 6), unkeyed),
+      identical(
+        translateLayerForResize(
+          unkeyed,
+          dx: 5,
+          dy: 6,
+          centreDx: 3,
+          centreDy: 3,
+        ),
+        unkeyed,
+      ),
       isTrue,
       reason: 'no canvas-coordinate keys = nothing to move',
     );
+  });
+
+  test('camera translation goes through the LANES: hold interpolation, '
+      'key names and a lone scale key all survive', () {
+    final camera = CutCamera.fromTrack(
+      TransformTrack.empty().copyWith(
+        position: PropertyTrack(
+          keys: {
+            0: PropertyKey(
+              CanvasPoint(x: 100, y: 50),
+              interpolation: PropertyKeyInterpolation.hold,
+              name: 'A',
+            ),
+            8: PropertyKey(CanvasPoint(x: 300, y: 200)),
+          },
+        ),
+        scale: PropertyTrack(keys: {4: const PropertyKey(1.5)}),
+      ),
+    );
+
+    final moved = translateCutCamera(camera, 10, -5);
+    final position = moved.track.position;
+    expect(position.keyAt(0)!.value.x, 110);
+    expect(
+      position.keyAt(0)!.interpolation,
+      PropertyKeyInterpolation.hold,
+      reason: 'a stepped camera must not start panning after a resize — '
+          'the pose-facade rebuild linearized holds (adversarial review)',
+    );
+    expect(position.keyAt(0)!.name, 'A');
+    expect(
+      position.keyAt(4),
+      isNull,
+      reason: 'no synthesized position key at the scale key\'s frame',
+    );
+    expect(moved.track.scale.keyAt(4)!.value, 1.5);
+    expect(moved.track.scale.keys.length, 1);
+  });
+
+  test('text cel anchors move with the content — the baked raster is a '
+      'projection of them and re-bakes after the resize', () {
+    final layer = Layer(
+      id: const LayerId('text'),
+      name: 'T',
+      frames: [
+        Frame(
+          id: const FrameId('t-1'),
+          duration: 1,
+          strokes: const [],
+          textContent: TextCelContent(
+            text: 'hi',
+            style: const TextCelStyle(),
+            position: const Offset(500, 400),
+          ),
+        ),
+      ],
+      timeline: const {},
+    );
+
+    final moved = translateLayerForResize(
+      layer,
+      dx: 200,
+      dy: -100,
+      centreDx: 0,
+      centreDy: 0,
+    );
+    expect(moved.frames.single.textContent!.position, const Offset(700, 300));
   });
 
   test('a zero offset is identity for the whole cut model', () {

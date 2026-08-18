@@ -1,42 +1,76 @@
+import 'dart:ui' show Offset;
+
 import 'canvas_point.dart';
 import 'cut.dart';
 import 'cut_camera.dart';
 import 'drawing_guide.dart';
+import 'frame.dart';
 import 'layer.dart';
 import 'property_track.dart';
 
-/// D5 (R7): translates a cut's CANVAS-COORDINATE model data by a resize
-/// anchor's content offset — the model half of "the picture moves, so
-/// everything pinned to it moves too". The raster half is the store's
-/// one-pass blit; this file owns camera keyframes, guides and layer
-/// transform poses. Zoom/scale/rotation stay untouched: a resize is a
+/// D5 (R7): translates a cut's CANVAS-COORDINATE model data for a canvas
+/// resize — the model half of "the picture moves, so everything pinned
+/// to it moves too". The raster half is the store's one-pass blit; this
+/// file owns camera keyframes, guides, layer transform poses and text
+/// cel anchors. Zoom/scale/rotation stay untouched: a resize is a
 /// crop/extend, never a scale (R19) — whether the camera should also
 /// re-fit its zoom is a user decision, not this file's.
 ///
-/// ⚠️Null anchor points (= canvas centre) are deliberately NOT
-/// materialized: they re-read as the NEW canvas centre, which lands
-/// exactly right for the default CENTER-anchored resize (old centre +
-/// offset == new centre) and only drifts the scale/rotation pivot of a
-/// null-anchored, scaled-or-rotated pose under a non-centre resize
-/// anchor — a corner named in the round's review rather than silently
-/// rewritten into explicit anchors (that would change what the anchor
-/// lane displays).
+/// Two offsets, because the render math has two kinds of pinning:
+///
+///  * [dx]/[dy] — the CONTENT offset (where the pixels moved, already
+///    rounded to the raster's whole-pixel blit so model and picture
+///    stay in lockstep). Camera centres, guides, text anchors and
+///    EXPLICIT transform anchors/positions move by this.
+///  * [centreDx]/[centreDy] — the CANVAS CENTRE's own movement. A NULL
+///    transform anchor re-reads as the canvas centre at draw time, so a
+///    null-anchored pose renders as `q + position − centre`: keeping it
+///    pinned to its picture takes `position += Δcentre`, NOT the
+///    content offset (the two agree only for the centre resize anchor).
+///    Exact at zoom 1 / rotation 0 for every resize anchor, and exact
+///    at any zoom for the centre anchor; a null-anchored pose that is
+///    BOTH scaled-or-rotated AND resized off-centre has no key-level
+///    compensation (the correction is frame-dependent) — that corner is
+///    named here rather than silently wrong.
 CanvasPoint _translated(CanvasPoint point, double dx, double dy) =>
     CanvasPoint(x: point.x + dx, y: point.y + dy);
 
-/// Every camera keyframe's centre moves with the content. An empty track
+PropertyTrack<CanvasPoint> _translatedPointTrack(
+  PropertyTrack<CanvasPoint> track,
+  double dx,
+  double dy,
+) {
+  if (track.isEmpty || (dx == 0 && dy == 0)) {
+    return track;
+  }
+  return PropertyTrack(
+    keys: {
+      for (final entry in track.keys.entries)
+        entry.key: PropertyKey(
+          _translated(entry.value.value, dx, dy),
+          interpolation: entry.value.interpolation,
+          name: entry.value.name,
+        ),
+    },
+  );
+}
+
+/// Every camera keyframe centre moves with the content — THROUGH THE
+/// LANES, never the pose facade: `CutCamera(keyframes:)` rebuilds all
+/// lanes from resolved poses, which linearizes holds, erases key names
+/// and synthesizes keys at the union frames (adversarial review). Only
+/// the position lane (and an explicit anchor lane) is touched; scale,
+/// rotation and opacity lanes pass through untouched. An empty track
 /// needs nothing: the default pose recomputes the canvas centre itself.
 CutCamera translateCutCamera(CutCamera camera, double dx, double dy) {
   if (camera.isEmpty || (dx == 0 && dy == 0)) {
     return camera;
   }
-  return CutCamera(
-    keyframes: {
-      for (final entry in camera.keyframes.entries)
-        entry.key: entry.value.copyWith(
-          center: _translated(entry.value.center, dx, dy),
-        ),
-    },
+  return CutCamera.fromTrack(
+    camera.track.copyWith(
+      position: _translatedPointTrack(camera.track.position, dx, dy),
+      anchorPoint: _translatedPointTrack(camera.track.anchorPoint, dx, dy),
+    ),
   );
 }
 
@@ -94,54 +128,94 @@ CutGuides translateCutGuides(CutGuides guides, double dx, double dy) {
   );
 }
 
-PropertyTrack<CanvasPoint> _translatedPointTrack(
-  PropertyTrack<CanvasPoint> track,
-  double dx,
-  double dy,
-) {
-  if (track.isEmpty) {
-    return track;
-  }
-  return PropertyTrack(
-    keys: {
-      for (final entry in track.keys.entries)
-        entry.key: PropertyKey(
-          _translated(entry.value.value, dx, dy),
-          interpolation: entry.value.interpolation,
-          name: entry.value.name,
-        ),
-    },
-  );
-}
-
-/// A layer's transform POSITION keys and explicit ANCHOR keys move with
-/// the content (see the file doc for why null anchors stay null).
-Layer translateLayerTransform(Layer layer, double dx, double dy) {
+/// A layer's canvas-coordinate model data moves with its picture:
+///
+///  * EXPLICIT anchor keys and their position keys move by the content
+///    offset — the pose subtracts the anchor, so translating both keeps
+///    the render identical at every zoom.
+///  * A NULL anchor re-reads as the canvas centre, so the position keys
+///    move by Δcentre instead (see the file doc).
+///  * TEXT cel anchors ([Frame.textContent]'s canvas-coordinate
+///    position) move by the content offset — the baked raster is a
+///    projection of them, and the next re-bake (which the resize itself
+///    triggers) would otherwise snap the text back to the pre-resize
+///    spot (adversarial review).
+Layer translateLayerForResize(
+  Layer layer, {
+  required double dx,
+  required double dy,
+  required double centreDx,
+  required double centreDy,
+}) {
   final track = layer.transformTrack;
-  if ((track.position.isEmpty && track.anchorPoint.isEmpty) ||
-      (dx == 0 && dy == 0)) {
+  final hasExplicitAnchor = track.anchorPoint.isNotEmpty;
+  final positionDx = hasExplicitAnchor ? dx : centreDx;
+  final positionDy = hasExplicitAnchor ? dy : centreDy;
+  final nextTrack =
+      track.position.isEmpty && track.anchorPoint.isEmpty
+      ? track
+      : track.copyWith(
+          position: _translatedPointTrack(
+            track.position,
+            positionDx,
+            positionDy,
+          ),
+          anchorPoint: _translatedPointTrack(track.anchorPoint, dx, dy),
+        );
+
+  var framesChanged = false;
+  final nextFrames = <Frame>[];
+  for (final frame in layer.frames) {
+    final content = frame.textContent;
+    final position = content?.position;
+    if (content == null || position == null || (dx == 0 && dy == 0)) {
+      nextFrames.add(frame);
+      continue;
+    }
+    framesChanged = true;
+    nextFrames.add(
+      frame.copyWith(
+        textContent: content.copyWith(
+          position: Offset(position.dx + dx, position.dy + dy),
+        ),
+      ),
+    );
+  }
+
+  if (identical(nextTrack, layer.transformTrack) && !framesChanged) {
     return layer;
   }
   return layer.copyWith(
-    transformTrack: track.copyWith(
-      position: _translatedPointTrack(track.position, dx, dy),
-      anchorPoint: _translatedPointTrack(track.anchorPoint, dx, dy),
-    ),
+    transformTrack: nextTrack,
+    frames: framesChanged ? nextFrames : layer.frames,
   );
 }
 
 /// The whole cut's model follow for a resize: camera, guides and every
-/// layer's transform coordinates, in one immutable copy. The canvas size
+/// layer's canvas coordinates, in one immutable copy. The canvas size
 /// itself is the caller's write (it differs per call site).
-Cut translateCutContentModel(Cut cut, double dx, double dy) {
-  if (dx == 0 && dy == 0) {
+Cut translateCutContentModel(
+  Cut cut, {
+  required double dx,
+  required double dy,
+  required double centreDx,
+  required double centreDy,
+}) {
+  if (dx == 0 && dy == 0 && centreDx == 0 && centreDy == 0) {
     return cut;
   }
   return cut.copyWith(
     camera: translateCutCamera(cut.camera, dx, dy),
     guides: translateCutGuides(cut.guides, dx, dy),
     layers: [
-      for (final layer in cut.layers) translateLayerTransform(layer, dx, dy),
+      for (final layer in cut.layers)
+        translateLayerForResize(
+          layer,
+          dx: dx,
+          dy: dy,
+          centreDx: centreDx,
+          centreDy: centreDy,
+        ),
     ],
   );
 }

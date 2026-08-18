@@ -40,6 +40,8 @@ class ResizeCutCanvasCommand implements Command, RetainedBytesCommand {
   Project? _previousProject;
   double _contentDx = 0;
   double _contentDy = 0;
+  double _centreDx = 0;
+  double _centreDy = 0;
 
   /// Every cut this resize touched — the target and its 겸용 siblings.
   /// Undo has to walk the SAME list: the project snapshot restores the
@@ -65,12 +67,17 @@ class ResizeCutCanvasCommand implements Command, RetainedBytesCommand {
     final project = repository.requireProject();
     _previousProject = project;
 
-    final offset = anchor.contentOffset(
-      from: requireCut(project, cutId).canvasSize,
-      to: canvasSize,
-    );
-    _contentDx = offset.dx;
-    _contentDy = offset.dy;
+    final fromSize = requireCut(project, cutId).canvasSize;
+    final offset = anchor.contentOffset(from: fromSize, to: canvasSize);
+    // Rounded ONCE, before both consumers: the raster blit can only move
+    // whole pixels, and a model moved by the exact .5 of an odd-delta
+    // centre anchor would sit half a pixel off the picture forever
+    // (adversarial review). The centre's own movement stays exact — it
+    // is a model-only quantity (the null-anchor law below).
+    _contentDx = offset.dx.roundToDouble();
+    _contentDy = offset.dy.roundToDouble();
+    _centreDx = (canvasSize.width - fromSize.width) / 2;
+    _centreDy = (canvasSize.height - fromSize.height) / 2;
 
     _targets = [cutId, ...linkedCutSiblings(project, cutId: cutId)];
 
@@ -82,25 +89,21 @@ class ResizeCutCanvasCommand implements Command, RetainedBytesCommand {
       _previousBaked = {
         for (final target in _targets) target: store.bakedSurfacesForCut(target),
       };
-      _retainedBytes = 0;
-      for (final surfaces in _previousBaked.values) {
-        for (final surface in surfaces.values) {
-          _retainedBytes +=
-              surface.tiles.length * surface.tileSize * surface.tileSize * 4;
-        }
-      }
     }
 
     for (final target in _targets) {
       // ONE model write per cut: the new size plus the content follow —
-      // camera keyframes, guides and layer transform coordinates move
-      // with the picture (D5: the old command moved only the raster, so
-      // a resize left every canvas-coordinate model where it was).
+      // camera keyframes, guides, text anchors and layer transform
+      // coordinates move with the picture (D5: the old command moved
+      // only the raster, so a resize left every canvas-coordinate model
+      // where it was).
       repository.resizeCutCanvasContent(
         cutId: target,
         canvasSize: canvasSize,
         dx: _contentDx,
         dy: _contentDy,
+        centreDx: _centreDx,
+        centreDy: _centreDy,
       );
       // One-pass raster adoption (D5): crop/extend AND anchor offset in
       // a single blit against the NEW canvas, completed HERE for the
@@ -114,6 +117,32 @@ class ResizeCutCanvasCommand implements Command, RetainedBytesCommand {
         dx: _contentDx,
         dy: _contentDy,
       );
+    }
+
+    // The undo payload's HONEST weight: only tiles the live surfaces no
+    // longer hold are uniquely retained by the snapshot. The anchored
+    // blit allocates fresh buffers (full count); a top-left GROW shares
+    // every tile with the live surface (near zero); a shrink retains
+    // exactly the clipped ones. Counting the whole snapshot regardless
+    // let one large top-left grow evict the entire real undo history
+    // with phantom bytes (adversarial review).
+    _retainedBytes = 0;
+    if (store != null) {
+      for (final surfaces in _previousBaked.values) {
+        for (final entry in surfaces.entries) {
+          final live = store.hotBakedSurfaceOrNull(entry.key);
+          final liveTiles = Set<Object>.identity();
+          if (live != null) {
+            liveTiles.addAll(live.tiles.values);
+          }
+          for (final tile in entry.value.tiles.values) {
+            if (!liveTiles.contains(tile)) {
+              _retainedBytes +=
+                  entry.value.tileSize * entry.value.tileSize * 4;
+            }
+          }
+        }
+      }
     }
   }
 
