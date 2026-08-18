@@ -1627,26 +1627,23 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
               );
             },
             onTapClear: (_) => rangeHooks.onClear(),
-            // D42: a range MOVE takes the A5 grip — the vertical auto-pan
-            // can slide the row window past the gesture row, and an
-            // unpinned row's dispose backstop would commit the move
-            // mid-drag. The pin is carved out of the spacers (O(1)).
-            onMoveBegin: (row, _) {
-              if (row is! LayerRowAddress ||
-                  !_rangeMoveResolver.begin(row.layerId)) {
-                return false;
-              }
-              _heldDragRow = row;
-              return true;
-            },
+            onMoveBegin: (row, _) =>
+                row is LayerRowAddress && _rangeMoveResolver.begin(row.layerId),
             onMoveUpdate: _rangeMoveResolver.update,
-            onMoveEnd: () {
-              _heldDragRow = null;
-              _rangeMoveResolver.end();
-            },
-            onMoveCancel: () {
-              _heldDragRow = null;
-              _rangeMoveResolver.cancel();
+            onMoveEnd: _rangeMoveResolver.end,
+            onMoveCancel: _rangeMoveResolver.cancel,
+            // D42: EVERY range drag (select or move) takes the A5 grip —
+            // the vertical auto-pan can slide the row window past the
+            // gesture row; unpinned, a MOVE's dispose backstop commits
+            // mid-drag and a SELECT's recognizer dies and the sweep
+            // freezes. The pin is carved out of the spacers (O(1)); the
+            // release is equality-guarded so it cannot drop a grip some
+            // OTHER drag holds.
+            onGripTaken: (row) => _heldDragRow = row,
+            onGripReleased: (row) {
+              if (_heldDragRow == row) {
+                _heldDragRow = null;
+              }
             },
           );
 
@@ -1698,6 +1695,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
             onMoveUpdate: hostLaneRange.onMoveUpdate,
             onMoveEnd: hostLaneRange.onMoveEnd,
             onMoveCancel: hostLaneRange.onMoveCancel,
+            // D42: lane drags take the same A5 grip as the cells — a lane
+            // row is a windowed display row like any other.
+            onGripTaken: (row) => _heldDragRow = row,
+            onGripReleased: (row) {
+              if (_heldDragRow == row) {
+                _heldDragRow = null;
+              }
+            },
           );
 
     // PEN-9: a stylus approach stops a coasting fling — mid-glide the

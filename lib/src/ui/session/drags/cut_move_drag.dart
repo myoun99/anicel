@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../models/cut_id.dart';
 import '../../../models/cut_move_plan.dart';
+import '../../../models/timeline_row_address.dart';
 import '../../../models/track.dart';
 import '../../../models/track_frame_range.dart';
 import '../../../models/track_id.dart';
@@ -30,6 +31,7 @@ class CutMoveDrag implements EditorDragSession {
     required int runStart,
     required int? runEnd,
     required int runFromFrame,
+    required int runToFrame,
     required ValueNotifier<TimelineDragPreview?> preview,
     required TrackFrameRangeSelection? selectionBefore,
     required void Function(TrackFrameRangeSelection?) publishSelection,
@@ -50,6 +52,7 @@ class CutMoveDrag implements EditorDragSession {
        _runStart = runStart,
        _runEnd = runEnd,
        _runFromFrame = runFromFrame,
+       _runToFrame = runToFrame,
        _preview = preview,
        _selectionBefore = selectionBefore,
        _publishSelection = publishSelection,
@@ -110,9 +113,11 @@ class CutMoveDrag implements EditorDragSession {
             duration: cut.duration,
           ),
       ];
-      // The selection rides the run when it lies on this track and touches
-      // it (the drag machine's law: every step writes the previewed span
-      // through the selection notifier; the band just listens).
+      // The selection rides the run when it is the CUT ROW's selection on
+      // this track and touches the run (the drag machine's law: every step
+      // writes the previewed span through the selection notifier; the band
+      // just listens). An SE/transition-row selection merely overlapping
+      // the frames stays put — a cut move does not move that content.
       var runFrom = 0;
       for (var position = 0; position <= runStart; position += 1) {
         runFrom += slots[position].leadingGapFrames;
@@ -128,6 +133,7 @@ class CutMoveDrag implements EditorDragSession {
       }
       final rides = selection != null &&
           selection.trackId == track.id &&
+          selection.coversRow(TrackRowAddress(track.id)) &&
           selection.overlaps(runFrom, runTo);
       return CutMoveDrag._(
         trackId: track.id,
@@ -135,6 +141,7 @@ class CutMoveDrag implements EditorDragSession {
         runStart: runStart,
         runEnd: runEnd,
         runFromFrame: runFrom,
+        runToFrame: runTo,
         preview: preview,
         selectionBefore: rides ? selection : null,
         publishSelection: publishSelection,
@@ -150,9 +157,10 @@ class CutMoveDrag implements EditorDragSession {
   final int _runStart;
   final int? _runEnd;
 
-  /// The run's original global start — the reference every step's shift is
+  /// The run's original global span — the reference every step's shift is
   /// measured from.
   final int _runFromFrame;
+  final int _runToFrame;
 
   /// The selection riding the run (captured at begin, already claimed by
   /// the select path), or null when the drag grabbed an unselected cut.
@@ -183,23 +191,61 @@ class CutMoveDrag implements EditorDragSession {
   })
   _commitGaps;
 
-  /// Publishes [_selectionBefore] shifted by [delta] frames (no-op when no
-  /// selection rides the run).
-  void _publishShifted(int delta) {
+  /// The run's span length after [plan] lands: durations plus the landed
+  /// INTERIOR gaps. A reorder may re-key an interior position's gap (the
+  /// gaps stay with positions), so the run's extent is not fixed — the
+  /// band must follow the landed extent, or a shrunken run leaves the band
+  /// overlapping a neighbour the user never selected (and the delete verbs
+  /// then act on the wrong set).
+  int _landedRunLengthFor(CutMovePlan plan) {
+    var length = 0;
+    for (var index = _runStart; index <= (_runEnd ?? _runStart); index += 1) {
+      final slot = _slots[index];
+      if (index > _runStart) {
+        length += plan.gaps[slot.id] ?? slot.leadingGapFrames;
+      }
+      length += slot.duration;
+    }
+    return length;
+  }
+
+  /// Publishes the riding selection at the run's PREVIEWED landing: the
+  /// start rides [CutMovePlan.runStartFrame] and the end rides the landed
+  /// extent (no-op when no selection rides the run). Passing null restores
+  /// the drag-start selection (cancel).
+  void _publishLanded(CutMovePlan? plan) {
     final before = _selectionBefore;
     if (before == null) {
       return;
     }
+    if (plan == null) {
+      _publishSelection(before);
+      return;
+    }
+    // Only a selection that IS the run (the snap makes them equal when the
+    // grabbed cut is selected) reshapes to the landed extent; a wider or
+    // offset overlap keeps the plain shift, which is all it can honestly
+    // claim to know.
+    final exact =
+        before.startFrame == _runFromFrame &&
+        before.endFrameExclusive == _runToFrame;
+    final delta = plan.runStartFrame - _runFromFrame;
+    final start = before.startFrame + delta;
+    final end = exact
+        ? start + _landedRunLengthFor(plan)
+        : before.endFrameExclusive + delta;
+    if (start == before.startFrame && end == before.endFrameExclusive) {
+      _publishSelection(before);
+      return;
+    }
     _publishSelection(
-      delta == 0
-          ? before
-          : TrackFrameRangeSelection(
-              trackId: before.trackId,
-              anchorRow: before.anchorRow,
-              rows: before.rows,
-              startFrame: before.startFrame + delta,
-              endFrameExclusive: before.endFrameExclusive + delta,
-            ),
+      TrackFrameRangeSelection(
+        trackId: before.trackId,
+        anchorRow: before.anchorRow,
+        rows: before.rows,
+        startFrame: start,
+        endFrameExclusive: end,
+      ),
     );
   }
 
@@ -213,9 +259,9 @@ class CutMoveDrag implements EditorDragSession {
       runEnd: _runEnd ?? _runStart,
       frameDelta: cumulativeDelta,
     );
-    // The band follows the run's previewed seat in the SAME step as the
+    // The band follows the run's previewed landing in the SAME step as the
     // blocks — the notifier-per-step law the frame axis already lives by.
-    _publishShifted(plan.runStartFrame - _runFromFrame);
+    _publishLanded(plan);
     if (plan.isReorder) {
       _after = plan;
       _preview.value = CutTrimDragPreview(
@@ -267,7 +313,7 @@ class CutMoveDrag implements EditorDragSession {
     // that resolves cuts from the selection's frames against the CURRENT
     // layout ([storyboardSelectedCutIds]) sees the moved cuts, not their
     // old seats.
-    _publishShifted(plan.runStartFrame - _runFromFrame);
+    _publishLanded(plan);
   }
 
   /// Drops an in-flight move preview without touching history, and puts
@@ -275,6 +321,6 @@ class CutMoveDrag implements EditorDragSession {
   @override
   void cancel() {
     _preview.value = null;
-    _publishShifted(0);
+    _publishLanded(null);
   }
 }

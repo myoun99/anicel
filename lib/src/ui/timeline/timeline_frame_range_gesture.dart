@@ -139,7 +139,16 @@ class TimelineRangeGestureCallbacks {
     required this.onMoveUpdate,
     required this.onMoveEnd,
     required this.onMoveCancel,
+    this.onGripTaken,
+    this.onGripReleased,
   });
+
+  /// A5/D42 grip seam for surfaces that WINDOW their rows: any drag this
+  /// layer is running (select OR move) holds its row, so the mount can pin
+  /// it against the window sliding past — D42's own vertical auto-pan is
+  /// what slides it. Null on surfaces that build every row.
+  final void Function(TimelineRowAddress row)? onGripTaken;
+  final void Function(TimelineRowAddress row)? onGripReleased;
 
   /// "Is this cell inside the live selection?" — read at PRESS to pick the
   /// drag's mode (inside = MOVE, anywhere else = SELECT).
@@ -277,10 +286,15 @@ class _TimelineFrameRangeGestureLayerState
         _lastFrames = 0;
         _lastRows = 0;
       });
+      widget.callbacks.onGripTaken?.call(widget.row);
       return;
     }
     _mode = _RangeDragMode.select;
     _anchorIndex = frame;
+    // A SELECT holds its row too: the cross-axis auto-pan can slide the
+    // window past the anchor, and an unpinned anchor's recognizer would
+    // dispose and freeze the drag mid-sweep.
+    widget.callbacks.onGripTaken?.call(widget.row);
     widget.callbacks.onSelectUpdate(widget.row, frame, frame, 0);
   }
 
@@ -365,6 +379,9 @@ class _TimelineFrameRangeGestureLayerState
       setState(() {});
       widget.callbacks.onMoveEnd();
     }
+    if (mode != _RangeDragMode.none) {
+      widget.callbacks.onGripReleased?.call(widget.row);
+    }
   }
 
   void _cancelDrag() {
@@ -374,16 +391,27 @@ class _TimelineFrameRangeGestureLayerState
       setState(() {});
       widget.callbacks.onMoveCancel();
     }
+    if (mode != _RangeDragMode.none) {
+      widget.callbacks.onGripReleased?.call(widget.row);
+    }
   }
 
   @override
   void dispose() {
     // A mid-drag unmount (row scrolled out of the window) commits the move
-    // AFTER the frame rather than leaking an open session (R12-③ rule).
+    // AFTER the frame rather than leaking an open session (R12-③ rule) —
+    // and hands the grip back either way, so the pin cannot outlive the
+    // layer that took it.
+    final callbacks = widget.callbacks;
+    final row = widget.row;
     if (_mode == _RangeDragMode.move) {
-      final callbacks = widget.callbacks;
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => callbacks.onMoveEnd(),
+      );
+    }
+    if (_mode != _RangeDragMode.none) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => callbacks.onGripReleased?.call(row),
       );
     }
     super.dispose();
@@ -499,7 +527,15 @@ class TimelineLaneRangeCallbacks {
     required this.onMoveUpdate,
     required this.onMoveEnd,
     required this.onMoveCancel,
+    this.onGripTaken,
+    this.onGripReleased,
   });
+
+  /// The same A5/D42 grip seam the cells layer carries: a lane drag holds
+  /// its LANE row against a windowing mount. Null on surfaces that build
+  /// every row.
+  final void Function(TimelineRowAddress row)? onGripTaken;
+  final void Function(TimelineRowAddress row)? onGripReleased;
 
   /// The session's live LANE selection (read at press to pick the mode).
   final ValueListenable<TimelineLaneSelection?> selection;
@@ -601,6 +637,11 @@ class _TimelineLaneRangeGestureLayerState
     return frame < 0 ? 0 : frame;
   }
 
+  /// This layer's row address on the mount's row list — the grip seam's
+  /// vocabulary.
+  TimelineRowAddress get _rowAddress =>
+      LaneRowAddress(widget.layer.id, widget.laneId);
+
   void _startDrag(Offset localPosition) {
     _scrolledMain = 0;
     _scrolledCross = 0;
@@ -617,10 +658,12 @@ class _TimelineLaneRangeGestureLayerState
       _mode = _RangeDragMode.move;
       _mainDelta = 0;
       _lastFrames = 0;
+      widget.callbacks.onGripTaken?.call(_rowAddress);
       return;
     }
     _mode = _RangeDragMode.select;
     _anchorIndex = frame;
+    widget.callbacks.onGripTaken?.call(_rowAddress);
     widget.callbacks.onSelectUpdate(
       widget.layer.id,
       widget.laneId,
@@ -696,6 +739,9 @@ class _TimelineLaneRangeGestureLayerState
     if (mode == _RangeDragMode.move) {
       widget.callbacks.onMoveEnd();
     }
+    if (mode != _RangeDragMode.none) {
+      widget.callbacks.onGripReleased?.call(_rowAddress);
+    }
   }
 
   void _cancelDrag() {
@@ -704,16 +750,26 @@ class _TimelineLaneRangeGestureLayerState
     if (mode == _RangeDragMode.move) {
       widget.callbacks.onMoveCancel();
     }
+    if (mode != _RangeDragMode.none) {
+      widget.callbacks.onGripReleased?.call(_rowAddress);
+    }
   }
 
   @override
   void dispose() {
     // A mid-drag unmount commits the move AFTER the frame rather than
-    // leaking an open session (the R12-③ rule).
+    // leaking an open session (the R12-③ rule) — and hands the grip back
+    // either way.
+    final callbacks = widget.callbacks;
+    final row = _rowAddress;
     if (_mode == _RangeDragMode.move) {
-      final callbacks = widget.callbacks;
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => callbacks.onMoveEnd(),
+      );
+    }
+    if (_mode != _RangeDragMode.none) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => callbacks.onGripReleased?.call(row),
       );
     }
     super.dispose();

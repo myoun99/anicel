@@ -12442,11 +12442,16 @@ class EditorSessionManager extends ChangeNotifier {
     );
   }
 
-  /// The standing row's RANGE layer and its authored extremes (ghosts are
-  /// derived projections, not authored cells), or null when the row has
-  /// nothing to select. Lane rows fall back to their owning layer — the
-  /// lane address's own law: standing on a property never costs you the
-  /// layer.
+  /// The standing row's RANGE layer and its authored extremes, or null
+  /// when the row has nothing to select. Lane rows fall back to their
+  /// owning layer — the lane address's own law: standing on a property
+  /// never costs you the layer.
+  ///
+  /// The extremes are read off the SAME three lanes the range snap uses
+  /// ([snapFrameRangeToBlocks]): exposure blocks (ghosts are derived
+  /// projections, not authored cells), instruction chips, and a folder
+  /// row's aggregate runs — so the gate answers true exactly where a drag
+  /// would select something (T25).
   ({LayerId layerId, int first, int lastExclusive})? _rowSpanForCurrentRow() {
     final rowLayerId = switch (currentRow) {
       LayerRowAddress(:final layerId) => layerId,
@@ -12462,17 +12467,32 @@ class EditorSessionManager extends ChangeNotifier {
     }
     int? first;
     var lastExclusive = 0;
+    void widen(int start, int endExclusive) {
+      if (first == null || start < first!) {
+        first = start;
+      }
+      if (endExclusive > lastExclusive) {
+        lastExclusive = endExclusive;
+      }
+    }
+
     for (final entry in layer.timeline.entries) {
       if (entry.value.ghost) {
         continue;
       }
-      first ??= entry.key;
-      lastExclusive = entry.key + entry.value.length!;
+      widen(entry.key, entry.key + entry.value.length!);
     }
-    if (first == null) {
+    for (final entry in layer.instructions.entries) {
+      widen(entry.key, entry.key + entry.value.length);
+    }
+    for (final run in _aggregateRunsForRow(layer)) {
+      widen(run.start, run.endExclusive);
+    }
+    final start = first;
+    if (start == null) {
       return null;
     }
-    return (layerId: rowLayerId, first: first, lastExclusive: lastExclusive);
+    return (layerId: rowLayerId, first: start, lastExclusive: lastExclusive);
   }
 
   /// 🚨★★★ [spanRows] — what the drag SWEPT, straight off the rail's own row

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/camera_instruction.dart'
+    show InstructionEvent;
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/dialogs/se_instance_dialog.dart';
@@ -365,5 +367,32 @@ void main() {
     expect(selection.startIndex, 0);
     expect(selection.endIndexExclusive, 4);
     expect(s.trackFrameRangeSelection.value, isNull);
+
+    // D40 on an INSTRUCTION row: the chips live in layer.instructions, not
+    // the timeline — the resolver reads the SAME lanes the range snap does,
+    // so a row a drag can select on, the button can select too (T25).
+    if (!s.activeCutOrNull!.layers.any(
+      (layer) => layer.kind == LayerKind.instruction,
+    )) {
+      s.addLayerOfKind(LayerKind.instruction);
+    }
+    final instruction = s.activeCutOrNull!.layers.firstWhere(
+      (layer) => layer.kind == LayerKind.instruction,
+    );
+    s.updateLayerInstructions(instruction.id, const {
+      6: InstructionEvent(instructionId: 'pan', length: 3),
+    });
+    s.selectLayer(instruction.id);
+    await tester.pumpAndSettle();
+    await tester.tap(frameMenu);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('select-row-span-button')),
+    );
+    await tester.pumpAndSettle();
+    final chipSpan = s.frameRangeSelection.value!;
+    expect(chipSpan.layerId, instruction.id);
+    expect(chipSpan.startIndex, 6);
+    expect(chipSpan.endIndexExclusive, 9);
   });
 }
