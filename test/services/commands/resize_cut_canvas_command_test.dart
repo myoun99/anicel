@@ -4,12 +4,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_resize_anchor.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -175,6 +182,89 @@ void main() {
       expect(_inkAt(store, 400, 300), isNonZero);
     });
 
+    test('D5: the command COMPLETES the raster adoption — every cel '
+        'carries the NEW canvas size for every anchor, with no widget '
+        'half involved', () {
+      for (final anchor in [
+        CanvasResizeAnchor.topLeft,
+        CanvasResizeAnchor.center,
+        CanvasResizeAnchor.bottomRight,
+      ]) {
+        final store = _storeWithInkAt(x: 500, y: 400);
+        command(
+          repository: _repository(),
+          store: store,
+          anchor: anchor,
+        ).execute();
+        expect(
+          store.bakedSurfaceOrNull(_frameKey())!.canvasSize,
+          shrunkenSize,
+          reason: 'anchor $anchor: the old split left the crop to the '
+              'WIDGET (didUpdateWidget), so any state that skipped it — '
+              '겸용 canonical keys, a null selection, an unmounted host — '
+              'left the cel at the old size, displaying as EMPTY and '
+              'turning permanent on the first stroke (the D5 loss)',
+        );
+      }
+    });
+
+    test('D3: the undo payload reports its weight — the reference '
+        'snapshot pins the pre-resize tiles, and the history byte-trim '
+        'must see them', () {
+      final store = _storeWithInkAt(x: 500, y: 400);
+      final resize = command(
+        repository: _repository(),
+        store: store,
+        anchor: CanvasResizeAnchor.center,
+      );
+      resize.execute();
+      expect(
+        resize.estimatedRetainedBytes,
+        256 * 256 * 4,
+        reason: 'one retained tile of RGBA — uncounted, a large cut\'s '
+            'resize pinned its whole baked set invisibly',
+      );
+    });
+
+    test('D5: the model follows the picture — camera keyframes, guides '
+        'and layer transform keys move by the content offset; undo '
+        'restores them exactly', () {
+      final repository = _repositoryWithModelContent();
+      final store = _storeWithInkAt(x: 500, y: 400);
+      final historyManager = HistoryManager();
+      final before = repository.requireProject();
+
+      // Center anchor, 1920x1080 → 1720x880: offset (-100, -100).
+      historyManager.execute(
+        command(
+          repository: repository,
+          store: store,
+          anchor: CanvasResizeAnchor.center,
+        ),
+      );
+
+      final cut = repository.requireProject().tracks.single.cuts.first;
+      final pose = cut.camera.keyframeAt(0)!;
+      expect(pose.center.x, 860);
+      expect(pose.center.y, 440);
+      expect(pose.zoom, 2.0, reason: 'a resize is a crop, never a scale');
+      final axis = (cut.guides.guides.single.shape as SymmetryShape).axis;
+      expect(axis.origin.x, 200);
+      expect(axis.origin.y, 100);
+      final track = cut.layers.single.transformTrack;
+      expect(track.position.keyAt(0)!.value.x, 300);
+      expect(track.position.keyAt(0)!.value.y, 150);
+      expect(
+        track.anchorPoint.isEmpty,
+        isTrue,
+        reason: 'null anchors stay null — they re-read as the NEW canvas '
+            'centre, which is exactly right for the centre anchor',
+      );
+
+      historyManager.undo();
+      expect(repository.requireProject(), before);
+    });
+
     test('other cuts pixels are not translated', () {
       final store = BrushFrameStore();
       store.storeBakedSurface(
@@ -260,6 +350,56 @@ ProjectRepository _repository() {
           name: 'Video',
           cuts: [_targetCut, _otherCut],
         ),
+      ],
+      createdAt: DateTime.utc(2024),
+    ),
+  );
+}
+
+/// The D5 model-follow fixture: the target cut carries a camera
+/// keyframe, a symmetry guide and a layer with a position key (anchor
+/// deliberately unkeyed — the null-anchor law is part of the pin).
+ProjectRepository _repositoryWithModelContent() {
+  final cut = _targetCut.copyWith(
+    camera: CutCamera(
+      keyframes: {
+        0: CameraPose(center: CanvasPoint(x: 960, y: 540), zoom: 2.0),
+      },
+    ),
+    guides: CutGuides(
+      guides: [
+        DrawingGuide(
+          id: const GuideId('guide-1'),
+          name: 'Axis',
+          shape: SymmetryShape(
+            axis: GuideAxis(
+              origin: CanvasPoint(x: 300, y: 200),
+              angleDegrees: 0,
+            ),
+          ),
+        ),
+      ],
+    ),
+    layers: [
+      Layer(
+        id: const LayerId('layer-1'),
+        name: 'A',
+        frames: const [],
+        timeline: const {},
+        transformTrack: TransformTrack.empty().copyWith(
+          position: PropertyTrack(
+            keys: {0: PropertyKey(CanvasPoint(x: 400, y: 250))},
+          ),
+        ),
+      ),
+    ],
+  );
+  return ProjectRepository(
+    initialProject: Project(
+      id: const ProjectId('project-1'),
+      name: 'Project',
+      tracks: [
+        Track(id: const TrackId('track-1'), name: 'Video', cuts: [cut]),
       ],
       createdAt: DateTime.utc(2024),
     ),

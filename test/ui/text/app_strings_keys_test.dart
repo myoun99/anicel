@@ -166,6 +166,8 @@ void main() {
     'commonSaveAs': (s) => s.commonSaveAs,
     'saveProgressRunning': (s) => s.saveProgressRunning,
     'saveProgressDone': (s) => s.saveProgressDone,
+    'resizeProgressRunning': (s) => s.resizeProgressRunning,
+    'resizeProgressDone': (s) => s.resizeProgressDone,
     'unsavedAutosaveTitle': (s) => s.unsavedAutosaveTitle,
     'unsavedAutosaveBody': (s) => s.unsavedAutosaveBody,
     'commonNotNow': (s) => s.commonNotNow,

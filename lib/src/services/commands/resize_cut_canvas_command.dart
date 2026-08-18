@@ -18,7 +18,7 @@ import 'link_mirror.dart';
 /// incoherent before guides existed — guides only made it visible, because
 /// an axis stored in canvas coordinates means two different places when the
 /// canvases disagree.
-class ResizeCutCanvasCommand implements Command {
+class ResizeCutCanvasCommand implements Command, RetainedBytesCommand {
   ResizeCutCanvasCommand({
     required this.repository,
     required this.cutId,
@@ -47,6 +47,14 @@ class ResizeCutCanvasCommand implements Command {
   /// reversed cut by cut.
   List<CutId> _targets = const [];
   Map<CutId, Map<BrushFrameKey, BitmapSurface>> _previousBaked = const {};
+  int _retainedBytes = 0;
+
+  /// The undo payload's weight (R19 P3b): after the forward blit the
+  /// pre-resize tiles live ONLY in the reference snapshot, so the
+  /// history stack's byte-trim must see them — a large cut's resize
+  /// used to pin its whole baked set invisibly (adversarial review).
+  @override
+  int get estimatedRetainedBytes => _retainedBytes;
 
   @override
   String get description =>
@@ -74,12 +82,35 @@ class ResizeCutCanvasCommand implements Command {
       _previousBaked = {
         for (final target in _targets) target: store.bakedSurfacesForCut(target),
       };
+      _retainedBytes = 0;
+      for (final surfaces in _previousBaked.values) {
+        for (final surface in surfaces.values) {
+          _retainedBytes +=
+              surface.tiles.length * surface.tileSize * surface.tileSize * 4;
+        }
+      }
     }
 
     for (final target in _targets) {
-      repository.updateCutCanvasSize(cutId: target, canvasSize: canvasSize);
-      store?.translateCutContent(
+      // ONE model write per cut: the new size plus the content follow —
+      // camera keyframes, guides and layer transform coordinates move
+      // with the picture (D5: the old command moved only the raster, so
+      // a resize left every canvas-coordinate model where it was).
+      repository.resizeCutCanvasContent(
         cutId: target,
+        canvasSize: canvasSize,
+        dx: _contentDx,
+        dy: _contentDy,
+      );
+      // One-pass raster adoption (D5): crop/extend AND anchor offset in
+      // a single blit against the NEW canvas, completed HERE for the
+      // target and every 겸용 sibling. The widget half's resize path
+      // degenerates to pure adoption — no state it depends on (active
+      // cut, live selection, a mounted host) can leave a cel behind at
+      // the old size any more.
+      store?.adoptCutCanvasSize(
+        cutId: target,
+        canvasSize: canvasSize,
         dx: _contentDx,
         dy: _contentDy,
       );
@@ -95,15 +126,12 @@ class ResizeCutCanvasCommand implements Command {
 
     repository.replaceProject(previousProject);
     for (final target in _targets) {
-      brushFrameStore?.translateCutContent(
-        cutId: target,
-        dx: -_contentDx,
-        dy: -_contentDy,
-      );
       final previousBaked = _previousBaked[target];
       if (previousBaked != null) {
-        // Reference restore SUPERSEDES the blit-back above: pixels the
-        // forward blit clipped come back exactly.
+        // Reference restore alone: the snapshot carries the exact
+        // pre-resize surfaces, old canvas size included (the model was
+        // restored whole above), so pixels the forward blit clipped
+        // come back exactly — a reverse blit would only be overwritten.
         brushFrameStore?.restoreBakedForCut(target, previousBaked);
       }
     }

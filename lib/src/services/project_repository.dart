@@ -9,6 +9,7 @@ import '../models/covering_image_normalize.dart';
 import '../models/covering_storyboard_normalize.dart';
 import '../models/cut.dart';
 import '../models/cut_camera.dart';
+import '../models/cut_content_translation.dart' show translateCutContentModel;
 import '../models/drawing_guide.dart';
 import '../models/cut_id.dart';
 import '../models/cut_metadata.dart';
@@ -360,6 +361,34 @@ class ProjectRepository {
         project,
         cutId,
         (cut) => cut.copyWith(canvasSize: canvasSize),
+      );
+      if (next == null) {
+        throw StateError('Cut not found: $cutId');
+      }
+      return next;
+    });
+  }
+
+  /// D5 (R7): a resize's ONE model write per cut — the new canvas size
+  /// plus the content follow (camera keyframes, guides and layer
+  /// transform coordinates translated by the anchor's content offset,
+  /// [translateCutContentModel]). One write per cut keeps the resize
+  /// command's single history entry looking at coherent cuts.
+  void resizeCutCanvasContent({
+    required CutId cutId,
+    required CanvasSize canvasSize,
+    required double dx,
+    required double dy,
+  }) {
+    updateProject((project) {
+      final next = updateCutAnywhere(
+        project,
+        cutId,
+        (cut) => translateCutContentModel(
+          cut,
+          dx,
+          dy,
+        ).copyWith(canvasSize: canvasSize),
       );
       if (next == null) {
         throw StateError('Cut not found: $cutId');
