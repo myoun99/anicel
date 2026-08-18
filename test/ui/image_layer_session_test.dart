@@ -366,12 +366,6 @@ void main() {
       reason: 'the storyboard panel\'s comma gate reads it too — its own '
           'dispatch already refuses this band',
     );
-    expect(
-      s.canBlankExposureAtCurrentFrame,
-      isFalse,
-      reason: 'X-here edits an EXISTING hold, so it ends the ladder here '
-          'instead of shortening the unswept active row\'s hold',
-    );
 
     // The STORYBOARD panel runs its own ladders and must give the same
     // answers — with the cursor on the track row, where its last rungs
@@ -387,6 +381,50 @@ void main() {
           'the user drew over a picture row',
     );
     expect(panel.editTarget, isNull);
+  });
+
+  test('X-here reads the band\'s claim too: with a blankable hold under '
+      'the playhead, an image-only band still darkens it', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final celId = s.layers
+        .firstWhere((layer) => layer.kind == LayerKind.animation)
+        .id;
+    s.selectLayer(celId);
+    s.selectFrameIndex(0);
+    s.createDrawingAtCurrentFrame();
+    // A real HOLD, so X-here has something to blank — without this the
+    // gate is already false and the pin would pass for the wrong reason.
+    s.setCommaForSelectionOrCurrent(4);
+    s.selectFrameIndex(2);
+    expect(
+      s.canBlankExposureAtCurrentFrame,
+      isTrue,
+      reason: 'the control: this row IS blankable at this frame',
+    );
+
+    s.addLayerOfKind(LayerKind.image);
+    final imageId = s.activeLayer!.id;
+    s.selectLayer(celId);
+    s.selectFrameIndex(2);
+    s.updateFrameRangeSelectionDrag(
+      layerId: imageId,
+      anchorIndex: 0,
+      headIndex: 3,
+    );
+
+    expect(
+      s.canBlankExposureAtCurrentFrame,
+      isFalse,
+      reason: 'X edits an EXISTING hold, so a band holding nothing ends '
+          'the ladder instead of shortening the unswept active row\'s hold',
+    );
+    s.blankExposureAtCurrentFrame();
+    expect(
+      s.layers.firstWhere((layer) => layer.id == celId).timeline[0]!.length,
+      4,
+      reason: 'and the press really leaves that hold alone',
+    );
   });
 
   test('the image row refuses every verb that would mint or re-expose a '
