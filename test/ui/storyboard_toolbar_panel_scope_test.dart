@@ -158,6 +158,78 @@ void main() {
     expect(manager.activeCutOrNull!.duration, cut.duration);
   });
 
+  testWidgets('D28: with a storyboard layer on the cut, the comma press '
+      'retimes the PANEL under the cursor — the ripple moves the later '
+      'panels, never crushes the cut', (tester) async {
+    final manager = await pumpStoryboard(tester);
+    // Give the active cut a storyboard layer (born covering the cut) and
+    // divide it: panels [0,3) and [3,duration).
+    manager.addLayerOfKind(LayerKind.storyboard);
+    final cutBefore = manager.activeCutOrNull!;
+    manager.selectRow(TrackRowAddress(manager.activeTrack.id));
+    manager.selectGlobalFrame(3);
+    await tester.pumpAndSettle();
+    manager.createStoryboardPanelAtCursor();
+    await tester.pumpAndSettle();
+
+    // Comma 4 on the FIRST panel: the panel takes length 4 and the later
+    // panel RIPPLES (+1) — the old law (「컷블록 위 4 = 컷길이 4」) would
+    // have crushed the whole cut to 4 instead.
+    manager.selectGlobalFrame(1);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('set-comma-4-button')));
+    await tester.pumpAndSettle();
+
+    final rowAfter = manager.activeCutOrNull!.layers.firstWhere(
+      (layer) => layer.kind == LayerKind.storyboard,
+    );
+    expect(rowAfter.timeline.keys.toList(), [0, 4]);
+    expect(rowAfter.timeline[0]!.length, 4);
+    expect(
+      manager.activeCutOrNull!.duration,
+      cutBefore.duration + 1,
+      reason: 'the ripple pushes the cut end with the last panel '
+          '(feedback #9) — the cut was NOT retimed to 4',
+    );
+
+    // One undo restores the whole ride.
+    manager.undo();
+    await tester.pumpAndSettle();
+    expect(manager.activeCutOrNull!.duration, cutBefore.duration);
+  });
+
+  testWidgets('D28: the frame ＋ DIVIDES the panel under the cursor, and '
+      'refuses at an existing division start', (tester) async {
+    final manager = await pumpStoryboard(tester);
+    manager.addLayerOfKind(LayerKind.storyboard);
+    manager.selectRow(TrackRowAddress(manager.activeTrack.id));
+    manager.selectGlobalFrame(0);
+    await tester.pumpAndSettle();
+
+    final panel = StoryboardToolbarPanelContext(manager);
+    expect(
+      panel.canCreateInstance,
+      isFalse,
+      reason: 'the cursor sits ON the panel\'s division start — nothing '
+          'to divide (T25: a lit ＋ must have a working press)',
+    );
+
+    manager.selectGlobalFrame(3);
+    await tester.pumpAndSettle();
+    expect(panel.canCreateInstance, isTrue);
+    manager.createStoryboardPanelAtCursor();
+    await tester.pumpAndSettle();
+
+    final row = manager.activeCutOrNull!.layers.firstWhere(
+      (layer) => layer.kind == LayerKind.storyboard,
+    );
+    expect(
+      row.timeline.keys.toList(),
+      [0, 3],
+      reason: 'the covering panel divided at the cursor',
+    );
+  });
+
   testWidgets('B8: the SAME comma press, said of an SE block and of a '
       'transition span — no divergent rules per kind', (tester) async {
     final manager = await pumpStoryboard(tester);

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../models/cut_id.dart';
 import '../models/layer_id.dart';
+import '../models/layer_kind.dart' show LayerKind;
 import '../models/timeline_row_address.dart';
 import '../models/track.dart';
 import '../models/transform_track.dart';
@@ -369,6 +370,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       unawaited(editTransitionSpanInstance(context, _session));
       return;
     }
+    // D28: on the cut row with a storyboard layer, the ＋ divides the
+    // panel under the cursor (self-gated by the one cursor resolver).
+    if (_session.canCreateStoryboardPanelAtCursor) {
+      _session.createStoryboardPanelAtCursor();
+      return;
+    }
     // Self-gated: only a standing S row with an EMPTY cursor frame authors.
     _session.createSeEntryAtStoryboardCursor();
   }
@@ -644,6 +651,15 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       onCancel: _session.cancelFrameRangeMoveDrag,
                     ),
                   ),
+                  // D30: the no-layer cut's create affordance — gate and
+                  // dispatch are the session's ONE add-layer pair (T25),
+                  // aimed at the cut the press just activated.
+                  onCreateStoryboardLayer: (cutId) {
+                    if (_session.activeCutOrNull?.id == cutId &&
+                        _session.canAddLayerOfKind(LayerKind.storyboard)) {
+                      _session.addLayerOfKind(LayerKind.storyboard);
+                    }
+                  },
                   // The end line edits the MOVIE length (UI-R20 #3): the
                   // project's trailing gap, never the cuts.
                   movieEnd: StoryboardMovieEndCallbacks(

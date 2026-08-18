@@ -236,6 +236,13 @@ class TimesheetDocument {
     // sheet is のりしろ: the frames drawn outside the conte 尺 so the two
     // ramps of an O.L have something to cross-fade.
     List<TransitionSpan> transitionSpans = const [],
+    // D31: the transition row PROJECTED into this cut (the session's
+    // cut-view clone — spans re-keyed to cut-local starts, a crossing
+    // span at full length on its own side). Non-null prints it as one
+    // more CAM column through the instruction recipe; the caller gates on
+    // the row's own onTimesheet flag, so a toggled-off row stays blank
+    // form space like every other unbacked slot.
+    Layer? transitionLayer,
     // DATA-sheet cells (UI-R24 #1): print the EXPORT-SOURCE data instead
     // of the notation shorthand — every ghost chain (repeat word, 止め,
     // front-hold relocation) renders verbatim as the concrete per-entry
@@ -333,10 +340,18 @@ class TimesheetDocument {
     // (unified layer controls); toggled off it stays printed blank form
     // space, like an unbacked slot.
     final cameraOnSheet = cut.layers.cameraLayer?.onTimesheet ?? true;
-    // CAM slots: the camera-keyframe column plus one per instruction row.
-    final cameraSlotCount = 1 + instructionLayers.length > cameraColumnCount
-        ? 1 + instructionLayers.length
+    // CAM slots: the camera-keyframe column, one per instruction row, and
+    // — when a transition rides the sheet (D31) — one more for it. Spare
+    // fixed slots absorb them first; a crowded cut grows the block, the
+    // way instruction rows already do.
+    final backedCameraSlots =
+        1 + instructionLayers.length + (transitionLayer == null ? 0 : 1);
+    final cameraSlotCount = backedCameraSlots > cameraColumnCount
+        ? backedCameraSlots
         : cameraColumnCount;
+    final transitionSlot = transitionLayer == null
+        ? -1
+        : 1 + instructionLayers.length;
 
     final columns = <TimesheetColumn>[
       // Animation layers fill the ACTION block in order, headed by their
@@ -432,11 +447,15 @@ class TimesheetDocument {
           label: '${slot + 1}',
           layerName: slot >= 1 && slot - 1 < instructionLayers.length
               ? instructionLayers[slot - 1].name
+              : slot == transitionSlot
+              ? transitionLayer!.name
               : null,
           // Instruction slots carry their layer id so edge drags preview
           // live on the sheet (UI-R18 #7), like action/SE columns.
           layerId: slot >= 1 && slot - 1 < instructionLayers.length
               ? instructionLayers[slot - 1].id
+              : slot == transitionSlot
+              ? transitionLayer!.id
               : null,
           cells: slot == 0
               ? (cameraOnSheet
@@ -445,6 +464,16 @@ class TimesheetDocument {
               : slot - 1 < instructionLayers.length
               ? _instructionCells(
                   layer: instructionLayers[slot - 1],
+                  rowCount: rowCount,
+                  defById: instructionDefById,
+                )
+              // D31: the transition's spans through the SAME instruction
+              // recipe — one mark vocabulary (bowtie/wedge, A→B, memo),
+              // no second printer. Its marks may legitimately run into
+              // the のりしろ rows.
+              : slot == transitionSlot
+              ? _instructionCells(
+                  layer: transitionLayer!,
                   rowCount: rowCount,
                   defById: instructionDefById,
                 )

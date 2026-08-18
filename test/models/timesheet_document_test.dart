@@ -401,6 +401,64 @@ void main() {
       expect(cells[11].kind, TimesheetCellKind.empty);
     });
 
+    test('D31: the transition row prints as one more CAM column through '
+        'the instruction recipe, at its PROJECTED cut-local position', () {
+      // The clone the session's cut-view projection hands over: an O.L
+      // that really crosses the cut end, re-keyed to its cut-local start.
+      final transition = Layer(
+        id: const LayerId('t-transitions'),
+        name: 'Transition',
+        kind: LayerKind.transition,
+        frames: const [],
+        timeline: const {},
+        instructions: {
+          20: const InstructionEvent(instructionId: 'ol', length: 6),
+        },
+      );
+      final document = TimesheetDocument.fromCut(
+        cut: _cut(duration: 24),
+        projectName: 'Project',
+        fps: 24,
+        pageSeconds: 6,
+        instructionDefById: CameraInstructionSet.standard.defById,
+        transitionLayer: transition,
+      );
+
+      final cameraColumns = document.columns
+          .where((column) => column.kind == TimesheetColumnKind.camera)
+          .toList();
+      expect(cameraColumns, hasLength(2), reason: 'the spare fixed slot '
+          'absorbs the transition — no layout change');
+      expect(cameraColumns[1].layerName, 'Transition');
+      final cells = cameraColumns[1].cells;
+      expect(cells[20].kind, TimesheetCellKind.instructionStart);
+      expect(cells[20].spanLength, 6);
+      expect(cells[20].markType, CameraInstructionMarkType.ol);
+      expect(
+        cells[25].kind,
+        TimesheetCellKind.instructionEnd,
+        reason: 'the mark legitimately runs into the のりしろ rows',
+      );
+    });
+
+    test('D31: no transition layer (or its timesheet flag off — the '
+        'caller\'s gate) keeps the CAM block exactly as before', () {
+      final document = _document(_cut());
+      expect(
+        document.columns
+            .where((column) => column.kind == TimesheetColumnKind.camera)
+            .length,
+        2,
+      );
+      expect(
+        document.columns
+            .where((column) => column.kind == TimesheetColumnKind.camera)
+            .map((column) => column.layerName)
+            .toList(),
+        [null, null],
+      );
+    });
+
     test('a third instruction row grows the CAM block past the fixed 2', () {
       Layer instruction(String id) => Layer(
         id: LayerId(id),

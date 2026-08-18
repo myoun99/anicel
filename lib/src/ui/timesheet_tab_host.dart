@@ -158,6 +158,14 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         trackSeLayers: trackSeLayers,
         cutStartFrame: cutStartFrame,
         transitionSpans: session.activeTrackTransitionSpans,
+        // D31: the transition row prints when its own timesheet flag is
+        // on — through the SESSION'S cut-view projection (one walk for
+        // the sheet and the cut timeline's row; spans re-keyed to this
+        // cut's local axis). Off = the slot stays blank form space, the
+        // camera column's own precedent.
+        transitionLayer: transitionLayer.onTimesheet
+            ? session.trackTransitionDisplayLayer
+            : null,
         dataSheet: _dataSheet,
       );
       _layout = null;

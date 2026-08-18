@@ -18,6 +18,8 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 
+import 'storyboard_cut_block_probe.dart';
+
 /// The STRIP is a row of its own, and a cut-owned one: it speaks its cut's
 /// local axis, which is why a drag on it cannot leave the cut it started
 /// in. That is the "clip to the anchor cut" rule arriving as arithmetic
@@ -62,7 +64,8 @@ Cut _cut(String id, int duration, Map<int, int> divisions) => Cut(
 );
 
 /// Cut 1 covers [0,10) with panels at 0 and 5; cut 2 covers [10,20) with
-/// panels at 0 and 4 (local).
+/// panels at 0 and 4 (local); cut 3 covers [20,30) with NO storyboard
+/// layer (the D30 create affordance's home).
 Project _project() => Project(
   id: const ProjectId('strip-project'),
   name: 'Strip',
@@ -74,6 +77,20 @@ Project _project() => Project(
       cuts: [
         _cut('cut-1', 10, {0: 5, 5: 5}),
         _cut('cut-2', 10, {0: 4, 4: 6}),
+        Cut(
+          id: const CutId('cut-3'),
+          name: 'cut-3',
+          duration: 10,
+          canvasSize: const CanvasSize(width: 640, height: 360),
+          layers: [
+            Layer(
+              id: const LayerId('cut-3-cel'),
+              name: 'A',
+              frames: const [],
+              timeline: const {},
+            ),
+          ],
+        ),
       ],
     ),
   ],
@@ -242,5 +259,54 @@ void main() {
     final panel = tester.widget<StoryboardPanel>(find.byType(StoryboardPanel));
     expect(panel.stripSelect!.selection.value, isNotNull);
     expect(panel.cutSelect!.selectedRange.value, isNull);
+  });
+
+  testWidgets('D30: the strip selection draws the timeline\'s ONE band at '
+      'the selected panels', (tester) async {
+    await _openStoryboard(tester);
+
+    await _drag(tester, _stripPoint(tester, 1), _stripPoint(tester, 6));
+    final band = find.byKey(
+      const ValueKey<String>('storyboard-strip-range-selection'),
+    );
+    expect(band, findsOneWidget, reason: 'the strip band was MISSING — the '
+        'selection had no visual of its own on this panel');
+
+    // The selection snapped to the whole cut-1 span [0,10): the band's
+    // rect covers exactly those frames.
+    final rowRect = _cutRowRect(tester);
+    final ppf = _pixelsPerFrame(tester);
+    final bandRect = tester.getRect(band);
+    expect(bandRect.left, moreOrLessEquals(rowRect.left, epsilon: 1));
+    expect(bandRect.width, moreOrLessEquals(10 * ppf, epsilon: 1));
+  });
+
+  testWidgets('D30: pressing the CREATE affordance on a no-layer cut makes '
+      'its storyboard layer', (tester) async {
+    await _openStoryboard(tester);
+    expect(requireCutBlock(tester, 'cut-3').hasStoryboardLayer, isFalse);
+
+    // The affordance sits at the centre of cut-3's strip ([20,30)).
+    await tester.tapAt(_stripPoint(tester, 25));
+    await tester.pumpAndSettle();
+
+    expect(
+      requireCutBlock(tester, 'cut-3').hasStoryboardLayer,
+      isTrue,
+      reason: 'gate and dispatch are the session\'s one add-layer pair — '
+          'the press activates the cut, then creates its covering row',
+    );
+  });
+
+  testWidgets('D30: a strip press OUTSIDE the affordance never creates', (
+    tester,
+  ) async {
+    await _openStoryboard(tester);
+
+    // Frame 21 is inside cut-3 but left of the centred 22px affordance.
+    await tester.tapAt(_stripPoint(tester, 21));
+    await tester.pumpAndSettle();
+
+    expect(requireCutBlock(tester, 'cut-3').hasStoryboardLayer, isFalse);
   });
 }

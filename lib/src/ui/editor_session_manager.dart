@@ -15361,7 +15361,31 @@ class EditorSessionManager extends ChangeNotifier {
           return null;
         }
         final cut = activeCutOrNull;
-        return cut == null ? null : _StoryboardCursorCutBlock(cut);
+        if (cut == null) {
+          return null;
+        }
+        // D28: with a storyboard layer on the cut, the frame verbs target
+        // the PANEL under the cut-local cursor. A ghost or uncovered cell
+        // (junk the coverage rule merely tolerates) falls back to the cut
+        // block rather than lighting a verb the machinery will refuse
+        // (T25); a cut with NO storyboard layer keeps the old cut-block
+        // law outright.
+        final row = storyboardLayerForCut(cut);
+        if (row != null) {
+          final panel = coveringDrawingBlockAt(
+            row.timeline,
+            _timelineController.currentFrameIndex,
+          );
+          if (panel != null && !panel.entry.ghost && panel.startIndex >= 0) {
+            return _StoryboardCursorStoryboardPanel(
+              cut,
+              row,
+              panel.startIndex,
+              panel.entry.length!,
+            );
+          }
+        }
+        return _StoryboardCursorCutBlock(cut);
     }
   }
 
@@ -15376,14 +15400,18 @@ class EditorSessionManager extends ChangeNotifier {
       // The controller resolves track-SE commit layers through the active
       // cut's lens machinery; a parked playhead has no cut to lens through.
       _StoryboardCursorSeBlock() => activeCutOrNull != null,
-      _StoryboardCursorCutBlock() || _StoryboardCursorTransitionSpan() => true,
+      _StoryboardCursorCutBlock() ||
+      _StoryboardCursorTransitionSpan() ||
+      _StoryboardCursorStoryboardPanel() => true,
     };
   }
 
   /// The storyboard's comma press: the selection's blocks, else THE BLOCK
   /// UNDER THE CURSOR takes length [comma] — one rule for every block kind
-  /// (B8: 「컷블록 위 4 = 컷길이 4」), each kind through the SAME machinery
-  /// its own grips already commit with:
+  /// (B8: 「컷블록 위 4 = 컷길이 4」, superseded by D28 2026-08-18 exactly
+  /// where the cut carries a storyboard layer — its PANEL takes the comma
+  /// then), each kind through the SAME machinery its own grips already
+  /// commit with:
   ///
   /// - a CUT block rides the trailing-edge drag verbs, so a conte row's
   ///   last comma and the following gap behave exactly as if the edge had
@@ -15461,6 +15489,25 @@ class EditorSessionManager extends ChangeNotifier {
         }
         updateTransitionEdgeDrag(comma - spanLength);
         endTransitionEdgeDrag();
+      case _StoryboardCursorStoryboardPanel(
+        :final cut,
+        :final panelStartIndex,
+        :final panelLength,
+      ):
+        // D28: the panel rides the storyboard comma drag — ripple + the
+        // cut length following the LAST panel's edge (feedback #9), one
+        // drag = one undo, exactly as the strip's own grips commit.
+        if (comma == panelLength) {
+          return;
+        }
+        if (!beginStoryboardCommaDrag(
+          cutId: cut.id,
+          blockStartIndex: panelStartIndex,
+        )) {
+          return;
+        }
+        updateCutEdgeDrag(comma - panelLength);
+        endCutEdgeDrag();
     }
   }
 
@@ -15471,7 +15518,12 @@ class EditorSessionManager extends ChangeNotifier {
         null => false,
         _StoryboardCursorSeBlock() => activeCutOrNull != null,
         _StoryboardCursorCutBlock() ||
-        _StoryboardCursorTransitionSpan() => true,
+        _StoryboardCursorTransitionSpan() ||
+        // D28 ⚠️: delete keeps the CUT answer for now — whether the shared
+        // delete should remove the PANEL instead is a recorded user
+        // question (the frame pill retargeted; the verb matrix beyond it
+        // is the user's to rule).
+        _StoryboardCursorStoryboardPanel() => true,
       };
 
   /// Deletes THE BLOCK UNDER THE CURSOR, whatever its kind — the cut, the
@@ -15481,7 +15533,7 @@ class EditorSessionManager extends ChangeNotifier {
     switch (_storyboardCursorBlockOrNull()) {
       case null:
         return;
-      case _StoryboardCursorCutBlock():
+      case _StoryboardCursorCutBlock() || _StoryboardCursorStoryboardPanel():
         deleteActiveCut();
       case _StoryboardCursorSeBlock(:final layerId, :final blockStartIndex):
         if (activeCutOrNull == null) {
@@ -15550,6 +15602,39 @@ class EditorSessionManager extends ChangeNotifier {
             ),
     );
     notifyListeners();
+  }
+
+  /// D28: whether the frame ＋ can DIVIDE the storyboard panel under the
+  /// cursor. An existing division START refuses — there is nothing to
+  /// divide there (the timeline's own creation law); gate and dispatch
+  /// read the ONE cursor resolver (T25).
+  bool get canCreateStoryboardPanelAtCursor {
+    if (_storyboardCursorBlockOrNull()
+        case _StoryboardCursorStoryboardPanel(:final panelStartIndex)) {
+      return _timelineController.currentFrameIndex != panelStartIndex;
+    }
+    return false;
+  }
+
+  /// D28: divides the panel under the cursor — the covering division
+  /// splits, the new drawing taking the rest of the hold, exactly as the
+  /// timeline's ＋ divides a held block.
+  void createStoryboardPanelAtCursor() {
+    if (_storyboardCursorBlockOrNull()
+        case _StoryboardCursorStoryboardPanel(
+          :final row,
+          :final panelStartIndex,
+        )) {
+      if (_timelineController.currentFrameIndex == panelStartIndex) {
+        return;
+      }
+      _frameSequence += 1;
+      _timelineController.createDrawingFrameForLayer(
+        layerId: row.id,
+        frameId: FrameId(_nextFrameId(row.id)),
+      );
+      notifyListeners();
+    }
   }
 
   int get currentFrameIndex => _timelineController.currentFrameIndex;
@@ -17366,4 +17451,24 @@ class _StoryboardCursorTransitionSpan extends _StoryboardCursorBlock {
 
   final int spanStartIndex;
   final int spanLength;
+}
+
+/// D28: the cut's STORYBOARD PANEL under the cursor — with a storyboard
+/// layer on the cut, the frame verbs target the panel, not the cut
+/// (「스토리보드레이어 존재 시 대상이 스토리보드레이어로」, the later law
+/// superseding 「컷블록 위 4 = 컷길이 4」 exactly where a panel exists).
+class _StoryboardCursorStoryboardPanel extends _StoryboardCursorBlock {
+  const _StoryboardCursorStoryboardPanel(
+    this.cut,
+    this.row,
+    this.panelStartIndex,
+    this.panelLength,
+  );
+
+  final Cut cut;
+  final Layer row;
+
+  /// CUT-LOCAL — the storyboard row lives inside its cut.
+  final int panelStartIndex;
+  final int panelLength;
 }
