@@ -23,6 +23,68 @@ import 'timeline_cell_style.dart';
 /// the code is right to stay as it is — but for a reason it was not
 /// giving. A comment that says "cheap" without saying why is how a
 /// surface stops being looked at.
+/// D8/D32/D38 (2026-08-18): THE grid-line law, whole. This file already
+/// owned the INK (R26 #40's "one grid language"); the position and the
+/// over-block treatment joined it so no drawer can restate a value:
+/// - ink: the three named strengths below, dispatched per boundary;
+/// - position: [timelineFrameBoundaryLinePosition] — every drawer lands
+///   on boundary + [timelineGridLineSnap], the ruler's own pixel snap
+///   (the overlay used to draw unsnapped, which was D8's "미묘하게 다름");
+/// - over blocks: [timelineGridLineInkOnGround] — the same line
+///   channel-multiplied onto the block's paper (D32: a bright opaque line
+///   glowing over blue paper was the report; multiply darkens the paper
+///   instead), computed in Dart so the tile bake needs no blend op;
+/// - cadence: one function answers inside and outside blocks alike (D38:
+///   a zoom that thins the empty-space 1f lines thins the block seams
+///   too — same question, same answer).
+
+/// BASE line — the faint per-cell cadence line.
+({Color color, double strokeWidth}) timelineGridBaseLineInk(
+  ColorScheme colorScheme,
+) => (
+  color: colorScheme.outlineVariant.withValues(alpha: timelineBaseGridAlpha),
+  strokeWidth: 1.0,
+);
+
+/// 6f BEAT line — the sheet convention, zoom-independent.
+({Color color, double strokeWidth}) timelineGridSixLineInk(
+  ColorScheme colorScheme,
+) => (color: colorScheme.outline, strokeWidth: 1.0);
+
+/// SECOND (fps) line — the strongest.
+({Color color, double strokeWidth}) timelineGridSecondLineInk() =>
+    (color: AppColors.beatLine, strokeWidth: 1.5);
+
+/// The position convention: a boundary line's center sits half a pixel
+/// past the boundary — the frame ruler's own snap, now the law's.
+const double timelineGridLineSnap = 0.5;
+
+/// Where the line at the boundary STARTING [frameIndex] is drawn, along
+/// the frame axis in content coordinates.
+double timelineFrameBoundaryLinePosition(
+  int frameIndex,
+  double frameCellExtent,
+) => frameIndex * frameCellExtent + timelineGridLineSnap;
+
+/// The grid line's ink ON a painted ground (a block's paper): the law
+/// line channel-multiplied onto the ground, weighted by the line's own
+/// alpha — a faint base line darkens the paper faintly, an opaque beat
+/// line darkens it fully. Computed here, once, so the substrate tiles
+/// bake a plain opaque colour and need no blend mode in the native ops.
+Color timelineGridLineInkOnGround(
+  ({Color color, double strokeWidth}) ink,
+  Color ground,
+) {
+  final line = ink.color;
+  final multiplied = Color.from(
+    alpha: 1,
+    red: line.r * ground.r,
+    green: line.g * ground.g,
+    blue: line.b * ground.b,
+  );
+  return Color.lerp(ground, multiplied, line.a)!;
+}
+
 /// The ink of the grid line at the boundary STARTING frame [frameIndex]
 /// — the one grid language shared by the cell grid overlay and the frame
 /// ruler (R26 #40: "룰러도 프레임 셀 그리드랑 통일감").
@@ -41,17 +103,14 @@ import 'timeline_cell_style.dart';
   }
   if (frameIndex % 6 == 0) {
     return framesPerSecond > 0 && frameIndex % framesPerSecond == 0
-        ? (color: AppColors.beatLine, strokeWidth: 1.5)
-        : (color: colorScheme.outline, strokeWidth: 1.0);
+        ? timelineGridSecondLineInk()
+        : timelineGridSixLineInk(colorScheme);
   }
   final cadence = timelineGridLineEveryFrames(frameCellExtent);
   if (frameIndex % cadence != 0) {
     return null;
   }
-  return (
-    color: colorScheme.outlineVariant.withValues(alpha: timelineBaseGridAlpha),
-    strokeWidth: 1.0,
-  );
+  return timelineGridBaseLineInk(colorScheme);
 }
 
 /// The OUT-OF-CUT wash: everything past the cut's last frame, greyed.
@@ -150,12 +209,14 @@ class TimelineBeatLinesPainter extends CustomPainter {
     }
 
     // BASE grid: flat faint, cadence-thinned (UI-R18 #8 — the storyboard
-    // look; beat frames skip, the beat pass draws them stronger).
+    // look; beat frames skip, the beat pass draws them stronger). The
+    // ink comes from the LAW's named functions and the position from its
+    // snap — the stride loops below are the law's own cadence hoisted,
+    // so no per-boundary allocation happens on this content-length walk.
+    final baseInk = timelineGridBaseLineInk(colorScheme);
     final basePaint = Paint()
-      ..color = colorScheme.outlineVariant.withValues(
-        alpha: timelineBaseGridAlpha,
-      )
-      ..strokeWidth = 1;
+      ..color = baseInk.color
+      ..strokeWidth = baseInk.strokeWidth;
     final cadence = timelineGridLineEveryFrames(frameCellExtent);
     for (
       var frame = cadence;
@@ -165,7 +226,10 @@ class TimelineBeatLinesPainter extends CustomPainter {
       if (frame % 6 == 0) {
         continue;
       }
-      mainAxisLine(frame * frameCellExtent, basePaint);
+      mainAxisLine(
+        timelineFrameBoundaryLinePosition(frame, frameCellExtent),
+        basePaint,
+      );
     }
 
     // ROW seams (UI-R18 #10/#12): full-strength, zoom-independent — the
@@ -187,12 +251,14 @@ class TimelineBeatLinesPainter extends CustomPainter {
       }
     }
 
+    final sixInk = timelineGridSixLineInk(colorScheme);
     final sixPaint = Paint()
-      ..color = colorScheme.outline
-      ..strokeWidth = 1;
+      ..color = sixInk.color
+      ..strokeWidth = sixInk.strokeWidth;
+    final secondInk = timelineGridSecondLineInk();
     final secondPaint = Paint()
-      ..color = AppColors.beatLine
-      ..strokeWidth = 1.5;
+      ..color = secondInk.color
+      ..strokeWidth = secondInk.strokeWidth;
     // 6f is the sheet convention regardless of fps.
     const beatPeriod = 6;
     for (
@@ -203,7 +269,10 @@ class TimelineBeatLinesPainter extends CustomPainter {
       final paint = framesPerSecond > 0 && frame % framesPerSecond == 0
           ? secondPaint
           : sixPaint;
-      mainAxisLine(frame * frameCellExtent, paint);
+      mainAxisLine(
+        timelineFrameBoundaryLinePosition(frame, frameCellExtent),
+        paint,
+      );
     }
   }
 

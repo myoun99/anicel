@@ -63,6 +63,7 @@ import 'timeline/transform_lane_policy.dart'
         transformPropertyLanes;
 import 'input/app_input_settings.dart' show AppInput;
 import 'widgets/instant_tap_region.dart' show InstantTapRegion;
+import 'timeline/timeline_beat_lines.dart' show TimelineBeatLinesPainter;
 import 'timeline/timeline_cell_double_tap.dart'
     show timelineCellDoubleTapActivation, timelineCellDoubleTapRecord;
 import 'timeline/timeline_drag_preview.dart';
@@ -70,7 +71,6 @@ import 'timeline/timeline_cell_style.dart'
     show
         storyboardCutBlockBackgroundColor,
         storyboardPanelPictureGroundColor,
-        timelineBaseGridAlpha,
         timelineDrawingInkColor,
         timelineRangeSelectionBandDecoration,
         timelineSelectedFrameBorderColor,
@@ -3204,9 +3204,12 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                       child: Stack(
                                         children: [
                                           // Frame grid lines under the blocks:
-                                          // the runway reads as endless frame
-                                          // cells, like the timeline's grid
-                                          // (painted — costs nothing per frame).
+                                          // THE shared painter (D8/D38 —
+                                          // the storyboard's own copy had
+                                          // drifted: pre-split beat color,
+                                          // base+beat double ink at 6f, a
+                                          // line at x=0, no snap; deleted,
+                                          // never reconciled).
                                           Positioned.fill(
                                             child: IgnorePointer(
                                               child: RepaintBoundary(
@@ -3215,24 +3218,17 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                                     'storyboard-frame-lines',
                                                   ),
                                                   painter:
-                                                      _StoryboardFrameLinesPainter(
-                                                        pixelsPerFrame: scale
+                                                      TimelineBeatLinesPainter(
+                                                        frameCellExtent: scale
                                                             .pixelsPerFrame,
-                                                        // The shared faint
-                                                        // grid ink (UI-R14
-                                                        // #4) — one value
-                                                        // across all three
-                                                        // panels.
-                                                        color: colorScheme
-                                                            .outlineVariant
-                                                            .withValues(
-                                                              alpha:
-                                                                  timelineBaseGridAlpha,
-                                                            ),
                                                         framesPerSecond:
                                                             _countingFps,
                                                         colorScheme:
                                                             colorScheme,
+                                                        // Row seams are the
+                                                        // storyboard rail's
+                                                        // own hairlines.
+                                                        crossCellExtent: 0,
                                                       ),
                                                 ),
                                               ),
@@ -6068,61 +6064,7 @@ class _RenderFrameHitGate extends RenderProxyBox {
       claimsDx(position.dx) && super.hitTest(result, position: position);
 }
 
-/// Vertical frame-boundary lines behind the cut blocks (the timeline grid's
-/// cell borders, storyboard-flavored): every frame when cells are wide,
-/// thinning to the shared label cadence when zoomed out.
-class _StoryboardFrameLinesPainter extends CustomPainter {
-  const _StoryboardFrameLinesPainter({
-    required this.pixelsPerFrame,
-    required this.color,
-    required this.framesPerSecond,
-    required this.colorScheme,
-  });
-
-  final double pixelsPerFrame;
-  final Color color;
-  final int framesPerSecond;
-  final ColorScheme colorScheme;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (pixelsPerFrame <= 0) {
-      return;
-    }
-    final lineEveryFrames = pixelsPerFrame >= 16
-        ? 1
-        : TimelineGridMetrics(
-            frameCellWidth: pixelsPerFrame,
-          ).frameLabelEveryFrames;
-    final step = pixelsPerFrame * lineEveryFrames;
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 1;
-    for (var x = 0.0; x <= size.width; x += step) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    // The 6f/24f beat lines over the base grid (UI-R13 #7 — every frame
-    // grid carries the sheet rhythm, the storyboard included).
-    final sixPaint = Paint()
-      ..color = colorScheme.outline
-      ..strokeWidth = 1;
-    final secondPaint = Paint()
-      ..color = colorScheme.onSurfaceVariant
-      ..strokeWidth = 1.5;
-    for (var frame = 6; frame * pixelsPerFrame <= size.width; frame += 6) {
-      final x = frame * pixelsPerFrame;
-      final beatPaint = framesPerSecond > 0 && frame % framesPerSecond == 0
-          ? secondPaint
-          : sixPaint;
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), beatPaint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_StoryboardFrameLinesPainter oldDelegate) {
-    return oldDelegate.pixelsPerFrame != pixelsPerFrame ||
-        oldDelegate.color != color ||
-        oldDelegate.framesPerSecond != framesPerSecond ||
-        oldDelegate.colorScheme != colorScheme;
-  }
-}
+// _StoryboardFrameLinesPainter is GONE (D8/D38 2026-08-18): it was a
+// drifted copy of TimelineBeatLinesPainter — pre-beatLine-split second
+// color, base+beat double ink at 6f multiples, a line at x=0, no snap —
+// and the storyboard now mounts the shared painter above.
