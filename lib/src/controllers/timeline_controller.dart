@@ -212,12 +212,23 @@ class TimelineController {
   /// new drawing takes over the rest of the hold. Only a block's own START
   /// refuses, because there is nothing there to divide — the drawing the
   /// press would make is already there.
+  ///
+  /// D20/D21 (2026-08-18): a GHOST covering block is no coverage at all —
+  /// 「데이터가 있는 곳 취급인 듯하나 고스트일 뿐이니 생성 허용」. Ghosts
+  /// are projections the rederive pass wipes and rebuilds (the splice law
+  /// already says "ghosts are not spliced"; the run [+] already authors
+  /// into ghost space), so a repeat part's start (D20) and the hold
+  /// ghost's start one cell after a held block (D21 — the same predicate,
+  /// which is why fixing one fixes both) are authoring room.
   bool canCreateDrawingAt({required Layer layer, required int frameIndex}) {
     if (frameIndex < 0) {
       return false;
     }
     final block = coveringDrawingBlockAt(layer.timeline, frameIndex);
-    return block == null || frameIndex > block.startIndex;
+    if (block == null || block.entry.ghost) {
+      return true;
+    }
+    return frameIndex > block.startIndex;
   }
 
   void createDrawingFrameForLayer({
@@ -246,11 +257,21 @@ class TimelineController {
     final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
       before.timeline,
     );
+    final covering = coveringDrawingBlockAt(before.timeline, frameIndex);
+    // D19/D20/D21: a GHOST-covered cell authors like an EMPTY one — the
+    // press makes a fresh 1-comma block (「원래 1칸 블록」), never a divide
+    // of the projection (dividing a ghost wrote ghost-flagged data the
+    // rederive pass silently deleted). The working copy sheds every ghost
+    // up front: an authored entry overlapping a stale ghost would trip
+    // the coverage invariant, ghost starts are not clamp walls, and the
+    // rederive choke point rebuilds the projection clamped around the new
+    // block right after this edit.
+    nextTimeline.removeWhere((_, exposure) => exposure.ghost);
     final int clampedLength;
     // INSIDE a block: the press divides it, and the new drawing takes over
     // the rest of the hold — the frames do not move, the division does.
-    final covering = coveringDrawingBlockAt(before.timeline, frameIndex);
-    if (covering != null) {
+    // (The user's rule 2026-07-27 — REAL blocks only.)
+    if (covering != null && !covering.entry.ghost) {
       final splitOffset = frameIndex - covering.startIndex;
       clampedLength = covering.endIndexExclusive - frameIndex;
       nextTimeline[covering.startIndex] = covering.entry.copyWith(
@@ -268,7 +289,9 @@ class TimelineController {
         ],
       );
     } else {
-      final nextBlock = nextDrawingBlockAfter(before.timeline, frameIndex);
+      // Clamp against the WORKING copy: after a ghost shed, the next
+      // authored block is the honest wall (a ghost start is not one).
+      final nextBlock = nextDrawingBlockAfter(nextTimeline, frameIndex);
       final maxLength = nextBlock == null
           ? length
           : nextBlock.startIndex - frameIndex;
@@ -439,6 +462,11 @@ class TimelineController {
       final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
         before.timeline,
       );
+      // D20: ghosts are authoring room — shed them from the working copy
+      // (the same sentence as the single-cell verb; the rederive choke
+      // point rebuilds the projection clamped around whatever lands, and
+      // a layer where nothing lands discards this copy untouched).
+      nextTimeline.removeWhere((_, exposure) => exposure.ghost);
       final newFrames = <Frame>[];
       for (final fill in entry.value) {
         final startIndex = fill.startIndex + offset;
