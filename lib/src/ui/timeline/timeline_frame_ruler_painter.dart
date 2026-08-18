@@ -214,9 +214,11 @@ class TimelineFrameRulerPainter extends CustomPainter {
         continue;
       }
       final rect = headerRectFor(frameIndex);
+      // The LAW's snap (it was this ruler's own +0.5 first — D8 promoted
+      // it so the overlay lands on the same pixel).
       canvas.drawLine(
-        Offset(rect.left + 0.5, rect.top),
-        Offset(rect.left + 0.5, rect.bottom),
+        Offset(rect.left + timelineGridLineSnap, rect.top),
+        Offset(rect.left + timelineGridLineSnap, rect.bottom),
         linePaint
           ..color = ink.color
           ..strokeWidth = ink.strokeWidth,

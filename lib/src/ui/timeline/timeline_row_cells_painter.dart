@@ -14,6 +14,11 @@ import 'layer_label_controls.dart' show layerMarkColor;
 import 'timeline_cell_double_tap.dart';
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
+import 'timeline_beat_lines.dart'
+    show
+        timelineFrameBoundaryLineInk,
+        timelineGridLineInkOnGround,
+        timelineGridLineSnap;
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
 import 'timeline_frame_geometry.dart';
@@ -85,6 +90,7 @@ class TimelineRowCellsPainter extends CustomPainter {
     this.celContent,
     this.coverageIdentity,
     this.chromeless = false,
+    this.framesPerSecond = 24,
   }) : super(
          repaint: Listenable.merge([
            geometry,
@@ -93,6 +99,11 @@ class TimelineRowCellsPainter extends CustomPainter {
            ?celContent?.revision,
          ]),
        );
+
+  /// The counting fps, for the seam law's beat strengths (D32/D38): a 6f
+  /// or second boundary crossing a block keeps its stronger line, so the
+  /// grid reads as ONE line running through paper and dark ground alike.
+  final int framesPerSecond;
 
   /// What this row's COVERAGE follows, when that is not the layer itself.
   ///
@@ -448,17 +459,73 @@ class TimelineRowCellsPainter extends CustomPainter {
             !(celHasContentForLayer?.call(layer, frameIndex) ?? true)
         ? timelineEmptyCelPaperColor(paper)
         : styleColors.background;
-    // Blocks keep their chrome (start edge strong, held seams faint per
-    // UI-R18 #8); the PLAIN grid draws NOTHING here — the grid-wide
-    // overlay owns every per-cell line now (UI-R18 #2: the grid is
-    // always there, lanes and all).
+    // D32/D38 (2026-08-18): the per-cell BORDER is gone. It existed to be
+    // the seams ("the paper blocks' seams all sit on the shared faint
+    // alpha" — UI-R20 #7 already killed the strong start edge), and as a
+    // full rect per covered cell it double-stroked every interior seam,
+    // ignored the grid cadence, and wore a different weight than the
+    // empty-space line. The seams are [heldSeamLineFor] now — ONE line per
+    // interior boundary, the grid-line LAW's cadence/strength, multiplied
+    // onto this block's own paper. The rounded caps live in the fill.
     // Nothing here asks where the cut ends any more: the out-of-cut wash is
     // one rect in its own overlay ([TimelineOutsideCutWashPainter]), which
     // is what lets it follow a live drag while these tiles stay baked.
     return (
       background: baseBackground,
-      border: model.segment.isBlock ? styleColors.border : Colors.transparent,
+      border: Colors.transparent,
       radius: _cellRadius(model.segment),
+    );
+  }
+
+  /// D32/D38: the block-interior seam line at [frameIndex]'s LEADING
+  /// boundary, or null — the grid-line law consulted INSIDE blocks.
+  ///
+  /// Non-null only when the boundary is interior to a run (the cell
+  /// continues from the previous one) and the law's cadence shows a line
+  /// there at this zoom. The ink is the law line channel-multiplied onto
+  /// this cell's own painted ground ([timelineGridLineInkOnGround]), so a
+  /// 6f/second beat keeps its stronger line THROUGH the paper and the
+  /// zoom that thins the empty-space 1f lines thins these identically.
+  ///
+  /// PUBLIC contract shared by paint() and the tile emitter (the
+  /// probe-the-painter rule): both draw exactly this rect in this colour,
+  /// so the baked and classic passes cannot drift.
+  ({Rect rect, Color color})? heldSeamLineFor(int frameIndex) {
+    final model = cellModelAt(frameIndex);
+    if (model.ghost ||
+        _cameraSummaryRow ||
+        !model.segment.isBlock ||
+        !model.segment.continuesFromPrevious) {
+      return null;
+    }
+    final ink = timelineFrameBoundaryLineInk(
+      frameIndex: frameIndex,
+      frameCellExtent: frameCellExtent,
+      framesPerSecond: framesPerSecond,
+      colorScheme: colorScheme,
+    );
+    if (ink == null) {
+      return null;
+    }
+    final rect = cellRectFor(frameIndex);
+    final ground = resolvedCellStyleFor(frameIndex).background;
+    final color = timelineGridLineInkOnGround(ink, ground);
+    final width = ink.strokeWidth;
+    return (
+      rect: axis == Axis.horizontal
+          ? Rect.fromLTWH(
+              rect.left + timelineGridLineSnap - width / 2,
+              rect.top,
+              width,
+              rect.height,
+            )
+          : Rect.fromLTWH(
+              rect.left,
+              rect.top + timelineGridLineSnap - width / 2,
+              rect.width,
+              width,
+            ),
+      color: color,
     );
   }
 
@@ -603,6 +670,9 @@ class TimelineRowCellsPainter extends CustomPainter {
     }
 
     final rect = cellRectFor(frameIndex);
+    // D32/D38: the interior seam — ONE law line at the leading boundary,
+    // multiplied onto this block's paper. Drawn after the fill below.
+    final seam = heldSeamLineFor(frameIndex);
     // Border.all paints INSIDE the box: stroke centered half a pixel in.
     final borderRect = rect.deflate(0.5);
     final radius = style.radius;
@@ -636,6 +706,9 @@ class TimelineRowCellsPainter extends CustomPainter {
         ),
         borderPaint..color = borderColor,
       );
+    }
+    if (seam != null) {
+      canvas.drawRect(seam.rect, fillPaint..color = seam.color);
     }
   }
 
@@ -870,6 +943,7 @@ Widget timelineRowCellsPaintArea({
   Object? coverageIdentity,
   String substrateGeneration = '',
   bool chromeless = false,
+  int framesPerSecond = 24,
 }) {
   final painter = TimelineRowCellsPainter(
     layer: layer,
@@ -896,6 +970,7 @@ Widget timelineRowCellsPaintArea({
     tileStore: chromeless ? null : TimelineGridTileStore.instance,
     substrateGeneration: substrateGeneration,
     devicePixelRatio: MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
+    framesPerSecond: framesPerSecond,
   );
   // Read LIVE: the row that built this closure survives zoom steps now.
   bool inWindow(int frameIndex) => geometry.value.contains(frameIndex);

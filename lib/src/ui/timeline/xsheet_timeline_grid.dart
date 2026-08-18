@@ -2007,6 +2007,41 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                               plan.frameRange;
                                                           return Stack(
                                                             children: [
+                                                              // UI-R13 #7: the 6f/24f
+                                                              // beat lines span EVERY
+                                                              // column — one grid-wide
+                                                              // overlay (transposed).
+                                                              // D32: UNDER the columns
+                                                              // (the timeline's own
+                                                              // flip) — blocks occlude
+                                                              // and draw their interior
+                                                              // seams via the law.
+                                                              Positioned.fill(
+                                                                child: IgnorePointer(
+                                                                  child: RepaintBoundary(
+                                                                    child: CustomPaint(
+                                                                      key:
+                                                                          const ValueKey<
+                                                                            String
+                                                                          >(
+                                                                            'xsheet-beat-lines',
+                                                                          ),
+                                                                      painter: TimelineBeatLinesPainter(
+                                                                        axis: Axis
+                                                                            .vertical,
+                                                                        frameCellExtent:
+                                                                            _metrics.frameCellWidth,
+                                                                        crossCellExtent:
+                                                                            _metrics.layerRowHeight,
+                                                                        framesPerSecond:
+                                                                            _countingFps,
+                                                                        colorScheme:
+                                                                            colorScheme,
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              ),
                                                               Row(
                                                                 crossAxisAlignment:
                                                                     CrossAxisAlignment
@@ -2036,36 +2071,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                       bodyViewportHeight,
                                                                     ),
                                                                 ],
-                                                              ),
-                                                              // UI-R13 #7: the 6f/24f
-                                                              // beat lines span EVERY
-                                                              // column — one grid-wide
-                                                              // overlay (transposed).
-                                                              Positioned.fill(
-                                                                child: IgnorePointer(
-                                                                  child: RepaintBoundary(
-                                                                    child: CustomPaint(
-                                                                      key:
-                                                                          const ValueKey<
-                                                                            String
-                                                                          >(
-                                                                            'xsheet-beat-lines',
-                                                                          ),
-                                                                      painter: TimelineBeatLinesPainter(
-                                                                        axis: Axis
-                                                                            .vertical,
-                                                                        frameCellExtent:
-                                                                            _metrics.frameCellWidth,
-                                                                        crossCellExtent:
-                                                                            _metrics.layerRowHeight,
-                                                                        framesPerSecond:
-                                                                            _countingFps,
-                                                                        colorScheme:
-                                                                            colorScheme,
-                                                                      ),
-                                                                    ),
-                                                                  ),
-                                                                ),
                                                               ),
                                                               // The cursor layer carries
                                                               // the playhead + selection
@@ -2499,16 +2504,14 @@ class XSheetFrameRailPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final fillPaint = Paint();
-    final borderPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
     final linePaint = Paint()..strokeWidth = 1;
-    // Rows draw the shared FAINT grid ink (UI-R14 #4); the structural
-    // right edge (the rail/scrollbar divider) paints once below.
-    final borderColor = timelineBaseGridInk(
-      colorScheme,
-      frameCellExtent: metrics.frameCellWidth,
-    );
+    // D8 (2026-08-18): the rail used to stroke a faint RECT around every
+    // row — no cadence, no 6f/second strengthening, half a pixel off the
+    // ruler's snap: one of the "미묘하게 다른 가이드선". It consults THE
+    // boundary-line law now, exactly like the horizontal ruler's PASS 2
+    // (the transposed same thing); the structural right edge still paints
+    // once below.
+    final boundaryPaint = Paint();
 
     // Self-windowing (UI-R15): only the rows under the live viewport
     // record — a scroll is a repaint of this thin pass, never a rebuild.
@@ -2521,8 +2524,21 @@ class XSheetFrameRailPainter extends CustomPainter {
       final model = modelAt(frameIndex);
       final rect = rowRectFor(frameIndex);
       canvas.drawRect(rect, fillPaint..color = model.background);
-      if (borderColor.a > 0) {
-        canvas.drawRect(rect.deflate(0.5), borderPaint..color = borderColor);
+      final ink = timelineFrameBoundaryLineInk(
+        frameIndex: frameIndex,
+        frameCellExtent: metrics.frameCellWidth,
+        framesPerSecond: framesPerSecond,
+        colorScheme: colorScheme,
+      );
+      if (ink != null) {
+        final position = rect.top + timelineGridLineSnap;
+        canvas.drawLine(
+          Offset(rect.left, position),
+          Offset(rect.right, position),
+          boundaryPaint
+            ..color = ink.color
+            ..strokeWidth = ink.strokeWidth,
+        );
       }
 
       // Seconds on the row's leading CORNER (UI-R10 #27): the 1-based

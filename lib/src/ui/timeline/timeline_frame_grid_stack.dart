@@ -65,9 +65,18 @@ class TimelineFrameGridStack extends StatelessWidget {
     final dragPreview = this.dragPreview;
     return Stack(
       children: [
-        rowsBody,
+        // D32 (2026-08-18): the line overlay sits UNDER the rows now — an
+        // opaque beat line glowing over a blue paper block was the
+        // report. Blocks occlude the empty-space lines and draw their own
+        // interior seams through the same law (heldSeamLineFor: identical
+        // cadence and snap, ink multiplied onto the paper), so the grid
+        // reads as one line running through paper and dark ground alike.
+        // This is also the z-order the storyboard always had — three
+        // panels, one stacking. Empty cells paint nothing (UI-R21 #2), so
+        // the lines still show wherever there is no paper.
         if (beatLines != null)
           Positioned.fill(child: IgnorePointer(child: beatLines)),
+        rowsBody,
         if (showPlayhead)
           Positioned(
             left: 0,

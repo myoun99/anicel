@@ -378,6 +378,8 @@ class _CollapsedStripPainter extends CustomPainter {
     // it. One cadence per frame, 6f stronger, the second boundary
     // strongest; `timelineFrameBoundaryLineInk` thins it out at small zooms
     // rather than fading it, so this reads the same as the panel does.
+    // Position from the LAW's snap (D8) — this pass used to draw at the
+    // raw boundary, half a pixel off every other drawer.
     for (var frame = 1; frame < visibleFrames; frame += 1) {
       final ink = timelineFrameBoundaryLineInk(
         frameIndex: frame,
@@ -388,9 +390,13 @@ class _CollapsedStripPainter extends CustomPainter {
       if (ink == null) {
         continue;
       }
+      final position = timelineFrameBoundaryLinePosition(
+        frame,
+        pixelsPerFrame,
+      );
       canvas.drawLine(
-        Offset(x(frame), 0),
-        Offset(x(frame), size.height),
+        Offset(position, 0),
+        Offset(position, size.height),
         Paint()
           ..color = ink.color
           ..strokeWidth = ink.strokeWidth,

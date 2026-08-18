@@ -407,6 +407,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
           viewportMainExtent: viewportMainExtent,
           substrateGeneration: substrateGeneration,
           chromeless: chromeless,
+          // D32/D38: the interior seam law's beat strengths.
+          framesPerSecond: projectFrameRate.countingBase,
           // R26 #7 / R27 #3: each block prints ITS OWN length at its end
           // cell. It rides the cells painter as a FOREGROUND pass — above
           // the tiles, so the frames/seconds toggle stays a plain repaint
