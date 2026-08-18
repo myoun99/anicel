@@ -2925,6 +2925,9 @@ class _LayerHeader extends StatelessWidget {
                   layerId: layer.id,
                   mark: layer.mark,
                   onMarkSelected: onLayerMarkSelected,
+                  // The stood-up header: the slot is 14px TALL here, so
+                  // the plate wears no upright text (A6).
+                  axis: Axis.vertical,
                 ),
                 typeButton: LayerTypeButton(
                   keyPrefix: 'xsheet',

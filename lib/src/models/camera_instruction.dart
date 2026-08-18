@@ -353,7 +353,7 @@ class InstructionEvent {
 
 /// Validates an instruction map: non-negative starts, positive lengths and
 /// no overlapping spans (simultaneous instructions belong on additional
-/// instruction rows, like the sheet's CAM 1 · CAM 2 columns).
+/// direction rows, like the sheet's DIR 1 · DIR 2 columns).
 void validateInstructionCoverage(
   SplayTreeMap<int, InstructionEvent> instructions,
 ) {

@@ -8119,26 +8119,6 @@ class EditorSessionManager extends ChangeNotifier {
     );
   }
 
-  /// SE toggle: animation ⇄ se. Any number of SE rows per cut (a sheet can
-  /// carry several SE columns), but converting one away must not break the
-  /// S1·S2 floor of two.
-  String get activeLayerKindLabelText {
-    final targetLayer = _targetLayerForKindToggle;
-    return switch (targetLayer?.kind) {
-      LayerKind.animation => 'Animation Layer',
-      LayerKind.storyboard => 'Storyboard Layer',
-      LayerKind.image => 'Image Layer',
-      LayerKind.text => 'Text Layer',
-      LayerKind.se => 'SE Layer',
-      LayerKind.instruction => 'Direction Layer',
-      LayerKind.transition => 'Transition Layer',
-      LayerKind.camera => 'Camera Layer',
-      LayerKind.folder => 'Folder',
-      LayerKind.adjustment => 'Adjustment Layer',
-      null => 'No Layer',
-    };
-  }
-
   /// Why the storyboard toggle is refused, or null when it is allowed.
   ///
   /// A cut holds at most ONE storyboard row: the conte has one strip per

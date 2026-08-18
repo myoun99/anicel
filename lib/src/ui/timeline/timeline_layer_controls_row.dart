@@ -579,9 +579,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
     // gutter where the band lives.
     //
     // ★So it moved to where the cells' band already was: an overlay across
-    // the rail ([TimelineRowSelectionBands]) — one shape per contiguous run,
-    // the full rail width. `selected` stays because the row still reports it
-    // to semantics and keys its memo on it.
+    // the rail ([TimelineRowSelectionBands]) — one shape per contiguous run
+    // over the LAYER area (A2 2026-08-17 pulled the band back out of the
+    // section zone). `selected` stays because the row still reports it to
+    // semantics and keys its memo on it.
     return row;
   }
 

@@ -144,6 +144,14 @@ class TimelineSelectedExposureOutline extends StatelessWidget {
 /// Contiguous runs are drawn separately: a selection can be broken by a row
 /// that is not in it (a collapsed group, a filtered row), and two runs with a
 /// gap between them are two shapes, not one tall one.
+///
+/// ⚠️A2 (유저 2026-08-17) reversed T1's full-width call: 「선택범위
+/// 외곽선+바탕색이 왼쪽 섹션란까지 침범. 레이어 영역만 칠하도록」. The band
+/// now covers the LAYER area only — the host mounts it inset past the
+/// section zone ([layerSectionLabelSlotWidth]) and passes the reduced
+/// [crossExtent]. T1's own complaint about the missing left line is
+/// satisfied by the band's border sitting at the layer area's left edge,
+/// not by invading the sections' plate.
 class TimelineRowSelectionBands extends StatelessWidget {
   const TimelineRowSelectionBands({
     super.key,
@@ -166,8 +174,9 @@ class TimelineRowSelectionBands extends StatelessWidget {
   /// What sits before the first drawn row — the virtualization spacer.
   final double leadingSpacer;
 
-  /// The band's extent ACROSS the rail: the FULL rail width, section gutter
-  /// included. That inclusion is half the report.
+  /// The band's extent ACROSS the rail. The HOST states where the band
+  /// region begins and how wide it is — since A2 (2026-08-17) the timeline
+  /// passes the layer-controls area only, excluding the section zone.
   final double crossExtent;
 
   /// Which way the rail runs.

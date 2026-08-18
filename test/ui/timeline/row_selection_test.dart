@@ -13,6 +13,8 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/layer_drop_policy.dart'
     show layerDragRun;
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerSectionLabelSlotWidth;
 import 'package:anicel/src/ui/timeline/layer_name_commands.dart'
     show renameActiveLayerWithDialog;
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
@@ -484,6 +486,19 @@ void main() {
         bands(),
         findsOneWidget,
         reason: 'T1: ONE band for the run, not one box per row',
+      );
+      // ⚠️CONTRACT CHANGED again (A2, 2026-08-17): 「선택범위 외곽선+바탕색이
+      // 왼쪽 섹션란까지 침범. 레이어 영역만 칠하도록」 — the band starts after
+      // the 16px section zone instead of at the rail's x=0 (which T1 chose
+      // deliberately and A2 reversed).
+      expect(
+        tester.getRect(bands()).left,
+        moreOrLessEquals(
+          tester.getRect(row).left + layerSectionLabelSlotWidth,
+        ),
+        reason:
+            'A2: the selection paints the layer area only — the section '
+            'zone is the sections\' own plate',
       );
       expect(
         groundOf(target.id),

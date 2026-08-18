@@ -37,8 +37,10 @@ export 'vertical_writing.dart' show VerticalLatinForm;
 /// What a column does when it is longer than the space it was given.
 enum VerticalTextOverflow {
   /// Cells pack tighter and the glyphs shrink with them. The PRINT
-  /// timesheet's rule and only its: squeezing a notation word into its span
-  /// is a paper convention (`リ/ピ/ー/ト`), not a UI fallback.
+  /// timesheet's rule (squeezing a notation word into its span is a paper
+  /// convention — `リ/ピ/ー/ト`) — and, since A6 (2026-08-17), the layer
+  /// colour label's: the user's spec says a long colour name shrinks
+  /// (「길면 글자 축소 허용」). Everything else on screen ellipsises.
   pack,
 
   /// Cells keep their size and the tail is replaced by an ellipsis. Every

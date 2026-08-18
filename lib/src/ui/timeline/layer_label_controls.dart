@@ -16,7 +16,8 @@ import '../text/vertical_writing.dart'
     show verticalTextCapacityCells, verticalTextCells, verticalTextSpanCount;
 import '../text/vertical_writing_text.dart';
 // The default paper: [LayerMark.none] IS it (⑲/⑳).
-import 'timeline_cell_style.dart' show timelineDrawingHeldColor;
+import 'timeline_cell_style.dart'
+    show timelineDrawingHeldColor, timelineTextOnColor;
 
 /// Layer-label chip controls shared by both timeline orientations
 /// (horizontal rows and XSheet column headers): the timesheet-output toggle
@@ -234,6 +235,14 @@ String sectionBandLabelWithin(
 }
 
 const double layerTimesheetSlotWidth = 20;
+
+/// A6 (2026-08-17): the colour label's slot is HALF the canonical row
+/// height by law (「가로폭 = 세로의 절반」) — 28/2 = 14. Written as a
+/// number rather than `timelineLayerRowHeight / 2` only to keep this file
+/// free of the metrics import; the ratio is pinned by the A6 geometry
+/// test. Storyboard rows are 30px tall and share the slot unchanged — the
+/// cross-surface column parity this skeleton exists for outranks an exact
+/// half on a non-canonical row height.
 const double layerMarkSlotWidth = 14;
 const double layerLaneToggleSlotWidth = 16;
 const double layerFillReferenceSlotWidth = 22;
@@ -815,12 +824,17 @@ class LayerMarkChip extends StatelessWidget {
     required this.layerId,
     required this.mark,
     required this.onMarkSelected,
+    this.axis = Axis.horizontal,
   });
 
   final String keyPrefix;
   final LayerId layerId;
   final LayerMark mark;
   final void Function(LayerId layerId, LayerMark mark) onMarkSelected;
+
+  /// The rail's own direction — the x-sheet's stood-up column header passes
+  /// vertical, where the slot is 14px TALL and the plate wears no text.
+  final Axis axis;
 
   @override
   Widget build(BuildContext context) {
@@ -847,28 +861,65 @@ class LayerMarkChip extends StatelessWidget {
       child: Semantics(
         label: AppText.strings.tlLayerMark,
         button: true,
-        child: _MarkSwatch(mark: mark),
+        child: _MarkSwatch(mark: mark, axis: axis),
       ),
     ));
   }
 }
 
+/// A6 (2026-08-17): the circle became the label PLATE — the full slot,
+/// edge to edge (「패딩 절대 금지」), square corners, with the colour NAME
+/// standing upright inside it (「가로쓰기 세로표시」). The click logic above
+/// is untouched; only this face changed.
 class _MarkSwatch extends StatelessWidget {
-  const _MarkSwatch({required this.mark});
+  const _MarkSwatch({required this.mark, required this.axis});
 
   final LayerMark mark;
+  final Axis axis;
+
+  /// The same type the section band's tag wears, one column over.
+  static const double _fontSize = 9;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: layerMarkSlotWidth,
-      height: layerMarkSlotWidth,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        // ⑳: every mark is a filled swatch now, `none` included — it is the
-        // paper colour rather than a hole in the rail, so the ring that used
-        // to stand in for a missing fill has nothing left to describe.
-        color: layerMarkColor(mark),
+    final fill = layerMarkColor(mark);
+    // ⑳ still holds: every mark is a filled plate, `none` included — it is
+    // the paper colour rather than a hole in the rail. SizedBox.expand
+    // fills the row's height on a horizontal rail and the header's width
+    // on the sheet's vertical one; the slot provides the other extent.
+    return SizedBox.expand(
+      child: ColoredBox(color: fill, child: _label(fill)),
+    );
+  }
+
+  /// The colour name, inked by the frame blocks' own luminance law
+  /// ([timelineTextOnColor], #1109). Two plates stay bare: the sheet's
+  /// vertical header (the slot is 14px TALL there — no column to stack
+  /// glyphs in) and `none` (the paper colour has no name to announce; the
+  /// plate itself keeps the tap target discoverable).
+  Widget? _label(Color fill) {
+    if (axis == Axis.vertical || mark == LayerMark.none) {
+      return null;
+    }
+    return Center(
+      child: ClipRect(
+        child: VerticalWritingText(
+          text: layerMarkDisplayName(mark),
+          latinForm: VerticalLatinForm.upright,
+          lineHeight: SectionBandZone.lineHeight,
+          // 「길면 글자 축소 허용」 — the user's explicit word for this
+          // widget: a long name packs and shrinks rather than ellipsising
+          // (the palette is planned to become process names — LO, 作監 —
+          // so the long English enum names are the interim case).
+          overflow: VerticalTextOverflow.pack,
+          minFontSize: 4,
+          style: TextStyle(
+            fontSize: _fontSize,
+            fontWeight: FontWeight.bold,
+            height: SectionBandZone.lineHeight,
+            color: timelineTextOnColor(fill),
+          ),
+        ),
       ),
     );
   }
