@@ -3,8 +3,9 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/cut_move_plan.dart';
 
 /// The ONE rule a cut drag follows: the run's rank among the cuts it is not
-/// part of, read against their ORIGINAL midpoints. Same rank re-times, a
-/// different rank reorders.
+/// part of, read against the seats they hold in the ORIGINAL layout (T14,
+/// 유저 확정 2026-08-14). Same rank re-times; a different rank reorders —
+/// and the reorder still answers WHERE, so its gaps ride along (D16).
 void main() {
   const a = CutId('a');
   const b = CutId('b');
@@ -71,9 +72,9 @@ void main() {
     expect(plan.gaps, {b: 0, c: 8});
   });
 
-  test('reaching past the neighbour\'s midpoint reorders instead', () {
-    // b's midpoint sits at 15, a's at 5. Dragging a right by 10 puts its
-    // own midpoint at 15 — level with b's, so a lands after b.
+  test('reaching the seat beyond the neighbour reorders instead', () {
+    // a's seat past b is frame 10 — b's length of travel. Ten frames
+    // reaches it, so a lands after b.
     final plan = planCutMove(
       slots: packed(),
       runStart: 0,
@@ -82,6 +83,9 @@ void main() {
     );
 
     expect(plan.order, [b, a, c]);
+    // Packed track: every position's gap is 0 before and after, so the
+    // sparse map has nothing to say. (The gaps DO ride a reorder — see the
+    // sparse-head group below.)
     expect(plan.gaps, isEmpty);
   });
 
@@ -116,8 +120,8 @@ void main() {
   });
 
   test('a selected RUN reorders as one unit, keeping its own order', () {
-    // [a, b] dragged right past c: c's midpoint is 25, the run's own is
-    // 10 — fifteen frames of travel puts them level.
+    // [a, b] dragged right past c: the run's seat past c is frame 10 —
+    // c's length of travel — and fifteen is well past it.
     final plan = planCutMove(
       slots: packed(),
       runStart: 0,
@@ -126,6 +130,49 @@ void main() {
     );
 
     expect(plan.order, [c, a, b]);
+  });
+
+  group('a reorder carries the second answer too — the gaps stay with the '
+      'position (R5 #13 on the cut axis, D16)', () {
+    /// Five empty frames, then A[5,15), then B[15,25) glued to A's end.
+    List<CutMoveSlot> sparseHead() => const [
+      (id: a, leadingGapFrames: 5, duration: 10),
+      (id: b, leadingGapFrames: 0, duration: 10),
+    ];
+
+    test('the rear cut takes over the vacated leading space instead of '
+        'landing at frame 0', () {
+      // A's seat past B is frame 15: B's length of travel, with the head
+      // position's own five empty frames staying at the head.
+      final plan = planCutMove(
+        slots: sparseHead(),
+        runStart: 0,
+        runEnd: 0,
+        frameDelta: 10,
+      );
+
+      expect(plan.order, [b, a]);
+      // ⛔The old commit resequenced cuts that each kept their OWN gap: B
+      // carried its 0 to the front and landed on frame 0, with the five
+      // empty frames pushed between the two — nothing was lost and nothing
+      // was where the user put it (the 『1번』 jump).
+      expect(plan.gaps, {b: 5, a: 0});
+    });
+
+    test('a swap does not end the drag — the run keeps following the hand '
+        '(UI 08-14 #5, stated in cuts)', () {
+      final plan = planCutMove(
+        slots: sparseHead(),
+        runStart: 0,
+        runEnd: 0,
+        frameDelta: 13,
+      );
+
+      expect(plan.order, [b, a]);
+      // A sits under the hand at 18 — three frames past the seat it
+      // swapped into, because a reorder is not the end of the drag.
+      expect(plan.gaps, {b: 5, a: 3});
+    });
   });
 
   test('a run re-times as one unit, carrying its own length', () {

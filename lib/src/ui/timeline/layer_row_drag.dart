@@ -22,7 +22,7 @@ import '../../models/track_id.dart';
 import '../input/app_input_settings.dart' show AppInput;
 import '../input/eager_pan_gesture_recognizer.dart';
 import '../theme/app_theme.dart' show AppShapes;
-import 'timeline_edge_auto_pan.dart' show edgeAutoPanDelta;
+import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 
 /// WHAT a row drag is moving. Two kinds share the gesture, the caret and
 /// the device policy; what differs is the list they are re-ordering, and
@@ -506,33 +506,15 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
   /// Per POINTER MOVE, no timer: the ruler drag's edge pan is built the same
   /// way, and one convention beats two. Holding still at the edge therefore
   /// holds still; it is the reaching that scrolls.
-  double _autoPanEdge(Offset globalPosition) {
-    final scrollable = Scrollable.maybeOf(context);
-    final viewport = scrollable?.context.findRenderObject();
-    if (scrollable == null || viewport is! RenderBox || !viewport.hasSize) {
-      return 0;
-    }
-    final local = viewport.globalToLocal(globalPosition);
-    final horizontal = widget.axis == Axis.horizontal;
-    final delta = edgeAutoPanDelta(
-      horizontal ? local.dy : local.dx,
-      horizontal ? viewport.size.height : viewport.size.width,
-    );
-    if (delta == 0) {
-      return 0;
-    }
-    final position = scrollable.position;
-    final target = (position.pixels + delta).clamp(
-      position.minScrollExtent,
-      position.maxScrollExtent,
-    );
-    final applied = target - position.pixels;
-    if (applied == 0) {
-      return 0;
-    }
-    position.jumpTo(target);
-    return applied;
-  }
+  ///
+  /// The apply tail is the shared [edgeAutoPanApply] (D42) — the rows
+  /// stack ACROSS the timeline's axis, so the scrollable this drag pans is
+  /// the perpendicular one.
+  double _autoPanEdge(Offset globalPosition) => edgeAutoPanApply(
+    context: context,
+    globalPosition: globalPosition,
+    axis: widget.axis == Axis.horizontal ? Axis.vertical : Axis.horizontal,
+  );
 
   void _update(DragUpdateDetails details) {
     final delta = details.delta;

@@ -2100,6 +2100,43 @@ class CutCommandCoordinator {
     );
   }
 
+  /// Commits a move drag's REORDER as one undo step: the track's new
+  /// sequence plus the position gaps its cuts took over (the gaps stay
+  /// with the position, R5 #13 — each cut carries its own leading gap, so
+  /// a bare permutation would let the gaps travel with the cuts). On a
+  /// packed track the gaps map is empty and this stays a plain
+  /// [setCutOrder].
+  void commitCutMoveReorder({
+    required TrackId trackId,
+    required List<CutId> order,
+    required Map<CutId, int> beforeGaps,
+    required Map<CutId, int> afterGaps,
+  }) {
+    if (afterGaps.isEmpty) {
+      setCutOrder(trackId: trackId, order: order);
+      return;
+    }
+    historyManager.execute(
+      CompositeCommand(
+        description: 'Move cut',
+        commands: [
+          SetCutOrderCommand(
+            repository: repository,
+            trackId: trackId,
+            order: order,
+          ),
+          UpdateCutDurationsCommand(
+            repository: repository,
+            before: const {},
+            after: const {},
+            beforeGaps: beforeGaps,
+            afterGaps: afterGaps,
+          ),
+        ],
+      ),
+    );
+  }
+
   /// R28 #14: deleting the LAST cut leaves the track empty rather than
   /// conjuring a replacement.
   ///

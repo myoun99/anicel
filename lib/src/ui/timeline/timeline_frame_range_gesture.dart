@@ -12,6 +12,7 @@ import '../../models/layer_id.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import 'property_lane_model.dart';
+import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 import 'timeline_frame_geometry.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_exposure_comma_drag_policy.dart';
@@ -138,7 +139,16 @@ class TimelineRangeGestureCallbacks {
     required this.onMoveUpdate,
     required this.onMoveEnd,
     required this.onMoveCancel,
+    this.onGripTaken,
+    this.onGripReleased,
   });
+
+  /// A5/D42 grip seam for surfaces that WINDOW their rows: any drag this
+  /// layer is running (select OR move) holds its row, so the mount can pin
+  /// it against the window sliding past — D42's own vertical auto-pan is
+  /// what slides it. Null on surfaces that build every row.
+  final void Function(TimelineRowAddress row)? onGripTaken;
+  final void Function(TimelineRowAddress row)? onGripReleased;
 
   /// "Is this cell inside the live selection?" — read at PRESS to pick the
   /// drag's mode (inside = MOVE, anywhere else = SELECT).
@@ -238,6 +248,15 @@ class _TimelineFrameRangeGestureLayerState
   int _lastFrames = 0;
   int _lastRows = 0;
 
+  /// D42: what the edge auto-pan has scrolled since the press, per axis.
+  /// SELECT is position-based and `localPosition` rides the pointer-down
+  /// hit-test transform — it does not see content scrolled after the down,
+  /// so the applied deltas are ADDED to it before the frame/cross reads.
+  /// Plain fields, no setState: this layer has nothing to lay out or
+  /// paint.
+  double _scrolledMain = 0;
+  double _scrolledCross = 0;
+
   /// Whether this press already dropped the range on its DOWN (R5 #12), so
   /// the release below does not say the same thing a second time.
   bool _clearedOnDown = false;
@@ -255,6 +274,8 @@ class _TimelineFrameRangeGestureLayerState
   }
 
   void _startDrag(Offset localPosition) {
+    _scrolledMain = 0;
+    _scrolledCross = 0;
     final frame = _frameAt(localPosition);
     final insideSelection = widget.callbacks.isInSelection(widget.row, frame);
     if (insideSelection && widget.callbacks.onMoveBegin(widget.row, frame)) {
@@ -265,10 +286,15 @@ class _TimelineFrameRangeGestureLayerState
         _lastFrames = 0;
         _lastRows = 0;
       });
+      widget.callbacks.onGripTaken?.call(widget.row);
       return;
     }
     _mode = _RangeDragMode.select;
     _anchorIndex = frame;
+    // A SELECT holds its row too: the cross-axis auto-pan can slide the
+    // window past the anchor, and an unpinned anchor's recognizer would
+    // dispose and freeze the drag mid-sweep.
+    widget.callbacks.onGripTaken?.call(widget.row);
     widget.callbacks.onSelectUpdate(widget.row, frame, frame, 0);
   }
 
@@ -285,28 +311,56 @@ class _TimelineFrameRangeGestureLayerState
   }
 
   void _updateDrag(DragUpdateDetails details) {
+    if (_mode == _RangeDragMode.none) {
+      return;
+    }
+    // D42: reaching a viewport edge auto-pans on BOTH axes — the row
+    // drag's own convention (per pointer move, no timer), landed on the
+    // one row-level gesture all four surfaces share. What was scrolled
+    // joins the travel below, or the drag freezes the moment the view
+    // starts moving under the pointer.
+    final horizontal = widget.axis == Axis.horizontal;
+    _scrolledMain += edgeAutoPanApply(
+      context: context,
+      globalPosition: details.globalPosition,
+      axis: widget.axis,
+    );
+    final appliedCross = edgeAutoPanApply(
+      context: context,
+      globalPosition: details.globalPosition,
+      axis: horizontal ? Axis.vertical : Axis.horizontal,
+    );
+    _scrolledCross += appliedCross;
     switch (_mode) {
       case _RangeDragMode.none:
         return;
       case _RangeDragMode.select:
+        final local =
+            details.localPosition +
+            (horizontal
+                ? Offset(_scrolledMain, _scrolledCross)
+                : Offset(_scrolledCross, _scrolledMain));
         widget.callbacks.onSelectUpdate(
           widget.row,
           _anchorIndex,
-          _frameAt(details.localPosition),
-          _crossOffsetAt(details.localPosition),
+          _frameAt(local),
+          _crossOffsetAt(local),
         );
       case _RangeDragMode.move:
-        final horizontal = widget.axis == Axis.horizontal;
+        // MOVE accumulates deltas, so only THIS step's applied pan joins —
+        // details.delta is stated in the global frame and never sees the
+        // content move. `_scrolledMain` was just incremented by exactly
+        // this step's main-axis application.
         _mainDelta += horizontal ? details.delta.dx : details.delta.dy;
         _crossDelta += horizontal ? details.delta.dy : details.delta.dx;
         final frames = commaDragFrameDelta(
-          accumulatedDelta: _mainDelta,
+          accumulatedDelta: _mainDelta + _scrolledMain,
           frameCellExtent: widget.geometry.value.frameCellExtent,
         );
         // R27 #12: the row axis has a deadband — a horizontal sweep's
         // wobble must not hand the step to the row-change path.
         final rows = timelineRowStepDelta(
-          accumulatedDelta: _crossDelta,
+          accumulatedDelta: _crossDelta + _scrolledCross,
           rowExtent: widget.crossAxisExtent,
         );
         if (frames == _lastFrames && rows == _lastRows) {
@@ -325,6 +379,9 @@ class _TimelineFrameRangeGestureLayerState
       setState(() {});
       widget.callbacks.onMoveEnd();
     }
+    if (mode != _RangeDragMode.none) {
+      widget.callbacks.onGripReleased?.call(widget.row);
+    }
   }
 
   void _cancelDrag() {
@@ -334,16 +391,27 @@ class _TimelineFrameRangeGestureLayerState
       setState(() {});
       widget.callbacks.onMoveCancel();
     }
+    if (mode != _RangeDragMode.none) {
+      widget.callbacks.onGripReleased?.call(widget.row);
+    }
   }
 
   @override
   void dispose() {
     // A mid-drag unmount (row scrolled out of the window) commits the move
-    // AFTER the frame rather than leaking an open session (R12-③ rule).
+    // AFTER the frame rather than leaking an open session (R12-③ rule) —
+    // and hands the grip back either way, so the pin cannot outlive the
+    // layer that took it.
+    final callbacks = widget.callbacks;
+    final row = widget.row;
     if (_mode == _RangeDragMode.move) {
-      final callbacks = widget.callbacks;
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => callbacks.onMoveEnd(),
+      );
+    }
+    if (_mode != _RangeDragMode.none) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => callbacks.onGripReleased?.call(row),
       );
     }
     super.dispose();
@@ -459,7 +527,15 @@ class TimelineLaneRangeCallbacks {
     required this.onMoveUpdate,
     required this.onMoveEnd,
     required this.onMoveCancel,
+    this.onGripTaken,
+    this.onGripReleased,
   });
+
+  /// The same A5/D42 grip seam the cells layer carries: a lane drag holds
+  /// its LANE row against a windowing mount. Null on surfaces that build
+  /// every row.
+  final void Function(TimelineRowAddress row)? onGripTaken;
+  final void Function(TimelineRowAddress row)? onGripReleased;
 
   /// The session's live LANE selection (read at press to pick the mode).
   final ValueListenable<TimelineLaneSelection?> selection;
@@ -542,6 +618,11 @@ class _TimelineLaneRangeGestureLayerState
   double _mainDelta = 0;
   int _lastFrames = 0;
 
+  /// D42: the edge auto-pan's applied scroll since the press (see the
+  /// cells layer's fields — the same staleness, the same fold).
+  double _scrolledMain = 0;
+  double _scrolledCross = 0;
+
   // Lane rows are not memoized (their bands rebuild on every host pass), so
   // this layer keeps the plain scalars — the live-geometry treatment buys
   // nothing where the widget rebuilds anyway.
@@ -556,7 +637,14 @@ class _TimelineLaneRangeGestureLayerState
     return frame < 0 ? 0 : frame;
   }
 
+  /// This layer's row address on the mount's row list — the grip seam's
+  /// vocabulary.
+  TimelineRowAddress get _rowAddress =>
+      LaneRowAddress(widget.layer.id, widget.laneId);
+
   void _startDrag(Offset localPosition) {
+    _scrolledMain = 0;
+    _scrolledCross = 0;
     final frame = _frameAt(localPosition);
     final selection = widget.callbacks.selection.value;
     // R26 #3 follow-up: the HEADER band counts as inside a whole-group
@@ -570,10 +658,12 @@ class _TimelineLaneRangeGestureLayerState
       _mode = _RangeDragMode.move;
       _mainDelta = 0;
       _lastFrames = 0;
+      widget.callbacks.onGripTaken?.call(_rowAddress);
       return;
     }
     _mode = _RangeDragMode.select;
     _anchorIndex = frame;
+    widget.callbacks.onGripTaken?.call(_rowAddress);
     widget.callbacks.onSelectUpdate(
       widget.layer.id,
       widget.laneId,
@@ -597,23 +687,42 @@ class _TimelineLaneRangeGestureLayerState
   }
 
   void _updateDrag(DragUpdateDetails details) {
+    if (_mode == _RangeDragMode.none) {
+      return;
+    }
+    // D42: the same edge auto-pan fold as the cells layer — the lane
+    // family closes the matrix.
+    final horizontal = widget.axis == Axis.horizontal;
+    _scrolledMain += edgeAutoPanApply(
+      context: context,
+      globalPosition: details.globalPosition,
+      axis: widget.axis,
+    );
+    _scrolledCross += edgeAutoPanApply(
+      context: context,
+      globalPosition: details.globalPosition,
+      axis: horizontal ? Axis.vertical : Axis.horizontal,
+    );
     switch (_mode) {
       case _RangeDragMode.none:
         return;
       case _RangeDragMode.select:
+        final local =
+            details.localPosition +
+            (horizontal
+                ? Offset(_scrolledMain, _scrolledCross)
+                : Offset(_scrolledCross, _scrolledMain));
         widget.callbacks.onSelectUpdate(
           widget.layer.id,
           widget.laneId,
           _anchorIndex,
-          _frameAt(details.localPosition),
-          _rowDeltaAt(details.localPosition),
+          _frameAt(local),
+          _rowDeltaAt(local),
         );
       case _RangeDragMode.move:
-        _mainDelta += widget.axis == Axis.horizontal
-            ? details.delta.dx
-            : details.delta.dy;
+        _mainDelta += horizontal ? details.delta.dx : details.delta.dy;
         final frames = commaDragFrameDelta(
-          accumulatedDelta: _mainDelta,
+          accumulatedDelta: _mainDelta + _scrolledMain,
           frameCellExtent: widget.frameCellExtent,
         );
         if (frames == _lastFrames) {
@@ -630,6 +739,9 @@ class _TimelineLaneRangeGestureLayerState
     if (mode == _RangeDragMode.move) {
       widget.callbacks.onMoveEnd();
     }
+    if (mode != _RangeDragMode.none) {
+      widget.callbacks.onGripReleased?.call(_rowAddress);
+    }
   }
 
   void _cancelDrag() {
@@ -638,16 +750,26 @@ class _TimelineLaneRangeGestureLayerState
     if (mode == _RangeDragMode.move) {
       widget.callbacks.onMoveCancel();
     }
+    if (mode != _RangeDragMode.none) {
+      widget.callbacks.onGripReleased?.call(_rowAddress);
+    }
   }
 
   @override
   void dispose() {
     // A mid-drag unmount commits the move AFTER the frame rather than
-    // leaking an open session (the R12-③ rule).
+    // leaking an open session (the R12-③ rule) — and hands the grip back
+    // either way.
+    final callbacks = widget.callbacks;
+    final row = _rowAddress;
     if (_mode == _RangeDragMode.move) {
-      final callbacks = widget.callbacks;
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => callbacks.onMoveEnd(),
+      );
+    }
+    if (_mode != _RangeDragMode.none) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => callbacks.onGripReleased?.call(row),
       );
     }
     super.dispose();

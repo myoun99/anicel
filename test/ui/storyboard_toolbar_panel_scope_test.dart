@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/camera_instruction.dart'
+    show InstructionEvent;
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/dialogs/se_instance_dialog.dart';
@@ -196,6 +198,67 @@ void main() {
     );
   });
 
+  Future<void> pressSelectRowSpan(WidgetTester tester) async {
+    final menu = find.byKey(
+      const ValueKey<String>('timeline-frame-menu-button'),
+    );
+    await tester.ensureVisible(menu);
+    await tester.pumpAndSettle();
+    await tester.tap(menu);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('select-row-span-button')),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('D40: whole-row select on the V row selects the row\'s whole '
+      'cut span — 「컷블록도 동일 작동」', (tester) async {
+    final manager = await pumpStoryboard(tester);
+    manager.selectRow(TrackRowAddress(manager.activeTrack.id));
+    await tester.pumpAndSettle();
+
+    await pressSelectRowSpan(tester);
+
+    final selection = manager.trackFrameRangeSelection.value!;
+    expect(selection.trackId, manager.activeTrack.id);
+    expect(selection.startFrame, 0);
+    expect(selection.endFrameExclusive, manager.activeCutOrNull!.duration);
+    expect(
+      manager.storyboardSelectedCutIds,
+      [manager.activeCutOrNull!.id],
+      reason: 'the whole cut span reads back as every cut selected',
+    );
+  });
+
+  testWidgets('D40: whole-row select on an S row takes its first authored '
+      'frame through its last', (tester) async {
+    final manager = await pumpStoryboard(tester);
+    final se = manager.activeTrack.seLayers.first;
+    final drawingTarget = manager.activeLayerId;
+
+    // An EMPTY row has no span: the gate must refuse rather than light a
+    // dead press (T25's defect).
+    manager.selectRow(LayerRowAddress(se.id));
+    expect(StoryboardToolbarPanelContext(manager).canSelectRowSpan, isFalse);
+
+    manager.selectLayer(se.id);
+    manager.selectFrameIndex(2);
+    manager.createSeEntryAtCurrentFrame(name: 'boom', lengthFrames: 3);
+    if (drawingTarget != null) {
+      manager.selectLayer(drawingTarget);
+    }
+    manager.selectRow(LayerRowAddress(se.id));
+    await tester.pumpAndSettle();
+
+    await pressSelectRowSpan(tester);
+
+    final selection = manager.trackFrameRangeSelection.value!;
+    expect(selection.startFrame, 2);
+    expect(selection.endFrameExclusive, 5);
+    expect(selection.anchorRow, LayerRowAddress(se.id));
+  });
+
   testWidgets('B8: the verbs with no storyboard subject grey out honestly '
       'even while the TIMELINE context would light them', (tester) async {
     final manager = await pumpStoryboard(tester);
@@ -282,5 +345,54 @@ void main() {
       durationBefore,
       reason: 'a timeline comma press must NOT become a cut trim',
     );
+
+    // D40 under the TIMELINE context: the press selects the active row's
+    // first authored cell through its last, in the cut-local selection.
+    s.selectFrameIndex(3);
+    s.createDrawingAtCurrentFrame();
+    await tester.pumpAndSettle();
+    final frameMenu = find.byKey(
+      const ValueKey<String>('timeline-frame-menu-button'),
+    );
+    await tester.ensureVisible(frameMenu);
+    await tester.pumpAndSettle();
+    await tester.tap(frameMenu);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('select-row-span-button')),
+    );
+    await tester.pumpAndSettle();
+    final selection = s.frameRangeSelection.value!;
+    expect(selection.layerId, s.activeLayerId);
+    expect(selection.startIndex, 0);
+    expect(selection.endIndexExclusive, 4);
+    expect(s.trackFrameRangeSelection.value, isNull);
+
+    // D40 on an INSTRUCTION row: the chips live in layer.instructions, not
+    // the timeline — the resolver reads the SAME lanes the range snap does,
+    // so a row a drag can select on, the button can select too (T25).
+    if (!s.activeCutOrNull!.layers.any(
+      (layer) => layer.kind == LayerKind.instruction,
+    )) {
+      s.addLayerOfKind(LayerKind.instruction);
+    }
+    final instruction = s.activeCutOrNull!.layers.firstWhere(
+      (layer) => layer.kind == LayerKind.instruction,
+    );
+    s.updateLayerInstructions(instruction.id, const {
+      6: InstructionEvent(instructionId: 'pan', length: 3),
+    });
+    s.selectLayer(instruction.id);
+    await tester.pumpAndSettle();
+    await tester.tap(frameMenu);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('select-row-span-button')),
+    );
+    await tester.pumpAndSettle();
+    final chipSpan = s.frameRangeSelection.value!;
+    expect(chipSpan.layerId, instruction.id);
+    expect(chipSpan.startIndex, 6);
+    expect(chipSpan.endIndexExclusive, 9);
   });
 }

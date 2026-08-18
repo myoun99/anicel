@@ -11139,6 +11139,64 @@ class EditorSessionManager extends ChangeNotifier {
       if (entry.trackId == trackId) entry,
   ]);
 
+  /// D40, the cut row: [trackId]'s whole cut span — the first cut's start
+  /// through the last cut's end — or null when the track has no cuts.
+  ({int startFrame, int endFrameExclusive})? trackCutSpan(TrackId trackId) {
+    final entries = _axisForTrack(trackId).entries;
+    if (entries.isEmpty) {
+      return null;
+    }
+    return (
+      startFrame: entries.first.startFrame,
+      endFrameExclusive: entries.last.endFrame,
+    );
+  }
+
+  /// D40, the track-owned rows: [layerId]'s authored span on the global
+  /// axis — an S row's first block start through its last block end, or
+  /// the transition row's first span start through its last span end.
+  /// Null for empty rows (and for ids that are no track row at all).
+  ({int startFrame, int endFrameExclusive})? trackRowAuthoredSpan(
+    LayerId layerId,
+  ) {
+    final transitionTrack = _trackTransitionOwner(layerId);
+    if (transitionTrack != null) {
+      final events = transitionTrack.transitionLayer.instructions;
+      if (events.isEmpty) {
+        return null;
+      }
+      int? first;
+      var lastExclusive = 0;
+      for (final entry in events.entries) {
+        if (first == null || entry.key < first) {
+          first = entry.key;
+        }
+        final end = entry.key + entry.value.length;
+        if (end > lastExclusive) {
+          lastExclusive = end;
+        }
+      }
+      return (startFrame: first!, endFrameExclusive: lastExclusive);
+    }
+    final layer = _trackSeAnywhere(layerId)?.layer;
+    if (layer == null) {
+      return null;
+    }
+    int? first;
+    var lastExclusive = 0;
+    for (final entry in layer.timeline.entries) {
+      if (entry.value.ghost) {
+        continue;
+      }
+      first ??= entry.key;
+      lastExclusive = entry.key + entry.value.length!;
+    }
+    if (first == null) {
+      return null;
+    }
+    return (startFrame: first, endFrameExclusive: lastExclusive);
+  }
+
   /// A cut-select drag step stated on the track's GLOBAL FRAME axis — the
   /// timeline's range grammar, cuts as the blocks. Dragging from anywhere
   /// inside one cut to anywhere inside another selects both whole, and a
@@ -11424,11 +11482,25 @@ class EditorSessionManager extends ChangeNotifier {
       tracks: _repository.requireProject().tracks,
       selectedCutIds: storyboardSelectedCutIds,
       preview: dragPreview,
-      commitOrder: ({required trackId, required order}) {
-        _cutCommandCoordinator.setCutOrder(trackId: trackId, order: order);
-        _refreshAfterCutCommand();
-        notifyListeners();
-      },
+      selection: trackFrameRangeSelection.value,
+      publishSelection: (selection) =>
+          trackFrameRangeSelection.value = selection,
+      commitOrder:
+          ({
+            required trackId,
+            required order,
+            required beforeGaps,
+            required afterGaps,
+          }) {
+            _cutCommandCoordinator.commitCutMoveReorder(
+              trackId: trackId,
+              order: order,
+              beforeGaps: beforeGaps,
+              afterGaps: afterGaps,
+            );
+            _refreshAfterCutCommand();
+            notifyListeners();
+          },
       commitGaps: ({required beforeGaps, required afterGaps}) {
         _cutCommandCoordinator.commitCutDurationDrag(
           beforeDurations: const {},
@@ -12350,6 +12422,79 @@ class EditorSessionManager extends ChangeNotifier {
     return folderBandRunsOf(layer.id);
   }
 
+  /// D40: whether the standing row has an authored span for
+  /// [selectRowSpanForCurrentRow] to select (one resolver for the pair —
+  /// T25).
+  bool get canSelectRowSpanForCurrentRow => _rowSpanForCurrentRow() != null;
+
+  /// D40: selects the standing row's WHOLE authored span — first authored
+  /// cell through last — through the range-select entry point, so the
+  /// block snap and the ONE-SELECTION claim come with it.
+  void selectRowSpanForCurrentRow() {
+    final target = _rowSpanForCurrentRow();
+    if (target == null) {
+      return;
+    }
+    updateFrameRangeSelectionDrag(
+      layerId: target.layerId,
+      anchorIndex: target.first,
+      headIndex: target.lastExclusive - 1,
+    );
+  }
+
+  /// The standing row's RANGE layer and its authored extremes, or null
+  /// when the row has nothing to select. Lane rows fall back to their
+  /// owning layer — the lane address's own law: standing on a property
+  /// never costs you the layer.
+  ///
+  /// The extremes are read off the SAME three lanes the range snap uses
+  /// ([snapFrameRangeToBlocks]): exposure blocks (ghosts are derived
+  /// projections, not authored cells), instruction chips, and a folder
+  /// row's aggregate runs — so the gate answers true exactly where a drag
+  /// would select something (T25).
+  ({LayerId layerId, int first, int lastExclusive})? _rowSpanForCurrentRow() {
+    final rowLayerId = switch (currentRow) {
+      LayerRowAddress(:final layerId) => layerId,
+      LaneRowAddress(:final layerId) => layerId,
+      TrackRowAddress() => activeLayerId,
+    };
+    if (rowLayerId == null || !_rangeSelectionEligible(rowLayerId)) {
+      return null;
+    }
+    final layer = _rangeLayerById(rowLayerId);
+    if (layer == null) {
+      return null;
+    }
+    int? first;
+    var lastExclusive = 0;
+    void widen(int start, int endExclusive) {
+      if (first == null || start < first!) {
+        first = start;
+      }
+      if (endExclusive > lastExclusive) {
+        lastExclusive = endExclusive;
+      }
+    }
+
+    for (final entry in layer.timeline.entries) {
+      if (entry.value.ghost) {
+        continue;
+      }
+      widen(entry.key, entry.key + entry.value.length!);
+    }
+    for (final entry in layer.instructions.entries) {
+      widen(entry.key, entry.key + entry.value.length);
+    }
+    for (final run in _aggregateRunsForRow(layer)) {
+      widen(run.start, run.endExclusive);
+    }
+    final start = first;
+    if (start == null) {
+      return null;
+    }
+    return (layerId: rowLayerId, first: start, lastExclusive: lastExclusive);
+  }
+
   /// 🚨★★★ [spanRows] — what the drag SWEPT, straight off the rail's own row
   /// list ([resolveSelectionSpanRows]).
   ///
@@ -12737,15 +12882,29 @@ class EditorSessionManager extends ChangeNotifier {
       frameRangeSelection.value = span;
       return;
     }
-    trackFrameRangeSelection.value = span == null
-        ? null
-        : TrackFrameRangeSelection(
-            trackId: selectedTrackId,
-            anchorRow: LayerRowAddress(span.layerId),
-            rows: [for (final id in span.spanLayerIds) LayerRowAddress(id)],
-            startFrame: span.startIndex,
-            endFrameExclusive: span.endIndexExclusive,
-          );
+    if (span == null) {
+      trackFrameRangeSelection.value = null;
+      return;
+    }
+    // The axis's own facts ride from the drag-start capture: the anchor
+    // names its OWN track (the select path's law — re-keying to
+    // [selectedTrackId] here hid the band for the whole drag on any other
+    // track and left the landed selection keyed to the wrong one), and a
+    // non-layer row in a mixed span is not something the layer-stated span
+    // can re-derive.
+    final before = _rangeMoveTrackSelectionBefore;
+    trackFrameRangeSelection.value = TrackFrameRangeSelection(
+      trackId: before?.trackId ?? selectedTrackId,
+      anchorRow: LayerRowAddress(span.layerId),
+      rows: [
+        for (final id in span.spanLayerIds) LayerRowAddress(id),
+        if (before != null)
+          for (final row in before.rows)
+            if (row is! LayerRowAddress) row,
+      ],
+      startFrame: span.startIndex,
+      endFrameExclusive: span.endIndexExclusive,
+    );
   }
 
   /// The display→commit offset the move applies to [layerId]'s span. ZERO
@@ -12761,6 +12920,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// The move's subject span as it stood at drag start, stated in the axis
   /// its sources commit in (see [_rangeMoveSelection]).
   TimelineFrameRangeSelection? _rangeMoveSelectionBefore;
+
+  /// The TRACK-axis selection as it stood at drag start — the setter reads
+  /// the track id and the non-layer rows from here, because the machine's
+  /// layer-stated span cannot carry them and the LIVE value is the very
+  /// thing the setter is overwriting.
+  TrackFrameRangeSelection? _rangeMoveTrackSelectionBefore;
   int? _rangeMoveGroupStart;
   DrawingBlockMovePlan? _rangeMovePlan;
 
@@ -12851,6 +13016,7 @@ class EditorSessionManager extends ChangeNotifier {
     if (live == null) {
       return false;
     }
+    _rangeMoveTrackSelectionBefore = live;
     final sources = <({Layer commit, int offset})>[];
     // C1 (2026-08-17): the TRANSITION row is a movable subject on THIS
     // axis — its spans live global, and this rail is their one author
@@ -12916,6 +13082,7 @@ class EditorSessionManager extends ChangeNotifier {
     // The axis is decided HERE and nowhere else: every begin states it, so
     // no path can inherit the previous drag's answer.
     _rangeMoveOnTrackAxis = false;
+    _rangeMoveTrackSelectionBefore = null;
     final selection = _rangeMoveSelection;
     if (selection == null || !_rangeSelectionEligible(selection.layerId)) {
       return false;

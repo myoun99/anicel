@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:flutter/widgets.dart';
+
 /// How far a drag at [pos] has pushed past either end of a [extent]-long
 /// axis, once it enters the [edge]-wide band at either end: negative near
 /// the start, positive near the end, zero in the middle. The caller adds
@@ -66,4 +68,50 @@ double edgeAutoPanDelta(double pos, double extent, {double edge = 24.0}) {
     return pos - band;
   }
   return 0;
+}
+
+/// The ONE apply tail every drag-borne edge pan shares (D42): find the
+/// nearest [axis] scrollable above [context], read the pointer in its
+/// viewport's frame, ask [edgeAutoPanDelta], clamp into the scroll extent,
+/// jump, and return what was actually applied.
+///
+/// The caller MUST fold the returned delta back into its travel — the
+/// content moving under a stationary pointer is the same thing as the
+/// pointer moving over stationary content, so a travel that ignores it
+/// freezes the moment the view begins to scroll.
+///
+/// Per POINTER MOVE, no timer (the row drag's convention): holding still
+/// at the edge holds still; it is the reaching that scrolls. Clamped at
+/// BOTH extents — the ruler/rail scrubs that deliberately overshoot to
+/// grow frames (UI-R12 #16) keep their own tails.
+double edgeAutoPanApply({
+  required BuildContext context,
+  required Offset globalPosition,
+  required Axis axis,
+}) {
+  final scrollable = Scrollable.maybeOf(context, axis: axis);
+  final viewport = scrollable?.context.findRenderObject();
+  if (scrollable == null || viewport is! RenderBox || !viewport.hasSize) {
+    return 0;
+  }
+  final local = viewport.globalToLocal(globalPosition);
+  final horizontal = axis == Axis.horizontal;
+  final delta = edgeAutoPanDelta(
+    horizontal ? local.dx : local.dy,
+    horizontal ? viewport.size.width : viewport.size.height,
+  );
+  if (delta == 0) {
+    return 0;
+  }
+  final position = scrollable.position;
+  final target = (position.pixels + delta).clamp(
+    position.minScrollExtent,
+    position.maxScrollExtent,
+  );
+  final applied = target - position.pixels;
+  if (applied == 0) {
+    return 0;
+  }
+  position.jumpTo(target);
+  return applied;
 }

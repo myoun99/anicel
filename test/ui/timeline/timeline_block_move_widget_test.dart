@@ -819,6 +819,244 @@ void main() {
     expect(ended, 1, reason: 'exactly one commit, on release');
   });
 
+  testWidgets('D42: a SELECT drag held at the frame-axis trailing edge '
+      'auto-pans and the head keeps advancing past the initial view', (
+    tester,
+  ) async {
+    final cursor = ValueNotifier<int>(0);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
+    addTearDown(cursor.dispose);
+    addTearDown(selection.dispose);
+    final heads = <int>[];
+
+    await tester.pumpWidget(
+      harness(
+        layers: [blockLayer('layer-a')],
+        cursor: cursor,
+        rangeHooks: hooks(
+          selection: selection,
+          onSelectUpdate: (_, _, head) => heads.add(head),
+        ),
+      ),
+    );
+
+    final frameViewport = find.byKey(
+      const ValueKey<String>('timeline-frame-scroll-viewport'),
+    );
+    double frameOffset() => tester
+        .state<ScrollableState>(
+          find
+              .descendant(of: frameViewport, matching: find.byType(Scrollable))
+              .first,
+        )
+        .position
+        .pixels;
+    expect(frameOffset(), 0);
+    final viewportRect = tester.getRect(frameViewport);
+
+    final gestureLayer = find.byKey(
+      const ValueKey<String>('timeline-range-gesture-layer-a'),
+    );
+    final start = tester.getTopLeft(gestureLayer) + const Offset(24, 26);
+    final gesture = await tester.startGesture(
+      start,
+      kind: PointerDeviceKind.mouse,
+    );
+    // Reach into the trailing 24px band: the reach itself scrolls…
+    await gesture.moveTo(Offset(viewportRect.right - 6, start.dy));
+    await tester.pump();
+    final offsetAtEdge = frameOffset();
+    final headAtEdge = heads.last;
+    expect(offsetAtEdge, greaterThan(0));
+
+    // …and nudging inside the band keeps scrolling (per pointer move):
+    // the head keeps advancing over frames that were NOT on screen at the
+    // press, because the applied pan is folded back into the read.
+    for (var step = 0; step < 8; step += 1) {
+      await gesture.moveBy(Offset(step.isEven ? 1 : -1, 0));
+      await tester.pump();
+    }
+    expect(frameOffset(), greaterThan(offsetAtEdge));
+    expect(
+      heads.last,
+      greaterThan(headAtEdge),
+      reason: 'the selection head must ride the auto-pan, not freeze',
+    );
+
+    // The no-timer convention: holding perfectly still scrolls nothing.
+    final held = frameOffset();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(frameOffset(), held, reason: 'holding still at the edge holds');
+
+    await gesture.up();
+    await tester.pump();
+  });
+
+  testWidgets('D42: a MOVE drag held at the bottom edge auto-pans the row '
+      'axis, and the held row SURVIVES the window sliding past it', (
+    tester,
+  ) async {
+    final cursor = ValueNotifier<int>(0);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(
+      const TimelineFrameRangeSelection(
+        layerId: LayerId('layer-00'),
+        startIndex: 0,
+        endIndexExclusive: 4,
+      ),
+    );
+    addTearDown(cursor.dispose);
+    addTearDown(selection.dispose);
+    var ended = 0;
+
+    await tester.pumpWidget(
+      harness(
+        layers: [
+          for (var i = 0; i < 16; i += 1)
+            blockLayer('layer-${i.toString().padLeft(2, '0')}'),
+        ],
+        cursor: cursor,
+        rangeHooks: hooks(
+          selection: selection,
+          onMoveUpdate: ({required frameDelta, targetLayerId}) {},
+          onMoveEnd: () => ended += 1,
+        ),
+      ),
+    );
+
+    final verticalViewport = find.byKey(
+      const ValueKey<String>('timeline-vertical-scroll-viewport'),
+    );
+    double verticalOffset() => tester
+        .state<ScrollableState>(
+          find
+              .descendant(
+                of: verticalViewport,
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        )
+        .position
+        .pixels;
+    expect(verticalOffset(), 0);
+    final viewportRect = tester.getRect(verticalViewport);
+
+    final gestureLayer = find.byKey(
+      const ValueKey<String>('timeline-range-gesture-layer-00'),
+    );
+    // Press INSIDE the selection (cell 1 of the first row) — a MOVE.
+    final start = tester.getTopLeft(gestureLayer) + const Offset(24 + 48, 26);
+    final gesture = await tester.startGesture(
+      start,
+      kind: PointerDeviceKind.mouse,
+    );
+    // Reach the bottom edge band and keep nudging: the row axis auto-pans
+    // far enough that the first row leaves the visible window.
+    await gesture.moveTo(Offset(start.dx, viewportRect.bottom - 6));
+    await tester.pump();
+    for (var step = 0; step < 10; step += 1) {
+      await gesture.moveBy(Offset(0, step.isEven ? 1 : -1));
+      await tester.pump();
+    }
+    expect(
+      verticalOffset(),
+      greaterThan(52),
+      reason: 'the auto-pan must have scrolled at least one row height',
+    );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-range-gesture-layer-00')),
+      findsOneWidget,
+      reason: 'the held row is pinned against the window (A5/D42) — '
+          'unmounting it would fire the dispose backstop mid-drag',
+    );
+    expect(
+      ended,
+      0,
+      reason: 'the move must NOT have been committed under the pointer',
+    );
+
+    await gesture.up();
+    await tester.pump();
+    expect(ended, 1, reason: 'the release commits exactly once');
+  });
+
+  testWidgets('D42: a SELECT drag held at the bottom edge keeps sweeping — '
+      'the pinned anchor row survives the window sliding past it', (
+    tester,
+  ) async {
+    final cursor = ValueNotifier<int>(0);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
+    addTearDown(cursor.dispose);
+    addTearDown(selection.dispose);
+    final selectUpdates = <(LayerId, int, int)>[];
+
+    await tester.pumpWidget(
+      harness(
+        layers: [
+          for (var i = 0; i < 16; i += 1)
+            blockLayer('layer-${i.toString().padLeft(2, '0')}'),
+        ],
+        cursor: cursor,
+        rangeHooks: hooks(
+          selection: selection,
+          onSelectUpdate: (layerId, anchor, head) =>
+              selectUpdates.add((layerId, anchor, head)),
+        ),
+      ),
+    );
+
+    final verticalViewport = find.byKey(
+      const ValueKey<String>('timeline-vertical-scroll-viewport'),
+    );
+    double verticalOffset() => tester
+        .state<ScrollableState>(
+          find
+              .descendant(
+                of: verticalViewport,
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        )
+        .position
+        .pixels;
+    final viewportRect = tester.getRect(verticalViewport);
+
+    final gestureLayer = find.byKey(
+      const ValueKey<String>('timeline-range-gesture-layer-00'),
+    );
+    // Press on an EMPTY cell of the first row (past its block) — a SELECT.
+    final start = tester.getTopLeft(gestureLayer) + const Offset(24 + 5 * 48, 26);
+    final gesture = await tester.startGesture(
+      start,
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveTo(Offset(start.dx, viewportRect.bottom - 6));
+    await tester.pump();
+    for (var step = 0; step < 10; step += 1) {
+      await gesture.moveBy(Offset(0, step.isEven ? 1 : -1));
+      await tester.pump();
+    }
+    expect(verticalOffset(), greaterThan(52));
+    expect(
+      find.byKey(const ValueKey<String>('timeline-range-gesture-layer-00')),
+      findsOneWidget,
+      reason: 'the anchor row is pinned — unpinned, its recognizer '
+          'disposes with the window slide and the sweep silently freezes',
+    );
+    final updatesAtEdge = selectUpdates.length;
+    await gesture.moveBy(const Offset(0, -1));
+    await tester.pump();
+    expect(
+      selectUpdates.length,
+      greaterThan(updatesAtEdge),
+      reason: 'the drag is still alive after the window slid past its row',
+    );
+    expect(selectUpdates.last.$1, const LayerId('layer-00'));
+
+    await gesture.up();
+    await tester.pump();
+  });
+
   testWidgets('touch selects like the pen (UI-R17 #6, superseding R12-⑤: '
       'pens report as touch on some drivers)', (tester) async {
     final selectUpdates = <(LayerId, int, int)>[];

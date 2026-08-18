@@ -1632,6 +1632,19 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
             onMoveUpdate: _rangeMoveResolver.update,
             onMoveEnd: _rangeMoveResolver.end,
             onMoveCancel: _rangeMoveResolver.cancel,
+            // D42: EVERY range drag (select or move) takes the A5 grip —
+            // the vertical auto-pan can slide the row window past the
+            // gesture row; unpinned, a MOVE's dispose backstop commits
+            // mid-drag and a SELECT's recognizer dies and the sweep
+            // freezes. The pin is carved out of the spacers (O(1)); the
+            // release is equality-guarded so it cannot drop a grip some
+            // OTHER drag holds.
+            onGripTaken: (row) => _heldDragRow = row,
+            onGripReleased: (row) {
+              if (_heldDragRow == row) {
+                _heldDragRow = null;
+              }
+            },
           );
 
     // 🚨B4-④: a lane-anchored select drag that leaves its own lane group
@@ -1682,6 +1695,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
             onMoveUpdate: hostLaneRange.onMoveUpdate,
             onMoveEnd: hostLaneRange.onMoveEnd,
             onMoveCancel: hostLaneRange.onMoveCancel,
+            // D42: lane drags take the same A5 grip as the cells — a lane
+            // row is a windowed display row like any other.
+            onGripTaken: (row) => _heldDragRow = row,
+            onGripReleased: (row) {
+              if (_heldDragRow == row) {
+                _heldDragRow = null;
+              }
+            },
           );
 
     // PEN-9: a stylus approach stops a coasting fling — mid-glide the
@@ -2464,6 +2485,30 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                       leadingRowSpacerHeight,
                                                                   trailingLayerSpacerHeight:
                                                                       trailingRowSpacerHeight,
+                                                                  // A5/D42: the held row rides
+                                                                  // the CELLS window too — its
+                                                                  // gesture layer must survive a
+                                                                  // vertical auto-pan sliding
+                                                                  // the window past it.
+                                                                  pinnedLeadingRow:
+                                                                      pinnedBefore
+                                                                      ? rows[pinnedIndex]
+                                                                      : null,
+                                                                  pinnedLeadingOffset:
+                                                                      pinnedBefore
+                                                                      ? pinnedIndex *
+                                                                            _metrics.layerRowHeight
+                                                                      : 0,
+                                                                  pinnedTrailingRow:
+                                                                      pinnedAfter
+                                                                      ? rows[pinnedIndex]
+                                                                      : null,
+                                                                  pinnedTrailingOffset:
+                                                                      pinnedAfter
+                                                                      ? (pinnedIndex -
+                                                                                rowWindow.endIndexExclusive) *
+                                                                            _metrics.layerRowHeight
+                                                                      : 0,
                                                                   dragPreview:
                                                                       widget
                                                                           .dragPreview,
