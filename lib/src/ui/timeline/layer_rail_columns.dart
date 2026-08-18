@@ -52,12 +52,15 @@ const double layerTypeSlotWidth = 22;
 /// test asserts it against the real rendered geometry, not against this
 /// constant, so a drift cannot be papered over by editing it.
 const double layerRailLeadingWidth =
+    // A6 (2026-08-17): the colour label LEADS the layer area — flush
+    // against the section zone, left of the twirl (it used to sit between
+    // the timesheet and type buttons, framed by two chip gaps; one gap
+    // died in the move and the name column absorbs the 4px).
     layerSectionLabelSlotWidth +
+    layerMarkSlotWidth +
     layerRailSectionGap +
     layerLaneToggleSlotWidth +
     layerTimesheetSlotWidth +
-    layerControlChipGap +
-    layerMarkSlotWidth +
     layerControlChipGap +
     layerTypeSlotWidth +
     layerControlChipGap;
@@ -128,6 +131,14 @@ List<Widget> layerRailLeadingCells({
       sectionBand == null
           ? LayerSectionBandCell(axis: axis)
           : layerRailSlot(axis, layerSectionLabelSlotWidth, sectionBand),
+    // A6 (2026-08-17): the colour label is the layer area's FIRST cell —
+    // a full-row plate flush against the section zone, left of the twirl
+    // (「위치 = 레이어 영역 맨 왼쪽(펼치기 버튼 왼쪽)」, 「패딩 절대 금지」).
+    // Before the section gap on purpose: the gap breathes between the
+    // label and the controls, not between the zone and the label. Nesting
+    // indents the cells AFTER it, so the label holds the far left on
+    // foldered rows too.
+    layerRailSlot(axis, layerMarkSlotWidth, mark),
     layerRailSlot(axis, layerRailSectionGap),
     // The nesting run: one blank cell per level, then the ↳ that says this
     // row hangs off the folder above it.
@@ -141,8 +152,6 @@ List<Widget> layerRailLeadingCells({
       ),
     layerRailSlot(axis, layerLaneToggleSlotWidth, laneToggle),
     layerRailSlot(axis, layerTimesheetSlotWidth, timesheet),
-    layerRailSlot(axis, layerControlChipGap),
-    layerRailSlot(axis, layerMarkSlotWidth, mark),
     layerRailSlot(axis, layerControlChipGap),
     layerRailSlot(axis, layerTypeSlotWidth, typeButton),
     layerRailSlot(axis, layerControlChipGap),
