@@ -290,3 +290,8 @@ TimelineCellStyleColors timelineCellStyleColors({
     border: timelineSelectedFrameBorderColor,
   );
 }
+
+/// The ONE corner radius every frame block wears — the timeline's rounded
+/// block language (D30 put the storyboard panels on it too, so the strip
+/// reads as frame blocks in thumbnail mode).
+const Radius timelineBlockCornerRadius = Radius.circular(6);

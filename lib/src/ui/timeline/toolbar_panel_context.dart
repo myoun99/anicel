@@ -70,7 +70,9 @@ abstract class ToolbarPanelContext {
   /// The 1/2/3/4/N comma press: the selection's blocks, else THE BLOCK
   /// UNDER THIS PANEL'S CURSOR — on the storyboard that is the standing
   /// row's block at the global playhead, cut blocks included (컷블록 위
-  /// 4 = 컷길이 4), one rule for every block kind.
+  /// 4 = 컷길이 4 — superseded by D28 where the cut carries a storyboard
+  /// layer: its PANEL takes the comma then), one rule for every block
+  /// kind.
   bool get canSetComma;
   void setComma(int comma);
 
@@ -293,6 +295,12 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     if (_standingOnTransitionRow) {
       return session.transitionSpanAt(session.editingGlobalFrame) != null ||
           session.canCreateTransitionSpanAtPlayhead;
+    }
+    // D28: on the cut row with a storyboard layer, the ＋ divides the
+    // panel under the cursor — the same one-resolver pair the dispatch
+    // reads.
+    if (session.canCreateStoryboardPanelAtCursor) {
+      return true;
     }
     return session.canCreateSeEntryAtStoryboardCursor;
   }

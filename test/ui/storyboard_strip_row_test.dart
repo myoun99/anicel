@@ -1,4 +1,5 @@
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/gestures.dart'
+    show PointerDeviceKind, kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -17,6 +18,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+
+import 'storyboard_cut_block_probe.dart';
 
 /// The STRIP is a row of its own, and a cut-owned one: it speaks its cut's
 /// local axis, which is why a drag on it cannot leave the cut it started
@@ -62,7 +65,8 @@ Cut _cut(String id, int duration, Map<int, int> divisions) => Cut(
 );
 
 /// Cut 1 covers [0,10) with panels at 0 and 5; cut 2 covers [10,20) with
-/// panels at 0 and 4 (local).
+/// panels at 0 and 4 (local); cut 3 covers [20,30) with NO storyboard
+/// layer (the D30 create affordance's home).
 Project _project() => Project(
   id: const ProjectId('strip-project'),
   name: 'Strip',
@@ -74,6 +78,20 @@ Project _project() => Project(
       cuts: [
         _cut('cut-1', 10, {0: 5, 5: 5}),
         _cut('cut-2', 10, {0: 4, 4: 6}),
+        Cut(
+          id: const CutId('cut-3'),
+          name: 'cut-3',
+          duration: 10,
+          canvasSize: const CanvasSize(width: 640, height: 360),
+          layers: [
+            Layer(
+              id: const LayerId('cut-3-cel'),
+              name: 'A',
+              frames: const [],
+              timeline: const {},
+            ),
+          ],
+        ),
       ],
     ),
   ],
@@ -242,5 +260,182 @@ void main() {
     final panel = tester.widget<StoryboardPanel>(find.byType(StoryboardPanel));
     expect(panel.stripSelect!.selection.value, isNotNull);
     expect(panel.cutSelect!.selectedRange.value, isNull);
+  });
+
+  testWidgets('D30: the strip selection draws the timeline\'s ONE band at '
+      'the selected panels', (tester) async {
+    await _openStoryboard(tester);
+
+    await _drag(tester, _stripPoint(tester, 1), _stripPoint(tester, 6));
+    final band = find.byKey(
+      const ValueKey<String>('storyboard-strip-range-selection'),
+    );
+    expect(band, findsOneWidget, reason: 'the strip band was MISSING — the '
+        'selection had no visual of its own on this panel');
+
+    // The selection snapped to the whole cut-1 span [0,10): the band's
+    // rect covers exactly those frames.
+    final rowRect = _cutRowRect(tester);
+    final ppf = _pixelsPerFrame(tester);
+    final bandRect = tester.getRect(band);
+    expect(bandRect.left, moreOrLessEquals(rowRect.left, epsilon: 1));
+    expect(bandRect.width, moreOrLessEquals(10 * ppf, epsilon: 1));
+  });
+
+  testWidgets('D30: the create affordance is the ACTIVE cut\'s — the first '
+      'press on a no-layer cut\'s centre SELECTS, the next one creates', (
+    tester,
+  ) async {
+    await _openStoryboard(tester);
+    expect(requireCutBlock(tester, 'cut-3').hasStoryboardLayer, isFalse);
+    expect(requireCutBlock(tester, 'cut-3').isActive, isFalse);
+
+    // First press at cut-3's centre — the exact point a block-select tap
+    // lands on. Cut-3 was NOT active, so its slot drew no affordance and
+    // the press stays a SELECT: it activates the cut and creates nothing.
+    await tester.tapAt(_stripPoint(tester, 25));
+    await tester.pumpAndSettle();
+    expect(requireCutBlock(tester, 'cut-3').isActive, isTrue);
+    expect(
+      requireCutBlock(tester, 'cut-3').hasStoryboardLayer,
+      isFalse,
+      reason: 'a select tap on a non-active cut must never create — the '
+          'affordance belongs to the ACTIVE cut («액티브 컷에 없으면 생성»)',
+    );
+
+    // Now the slot draws the +. The same point creates.
+    await tester.tapAt(_stripPoint(tester, 25));
+    await tester.pumpAndSettle();
+    expect(
+      requireCutBlock(tester, 'cut-3').hasStoryboardLayer,
+      isTrue,
+      reason: 'gate and dispatch are the session\'s one add-layer pair — '
+          'the drawn + is the pressable one',
+    );
+  });
+
+  testWidgets('D30: a strip press OUTSIDE the affordance never creates', (
+    tester,
+  ) async {
+    await _openStoryboard(tester);
+
+    // Make cut-3 ACTIVE first (its affordance only exists then).
+    await tester.tapAt(_stripPoint(tester, 21));
+    await tester.pumpAndSettle();
+    expect(requireCutBlock(tester, 'cut-3').isActive, isTrue);
+
+    // Frame 21 is inside cut-3 but left of the centred 22px affordance.
+    await tester.tapAt(_stripPoint(tester, 21));
+    await tester.pumpAndSettle();
+
+    expect(requireCutBlock(tester, 'cut-3').hasStoryboardLayer, isFalse);
+  });
+
+  testWidgets('D30: a SECONDARY-button press on the active cut\'s + never '
+      'creates — the create runs under the press\'s own button gate', (
+    tester,
+  ) async {
+    await _openStoryboard(tester);
+    await tester.tapAt(_stripPoint(tester, 25));
+    await tester.pumpAndSettle();
+    expect(requireCutBlock(tester, 'cut-3').isActive, isTrue);
+
+    final gesture = await tester.startGesture(
+      _stripPoint(tester, 25),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryButton,
+    );
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(requireCutBlock(tester, 'cut-3').hasStoryboardLayer, isFalse);
+  });
+
+  testWidgets('D30: a press INSIDE the live cut selection is starting a '
+      'move — it neither seeks nor creates, even over the active cut\'s +', (
+    tester,
+  ) async {
+    await _openStoryboard(tester);
+    // Activate cut-3 (its slot then draws the +).
+    await tester.tapAt(_stripPoint(tester, 25));
+    await tester.pumpAndSettle();
+    // Take a cut-run selection covering cut-3 on the BAND (the cut's own
+    // handle).
+    await _drag(tester, _bandPoint(tester, 21), _bandPoint(tester, 28));
+    expect(
+      tester
+          .widget<StoryboardPanel>(find.byType(StoryboardPanel))
+          .cutSelect!
+          .selectedRange
+          .value,
+      isNotNull,
+    );
+
+    await tester.tapAt(_stripPoint(tester, 25));
+    await tester.pumpAndSettle();
+
+    expect(requireCutBlock(tester, 'cut-3').hasStoryboardLayer, isFalse);
+  });
+
+  test('D30: a strip too narrow or too flat for the whole + holds NO '
+      'affordance — a clamped block would light a + its frames cannot '
+      'honour, and an unclamped box would paint over the neighbour', () {
+    StoryboardCutBlockVisual visual({
+      required double stripWidth,
+      double stripHeight = 38,
+    }) => StoryboardCutBlockVisual(
+      cutId: const CutId('cut-x'),
+      rect: Rect.fromLTWH(0, 0, stripWidth, 64),
+      isActive: true,
+      isRangeSelected: false,
+      isHovered: false,
+      title: '1',
+      layerLabel: '',
+      hasStoryboardLayer: false,
+      total: null,
+      thumbnails: const [],
+      cells: const [],
+      topBand: Rect.fromLTWH(0, 0, stripWidth, 13),
+      strip: Rect.fromLTWH(0, 13, stripWidth, stripHeight),
+      bottomBand: Rect.fromLTWH(0, 13 + stripHeight, stripWidth, 13),
+    );
+
+    expect(
+      StoryboardCutBlocksPainter.createAffordanceRectOf(
+        visual(stripWidth: 16),
+      ),
+      isNull,
+    );
+    expect(
+      StoryboardCutBlocksPainter.createAffordanceRectOf(
+        visual(stripWidth: 80, stripHeight: 8),
+      ),
+      isNull,
+    );
+    final affordance = StoryboardCutBlocksPainter.createAffordanceRectOf(
+      visual(stripWidth: 80),
+    );
+    expect(affordance, isNotNull);
+    expect(
+      visual(stripWidth: 80).strip.expandToInclude(affordance!),
+      visual(stripWidth: 80).strip,
+      reason: 'the affordance never leaves its own strip',
+    );
+  });
+
+  testWidgets('D27: a no-layer cut\'s semantics label carries no leftover '
+      'joiner spaces', (tester) async {
+    await _openStoryboard(tester);
+    final painter = cutBlocksPainter(tester, trackId: _trackId.value);
+    for (final node in painter.semanticsBuilder(const Size(1500, 64))) {
+      final label = node.properties.label!;
+      expect(label.trim(), label, reason: 'edge space in "$label"');
+      expect(
+        label.contains('  '),
+        isFalse,
+        reason: 'double space in "$label"',
+      );
+    }
   });
 }

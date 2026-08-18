@@ -3,10 +3,6 @@ import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 
-/// What a cut block prints where its storyboard layer's name would go when
-/// the cut has none.
-const String storyboardCutBlockNoLayerLabel = 'No Storyboard Layer';
-
 /// The cut's storyboard row, or null when it has none.
 ///
 /// A cut may hold at most ONE (the conte has one strip per cut, and the

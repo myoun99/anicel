@@ -828,7 +828,7 @@ class TimelineRowCellsPainter extends CustomPainter {
     if (!segment.isBlock) {
       return null;
     }
-    const blockRadius = Radius.circular(6);
+    const blockRadius = timelineBlockCornerRadius;
     final startRadius = segment.continuesFromPrevious
         ? Radius.zero
         : blockRadius;

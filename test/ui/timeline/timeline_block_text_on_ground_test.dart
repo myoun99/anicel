@@ -479,4 +479,38 @@ void main() {
       );
     }
   });
+
+  test('D29: the strip\'s WRITING reads the picture ground when thumbnails '
+      'are on — the B1 grip fix, applied to the text', () {
+    final painter = File(
+      'lib/src/ui/storyboard_cut_blocks_painter.dart',
+    ).readAsStringSync();
+    expect(
+      painter,
+      contains('storyboardPanelPictureGroundColor'),
+      reason: 'the glyphs sit on paper-white composite thumbnails — the '
+          'dark plate resolved WHITE ink on white pictures',
+    );
+    expect(
+      RegExp(r'ground: _stripWritingGround\(block\)')
+          .allMatches(painter)
+          .length,
+      greaterThanOrEqualTo(3),
+      reason: 'panel name, comma AND the D30 create + all take the '
+          'picture-aware ground (a no-layer cut still paints its '
+          'coverage cell\'s paper-white composite under the +)',
+    );
+    expect(
+      painter,
+      isNot(contains('ground: _stripGround(block)')),
+      reason: 'no strip glyph reads the plate directly — the writing '
+          'ground decides (D29)',
+    );
+    expect(
+      painter,
+      isNot(contains('timelineFittedGlyphFontSize(\n          9,')),
+      reason: 'the comma wears the cut-block text grade (_labelStyle\'s '
+          '11), not a cell-fitted 9 (D29)',
+    );
+  });
 }

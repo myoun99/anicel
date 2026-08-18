@@ -392,6 +392,7 @@ class StoryboardPanel extends StatefulWidget {
     this.cutMove,
     this.cutSelect,
     this.stripSelect,
+    this.onCreateStoryboardLayer,
     this.movieEnd,
     this.trackLaneHeight = defaultTrackLaneHeight,
     this.pixelsPerFrame = 8,
@@ -619,6 +620,11 @@ class StoryboardPanel extends StatefulWidget {
   /// Range selection on the STRIP — the cut's own panels, on the cut's own
   /// axis. Null keeps the strip display-only.
   final StoryboardStripSelectCallbacks? stripSelect;
+
+  /// D30: pressed on a no-layer cut's CREATE affordance in the strip
+  /// slot. The host's gate/dispatch pair is the session's
+  /// canAddLayerOfKind/addLayerOfKind (T25). Null = display-only.
+  final ValueChanged<CutId>? onCreateStoryboardLayer;
 
   /// Movie-end drag hooks (UI-R20 #3); null hides the end grip (the line
   /// still shows).
@@ -2672,6 +2678,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           ),
           showSeconds: widget.showSeconds,
           projectFrameRate: widget.projectFrameRate,
+          onCreateStoryboardLayer: widget.onCreateStoryboardLayer,
         ),
       ),
       if (widget.expandedTransformTracks.contains(track.id.value))
@@ -5569,6 +5576,7 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.showSeconds,
     required this.projectFrameRate,
     this.railRowAt,
+    this.onCreateStoryboardLayer,
   });
 
   /// R9 #25: the rail row a cross-axis pointer offset lands on, resolved
@@ -5578,6 +5586,12 @@ class _StoryboardTrackRow extends StatelessWidget {
     double crossOffset,
   )?
   railRowAt;
+
+  /// D30: pressed on a no-layer cut's CREATE affordance (the reserved
+  /// strip slot's content). The gate and the dispatch both live with the
+  /// host's session pair (canAddLayerOfKind/addLayerOfKind — T25); null
+  /// keeps the affordance display-only.
+  final ValueChanged<CutId>? onCreateStoryboardLayer;
 
   final Track track;
   final List<StoryboardTimelineLayoutEntry> layoutEntries;
@@ -5826,15 +5840,49 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// there is no gap rule here — the seek parks, exactly as the ruler's
   /// does. A press inside the live selection stays silent: it is starting a
   /// move, not picking a frame.
-  void _handlePressDown(PointerDownEvent event) {
+  /// Both halves of the pointer DOWN — the seek AND the D30 create — run
+  /// under this ONE gate pair: secondary buttons are not presses here,
+  /// and a press inside the live selection is starting a move, so it
+  /// neither seeks nor creates.
+  bool _pressDownGated(PointerDownEvent event) {
     if (event.buttons != 0 && (event.buttons & kPrimaryButton) == 0) {
+      return true;
+    }
+    return _isSelectedAt(_frameAtX(event.localPosition.dx));
+  }
+
+  void _handlePressDown(PointerDownEvent event) {
+    onRowFramePress?.call(
+      TrackRowAddress(track.id),
+      _frameAtX(event.localPosition.dx),
+    );
+  }
+
+  /// D30: a press inside the ACTIVE no-layer cut's create affordance —
+  /// eligibility and rect are [StoryboardCutBlocksPainter
+  /// .createAffordanceRectOf]'s, the SAME call the paint made. The
+  /// visual is the PRE-press snapshot, so a press on a non-active cut's
+  /// block centre stays a SELECT (its slot drew no affordance), and only
+  /// the next press — on the drawn '+' — creates.
+  void _maybeCreateStoryboardLayer(
+    StoryboardCutBlocksPainter painter,
+    PointerDownEvent event,
+  ) {
+    final onCreate = onCreateStoryboardLayer;
+    if (onCreate == null) {
       return;
     }
-    final frame = _frameAtX(event.localPosition.dx);
-    if (_isSelectedAt(frame)) {
+    final block = painter.blockAt(event.localPosition);
+    if (block == null) {
       return;
     }
-    onRowFramePress?.call(TrackRowAddress(track.id), frame);
+    final affordance = StoryboardCutBlocksPainter.createAffordanceRectOf(
+      block,
+    );
+    if (affordance == null || !affordance.contains(event.localPosition)) {
+      return;
+    }
+    onCreate(block.cutId);
   }
 
   int _frameAtX(double x) => timelineScale.pixelsPerFrame <= 0
@@ -5855,6 +5903,41 @@ class _StoryboardTrackRow extends StatelessWidget {
     // live — the picture and the pointer read one definition of the band.
     final stripBand = StoryboardCutBlocksPainter.stripBandOf(laneHeight);
 
+    // Held in a local so the press layer hit-tests the SAME visuals the
+    // paint lays down (the D30 create affordance reads block.strip).
+    final blocksPainter = StoryboardCutBlocksPainter(
+      entries: layoutEntries,
+      // Resolved HERE, not in the painter: a cut holding two
+      // storyboard layers is a StateError, and a painter that
+      // throws takes the frame down with it.
+      storyboardLayerNames: {
+        for (final entry in layoutEntries)
+          if (storyboardLayerForCut(entry.cut) case final layer?)
+            entry.cutId: layer.name,
+      },
+      // The STRIP's content: the cut's panels, under the
+      // coverage rule — the same reading the grips hang on.
+      storyboardCellsByCut: cellsByCut,
+      geometry: frameGeometry,
+      crossAxisExtent: laneHeight,
+      minBlockWidth: timelineScale.minBlockWidth,
+      activeCutId: activeCutId,
+      selectedRange: cutSelect?.selectedRange,
+      rowAddress: TrackRowAddress(track.id),
+      hoveredCutId: hoveredCutId,
+      colorScheme: Theme.of(context).colorScheme,
+      brightness: Theme.of(context).brightness,
+      baseTextStyle:
+          Theme.of(context).textTheme.labelSmall ??
+          DefaultTextStyle.of(context).style,
+      showSeconds: showSeconds,
+      countingBase: projectFrameRate.countingBase,
+      thumbnailFor: thumbnailFor,
+      showThumbnails: thumbnailFor != null,
+      windowBucket: windowBucket,
+      viewportMainExtent: viewportWidth,
+    );
+
     return KeyedSubtree(
       key: ValueKey<String>('storyboard-track-row-${track.id.value}'),
       child: SizedBox(
@@ -5874,38 +5957,7 @@ class _StoryboardTrackRow extends StatelessWidget {
                   key: ValueKey<String>(
                     'storyboard-cut-blocks-${track.id.value}',
                   ),
-                  painter: StoryboardCutBlocksPainter(
-                    entries: layoutEntries,
-                    // Resolved HERE, not in the painter: a cut holding two
-                    // storyboard layers is a StateError, and a painter that
-                    // throws takes the frame down with it.
-                    storyboardLayerNames: {
-                      for (final entry in layoutEntries)
-                        if (storyboardLayerForCut(entry.cut) case final layer?)
-                          entry.cutId: layer.name,
-                    },
-                    // The STRIP's content: the cut's panels, under the
-                    // coverage rule — the same reading the grips hang on.
-                    storyboardCellsByCut: cellsByCut,
-                    geometry: frameGeometry,
-                    crossAxisExtent: laneHeight,
-                    minBlockWidth: timelineScale.minBlockWidth,
-                    activeCutId: activeCutId,
-                    selectedRange: cutSelect?.selectedRange,
-                    rowAddress: TrackRowAddress(track.id),
-                    hoveredCutId: hoveredCutId,
-                    colorScheme: Theme.of(context).colorScheme,
-                    brightness: Theme.of(context).brightness,
-                    baseTextStyle:
-                        Theme.of(context).textTheme.labelSmall ??
-                        DefaultTextStyle.of(context).style,
-                    showSeconds: showSeconds,
-                    countingBase: projectFrameRate.countingBase,
-                    thumbnailFor: thumbnailFor,
-                    showThumbnails: thumbnailFor != null,
-                    windowBucket: windowBucket,
-                    viewportMainExtent: viewportWidth,
-                  ),
+                  painter: blocksPainter,
                 ),
               ),
             ),
@@ -5921,7 +5973,16 @@ class _StoryboardTrackRow extends StatelessWidget {
                 onExit: (_) => hoveredCutId.value = null,
                 child: Listener(
                   behavior: HitTestBehavior.translucent,
-                  onPointerDown: _handlePressDown,
+                  onPointerDown: (event) {
+                    if (_pressDownGated(event)) {
+                      return;
+                    }
+                    _handlePressDown(event);
+                    // The create judges the PRE-press snapshot (the
+                    // painter this build drew), so running after the
+                    // press's activation cannot widen it (D30).
+                    _maybeCreateStoryboardLayer(blocksPainter, event);
+                  },
                 ),
               ),
             ),
@@ -5972,6 +6033,65 @@ class _StoryboardTrackRow extends StatelessWidget {
                         callbacks: stripGesture,
                       ),
                     ],
+                  ),
+                ),
+              ),
+            // D30: the STRIP's own selection band — the timeline's ONE
+            // band decoration, drawn from the cut-local selection's own
+            // numbers. One listener per TRACK row, never per cut
+            // (old-tablet law), pointer-transparent like every band.
+            if (stripSelect case final stripSelect?)
+              Positioned(
+                left: 0,
+                right: 0,
+                top: stripBand.top,
+                height: stripBand.height,
+                child: IgnorePointer(
+                  child: ValueListenableBuilder<TimelineFrameRangeSelection?>(
+                    valueListenable: stripSelect.selection,
+                    builder: (context, selection, _) {
+                      if (selection == null ||
+                          timelineScale.pixelsPerFrame <= 0) {
+                        return const SizedBox.shrink();
+                      }
+                      StoryboardTimelineLayoutEntry? anchor;
+                      for (final entry in layoutEntries) {
+                        if (storyboardLayerForCut(entry.cut)?.id ==
+                            selection.layerId) {
+                          anchor = entry;
+                          break;
+                        }
+                      }
+                      if (anchor == null) {
+                        return const SizedBox.shrink();
+                      }
+                      return Stack(
+                        children: [
+                          Positioned(
+                            left: timelineScale.leftForFrame(
+                              anchor.startFrame + selection.startIndex,
+                            ),
+                            top: 0,
+                            bottom: 0,
+                            width:
+                                timelineScale.pixelsPerFrame *
+                                (selection.endIndexExclusive -
+                                    selection.startIndex),
+                            child: Semantics(
+                              key: const ValueKey<String>(
+                                'storyboard-strip-range-selection',
+                              ),
+                              label: 'selected panel range',
+                              container: true,
+                              child: DecoratedBox(
+                                decoration:
+                                    timelineRangeSelectionBandDecoration,
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ),
               ),

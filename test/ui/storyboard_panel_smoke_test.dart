@@ -133,7 +133,8 @@ void main() {
 
       final block = requireCutBlock(tester, 'cut-a');
       expect(block.hasStoryboardLayer, isFalse);
-      expect(block.layerLabel, 'No Storyboard Layer');
+      // D27: the honest empty state — no explanatory copy in the band.
+      expect(block.layerLabel, '');
     });
 
     testWidgets(

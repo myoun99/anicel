@@ -212,7 +212,8 @@ void main() {
     // bottom-right (the old duration/frame-range row is gone).
     expect(block.total, '24');
     expect(block.hasStoryboardLayer, isFalse);
-    expect(block.layerLabel, 'No Storyboard Layer');
+    // D27: the honest empty state — no explanatory copy in the band.
+    expect(block.layerLabel, '');
   });
 
   testWidgets(

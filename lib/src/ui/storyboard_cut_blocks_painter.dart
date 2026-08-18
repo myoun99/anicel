@@ -358,7 +358,8 @@ class StoryboardCutBlocksPainter extends CustomPainter {
               selection?.overlaps(entry.startFrame, entry.endFrame) ?? false,
           isHovered: entry.cutId == hovered,
           title: entry.cut.name,
-          layerLabel: layerName ?? storyboardCutBlockNoLayerLabel,
+          // D27: no explanatory copy — an empty layer slot reads as ''.
+          layerLabel: layerName ?? '',
           hasStoryboardLayer: layerName != null,
           total: width >= totalLabelMinWidth
               ? timelineDurationLabel(
@@ -385,6 +386,32 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       );
     }
     return visuals;
+  }
+
+  /// D30: the CREATE affordance a block actually wears, or null — ONE
+  /// eligibility AND geometry for the painter and the press layer (this
+  /// row's rule: where it is drawn is where it is hit, and only what is
+  /// drawn is pressable). ACTIVE cut only («액티브 컷에 없으면 생성
+  /// 버튼»): the affordance sits where a block-select tap naturally
+  /// lands, so on a non-active cut that tap must stay a SELECT. A small
+  /// block-cornered square centred in the strip.
+  static Rect? createAffordanceRectOf(StoryboardCutBlockVisual block) {
+    if (block.hasStoryboardLayer || block.bandsFolded || !block.isActive) {
+      return null;
+    }
+    // A strip too narrow or too flat to hold the whole square holds NO
+    // affordance: a clamped-width block's extra pixels map to frames
+    // past the cut (the press could light a '+' it can never honour),
+    // and an unclamped 22px box would paint over the neighbour. The
+    // add-layer verb stays reachable through the layer rail's own +.
+    if (block.strip.width < 22 || block.strip.height <= 8) {
+      return null;
+    }
+    return Rect.fromCenter(
+      center: block.strip.center,
+      width: 22,
+      height: math.min(22, block.strip.height),
+    );
   }
 
   /// The block covering row-local [position], or null between blocks.
@@ -421,10 +448,6 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     fontWeight: FontWeight.bold,
   );
 
-  TextStyle get _emptyLayerStyle => _labelStyle.copyWith(
-    color: timelineDrawingInkColor.withValues(alpha: 0.72),
-  );
-
   TextStyle get _totalStyle => _labelStyle.copyWith(
     color: timelineDrawingInkColor.withValues(alpha: 0.72),
     // R27 #3: bold — the readout was too easy to miss.
@@ -456,6 +479,13 @@ class StoryboardCutBlocksPainter extends CustomPainter {
         hovered: block.isHovered,
         rangeSelected: block.isRangeSelected && block.bandsFolded,
       );
+
+  /// The ground the strip's WRITING actually sits on (D29 — B1's twin,
+  /// for text): with thumbnails on, the glyphs ride the paper-white
+  /// composite pictures, and reading the dark plate there resolved WHITE
+  /// ink on white thumbnails. Without thumbnails the plate is honest.
+  Color _stripWritingGround(StoryboardCutBlockVisual block) =>
+      showThumbnails ? storyboardPanelPictureGroundColor : _stripGround(block);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -512,6 +542,43 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     // painted per slot above) — the divider question #760 left open is
     // closed by those, not by a rule of their own.
 
+    // D30: the ACTIVE cut with NO storyboard layer swaps the reserved
+    // strip slot's content to the CREATE affordance — an icon, not copy.
+    // Eligibility and rect are [createAffordanceRectOf]'s, shared with
+    // the press layer.
+    if (createAffordanceRectOf(block) case final affordance?) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(affordance, timelineBlockCornerRadius),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = storyboardCutBlockEdgeColor(
+            colorScheme,
+            brightness,
+            active: false,
+            hovered: block.isHovered,
+          ),
+      );
+      final plusStyle = _labelStyle.copyWith(
+        fontWeight: FontWeight.w700,
+        color: timelineDrawingInkColor,
+      );
+      final glyph = timelineGlyphPainter('+', plusStyle);
+      paintTimelineGlyphOnGround(
+        canvas,
+        Offset(
+          affordance.center.dx - glyph.width / 2,
+          affordance.center.dy - glyph.height / 2,
+        ),
+        '+',
+        plusStyle,
+        // The WRITING ground (D29): a no-layer cut still paints its
+        // coverage cell's paper-white composite across the strip, so
+        // reading the dark plate here would resolve white-on-white.
+        ground: _stripWritingGround(block),
+      );
+    }
+
     // ONE border for every cut block. The active cut used to wear a 2px
     // accent one here — this rail's own way of saying "the block you are
     // standing on", invented because the storyboard was never unified with
@@ -538,10 +605,10 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     }
     if (block.bandsFolded) {
       // FOLDED: nowhere to put the writing but over the picture — the
-      // shared ground law keeps it readable there against the strip's
-      // plate, exactly as it does on every panel cell (the scrim this
-      // replaced was a second answer to the same question).
-      final ground = _stripGround(block);
+      // shared ground law keeps it readable there against what is REALLY
+      // under it (D29: folded blocks still paint thumbnails, so the
+      // picture ground applies exactly as on the panel cells).
+      final ground = _stripWritingGround(block);
       canvas.save();
       canvas.clipRect(inner);
       _paintAnchoredLabel(
@@ -591,16 +658,10 @@ class StoryboardCutBlocksPainter extends CustomPainter {
 
     canvas.save();
     canvas.clipRect(block.bottomBand);
-    if (!block.hasStoryboardLayer) {
-      _paintBandText(
-        canvas,
-        text: block.layerLabel,
-        style: _emptyLayerStyle,
-        band: block.bottomBand,
-        alignRight: false,
-        ground: bandGround,
-      );
-    }
+    // D27: a cut with no storyboard layer prints NOTHING in the left end
+    // of its bottom band — the explanatory copy is gone (blocks WITH a
+    // layer never printed anything there either; the band and its total
+    // stay, the reserved slot the create affordance swaps into).
     final total = block.total;
     if (total != null) {
       _paintBandText(
@@ -705,7 +766,11 @@ class StoryboardCutBlocksPainter extends CustomPainter {
         continue;
       }
       canvas.save();
-      canvas.clipRect(slot);
+      // D30: a panel is a frame block in thumbnail mode — it wears the
+      // timeline's rounded block corners.
+      canvas.clipRRect(
+        RRect.fromRectAndRadius(slot, timelineBlockCornerRadius),
+      );
       _paintPanelPicture(canvas, block.thumbnails[index], slot);
       if (!block.bandsFolded) {
         _paintPanelWriting(canvas, block, index, slot);
@@ -718,8 +783,11 @@ class StoryboardCutBlocksPainter extends CustomPainter {
         // rows omit it with the rest of the panel info: their slots ride
         // the 4px-deflated inner rect, so a border there would sit off
         // the true frame edges the grips are mounted on.
-        canvas.drawRect(
-          slot.deflate(0.5),
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            slot.deflate(0.5),
+            timelineBlockCornerRadius,
+          ),
           Paint()
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1
@@ -770,17 +838,15 @@ class StoryboardCutBlocksPainter extends CustomPainter {
         Offset(slot.left + _padding / 2, slot.top + 1),
         name,
         nameStyle,
-        ground: _stripGround(block),
+        ground: _stripWritingGround(block),
       );
     }
     final comma = block.cellCommaLabels[index];
     if (comma.isNotEmpty) {
-      final commaStyle = TextStyle(
-        fontSize: timelineFittedGlyphFontSize(
-          9,
-          _cellExtent,
-          crossExtent: slot.height,
-        ),
+      // D29: the CUT-BLOCK text grade — the same 11 the band labels wear
+      // (_labelStyle's base), not a cell-fitted 9 that shrank to ~6px at
+      // storyboard zooms. One law for the two block texts.
+      final commaStyle = _labelStyle.copyWith(
         fontWeight: FontWeight.w700,
         color: timelineDrawingInkColor.withValues(alpha: 0.72),
       );
@@ -797,7 +863,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
         ),
         comma,
         commaStyle,
-        ground: _stripGround(block),
+        ground: _stripWritingGround(block),
       );
     }
   }
@@ -857,9 +923,14 @@ class StoryboardCutBlocksPainter extends CustomPainter {
           CustomPainterSemantics(
             rect: block.rect,
             properties: SemanticsProperties(
-              label:
-                  '${block.title} ${block.layerLabel}'
-                  '${block.total == null ? '' : ' ${block.total}'}',
+              // Joined from the parts that EXIST: D27 made layerLabel
+              // empty on a no-layer cut, and the old unconditional
+              // joiner left its space behind.
+              label: [
+                block.title,
+                if (block.layerLabel.isNotEmpty) block.layerLabel,
+                ?block.total,
+              ].join(' '),
               textDirection: TextDirection.ltr,
             ),
           ),
