@@ -231,6 +231,54 @@ void main() {
     await drainWarming(tester);
   });
 
+  testWidgets('drawing a BAND refreshes the toolbar — the active-row verbs '
+      'read it, and it fires on its own notifier with no session notify', (
+    tester,
+  ) async {
+    final session = await pumpNotifyWrappedHost(tester);
+    Object toolbar() => tester.widget(find.byType(TimelineActionToolbar));
+
+    // Two drawing rows: row A active with a block, the band swept over B.
+    final rowA = session.layers
+        .firstWhere((layer) => layer.kind == LayerKind.animation)
+        .id;
+    session.selectLayer(rowA);
+    session.selectFrameIndex(0);
+    session.createDrawingAtCurrentFrame();
+    session.addLayerOfKind(LayerKind.animation);
+    final rowB = session.activeLayer!.id;
+    session.selectFrameIndex(0);
+    session.createDrawingAtCurrentFrame();
+    session.selectLayer(rowA);
+    session.selectFrameIndex(0);
+    await tester.pump();
+
+    expect(session.canCutRunAtCurrentFrame, isTrue, reason: 'sanity');
+    final beforeBand = toolbar();
+
+    session.updateFrameRangeSelectionDrag(
+      layerId: rowB,
+      anchorIndex: 0,
+      headIndex: 1,
+    );
+    await tester.pump();
+
+    expect(
+      session.canCutRunAtCurrentFrame,
+      isFalse,
+      reason: 'sanity: the band names another row, so the verb stood down',
+    );
+    expect(
+      identical(toolbar(), beforeBand),
+      isFalse,
+      reason: 'the gates went dark, so the BUTTONS must too — enforcing a '
+          'standdown while the bar keeps its old enablement leaves exactly '
+          'the dead lit control the standdown exists to remove',
+    );
+
+    await drainWarming(tester);
+  });
+
   testWidgets('a section fold refreshes the toolbar (its flyout checkmarks '
       'read hiddenSections)', (tester) async {
     final session = EditorSessionManager(initialProject: createDefaultProject());

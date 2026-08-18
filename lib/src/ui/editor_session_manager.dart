@@ -8320,6 +8320,19 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   bool get canCopyFrameAtCurrentFrame {
+    // 복사 and 잘라내기 are ONE pair by the user's own definition
+    // (「복사=원본 남기고 클립 저장 · 잘라내기=원본 지우고 클립 저장」) and
+    // share a resolver — [cutRunAtCurrentFrame] literally calls this one.
+    // So they must agree about the subject.
+    //
+    // ⛔The exemption written next to the cut standdown, "COPY is left lit:
+    // it only reads", does not survive contact with what copy does: it
+    // WRITES the clipboard, which is user state, and under a band naming
+    // other rows it wrote the wrong row's run — the same wrong subject
+    // that standdown was added for, banked for a later paste.
+    if (bandNamesRowsThisPressWouldMiss) {
+      return false;
+    }
     return selectedFrame != null;
   }
 
@@ -9522,7 +9535,8 @@ class EditorSessionManager extends ChangeNotifier {
     // other rows it lifts a block the user never swept — and being the
     // destructive half of the clipboard pair, it did so while Delete sat
     // dark one button away on the same pill. No band rung to serve, so
-    // the band ends the ladder. (COPY is left lit: it only reads.)
+    // the band ends the ladder — and so does COPY, its documented twin:
+    // "it only reads" was wrong, since it writes the clipboard.
     if (bandNamesRowsThisPressWouldMiss) {
       return false;
     }
