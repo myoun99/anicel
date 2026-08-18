@@ -178,6 +178,30 @@ void main() {
       );
     });
 
+    test('an image row stays off the ACTION block even with its sheet '
+        'toggle ON — the toggle is reserved for the 끼움 표시, not a cel '
+        'column (D24)', () {
+      final document = _document(
+        _cut(
+          layers: [
+            _layer('A'),
+            _layer('BG', kind: LayerKind.image, onTimesheet: true),
+          ],
+        ),
+      );
+
+      final actionLayers = document.columns
+          .where((column) => column.kind == TimesheetColumnKind.action)
+          .map((column) => column.layerName)
+          .whereType<String>();
+      expect(
+        actionLayers,
+        ['A'],
+        reason: 'layerTakesSheetCelColumn is the ONE gate — a picture row '
+            'is never a cel, whatever its toggle says',
+      );
+    });
+
     test('extra animation layers grow the ACTION block past the fixed 8', () {
       final document = _document(
         _cut(layers: [for (var i = 0; i < 10; i += 1) _layer('L$i')]),

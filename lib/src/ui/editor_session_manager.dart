@@ -8320,10 +8320,28 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   bool get canCopyFrameAtCurrentFrame {
+    // 복사 and 잘라내기 are ONE pair by the user's own definition
+    // (「복사=원본 남기고 클립 저장 · 잘라내기=원본 지우고 클립 저장」) and
+    // share a resolver — [cutRunAtCurrentFrame] literally calls this one.
+    // So they must agree about the subject.
+    //
+    // ⛔The exemption written next to the cut standdown, "COPY is left lit:
+    // it only reads", does not survive contact with what copy does: it
+    // WRITES the clipboard, which is user state, and under a band naming
+    // other rows it wrote the wrong row's run — the same wrong subject
+    // that standdown was added for, banked for a later paste.
+    if (bandNamesRowsThisPressWouldMiss) {
+      return false;
+    }
     return selectedFrame != null;
   }
 
   bool get canPasteLinkedFrameAtCurrentFrame {
+    // Same law as its independent twin: this lands on the ACTIVE row and
+    // serves only a band that covers it ([_pasteRun]'s `replacing`).
+    if (bandNamesRowsThisPressWouldMiss) {
+      return false;
+    }
     final layer = activeLayer;
     final copiedFrame = _copiedFrame;
     if (layer == null ||
@@ -8332,7 +8350,14 @@ class EditorSessionManager extends ChangeNotifier {
         // SYNCED attach rows own no timeline — linked reuse happens
         // through the BASE's links (link the base cel instead). Free
         // attach rows author normally (UI-R21 #3).
-        isSyncedAttachedLayer(layer)) {
+        isSyncedAttachedLayer(layer) ||
+        // An IMAGE row holds ONE cel by definition, so a second exposure
+        // of it is a write the covering normalization rebuilds from the
+        // same write (D22) — nothing changes and the press costs a
+        // phantom undo entry. Its two neighbours on this pill already
+        // refuse (독립 붙여넣기 always did, 잘라내기 since this round);
+        // this was the third button still lit for a row nothing touches.
+        layerKindHoldsSingleCel(layer.kind)) {
       return false;
     }
 
@@ -8383,6 +8408,14 @@ class EditorSessionManager extends ChangeNotifier {
   ///
   /// ⛔Renamed off "cut" in T3 — see [blankExposureAtCurrentFrame].
   bool get canBlankExposureAtCurrentFrame {
+    // A live band CLAIMS this press exactly as it claims Delete's and the
+    // comma's — X edits an EXISTING hold, so a band that resolves to
+    // nothing blankable ends the ladder rather than redirecting onto
+    // whatever row happens to be active. (⛔Not the `＋` case: that button
+    // CREATES and is deliberately band-free.)
+    if (bandNamesRowsThisPressWouldMiss) {
+      return false;
+    }
     final layer = activeLayer;
     // SYNCED attach rows have no timing of their own (the base owns it);
     // free attach rows cut exposures like any drawing layer (UI-R21 #3).
@@ -9489,8 +9522,30 @@ class EditorSessionManager extends ChangeNotifier {
   /// 왼쪽. 복사=원본 남기고 클립 저장 · 잘라내기=원본 지우고 클립 저장」.
   ///
   /// ★It is literally copy followed by the lift half of [spliceTimeline],
-  /// which is why it needs no rules of its own.
-  bool get canCutRunAtCurrentFrame => canCopyFrameAtCurrentFrame;
+  /// which is why it needs no rules of its own — with ONE exception: the
+  /// lift has to survive the write. On a SINGLE-CEL (image) row it does
+  /// not. The covering normalization rebuilds the picture's block from
+  /// the same write, so the press changes nothing on screen and costs a
+  /// phantom undo entry — the next Ctrl+Z then eats the user's real
+  /// previous edit. Same standdown, same reason, as the delete gate
+  /// (D22). COPY stays lit: it takes the cel to the clipboard without
+  /// claiming to remove it, which is honest here.
+  bool get canCutRunAtCurrentFrame {
+    // 잘라내기 resolves its run on the ACTIVE row, so under a band naming
+    // other rows it lifts a block the user never swept — and being the
+    // destructive half of the clipboard pair, it did so while Delete sat
+    // dark one button away on the same pill. No band rung to serve, so
+    // the band ends the ladder — and so does COPY, its documented twin:
+    // "it only reads" was wrong, since it writes the clipboard.
+    if (bandNamesRowsThisPressWouldMiss) {
+      return false;
+    }
+    final layer = activeLayer;
+    if (layer != null && layerKindHoldsSingleCel(layer.kind)) {
+      return false;
+    }
+    return canCopyFrameAtCurrentFrame;
+  }
 
   void cutRunAtCurrentFrame() {
     final layer = activeLayer;
@@ -9537,8 +9592,28 @@ class EditorSessionManager extends ChangeNotifier {
   /// ⛔The CLIPBOARD is not touched. A duplicate that clobbered what you had
   /// copied would be a second verb hiding inside the first.
   bool get canDuplicateActiveBlock {
+    // The fifth active-row verb: it resolves its block with
+    // [coveringDrawingBlockAt] on the active layer and has no band rung,
+    // so a band naming other rows would splice a copy into a row the
+    // user never swept — and shift that row's whole tail with it.
+    //
+    // ⛔This does not touch 유저 확정 2026-08-13 「복제는 현재 액티브인
+    // 대상을 상대로 적용하는 것」: that ruling picks the verb's NOUN, and
+    // the predicate is false whenever there is no band and whenever the
+    // band covers the active row — every case the ruling describes.
+    if (bandNamesRowsThisPressWouldMiss) {
+      return false;
+    }
     final layer = activeLayer;
     if (layer == null || !layerKindHoldsDrawings(layer.kind)) {
+      return false;
+    }
+    // D22: a SINGLE-CEL (image) row's one block is pinned by the covering
+    // normalization, so the duplicate never lands — but the independent
+    // half MINTS a cel first, leaving a drawing no exposure references
+    // and nothing on screen shows. A second cel is the one thing this
+    // row's definition rules out.
+    if (layerKindHoldsSingleCel(layer.kind)) {
       return false;
     }
     return coveringDrawingBlockAt(
@@ -9669,6 +9744,14 @@ class EditorSessionManager extends ChangeNotifier {
   /// its block-start refusal, which exists because there is nothing there
   /// to divide — a paste inserts rather than divides.
   bool get canPasteIndependentFrameAtCurrentFrame {
+    // The paste lands on the ACTIVE row, and its band rung serves only a
+    // band that covers that row (`replacing` in [_pasteRun] — 「복붙은
+    // 선택하고 붙여넣기가 기본」). A band naming other rows makes it a
+    // plain insert on a row the user never swept, and the highlight then
+    // stays put, because the clear runs on the replacing path alone.
+    if (bandNamesRowsThisPressWouldMiss) {
+      return false;
+    }
     final layer = activeLayer;
     if (layer == null || _copiedFrame == null) {
       return false;
@@ -10197,6 +10280,10 @@ class EditorSessionManager extends ChangeNotifier {
         layer.instructions.containsKey(blockStartIndex);
     final isDrawingBlock =
         layerKindHoldsDrawings(layer.kind) &&
+        // D22: the image row is edge-less (1 cell + fixed hold) — the
+        // grips are gone from its chrome, and the session refuses too so
+        // the gate and the dispatch stay one answer (T25).
+        !layerKindHoldsSingleCel(layer.kind) &&
         (layer.timeline[blockStartIndex]?.isDrawing ?? false);
     if (!isInstructionSpan && !isDrawingBlock) {
       return false;
@@ -10222,14 +10309,20 @@ class EditorSessionManager extends ChangeNotifier {
   void _captureEdgeDragCutSync(Layer? anchor) {
     final bulkBefore = _edgeDragBulkBefore;
     Layer? syncRow;
+    // D22: the image row is edge-less now, so it can no longer be the
+    // cut-sync anchor either — the STORYBOARD row is the sole rider
+    // (otherwise a bulk drag spanning an image row would silently switch
+    // which row drives the cut resize).
+    bool ridesCutLength(LayerKind kind) =>
+        layerKindCoversWithoutGaps(kind) && !layerKindHoldsSingleCel(kind);
     if (bulkBefore != null) {
       for (final candidate in bulkBefore.values) {
-        if (layerKindCoversWithoutGaps(candidate.kind)) {
+        if (ridesCutLength(candidate.kind)) {
           syncRow = candidate;
           break;
         }
       }
-    } else if (anchor != null && layerKindCoversWithoutGaps(anchor.kind)) {
+    } else if (anchor != null && ridesCutLength(anchor.kind)) {
       syncRow = anchor;
     }
     final activeId = activeCutId;
@@ -10267,7 +10360,13 @@ class EditorSessionManager extends ChangeNotifier {
       // retime by derivation anyway). Id-gated — the synced-block UI
       // stopped marking mirror entries ghost, so the non-ghost block scan
       // below no longer excludes them.
-      if (_isSyncedAttachedLayerId(id)) {
+      //
+      // SINGLE-CEL (image) rows stand down for the same reason the move
+      // sources do (D22): their one block is pinned by the write
+      // normalization, so a bulk retime would PREVIEW the picture
+      // stretching and then have it snapped back by the same write — the
+      // move-then-revert flicker the project bans outright.
+      if (_isSyncedAttachedLayerId(id) || _isSingleCelLayerId(id)) {
         continue;
       }
       final display = _rangeLayerById(id);
@@ -14787,6 +14886,11 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   bool get canToggleMarkAtCurrentFrame {
+    // The dot edits an EXISTING hold and has no band rung, so a live band
+    // ends the ladder here instead of dotting whatever row is active.
+    if (bandNamesRowsThisPressWouldMiss) {
+      return false;
+    }
     final layer = activeLayer;
     // SYNCED attach rows carry no cell marks (the base's sheet row
     // does); free attach rows mark like normal (UI-R21 #3).
@@ -14839,6 +14943,15 @@ class EditorSessionManager extends ChangeNotifier {
   /// standing row is separate state from its drawing target (유저
   /// 2026-07-27), so no session getter can see it.
   bool get canEditCellInstanceAtCurrentFrame {
+    // A live band CLAIMS this press exactly as it claims Delete's — the
+    // two are documented as ONE ladder ([editInstanceSubject]), so a band
+    // that leaves Delete with nothing must not leave Rename pointed at
+    // the active row instead. There is no selection-wide rename to route
+    // to, so a claiming band whose rows hold no editable block simply
+    // ends the ladder.
+    if (bandNamesRowsThisPressWouldMiss) {
+      return false;
+    }
     final layer = activeLayer;
     if (layer == null) {
       return false;
@@ -14937,15 +15050,74 @@ class EditorSessionManager extends ChangeNotifier {
       // #2).
       _selectionBlockStartsByLayer() != null;
 
+  /// Whether a live CELL band owns the next cell-verb press.
+  ///
+  /// A band is a subject claim, not a hint: the row the user swept is the
+  /// row the verb acts on, and a band holding nothing this verb may touch
+  /// makes the press a NO-OP — never a redirect onto whatever row happens
+  /// to be active (a cell drag never moves the active layer, so those are
+  /// routinely different rows).
+  ///
+  /// This is what keeps the collector's `null` from meaning two things.
+  /// It answers "no band at all"; the collector answers "nothing in the
+  /// band is editable". Reading only the collector let a refused band
+  /// fall through and delete an unselected row's drawing.
+  bool get cellSelectionClaimsSubject => frameRangeSelection.value != null;
+
+  /// Whether a live band names rows this press would MISS.
+  ///
+  /// The ACTIVE-ROW verbs — X-here, the ● mark, the cell rename and
+  /// 잘라내기 — all resolve against the active layer. A band covering that
+  /// row is served: 잘라내기 splices exactly the swept span
+  /// ([_spliceRunOnActiveRow]), and the playhead verbs act on the row the
+  /// user highlighted. A band naming only OTHER rows is a different
+  /// statement, and acting on the active row then edits something the
+  /// user never swept while the highlight sits elsewhere explaining
+  /// nothing — which for 잘라내기 means silently lifting a whole block.
+  ///
+  /// ⚠️Two wrong versions of this came first, and both are worth keeping
+  /// in view. "A band is up AND holds nothing" is the DELETE ladder's
+  /// test, and delete has a rung these verbs do not, so it let a band
+  /// naming other rows straight through. Plain "a band is up" then broke
+  /// 잘라내기's own documented use — 범위 선택 후 잘라내기 — because that
+  /// band DOES cover the active row. The axis is neither the band's
+  /// contents nor its mere existence: it is whether the band names the
+  /// row this press would land on.
+  ///
+  /// 🔜Open design question for the user (board R8-c): X, the mark and
+  /// the rename could instead LEARN a band rung and act on every swept
+  /// block the way Delete and the comma do. Refusing is the honest
+  /// reading of what they can do today, not a ruling that they never
+  /// should.
+  bool get bandNamesRowsThisPressWouldMiss {
+    final selection = frameRangeSelection.value;
+    if (selection == null) {
+      return false;
+    }
+    final layer = activeLayer;
+    return layer == null || !selection.coversLayer(layer.id);
+  }
+
   bool get canDeleteCellAtCurrentFrame {
     if (canDeleteCellForSelection) {
       return true;
+    }
+    if (cellSelectionClaimsSubject) {
+      return false;
     }
     final layer = activeLayer;
     // SYNCED attach rows: cel removal is out of v1 scope (delete the row
     // or undo the creation) — cells are display material there. Free
     // attach rows delete cells like normal (UI-R21 #3).
-    if (layer == null || isSyncedAttachedLayer(layer)) {
+    //
+    // SINGLE-CEL (image) rows: the one picture IS the row (its cel is
+    // born with it and there is no empty state in its world), so the row
+    // is what you delete. Without this the button lit and did nothing —
+    // the covering normalization rebuilt the cel from the same write, so
+    // the press only cost a phantom undo entry (D22).
+    if (layer == null ||
+        isSyncedAttachedLayer(layer) ||
+        layerKindHoldsSingleCel(layer.kind)) {
       return false;
     }
 
@@ -15166,6 +15338,11 @@ class EditorSessionManager extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    if (cellSelectionClaimsSubject) {
+      // The band holds nothing this verb may delete — that is a no-op,
+      // not a licence to edit whatever row is active.
+      return;
+    }
     final layer = activeLayer;
     if (layer == null || !canDeleteCellAtCurrentFrame) {
       return;
@@ -15197,7 +15374,14 @@ class EditorSessionManager extends ChangeNotifier {
       // mirror blocks are non-ghost now (the synced-block UI), so without
       // this gate a mirror-only selection would light up delete/comma
       // verbs that then no-op against the stored-empty row.
-      if (_isSyncedAttachedLayerId(id)) {
+      //
+      // SINGLE-CEL (image) rows are the same shape of answer (D22): their
+      // one block is pinned by the covering normalization, so no selection
+      // verb can edit it. Stating that HERE rather than in each verb is
+      // what keeps the button and the dispatch reading one answer — the
+      // three downstream copies of this filter used to leave every `can…`
+      // gate lighting up for a row nothing would touch.
+      if (_isSyncedAttachedLayerId(id) || _isSingleCelLayerId(id)) {
         continue;
       }
       final layer = _rangeLayerById(id);
@@ -15253,8 +15437,15 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Whether a comma set has a target: the selection's blocks, else the
   /// active layer's block covering the playhead.
+  ///
+  /// The second rung borrows the delete gate, which answers true for LANE
+  /// KEYS as well — a subject this verb has no branch for. Under a
+  /// claiming band that inheritance is what lit the buttons over a press
+  /// [setCommaForSelectionOrCurrent] then refuses, so the band's claim is
+  /// read here too and the two stay one answer.
   bool get canSetCommaForSelectionOrCurrent =>
-      _selectionBlockStartsByLayer() != null || canDeleteCellAtCurrentFrame;
+      _selectionBlockStartsByLayer() != null ||
+      (!cellSelectionClaimsSubject && canDeleteCellAtCurrentFrame);
 
   /// Sets the exposure length of every selected block — or the covering
   /// block at the playhead without a selection — to [comma], packing each
@@ -15267,14 +15458,9 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     final selection = frameRangeSelection.value;
-    // SINGLE-CEL (image) rows never retime: the covering normalization
-    // would revert the commit in the same write (a phantom undo entry).
-    final selectionTargets = _selectionBlockStartsByLayer() == null
-        ? null
-        : {
-            for (final entry in _selectionBlockStartsByLayer()!.entries)
-              if (!_isSingleCelLayerId(entry.key)) entry.key: entry.value,
-          };
+    // Single-cel rows are already absent — the shared collector states
+    // that standdown once, so this verb and its `can…` gate agree.
+    final selectionTargets = _selectionBlockStartsByLayer();
     if (selection != null &&
         selectionTargets != null &&
         selectionTargets.isNotEmpty) {
@@ -15285,6 +15471,11 @@ class EditorSessionManager extends ChangeNotifier {
       _reselectRetimedSelection(selection, selectionTargets);
       _warmActiveCut();
       notifyListeners();
+      return;
+    }
+    if (cellSelectionClaimsSubject) {
+      // Same law as the delete verb: a band that resolves to nothing
+      // retimable is a no-op, never a press that lands on some other row.
       return;
     }
     final layer = activeLayer;
@@ -15425,6 +15616,13 @@ class EditorSessionManager extends ChangeNotifier {
     if (_selectionBlockStartsByLayer() != null) {
       return true;
     }
+    // Its own dispatch already stops at a live band ([setCommaForStoryboardCursor]
+    // returns inside the selection branch), so the gate stops there too —
+    // otherwise the band falls through to the CURSOR rung and lights the
+    // buttons off a cut block the press will never reach.
+    if (cellSelectionClaimsSubject) {
+      return false;
+    }
     return switch (_storyboardCursorBlockOrNull()) {
       null => false,
       // The controller resolves track-SE commit layers through the active
@@ -15458,11 +15656,9 @@ class EditorSessionManager extends ChangeNotifier {
     // subject — stays unreachable from this panel.
     final selection = frameRangeSelection.value;
     if (selection != null) {
-      final targets = _cutLocalSelectionBlockStartsByLayer();
-      final retimable =
-          targets != null &&
-          targets.keys.any((id) => !_isSingleCelLayerId(id));
-      if (retimable) {
+      // Single-cel rows never appear in the collector, so a non-null map
+      // IS a retimable one.
+      if (_cutLocalSelectionBlockStartsByLayer() != null) {
         setCommaForSelectionOrCurrent(comma);
       }
       return;
@@ -16822,6 +17018,13 @@ class EditorSessionManager extends ChangeNotifier {
     _historyManager.clear();
     _copiedFrame = null;
     _layerClipboard = null;
+    // The selections name rows of the project being discarded, so no grid
+    // can draw them — and a band nothing shows still CLAIMS the cell verbs
+    // ([cellSelectionClaimsSubject]), which would leave Delete and the
+    // comma buttons dark with nothing on screen to explain why. Every
+    // other whole-state reset clears here; this one was the omission.
+    clearAllSelections();
+    trackFrameRangeSelection.value = null;
     _editingSession.setActiveCutId(result.project.tracks.first.cuts.first.id);
     _rebuildActiveCutControllers();
     // The replaced project's shelf takes are no longer this session's to

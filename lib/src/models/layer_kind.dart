@@ -582,9 +582,10 @@ bool layerKindTakesTimesheetColumn(LayerKind kind) {
 ///
 /// The IMAGE row speaks the same covering grammar: one cel by definition,
 /// held from the cut's first frame to its last (a BG has no "off"
-/// frames). The single block is the degenerate no-divisions case, and the
-/// repository's covering normalization keeps the stored block equal to
-/// the cut length through every duration change.
+/// frames). Its STORED form says that as ONE real 1-frame block plus a
+/// fixed end-side HOLD (D22), and the repository's covering
+/// normalization re-tiles that hold's ghosts through every duration
+/// change — the coverage is the row's law, not any block's length.
 bool layerKindCoversWithoutGaps(LayerKind kind) =>
     kind == LayerKind.storyboard || kind == LayerKind.image;
 

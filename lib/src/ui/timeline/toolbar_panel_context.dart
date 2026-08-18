@@ -394,6 +394,20 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     if (session.trackFrameRangeSelection.value != null) {
       return const StoryboardEditCut();
     }
+    // …and a live CELL band speaks before the standing row does, exactly
+    // as it does in this class's [deleteSubject].
+    //
+    // The axis here is not the session's: THIS panel's press lands on the
+    // STANDING ROW (a track, an S row, a lane, the transition fixture),
+    // and a cut-local band never names one of those — so any band at all
+    // names rows this press would miss. Without the guard it fell through
+    // to the row rung below, where a TrackRowAddress cursor means "rename
+    // the cut". Delete and Rename are documented as ONE ladder; splitting
+    // them here left the same band dark on one button and aimed at the
+    // cut on the other.
+    if (session.cellSelectionClaimsSubject) {
+      return null;
+    }
     switch (session.selectedRow) {
       case LayerRowAddress(:final layerId)
           when session.isTrackTransitionLayerId(layerId):
@@ -463,6 +477,13 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     if (session.canDeleteCellForSelection) {
       return DeleteSubject.cells;
     }
+    // A live CELL band claims the press even when it holds nothing this
+    // panel may delete — the same guard the strip's comma verb already
+    // states. Without it a band the collector refuses fell through to the
+    // cursor rung, where a TRACK-ROW cursor means "delete the cut".
+    if (session.cellSelectionClaimsSubject) {
+      return DeleteSubject.nothing;
+    }
     return session.canDeleteBlockAtStoryboardCursor
         ? DeleteSubject.cells
         : DeleteSubject.nothing;
@@ -476,6 +497,9 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     }
     if (session.canDeleteCellForSelection) {
       session.deleteCellAtCurrentFrame();
+      return;
+    }
+    if (session.cellSelectionClaimsSubject) {
       return;
     }
     session.deleteBlockAtStoryboardCursor();

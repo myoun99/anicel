@@ -46,7 +46,8 @@ String buildXdtsContent({
   final duration = cut.duration < 1 ? 1 : cut.duration;
   final celLayers = [
     for (final layer in cut.layers)
-      if (layer.kind == LayerKind.animation && layer.onTimesheet) layer,
+      // ONE gate with the sheet and the envelope (D24).
+      if (layerTakesSheetCelColumn(layer)) layer,
   ];
   final seWindow = TrackSeWindow(
     cutStartFrame: cutStartFrame,

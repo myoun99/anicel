@@ -95,9 +95,10 @@ class ProjectRepository {
 
   /// The write-time invariants, applied to every cut on every write:
   /// 1. COVERING IMAGE rows ([cutWithCoveringImageRows]): an image
-  ///    layer's stored block always equals the cut length — runs FIRST so
-  ///    the mirror pass below sees the final base timeline (an image row
-  ///    can be an attach base).
+  ///    layer's stored timeline is ONE real 1-frame block at index 0 plus
+  ///    a fixed end-side HOLD whose ghosts fill to the cut boundary
+  ///    (D22) — runs FIRST so the mirror pass below sees the final base
+  ///    timeline (an image row can be an attach base).
   /// 2. The COVERING STORYBOARD row ([cutWithCoveringStoryboardRow]): its
   ///    stored panels tile the cut exactly. Same grammar as 1, arriving
   ///    late because the row's DERIVED reader was mistaken for a guarantee
