@@ -1177,6 +1177,24 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// notifier the wrapper subscribes to, so a caret moving does not
   /// invalidate one cached row.
   ///
+  /// A5 (2026-08-17): the address of the row a drag gesture is HOLDING —
+  /// move or select, layer row or fx header. The window computation reads
+  /// it to keep that one row built while the rail scrolls past it: the
+  /// recognizer lives in the row's State, and an unmounted row used to
+  /// release the grip mid-gesture (드래그 풀림). A plain field, no
+  /// notifier — the press finds its row already built, and every window
+  /// shift already rebuilds through [_handleVerticalScroll]'s setState.
+  TimelineRowAddress? _heldDragRow;
+
+  /// The rail row's element key — ONE builder for the window loop and the
+  /// A5 pin site, so the two can never drift and the pinned element
+  /// re-matches the same State when the window returns.
+  ValueKey<String> _railRowKey(TimelineDisplayRow row) => ValueKey<String>(
+    'timeline-rail-row-'
+    '${row.layer.id}-'
+    '${row.isFolder ? 'folder-${row.layer.id}' : row.lane?.laneId ?? 'row'}',
+  );
+
   /// [TimelineDisplayRow.layerIndex] is the slot: it is this row's place in
   /// the DISPLAY layer list, which is exactly what a caret between layer
   /// rows counts in.
@@ -1188,6 +1206,12 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       rowExtent: _metrics.layerRowHeight,
       axis: Axis.horizontal,
       hooks: hooks,
+      onGripTaken: () => _heldDragRow = row.address,
+      onGripReleased: () {
+        if (_heldDragRow == row.address) {
+          _heldDragRow = null;
+        }
+      },
       isLastRow: row.layerIndex == widget.layers.length - 1,
       onCrossed: hooks == null
           ? (_, _) {}
@@ -1251,6 +1275,12 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       rowExtent: _metrics.layerRowHeight,
       axis: Axis.horizontal,
       hooks: hooks,
+      onGripTaken: () => _heldDragRow = row.address,
+      onGripReleased: () {
+        if (_heldDragRow == row.address) {
+          _heldDragRow = null;
+        }
+      },
       isLastRow: slot == headers.length - 1,
       // An fx chain has no "inside a row" to drop into — an effect holds
       // nothing — so the on-row band is ignored here and the caret stays
@@ -1779,6 +1809,32 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                     (rows.length -
                                         rowWindow.endIndexExclusive) *
                                     _metrics.layerRowHeight;
+                                // A5: the row a drag is holding stays
+                                // built when the window slides past it —
+                                // otherwise its State (and the pan
+                                // recognizer in it) is disposed and the
+                                // grip silently releases mid-gesture.
+                                // O(1): exactly one extra row, carved out
+                                // of the spacer it falls in.
+                                final heldRow = _heldDragRow;
+                                var pinnedIndex = -1;
+                                if (heldRow != null) {
+                                  pinnedIndex = rows.indexWhere(
+                                    (row) => row.address == heldRow,
+                                  );
+                                  if (pinnedIndex >= rowWindow.startIndex &&
+                                      pinnedIndex <
+                                          rowWindow.endIndexExclusive) {
+                                    // Already built by the window.
+                                    pinnedIndex = -1;
+                                  }
+                                }
+                                final pinnedBefore =
+                                    pinnedIndex >= 0 &&
+                                    pinnedIndex < rowWindow.startIndex;
+                                final pinnedAfter =
+                                    pinnedIndex >=
+                                    rowWindow.endIndexExclusive;
 
                                 return Column(
                                   children: [
@@ -2135,7 +2191,45 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                   // row state glued to its
                                                                   // layer through window
                                                                   // shifts.
-                                                                  if (leadingRowSpacerHeight >
+                                                                  // A5: a
+                                                                  // pinned
+                                                                  // (held)
+                                                                  // row is
+                                                                  // carved
+                                                                  // out of
+                                                                  // its
+                                                                  // spacer —
+                                                                  // total
+                                                                  // extent is
+                                                                  // unchanged.
+                                                                  if (pinnedBefore) ...[
+                                                                    if (pinnedIndex >
+                                                                        0)
+                                                                      SizedBox(
+                                                                        height:
+                                                                            pinnedIndex *
+                                                                            _metrics.layerRowHeight,
+                                                                      ),
+                                                                    KeyedSubtree(
+                                                                      key: _railRowKey(
+                                                                        rows[pinnedIndex],
+                                                                      ),
+                                                                      child: _railRowMemoized(
+                                                                        rows[pinnedIndex],
+                                                                      ),
+                                                                    ),
+                                                                    if (rowWindow.startIndex -
+                                                                            pinnedIndex -
+                                                                            1 >
+                                                                        0)
+                                                                      SizedBox(
+                                                                        height:
+                                                                            (rowWindow.startIndex -
+                                                                                pinnedIndex -
+                                                                                1) *
+                                                                            _metrics.layerRowHeight,
+                                                                      ),
+                                                                  ] else if (leadingRowSpacerHeight >
                                                                       0)
                                                                     SizedBox(
                                                                       height:
@@ -2144,17 +2238,44 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                   for (final row
                                                                       in windowRows)
                                                                     KeyedSubtree(
-                                                                      key: ValueKey<String>(
-                                                                        'timeline-rail-row-'
-                                                                        '${row.layer.id}-'
-                                                                        '${row.isFolder ? 'folder-${row.layer.id}' : row.lane?.laneId ?? 'row'}',
+                                                                      key: _railRowKey(
+                                                                        row,
                                                                       ),
                                                                       child:
                                                                           _railRowMemoized(
                                                                             row,
                                                                           ),
                                                                     ),
-                                                                  if (trailingRowSpacerHeight >
+                                                                  if (pinnedAfter) ...[
+                                                                    if (pinnedIndex -
+                                                                            rowWindow.endIndexExclusive >
+                                                                        0)
+                                                                      SizedBox(
+                                                                        height:
+                                                                            (pinnedIndex -
+                                                                                rowWindow.endIndexExclusive) *
+                                                                            _metrics.layerRowHeight,
+                                                                      ),
+                                                                    KeyedSubtree(
+                                                                      key: _railRowKey(
+                                                                        rows[pinnedIndex],
+                                                                      ),
+                                                                      child: _railRowMemoized(
+                                                                        rows[pinnedIndex],
+                                                                      ),
+                                                                    ),
+                                                                    if (rows.length -
+                                                                            pinnedIndex -
+                                                                            1 >
+                                                                        0)
+                                                                      SizedBox(
+                                                                        height:
+                                                                            (rows.length -
+                                                                                pinnedIndex -
+                                                                                1) *
+                                                                            _metrics.layerRowHeight,
+                                                                      ),
+                                                                  ] else if (trailingRowSpacerHeight >
                                                                       0)
                                                                     SizedBox(
                                                                       height:

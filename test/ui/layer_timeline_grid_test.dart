@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -8,7 +9,10 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
+import 'package:anicel/src/ui/timeline/layer_row_drag.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
+import 'package:anicel/src/ui/timeline/property_lane_model.dart'
+    show TimelineDisplayRow;
 import 'package:anicel/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
 
 import 'timeline/timeline_cell_probe.dart';
@@ -610,6 +614,226 @@ void main() {
       );
     },
   );
+
+  // A5 (2026-08-17): 「레이어 드래그 중 스크롤 발생 시 드래그 풀림」. The
+  // recognizer lives in the row's State; when the layer-axis window slid
+  // past the dragged row, the row unmounted and the grip silently released
+  // — no onEnd, no onCancel, a leaked session verb. Two halves: the held
+  // row is PINNED into the built slice (same key, State survives), and a
+  // true unmount (layer deleted, panel torn down) lands the operation via
+  // the R12-③ dispose backstop the sibling drag gestures already carry.
+  group('A5: a row drag survives the rail scrolling past its row', () {
+    ScrollPosition verticalPosition(WidgetTester tester) => tester
+        .state<ScrollableState>(
+          find
+              .descendant(
+                of: find.byKey(
+                  const ValueKey<String>('timeline-vertical-scroll-viewport'),
+                ),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        )
+        .position;
+
+    List<Layer> manyLayers() => List<Layer>.generate(
+      30,
+      (index) => _layer(id: 'layer-${index + 1}', name: 'Layer ${index + 1}'),
+    );
+
+    TimelineRowDragHooks hooks({
+      required List<String> events,
+      required List<int> slots,
+      required bool inSelection,
+    }) => TimelineRowDragHooks(
+      drag: ValueNotifier<LayerRowDragState?>(null),
+      onBegin: (_) => events.add('begin'),
+      onUpdate: (_, slot) => slots.add(slot),
+      onRowTarget: (_, slot, _) => slots.add(slot),
+      onEffectUpdate: (_, _, _) {},
+      onEnd: () => events.add('end'),
+      onCancel: () => events.add('cancel'),
+      isInRowSelection: (_) => inSelection,
+      onSelectBegin: (_) => events.add('selectBegin'),
+      onSelectEnd: () => events.add('selectEnd'),
+    );
+
+    testWidgets('the held row stays built and the MOVE keeps tracking', (
+      tester,
+    ) async {
+      final events = <String>[];
+      final slots = <int>[];
+      await tester.pumpWidget(
+        _grid(
+          layers: manyLayers(),
+          playbackFrameCount: 48,
+          rowDragHooks: hooks(
+            events: events,
+            slots: slots,
+            inSelection: true,
+          ),
+        ),
+      );
+
+      final row = find.byKey(
+        const ValueKey<String>('timeline-layer-row-layer-1'),
+      );
+      final gesture = await tester.startGesture(
+        tester.getCenter(row),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(0, 26));
+      await tester.pump();
+      expect(events, contains('begin'));
+
+      // The rail scrolls far past the dragged row (well beyond the ±2-row
+      // overscan) — the shape of the auto-pan and of a concurrent scroll.
+      final position = verticalPosition(tester);
+      position.jumpTo(position.maxScrollExtent);
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey<String>('timeline-rail-row-layer-1-row')),
+        findsOneWidget,
+        reason: 'A5: the held row is pinned into the built slice',
+      );
+
+      final slotsBefore = slots.length;
+      await gesture.moveBy(const Offset(0, 52));
+      await tester.pump();
+      expect(
+        slots.length,
+        greaterThan(slotsBefore),
+        reason: 'the recognizer is still alive and tracking',
+      );
+
+      await gesture.up();
+      await tester.pump();
+      expect(
+        events.where((event) => event == 'end'),
+        hasLength(1),
+        reason: 'one gesture, one commit — the backstop must not double it',
+      );
+      expect(events, isNot(contains('cancel')));
+    });
+
+    testWidgets('the anchor row of a SELECT drag survives the same way', (
+      tester,
+    ) async {
+      final events = <String>[];
+      final spans = <int>[];
+      await tester.pumpWidget(
+        _grid(
+          layers: manyLayers(),
+          playbackFrameCount: 48,
+          rowDragHooks: hooks(
+            events: events,
+            slots: <int>[],
+            inSelection: false,
+          ),
+          onRowSelectionSpan: (_, rowDelta) => spans.add(rowDelta),
+        ),
+      );
+
+      final row = find.byKey(
+        const ValueKey<String>('timeline-layer-row-layer-1'),
+      );
+      final gesture = await tester.startGesture(
+        tester.getCenter(row),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(0, 26));
+      await tester.pump();
+      expect(events, contains('selectBegin'));
+
+      final position = verticalPosition(tester);
+      position.jumpTo(position.maxScrollExtent);
+      await tester.pump();
+
+      final spansBefore = spans.length;
+      await gesture.moveBy(const Offset(0, 52));
+      await tester.pump();
+      expect(
+        spans.length,
+        greaterThan(spansBefore),
+        reason: 'the select drag keeps growing its span across the scroll',
+      );
+
+      await gesture.up();
+      await tester.pump();
+      expect(events.where((event) => event == 'selectEnd'), hasLength(1));
+    });
+
+    testWidgets('a TRUE unmount mid-move lands the drop instead of leaking '
+        'the session verb (R12-③ backstop)', (tester) async {
+      final events = <String>[];
+      await tester.pumpWidget(
+        _grid(
+          layers: manyLayers(),
+          playbackFrameCount: 48,
+          rowDragHooks: hooks(
+            events: events,
+            slots: <int>[],
+            inSelection: true,
+          ),
+        ),
+      );
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(
+          find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
+        ),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(0, 26));
+      await tester.pump();
+      expect(events, contains('begin'));
+
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pump();
+
+      expect(
+        events.where((event) => event == 'end'),
+        hasLength(1),
+        reason: 'the unmounted drag commits after the frame, exactly once',
+      );
+      expect(events, isNot(contains('cancel')));
+      await gesture.up();
+    });
+
+    testWidgets('a TRUE unmount mid-select settles the selection', (
+      tester,
+    ) async {
+      final events = <String>[];
+      await tester.pumpWidget(
+        _grid(
+          layers: manyLayers(),
+          playbackFrameCount: 48,
+          rowDragHooks: hooks(
+            events: events,
+            slots: <int>[],
+            inSelection: false,
+          ),
+        ),
+      );
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(
+          find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
+        ),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(0, 26));
+      await tester.pump();
+      expect(events, contains('selectBegin'));
+
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pump();
+
+      expect(events.where((event) => event == 'selectEnd'), hasLength(1));
+      await gesture.up();
+    });
+  });
 
   testWidgets(
     'keeps layer controls and frame rows vertically aligned for many layers',
@@ -2540,6 +2764,9 @@ Widget _grid({
   ValueChanged<LayerId>? onToggleLayerVisibility,
   void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
+  TimelineRowDragHooks? rowDragHooks,
+  void Function(List<TimelineDisplayRow> rows, int rowDelta)?
+  onRowSelectionSpan,
 }) {
   return MaterialApp(
     home: Scaffold(
@@ -2567,6 +2794,8 @@ Widget _grid({
           onLayerOpacityChanged: onLayerOpacityChanged ?? (_, _) {},
           onToggleLayerTimesheet: (_) {},
           onLayerMarkSelected: (_, _) {},
+          rowDragHooks: rowDragHooks,
+          onRowSelectionSpan: onRowSelectionSpan,
         ),
       ),
     ),

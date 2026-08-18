@@ -249,6 +249,8 @@ class LayerRowDragTarget extends StatelessWidget {
     required this.child,
     this.isLastRow = false,
     this.grabOffsetWithinRun = 0,
+    this.onGripTaken,
+    this.onGripReleased,
   });
 
   /// What this row would move if it were grabbed.
@@ -309,6 +311,18 @@ class LayerRowDragTarget extends StatelessWidget {
   /// trailing caret, or two adjacent rows would both draw the same gap.
   final bool isLastRow;
 
+  /// A5 (2026-08-17): the press landed here and its recognizer lives in
+  /// this row's State — a host that windows its rows listens so it can
+  /// keep this ONE row built while the window slides past it ("a press
+  /// that lands on a control belongs to that control", the T30 law, needs
+  /// the control to outlive the scroll). Fired at gesture begin; the
+  /// release/cancel/unmount all fire [onGripReleased]. Hosts that build
+  /// every row (storyboard, x-sheet headers) simply don't listen.
+  final VoidCallback? onGripTaken;
+
+  /// The other half of [onGripTaken].
+  final VoidCallback? onGripReleased;
+
   final Widget child;
 
   @override
@@ -327,6 +341,8 @@ class LayerRowDragTarget extends StatelessWidget {
       onSelectCrossed: onSelectCrossed,
       isLastRow: isLastRow,
       grabOffsetWithinRun: grabOffsetWithinRun,
+      onGripTaken: onGripTaken,
+      onGripReleased: onGripReleased,
       child: child,
     );
   }
@@ -343,6 +359,8 @@ class _LayerRowDragBody extends StatefulWidget {
     required this.onCrossed,
     required this.isLastRow,
     this.onSelectCrossed,
+    this.onGripTaken,
+    this.onGripReleased,
     required this.child,
   });
 
@@ -354,6 +372,8 @@ class _LayerRowDragBody extends StatefulWidget {
   final TimelineRowDragHooks hooks;
   final void Function(int crossedRows, int? onRow) onCrossed;
   final void Function(int rowDelta)? onSelectCrossed;
+  final VoidCallback? onGripTaken;
+  final VoidCallback? onGripReleased;
   final bool isLastRow;
   final Widget child;
 
@@ -384,6 +404,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     _grabFraction = extent > 0
         ? ((widget.grabOffsetWithinRun + main) / extent).clamp(0.0, 1.0)
         : 0.5;
+    widget.onGripTaken?.call();
     // ⑨: which of the two drags this is, decided ONCE at the press and not
     // re-asked — the same reason the cells decide it at the press too
     // (their range gesture's `isInSelection`). A drag that changed its mind halfway
@@ -394,6 +415,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
       widget.hooks.onSelectBegin?.call(widget.subject);
       return;
     }
+    _moving = true;
     widget.hooks.onBegin(widget.subject);
     widget.onCrossed(0, null);
   }
@@ -402,20 +424,55 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
   /// moving rows.
   bool _selecting = false;
 
+  /// True while this drag is MOVING rows — the flag [dispose] reads to know
+  /// an open session verb would otherwise leak. Cleared before the hooks
+  /// fire so the backstop cannot double-commit.
+  bool _moving = false;
+
   /// The release, whichever drag this was. Cancel takes the same path: a
   /// select has nothing to roll back (the span it drew IS the result), and
   /// the move's own cancel is the hooks'.
   void _end({bool cancelled = false}) {
+    widget.onGripReleased?.call();
     if (_selecting) {
       _selecting = false;
       widget.hooks.onSelectEnd?.call();
       return;
     }
+    if (!_moving) {
+      return;
+    }
+    _moving = false;
     if (cancelled) {
       widget.hooks.onCancel();
       return;
     }
     widget.hooks.onEnd();
+  }
+
+  @override
+  void dispose() {
+    // A mid-drag unmount lands the operation AFTER the frame rather than
+    // leaking an open session verb (R12-③ — the same backstop the range
+    // gesture, the comma grip and the edit chrome already carry; this was
+    // the ONE drag widget in the family missing it). Reached when the row
+    // itself disappears mid-drag (layer deleted, panel torn down) — the
+    // window sliding past the row no longer unmounts it, the host pins it.
+    if (_selecting || _moving) {
+      final hooks = widget.hooks;
+      final selecting = _selecting;
+      _selecting = false;
+      _moving = false;
+      widget.onGripReleased?.call();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (selecting) {
+          hooks.onSelectEnd?.call();
+        } else {
+          hooks.onEnd();
+        }
+      });
+    }
+    super.dispose();
   }
 
   /// The row the pointer sits in and how far through it, measured from this
