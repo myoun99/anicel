@@ -8395,7 +8395,7 @@ class EditorSessionManager extends ChangeNotifier {
     // nothing blankable ends the ladder rather than redirecting onto
     // whatever row happens to be active. (⛔Not the `＋` case: that button
     // CREATES and is deliberately band-free.)
-    if (bandOwnsPressWithNoRungToServeIt) {
+    if (bandNamesRowsThisPressWouldMiss) {
       return false;
     }
     final layer = activeLayer;
@@ -9518,7 +9518,7 @@ class EditorSessionManager extends ChangeNotifier {
     // destructive half of the clipboard pair, it did so while Delete sat
     // dark one button away on the same pill. No band rung to serve, so
     // the band ends the ladder. (COPY is left lit: it only reads.)
-    if (bandOwnsPressWithNoRungToServeIt) {
+    if (bandNamesRowsThisPressWouldMiss) {
       return false;
     }
     final layer = activeLayer;
@@ -14849,7 +14849,7 @@ class EditorSessionManager extends ChangeNotifier {
   bool get canToggleMarkAtCurrentFrame {
     // The dot edits an EXISTING hold and has no band rung, so a live band
     // ends the ladder here instead of dotting whatever row is active.
-    if (bandOwnsPressWithNoRungToServeIt) {
+    if (bandNamesRowsThisPressWouldMiss) {
       return false;
     }
     final layer = activeLayer;
@@ -14910,7 +14910,7 @@ class EditorSessionManager extends ChangeNotifier {
     // the active row instead. There is no selection-wide rename to route
     // to, so a claiming band whose rows hold no editable block simply
     // ends the ladder.
-    if (bandOwnsPressWithNoRungToServeIt) {
+    if (bandNamesRowsThisPressWouldMiss) {
       return false;
     }
     final layer = activeLayer;
@@ -15025,27 +15025,39 @@ class EditorSessionManager extends ChangeNotifier {
   /// fall through and delete an unselected row's drawing.
   bool get cellSelectionClaimsSubject => frameRangeSelection.value != null;
 
-  /// Whether a verb WITHOUT a band dispatch must end its ladder here.
+  /// Whether a live band names rows this press would MISS.
   ///
-  /// The band is the subject. Delete and the comma can honour that — they
-  /// have a rung that acts on every swept block — so for them a band only
-  /// ends the ladder once it holds nothing they can touch. X-here, the
-  /// mark, the rename and 잘라내기 have no such rung at all: whatever the
-  /// band holds, they cannot serve it. So ANY live band ends them, and
-  /// they must not fall through to the playhead on whatever row happens
-  /// to be active.
+  /// The ACTIVE-ROW verbs — X-here, the ● mark, the cell rename and
+  /// 잘라내기 — all resolve against the active layer. A band covering that
+  /// row is served: 잘라내기 splices exactly the swept span
+  /// ([_spliceRunOnActiveRow]), and the playhead verbs act on the row the
+  /// user highlighted. A band naming only OTHER rows is a different
+  /// statement, and acting on the active row then edits something the
+  /// user never swept while the highlight sits elsewhere explaining
+  /// nothing — which for 잘라내기 means silently lifting a whole block.
   ///
-  /// ⚠️This started out as "a band is up AND it holds nothing", which is
-  /// the DELETE ladder's test borrowed by verbs that are not on that
-  /// ladder. It let a band naming other rows through, and those verbs
-  /// then edited the active row — the redirect this law exists to stop,
-  /// reintroduced by a predicate one word too weak.
+  /// ⚠️Two wrong versions of this came first, and both are worth keeping
+  /// in view. "A band is up AND holds nothing" is the DELETE ladder's
+  /// test, and delete has a rung these verbs do not, so it let a band
+  /// naming other rows straight through. Plain "a band is up" then broke
+  /// 잘라내기's own documented use — 범위 선택 후 잘라내기 — because that
+  /// band DOES cover the active row. The axis is neither the band's
+  /// contents nor its mere existence: it is whether the band names the
+  /// row this press would land on.
   ///
-  /// 🔜Open design question for the user (board R8-c): these four could
-  /// instead GAIN a band rung and act on every swept block, the way
-  /// Delete and the comma do. Going dark is the honest reading of what
-  /// they can do TODAY, not a decision that they should never learn.
-  bool get bandOwnsPressWithNoRungToServeIt => cellSelectionClaimsSubject;
+  /// 🔜Open design question for the user (board R8-c): X, the mark and
+  /// the rename could instead LEARN a band rung and act on every swept
+  /// block the way Delete and the comma do. Refusing is the honest
+  /// reading of what they can do today, not a ruling that they never
+  /// should.
+  bool get bandNamesRowsThisPressWouldMiss {
+    final selection = frameRangeSelection.value;
+    if (selection == null) {
+      return false;
+    }
+    final layer = activeLayer;
+    return layer == null || !selection.coversLayer(layer.id);
+  }
 
   bool get canDeleteCellAtCurrentFrame {
     if (canDeleteCellForSelection) {
