@@ -107,7 +107,12 @@ void main() {
       (layer) => layer.kind == LayerKind.image,
     );
     expect(layer.mediaReference, isNotNull);
-    expect(layer.timeline[0]!.length, 12, reason: 'born covering');
+    expect(layer.timeline[0]!.length, 1, reason: 'D22: 「블록은 1칸」');
+    expect(
+      layer.timeline.values.fold<int>(0, (sum, e) => sum + e.length!),
+      12,
+      reason: 'born covering — real cell + hold ghosts tile the cut',
+    );
     expect(
       s.celHasContentForLayer(layer, 0),
       isTrue,
@@ -154,8 +159,9 @@ void main() {
       (layer) => layer.kind == LayerKind.image,
     );
     expect(layer.mediaReference, isNull);
+    expect(layer.timeline[0]!.length, 1, reason: 'D22: 「블록은 1칸」');
     expect(
-      layer.timeline[0]!.length,
+      layer.timeline.values.fold<int>(0, (sum, e) => sum + e.length!),
       cut.duration,
       reason: 'the covering normalization holds it to the cut length',
     );

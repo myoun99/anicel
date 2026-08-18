@@ -111,6 +111,43 @@ void main() {
       );
     });
 
+    test('an IMAGE row inside the span never becomes the sync anchor — the '
+        'STORYBOARD row drives the cut, and the image row re-normalizes to '
+        'cover whatever length results (D22)', () {
+      final (session, storyboardId, celId, _) = scene();
+      // An image row between the cel row and the storyboard row, so the
+      // bulk map meets it FIRST — before the fix it was elected as the
+      // covers-without-gaps sync row and hijacked the cut resize.
+      session.selectLayer(celId);
+      session.addLayerOfKind(LayerKind.image);
+      final imageId = session.activeLayer!.id;
+
+      session.selectLayer(celId);
+      session.selectFrameIndex(0);
+      session.createDrawingAtCurrentFrame();
+      dragBulkTo(
+        session,
+        anchorId: celId,
+        storyboardId: storyboardId,
+        delta: 3,
+      );
+
+      expect(
+        session.requireActiveCut.duration,
+        27,
+        reason: 'the storyboard row is the sole cut-length rider',
+      );
+      final image = session.requireActiveCut.layers.firstWhere(
+        (layer) => layer.id == imageId,
+      );
+      expect(image.timeline[0]!.length, 1, reason: '1-cell form survives');
+      var covered = 0;
+      for (final exposure in image.timeline.values) {
+        covered += exposure.length!;
+      }
+      expect(covered, 27, reason: 'hold ghosts re-tile the grown cut');
+    });
+
     test('the cut never ends before its own last division, however big the '
         'drag', () {
       final (session, storyboardId, _, seId) = scene();

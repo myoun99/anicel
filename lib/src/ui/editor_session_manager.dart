@@ -10197,6 +10197,10 @@ class EditorSessionManager extends ChangeNotifier {
         layer.instructions.containsKey(blockStartIndex);
     final isDrawingBlock =
         layerKindHoldsDrawings(layer.kind) &&
+        // D22: the image row is edge-less (1 cell + fixed hold) — the
+        // grips are gone from its chrome, and the session refuses too so
+        // the gate and the dispatch stay one answer (T25).
+        !layerKindHoldsSingleCel(layer.kind) &&
         (layer.timeline[blockStartIndex]?.isDrawing ?? false);
     if (!isInstructionSpan && !isDrawingBlock) {
       return false;
@@ -10222,14 +10226,20 @@ class EditorSessionManager extends ChangeNotifier {
   void _captureEdgeDragCutSync(Layer? anchor) {
     final bulkBefore = _edgeDragBulkBefore;
     Layer? syncRow;
+    // D22: the image row is edge-less now, so it can no longer be the
+    // cut-sync anchor either — the STORYBOARD row is the sole rider
+    // (otherwise a bulk drag spanning an image row would silently switch
+    // which row drives the cut resize).
+    bool ridesCutLength(LayerKind kind) =>
+        layerKindCoversWithoutGaps(kind) && !layerKindHoldsSingleCel(kind);
     if (bulkBefore != null) {
       for (final candidate in bulkBefore.values) {
-        if (layerKindCoversWithoutGaps(candidate.kind)) {
+        if (ridesCutLength(candidate.kind)) {
           syncRow = candidate;
           break;
         }
       }
-    } else if (anchor != null && layerKindCoversWithoutGaps(anchor.kind)) {
+    } else if (anchor != null && ridesCutLength(anchor.kind)) {
       syncRow = anchor;
     }
     final activeId = activeCutId;

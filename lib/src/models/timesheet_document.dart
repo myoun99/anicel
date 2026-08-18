@@ -283,11 +283,12 @@ class TimesheetDocument {
         );
     final rowCount = pageCount * pageFrameCount;
 
-    // ACTION-block cel columns: the sheet's kind gate is the one predicate
-    // (image rows answer false — a nameless held picture prints nothing).
+    // ACTION-block cel columns: ONE gate shared with the envelope and
+    // the XDTS export ([layerTakesSheetCelColumn], D24) — image rows
+    // answer false, a nameless held picture prints nothing.
     final animationLayers = [
       for (final layer in cut.layers)
-        if (layer.kind == LayerKind.animation && layer.onTimesheet) layer,
+        if (layerTakesSheetCelColumn(layer)) layer,
     ];
     // SE rows are track-owned: window their global timelines to this cut
     // (spill-in synthesizes a display block). Cut-owned SE layers remain

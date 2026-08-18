@@ -12,14 +12,16 @@ import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_repository.dart';
 
-/// The covering-image invariant: an IMAGE layer's stored block always
-/// equals the cut length — kept by the repository's write normalization
-/// (the always-mirror precedent), so every duration path is covered at
-/// once.
+/// The image-row invariant (D22, 유저 08-17: 「블록은 1칸 + 성질 hold
+/// 고정」): an IMAGE layer's stored timeline is always ONE real 1-frame
+/// block at index 0 plus a fixed end-side HOLD whose ghosts fill to the
+/// cut boundary — kept by the repository's write normalization (the
+/// always-mirror precedent), so every duration path is covered at once.
 void main() {
   Layer imageLayer({
     Map<int, TimelineExposure>? timeline,
@@ -42,8 +44,8 @@ void main() {
     layers: [layer],
   );
 
-  test('a short (or empty-timeline) image row normalizes to ONE block '
-      'covering the cut; an already-covered row passes IDENTICALLY', () {
+  test('any stored shape normalizes to 1 real cell + hold ghosts to the '
+      'cut end; an already-shaped row passes IDENTICALLY', () {
     final short = cutWith(
       imageLayer(
         timeline: const {
@@ -51,16 +53,35 @@ void main() {
         },
       ),
     );
-    final covered = cutWithCoveringImageRows(short);
-    expect(covered.layers.single.timeline, {
-      0: const TimelineExposure.drawing(FrameId('bg-cel'), length: 24),
-    });
+    final shaped = cutWithCoveringImageRows(short);
+    final layer = shaped.layers.single;
+    expect(layer.timeline[0]!.frameId, const FrameId('bg-cel'));
+    expect(layer.timeline[0]!.length, 1, reason: '「블록은 1칸」');
+    expect(layer.timeline[0]!.ghost, isFalse);
+    final ghosts = [
+      for (final entry in layer.timeline.entries)
+        if (entry.value.ghost) entry,
+    ];
+    expect(ghosts, isNotEmpty, reason: 'the fixed hold fills to the end');
+    var ghostFrames = 0;
+    for (final entry in ghosts) {
+      expect(entry.value.frameId, const FrameId('bg-cel'));
+      ghostFrames += entry.value.length!;
+    }
+    expect(
+      ghostFrames,
+      23,
+      reason: '1 real + 23 held = the 24-frame cut, no holes',
+    );
+    expect(layer.runBehaviors, hasLength(1));
+    expect(layer.runBehaviors.single.mode, TimelineRunEdgeMode.hold);
+    expect(layer.runBehaviors.single.side, TimelineRunEdgeSide.end);
 
     final noTimeline = cutWithCoveringImageRows(cutWith(imageLayer()));
-    expect(noTimeline.layers.single.timeline[0]!.length, 24);
+    expect(noTimeline.layers.single.timeline[0]!.length, 1);
 
     expect(
-      identical(covered, cutWithCoveringImageRows(covered)),
+      identical(shaped, cutWithCoveringImageRows(shaped)),
       isTrue,
       reason: 'no-op writes stay no-ops for dirty tracking',
     );
@@ -112,11 +133,20 @@ void main() {
 
     Layer stored() =>
         repository.requireProject().tracks.single.cuts.single.layers.single;
+    int coveredFrames() {
+      var total = 0;
+      for (final entry in stored().timeline.values) {
+        total += entry.length!;
+      }
+      return total;
+    }
+
     expect(
       stored().timeline[0]!.length,
-      24,
-      reason: 'load normalizes a stale stored length',
+      1,
+      reason: 'load normalizes a stale stored shape to the 1-cell form',
     );
+    expect(coveredFrames(), 24, reason: 'real + ghosts tile the cut');
 
     repository.updateProject(
       (project) => project.copyWith(
@@ -127,7 +157,7 @@ void main() {
         ],
       ),
     );
-    expect(stored().timeline[0]!.length, 48, reason: 'growth follows');
+    expect(coveredFrames(), 48, reason: 'the hold ghosts grow with the cut');
 
     repository.updateProject(
       (project) => project.copyWith(
@@ -138,7 +168,8 @@ void main() {
         ],
       ),
     );
-    expect(stored().timeline[0]!.length, 12, reason: 'shrink follows');
+    expect(coveredFrames(), 12, reason: 'and shrink with it');
+    expect(stored().timeline[0]!.length, 1, reason: 'the real cell stays 1');
   });
 
   test('MediaReference round-trips on the Layer JSON, and clearing it is '

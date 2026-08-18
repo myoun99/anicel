@@ -1,6 +1,5 @@
 import '../cut.dart';
 import '../layer.dart';
-import '../layer_kind.dart';
 
 /// One 担当 row of a cut envelope: a cel's name and how many drawings it
 /// holds.
@@ -37,7 +36,9 @@ class CutEnvelopeCelCount {
 List<CutEnvelopeCelCount> cutEnvelopeCelCounts(Cut cut) {
   return [
     for (final layer in cut.layers)
-      if (layer.kind == LayerKind.animation && layer.onTimesheet)
+      // ONE gate with the sheet and the XDTS export (D24): the
+      // envelope's row set IS the timesheet's ACTION block.
+      if (layerTakesSheetCelColumn(layer))
         CutEnvelopeCelCount(
           name: layer.name,
           genga: layer.frames.length,

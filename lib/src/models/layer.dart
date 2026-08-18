@@ -531,6 +531,16 @@ class Layer {
 bool layerAcceptsBrushInput(Layer layer) =>
     layerKindAcceptsBrushInput(layer.kind) && layer.mediaReference == null;
 
+/// D24: whether this layer prints an ACTION cel column — the ONE gate the
+/// printed timesheet, the cut envelope's cel counts and the XDTS export
+/// all read (three inline copies of `animation && onTimesheet` used to
+/// drift apart). The real sheets keep BG/BOOK picture rows out of the
+/// cel columns, so the image kind never qualifies regardless of its
+/// sheet flag — the flag itself STAYS meaningful on image rows (D24
+/// 후반's 끼움 표시 will consume it).
+bool layerTakesSheetCelColumn(Layer layer) =>
+    layer.kind == LayerKind.animation && layer.onTimesheet;
+
 /// Stack-shaped queries over a cut's flat layer list. The list is the
 /// single truth of render/timeline order, so everything that needs to find
 /// a row BY WHAT IT IS asks here instead of open-coding a kind comparison.

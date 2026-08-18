@@ -116,6 +116,17 @@ void main() {
       expect(timelineRowChromeIds(tester, 'layer-a'), isEmpty);
     });
 
+    testWidgets('IMAGE rows show no grips — the picture exists throughout, '
+        '1 cell + a fixed hold, so the row is edge-less (D22)', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _rowHarness(layer: _twoBlockLayer(kind: LayerKind.image)),
+      );
+
+      expect(timelineRowChromeIds(tester, 'layer-a'), isEmpty);
+    });
+
     testWidgets('SYNCED attach rows show no grips even though their '
         'mirror blocks paint as real blocks (the synced-block UI: timing '
         'belongs to the owner)', (tester) async {

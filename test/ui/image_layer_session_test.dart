@@ -4,14 +4,19 @@ import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/timeline_coverage.dart'
+    show TimelineBlockEdge;
+import 'package:anicel/src/models/timeline_repeat.dart'
+    show TimelineRunEdgeMode, TimelineRunEdgeSide;
 import 'package:anicel/src/services/commands/convert_to_linked_cut_plan.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// The IMAGE layer contract (§6-z23): one cel by definition, born
 /// covering its cut, no second cel to create, an ordinary attach base.
 void main() {
-  test('addLayerOfKind(image) is born COVERING the cut — one cel, edge to '
-      'edge — and create-drawing has nothing left to make', () {
+  test('addLayerOfKind(image) is born COVERING the cut — ONE real 1-frame '
+      'cell plus a fixed end hold whose ghosts tile to the cut boundary '
+      '(D22) — and create-drawing has nothing left to make', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final duration = s.requireActiveCut.duration;
@@ -20,7 +25,17 @@ void main() {
     final layer = s.activeLayer!;
     expect(layer.kind, LayerKind.image);
     expect(layer.frames, hasLength(1));
-    expect(layer.timeline[0]!.length, duration);
+    expect(layer.timeline[0]!.length, 1, reason: '「블록은 1칸」');
+    expect(layer.timeline[0]!.ghost, isFalse);
+    var covered = 0;
+    for (final exposure in layer.timeline.values) {
+      expect(exposure.frameId, layer.frames.single.id);
+      covered += exposure.length!;
+    }
+    expect(covered, duration, reason: 'real + hold ghosts tile the cut');
+    expect(layer.runBehaviors, hasLength(1));
+    expect(layer.runBehaviors.single.mode, TimelineRunEdgeMode.hold);
+    expect(layer.runBehaviors.single.side, TimelineRunEdgeSide.end);
     expect(
       layer.frames.single.name,
       isNull,
@@ -28,6 +43,25 @@ void main() {
           'picture',
     );
     expect(s.canCreateDrawingAtCurrentFrame, isFalse);
+  });
+
+  test('the image row is EDGE-LESS: the session refuses a comma/edge drag '
+      'on its block, and a bulk drag never elects it as the cut-sync '
+      'anchor (D22)', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.addLayerOfKind(LayerKind.image);
+    final imageId = s.activeLayer!.id;
+
+    expect(
+      s.beginExposureEdgeDrag(
+        layerId: imageId,
+        blockStartIndex: 0,
+        edge: TimelineBlockEdge.end,
+      ),
+      isFalse,
+      reason: 'no grips in the chrome, no drag in the session — one answer',
+    );
   });
 
   test('an image layer carries attach rows like any drawing base', () {

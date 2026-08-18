@@ -220,10 +220,14 @@ class TimelineFrameCellsRow extends StatelessWidget {
     // sheet rows (their spans are sound clips, not glued cel runs).
     // SYNCED attach rows show NEITHER (the synced-block UI): their blocks
     // are borrowed exposures — timing belongs to the owner, so the row
-    // renders block-shaped but edge-less.
+    // renders block-shaped but edge-less. The IMAGE row joins that
+    // standdown (D22, 유저 08-17: 엣지 자체 부재): its one picture exists
+    // throughout — 1 cell + a fixed hold — and the cut's length is
+    // authored where it lives, on the storyboard.
     final wantsGrips =
         commaDrag != null &&
         layerKindHoldsDrawings(layer.kind) &&
+        !layerKindHoldsSingleCel(layer.kind) &&
         !isSyncedAttachedLayer(layer);
     // The run clusters carry the N/H/R property tag, so the rows that
     // refuse repeat regions (the storyboard's, design E) show no cluster
