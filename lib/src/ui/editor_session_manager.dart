@@ -8395,7 +8395,7 @@ class EditorSessionManager extends ChangeNotifier {
     // nothing blankable ends the ladder rather than redirecting onto
     // whatever row happens to be active. (⛔Not the `＋` case: that button
     // CREATES and is deliberately band-free.)
-    if (cellSelectionClaimsButHoldsNothing) {
+    if (bandOwnsPressWithNoRungToServeIt) {
       return false;
     }
     final layer = activeLayer;
@@ -9513,6 +9513,14 @@ class EditorSessionManager extends ChangeNotifier {
   /// (D22). COPY stays lit: it takes the cel to the clipboard without
   /// claiming to remove it, which is honest here.
   bool get canCutRunAtCurrentFrame {
+    // 잘라내기 resolves its run on the ACTIVE row, so under a band naming
+    // other rows it lifts a block the user never swept — and being the
+    // destructive half of the clipboard pair, it did so while Delete sat
+    // dark one button away on the same pill. No band rung to serve, so
+    // the band ends the ladder. (COPY is left lit: it only reads.)
+    if (bandOwnsPressWithNoRungToServeIt) {
+      return false;
+    }
     final layer = activeLayer;
     if (layer != null && layerKindHoldsSingleCel(layer.kind)) {
       return false;
@@ -14839,6 +14847,11 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   bool get canToggleMarkAtCurrentFrame {
+    // The dot edits an EXISTING hold and has no band rung, so a live band
+    // ends the ladder here instead of dotting whatever row is active.
+    if (bandOwnsPressWithNoRungToServeIt) {
+      return false;
+    }
     final layer = activeLayer;
     // SYNCED attach rows carry no cell marks (the base's sheet row
     // does); free attach rows mark like normal (UI-R21 #3).
@@ -14897,7 +14910,7 @@ class EditorSessionManager extends ChangeNotifier {
     // the active row instead. There is no selection-wide rename to route
     // to, so a claiming band whose rows hold no editable block simply
     // ends the ladder.
-    if (cellSelectionClaimsButHoldsNothing) {
+    if (bandOwnsPressWithNoRungToServeIt) {
       return false;
     }
     final layer = activeLayer;
@@ -15012,15 +15025,27 @@ class EditorSessionManager extends ChangeNotifier {
   /// fall through and delete an unselected row's drawing.
   bool get cellSelectionClaimsSubject => frameRangeSelection.value != null;
 
-  /// The state every cell verb's ladder must END on: a band is up, and it
-  /// holds nothing any of them can act on.
+  /// Whether a verb WITHOUT a band dispatch must end its ladder here.
   ///
-  /// Stated once because three ladders read it — the cell rename, the
-  /// X-here, and the storyboard panel's edit resolver — and a verb that
-  /// re-derived it would be free to disagree, which is the whole failure
-  /// this law exists to stop.
-  bool get cellSelectionClaimsButHoldsNothing =>
-      cellSelectionClaimsSubject && _selectionBlockStartsByLayer() == null;
+  /// The band is the subject. Delete and the comma can honour that — they
+  /// have a rung that acts on every swept block — so for them a band only
+  /// ends the ladder once it holds nothing they can touch. X-here, the
+  /// mark, the rename and 잘라내기 have no such rung at all: whatever the
+  /// band holds, they cannot serve it. So ANY live band ends them, and
+  /// they must not fall through to the playhead on whatever row happens
+  /// to be active.
+  ///
+  /// ⚠️This started out as "a band is up AND it holds nothing", which is
+  /// the DELETE ladder's test borrowed by verbs that are not on that
+  /// ladder. It let a band naming other rows through, and those verbs
+  /// then edited the active row — the redirect this law exists to stop,
+  /// reintroduced by a predicate one word too weak.
+  ///
+  /// 🔜Open design question for the user (board R8-c): these four could
+  /// instead GAIN a band rung and act on every swept block, the way
+  /// Delete and the comma do. Going dark is the honest reading of what
+  /// they can do TODAY, not a decision that they should never learn.
+  bool get bandOwnsPressWithNoRungToServeIt => cellSelectionClaimsSubject;
 
   bool get canDeleteCellAtCurrentFrame {
     if (canDeleteCellForSelection) {

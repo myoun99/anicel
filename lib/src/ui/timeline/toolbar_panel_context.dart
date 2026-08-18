@@ -401,7 +401,7 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     // TrackRowAddress cursor means "rename the cut". Delete and Rename
     // are documented as ONE ladder; splitting them here would leave the
     // same band dark on one button and aimed at the cut on the other.
-    if (session.cellSelectionClaimsButHoldsNothing) {
+    if (session.bandOwnsPressWithNoRungToServeIt) {
       return null;
     }
     switch (session.selectedRow) {

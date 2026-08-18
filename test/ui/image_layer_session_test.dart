@@ -427,6 +427,71 @@ void main() {
     );
   });
 
+  test('a band naming OTHER rows ends every verb that has no band rung — '
+      'the case a predicate one word too weak let through', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final rowA = s.layers
+        .firstWhere((layer) => layer.kind == LayerKind.animation)
+        .id;
+    s.selectLayer(rowA);
+    s.selectFrameIndex(0);
+    s.createDrawingAtCurrentFrame();
+    s.setCommaForSelectionOrCurrent(4);
+
+    // A SECOND drawing row, with a block of its own — so the band holds
+    // real blocks and the collector answers non-null. That is exactly
+    // where "a band that holds nothing" stopped guarding.
+    s.addLayerOfKind(LayerKind.animation);
+    final rowB = s.activeLayer!.id;
+    s.selectFrameIndex(0);
+    s.createDrawingAtCurrentFrame();
+
+    // Row A is active; the band names row B only.
+    s.selectLayer(rowA);
+    s.selectFrameIndex(2);
+    s.updateFrameRangeSelectionDrag(
+      layerId: rowB,
+      anchorIndex: 0,
+      headIndex: 1,
+    );
+    expect(
+      s.canDeleteCellForSelection,
+      isTrue,
+      reason: 'the control: this band DOES hold editable blocks',
+    );
+
+    Map<int, int?> rowATimeline() => s.layers
+        .firstWhere((layer) => layer.id == rowA)
+        .timeline
+        .map((key, value) => MapEntry(key, value.length));
+    final before = rowATimeline();
+
+    for (final (name, gate) in [
+      ('X-here', s.canBlankExposureAtCurrentFrame),
+      ('mark', s.canToggleMarkAtCurrentFrame),
+      ('잘라내기', s.canCutRunAtCurrentFrame),
+      ('rename', s.canEditCellInstanceAtCurrentFrame),
+    ]) {
+      expect(
+        gate,
+        isFalse,
+        reason: '$name has no rung that acts on a band, so it must not '
+            'fall through to the playhead on the UNSWEPT active row',
+      );
+    }
+
+    s.blankExposureAtCurrentFrame();
+    s.toggleMarkAtCurrentFrame();
+    s.cutRunAtCurrentFrame();
+    expect(
+      rowATimeline(),
+      before,
+      reason: 'and none of the presses touched the row the user did not '
+          'sweep',
+    );
+  });
+
   test('the image row refuses every verb that would mint or re-expose a '
       'second cel — duplicate and LINK paste join the standdown (D22)', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
