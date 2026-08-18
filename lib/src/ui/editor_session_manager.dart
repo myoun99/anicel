@@ -14868,6 +14868,15 @@ class EditorSessionManager extends ChangeNotifier {
   /// standing row is separate state from its drawing target (유저
   /// 2026-07-27), so no session getter can see it.
   bool get canEditCellInstanceAtCurrentFrame {
+    // A live band CLAIMS this press exactly as it claims Delete's — the
+    // two are documented as ONE ladder ([editInstanceSubject]), so a band
+    // that leaves Delete with nothing must not leave Rename pointed at
+    // the active row instead. There is no selection-wide rename to route
+    // to, so a claiming band whose rows hold no editable block simply
+    // ends the ladder.
+    if (cellSelectionClaimsSubject && _selectionBlockStartsByLayer() == null) {
+      return false;
+    }
     final layer = activeLayer;
     if (layer == null) {
       return false;
@@ -15497,6 +15506,13 @@ class EditorSessionManager extends ChangeNotifier {
   bool get canSetCommaForStoryboardCursor {
     if (_selectionBlockStartsByLayer() != null) {
       return true;
+    }
+    // Its own dispatch already stops at a live band ([setCommaForStoryboardCursor]
+    // returns inside the selection branch), so the gate stops there too —
+    // otherwise the band falls through to the CURSOR rung and lights the
+    // buttons off a cut block the press will never reach.
+    if (cellSelectionClaimsSubject) {
+      return false;
     }
     return switch (_storyboardCursorBlockOrNull()) {
       null => false,

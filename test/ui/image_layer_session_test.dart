@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/delete_subject.dart';
+import 'package:anicel/src/models/edit_instance_subject.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -321,6 +322,50 @@ void main() {
         reason: 'copy is honest on a picture row',
       );
     }
+  });
+
+  test('the WHOLE shared-pill family reads the band\'s claim, not just '
+      'Delete: Edit Instance and the storyboard comma answer with it', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final celId = s.layers
+        .firstWhere((layer) => layer.kind == LayerKind.animation)
+        .id;
+    s.selectLayer(celId);
+    s.selectFrameIndex(0);
+    s.createDrawingAtCurrentFrame();
+    s.renameSelectedFrame('KEEP');
+
+    s.addLayerOfKind(LayerKind.image);
+    final imageId = s.activeLayer!.id;
+    s.selectLayer(celId);
+    s.selectFrameIndex(0);
+    s.updateFrameRangeSelectionDrag(
+      layerId: imageId,
+      anchorIndex: 0,
+      headIndex: 3,
+    );
+
+    expect(
+      s.deleteSubject,
+      DeleteSubject.nothing,
+      reason: 'the band claims the press and holds nothing deletable',
+    );
+    expect(
+      s.editInstanceSubject,
+      EditInstanceSubject.nothing,
+      reason: 'Edit Instance is DOCUMENTED as the same ladder as Delete — '
+          'two shared-pill verbs answering 「지금 무엇이 선택됐나」 '
+          'differently is a rule the user would have to hold twice',
+    );
+
+
+    expect(
+      s.canSetCommaForStoryboardCursor,
+      isFalse,
+      reason: 'the storyboard panel\'s comma gate is the last member of '
+          'the family — its own dispatch already refuses this band',
+    );
   });
 
   test('an image layer carries attach rows like any drawing base', () {
