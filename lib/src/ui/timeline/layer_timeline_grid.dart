@@ -1462,23 +1462,29 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// The section ZONES over the rail rows' reserved band slots (UI-R7 #2):
   /// one tinted zone per section run — the pre-R5 gutter bracket inside
   /// the rows (upright label centered across the run, tap = section
-  /// flyout). Positioned over the windowed rail column.
-  Widget _sectionBandOverlay(
-    List<TimelineDisplayRow> windowRows,
-    double leadingRowSpacerHeight,
-  ) {
-    final runs = timelineSectionRuns(windowRows);
+  /// flyout).
+  ///
+  /// Fed the FULL display-row list, never the window (A3 2026-08-17): a
+  /// zone spans its section's first-to-last row in content coordinates, so
+  /// the label sits at the section's true middle and scrolls away with the
+  /// content instead of chasing the viewport, and a section scrolled out of
+  /// view keeps its bracket mounted (reserve space, swap content). The
+  /// x-sheet (full `entries`) and the storyboard (full group Column)
+  /// already anchor their bands this way — the three surfaces share the
+  /// same run functions on full lists now. Runs tile contiguously from row
+  /// zero ([timelineSectionRuns] assigns every row a section), so the
+  /// Column needs no leading spacer.
+  Widget _sectionBandOverlay(List<TimelineDisplayRow> rows) {
+    final runs = timelineSectionRuns(rows);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (leadingRowSpacerHeight > 0)
-          SizedBox(height: leadingRowSpacerHeight),
         for (final run in runs)
           KeyedSubtree(
             key: ValueKey<String>('section-bracket-${run.section.name}'),
             child: SectionBandZone(
               label: timelineSectionLabel(run.section),
-              extent: timelineSectionRunExtent(run, windowRows, _metrics),
+              extent: timelineSectionRunExtent(run, rows, _metrics),
             ),
           ),
       ],
@@ -2185,26 +2191,36 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                               // rows' reserved band slots
                                                               // (UI-R7 #2): the old gutter
                                                               // bracket inside the rows.
+                                                              // Full rows, not the window
+                                                              // (A3) — labels anchor to the
+                                                              // section's true extent.
                                                               Positioned(
                                                                 left: 0,
                                                                 top: 0,
                                                                 child: _sectionBandOverlay(
-                                                                  windowRows,
-                                                                  leadingRowSpacerHeight,
+                                                                  rows,
                                                                 ),
                                                               ),
-                                                              // 🚨T1: the row
-                                                              // SELECTION, as
-                                                              // one band per
-                                                              // contiguous run
-                                                              // over the FULL
-                                                              // rail width —
-                                                              // section gutter
-                                                              // included, which
-                                                              // no row could
-                                                              // reach from
-                                                              // inside itself.
-                                                              Positioned.fill(
+                                                              // T1's one band
+                                                              // per contiguous
+                                                              // run — but only
+                                                              // over the LAYER
+                                                              // area (A2
+                                                              // 2026-08-17
+                                                              // reversed T1's
+                                                              // full-width
+                                                              // call): the
+                                                              // section zone
+                                                              // is the
+                                                              // sections' own
+                                                              // plate, not
+                                                              // part of the
+                                                              // selection.
+                                                              Positioned(
+                                                                left: layerSectionLabelSlotWidth,
+                                                                top: 0,
+                                                                right: 0,
+                                                                bottom: 0,
                                                                 child: TimelineRowSelectionBands(
                                                                   selectedFlags: [
                                                                     for (final row in windowRows)
@@ -2212,7 +2228,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                   ],
                                                                   rowExtent: _metrics.layerRowHeight,
                                                                   leadingSpacer: leadingRowSpacerHeight,
-                                                                  crossExtent: _metrics.layerControlsWidth,
+                                                                  crossExtent: _metrics.layerControlsWidth -
+                                                                      layerSectionLabelSlotWidth,
                                                                 ),
                                                               ),
                                                             ],

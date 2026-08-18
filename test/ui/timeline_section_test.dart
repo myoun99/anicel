@@ -271,6 +271,121 @@ void main() {
       );
     });
 
+    // A3 (2026-08-17): the gutter bracket anchors to its section's FULL
+    // extent in content coordinates. It scrolls away with the content
+    // (「그 결과 안 보여도 됨」) instead of chasing the viewport, and a
+    // section scrolled out of view keeps its bracket mounted (reserve
+    // space, swap content). The x-sheet and storyboard were already on
+    // this law; feeding the overlay the full row list joins the timeline.
+    group('A3: section brackets anchor to content, not the viewport', () {
+      Widget tallPanel() {
+        final layers = [
+          for (var i = 0; i < 30; i += 1)
+            _layer('cel-$i', LayerKind.animation),
+          _layer('cam', LayerKind.camera),
+        ];
+        return MaterialApp(
+          home: Scaffold(
+            body: TimelinePanel(
+              layers: layers,
+              activeLayerId: const LayerId('cel-0'),
+              frameCursor: ValueNotifier<int>(0),
+              playbackFrameCount: 12,
+              exposureStateForLayer: (_, _) =>
+                  TimelineCellExposureState.uncovered,
+              onSelectLayer: (_) {},
+              onSelectFrame: (_) {},
+              onAddLayer: () {},
+              onToggleLayerVisibility: (_) {},
+              onLayerOpacityChanged: (_, _) {},
+              onToggleLayerTimesheet: (_) {},
+              onLayerMarkSelected: (_, _) {},
+              orientation: TimelineOrientation.horizontal,
+              onOrientationChanged: (_) {},
+            ),
+          ),
+        );
+      }
+
+      ScrollPosition verticalPosition(WidgetTester tester) {
+        return tester
+            .state<ScrollableState>(
+              find
+                  .descendant(
+                    of: find.byKey(
+                      const ValueKey<String>(
+                        'timeline-vertical-scroll-viewport',
+                      ),
+                    ),
+                    matching: find.byType(Scrollable),
+                  )
+                  .first,
+            )
+            .position;
+      }
+
+      testWidgets('a bracket spans its whole run even when most of the run '
+          'is off screen', (tester) async {
+        await tester.pumpWidget(tallPanel());
+
+        // Display order puts the camera on top; 'cel-29' heads the drawing
+        // run and is on screen while most of the run is windowed away.
+        final rowHeight = tester
+            .getRect(
+              find.byKey(const ValueKey<String>('timeline-layer-row-cel-29')),
+            )
+            .height;
+        final drawingZone = tester.getRect(
+          find.byKey(const ValueKey<String>('section-bracket-drawing')),
+        );
+        expect(drawingZone.height, moreOrLessEquals(30 * rowHeight));
+      });
+
+      testWidgets('scrolling moves the bracket with the content — the label '
+          'never re-centers on the viewport', (tester) async {
+        await tester.pumpWidget(tallPanel());
+
+        final before = tester
+            .getRect(
+              find.byKey(const ValueKey<String>('section-bracket-drawing')),
+            )
+            .top;
+        final delta = 3 *
+            tester
+                .getRect(
+                  find.byKey(
+                    const ValueKey<String>('timeline-layer-row-cel-29'),
+                  ),
+                )
+                .height;
+        verticalPosition(tester).jumpTo(delta);
+        await tester.pump();
+
+        final after = tester
+            .getRect(
+              find.byKey(const ValueKey<String>('section-bracket-drawing')),
+            )
+            .top;
+        expect(after, moreOrLessEquals(before - delta));
+      });
+
+      testWidgets('a section scrolled fully out of view keeps its bracket '
+          'mounted', (tester) async {
+        await tester.pumpWidget(tallPanel());
+
+        final position = verticalPosition(tester);
+        position.jumpTo(position.maxScrollExtent);
+        await tester.pump();
+
+        // The camera run sits at the top of the display order; at the
+        // bottom of the scroll it is far outside the row window.
+        expect(
+          find.byKey(const ValueKey<String>('section-bracket-camera')),
+          findsOneWidget,
+        );
+      });
+    });
+
     testWidgets('xsheet: camera column sits rightmost; no extra divider '
         'furniture', (tester) async {
       await tester.pumpWidget(panel(TimelineOrientation.vertical));
