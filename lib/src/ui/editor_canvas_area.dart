@@ -252,8 +252,29 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   int _playbackFitStart = 0;
   int _playbackFitEnd = -1;
 
+  /// R6q2 (유저 확정 08-18): the viewport as it stood when playback
+  /// STARTED — camera view ON pairs its playback fit with a restore on
+  /// stop, so the fit never costs the user their framing. Camera OFF
+  /// never fits (and so never restores).
+  CanvasViewport? _prePlaybackViewport;
+  bool _playbackWasActive = false;
+
   void _syncPlaybackFitCut() {
     final playback = widget.session.playback;
+    if (playback.isActive != _playbackWasActive) {
+      _playbackWasActive = playback.isActive;
+      if (playback.isActive) {
+        _prePlaybackViewport = _canvasViewport;
+      } else {
+        final saved = _prePlaybackViewport;
+        _prePlaybackViewport = null;
+        if (saved != null && widget.cameraViewEnabled.value && mounted) {
+          // 카메라 토글 ON: 재생 fit + 정지 시 복원. OFF stops fitting
+          // altogether below, so there is nothing to undo there.
+          setState(() => _canvasViewport = saved);
+        }
+      }
+    }
     final global = playback.isActive
         ? playback.globalFrameIndexListenable.value
         : null;
@@ -630,34 +651,26 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           ]),
           builder: (context, _) {
             final toolState = widget.brushToolState.value;
-            // D12: playback defaults to FIT, per cut — one request per
-            // cut ENTRY through the panel's own playback-follow law
-            // (CanvasAutoFrameRequest: the token change fires the
-            // reframe; the frames inside a cut leave the viewport
-            // user-owned, D13's half of the deal). The identity comes
-            // from [_playbackFitCut] — see its doc for why no existing
-            // channel carries the crossing to this boundary. Camera
-            // view fits the camera's OUTPUT frame at the origin — the
-            // painter's frameRect, not the editing pose projection;
-            // canvas mode fits the playing cut's own canvas, whatever
-            // size that cut is.
-            final playbackCut = _playbackFitCut.value;
+            // D12 × R6q2 (유저 확정 08-18): playback fit is the CAMERA
+            // VIEW's — toggle ON fits the camera's output frame at the
+            // origin per cut entry (the painter's frameRect) and the
+            // stop restores the pre-play viewport; toggle OFF never
+            // fits at all (the user's framing is the framing). One
+            // request per cut ENTRY through the panel's own
+            // playback-follow law (CanvasAutoFrameRequest); the
+            // identity comes from [_playbackFitCut] — see its doc for
+            // why no existing channel carries the crossing here.
             final cameraViewOn = widget.cameraViewEnabled.value;
+            final playbackCut = cameraViewOn ? _playbackFitCut.value : null;
             final playbackAutoFrame = playbackCut == null
                 ? null
                 : CanvasAutoFrameRequest(
                     token: (playbackCut.id, cameraViewOn),
-                    rect: cameraViewOn
-                        ? Offset.zero &
-                              Size(
-                                session.cameraFrameSize.width.toDouble(),
-                                session.cameraFrameSize.height.toDouble(),
-                              )
-                        : Offset.zero &
-                              Size(
-                                playbackCut.canvasSize.width.toDouble(),
-                                playbackCut.canvasSize.height.toDouble(),
-                              ),
+                    rect: Offset.zero &
+                        Size(
+                          session.cameraFrameSize.width.toDouble(),
+                          session.cameraFrameSize.height.toDouble(),
+                        ),
                   );
             // INSIDE the builder, deliberately: the standing row is
             // published without a session notify, so a manipulator gate

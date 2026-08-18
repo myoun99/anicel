@@ -15,12 +15,10 @@ import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 
-/// D12: playback defaults to FIT, per cut — entering a cut reframes the
-/// viewport onto that cut's own canvas (cuts can differ in size), through
-/// the panel's playback-follow law (CanvasAutoFrameRequest, the timesheet
-/// page-turn's mechanism). Between crossings the viewport stays
-/// user-owned: the token only changes on cut ENTRY, so a manual pan
-/// mid-cut survives until the next boundary (D13's half of the deal).
+/// D12 × R6q2 (유저 확정 08-18): playback fit is the CAMERA VIEW's.
+/// Toggle ON — every cut entry fits the camera's output frame and the
+/// stop RESTORES the pre-play viewport. Toggle OFF — playback never
+/// touches the viewport at all: the user's framing is the framing.
 void main() {
   Project project() => Project(
     id: const ProjectId('fit'),
@@ -51,16 +49,19 @@ void main() {
     ],
   );
 
-  Future<EditorSessionManager> pumpArea(WidgetTester tester) async {
+  Future<(EditorSessionManager, ValueNotifier<bool>)> pumpArea(
+    WidgetTester tester, {
+    required bool cameraView,
+  }) async {
     await tester.binding.setSurfaceSize(const Size(900, 700));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final session = EditorSessionManager(initialProject: project());
     addTearDown(session.dispose);
     final brushTool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
-    final cameraView = ValueNotifier<bool>(false);
+    final cameraViewEnabled = ValueNotifier<bool>(cameraView);
     final cameraDim = ValueNotifier<double>(0.5);
     addTearDown(brushTool.dispose);
-    addTearDown(cameraView.dispose);
+    addTearDown(cameraViewEnabled.dispose);
     addTearDown(cameraDim.dispose);
     await tester.pumpWidget(
       MaterialApp(
@@ -68,14 +69,14 @@ void main() {
           body: EditorCanvasArea(
             session: session,
             brushToolState: brushTool,
-            cameraViewEnabled: cameraView,
+            cameraViewEnabled: cameraViewEnabled,
             cameraDimOpacity: cameraDim,
           ),
         ),
       ),
     );
     await tester.pump();
-    return session;
+    return (session, cameraViewEnabled);
   }
 
   CanvasViewport panelViewport(WidgetTester tester) =>
@@ -89,113 +90,78 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('D12: entering a cut fits ITS canvas; the frames inside it '
-      'leave the viewport user-owned; the next cut refits', (tester) async {
-    final session = await pumpArea(tester);
+  testWidgets('camera view OFF: playback never touches the viewport — a '
+      'manual pan survives start, crossings and stop', (tester) async {
+    final (session, _) = await pumpArea(tester, cameraView: false);
     final before = panelViewport(tester);
-    expect(before.zoom, 1.0, reason: 'the editing viewport starts identity');
+    expect(before.zoom, 1.0);
 
-    // All-cuts playback from cut 1 (400x300 into ~900x700 → zoom > 1).
     session.playback.play(scope: PlaybackScope.allCuts);
     await tester.pump();
-    // The reframe is post-frame (the panel's autoFrame law) — one more
-    // frame lands it.
     await tester.pump();
-    final fitCut1 = panelViewport(tester);
     expect(
-      fitCut1.zoom,
-      greaterThan(1.0),
-      reason: 'cut 1 (400x300) fits UP into the panel',
+      panelViewport(tester).zoom,
+      1.0,
+      reason: 'toggle OFF = 재생 시 fit 안 함 (유저 확정 08-18)',
     );
 
-    // Mid-cut ticks must not stomp the viewport: pan by hand, advance
-    // frames WITHIN cut 1, and the pan survives (the token is the cut).
-    // 10fps · 4 frames per cut: 100ms steps stay inside cut 1.
-    await tester.pump(const Duration(milliseconds: 100));
-    final panned = fitCut1.copyWith(panX: fitCut1.panX + 40);
+    // Pan by hand mid-run, then cross into cut 2 exactly at local 0.
+    final panned = panelViewport(tester).copyWith(panX: 40);
     tester
         .widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel))
         .onViewportChanged!(panned);
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
     expect(
       panelViewport(tester).panX,
-      panned.panX,
-      reason: 'no per-frame refit — the user owns the viewport mid-cut',
-    );
-
-    // Cross into cut 2 (1600 wide): the fit fires again, at a smaller
-    // zoom than cut 1's (a 4x wider canvas into the same panel).
-    // ⚠️The crossing lands EXACTLY at cut 2's local frame 0 (400ms at
-    // 10fps = global 4): the cursor publishes 0→0 (suppressed) and the
-    // empty-layer cuts publish no row — so the ONLY channel that can
-    // carry this crossing to the host boundary is the D12 notifier. An
-    // off-boundary landing (local 2) let the cursor's retarget mask a
-    // dead notifier (adversarial review caught the artifact).
-    await tester.pump(const Duration(milliseconds: 200));
-    await tester.pump();
-    final fitCut2 = panelViewport(tester);
-    expect(
-      fitCut2.zoom,
-      lessThan(fitCut1.zoom),
-      reason: 'the 1600-wide cut fits at a smaller zoom — the crossing '
-          'refit, per cut, exactly once',
-    );
-    expect(
-      fitCut2.panX,
-      isNot(panned.panX),
-      reason: 'the crossing reframes — the mid-cut pan ended at the '
-          'boundary',
+      40,
+      reason: 'no fit at the crossing either — the framing is the user\'s',
     );
 
     session.playback.stop();
+    await tester.pump();
+    expect(panelViewport(tester).panX, 40, reason: 'and none on stop');
     await drainWarming(tester);
   });
 
-  testWidgets('D12: camera view ON fits the camera\'s OUTPUT frame at the '
-      'origin — the project-wide frame, not the cut\'s canvas', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(900, 700));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final session = EditorSessionManager(initialProject: project());
-    addTearDown(session.dispose);
-    final brushTool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
-    final cameraView = ValueNotifier<bool>(true);
-    final cameraDim = ValueNotifier<double>(0.5);
-    addTearDown(brushTool.dispose);
-    addTearDown(cameraView.dispose);
-    addTearDown(cameraDim.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: EditorCanvasArea(
-            session: session,
-            brushToolState: brushTool,
-            cameraViewEnabled: cameraView,
-            cameraDimOpacity: cameraDim,
-          ),
-        ),
-      ),
-    );
+  testWidgets('camera view ON: every cut entry fits the camera\'s output '
+      'frame (the crossing arrives through the D12 notifier), and the '
+      'stop RESTORES the pre-play viewport', (tester) async {
+    final (session, _) = await pumpArea(tester, cameraView: true);
+    // A distinctive pre-play framing to restore.
+    final prePlay = panelViewport(tester).copyWith(panX: 123, zoom: 2.0);
+    tester
+        .widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel))
+        .onViewportChanged!(prePlay);
     await tester.pump();
 
     session.playback.play(scope: PlaybackScope.allCuts);
     await tester.pump();
     await tester.pump();
-    final fitCamera = panelViewport(tester);
-    final frame = session.cameraFrameSize;
-    // The camera frame is project-wide: both cuts fit the SAME rect, so
-    // the zoom matches a fit of that frame, not of cut 1's 400x300.
-    final panelSize = tester.getSize(find.byType(BrushCanvasPanel));
-    final expected = CanvasViewport.fitToView(
-      canvasWidth: frame.width.toDouble(),
-      canvasHeight: frame.height.toDouble(),
-      viewportWidth: panelSize.width,
-      viewportHeight: panelSize.height,
+    final fitStart = panelViewport(tester);
+    expect(fitStart.zoom, isNot(2.0), reason: 'play start fits the frame');
+
+    // Pan mid-cut, then cross into cut 2 EXACTLY at local frame 0: the
+    // cursor publishes 0→0 (suppressed) and the empty-layer cuts publish
+    // no row — only the D12 notifier can carry the crossing, and the
+    // re-fit stomps the mid-cut pan back to the frame fit.
+    final panned = fitStart.copyWith(panX: fitStart.panX + 40);
+    tester
+        .widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel))
+        .onViewportChanged!(panned);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    expect(
+      panelViewport(tester).panX,
+      fitStart.panX,
+      reason: '컷마다 fit — the crossing refits the same camera frame',
     );
-    expect(fitCamera.zoom, moreOrLessEquals(expected.zoom, epsilon: 0.2));
 
     session.playback.stop();
+    await tester.pump();
+    final restored = panelViewport(tester);
+    expect(restored.zoom, 2.0, reason: '정지 시 복원 (유저 확정 08-18)');
+    expect(restored.panX, 123);
     await drainWarming(tester);
   });
 }
