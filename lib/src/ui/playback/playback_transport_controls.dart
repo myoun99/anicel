@@ -90,7 +90,10 @@ class PlaybackTransportControls extends StatelessWidget {
   final int Function()? playbackStartFrame;
 
   /// "To start" while the transport is NOT active here (REC1-B): the host
-  /// moves its editing playhead to index 0. Active playback seeks itself.
+  /// moves its editing playhead to ITS axis origin — the timeline's is
+  /// the active cut's frame 0, the storyboard's is global 0 gaps
+  /// included (D1: a leading gap PARKS there, the same origin an
+  /// all-cuts play starts from). Active playback seeks itself.
   final VoidCallback? onSkipToStart;
 
   static String qualityLabel(PlaybackQuality quality) {

@@ -6,7 +6,11 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/camera/camera_frame_overlay.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
+    show PlaybackScope;
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
+import 'package:anicel/src/ui/storyboard_playhead_mapping.dart'
+    show commitStoryboardScrub;
 
 /// The multitrack display path's canvas mount (parked state): a gap
 /// parking swaps the canvas content to the track stack — a parked frame
@@ -169,6 +173,138 @@ void main() {
       reason: 'the ruler drag shows what the eye already had',
     );
     await drainWarming(tester);
+  });
+
+  testWidgets('D6: a drag that STARTED inside the cut crosses the boundary '
+      'and the canvas follows — the previous cut\'s picture does not '
+      'linger until release', (tester) async {
+    final (s, first, aEnd) = gappedSession();
+    addTearDown(s.dispose);
+    s.selectCut(first);
+    await pumpArea(tester, s);
+
+    // The drag starts IN territory: engages the scrub without ever
+    // taking the out-of-territory path (the exact shape the old code
+    // left invisible — frameScrubActive was already true, so the later
+    // crossing had no rebuild trigger).
+    s.scrubGlobalFrame(1);
+    await tester.pump();
+    expect(s.frameScrubActive.value, isTrue);
+    expect(find.byKey(stackKey), findsNothing);
+
+    // Cross onto the SECOND cut's frames: the multitrack preview must
+    // mount NOW, not on release.
+    s.scrubGlobalFrame(aEnd + 5);
+    await tester.pump();
+    expect(
+      find.byKey(stackKey),
+      findsOneWidget,
+      reason: 'the crossing is the edge — before D6 the canvas kept the '
+          'previous cut\'s picture for the rest of the drag',
+    );
+    expect(
+      find.byKey(framesKey),
+      findsOneWidget,
+      reason: 'the crossed-onto cut paints its composite',
+    );
+
+    // Scrub back in: the interactive canvas returns mid-gesture too.
+    s.scrubGlobalFrame(1);
+    await tester.pump();
+    expect(find.byKey(stackKey), findsNothing);
+
+    s.commitFrameScrub();
+    await drainWarming(tester);
+  });
+
+  test('D6: the territory flag fires per EDGE, not per move — and a tap '
+      'never sets it (the no-flash rule)', () {
+    final (s, first, aEnd) = gappedSession();
+    s.selectCut(first);
+    var fires = 0;
+    s.scrubOutOfTerritory.addListener(() => fires += 1);
+
+    // A TAP over the gap: pointer-down parks, no move follows.
+    s.scrubGlobalFrame(aEnd + 1);
+    expect(fires, 0, reason: 'a tap must not flash the track stack');
+    s.commitFrameScrub();
+    expect(fires, 0);
+
+    // A real drag: in-territory start, cross out, wander, come back.
+    s.selectCut(first);
+    s.scrubGlobalFrame(1);
+    expect(fires, 0);
+    s.scrubGlobalFrame(aEnd + 1);
+    expect(fires, 1, reason: 'the exit edge fires once');
+    s.scrubGlobalFrame(aEnd + 2);
+    s.scrubGlobalFrame(aEnd + 3);
+    expect(fires, 1, reason: 'per-move parking stays notify-quiet');
+    s.scrubGlobalFrame(2);
+    expect(fires, 2, reason: 're-entry is the other edge');
+    s.commitFrameScrub();
+    expect(fires, 2);
+    expect(s.scrubOutOfTerritory.value, isFalse);
+    s.dispose();
+  });
+
+  test('D6: a drag GRABBED on the cursor\'s own frame engages on its FIRST '
+      'crossing — the same-frame down never set the scrub flag, and the '
+      'old two-event rule read the genuine move as tap-shaped', () {
+    final (s, first, aEnd) = gappedSession();
+    s.selectCut(first);
+    // Grab the playhead: press exactly on the cursor's frame (0).
+    s.scrubGlobalFrame(0);
+    expect(s.frameScrubActive.value, isFalse, reason: 'same-frame down');
+
+    // Cross ONE frame out and hold: the preview must engage NOW.
+    s.scrubGlobalFrame(aEnd + 1);
+    expect(s.frameScrubActive.value, isTrue);
+    expect(
+      s.scrubOutOfTerritory.value,
+      isTrue,
+      reason: 'the crossing is a real drag move — the down was in '
+          'territory, so the no-flash rule does not apply to it',
+    );
+
+    // A bare out-of-territory DOWN still engages nothing (no-flash).
+    s.commitFrameScrub();
+    s.selectCut(first);
+    s.scrubGlobalFrame(aEnd + 1);
+    expect(s.frameScrubActive.value, isFalse);
+    expect(s.scrubOutOfTerritory.value, isFalse);
+    s.commitFrameScrub();
+    s.dispose();
+  });
+
+  test('D6: playback taking the transport mid-drag clears the WHOLE '
+      'preview state — a leaked territory flag would swallow the next '
+      'drag\'s exit edge', () {
+    final (s, first, aEnd) = gappedSession();
+    s.selectCut(first);
+    s.scrubGlobalFrame(1);
+    s.scrubGlobalFrame(aEnd + 1);
+    expect(s.frameScrubActive.value, isTrue);
+    expect(s.scrubOutOfTerritory.value, isTrue);
+
+    // Space mid-drag: playback engages; the release path has no editing
+    // seek to commit and must abandon the preview instead.
+    s.playback.play(scope: PlaybackScope.allCuts);
+    commitStoryboardScrub(s);
+    expect(s.frameScrubActive.value, isFalse);
+    expect(s.scrubOutOfTerritory.value, isFalse);
+
+    s.playback.stop();
+    // The NEXT drag's exit edge fires cleanly.
+    s.selectCut(first);
+    s.scrubGlobalFrame(1);
+    s.scrubGlobalFrame(aEnd + 1);
+    expect(
+      s.scrubOutOfTerritory.value,
+      isTrue,
+      reason: 'no leak: the edge is alive on the very next drag',
+    );
+    s.commitFrameScrub();
+    s.dispose();
   });
 
   testWidgets('and the toggle does not move that answer: a parked preview is '
