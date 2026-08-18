@@ -467,11 +467,26 @@ void main() {
         .map((key, value) => MapEntry(key, value.length));
     final before = rowATimeline();
 
+    // A clip on the board so the paste gates have something to offer —
+    // taken from ROW A, because the linked paste only re-exposes a cel on
+    // the row it came from.
+    s.selectLayer(rowA);
+    s.selectFrameIndex(0);
+    s.copyFrameAtCurrentFrame();
+    s.selectFrameIndex(2);
+    s.updateFrameRangeSelectionDrag(
+      layerId: rowB,
+      anchorIndex: 0,
+      headIndex: 1,
+    );
+
     for (final (name, gate) in [
       ('X-here', s.canBlankExposureAtCurrentFrame),
       ('mark', s.canToggleMarkAtCurrentFrame),
       ('잘라내기', s.canCutRunAtCurrentFrame),
       ('rename', s.canEditCellInstanceAtCurrentFrame),
+      ('독립 붙여넣기', s.canPasteIndependentFrameAtCurrentFrame),
+      ('링크 붙여넣기', s.canPasteLinkedFrameAtCurrentFrame),
     ]) {
       expect(
         gate,
@@ -484,12 +499,26 @@ void main() {
     s.blankExposureAtCurrentFrame();
     s.toggleMarkAtCurrentFrame();
     s.cutRunAtCurrentFrame();
+    s.pasteIndependentFrameAtCurrentFrame();
+    s.pasteLinkedFrameAtCurrentFrame();
     expect(
       rowATimeline(),
       before,
       reason: 'and none of the presses touched the row the user did not '
           'sweep',
     );
+
+    // THE OTHER HALF OF THE AXIS: a band that DOES cover the active row
+    // is served, not refused — 범위 선택 후 잘라내기·붙여넣기 is the
+    // documented way to use them, and blanket refusal broke it once.
+    s.updateFrameRangeSelectionDrag(
+      layerId: rowA,
+      anchorIndex: 0,
+      headIndex: 2,
+    );
+    expect(s.canCutRunAtCurrentFrame, isTrue);
+    expect(s.canPasteIndependentFrameAtCurrentFrame, isTrue);
+    expect(s.canPasteLinkedFrameAtCurrentFrame, isTrue);
   });
 
   test('the image row refuses every verb that would mint or re-expose a '

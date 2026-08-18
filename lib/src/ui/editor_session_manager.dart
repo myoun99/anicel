@@ -8324,6 +8324,11 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   bool get canPasteLinkedFrameAtCurrentFrame {
+    // Same law as its independent twin: this lands on the ACTIVE row and
+    // serves only a band that covers it ([_pasteRun]'s `replacing`).
+    if (bandNamesRowsThisPressWouldMiss) {
+      return false;
+    }
     final layer = activeLayer;
     final copiedFrame = _copiedFrame;
     if (layer == null ||
@@ -9713,6 +9718,14 @@ class EditorSessionManager extends ChangeNotifier {
   /// its block-start refusal, which exists because there is nothing there
   /// to divide — a paste inserts rather than divides.
   bool get canPasteIndependentFrameAtCurrentFrame {
+    // The paste lands on the ACTIVE row, and its band rung serves only a
+    // band that covers that row (`replacing` in [_pasteRun] — 「복붙은
+    // 선택하고 붙여넣기가 기본」). A band naming other rows makes it a
+    // plain insert on a row the user never swept, and the highlight then
+    // stays put, because the clear runs on the replacing path alone.
+    if (bandNamesRowsThisPressWouldMiss) {
+      return false;
+    }
     final layer = activeLayer;
     if (layer == null || _copiedFrame == null) {
       return false;
