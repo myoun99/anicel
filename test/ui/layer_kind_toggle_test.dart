@@ -283,7 +283,7 @@ void main() {
   // The dedicated instruction-add button is retired: the unified Add Layer
   // duplicates the ACTIVE row's kind directly above it, named by the
   // section's own scheme.
-  testWidgets('Add Layer with an instruction row active adds another CAM '
+  testWidgets('Add Layer with an instruction row active adds another DIR '
       'row above it', (tester) async {
     late ProjectRepository repository;
     await _pumpHome(
@@ -305,7 +305,7 @@ void main() {
     // directly ABOVE the previously active row on screen.
     expect(layers[0].name, 'Target Layer');
     expect(layers[1].kind, LayerKind.instruction);
-    expect(layers[1].name, 'CAM 1');
+    expect(layers[1].name, 'DIR 1');
     // No kind toggle applies to instruction rows.
     expect(await _isCommandEnabled(tester, _toggleKey), isFalse);
   });

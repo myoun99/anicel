@@ -4494,7 +4494,7 @@ class AppStrings {
     'exApplyLayerFx': '应用图层 FX',
     'exApplyLayerFxHelp': '应用图层 FX（变换与动画不透明度）',
     'exOnTimesheetOnly': '仅摄影表上的图层',
-    'exInstructionLayer': '指示图层',
+    'exInstructionLayer': 'Direction图层',
     'exMuxSeMix': '将 SE 混音封装进视频',
     'exCutFolder': '镜头文件夹',
     'exLayerFolder': '图层文件夹',

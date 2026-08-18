@@ -6,7 +6,7 @@ import 'track_id.dart';
 
 /// Fixture layers: the timesheet's two SE rows (S1·S2) live on the TRACK
 /// (global frame axis — sounds may cross cut boundaries), the camera-work
-/// instruction row (CAM 1) on each cut. New tracks/cuts create them;
+/// direction row (DIR 1) on each cut. New tracks/cuts create them;
 /// [withEnsuredTrackSeLayers] / [withEnsuredSectionLayers] backfill older
 /// files on load. Deletion floors (SE ≥ 2, instruction ≥ 1) live in the
 /// session and command guards.
@@ -67,7 +67,7 @@ LayerId transitionLayerIdForTrack(TrackId trackId) =>
 Layer createTrackTransitionLayer(TrackId trackId) {
   return Layer(
     id: transitionLayerIdForTrack(trackId),
-    // The FULL word, not a code (user 2026-08-10). S1/S2 and CAM 1 are
+    // The FULL word, not a code (user 2026-08-10). S1/S2 and DIR 1 are
     // abbreviations because they are cel ADDRESSES a sheet is read by; this
     // row is one fixture that cannot be renamed, so its name is just what it
     // is and it has the width to say so.
@@ -91,7 +91,7 @@ Layer createSeLayer({required CutId cutId, required int slot}) {
   );
 }
 
-Layer createInstructionLayer({required CutId cutId, String name = 'CAM 1'}) {
+Layer createInstructionLayer({required CutId cutId, String name = 'DIR 1'}) {
   return Layer(
     id: instructionLayerIdForCut(cutId),
     name: name,
@@ -101,13 +101,14 @@ Layer createInstructionLayer({required CutId cutId, String name = 'CAM 1'}) {
   );
 }
 
-/// Names an additional instruction row: CAM 2, CAM 3, … skipping names the
-/// cut already uses.
+/// Names an additional direction row: DIR 2, DIR 3, … skipping names the
+/// cut already uses. (The kind was renamed CAM → Direction by the user on
+/// 2026-08-09; saved files keep whatever name they carry — no migration.)
 String nextInstructionLayerName(List<Layer> layers) {
   final usedNames = layers.map((layer) => layer.name).toSet();
   var index = 1;
   while (true) {
-    final name = 'CAM $index';
+    final name = 'DIR $index';
     if (!usedNames.contains(name)) {
       return name;
     }

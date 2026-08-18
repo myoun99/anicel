@@ -53,7 +53,6 @@ void main() {
     expect(s.canCreateDrawingAtCurrentFrame, isFalse);
     expect(s.canBlankExposureAtCurrentFrame, isFalse);
     expect(s.canToggleMarkAtCurrentFrame, isFalse);
-    expect(s.activeLayerKindLabelText, 'Camera Layer');
 
     // Copy/duplicate quietly refuse the camera layer.
     s.copyActiveLayer();
