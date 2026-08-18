@@ -13,6 +13,8 @@ import 'package:anicel/src/ui/timeline/layer_row_drag.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show TimelineDisplayRow;
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
+    show TimelineBeatLinesPainter;
 import 'package:anicel/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
 
 import 'timeline/timeline_cell_probe.dart';
@@ -614,6 +616,38 @@ void main() {
       );
     },
   );
+
+  // D32 (2026-08-18): the beat-line overlay sits UNDER the rows — an
+  // opaque beat line used to glow over the blue paper blocks. Blocks
+  // occlude the empty-space lines and draw their own interior seams
+  // through the same law (heldSeamLineFor), so the grid reads as one
+  // line through paper and dark ground alike.
+  testWidgets('D32: the beat-line overlay paints BEFORE the rows', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_grid(playbackFrameCount: 24));
+
+    final order = tester.allElements.toList();
+    final beatIndex = order.indexWhere(
+      (element) =>
+          element.widget is CustomPaint &&
+          (element.widget as CustomPaint).painter is TimelineBeatLinesPainter,
+    );
+    final rowsIndex = order.indexWhere(
+      (element) =>
+          element.widget.key ==
+          const ValueKey<String>('timeline-row-cells-layer-1'),
+    );
+    expect(beatIndex, greaterThanOrEqualTo(0));
+    expect(rowsIndex, greaterThanOrEqualTo(0));
+    expect(
+      beatIndex,
+      lessThan(rowsIndex),
+      reason:
+          'Stack paints children in order: the overlay first means the '
+          'blocks sit over the lines, not the lines over the blocks',
+    );
+  });
 
   // A5 (2026-08-17): 「레이어 드래그 중 스크롤 발생 시 드래그 풀림」. The
   // recognizer lives in the row's State; when the layer-axis window slid

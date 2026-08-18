@@ -2007,6 +2007,41 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                               plan.frameRange;
                                                           return Stack(
                                                             children: [
+                                                              // UI-R13 #7: the 6f/24f
+                                                              // beat lines span EVERY
+                                                              // column — one grid-wide
+                                                              // overlay (transposed).
+                                                              // D32: UNDER the columns
+                                                              // (the timeline's own
+                                                              // flip) — blocks occlude
+                                                              // and draw their interior
+                                                              // seams via the law.
+                                                              Positioned.fill(
+                                                                child: IgnorePointer(
+                                                                  child: RepaintBoundary(
+                                                                    child: CustomPaint(
+                                                                      key:
+                                                                          const ValueKey<
+                                                                            String
+                                                                          >(
+                                                                            'xsheet-beat-lines',
+                                                                          ),
+                                                                      painter: TimelineBeatLinesPainter(
+                                                                        axis: Axis
+                                                                            .vertical,
+                                                                        frameCellExtent:
+                                                                            _metrics.frameCellWidth,
+                                                                        crossCellExtent:
+                                                                            _metrics.layerRowHeight,
+                                                                        framesPerSecond:
+                                                                            _countingFps,
+                                                                        colorScheme:
+                                                                            colorScheme,
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              ),
                                                               Row(
                                                                 crossAxisAlignment:
                                                                     CrossAxisAlignment
@@ -2036,36 +2071,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                       bodyViewportHeight,
                                                                     ),
                                                                 ],
-                                                              ),
-                                                              // UI-R13 #7: the 6f/24f
-                                                              // beat lines span EVERY
-                                                              // column — one grid-wide
-                                                              // overlay (transposed).
-                                                              Positioned.fill(
-                                                                child: IgnorePointer(
-                                                                  child: RepaintBoundary(
-                                                                    child: CustomPaint(
-                                                                      key:
-                                                                          const ValueKey<
-                                                                            String
-                                                                          >(
-                                                                            'xsheet-beat-lines',
-                                                                          ),
-                                                                      painter: TimelineBeatLinesPainter(
-                                                                        axis: Axis
-                                                                            .vertical,
-                                                                        frameCellExtent:
-                                                                            _metrics.frameCellWidth,
-                                                                        crossCellExtent:
-                                                                            _metrics.layerRowHeight,
-                                                                        framesPerSecond:
-                                                                            _countingFps,
-                                                                        colorScheme:
-                                                                            colorScheme,
-                                                                      ),
-                                                                    ),
-                                                                  ),
-                                                                ),
                                                               ),
                                                               // The cursor layer carries
                                                               // the playhead + selection

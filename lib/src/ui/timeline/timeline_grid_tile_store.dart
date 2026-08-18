@@ -250,6 +250,7 @@ class TimelineGridTileStore {
         baseTextStyle: request.painter.baseTextStyle,
         spanEndIndexExclusive: request.spanEndIndexExclusive,
         devicePixelRatio: request.devicePixelRatio,
+        framesPerSecond: request.painter.framesPerSecond,
         image: rastered.image,
       );
       while (_entries.length > capacity) {
@@ -585,6 +586,7 @@ class _TileEntry {
     required this.baseTextStyle,
     required this.spanEndIndexExclusive,
     required this.devicePixelRatio,
+    required this.framesPerSecond,
     required this.image,
   });
 
@@ -621,6 +623,12 @@ class _TileEntry {
   final TextStyle baseTextStyle;
   final int spanEndIndexExclusive;
   final double devicePixelRatio;
+
+  /// D32/D38: the interior seam strengths depend on the counting fps (a
+  /// second boundary's line is the strongest), so a project fps change
+  /// must re-raster — rare, but a stale strength would otherwise survive
+  /// until an unrelated bump.
+  final int framesPerSecond;
   final ui.Image image;
 
   /// The `shouldRepaint` identity, tile edition: any changed look fact
@@ -655,6 +663,7 @@ class _TileEntry {
         celHasContentForLayer == painter.celHasContentForLayer &&
         celContentRevision == painter.celContentRevision &&
         baseTextStyle == painter.baseTextStyle &&
+        framesPerSecond == painter.framesPerSecond &&
         this.spanEndIndexExclusive == spanEndIndexExclusive &&
         this.devicePixelRatio == devicePixelRatio;
   }
@@ -794,6 +803,26 @@ void timelineGridEmitSubstrate(
         mask,
         1.0 * devicePixelRatio,
         timelineGridPackRgba(border),
+      );
+    }
+
+    // D32/D38: the block-interior seam — the painter's own contract
+    // ([TimelineRowCellsPainter.heldSeamLineFor]) probed and mirrored, an
+    // opaque plain-rect fill (the multiply was computed in Dart, so no
+    // blend op is needed here).
+    final seam = painter.heldSeamLineFor(frameIndex);
+    if (seam != null) {
+      final seamLocal = horizontal
+          ? seam.rect.shift(Offset(-originMain, 0))
+          : seam.rect.shift(Offset(0, -originMain));
+      writer.rrectFill(
+        seamLocal.left * devicePixelRatio,
+        seamLocal.top * devicePixelRatio,
+        seamLocal.width * devicePixelRatio,
+        seamLocal.height * devicePixelRatio,
+        0,
+        0,
+        timelineGridPackRgba(seam.color),
       );
     }
   }

@@ -95,8 +95,13 @@ void main() {
     expect(store.revision.value, revisionBefore);
   });
 
+  // ⚠️CONTRACT CHANGED (D32/D38, 2026-08-18): the per-cell border stroke
+  // is gone from the substrate — the interior seams are the painter's
+  // heldSeamLineFor contract now, mirrored here as plain opaque rect
+  // fills (the multiply onto the paper was computed in Dart).
   test('the emitter probes the painter: the covered span opens with the '
-      'block fill and its border, the empty span emits nothing', () {
+      'block fill, mirrors the seam line, and the empty span emits '
+      'nothing', () {
     final painter = painterFor(blockLayer());
     final covered = timelineGridSubstrateOps(
       painter: painter,
@@ -110,6 +115,23 @@ void main() {
     // radius map, mask TL|BL = 5).
     expect(covered[6], 5, reason: 'corner mask');
     expect(covered[5], timelineGridQ8(6), reason: 'radius 6 in q8');
+    // No border strokes anywhere in the stream — every op is a fill
+    // (2 cell bodies + 1 interior seam for the 2-frame block), so the
+    // stream walks in rrectFill strides of 8.
+    expect(covered.length, 3 * 8);
+    for (var i = 0; i < covered.length; i += 8) {
+      expect(
+        covered[i],
+        TimelineGridTileOp.rrectFill,
+        reason: 'no border strokes in the substrate any more',
+      );
+    }
+    // The seam the emitter mirrored is the painter's own contract.
+    expect(
+      painter.heldSeamLineFor(1),
+      isNotNull,
+      reason: 'fixture premise: a seam exists at frame 1',
+    );
 
     // Uncovered cells emit NOTHING (UI-R21 #2): empties are transparent
     // — the row underlay owns the paper, so an empty span is zero ops
