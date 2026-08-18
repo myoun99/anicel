@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
@@ -1011,9 +1013,16 @@ class TimelineLaneFrameRow extends StatelessWidget {
         (frameEndIndexExclusive - frameStartIndex) * cellExtent;
     // ONE metric law for every marker on this axis — see
     // [timelineLaneKeyMarkerSize] / [timelineLaneUnionKeyMarkerSize].
+    // Build-time is correct HERE: the band rebuilds on zoom.
     final markerSize = lane.isGroupHeader
-        ? timelineLaneUnionKeyMarkerSize(crossExtent)
-        : timelineLaneKeyMarkerSize(crossExtent);
+        ? timelineLaneUnionKeyMarkerSize(
+            crossExtent,
+            frameCellExtent: cellExtent,
+          )
+        : timelineLaneKeyMarkerSize(
+            crossExtent,
+            frameCellExtent: cellExtent,
+          );
     final hitSize = (markerSize + 8).clamp(14.0, crossExtent).toDouble();
     final horizontal = axis == Axis.horizontal;
 
@@ -1291,13 +1300,35 @@ class _LaneKeyName extends StatelessWidget {
 /// text glyph sized by the cell-fit font rule, which is exactly the
 /// "subtly different size" the device showed. One constant path now; a
 /// size change lands on every mark or on none.
-double timelineLaneKeyMarkerSize(double crossExtent) =>
-    (crossExtent * 0.32).clamp(6.0, 11.0).toDouble();
+///
+/// D39 (2026-08-18): the law follows the ZOOM too — 「프레임블록
+/// 텍스트/엣지처럼 줌에 따라 작아지게」. The cross-derived base runs
+/// through [timelineFittedGlyphFontSize], the same shrink every mark
+/// printed on blocks already obeys, so a 4–8px cell no longer wears a
+/// fixed 13px diamond spilling across its neighbours. At the default
+/// 24px cell nothing changes (the fit's knee is 14).
+double timelineLaneKeyMarkerSize(
+  double crossExtent, {
+  required double frameCellExtent,
+}) => timelineFittedGlyphFontSize(
+  (crossExtent * 0.32).clamp(6.0, 11.0).toDouble(),
+  frameCellExtent,
+  crossExtent: crossExtent,
+);
 
 /// The UNION mark's size — half again a member's key (㉗), capped by the
-/// row.
-double timelineLaneUnionKeyMarkerSize(double crossExtent) =>
-    (timelineLaneKeyMarkerSize(crossExtent) * 1.5)
+/// row. The ×1.5 rides ON the fitted member size, so the summary keeps
+/// reading as "the sum of members" at every zoom (at the fit's 4px floor
+/// the union is exactly 6 — still half again).
+double timelineLaneUnionKeyMarkerSize(
+  double crossExtent, {
+  required double frameCellExtent,
+}) =>
+    (timelineLaneKeyMarkerSize(
+              crossExtent,
+              frameCellExtent: frameCellExtent,
+            ) *
+            1.5)
         .clamp(6.0, crossExtent)
         .toDouble();
 
@@ -1317,29 +1348,41 @@ List<Widget> timelineUnionKeyMarkerSpans({
   required PropertyLaneRow lane,
   required double crossExtent,
 }) {
-  final markerSize = timelineLaneUnionKeyMarkerSize(crossExtent);
   return [
     for (final frame in lane.keyedFrames.toList()..sort())
       TimelineFrameSpan(
         key: ValueKey<String>(
           '$keyPrefix-lane-key-span-${layer.id}-${lane.laneId}-$frame',
         ),
+        // The FULL cell, resolved at layout time — the cells row keeps
+        // its memo through zoom steps (R28 #4), so the marker size must
+        // not be baked at build. The child reads the laid-out box and
+        // asks the SAME metric law (D39); Center inside the marker puts
+        // the diamond on the cell centre exactly as the carved-out box
+        // used to.
         placement: TimelineFrameSpanPlacement(
           startIndex: frame,
-          // A marker-sized box centered on its cell at any zoom — the
-          // lane band's own centering, restated in span vocabulary.
-          mainInsetCells: 0.5,
-          mainInset: -markerSize / 2,
-          mainExtent: markerSize,
-          crossInset: (crossExtent - markerSize) / 2,
-          crossExtent: markerSize,
+          mainExtentCells: 1,
         ),
-        child: TimelineLaneKeyMarker(
-          key: ValueKey<String>(
-            '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
-          ),
-          hold: lane.holdOutFrames.contains(frame),
-          markerSize: markerSize,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // The tighter box dimension is the cell's zoom-driven extent
+            // on either axis (the fit takes the min of both anyway).
+            final cellExtent = math.min(
+              constraints.maxWidth,
+              constraints.maxHeight,
+            );
+            return TimelineLaneKeyMarker(
+              key: ValueKey<String>(
+                '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
+              ),
+              hold: lane.holdOutFrames.contains(frame),
+              markerSize: timelineLaneUnionKeyMarkerSize(
+                crossExtent,
+                frameCellExtent: cellExtent,
+              ),
+            );
+          },
         ),
       ),
   ];

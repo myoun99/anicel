@@ -22,6 +22,8 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
+    show timelineFittedGlyphFontSize;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
     show
@@ -134,10 +136,50 @@ void main() {
   group('B4-③ one metric law for every union mark', () {
     test('the union size is derived from the member size — one constant '
         'path, no second literal', () {
-      expect(timelineLaneKeyMarkerSize(28), (28 * 0.32).clamp(6.0, 11.0));
       expect(
-        timelineLaneUnionKeyMarkerSize(28),
-        (timelineLaneKeyMarkerSize(28) * 1.5).clamp(6.0, 28.0),
+        timelineLaneKeyMarkerSize(28, frameCellExtent: 24),
+        (28 * 0.32).clamp(6.0, 11.0),
+      );
+      expect(
+        timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 24),
+        (timelineLaneKeyMarkerSize(28, frameCellExtent: 24) * 1.5).clamp(
+          6.0,
+          28.0,
+        ),
+      );
+    });
+
+    // D39 (2026-08-18): the marks follow the ZOOM like block text and edge
+    // grips do — the cross-derived base runs through the same fit law, so
+    // a shrunken cell shrinks its diamond instead of wearing a fixed 13px
+    // mark across three neighbours.
+    test('D39: the marks shrink with the cell through the one fit law', () {
+      // At the default cell nothing changes (the fit's knee is 14).
+      expect(
+        timelineLaneKeyMarkerSize(28, frameCellExtent: 24),
+        timelineLaneKeyMarkerSize(28, frameCellExtent: 999),
+      );
+      // Below the knee the member follows the fit exactly...
+      expect(
+        timelineLaneKeyMarkerSize(28, frameCellExtent: 8),
+        timelineFittedGlyphFontSize(
+          (28 * 0.32).clamp(6.0, 11.0).toDouble(),
+          8,
+          crossExtent: 28,
+        ),
+      );
+      // ...and the union keeps reading as half again the member (㉗),
+      // riding ON the fitted size rather than re-inflating past the cell.
+      expect(
+        timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 8),
+        (timelineLaneKeyMarkerSize(28, frameCellExtent: 8) * 1.5).clamp(
+          6.0,
+          28.0,
+        ),
+      );
+      expect(
+        timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 8),
+        lessThan(timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 24)),
       );
     });
 
@@ -165,6 +207,7 @@ void main() {
         cameraMark.markerSize,
         timelineLaneUnionKeyMarkerSize(
           TimelineGridMetrics.defaults.layerRowHeight,
+          frameCellExtent: TimelineGridMetrics.defaults.frameCellWidth,
         ),
       );
       expect(cameraMark.hold, isFalse);
