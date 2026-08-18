@@ -7,7 +7,6 @@ import '../models/cut_id.dart';
 import '../models/layer_id.dart';
 import '../models/timeline_row_address.dart';
 import '../models/track.dart';
-import '../models/track_transform_lane_carrier.dart';
 import '../models/transform_track.dart';
 import 'timeline/instance_editor_commands.dart';
 import 'timeline/layer_name_commands.dart';
@@ -33,12 +32,10 @@ import 'timeline/timeline_exposure_comma_drag_policy.dart'
 import 'storyboard_playhead_mapping.dart';
 import 'storyboard_timeline_layout.dart';
 import 'timeline/timeline_frame_range_gesture.dart'
-    show TimelineLaneRangeCallbacks;
+    show TimelineLaneRangeHooks;
 import 'timeline/timeline_command_bar.dart';
 import 'timeline/timeline_view_cluster.dart';
 import 'timeline/transform_lane_editing.dart';
-import 'timeline/transform_lane_policy.dart'
-    show transformGroupHeaderLane, transformLaneDisplayOrder;
 
 /// The Storyboard tab's content: its own toolbar row (frame counter,
 /// seconds toggle, zoom slider — the same keys as the timeline tab's, only
@@ -255,38 +252,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     );
   }
 
-  /// The storyboard's lane-span head mapping (R26 #3 Excel rule): the
-  /// pointer's row offset from the anchor lane row, walked over the V
-  /// lanes' DISPLAYED rows — the header alone when the group is folded,
-  /// header + members when twirled open (the Opacity slot is the fade
-  /// envelope row, not a lane band row).
-  String? _laneSpanHeadLane(
-    LayerId carrierId,
-    String anchorLaneId,
-    int headRowDelta,
-  ) {
-    if (headRowDelta == 0) {
-      return null;
-    }
-    final trackId = trackIdOfTransformLaneCarrier(carrierId);
-    if (trackId == null) {
-      return null;
-    }
-    // Screen rows only: the Opacity slot is the fade-envelope row, so the
-    // walk skips it (a header endpoint still spans the whole group,
-    // opacity included — [transformLaneSpan]'s rule).
-    final rows = [
-      transformGroupHeaderLane.laneId,
-      if (_expandedTransformGroups.contains(trackId.value))
-        ...transformLaneDisplayOrder.where((laneId) => laneId != 'opacity'),
-    ];
-    final anchor = rows.indexOf(anchorLaneId);
-    if (anchor < 0) {
-      return null;
-    }
-    final head = (anchor + headRowDelta).clamp(0, rows.length - 1).toInt();
-    return rows[head];
-  }
+  // ⛔The host's lane-span head walk is GONE (C②): it walked TRANSFORM
+  // lanes for a V rail that draws FX lanes and answered null for every SE
+  // anchor — a hand-kept copy of what the panel draws, drifted. The panel
+  // resolves the head lane off its own row geometry now.
 
   /// Lane edit hooks for the S rows' Transform lanes — the timeline
   /// host's layer-transform editing verbatim (SE layers only here; no
@@ -727,28 +696,28 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   // whole picture moving on the screen; R4b: global axis,
                   // no cut needed) and the S rows' layer Transform lanes.
                   trackLaneEditFor: _trackLaneEditFor,
-                  laneRange: TimelineLaneRangeCallbacks(
+                  laneRange: TimelineLaneRangeHooks(
                     // This rail IS the track's global axis — the master
                     // one — so it reads and writes the span unshifted.
                     selection: _session.laneRangeSelection,
+                    // C②: the head LANE arrives resolved by the PANEL off
+                    // its own row geometry — the stale hand-kept walk
+                    // (transform lanes for a rail that draws fx lanes,
+                    // null for every SE anchor) retired with it.
                     onSelectUpdate:
                         (
                           layerId,
                           laneId,
                           anchorIndex,
                           headIndex,
-                          headRowDelta,
+                          headLaneId,
                         ) => _session.updateLaneRangeSelectionDrag(
                           layerId: layerId,
                           laneId: laneId,
                           anchorIndex: anchorIndex,
                           headIndex: headIndex,
                           framesAreGlobal: true,
-                          headLaneId: _laneSpanHeadLane(
-                            layerId,
-                            laneId,
-                            headRowDelta,
-                          ),
+                          headLaneId: headLaneId,
                         ),
                     // R10: a lane band is a place you can STAND. The
                     // storyboard's strips run on the GLOBAL axis, so the

@@ -24,7 +24,13 @@ import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
 import 'package:anicel/src/models/timeline_frame_range.dart'
     show TimelineFrameRangeSelection;
+import 'package:anicel/src/models/timeline_frame_range.dart'
+    show TimelineLaneSelection;
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart'
+    show TimelineLaneRangeHooks;
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
+    show transformGroupHeaderLane;
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -1357,6 +1363,196 @@ void main() {
     });
   });
 
+  group('C② — a lane-anchored drag escalates off its group (storyboard)', () {
+    Track trackWithSound(List<Cut> cuts) => Track(
+      id: const TrackId('track-a'),
+      name: 'Track A',
+      cuts: cuts,
+      seLayers: [
+        createTrackSeLayer(trackId: const TrackId('track-a'), slot: 1),
+      ],
+    );
+
+    Finder positionLane() => find.byWidgetPredicate(
+      (widget) =>
+          widget.key is ValueKey<String> &&
+          (widget.key! as ValueKey<String>).value.startsWith(
+            'storyboard-se-lane-row-',
+          ) &&
+          (widget.key! as ValueKey<String>).value.endsWith('-position'),
+    );
+
+    Future<
+      ({
+        List<(String laneId, String? headLaneId)> inGroup,
+        List<
+          ({
+            LayerId layerId,
+            TimelineRowAddress? headRow,
+            TimelineRowAddress? anchorRow,
+            List<TimelineRowAddress> spanRows,
+          })
+        >
+        escalated,
+        Track track,
+      })
+    >
+    pumpLanes(WidgetTester tester) async {
+      final track = trackWithSound([_cut('cut-a', name: 'Cut A')]);
+      final selection = ValueNotifier<TrackFrameRangeSelection?>(null);
+      final laneSelection = ValueNotifier<TimelineLaneSelection?>(null);
+      addTearDown(selection.dispose);
+      addTearDown(laneSelection.dispose);
+      final inGroup = <(String, String?)>[];
+      final escalated =
+          <
+            ({
+              LayerId layerId,
+              TimelineRowAddress? headRow,
+              TimelineRowAddress? anchorRow,
+              List<TimelineRowAddress> spanRows,
+            })
+          >[];
+
+      await _pumpStoryboardPanel(
+        tester,
+        _project([track]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        expandedSeAudioRows: {
+          StoryboardPanel.seRowKey(track, 0),
+          StoryboardPanel.seRowKey(track, 1),
+        },
+        expandedTransformGroups: {
+          StoryboardPanel.seRowKey(track, 0),
+          StoryboardPanel.seRowKey(track, 1),
+        },
+        laneRange: TimelineLaneRangeHooks(
+          selection: laneSelection,
+          onSelectUpdate: (layerId, laneId, anchor, head, headLaneId) =>
+              inGroup.add((laneId, headLaneId)),
+          onTapAt: (_, _, _) {},
+          onMoveBegin: () => false,
+          onMoveUpdate: (_) {},
+          onMoveEnd: () {},
+          onMoveCancel: () {},
+        ),
+        seSelect: StoryboardSeSelectCallbacks(
+          selectedRange: selection,
+          onDrag:
+              ({
+                required LayerId layerId,
+                required int anchorGlobalFrame,
+                required int headGlobalFrame,
+                TimelineRowAddress? headRow,
+                TimelineRowAddress? anchorRow,
+                List<TimelineRowAddress> spanRows = const [],
+              }) {
+                escalated.add((
+                  layerId: layerId,
+                  headRow: headRow,
+                  anchorRow: anchorRow,
+                  spanRows: spanRows,
+                ));
+              },
+          onClear: () => selection.value = null,
+        ),
+      );
+      return (inGroup: inGroup, escalated: escalated, track: track);
+    }
+
+    testWidgets('UP out of the group — across the audio strip onto the SE '
+        'row — JOINS the cells law with the sliced span', (tester) async {
+      final log = await pumpLanes(tester);
+      final seId = log.track.seLayers.single.id;
+      expect(positionLane(), findsOneWidget);
+
+      // The rail above the position lane: anchor-point (26), the header
+      // (26), then the SE row (30) — this fixture carries no audio, so no
+      // audio slot mounts (C5: the slot exists exactly when the lane is
+      // drawn). -93 from the press point (13px into the 26px lane) puts
+      // the pointer 80px above the lane top: inside the SE row by the
+      // painted heights, but a fourth uniform 26px row up — the exact
+      // reach a uniform resolve mis-answers (R9 #25's mutation pin).
+      final gesture = await tester.startGesture(
+        tester.getCenter(positionLane()),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(4, -93));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+
+      expect(log.escalated, isNotEmpty, reason: 'the drag left the group');
+      final last = log.escalated.last;
+      expect(last.layerId, seId);
+      expect(last.headRow, LayerRowAddress(seId));
+      expect(last.anchorRow, LaneRowAddress(seId, 'position'));
+      expect(
+        last.spanRows,
+        [
+          LayerRowAddress(seId),
+          LaneRowAddress(seId, transformGroupHeaderLane.laneId),
+          LaneRowAddress(seId, 'anchor-point'),
+          LaneRowAddress(seId, 'position'),
+        ],
+        reason: 'the display slice, top to bottom',
+      );
+    });
+
+    testWidgets('DOWN past the group\'s last member reaches the V row — '
+        'the TrackRowAddress head the old resolver could not represent', (
+      tester,
+    ) async {
+      final log = await pumpLanes(tester);
+      expect(positionLane(), findsOneWidget);
+
+      // Below position: scale (26), rotation (26), opacity (26), then the
+      // V row. +114 from the press point lands inside the V row.
+      final gesture = await tester.startGesture(
+        tester.getCenter(positionLane()),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(4, 114));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+
+      expect(log.escalated, isNotEmpty);
+      expect(
+        log.escalated.last.headRow,
+        TrackRowAddress(log.track.id),
+        reason: 'the cut row is a rail row like any other — the span may '
+            'end on it (선택범위는 자유롭게)',
+      );
+    });
+
+    testWidgets('IN-GROUP vertical reach hands the host a real head lane — '
+        'the stale hand-kept walk answered null for every SE anchor', (
+      tester,
+    ) async {
+      final log = await pumpLanes(tester);
+      expect(positionLane(), findsOneWidget);
+
+      // One lane row down: scale (26px pitch).
+      final gesture = await tester.startGesture(
+        tester.getCenter(positionLane()),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(4, 26));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+
+      expect(log.escalated, isEmpty, reason: 'never left the group');
+      expect(
+        log.inGroup.last,
+        ('position', 'scale'),
+        reason: 'the head lane resolves off the rows the panel draws',
+      );
+    });
+  });
+
   group('selection unification (2026-07-29 real-device round)', () {
     Track trackWithSound(List<Cut> cuts) => Track(
       id: const TrackId('track-a'),
@@ -1389,6 +1585,8 @@ void main() {
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
                 TimelineRowAddress? headRow,
+                TimelineRowAddress? anchorRow,
+                List<TimelineRowAddress> spanRows = const [],
               }) {
                 heads.add(headRow);
               },
@@ -1633,6 +1831,9 @@ Future<void> _pumpStoryboardPanel(
   StoryboardSeSelectCallbacks? seSelect,
   StoryboardStripSelectCallbacks? stripSelect,
   StoryboardMovieEndCallbacks? movieEnd,
+  TimelineLaneRangeHooks? laneRange,
+  Set<String> expandedSeAudioRows = const {},
+  Set<String> expandedTransformGroups = const {},
   ValueChanged<TrackId>? onSelectTrack,
   int? playheadGlobalFrame,
   ValueChanged<int>? onSeekGlobalFrame,
@@ -1675,6 +1876,9 @@ Future<void> _pumpStoryboardPanel(
           seSelect: seSelect,
           stripSelect: stripSelect,
           movieEnd: movieEnd,
+          laneRange: laneRange,
+          expandedSeAudioRows: expandedSeAudioRows,
+          expandedTransformGroups: expandedTransformGroups,
           onSelectTrack: onSelectTrack,
           playheadFrame: playheadGlobalFrame == null
               ? null

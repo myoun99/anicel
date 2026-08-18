@@ -227,8 +227,15 @@ import 'timeline/transform_lane_editing.dart'
         transformTrackWithLaneKeyToggled,
         transformTrackWithLaneSpanKeysShifted,
         transformTrackWithGroupReset;
+import 'timeline/se_name_tag_lane_editing.dart'
+    show seNameTagTrackWithLaneSpanKeysShifted;
 import 'timeline/se_name_tag_lane_policy.dart'
-    show laneIsSeNameTag, seNameTagLaneSpan;
+    show
+        laneIsSeNameTag,
+        seNameTagGroupLaneId,
+        seNameTagLaneDisplayOrder,
+        seNameTagLaneKeyFrames,
+        seNameTagLaneSpan;
 import 'timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder, transformLaneSpan;
 
@@ -1467,8 +1474,14 @@ class EditorSessionManager extends ChangeNotifier {
   /// The track that owns [layerId] as one of its rail rows — the resolver half
   /// of [isTrackOwnedRailLayerId], for the verbs that need the track and not
   /// just a yes.
-  Track? _trackOwnedRailOwner(LayerId layerId) =>
-      _trackSeAnywhere(layerId)?.track ?? _trackTransitionOwner(layerId);
+  Track? _trackOwnedRailOwner(LayerId layerId) {
+    final carrierTrackId = trackIdOfTransformLaneCarrier(layerId);
+    return _trackSeAnywhere(layerId)?.track ??
+        _trackTransitionOwner(layerId) ??
+        // C②: the V track's synthetic lane CARRIER is a rail row too — an
+        // escalated lane drag anchors the track-axis selection on it.
+        (carrierTrackId == null ? null : _trackById(carrierTrackId));
+  }
 
   /// Whether the active row can carry an on-canvas name tag (R5b): the
   /// SE rows, and only while a cut gives the canvas its geometry.
@@ -8795,6 +8808,12 @@ class EditorSessionManager extends ChangeNotifier {
         transformLaneDisplayOrder.forEach(add);
         continue;
       }
+      // The name-tag header stands for its seven members, exactly as the
+      // transform header does (한번에 잡아 이동).
+      if (laneId == seNameTagGroupLaneId) {
+        seNameTagLaneDisplayOrder.forEach(add);
+        continue;
+      }
       final address = parseEffectLaneId(laneId);
       if (address != null && address.parameterId == null) {
         for (final effect in effects) {
@@ -11335,11 +11354,18 @@ class EditorSessionManager extends ChangeNotifier {
     required int anchorGlobalFrame,
     required int headGlobalFrame,
     required TimelineRowAddress? headRow,
+    List<TimelineRowAddress> spanRows = const [],
   }) {
     final railRows = _storyboardRailRows(trackId);
     final anchorIndex = railRows.indexOf(anchorRow);
     final List<TimelineRowAddress> spanned;
-    if (anchorIndex < 0 || railRows.length < 2) {
+    if (spanRows.isNotEmpty) {
+      // C②: the escalated lane-anchor form — the span IS the display
+      // slice the panel handed over (lane rows included; the session's
+      // model-only rail list cannot name them, the same reason the
+      // timeline's spanRows channel exists).
+      spanned = spanRows;
+    } else if (anchorIndex < 0 || railRows.length < 2) {
       spanned = [anchorRow];
     } else {
       // R9 #25: the head arrives as an ADDRESS, resolved by the panel
@@ -11417,6 +11443,8 @@ class EditorSessionManager extends ChangeNotifier {
     required int anchorGlobalFrame,
     required int headGlobalFrame,
     TimelineRowAddress? headRow,
+    TimelineRowAddress? anchorRow,
+    List<TimelineRowAddress> spanRows = const [],
   }) {
     // The anchor row names its own track: gating on the ACTIVE track's row
     // list (and stating the selection on [selectedTrackId]) killed every
@@ -11427,13 +11455,16 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     // The SAME path the cut row takes — one select-drag step for the rail,
-    // not one per row kind.
+    // not one per row kind. [anchorRow]/[spanRows] are the escalated
+    // lane-anchor form (C②): the PANEL hands the sliced span of the rows
+    // it drew, exactly as the timeline's grids hand theirs.
     _updateTrackRangeSelection(
       trackId: owner.id,
-      anchorRow: LayerRowAddress(layerId),
+      anchorRow: anchorRow ?? LayerRowAddress(layerId),
       anchorGlobalFrame: anchorGlobalFrame,
       headGlobalFrame: headGlobalFrame,
       headRow: headRow,
+      spanRows: spanRows,
     );
   }
 
@@ -11997,6 +12028,14 @@ class EditorSessionManager extends ChangeNotifier {
       selectTrackRow(carrierTrackId);
     } else {
       if (_layerById(layerId) == null) {
+        // A REAL track row that just is not the ACTIVE track's (its lane
+        // law cannot hold the span here — the pre-existing gate): an
+        // escalated track-axis selection this drag painted must not
+        // FREEZE on the retreat, so the honest step still drops it (C②
+        // review; the same press-drops-selection rule as R5 #12).
+        if (_trackSeAnywhere(layerId) != null) {
+          clearStoryboardCutSelection();
+        }
         return;
       }
       if (activeLayerId != layerId) {
@@ -12055,8 +12094,13 @@ class EditorSessionManager extends ChangeNotifier {
   TransformTrack? _laneMoveShifted;
 
   /// The in-flight EFFECT-lane move's last valid chain (R6) — the effect
-  /// counterpart of [_laneMoveShifted]; exactly one of the two is ever set.
+  /// counterpart of [_laneMoveShifted]; exactly one of the three family
+  /// slots is ever set.
   List<LayerEffect>? _laneMoveShiftedEffects;
+
+  /// The in-flight NAME-TAG move's last valid track (C①) — the third
+  /// family slot.
+  SeNameTagTrack? _laneMoveShiftedNameTag;
 
   /// WHAT a lane selection edits: where its keys live, how they go back,
   /// and what a step in flight previews as.
@@ -12108,9 +12152,49 @@ class EditorSessionManager extends ChangeNotifier {
     if (isCamera && cameraTrack == null) {
       return null;
     }
+    final isSe = layer.kind == LayerKind.se;
     return _LaneMoveSubject(
       transformTrack: cameraTrack ?? layer.transformTrack,
       effects: layer.effects,
+      // The name-tag arm (C①): armed only on SE rows (the commit verb
+      // throws elsewhere). The subject layer is GLOBAL for track-SE rows
+      // (_laneVerbLayerFor), so the commit goes to the coordinator
+      // DIRECTLY — setSeNameTagForLayer window-converts on the way in,
+      // and routing through it would shift track-SE keys twice (the
+      // double-conversion trap the transform commit already names).
+      seNameTag: isSe ? (layer.seNameTag ?? const SeNameTag()) : null,
+      commitSeNameTag: isSe
+          ? (next) {
+              _cutCommandCoordinator.setSeNameTag(
+                layerId: layer.id,
+                seNameTag: next,
+                description: _laneMoveWhy,
+              );
+              notifyListeners();
+            }
+          : null,
+      previewSeNameTag: isSe
+          ? (next) {
+              // The subject layer is GLOBAL; previewLayers carries the
+              // ACTIVE-CUT DISPLAY CLONES (the SE block-move precedent) —
+              // a global-keyed entry here would jump every diamond by the
+              // cut's start on any non-first cut. The global form rides
+              // previewGlobalLayers for the storyboard's track-global
+              // strips.
+              final previewed = layer.copyWith(seNameTag: next);
+              final isTrackSe = isTrackSeLayerId(layer.id);
+              return BlockMoveDragPreview(
+                previewLayers: {
+                  layer.id: isTrackSe
+                      ? trackSeWindow.displayLayer(previewed)
+                      : previewed,
+                },
+                previewGlobalLayers: isTrackSe
+                    ? {layer.id: previewed}
+                    : const {},
+              );
+            }
+          : null,
       commitTransform: isCamera
           ? (next) => updateActiveCutCameraTrack(next, description: _laneMoveWhy)
           : (next) =>
@@ -12166,9 +12250,16 @@ class EditorSessionManager extends ChangeNotifier {
     final isEffectSelection = moveTargets.any(
       (laneId) => parseEffectLaneId(laneId) != null,
     );
+    // C①: the name-tag family is the third mode. Safe as an any() because
+    // the span switch keeps a lane selection single-family.
+    final isNameTagSelection =
+        !isEffectSelection && moveTargets.any(laneIsSeNameTag);
+    final nameTagKeys = subject.seNameTag?.track ?? SeNameTagTrack.empty();
     final keyed = moveTargets.any(
       (laneId) => isEffectSelection
           ? effectLaneKeyFrames(subject.effects, laneId).any(selection.contains)
+          : isNameTagSelection
+          ? seNameTagLaneKeyFrames(nameTagKeys, laneId).any(selection.contains)
           : transformLaneKeyFrames(
               subject.transformTrack,
               laneId,
@@ -12179,9 +12270,10 @@ class EditorSessionManager extends ChangeNotifier {
     }
     _laneMoveBefore = (subject: subject, selection: selection);
     _laneMoveShifted = null;
-    // Both in-flight slots clear together: a stale payload here would send
+    // All in-flight slots clear together: a stale payload here would send
     // the commit down the wrong branch.
     _laneMoveShiftedEffects = null;
+    _laneMoveShiftedNameTag = null;
 
     return true;
   }
@@ -12198,6 +12290,7 @@ class EditorSessionManager extends ChangeNotifier {
     if (frameDelta == 0) {
       _laneMoveShifted = null;
       _laneMoveShiftedEffects = null;
+      _laneMoveShiftedNameTag = null;
       _cameraLaneTrackPreview = null;
 
       dragPreview.value = null;
@@ -12223,16 +12316,30 @@ class EditorSessionManager extends ChangeNotifier {
       }
       _laneMoveShiftedEffects = shiftedEffects;
       dragPreview.value = subject.previewEffects(shiftedEffects);
-      final effectStart = before.selection.startIndex + frameDelta;
-      if (effectStart >= 0) {
-        laneRangeSelection.value = TimelineLaneSelection(
-          layerId: before.selection.layerId,
-          laneId: before.selection.laneId,
-          startIndex: effectStart,
-          endIndexExclusive: before.selection.endIndexExclusive + frameDelta,
-          laneIds: before.selection.laneIds,
-        );
+      _rideLaneMoveSelection(before.selection, frameDelta);
+      return;
+    }
+    // C①: the name-tag family's branch — same rigid group, same hold.
+    if (targets.any(laneIsSeNameTag)) {
+      final tag = subject.seNameTag;
+      final previewNameTag = subject.previewSeNameTag;
+      if (tag == null || previewNameTag == null) {
+        return;
       }
+      final shiftedTag = seNameTagTrackWithLaneSpanKeysShifted(
+        tag.track ?? SeNameTagTrack.empty(),
+        laneIds: targets,
+        rangeStartIndex: before.selection.startIndex,
+        rangeEndIndexExclusive: before.selection.endIndexExclusive,
+        frameDelta: frameDelta,
+      );
+      if (shiftedTag == null) {
+        // Blocked landing: the last valid preview and outline HOLD.
+        return;
+      }
+      _laneMoveShiftedNameTag = shiftedTag;
+      dragPreview.value = previewNameTag(tag.copyWith(track: shiftedTag));
+      _rideLaneMoveSelection(before.selection, frameDelta);
       return;
     }
     final shifted = transformTrackWithLaneSpanKeysShifted(
@@ -12252,16 +12359,23 @@ class EditorSessionManager extends ChangeNotifier {
     // reads it; the channel below still fires, to trip the row's gate.
     subject.onPreviewTransform?.call(shifted);
     dragPreview.value = subject.previewTransform(shifted);
-    final newStart = before.selection.startIndex + frameDelta;
-    if (newStart >= 0) {
-      laneRangeSelection.value = TimelineLaneSelection(
-        layerId: before.selection.layerId,
-        laneId: before.selection.laneId,
-        startIndex: newStart,
-        endIndexExclusive: before.selection.endIndexExclusive + frameDelta,
-        laneIds: before.selection.laneIds,
-      );
+    _rideLaneMoveSelection(before.selection, frameDelta);
+  }
+
+  /// The lane-move step's selection ride, one law for all three family
+  /// branches: the outline follows the shifted span (never below 0).
+  void _rideLaneMoveSelection(TimelineLaneSelection selection, int frameDelta) {
+    final newStart = selection.startIndex + frameDelta;
+    if (newStart < 0) {
+      return;
     }
+    laneRangeSelection.value = TimelineLaneSelection(
+      layerId: selection.layerId,
+      laneId: selection.laneId,
+      startIndex: newStart,
+      endIndexExclusive: selection.endIndexExclusive + frameDelta,
+      laneIds: selection.laneIds,
+    );
   }
 
   /// Commits the lane move as ONE undo step; the selection stays on the
@@ -12270,15 +12384,23 @@ class EditorSessionManager extends ChangeNotifier {
     final before = _laneMoveBefore;
     final shifted = _laneMoveShifted;
     final shiftedEffects = _laneMoveShiftedEffects;
+    final shiftedNameTag = _laneMoveShiftedNameTag;
     final landed = laneRangeSelection.value;
     _laneMoveBefore = null;
     _laneMoveShifted = null;
     _laneMoveShiftedEffects = null;
+    _laneMoveShiftedNameTag = null;
     _cameraLaneTrackPreview = null;
 
     dragPreview.value = null;
     if (before != null && shiftedEffects != null) {
       before.subject.commitEffects(shiftedEffects);
+      laneRangeSelection.value = landed;
+      return;
+    }
+    if (before != null && shiftedNameTag != null) {
+      final tag = before.subject.seNameTag ?? const SeNameTag();
+      before.subject.commitSeNameTag?.call(tag.copyWith(track: shiftedNameTag));
       laneRangeSelection.value = landed;
       return;
     }
@@ -12298,6 +12420,7 @@ class EditorSessionManager extends ChangeNotifier {
     _laneMoveBefore = null;
     _laneMoveShifted = null;
     _laneMoveShiftedEffects = null;
+    _laneMoveShiftedNameTag = null;
     _cameraLaneTrackPreview = null;
 
     dragPreview.value = null;
@@ -12862,12 +12985,19 @@ class EditorSessionManager extends ChangeNotifier {
       return frameRangeSelection.value;
     }
     final live = trackFrameRangeSelection.value;
-    final anchor = live?.anchorRow;
-    if (live == null || anchor is! LayerRowAddress) {
+    // C②: an ESCALATED span anchors on a LANE row — its owning layer is
+    // the machine's anchor layer, so the span the band advertises is the
+    // span the move machine accepts.
+    final anchorLayerId = switch (live?.anchorRow) {
+      LayerRowAddress(:final layerId) => layerId,
+      LaneRowAddress(:final layerId) => layerId,
+      _ => null,
+    };
+    if (live == null || anchorLayerId == null) {
       return null;
     }
     return TimelineFrameRangeSelection(
-      layerId: anchor.layerId,
+      layerId: anchorLayerId,
       startIndex: live.startFrame,
       endIndexExclusive: live.endFrameExclusive,
       layerIds: [
@@ -13440,6 +13570,39 @@ class EditorSessionManager extends ChangeNotifier {
   /// NON-drawing rows carry content in range (keys ride the frame axis
   /// only). Empty rows of any kind never block (UI-R24 #3: only the
   /// frames inside the selection move).
+  /// The instruction riders' commit commands — ONE two-armed projection
+  /// for BOTH the plain-slide and the rigid commit branches (C1/C④). The
+  /// TRANSITION row's shifted spans land through the row's own
+  /// track-owned writer (the edge drags' command): it has no cut to be
+  /// addressed by, so the cut gate must never swallow it. Cut-local
+  /// instruction rows keep the cut-addressed command they always had.
+  List<Command> _instructionShiftCommands(
+    Map<LayerId, Map<int, InstructionEvent>> instructionShifted,
+    Cut? cut,
+  ) => [
+    for (final entry in instructionShifted.entries)
+      if (_trackTransitionOwner(entry.key) case final owner?)
+        UpdateTrackTransitionLayerCommand(
+          repository: _repository,
+          trackId: owner.id,
+          before: owner.transitionLayer,
+          after: owner.transitionLayer.copyWith(
+            instructions: SplayTreeMap<int, InstructionEvent>.from(
+              entry.value,
+            ),
+          ),
+          label: 'Move transition',
+        )
+      else if (cut != null)
+        UpdateLayerInstructionsCommand(
+          repository: _repository,
+          cutId: cut.id,
+          layerId: entry.key,
+          instructions: entry.value,
+          description: 'Move instruction keys',
+        ),
+  ];
+
   bool _updateMultiRowRangeMove(
     TimelineFrameRangeSelection selection,
     int frameDelta,
@@ -13470,7 +13633,6 @@ class EditorSessionManager extends ChangeNotifier {
     final drawingSourceIds = <LayerId>[];
     final sePassengerIds = <LayerId>[];
     var cameraRides = false;
-    final instructionRiders = <Layer>[];
     for (final id in selection.spanLayerIds) {
       if (_blockMoveEligible(id)) {
         final layer = _layerById(id);
@@ -13497,10 +13659,15 @@ class EditorSessionManager extends ChangeNotifier {
         }
         continue;
       }
-      if (layer.kind == LayerKind.instruction) {
-        if (anyKeyIn(layer.instructions.keys)) {
-          instructionRiders.add(layer);
-        }
+      // Instruction rows (the transition included, via its display clone)
+      // are frame-axis riders — WHO rides was decided at begin
+      // (_rangeMoveInstructionSources, the same list the plain slide
+      // consumes). Re-deriving them here is the copy that silently
+      // dropped the TRANSITION on rigid steps (C④): its clone's kind
+      // matched no arm, so the spans snapped home the moment the pointer
+      // crossed a row.
+      if (layer.kind == LayerKind.instruction ||
+          layer.kind == LayerKind.transition) {
         continue;
       }
       // A row that is neither move-eligible nor a known frame-axis rider
@@ -13587,8 +13754,12 @@ class EditorSessionManager extends ChangeNotifier {
     }
     // R27 #8: the frame-axis riders shift with the same frame delta. A
     // rider that cannot shift voids the move like any other passenger.
+    // A PURE row hop (frameDelta 0) moves no frames, so the riders simply
+    // hold — the shifters answer null for "nothing to shift" (the R28 #5
+    // conflation) and reading that as "blocked" killed every vertical
+    // step of a mixed span.
     Map<int, CameraPose>? cameraShifted;
-    if (cameraRides) {
+    if (cameraRides && frameDelta != 0) {
       cameraShifted = shiftCameraKeysInRange(
         keyframes: activeCutOrNull?.camera.keyframes ?? const {},
         rangeStartIndex: selection.startIndex,
@@ -13600,17 +13771,19 @@ class EditorSessionManager extends ChangeNotifier {
       }
     }
     final instructionShifted = <LayerId, Map<int, InstructionEvent>>{};
-    for (final layer in instructionRiders) {
-      final shifted = shiftInstructionEventsInRange(
-        events: layer.instructions,
-        rangeStartIndex: selection.startIndex,
-        rangeEndIndexExclusive: selection.endIndexExclusive,
-        frameDelta: frameDelta,
-      );
-      if (shifted == null) {
-        return true;
+    if (frameDelta != 0) {
+      for (final layer in _rangeMoveInstructionSources ?? const <Layer>[]) {
+        final shifted = shiftInstructionEventsInRange(
+          events: layer.instructions,
+          rangeStartIndex: selection.startIndex,
+          rangeEndIndexExclusive: selection.endIndexExclusive,
+          frameDelta: frameDelta,
+        );
+        if (shifted == null) {
+          return true;
+        }
+        instructionShifted[layer.id] = shifted;
       }
-      instructionShifted[layer.id] = shifted;
     }
     // A valid rigid landing supersedes the slide / row-change plans.
     _rangeMoveMultiRowPlan = plan;
@@ -13637,8 +13810,13 @@ class EditorSessionManager extends ChangeNotifier {
         },
         // R27 #8: the frame-axis riders preview their shifted spans in
         // place (the cells row renders straight off layer.instructions).
+        // ⛔The TRANSITION stays OFF this map: on the ACTIVE track
+        // _layerById finds its display clone under the same id, and a
+        // global-keyed entry here would leak into the cut timeline's
+        // read-only projection. It previews on its own channel below.
         for (final entry in instructionShifted.entries)
-          if (_layerById(entry.key) != null)
+          if (_trackTransitionOwner(entry.key) == null &&
+              _layerById(entry.key) != null)
             entry.key: _layerById(
               entry.key,
             )!.copyWith(instructions: entry.value),
@@ -13661,9 +13839,10 @@ class EditorSessionManager extends ChangeNotifier {
           ? null
           : _layerById(_rangeMoveCameraLayerId!)?.copyWith(),
     );
-    // C1: the transition channel follows every published step — this
-    // path's shift map never carries a transition entry, so the write is
-    // the CLEAR that keeps a stale plain-slide form from lingering.
+    // C1: the transition channel follows every published step — a riding
+    // transition previews its shifted spans here (C④: it used to be
+    // absent from this path's shift map, so the write CLEARED the channel
+    // and the spans snapped home on every rigid step).
     _publishRangeMoveTransitionPreview(instructionShifted);
     // The outline rides the rigid shift to the target rows (rows that
     // carried nothing — off the lattice or shifted off it — drop out of
@@ -13845,6 +14024,13 @@ class EditorSessionManager extends ChangeNotifier {
       _rangeMoveInstructionRowChange = null;
       _rangeMoveMultiRowPlan = null;
       _rangeMoveMultiSeRowChanges = null;
+      // …and the rigid step's RIDER shifts die WITH its plans: a stale
+      // shift surviving here commits alone when the slide step holds —
+      // the rigid group torn in one silent undo step (transition spans
+      // moving while the blocks stay home). A valid slide step re-derives
+      // them fresh below.
+      _rangeMoveCameraShifted = null;
+      _rangeMoveInstructionShifted = null;
       // Cross-layer slide (UI-R18 #1): every spanned layer plans the SAME
       // frame delta on itself; any illegal landing HOLDS the last valid
       // preview (all-or-nothing, the single-layer discipline). KEY
@@ -13936,11 +14122,16 @@ class EditorSessionManager extends ChangeNotifier {
         }
       }
       // Instruction rows preview with their shifted spans — the cells row
-      // renders straight off layer.instructions. The track-owned
-      // TRANSITION row is not a cut layer, so it is absent from
-      // [_layerById] and skips this map; it previews on its own channel
-      // below instead.
+      // renders straight off layer.instructions. ⛔The track-owned
+      // TRANSITION row stays OFF this map: on the ACTIVE track
+      // [_layerById] DOES find its display clone under the same id
+      // (layer_controller inserts it), and a global-keyed entry here
+      // would leak into the cut timeline's read-only projection. It
+      // previews on its own channel below instead.
       for (final entry in instructionShifted.entries) {
+        if (_trackTransitionOwner(entry.key) != null) {
+          continue;
+        }
         final layer = _layerById(entry.key);
         if (layer != null) {
           previewLayers[entry.key] = layer.copyWith(
@@ -14174,19 +14365,12 @@ class EditorSessionManager extends ChangeNotifier {
         );
       }
       // R27 #8: the frame-axis riders (camera keys, instruction spans)
-      // land in the SAME undo step as the rigid row move.
-      if (cut != null && instructionShifted != null) {
-        for (final entry in instructionShifted.entries) {
-          commands.add(
-            UpdateLayerInstructionsCommand(
-              repository: _repository,
-              cutId: cut.id,
-              layerId: entry.key,
-              instructions: entry.value,
-              description: 'Move instruction keys',
-            ),
-          );
-        }
+      // land in the SAME undo step as the rigid row move — through the
+      // ONE two-armed projection the plain slide commits with, so a
+      // riding TRANSITION lands too (C④: this branch used to carry a
+      // cut-gated copy with the transition arm missing).
+      if (instructionShifted != null) {
+        commands.addAll(_instructionShiftCommands(instructionShifted, cut));
       }
       if (cut != null && cameraShifted != null) {
         commands.add(
@@ -14249,32 +14433,7 @@ class EditorSessionManager extends ChangeNotifier {
               ),
             ),
         if (instructionShifted != null)
-          for (final entry in instructionShifted.entries)
-            // C1 (2026-08-17): the TRANSITION row's shifted spans land
-            // through the row's own track-owned writer (the edge drags'
-            // command) — it has no cut to be addressed by, so the cut
-            // gate below must not swallow it. Cut-local instruction rows
-            // keep the cut-addressed command they always had.
-            if (_trackTransitionOwner(entry.key) case final owner?)
-              UpdateTrackTransitionLayerCommand(
-                repository: _repository,
-                trackId: owner.id,
-                before: owner.transitionLayer,
-                after: owner.transitionLayer.copyWith(
-                  instructions: SplayTreeMap<int, InstructionEvent>.from(
-                    entry.value,
-                  ),
-                ),
-                label: 'Move transition',
-              )
-            else if (cut != null)
-              UpdateLayerInstructionsCommand(
-                repository: _repository,
-                cutId: cut.id,
-                layerId: entry.key,
-                instructions: entry.value,
-                description: 'Move instruction keys',
-              ),
+          ..._instructionShiftCommands(instructionShifted, cut),
         if (cameraShifted != null && cut != null)
           UpdateCutCameraCommand(
             repository: _repository,
@@ -17147,20 +17306,31 @@ class _LaneMoveSubject {
     required this.commitEffects,
     required this.previewTransform,
     required this.previewEffects,
+    this.seNameTag,
+    this.commitSeNameTag,
+    this.previewSeNameTag,
     this.onPreviewTransform,
   });
 
-  /// The transform lanes' keys, and the effect chain's. Which one a drag
-  /// reads is the LANE's question — an effect lane on a camera row moves
-  /// the layer's chain while its Position lane moves the cut's camera.
+  /// The transform lanes' keys, the effect chain's, and — on SE rows —
+  /// the name tag's. Which one a drag reads is the LANE's question — an
+  /// effect lane on a camera row moves the layer's chain while its
+  /// Position lane moves the cut's camera.
   final TransformTrack transformTrack;
   final List<LayerEffect> effects;
 
+  /// The row's name tag (C①). Null on rows that cannot carry one — the
+  /// nametag arm is only armed where a tag can exist, because the commit
+  /// verb throws for non-SE layers.
+  final SeNameTag? seNameTag;
+
   final void Function(TransformTrack next) commitTransform;
   final void Function(List<LayerEffect> next) commitEffects;
+  final void Function(SeNameTag next)? commitSeNameTag;
 
   final BlockMoveDragPreview Function(TransformTrack next) previewTransform;
   final BlockMoveDragPreview Function(List<LayerEffect> next) previewEffects;
+  final BlockMoveDragPreview Function(SeNameTag next)? previewSeNameTag;
 
   /// A side channel for subjects whose lanes are NOT built from the row's
   /// own Layer, so the preview cannot travel in [previewTransform]'s

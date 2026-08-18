@@ -131,27 +131,94 @@ resolveLaneSpanEscalation({
   required String laneId,
   required int rowDelta,
 }) {
+  final escalation = resolveLaneSpanEscalationOverAddresses(
+    rows: [for (final row in rows) row.address],
+    layerId: layerId,
+    laneId: laneId,
+    rowDelta: rowDelta,
+  );
+  if (escalation == null) {
+    return null;
+  }
+  return switch (escalation.head) {
+    LayerRowAddress(:final layerId) => (
+      headLayerId: layerId,
+      headLaneId: null,
+      spanRows: escalation.spanRows,
+    ),
+    LaneRowAddress(:final layerId, :final laneId) => (
+      headLayerId: layerId,
+      headLaneId: laneId,
+      spanRows: escalation.spanRows,
+    ),
+    // A track row never appears on the grids that call this form.
+    TrackRowAddress() => null,
+  };
+}
+
+/// The lane row a still-IN-GROUP lane drag has reached, or null for the
+/// anchor lane / off-screen — the in-group half of the escalation law,
+/// resolved off the SAME drawn rows (C②: the hosts used to keep their own
+/// lane lists for this, and the storyboard's drifted from what the panel
+/// draws — a member-anchored vertical drag selected one lane only).
+String? resolveInGroupHeadLane({
+  required List<TimelineRowAddress?> rows,
+  required LayerId layerId,
+  required String laneId,
+  required int rowDelta,
+}) {
   if (rowDelta == 0 || rows.isEmpty) {
     return null;
   }
   final anchor = LaneRowAddress(layerId, laneId);
-  final anchorIndex = rows.indexWhere((row) => row.address == anchor);
+  final anchorIndex = rows.indexWhere((row) => row == anchor);
   if (anchorIndex < 0) {
     return null;
   }
   final head = rows[(anchorIndex + rowDelta).clamp(0, rows.length - 1)];
-  if (head.isLane && head.layer.id == layerId) {
+  return head is LaneRowAddress && head.layerId == layerId
+      ? head.laneId
+      : null;
+}
+
+/// [resolveLaneSpanEscalation] stated in the ADDRESS vocabulary — the ONE
+/// escalation law, now consumable by surfaces whose rows are not
+/// [TimelineDisplayRow]s: the storyboard rail holds a TRACK row (no Layer
+/// to wrap) and an address-less audio strip (null — it takes space but
+/// cannot be a head; the walk steps back toward the anchor over it, the
+/// [_railRowAtCrossOffset] rule).
+({TimelineRowAddress head, List<TimelineRowAddress> spanRows})?
+resolveLaneSpanEscalationOverAddresses({
+  required List<TimelineRowAddress?> rows,
+  required LayerId layerId,
+  required String laneId,
+  required int rowDelta,
+}) {
+  if (rowDelta == 0 || rows.isEmpty) {
+    return null;
+  }
+  final anchor = LaneRowAddress(layerId, laneId);
+  final anchorIndex = rows.indexWhere((row) => row == anchor);
+  if (anchorIndex < 0) {
+    return null;
+  }
+  var headIndex = (anchorIndex + rowDelta).clamp(0, rows.length - 1);
+  while (headIndex != anchorIndex && rows[headIndex] == null) {
+    headIndex += headIndex > anchorIndex ? -1 : 1;
+  }
+  final head = rows[headIndex];
+  if (head == null) {
+    return null;
+  }
+  if (head is LaneRowAddress && head.layerId == layerId) {
     // Still inside the anchor layer's own lane group (a layer's lanes are
     // contiguous in display order) — the lane span law owns the drag.
     return null;
   }
+  final low = anchorIndex < headIndex ? anchorIndex : headIndex;
+  final high = anchorIndex < headIndex ? headIndex : anchorIndex;
   return (
-    headLayerId: head.layer.id,
-    headLaneId: head.lane?.laneId,
-    spanRows: resolveSelectionSpanRows(
-      rows: rows,
-      anchor: anchor,
-      rowDelta: rowDelta,
-    ),
+    head: head,
+    spanRows: [for (var i = low; i <= high; i += 1) ?rows[i]],
   );
 }
