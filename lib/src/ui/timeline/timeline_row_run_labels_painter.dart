@@ -7,7 +7,8 @@ import 'layer_label_controls.dart' show layerMarkColor;
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_frame_geometry.dart';
-import 'timeline_frame_range_policy.dart' show timelineDurationLabel;
+import 'timeline_frame_range_policy.dart'
+    show timelineCommaLabelVisibleFor, timelineDurationLabel;
 import 'timeline_glyph_cache.dart';
 
 /// One block's printed length and where it sits — the probe surface tests
@@ -140,6 +141,11 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
       final endIndexExclusive = key + (entry.length ?? 1);
       if (endIndexExclusive <= frameStartIndex ||
           startIndex >= frameEndIndexExclusive) {
+        continue;
+      }
+      // D23: a 1-comma block prints nothing — paint and semantics fall
+      // silent together (the semantics builder iterates these labels).
+      if (!timelineCommaLabelVisibleFor(endIndexExclusive - startIndex)) {
         continue;
       }
       final start = _edge(startIndex);

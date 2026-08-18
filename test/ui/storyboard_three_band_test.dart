@@ -242,6 +242,33 @@ void main() {
     expect(block.cellCommaLabels, ['4', '5', '3']);
   });
 
+  testWidgets('D23: a ONE-comma panel prints no comma count — the shared '
+      'predicate, same gate as the timeline run labels', (tester) async {
+    final layer = Layer(
+      id: const LayerId('cut-1-sb'),
+      name: 'SB',
+      kind: LayerKind.storyboard,
+      frames: [
+        Frame(id: const FrameId('cut-1-a'), duration: 1, strokes: const []),
+        Frame(id: const FrameId('cut-1-b'), duration: 1, strokes: const []),
+      ],
+      timeline: {
+        // Panels are the cut's coverage projection — the last one runs to
+        // the cut's end, so the 1-comma panel goes LAST to stay 1 comma.
+        0: TimelineExposure.drawing(const FrameId('cut-1-a'), length: 11),
+        11: TimelineExposure.drawing(const FrameId('cut-1-b'), length: 1),
+      },
+    );
+    await _pump(tester, storyboardLayer: layer);
+    final block = requireCutBlock(tester, 'cut-1');
+
+    expect(
+      block.cellCommaLabels,
+      ['11', ''],
+      reason: 'length 1 is silent (2코마부터만 표시); length 11 still counts',
+    );
+  });
+
   testWidgets('#15: the no-row cut\'s single placeholder panel prints no '
       'writing at all', (tester) async {
     await _pump(tester);
