@@ -394,6 +394,16 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     if (session.trackFrameRangeSelection.value != null) {
       return const StoryboardEditCut();
     }
+    // …and a live CELL band speaks before the standing row does, exactly
+    // as it does in this class's [deleteSubject]. This panel owns no
+    // cell-rename dispatch, so a band holding nothing ENDS the ladder —
+    // without this it fell through to the row rung below, where a
+    // TrackRowAddress cursor means "rename the cut". Delete and Rename
+    // are documented as ONE ladder; splitting them here would leave the
+    // same band dark on one button and aimed at the cut on the other.
+    if (session.cellSelectionClaimsButHoldsNothing) {
+      return null;
+    }
     switch (session.selectedRow) {
       case LayerRowAddress(:final layerId)
           when session.isTrackTransitionLayerId(layerId):

@@ -8332,7 +8332,14 @@ class EditorSessionManager extends ChangeNotifier {
         // SYNCED attach rows own no timeline — linked reuse happens
         // through the BASE's links (link the base cel instead). Free
         // attach rows author normally (UI-R21 #3).
-        isSyncedAttachedLayer(layer)) {
+        isSyncedAttachedLayer(layer) ||
+        // An IMAGE row holds ONE cel by definition, so a second exposure
+        // of it is a write the covering normalization rebuilds from the
+        // same write (D22) — nothing changes and the press costs a
+        // phantom undo entry. Its two neighbours on this pill already
+        // refuse (독립 붙여넣기 always did, 잘라내기 since this round);
+        // this was the third button still lit for a row nothing touches.
+        layerKindHoldsSingleCel(layer.kind)) {
       return false;
     }
 
@@ -8383,6 +8390,14 @@ class EditorSessionManager extends ChangeNotifier {
   ///
   /// ⛔Renamed off "cut" in T3 — see [blankExposureAtCurrentFrame].
   bool get canBlankExposureAtCurrentFrame {
+    // A live band CLAIMS this press exactly as it claims Delete's and the
+    // comma's — X edits an EXISTING hold, so a band that resolves to
+    // nothing blankable ends the ladder rather than redirecting onto
+    // whatever row happens to be active. (⛔Not the `＋` case: that button
+    // CREATES and is deliberately band-free.)
+    if (cellSelectionClaimsButHoldsNothing) {
+      return false;
+    }
     final layer = activeLayer;
     // SYNCED attach rows have no timing of their own (the base owns it);
     // free attach rows cut exposures like any drawing layer (UI-R21 #3).
@@ -9552,6 +9567,14 @@ class EditorSessionManager extends ChangeNotifier {
   bool get canDuplicateActiveBlock {
     final layer = activeLayer;
     if (layer == null || !layerKindHoldsDrawings(layer.kind)) {
+      return false;
+    }
+    // D22: a SINGLE-CEL (image) row's one block is pinned by the covering
+    // normalization, so the duplicate never lands — but the independent
+    // half MINTS a cel first, leaving a drawing no exposure references
+    // and nothing on screen shows. A second cel is the one thing this
+    // row's definition rules out.
+    if (layerKindHoldsSingleCel(layer.kind)) {
       return false;
     }
     return coveringDrawingBlockAt(
@@ -14874,7 +14897,7 @@ class EditorSessionManager extends ChangeNotifier {
     // the active row instead. There is no selection-wide rename to route
     // to, so a claiming band whose rows hold no editable block simply
     // ends the ladder.
-    if (cellSelectionClaimsSubject && _selectionBlockStartsByLayer() == null) {
+    if (cellSelectionClaimsButHoldsNothing) {
       return false;
     }
     final layer = activeLayer;
@@ -14988,6 +15011,16 @@ class EditorSessionManager extends ChangeNotifier {
   /// band is editable". Reading only the collector let a refused band
   /// fall through and delete an unselected row's drawing.
   bool get cellSelectionClaimsSubject => frameRangeSelection.value != null;
+
+  /// The state every cell verb's ladder must END on: a band is up, and it
+  /// holds nothing any of them can act on.
+  ///
+  /// Stated once because three ladders read it — the cell rename, the
+  /// X-here, and the storyboard panel's edit resolver — and a verb that
+  /// re-derived it would be free to disagree, which is the whole failure
+  /// this law exists to stop.
+  bool get cellSelectionClaimsButHoldsNothing =>
+      cellSelectionClaimsSubject && _selectionBlockStartsByLayer() == null;
 
   bool get canDeleteCellAtCurrentFrame {
     if (canDeleteCellForSelection) {

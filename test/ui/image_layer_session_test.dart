@@ -363,8 +363,59 @@ void main() {
     expect(
       s.canSetCommaForStoryboardCursor,
       isFalse,
-      reason: 'the storyboard panel\'s comma gate is the last member of '
-          'the family — its own dispatch already refuses this band',
+      reason: 'the storyboard panel\'s comma gate reads it too — its own '
+          'dispatch already refuses this band',
+    );
+    expect(
+      s.canBlankExposureAtCurrentFrame,
+      isFalse,
+      reason: 'X-here edits an EXISTING hold, so it ends the ladder here '
+          'instead of shortening the unswept active row\'s hold',
+    );
+
+    // The STORYBOARD panel runs its own ladders and must give the same
+    // answers — with the cursor on the track row, where its last rungs
+    // mean "the cut".
+    s.selectRow(TrackRowAddress(s.activeTrack.id));
+    final panel = StoryboardToolbarPanelContext(s);
+    expect(panel.deleteSubject, DeleteSubject.nothing);
+    expect(
+      panel.canEditInstance,
+      isFalse,
+      reason: 'the panel\'s edit resolver is the same ladder as its '
+          'delete — falling through would open the CUT rename for a band '
+          'the user drew over a picture row',
+    );
+    expect(panel.editTarget, isNull);
+  });
+
+  test('the image row refuses every verb that would mint or re-expose a '
+      'second cel — duplicate and LINK paste join the standdown (D22)', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.addLayerOfKind(LayerKind.image);
+
+    for (final frameIndex in [0, 5]) {
+      s.selectFrameIndex(frameIndex);
+      expect(
+        s.canDuplicateActiveBlock,
+        isFalse,
+        reason: 'at $frameIndex: the independent half MINTS a cel the '
+            'normalization then strands — a second cel is the one thing '
+            'this row\'s definition rules out',
+      );
+    }
+
+    // Copy fills the clipboard from the picture row (kept lit on purpose),
+    // and the LINK paste that would re-expose it stands down.
+    s.selectFrameIndex(0);
+    expect(s.canCopyFrameAtCurrentFrame, isTrue);
+    s.copyFrameAtCurrentFrame();
+    expect(
+      s.canPasteLinkedFrameAtCurrentFrame,
+      isFalse,
+      reason: 'a second exposure of the one cel is rebuilt by the same '
+          'write — the phantom undo entry the cut standdown exists to stop',
     );
   });
 
