@@ -229,6 +229,91 @@ void main() {
     );
   });
 
+  test('a PURE row hop (frameDelta 0) carries the blocks and HOLDS the '
+      'riders in place — "nothing to shift" is not "blocked"', () {
+    final session = sessionFor();
+    selectMixedSpan(session);
+
+    expect(session.beginTrackRangeMoveDrag(_seLayerId), isTrue);
+    // Straight down onto S2: no frame delta at all.
+    session.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: _seLayer2Id);
+    session.endFrameRangeMoveDrag();
+
+    expect(
+      session.repository
+          .requireProject()
+          .tracks
+          .single
+          .seLayers
+          .last
+          .timeline
+          .keys
+          .toList(),
+      [2],
+      reason: 'the sound hopped rows at its own frames',
+    );
+    expect(
+      transitionSpansOf(session).keys.toList(),
+      [2],
+      reason: 'the transition moved no frames — it simply holds',
+    );
+
+    session.undo();
+    expect(
+      session.repository
+          .requireProject()
+          .tracks
+          .single
+          .seLayers
+          .first
+          .timeline
+          .keys
+          .toList(),
+      [2],
+    );
+  });
+
+  test('an ILLEGAL slide step after a valid rigid step kills the rigid '
+      'riders with the rigid plans — release commits NOTHING, never the '
+      'riders alone', () {
+    final session = sessionFor();
+    selectMixedSpan(session);
+
+    expect(session.beginTrackRangeMoveDrag(_seLayerId), isTrue);
+    // Step A: a valid rigid diagonal (+1, S1 → S2) captures rider shifts.
+    session.updateFrameRangeMoveDrag(frameDelta: 1, targetLayerId: _seLayer2Id);
+    // Step B: back over the grab row, far left — the slide owns the step
+    // and the transition's landing (-7) is illegal, so it HOLDS.
+    session.updateFrameRangeMoveDrag(frameDelta: -9);
+    session.endFrameRangeMoveDrag();
+
+    // The rigid group is all-or-nothing THROUGH the release: nothing
+    // landed — most of all not the transition alone.
+    expect(transitionSpansOf(session).keys.toList(), [2]);
+    expect(
+      session.repository
+          .requireProject()
+          .tracks
+          .single
+          .seLayers
+          .first
+          .timeline
+          .keys
+          .toList(),
+      [2],
+    );
+    expect(
+      session.repository
+          .requireProject()
+          .tracks
+          .single
+          .seLayers
+          .last
+          .timeline,
+      isEmpty,
+    );
+  });
+
   test('the plain slide keeps the transition OFF the layers map too — the '
       'active track\'s display clone shares its id', () {
     final session = sessionFor();

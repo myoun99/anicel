@@ -506,6 +506,100 @@ void main() {
     });
   });
 
+  group('C② — the escalated lane-anchored selection is a full citizen', () {
+    test('a span anchored on a LANE row still MOVES its blocks — the band '
+        'it paints is the span the machine accepts', () {
+      final session = sessionFor();
+      // The escalated form the storyboard panel dispatches: lane anchor,
+      // display-slice span.
+      session.updateTrackRowRangeSelectionByFrame(
+        layerId: _seLayerId,
+        anchorGlobalFrame: 2,
+        headGlobalFrame: 4,
+        anchorRow: const LaneRowAddress(_seLayerId, 'position'),
+        spanRows: const [
+          LayerRowAddress(_seLayerId),
+          LaneRowAddress(_seLayerId, 'transform-group'),
+          LaneRowAddress(_seLayerId, 'position'),
+        ],
+      );
+      final selection = session.trackFrameRangeSelection.value!;
+      expect(selection.anchorRow, const LaneRowAddress(_seLayerId, 'position'));
+      expect(selection.startFrame, 2);
+
+      expect(
+        session.beginTrackRangeMoveDrag(_seLayerId),
+        isTrue,
+        reason: 'the lane anchor resolves to its owning layer — a refusal '
+            'here silently re-drew the selection instead of moving',
+      );
+      session.updateFrameRangeMoveDrag(frameDelta: 2);
+      session.endFrameRangeMoveDrag();
+
+      expect(seLayerOf(session).timeline.keys, [4, 9]);
+    });
+
+    test('an in-group retreat on a NON-active track drops the escalated '
+        'selection instead of freezing it', () {
+      const track2Id = TrackId('verbs-track-2');
+      const otherSeId = LayerId('verbs-other-se');
+      final session = EditorSessionManager(
+        initialProject: Project(
+          id: const ProjectId('verbs-project-3'),
+          name: 'Verbs 3',
+          createdAt: DateTime.utc(2026, 8, 18),
+          tracks: [
+            Track(
+              id: _trackId,
+              name: 'Video',
+              cuts: [_cut('cut-1', 8)],
+            ),
+            Track(
+              id: track2Id,
+              name: 'Video 2',
+              cuts: [_cut('t2-cut-1', 8)],
+              seLayers: [
+                Layer(
+                  id: otherSeId,
+                  name: 'S1',
+                  kind: LayerKind.se,
+                  frames: const [],
+                  timeline: const {},
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+      addTearDown(session.dispose);
+
+      // The escalated selection this drag painted on track 2…
+      session.updateTrackRowRangeSelectionByFrame(
+        layerId: otherSeId,
+        anchorGlobalFrame: 2,
+        headGlobalFrame: 4,
+        anchorRow: const LaneRowAddress(otherSeId, 'position'),
+        spanRows: const [
+          LayerRowAddress(otherSeId),
+          LaneRowAddress(otherSeId, 'position'),
+        ],
+      );
+      expect(session.trackFrameRangeSelection.value, isNotNull);
+
+      // …must not FREEZE when the drag retreats into the lane group (the
+      // non-active track's lane law cannot hold the span — the
+      // pre-existing gate — but the retreat still drops the old span).
+      session.updateLaneRangeSelectionDrag(
+        layerId: otherSeId,
+        laneId: 'position',
+        anchorIndex: 2,
+        headIndex: 3,
+        framesAreGlobal: true,
+      );
+      expect(session.trackFrameRangeSelection.value, isNull);
+    });
+  });
+
   group('Range MOVE on the CUT row — the band rides the cut drag (D17)', () {
     test('the selection FOLLOWS the previewed seat every step, and lands '
         'with the commit', () {

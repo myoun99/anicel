@@ -12028,6 +12028,14 @@ class EditorSessionManager extends ChangeNotifier {
       selectTrackRow(carrierTrackId);
     } else {
       if (_layerById(layerId) == null) {
+        // A REAL track row that just is not the ACTIVE track's (its lane
+        // law cannot hold the span here — the pre-existing gate): an
+        // escalated track-axis selection this drag painted must not
+        // FREEZE on the retreat, so the honest step still drops it (C②
+        // review; the same press-drops-selection rule as R5 #12).
+        if (_trackSeAnywhere(layerId) != null) {
+          clearStoryboardCutSelection();
+        }
         return;
       }
       if (activeLayerId != layerId) {
@@ -12166,9 +12174,26 @@ class EditorSessionManager extends ChangeNotifier {
             }
           : null,
       previewSeNameTag: isSe
-          ? (next) => BlockMoveDragPreview(
-              previewLayers: {layer.id: layer.copyWith(seNameTag: next)},
-            )
+          ? (next) {
+              // The subject layer is GLOBAL; previewLayers carries the
+              // ACTIVE-CUT DISPLAY CLONES (the SE block-move precedent) —
+              // a global-keyed entry here would jump every diamond by the
+              // cut's start on any non-first cut. The global form rides
+              // previewGlobalLayers for the storyboard's track-global
+              // strips.
+              final previewed = layer.copyWith(seNameTag: next);
+              final isTrackSe = isTrackSeLayerId(layer.id);
+              return BlockMoveDragPreview(
+                previewLayers: {
+                  layer.id: isTrackSe
+                      ? trackSeWindow.displayLayer(previewed)
+                      : previewed,
+                },
+                previewGlobalLayers: isTrackSe
+                    ? {layer.id: previewed}
+                    : const {},
+              );
+            }
           : null,
       commitTransform: isCamera
           ? (next) => updateActiveCutCameraTrack(next, description: _laneMoveWhy)
@@ -12960,12 +12985,19 @@ class EditorSessionManager extends ChangeNotifier {
       return frameRangeSelection.value;
     }
     final live = trackFrameRangeSelection.value;
-    final anchor = live?.anchorRow;
-    if (live == null || anchor is! LayerRowAddress) {
+    // C②: an ESCALATED span anchors on a LANE row — its owning layer is
+    // the machine's anchor layer, so the span the band advertises is the
+    // span the move machine accepts.
+    final anchorLayerId = switch (live?.anchorRow) {
+      LayerRowAddress(:final layerId) => layerId,
+      LaneRowAddress(:final layerId) => layerId,
+      _ => null,
+    };
+    if (live == null || anchorLayerId == null) {
       return null;
     }
     return TimelineFrameRangeSelection(
-      layerId: anchor.layerId,
+      layerId: anchorLayerId,
       startIndex: live.startFrame,
       endIndexExclusive: live.endFrameExclusive,
       layerIds: [
@@ -13722,8 +13754,12 @@ class EditorSessionManager extends ChangeNotifier {
     }
     // R27 #8: the frame-axis riders shift with the same frame delta. A
     // rider that cannot shift voids the move like any other passenger.
+    // A PURE row hop (frameDelta 0) moves no frames, so the riders simply
+    // hold — the shifters answer null for "nothing to shift" (the R28 #5
+    // conflation) and reading that as "blocked" killed every vertical
+    // step of a mixed span.
     Map<int, CameraPose>? cameraShifted;
-    if (cameraRides) {
+    if (cameraRides && frameDelta != 0) {
       cameraShifted = shiftCameraKeysInRange(
         keyframes: activeCutOrNull?.camera.keyframes ?? const {},
         rangeStartIndex: selection.startIndex,
@@ -13735,17 +13771,19 @@ class EditorSessionManager extends ChangeNotifier {
       }
     }
     final instructionShifted = <LayerId, Map<int, InstructionEvent>>{};
-    for (final layer in _rangeMoveInstructionSources ?? const <Layer>[]) {
-      final shifted = shiftInstructionEventsInRange(
-        events: layer.instructions,
-        rangeStartIndex: selection.startIndex,
-        rangeEndIndexExclusive: selection.endIndexExclusive,
-        frameDelta: frameDelta,
-      );
-      if (shifted == null) {
-        return true;
+    if (frameDelta != 0) {
+      for (final layer in _rangeMoveInstructionSources ?? const <Layer>[]) {
+        final shifted = shiftInstructionEventsInRange(
+          events: layer.instructions,
+          rangeStartIndex: selection.startIndex,
+          rangeEndIndexExclusive: selection.endIndexExclusive,
+          frameDelta: frameDelta,
+        );
+        if (shifted == null) {
+          return true;
+        }
+        instructionShifted[layer.id] = shifted;
       }
-      instructionShifted[layer.id] = shifted;
     }
     // A valid rigid landing supersedes the slide / row-change plans.
     _rangeMoveMultiRowPlan = plan;
@@ -13986,6 +14024,13 @@ class EditorSessionManager extends ChangeNotifier {
       _rangeMoveInstructionRowChange = null;
       _rangeMoveMultiRowPlan = null;
       _rangeMoveMultiSeRowChanges = null;
+      // …and the rigid step's RIDER shifts die WITH its plans: a stale
+      // shift surviving here commits alone when the slide step holds —
+      // the rigid group torn in one silent undo step (transition spans
+      // moving while the blocks stay home). A valid slide step re-derives
+      // them fresh below.
+      _rangeMoveCameraShifted = null;
+      _rangeMoveInstructionShifted = null;
       // Cross-layer slide (UI-R18 #1): every spanned layer plans the SAME
       // frame delta on itself; any illegal landing HOLDS the last valid
       // preview (all-or-nothing, the single-layer discipline). KEY

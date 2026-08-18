@@ -5,6 +5,7 @@ import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_editing.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
 /// C① (2026-08-17, #1116's open cell ①) — the name-tag lane family joins
 /// the ONE lane-move machine: a ranged key move on a nametag lane shifts
@@ -289,6 +290,26 @@ void main() {
       );
       expect(session.beginLaneRangeMoveDrag(), isTrue);
       session.updateLaneRangeMoveDrag(frameDelta: 5);
+
+      // 🚨MID-DRAG, the preview AXIS: previewLayers carries the ACTIVE-CUT
+      // DISPLAY CLONE (cut-local keys), never the global form — a
+      // global-keyed entry jumps every diamond by the cut's start on any
+      // non-first cut. The global form rides previewGlobalLayers.
+      final preview = session.dragPreview.value;
+      expect(preview, isA<BlockMoveDragPreview>());
+      final layers = (preview as BlockMoveDragPreview).previewLayers;
+      expect(
+        layers[se.id]!.seNameTag!.track!.fontSize.keys.keys.toList(),
+        [7, 8],
+        reason: 'cut-local: the active cut starts at $firstDuration',
+      );
+      expect(
+        preview.previewGlobalLayers[se.id]!.seNameTag!.track!.fontSize.keys
+            .keys
+            .toList(),
+        [firstDuration + 7, firstDuration + 8],
+      );
+
       session.endLaneRangeMoveDrag();
 
       expect(
