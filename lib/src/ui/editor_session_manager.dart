@@ -10277,7 +10277,13 @@ class EditorSessionManager extends ChangeNotifier {
       // retime by derivation anyway). Id-gated — the synced-block UI
       // stopped marking mirror entries ghost, so the non-ghost block scan
       // below no longer excludes them.
-      if (_isSyncedAttachedLayerId(id)) {
+      //
+      // SINGLE-CEL (image) rows stand down for the same reason the move
+      // sources do (D22): their one block is pinned by the write
+      // normalization, so a bulk retime would PREVIEW the picture
+      // stretching and then have it snapped back by the same write — the
+      // move-then-revert flicker the project bans outright.
+      if (_isSyncedAttachedLayerId(id) || _isSingleCelLayerId(id)) {
         continue;
       }
       final display = _rangeLayerById(id);
@@ -14955,7 +14961,15 @@ class EditorSessionManager extends ChangeNotifier {
     // SYNCED attach rows: cel removal is out of v1 scope (delete the row
     // or undo the creation) — cells are display material there. Free
     // attach rows delete cells like normal (UI-R21 #3).
-    if (layer == null || isSyncedAttachedLayer(layer)) {
+    //
+    // SINGLE-CEL (image) rows: the one picture IS the row (its cel is
+    // born with it and there is no empty state in its world), so the row
+    // is what you delete. Without this the button lit and did nothing —
+    // the covering normalization rebuilt the cel from the same write, so
+    // the press only cost a phantom undo entry (D22).
+    if (layer == null ||
+        isSyncedAttachedLayer(layer) ||
+        layerKindHoldsSingleCel(layer.kind)) {
       return false;
     }
 
@@ -15207,7 +15221,14 @@ class EditorSessionManager extends ChangeNotifier {
       // mirror blocks are non-ghost now (the synced-block UI), so without
       // this gate a mirror-only selection would light up delete/comma
       // verbs that then no-op against the stored-empty row.
-      if (_isSyncedAttachedLayerId(id)) {
+      //
+      // SINGLE-CEL (image) rows are the same shape of answer (D22): their
+      // one block is pinned by the covering normalization, so no selection
+      // verb can edit it. Stating that HERE rather than in each verb is
+      // what keeps the button and the dispatch reading one answer — the
+      // three downstream copies of this filter used to leave every `can…`
+      // gate lighting up for a row nothing would touch.
+      if (_isSyncedAttachedLayerId(id) || _isSingleCelLayerId(id)) {
         continue;
       }
       final layer = _rangeLayerById(id);
@@ -15277,14 +15298,9 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     final selection = frameRangeSelection.value;
-    // SINGLE-CEL (image) rows never retime: the covering normalization
-    // would revert the commit in the same write (a phantom undo entry).
-    final selectionTargets = _selectionBlockStartsByLayer() == null
-        ? null
-        : {
-            for (final entry in _selectionBlockStartsByLayer()!.entries)
-              if (!_isSingleCelLayerId(entry.key)) entry.key: entry.value,
-          };
+    // Single-cel rows are already absent — the shared collector states
+    // that standdown once, so this verb and its `can…` gate agree.
+    final selectionTargets = _selectionBlockStartsByLayer();
     if (selection != null &&
         selectionTargets != null &&
         selectionTargets.isNotEmpty) {
@@ -15468,11 +15484,9 @@ class EditorSessionManager extends ChangeNotifier {
     // subject — stays unreachable from this panel.
     final selection = frameRangeSelection.value;
     if (selection != null) {
-      final targets = _cutLocalSelectionBlockStartsByLayer();
-      final retimable =
-          targets != null &&
-          targets.keys.any((id) => !_isSingleCelLayerId(id));
-      if (retimable) {
+      // Single-cel rows never appear in the collector, so a non-null map
+      // IS a retimable one.
+      if (_cutLocalSelectionBlockStartsByLayer() != null) {
         setCommaForSelectionOrCurrent(comma);
       }
       return;

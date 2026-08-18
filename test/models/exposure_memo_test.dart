@@ -1,6 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/exposure_memo.dart';
+import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 
 /// The memo belongs to the exposure BLOCK, not to the drawing. That is what
@@ -89,6 +92,33 @@ void main() {
 
       expect(block == plain, isFalse);
       expect(block.copyWith(memo: () => null), plain);
+    });
+
+    test('a memo survives the LAYER round trip — the exposure decoder is '
+        'not the one project.json goes through', () {
+      final layer = Layer(
+        id: const LayerId('A'),
+        name: 'A',
+        frames: [
+          Frame(id: const FrameId('a1'), duration: 1, strokes: const []),
+        ],
+        timeline: {
+          0: TimelineExposure.drawing(
+            const FrameId('a1'),
+            length: 3,
+            memo: memo,
+          ),
+        },
+      );
+
+      final restored = Layer.fromJson(layer.toJson());
+      expect(
+        restored.timeline[0]!.memo,
+        memo,
+        reason: 'the memo is written into project.json — a decoder that '
+            'skips the key loses everything the user typed on reopen',
+      );
+      expect(restored, layer);
     });
   });
 }

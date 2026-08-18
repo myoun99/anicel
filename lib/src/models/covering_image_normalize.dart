@@ -74,9 +74,11 @@ Cut cutWithCoveringImageRows(Cut cut) {
 
     var next = layer;
     if (!shaped || !specced) {
-      // Rebuild THROUGH the first real entry when one exists (copyWith
-      // keeps its entry-carried metadata — inbetween dots — across
-      // duration changes). Ghosts are dropped here; the derive below
+      // Rebuild THROUGH the first real entry when one exists, so its
+      // entry-carried metadata (the block memo) survives a reshape.
+      // Inbetween dots do NOT survive and cannot: they are offsets INSIDE
+      // the block, and a 1-frame block has no inside — a picture row has
+      // no inbetweens to lose. Ghosts are dropped here; the derive below
       // re-synthesizes them from the fixed spec.
       final entry = firstReal != null && firstReal.isDrawing && !firstReal.ghost
           ? firstReal.copyWith(frameId: celId, length: 1)

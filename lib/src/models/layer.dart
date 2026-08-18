@@ -6,6 +6,7 @@ import 'attached_mode.dart';
 import 'attached_placement.dart';
 import 'audio_clip.dart';
 import 'camera_instruction.dart';
+import 'exposure_memo.dart';
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer_blend_mode.dart';
@@ -618,6 +619,7 @@ class _RawTimelineItem {
     this.ghost = false,
     this.ghostOwnerId,
     this.breakdownOffsets = const [],
+    this.memo,
   });
 
   final int index;
@@ -629,6 +631,11 @@ class _RawTimelineItem {
   final bool ghost;
   final String? ghostOwnerId;
   final List<int> breakdownOffsets;
+
+  /// The block's memo. [TimelineExposure.toJson] writes it, so a decoder
+  /// that skipped the key silently threw away every memo the user typed
+  /// the moment the project was reopened.
+  final ExposureMemo? memo;
 }
 
 /// Decodes a timeline from JSON, migrating legacy formats in one pass:
@@ -687,6 +694,11 @@ SplayTreeMap<int, TimelineExposure> _timelineFromJson(
             in exposureJson['breakdown'] as List<dynamic>? ?? const [])
           offset as int,
       ],
+      memo: exposureJson['memo'] == null
+          ? null
+          : ExposureMemo.fromJson(
+              exposureJson['memo'] as Map<String, dynamic>,
+            ),
     );
   }
 
@@ -762,6 +774,12 @@ SplayTreeMap<int, TimelineExposure> _timelineFromJson(
         if (item.breakdownOffsets.isNotEmpty) {
           // copyWith normalizes (sorts, dedupes, clamps to the length).
           exposure = exposure.copyWith(breakdownOffsets: item.breakdownOffsets);
+        }
+        // Ghosts never carry a memo ([TimelineExposure]'s contract): they
+        // are rederived on every edit, so a memo there would not survive
+        // the next write anyway.
+        if (item.memo != null && !item.ghost) {
+          exposure = exposure.copyWith(memo: () => item.memo);
         }
         timeline[item.index] = exposure;
     }

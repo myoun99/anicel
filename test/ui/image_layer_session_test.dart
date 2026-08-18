@@ -10,6 +10,7 @@ import 'package:anicel/src/models/timeline_repeat.dart'
     show TimelineRunEdgeMode, TimelineRunEdgeSide;
 import 'package:anicel/src/services/commands/convert_to_linked_cut_plan.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
 /// The IMAGE layer contract (§6-z23): one cel by definition, born
 /// covering its cut, no second cel to create, an ordinary attach base.
@@ -46,8 +47,7 @@ void main() {
   });
 
   test('the image row is EDGE-LESS: the session refuses a comma/edge drag '
-      'on its block, and a bulk drag never elects it as the cut-sync '
-      'anchor (D22)', () {
+      'on its own block (D22)', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     s.addLayerOfKind(LayerKind.image);
@@ -61,6 +61,111 @@ void main() {
       ),
       isFalse,
       reason: 'no grips in the chrome, no drag in the session — one answer',
+    );
+  });
+
+  test('a BULK edge drag whose selection reaches the image row never '
+      'retimes it — not even for one preview frame (D22 + ⛔먼저 옮기고 '
+      '되돌리기 금지)', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final celId = s.layers
+        .firstWhere((layer) => layer.kind == LayerKind.animation)
+        .id;
+    s.selectLayer(celId);
+    s.selectFrameIndex(0);
+    s.createDrawingAtCurrentFrame();
+
+    s.addLayerOfKind(LayerKind.image);
+    final imageId = s.activeLayer!.id;
+
+    Layer imageRow() => s.layers.firstWhere((layer) => layer.id == imageId);
+    int realLength() => imageRow().timeline[0]!.length!;
+    expect(realLength(), 1);
+
+    /// The image row's block as the ROW ACTUALLY RENDERS it mid-drag: the
+    /// live preview channel wins over the stored layer while a drag is in
+    /// flight, so reading [s.layers] alone would miss the stretch the user
+    /// watches happen.
+    int? previewedRealLength() {
+      final preview = s.dragPreview.value;
+      final layer = switch (preview) {
+        ExposureEdgeDragPreview(:final previewLayer) =>
+          previewLayer.id == imageId ? previewLayer : null,
+        BlockMoveDragPreview(:final previewLayers) => previewLayers[imageId],
+        _ => null,
+      };
+      return layer?.timeline[0]?.length;
+    }
+
+    // A selection spanning the cel row DOWN THROUGH the image row, then a
+    // comma drag on the cel row's own block edge.
+    s.updateFrameRangeSelectionDrag(
+      layerId: celId,
+      anchorIndex: 0,
+      headIndex: 4,
+      headLayerId: imageId,
+    );
+    expect(
+      s.beginExposureEdgeDrag(
+        layerId: celId,
+        blockStartIndex: 0,
+        edge: TimelineBlockEdge.end,
+      ),
+      isTrue,
+      reason: 'the DRAWING row still drags — only the image row stands down',
+    );
+
+    s.updateExposureEdgeDrag(3);
+    expect(
+      previewedRealLength() ?? 1,
+      1,
+      reason: 'the live PREVIEW must not stretch the picture: the write '
+          'normalization would snap it back, and a frame of movement that '
+          'gets reverted is exactly what the project bans',
+    );
+    expect(realLength(), 1);
+
+    s.endExposureEdgeDrag();
+    expect(realLength(), 1, reason: 'and the commit leaves it alone too');
+    var covered = 0;
+    for (final exposure in imageRow().timeline.values) {
+      covered += exposure.length!;
+    }
+    expect(
+      covered,
+      s.requireActiveCut.duration,
+      reason: 'the hold ghosts still tile the cut after the drag',
+    );
+  });
+
+  test('the image cel is not deletable by the CELL verb — one picture is '
+      'the row\'s definition, so the row is what you delete (D22)', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.addLayerOfKind(LayerKind.image);
+    final imageId = s.activeLayer!.id;
+    s.selectFrameIndex(0);
+
+    expect(
+      s.canDeleteCellAtCurrentFrame,
+      isFalse,
+      reason: 'the ghost hold keeps the cel referenced, so the delete would '
+          'be rebuilt by the same write — a lit button that does nothing '
+          'and burns an undo slot',
+    );
+
+    // Same answer through the SELECTION rung, which is a second door onto
+    // the same verb.
+    s.updateFrameRangeSelectionDrag(
+      layerId: imageId,
+      anchorIndex: 0,
+      headIndex: 3,
+    );
+    expect(
+      s.canDeleteCellForSelection,
+      isFalse,
+      reason: 'an image-only selection offers no cell delete either',
     );
   });
 
