@@ -488,6 +488,9 @@ void main() {
       ('독립 붙여넣기', s.canPasteIndependentFrameAtCurrentFrame),
       ('링크 붙여넣기', s.canPasteLinkedFrameAtCurrentFrame),
       ('복제', s.canDuplicateActiveBlock),
+      // 복사 too: it writes the CLIPBOARD, which is user state, and a
+      // wrong subject banked there is laid down by the next paste.
+      ('복사', s.canCopyFrameAtCurrentFrame),
     ]) {
       expect(
         gate,
