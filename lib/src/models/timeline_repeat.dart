@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'frame_id.dart';
 import 'layer.dart';
+import 'timeline_coverage.dart' show coveringDrawingBlockAt;
 import 'timeline_exposure.dart';
 
 /// Which edge of a glued run a [TimelineRunBehavior] hangs off.
@@ -555,6 +556,85 @@ TimelineRunBehavior? runBehaviorOwningGhostAt(Layer layer, int frameIndex) {
     }
   }
   return found;
+}
+
+/// A7① (2026-08-18): the flip's COLUMN at [frame], with HOLD-mode ghost
+/// tails and lead-ins absorbed into their owning run — the animator's
+/// flip treats a hold as ONE unit (「홀드 블록을 한 단위로 건너뛰어」), and
+/// the flip HUD already draws no block where a hold ghost is, so
+/// movement and picture agree again.
+///
+/// The merge is DIRECTIONAL by the behavior's own side: an end-side tail
+/// merges leftward into its run, a start-side lead-in rightward — never
+/// across the ghost's far edge, so a tail that happens to abut the NEXT
+/// authored run does not fuse two runs into one column (the flip must
+/// still land there). Glued authored blocks stay separate columns
+/// exactly as before, and REPEAT-mode ghosts stay their own columns —
+/// A7① names holds only.
+({int start, int endExclusive})? holdMergedFlipColumnAt(
+  Layer layer,
+  int frame,
+) {
+  final block = coveringDrawingBlockAt(layer.timeline, frame);
+  if (block == null) {
+    return null;
+  }
+
+  bool isHoldGhost(int startIndex, TimelineExposure entry) =>
+      entry.ghost &&
+      runBehaviorOwningGhostAt(layer, startIndex)?.mode ==
+          TimelineRunEdgeMode.hold;
+  TimelineRunEdgeSide? holdGhostSide(int startIndex, TimelineExposure entry) =>
+      entry.ghost && isHoldGhost(startIndex, entry)
+      ? runBehaviorOwningGhostAt(layer, startIndex)!.side
+      : null;
+
+  var start = block.startIndex;
+  var endExclusive = block.endIndexExclusive;
+  // What the span's outermost blocks ARE, for the directional edge rule.
+  var leftmostHoldSide = holdGhostSide(block.startIndex, block.entry);
+  var rightmostHoldSide = leftmostHoldSide;
+  if (block.entry.ghost && leftmostHoldSide == null) {
+    // A repeat ghost (or an orphan): its own column, unchanged.
+    return (start: start, endExclusive: endExclusive);
+  }
+
+  var expanded = true;
+  while (expanded) {
+    expanded = false;
+    // LEFT edge: merge when the neighbour is a lead-in ghost of OUR run
+    // (side == start points rightward at us), or when OUR leftmost block
+    // is an end-side tail and the neighbour is the authored run it holds.
+    final beforeKey = layer.timeline.lastKeyBefore(start);
+    if (beforeKey != null) {
+      final before = layer.timeline[beforeKey]!;
+      if (before.isDrawing && beforeKey + (before.length ?? 1) == start) {
+        final beforeHoldSide = holdGhostSide(beforeKey, before);
+        final merge =
+            beforeHoldSide == TimelineRunEdgeSide.start ||
+            (leftmostHoldSide == TimelineRunEdgeSide.end && !before.ghost);
+        if (merge) {
+          start = beforeKey;
+          leftmostHoldSide = beforeHoldSide;
+          expanded = true;
+        }
+      }
+    }
+    // RIGHT edge: the mirror.
+    final after = layer.timeline[endExclusive];
+    if (after != null && after.isDrawing) {
+      final afterHoldSide = holdGhostSide(endExclusive, after);
+      final merge =
+          afterHoldSide == TimelineRunEdgeSide.end ||
+          (rightmostHoldSide == TimelineRunEdgeSide.start && !after.ghost);
+      if (merge) {
+        endExclusive = endExclusive + (after.length ?? 1);
+        rightmostHoldSide = afterHoldSide;
+        expanded = true;
+      }
+    }
+  }
+  return (start: start, endExclusive: endExclusive);
 }
 
 /// Whether [index] on [layer] falls inside a GHOST exposure (a derived

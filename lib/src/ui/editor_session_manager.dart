@@ -8488,9 +8488,16 @@ class EditorSessionManager extends ChangeNotifier {
     return true;
   }
 
-  /// The selection range's maximal EMPTY runs on [layer]'s timeline
-  /// (ghost coverage counts as covered — derived cells are not authoring
-  /// room).
+  /// The selection range's maximal EMPTY runs on [layer]'s timeline.
+  ///
+  /// D20 (2026-08-18) rewrote the coverage half: GHOST coverage is
+  /// authoring room — 「고스트일 뿐이니 생성 허용」 — the same sentence
+  /// [TimelineController.canCreateDrawingAt] reads, so the single-cell
+  /// verb and the range verb cannot answer "is this cell free"
+  /// differently. (The old comment here said the opposite: "ghost
+  /// coverage counts as covered".) A range over a repeat/hold tail
+  /// therefore fills the projected cells with authored ones, and the
+  /// rederive pass re-clamps the projection around them.
   List<({int startIndex, int length})> _emptyGapsInRange(
     Layer layer,
     TimelineFrameRangeSelection selection,
@@ -8512,10 +8519,13 @@ class EditorSessionManager extends ChangeNotifier {
     final gaps = <({int startIndex, int length})>[];
     int? gapStart;
     for (var index = startIndex; index <= endIndexExclusive; index += 1) {
+      final block = index >= endIndexExclusive || index < 0
+          ? null
+          : coveringDrawingBlockAt(layer.timeline, index);
       final covered =
           index >= endIndexExclusive ||
           index < 0 ||
-          coveringDrawingBlockAt(layer.timeline, index) != null;
+          (block != null && !block.entry.ghost);
       if (!covered) {
         gapStart ??= index;
         continue;
@@ -16451,12 +16461,13 @@ class EditorSessionManager extends ChangeNotifier {
     final next = flipColumnStep(
       frame: current,
       direction: forward ? 1 : -1,
-      columnAt: (frame) {
-        final block = coveringDrawingBlockAt(layer.timeline, frame);
-        return block == null
-            ? null
-            : (start: block.startIndex, endExclusive: block.endIndexExclusive);
-      },
+      // A7① (2026-08-17): a HOLD is one flip unit — the column absorbs
+      // hold-mode ghost tails/lead-ins into their owning run, so the flip
+      // never lands inside a hold the HUD draws as empty. Repeat ghosts
+      // stay their own columns; the merge lives HERE, in the flip's
+      // column definition only (creation gates, painters and playback
+      // keep reading raw coverage).
+      columnAt: (frame) => holdMergedFlipColumnAt(layer, frame),
     );
     if (next != current && next >= 0) {
       selectFrameIndex(next);

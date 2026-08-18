@@ -9,6 +9,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -329,6 +330,76 @@ void main() {
         reason:
             'a layer row lives inside one cut — that is why "which row '
             'of the next cut do I land on" never gets asked',
+      );
+    });
+  });
+
+  // A7① (2026-08-17): a HOLD is one flip unit — 「홀드 블록을 한 단위로
+  // 건너뛰어 다음 프레임 선택」. The run-edge HOLD materializes a ghost
+  // block right after the held block, and the flip used to treat that
+  // ghost as its own column, landing exactly where the user reported
+  // (「홀드 안쪽 2번 인덱스」) — while the flip HUD drew no block there.
+  // The flip's column absorbs hold ghosts into their owning run now;
+  // repeat ghosts stay their own columns (A7① names holds only).
+  group('A7①: a HOLD is one flip unit', () {
+    (EditorSessionManager, LayerId) heldSession(TimelineRunEdgeMode mode) {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      s.createDrawingAtCurrentFrame(); // 1-cell block at index 0
+      final layerId = s.activeLayer!.id;
+      s.setRunEdgeBehavior(
+        layerId: layerId,
+        blockStartIndex: 0,
+        side: TimelineRunEdgeSide.end,
+        mode: mode,
+      );
+      return (s, layerId);
+    }
+
+    test('forward from the held block leaves past the ghost end — never '
+        'lands inside the hold', () {
+      final (s, _) = heldSession(TimelineRunEdgeMode.hold);
+      addTearDown(s.dispose);
+      final cutEnd = s.requireActiveCut.duration;
+
+      s.selectFrameIndex(0);
+      s.selectNextDrawing();
+      expect(
+        s.currentFrameIndex,
+        cutEnd,
+        reason: 'block + its hold ghost = ONE column ending at the cut end',
+      );
+    });
+
+    test('backward from beyond lands on the AUTHORED head, and mid-ghost '
+        'leaves the whole unit', () {
+      final (s, _) = heldSession(TimelineRunEdgeMode.hold);
+      addTearDown(s.dispose);
+      final cutEnd = s.requireActiveCut.duration;
+
+      s.selectFrameIndex(cutEnd);
+      s.selectPreviousDrawing();
+      expect(
+        s.currentFrameIndex,
+        0,
+        reason: 'the previous column is the whole hold unit — its start is '
+            'the authored head, not the ghost\'s',
+      );
+
+      s.selectFrameIndex(3); // inside the ghost
+      s.selectNextDrawing();
+      expect(s.currentFrameIndex, cutEnd, reason: 'mid-hold leaves whole');
+    });
+
+    test('REPEAT ghosts stay their own columns — A7① names holds only', () {
+      final (s, _) = heldSession(TimelineRunEdgeMode.repeat);
+      addTearDown(s.dispose);
+
+      s.selectFrameIndex(0);
+      s.selectNextDrawing();
+      expect(
+        s.currentFrameIndex,
+        1,
+        reason: 'each repeated part remains a flip column of its own',
       );
     });
   });
