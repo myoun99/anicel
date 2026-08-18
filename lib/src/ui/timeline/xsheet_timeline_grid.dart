@@ -107,6 +107,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.onScrubEnd,
     this.onActivateCell,
     this.instructionDefById,
+    this.instructionCrossingTooltip,
     this.audioPeaksFor,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.showSeconds = false,
@@ -235,6 +236,10 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// Resolves instruction ids to defs for CAM column chips.
   final CameraInstructionDef? Function(String instructionId)?
   instructionDefById;
+
+  /// D26: crossing-fade warning resolver (projected keys — this surface
+  /// shows the cut-local display clone).
+  final String? Function(int spanStartKey)? instructionCrossingTooltip;
 
   /// Waveform peaks for SE columns' audio clips + the removal hook.
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
@@ -1151,6 +1156,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       keyPrefix: 'xsheet',
       onActivateCell: widget.onActivateCell,
       instructionDefById: widget.instructionDefById,
+      instructionCrossingTooltip: widget.instructionCrossingTooltip,
       audioPeaksFor: widget.audioPeaksFor,
       projectFrameRate: widget.projectFrameRate,
       showSeconds: widget.showSeconds,

@@ -102,6 +102,80 @@ void main() {
     );
   });
 
+  testWidgets('D26: a crossing F.O wears the red corner + tooltip in the cut '
+      'view; an inside one stays clean; the refused block still draws', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    );
+    await tester.pumpAndSettle();
+    final session = tester
+        .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+        .session;
+    session.createCut();
+    await tester.pumpAndSettle();
+    final first = session.repository.requireProject().tracks.first.cuts.first;
+    final crossingStart = first.duration - 4;
+    // One F.O that CROSSES cut 1's end (refused + marked), one that stays
+    // INSIDE it (applies, no marker).
+    session.updateTransitionInstructions(
+      SplayTreeMap<int, InstructionEvent>.from({
+        2: const InstructionEvent(instructionId: 'fo', length: 4),
+        crossingStart: const InstructionEvent(instructionId: 'fo', length: 8),
+      }),
+    );
+    session.selectCut(first.id);
+    await tester.pumpAndSettle();
+
+    final transitionLayerId = session.activeTrack.transitionLayer.id.value;
+    // The cut view re-keys spans to LOCAL starts; both spans are anchored
+    // inside cut 1, so their projected keys equal their global ones here.
+    final crossingMarker = find.byKey(
+      ValueKey<String>(
+        'timeline-instruction-crossing-$transitionLayerId-$crossingStart',
+      ),
+    );
+    expect(
+      crossingMarker,
+      findsOneWidget,
+      reason: 'D26: the crossing fade wears the red corner',
+    );
+    expect(
+      find.byKey(
+        ValueKey<String>(
+          'timeline-instruction-crossing-$transitionLayerId-2',
+        ),
+      ),
+      findsNothing,
+      reason: 'an inside fade applies and carries no warning',
+    );
+    expect(
+      tester
+          .widget<Tooltip>(
+            find.descendant(
+              of: crossingMarker,
+              matching: find.byType(Tooltip),
+            ),
+          )
+          .message,
+      session.uiStrings.tlTransitionCrossingWarning,
+      reason: 'the hover text is the one warning string',
+    );
+    // And the refused span's BLOCK is still mounted — display is un-gated,
+    // or the marker would have nothing to sit on.
+    expect(
+      spanOverlayKeys(tester).where(
+        (key) =>
+            key.contains(transitionLayerId) && key.endsWith('-$crossingStart'),
+      ),
+      isNotEmpty,
+      reason: 'the refused span still draws its mark overlay',
+    );
+  });
+
   testWidgets('⑦ and it is READ-ONLY: no edge grips, unlike the direction row '
       'right below it', (tester) async {
     final session = await pumpTwoCutsWithOverlap(tester);

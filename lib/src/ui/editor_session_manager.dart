@@ -1730,9 +1730,14 @@ class EditorSessionManager extends ChangeNotifier {
       return cached.$4;
     }
     final projected = SplayTreeMap<int, InstructionEvent>();
+    // D26: the crossing answer is recorded under the PROJECTED key in the
+    // same walk — the clone re-keys spans to cut-local starts, so a marker
+    // bound by global key alone would miss or mis-mark projected blocks.
+    final crossing = <int>{};
     for (final entry in source.instructions.entries) {
+      final span = _transitionSpanOf(entry);
       final mark = transitionMarkInCut(
-        span: _transitionSpanOf(entry),
+        span: span,
         cutStart: cutStart,
         cutEnd: cutStart + duration,
       );
@@ -1740,13 +1745,66 @@ class EditorSessionManager extends ChangeNotifier {
         continue;
       }
       projected[mark.start] = entry.value;
+      if (oneSidedSpanCrossesOwnCut(
+        span: span,
+        cutStart: cutStart,
+        cutEnd: cutStart + duration,
+      )) {
+        crossing.add(mark.start);
+      }
     }
     final display = source.copyWith(instructions: projected);
-    _transitionDisplayClone = (source, cutStart, duration, display);
+    _transitionDisplayClone = (source, cutStart, duration, display, crossing);
     return display;
   }
 
-  (Layer, int, int, Layer)? _transitionDisplayClone;
+  (Layer, int, int, Layer, Set<int>)? _transitionDisplayClone;
+
+  /// D26: the crossing-fade warning for the CUT-VIEW transition row, by
+  /// the display clone's projected local start key. The answer is computed
+  /// in [trackTransitionDisplayLayer]'s own projection walk with the SAME
+  /// predicate the apply gate reads ([oneSidedSpanCrossesOwnCut]) — the
+  /// T25 one-sentence law: the refusal and the warning cannot drift.
+  String? transitionCrossingWarningInCutAt(int projectedStartKey) {
+    // Resolve the clone first so the cache always answers for the active
+    // cut the row is actually showing.
+    trackTransitionDisplayLayer;
+    return (_transitionDisplayClone?.$5.contains(projectedStartKey) ?? false)
+        ? AppText.strings.tlTransitionCrossingWarning
+        : null;
+  }
+
+  /// D26: the same warning for the GLOBAL authoring row (the storyboard's
+  /// transition row), by the span's global start key. Walks the cuts the
+  /// storyboard's own way (gap, then duration) to find the owning cut; a
+  /// gap-anchored fade has no owner, is already inert today, and stays
+  /// quietly unmarked.
+  String? transitionCrossingWarningAtGlobalKey(int globalStartKey) {
+    final event = activeTrack.transitionLayer.instructions[globalStartKey];
+    if (event == null) {
+      return null;
+    }
+    final span = _transitionSpanOf(MapEntry(globalStartKey, event));
+    if (transitionSidesOf(span.mark) == TransitionSides.both) {
+      return null;
+    }
+    var start = 0;
+    for (final cut in activeTrack.cuts) {
+      start += cut.leadingGapFrames;
+      final cutEnd = start + cut.duration;
+      if (oneSidedSpanOwnsCut(span: span, cutStart: start, cutEnd: cutEnd)) {
+        return oneSidedSpanCrossesOwnCut(
+              span: span,
+              cutStart: start,
+              cutEnd: cutEnd,
+            )
+            ? AppText.strings.tlTransitionCrossingWarning
+            : null;
+      }
+      start = cutEnd;
+    }
+    return null;
+  }
 
   /// The track SE rows whose display clone starts with a spill-in block —
   /// a sound carrying over from an earlier cut (UI-R7 #6: the timeline

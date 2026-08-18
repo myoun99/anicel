@@ -58,6 +58,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.onSettledPress,
     this.onActivateCell,
     this.instructionDefById,
+    this.instructionCrossingTooltip,
     this.audioPeaksFor,
     this.seClipMarkerTooltip,
     this.projectFrameRate = ProjectFrameRate.fps24,
@@ -138,6 +139,13 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   final void Function(LayerId layerId, int frameIndex)? onActivateCell;
   final CameraInstructionDef? Function(String instructionId)?
   instructionDefById;
+
+  /// D26: the crossing-fade warning resolver (see
+  /// [TimelineFrameCellsRow.instructionCrossingTooltip]). A callback, so
+  /// it stays OUT of the row memo token (R13-2); its ANSWERS are covered —
+  /// instruction edits move the memoAux identity and the display clone's
+  /// layer identity, and a cut-duration change moves playbackFrameCount.
+  final String? Function(int spanStartKey)? instructionCrossingTooltip;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
 
   /// Clipped-take marker tooltip (REC1-D); null = markers off. A display
@@ -447,6 +455,7 @@ class _TimelineFrameRowsScrollBodyState
       onSettledPress: widget.onSettledPress,
       onActivateCell: widget.onActivateCell,
       instructionDefById: widget.instructionDefById,
+      instructionCrossingTooltip: widget.instructionCrossingTooltip,
       audioPeaksFor: widget.audioPeaksFor,
       seClipMarkerTooltip: widget.seClipMarkerTooltip,
       projectFrameRate: widget.projectFrameRate,

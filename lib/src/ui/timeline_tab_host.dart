@@ -786,6 +786,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onActivateCell: _activateCellEditor,
             instructionDefById: (instructionId) =>
                 _session.cameraInstructionSet.defById(instructionId),
+            // D26: the crossing-fade refusal marker — this surface shows
+            // the cut-local display clone, so the session answers by the
+            // clone's PROJECTED keys. Always-on (a refusal warning takes
+            // no settings gate).
+            instructionCrossingTooltip:
+                _session.transitionCrossingWarningInCutAt,
             // Display resolver: the live take's sentinel path maps to the
             // growing envelope (REC1-C), everything else to the conform
             // store's peaks.
