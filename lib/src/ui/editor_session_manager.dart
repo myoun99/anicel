@@ -15306,8 +15306,15 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Whether a comma set has a target: the selection's blocks, else the
   /// active layer's block covering the playhead.
+  ///
+  /// The second rung borrows the delete gate, which answers true for LANE
+  /// KEYS as well — a subject this verb has no branch for. Under a
+  /// claiming band that inheritance is what lit the buttons over a press
+  /// [setCommaForSelectionOrCurrent] then refuses, so the band's claim is
+  /// read here too and the two stay one answer.
   bool get canSetCommaForSelectionOrCurrent =>
-      _selectionBlockStartsByLayer() != null || canDeleteCellAtCurrentFrame;
+      _selectionBlockStartsByLayer() != null ||
+      (!cellSelectionClaimsSubject && canDeleteCellAtCurrentFrame);
 
   /// Sets the exposure length of every selected block — or the covering
   /// block at the playhead without a selection — to [comma], packing each
@@ -16873,6 +16880,13 @@ class EditorSessionManager extends ChangeNotifier {
     _historyManager.clear();
     _copiedFrame = null;
     _layerClipboard = null;
+    // The selections name rows of the project being discarded, so no grid
+    // can draw them — and a band nothing shows still CLAIMS the cell verbs
+    // ([cellSelectionClaimsSubject]), which would leave Delete and the
+    // comma buttons dark with nothing on screen to explain why. Every
+    // other whole-state reset clears here; this one was the omission.
+    clearAllSelections();
+    trackFrameRangeSelection.value = null;
     _editingSession.setActiveCutId(result.project.tracks.first.cuts.first.id);
     _rebuildActiveCutControllers();
     // The replaced project's shelf takes are no longer this session's to

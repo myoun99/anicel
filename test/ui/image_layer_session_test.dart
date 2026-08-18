@@ -254,6 +254,53 @@ void main() {
     );
   });
 
+  test('the comma gate reads its OWN ladder, not the delete gate\'s lane '
+      'rung: a blockless band with live lane keys leaves the buttons dark '
+      'instead of lit-and-dead', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final celId = s.layers
+        .firstWhere((layer) => layer.kind == LayerKind.animation)
+        .id;
+    s.selectLayer(celId);
+    s.selectFrameIndex(0);
+    s.createDrawingAtCurrentFrame();
+
+    s.addLayerOfKind(LayerKind.image);
+    final imageId = s.activeLayer!.id;
+
+    // The mixed cell→lane drag (R26 #3): a band over the image row that
+    // holds no editable block, whose tail also owns a LANE span.
+    s.selectLayer(celId);
+    s.selectFrameIndex(0);
+    s.updateFrameRangeSelectionDrag(
+      layerId: imageId,
+      anchorIndex: 0,
+      headIndex: 3,
+      headLaneId: 'position',
+    );
+    s.createInstancesForSelection();
+
+    expect(s.cellSelectionClaimsSubject, isTrue);
+    expect(
+      s.canSetCommaForSelectionOrCurrent,
+      isFalse,
+      reason: 'the delete gate answers true here for the LANE KEYS, which '
+          'the comma verb has no branch for — inheriting that lit a button '
+          'whose press the band\'s claim then swallowed',
+    );
+    // And the press really is a no-op on the unswept active row.
+    final before = s.layers
+        .firstWhere((layer) => layer.id == celId)
+        .timeline[0]!
+        .length;
+    s.setCommaForSelectionOrCurrent(4);
+    expect(
+      s.layers.firstWhere((layer) => layer.id == celId).timeline[0]!.length,
+      before,
+    );
+  });
+
   test('an image layer carries attach rows like any drawing base', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);

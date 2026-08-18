@@ -103,6 +103,39 @@ void main() {
     expect(s.canUndo, isFalse);
   });
 
+  test('an OPEN clears the selections: a band naming the discarded '
+      'project\'s rows is drawn nowhere, so leaving it live darkens every '
+      'cell verb with nothing on screen to explain it', () async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.createDrawingAtCurrentFrame();
+    final path = '${directory.path}/scene.anicel';
+    await s.saveProjectToFile(path);
+
+    // A band naming a row of the project that is about to be replaced.
+    s.updateFrameRangeSelectionDrag(
+      layerId: s.activeLayer!.id,
+      anchorIndex: 0,
+      headIndex: 2,
+    );
+    expect(s.frameRangeSelection.value, isNotNull);
+
+    await s.openProjectFromFile(path);
+
+    expect(
+      s.frameRangeSelection.value,
+      isNull,
+      reason: 'the load replaces the project, so the band pointing into the '
+          'old one goes with it',
+    );
+    expect(s.cellSelectionClaimsSubject, isFalse);
+    expect(
+      s.canDeleteCellAtCurrentFrame,
+      isTrue,
+      reason: 'and the cell verbs are live again on the loaded project',
+    );
+  });
+
   test('the atomic write leaves no temp residue and replaces an existing '
       'file in place', () async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
