@@ -5840,21 +5840,30 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// there is no gap rule here — the seek parks, exactly as the ruler's
   /// does. A press inside the live selection stays silent: it is starting a
   /// move, not picking a frame.
-  void _handlePressDown(PointerDownEvent event) {
+  /// Both halves of the pointer DOWN — the seek AND the D30 create — run
+  /// under this ONE gate pair: secondary buttons are not presses here,
+  /// and a press inside the live selection is starting a move, so it
+  /// neither seeks nor creates.
+  bool _pressDownGated(PointerDownEvent event) {
     if (event.buttons != 0 && (event.buttons & kPrimaryButton) == 0) {
-      return;
+      return true;
     }
-    final frame = _frameAtX(event.localPosition.dx);
-    if (_isSelectedAt(frame)) {
-      return;
-    }
-    onRowFramePress?.call(TrackRowAddress(track.id), frame);
+    return _isSelectedAt(_frameAtX(event.localPosition.dx));
   }
 
-  /// D30: a press inside a no-layer cut's create affordance — resolved
-  /// against the SAME visuals the painter drew, AFTER the press's own
-  /// activation, so the create lands in the cut the press just made
-  /// active.
+  void _handlePressDown(PointerDownEvent event) {
+    onRowFramePress?.call(
+      TrackRowAddress(track.id),
+      _frameAtX(event.localPosition.dx),
+    );
+  }
+
+  /// D30: a press inside the ACTIVE no-layer cut's create affordance —
+  /// eligibility and rect are [StoryboardCutBlocksPainter
+  /// .createAffordanceRectOf]'s, the SAME call the paint made. The
+  /// visual is the PRE-press snapshot, so a press on a non-active cut's
+  /// block centre stays a SELECT (its slot drew no affordance), and only
+  /// the next press — on the drawn '+' — creates.
   void _maybeCreateStoryboardLayer(
     StoryboardCutBlocksPainter painter,
     PointerDownEvent event,
@@ -5864,12 +5873,13 @@ class _StoryboardTrackRow extends StatelessWidget {
       return;
     }
     final block = painter.blockAt(event.localPosition);
-    if (block == null || block.hasStoryboardLayer || block.bandsFolded) {
+    if (block == null) {
       return;
     }
-    if (!StoryboardCutBlocksPainter.createAffordanceRectFor(
-      block.strip,
-    ).contains(event.localPosition)) {
+    final affordance = StoryboardCutBlocksPainter.createAffordanceRectOf(
+      block,
+    );
+    if (affordance == null || !affordance.contains(event.localPosition)) {
       return;
     }
     onCreate(block.cutId);
@@ -5964,9 +5974,13 @@ class _StoryboardTrackRow extends StatelessWidget {
                 child: Listener(
                   behavior: HitTestBehavior.translucent,
                   onPointerDown: (event) {
+                    if (_pressDownGated(event)) {
+                      return;
+                    }
                     _handlePressDown(event);
-                    // AFTER the press's activation, so the create lands
-                    // in the cut the press just made active (D30).
+                    // The create judges the PRE-press snapshot (the
+                    // painter this build drew), so running after the
+                    // press's activation cannot widen it (D30).
                     _maybeCreateStoryboardLayer(blocksPainter, event);
                   },
                 ),

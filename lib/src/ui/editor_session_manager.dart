@@ -1787,6 +1787,30 @@ class EditorSessionManager extends ChangeNotifier {
         : null;
   }
 
+  /// D31 × D26: the transition row the printed SHEET consumes — the
+  /// cut-view projection MINUS the spans the apply gate refuses (the
+  /// same crossing set the warning reads, so refusal, warning and the
+  /// sheet cannot drift). A crossing one-sided fade is 미적용: it fires
+  /// nowhere and contributes no のりしろ, and a sheet that printed it
+  /// would have material shot for a fade the compositor never runs. The
+  /// cut-view ROW keeps drawing it — the red warning needs the block to
+  /// sit on; the sheet has no warning channel, so it prints only what
+  /// applies.
+  Layer get trackTransitionSheetLayer {
+    final display = trackTransitionDisplayLayer;
+    final crossing = _transitionDisplayClone?.$5 ?? const <int>{};
+    if (crossing.isEmpty) {
+      return display;
+    }
+    final applied = SplayTreeMap<int, InstructionEvent>();
+    for (final entry in display.instructions.entries) {
+      if (!crossing.contains(entry.key)) {
+        applied[entry.key] = entry.value;
+      }
+    }
+    return display.copyWith(instructions: applied);
+  }
+
   /// D26: the same warning for the GLOBAL authoring row (the storyboard's
   /// transition row), by the span's global start key. Walks the cuts the
   /// storyboard's own way (gap, then duration) to find the owning cut; a
@@ -5848,8 +5872,9 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// Turns the timesheet flag on/off for every eligible layer — one undo.
-  /// Track-owned SE rows join the sweep: the flag commands resolve through
-  /// the anywhere lookup now (the SE mark/sheet fix).
+  /// Track-owned rows join the sweep: SE rows since the SE mark/sheet fix,
+  /// and the transition row since D31 gave its flag a printed column —
+  /// the flag commands resolve through the anywhere lookup.
   void setAllLayersOnTimesheet(bool onTimesheet) {
     final cut = activeCutOrNull;
     if (cut == null) {
@@ -5857,7 +5882,11 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final cutId = cut.id;
     final commands = <Command>[
-      for (final layer in [...cut.layers, ...activeTrack.seLayers])
+      for (final layer in [
+        ...cut.layers,
+        ...activeTrack.seLayers,
+        activeTrack.transitionLayer,
+      ])
         if (layer.attachedToLayerId == null && layer.onTimesheet != onTimesheet)
           UpdateLayerTimesheetCommand(
             repository: _repository,

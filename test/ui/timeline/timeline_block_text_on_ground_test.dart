@@ -495,8 +495,16 @@ void main() {
       RegExp(r'ground: _stripWritingGround\(block\)')
           .allMatches(painter)
           .length,
-      greaterThanOrEqualTo(2),
-      reason: 'panel name AND comma both take the picture-aware ground',
+      greaterThanOrEqualTo(3),
+      reason: 'panel name, comma AND the D30 create + all take the '
+          'picture-aware ground (a no-layer cut still paints its '
+          'coverage cell\'s paper-white composite under the +)',
+    );
+    expect(
+      painter,
+      isNot(contains('ground: _stripGround(block)')),
+      reason: 'no strip glyph reads the plate directly — the writing '
+          'ground decides (D29)',
     );
     expect(
       painter,

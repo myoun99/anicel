@@ -27,6 +27,26 @@ void main() {
     expect([for (final layer in s.requireActiveCut.layers) layer.onTimesheet], before);
   });
 
+  test('D31: the sheet sweep reaches the track TRANSITION row — its flag '
+      'gates a printed column now, so "remove all" must silence it too', () {
+    final s = session();
+    expect(
+      s.activeTrack.transitionLayer.onTimesheet,
+      isTrue,
+      reason: 'fixture default: the flag starts on',
+    );
+
+    s.setAllLayersOnTimesheet(false);
+    expect(s.activeTrack.transitionLayer.onTimesheet, isFalse);
+
+    s.setAllLayersOnTimesheet(true);
+    expect(s.activeTrack.transitionLayer.onTimesheet, isTrue);
+
+    // Still ONE undo per sweep.
+    s.undo();
+    expect(s.activeTrack.transitionLayer.onTimesheet, isFalse);
+  });
+
   test('flag commands reach track-owned SE rows (R3 #11: mark/sheet used '
       'to dead-end in the cut-scoped lookup)', () {
     final s = session();

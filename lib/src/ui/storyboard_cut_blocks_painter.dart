@@ -388,15 +388,31 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     return visuals;
   }
 
-  /// D30: where the CREATE affordance sits on a no-layer cut's strip —
-  /// ONE definition for the painter and the press layer (this row's rule:
-  /// where it is drawn is where it is hit). A small block-cornered square
-  /// centred in the strip.
-  static Rect createAffordanceRectFor(Rect strip) => Rect.fromCenter(
-    center: strip.center,
-    width: 22,
-    height: math.min(22, strip.height),
-  );
+  /// D30: the CREATE affordance a block actually wears, or null — ONE
+  /// eligibility AND geometry for the painter and the press layer (this
+  /// row's rule: where it is drawn is where it is hit, and only what is
+  /// drawn is pressable). ACTIVE cut only («액티브 컷에 없으면 생성
+  /// 버튼»): the affordance sits where a block-select tap naturally
+  /// lands, so on a non-active cut that tap must stay a SELECT. A small
+  /// block-cornered square centred in the strip.
+  static Rect? createAffordanceRectOf(StoryboardCutBlockVisual block) {
+    if (block.hasStoryboardLayer || block.bandsFolded || !block.isActive) {
+      return null;
+    }
+    // A strip too narrow or too flat to hold the whole square holds NO
+    // affordance: a clamped-width block's extra pixels map to frames
+    // past the cut (the press could light a '+' it can never honour),
+    // and an unclamped 22px box would paint over the neighbour. The
+    // add-layer verb stays reachable through the layer rail's own +.
+    if (block.strip.width < 22 || block.strip.height <= 8) {
+      return null;
+    }
+    return Rect.fromCenter(
+      center: block.strip.center,
+      width: 22,
+      height: math.min(22, block.strip.height),
+    );
+  }
 
   /// The block covering row-local [position], or null between blocks.
   StoryboardCutBlockVisual? blockAt(Offset position) {
@@ -526,40 +542,41 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     // painted per slot above) — the divider question #760 left open is
     // closed by those, not by a rule of their own.
 
-    // D30: a cut with NO storyboard layer swaps the reserved strip slot's
-    // content to the CREATE affordance — an icon, not copy. The press
-    // layer hit-tests the SAME rect ([createAffordanceRectFor]).
-    if (!block.hasStoryboardLayer && !block.bandsFolded) {
-      final affordance = createAffordanceRectFor(block.strip);
-      if (affordance.width > 0 && affordance.height > 8) {
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(affordance, timelineBlockCornerRadius),
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1
-            ..color = storyboardCutBlockEdgeColor(
-              colorScheme,
-              brightness,
-              active: false,
-              hovered: block.isHovered,
-            ),
-        );
-        final plusStyle = _labelStyle.copyWith(
-          fontWeight: FontWeight.w700,
-          color: timelineDrawingInkColor,
-        );
-        final glyph = timelineGlyphPainter('+', plusStyle);
-        paintTimelineGlyphOnGround(
-          canvas,
-          Offset(
-            affordance.center.dx - glyph.width / 2,
-            affordance.center.dy - glyph.height / 2,
+    // D30: the ACTIVE cut with NO storyboard layer swaps the reserved
+    // strip slot's content to the CREATE affordance — an icon, not copy.
+    // Eligibility and rect are [createAffordanceRectOf]'s, shared with
+    // the press layer.
+    if (createAffordanceRectOf(block) case final affordance?) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(affordance, timelineBlockCornerRadius),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = storyboardCutBlockEdgeColor(
+            colorScheme,
+            brightness,
+            active: false,
+            hovered: block.isHovered,
           ),
-          '+',
-          plusStyle,
-          ground: _stripGround(block),
-        );
-      }
+      );
+      final plusStyle = _labelStyle.copyWith(
+        fontWeight: FontWeight.w700,
+        color: timelineDrawingInkColor,
+      );
+      final glyph = timelineGlyphPainter('+', plusStyle);
+      paintTimelineGlyphOnGround(
+        canvas,
+        Offset(
+          affordance.center.dx - glyph.width / 2,
+          affordance.center.dy - glyph.height / 2,
+        ),
+        '+',
+        plusStyle,
+        // The WRITING ground (D29): a no-layer cut still paints its
+        // coverage cell's paper-white composite across the strip, so
+        // reading the dark plate here would resolve white-on-white.
+        ground: _stripWritingGround(block),
+      );
     }
 
     // ONE border for every cut block. The active cut used to wear a 2px
@@ -906,9 +923,14 @@ class StoryboardCutBlocksPainter extends CustomPainter {
           CustomPainterSemantics(
             rect: block.rect,
             properties: SemanticsProperties(
-              label:
-                  '${block.title} ${block.layerLabel}'
-                  '${block.total == null ? '' : ' ${block.total}'}',
+              // Joined from the parts that EXIST: D27 made layerLabel
+              // empty on a no-layer cut, and the old unconditional
+              // joiner left its space behind.
+              label: [
+                block.title,
+                if (block.layerLabel.isNotEmpty) block.layerLabel,
+                ?block.total,
+              ].join(' '),
               textDirection: TextDirection.ltr,
             ),
           ),

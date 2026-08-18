@@ -315,6 +315,38 @@ void main() {
     );
   });
 
+  test('D31 × D26: the SHEET\'s transition layer drops the refused crossing '
+      'fade that the cut-view row keeps for its warning to sit on', () {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    session.createCut();
+    final first = session.repository.requireProject().tracks.first.cuts.first;
+    final crossingStart = first.duration - 4;
+    final foId = session.cameraInstructionSet.defs
+        .firstWhere((def) => def.markType == CameraInstructionMarkType.fo)
+        .id;
+    // One F.O INSIDE cut 1 (applies) and one CROSSING its end (refused —
+    // 미적용, inert in playback and export).
+    session.updateTransitionInstructions(
+      SplayTreeMap<int, InstructionEvent>.from({
+        2: InstructionEvent(instructionId: foId, length: 4),
+        crossingStart: InstructionEvent(instructionId: foId, length: 8),
+      }),
+    );
+    session.selectCut(first.id);
+
+    // The cut-view ROW keeps both: the red warning needs the block.
+    expect(
+      session.trackTransitionDisplayLayer.instructions.keys,
+      containsAll([2, crossingStart]),
+    );
+    // The printed SHEET carries only what applies — an animator must not
+    // shoot material for a fade the compositor never runs.
+    expect(session.trackTransitionSheetLayer.instructions.keys, [2]);
+  });
+
   /// ③ Create / edit / delete are ONE verb — the instance editor.
   ///
   /// The user's ask was that the transition row stop having its own creation
