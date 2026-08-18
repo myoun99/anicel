@@ -243,6 +243,16 @@ typedef _RowMemoInputs = ({
   // REC1-D: the clip-marker switch is a display fact — toggling it must
   // invalidate SE rows (the memo-token discipline).
   String? seClipMarkerTooltip,
+  // A1 (2026-08-17): the frames/seconds display mode is a display fact
+  // too — the run-duration labels ride the rows as a foreground painter,
+  // so a memo hit on toggle returned the identical widget and the block
+  // text stayed in the old mode until an unrelated token field moved
+  // (layer activation was the user's observed workaround). Same
+  // discipline as seClipMarkerTooltip and THE RESIZE LAW above. The tile
+  // bake stays out of this on purpose: duration text is never baked into
+  // tiles (the labels painter exists as a foreground layer precisely so
+  // this toggle is a plain repaint, never a re-raster).
+  bool showSeconds,
 });
 
 class _RowMemoEntry {
@@ -387,7 +397,8 @@ class _TimelineFrameRowsScrollBodyState
         identical(a.dragPreview, b.dragPreview) &&
         identical(a.auxiliaryIdentity, b.auxiliaryIdentity) &&
         a.seSpillsIn == b.seSpillsIn &&
-        a.seClipMarkerTooltip == b.seClipMarkerTooltip;
+        a.seClipMarkerTooltip == b.seClipMarkerTooltip &&
+        a.showSeconds == b.showSeconds;
   }
 
   /// The row kind's external-input identity for the memo token.
@@ -571,6 +582,7 @@ class _TimelineFrameRowsScrollBodyState
       auxiliaryIdentity: _auxiliaryIdentityFor(row.layer),
       seSpillsIn: widget.seSpillInLayerIds.contains(row.layer.id),
       seClipMarkerTooltip: widget.seClipMarkerTooltip,
+      showSeconds: widget.showSeconds,
     );
     final cached = _rowMemo[rowKey.value];
     if (cached != null && _inputsMatch(cached.inputs, inputs)) {

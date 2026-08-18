@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_rows_scroll_body.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 
 import 'timeline_cell_probe.dart';
 
@@ -53,7 +54,11 @@ void main() {
     return TimelineCellExposureState.uncovered;
   }
 
-  Widget harness(List<Layer> layers, double cellWidth) => MaterialApp(
+  Widget harness(
+    List<Layer> layers,
+    double cellWidth, {
+    bool showSeconds = false,
+  }) => MaterialApp(
     home: Scaffold(
       body: Material(
         child: SingleChildScrollView(
@@ -77,6 +82,7 @@ void main() {
             exposureStateForLayer: stateFor,
             onSelectLayer: (_) {},
             onSelectFrame: (_) {},
+            showSeconds: showSeconds,
           ),
         ),
       ),
@@ -156,5 +162,45 @@ void main() {
     await tester.pumpWidget(harness(layers, 24));
 
     expect(identical(rowWidget(tester, 'a'), before), isTrue);
+  });
+
+  // A1 (2026-08-17): the frames/seconds toggle is a DISPLAY FACT and must
+  // MISS the memo — the run-duration labels ride the row as a foreground
+  // painter, so a memo hit handed back the identical widget and the block
+  // text stayed in the old mode until an unrelated token field moved
+  // (activating a layer was the user's observed workaround). The direct
+  // TimelineFrameCellsRow tests could never catch this: they bypass the
+  // memoized body, which is exactly where the bug lived.
+  testWidgets('A1: the seconds toggle rebuilds the rows and the block text '
+      'follows', (tester) async {
+    List<String> labelTexts() =>
+        (tester
+                    .widget<CustomPaint>(
+                      find.byKey(
+                        const ValueKey<String>('timeline-row-cells-a'),
+                      ),
+                    )
+                    .foregroundPainter!
+                as TimelineRowRunLabelsPainter)
+            .runLabels()
+            .map((label) => label.text)
+            .toList();
+
+    final layers = [drawingLayer('a')];
+    await tester.pumpWidget(harness(layers, 24));
+    final before = rowWidget(tester, 'a');
+    expect(labelTexts(), ['4']);
+
+    await tester.pumpWidget(harness(layers, 24, showSeconds: true));
+
+    expect(
+      identical(rowWidget(tester, 'a'), before),
+      isFalse,
+      reason:
+          'the display mode joined the memo token — a toggle must rebuild '
+          'the row (the memo-token discipline, same as seClipMarkerTooltip '
+          'and THE RESIZE LAW)',
+    );
+    expect(labelTexts(), ['0+4'], reason: 'and the text actually switched');
   });
 }
