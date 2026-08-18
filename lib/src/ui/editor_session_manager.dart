@@ -16793,6 +16793,29 @@ class EditorSessionManager extends ChangeNotifier {
       }
     }
     brushFrameStore.restoreFromFile(mainCels);
+    // R7q2 (유저 08-18: 「치유가 가볍게 가능하다면 해도 됨」): heal cels
+    // whose stored canvas size disagrees with their cut — files written
+    // while the resize was still split in two could leave 겸용 or
+    // unselected cuts' cels at a stale size, which display as EMPTY and
+    // turn permanent on the first stroke (the D5 loss, preserved in the
+    // save). A healthy file walks this map once and finds nothing; a
+    // broken cel gets the same strictly cut-scoped crop the resize
+    // itself uses (R27), and the heal marks the project unsaved so the
+    // next save writes the repaired truth.
+    final cutSizes = {
+      for (final track in result.project.tracks)
+        for (final cut in track.cuts) cut.id: cut.canvasSize,
+    };
+    final healedCuts = <CutId>{};
+    for (final entry in mainCels.entries) {
+      final cutSize = cutSizes[entry.key.cutId];
+      if (cutSize != null && entry.value.canvasSize != cutSize) {
+        healedCuts.add(entry.key.cutId);
+      }
+    }
+    for (final cutId in healedCuts) {
+      brushFrameStore.resizeBakedSurfaces(cutSizes[cutId]!, cutId: cutId);
+    }
     conteInkRowStore.restoreFromFile(inkRowCels);
     conteInkPageStore.restoreFromFile(inkPageCels);
     envelopeInkStore.restoreFromFile(envelopeCels);
@@ -16824,8 +16847,10 @@ class EditorSessionManager extends ChangeNotifier {
     // user has not done anything to prompt it.
     refreshMediaExistence();
     // A recovered session stays dirty: its content differs from the real
-    // file until the user saves.
-    _hasUnsavedChanges = recoverAs != null || overlayPath != null;
+    // file until the user saves — and so does a session whose load just
+    // HEALED mismatched cels (R7q2).
+    _hasUnsavedChanges =
+        recoverAs != null || overlayPath != null || healedCuts.isNotEmpty;
     _warmActiveCut();
     frameSeekCommitted.value += 1;
     notifyListeners();
