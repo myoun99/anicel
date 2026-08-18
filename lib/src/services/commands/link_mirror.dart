@@ -47,12 +47,18 @@ List<CutId> linkedCutSiblings(Project project, {required CutId cutId}) {
       continue;
     }
     linkedLayerCount += 1;
-    for (final member in group.members) {
-      if (member.cutId == cutId) {
-        continue;
-      }
-      counterpartsByCut[member.cutId] =
-          (counterpartsByCut[member.cutId] ?? 0) + 1;
+    // Per LAYER, per cut: "has a counterpart there" is a boolean — a cut
+    // holding TWO members of one group (link-duplicate inside a linked
+    // cut) used to count 2 against this layer's 1 and fail the
+    // full-match test below, silently excluding a genuine 겸용 sibling.
+    // A resize then broke the size lockstep, and the sibling's first
+    // stroke destroyed the shared cel bank (adversarial review).
+    final cutsWithCounterpart = <CutId>{
+      for (final member in group.members)
+        if (member.cutId != cutId) member.cutId,
+    };
+    for (final target in cutsWithCounterpart) {
+      counterpartsByCut[target] = (counterpartsByCut[target] ?? 0) + 1;
     }
   }
   if (linkedLayerCount == 0) {

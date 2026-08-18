@@ -553,18 +553,32 @@ class BrushFrameStore {
     }
   }
 
-  /// Shifts every cel of [cutId] by ([dx], [dy]) in canvas space, for
-  /// canvas resizes anchored anywhere but the top-left corner. R19: a
-  /// raster blit of the baked truth (anchors produce whole-pixel offsets;
-  /// the resize command's reference snapshot covers the exact undo).
-  void translateCutContent({
+  /// D5 (R7): adopts [canvasSize] for every cel of [cutId] AND applies
+  /// the resize anchor's ([dx], [dy]) content offset in the SAME blit —
+  /// the resize command's one-pass raster adoption
+  /// ([translateBitmapSurface] already takes the target canvas and clips
+  /// against ITS pasteboard). dx=dy=0 (top-left anchor) is the plain
+  /// crop/extend ([resizeBakedSurfaces] — hot cels keep their tiles,
+  /// cold/file cels stay cold).
+  ///
+  /// The COMMAND completes the adoption for its target and every 겸용
+  /// sibling, so no state the widget half used to depend on (active cut,
+  /// live selection, a mounted canvas host) can leave a cel behind at
+  /// the old size — a mismatched cel displayed as EMPTY and turned into
+  /// permanent loss on the first stroke (the D5 picture loss). R19:
+  /// anchors produce whole-pixel offsets; the resize command's reference
+  /// snapshot covers the exact undo.
+  void adoptCutCanvasSize({
     required CutId cutId,
-    required double dx,
-    required double dy,
+    required CanvasSize canvasSize,
+    double dx = 0,
+    double dy = 0,
   }) {
     if (dx == 0 && dy == 0) {
+      resizeBakedSurfaces(canvasSize, cutId: cutId);
       return;
     }
+    var edited = false;
     for (final key in _celKeysOfCut(cutId)) {
       // Cold cels of the cut materialize first (cut-scoped = bounded).
       final surface = bakedSurfaceOrNull(key)!;
@@ -574,12 +588,21 @@ class BrushFrameStore {
           surface,
           dx: dx.round(),
           dy: dy.round(),
-          canvasSize: surface.canvasSize,
+          canvasSize: canvasSize,
         ),
       );
       _fileCels.remove(key);
       _dirtySinceSave.add(key);
-      markCelEdited(key);
+      // Per-cel signature bump WITHOUT the per-cel global notify: the
+      // global signal fires as often as the user draws and its
+      // listeners are honed for single strokes — N cels × N listener
+      // walks was part of D3's freeze. One bump covers the lot (the
+      // [_clearAllTiers] precedent).
+      _update(_canonicalize(key), _markCacheDirty);
+      edited = true;
+    }
+    if (edited) {
+      celPixelRevision.value += 1;
     }
     _scheduleCooling();
   }
@@ -676,6 +699,13 @@ class BrushFrameStore {
       _dirtySinceSave.add(key);
     }
   }
+
+  /// The HOT surface for [key], or null — NO materialization: cold and
+  /// file cels answer null. The resize command's retained-bytes account
+  /// reads this to identity-diff its snapshot against the live tiles
+  /// without pulling anything hot as a side effect.
+  BitmapSurface? hotBakedSurfaceOrNull(BrushFrameKey key) =>
+      _bakedSurfaces[_canonicalize(key)];
 
   /// The cut's baked surfaces by key — cold cels of the cut materialize
   /// (cut-scoped = bounded); surfaces are immutable, so the snapshot is

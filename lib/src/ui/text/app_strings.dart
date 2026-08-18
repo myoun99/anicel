@@ -310,6 +310,8 @@ class AppStrings {
   /// a question the app never used to answer at all.
   String get saveProgressRunning => _s('saveProgressRunning');
   String get saveProgressDone => _s('saveProgressDone');
+  String get resizeProgressRunning => _s('resizeProgressRunning');
+  String get resizeProgressDone => _s('resizeProgressDone');
   String get unsavedAutosaveTitle => _s('unsavedAutosaveTitle');
   String get unsavedAutosaveBody => _s('unsavedAutosaveBody');
   String get commonNotNow => _s('commonNotNow');
@@ -1120,6 +1122,8 @@ class AppStrings {
     'commonSaveAs': 'Save as…',
     'saveProgressRunning': 'Saving…',
     'saveProgressDone': 'Saved',
+    'resizeProgressRunning': 'Resizing…',
+    'resizeProgressDone': 'Resized',
     'unsavedAutosaveTitle': 'Save your project',
     'unsavedAutosaveBody':
         'This project has never been saved, so autosave has nowhere to '
@@ -1815,6 +1819,8 @@ class AppStrings {
     'commonSaveAs': '名前を付けて保存…',
     'saveProgressRunning': '保存中…',
     'saveProgressDone': '保存しました',
+    'resizeProgressRunning': 'サイズ変更中…',
+    'resizeProgressDone': 'サイズ変更しました',
     'unsavedAutosaveTitle': 'プロジェクトを保存',
     'unsavedAutosaveBody':
         'このプロジェクトはまだ一度も保存されていないため、自動保存の書き込み'
@@ -2594,6 +2600,8 @@ class AppStrings {
     'commonSaveAs': '다른 이름으로 저장…',
     'saveProgressRunning': '저장 중…',
     'saveProgressDone': '저장 완료',
+    'resizeProgressRunning': '크기 변경 중…',
+    'resizeProgressDone': '크기 변경 완료',
     'unsavedAutosaveTitle': '프로젝트 저장',
     'unsavedAutosaveBody':
         '이 프로젝트는 한 번도 저장된 적이 없어서 자동 저장이 쓸 곳이 '
@@ -3375,6 +3383,8 @@ class AppStrings {
     'commonSaveAs': 'Enregistrer sous…',
     'saveProgressRunning': 'Enregistrement…',
     'saveProgressDone': 'Enregistré',
+    'resizeProgressRunning': 'Redimensionnement…',
+    'resizeProgressDone': 'Redimensionné',
     'unsavedAutosaveTitle': 'Enregistrez votre projet',
     'unsavedAutosaveBody':
         "Ce projet n'a jamais été enregistré : la sauvegarde automatique "
@@ -4167,6 +4177,8 @@ class AppStrings {
     'commonSaveAs': '另存为…',
     'saveProgressRunning': '正在保存…',
     'saveProgressDone': '已保存',
+    'resizeProgressRunning': '正在调整尺寸…',
+    'resizeProgressDone': '已调整尺寸',
     'unsavedAutosaveTitle': '保存你的项目',
     'unsavedAutosaveBody':
         '此项目从未保存过，自动保存没有可写入的位置。选择一个文件后，'
