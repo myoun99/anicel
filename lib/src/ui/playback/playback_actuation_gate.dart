@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart'
-    show BoxHitTestResult, RenderProxyBox;
+    show BoxHitTestResult, RenderProxyBox, SemanticsConfiguration;
 import 'package:flutter/services.dart'
     show HardwareKeyboard, KeyDownEvent, KeyEvent;
 
@@ -8,7 +8,7 @@ import 'canvas_playback_controller.dart';
 
 /// 🚨★★★ T28-c — WHILE PLAYING, THE FIRST ACTUATION IS STOP, AND ONLY STOP.
 /// D13 (2026-08-17) amends exactly ONE carve-out: a pointer actuation whose
-/// TOPMOST hit surface belongs to the canvas panel NAVIGATES (pan/zoom keep
+/// hit path CLAIMS into the canvas panel's subtree NAVIGATES (pan/zoom keep
 /// working during playback); every other actuation stops and is consumed,
 /// unchanged.
 ///
@@ -27,8 +27,8 @@ import 'canvas_playback_controller.dart';
 /// 📐The D13 hole is decided by the HIT PATH, not by a rectangle: the
 /// floating timeline overlaps the canvas panel's rect, so 「캔버스 위 좌표」
 /// would have let a timeline press act during playback. The absorber
-/// hit-tests the subtree and passes the event ONLY when the topmost target
-/// sits inside [navigationRegionKey]'s subtree — the canvas panel: its
+/// hit-tests the subtree and passes the event ONLY when the hit CLAIMED
+/// into [navigationRegionKey]'s subtree — the canvas panel: its
 /// viewport gestures, zoom buttons and panbars (the chrome the playback
 /// view renders inside on purpose, "so the panel chrome keeps working
 /// during playback"). Drawing cannot leak through the hole: playback swaps
@@ -97,8 +97,8 @@ class PlaybackActuationGate extends StatefulWidget {
   final CanvasPlaybackController controller;
   final Widget child;
 
-  /// D13: the canvas panel's subtree key — pointer actuations whose
-  /// topmost hit target lives inside it NAVIGATE instead of stopping.
+  /// D13: the canvas panel's subtree key — pointer actuations whose hit
+  /// path claims into it NAVIGATE instead of stopping.
   /// Null keeps the pure T28-c law (every actuation stops).
   final GlobalKey? navigationRegionKey;
 
@@ -159,8 +159,8 @@ class _PlaybackActuationGateState extends State<PlaybackActuationGate> {
       return;
     }
     if (_verdict.navigated) {
-      // D13: the event's topmost surface was the canvas panel — it
-      // navigates; the panel's own tap-to-stop covers the plain tap.
+      // D13: the event claimed into the canvas panel — it navigates;
+      // the panel's own tap-to-stop covers the plain tap.
       return;
     }
     widget.controller.stop();
@@ -173,9 +173,14 @@ class _PlaybackActuationGateState extends State<PlaybackActuationGate> {
       child: widget.child,
       builder: (context, playing, child) => Listener(
         onPointerDown: playing ? (_) => _stopUnlessNavigated() : null,
-        // Wheel and pinch-zoom arrive as signals, not downs, and the user
-        // named them: 「휠/줌」.
+        // Wheel arrives as a signal; trackpad pinch/two-finger pan
+        // arrive as PAN-ZOOM events (the viewport gesture layer's own
+        // trackpad path reads exactly those) — the user named both:
+        // 「휠/줌」. All three actuation kinds share the one verdict.
         onPointerSignal: playing ? (_) => _stopUnlessNavigated() : null,
+        onPointerPanZoomStart: playing
+            ? (_) => _stopUnlessNavigated()
+            : null,
         // ★This is the 「입력 일 안함」 half. Without it the press would
         // stop playback AND land on whatever was under it. The D13 hole
         // and the stop above read ONE verdict — the absorber's — so
@@ -198,10 +203,14 @@ class _NavigationVerdict {
 }
 
 /// [AbsorbPointer] with the D13 hole: while absorbing, an event whose
-/// TOPMOST hit target sits inside the navigation region's subtree
+/// hit path actually CLAIMED into the navigation region's subtree
 /// hit-tests normally (the canvas panel navigates); everywhere else it
 /// behaves exactly like an absorbing [AbsorbPointer] (claims the
-/// position, reaches no descendant). The hit PATH decides, not a rect —
+/// position, reaches no descendant) — including blocking SEMANTIC
+/// actions, [RenderAbsorbPointer]'s other half: assistive-tech
+/// activations bypass pointer hit tests entirely, so without
+/// `isBlockingUserActions` a TalkBack double-tap would both act AND
+/// leave playback running. The hit PATH decides the hole, not a rect —
 /// the floating timeline overlaps the canvas panel's rectangle, and a
 /// press on it must keep the stop-and-consume law. Always mounted — only
 /// the flag flips (the tree-shape law above).
@@ -239,28 +248,53 @@ class _NavigationHoleAbsorbPointer extends SingleChildRenderObjectWidget {
 
 class _RenderNavigationHoleAbsorbPointer extends RenderProxyBox {
   _RenderNavigationHoleAbsorbPointer({
-    required this.absorbing,
+    required bool absorbing,
     required this.regionBoxOf,
     required this.verdict,
-  });
+  }) : _absorbing = absorbing;
 
-  /// Plain fields, like [RenderAbsorbPointer]'s flag: they only change
-  /// hit-test behaviour — no markNeedsPaint/layout on update.
-  bool absorbing;
   RenderBox? Function() regionBoxOf;
   _NavigationVerdict verdict;
 
+  bool get absorbing => _absorbing;
+  bool _absorbing;
+  set absorbing(bool value) {
+    if (_absorbing == value) {
+      return;
+    }
+    _absorbing = value;
+    // Like RenderAbsorbPointer: the flip changes hit-testing (no
+    // paint/layout) AND the semantics blocking below.
+    markNeedsSemanticsUpdate();
+  }
+
+  /// [RenderAbsorbPointer]'s other half, kept: while absorbing, semantic
+  /// ACTIONS under the gate are inert. Assistive-tech activations
+  /// dispatch straight to the target node — no pointer hit test, no key
+  /// event — so this is the only place T28-c can hold for them.
+  @override
+  void describeSemanticsConfiguration(SemanticsConfiguration config) {
+    super.describeSemanticsConfiguration(config);
+    config.isBlockingUserActions = _absorbing;
+  }
+
   @override
   bool hitTest(BoxHitTestResult result, {required Offset position}) {
-    if (!absorbing) {
+    if (!_absorbing) {
       return super.hitTest(result, position: position);
     }
     verdict.navigated = false;
     final region = regionBoxOf();
     if (region != null) {
+      // ⚠️The probe's RETURN VALUE is deliberately ignored: a hitTest
+      // return is BLOCKING semantics (may this box's siblings still be
+      // tested), while dispatch runs off the ENTRIES — and the panel
+      // shell's `MouseRegion(opaque: false)` returns false forever while
+      // still adding its whole claiming subtree to the path, so gating
+      // on the return killed the hole everywhere in the real tree.
       final probe = BoxHitTestResult();
-      if (super.hitTest(probe, position: position) &&
-          _topTargetInside(probe, region)) {
+      super.hitTest(probe, position: position);
+      if (_pathClaimedIntoRegion(probe, region)) {
         verdict.navigated = true;
         return super.hitTest(result, position: position);
       }
@@ -272,19 +306,21 @@ class _RenderNavigationHoleAbsorbPointer extends RenderProxyBox {
     return size.contains(position);
   }
 
-  /// Whether the probe's TOPMOST target (its first path entry — the
-  /// deepest surface under the pointer) is the region box or one of its
-  /// descendants. A bounded parent-chain walk per event, never per frame.
-  static bool _topTargetInside(BoxHitTestResult probe, RenderBox region) {
-    if (probe.path.isEmpty) {
-      return false;
-    }
-    final target = probe.path.first.target;
-    if (target is! RenderObject) {
-      return false;
-    }
-    for (RenderObject? node = target; node != null; node = node.parent) {
-      if (identical(node, region)) {
+  /// Whether the probe's path contains the region box ITSELF — which is
+  /// true exactly when a descendant of the canvas panel CLAIMED the hit
+  /// (a proxy box joins the path only on a claiming child chain).
+  ///
+  /// ⛔Not `path.first`: translucent surfaces add themselves to the path
+  /// without claiming — the full-bleed media drop target over the whole
+  /// canvas tab is one, and reading the first entry declared IT the
+  /// topmost surface everywhere, so the hole never opened (adversarial
+  /// review). An opaque surface floating OVER the canvas (the timeline)
+  /// still keeps the stop law: the stack never descends to the canvas
+  /// under a claiming upper sibling, so the region box never joins that
+  /// path. Identity scan per event, never per frame.
+  static bool _pathClaimedIntoRegion(BoxHitTestResult probe, RenderBox region) {
+    for (final entry in probe.path) {
+      if (identical(entry.target, region)) {
         return true;
       }
     }

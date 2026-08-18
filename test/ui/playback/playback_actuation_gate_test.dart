@@ -297,6 +297,119 @@ void main() {
       controller.detachTicker();
     });
 
+    testWidgets('a TRANSLUCENT surface over everything does not close the '
+        'hole — the path CLAIM decides, not the first entry (the media '
+        'drop target wraps the whole canvas tab in translucent MetaData)', (
+      tester,
+    ) async {
+      regionTaps = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PlaybackActuationGate(
+              controller: controller,
+              navigationRegionKey: regionKey,
+              child: Stack(
+                children: [
+                  SizedBox.expand(
+                    key: regionKey,
+                    child: GestureDetector(
+                      key: const ValueKey<String>('nav-region'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => regionTaps += 1,
+                      child: const ColoredBox(color: Color(0xFF222222)),
+                    ),
+                  ),
+                  // A full-bleed DragTarget-shaped layer: translucent,
+                  // claims nothing, joins every hit path first.
+                  const Positioned.fill(
+                    child: MetaData(
+                      behavior: HitTestBehavior.translucent,
+                      child: SizedBox.expand(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      controller.attachTicker(const TestVSync());
+      controller.play(scope: PlaybackScope.activeCut);
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey<String>('nav-region')));
+      await tester.pump();
+
+      expect(
+        controller.isPlaying,
+        isTrue,
+        reason: 'path.first is the translucent layer, but the press '
+            'CLAIMED into the region — it must navigate',
+      );
+      expect(regionTaps, 1);
+
+      controller.stop();
+      controller.detachTicker();
+    });
+
+    testWidgets('while playing, semantic ACTIONS under the gate are inert '
+        '— AbsorbPointer\'s other half, kept by the custom absorber', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await pumpGateWithRegion(tester);
+      final node = tester.getSemantics(
+        find.byKey(const ValueKey<String>('work-surface')),
+      );
+      expect(node.areUserActionsBlocked, isFalse, reason: 'idle = inert gate');
+
+      controller.attachTicker(const TestVSync());
+      controller.play(scope: PlaybackScope.activeCut);
+      await tester.pump();
+
+      expect(
+        tester
+            .getSemantics(find.byKey(const ValueKey<String>('work-surface')))
+            .areUserActionsBlocked,
+        isTrue,
+        reason: 'assistive-tech activations bypass pointer hit tests — '
+            'blocking the actions is the only way T28-c holds for them',
+      );
+
+      controller.stop();
+      await tester.pump();
+      controller.detachTicker();
+      handle.dispose();
+    });
+
+    testWidgets('a trackpad PAN-ZOOM outside the region stops playback — '
+        'pinch/two-finger pan are actuations too (「휠/줌」)', (tester) async {
+      await pumpGateWithRegion(tester);
+      controller.attachTicker(const TestVSync());
+      controller.play(scope: PlaybackScope.activeCut);
+      await tester.pump();
+
+      final gesture = await tester.createGesture(
+        kind: PointerDeviceKind.trackpad,
+      );
+      await gesture.panZoomStart(
+        tester.getCenter(find.byKey(const ValueKey<String>('work-surface'))),
+      );
+      await tester.pump();
+      await gesture.panZoomEnd();
+      await tester.pump();
+
+      expect(
+        controller.isPlaying,
+        isFalse,
+        reason: 'the old gate absorbed the pinch but never stopped — a '
+            'consumed actuation with no stop breaks both T28-c halves',
+      );
+
+      controller.detachTicker();
+    });
+
     testWidgets('idle, the region is nothing special — both surfaces do '
         'their jobs', (tester) async {
       await pumpGateWithRegion(tester);

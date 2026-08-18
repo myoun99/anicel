@@ -40,6 +40,20 @@ List<StoryboardTimelineLayoutEntry> storyboardActiveTrackLayout(
 /// button that calls this is built by the WORKSPACE now while the host still
 /// owns the layout cache. One implementation, two callers.
 void seekStoryboardPlayheadToTrackStart(EditorSessionManager session) {
+  // An EMPTY selected track displays the whole-layout fallback — re-aim
+  // at the track actually on screen before seeking (the old body's
+  // selectCut did this as a side effect, and losing it left the play
+  // button silently dead: the play playlist filters by selected track
+  // with NO fallback, so the parked axis and the playlist disagreed —
+  // adversarial review). With cuts on the selected track this is a
+  // no-op.
+  final entries = storyboardActiveTrackLayout(session);
+  if (entries.isEmpty) {
+    return;
+  }
+  if (entries.first.trackId != session.selectedTrackId) {
+    session.selectCut(entries.first.cutId);
+  }
   session.selectGlobalFrame(0);
 }
 
@@ -186,10 +200,12 @@ void commitStoryboardScrub(EditorSessionManager session) {
     return;
   }
   // Playback took the transport mid-drag: there is no editing seek to
-  // commit, but the preview flag must not leak past the gesture — stuck
-  // true it would freeze the canvas in scrub-preview mode after the
-  // playback stops.
-  session.frameScrubActive.value = false;
+  // commit, but the preview FLAGS must not leak past the gesture — a
+  // stuck scrub flag would freeze the canvas in scrub-preview mode, and
+  // a stuck territory flag would swallow the NEXT drag's exit edge
+  // (the D6 stale picture, resurrected one drag per leak). One session
+  // verb clears the whole preview state.
+  session.abandonFrameScrubPreview();
 }
 
 /// Switching into the storyboard clamps an over-end playhead back onto the

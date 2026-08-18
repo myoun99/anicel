@@ -8,7 +8,10 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/storyboard_playhead_mapping.dart'
+    show seekStoryboardPlayheadToTrackStart;
 
 /// D1 (2026-08-17): the storyboard's "to start" button goes to the VERY
 /// FIRST frame of the track axis — GAPS INCLUDED. The old body spoke
@@ -110,5 +113,39 @@ void main() {
     expect(session.gapParkedGlobalFrame, isNull);
     expect(session.activeCutOrNull?.id, const CutId('cut-1'));
     expect(session.currentFrameIndex, 0);
+  });
+
+  test('D1: an EMPTY selected track re-aims at the displayed fallback '
+      'track before seeking — the play playlist filters by selected '
+      'track with NO fallback, so the parked axis must agree with it', () {
+    final session = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('skip-start-empty'),
+        name: 'SkipStartEmpty',
+        createdAt: DateTime.utc(2026, 8, 18),
+        tracks: [
+          Track(id: const TrackId('empty'), name: 'Empty', cuts: const []),
+          Track(
+            id: const TrackId('video'),
+            name: 'Video',
+            cuts: [_cut('cut-1', leadingGap: 6), _cut('cut-2')],
+          ),
+        ],
+      ),
+    );
+    addTearDown(session.dispose);
+    session.selectTrackCutAtPlayhead(const TrackId('empty'));
+    expect(session.selectedTrackId, const TrackId('empty'));
+
+    seekStoryboardPlayheadToTrackStart(session);
+
+    expect(
+      session.selectedTrackId,
+      const TrackId('video'),
+      reason: 'the storyboard shows the fallback track — to-start re-aims '
+          'there (the old selectCut side effect, kept deliberately), or '
+          'the play button dies on an empty playlist',
+    );
+    expect(session.gapParkedGlobalFrame, 0);
   });
 }

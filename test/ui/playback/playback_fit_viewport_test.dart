@@ -125,7 +125,13 @@ void main() {
 
     // Cross into cut 2 (1600 wide): the fit fires again, at a smaller
     // zoom than cut 1's (a 4x wider canvas into the same panel).
-    await tester.pump(const Duration(milliseconds: 400));
+    // ⚠️The crossing lands EXACTLY at cut 2's local frame 0 (400ms at
+    // 10fps = global 4): the cursor publishes 0→0 (suppressed) and the
+    // empty-layer cuts publish no row — so the ONLY channel that can
+    // carry this crossing to the host boundary is the D12 notifier. An
+    // off-boundary landing (local 2) let the cursor's retarget mask a
+    // dead notifier (adversarial review caught the artifact).
+    await tester.pump(const Duration(milliseconds: 200));
     await tester.pump();
     final fitCut2 = panelViewport(tester);
     expect(

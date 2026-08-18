@@ -44,4 +44,54 @@ void main() {
     );
     await tester.pumpAndSettle();
   });
+
+  testWidgets('D13: a single-finger DRAG on the canvas during playback '
+      'does not stop it — the press claims into the panel THROUGH the '
+      'translucent full-bleed drop target above it', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(theme: buildAppTheme(), home: const HomePage()),
+    );
+    await tester.pumpAndSettle();
+    final session = tester
+        .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+        .session;
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('playback-play-button')),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(session.playback.isPlaying, isTrue);
+
+    final panel = tester.getRect(
+      find.byKey(const ValueKey<String>('main-canvas-brush-host-container')),
+    );
+    final start = Offset(panel.center.dx, panel.top + panel.height / 4);
+    // A drag, not a tap: the down must NOT stop (it claims into the
+    // canvas panel — the media drop target's translucent MetaData sits
+    // over the whole tab and reading path.first declared IT the surface,
+    // killing the hole; adversarial review). The movement disqualifies
+    // the tap-to-stop, so playback survives the whole gesture.
+    final gesture = await tester.startGesture(start);
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(
+      session.playback.isPlaying,
+      isTrue,
+      reason: 'the canvas press navigates — it must not stop on DOWN',
+    );
+    await gesture.moveBy(const Offset(60, 0));
+    await tester.pump(const Duration(milliseconds: 16));
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(
+      session.playback.isPlaying,
+      isTrue,
+      reason: 'a drag is navigation, not a tap — playback keeps running',
+    );
+
+    session.playback.stop();
+    await tester.pumpAndSettle();
+  });
 }

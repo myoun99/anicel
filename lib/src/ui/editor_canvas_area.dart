@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
+import '../models/cut.dart' show Cut;
 import '../models/layer_id.dart';
 import '../models/project_background.dart';
 import '../services/canvas_color_sampler.dart';
@@ -236,8 +237,64 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   final ActiveStrokeOverlayModel _activeStrokeOverlay =
       ActiveStrokeOverlayModel();
 
+  /// D12: the cut playback currently stands IN — the fit token's
+  /// identity half. 🚨This notifier is the boundary's ONLY crossing
+  /// signal: the session's own playback follow (`_followPlaybackCut`) is
+  /// QUIET by design (R12-B — no session notify), and the cursor/row
+  /// channels suppress the equal values a crossing publishes (local 0 on
+  /// entry, the unchanged verb row), so without this the token would go
+  /// stale and the next unrelated notify would land a fit mid-cut
+  /// (adversarial review). Kept by [_syncPlaybackFitCut]'s per-tick int
+  /// comparison against the cached entry interval: the position resolve
+  /// (which allocates) runs once per cut CROSSING, never per frame
+  /// (old-tablet law), and the notifier fires on the crossing only.
+  final ValueNotifier<Cut?> _playbackFitCut = ValueNotifier<Cut?>(null);
+  int _playbackFitStart = 0;
+  int _playbackFitEnd = -1;
+
+  void _syncPlaybackFitCut() {
+    final playback = widget.session.playback;
+    final global = playback.isActive
+        ? playback.globalFrameIndexListenable.value
+        : null;
+    if (global != null &&
+        global >= _playbackFitStart &&
+        global < _playbackFitEnd) {
+      return;
+    }
+    final position = global == null ? null : playback.position;
+    if (position == null) {
+      // A playlist GAP or no playback: no cut to fit — the request goes
+      // null (never reframes), and the NEXT cut entry is a token change
+      // even when the run loops back into the same cut.
+      _playbackFitStart = 0;
+      _playbackFitEnd = -1;
+      if (_playbackFitCut.value != null) {
+        _playbackFitCut.value = null;
+      }
+      return;
+    }
+    _playbackFitStart = position.globalFrameIndex - position.localFrameIndex;
+    _playbackFitEnd = _playbackFitStart + position.cut.duration;
+    if (!identical(_playbackFitCut.value, position.cut)) {
+      _playbackFitCut.value = position.cut;
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final playback = widget.session.playback;
+    playback.globalFrameIndexListenable.addListener(_syncPlaybackFitCut);
+    playback.isActiveListenable.addListener(_syncPlaybackFitCut);
+  }
+
   @override
   void dispose() {
+    final playback = widget.session.playback;
+    playback.globalFrameIndexListenable.removeListener(_syncPlaybackFitCut);
+    playback.isActiveListenable.removeListener(_syncPlaybackFitCut);
+    _playbackFitCut.dispose();
     _activeStrokeOverlay.dispose();
     super.dispose();
   }
@@ -566,6 +623,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           listenable: Listenable.merge([
             widget.brushToolState,
             session.currentRowListenable,
+            // D12: the playing cut's identity — fires once per cut
+            // crossing (never per tick), and only the host CONFIG
+            // changes, like everything else on this boundary.
+            _playbackFitCut,
           ]),
           builder: (context, _) {
             final toolState = widget.brushToolState.value;
@@ -573,19 +634,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             // cut ENTRY through the panel's own playback-follow law
             // (CanvasAutoFrameRequest: the token change fires the
             // reframe; the frames inside a cut leave the viewport
-            // user-owned, D13's half of the deal). NO machinery of its
-            // own: the session already FOLLOWS playback's crossings
-            // ([EditorSessionManager]'s `_followPlaybackCut` re-keys the
-            // active cut and notifies once per crossing, never per
-            // frame), so the active cut IS the playing cut and this
-            // boundary already rebuilds exactly when the token changes.
-            // Camera view fits the camera's OUTPUT frame at the origin —
-            // the painter's frameRect, not the editing pose projection;
+            // user-owned, D13's half of the deal). The identity comes
+            // from [_playbackFitCut] — see its doc for why no existing
+            // channel carries the crossing to this boundary. Camera
+            // view fits the camera's OUTPUT frame at the origin — the
+            // painter's frameRect, not the editing pose projection;
             // canvas mode fits the playing cut's own canvas, whatever
             // size that cut is.
-            final playbackCut = isPlaybackActive
-                ? session.activeCutOrNull
-                : null;
+            final playbackCut = _playbackFitCut.value;
             final cameraViewOn = widget.cameraViewEnabled.value;
             final playbackAutoFrame = playbackCut == null
                 ? null

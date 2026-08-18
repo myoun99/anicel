@@ -16089,7 +16089,16 @@ class EditorSessionManager extends ChangeNotifier {
       // follows immediately through the parking either way). No warm:
       // the track stack self-fills, there is no active-cut cache to fill.
       final parked = _gapGlobalFrame;
-      if (parked != null && parked != globalFrame && !frameScrubActive.value) {
+      // Engage on the SECOND out-of-territory event — OR on the FIRST
+      // when this gesture already touched the cut's territory (D6: a
+      // press ON the cursor's own frame never set the flag via
+      // scrubFrameIndex, so the old two-event rule read the grab-the-
+      // playhead drag's genuine crossing as tap-shaped and the canvas
+      // froze on the previous cut). A pointer-down alone still engages
+      // nothing: the no-flash rule is about the DOWN, not about moves.
+      if ((parked != null && parked != globalFrame ||
+              _scrubTouchedTerritory) &&
+          !frameScrubActive.value) {
         frameScrubActive.value = true;
       }
       _gapGlobalFrame = globalFrame;
@@ -16101,6 +16110,9 @@ class EditorSessionManager extends ChangeNotifier {
       }
       return;
     }
+    // The gesture stands IN territory — the fact the out-branch's engage
+    // reads to tell a real drag's crossing from a bare pointer-down.
+    _scrubTouchedTerritory = true;
     if (_gapGlobalFrame != null) {
       // Scrubbing back onto the cut un-parks — and kicks the warm the
       // out-of-territory engage skipped (one warm per territory entry,
@@ -16118,6 +16130,11 @@ class EditorSessionManager extends ChangeNotifier {
     }
     scrubFrameIndex(math.max(0, globalFrame - owner.startFrame));
   }
+
+  /// Whether the LIVE scrub gesture has stood inside the active cut's
+  /// territory — plain field (no rebuilds ride on it): it only sharpens
+  /// the out-branch's engage above. Cleared with the gesture.
+  bool _scrubTouchedTerritory = false;
 
   // --- Onion skin (P2: Callipeg peg model) -----------------------------------
 
@@ -17076,6 +17093,22 @@ class EditorSessionManager extends ChangeNotifier {
   /// it activates it (selectCut + local frame), in a gap it deselects and
   /// keeps the parking (UI-R9 #3). This is the ONLY place a global drag
   /// commits — the moves themselves never do.
+  /// Ends a live scrub PREVIEW without the landing seek — the storyboard
+  /// release path when playback took the transport mid-drag (there is no
+  /// editing seek to commit, but the preview flags must not leak past
+  /// the gesture: a stuck territory flag would swallow the next drag's
+  /// exit edge and resurrect the D6 stale picture, one drag per leak —
+  /// adversarial review).
+  void abandonFrameScrubPreview() {
+    if (frameScrubActive.value) {
+      frameScrubActive.value = false;
+    }
+    if (scrubOutOfTerritory.value) {
+      scrubOutOfTerritory.value = false;
+    }
+    _scrubTouchedTerritory = false;
+  }
+
   void commitFrameScrub() {
     audioScrubber.onScrubEnd();
     if (frameScrubActive.value) {
@@ -17086,6 +17119,7 @@ class EditorSessionManager extends ChangeNotifier {
     if (scrubOutOfTerritory.value) {
       scrubOutOfTerritory.value = false;
     }
+    _scrubTouchedTerritory = false;
     final parked = _gapGlobalFrame;
     if (parked != null) {
       // R15-⑤: a live editing interaction refuses the landing seek — the
