@@ -487,6 +487,7 @@ void main() {
       ('rename', s.canEditCellInstanceAtCurrentFrame),
       ('독립 붙여넣기', s.canPasteIndependentFrameAtCurrentFrame),
       ('링크 붙여넣기', s.canPasteLinkedFrameAtCurrentFrame),
+      ('복제', s.canDuplicateActiveBlock),
     ]) {
       expect(
         gate,
@@ -501,6 +502,8 @@ void main() {
     s.cutRunAtCurrentFrame();
     s.pasteIndependentFrameAtCurrentFrame();
     s.pasteLinkedFrameAtCurrentFrame();
+    s.duplicateActiveBlock(linked: false);
+    s.duplicateActiveBlock(linked: true);
     expect(
       rowATimeline(),
       before,
@@ -519,6 +522,7 @@ void main() {
     expect(s.canCutRunAtCurrentFrame, isTrue);
     expect(s.canPasteIndependentFrameAtCurrentFrame, isTrue);
     expect(s.canPasteLinkedFrameAtCurrentFrame, isTrue);
+    expect(s.canDuplicateActiveBlock, isTrue);
   });
 
   test('the image row refuses every verb that would mint or re-expose a '

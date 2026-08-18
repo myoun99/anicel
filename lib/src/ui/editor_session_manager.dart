@@ -9578,6 +9578,18 @@ class EditorSessionManager extends ChangeNotifier {
   /// ⛔The CLIPBOARD is not touched. A duplicate that clobbered what you had
   /// copied would be a second verb hiding inside the first.
   bool get canDuplicateActiveBlock {
+    // The fifth active-row verb: it resolves its block with
+    // [coveringDrawingBlockAt] on the active layer and has no band rung,
+    // so a band naming other rows would splice a copy into a row the
+    // user never swept — and shift that row's whole tail with it.
+    //
+    // ⛔This does not touch 유저 확정 2026-08-13 「복제는 현재 액티브인
+    // 대상을 상대로 적용하는 것」: that ruling picks the verb's NOUN, and
+    // the predicate is false whenever there is no band and whenever the
+    // band covers the active row — every case the ruling describes.
+    if (bandNamesRowsThisPressWouldMiss) {
+      return false;
+    }
     final layer = activeLayer;
     if (layer == null || !layerKindHoldsDrawings(layer.kind)) {
       return false;
