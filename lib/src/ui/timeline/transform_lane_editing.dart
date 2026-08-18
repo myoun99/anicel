@@ -450,27 +450,14 @@ TransformTrack? transformTrackWithLaneKeysShifted(
   if (frameDelta == 0) {
     return null;
   }
-  PropertyTrack<T>? shifted<T>(PropertyTrack<T> lane) {
-    final moved = <int>{
-      for (final frame in lane.keys.keys)
-        if (frame >= rangeStartIndex && frame < rangeEndIndexExclusive) frame,
-    };
-    if (moved.isEmpty) {
-      return null;
-    }
-    final next = <int, PropertyKey<T>>{
-      for (final entry in lane.keys.entries)
-        if (!moved.contains(entry.key)) entry.key: entry.value,
-    };
-    for (final frame in moved) {
-      final landing = frame + frameDelta;
-      if (landing < 0 || next.containsKey(landing)) {
-        return null;
-      }
-      next[landing] = lane.keys[frame]!;
-    }
-    return PropertyTrack(keys: next);
-  }
+  // The loop itself is the shared law (transform/effect/name-tag families
+  // all shift through it).
+  PropertyTrack<T>? shifted<T>(PropertyTrack<T> lane) =>
+      lane.withRangedKeysShifted(
+        rangeStartIndex: rangeStartIndex,
+        rangeEndIndexExclusive: rangeEndIndexExclusive,
+        frameDelta: frameDelta,
+      );
 
   switch (laneId) {
     case 'anchor-point':

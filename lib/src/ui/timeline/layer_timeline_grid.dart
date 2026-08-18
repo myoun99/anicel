@@ -18,6 +18,7 @@ import 'timeline_row_cross_offset.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import 'timeline_row_span_resolver.dart'
     show
+        resolveInGroupHeadLane,
         resolveLaneSpanEscalation,
         resolveSelectionSpanHead,
         resolveSelectionSpanRows;
@@ -336,9 +337,10 @@ class LayerTimelineGrid extends StatefulWidget {
   /// display-only.
   final TimelineFrameRangeHooks? rangeHooks;
 
-  /// The LANE selection domain's gesture bundle (UI-R23 #3 part 2); null
-  /// keeps the lane bands display-only.
-  final TimelineLaneRangeCallbacks? laneRange;
+  /// The LANE selection domain's host hooks (UI-R23 #3 part 2); null
+  /// keeps the lane bands display-only. The grid resolves geometry and
+  /// mounts the gesture-level bundle itself (C②'s two-level shape).
+  final TimelineLaneRangeHooks? laneRange;
 
   /// Which row the frame-axis verbs act on, and the label press that moves
   /// it (R10 #19's rail half); null leaves lane labels inert and unwashed.
@@ -1658,7 +1660,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         : TimelineLaneRangeCallbacks(
             selection: hostLaneRange.selection,
             onSelectUpdate:
-                (layerId, laneId, anchorIndex, headIndex, headRowDelta) {
+                (layerId, laneId, anchorIndex, headIndex, headCrossOffset) {
+                  // R9 #25 on the lane family: the gesture hands raw
+                  // pixels; THIS grid's rows are one height, so the
+                  // uniform resolve is right — with the heights the grid
+                  // paints, where they are known.
+                  final headRowDelta = uniformRowDeltaForCrossOffset(
+                    crossOffset: headCrossOffset,
+                    rowExtent: _metrics.layerRowHeight,
+                  );
                   // [_dragRows], not the build-local list — the same
                   // stale-closure rule as the cells handler above (lane
                   // rows are not memoized today, but the bundle they mount
@@ -1672,12 +1682,19 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                           rowDelta: headRowDelta,
                         );
                   if (escalation == null) {
+                    // In-group: the head LANE resolves off the SAME drawn
+                    // rows (C② — the hosts' hand-kept lane lists retired).
                     hostLaneRange.onSelectUpdate(
                       layerId,
                       laneId,
                       anchorIndex,
                       headIndex,
-                      headRowDelta,
+                      resolveInGroupHeadLane(
+                        rows: [for (final row in _dragRows) row.address],
+                        layerId: layerId,
+                        laneId: laneId,
+                        rowDelta: headRowDelta,
+                      ),
                     );
                     return;
                   }

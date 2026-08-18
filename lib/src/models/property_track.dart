@@ -111,6 +111,39 @@ class PropertyTrack<T> {
     );
   }
 
+  /// Every key inside [rangeStartIndex, [rangeEndIndexExclusive]) shifted
+  /// by [frameDelta] — the ONE loop of the lane-scoped range move
+  /// (UI-R23 #3 part 2), shared by the transform, effect and name-tag
+  /// families so the rigid all-or-nothing discipline cannot fork. Null
+  /// when nothing moves, a landing dips below 0, or a landing collides
+  /// with an UNSHIFTED key on this lane (the block discipline: nothing
+  /// merges silently).
+  PropertyTrack<T>? withRangedKeysShifted({
+    required int rangeStartIndex,
+    required int rangeEndIndexExclusive,
+    required int frameDelta,
+  }) {
+    final moved = <int>{
+      for (final frame in keys.keys)
+        if (frame >= rangeStartIndex && frame < rangeEndIndexExclusive) frame,
+    };
+    if (moved.isEmpty) {
+      return null;
+    }
+    final next = <int, PropertyKey<T>>{
+      for (final entry in keys.entries)
+        if (!moved.contains(entry.key)) entry.key: entry.value,
+    };
+    for (final frame in moved) {
+      final landing = frame + frameDelta;
+      if (landing < 0 || next.containsKey(landing)) {
+        return null;
+      }
+      next[landing] = keys[frame]!;
+    }
+    return PropertyTrack(keys: next);
+  }
+
   /// [frameIndex]'s key with a new [name] (null clears it). A no-op when
   /// no key sits there.
   PropertyTrack<T> withKeyName(int frameIndex, String? name) {

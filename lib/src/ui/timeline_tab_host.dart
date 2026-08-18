@@ -271,31 +271,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     _session.standOnRow(LaneRowAddress(layerId, laneId));
   }
 
-  /// Where a lane span ENDS — the rail's own row list, sliced.
-  ///
-  /// 🚨T13: the whitelist that used to live here (transform members and
-  /// effect parameters only, everything else "crossed silently") is gone, and
-  /// with it the private policy — see [resolveLaneSpanHead], which says why
-  /// and is a pure function so the rule can be read without a widget around
-  /// it. This is now only the part that is genuinely the host's: which lanes
-  /// this layer is DRAWING.
-  String? _laneSpanHeadLane(
-    LayerId layerId,
-    String anchorLaneId,
-    int rowDelta,
-  ) {
-    final layer = _session.layers
-        .where((candidate) => candidate.id == layerId)
-        .firstOrNull;
-    if (layer == null) {
-      return null;
-    }
-    return resolveLaneSpanHead(
-      lanes: _lanesForLayer(layer),
-      anchorLaneId: anchorLaneId,
-      rowDelta: rowDelta,
-    );
-  }
+  // ⛔The host's own lane-span head walk is GONE (C②): the grid resolves
+  // the head lane off the display rows it draws, so a hand-kept lane list
+  // here could only ever drift from them — which is exactly what happened
+  // on the storyboard host's copy.
 
   /// R10 moved the lane list out to [timelineLanesForLayer] — the ↑/↓ row
   /// nav needs the same answer, and a second copy would have drifted from
@@ -912,25 +891,24 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // the group header anchors the WHOLE group — and a pan inside
             // the selection moves every spanned lane's keys. Frame
             // selection ⊥ transform keys, mutually exclusive domains.
-            laneRange: TimelineLaneRangeCallbacks(
+            laneRange: TimelineLaneRangeHooks(
               // This panel is a CUT's window. A track-owned SE row's span
               // is stated on the track's global axis, so what this rail
               // shows — and reads at press to pick its mode — is the part
               // of it that falls inside the window, on the window's own
               // numbers.
               selection: _session.cutLocalLaneRangeSelection,
+              // C②: the head LANE arrives resolved by the grid, off the
+              // rows it actually draws — the host's own lane-list walk
+              // retired with it.
               onSelectUpdate:
-                  (layerId, laneId, anchorIndex, headIndex, headRowDelta) =>
+                  (layerId, laneId, anchorIndex, headIndex, headLaneId) =>
                       _session.updateLaneRangeSelectionDrag(
                         layerId: layerId,
                         laneId: laneId,
                         anchorIndex: anchorIndex,
                         headIndex: headIndex,
-                        headLaneId: _laneSpanHeadLane(
-                          layerId,
-                          laneId,
-                          headRowDelta,
-                        ),
+                        headLaneId: headLaneId,
                       ),
               onTapAt: _standOnLane,
               onMoveBegin: _session.beginLaneRangeMoveDrag,

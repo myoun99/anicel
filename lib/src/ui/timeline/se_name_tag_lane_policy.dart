@@ -78,6 +78,21 @@ String formatSeNameTagLaneValue(String laneId, SeNameTag resolved) {
   };
 }
 
+/// The member lane's keyed frames — the ONE per-lane key reader (the lane
+/// builder, the move machine's keyed gate and the keyframe navigator all
+/// read this; the name-tag twin of `transformLaneKeyFrames`).
+Set<int> seNameTagLaneKeyFrames(SeNameTagTrack keys, String laneId) =>
+    switch (laneId) {
+      seNameTagSizeLaneId => keys.fontSize.keys.keys.toSet(),
+      seNameTagTrackingLaneId => keys.letterSpacing.keys.keys.toSet(),
+      seNameTagBoldLaneId => keys.bold.keys.keys.toSet(),
+      seNameTagNameInkLaneId => keys.nameInk.keys.keys.toSet(),
+      seNameTagBoxColorLaneId => keys.boxColor.keys.keys.toSet(),
+      seNameTagLineInkLaneId => keys.lineInk.keys.keys.toSet(),
+      seNameTagShowLineLaneId => keys.showLine.keys.keys.toSet(),
+      _ => const {},
+    };
+
 /// The lane rows for one SE row's name tag: the header, and its members
 /// while the group is twirled open.
 List<PropertyLaneRow> seNameTagPropertyLanes(
@@ -86,16 +101,7 @@ List<PropertyLaneRow> seNameTagPropertyLanes(
   required SeNameTag Function(int frameIndex) resolveAt,
 }) {
   final keys = tag.track ?? SeNameTagTrack.empty();
-  Set<int> keyed(String laneId) => switch (laneId) {
-    seNameTagSizeLaneId => keys.fontSize.keys.keys.toSet(),
-    seNameTagTrackingLaneId => keys.letterSpacing.keys.keys.toSet(),
-    seNameTagBoldLaneId => keys.bold.keys.keys.toSet(),
-    seNameTagNameInkLaneId => keys.nameInk.keys.keys.toSet(),
-    seNameTagBoxColorLaneId => keys.boxColor.keys.keys.toSet(),
-    seNameTagLineInkLaneId => keys.lineInk.keys.keys.toSet(),
-    seNameTagShowLineLaneId => keys.showLine.keys.keys.toSet(),
-    _ => const {},
-  };
+  Set<int> keyed(String laneId) => seNameTagLaneKeyFrames(keys, laneId);
 
   return [
     PropertyLaneRow(

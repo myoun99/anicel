@@ -41,7 +41,10 @@ import 'layer_row_drag.dart';
 import 'timeline_current_row.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_row_span_resolver.dart'
-    show resolveBlockMoveTargetLayer, resolveLaneSpanEscalation;
+    show
+        resolveBlockMoveTargetLayer,
+        resolveInGroupHeadLane,
+        resolveLaneSpanEscalation;
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_ruler_cursor_overlay.dart';
 import 'timeline_run_end_handles.dart';
@@ -321,7 +324,7 @@ class XSheetTimelineGrid extends StatefulWidget {
 
   /// The LANE selection domain's gesture bundle (UI-R23 #3 part 2); null
   /// keeps the lane bands display-only.
-  final TimelineLaneRangeCallbacks? laneRange;
+  final TimelineLaneRangeHooks? laneRange;
 
   /// Which row the frame-axis verbs act on, and the label press that moves
   /// it (R10 #19's rail half); null leaves lane headers inert and unwashed.
@@ -1358,8 +1361,15 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                             laneId,
                             anchorIndex,
                             headIndex,
-                            headRowDelta,
+                            headCrossOffset,
                           ) {
+                            // R9 #25 on the lane family: raw pixels in,
+                            // resolved with THIS grid's uniform column
+                            // pitch.
+                            final headRowDelta = uniformRowDeltaForCrossOffset(
+                              crossOffset: headCrossOffset,
+                              rowExtent: widget.metrics.layerRowHeight,
+                            );
                             final escalation = rangeHooks == null
                                 ? null
                                 : resolveLaneSpanEscalation(
@@ -1374,7 +1384,14 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                 laneId,
                                 anchorIndex,
                                 headIndex,
-                                headRowDelta,
+                                resolveInGroupHeadLane(
+                                  rows: [
+                                    for (final row in _dragRows) row.address,
+                                  ],
+                                  layerId: layerId,
+                                  laneId: laneId,
+                                  rowDelta: headRowDelta,
+                                ),
                               );
                               return;
                             }

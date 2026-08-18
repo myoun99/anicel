@@ -285,9 +285,9 @@ class TimelinePanel extends StatefulWidget {
   /// orientations; null keeps rows display-only.
   final TimelineFrameRangeHooks? rangeHooks;
 
-  /// The LANE selection domain's gesture bundle (UI-R23 #3 part 2),
-  /// shared by both orientations; null keeps lane bands display-only.
-  final TimelineLaneRangeCallbacks? laneRange;
+  /// The LANE selection domain's HOST hooks (UI-R23 #3 part 2), shared by
+  /// both orientations; null keeps lane bands display-only.
+  final TimelineLaneRangeHooks? laneRange;
 
   /// Which row the frame-axis verbs act on, and the label press that moves
   /// it (R10 #19's rail half) — one bundle for both orientations, so the

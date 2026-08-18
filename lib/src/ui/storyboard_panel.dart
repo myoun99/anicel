@@ -38,7 +38,10 @@ import 'widgets/field_slider.dart';
 import 'timeline/property_lane_model.dart'
     show PropertyLaneEditCallbacks, PropertyLaneRow, TimelineDisplayRow;
 import 'timeline/timeline_row_span_resolver.dart'
-    show resolveBlockMoveTargetLayer;
+    show
+        resolveBlockMoveTargetLayer,
+        resolveInGroupHeadLane,
+        resolveLaneSpanEscalationOverAddresses;
 import 'timeline/se_audio_lane.dart' show SeAudioLaneFrameRow, seAudioLanesFor;
 import 'timeline/timeline_lane_rows.dart'
     show TimelineLaneControlsRow, TimelineLaneFrameRow;
@@ -88,6 +91,7 @@ import 'timeline/timeline_frame_range_gesture.dart'
     show
         TimelineFrameRangeGestureLayer,
         TimelineLaneRangeCallbacks,
+        TimelineLaneRangeHooks,
         TimelineRangeGestureCallbacks;
 import '../models/storyboard_coverage.dart'
     show
@@ -287,11 +291,15 @@ class StoryboardSeSelectCallbacks {
 
   /// A select-drag step on the track's GLOBAL frame axis. [headRow]
   /// reaches across the rail's rows exactly as the cut row's does.
+  /// [anchorRow]/[spanRows] are the escalated LANE-anchor form (C②): the
+  /// panel hands the sliced span of the rows it drew.
   final void Function({
     required LayerId layerId,
     required int anchorGlobalFrame,
     required int headGlobalFrame,
     TimelineRowAddress? headRow,
+    TimelineRowAddress? anchorRow,
+    List<TimelineRowAddress> spanRows,
   })
   onDrag;
   final VoidCallback onClear;
@@ -706,10 +714,11 @@ class StoryboardPanel extends StatefulWidget {
   /// the closures capture their track. Null = display-only.
   final PropertyLaneEditCallbacks? Function(Track track)? trackLaneEditFor;
 
-  /// The lane range-select/move gesture bundle for the V lanes (the
-  /// timeline's machinery; the session routes the carrier id onto the
-  /// track). Null = no lane selection here.
-  final TimelineLaneRangeCallbacks? laneRange;
+  /// The lane range feature's HOST hooks (the timeline's machinery; the
+  /// session routes the carrier id onto the track). The panel resolves
+  /// geometry and mounts the gesture-level bundle itself (C②'s two-level
+  /// shape). Null = no lane selection here.
+  final TimelineLaneRangeHooks? laneRange;
 
   /// Which row the frame-axis verbs act on, and the label press that moves
   /// it (R10 #19's rail half) — the same bundle the timeline's rail takes,
@@ -2368,7 +2377,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         double? top;
         double? bottom;
         for (final slot in _trackGroupRowGeometry(track)) {
-          final address = slot.row;
+          // C②: an escalated lane drag's span carries LANE rows too — the
+          // band covers them exactly as the timeline's covers the lanes it
+          // swept.
+          final address = slot.row ?? slot.laneRow;
           if (address != null && spanned.contains(address)) {
             top ??= y;
             bottom = y + slot.height;
@@ -2444,6 +2456,76 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       }
     }
     return anchorRow;
+  }
+
+  /// C② — the lane strips' gesture bundle for [track]: raw cross pixels
+  /// resolved against THIS rail's mixed-height row table (R9 #25), the
+  /// in-group head lane read off the same table, and the drag JOINING the
+  /// track-axis cells law the moment it leaves its lane group — the same
+  /// wrap the timeline grids apply, over this panel's own rows.
+  TimelineLaneRangeCallbacks? _laneGestureCallbacksFor(Track track) {
+    final host = widget.laneRange;
+    if (host == null) {
+      return null;
+    }
+    return TimelineLaneRangeCallbacks(
+      selection: host.selection,
+      onSelectUpdate:
+          (layerId, laneId, anchorIndex, headIndex, headCrossOffset) {
+            // Call-time reads (the stale-closure rule): the LIVE geometry.
+            final geometry = _trackGroupRowGeometry(track);
+            final addresses = [
+              for (final slot in geometry) slot.row ?? slot.laneRow,
+            ];
+            final anchorAt = addresses.indexOf(LaneRowAddress(layerId, laneId));
+            var rowDelta = 0;
+            if (anchorAt >= 0) {
+              rowDelta =
+                  rowIndexForCrossOffset(
+                    crossOffset: headCrossOffset,
+                    anchorIndex: anchorAt,
+                    heights: [for (final slot in geometry) slot.height],
+                  ) -
+                  anchorAt;
+            }
+            final escalation = resolveLaneSpanEscalationOverAddresses(
+              rows: addresses,
+              layerId: layerId,
+              laneId: laneId,
+              rowDelta: rowDelta,
+            );
+            if (escalation == null) {
+              host.onSelectUpdate(
+                layerId,
+                laneId,
+                anchorIndex,
+                headIndex,
+                resolveInGroupHeadLane(
+                  rows: addresses,
+                  layerId: layerId,
+                  laneId: laneId,
+                  rowDelta: rowDelta,
+                ),
+              );
+              return;
+            }
+            // JOIN the track-axis cells law with the sliced span — the
+            // timeline's escalation shape, on this rail's own selection.
+            widget.seSelect?.onDrag(
+              layerId: layerId,
+              anchorGlobalFrame: anchorIndex,
+              headGlobalFrame: headIndex,
+              headRow: escalation.head,
+              anchorRow: LaneRowAddress(layerId, laneId),
+              spanRows: escalation.spanRows,
+            );
+          },
+      onTapAt: host.onTapAt,
+      onMoveBegin: host.onMoveBegin,
+      onMoveUpdate: host.onMoveUpdate,
+      onMoveEnd: host.onMoveEnd,
+      onMoveCancel: host.onMoveCancel,
+    );
   }
 
   List<_StoryboardRailSlot> _trackGroupRowGeometry(Track track) {
@@ -2770,7 +2852,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                   width: width,
                   timelineScale: scale,
                   laneEdit: laneEdit,
-                  laneRange: widget.laneRange,
+                  laneRange: _laneGestureCallbacksFor(track),
                 ),
             ],
           );
@@ -2813,7 +2895,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             // keys are the TRACK's, on the global axis this rail already
             // draws — so the span is stated where it lives, and the cut
             // panel is the one that has a window to fit it into.
-            laneRange: widget.laneRange,
+            laneRange: _laneGestureCallbacksFor(track),
           );
     return [
       strip(transformGroupHeaderLane.laneId),

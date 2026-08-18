@@ -365,9 +365,9 @@ void main() {
                 keyedFrames: {2},
               ),
             ],
-            laneRange: TimelineLaneRangeCallbacks(
+            laneRange: TimelineLaneRangeHooks(
               selection: laneSelection,
-              onSelectUpdate: (layerId, laneId, anchor, head, headRowDelta) {
+              onSelectUpdate: (layerId, laneId, anchor, head, headLaneId) {
                 selectUpdates.add((layerId, laneId, anchor, head));
                 laneSelection.value = TimelineLaneSelection(
                   layerId: layerId,
@@ -1507,7 +1507,7 @@ void main() {
                 ),
               ],
               laneEdit: PropertyLaneEditCallbacks(onToggleKeyAt: (_, _, _) {}),
-              laneRange: TimelineLaneRangeCallbacks(
+              laneRange: TimelineLaneRangeHooks(
                 selection: selection,
                 onSelectUpdate: (_, _, anchor, _, _) =>
                     selectUpdates.add(anchor),
@@ -1680,7 +1680,7 @@ void main() {
                   keyedFrames: {2},
                 ),
               ],
-              laneRange: TimelineLaneRangeCallbacks(
+              laneRange: TimelineLaneRangeHooks(
                 selection: ValueNotifier<TimelineLaneSelection?>(null),
                 onSelectUpdate: (_, _, _, _, _) {},
                 // The production host seeks here; this harness stands in

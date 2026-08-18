@@ -238,26 +238,13 @@ List<LayerEffect>? effectsWithLaneKeysShifted(
     return null;
   }
   return _editParameter(effects, laneId, (parameter, spec) {
-    final lane = parameter.track;
-    final moved = <int>{
-      for (final frame in lane.keys.keys)
-        if (frame >= rangeStartIndex && frame < rangeEndIndexExclusive) frame,
-    };
-    if (moved.isEmpty) {
-      return null;
-    }
-    final next = <int, PropertyKey<double>>{
-      for (final entry in lane.keys.entries)
-        if (!moved.contains(entry.key)) entry.key: entry.value,
-    };
-    for (final frame in moved) {
-      final landing = frame + frameDelta;
-      if (landing < 0 || next.containsKey(landing)) {
-        return null;
-      }
-      next[landing] = lane.keys[frame]!;
-    }
-    return parameter.copyWith(track: PropertyTrack(keys: next));
+    // The shared shift loop — transform/name-tag families ride the same one.
+    final next = parameter.track.withRangedKeysShifted(
+      rangeStartIndex: rangeStartIndex,
+      rangeEndIndexExclusive: rangeEndIndexExclusive,
+      frameDelta: frameDelta,
+    );
+    return next == null ? null : parameter.copyWith(track: next);
   });
 }
 

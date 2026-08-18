@@ -514,6 +514,46 @@ class _TimelineFrameRangeGestureLayerState
   }
 }
 
+/// Host-level hooks for the LANE range feature — the lane counterpart of
+/// [TimelineFrameRangeHooks], and the same two-level shape (C②): hosts
+/// speak SESSION vocabulary (which lane the span ends on), the mounting
+/// surface resolves geometry (raw pixels → rows) before calling up.
+class TimelineLaneRangeHooks {
+  const TimelineLaneRangeHooks({
+    required this.selection,
+    required this.onSelectUpdate,
+    required this.onTapAt,
+    required this.onMoveBegin,
+    required this.onMoveUpdate,
+    required this.onMoveEnd,
+    required this.onMoveCancel,
+  });
+
+  /// The session's live LANE selection.
+  final ValueListenable<TimelineLaneSelection?> selection;
+
+  /// A select-drag step. [headLaneId] is the lane row the pointer is over
+  /// (null = the anchor lane) — resolved by the MOUNT against the rows it
+  /// actually draws, so the hosts' hand-kept lane lists (which drifted on
+  /// the storyboard) are gone.
+  final void Function(
+    LayerId layerId,
+    String laneId,
+    int anchorIndex,
+    int headIndex,
+    String? headLaneId,
+  )
+  onSelectUpdate;
+
+  /// A press on the band: STAND on the frame of this (layer, lane).
+  final void Function(LayerId layerId, String laneId, int frameIndex) onTapAt;
+
+  final bool Function() onMoveBegin;
+  final void Function(int frameDelta) onMoveUpdate;
+  final VoidCallback onMoveEnd;
+  final VoidCallback onMoveCancel;
+}
+
 /// The LANE bands' gesture bundle (UI-R23 #3 part 2): the (layer, lane)
 /// selection domain — a band pan SELECTS on that lane, a pan starting
 /// inside the lane selection MOVES its keys along the frame axis. Fully
@@ -540,16 +580,18 @@ class TimelineLaneRangeCallbacks {
   /// The session's live LANE selection (read at press to pick the mode).
   final ValueListenable<TimelineLaneSelection?> selection;
 
-  /// A select-drag step. [headRowDelta] (R26 #3, the cells' Excel rule on
-  /// lane rows) is the pointer's row offset from the anchor lane row —
-  /// the host maps it onto the layer's displayed lane list to span the
-  /// selection across lane rows.
+  /// A select-drag step. [headCrossOffset] is the pointer's CROSS-AXIS
+  /// position in raw pixels from this lane row's top (negative above it)
+  /// — the R9 #25 rule, now on the lane family too: the gesture does not
+  /// know the other rows' heights, so the MOUNT that draws them resolves
+  /// the offset (the storyboard rail is the mixed-height surface that
+  /// made the old uniform row count wrong).
   final void Function(
     LayerId layerId,
     String laneId,
     int anchorIndex,
     int headIndex,
-    int headRowDelta,
+    double headCrossOffset,
   )
   onSelectUpdate;
 
@@ -673,17 +715,14 @@ class _TimelineLaneRangeGestureLayerState
     );
   }
 
-  /// The lane-row delta of the pointer relative to THIS lane row (R26 #3
-  /// cross-row select): the cross-axis local position may run past the
-  /// row's own bounds during the pan.
-  int _rowDeltaAt(Offset localPosition) {
-    final cross = widget.axis == Axis.horizontal
+  /// The pointer's cross-axis offset from THIS lane row's top (R26 #3
+  /// cross-row select): raw pixels, not a row count — dividing by this
+  /// row's height would assume every other row matches it (R9 #25, and
+  /// the storyboard rail is exactly where that fails).
+  double _crossOffsetAt(Offset localPosition) {
+    return widget.axis == Axis.horizontal
         ? localPosition.dy
         : localPosition.dx;
-    if (widget.crossAxisExtent <= 0) {
-      return 0;
-    }
-    return (cross / widget.crossAxisExtent).floor();
   }
 
   void _updateDrag(DragUpdateDetails details) {
@@ -717,7 +756,7 @@ class _TimelineLaneRangeGestureLayerState
           widget.laneId,
           _anchorIndex,
           _frameAt(local),
-          _rowDeltaAt(local),
+          _crossOffsetAt(local),
         );
       case _RangeDragMode.move:
         _mainDelta += horizontal ? details.delta.dx : details.delta.dy;
