@@ -301,6 +301,28 @@ void main() {
     );
   });
 
+  test('잘라내기 stands down on the image row too — COPY stays lit, since '
+      'it never claims to remove the picture', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.addLayerOfKind(LayerKind.image);
+
+    for (final frameIndex in [0, 5]) {
+      s.selectFrameIndex(frameIndex);
+      expect(
+        s.canCutRunAtCurrentFrame,
+        isFalse,
+        reason: 'at index $frameIndex: the lift is rebuilt by the same '
+            'write, so the press would only cost a phantom undo entry',
+      );
+      expect(
+        s.canCopyFrameAtCurrentFrame,
+        isTrue,
+        reason: 'copy is honest on a picture row',
+      );
+    }
+  });
+
   test('an image layer carries attach rows like any drawing base', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);

@@ -9489,8 +9489,21 @@ class EditorSessionManager extends ChangeNotifier {
   /// 왼쪽. 복사=원본 남기고 클립 저장 · 잘라내기=원본 지우고 클립 저장」.
   ///
   /// ★It is literally copy followed by the lift half of [spliceTimeline],
-  /// which is why it needs no rules of its own.
-  bool get canCutRunAtCurrentFrame => canCopyFrameAtCurrentFrame;
+  /// which is why it needs no rules of its own — with ONE exception: the
+  /// lift has to survive the write. On a SINGLE-CEL (image) row it does
+  /// not. The covering normalization rebuilds the picture's block from
+  /// the same write, so the press changes nothing on screen and costs a
+  /// phantom undo entry — the next Ctrl+Z then eats the user's real
+  /// previous edit. Same standdown, same reason, as the delete gate
+  /// (D22). COPY stays lit: it takes the cel to the clipboard without
+  /// claiming to remove it, which is honest here.
+  bool get canCutRunAtCurrentFrame {
+    final layer = activeLayer;
+    if (layer != null && layerKindHoldsSingleCel(layer.kind)) {
+      return false;
+    }
+    return canCopyFrameAtCurrentFrame;
+  }
 
   void cutRunAtCurrentFrame() {
     final layer = activeLayer;
