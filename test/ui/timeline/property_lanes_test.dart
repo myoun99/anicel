@@ -721,6 +721,7 @@ void main() {
         cameraUnionMarker(tester, 0).markerSize,
         timelineLaneUnionKeyMarkerSize(
           TimelineGridMetrics.defaults.layerRowHeight,
+          frameCellExtent: TimelineGridMetrics.defaults.frameCellWidth,
         ),
       );
       // The text channel says NOTHING on a camera row — no ◆/■, and never

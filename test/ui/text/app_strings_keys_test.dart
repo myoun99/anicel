@@ -49,6 +49,8 @@ void main() {
     'recordSelectSeLane': (s) => s.recordSelectSeLane,
     'recordTakeClipped': (s) => s.recordTakeClipped,
     'recordClipMarkerTooltip': (s) => s.recordClipMarkerTooltip,
+    // D26: the crossing-fade refusal warning (red corner marker).
+    'tlTransitionCrossingWarning': (s) => s.tlTransitionCrossingWarning,
     'audioMicGainLabel': (s) => s.audioMicGainLabel,
     'audioInputChannelLabel': (s) => s.audioInputChannelLabel,
     'audioInputChannelDevice': (s) => s.audioInputChannelDevice,

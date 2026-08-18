@@ -53,6 +53,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.onSettledPress,
     this.onActivateCell,
     this.instructionDefById,
+    this.instructionCrossingTooltip,
     this.audioPeaksFor,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.onDropMediaAssetOnLayer,
@@ -157,6 +158,12 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// null hides instruction overlays.
   final CameraInstructionDef? Function(String instructionId)?
   instructionDefById;
+
+  /// D26: the crossing-fade warning resolver, by span start key — null (or
+  /// a null answer) mounts nothing, a string mounts the shared red corner
+  /// marker with that hover text. The seClipMarkerTooltip threading
+  /// convention, per span instead of per row.
+  final String? Function(int spanStartKey)? instructionCrossingTooltip;
 
   /// Waveform peaks resolver for SE rows' audio clips; null hides them.
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
@@ -331,6 +338,12 @@ class TimelineFrameCellsRow extends StatelessWidget {
           axis: axis,
           defById: instructionDefById!,
           keyPrefix: keyPrefix,
+          // D26: the crossing-fade refusal wears the SE clip marker's own
+          // red corner + tooltip, always-on (a refusal warning takes no
+          // settings gate — style reuse is not switch reuse).
+          crossingWarningTooltip: instructionCrossingTooltip,
+          crossingWarningColor: Theme.of(context).colorScheme.error,
+          crossAxisExtent: crossAxisExtent,
         ),
       // The CAMERA row's union key markers (B4): THE shared lane key
       // marker drawing at THE union size, placed by the span layout so the

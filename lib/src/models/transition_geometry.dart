@@ -88,6 +88,41 @@ TransitionSides transitionSidesOf(CameraInstructionMarkType mark) =>
       CameraInstructionMarkType.bar => TransitionSides.both,
     };
 
+/// D26 (유저 확정 2026-08-18): whether a one-sided fade reaches PAST its own
+/// cut's boundary. fi/fo/wi/wo are cut-internal directions — an F.O can
+/// only cross its cut's END (its anchor is the first frame) and an F.I
+/// only its START (anchor on the last frame), so one formula covers both.
+/// False for spans this cut does not own, for two-sided O.L spans (they
+/// exist to straddle), and for a span touching the boundary exactly.
+bool oneSidedSpanCrossesOwnCut({
+  required TransitionSpan span,
+  required int cutStart,
+  required int cutEnd,
+}) {
+  if (!oneSidedSpanOwnsCut(span: span, cutStart: cutStart, cutEnd: cutEnd)) {
+    return false;
+  }
+  return span.start < cutStart || span.start + span.length > cutEnd;
+}
+
+/// THE apply sentence for one-sided fades — the ramp, the のりしろ, the
+/// playback/export contributions and the red warning marker all read this
+/// one predicate (the T25 law: the gate and the warning must be the same
+/// sentence, or they drift): a fade applies to the cut it belongs to only
+/// while it stays inside that cut. 「걸치면 미적용」 — a crossing span is
+/// inert and wears the marker instead.
+bool oneSidedSpanAppliesToCut({
+  required TransitionSpan span,
+  required int cutStart,
+  required int cutEnd,
+}) =>
+    oneSidedSpanOwnsCut(span: span, cutStart: cutStart, cutEnd: cutEnd) &&
+    !oneSidedSpanCrossesOwnCut(
+      span: span,
+      cutStart: cutStart,
+      cutEnd: cutEnd,
+    );
+
 /// The frames a cut draws OUTSIDE its conte length, one side at a time.
 class CutTransitionHandles {
   const CutTransitionHandles({required this.head, required this.tail});
@@ -140,10 +175,15 @@ bool transitionSpanFires({
   final spanEnd = span.start + span.length;
   if (transitionSidesOf(span.mark) != TransitionSides.both) {
     // 🚨A ONE-SIDED span needs no partner, so it needs no boundary — it fires
-    // for the cut it BELONGS to, straddling or not. Requiring a straddle is the
-    // O.L rule, and applied to an F.O it is actively wrong: an F.O sitting
-    // inside its own cut is where it belongs and used to do nothing at all.
-    return oneSidedSpanOwnsCut(
+    // for the cut it BELONGS to. Requiring a straddle is the O.L rule, and
+    // applied to an F.O it is actively wrong: an F.O sitting inside its own
+    // cut is where it belongs and used to do nothing at all.
+    //
+    // D26 flipped the other half: 「straddling or not」 became 「only while
+    // it stays inside」 — a fade is a cut-internal direction, and one that
+    // reaches past its own boundary is refused (and marked) rather than
+    // bleeding into the neighbour's territory.
+    return oneSidedSpanAppliesToCut(
       span: span,
       cutStart: cutStart,
       cutEnd: cutEnd,
@@ -171,14 +211,19 @@ CutTransitionHandles cutTransitionHandles({
   for (final span in spans) {
     final sides = transitionSidesOf(span.mark);
     final spanEnd = span.start + span.length;
-    // A one-sided span only owes material to the cut it BELONGS to, and only on
-    // the side its own ramp reaches past: an F.O overhanging this cut's end is
-    // this cut fading out, and the cut after it takes no part, so it draws no
-    // のりしろ for it. (A two-sided O.L asks both questions, as it always did.)
-    final owns =
+    // A one-sided span only owes material to the cut it BELONGS to. D26: a
+    // crossing fade is refused outright — no ramp, and therefore no
+    // のりしろ either (the material existed to feed the fade; one sentence
+    // gates both, so the sheet's parentheses and the drawn-frame count
+    // follow the refusal automatically).
+    final applies =
         sides == TransitionSides.both ||
-        oneSidedSpanOwnsCut(span: span, cutStart: cutStart, cutEnd: cutEnd);
-    if (!owns) {
+        oneSidedSpanAppliesToCut(
+          span: span,
+          cutStart: cutStart,
+          cutEnd: cutEnd,
+        );
+    if (!applies) {
       continue;
     }
     if (sides != TransitionSides.fadesOut &&
@@ -232,7 +277,15 @@ CutTransitionHandles cutTransitionHandles({
   required int cutStart,
   required int cutEnd,
 }) {
-  if (!transitionSpanFires(span: span, cutStart: cutStart, cutEnd: cutEnd)) {
+  // D26: display stays UN-GATED by the refusal — a crossing fade no longer
+  // fires, but its block must keep drawing here, or the red warning marker
+  // has nothing to sit on (a warning must be visible to be a warning).
+  if (!transitionSpanFires(span: span, cutStart: cutStart, cutEnd: cutEnd) &&
+      !oneSidedSpanCrossesOwnCut(
+        span: span,
+        cutStart: cutStart,
+        cutEnd: cutEnd,
+      )) {
     return null;
   }
   final localStart = span.start - cutStart;
@@ -323,8 +376,9 @@ double cutTransitionRampAt({
       case TransitionSides.fadesOut:
         // F.O: only the cut this span BELONGS to moves. No mirror term, so
         // nothing rises to meet it — the picture falls to whatever is below,
-        // which is black.
-        if (oneSidedSpanOwnsCut(
+        // which is black. D26: and only while the span stays inside the cut
+        // — a crossing fade is inert (the same sentence the marker reads).
+        if (oneSidedSpanAppliesToCut(
           span: span,
           cutStart: cutStart,
           cutEnd: cutEnd,
@@ -332,7 +386,7 @@ double cutTransitionRampAt({
           alpha *= 1 - progress;
         }
       case TransitionSides.fadesIn:
-        if (oneSidedSpanOwnsCut(
+        if (oneSidedSpanAppliesToCut(
           span: span,
           cutStart: cutStart,
           cutEnd: cutEnd,

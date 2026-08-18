@@ -404,8 +404,15 @@ void main() {
 
     // A plain test: it drives the session and pumps nothing, so the prerender
     // scheduler's debounce timer would trip testWidgets' pending-timer assert.
-    test('names EVERY term that fires on the cut — head and tail handles add '
-        'up, so one term would be a half-truth', () {
+    //
+    // ⚠️CONTRACT CHANGED (D26, 2026-08-18): the crossing F.I this fixture
+    // aims into the middle cut used to earn a head handle and its name on
+    // the label. 「걸치면 미적용」 — a crossing fade is refused whole, so it
+    // earns NO のりしろ and no name; only the O.L (whose law is to
+    // straddle) still counts. The old point ("every firing term is named")
+    // still holds — the refused fade simply no longer fires.
+    test('D26: a crossing F.I earns no handle and no name — only the O.L '
+        'counts on the label and in the drawn frames', () {
       final session = EditorSessionManager(
         initialProject: createDefaultProject(),
       );
@@ -413,8 +420,6 @@ void main() {
       session.createCut();
       final track = session.repository.requireProject().tracks.first;
       final first = track.cuts[0].duration;
-      // The middle cut of three, crossed at BOTH boundaries: an F.I arriving
-      // into it and an O.L leaving it.
       session.createCut();
       session.selectCut(
         session.repository.requireProject().tracks.first.cuts[1].id,
@@ -435,14 +440,16 @@ void main() {
         }),
       );
 
-      // The terms are whatever the VOCABULARY calls them — 'FI' and 'O.L' as
-      // the standard set spells them, not a form invented here.
       final label = session.activeCutNoriShiroLabel;
-      expect(label, contains('FI'));
+      expect(
+        label,
+        isNot(contains('FI')),
+        reason: '걸치면 미적용 — the refused fade may not sign the label',
+      );
       expect(label, contains('O.L'));
       expect(label, endsWith(session.uiStrings.tlNoriShiro));
-      // Both handles counted, not one of them.
-      expect(session.activeCutDrawnFrameCount, second + 4);
+      // Only the O.L's tail is drawn material now.
+      expect(session.activeCutDrawnFrameCount, second + 2);
     });
 
     testWidgets('🚨the wash begins BEHIND the blue line, not at the red one: '

@@ -439,6 +439,7 @@ class StoryboardPanel extends StatefulWidget {
     this.seSelect,
     this.onSetAudioClipOffset,
     this.transitionDefById,
+    this.transitionCrossingTooltip,
     this.transitionPreview,
     this.transitionCommaDrag,
     this.onEditTransitionSpan,
@@ -861,6 +862,10 @@ class StoryboardPanel extends StatefulWidget {
   /// the same wedge/bowtie the cut's direction row does. Null leaves the
   /// spans unmarked.
   final CameraInstructionDef? Function(String instructionId)? transitionDefById;
+
+  /// D26: crossing-fade warning resolver for the AUTHORING row — global
+  /// start keys (this axis is where spans really live).
+  final String? Function(int spanStartKey)? transitionCrossingTooltip;
 
   /// The session's live edge-drag form of the row: while a grip is held the
   /// strip renders THIS, so the mark follows the hand instead of jumping on
@@ -1551,6 +1556,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       width: width,
       timelineScale: scale,
       defById: widget.transitionDefById,
+      crossingTooltip: widget.transitionCrossingTooltip,
       commaDrag: widget.transitionCommaDrag,
       onRowFramePress: widget.onRowFramePress,
       onEditSpan: widget.onEditTransitionSpan,
@@ -4224,6 +4230,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
     required this.width,
     required this.timelineScale,
     this.defById,
+    this.crossingTooltip,
     this.commaDrag,
     this.onRowFramePress,
     this.onEditSpan,
@@ -4239,6 +4246,9 @@ class _StoryboardTransitionRow extends StatelessWidget {
   final double width;
   final TimelineScale timelineScale;
   final CameraInstructionDef? Function(String instructionId)? defById;
+
+  /// D26: the crossing-fade warning, by GLOBAL start key on this axis.
+  final String? Function(int spanStartKey)? crossingTooltip;
   final TimelineCommaDragCallbacks? commaDrag;
   final StoryboardRowFramePress? onRowFramePress;
   final void Function(int globalFrame)? onEditSpan;
@@ -4318,6 +4328,11 @@ class _StoryboardTransitionRow extends StatelessWidget {
                 axis: Axis.horizontal,
                 defById: defById,
                 keyPrefix: 'storyboard',
+                // D26: the refusal marker on the AUTHORING axis too — the
+                // one predicate, answered by global key here.
+                crossingWarningTooltip: crossingTooltip,
+                crossingWarningColor: Theme.of(context).colorScheme.error,
+                crossAxisExtent: _transitionRowHeight,
               ),
             ),
           ),

@@ -66,6 +66,7 @@ class TimelinePanel extends StatefulWidget {
     this.onScrubEnd,
     this.onActivateCell,
     this.instructionDefById,
+    this.instructionCrossingTooltip,
     this.audioPeaksFor,
     this.seClipMarkerTooltip,
     this.audioLane,
@@ -214,6 +215,10 @@ class TimelinePanel extends StatefulWidget {
   /// Resolves instruction ids to defs for CAM row chips.
   final CameraInstructionDef? Function(String instructionId)?
   instructionDefById;
+
+  /// D26: crossing-fade warning resolver, both orientations (projected
+  /// keys — the cut-local display clone).
+  final String? Function(int spanStartKey)? instructionCrossingTooltip;
 
   /// Waveform peaks for SE rows' audio clips + the removal hook (both
   /// orientations; frames↔seconds via [projectFrameRate]).
@@ -557,6 +562,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onScrubEnd: widget.onScrubEnd,
                     onActivateCell: widget.onActivateCell,
                     instructionDefById: widget.instructionDefById,
+                    instructionCrossingTooltip:
+                        widget.instructionCrossingTooltip,
                     audioPeaksFor: widget.audioPeaksFor,
                     seClipMarkerTooltip: widget.seClipMarkerTooltip,
                     projectFrameRate: widget.projectFrameRate,
@@ -642,6 +649,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onScrubEnd: widget.onScrubEnd,
                     onActivateCell: widget.onActivateCell,
                     instructionDefById: widget.instructionDefById,
+                    instructionCrossingTooltip:
+                        widget.instructionCrossingTooltip,
                     audioPeaksFor: widget.audioPeaksFor,
                     projectFrameRate: widget.projectFrameRate,
                     showSeconds: widget.showSeconds,

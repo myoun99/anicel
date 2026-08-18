@@ -965,6 +965,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   // row is track-owned and its spans address the global
                   // axis, so the cut timeline shows them read-only.
                   transitionDefById: _session.cameraInstructionSet.defById,
+                  // D26: crossing fades are refused and wear the red
+                  // corner — the session answers by global key on this
+                  // authoring axis, with the SAME predicate the ramp and
+                  // のりしろ read.
+                  transitionCrossingTooltip:
+                      _session.transitionCrossingWarningAtGlobalKey,
                   transitionPreview: _session.transitionEdgeDragPreview,
                   transitionCommaDrag: TimelineCommaDragCallbacks(
                     onBegin: (layerId, blockStartIndex, edge) =>

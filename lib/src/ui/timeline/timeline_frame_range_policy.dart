@@ -62,6 +62,15 @@ String timelineDurationLabel(
   required int countingBase,
 }) => showSeconds ? secondsPlusFramesLabel(frames, countingBase) : '$frames';
 
+/// D23 (2026-08-18): whether a block prints its comma-length at all —
+/// 「1코마 블록은 코마 표시 없음: 2코마부터만 표시」. ONE predicate beside
+/// the one readout, consulted by the frame blocks (timeline + x-sheet run
+/// labels) and the storyboard cut blocks' per-panel counts alike, so the
+/// gate cannot drift per surface. (The cut block's bottom-right total is
+/// a RUNNING END FRAME — the conte TIME column — not a comma length, and
+/// deliberately does not consult this.)
+bool timelineCommaLabelVisibleFor(int frames) => frames >= 2;
+
 /// The endless frame axis' contract (UI-R12 #16, unifying the timeline,
 /// the X-sheet and the storyboard): cells exist exactly because they are
 /// (or were) VISIBLE — the rendered extent covers the scrolled view end

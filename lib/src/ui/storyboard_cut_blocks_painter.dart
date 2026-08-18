@@ -17,7 +17,8 @@ import 'storyboard_timeline_layout.dart';
 import 'theme/app_theme.dart';
 import 'timeline/timeline_cell_style.dart';
 import 'timeline/timeline_frame_geometry.dart';
-import 'timeline/timeline_frame_range_policy.dart' show timelineDurationLabel;
+import 'timeline/timeline_frame_range_policy.dart'
+    show timelineCommaLabelVisibleFor, timelineDurationLabel;
 import 'timeline/timeline_frame_window.dart';
 import 'timeline/timeline_glyph_cache.dart';
 
@@ -336,7 +337,15 @@ class StoryboardCutBlocksPainter extends CustomPainter {
           cellCommaLabels: [
             if (!folded)
               for (final cell in cells)
-                cell.frameId == null
+                // D23: a 1-comma panel prints nothing — the shared
+                // predicate, through the existing empty-string convention
+                // the paint path already skips. (The bottom-right `total`
+                // below is a running END frame, not a comma length — it
+                // stays un-gated on purpose.)
+                cell.frameId == null ||
+                        !timelineCommaLabelVisibleFor(
+                          cell.endIndexExclusive - cell.startIndex,
+                        )
                     ? ''
                     : timelineDurationLabel(
                         cell.endIndexExclusive - cell.startIndex,

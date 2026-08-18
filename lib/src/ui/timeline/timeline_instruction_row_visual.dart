@@ -9,6 +9,7 @@ import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_span_layout.dart';
+import 'timeline_se_row_visual.dart' show timelineBlockCornerWarning;
 
 /// Instruction rows render like the paper sheet's CAM column on white
 /// frame blocks: the cells paint the paper (via
@@ -54,6 +55,13 @@ TimelineCellExposureState instructionCellExposureState(
 
 /// The mark/label overlays for every instruction span intersecting the
 /// visible window.
+///
+/// [crossingWarningTooltip] is the D26 marker's resolver — the
+/// seClipMarkerTooltip threading convention: null (or a null answer for a
+/// span's start key) mounts nothing, a string mounts the shared red
+/// corner warning on that span's block with that hover text. The block
+/// itself keeps drawing either way — a warning must have something to sit
+/// on, and the refusal is the EFFECT's, never the display's.
 List<Widget> timelineRowInstructionOverlays({
   required Layer layer,
   required int frameStartIndex,
@@ -61,7 +69,15 @@ List<Widget> timelineRowInstructionOverlays({
   required Axis axis,
   required CameraInstructionDef? Function(String instructionId) defById,
   String keyPrefix = 'timeline',
+  String? Function(int spanStartKey)? crossingWarningTooltip,
+  Color? crossingWarningColor,
+  double crossAxisExtent = 0,
 }) {
+  assert(
+    crossingWarningTooltip == null || crossingWarningColor != null,
+    'a crossing warning needs its ink — pass colorScheme.error, the SE '
+    'clip marker convention',
+  );
   final overlays = <Widget>[];
   for (final entry in layer.instructions.entries) {
     final start = entry.key;
@@ -82,6 +98,35 @@ List<Widget> timelineRowInstructionOverlays({
         ),
       ),
     );
+  }
+  // Markers AFTER every span, so a warning is never painted under a
+  // neighbouring block's body.
+  final resolveWarning = crossingWarningTooltip;
+  if (resolveWarning != null) {
+    for (final entry in layer.instructions.entries) {
+      final start = entry.key;
+      final endExclusive = start + entry.value.length;
+      if (endExclusive <= frameStartIndex || start >= frameEndIndexExclusive) {
+        continue;
+      }
+      final tooltip = resolveWarning(start);
+      if (tooltip == null) {
+        continue;
+      }
+      overlays.add(
+        timelineBlockCornerWarning(
+          blockStart: start,
+          blockEndExclusive: endExclusive,
+          crossAxisExtent: crossAxisExtent,
+          axis: axis,
+          tooltip: tooltip,
+          color: crossingWarningColor!,
+          markerKey: ValueKey<String>(
+            '$keyPrefix-instruction-crossing-${layer.id}-$start',
+          ),
+        ),
+      );
+    }
   }
   return overlays;
 }

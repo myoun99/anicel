@@ -92,6 +92,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onScrubEnd,
     this.onActivateCell,
     this.instructionDefById,
+    this.instructionCrossingTooltip,
     this.audioPeaksFor,
     this.seClipMarkerTooltip,
     this.projectFrameRate = ProjectFrameRate.fps24,
@@ -247,6 +248,10 @@ class LayerTimelineGrid extends StatefulWidget {
   /// Resolves instruction ids to defs for CAM row chips.
   final CameraInstructionDef? Function(String instructionId)?
   instructionDefById;
+
+  /// D26: crossing-fade warning resolver, by span start key (the display
+  /// clone's projected key on this cut-local surface).
+  final String? Function(int spanStartKey)? instructionCrossingTooltip;
 
   /// Waveform peaks for SE rows' audio clips + the removal hook.
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
@@ -2469,6 +2474,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                 instructionDefById:
                                                                     widget
                                                                         .instructionDefById,
+                                                                instructionCrossingTooltip:
+                                                                    widget
+                                                                        .instructionCrossingTooltip,
                                                                 audioPeaksFor:
                                                                     widget
                                                                         .audioPeaksFor,

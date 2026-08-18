@@ -158,24 +158,29 @@ void main() {
     expect(label.anchor.dy, 52);
   });
 
-  testWidgets('R10: a ONE-frame block keeps its cell centre — the badge is '
-      'separated from the cel name ACROSS the row, not along it', (
+  // ⚠️CONTRACT CHANGED (D23, 2026-08-18): 「1코마 블록은 코마 표시 없음:
+  // 2코마부터만 표시」 — a one-frame block prints NOTHING now. R10's
+  // cross-axis-separation point survives in the length-4 test above; this
+  // one pins the gate (paint and semantics fall silent together, since the
+  // semantics builder iterates the same labels).
+  testWidgets('D23: a ONE-frame block prints no comma label at all', (
     tester,
   ) async {
     await tester.pumpWidget(
       harness(
         layer: drawingLayer({
           0: const TimelineExposure.drawing(FrameId('f1'), length: 1),
+          4: const TimelineExposure.drawing(FrameId('f2'), length: 2),
         }),
       ),
     );
 
-    final label = labelsOf(tester).single;
-    expect(label.text, '1');
-    // The single cell is [0, 48): name and badge share the centre 24, and
-    // the badge hangs 1px off the row's bottom edge instead.
-    expect(label.anchor.dx, closeTo(24, 1.5));
-    expect(label.anchor.dy, 52);
+    final labels = labelsOf(tester);
+    expect(
+      labels.map((label) => label.text),
+      ['2'],
+      reason: 'the 1-comma block is silent; the 2-comma block still labels',
+    );
   });
 
   test('R10: the X-sheet reads the same rule transposed — last-cell centre '

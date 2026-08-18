@@ -216,7 +216,6 @@ List<Widget> timelineRowClipMarkerOverlays({
   required Color color,
   String keyPrefix = 'timeline',
 }) {
-  const markerSize = 11.0;
   final overlays = <Widget>[];
   for (final span in seAudioSpans(layer)) {
     if (!span.clip.clipped) {
@@ -228,36 +227,62 @@ List<Widget> timelineRowClipMarkerOverlays({
       continue;
     }
     overlays.add(
-      TimelineFrameSpan(
-        // The block's top-right corner — beside, never over, the
-        // bottom-right duration label (R26 #7). Transposed, it rides the
-        // block's top edge on the column's trailing side.
-        placement: axis == Axis.horizontal
-            ? TimelineFrameSpanPlacement(
-                startIndex: blockEnd,
-                anchorAtTrailingEdge: true,
-                mainExtent: markerSize,
-                crossExtent: markerSize,
-              )
-            : TimelineFrameSpanPlacement(
-                startIndex: span.startFrame,
-                mainExtent: markerSize,
-                crossInset: crossAxisExtent - markerSize,
-                crossExtent: markerSize,
-              ),
-        child: KeyedSubtree(
-          key: ValueKey<String>(
-            '$keyPrefix-clip-marker-${layer.id}-b${span.startFrame}',
-          ),
-          child: Tooltip(
-            message: tooltip,
-            child: CustomPaint(painter: _ClipCornerPainter(color)),
-          ),
+      timelineBlockCornerWarning(
+        blockStart: span.startFrame,
+        blockEndExclusive: blockEnd,
+        crossAxisExtent: crossAxisExtent,
+        axis: axis,
+        tooltip: tooltip,
+        color: color,
+        markerKey: ValueKey<String>(
+          '$keyPrefix-clip-marker-${layer.id}-b${span.startFrame}',
         ),
       ),
     );
   }
   return overlays;
+}
+
+/// ONE corner-warning unit — the red triangle + hover tooltip the SE
+/// clipped-take marker introduced (REC1-D), on the block's trailing-top
+/// corner. Shared (extracted, never copied — the unification absolute
+/// rule) with the D26 crossing-fade marker: a block warning is one thing,
+/// whoever warns.
+Widget timelineBlockCornerWarning({
+  required int blockStart,
+  required int blockEndExclusive,
+  required double crossAxisExtent,
+  required Axis axis,
+  required String tooltip,
+  required Color color,
+  required Key markerKey,
+}) {
+  const markerSize = 11.0;
+  return TimelineFrameSpan(
+    // The block's top-right corner — beside, never over, the bottom-right
+    // duration label (R26 #7). Transposed, it rides the block's top edge
+    // on the column's trailing side.
+    placement: axis == Axis.horizontal
+        ? TimelineFrameSpanPlacement(
+            startIndex: blockEndExclusive,
+            anchorAtTrailingEdge: true,
+            mainExtent: markerSize,
+            crossExtent: markerSize,
+          )
+        : TimelineFrameSpanPlacement(
+            startIndex: blockStart,
+            mainExtent: markerSize,
+            crossInset: crossAxisExtent - markerSize,
+            crossExtent: markerSize,
+          ),
+    child: KeyedSubtree(
+      key: markerKey,
+      child: Tooltip(
+        message: tooltip,
+        child: CustomPaint(painter: _ClipCornerPainter(color)),
+      ),
+    ),
+  );
 }
 
 class _ClipCornerPainter extends CustomPainter {

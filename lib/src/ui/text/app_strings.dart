@@ -127,6 +127,11 @@ class AppStrings {
   // --- Capture chain (REC1-D) ---
   String get recordTakeClipped => _s('recordTakeClipped');
   String get recordClipMarkerTooltip => _s('recordClipMarkerTooltip');
+
+  /// D26: the crossing-fade refusal warning (red corner marker's hover
+  /// text) — the sanctioned exception to the no-explanatory-UI rule.
+  String get tlTransitionCrossingWarning =>
+      _s('tlTransitionCrossingWarning');
   String get audioMicGainLabel => _s('audioMicGainLabel');
   String get audioInputChannelLabel => _s('audioInputChannelLabel');
   String get audioInputChannelDevice => _s('audioInputChannelDevice');
@@ -984,6 +989,7 @@ class AppStrings {
         'Recording lands on the selected SE track — select one first.',
     'recordTakeClipped': 'The take clipped — the red corner marks the block.',
     'recordClipMarkerTooltip': 'This take clipped (recorded too hot)',
+    'tlTransitionCrossingWarning': 'Crosses the cut boundary — not applied',
     'audioMicGainLabel': 'Mic gain (dB)',
     'audioInputChannelLabel': 'Input channels',
     'audioInputChannelDevice': 'As device',
@@ -1683,6 +1689,7 @@ class AppStrings {
     'recordSelectSeLane': '録音は選択中のSEトラックに配置されます — 先にSEトラックを選択してください。',
     'recordTakeClipped': 'テイクがクリッピングしました — ブロックの赤い角が目印です。',
     'recordClipMarkerTooltip': 'このテイクはクリッピングしています（入力過大）',
+    'tlTransitionCrossingWarning': 'カット境界を越えています — 適用されません',
     'audioMicGainLabel': 'マイクゲイン（dB）',
     'audioInputChannelLabel': '入力チャンネル',
     'audioInputChannelDevice': '装置のまま',
@@ -2459,6 +2466,7 @@ class AppStrings {
     'recordSelectSeLane': '녹음은 선택된 SE 트랙에 배치됩니다 — 먼저 SE 트랙을 선택하세요.',
     'recordTakeClipped': '테이크에 클리핑이 감지되었습니다 — 블록의 빨간 모서리가 표시입니다.',
     'recordClipMarkerTooltip': '이 테이크는 클리핑되었습니다(입력 과대)',
+    'tlTransitionCrossingWarning': '컷 경계를 넘어 적용되지 않습니다',
     'audioMicGainLabel': '마이크 게인(dB)',
     'audioInputChannelLabel': '입력 채널',
     'audioInputChannelDevice': '장치 그대로',
@@ -3230,6 +3238,8 @@ class AppStrings {
         'L\'enregistrement se place sur la piste SE sélectionnée — sélectionnez-en une d\'abord.',
     'recordTakeClipped': 'La prise a saturé — le coin rouge marque le bloc.',
     'recordClipMarkerTooltip': 'Prise saturée (niveau trop fort)',
+    'tlTransitionCrossingWarning':
+        'Dépasse la limite du plan — non appliqué',
     'audioMicGainLabel': 'Gain micro (dB)',
     'audioInputChannelLabel': 'Canaux d\'entrée',
     'audioInputChannelDevice': 'Tel quel',
@@ -4037,6 +4047,7 @@ class AppStrings {
     'recordSelectSeLane': '录音将放置到所选SE轨道 — 请先选择一个SE轨道。',
     'recordTakeClipped': '录音发生削波 — 块上的红角为标记。',
     'recordClipMarkerTooltip': '该录音已削波（电平过高）',
+    'tlTransitionCrossingWarning': '超出镜头边界 — 未应用',
     'audioMicGainLabel': '麦克风增益（dB）',
     'audioInputChannelLabel': '输入声道',
     'audioInputChannelDevice': '按设备',

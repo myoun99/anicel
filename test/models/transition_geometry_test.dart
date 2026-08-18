@@ -202,27 +202,41 @@ void main() {
           TransitionSides.fadesIn);
     });
 
-    test('🚨an F.O across the boundary fades ITS cut out and leaves the next '
-        'one alone — the O.L would have faded it in', () {
-      // The leaving cut ramps down, exactly as under an O.L…
-      expect(cutOpacityAt(
-        cutStart: c20Start,
-        cutEnd: c20End,
-        spans: const [foAcross],
-        globalFrame: 36,
-      ), 1.0);
-      expect(cutOpacityAt(
-        cutStart: c20Start,
-        cutEnd: c20End,
-        spans: const [foAcross],
-        globalFrame: 59,
-      ), 0.0);
-
-      // …and the ARRIVING cut is untouched, which is the whole difference.
-      //
-      // ⚠️Frame 59 is deliberately NOT in the O.L comparison: the ramp reaches
-      // 1 ON the span's last frame, so an O.L has the arriving cut already
-      // whole there. Mid-ramp is where the two answers differ.
+    // ⚠️CONTRACT CHANGED (D26, 유저 확정 2026-08-18): a fade is a
+    // CUT-INTERNAL direction — 「걸치면 미적용」. The old law applied a
+    // straddling F.O to its own cut ("straddling or not"); the new law
+    // refuses it outright: no fires, no ramp, and the red marker warns
+    // instead (pinned in the widget tests). The O.L keeps its straddle
+    // rule untouched — straddling is what an O.L is FOR.
+    test('D26: an F.O across the boundary is INERT — refused, not applied, '
+        'and the next cut stays untouched as before', () {
+      expect(
+        transitionSpanFires(
+          span: foAcross,
+          cutStart: c20Start,
+          cutEnd: c20End,
+        ),
+        isFalse,
+        reason: '걸치면 미적용 — the crossing fade does not fire',
+      );
+      // Inside the cut the refused fade moves nothing (the old law had the
+      // ramp mid-fall here). Frame 59 is not asserted: with the のりしろ
+      // refused there is no material past the cut's end, so the material
+      // clamp answers 0 there — indistinguishable from the old ramp's 0.
+      for (final frame in [36, 47]) {
+        expect(
+          cutOpacityAt(
+            cutStart: c20Start,
+            cutEnd: c20End,
+            spans: const [foAcross],
+            globalFrame: frame,
+          ),
+          1.0,
+          reason: 'frame $frame: a refused fade moves nothing',
+        );
+      }
+      // The arriving cut was never touched by a one-sided span, and still
+      // is not.
       for (final frame in [48, 54, 59]) {
         expect(
           cutOpacityAt(
@@ -232,9 +246,12 @@ void main() {
             globalFrame: frame,
           ),
           1.0,
-          reason: 'frame $frame: nothing rises to meet the fade',
+          reason: 'frame $frame: nothing rises to meet a fade, refused or '
+              'not',
         );
       }
+      // The O.L in the same place still straddles and still plays — the
+      // refusal is the one-sided fades' rule alone.
       for (final frame in [48, 54]) {
         expect(
           cutOpacityAt(
@@ -244,9 +261,52 @@ void main() {
             globalFrame: frame,
           ),
           lessThan(1.0),
-          reason: 'frame $frame: under an O.L it would still be rising',
+          reason: 'frame $frame: the O.L keeps its straddle law',
         );
       }
+    });
+
+    test('D26: the crossing truth table — fo crosses only its end, fi only '
+        'its start, touching is not crossing, O.L never answers', () {
+      bool crosses(({int start, int length, CameraInstructionMarkType mark})
+          span, int cutStart, int cutEnd) =>
+          oneSidedSpanCrossesOwnCut(
+            span: span,
+            cutStart: cutStart,
+            cutEnd: cutEnd,
+          );
+
+      expect(crosses(foAcross, c20Start, c20End), isTrue);
+      expect(crosses(foInside, c20Start, c20End), isFalse,
+          reason: 'ending exactly ON the boundary is inside, not crossing');
+      const fiAcross = (
+        start: 36,
+        length: 24,
+        mark: CameraInstructionMarkType.fi,
+      );
+      expect(crosses(fiAcross, c21Start, c21End), isTrue,
+          reason: 'an F.I anchored in c21 reaching before its start');
+      expect(crosses(fiAcross, c20Start, c20End), isFalse,
+          reason: 'not owned by c20 — no owner, no crossing');
+      expect(crosses(ol, c20Start, c20End), isFalse,
+          reason: 'two-sided spans exist to straddle');
+      expect(
+        oneSidedSpanAppliesToCut(
+          span: foInside,
+          cutStart: c20Start,
+          cutEnd: c20End,
+        ),
+        isTrue,
+        reason: 'the apply sentence: owned AND inside',
+      );
+      expect(
+        oneSidedSpanAppliesToCut(
+          span: foAcross,
+          cutStart: c20Start,
+          cutEnd: c20End,
+        ),
+        isFalse,
+      );
     });
 
     test('🚨an F.O INSIDE its cut fires — the placement that used to be a '
@@ -278,16 +338,21 @@ void main() {
       );
     });
 
-    test('a one-sided span owes のりしろ on its OWN side only', () {
-      // F.O reaching past c20's end: c20 draws the tail, c21 draws nothing —
-      // it takes no part in this transition.
+    // ⚠️CONTRACT CHANGED (D26): a crossing fade used to earn のりしろ on
+    // its own side (tail 12 / head 12 here). The refusal gates the WHOLE
+    // effect with one sentence — no ramp means no material to feed it, so
+    // the sheet's parentheses, the drawn-frame count and the media range
+    // all follow the refusal automatically.
+    test('D26: a crossing fade owes no のりしろ — the refusal is one '
+        'sentence, ramp and material together', () {
       expect(
         cutTransitionHandles(
           cutStart: c20Start,
           cutEnd: c20End,
           spans: const [foAcross],
         ),
-        const CutTransitionHandles(head: 0, tail: 12),
+        CutTransitionHandles.none,
+        reason: 'refused F.O: no tail material for a fade that will not play',
       );
       expect(
         cutTransitionHandles(
@@ -296,9 +361,8 @@ void main() {
           spans: const [foAcross],
         ),
         CutTransitionHandles.none,
+        reason: 'the neighbour never took part, and still does not',
       );
-      // The mirror: an F.I gives the arriving cut its head and the leaving cut
-      // nothing.
       const fiAcross = (
         start: 36,
         length: 24,
@@ -310,7 +374,8 @@ void main() {
           cutEnd: c21End,
           spans: const [fiAcross],
         ),
-        const CutTransitionHandles(head: 12, tail: 0),
+        CutTransitionHandles.none,
+        reason: 'refused F.I: no head material either',
       );
       expect(
         cutTransitionHandles(
@@ -319,6 +384,15 @@ void main() {
           spans: const [fiAcross],
         ),
         CutTransitionHandles.none,
+      );
+      // The O.L's のりしろ is untouched — straddling is its law.
+      expect(
+        cutTransitionHandles(
+          cutStart: c20Start,
+          cutEnd: c20End,
+          spans: const [ol],
+        ),
+        isNot(CutTransitionHandles.none),
       );
     });
 
@@ -349,6 +423,32 @@ void main() {
         ),
         isNull,
       );
+    });
+
+    test('D26: a REFUSED crossing fade still projects its mark — display is '
+        'un-gated, so the warning has a block to sit on', () {
+      const foAcross = (
+        start: 36,
+        length: 24,
+        mark: CameraInstructionMarkType.fo,
+      );
+      expect(
+        transitionSpanFires(
+          span: foAcross,
+          cutStart: c20Start,
+          cutEnd: c20End,
+        ),
+        isFalse,
+        reason: 'the EFFECT is refused…',
+      );
+      final mark = transitionMarkInCut(
+        span: foAcross,
+        cutStart: c20Start,
+        cutEnd: c20End,
+      );
+      expect(mark, isNotNull, reason: '…but the DISPLAY is not');
+      expect(mark!.start, 36 - c20Start);
+      expect(mark.length, 24);
     });
 
     test('sits at the outgoing cut\'s tail and overhangs its end', () {
