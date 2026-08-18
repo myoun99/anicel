@@ -148,6 +148,7 @@ class EditorWorkspace extends StatefulWidget {
     this.colorPalette,
     this.onColorPaletteChanged,
     this.canvasViewCommands,
+    this.canvasNavigationRegionKey,
     this.canvasSelectionCommands,
     this.layerNav,
     this.onInvokeAction,
@@ -173,6 +174,11 @@ class EditorWorkspace extends StatefulWidget {
   /// The shell-owned rotate/flip shortcut channel (P8, R/Shift+R/H),
   /// forwarded to the canvas panel.
   final CanvasViewCommands? canvasViewCommands;
+
+  /// D13: the canvas panel's subtree key — forwarded to the canvas area,
+  /// which attaches it to the panel container the actuation gate's
+  /// navigation hole measures.
+  final GlobalKey? canvasNavigationRegionKey;
 
   /// The shell-owned selection shortcut channel (P9, Ctrl+D + nudges).
   final CanvasSelectionCommands? canvasSelectionCommands;
@@ -2065,6 +2071,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                 brushToolState: _brushTool,
                 onBrushToolStateChanged: (state) => _brushTool.value = state,
                 canvasViewCommands: widget.canvasViewCommands,
+                navigationRegionKey: widget.canvasNavigationRegionKey,
                 canvasSelectionCommands: widget.canvasSelectionCommands,
                 cutPieceSlot: _cutPieceSlot,
                 cameraViewEnabled: _cameraViewEnabled,

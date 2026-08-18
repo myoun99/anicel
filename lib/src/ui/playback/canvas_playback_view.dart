@@ -172,6 +172,11 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
     if (widget.trackStack case final stack?) {
       // The stack paints the frame; no composite is read or held here —
       // the stack view runs its own hold/clone lifecycle per covered cut.
+      //
+      // The tap is the CANVAS's half of the stop law (D13): the actuation
+      // gate's navigation hole lets pointers reach the panel so pan/zoom
+      // keep working during playback, and a plain tap — a press that
+      // navigates nothing — still means stop, as it did before T28-c.
       return GestureDetector(
         key: const ValueKey<String>('canvas-playback-view'),
         behavior: HitTestBehavior.opaque,

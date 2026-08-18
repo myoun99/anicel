@@ -138,6 +138,13 @@ class _HomePageState extends State<HomePage> {
   /// in here; the mounted canvas panel binds the viewport handlers.
   final CanvasViewCommands _canvasViewCommands = CanvasViewCommands();
 
+  /// D13: the canvas panel's subtree key — the actuation gate's
+  /// navigation hole reads its on-screen rect at event time (pan/zoom
+  /// keep working during playback; everything else still stops).
+  final GlobalKey _canvasNavigationRegionKey = GlobalKey(
+    debugLabel: 'canvas-navigation-region',
+  );
+
   /// The selection channel (P9): Ctrl+D and the arrow nudges call in
   /// here; without a live selection the arrows keep flipping frames.
   final CanvasSelectionCommands _canvasSelectionCommands =
@@ -668,6 +675,7 @@ class _HomePageState extends State<HomePage> {
                   // rather than followed; see the widget's own note.
                   child: PlaybackActuationGate(
                     controller: _session.playback,
+                    navigationRegionKey: _canvasNavigationRegionKey,
                     // Multi-finger touch shortcuts (R11-⑨) fire through the SAME
                     // action funnel as key bindings; the layer only observes raw
                     // touches, so drawing and pinch navigation are untouched.
@@ -748,6 +756,8 @@ class _HomePageState extends State<HomePage> {
                                 colorPalette: _colorPalette,
                                 onColorPaletteChanged: _setColorPalette,
                                 canvasViewCommands: _canvasViewCommands,
+                                canvasNavigationRegionKey:
+                                    _canvasNavigationRegionKey,
                                 canvasSelectionCommands:
                                     _canvasSelectionCommands,
                                 layerNav: _timelineLayerNav,

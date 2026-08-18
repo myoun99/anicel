@@ -27,26 +27,20 @@ List<StoryboardTimelineLayoutEntry> storyboardActiveTrackLayout(
   return scoped.isEmpty ? layout : scoped;
 }
 
-/// "To start" (REC1-B): the first cut's first frame — where an all-cuts
-/// play would begin.
+/// "To start" (REC1-B, amended by D1 2026-08-17): global frame 0 — the
+/// axis origin GAPS INCLUDED, where an all-cuts play actually begins.
+/// The old body spoke cut-local (selectCut + frame 0) and so skipped a
+/// leading gap; the canonical global seek already knows the whole law —
+/// first cut at 0 selects it, a leading gap PARKS there (T12: parking is
+/// the only way to be in a gap), and the storyboard playhead follows the
+/// parking with no extra wiring.
 ///
 /// A free function for the same reason the two above are: the storyboard's
 /// transport left its panel for the 문턱 (유저 확정, 2026-08-10), so the
 /// button that calls this is built by the WORKSPACE now while the host still
 /// owns the layout cache. One implementation, two callers.
-void seekStoryboardPlayheadToTrackStart(
-  EditorSessionManager session, {
-  List<StoryboardTimelineLayoutEntry>? layout,
-}) {
-  final entries = layout ?? storyboardActiveTrackLayout(session);
-  if (entries.isEmpty) {
-    return;
-  }
-  final firstCutId = entries.first.cutId;
-  if (session.activeCutOrNull?.id != firstCutId) {
-    session.selectCut(firstCutId);
-  }
-  session.selectFrameIndex(0);
+void seekStoryboardPlayheadToTrackStart(EditorSessionManager session) {
+  session.selectGlobalFrame(0);
 }
 
 /// Where the storyboard playhead sits: the playback position while playback

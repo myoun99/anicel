@@ -171,6 +171,78 @@ void main() {
     await drainWarming(tester);
   });
 
+  testWidgets('D6: a drag that STARTED inside the cut crosses the boundary '
+      'and the canvas follows — the previous cut\'s picture does not '
+      'linger until release', (tester) async {
+    final (s, first, aEnd) = gappedSession();
+    addTearDown(s.dispose);
+    s.selectCut(first);
+    await pumpArea(tester, s);
+
+    // The drag starts IN territory: engages the scrub without ever
+    // taking the out-of-territory path (the exact shape the old code
+    // left invisible — frameScrubActive was already true, so the later
+    // crossing had no rebuild trigger).
+    s.scrubGlobalFrame(1);
+    await tester.pump();
+    expect(s.frameScrubActive.value, isTrue);
+    expect(find.byKey(stackKey), findsNothing);
+
+    // Cross onto the SECOND cut's frames: the multitrack preview must
+    // mount NOW, not on release.
+    s.scrubGlobalFrame(aEnd + 5);
+    await tester.pump();
+    expect(
+      find.byKey(stackKey),
+      findsOneWidget,
+      reason: 'the crossing is the edge — before D6 the canvas kept the '
+          'previous cut\'s picture for the rest of the drag',
+    );
+    expect(
+      find.byKey(framesKey),
+      findsOneWidget,
+      reason: 'the crossed-onto cut paints its composite',
+    );
+
+    // Scrub back in: the interactive canvas returns mid-gesture too.
+    s.scrubGlobalFrame(1);
+    await tester.pump();
+    expect(find.byKey(stackKey), findsNothing);
+
+    s.commitFrameScrub();
+    await drainWarming(tester);
+  });
+
+  test('D6: the territory flag fires per EDGE, not per move — and a tap '
+      'never sets it (the no-flash rule)', () {
+    final (s, first, aEnd) = gappedSession();
+    s.selectCut(first);
+    var fires = 0;
+    s.scrubOutOfTerritory.addListener(() => fires += 1);
+
+    // A TAP over the gap: pointer-down parks, no move follows.
+    s.scrubGlobalFrame(aEnd + 1);
+    expect(fires, 0, reason: 'a tap must not flash the track stack');
+    s.commitFrameScrub();
+    expect(fires, 0);
+
+    // A real drag: in-territory start, cross out, wander, come back.
+    s.selectCut(first);
+    s.scrubGlobalFrame(1);
+    expect(fires, 0);
+    s.scrubGlobalFrame(aEnd + 1);
+    expect(fires, 1, reason: 'the exit edge fires once');
+    s.scrubGlobalFrame(aEnd + 2);
+    s.scrubGlobalFrame(aEnd + 3);
+    expect(fires, 1, reason: 'per-move parking stays notify-quiet');
+    s.scrubGlobalFrame(2);
+    expect(fires, 2, reason: 're-entry is the other edge');
+    s.commitFrameScrub();
+    expect(fires, 2);
+    expect(s.scrubOutOfTerritory.value, isFalse);
+    s.dispose();
+  });
+
   testWidgets('and the toggle does not move that answer: a parked preview is '
       'uncropped either way', (tester) async {
     for (final toggle in [false, true]) {

@@ -19,6 +19,7 @@ import 'brush/canvas_selection_commands.dart';
 import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
 import 'canvas/viewport_canvas_transform.dart';
+import 'brush/brush_canvas_panel.dart' show CanvasAutoFrameRequest;
 import 'brush/main_canvas_brush_host.dart';
 import 'camera/camera_frame_overlay.dart';
 import 'canvas/active_stroke_overlay.dart';
@@ -64,6 +65,7 @@ class EditorCanvasArea extends StatefulWidget {
     required this.cameraDimOpacity,
     this.onBrushToolStateChanged,
     this.canvasViewCommands,
+    this.navigationRegionKey,
     this.canvasSelectionCommands,
     this.cutPieceSlot,
     this.expandedLaneLayerIds,
@@ -96,6 +98,11 @@ class EditorCanvasArea extends StatefulWidget {
   /// The app-level rotate/flip shortcut channel (P8), forwarded to the
   /// canvas panel which binds the actual viewport handlers.
   final CanvasViewCommands? canvasViewCommands;
+
+  /// D13: attached to the canvas panel's container so the playback
+  /// actuation gate can measure the navigation region (pan/zoom keep
+  /// working during playback inside this rect).
+  final GlobalKey? navigationRegionKey;
 
   /// The app-level selection shortcut channel (P9: Ctrl+D, nudges),
   /// forwarded the same way.
@@ -281,12 +288,19 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             // #26: a scrub no longer swaps the content — but the flag still
             // decides WHAT THE GAP ANSWER IS: a parked global only reads as
             // a gap while the gesture is live (`_gapGlobalFrame` is gated on
-            // this), so `inGap` below flips at enter and leave. Two rebuilds
-            // per gesture; the crossed frames come through the retarget
-            // scope, not through here.
-            return ValueListenableBuilder<bool>(
-              valueListenable: session.frameScrubActive,
-              builder: (context, _, _) {
+            // this), so `inGap` below flips at enter and leave. D6 adds the
+            // TERRITORY edge: a drag that started inside the cut crosses
+            // the boundary mid-gesture, and the parking alone is per-move
+            // quiet — the out↔in flips arrive through
+            // [EditorSessionManager.scrubOutOfTerritory]. Two rebuilds per
+            // gesture, at most two more per territory transition; the
+            // crossed frames come through the retarget scope, not here.
+            return ListenableBuilder(
+              listenable: Listenable.merge([
+                session.frameScrubActive,
+                session.scrubOutOfTerritory,
+              ]),
+              builder: (context, _) {
                 return _FrameRetargetScope(
                   session: session,
                   builder: (context) {
@@ -529,6 +543,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           )
         : null;
     return RepaintBoundary(
+      // D13: the actuation gate's navigation region — the canvas PANEL's
+      // rect (viewport gestures, zoom buttons, panbars), measured by the
+      // gate at event time. Attached here so the region is exactly what
+      // the panel lays out, splitter drags and resizes included.
+      key: widget.navigationRegionKey,
       child: KeyedSubtree(
         key: const ValueKey<String>('main-canvas-brush-host-container'),
         // The tool-state boundary (R18 UI-2): tool switches and setting
@@ -550,6 +569,40 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           ]),
           builder: (context, _) {
             final toolState = widget.brushToolState.value;
+            // D12: playback defaults to FIT, per cut — one request per
+            // cut ENTRY through the panel's own playback-follow law
+            // (CanvasAutoFrameRequest: the token change fires the
+            // reframe; the frames inside a cut leave the viewport
+            // user-owned, D13's half of the deal). NO machinery of its
+            // own: the session already FOLLOWS playback's crossings
+            // ([EditorSessionManager]'s `_followPlaybackCut` re-keys the
+            // active cut and notifies once per crossing, never per
+            // frame), so the active cut IS the playing cut and this
+            // boundary already rebuilds exactly when the token changes.
+            // Camera view fits the camera's OUTPUT frame at the origin —
+            // the painter's frameRect, not the editing pose projection;
+            // canvas mode fits the playing cut's own canvas, whatever
+            // size that cut is.
+            final playbackCut = isPlaybackActive
+                ? session.activeCutOrNull
+                : null;
+            final cameraViewOn = widget.cameraViewEnabled.value;
+            final playbackAutoFrame = playbackCut == null
+                ? null
+                : CanvasAutoFrameRequest(
+                    token: (playbackCut.id, cameraViewOn),
+                    rect: cameraViewOn
+                        ? Offset.zero &
+                              Size(
+                                session.cameraFrameSize.width.toDouble(),
+                                session.cameraFrameSize.height.toDouble(),
+                              )
+                        : Offset.zero &
+                              Size(
+                                playbackCut.canvasSize.width.toDouble(),
+                                playbackCut.canvasSize.height.toDouble(),
+                              ),
+                  );
             // INSIDE the builder, deliberately: the standing row is
             // published without a session notify, so a manipulator gate
             // computed above would answer the row you left. Same trap the
@@ -619,6 +672,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // strip — the strip is where the hand already is.
               brushToolState: toolState,
               fitFocusRect: fitFocusRect,
+              autoFrame: playbackAutoFrame,
               viewCommands: widget.canvasViewCommands,
               selectionCommands: widget.canvasSelectionCommands,
               cutPieceSlot: widget.cutPieceSlot,

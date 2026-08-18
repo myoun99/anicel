@@ -2011,6 +2011,7 @@ class EditorSessionManager extends ChangeNotifier {
     soloedSeLayerIds.dispose();
     editingFrameCursor.dispose();
     frameScrubActive.dispose();
+    scrubOutOfTerritory.dispose();
     frameSeekCommitted.dispose();
     _gapGlobalFrameNotifier.dispose();
     frameRangeSelection.dispose();
@@ -16092,6 +16093,12 @@ class EditorSessionManager extends ChangeNotifier {
         frameScrubActive.value = true;
       }
       _gapGlobalFrame = globalFrame;
+      // D6: the territory-exit EDGE — only while the gesture is live
+      // (a tap's pointer-down park keeps this false, the no-flash rule),
+      // and only on the flip, so per-move parking stays notify-quiet.
+      if (frameScrubActive.value && !scrubOutOfTerritory.value) {
+        scrubOutOfTerritory.value = true;
+      }
       return;
     }
     if (_gapGlobalFrame != null) {
@@ -16101,6 +16108,13 @@ class EditorSessionManager extends ChangeNotifier {
       // stretch would otherwise show stale paper for the whole re-entry).
       _gapGlobalFrame = null;
       _warmActiveCut();
+      // D6: the re-entry edge — the content mount swaps back to the
+      // interactive canvas even when the cursor lands on its own frame
+      // (the retarget scope swallows an unchanged index, so without
+      // this the mounted track stack kept showing the backdrop floor).
+      if (scrubOutOfTerritory.value) {
+        scrubOutOfTerritory.value = false;
+      }
     }
     scrubFrameIndex(math.max(0, globalFrame - owner.startFrame));
   }
@@ -16984,6 +16998,22 @@ class EditorSessionManager extends ChangeNotifier {
   /// so the flag stays and the canvas rebuilds at enter and leave.
   final ValueNotifier<bool> frameScrubActive = ValueNotifier<bool>(false);
 
+  /// D6: whether the LIVE global scrub currently stands OUT of the active
+  /// cut's territory — the EDGE the canvas content mount listens to.
+  ///
+  /// A drag that STARTED inside the cut used to cross the boundary
+  /// invisibly: the out-of-territory branch parks quietly per move,
+  /// [frameScrubActive] was already true (its flip is the only rebuild
+  /// trigger the content mount had), and the cursor never fires out of
+  /// territory — so `inGap` was never recomputed and the canvas kept the
+  /// previous cut's picture until release. This is the [playheadHasCel]
+  /// mechanism applied to that missing edge: one comparison per move,
+  /// fires only when the ANSWER flips (out↔in), so the per-move parking
+  /// stays as quiet as UI-R7 #9 demands. Set only while the gesture is
+  /// live — a plain tap over another cut parks on pointer-down but never
+  /// scrubs, so this stays false and nothing flashes (the no-flash rule).
+  final ValueNotifier<bool> scrubOutOfTerritory = ValueNotifier<bool>(false);
+
   /// A scrub move: repositions the playhead WITHOUT notifying — only the
   /// cursor listenables fire; the full session notify is deferred to
   /// [commitFrameScrub] on release.
@@ -17050,6 +17080,11 @@ class EditorSessionManager extends ChangeNotifier {
     audioScrubber.onScrubEnd();
     if (frameScrubActive.value) {
       frameScrubActive.value = false;
+    }
+    // D6: the gesture is over — the out-of-territory display state ends
+    // with it (the landing seek below re-derives the real gap answer).
+    if (scrubOutOfTerritory.value) {
+      scrubOutOfTerritory.value = false;
     }
     final parked = _gapGlobalFrame;
     if (parked != null) {

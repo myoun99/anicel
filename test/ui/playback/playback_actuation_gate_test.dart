@@ -154,6 +154,163 @@ void main() {
     controller.detachTicker();
   });
 
+  group('D13: the navigation hole', () {
+    final regionKey = GlobalKey(debugLabel: 'test-navigation-region');
+    late int regionTaps;
+
+    Future<void> pumpGateWithRegion(WidgetTester tester) async {
+      regionTaps = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PlaybackActuationGate(
+              controller: controller,
+              navigationRegionKey: regionKey,
+              child: Column(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => taps += 1,
+                      child: const SizedBox.expand(
+                        key: ValueKey<String>('work-surface'),
+                        child: ColoredBox(color: Color(0xFF000000)),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    key: regionKey,
+                    height: 200,
+                    width: double.infinity,
+                    child: GestureDetector(
+                      key: const ValueKey<String>('nav-region'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => regionTaps += 1,
+                      child: const ColoredBox(color: Color(0xFF222222)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    testWidgets('a press INSIDE the region NAVIGATES — playback keeps '
+        'playing and the region does its own job', (tester) async {
+      await pumpGateWithRegion(tester);
+      controller.attachTicker(const TestVSync());
+      controller.play(scope: PlaybackScope.activeCut);
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey<String>('nav-region')));
+      await tester.pump();
+
+      expect(
+        controller.isPlaying,
+        isTrue,
+        reason: 'D13: pan/zoom keep working during playback — a canvas '
+            'press is navigation, not an actuation to stop on',
+      );
+      expect(regionTaps, 1, reason: 'the press reached the canvas');
+
+      controller.stop();
+      controller.detachTicker();
+    });
+
+    testWidgets('a press OUTSIDE the region keeps the whole T28-c law: '
+        'stop, and the surface never sees it', (tester) async {
+      await pumpGateWithRegion(tester);
+      controller.attachTicker(const TestVSync());
+      controller.play(scope: PlaybackScope.activeCut);
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey<String>('work-surface')));
+      await tester.pump();
+
+      expect(controller.isPlaying, isFalse);
+      expect(taps, 0, reason: '「뭘 하든 정지만. 입력 일 안함」 — unchanged '
+          'everywhere the canvas is not');
+
+      controller.detachTicker();
+    });
+
+    testWidgets('an opaque surface OVER the region keeps the stop law — '
+        'the hit PATH decides, never the rectangle (the floating timeline '
+        'overlaps the canvas panel\'s rect)', (tester) async {
+      regionTaps = 0;
+      var overlayTaps = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PlaybackActuationGate(
+              controller: controller,
+              navigationRegionKey: regionKey,
+              child: Stack(
+                children: [
+                  SizedBox.expand(
+                    key: regionKey,
+                    child: GestureDetector(
+                      key: const ValueKey<String>('nav-region'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => regionTaps += 1,
+                      child: const ColoredBox(color: Color(0xFF222222)),
+                    ),
+                  ),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: 200,
+                    child: GestureDetector(
+                      key: const ValueKey<String>('floating-overlay'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => overlayTaps += 1,
+                      child: const ColoredBox(color: Color(0xFF444444)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      controller.attachTicker(const TestVSync());
+      controller.play(scope: PlaybackScope.activeCut);
+      await tester.pump();
+
+      // The overlay sits INSIDE the region's rectangle but on top of it:
+      // a press there is the overlay's, so the gate must stop + consume.
+      await tester.tap(
+        find.byKey(const ValueKey<String>('floating-overlay')),
+      );
+      await tester.pump();
+
+      expect(
+        controller.isPlaying,
+        isFalse,
+        reason: 'a surface floating over the canvas keeps T28-c whole',
+      );
+      expect(overlayTaps, 0, reason: 'stopped AND consumed');
+      expect(regionTaps, 0);
+
+      controller.detachTicker();
+    });
+
+    testWidgets('idle, the region is nothing special — both surfaces do '
+        'their jobs', (tester) async {
+      await pumpGateWithRegion(tester);
+
+      await tester.tap(find.byKey(const ValueKey<String>('nav-region')));
+      await tester.tap(find.byKey(const ValueKey<String>('work-surface')));
+      await tester.pump();
+
+      expect(regionTaps, 1);
+      expect(taps, 1);
+      expect(controller.isPlaying, isFalse);
+    });
+  });
+
   testWidgets('the SECOND actuation does its job — the gate is only in the '
       'way while playing', (tester) async {
     await pumpGate(tester);
