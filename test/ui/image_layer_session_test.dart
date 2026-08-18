@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/attached_placement.dart';
+import 'package:anicel/src/models/delete_subject.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -8,9 +9,11 @@ import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
 import 'package:anicel/src/models/timeline_repeat.dart'
     show TimelineRunEdgeMode, TimelineRunEdgeSide;
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/services/commands/convert_to_linked_cut_plan.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
+import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 
 /// The IMAGE layer contract (§6-z23): one cel by definition, born
 /// covering its cut, no second cel to create, an ordinary attach base.
@@ -166,6 +169,88 @@ void main() {
       s.canDeleteCellForSelection,
       isFalse,
       reason: 'an image-only selection offers no cell delete either',
+    );
+  });
+
+  test('a selection the verbs refuse is a NO-OP, never a redirect: an '
+      'image-only band leaves the active drawing row alone (Delete AND '
+      'comma)', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final celId = s.layers
+        .firstWhere((layer) => layer.kind == LayerKind.animation)
+        .id;
+    s.selectLayer(celId);
+    s.selectFrameIndex(0);
+    s.createDrawingAtCurrentFrame();
+
+    s.addLayerOfKind(LayerKind.image);
+    final imageId = s.activeLayer!.id;
+    // A cell band never moves the active layer, so sweeping the BG row
+    // while a drawing row stays active is the ORDINARY case.
+    s.selectLayer(celId);
+    s.selectFrameIndex(0);
+    s.updateFrameRangeSelectionDrag(
+      layerId: imageId,
+      anchorIndex: 0,
+      headIndex: 3,
+    );
+
+    Layer celRow() => s.layers.firstWhere((layer) => layer.id == celId);
+    expect(celRow().frames, hasLength(1));
+
+    expect(
+      s.canDeleteCellAtCurrentFrame,
+      isFalse,
+      reason: 'the highlighted row IS the subject — with nothing deletable '
+          'in it the button goes dark instead of retargeting',
+    );
+    s.deleteCellAtCurrentFrame();
+    expect(
+      celRow().frames,
+      hasLength(1),
+      reason: 'the unselected active row must not lose its drawing',
+    );
+
+    expect(s.canSetCommaForSelectionOrCurrent, isFalse);
+    s.setCommaForSelectionOrCurrent(4);
+    expect(
+      celRow().timeline[0]!.length,
+      1,
+      reason: 'and the comma press must not retime it either',
+    );
+  });
+
+  test('the STORYBOARD panel\'s delete ladder stops at the refused band '
+      'too — a track-row cursor behind it means DELETE THE CUT', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.addLayerOfKind(LayerKind.image);
+    final imageId = s.activeLayer!.id;
+    final cutsBefore = s.activeTrack.cuts.length;
+
+    // The storyboard cursor stands on the TRACK row (where the panel's
+    // last delete rung means "the cut"), with a cell band on the image
+    // row in front of it.
+    s.selectRow(TrackRowAddress(s.activeTrack.id));
+    s.updateFrameRangeSelectionDrag(
+      layerId: imageId,
+      anchorIndex: 0,
+      headIndex: 3,
+    );
+
+    final panel = StoryboardToolbarPanelContext(s);
+    expect(
+      panel.deleteSubject,
+      DeleteSubject.nothing,
+      reason: 'the band owns the press; it must not reach the cut rung',
+    );
+    panel.deleteSelectionSubject();
+    expect(
+      s.activeTrack.cuts.length,
+      cutsBefore,
+      reason: 'pressing Delete over a picture band must never destroy the '
+          'cut, its layers and its artwork',
     );
   });
 

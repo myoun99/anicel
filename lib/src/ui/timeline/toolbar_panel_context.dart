@@ -463,6 +463,13 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     if (session.canDeleteCellForSelection) {
       return DeleteSubject.cells;
     }
+    // A live CELL band claims the press even when it holds nothing this
+    // panel may delete — the same guard the strip's comma verb already
+    // states. Without it a band the collector refuses fell through to the
+    // cursor rung, where a TRACK-ROW cursor means "delete the cut".
+    if (session.cellSelectionClaimsSubject) {
+      return DeleteSubject.nothing;
+    }
     return session.canDeleteBlockAtStoryboardCursor
         ? DeleteSubject.cells
         : DeleteSubject.nothing;
@@ -476,6 +483,9 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     }
     if (session.canDeleteCellForSelection) {
       session.deleteCellAtCurrentFrame();
+      return;
+    }
+    if (session.cellSelectionClaimsSubject) {
       return;
     }
     session.deleteBlockAtStoryboardCursor();

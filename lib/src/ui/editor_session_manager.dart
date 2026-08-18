@@ -14953,9 +14953,26 @@ class EditorSessionManager extends ChangeNotifier {
       // #2).
       _selectionBlockStartsByLayer() != null;
 
+  /// Whether a live CELL band owns the next cell-verb press.
+  ///
+  /// A band is a subject claim, not a hint: the row the user swept is the
+  /// row the verb acts on, and a band holding nothing this verb may touch
+  /// makes the press a NO-OP — never a redirect onto whatever row happens
+  /// to be active (a cell drag never moves the active layer, so those are
+  /// routinely different rows).
+  ///
+  /// This is what keeps the collector's `null` from meaning two things.
+  /// It answers "no band at all"; the collector answers "nothing in the
+  /// band is editable". Reading only the collector let a refused band
+  /// fall through and delete an unselected row's drawing.
+  bool get cellSelectionClaimsSubject => frameRangeSelection.value != null;
+
   bool get canDeleteCellAtCurrentFrame {
     if (canDeleteCellForSelection) {
       return true;
+    }
+    if (cellSelectionClaimsSubject) {
+      return false;
     }
     final layer = activeLayer;
     // SYNCED attach rows: cel removal is out of v1 scope (delete the row
@@ -15190,6 +15207,11 @@ class EditorSessionManager extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    if (cellSelectionClaimsSubject) {
+      // The band holds nothing this verb may delete — that is a no-op,
+      // not a licence to edit whatever row is active.
+      return;
+    }
     final layer = activeLayer;
     if (layer == null || !canDeleteCellAtCurrentFrame) {
       return;
@@ -15311,6 +15333,11 @@ class EditorSessionManager extends ChangeNotifier {
       _reselectRetimedSelection(selection, selectionTargets);
       _warmActiveCut();
       notifyListeners();
+      return;
+    }
+    if (cellSelectionClaimsSubject) {
+      // Same law as the delete verb: a band that resolves to nothing
+      // retimable is a no-op, never a press that lands on some other row.
       return;
     }
     final layer = activeLayer;
