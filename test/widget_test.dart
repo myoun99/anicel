@@ -590,6 +590,11 @@ Future<void> _expectTimelineActionKeys(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.tap(frameMenuButton);
   await tester.pumpAndSettle();
+  // D40: the whole-row select rides the frame menu.
+  expect(
+    find.byKey(const ValueKey<String>('select-row-span-button')),
+    findsOneWidget,
+  );
   expect(
     find.byKey(const ValueKey<String>('shared-copy-button')),
     findsOneWidget,

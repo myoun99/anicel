@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../../models/cut_id.dart';
 import '../../../models/cut_move_plan.dart';
 import '../../../models/track.dart';
+import '../../../models/track_frame_range.dart';
 import '../../../models/track_id.dart';
 import '../../timeline/timeline_drag_preview.dart';
 import 'editor_drag_session.dart';
@@ -17,20 +18,27 @@ import 'editor_drag_session.dart';
 /// are for, and a drag that could only shove could never say "put this cut
 /// after that one".
 ///
-/// ⚠️The shared rule now also re-times a run AFTER it has reordered (UI
-/// 08-14 #5), but THIS axis cannot show it: [planCutMove] answers a reorder
-/// with the sequence alone and this drag commits that sequence, so a swapped
-/// cut still seats itself. Carrying it here means giving
-/// `CutMovePlan.reorder` its gaps and re-keying them by the cut that ends up
-/// in each position — a separate change, not done.
+/// A reorder carries the shared rule's SECOND answer too: the gaps stay
+/// with their positions (R5 #13) and the run keeps re-timing in its new
+/// rank (UI 08-14 #5). [planCutMove] re-keys the position gaps by the cut
+/// that lands in each position, this drag previews and commits them with
+/// the sequence, and the commit stays one undo step.
 class CutMoveDrag implements EditorDragSession {
   CutMoveDrag._({
     required TrackId trackId,
     required List<CutMoveSlot> slots,
     required int runStart,
     required int? runEnd,
+    required int runFromFrame,
     required ValueNotifier<TimelineDragPreview?> preview,
-    required void Function({required TrackId trackId, required List<CutId> order})
+    required TrackFrameRangeSelection? selectionBefore,
+    required void Function(TrackFrameRangeSelection?) publishSelection,
+    required void Function({
+      required TrackId trackId,
+      required List<CutId> order,
+      required Map<CutId, int> beforeGaps,
+      required Map<CutId, int> afterGaps,
+    })
     commitOrder,
     required void Function({
       required Map<CutId, int> beforeGaps,
@@ -41,7 +49,10 @@ class CutMoveDrag implements EditorDragSession {
        _slots = slots,
        _runStart = runStart,
        _runEnd = runEnd,
+       _runFromFrame = runFromFrame,
        _preview = preview,
+       _selectionBefore = selectionBefore,
+       _publishSelection = publishSelection,
        _commitOrder = commitOrder,
        _commitGaps = commitGaps;
 
@@ -57,7 +68,14 @@ class CutMoveDrag implements EditorDragSession {
     required List<Track> tracks,
     required List<CutId> selectedCutIds,
     required ValueNotifier<TimelineDragPreview?> preview,
-    required void Function({required TrackId trackId, required List<CutId> order})
+    required TrackFrameRangeSelection? selection,
+    required void Function(TrackFrameRangeSelection?) publishSelection,
+    required void Function({
+      required TrackId trackId,
+      required List<CutId> order,
+      required Map<CutId, int> beforeGaps,
+      required Map<CutId, int> afterGaps,
+    })
     commitOrder,
     required void Function({
       required Map<CutId, int> beforeGaps,
@@ -84,19 +102,42 @@ class CutMoveDrag implements EditorDragSession {
           }
         }
       }
+      final slots = <CutMoveSlot>[
+        for (final cut in track.cuts)
+          (
+            id: cut.id,
+            leadingGapFrames: cut.leadingGapFrames,
+            duration: cut.duration,
+          ),
+      ];
+      // The selection rides the run when it lies on this track and touches
+      // it (the drag machine's law: every step writes the previewed span
+      // through the selection notifier; the band just listens).
+      var runFrom = 0;
+      for (var position = 0; position <= runStart; position += 1) {
+        runFrom += slots[position].leadingGapFrames;
+        if (position < runStart) {
+          runFrom += slots[position].duration;
+        }
+      }
+      var runTo = runFrom;
+      for (var position = runStart; position <= (runEnd ?? runStart);
+          position += 1) {
+        runTo += slots[position].duration +
+            (position > runStart ? slots[position].leadingGapFrames : 0);
+      }
+      final rides = selection != null &&
+          selection.trackId == track.id &&
+          selection.overlaps(runFrom, runTo);
       return CutMoveDrag._(
         trackId: track.id,
-        slots: [
-          for (final cut in track.cuts)
-            (
-              id: cut.id,
-              leadingGapFrames: cut.leadingGapFrames,
-              duration: cut.duration,
-            ),
-        ],
+        slots: slots,
         runStart: runStart,
         runEnd: runEnd,
+        runFromFrame: runFrom,
         preview: preview,
+        selectionBefore: rides ? selection : null,
+        publishSelection: publishSelection,
         commitOrder: commitOrder,
         commitGaps: commitGaps,
       );
@@ -109,6 +150,17 @@ class CutMoveDrag implements EditorDragSession {
   final int _runStart;
   final int? _runEnd;
 
+  /// The run's original global start — the reference every step's shift is
+  /// measured from.
+  final int _runFromFrame;
+
+  /// The selection riding the run (captured at begin, already claimed by
+  /// the select path), or null when the drag grabbed an unselected cut.
+  /// The drag machine's law: every step writes the previewed span through
+  /// the selection notifier, and the band painters just listen.
+  final TrackFrameRangeSelection? _selectionBefore;
+  final void Function(TrackFrameRangeSelection?) _publishSelection;
+
   /// The plan the last update arrived at, or null while it shows "no
   /// change". The commit reads THIS, never [_preview].
   CutMovePlan? _after;
@@ -116,14 +168,40 @@ class CutMoveDrag implements EditorDragSession {
   final ValueNotifier<TimelineDragPreview?> _preview;
 
   /// The session's two committers, each one undo step with the refresh
-  /// epilogue behind it: the track's new sequence, or the re-time's gaps.
-  final void Function({required TrackId trackId, required List<CutId> order})
+  /// epilogue behind it: the track's new sequence WITH the position gaps
+  /// its cuts took over, or the re-time's gaps alone.
+  final void Function({
+    required TrackId trackId,
+    required List<CutId> order,
+    required Map<CutId, int> beforeGaps,
+    required Map<CutId, int> afterGaps,
+  })
   _commitOrder;
   final void Function({
     required Map<CutId, int> beforeGaps,
     required Map<CutId, int> afterGaps,
   })
   _commitGaps;
+
+  /// Publishes [_selectionBefore] shifted by [delta] frames (no-op when no
+  /// selection rides the run).
+  void _publishShifted(int delta) {
+    final before = _selectionBefore;
+    if (before == null) {
+      return;
+    }
+    _publishSelection(
+      delta == 0
+          ? before
+          : TrackFrameRangeSelection(
+              trackId: before.trackId,
+              anchorRow: before.anchorRow,
+              rows: before.rows,
+              startFrame: before.startFrame + delta,
+              endFrameExclusive: before.endFrameExclusive + delta,
+            ),
+    );
+  }
 
   /// Applies the move's cumulative frame delta as a live preview (the
   /// repository is NOT touched).
@@ -135,10 +213,14 @@ class CutMoveDrag implements EditorDragSession {
       runEnd: _runEnd ?? _runStart,
       frameDelta: cumulativeDelta,
     );
+    // The band follows the run's previewed seat in the SAME step as the
+    // blocks — the notifier-per-step law the frame axis already lives by.
+    _publishShifted(plan.runStartFrame - _runFromFrame);
     if (plan.isReorder) {
       _after = plan;
       _preview.value = CutTrimDragPreview(
         previewDurations: const {},
+        previewGaps: plan.gaps,
         previewOrder: {_trackId: plan.order!},
       );
       return;
@@ -153,8 +235,10 @@ class CutMoveDrag implements EditorDragSession {
   }
 
   /// Commits the move as a single undo step (no-op when nothing changed):
-  /// a re-time lands as gaps, a reorder as the track's new sequence.
-  /// Durations are untouched either way, so no fade re-anchor is needed.
+  /// a re-time lands as gaps, a reorder as the track's new sequence WITH
+  /// the position gaps its cuts took over (which may be none, when the
+  /// track is packed). Durations are untouched either way, so no fade
+  /// re-anchor is needed.
   @override
   void commit() {
     final plan = _after;
@@ -162,28 +246,35 @@ class CutMoveDrag implements EditorDragSession {
     if (plan == null) {
       return;
     }
+    // The sparse before/after of the gaps the plan changed — [plan.gaps]
+    // only carries cuts whose gap differs from their current one, so this
+    // is the changed set on both shapes.
+    final beforeGaps = <CutId, int>{
+      for (final slot in _slots)
+        if (plan.gaps.containsKey(slot.id)) slot.id: slot.leadingGapFrames,
+    };
     if (plan.isReorder) {
-      _commitOrder(trackId: _trackId, order: plan.order!);
-      return;
+      _commitOrder(
+        trackId: _trackId,
+        order: plan.order!,
+        beforeGaps: beforeGaps,
+        afterGaps: plan.gaps,
+      );
+    } else if (plan.gaps.isNotEmpty) {
+      _commitGaps(beforeGaps: beforeGaps, afterGaps: plan.gaps);
     }
-    final beforeGaps = {
-      for (final slot in _slots) slot.id: slot.leadingGapFrames,
-    };
-    final afterGaps = {
-      for (final id in beforeGaps.keys) id: plan.gaps[id] ?? beforeGaps[id]!,
-    };
-    final changed = afterGaps.entries.any(
-      (entry) => beforeGaps[entry.key] != entry.value,
-    );
-    if (!changed) {
-      return;
-    }
-    _commitGaps(beforeGaps: beforeGaps, afterGaps: afterGaps);
+    // The landed span goes out AFTER the repository commit, so a reader
+    // that resolves cuts from the selection's frames against the CURRENT
+    // layout ([storyboardSelectedCutIds]) sees the moved cuts, not their
+    // old seats.
+    _publishShifted(plan.runStartFrame - _runFromFrame);
   }
 
-  /// Drops an in-flight move preview without touching history.
+  /// Drops an in-flight move preview without touching history, and puts
+  /// the riding selection back where the drag found it.
   @override
   void cancel() {
     _preview.value = null;
+    _publishShifted(0);
   }
 }

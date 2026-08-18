@@ -526,13 +526,14 @@ void main() {
       expect(layoutStart(s, third), thirdStart);
     });
 
-    test('a drag past the neighbour\'s midpoint REORDERS the track, and '
+    test('a drag past the neighbour\'s seat REORDERS the track, and '
         'the whole selected run crosses in one undo step', () {
       final (s, first, second, third) = threeCutSession();
       final undoDepthBefore = s.canUndo;
 
-      // [first, second] dragged right past the third cut: 24-frame cuts,
-      // so the pair's midpoint reaches the third's after 36 frames.
+      // [first, second] dragged right past the third cut: the run's seat
+      // beyond it is 24 frames of travel (the neighbour's length), and 36
+      // is well past it.
       selectCutRun(s, first, second);
       expect(s.beginCutMoveDrag(first), isTrue);
       s.updateCutMoveDrag(36);
@@ -559,11 +560,21 @@ void main() {
       );
     });
 
-    test('a single cut swaps with its neighbour and the gaps ride along', () {
-      final (s, first, second, third) = threeCutSession();
+    test('a swap leaves the gaps with their POSITIONS — the rear cut takes '
+        'over the vacated head instead of jumping to frame 0 (D16)', () {
+      final (s, first, second) = twoCutSession();
+      // Give the FIRST cut a 5-frame lead-in: its start edge trims from
+      // the front, the one gesture that can empty the head of the film.
+      s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.start);
+      s.updateCutEdgeDrag(5);
+      s.endCutEdgeDrag();
+      expect(layoutStart(s, first), 5);
+      final firstDuration = s.cutById(first)!.duration;
+      final secondDuration = s.cutById(second)!.duration;
 
+      // first's seat past second costs second's length of travel.
       expect(s.beginCutMoveDrag(first), isTrue);
-      s.updateCutMoveDrag(24);
+      s.updateCutMoveDrag(secondDuration);
       s.endCutMoveDrag();
 
       expect(
@@ -571,7 +582,56 @@ void main() {
           for (final cut in s.repository.requireProject().tracks.first.cuts)
             cut.id,
         ],
-        [second, first, third],
+        [second, first],
+      );
+      // ⛔The old commit permuted cuts that each kept their OWN gap:
+      // second carried its 0 to the head and landed on frame 0 (the
+      // 『1번』 jump), with the five empty frames pushed between the two.
+      expect(
+        layoutStart(s, second),
+        5,
+        reason: 'the head keeps its five empty frames',
+      );
+      expect(layoutStart(s, first), 5 + secondDuration);
+
+      // ONE undo step restores the order AND the gaps together.
+      s.undo();
+      expect(
+        [
+          for (final cut in s.repository.requireProject().tracks.first.cuts)
+            cut.id,
+        ],
+        [first, second],
+      );
+      expect(layoutStart(s, first), 5);
+      expect(layoutStart(s, second), 5 + firstDuration);
+    });
+
+    test('a swapped cut keeps following the hand into the free space past '
+        'its seat (UI 08-14 #5, stated in cuts)', () {
+      final (s, first, second) = twoCutSession();
+      s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.start);
+      s.updateCutEdgeDrag(5);
+      s.endCutEdgeDrag();
+      final secondDuration = s.cutById(second)!.duration;
+
+      expect(s.beginCutMoveDrag(first), isTrue);
+      // Three frames past the seat: the swap happened at second's length
+      // of travel, and the drag goes on re-timing in the new rank.
+      s.updateCutMoveDrag(secondDuration + 3);
+      s.endCutMoveDrag();
+
+      expect(
+        [
+          for (final cut in s.repository.requireProject().tracks.first.cuts)
+            cut.id,
+        ],
+        [second, first],
+      );
+      expect(
+        layoutStart(s, first),
+        5 + secondDuration + 3,
+        reason: 'the block is where the hand is, not on its seat',
       );
     });
 

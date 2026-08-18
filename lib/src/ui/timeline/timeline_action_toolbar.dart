@@ -569,6 +569,16 @@ class TimelineActionToolbar extends StatelessWidget {
             session.canDuplicateActiveBlock,
         onSelected: () => session.duplicateActiveBlock(linked: true),
       ),
+      // D40: the whole-row select. ⛔NOT gated on servesActiveLayerVerbs —
+      // the storyboard half is the point (컷블록도 동일 작동): each panel
+      // context resolves its OWN standing row, cut row included.
+      PanelFlyoutItem(
+        keyValue: 'select-row-span-button',
+        label: AppText.strings.tlSelectRowSpan,
+        icon: Icons.select_all,
+        enabled: panelContext.canSelectRowSpan,
+        onSelected: panelContext.selectRowSpan,
+      ),
     ];
   }
 

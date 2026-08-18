@@ -49,6 +49,10 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     required this.totalFrameContentWidth,
     this.leadingLayerSpacerHeight = 0,
     this.trailingLayerSpacerHeight = 0,
+    this.pinnedLeadingRow,
+    this.pinnedLeadingOffset = 0,
+    this.pinnedTrailingRow,
+    this.pinnedTrailingOffset = 0,
     required this.metrics,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
@@ -118,6 +122,16 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// window (the vertical counterpart of the frame-axis spacers).
   final double leadingLayerSpacerHeight;
   final double trailingLayerSpacerHeight;
+
+  /// A5/D42: a row a drag is HOLDING, carved out of the spacer it falls in
+  /// so its State (the range gesture mid-move) survives the window sliding
+  /// past it — the rail's pin, applied to the cells. [pinnedLeadingOffset]
+  /// is the height above the pinned row inside the leading region; the
+  /// spacer totals are unchanged, so scroll geometry never notices.
+  final TimelineDisplayRow? pinnedLeadingRow;
+  final double pinnedLeadingOffset;
+  final TimelineDisplayRow? pinnedTrailingRow;
+  final double pinnedTrailingOffset;
 
   final TimelineGridMetrics metrics;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
@@ -608,14 +622,47 @@ class _TimelineFrameRowsScrollBodyState
     // take the mark now and settle it during this frame's layout/paint.
     _geometry.value = _geometryFromWidget();
     _windowedGeometry.value = _windowedGeometryFromWidget();
+    final pinnedLeading = widget.pinnedLeadingRow;
+    final pinnedTrailing = widget.pinnedTrailingRow;
+    final rowHeight = widget.metrics.layerRowHeight;
     final children = <Widget>[
-      if (widget.leadingLayerSpacerHeight > 0)
+      // A5/D42: a pinned (held) row is carved out of its spacer — the
+      // total extent is unchanged, so the scroll geometry never notices.
+      if (pinnedLeading != null) ...[
+        if (widget.pinnedLeadingOffset > 0)
+          SizedBox(height: widget.pinnedLeadingOffset),
+        _buildRow(pinnedLeading),
+        if (widget.leadingLayerSpacerHeight -
+                widget.pinnedLeadingOffset -
+                rowHeight >
+            0)
+          SizedBox(
+            height:
+                widget.leadingLayerSpacerHeight -
+                widget.pinnedLeadingOffset -
+                rowHeight,
+          ),
+      ] else if (widget.leadingLayerSpacerHeight > 0)
         SizedBox(
           key: const ValueKey<String>('timeline-leading-layer-spacer'),
           height: widget.leadingLayerSpacerHeight,
         ),
       for (final row in widget.rows) _buildRow(row),
-      if (widget.trailingLayerSpacerHeight > 0)
+      if (pinnedTrailing != null) ...[
+        if (widget.pinnedTrailingOffset > 0)
+          SizedBox(height: widget.pinnedTrailingOffset),
+        _buildRow(pinnedTrailing),
+        if (widget.trailingLayerSpacerHeight -
+                widget.pinnedTrailingOffset -
+                rowHeight >
+            0)
+          SizedBox(
+            height:
+                widget.trailingLayerSpacerHeight -
+                widget.pinnedTrailingOffset -
+                rowHeight,
+          ),
+      ] else if (widget.trailingLayerSpacerHeight > 0)
         SizedBox(
           key: const ValueKey<String>('timeline-trailing-layer-spacer'),
           height: widget.trailingLayerSpacerHeight,
@@ -632,6 +679,10 @@ class _TimelineFrameRowsScrollBodyState
     final liveKeys = <Object>{
       for (final row in widget.rows)
         'timeline-row-${row.layer.id}-${_rowKeySuffix(row)}',
+      if (pinnedLeading != null)
+        'timeline-row-${pinnedLeading.layer.id}-${_rowKeySuffix(pinnedLeading)}',
+      if (pinnedTrailing != null)
+        'timeline-row-${pinnedTrailing.layer.id}-${_rowKeySuffix(pinnedTrailing)}',
     };
     _rowMemo.removeWhere((key, _) => !liveKeys.contains(key));
 

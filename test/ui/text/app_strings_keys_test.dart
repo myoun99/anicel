@@ -610,6 +610,7 @@ void main() {
     'tlSharedCut': (s) => s.tlSharedCut,
     'tlDuplicateFrame': (s) => s.tlDuplicateFrame,
     'tlLinkDuplicateFrame': (s) => s.tlLinkDuplicateFrame,
+    'tlSelectRowSpan': (s) => s.tlSelectRowSpan,
     'tlSharedCopy': (s) => s.tlSharedCopy,
     'tlSharedPasteLinked': (s) => s.tlSharedPasteLinked,
     'tlSharedPasteIndependent': (s) => s.tlSharedPasteIndependent,

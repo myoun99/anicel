@@ -6,6 +6,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../../models/timeline_row_address.dart';
+import '../../models/track_id.dart';
 import '../editor_session_manager.dart';
 
 /// B8 (2026-08-17): 상단 버튼의 패널 스코프 — the shared toolbar's layer,
@@ -72,6 +73,13 @@ abstract class ToolbarPanelContext {
   /// 4 = 컷길이 4), one rule for every block kind.
   bool get canSetComma;
   void setComma(int comma);
+
+  /// D40: select the standing row's WHOLE authored span — first authored
+  /// cell through last — as a range selection. On the storyboard the
+  /// standing row may be the cut row, whose blocks are its cuts (컷블록도
+  /// 동일 작동).
+  bool get canSelectRowSpan;
+  void selectRowSpan();
 
   // --- SHARED pill ----------------------------------------------------------
 
@@ -144,6 +152,12 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
 
   @override
   void setComma(int comma) => session.setCommaForSelectionOrCurrent(comma);
+
+  @override
+  bool get canSelectRowSpan => session.canSelectRowSpanForCurrentRow;
+
+  @override
+  void selectRowSpan() => session.selectRowSpanForCurrentRow();
 
   @override
   bool get canEditInstance =>
@@ -303,6 +317,67 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
 
   @override
   void setComma(int comma) => session.setCommaForStoryboardCursor(comma);
+
+  /// D40's one resolver (T25): the standing row's whole span on the
+  /// track's global axis — a null layerId means the CUT row, whose span is
+  /// selected through the one cut-select entry point on the trackId the
+  /// row itself names (never [EditorSessionManager.selectedTrackId] — the
+  /// stale re-key the select path already removed).
+  ({LayerId? layerId, TrackId? trackId, int anchorFrame, int headFrame})?
+  get _rowSpanTarget {
+    switch (session.selectedRow) {
+      case TrackRowAddress(:final trackId):
+        final span = session.trackCutSpan(trackId);
+        if (span == null) {
+          return null;
+        }
+        return (
+          layerId: null,
+          trackId: trackId,
+          anchorFrame: span.startFrame,
+          headFrame: span.endFrameExclusive - 1,
+        );
+      case LayerRowAddress(:final layerId):
+        final span = session.trackRowAuthoredSpan(layerId);
+        if (span == null) {
+          return null;
+        }
+        return (
+          layerId: layerId,
+          trackId: null,
+          anchorFrame: span.startFrame,
+          headFrame: span.endFrameExclusive - 1,
+        );
+      case LaneRowAddress():
+        // Lane keys are points with no block snap — no span to select.
+        return null;
+    }
+  }
+
+  @override
+  bool get canSelectRowSpan => _rowSpanTarget != null;
+
+  @override
+  void selectRowSpan() {
+    final target = _rowSpanTarget;
+    if (target == null) {
+      return;
+    }
+    final layerId = target.layerId;
+    if (layerId == null) {
+      session.updateStoryboardCutSelectionByFrame(
+        anchorGlobalFrame: target.anchorFrame,
+        headGlobalFrame: target.headFrame,
+        trackId: target.trackId,
+      );
+      return;
+    }
+    session.updateTrackRowRangeSelectionByFrame(
+      layerId: layerId,
+      anchorGlobalFrame: target.anchorFrame,
+      headGlobalFrame: target.headFrame,
+    );
+  }
 
   /// THE one resolver behind the edit button: what the press would open.
   /// [canEditInstance] and the host's dispatch both read this.

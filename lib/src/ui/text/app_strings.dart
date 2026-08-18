@@ -557,6 +557,7 @@ class AppStrings {
   String get tlDuplicateLayer => _s('tlDuplicateLayer');
   String get tlDuplicateFrame => _s('tlDuplicateFrame');
   String get tlLinkDuplicateFrame => _s('tlLinkDuplicateFrame');
+  String get tlSelectRowSpan => _s('tlSelectRowSpan');
   String get tlLinkDuplicateLayer => _s('tlLinkDuplicateLayer');
   String get tlUnlinkLayer => _s('tlUnlinkLayer');
   String get tlResetGroup => _s('tlResetGroup');
@@ -1605,6 +1606,7 @@ class AppStrings {
     'tlDuplicateLayer': 'Duplicate layer',
     'tlDuplicateFrame': 'Duplicate frame block',
     'tlLinkDuplicateFrame': 'Link duplicate frame block',
+    'tlSelectRowSpan': 'Select whole row',
     'tlLinkDuplicateLayer': 'Link duplicate layer',
     'tlUnlinkLayer': 'Unlink layer',
     'tlResetGroup': 'Reset (keeps keys)',
@@ -2383,6 +2385,7 @@ class AppStrings {
     'tlDuplicateLayer': 'レイヤーを複製',
     'tlDuplicateFrame': 'フレームブロックを複製',
     'tlLinkDuplicateFrame': 'リンクして複製 (ブロック)',
+    'tlSelectRowSpan': '行全体を選択',
     'tlLinkDuplicateLayer': 'リンクして複製',
     'tlUnlinkLayer': 'リンクを解除',
     'tlResetGroup': 'リセット（キーは残す）',
@@ -3153,6 +3156,7 @@ class AppStrings {
     'tlDuplicateLayer': '레이어 복제',
     'tlDuplicateFrame': '프레임 블록 복제',
     'tlLinkDuplicateFrame': '프레임 블록 링크 복제',
+    'tlSelectRowSpan': '행 전체 선택',
     'tlLinkDuplicateLayer': '링크해서 복제',
     'tlUnlinkLayer': '링크 해제',
     'tlResetGroup': '리셋 (키는 유지)',
@@ -3964,6 +3968,7 @@ class AppStrings {
     'tlDuplicateLayer': 'Dupliquer le calque',
     'tlDuplicateFrame': 'Dupliquer le bloc',
     'tlLinkDuplicateFrame': 'Dupliquer le bloc en liant',
+    'tlSelectRowSpan': 'Sélectionner toute la ligne',
     'tlLinkDuplicateLayer': 'Dupliquer en liant',
     'tlUnlinkLayer': 'Délier le calque',
     'tlResetGroup': 'Réinitialiser (garde les clés)',
@@ -4709,6 +4714,7 @@ class AppStrings {
     'tlDuplicateLayer': '复制图层',
     'tlDuplicateFrame': '复制帧块',
     'tlLinkDuplicateFrame': '链接复制帧块',
+    'tlSelectRowSpan': '选择整行',
     'tlLinkDuplicateLayer': '链接复制图层',
     'tlUnlinkLayer': '取消图层链接',
     'tlResetGroup': '重置（保留关键帧）',

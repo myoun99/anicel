@@ -1627,11 +1627,27 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
               );
             },
             onTapClear: (_) => rangeHooks.onClear(),
-            onMoveBegin: (row, _) =>
-                row is LayerRowAddress && _rangeMoveResolver.begin(row.layerId),
+            // D42: a range MOVE takes the A5 grip — the vertical auto-pan
+            // can slide the row window past the gesture row, and an
+            // unpinned row's dispose backstop would commit the move
+            // mid-drag. The pin is carved out of the spacers (O(1)).
+            onMoveBegin: (row, _) {
+              if (row is! LayerRowAddress ||
+                  !_rangeMoveResolver.begin(row.layerId)) {
+                return false;
+              }
+              _heldDragRow = row;
+              return true;
+            },
             onMoveUpdate: _rangeMoveResolver.update,
-            onMoveEnd: _rangeMoveResolver.end,
-            onMoveCancel: _rangeMoveResolver.cancel,
+            onMoveEnd: () {
+              _heldDragRow = null;
+              _rangeMoveResolver.end();
+            },
+            onMoveCancel: () {
+              _heldDragRow = null;
+              _rangeMoveResolver.cancel();
+            },
           );
 
     // 🚨B4-④: a lane-anchored select drag that leaves its own lane group
@@ -2464,6 +2480,30 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                       leadingRowSpacerHeight,
                                                                   trailingLayerSpacerHeight:
                                                                       trailingRowSpacerHeight,
+                                                                  // A5/D42: the held row rides
+                                                                  // the CELLS window too — its
+                                                                  // gesture layer must survive a
+                                                                  // vertical auto-pan sliding
+                                                                  // the window past it.
+                                                                  pinnedLeadingRow:
+                                                                      pinnedBefore
+                                                                      ? rows[pinnedIndex]
+                                                                      : null,
+                                                                  pinnedLeadingOffset:
+                                                                      pinnedBefore
+                                                                      ? pinnedIndex *
+                                                                            _metrics.layerRowHeight
+                                                                      : 0,
+                                                                  pinnedTrailingRow:
+                                                                      pinnedAfter
+                                                                      ? rows[pinnedIndex]
+                                                                      : null,
+                                                                  pinnedTrailingOffset:
+                                                                      pinnedAfter
+                                                                      ? (pinnedIndex -
+                                                                                rowWindow.endIndexExclusive) *
+                                                                            _metrics.layerRowHeight
+                                                                      : 0,
                                                                   dragPreview:
                                                                       widget
                                                                           .dragPreview,

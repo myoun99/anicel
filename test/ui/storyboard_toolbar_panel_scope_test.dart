@@ -196,6 +196,67 @@ void main() {
     );
   });
 
+  Future<void> pressSelectRowSpan(WidgetTester tester) async {
+    final menu = find.byKey(
+      const ValueKey<String>('timeline-frame-menu-button'),
+    );
+    await tester.ensureVisible(menu);
+    await tester.pumpAndSettle();
+    await tester.tap(menu);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('select-row-span-button')),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('D40: whole-row select on the V row selects the row\'s whole '
+      'cut span — 「컷블록도 동일 작동」', (tester) async {
+    final manager = await pumpStoryboard(tester);
+    manager.selectRow(TrackRowAddress(manager.activeTrack.id));
+    await tester.pumpAndSettle();
+
+    await pressSelectRowSpan(tester);
+
+    final selection = manager.trackFrameRangeSelection.value!;
+    expect(selection.trackId, manager.activeTrack.id);
+    expect(selection.startFrame, 0);
+    expect(selection.endFrameExclusive, manager.activeCutOrNull!.duration);
+    expect(
+      manager.storyboardSelectedCutIds,
+      [manager.activeCutOrNull!.id],
+      reason: 'the whole cut span reads back as every cut selected',
+    );
+  });
+
+  testWidgets('D40: whole-row select on an S row takes its first authored '
+      'frame through its last', (tester) async {
+    final manager = await pumpStoryboard(tester);
+    final se = manager.activeTrack.seLayers.first;
+    final drawingTarget = manager.activeLayerId;
+
+    // An EMPTY row has no span: the gate must refuse rather than light a
+    // dead press (T25's defect).
+    manager.selectRow(LayerRowAddress(se.id));
+    expect(StoryboardToolbarPanelContext(manager).canSelectRowSpan, isFalse);
+
+    manager.selectLayer(se.id);
+    manager.selectFrameIndex(2);
+    manager.createSeEntryAtCurrentFrame(name: 'boom', lengthFrames: 3);
+    if (drawingTarget != null) {
+      manager.selectLayer(drawingTarget);
+    }
+    manager.selectRow(LayerRowAddress(se.id));
+    await tester.pumpAndSettle();
+
+    await pressSelectRowSpan(tester);
+
+    final selection = manager.trackFrameRangeSelection.value!;
+    expect(selection.startFrame, 2);
+    expect(selection.endFrameExclusive, 5);
+    expect(selection.anchorRow, LayerRowAddress(se.id));
+  });
+
   testWidgets('B8: the verbs with no storyboard subject grey out honestly '
       'even while the TIMELINE context would light them', (tester) async {
     final manager = await pumpStoryboard(tester);
@@ -282,5 +343,27 @@ void main() {
       durationBefore,
       reason: 'a timeline comma press must NOT become a cut trim',
     );
+
+    // D40 under the TIMELINE context: the press selects the active row's
+    // first authored cell through its last, in the cut-local selection.
+    s.selectFrameIndex(3);
+    s.createDrawingAtCurrentFrame();
+    await tester.pumpAndSettle();
+    final frameMenu = find.byKey(
+      const ValueKey<String>('timeline-frame-menu-button'),
+    );
+    await tester.ensureVisible(frameMenu);
+    await tester.pumpAndSettle();
+    await tester.tap(frameMenu);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('select-row-span-button')),
+    );
+    await tester.pumpAndSettle();
+    final selection = s.frameRangeSelection.value!;
+    expect(selection.layerId, s.activeLayerId);
+    expect(selection.startIndex, 0);
+    expect(selection.endIndexExclusive, 4);
+    expect(s.trackFrameRangeSelection.value, isNull);
   });
 }

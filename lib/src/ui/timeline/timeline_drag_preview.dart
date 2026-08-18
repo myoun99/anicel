@@ -188,9 +188,10 @@ class CutTrimDragPreview extends TimelineDragPreview {
   /// one drag previews both or the picture tears in half mid-drag.
   final Map<LayerId, Layer> previewLayers;
 
-  /// Per track, the cut sequence as the release would leave it. A move
-  /// drag resolves to gaps OR to an order, never both: re-timing and
-  /// reordering are the two outcomes of one rule (see [planCutMove]).
+  /// Per track, the cut sequence as the release would leave it. A reorder
+  /// carries [previewGaps] too: the gaps stay with their positions, so the
+  /// resequenced cuts read the position gaps by their new occupants (see
+  /// [planCutMove]).
   final Map<TrackId, List<CutId>> previewOrder;
 
   @override

@@ -12,6 +12,7 @@ import '../../models/layer_id.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import 'property_lane_model.dart';
+import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 import 'timeline_frame_geometry.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_exposure_comma_drag_policy.dart';
@@ -238,6 +239,15 @@ class _TimelineFrameRangeGestureLayerState
   int _lastFrames = 0;
   int _lastRows = 0;
 
+  /// D42: what the edge auto-pan has scrolled since the press, per axis.
+  /// SELECT is position-based and `localPosition` rides the pointer-down
+  /// hit-test transform — it does not see content scrolled after the down,
+  /// so the applied deltas are ADDED to it before the frame/cross reads.
+  /// Plain fields, no setState: this layer has nothing to lay out or
+  /// paint.
+  double _scrolledMain = 0;
+  double _scrolledCross = 0;
+
   /// Whether this press already dropped the range on its DOWN (R5 #12), so
   /// the release below does not say the same thing a second time.
   bool _clearedOnDown = false;
@@ -255,6 +265,8 @@ class _TimelineFrameRangeGestureLayerState
   }
 
   void _startDrag(Offset localPosition) {
+    _scrolledMain = 0;
+    _scrolledCross = 0;
     final frame = _frameAt(localPosition);
     final insideSelection = widget.callbacks.isInSelection(widget.row, frame);
     if (insideSelection && widget.callbacks.onMoveBegin(widget.row, frame)) {
@@ -285,28 +297,56 @@ class _TimelineFrameRangeGestureLayerState
   }
 
   void _updateDrag(DragUpdateDetails details) {
+    if (_mode == _RangeDragMode.none) {
+      return;
+    }
+    // D42: reaching a viewport edge auto-pans on BOTH axes — the row
+    // drag's own convention (per pointer move, no timer), landed on the
+    // one row-level gesture all four surfaces share. What was scrolled
+    // joins the travel below, or the drag freezes the moment the view
+    // starts moving under the pointer.
+    final horizontal = widget.axis == Axis.horizontal;
+    _scrolledMain += edgeAutoPanApply(
+      context: context,
+      globalPosition: details.globalPosition,
+      axis: widget.axis,
+    );
+    final appliedCross = edgeAutoPanApply(
+      context: context,
+      globalPosition: details.globalPosition,
+      axis: horizontal ? Axis.vertical : Axis.horizontal,
+    );
+    _scrolledCross += appliedCross;
     switch (_mode) {
       case _RangeDragMode.none:
         return;
       case _RangeDragMode.select:
+        final local =
+            details.localPosition +
+            (horizontal
+                ? Offset(_scrolledMain, _scrolledCross)
+                : Offset(_scrolledCross, _scrolledMain));
         widget.callbacks.onSelectUpdate(
           widget.row,
           _anchorIndex,
-          _frameAt(details.localPosition),
-          _crossOffsetAt(details.localPosition),
+          _frameAt(local),
+          _crossOffsetAt(local),
         );
       case _RangeDragMode.move:
-        final horizontal = widget.axis == Axis.horizontal;
+        // MOVE accumulates deltas, so only THIS step's applied pan joins —
+        // details.delta is stated in the global frame and never sees the
+        // content move. `_scrolledMain` was just incremented by exactly
+        // this step's main-axis application.
         _mainDelta += horizontal ? details.delta.dx : details.delta.dy;
         _crossDelta += horizontal ? details.delta.dy : details.delta.dx;
         final frames = commaDragFrameDelta(
-          accumulatedDelta: _mainDelta,
+          accumulatedDelta: _mainDelta + _scrolledMain,
           frameCellExtent: widget.geometry.value.frameCellExtent,
         );
         // R27 #12: the row axis has a deadband — a horizontal sweep's
         // wobble must not hand the step to the row-change path.
         final rows = timelineRowStepDelta(
-          accumulatedDelta: _crossDelta,
+          accumulatedDelta: _crossDelta + _scrolledCross,
           rowExtent: widget.crossAxisExtent,
         );
         if (frames == _lastFrames && rows == _lastRows) {
@@ -542,6 +582,11 @@ class _TimelineLaneRangeGestureLayerState
   double _mainDelta = 0;
   int _lastFrames = 0;
 
+  /// D42: the edge auto-pan's applied scroll since the press (see the
+  /// cells layer's fields — the same staleness, the same fold).
+  double _scrolledMain = 0;
+  double _scrolledCross = 0;
+
   // Lane rows are not memoized (their bands rebuild on every host pass), so
   // this layer keeps the plain scalars — the live-geometry treatment buys
   // nothing where the widget rebuilds anyway.
@@ -557,6 +602,8 @@ class _TimelineLaneRangeGestureLayerState
   }
 
   void _startDrag(Offset localPosition) {
+    _scrolledMain = 0;
+    _scrolledCross = 0;
     final frame = _frameAt(localPosition);
     final selection = widget.callbacks.selection.value;
     // R26 #3 follow-up: the HEADER band counts as inside a whole-group
@@ -597,23 +644,42 @@ class _TimelineLaneRangeGestureLayerState
   }
 
   void _updateDrag(DragUpdateDetails details) {
+    if (_mode == _RangeDragMode.none) {
+      return;
+    }
+    // D42: the same edge auto-pan fold as the cells layer — the lane
+    // family closes the matrix.
+    final horizontal = widget.axis == Axis.horizontal;
+    _scrolledMain += edgeAutoPanApply(
+      context: context,
+      globalPosition: details.globalPosition,
+      axis: widget.axis,
+    );
+    _scrolledCross += edgeAutoPanApply(
+      context: context,
+      globalPosition: details.globalPosition,
+      axis: horizontal ? Axis.vertical : Axis.horizontal,
+    );
     switch (_mode) {
       case _RangeDragMode.none:
         return;
       case _RangeDragMode.select:
+        final local =
+            details.localPosition +
+            (horizontal
+                ? Offset(_scrolledMain, _scrolledCross)
+                : Offset(_scrolledCross, _scrolledMain));
         widget.callbacks.onSelectUpdate(
           widget.layer.id,
           widget.laneId,
           _anchorIndex,
-          _frameAt(details.localPosition),
-          _rowDeltaAt(details.localPosition),
+          _frameAt(local),
+          _rowDeltaAt(local),
         );
       case _RangeDragMode.move:
-        _mainDelta += widget.axis == Axis.horizontal
-            ? details.delta.dx
-            : details.delta.dy;
+        _mainDelta += horizontal ? details.delta.dx : details.delta.dy;
         final frames = commaDragFrameDelta(
-          accumulatedDelta: _mainDelta,
+          accumulatedDelta: _mainDelta + _scrolledMain,
           frameCellExtent: widget.frameCellExtent,
         );
         if (frames == _lastFrames) {

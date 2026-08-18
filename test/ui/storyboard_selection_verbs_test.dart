@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/camera_instruction.dart'
+    show InstructionEvent;
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -7,6 +9,8 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_section_defaults.dart'
+    show transitionLayerIdForTrack;
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -416,6 +420,184 @@ void main() {
       // The restore landed in the CUT-LOCAL object, not the track one.
       expect(session.frameRangeSelection.value, isNotNull);
       expect(session.trackFrameRangeSelection.value, isNull);
+    });
+  });
+
+  group('Range MOVE keeps the axis facts of the track it is ON (D17)', () {
+    const track2Id = TrackId('verbs-track-2');
+
+    /// Two tracks; the SECOND carries a transition span [2,5). The first
+    /// track is the selected one, so every write that re-keys to
+    /// [EditorSessionManager.selectedTrackId] lands on the wrong track.
+    Project twoTrackProject() => Project(
+      id: const ProjectId('verbs-project-2'),
+      name: 'Verbs 2',
+      createdAt: DateTime.utc(2026, 8, 18),
+      tracks: [
+        Track(
+          id: _trackId,
+          name: 'Video',
+          cuts: [_cut('cut-1', 8), _cut('cut-2', 6)],
+        ),
+        Track(
+          id: track2Id,
+          name: 'Video 2',
+          cuts: [_cut('t2-cut-1', 8), _cut('t2-cut-2', 6)],
+          transitionLayer: Layer(
+            id: transitionLayerIdForTrack(track2Id),
+            name: 'Transition',
+            frames: const [],
+            timeline: const {},
+            kind: LayerKind.transition,
+            instructions: const {
+              2: InstructionEvent(instructionId: 'ol', length: 3),
+            },
+          ),
+        ),
+      ],
+    );
+
+    test('a transition-row move on an UNSELECTED track keeps that track\'s '
+        'id mid-drag and on release', () {
+      final session = EditorSessionManager(initialProject: twoTrackProject());
+      addTearDown(session.dispose);
+      final transitionId = transitionLayerIdForTrack(track2Id);
+      session.updateTrackRowRangeSelectionByFrame(
+        layerId: transitionId,
+        anchorGlobalFrame: 2,
+        headGlobalFrame: 4,
+      );
+      expect(session.trackFrameRangeSelection.value!.trackId, track2Id);
+
+      expect(session.beginTrackRangeMoveDrag(transitionId), isTrue);
+      session.updateFrameRangeMoveDrag(frameDelta: 2);
+      // MID-DRAG: the shifted span still names the track it is ON.
+      // Re-keying to the SELECTED track's id here made the band vanish for
+      // the whole drag on any other track (the painter's own-track gate),
+      // and left the landed selection keyed to the wrong track for good.
+      final midDrag = session.trackFrameRangeSelection.value!;
+      expect(midDrag.trackId, track2Id);
+      expect(midDrag.startFrame, 4);
+
+      session.endFrameRangeMoveDrag();
+      final landed = session.trackFrameRangeSelection.value!;
+      expect(landed.trackId, track2Id);
+      expect(landed.startFrame, 4);
+      expect(landed.endFrameExclusive, 7);
+    });
+
+    test('cancelling restores the selection to its own track too', () {
+      final session = EditorSessionManager(initialProject: twoTrackProject());
+      addTearDown(session.dispose);
+      final transitionId = transitionLayerIdForTrack(track2Id);
+      session.updateTrackRowRangeSelectionByFrame(
+        layerId: transitionId,
+        anchorGlobalFrame: 2,
+        headGlobalFrame: 4,
+      );
+
+      session.beginTrackRangeMoveDrag(transitionId);
+      session.updateFrameRangeMoveDrag(frameDelta: 2);
+      session.cancelFrameRangeMoveDrag();
+
+      final restored = session.trackFrameRangeSelection.value!;
+      expect(restored.trackId, track2Id);
+      expect(restored.startFrame, 2);
+    });
+  });
+
+  group('Range MOVE on the CUT row — the band rides the cut drag (D17)', () {
+    test('the selection FOLLOWS the previewed seat every step, and lands '
+        'with the commit', () {
+      final session = sessionFor();
+      session.updateStoryboardCutSelectionByFrame(
+        trackId: _trackId,
+        anchorGlobalFrame: 9,
+        headGlobalFrame: 9,
+      );
+      expect(session.trackFrameRangeSelection.value!.startFrame, 8);
+      expect(session.storyboardSelectedCutIds, [const CutId('cut-2')]);
+
+      expect(session.beginCutMoveDrag(const CutId('cut-2')), isTrue);
+      session.updateCutMoveDrag(-8);
+      // MID-DRAG: the drag machine writes the previewed span through the
+      // selection notifier — the band painters just listen (the timeline's
+      // law, now on the cut axis).
+      final midDrag = session.trackFrameRangeSelection.value!;
+      expect(midDrag.startFrame, 0);
+      expect(midDrag.endFrameExclusive, 6);
+      expect(midDrag.trackId, _trackId);
+      expect(midDrag.anchorRow, const TrackRowAddress(_trackId));
+
+      session.endCutMoveDrag();
+      // The landed span goes out AFTER the repository commit, so the
+      // frames × CURRENT layout derivation resolves the MOVED cut.
+      expect(
+        session.repository.requireProject().tracks.single.cuts.map(
+          (cut) => cut.id,
+        ),
+        [const CutId('cut-2'), const CutId('cut-1')],
+      );
+      final landed = session.trackFrameRangeSelection.value!;
+      expect(landed.startFrame, 0);
+      expect(landed.endFrameExclusive, 6);
+      expect(session.storyboardSelectedCutIds, [const CutId('cut-2')]);
+    });
+
+    test('a re-time slide carries the band by the same frames', () {
+      final session = sessionFor();
+      session.updateStoryboardCutSelectionByFrame(
+        trackId: _trackId,
+        anchorGlobalFrame: 9,
+        headGlobalFrame: 9,
+      );
+
+      expect(session.beginCutMoveDrag(const CutId('cut-2')), isTrue);
+      // The last cut is unbounded on the right: +3 re-times.
+      session.updateCutMoveDrag(3);
+      expect(session.trackFrameRangeSelection.value!.startFrame, 11);
+
+      session.endCutMoveDrag();
+      final landed = session.trackFrameRangeSelection.value!;
+      expect(landed.startFrame, 11);
+      expect(landed.endFrameExclusive, 17);
+      expect(session.storyboardSelectedCutIds, [const CutId('cut-2')]);
+    });
+
+    test('cancelling puts the band back where the drag found it', () {
+      final session = sessionFor();
+      session.updateStoryboardCutSelectionByFrame(
+        trackId: _trackId,
+        anchorGlobalFrame: 9,
+        headGlobalFrame: 9,
+      );
+
+      expect(session.beginCutMoveDrag(const CutId('cut-2')), isTrue);
+      session.updateCutMoveDrag(3);
+      session.cancelCutMoveDrag();
+
+      final restored = session.trackFrameRangeSelection.value!;
+      expect(restored.startFrame, 8);
+      expect(restored.endFrameExclusive, 14);
+    });
+
+    test('moving an UNSELECTED cut leaves the band where it is', () {
+      final session = sessionFor();
+      session.updateStoryboardCutSelectionByFrame(
+        trackId: _trackId,
+        anchorGlobalFrame: 2,
+        headGlobalFrame: 2,
+      );
+      expect(session.storyboardSelectedCutIds, [const CutId('cut-1')]);
+
+      expect(session.beginCutMoveDrag(const CutId('cut-2')), isTrue);
+      session.updateCutMoveDrag(3);
+      session.endCutMoveDrag();
+
+      // The selection never rode a run it did not cover.
+      final selection = session.trackFrameRangeSelection.value!;
+      expect(selection.startFrame, 0);
+      expect(selection.endFrameExclusive, 8);
     });
   });
 
