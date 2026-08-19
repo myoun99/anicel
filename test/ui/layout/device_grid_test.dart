@@ -127,6 +127,158 @@ void main() {
     });
   });
 
+  group('the slack is relative, and both fixed alternatives were measured '
+      'to fail', () {
+    // Ratios that a real ladder × monitor matrix produces. These are
+    // PRODUCTS, which is the whole point: an integer times a dyadic ratio
+    // is exact, so the deficits this slack exists for only appear once a
+    // UI scale multiplies the monitor's ratio.
+    const productRatios = <double>[
+      1.5 * 0.7,
+      1.25 * 0.9,
+      1.5 * 0.9,
+      1.75 * 0.9,
+      1.625 * 0.9,
+      2.625 * 1.1,
+      1.75 * 1.1,
+    ];
+
+    test('rescues a correct constant at a product ratio', () {
+      // 1.5 * 0.7 lands on 1.0499999999999998, and 20 * that arrives as
+      // 20.999999999999996. A bare floor would move a correct 20 by a
+      // whole device pixel.
+      const ratio = 1.5 * 0.7;
+      expect(20 * ratio, lessThan(21.0), reason: 'the deficit is real');
+      expect(DeviceGrid(ratio).position(20), closeTo(20.0, 1e-12));
+    });
+
+    test('never overshoots by more than Flutter calls an overflow', () {
+      // RenderFlex reports an overflow above precisionErrorTolerance, so
+      // an overshoot larger than this is not a rounding curiosity — it is
+      // a red "overflowed by 3.20e-7 pixels" banner on a Row built from a
+      // run. The fixed 1e-6 device epsilon this file first shipped did
+      // exactly that.
+      const tolerance = 1e-10;
+      for (final ratio in <double>[...productRatios, 1.125, 1.25, 1.35, 3.0]) {
+        final grid = DeviceGrid(ratio);
+        for (var i = 0; i < 4000; i++) {
+          final value = i * 0.31;
+          expect(
+            grid.position(value) - value,
+            lessThanOrEqualTo(tolerance),
+            reason: 'ratio $ratio overshot at $value',
+          );
+        }
+      }
+    });
+
+    test('a run never hands out more than it was given', () {
+      // The same property one level up: this is what a Row overflows on.
+      for (final ratio in productRatios) {
+        final run = DeviceGrid(ratio).run();
+        var given = 0.0;
+        var handed = 0.0;
+        for (var i = 1; i <= 300; i++) {
+          final extent = i * 2.4;
+          given += extent;
+          handed += run.take(extent);
+        }
+        expect(handed, lessThanOrEqualTo(given + 1e-10), reason: 'ratio $ratio');
+      }
+    });
+
+    test('stays idempotent at scroll-offset magnitudes', () {
+      // A fixed epsilon small enough not to overshoot (1e-9) breaks HERE
+      // instead, by a full device pixel around 1e6 — and scroll offsets
+      // reach that range, which PR8-10 quantizes.
+      for (final ratio in productRatios) {
+        final grid = DeviceGrid(ratio);
+        for (final magnitude in <double>[1e3, 1e6, 1e9]) {
+          for (var i = 0; i < 400; i++) {
+            final value = magnitude + i * 0.37;
+            final once = grid.position(value);
+            expect(
+              grid.position(once),
+              closeTo(once, 1e-9),
+              reason: 'ratio $ratio at magnitude $magnitude',
+            );
+          }
+        }
+      }
+    });
+  });
+
+  group('degenerate input cannot poison anything', () {
+    test('a non-finite ratio is normalised, so == stays reflexive', () {
+      // A stored NaN makes `a == a` false while the hash codes still
+      // collide. This class is read in shouldRepaint / updateShouldNotify,
+      // where "never equal to itself" pins *changed* for ever.
+      for (final ratio in <double>[double.nan, double.infinity, -1, 0]) {
+        final grid = DeviceGrid(ratio);
+        expect(grid == grid, isTrue, reason: 'ratio $ratio');
+        expect(grid.isActive, isFalse, reason: 'ratio $ratio');
+        expect(grid.ratio.isNaN, isFalse, reason: 'ratio $ratio');
+      }
+      expect(DeviceGrid(double.nan), DeviceGrid(double.infinity));
+    });
+
+    test('isOnGrid is vacuously true on an inactive grid', () {
+      // Which is why an audit has to ask isActive first, or it reports a
+      // perfect grid on a broken ratio.
+      final grid = DeviceGrid(0);
+      expect(grid.isOnGrid(37.3), isTrue);
+      expect(grid.isActive, isFalse);
+    });
+
+    test('a non-finite extent does not poison the rest of the run', () {
+      // Measured on the first draft: [120, infinity, 40, 40] returned
+      // [120, Infinity, NaN, NaN] and never recovered. take(maxWidth)
+      // under an unbounded parent is an ordinary spelling.
+      final run = DeviceGrid(1.25).run();
+      expect(run.take(120), closeTo(120.0, 1e-9));
+      expect(
+        () => run.take(double.infinity),
+        throwsA(isA<AssertionError>()),
+        reason: 'debug builds must catch it at the call site',
+      );
+      // Release behaviour: refused, not accumulated — the run survives.
+      expect(run.position, closeTo(120.0, 1e-9));
+      expect(run.take(40), closeTo(40.0, 1e-9));
+      expect(run.position.isFinite, isTrue);
+    });
+
+    test('an off-grid anchor trips the invariant', () {
+      // run(from: 10.3) at 1.25 reports 9.6 — the subtree shifted 0.875
+      // device px — while the first take(48) still returns exactly 48.0.
+      // Nothing downstream can notice, so the anchor is the only place it
+      // can be caught.
+      const grid = DeviceGrid(1.25);
+      expect(() => grid.run(from: 10.3), throwsA(isA<AssertionError>()));
+      // Everything a legitimate caller can produce passes.
+      expect(() => grid.run(), returnsNormally);
+      expect(() => grid.run(from: grid.position(10.3)), returnsNormally);
+      final live = grid.run()..take(17.9);
+      expect(() => grid.run(from: live.position), returnsNormally);
+    });
+  });
+
+  test('a run telescopes: the extents it hands out sum to the ground it '
+      'covered', () {
+    // The property every caller depends on without stating it — a
+    // Positioned laid out from these extents ends exactly where the run
+    // says it does.
+    for (final ratio in <double>[1.125, 1.35, 1.5 * 0.7, 2.625]) {
+      final grid = DeviceGrid(ratio);
+      final from = grid.position(96.0);
+      final run = grid.run(from: from);
+      var sum = 0.0;
+      for (var i = 1; i <= 40; i++) {
+        sum += run.take(i * 1.3);
+      }
+      expect(sum, closeTo(run.position - from, 1e-9), reason: 'ratio $ratio');
+    }
+  });
+
   testWidgets('DeviceGrid.of reads the EFFECTIVE ratio, not MediaQuery', (
     tester,
   ) async {
