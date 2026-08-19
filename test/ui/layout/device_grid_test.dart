@@ -152,55 +152,80 @@ void main() {
       expect(DeviceGrid(ratio).position(20), closeTo(20.0, 1e-12));
     });
 
+    /// Coordinates whose DEVICE position sits a hair BELOW a whole pixel —
+    /// the only place an over-large slack can overshoot.
+    ///
+    /// ⚠️A uniform sweep cannot find these. A fixed 1e-6 slack overshoots
+    /// only when the fractional part exceeds 1 - 1e-6, so a random sample
+    /// hits it about once in a million; 44,000 samples of `i * 0.31` found
+    /// nothing and the mutation survived. The boundary has to be built,
+    /// not stumbled upon.
+    Iterable<({double logical, double deficit})> nearMisses(double ratio) sync* {
+      for (var k = 1; k <= 400; k++) {
+        for (final deficit in <double>[1e-7, 5e-7, 9e-7]) {
+          yield (logical: (k - deficit) / ratio, deficit: deficit);
+        }
+      }
+    }
+
     test('never overshoots by more than Flutter calls an overflow', () {
       // RenderFlex reports an overflow above precisionErrorTolerance, so
-      // an overshoot larger than this is not a rounding curiosity — it is
+      // an overshoot larger than that is not a rounding curiosity — it is
       // a red "overflowed by 3.20e-7 pixels" banner on a Row built from a
-      // run. The fixed 1e-6 device epsilon this file first shipped did
-      // exactly that.
+      // run, which is what the fixed 1e-6 device epsilon actually produced.
       const tolerance = 1e-10;
       for (final ratio in <double>[...productRatios, 1.125, 1.25, 1.35, 3.0]) {
         final grid = DeviceGrid(ratio);
-        for (var i = 0; i < 4000; i++) {
-          final value = i * 0.31;
+        for (final near in nearMisses(ratio)) {
           expect(
-            grid.position(value) - value,
+            grid.position(near.logical) - near.logical,
             lessThanOrEqualTo(tolerance),
-            reason: 'ratio $ratio overshot at $value',
+            reason:
+                'ratio $ratio overshot at ${near.logical} '
+                '(${near.deficit} device px below a whole pixel)',
           );
         }
       }
     });
 
     test('a run never hands out more than it was given', () {
-      // The same property one level up: this is what a Row overflows on.
-      for (final ratio in productRatios) {
-        final run = DeviceGrid(ratio).run();
-        var given = 0.0;
-        var handed = 0.0;
-        for (var i = 1; i <= 300; i++) {
-          final extent = i * 2.4;
-          given += extent;
-          handed += run.take(extent);
+      // The same property one level up, and this is the one a Row
+      // overflows on. Each extent is built to land the run's cumulative
+      // position just under a device pixel.
+      for (final ratio in <double>[...productRatios, 1.25, 1.35]) {
+        for (final near in nearMisses(ratio)) {
+          final run = DeviceGrid(ratio).run();
+          final handed = run.take(near.logical);
+          expect(
+            handed,
+            lessThanOrEqualTo(near.logical + 1e-10),
+            reason: 'ratio $ratio gave ${near.logical}, handed out $handed',
+          );
         }
-        expect(handed, lessThanOrEqualTo(given + 1e-10), reason: 'ratio $ratio');
       }
     });
 
     test('stays idempotent at scroll-offset magnitudes', () {
       // A fixed epsilon small enough not to overshoot (1e-9) breaks HERE
-      // instead, by a full device pixel around 1e6 — and scroll offsets
-      // reach that range, which PR8-10 quantizes.
+      // instead, dropping a whole device pixel on the second snap.
+      //
+      // ⚠️The magnitudes are the test. The failures concentrate around
+      // 1e7, where a coordinate's own ulp finally exceeds a 1e-9 constant;
+      // a first draft that sampled 1e3 / 1e6 / 1e9 found NOTHING and the
+      // mutation survived — 1e9 does not fail, because the doubles there
+      // are already coarser than the grid. Measured with the constant:
+      // 302 failures in 48,000, worst 0.35 logical at x=1.0000001e7,
+      // ratio 2.8875.
       for (final ratio in productRatios) {
         final grid = DeviceGrid(ratio);
-        for (final magnitude in <double>[1e3, 1e6, 1e9]) {
+        for (final magnitude in <double>[1e3, 1e5, 1e6, 1e7, 1e8, 1e9]) {
           for (var i = 0; i < 400; i++) {
             final value = magnitude + i * 0.37;
             final once = grid.position(value);
             expect(
               grid.position(once),
               closeTo(once, 1e-9),
-              reason: 'ratio $ratio at magnitude $magnitude',
+              reason: 'ratio $ratio at magnitude $magnitude, value $value',
             );
           }
         }
@@ -244,6 +269,24 @@ void main() {
       // Release behaviour: refused, not accumulated — the run survives.
       expect(run.position, closeTo(120.0, 1e-9));
       expect(run.take(40), closeTo(40.0, 1e-9));
+      expect(run.position.isFinite, isTrue);
+    });
+
+    test('finite extents that OVERFLOW when summed are refused too', () {
+      // The case the assert cannot see, and the reason the guard sits on
+      // the result rather than the argument: every extent here is finite,
+      // so nothing trips in debug, and a guard on the argument would let
+      // the run go to infinity and then to NaN for ever after.
+      final run = DeviceGrid(1.25).run();
+      expect(run.take(1e308), closeTo(1e308, 1e300));
+      expect(run.take(1e308), 0.0, reason: 'the overflowing take gets no ground');
+      // The property is that the run stays a NUMBER. It is saturated at an
+      // absurd position and further extents are beneath the representable
+      // spacing there, so they legitimately get nothing — but nothing is
+      // ever Infinity or NaN, which is what would have leaked out into a
+      // sibling's constraints.
+      expect(run.position.isFinite, isTrue);
+      expect(run.take(40).isNaN, isFalse);
       expect(run.position.isFinite, isTrue);
     });
 

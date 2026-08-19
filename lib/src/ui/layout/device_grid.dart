@@ -213,10 +213,17 @@ class DeviceGridRun {
       'DeviceGridRun.take($extent): a non-finite extent would poison the '
       'run permanently. Clamp unbounded constraints before quantizing.',
     );
-    if (!extent.isFinite) {
-      return extent;
+    // ⛔The guard is on the RESULT, not on the argument, and that is not a
+    // stylistic choice. Guarding the argument leaves the branch dead in
+    // debug — the assert above fires first — so it could never be pinned,
+    // and it would still miss the case where every individual extent is
+    // finite and their SUM overflows. Guarding here covers both, and the
+    // overflow case is reachable in debug, so a test can hold it.
+    final nextRaw = _raw + extent;
+    if (!nextRaw.isFinite) {
+      return 0;
     }
-    _raw += extent;
+    _raw = nextRaw;
     final next = _grid.position(_raw);
     final used = next - _snapped;
     _snapped = next;
