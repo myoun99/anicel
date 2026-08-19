@@ -441,11 +441,95 @@ class RenderStaticRaster extends RenderProxyBox {
   @visibleForTesting
   Offset? get debugGridShift => _rasterFit?.shift;
 
+  bool _hasEverPainted = false;
+
+  /// Whether this surface has put pixels on the screen since it attached.
+  ///
+  /// ⚠️EVER, not RECENTLY, and the distinction was measured: a static
+  /// panel does not repaint, which is the entire reason this widget
+  /// exists. A "painted in the last frame" filter skipped almost every
+  /// surface in a settled app — the audit went quiet on exactly the tree
+  /// it is meant to watch, and a pin built on it passed while measuring
+  /// nothing.
+  ///
+  /// What it still excludes is what it is for: an `Offstage`, a hidden
+  /// `IndexedStack` child, an `Opacity(0)` and an invisible `Visibility`
+  /// all skip painting their subtree outright, so a surface under one has
+  /// never painted and its layout is provisional. Auditing those reports
+  /// violations nobody can act on.
+  bool get debugHasPainted => _hasEverPainted;
+
+  /// How far this surface's top-left is from the NEAREST device-pixel
+  /// gridline, per axis, in DEVICE pixels — signed, and always in
+  /// `[-0.5, 0.5]`. Null when the surface cannot be located: detached, or
+  /// under a rotation, a mirror, or a per-axis scale.
+  ///
+  /// ⚠️★★★SIGNED DISTANCE, not the fractional part, and the difference is
+  /// the whole usefulness of the number. A phase of 0.999999999 is a
+  /// surface sitting a billionth of a pixel BEFORE the next gridline —
+  /// perfectly aligned — while a raw fractional part calls it the worst
+  /// possible violation. Both failures were measured on the first draft:
+  /// the quantizer's OWN output reported as a violation (300 of 4000
+  /// samples at ratio 1.7, 345 at 1.375), so the audit could never have
+  /// gone green; and the "worst first" ordering put near-perfect surfaces
+  /// at the top, aiming the work at the wrong targets. Real misalignment
+  /// is maximal at half a pixel, which is exactly what this returns.
+  ///
+  /// The measurement costs nothing new: [_gridFit] already computes it on
+  /// every capture in order to align the bake. Reading it here asks the
+  /// same question without requiring a bake to have happened, so a
+  /// surface that paints through is audited too.
+  ///
+  /// ⛔Reads the CURRENT transform, so it means nothing until layout has
+  /// settled — call it from a post-frame callback or a settled test.
+  Offset? get debugDeviceGridPhase {
+    final fit = _gridFit();
+    if (fit == null) {
+      return null;
+    }
+    // `shift` is in the surface's own logical units; `scale` returns it to
+    // device pixels. (The ancestors' scale cancels exactly in that
+    // round-trip — measured across 1400 samples, worst error 1.1e-16.)
+    return Offset(
+      _signedDistanceToGrid(fit.shift.dx * fit.scale),
+      _signedDistanceToGrid(fit.shift.dy * fit.scale),
+    );
+  }
+
+  /// The same measurement for the surface's FAR edge, which is the other
+  /// half of the failure and was missing from the first draft.
+  ///
+  /// 🚨[_gridFit]'s own documentation names two failure modes and says of
+  /// the second — a panel whose extent is not a whole number of device
+  /// pixels, whole bottom row wrong — that it "happens to EVERY panel at
+  /// the 125%, 150% and 175% display scalings Windows ships". Measured on
+  /// this workspace at 1.25, **15 of 15** surfaces have an off-grid size,
+  /// three of them while their ORIGIN is on-grid. An audit of origins
+  /// alone reports those three as clean while every one of them still
+  /// resamples.
+  Offset? get debugDeviceGridSizePhase {
+    final fit = _gridFit();
+    if (fit == null || !hasSize) {
+      return null;
+    }
+    return Offset(
+      _signedDistanceToGrid(size.width * fit.scale),
+      _signedDistanceToGrid(size.height * fit.scale),
+    );
+  }
+
+  static double _signedDistanceToGrid(double device) {
+    final fraction = device - device.floorToDouble();
+    return fraction > 0.5 ? fraction - 1.0 : fraction;
+  }
+
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
     StaticRaster._ensureFrameClock();
     StaticRaster.census.add(this);
+    // A re-attached surface has not painted where it now lives.
+    _hasEverPainted = false;
     StaticRaster.globallyEnabled.addListener(_onGloballyEnabledChanged);
     MeasurementMode.showRepaints.addListener(_onGloballyEnabledChanged);
     _visible?.addListener(_onGloballyEnabledChanged);
@@ -493,6 +577,15 @@ class RenderStaticRaster extends RenderProxyBox {
     // than none — the enforcement test reads it to decide whether a panel
     // needs a reason on the allowlist.
     _nestedBoundary = _childHasRepaintBoundary();
+
+    // The grid audit's visibility filter, and it is exact rather than
+    // heuristic: an `Offstage`, a hidden `IndexedStack` child, an
+    // `Opacity(0)` and an invisible `Visibility` all skip painting their
+    // subtree outright, so "did paint() run this frame" IS the question
+    // "does this surface put pixels on the screen". Auditing a surface
+    // that does not is worse than useless — its layout is not even
+    // decided yet, so the violation cannot be fixed.
+    _hasEverPainted = true;
 
     if (size.isEmpty) {
       _standDown = StandDownReason.empty;
