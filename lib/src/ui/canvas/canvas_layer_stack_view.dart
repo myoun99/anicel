@@ -304,14 +304,25 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// frame state at all, and recording nothing then would leave the retry
   /// exactly as hot as it was: `null == null` keeps it skipped, and the
   /// moment a revision appears the mismatch retries it.
-  final Map<BrushFrameKey, int?> _failedRevisions = {};
+  final Map<BrushFrameKey, (int, int?)> _failedRevisions = {};
 
-  int? _revisionOf(BrushFrameKey key) =>
-      widget.imageCache.frameStore.frameOrNull(key)?.sourceRevision;
+  /// What a failure is recorded AGAINST: the store's whole-content
+  /// generation, then the cel's own revision.
+  ///
+  /// ⚠️The generation is not decoration. A cel the FILESYSTEM refused
+  /// does not change when the file comes back, so keying a non-content
+  /// failure on a content revision alone would have left that row blank
+  /// for ever with nothing the user could do. The generation bumps on a
+  /// project OPEN — the one moment such a cel can plausibly have become
+  /// readable — so reopening is a real recovery instead of a ritual.
+  (int, int?) _failureKeyFor(BrushFrameKey key) => (
+    widget.imageCache.frameStore.celContentRevision.value,
+    widget.imageCache.frameStore.frameOrNull(key)?.sourceRevision,
+  );
 
   bool _shouldSkipFailed(BrushFrameKey key) =>
       _failedRevisions.containsKey(key) &&
-      _failedRevisions[key] == _revisionOf(key);
+      _failedRevisions[key] == _failureKeyFor(key);
 
   void _noteFailure(
     BrushFrameKey key,
@@ -319,7 +330,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     StackTrace stack,
     String where,
   ) {
-    _failedRevisions[key] = _revisionOf(key);
+    _failedRevisions[key] = _failureKeyFor(key);
     FlutterError.reportError(
       FlutterErrorDetails(
         exception: error,

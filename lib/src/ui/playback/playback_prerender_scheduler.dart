@@ -73,6 +73,21 @@ class PlaybackPrerenderScheduler {
   final Map<(CutId, int, PlaybackQuality), CutFrameCompositeSignature>
   _failedSignatures = {};
 
+  /// The store generation those records belong to. A project OPEN bumps
+  /// it — the one moment a cel the filesystem refused can have become
+  /// readable — and dropping the map there is also what stops it growing
+  /// for the life of the session.
+  int _failedSignaturesGeneration = 0;
+
+  void _forgetStaleFailures() {
+    final generation = composites.frameStore.celContentRevision.value;
+    if (generation == _failedSignaturesGeneration) {
+      return;
+    }
+    _failedSignaturesGeneration = generation;
+    _failedSignatures.clear();
+  }
+
   final ValueNotifier<PrerenderProgress> _progress = ValueNotifier(
     PrerenderProgress.none,
   );
@@ -238,6 +253,7 @@ class PlaybackPrerenderScheduler {
     List<(CutId, int)> queue,
     PlaybackQuality quality,
   ) async {
+    _forgetStaleFailures();
     var cached = 0;
     for (final (cutId, frameIndex) in queue) {
       // Retry loop: an input-interrupted composite is NOT skipped — the
