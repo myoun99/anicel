@@ -300,15 +300,18 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// then stopped drawing. The next CONTENT change (a new revision)
   /// retries; the failure itself is reported rather than swallowed. Same
   /// shape as the storyboard thumbnail store's, for the same reason.
-  final Map<BrushFrameKey, int> _failedRevisions = {};
+  /// ⚠️A NULLABLE value on purpose. A cel can fail before it has any
+  /// frame state at all, and recording nothing then would leave the retry
+  /// exactly as hot as it was: `null == null` keeps it skipped, and the
+  /// moment a revision appears the mismatch retries it.
+  final Map<BrushFrameKey, int?> _failedRevisions = {};
 
   int? _revisionOf(BrushFrameKey key) =>
       widget.imageCache.frameStore.frameOrNull(key)?.sourceRevision;
 
-  bool _shouldSkipFailed(BrushFrameKey key) {
-    final failed = _failedRevisions[key];
-    return failed != null && failed == _revisionOf(key);
-  }
+  bool _shouldSkipFailed(BrushFrameKey key) =>
+      _failedRevisions.containsKey(key) &&
+      _failedRevisions[key] == _revisionOf(key);
 
   void _noteFailure(
     BrushFrameKey key,
@@ -316,10 +319,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     StackTrace stack,
     String where,
   ) {
-    final revision = _revisionOf(key);
-    if (revision != null) {
-      _failedRevisions[key] = revision;
-    }
+    _failedRevisions[key] = _revisionOf(key);
     FlutterError.reportError(
       FlutterErrorDetails(
         exception: error,
@@ -523,6 +523,10 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         _dropImage(key, _images.remove(key)!);
       }
     }
+    // A row that left the stack takes its failure record with it — the
+    // note exists to stop a per-rebuild retry, not to remember cels this
+    // stack no longer shows.
+    _failedRevisions.removeWhere((key, _) => !wanted.contains(key));
     for (final layer in widget.layers) {
       // Valid cache image, or a synchronous per-tile compose (the just-
       // deactivated layer's on-screen tiles are already decoded) — either
