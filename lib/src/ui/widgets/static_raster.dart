@@ -6,6 +6,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 import '../debug/measurement_mode.dart';
+import '../effective_device_pixel_ratio.dart';
 import '../debug/repaint_cause.dart';
 import '../panels/panel_visibility_scope.dart';
 
@@ -221,13 +222,14 @@ class StaticRaster extends SingleChildRenderObjectWidget {
       ..visible = PanelVisibilityScope.maybeOf(context);
   }
 
-  /// The `MediaQuery` value when there is one, the view's own otherwise.
-  /// Every panel has a `MediaQuery` above it, but a primitive that
-  /// throws when used slightly off the beaten path is a primitive people
-  /// stop reaching for.
+  /// The EFFECTIVE ratio — this raster is sized in device pixels, so it
+  /// has to match the grid the compositor uses rather than the monitor's
+  /// raw ratio. [EffectiveDevicePixelRatio.of] keeps the old fallback
+  /// chain (`MediaQuery`, then the view) when no scope is mounted: every
+  /// panel has one above it, but a primitive that throws when used
+  /// slightly off the beaten path is a primitive people stop reaching for.
   static double _devicePixelRatioOf(BuildContext context) =>
-      MediaQuery.maybeDevicePixelRatioOf(context) ??
-      View.of(context).devicePixelRatio;
+      EffectiveDevicePixelRatio.of(context);
 }
 
 /// How a surface sits on the device pixel grid, which is what decides

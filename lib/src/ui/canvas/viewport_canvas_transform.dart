@@ -45,8 +45,13 @@ CanvasViewport renderSnappedViewport(
 /// reaches every painter at once — and the snap only keeps sibling
 /// painters mutually aligned because they all take it from this one spot.
 ///
-/// [devicePixelRatio] is the VIEW's DPR (MediaQuery at build time, the
-/// same source the layer stack painter reads). The default snaps to whole
+/// [devicePixelRatio] is the EFFECTIVE ratio at build time — monitor × UI
+/// scale, the ratio the ROOT MATRIX uses — read through
+/// `EffectiveDevicePixelRatio.of`, the same source the layer stack painter
+/// reads. ⛔NOT `MediaQuery`: it reports the monitor's raw ratio while the
+/// compositor works on the product, so a caller that reaches for it puts
+/// its painter on a different grid from every sibling that feeds this
+/// parameter. The default snaps to whole
 /// LOGICAL pixels — right only where every canvas-space painter of a host
 /// stays at the default together; the editing canvas wires the real value
 /// through every painter it composes, or a snapped artwork and an

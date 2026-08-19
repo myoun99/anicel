@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../../models/brush_settings.dart';
+import '../effective_device_pixel_ratio.dart';
 import 'brush_stroke_preview_cache.dart';
 
 /// A small S-curve stroke sample rendered with the preset's settings.
@@ -86,7 +87,7 @@ class _BrushStrokePreviewState extends State<BrushStrokePreview> {
 
   @override
   Widget build(BuildContext context) {
-    final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final devicePixelRatio = EffectiveDevicePixelRatio.of(context);
     // ⛔No `RepaintBoundary` here either, for the same reason as
     // [BrushTipPreview]: the row is isolated by the panel-level bake,
     // and a boundary inside a bake forces the bake to paint through.

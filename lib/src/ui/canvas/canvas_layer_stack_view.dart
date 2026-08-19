@@ -32,6 +32,7 @@ import 'static_composite_bake.dart';
 import 'layer_image_draw.dart';
 import 'paper_background.dart';
 import 'viewport_canvas_transform.dart';
+import '../effective_device_pixel_ratio.dart';
 
 /// One node of the editing canvas's composite tree.
 ///
@@ -832,13 +833,15 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           bake: widget.debugDisableBake ? null : _bake,
           bufferCache: widget.debugDisableBake ? null : _bufferCache,
           compositeKey: compositeKey,
-          // ⓔ 5단계: the knee's s = zoom·DPR, and the DPR belongs to the
-          // VIEW this widget sits in — MediaQuery is the source that both
-          // tracks monitor moves (this build re-runs) and answers per
+          // ⓔ 5단계: the knee's s = zoom·DPR, and the DPR is the one the
+          // ROOT MATRIX uses — the effective ratio. It still tracks
+          // monitor moves (this build re-runs) and still answers per
           // view, where the raw PlatformDispatcher singleton does
-          // neither.
+          // neither; it additionally survives a UI scale, which MediaQuery
+          // does not — MediaQuery keeps reporting the monitor's raw ratio
+          // while the compositor works on the product.
           devicePixelRatio:
-              MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
+              EffectiveDevicePixelRatio.of(context),
           debugDisableSingleBuffer: widget.debugDisableSingleBuffer,
         ),
         child: const SizedBox.expand(),
@@ -1176,7 +1179,7 @@ class _LayerStackPainter extends CustomPainter {
   /// See [CanvasLayerStackView.debugDisableSingleBuffer].
   final bool debugDisableSingleBuffer;
 
-  /// The view's DPR, from MediaQuery at build time — the knee's
+  /// The EFFECTIVE ratio at build time (monitor × UI scale) — the knee's
   /// `s = zoom·dpr` axis. A monitor move re-runs the build, so a fresh
   /// painter always carries the current value.
   final double devicePixelRatio;
@@ -1356,11 +1359,13 @@ class _LayerStackPainter extends CustomPainter {
       final zoomBucket = ((viewport.zoom.abs() * 100) / 10).round() * 10;
       CanvasPaintGeometryProbe.zoomHistogram[zoomBucket] =
           (CanvasPaintGeometryProbe.zoomHistogram[zoomBucket] ?? 0) + 1;
-      final dpr =
-          ui.PlatformDispatcher.instance.implicitView?.devicePixelRatio;
+      // The painter's OWN ratio, not the raw view singleton: every buffer
+      // decision this probe exists to explain is computed against that
+      // field, and once a UI scale is in force the two differ.
+      final dpr = devicePixelRatio;
       final key =
           'geom view=${size.width.round()}x${size.height.round()}'
-          ' dpr=${dpr?.toStringAsFixed(2) ?? '?'}'
+          ' dpr=${dpr.toStringAsFixed(2)}'
           ' zoom~$zoomBucket%'
           ' buf=${(bufWidth * bufHeight * 4 / (1024 * 1024)).round()}MB'
           ' capped=$capped';

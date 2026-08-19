@@ -20,6 +20,7 @@ import 'canvas_playback_controller.dart';
 import 'cut_frame_composite_cache.dart';
 import 'playback_frame_painter.dart';
 import 'playback_prerender_scheduler.dart';
+import '../effective_device_pixel_ratio.dart';
 
 /// The canvas panel's playback content: cached composite frames advancing
 /// with the controller's ticker, rendered INSIDE the panel viewport so the
@@ -265,7 +266,7 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
               // to the same one, so entering playback cannot hop the
               // picture by a sub-pixel.
               devicePixelRatio:
-                  MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
+                  EffectiveDevicePixelRatio.of(context),
               cameraPose:
                   widget.cameraViewEnabled && cut != null && position != null
                   ? widget.cameraPoseOf(cut, position.localFrameIndex)

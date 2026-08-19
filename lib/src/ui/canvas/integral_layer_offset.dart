@@ -1,5 +1,6 @@
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
+import '../effective_device_pixel_ratio.dart';
 
 /// Parks its child's compositing layer on the device-pixel grid.
 ///
@@ -76,10 +77,21 @@ class _IntegralLayerOffsetState extends State<IntegralLayerOffset> {
   /// measurement, and zero under a non-axis-aligned ancestor.
   Offset _compensation = Offset.zero;
 
-  /// The ratio the last build saw. Captured in [build] so the MediaQuery
-  /// subscription re-runs the build on a monitor move, and read by the
-  /// measurement instead of a raw `PlatformDispatcher` singleton (which
-  /// neither tracks moves nor answers per view).
+  /// The EFFECTIVE ratio the last build saw. Captured in [build] so the
+  /// inherited subscription re-runs the build on a monitor move or a UI
+  /// scale change, and read by the measurement instead of a raw
+  /// `PlatformDispatcher` singleton (which neither tracks moves nor
+  /// answers per view).
+  ///
+  /// ★It MUST be the effective ratio rather than MediaQuery's raw one, and
+  /// the reason lives in the measurement's `getTransformTo(null)`: that
+  /// walk stops one node short of the [RenderView], so it never multiplies
+  /// in the root matrix and the translation comes back in LOGICAL units.
+  /// The compensation therefore has to supply the root matrix's own ratio,
+  /// which is the effective one by definition. Measured with a raw 1.25
+  /// and a 1.125 scale (root 1.40625) at logical x=100.3: the raw ratio
+  /// leaves the compensated position 0.375 device px off the grid — near
+  /// the 0.5 worst case — while the effective ratio lands it exactly.
   double _devicePixelRatio = 1.0;
 
   bool _measurementArmed = false;
@@ -154,7 +166,7 @@ class _IntegralLayerOffsetState extends State<IntegralLayerOffset> {
 
   @override
   Widget build(BuildContext context) {
-    _devicePixelRatio = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
+    _devicePixelRatio = EffectiveDevicePixelRatio.of(context);
     return Transform.translate(
       offset: _compensation,
       transformHitTests: true,

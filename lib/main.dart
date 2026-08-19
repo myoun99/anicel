@@ -13,6 +13,7 @@ import 'src/ui/debug/frame_stats.dart';
 import 'src/ui/debug/frame_stats_readout.dart';
 import 'src/ui/debug/repaint_cause.dart';
 import 'src/ui/debug/measurement_mode.dart';
+import 'src/ui/effective_device_pixel_ratio.dart';
 import 'src/ui/home_page.dart';
 import 'src/ui/input/app_input_settings.dart' show AppInput;
 import 'src/ui/theme/app_scroll_behavior.dart';
@@ -108,8 +109,20 @@ class AnicelApp extends StatelessWidget {
         // Above every route and below the Navigator: the measurement
         // readouts have to outrank dialogs and popovers, which are the
         // Navigator's children.
-        builder: (context, child) =>
-            MeasurementReadoutHost(child: child ?? const SizedBox.shrink()),
+        // Inside the builder so the scope sits ABOVE the Navigator:
+        // dialogs and popup routes are the Navigator's children, not
+        // [HomePage]'s, and a route built outside the scope would fall
+        // back to MediaQuery — the exact wrong grid this source exists to
+        // replace.
+        // ⛔NOT because "MaterialApp is what inserts MediaQuery": it is
+        // not. `MaterialApp` never introduces its own — the `View` widget
+        // does — so mounting above `MaterialApp` would have worked too,
+        // and that is where a live UI scale will want to live (inside the
+        // `ListenableBuilder` above). Moving it there is fine; moving it
+        // BELOW the Navigator is not.
+        builder: (context, child) => EffectiveDevicePixelRatioScope(
+          child: MeasurementReadoutHost(child: child ?? const SizedBox.shrink()),
+        ),
         home: const HomePage(),
       ),
     );

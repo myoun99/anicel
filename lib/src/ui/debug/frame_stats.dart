@@ -326,6 +326,10 @@ abstract final class FrameStats {
   static Size _viewPhysicalSize() =>
       PlatformDispatcher.instance.implicitView?.physicalSize ?? Size.zero;
 
+  /// RAW on purpose: this readout is labelled "view dpr" and reports the
+  /// display itself. Geometry reads the EFFECTIVE ratio instead (view ×
+  /// UI scale — see `EffectiveDevicePixelRatio`), and this static
+  /// recorder has no context to reach that from anyway.
   static double _devicePixelRatio() =>
       PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 0;
 
