@@ -36,17 +36,32 @@ void main() {
       expect(devices[2], closeTo(1000.0, 1e-6));
     });
 
-    test(
-      'CONTROL: rounding each width on its own drifts a whole device pixel',
-      () {
-        // The bug wearing the fix's clothes. If this ever matches the run
-        // above, the run has stopped doing anything.
-        const third = 800.0 / 3;
-        final independent = (third * 1.25).floorToDouble() * 3;
-        expect(independent, 999.0);
-        expect(independent, isNot(closeTo(1000.0, 0.5)));
-      },
-    );
+    test('CONTROL: per-width snapping passes isOnGrid and still misses the '
+        'parent by a whole device pixel', () {
+      // ⚠️The first draft of this control was arithmetic on literals — it
+      // survived deleting the entire library, which makes it decoration
+      // rather than a control. It now builds the forbidden construction
+      // out of the real class.
+      const grid = DeviceGrid(1.25);
+      const third = 800.0 / 3;
+
+      final perWidth = List<double>.filled(3, grid.position(third));
+
+      // Every width is INDIVIDUALLY on the grid. A per-value predicate
+      // cannot tell the forbidden construction from the correct one —
+      // only the sum can, which is exactly why the rule is about
+      // cumulative positions and not about widths.
+      for (final width in perWidth) {
+        expect(grid.isOnGrid(width), isTrue);
+      }
+      expect(perWidth.reduce((a, b) => a + b) * 1.25, closeTo(999.0, 1e-6));
+
+      // The run, given the same three extents, lands on 1000.
+      final run = grid.run();
+      final viaRun = <double>[run.take(third), run.take(third), run.take(third)];
+      expect(viaRun.reduce((a, b) => a + b), closeTo(800.0, 1e-9));
+      expect(run.position * 1.25, closeTo(1000.0, 1e-6));
+    });
 
     test('a long run carries ONE rounding, not one per element', () {
       const grid = DeviceGrid(1.125);
@@ -85,12 +100,55 @@ void main() {
     });
 
     test('leaves an already-on-grid constant exactly alone', () {
-      // 48 * 1.25 arrives as 59.99999999999999. Without the epsilon this
-      // floors to 59 and the quantizer MOVES a correct constant by a whole
-      // device pixel — worse than not quantizing at all.
+      // ⚠️These three are DYADIC — 48 * 1.25 is exactly 60.0 — so they
+      // pass with the slack deleted entirely. They pin that the quantizer
+      // does not MOVE a correct constant, which is a real but different
+      // promise from rescuing one, and an earlier draft of this file cited
+      // them as the slack's justification. They are not.
       expect(const DeviceGrid(1.25).position(48), closeTo(48.0, 1e-12));
       expect(const DeviceGrid(1.125).position(8), closeTo(8.0, 1e-12));
       expect(const DeviceGrid(2.625).position(16), closeTo(16.0, 1e-12));
+
+      // THIS is what the slack is for: a 1× monitor at a 115% UI scale.
+      // The ratio itself is inexact (1.1499999999999999), so a correct
+      // constant lands a few ulps below a whole device pixel and a bare
+      // floor drops it by a whole one.
+      const product = 1.0 * 1.15;
+      final grid = DeviceGrid(product);
+      for (final logical in <double>[180, 200, 220, 360, 400]) {
+        final device = logical * product;
+        expect(
+          device,
+          lessThan(device.roundToDouble()),
+          reason: 'the deficit at $logical must be real for this to pin',
+        );
+        expect(
+          device.floorToDouble(),
+          device.roundToDouble() - 1,
+          reason: 'a bare floor loses a whole device pixel at $logical',
+        );
+        expect(grid.position(logical), closeTo(logical, 1e-12));
+      }
+    });
+
+    test('floors NEGATIVE positions too — truncation would drift toward '
+        'zero', () {
+      // `truncateToDouble` is the most natural slip when rewriting this
+      // line, and it is invisible on a positive-only sweep: at 1.25,
+      // position(-0.001) would go from -0.8 to -0.0. Scroll offsets and
+      // overscroll reach negatives, and PR8-10 quantizes those.
+      for (final ratio in <double>[1.125, 1.25, 1.35, 1.5, 2.625, 1.5 * 0.7]) {
+        final grid = DeviceGrid(ratio);
+        for (var i = 1; i <= 2000; i++) {
+          final value = -i * 0.37;
+          expect(
+            grid.position(value),
+            lessThanOrEqualTo(value + 1e-10),
+            reason: 'ratio $ratio overshot toward zero at $value',
+          );
+          expect(grid.isOnGrid(grid.position(value)), isTrue);
+        }
+      }
     });
 
     test('is idempotent at fractional ratios', () {
@@ -108,11 +166,29 @@ void main() {
     });
 
     test('lands on the grid it claims to', () {
-      for (final ratio in <double>[1.125, 1.25, 1.35, 1.75]) {
+      for (final ratio in <double>[1.125, 1.25, 1.35, 1.75, 1.5, 2.625]) {
         final grid = DeviceGrid(ratio);
         for (var i = 0; i < 200; i++) {
           expect(grid.isOnGrid(grid.position(i * 1.7)), isTrue);
         }
+      }
+    });
+
+    test('isOnGrid says NO when it should', () {
+      // ⚠️Without this, `isOnGrid => true` makes the two pins that delegate
+      // to it vacuous — and PR2's audit gate has nothing else to hang on.
+      for (final ratio in <double>[1.125, 1.25, 1.35, 1.5, 2.625, 1.5 * 0.7]) {
+        final grid = DeviceGrid(ratio);
+        expect(
+          grid.isOnGrid(10.3),
+          isFalse,
+          reason: 'ratio $ratio called an off-grid anchor on-grid',
+        );
+        final on = grid.position(97.4);
+        expect(grid.isOnGrid(on), isTrue);
+        // A hundredth of a device pixel away is still off, so the
+        // predicate is not a rubber stamp with a wide tolerance.
+        expect(grid.isOnGrid(on + 0.01 / ratio), isFalse);
       }
     });
 

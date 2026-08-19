@@ -133,6 +133,18 @@ class DeviceGrid {
   /// number at the call site looks right. Measured across 120,000
   /// legitimate anchors (outputs of [position], sums of snapped pieces,
   /// live run positions, and 0) it never fires.
+  ///
+  /// ⛔Create one per layout pass and NEVER store one. It is a mutable
+  /// accumulator, and `performLayout` re-runs on every constraint change
+  /// plus extra times per frame for intrinsic and dry-layout queries. A
+  /// reused run keeps returning plausible-looking extents while its
+  /// position marches away, and nothing ever throws.
+  ///
+  /// ⛔Do not read [DeviceGridRun.position] in the same argument list that
+  /// calls [DeviceGridRun.take] — `Positioned(width: run.take(w), left:
+  /// run.position)` is off by a whole child, because Dart evaluates the
+  /// arguments in source order and `take` has already advanced. Read the
+  /// position into a local first.
   DeviceGridRun run({double from = 0}) {
     assert(
       !isActive || !from.isFinite || isOnGrid(from),
@@ -179,6 +191,21 @@ class DeviceGrid {
 /// a SPAN BETWEEN TWO BOUNDARIES; quantizing it a second time as a
 /// standalone thickness makes a region's cover and the region's own edge
 /// disagree by a device pixel at a large fraction of drag positions.
+///
+/// ⚠️A single [DeviceGridRun.take] is bounded by ONE DEVICE PIXEL either
+/// way — not by what it was asked for — and the LOWER bound is the one
+/// that bites. An extent under a device pixel comes back as exactly 0.0
+/// whenever the run's phase leaves no pixel for it: measured at ratio
+/// 1.25, `take(0.5)` eight times returns
+/// `[0, 0.8, 0, 0.8, 0.8, 0, 0.8, 0.8]` — three of eight vanish, and
+/// which three depends on the phase, so a divider appears and disappears
+/// as the panel above it resizes. At an effective ratio below 1 (a 1×
+/// monitor under a sub-100% UI scale, which this round's ladder has)
+/// `position(1.0)` is 0.0 outright.
+///
+/// That behaviour is RIGHT for a span and WRONG for a visible thickness.
+/// ⛔Author a hairline as a count of DEVICE pixels, never as a logical
+/// constant handed to a run.
 class DeviceGridRun {
   DeviceGridRun(this._grid, double from)
     : _raw = from,
