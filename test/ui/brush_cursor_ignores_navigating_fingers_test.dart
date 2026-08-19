@@ -120,6 +120,59 @@ void main() {
 
     await finger.up();
     await tester.pump();
+
+    expect(
+      cursor,
+      findsOneWidget,
+      reason: 'and it may not DELETE that aim on the way out either — a '
+          'pointer the census refuses to write from is a pointer with '
+          'nothing here to erase',
+    );
+    expect(tester.getTopLeft(cursor), aimed);
+
+    // The same on the cancel path, which is how a navigating gesture
+    // usually ends once the pan recognizer claims it.
+    final second = await tester.createGesture(kind: PointerDeviceKind.touch);
+    await second.down(canvasGlobalOffset(tester, const Offset(60, 60)));
+    await tester.pump();
+    await second.cancel();
+    await tester.pump();
+    expect(cursor, findsOneWidget);
+    expect(tester.getTopLeft(cursor), aimed);
+  });
+
+  testWidgets('one finger lifting does not blank the ring another finger '
+      'is still drawing with', (tester) async {
+    useOneFingerSlot(CanvasTouchDragAction.draw);
+    await pumpPanel(tester);
+
+    final drawing = await tester.createGesture(kind: PointerDeviceKind.touch);
+    await drawing.down(canvasGlobalOffset(tester, const Offset(20, 20)));
+    await tester.pump();
+    expect(cursor, findsOneWidget);
+    final aimed = tester.getTopLeft(cursor);
+
+    final other = await tester.createGesture(kind: PointerDeviceKind.touch);
+    await other.down(canvasGlobalOffset(tester, const Offset(120, 100)));
+    await tester.pump();
+    await other.up();
+    await tester.pump();
+
+    expect(
+      cursor,
+      findsOneWidget,
+      reason: 'a press is a SPAN and they overlap — the aim belongs to the '
+          'span, so it survives until the LAST holder lifts',
+    );
+
+    await drawing.up();
+    await tester.pump();
+    expect(
+      cursor,
+      findsNothing,
+      reason: 'and it does go when that last one lifts',
+    );
+    expect(aimed, isNotNull);
   });
 
   // The other side of the same law: where a finger IS the drawing device,

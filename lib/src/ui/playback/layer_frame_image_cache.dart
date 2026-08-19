@@ -105,10 +105,19 @@ class LayerFrameImageCache {
     if (shouldAbort?.call() ?? false) {
       return null;
     }
-    final preview = BrushFrameDisplayCacheService(
+    final previewCache = BrushFrameDisplayCacheService(
       frameStore: frameStore,
       canvasSize: canvasSize,
-    ).prepareFramePreview(key).previewSurface;
+    ).prepareFramePreview(key);
+    if (!previewCache.isValid) {
+      // A cel that HAS pixels, recorded at another canvas size. Composing
+      // the blank stand-in and banking it here under [revision] is what
+      // makes the row stay blank: the revision does not move when a heal
+      // repairs the size, so the empty image is served for ever after.
+      // No image this pass, nothing remembered, next pass gets to look.
+      return null;
+    }
+    final preview = previewCache.previewSurface;
 
     // Per-tile GPU compose over the CONTENT extent (canvas rect grown by
     // any pasteboard tiles): the editing canvas keeps the on-screen
@@ -178,13 +187,19 @@ class LayerFrameImageCache {
     }
     final revision = drawing.sourceRevision;
 
-    final preview = labProbe(
+    final previewCache = labProbe(
       'prepareFramePreview(${key.frameId.value} rev${drawing.sourceRevision})',
       () => BrushFrameDisplayCacheService(
         frameStore: frameStore,
         canvasSize: canvasSize,
-      ).prepareFramePreview(key).previewSurface,
+      ).prepareFramePreview(key),
     );
+    if (!previewCache.isValid) {
+      // The size miss again — see the async twin. Banking the blank under
+      // a revision that a heal never moves is what freezes the row.
+      return null;
+    }
+    final preview = previewCache.previewSurface;
     final positioned = composePositionedSurfaceImageSyncOrNull(
       preview,
       reuse: BitmapTileImageCache.instance,

@@ -262,6 +262,13 @@ class PlaybackPrerenderScheduler {
             shouldAbort: () => _isStale(generation) || !_isQuietNow(),
           );
         } catch (_) {
+          // Every other post-await exit in this loop re-checks staleness
+          // before it lets the caller touch `_progress`; skipping it here
+          // would let a cancelled or disposed run write its bar back over
+          // a live one.
+          if (_isStale(generation)) {
+            return;
+          }
           break;
         }
         if (watch != null) {

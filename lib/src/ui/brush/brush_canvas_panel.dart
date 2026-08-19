@@ -840,12 +840,41 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _eyedropperHover.value = null;
   }
 
+  /// Pointers that are DOWN and could drive a tool — the census's own
+  /// count of who is holding the aim up.
+  ///
+  /// A press is a SPAN, not a moment, and several can overlap. The aim
+  /// belongs to the span, so it survives until the last holder lifts:
+  /// without this a second finger's up blanked the ring the first was
+  /// still drawing with, and it returned only on that finger's next move
+  /// — one flicker per staggered lift-off.
+  final Set<int> _pointersHoldingAim = <int>{};
+
+  void _beginCanvasPointer(PointerDownEvent event) {
+    if (!AppInput.toolAcceptsPointer(event.kind)) {
+      return;
+    }
+    _pointersHoldingAim.add(event.pointer);
+  }
+
   /// A pointer's contact ended. For a pointer that reports its own exit,
   /// that means nothing — a mouse is still on the glass after a click,
   /// and forgetting here would blank its cursor until it moved again.
   /// For every other kind the contact WAS the presence.
-  void _endCanvasPointer(PointerDeviceKind kind) {
-    if (AppInput.pointerReportsItsOwnExit(kind)) {
+  void _endCanvasPointer(PointerEvent event) {
+    // ⛔A pointer that may not WRITE the census may not erase it either.
+    // The write asks [AppInput.toolAcceptsPointer]; asking anything else
+    // here let a NAVIGATING finger — the product default, one-finger slot
+    // on flip — delete the ring the PEN was holding, mid-stroke included
+    // when a palm happened to lift.
+    if (!AppInput.toolAcceptsPointer(event.kind)) {
+      return;
+    }
+    _pointersHoldingAim.remove(event.pointer);
+    if (AppInput.pointerReportsItsOwnExit(event.kind)) {
+      return;
+    }
+    if (_pointersHoldingAim.isNotEmpty) {
       return;
     }
     _forgetCanvasPointer();
@@ -1688,12 +1717,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                             event.localPosition,
                                             kind: event.kind,
                                           ),
-                                      onPointerDown: (event) =>
-                                          _noteCanvasPointer(
-                                            event.localPosition,
-                                            kind: event.kind,
-                                            sample: false,
-                                          ),
+                                      onPointerDown: (event) {
+                                        _beginCanvasPointer(event);
+                                        _noteCanvasPointer(
+                                          event.localPosition,
+                                          kind: event.kind,
+                                          sample: false,
+                                        );
+                                      },
                                       onPointerMove: (event) =>
                                           _noteCanvasPointer(
                                             event.localPosition,
@@ -1708,10 +1739,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                       // the ring stayed where the hand had
                                       // been — for ever. For those, the
                                       // contact ending IS the exit.
-                                      onPointerUp: (event) =>
-                                          _endCanvasPointer(event.kind),
-                                      onPointerCancel: (event) =>
-                                          _endCanvasPointer(event.kind),
+                                      onPointerUp: _endCanvasPointer,
+                                      onPointerCancel: _endCanvasPointer,
                                       child:
                                           // 🐛The FILL cursor was missing from this
                                           // list, and the omission is not cosmetic:
