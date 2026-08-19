@@ -15,6 +15,7 @@ import 'src/ui/debug/repaint_cause.dart';
 import 'src/ui/debug/measurement_mode.dart';
 import 'src/ui/effective_device_pixel_ratio.dart';
 import 'src/ui/home_page.dart';
+import 'src/ui/layout/device_grid_audit.dart';
 import 'src/ui/input/app_input_settings.dart' show AppInput;
 import 'src/ui/theme/app_scroll_behavior.dart';
 import 'src/ui/theme/app_theme.dart';
@@ -75,6 +76,11 @@ void main() {
   // frame batch.
   FrameStats.install();
   RepaintCause.install();
+  // Inert until `DeviceGridAudit.strict` is set — the per-frame cost while
+  // it is off is one bool. HERE for the same reason as the two above: a
+  // persistent frame callback cannot be removed, so registering it
+  // anywhere that re-runs would stack duplicates.
+  DeviceGridAudit.install();
   runApp(const AnicelApp());
 }
 

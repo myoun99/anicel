@@ -441,6 +441,31 @@ class RenderStaticRaster extends RenderProxyBox {
   @visibleForTesting
   Offset? get debugGridShift => _rasterFit?.shift;
 
+  /// Where this surface's top-left sits WITHIN the device pixel it begins
+  /// in, per axis, in DEVICE pixels. `Offset.zero` means the panel starts
+  /// exactly on the grid; `Offset(0.5, 0)` means it starts half a device
+  /// pixel into one. Null when the surface cannot be located — detached,
+  /// or under a rotation or a per-axis scale.
+  ///
+  /// This is the quantization audit's whole measurement, and it costs
+  /// nothing new: [_gridFit] already computes it on every capture in order
+  /// to align the bake. Reading it here asks the same question without
+  /// requiring a bake to have happened, so a surface that paints through
+  /// is still audited.
+  ///
+  /// ⛔It reads the CURRENT transform, so it is only meaningful after
+  /// layout has settled — call it from a post-frame callback or a settled
+  /// test, never during build.
+  Offset? get debugDeviceGridPhase {
+    final fit = _gridFit();
+    if (fit == null) {
+      return null;
+    }
+    // `shift` is stored in the surface's own logical units; multiplying by
+    // `scale` returns it to the device pixels the grid is measured in.
+    return Offset(fit.shift.dx * fit.scale, fit.shift.dy * fit.scale);
+  }
+
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
