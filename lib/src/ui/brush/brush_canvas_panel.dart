@@ -840,6 +840,17 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _eyedropperHover.value = null;
   }
 
+  /// A pointer's contact ended. For a pointer that reports its own exit,
+  /// that means nothing — a mouse is still on the glass after a click,
+  /// and forgetting here would blank its cursor until it moved again.
+  /// For every other kind the contact WAS the presence.
+  void _endCanvasPointer(PointerDeviceKind kind) {
+    if (AppInput.pointerReportsItsOwnExit(kind)) {
+      return;
+    }
+    _forgetCanvasPointer();
+  }
+
   /// The census records a pointer only if that pointer could DRIVE a tool.
   ///
   /// 🚨★★유저 (2026-08-15 #2): 「브러시툴인채로 터치하면 브러시의 커서가
@@ -1688,6 +1699,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                             event.localPosition,
                                             kind: event.kind,
                                           ),
+                                      // …and the exit above is the whole
+                                      // story ONLY for pointers Flutter
+                                      // reports an exit for. A finger, a
+                                      // pen TAIL or an `unknown` device
+                                      // writes through this same census
+                                      // and then leaves without a word, so
+                                      // the ring stayed where the hand had
+                                      // been — for ever. For those, the
+                                      // contact ending IS the exit.
+                                      onPointerUp: (event) =>
+                                          _endCanvasPointer(event.kind),
+                                      onPointerCancel: (event) =>
+                                          _endCanvasPointer(event.kind),
                                       child:
                                           // 🐛The FILL cursor was missing from this
                                           // list, and the omission is not cosmetic:

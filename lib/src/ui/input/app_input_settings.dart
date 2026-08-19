@@ -516,6 +516,22 @@ abstract final class AppInput {
   static bool toolAcceptsPointer(PointerDeviceKind kind) =>
       kind != PointerDeviceKind.touch || touchDraws;
 
+  /// Whether Flutter will tell us when this pointer LEAVES.
+  ///
+  /// `MouseRegion`'s enter/exit come from `MouseTracker.updateWithEvent`,
+  /// which returns immediately for every kind that is not mouse or
+  /// stylus. So for touch, trackpad, `unknown` and `invertedStylus` — the
+  /// pen's tail, which this app maps to the eraser — no exit is ever
+  /// delivered, and anything that clears itself on exit ALONE never
+  /// clears at all.
+  ///
+  /// ⚠️Named for the MECHANISM, not for hovering. A pen tail physically
+  /// hovers and still gets no exit, so a predicate called "hovers" would
+  /// answer true for it and leave exactly half the bug in place. This is
+  /// Flutter's set and it has to stay Flutter's set.
+  static bool pointerReportsItsOwnExit(PointerDeviceKind kind) =>
+      kind == PointerDeviceKind.mouse || kind == PointerDeviceKind.stylus;
+
   /// The same law for a `GestureDetector`, which needs it BEFORE the arena
   /// rather than inside a handler.
   ///

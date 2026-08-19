@@ -146,5 +146,45 @@ void main() {
 
     await finger.up();
     await tester.pump();
+
+    expect(
+      cursor,
+      findsNothing,
+      reason: 'and the aim goes with the finger. Flutter delivers a region '
+          'exit only for mouse and stylus, so the exit that clears this '
+          'never runs for a finger — the ring stayed at the last touched '
+          'point for the rest of the session (D34)',
+    );
+  });
+
+  // ⚠️NOT a touch-only bug, and this half needs no setting at all: the pen
+  // TAIL reports as invertedStylus, which every tool accepts, and Flutter
+  // delivers no exit for it either.
+  testWidgets('the pen TAIL leaves no ring behind either — invertedStylus '
+      'and unknown get no exit from Flutter, at product defaults', (
+    tester,
+  ) async {
+    for (final kind in [
+      PointerDeviceKind.invertedStylus,
+      PointerDeviceKind.unknown,
+    ]) {
+      await pumpPanel(tester);
+
+      final pointer = await tester.createGesture(kind: kind);
+      await pointer.down(canvasGlobalOffset(tester, const Offset(30, 30)));
+      await tester.pump();
+      await pointer.moveTo(canvasGlobalOffset(tester, const Offset(90, 70)));
+      await tester.pump();
+      expect(cursor, findsOneWidget, reason: '$kind aims a tool');
+
+      await pointer.up();
+      await tester.pump();
+      expect(
+        cursor,
+        findsNothing,
+        reason: '$kind: the contact ending IS its exit — nothing else is '
+            'ever coming',
+      );
+    }
   });
 }
