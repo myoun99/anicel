@@ -32,6 +32,7 @@ import 'canvas_view_commands.dart';
 import 'brush_tool_state.dart';
 import 'brush_edit_cache_invalidation_sink.dart';
 import 'brush_canvas_defaults.dart';
+import '../effective_device_pixel_ratio.dart';
 
 /// Production main-canvas Brush host for HomePage integration.
 ///
@@ -422,7 +423,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
         viewport: viewport,
         // The pan-phase snap's device grid — the blank-canvas paper must
         // sit exactly where the editing stack's paper lands.
-        devicePixelRatio: MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
+        devicePixelRatio: EffectiveDevicePixelRatio.of(context),
       ),
       child: const SizedBox.expand(),
     );

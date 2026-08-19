@@ -13,6 +13,7 @@ import 'src/ui/debug/frame_stats.dart';
 import 'src/ui/debug/frame_stats_readout.dart';
 import 'src/ui/debug/repaint_cause.dart';
 import 'src/ui/debug/measurement_mode.dart';
+import 'src/ui/effective_device_pixel_ratio.dart';
 import 'src/ui/home_page.dart';
 import 'src/ui/input/app_input_settings.dart' show AppInput;
 import 'src/ui/theme/app_scroll_behavior.dart';
@@ -108,8 +109,13 @@ class AnicelApp extends StatelessWidget {
         // Above every route and below the Navigator: the measurement
         // readouts have to outrank dialogs and popovers, which are the
         // Navigator's children.
-        builder: (context, child) =>
-            MeasurementReadoutHost(child: child ?? const SizedBox.shrink()),
+        // Inside the builder and not around `MaterialApp`: the scope reads
+        // MediaQuery, and MaterialApp is what inserts it. This level also
+        // sits above the Navigator, so dialogs and popup routes — which
+        // are the Navigator's children, not [HomePage]'s — are covered.
+        builder: (context, child) => EffectiveDevicePixelRatioScope(
+          child: MeasurementReadoutHost(child: child ?? const SizedBox.shrink()),
+        ),
         home: const HomePage(),
       ),
     );

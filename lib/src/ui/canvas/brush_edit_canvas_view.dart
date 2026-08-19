@@ -4,6 +4,7 @@ import '../../models/brush_edit_session_state.dart';
 import '../../models/canvas_viewport.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_surface_painter.dart';
+import '../effective_device_pixel_ratio.dart';
 
 /// Displays the brush canvas: committed artwork from the session surface
 /// plus the live in-progress stroke, rendered by one [BitmapSurfacePainter]
@@ -66,7 +67,7 @@ class BrushEditCanvasView extends StatelessWidget {
           // The pan-phase snap's device grid — MediaQuery, the same source
           // the merged stack painter reads, so this route and the merged
           // route snap to the same phase.
-          devicePixelRatio: MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
+          devicePixelRatio: EffectiveDevicePixelRatio.of(context),
         ),
         child: const SizedBox.expand(),
       ),

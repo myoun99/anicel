@@ -34,6 +34,7 @@ import 'selection_float_overlay.dart';
 import 'bitmap_surface_painter.dart';
 import 'provisional_tile_pictures.dart';
 import 'bitmap_tile_image_cache.dart';
+import '../effective_device_pixel_ratio.dart';
 
 /// The P9 selection interaction layer, mounted over the canvas while a
 /// selection tool is active (Photoshop/CSP language):
@@ -3796,7 +3797,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                     // The pan-phase snap's device grid — same source the
                     // ink view behind this fallback reads.
                     devicePixelRatio:
-                        MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
+                        EffectiveDevicePixelRatio.of(context),
                   ),
                   child: const SizedBox.expand(),
                 ),

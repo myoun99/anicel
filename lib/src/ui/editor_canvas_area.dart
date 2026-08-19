@@ -46,6 +46,7 @@ import '../models/timeline_row_address.dart'
     show LaneRowAddress, TimelineRowAddress;
 import 'widgets/cursor_notice.dart';
 import 'timeline/transform_lane_editing.dart';
+import 'effective_device_pixel_ratio.dart';
 import 'timeline/transform_lane_policy.dart'
     show CanvasManipulator, canvasManipulatorsForLane;
 
@@ -997,10 +998,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                                   canvasSize: canvasSize,
                                   tags: seNameTags,
                                   devicePixelRatio:
-                                      MediaQuery.maybeDevicePixelRatioOf(
-                                        context,
-                                      ) ??
-                                      1.0,
+                                      EffectiveDevicePixelRatio.of(context),
                                 ),
                               ),
                             ),
@@ -1031,10 +1029,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                                         ),
                                       ),
                                   devicePixelRatio:
-                                      MediaQuery.maybeDevicePixelRatioOf(
-                                        context,
-                                      ) ??
-                                      1.0,
+                                      EffectiveDevicePixelRatio.of(context),
                                 ),
                               ),
                             ),

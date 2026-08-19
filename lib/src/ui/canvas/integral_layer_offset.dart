@@ -1,5 +1,6 @@
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
+import '../effective_device_pixel_ratio.dart';
 
 /// Parks its child's compositing layer on the device-pixel grid.
 ///
@@ -154,7 +155,7 @@ class _IntegralLayerOffsetState extends State<IntegralLayerOffset> {
 
   @override
   Widget build(BuildContext context) {
-    _devicePixelRatio = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
+    _devicePixelRatio = EffectiveDevicePixelRatio.of(context);
     return Transform.translate(
       offset: _compensation,
       transformHitTests: true,

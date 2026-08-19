@@ -470,6 +470,10 @@ abstract final class AppInput {
     if (view == null) {
       return false;
     }
+    // RAW view ratio, deliberately NOT the effective one: this asks how
+    // big the HARDWARE is, and a UI scale does not change the hardware.
+    // Dividing by a scaled ratio would let a user who shrinks the UI read
+    // as sitting at a tablet. See `EffectiveDevicePixelRatio`.
     final shortestSide = view.physicalSize.shortestSide / view.devicePixelRatio;
     return shortestSide < 600;
   }

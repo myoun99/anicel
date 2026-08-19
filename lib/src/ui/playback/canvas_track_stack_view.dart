@@ -21,6 +21,7 @@ import '../canvas/paper_background.dart'
 import '../track_effect_paint_policy.dart';
 import 'cut_frame_composite_cache.dart';
 import 'playback_frame_painter.dart';
+import '../effective_device_pixel_ratio.dart';
 
 /// The parked-state canvas content — the multitrack display path.
 ///
@@ -366,7 +367,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
             // The pan-phase snap's device grid — one phase across the
             // whole stack and the editing canvas it stands in for.
             devicePixelRatio:
-                MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
+                EffectiveDevicePixelRatio.of(context),
             // Camera view off: the cut sits in its own canvas space, uncropped
             // and unprojected — the editing framing, which is what a ruler
             // scrub should keep showing.

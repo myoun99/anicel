@@ -25,6 +25,7 @@ import 'timeline_frame_geometry.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_tile_store.dart';
+import '../effective_device_pixel_ratio.dart';
 import 'timeline_se_row_visual.dart' show layerKindUsesSeSheetCells;
 
 /// One DRAWING row's frame cells as a single painter (UI-R9 #12b, the
@@ -969,7 +970,7 @@ Widget timelineRowCellsPaintArea({
     // is one row on screen; the classic pass is the cheap answer here.
     tileStore: chromeless ? null : TimelineGridTileStore.instance,
     substrateGeneration: substrateGeneration,
-    devicePixelRatio: MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
+    devicePixelRatio: EffectiveDevicePixelRatio.of(context),
     framesPerSecond: framesPerSecond,
   );
   // Read LIVE: the row that built this closure survives zoom steps now.
