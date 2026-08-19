@@ -69,8 +69,18 @@ class EffectiveDevicePixelRatioScope extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The ratio is a DIVISOR downstream — the pan-phase snap divides by it
+    // (`viewport_canvas_transform.dart`) and so does the integral-offset
+    // compensation. A zero or NaN scale would not degrade the grid, it
+    // would produce infinities in every snapped coordinate, so the value
+    // is refused here rather than at each of those sites.
+    assert(
+      uiScale.isFinite && uiScale > 0,
+      'uiScale must be finite and positive, got $uiScale',
+    );
+    final scale = uiScale.isFinite && uiScale > 0 ? uiScale : 1.0;
     return EffectiveDevicePixelRatio(
-      ratio: EffectiveDevicePixelRatio.rawViewRatioOf(context) * uiScale,
+      ratio: EffectiveDevicePixelRatio.rawViewRatioOf(context) * scale,
       child: child,
     );
   }

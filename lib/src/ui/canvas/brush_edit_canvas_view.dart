@@ -64,9 +64,12 @@ class BrushEditCanvasView extends StatelessWidget {
           overlayModel: overlayModel,
           showTransparentBackground: showTransparentBackground,
           staleScope: staleScope,
-          // The pan-phase snap's device grid — MediaQuery, the same source
-          // the merged stack painter reads, so this route and the merged
-          // route snap to the same phase.
+          // The pan-phase snap's device grid — the EFFECTIVE ratio, the
+          // same source the merged stack painter reads, so this route and
+          // the merged route snap to the same phase. ⛔Do not "restore
+          // consistency" by putting a sibling back on MediaQuery: it is no
+          // longer the shared source, so the invariant this comment names
+          // would break while appearing to be honoured.
           devicePixelRatio: EffectiveDevicePixelRatio.of(context),
         ),
         child: const SizedBox.expand(),
