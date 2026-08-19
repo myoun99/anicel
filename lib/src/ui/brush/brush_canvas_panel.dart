@@ -835,9 +835,87 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// Without this the seeding below would draw a tool cursor at the last
   /// place the pointer WAS, after it had left.
   void _forgetCanvasPointer() {
+    // The census's up/cancel arrive along the hit-test path cached at
+    // DOWN, and Flutter keeps delivering them after this subtree
+    // detaches — so an unmount mid-press lands here with both notifiers
+    // already disposed. Guarded at the WRITER rather than per caller:
+    // every route in writes the same two, including any added later.
+    if (!mounted) {
+      return;
+    }
     _lastCanvasPointer = null;
     _toolCursorHover.value = null;
     _eyedropperHover.value = null;
+  }
+
+  /// Pointers that are DOWN and could drive a tool — the census's own
+  /// count of who is holding the aim up.
+  ///
+  /// A press is a SPAN, not a moment, and several can overlap. The aim
+  /// belongs to the span, so it survives until the last holder lifts:
+  /// without this a second finger's up blanked the ring the first was
+  /// still drawing with, and it returned only on that finger's next move
+  /// — one flicker per staggered lift-off.
+  final Set<int> _pointersHoldingAim = <int>{};
+
+  /// Self-reporting devices (mouse, stylus) currently ON THE GLASS.
+  ///
+  /// The other kind of holder. A hovering pen writes the aim without ever
+  /// pressing, so it is no member of [_pointersHoldingAim] — and a
+  /// finger's lift was clearing the ring THAT pen owned, which Flutter
+  /// had not asked anyone to clear because the pen has not exited.
+  ///
+  /// ⚠️A SET, not a flag. Flutter delivers enter/exit PER DEVICE, so a
+  /// bool cannot say "someone is inside" when two are: a 2-in-1 with a
+  /// pen and a mouse both hovering had the pen's exit turn the flag off
+  /// while the mouse was still there, and every finger lift after that
+  /// deleted the mouse's ring. Keyed by `event.device`, which is what
+  /// Flutter's own bookkeeping uses — a hover has no stable pointer id.
+  final Set<int> _hoverDevicesInside = <int>{};
+
+  /// Whether ANY holder still has the aim — pressed or merely present.
+  /// One test for both kinds, so a departure of either sort cannot decide
+  /// on its own that nobody is left.
+  bool get _aimIsHeld =>
+      _pointersHoldingAim.isNotEmpty || _hoverDevicesInside.isNotEmpty;
+
+  void _beginCanvasPointer(PointerDownEvent event) {
+    if (!AppInput.toolAcceptsPointer(event.kind)) {
+      return;
+    }
+    _pointersHoldingAim.add(event.pointer);
+  }
+
+  /// A pointer's contact ended. For a pointer that reports its own exit,
+  /// that means nothing — a mouse is still on the glass after a click,
+  /// and forgetting here would blank its cursor until it moved again.
+  /// For every other kind the contact WAS the presence.
+  void _endCanvasPointer(PointerEvent event) {
+    // ⛔A pointer that may not WRITE the census may not erase it either —
+    // and MEMBERSHIP is how we know that, not a fresh look at the setting.
+    //
+    // [AppInput.toolAcceptsPointer] reads the LIVE one-finger slot, so
+    // re-asking it here puts a question about the PAST to a value that
+    // can have moved since. Change the slot while a finger is down and
+    // its id never leaves this set, which makes the clear below
+    // unreachable for the life of the panel — D34 back, and silently.
+    // The mirror order is no better: a finger that was never admitted
+    // becomes acceptable on the way out and deletes the ring a hovering
+    // pen owns.
+    //
+    // The set was written at DOWN, when the question was actually being
+    // asked, so a navigating finger is simply not in it and the
+    // standdown holds by construction.
+    if (!_pointersHoldingAim.remove(event.pointer)) {
+      return;
+    }
+    if (AppInput.pointerReportsItsOwnExit(event.kind)) {
+      return;
+    }
+    if (_aimIsHeld) {
+      return;
+    }
+    _forgetCanvasPointer();
   }
 
   /// The census records a pointer only if that pointer could DRIVE a tool.
@@ -1669,7 +1747,23 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                     opaque: false,
                                     hitTestBehavior:
                                         HitTestBehavior.translucent,
-                                    onExit: (_) => _forgetCanvasPointer(),
+                                    onEnter: (event) =>
+                                        _hoverDevicesInside.add(event.device),
+                                    onExit: (event) {
+                                      // A departing device releases its OWN
+                                      // hold only. It may not decide the aim
+                                      // is nobody's while a second hoverer
+                                      // or a pressed pointer still has it.
+                                      if (!_hoverDevicesInside.remove(
+                                        event.device,
+                                      )) {
+                                        return;
+                                      }
+                                      if (_aimIsHeld) {
+                                        return;
+                                      }
+                                      _forgetCanvasPointer();
+                                    },
                                     child: Listener(
                                       behavior: HitTestBehavior.translucent,
                                       onPointerHover: (event) =>
@@ -1677,17 +1771,30 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                             event.localPosition,
                                             kind: event.kind,
                                           ),
-                                      onPointerDown: (event) =>
-                                          _noteCanvasPointer(
-                                            event.localPosition,
-                                            kind: event.kind,
-                                            sample: false,
-                                          ),
+                                      onPointerDown: (event) {
+                                        _beginCanvasPointer(event);
+                                        _noteCanvasPointer(
+                                          event.localPosition,
+                                          kind: event.kind,
+                                          sample: false,
+                                        );
+                                      },
                                       onPointerMove: (event) =>
                                           _noteCanvasPointer(
                                             event.localPosition,
                                             kind: event.kind,
                                           ),
+                                      // …and the exit above is the whole
+                                      // story ONLY for pointers Flutter
+                                      // reports an exit for. A finger, a
+                                      // pen TAIL or an `unknown` device
+                                      // writes through this same census
+                                      // and then leaves without a word, so
+                                      // the ring stayed where the hand had
+                                      // been — for ever. For those, the
+                                      // contact ending IS the exit.
+                                      onPointerUp: _endCanvasPointer,
+                                      onPointerCancel: _endCanvasPointer,
                                       child:
                                           // 🐛The FILL cursor was missing from this
                                           // list, and the omission is not cosmetic:

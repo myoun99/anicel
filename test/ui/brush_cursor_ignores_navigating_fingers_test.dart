@@ -120,6 +120,185 @@ void main() {
 
     await finger.up();
     await tester.pump();
+
+    expect(
+      cursor,
+      findsOneWidget,
+      reason: 'and it may not DELETE that aim on the way out either — a '
+          'pointer the census refuses to write from is a pointer with '
+          'nothing here to erase',
+    );
+    expect(tester.getTopLeft(cursor), aimed);
+
+    // The same on the cancel path, which is how a navigating gesture
+    // usually ends once the pan recognizer claims it.
+    final second = await tester.createGesture(kind: PointerDeviceKind.touch);
+    await second.down(canvasGlobalOffset(tester, const Offset(60, 60)));
+    await tester.pump();
+    await second.cancel();
+    await tester.pump();
+    expect(cursor, findsOneWidget);
+    expect(tester.getTopLeft(cursor), aimed);
+  });
+
+  testWidgets('a finger\'s lift leaves the ring a HOVERING pen owns — '
+      'presence is presence however it is held', (tester) async {
+    useOneFingerSlot(CanvasTouchDragAction.draw);
+    await pumpPanel(tester);
+
+    // A drawing finger takes the aim, then the PEN moves last, so the
+    // ring standing there is the pen's true current position.
+    final finger = await tester.createGesture(kind: PointerDeviceKind.touch);
+    await finger.down(canvasGlobalOffset(tester, const Offset(150, 130)));
+    await tester.pump();
+
+    final pen = await tester.createGesture(kind: PointerDeviceKind.stylus);
+    await pen.addPointer(location: Offset.zero);
+    addTearDown(pen.removePointer);
+    await pen.moveTo(canvasGlobalOffset(tester, const Offset(40, 40)));
+    await tester.pump();
+    final penAim = tester.getTopLeft(cursor);
+
+    await finger.up();
+    await tester.pump();
+
+    expect(
+      cursor,
+      findsOneWidget,
+      reason: 'the pen has not exited and nobody asked for its aim to go — '
+          'a hovering device is a holder the down-set cannot represent',
+    );
+    expect(tester.getTopLeft(cursor), penAim);
+  });
+
+  testWidgets('TWO hovering devices each hold their own: one leaving does '
+      'not hand the other\'s ring to the next finger lift', (tester) async {
+    useOneFingerSlot(CanvasTouchDragAction.draw);
+    await pumpPanel(tester);
+
+    // A mouse and a pen are both on the glass (a 2-in-1, or an iPad with
+    // a mouse and the pen picked up).
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    await mouse.moveTo(canvasGlobalOffset(tester, const Offset(20, 20)));
+    await tester.pump();
+
+    final pen = await tester.createGesture(kind: PointerDeviceKind.stylus);
+    await pen.addPointer(location: Offset.zero);
+    await pen.moveTo(canvasGlobalOffset(tester, const Offset(90, 90)));
+    await tester.pump();
+
+    // The pen leaves entirely; the mouse is still here and aims.
+    await pen.moveTo(const Offset(-500, -500));
+    await pen.removePointer();
+    await tester.pump();
+    await mouse.moveTo(canvasGlobalOffset(tester, const Offset(24, 24)));
+    await tester.pump();
+    expect(cursor, findsOneWidget);
+    final mouseAim = tester.getTopLeft(cursor);
+
+    // A finger comes and goes. The mouse never left, so its aim stays.
+    for (var i = 0; i < 2; i += 1) {
+      final finger = await tester.createGesture(
+        kind: PointerDeviceKind.touch,
+      );
+      await finger.down(canvasGlobalOffset(tester, const Offset(150, 130)));
+      await tester.pump();
+      await finger.up();
+      await tester.pump();
+
+      expect(
+        cursor,
+        findsOneWidget,
+        reason: 'lift $i: the pen\'s exit released the PEN\'s hold, not the '
+            'mouse\'s — one flag for a per-device fact handed the mouse\'s '
+            'ring to every finger that followed, and it vanished',
+      );
+
+      // The drawing finger legitimately took the aim while it was down,
+      // so the ring stands where it left it until the mouse moves again.
+      // What matters is that the mouse's presence keeps it ALIVE.
+      await mouse.moveTo(canvasGlobalOffset(tester, const Offset(24, 24)));
+      await tester.pump();
+      expect(tester.getTopLeft(cursor), mouseAim);
+    }
+  });
+
+  testWidgets('changing the one-finger slot WHILE a finger is down leaves '
+      'the census intact — membership is the record, not a fresh look at '
+      'a live setting', (tester) async {
+    useOneFingerSlot(CanvasTouchDragAction.draw);
+    await pumpPanel(tester);
+
+    // A drawing finger goes down, then the user turns finger-drawing off
+    // with the other hand while it is still resting on the glass.
+    final finger = await tester.createGesture(kind: PointerDeviceKind.touch);
+    await finger.down(canvasGlobalOffset(tester, const Offset(20, 20)));
+    await tester.pump();
+    expect(cursor, findsOneWidget);
+
+    useOneFingerSlot(CanvasTouchDragAction.flip);
+    await tester.pump();
+    await finger.up();
+    await tester.pump();
+
+    expect(
+      cursor,
+      findsNothing,
+      reason: 'the finger was admitted at DOWN, so its lift still ends its '
+          'span — re-asking the live setting here would strand this ring',
+    );
+
+    // …and the census is not poisoned: the NEXT finger still clears.
+    useOneFingerSlot(CanvasTouchDragAction.draw);
+    await tester.pump();
+    final next = await tester.createGesture(kind: PointerDeviceKind.touch);
+    await next.down(canvasGlobalOffset(tester, const Offset(50, 50)));
+    await tester.pump();
+    expect(cursor, findsOneWidget);
+    await next.up();
+    await tester.pump();
+    expect(
+      cursor,
+      findsNothing,
+      reason: 'a stranded id would have made this unreachable for the rest '
+          'of the session — D34 back, and silently',
+    );
+  });
+
+  testWidgets('one finger lifting does not blank the ring another finger '
+      'is still drawing with', (tester) async {
+    useOneFingerSlot(CanvasTouchDragAction.draw);
+    await pumpPanel(tester);
+
+    final drawing = await tester.createGesture(kind: PointerDeviceKind.touch);
+    await drawing.down(canvasGlobalOffset(tester, const Offset(20, 20)));
+    await tester.pump();
+    expect(cursor, findsOneWidget);
+    final aimed = tester.getTopLeft(cursor);
+
+    final other = await tester.createGesture(kind: PointerDeviceKind.touch);
+    await other.down(canvasGlobalOffset(tester, const Offset(120, 100)));
+    await tester.pump();
+    await other.up();
+    await tester.pump();
+
+    expect(
+      cursor,
+      findsOneWidget,
+      reason: 'a press is a SPAN and they overlap — the aim belongs to the '
+          'span, so it survives until the LAST holder lifts',
+    );
+
+    await drawing.up();
+    await tester.pump();
+    expect(
+      cursor,
+      findsNothing,
+      reason: 'and it does go when that last one lifts',
+    );
+    expect(aimed, isNotNull);
   });
 
   // The other side of the same law: where a finger IS the drawing device,
@@ -146,5 +325,45 @@ void main() {
 
     await finger.up();
     await tester.pump();
+
+    expect(
+      cursor,
+      findsNothing,
+      reason: 'and the aim goes with the finger. Flutter delivers a region '
+          'exit only for mouse and stylus, so the exit that clears this '
+          'never runs for a finger — the ring stayed at the last touched '
+          'point for the rest of the session (D34)',
+    );
+  });
+
+  // ⚠️NOT a touch-only bug, and this half needs no setting at all: the pen
+  // TAIL reports as invertedStylus, which every tool accepts, and Flutter
+  // delivers no exit for it either.
+  testWidgets('the pen TAIL leaves no ring behind either — invertedStylus '
+      'and unknown get no exit from Flutter, at product defaults', (
+    tester,
+  ) async {
+    for (final kind in [
+      PointerDeviceKind.invertedStylus,
+      PointerDeviceKind.unknown,
+    ]) {
+      await pumpPanel(tester);
+
+      final pointer = await tester.createGesture(kind: kind);
+      await pointer.down(canvasGlobalOffset(tester, const Offset(30, 30)));
+      await tester.pump();
+      await pointer.moveTo(canvasGlobalOffset(tester, const Offset(90, 70)));
+      await tester.pump();
+      expect(cursor, findsOneWidget, reason: '$kind aims a tool');
+
+      await pointer.up();
+      await tester.pump();
+      expect(
+        cursor,
+        findsNothing,
+        reason: '$kind: the contact ending IS its exit — nothing else is '
+            'ever coming',
+      );
+    }
   });
 }

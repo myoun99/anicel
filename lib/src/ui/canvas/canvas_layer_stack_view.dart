@@ -291,6 +291,58 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   bool _preparing = false;
   bool _rerunRequested = false;
 
+  /// Cels whose image could not be built, and the revision it failed at.
+  ///
+  /// Skipping the failure but FORGETTING it re-kicked the same broken
+  /// build on every rebuild — for a file-backed cel whose bytes are
+  /// unreachable that is a blocking open + throw per layer per sweep,
+  /// which is a hot loop on an old tablet where master paid it once and
+  /// then stopped drawing. The next CONTENT change (a new revision)
+  /// retries; the failure itself is reported rather than swallowed. Same
+  /// shape as the storyboard thumbnail store's, for the same reason.
+  /// ⚠️A NULLABLE value on purpose. A cel can fail before it has any
+  /// frame state at all, and recording nothing then would leave the retry
+  /// exactly as hot as it was: `null == null` keeps it skipped, and the
+  /// moment a revision appears the mismatch retries it.
+  final Map<BrushFrameKey, (int, int?)> _failedRevisions = {};
+
+  /// What a failure is recorded AGAINST: the store's whole-content
+  /// generation, then the cel's own revision.
+  ///
+  /// ⚠️The generation is not decoration. A cel the FILESYSTEM refused
+  /// does not change when the file comes back, so keying a non-content
+  /// failure on a content revision alone would have left that row blank
+  /// for ever with nothing the user could do. The generation bumps on a
+  /// project OPEN — the one moment such a cel can plausibly have become
+  /// readable — so reopening is a real recovery instead of a ritual.
+  (int, int?) _failureKeyFor(BrushFrameKey key) => (
+    widget.imageCache.frameStore.celContentRevision.value,
+    widget.imageCache.frameStore.frameOrNull(key)?.sourceRevision,
+  );
+
+  bool _shouldSkipFailed(BrushFrameKey key) =>
+      _failedRevisions.containsKey(key) &&
+      _failedRevisions[key] == _failureKeyFor(key);
+
+  void _noteFailure(
+    BrushFrameKey key,
+    Object error,
+    StackTrace stack,
+    String where,
+  ) {
+    _failedRevisions[key] = _failureKeyFor(key);
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'canvas layer stack',
+        context: ErrorDescription(
+          'building the layer image for cel ${key.frameId.value} ($where)',
+        ),
+      ),
+    );
+  }
+
   /// The FIRST-ACTIVATION stand-in (device report 2026-08-17): activation
   /// promotes a file-backed cel to a surface of all-fresh tile objects,
   /// [BitmapTileImageCache] keys images by tile identity so it has none of
@@ -482,16 +534,39 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         _dropImage(key, _images.remove(key)!);
       }
     }
+    // A row that left the stack takes its failure record with it — the
+    // note exists to stop a per-rebuild retry, not to remember cels this
+    // stack no longer shows.
+    _failedRevisions.removeWhere((key, _) => !wanted.contains(key));
     for (final layer in widget.layers) {
       // Valid cache image, or a synchronous per-tile compose (the just-
       // deactivated layer's on-screen tiles are already decoded) — either
       // way the artwork paints THIS frame; only true cold misses fall to
       // the async pass.
-      final image = widget.imageCache.prepareSyncOrNull(
-        key: layer.frameKey,
-        canvasSize: widget.canvasSize,
-        quality: PlaybackQuality.full,
-      );
+      // 🚨Same law as the async pass — and this walk runs FIRST, so
+      // without it the guard down there never gets its turn: the throw
+      // lands here instead, out of a build/layout callback, and every
+      // later layer in THIS sweep is skipped with it. One row's
+      // unreachable cel is one row's.
+      if (_shouldSkipFailed(layer.frameKey)) {
+        continue;
+      }
+      final LayerFrameImage? image;
+      try {
+        image = widget.imageCache.prepareSyncOrNull(
+          key: layer.frameKey,
+          canvasSize: widget.canvasSize,
+          quality: PlaybackQuality.full,
+        );
+      } catch (error, stack) {
+        _noteFailure(layer.frameKey, error, stack, 'sync sweep');
+        continue;
+      }
+      // The note means "the LAST attempt failed", not "one once did".
+      // Left standing it outlives the failure, and a project open reseeds
+      // every frame back to revision 1 — which makes an old note match
+      // again and skips a cel that builds perfectly well.
+      _failedRevisions.remove(layer.frameKey);
       if (image == null) {
         continue;
       }
@@ -523,11 +598,37 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         final wanted = <BrushFrameKey>{};
         for (final layer in List.of(widget.layers)) {
           wanted.add(layer.frameKey);
-          final image = await widget.imageCache.prepare(
-            key: layer.frameKey,
-            canvasSize: widget.canvasSize,
-            quality: PlaybackQuality.full,
-          );
+          // 🚨ONE ROW'S FAILURE IS ONE ROW'S. This walk is serial and the
+          // future it runs in is nobody's to await, so a throw here used
+          // to abandon the whole pass: every LATER layer's prepare was
+          // never called, and nothing said so. What the user sees is a
+          // stack where the first rows are drawn and the rest are blank
+          // until something happens to rebuild past the bad one — and
+          // which rows those are moves with the walk order.
+          //
+          // The prepare reaches STORAGE: a file-backed cel whose .anicel
+          // has moved throws from inside this call. That is a reason for
+          // one row to be missing, never a reason to stop drawing the
+          // others.
+          if (_shouldSkipFailed(layer.frameKey)) {
+            continue;
+          }
+          final LayerFrameImage? image;
+          try {
+            image = await widget.imageCache.prepare(
+              key: layer.frameKey,
+              canvasSize: widget.canvasSize,
+              quality: PlaybackQuality.full,
+            );
+          } catch (error, stack) {
+            if (!mounted) {
+              return;
+            }
+            _noteFailure(layer.frameKey, error, stack, 'async pass');
+            continue;
+          }
+          // Same as the sync twin: a success retires the note.
+          _failedRevisions.remove(layer.frameKey);
           if (!mounted) {
             return;
           }

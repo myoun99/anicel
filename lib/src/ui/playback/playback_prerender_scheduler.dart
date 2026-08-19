@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 
@@ -6,6 +7,7 @@ import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/cut_warm_extent.dart';
 import '../../models/playback_quality.dart';
+import '../../services/playback/cut_frame_composite_signature.dart';
 import '../dev_profile.dart';
 import 'cut_frame_composite_cache.dart';
 
@@ -56,6 +58,35 @@ class PlaybackPrerenderScheduler {
   final void Function()? afterFrameCached;
 
   final Duration idleDelay;
+
+  /// Frames whose composite threw, and the content signature they threw
+  /// at — the warm queue's half of the layer stack's `_failedRevisions`.
+  ///
+  /// A throwing compose caches nothing, so `alreadyValid` can never come
+  /// true for that frame; and the whole queue is rebuilt shortly after
+  /// every stroke. Without this, one unreachable cel is re-opened,
+  /// re-thrown and re-reported once per queued frame, on every stroke,
+  /// for the life of the session — a blocking file open each time, which
+  /// is the hot loop the sibling record exists to stop. The signature
+  /// comes from the composite cache so "has this frame changed" stays
+  /// one rule rather than two.
+  final Map<(CutId, int, PlaybackQuality), CutFrameCompositeSignature>
+  _failedSignatures = {};
+
+  /// The store generation those records belong to. A project OPEN bumps
+  /// it — the one moment a cel the filesystem refused can have become
+  /// readable — and dropping the map there is also what stops it growing
+  /// for the life of the session.
+  int _failedSignaturesGeneration = 0;
+
+  void _forgetStaleFailures() {
+    final generation = composites.frameStore.celContentRevision.value;
+    if (generation == _failedSignaturesGeneration) {
+      return;
+    }
+    _failedSignaturesGeneration = generation;
+    _failedSignatures.clear();
+  }
 
   final ValueNotifier<PrerenderProgress> _progress = ValueNotifier(
     PrerenderProgress.none,
@@ -222,6 +253,7 @@ class PlaybackPrerenderScheduler {
     List<(CutId, int)> queue,
     PlaybackQuality quality,
   ) async {
+    _forgetStaleFailures();
     var cached = 0;
     for (final (cutId, frameIndex) in queue) {
       // Retry loop: an input-interrupted composite is NOT skipped — the
@@ -245,13 +277,60 @@ class PlaybackPrerenderScheduler {
         if (alreadyValid) {
           break;
         }
-        final watch = brushLabProfile ? (Stopwatch()..start()) : null;
-        final image = await composites.prepareCompositeInterruptible(
+        final indexKey = (cutId, frameIndex, quality);
+        final signature = composites.signatureOf(
           cut: cut,
           frameIndex: frameIndex,
           quality: quality,
-          shouldAbort: () => _isStale(generation) || !_isQuietNow(),
         );
+        if (_failedSignatures[indexKey] == signature) {
+          // This exact content already threw. Nothing about it changed,
+          // and the open blocks — so do not pay it again just because a
+          // stroke rebuilt the queue.
+          break;
+        }
+        final watch = brushLabProfile ? (Stopwatch()..start()) : null;
+        // 🚨ONE FRAME'S FAILURE IS ONE FRAME'S. The composite reads cel
+        // STORAGE, so a cel whose bytes are unreachable throws from in
+        // here — and this future is nobody's to await, so a throw used to
+        // abandon the whole queue: progress froze where it stopped and
+        // every later frame was never warmed. Give up on the frame, keep
+        // the queue.
+        final ui.Image? image;
+        try {
+          image = await composites.prepareCompositeInterruptible(
+            cut: cut,
+            frameIndex: frameIndex,
+            quality: quality,
+            shouldAbort: () => _isStale(generation) || !_isQuietNow(),
+          );
+        } catch (error, stack) {
+          _failedSignatures[indexKey] = signature;
+          // Skipping the frame is right; hiding WHY is not. The failure
+          // reaches the framework's error channel rather than vanishing,
+          // so a permanently unreachable cel is diagnosable instead of
+          // showing up only as a queue that never finishes warming. The
+          // record above is what keeps that report to once per content
+          // state instead of once per stroke.
+          FlutterError.reportError(
+            FlutterErrorDetails(
+              exception: error,
+              stack: stack,
+              library: 'playback prerender',
+              context: ErrorDescription(
+                'warming cut ${cutId.value} frame $frameIndex',
+              ),
+            ),
+          );
+          // Every other post-await exit in this loop re-checks staleness
+          // before it lets the caller touch `_progress`; skipping it here
+          // would let a cancelled or disposed run write its bar back over
+          // a live one.
+          if (_isStale(generation)) {
+            return;
+          }
+          break;
+        }
         if (watch != null) {
           // ignore: avoid_print — BRUSH_LAB_PROFILE-armed builds only.
           print(
