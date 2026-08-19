@@ -160,26 +160,29 @@ void main() {
       ),
     );
 
+    // The cel exists at revision 1 when it fails, so the note is written
+    // against a revision the store can hand out AGAIN.
+    cache.frameStore.getOrCreateFrame(_key('flaky'));
     await tester.pumpWidget(host());
     await tester.pump();
     final afterFailure = cache.syncAttempts.length;
 
-    // A CONTENT change is what earns a retry — that is the whole contract
-    // of the skip list. Whatever was wrong is fixed, and the cel is
-    // edited, so its revision moves off the one that failed.
+    // A CONTENT change earns the retry — that is the skip list's whole
+    // contract — and this one succeeds.
     cache.failing.clear();
     cache.frameStore.markCelEdited(_key('flaky'));
     await tester.pumpWidget(host());
     await tester.pump();
     final afterHeal = cache.syncAttempts.length;
 
-    // …and because that attempt SUCCEEDED, the note is gone rather than
-    // sitting on a revision the store can hand out again — a project open
-    // reseeds every frame back to revision 1.
-    cache.frameStore.markCelEdited(_key('flaky'));
+    // Now a project OPEN: every frame is reseeded back to revision 1. A
+    // note left standing from the old revision-1 failure would match this
+    // fresh revision 1 and skip a cel that builds perfectly well.
+    cache.frameStore.restoreBaked({});
+    cache.frameStore.getOrCreateFrame(_key('flaky'));
     await tester.pumpWidget(host());
     await tester.pump();
-    final afterRetry = cache.syncAttempts.length;
+    final afterReopen = cache.syncAttempts.length;
 
     FlutterError.onError = previous;
 
@@ -190,9 +193,11 @@ void main() {
       reason: 'a content change retries a cel the skip list was holding',
     );
     expect(
-      afterRetry,
+      afterReopen,
       greaterThan(afterHeal),
-      reason: 'and a healed cel does not stay on that list',
+      reason: 'the success retired the note — otherwise the reseed to '
+          'revision 1 makes the old failure matchable again and the row '
+          'is skipped for a reason that no longer exists',
     );
   });
 }
