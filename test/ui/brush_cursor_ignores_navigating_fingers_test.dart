@@ -141,6 +141,48 @@ void main() {
     expect(tester.getTopLeft(cursor), aimed);
   });
 
+  testWidgets('changing the one-finger slot WHILE a finger is down leaves '
+      'the census intact — membership is the record, not a fresh look at '
+      'a live setting', (tester) async {
+    useOneFingerSlot(CanvasTouchDragAction.draw);
+    await pumpPanel(tester);
+
+    // A drawing finger goes down, then the user turns finger-drawing off
+    // with the other hand while it is still resting on the glass.
+    final finger = await tester.createGesture(kind: PointerDeviceKind.touch);
+    await finger.down(canvasGlobalOffset(tester, const Offset(20, 20)));
+    await tester.pump();
+    expect(cursor, findsOneWidget);
+
+    useOneFingerSlot(CanvasTouchDragAction.flip);
+    await tester.pump();
+    await finger.up();
+    await tester.pump();
+
+    expect(
+      cursor,
+      findsNothing,
+      reason: 'the finger was admitted at DOWN, so its lift still ends its '
+          'span — re-asking the live setting here would strand this ring',
+    );
+
+    // …and the census is not poisoned: the NEXT finger still clears.
+    useOneFingerSlot(CanvasTouchDragAction.draw);
+    await tester.pump();
+    final next = await tester.createGesture(kind: PointerDeviceKind.touch);
+    await next.down(canvasGlobalOffset(tester, const Offset(50, 50)));
+    await tester.pump();
+    expect(cursor, findsOneWidget);
+    await next.up();
+    await tester.pump();
+    expect(
+      cursor,
+      findsNothing,
+      reason: 'a stranded id would have made this unreachable for the rest '
+          'of the session — D34 back, and silently',
+    );
+  });
+
   testWidgets('one finger lifting does not blank the ring another finger '
       'is still drawing with', (tester) async {
     useOneFingerSlot(CanvasTouchDragAction.draw);

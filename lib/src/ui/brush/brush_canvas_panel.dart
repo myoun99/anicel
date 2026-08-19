@@ -862,15 +862,24 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// and forgetting here would blank its cursor until it moved again.
   /// For every other kind the contact WAS the presence.
   void _endCanvasPointer(PointerEvent event) {
-    // ⛔A pointer that may not WRITE the census may not erase it either.
-    // The write asks [AppInput.toolAcceptsPointer]; asking anything else
-    // here let a NAVIGATING finger — the product default, one-finger slot
-    // on flip — delete the ring the PEN was holding, mid-stroke included
-    // when a palm happened to lift.
-    if (!AppInput.toolAcceptsPointer(event.kind)) {
+    // ⛔A pointer that may not WRITE the census may not erase it either —
+    // and MEMBERSHIP is how we know that, not a fresh look at the setting.
+    //
+    // [AppInput.toolAcceptsPointer] reads the LIVE one-finger slot, so
+    // re-asking it here puts a question about the PAST to a value that
+    // can have moved since. Change the slot while a finger is down and
+    // its id never leaves this set, which makes the clear below
+    // unreachable for the life of the panel — D34 back, and silently.
+    // The mirror order is no better: a finger that was never admitted
+    // becomes acceptable on the way out and deletes the ring a hovering
+    // pen owns.
+    //
+    // The set was written at DOWN, when the question was actually being
+    // asked, so a navigating finger is simply not in it and the
+    // standdown holds by construction.
+    if (!_pointersHoldingAim.remove(event.pointer)) {
       return;
     }
-    _pointersHoldingAim.remove(event.pointer);
     if (AppInput.pointerReportsItsOwnExit(event.kind)) {
       return;
     }

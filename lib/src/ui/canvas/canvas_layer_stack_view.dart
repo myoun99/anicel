@@ -487,11 +487,21 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       // deactivated layer's on-screen tiles are already decoded) — either
       // way the artwork paints THIS frame; only true cold misses fall to
       // the async pass.
-      final image = widget.imageCache.prepareSyncOrNull(
-        key: layer.frameKey,
-        canvasSize: widget.canvasSize,
-        quality: PlaybackQuality.full,
-      );
+      // 🚨Same law as the async pass — and this walk runs FIRST, so
+      // without it the guard down there never gets its turn: the throw
+      // lands here instead, out of a build/layout callback, and every
+      // later layer in THIS sweep is skipped with it. One row's
+      // unreachable cel is one row's.
+      final LayerFrameImage? image;
+      try {
+        image = widget.imageCache.prepareSyncOrNull(
+          key: layer.frameKey,
+          canvasSize: widget.canvasSize,
+          quality: PlaybackQuality.full,
+        );
+      } catch (_) {
+        continue;
+      }
       if (image == null) {
         continue;
       }
