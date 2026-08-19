@@ -523,11 +523,31 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         final wanted = <BrushFrameKey>{};
         for (final layer in List.of(widget.layers)) {
           wanted.add(layer.frameKey);
-          final image = await widget.imageCache.prepare(
-            key: layer.frameKey,
-            canvasSize: widget.canvasSize,
-            quality: PlaybackQuality.full,
-          );
+          // 🚨ONE ROW'S FAILURE IS ONE ROW'S. This walk is serial and the
+          // future it runs in is nobody's to await, so a throw here used
+          // to abandon the whole pass: every LATER layer's prepare was
+          // never called, and nothing said so. What the user sees is a
+          // stack where the first rows are drawn and the rest are blank
+          // until something happens to rebuild past the bad one — and
+          // which rows those are moves with the walk order.
+          //
+          // The prepare reaches STORAGE: a file-backed cel whose .anicel
+          // has moved throws from inside this call. That is a reason for
+          // one row to be missing, never a reason to stop drawing the
+          // others.
+          final LayerFrameImage? image;
+          try {
+            image = await widget.imageCache.prepare(
+              key: layer.frameKey,
+              canvasSize: widget.canvasSize,
+              quality: PlaybackQuality.full,
+            );
+          } catch (_) {
+            if (!mounted) {
+              return;
+            }
+            continue;
+          }
           if (!mounted) {
             return;
           }

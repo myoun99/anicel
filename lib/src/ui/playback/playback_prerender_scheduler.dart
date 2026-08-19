@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 
@@ -246,12 +247,23 @@ class PlaybackPrerenderScheduler {
           break;
         }
         final watch = brushLabProfile ? (Stopwatch()..start()) : null;
-        final image = await composites.prepareCompositeInterruptible(
-          cut: cut,
-          frameIndex: frameIndex,
-          quality: quality,
-          shouldAbort: () => _isStale(generation) || !_isQuietNow(),
-        );
+        // 🚨ONE FRAME'S FAILURE IS ONE FRAME'S. The composite reads cel
+        // STORAGE, so a cel whose bytes are unreachable throws from in
+        // here — and this future is nobody's to await, so a throw used to
+        // abandon the whole queue: progress froze where it stopped and
+        // every later frame was never warmed. Give up on the frame, keep
+        // the queue.
+        final ui.Image? image;
+        try {
+          image = await composites.prepareCompositeInterruptible(
+            cut: cut,
+            frameIndex: frameIndex,
+            quality: quality,
+            shouldAbort: () => _isStale(generation) || !_isQuietNow(),
+          );
+        } catch (_) {
+          break;
+        }
         if (watch != null) {
           // ignore: avoid_print — BRUSH_LAB_PROFILE-armed builds only.
           print(

@@ -105,6 +105,47 @@ void main() {
     );
   });
 
+  test('a cel whose pixels are recorded at ANOTHER canvas size does not '
+      'cache its blank stand-in as VALID — a valid cache is what stops '
+      'anyone looking again, so the row stayed blank all session (D10)', () {
+    final c = coordinator();
+    c.commitSourceStroke(sourceDabs: [_dab(3, 3, 0)]);
+    expect(
+      c.frameStore.celHasRenderableContent(key),
+      isTrue,
+      reason: 'sanity: this cel really does hold pixels',
+    );
+
+    // The stack asks for that same cel at a DIFFERENT canvas size — the
+    // shape an un-healed resize or a stale 겸용 sibling leaves behind.
+    final cache = BrushFrameDisplayCacheService(
+      frameStore: c.frameStore,
+      canvasSize: const CanvasSize(width: 32, height: 32),
+      tileSize: 4,
+    ).prepareFramePreview(key);
+
+    expect(
+      cache.isValid,
+      isFalse,
+      reason: 'the miss must not be banked as the answer',
+    );
+    expect(
+      cache.previewSurface.tiles,
+      isEmpty,
+      reason: 'it still paints nothing this frame — the fix is about what '
+          'gets REMEMBERED, not about conjuring pixels',
+    );
+    // And the good cache is still the good cache: the blank must not have
+    // clobbered the one the artwork's own canvas size depends on.
+    final stored = c.frameStore.displayCacheOrNull(key);
+    expect(stored?.previewSurface.canvasSize, canvasSize);
+    expect(
+      stored?.previewSurface.tiles,
+      isNotEmpty,
+      reason: 'the 16x16 consumers keep their pixels',
+    );
+  });
+
   test('valid preview is reused', () {
     final c = coordinator();
     final service = serviceFor(c.frameStore);
