@@ -96,28 +96,45 @@ void main() {
     tester.view.physicalSize = const Size(2000, 1250);
     addTearDown(tester.view.reset);
 
-    final seen = <double>[];
+    _RatioReader.seen.clear();
+    addTearDown(_RatioReader.seen.clear);
+
+    // ⛔The reader is a CONST instance reused across both pumps, and that
+    // is the whole test. Building it inline rebuilds it because its
+    // PARENT rebuilt, so the inherited dependency is never exercised and
+    // the pin passes with `updateShouldNotify => false` — it did, on the
+    // first draft. Identical widget means the only path left to a rebuild
+    // is the dependency itself.
+    const reader = _RatioReader();
     Widget build(double uiScale) => MediaQuery(
       data: MediaQueryData.fromView(
         WidgetsBinding.instance.platformDispatcher.views.first,
       ),
-      child: EffectiveDevicePixelRatioScope(
-        uiScale: uiScale,
-        child: Builder(
-          builder: (context) {
-            seen.add(EffectiveDevicePixelRatio.of(context));
-            return const SizedBox();
-          },
-        ),
-      ),
+      child: EffectiveDevicePixelRatioScope(uiScale: uiScale, child: reader),
     );
 
     await tester.pumpWidget(build(1.0));
+    expect(_RatioReader.seen, [closeTo(1.25, 1e-9)]);
+
     await tester.pumpWidget(build(0.8));
 
     // Without `updateShouldNotify` comparing the ratio, the dependent
-    // would keep painting on the old grid after a scale change.
-    expect(seen.first, closeTo(1.25, 1e-9));
-    expect(seen.last, closeTo(1.0, 1e-9));
+    // keeps painting on the old grid after a scale change.
+    expect(_RatioReader.seen.length, 2, reason: 'the reader must rebuild');
+    expect(_RatioReader.seen.last, closeTo(1.0, 1e-9));
   });
+}
+
+/// A dependent that can only be rebuilt through the inherited dependency:
+/// tests hold ONE const instance and hand it to both pumps.
+class _RatioReader extends StatelessWidget {
+  const _RatioReader();
+
+  static final List<double> seen = <double>[];
+
+  @override
+  Widget build(BuildContext context) {
+    seen.add(EffectiveDevicePixelRatio.of(context));
+    return const SizedBox();
+  }
 }
