@@ -109,6 +109,19 @@ class CutFrameCompositeCache {
     );
   }
 
+  /// This frame's content signature — what a cached composite is keyed by.
+  ///
+  /// Exposed for callers that must remember something ABOUT a frame
+  /// across content changes without holding an image: the warm queue's
+  /// failure record needs to know when a frame it could not build has
+  /// actually changed, and re-deriving that rule outside this class is
+  /// how the two would drift.
+  CutFrameCompositeSignature signatureOf({
+    required Cut cut,
+    required int frameIndex,
+    required PlaybackQuality quality,
+  }) => _signatureFor(cut, frameIndex, quality);
+
   /// The cached composite when its stored signature still matches the cut's
   /// current state; `null` on miss or staleness.
   ///

@@ -835,6 +835,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// Without this the seeding below would draw a tool cursor at the last
   /// place the pointer WAS, after it had left.
   void _forgetCanvasPointer() {
+    // The census's up/cancel arrive along the hit-test path cached at
+    // DOWN, and Flutter keeps delivering them after this subtree
+    // detaches — so an unmount mid-press lands here with both notifiers
+    // already disposed. Guarded at the WRITER rather than per caller:
+    // every route in writes the same two, including any added later.
+    if (!mounted) {
+      return;
+    }
     _lastCanvasPointer = null;
     _toolCursorHover.value = null;
     _eyedropperHover.value = null;

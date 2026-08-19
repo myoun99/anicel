@@ -7,6 +7,7 @@ import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/cut_warm_extent.dart';
 import '../../models/playback_quality.dart';
+import '../../services/playback/cut_frame_composite_signature.dart';
 import '../dev_profile.dart';
 import 'cut_frame_composite_cache.dart';
 
@@ -57,6 +58,20 @@ class PlaybackPrerenderScheduler {
   final void Function()? afterFrameCached;
 
   final Duration idleDelay;
+
+  /// Frames whose composite threw, and the content signature they threw
+  /// at — the warm queue's half of the layer stack's `_failedRevisions`.
+  ///
+  /// A throwing compose caches nothing, so `alreadyValid` can never come
+  /// true for that frame; and the whole queue is rebuilt shortly after
+  /// every stroke. Without this, one unreachable cel is re-opened,
+  /// re-thrown and re-reported once per queued frame, on every stroke,
+  /// for the life of the session — a blocking file open each time, which
+  /// is the hot loop the sibling record exists to stop. The signature
+  /// comes from the composite cache so "has this frame changed" stays
+  /// one rule rather than two.
+  final Map<(CutId, int, PlaybackQuality), CutFrameCompositeSignature>
+  _failedSignatures = {};
 
   final ValueNotifier<PrerenderProgress> _progress = ValueNotifier(
     PrerenderProgress.none,
@@ -246,6 +261,18 @@ class PlaybackPrerenderScheduler {
         if (alreadyValid) {
           break;
         }
+        final indexKey = (cutId, frameIndex, quality);
+        final signature = composites.signatureOf(
+          cut: cut,
+          frameIndex: frameIndex,
+          quality: quality,
+        );
+        if (_failedSignatures[indexKey] == signature) {
+          // This exact content already threw. Nothing about it changed,
+          // and the open blocks — so do not pay it again just because a
+          // stroke rebuilt the queue.
+          break;
+        }
         final watch = brushLabProfile ? (Stopwatch()..start()) : null;
         // 🚨ONE FRAME'S FAILURE IS ONE FRAME'S. The composite reads cel
         // STORAGE, so a cel whose bytes are unreachable throws from in
@@ -262,10 +289,13 @@ class PlaybackPrerenderScheduler {
             shouldAbort: () => _isStale(generation) || !_isQuietNow(),
           );
         } catch (error, stack) {
+          _failedSignatures[indexKey] = signature;
           // Skipping the frame is right; hiding WHY is not. The failure
           // reaches the framework's error channel rather than vanishing,
           // so a permanently unreachable cel is diagnosable instead of
-          // showing up only as a queue that never finishes warming.
+          // showing up only as a queue that never finishes warming. The
+          // record above is what keeps that report to once per content
+          // state instead of once per stroke.
           FlutterError.reportError(
             FlutterErrorDetails(
               exception: error,
