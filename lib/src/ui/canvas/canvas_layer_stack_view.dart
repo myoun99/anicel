@@ -291,6 +291,47 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   bool _preparing = false;
   bool _rerunRequested = false;
 
+  /// Cels whose image could not be built, and the revision it failed at.
+  ///
+  /// Skipping the failure but FORGETTING it re-kicked the same broken
+  /// build on every rebuild — for a file-backed cel whose bytes are
+  /// unreachable that is a blocking open + throw per layer per sweep,
+  /// which is a hot loop on an old tablet where master paid it once and
+  /// then stopped drawing. The next CONTENT change (a new revision)
+  /// retries; the failure itself is reported rather than swallowed. Same
+  /// shape as the storyboard thumbnail store's, for the same reason.
+  final Map<BrushFrameKey, int> _failedRevisions = {};
+
+  int? _revisionOf(BrushFrameKey key) =>
+      widget.imageCache.frameStore.frameOrNull(key)?.sourceRevision;
+
+  bool _shouldSkipFailed(BrushFrameKey key) {
+    final failed = _failedRevisions[key];
+    return failed != null && failed == _revisionOf(key);
+  }
+
+  void _noteFailure(
+    BrushFrameKey key,
+    Object error,
+    StackTrace stack,
+    String where,
+  ) {
+    final revision = _revisionOf(key);
+    if (revision != null) {
+      _failedRevisions[key] = revision;
+    }
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'canvas layer stack',
+        context: ErrorDescription(
+          'building the layer image for cel ${key.frameId.value} ($where)',
+        ),
+      ),
+    );
+  }
+
   /// The FIRST-ACTIVATION stand-in (device report 2026-08-17): activation
   /// promotes a file-backed cel to a surface of all-fresh tile objects,
   /// [BitmapTileImageCache] keys images by tile identity so it has none of
@@ -492,6 +533,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       // lands here instead, out of a build/layout callback, and every
       // later layer in THIS sweep is skipped with it. One row's
       // unreachable cel is one row's.
+      if (_shouldSkipFailed(layer.frameKey)) {
+        continue;
+      }
       final LayerFrameImage? image;
       try {
         image = widget.imageCache.prepareSyncOrNull(
@@ -499,7 +543,8 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           canvasSize: widget.canvasSize,
           quality: PlaybackQuality.full,
         );
-      } catch (_) {
+      } catch (error, stack) {
+        _noteFailure(layer.frameKey, error, stack, 'sync sweep');
         continue;
       }
       if (image == null) {
@@ -545,6 +590,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           // has moved throws from inside this call. That is a reason for
           // one row to be missing, never a reason to stop drawing the
           // others.
+          if (_shouldSkipFailed(layer.frameKey)) {
+            continue;
+          }
           final LayerFrameImage? image;
           try {
             image = await widget.imageCache.prepare(
@@ -552,10 +600,11 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
               canvasSize: widget.canvasSize,
               quality: PlaybackQuality.full,
             );
-          } catch (_) {
+          } catch (error, stack) {
             if (!mounted) {
               return;
             }
+            _noteFailure(layer.frameKey, error, stack, 'async pass');
             continue;
           }
           if (!mounted) {

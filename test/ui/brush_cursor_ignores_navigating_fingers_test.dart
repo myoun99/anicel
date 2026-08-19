@@ -141,6 +141,36 @@ void main() {
     expect(tester.getTopLeft(cursor), aimed);
   });
 
+  testWidgets('a finger\'s lift leaves the ring a HOVERING pen owns — '
+      'presence is presence however it is held', (tester) async {
+    useOneFingerSlot(CanvasTouchDragAction.draw);
+    await pumpPanel(tester);
+
+    // A drawing finger takes the aim, then the PEN moves last, so the
+    // ring standing there is the pen's true current position.
+    final finger = await tester.createGesture(kind: PointerDeviceKind.touch);
+    await finger.down(canvasGlobalOffset(tester, const Offset(150, 130)));
+    await tester.pump();
+
+    final pen = await tester.createGesture(kind: PointerDeviceKind.stylus);
+    await pen.addPointer(location: Offset.zero);
+    addTearDown(pen.removePointer);
+    await pen.moveTo(canvasGlobalOffset(tester, const Offset(40, 40)));
+    await tester.pump();
+    final penAim = tester.getTopLeft(cursor);
+
+    await finger.up();
+    await tester.pump();
+
+    expect(
+      cursor,
+      findsOneWidget,
+      reason: 'the pen has not exited and nobody asked for its aim to go — '
+          'a hovering device is a holder the down-set cannot represent',
+    );
+    expect(tester.getTopLeft(cursor), penAim);
+  });
+
   testWidgets('changing the one-finger slot WHILE a finger is down leaves '
       'the census intact — membership is the record, not a fresh look at '
       'a live setting', (tester) async {

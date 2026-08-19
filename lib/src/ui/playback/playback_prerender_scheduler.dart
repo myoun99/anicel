@@ -261,7 +261,21 @@ class PlaybackPrerenderScheduler {
             quality: quality,
             shouldAbort: () => _isStale(generation) || !_isQuietNow(),
           );
-        } catch (_) {
+        } catch (error, stack) {
+          // Skipping the frame is right; hiding WHY is not. The failure
+          // reaches the framework's error channel rather than vanishing,
+          // so a permanently unreachable cel is diagnosable instead of
+          // showing up only as a queue that never finishes warming.
+          FlutterError.reportError(
+            FlutterErrorDetails(
+              exception: error,
+              stack: stack,
+              library: 'playback prerender',
+              context: ErrorDescription(
+                'warming cut ${cutId.value} frame $frameIndex',
+              ),
+            ),
+          );
           // Every other post-await exit in this loop re-checks staleness
           // before it lets the caller touch `_progress`; skipping it here
           // would let a cancelled or disposed run write its bar back over

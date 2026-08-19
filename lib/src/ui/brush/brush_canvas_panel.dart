@@ -850,6 +850,16 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// — one flicker per staggered lift-off.
   final Set<int> _pointersHoldingAim = <int>{};
 
+  /// Whether a self-reporting device (mouse, stylus) is ON THE GLASS.
+  ///
+  /// The other kind of holder. A hovering pen writes the aim without ever
+  /// pressing, so it is nobody's member of [_pointersHoldingAim] — and a
+  /// finger's lift was clearing the ring THAT pen owned, which Flutter
+  /// had not asked anyone to clear because the pen has not exited.
+  /// Presence is presence however it is held; the two feed one emptiness
+  /// test, and each holder's own departure is what releases it.
+  bool _hoverDeviceInside = false;
+
   void _beginCanvasPointer(PointerDownEvent event) {
     if (!AppInput.toolAcceptsPointer(event.kind)) {
       return;
@@ -883,7 +893,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (AppInput.pointerReportsItsOwnExit(event.kind)) {
       return;
     }
-    if (_pointersHoldingAim.isNotEmpty) {
+    if (_pointersHoldingAim.isNotEmpty || _hoverDeviceInside) {
       return;
     }
     _forgetCanvasPointer();
@@ -1718,7 +1728,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                     opaque: false,
                                     hitTestBehavior:
                                         HitTestBehavior.translucent,
-                                    onExit: (_) => _forgetCanvasPointer(),
+                                    onEnter: (_) => _hoverDeviceInside = true,
+                                    onExit: (_) {
+                                      _hoverDeviceInside = false;
+                                      _forgetCanvasPointer();
+                                    },
                                     child: Listener(
                                       behavior: HitTestBehavior.translucent,
                                       onPointerHover: (event) =>
