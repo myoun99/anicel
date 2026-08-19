@@ -129,4 +129,70 @@ void main() {
           'is a blocking open and throw per layer per sweep',
     );
   });
+
+  testWidgets('a success retires the note — the record says the LAST '
+      'attempt failed, not that one once did', (tester) async {
+    final captured = <Object>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = (details) => captured.add(details.exception);
+
+    final cache = _ThrowingCache(
+      frameStore: BrushFrameStore(),
+      failing: {const FrameId('flaky')},
+    );
+
+    Widget host() => MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: 200,
+          height: 200,
+          child: CanvasLayerStackView(
+            nodes: [
+              CanvasLayerImageNode(
+                CanvasLayerImageRequest(frameKey: _key('flaky'), opacity: 1),
+              ),
+            ],
+            imageCache: cache,
+            canvasSize: canvasSize,
+            viewport: CanvasViewport(),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(host());
+    await tester.pump();
+    final afterFailure = cache.syncAttempts.length;
+
+    // A CONTENT change is what earns a retry — that is the whole contract
+    // of the skip list. Whatever was wrong is fixed, and the cel is
+    // edited, so its revision moves off the one that failed.
+    cache.failing.clear();
+    cache.frameStore.markCelEdited(_key('flaky'));
+    await tester.pumpWidget(host());
+    await tester.pump();
+    final afterHeal = cache.syncAttempts.length;
+
+    // …and because that attempt SUCCEEDED, the note is gone rather than
+    // sitting on a revision the store can hand out again — a project open
+    // reseeds every frame back to revision 1.
+    cache.frameStore.markCelEdited(_key('flaky'));
+    await tester.pumpWidget(host());
+    await tester.pump();
+    final afterRetry = cache.syncAttempts.length;
+
+    FlutterError.onError = previous;
+
+    expect(captured, isNotEmpty, reason: 'the first attempt really failed');
+    expect(
+      afterHeal,
+      greaterThan(afterFailure),
+      reason: 'a content change retries a cel the skip list was holding',
+    );
+    expect(
+      afterRetry,
+      greaterThan(afterHeal),
+      reason: 'and a healed cel does not stay on that list',
+    );
+  });
 }

@@ -171,6 +171,60 @@ void main() {
     expect(tester.getTopLeft(cursor), penAim);
   });
 
+  testWidgets('TWO hovering devices each hold their own: one leaving does '
+      'not hand the other\'s ring to the next finger lift', (tester) async {
+    useOneFingerSlot(CanvasTouchDragAction.draw);
+    await pumpPanel(tester);
+
+    // A mouse and a pen are both on the glass (a 2-in-1, or an iPad with
+    // a mouse and the pen picked up).
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    await mouse.moveTo(canvasGlobalOffset(tester, const Offset(20, 20)));
+    await tester.pump();
+
+    final pen = await tester.createGesture(kind: PointerDeviceKind.stylus);
+    await pen.addPointer(location: Offset.zero);
+    await pen.moveTo(canvasGlobalOffset(tester, const Offset(90, 90)));
+    await tester.pump();
+
+    // The pen leaves entirely; the mouse is still here and aims.
+    await pen.moveTo(const Offset(-500, -500));
+    await pen.removePointer();
+    await tester.pump();
+    await mouse.moveTo(canvasGlobalOffset(tester, const Offset(24, 24)));
+    await tester.pump();
+    expect(cursor, findsOneWidget);
+    final mouseAim = tester.getTopLeft(cursor);
+
+    // A finger comes and goes. The mouse never left, so its aim stays.
+    for (var i = 0; i < 2; i += 1) {
+      final finger = await tester.createGesture(
+        kind: PointerDeviceKind.touch,
+      );
+      await finger.down(canvasGlobalOffset(tester, const Offset(150, 130)));
+      await tester.pump();
+      await finger.up();
+      await tester.pump();
+
+      expect(
+        cursor,
+        findsOneWidget,
+        reason: 'lift $i: the pen\'s exit released the PEN\'s hold, not the '
+            'mouse\'s — one flag for a per-device fact handed the mouse\'s '
+            'ring to every finger that followed, and it vanished',
+      );
+
+      // The drawing finger legitimately took the aim while it was down,
+      // so the ring stands where it left it until the mouse moves again.
+      // What matters is that the mouse's presence keeps it ALIVE.
+      await mouse.moveTo(canvasGlobalOffset(tester, const Offset(24, 24)));
+      await tester.pump();
+      expect(tester.getTopLeft(cursor), mouseAim);
+    }
+  });
+
   testWidgets('changing the one-finger slot WHILE a finger is down leaves '
       'the census intact — membership is the record, not a fresh look at '
       'a live setting', (tester) async {

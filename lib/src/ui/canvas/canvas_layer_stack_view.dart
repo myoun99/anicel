@@ -551,6 +551,11 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         _noteFailure(layer.frameKey, error, stack, 'sync sweep');
         continue;
       }
+      // The note means "the LAST attempt failed", not "one once did".
+      // Left standing it outlives the failure, and a project open reseeds
+      // every frame back to revision 1 — which makes an old note match
+      // again and skips a cel that builds perfectly well.
+      _failedRevisions.remove(layer.frameKey);
       if (image == null) {
         continue;
       }
@@ -611,6 +616,8 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
             _noteFailure(layer.frameKey, error, stack, 'async pass');
             continue;
           }
+          // Same as the sync twin: a success retires the note.
+          _failedRevisions.remove(layer.frameKey);
           if (!mounted) {
             return;
           }

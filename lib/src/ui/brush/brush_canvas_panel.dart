@@ -850,15 +850,26 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// — one flicker per staggered lift-off.
   final Set<int> _pointersHoldingAim = <int>{};
 
-  /// Whether a self-reporting device (mouse, stylus) is ON THE GLASS.
+  /// Self-reporting devices (mouse, stylus) currently ON THE GLASS.
   ///
   /// The other kind of holder. A hovering pen writes the aim without ever
-  /// pressing, so it is nobody's member of [_pointersHoldingAim] — and a
+  /// pressing, so it is no member of [_pointersHoldingAim] — and a
   /// finger's lift was clearing the ring THAT pen owned, which Flutter
   /// had not asked anyone to clear because the pen has not exited.
-  /// Presence is presence however it is held; the two feed one emptiness
-  /// test, and each holder's own departure is what releases it.
-  bool _hoverDeviceInside = false;
+  ///
+  /// ⚠️A SET, not a flag. Flutter delivers enter/exit PER DEVICE, so a
+  /// bool cannot say "someone is inside" when two are: a 2-in-1 with a
+  /// pen and a mouse both hovering had the pen's exit turn the flag off
+  /// while the mouse was still there, and every finger lift after that
+  /// deleted the mouse's ring. Keyed by `event.device`, which is what
+  /// Flutter's own bookkeeping uses — a hover has no stable pointer id.
+  final Set<int> _hoverDevicesInside = <int>{};
+
+  /// Whether ANY holder still has the aim — pressed or merely present.
+  /// One test for both kinds, so a departure of either sort cannot decide
+  /// on its own that nobody is left.
+  bool get _aimIsHeld =>
+      _pointersHoldingAim.isNotEmpty || _hoverDevicesInside.isNotEmpty;
 
   void _beginCanvasPointer(PointerDownEvent event) {
     if (!AppInput.toolAcceptsPointer(event.kind)) {
@@ -893,7 +904,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (AppInput.pointerReportsItsOwnExit(event.kind)) {
       return;
     }
-    if (_pointersHoldingAim.isNotEmpty || _hoverDeviceInside) {
+    if (_aimIsHeld) {
       return;
     }
     _forgetCanvasPointer();
@@ -1728,9 +1739,21 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                     opaque: false,
                                     hitTestBehavior:
                                         HitTestBehavior.translucent,
-                                    onEnter: (_) => _hoverDeviceInside = true,
-                                    onExit: (_) {
-                                      _hoverDeviceInside = false;
+                                    onEnter: (event) =>
+                                        _hoverDevicesInside.add(event.device),
+                                    onExit: (event) {
+                                      // A departing device releases its OWN
+                                      // hold only. It may not decide the aim
+                                      // is nobody's while a second hoverer
+                                      // or a pressed pointer still has it.
+                                      if (!_hoverDevicesInside.remove(
+                                        event.device,
+                                      )) {
+                                        return;
+                                      }
+                                      if (_aimIsHeld) {
+                                        return;
+                                      }
                                       _forgetCanvasPointer();
                                     },
                                     child: Listener(
