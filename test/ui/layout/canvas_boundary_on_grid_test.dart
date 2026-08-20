@@ -1,4 +1,3 @@
-import 'package:anicel/src/ui/canvas/integral_layer_offset.dart';
 import 'package:anicel/src/ui/effective_device_pixel_ratio.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/editor_dock_host.dart';
@@ -11,15 +10,21 @@ import 'package:flutter_test/flutter_test.dart';
 /// canvas must land the canvas on a whole device pixel, at any effective
 /// ratio, by construction.
 ///
-/// ⛔**Measure [IntegralLayerOffset], NOT the `canvas-content-boundary`
-/// key.** That key sits on a `RepaintBoundary` INSIDE the wrapper, and
+/// 🚨**The anchor moved, and the old warning INVERTED.** It used to read:
+/// "measure `IntegralLayerOffset`, NOT the `canvas-content-boundary` key",
+/// because the key sat on a `RepaintBoundary` INSIDE that wrapper and
 /// `RenderTransform` applies its matrix in its PARENT's
-/// `applyPaintTransform` — so `localToGlobal` on the keyed box reads the
-/// BRIDGE's compensated output rather than the chain feeding it. A first
-/// draft of this file did exactly that and **passed verbatim on master**,
-/// with the editing canvas 0.2 device px off at 1.35. The wrapper's own
-/// `localToGlobal` is the uncompensated chain, which is the thing this
-/// round exists to make unnecessary.
+/// `applyPaintTransform` — so `localToGlobal` on the keyed box read the
+/// wrapper's COMPENSATED output rather than the chain feeding it. A first
+/// draft did exactly that and **passed verbatim on master**, with the
+/// editing canvas 0.2 device px off at 1.35.
+///
+/// The wrapper is gone (R11 retired it — the chain is integral by
+/// construction, so there was nothing left to compensate), which means
+/// **the key IS the uncompensated chain now**. Nothing sits between it and
+/// panel layout. ⛔If a compensating transform is ever reintroduced above
+/// this boundary, move the anchor back above it or this whole file starts
+/// measuring the compensation instead of the chain.
 ///
 /// ⚠️Fractional ratios throughout, and BOTH `devicePixelRatio` and
 /// `physicalSize` are set. `setSurfaceSize` is forbidden here: it
@@ -36,17 +41,23 @@ void main() {
 
   /// The UNCOMPENSATED chain origins, in device pixels, largest first.
   ///
-  /// Two canvases mount a wrapper — the editing canvas, which fills the
-  /// workspace, and a rail-docked preview. Size is what tells them apart,
-  /// and keeping them separate is what lets each be asserted for what it
-  /// is: they are at different stages of this round, and a claim about
-  /// "every" boundary would be false for one of them today.
+  /// Two canvases mount a content boundary — the editing canvas, which
+  /// fills the workspace, and a rail-docked preview. Size is what tells
+  /// them apart, and keeping them separate is what lets each be asserted
+  /// for what it is; both are on the grid at every ratio today, but they
+  /// got there in different PRs and the split is what proved it.
   List<({Offset device, Size size})> chainOrigins(
     WidgetTester tester,
     double effectiveRatio,
   ) {
-    final finder = find.byType(IntegralLayerOffset);
-    expect(finder, findsWidgets, reason: 'the wrapper must exist to be read');
+    final finder = find.byKey(
+      const ValueKey<String>('canvas-content-boundary'),
+    );
+    expect(
+      finder,
+      findsWidgets,
+      reason: 'the content boundary must exist to be read',
+    );
     final found = <({Offset device, Size size})>[
       for (final element in finder.evaluate())
         () {
@@ -112,13 +123,12 @@ void main() {
     // constants sit on the grid at every Windows scaling step by LUCK —
     // 48 = 16×3 — and a UI scale is exactly what destroys that luck.
     //
-    // ⚠️DEBT, owed to the UI-scale PR: no `createViewConfigurationFor`
-    // override exists yet, so the root matrix still scales by the raw 1.5
-    // while this asserts against 1.35. Both this and the wrapper divide by
-    // the same 1.35, so the assertion is self-consistent — but the grid it
-    // names is not yet the compositor's. `device_grid_audit.dart` records
-    // the same debt; the override and these assertions have to be
-    // reconciled in the PR that ships the scale.
+    // ✅The debt this case used to carry is PAID. It read: "no
+    // `createViewConfigurationFor` override exists yet, so the root matrix
+    // still scales by the raw 1.5 while this asserts against 1.35 — the
+    // assertion is self-consistent but the grid it names is not the
+    // compositor's." `AnicelBinding` now multiplies the scale into the root
+    // matrix, so 1.35 IS the compositor's grid here.
     const monitor = 1.5;
     const scale = 0.9;
     tester.view.devicePixelRatio = monitor;

@@ -351,12 +351,23 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
         CustomPaint(
           // ⛔The `willChange: true` hint this picture carried is GONE with
           // the editing stack's (see `canvas_layer_stack_view.dart` for the
-          // #1100→R11 history and the symptom to watch for). It was here
-          // because a parked gap shows this stack STILL, the picture goes
-          // stable, and the desktop raster cache would snap its layer to
-          // integral device translation on engage — the 1px artwork hop.
-          // The layout offset it would have snapped away from is now
-          // integral to begin with.
+          // #1100→R11 history and the two symptoms to watch for). It was
+          // here because a parked gap shows this stack STILL, so the
+          // desktop raster cache would snap its layer to integral device
+          // translation on engage — the 1px artwork hop. The layout offset
+          // it would have snapped away from is now integral to begin with.
+          //
+          // 🚨**This site is not symmetric with the other three, and it is
+          // the one to check first on device.** The hint was set once per
+          // contributing track inside this loop, but every call landed on
+          // the SAME recording layer — so it was one hinted picture, not N.
+          // Removing it makes N pictures independently cacheable: N
+          // view-sized RGBA entries, none of them visible to
+          // `playbackCacheBudgetBytes`. And because each track is now its
+          // own entry, tracks can engage on DIFFERENT frames — so the
+          // signature here is tracks sliding 1px APART FROM EACH OTHER
+          // rather than the stage moving as one. That variant is
+          // unambiguous.
           painter: PlaybackFramePainter(
             image:
                 cutPictureVisible &&

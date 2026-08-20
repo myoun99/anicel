@@ -36,7 +36,6 @@ import '../canvas/selection_float_overlay.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../canvas/flip_hud_overlay.dart';
-import '../canvas/integral_layer_offset.dart';
 import 'canvas_floor_insets.dart';
 import '../input/app_input_settings.dart';
 import '../../models/brush_blend_mode.dart';
@@ -1760,36 +1759,33 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                             clipBehavior: Clip.none,
                             children: [
                               // ★The artwork layer sits on the DEVICE-PIXEL
-                              // grid. Panel layout above this point lands the
-                              // boundary below at fractional device offsets,
-                              // and Skia's raster cache snaps a stable
-                              // picture's layer to integral translation while
-                              // live repaints render it fractional — the 1px
-                              // edge hop at every pen-down/pen-up/layer
-                              // switch. The wrapper measures its accumulated
-                              // offset each frame and cancels the fraction —
-                              // in the SETTLED state. Its measurement is a
-                              // post-frame chain, so the frame OF an
-                              // ancestor layout change (tool panels, wheel-
-                              // click chrome) still paints fractional, which
-                              // is why retiring the willChange bypass on the
-                              // wrapper's strength (#1106) failed on device
-                              // (2026-08-17): the artwork pictures carry
-                              // `willChange: true` again (the final law —
-                              // `canvas_layer_stack_view.dart`) and the
-                              // wrapper stays for every OTHER picture under
-                              // this boundary the engine may still cache.
+                              // grid — and as of R11 it does so BY
+                              // CONSTRUCTION, with nothing here to make it
+                              // true.
                               //
-                              // ⛔ORDER IS THE LAW: the wrapper must sit
-                              // ABOVE the content boundary. Below it the
-                              // shift would be recorded in-picture, and the
-                              // cache replays the same picture at a snapped
-                              // CTM — an in-picture correction contradicts
-                              // itself (why #1101's snap could not close
-                              // this; its in-picture PAN snap still owns pan
-                              // jitter and stays).
-                              IntegralLayerOffset(
-                                child: RepaintBoundary(
+                              // An `IntegralLayerOffset` used to wrap this
+                              // boundary. It measured its own accumulated
+                              // offset after each frame and cancelled the
+                              // fraction, which worked in the settled state
+                              // and failed on the frame OF an ancestor
+                              // layout change — a post-frame measurement is
+                              // one frame behind exactly when a tool panel
+                              // opens or the active layer switches, which
+                              // are the moments the artwork was seen to hop
+                              // (#1106, device 2026-08-17). R11 quantizes
+                              // every app-chosen offset from the window
+                              // origin down, in LAYOUT, so this boundary is
+                              // integral on the change frame too;
+                              // `canvas_boundary_on_grid_test.dart` measures
+                              // it there.
+                              //
+                              // ⛔What is NOT retired: `#1101`'s in-picture
+                              // PAN snap (`renderSnappedViewport`). It owns
+                              // pan jitter — our own fractional-phase blits,
+                              // recorded inside the picture — which is a
+                              // different phenomenon from the layer offset
+                              // this paragraph is about.
+                              RepaintBoundary(
                                   key: const ValueKey<String>(
                                     'canvas-content-boundary',
                                   ),
@@ -2335,7 +2331,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                             ),
                                     ),
                                   ),
-                                ),
                                 ),
                               ),
                               ..._toolCursorLayers(),

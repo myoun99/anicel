@@ -58,8 +58,21 @@ class BrushEditCanvasView extends StatelessWidget {
         // focus switch purges the cache, which is why it showed up after
         // switching apps). R11's quantization removes the premise: the
         // layout offset IS an integral count of device pixels, so the two
-        // renders land in the same place. The full history and the symptom
-        // to watch for are in `canvas_layer_stack_view.dart`.
+        // renders land in the same place. The full history and the two
+        // symptoms to watch for are in `canvas_layer_stack_view.dart`.
+        //
+        // 🚨**Look HERE first if a hop is reported.** Three of this view's
+        // four mounts live outside `brush_canvas_panel.dart` — conte ink,
+        // cut-envelope ink and timesheet ink — and the grid test that
+        // certifies the retirement mounts `HomePage` only, so those three
+        // chains are argued, not measured. They are also the stillest
+        // canvases in the app, which is what reaches the cache's engage
+        // threshold in ordinary use.
+        //
+        // ⚠️The engine's snap does not run under a rotated ancestor at all
+        // (it bails on any matrix that is not translation+scale), so a
+        // rotated layer-pose wrap is the one geometry where cached and live
+        // can still genuinely differ.
         painter: BitmapSurfacePainter(
           surface: sessionState.canvasState.currentSurface,
           viewport: viewport,

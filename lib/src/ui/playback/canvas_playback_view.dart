@@ -247,12 +247,24 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
           CustomPaint(
             // ⛔The `willChange: true` hint this picture carried is GONE
             // with the editing stack's (see `canvas_layer_stack_view.dart`
-            // for the #1100→R11 history and the symptom to watch for). It
-            // was here because a PAUSED frame goes stable, so the desktop
-            // raster cache would snap its layer to integral device
-            // translation on engage — a 1px hop against the fractional
-            // offset panel layout used to produce. Layout no longer
-            // produces a fractional one.
+            // for the #1100→R11 history and the two symptoms to watch for).
+            // It was here so the desktop raster cache could not snap this
+            // layer to integral device translation on engage — a 1px hop
+            // against the fractional offset panel layout used to produce.
+            // Layout no longer produces a fractional one.
+            //
+            // ⚠️The old text said "a PAUSED frame goes stable". There is no
+            // paused state: `isActive` and `isPlaying` are the same
+            // question and this view is mounted only while playback is
+            // active. The one window in which this picture goes still is a
+            // HOLD — the same composite shown for several ticks.
+            //
+            // ⚠️And this is the one retiring site where removal can COST
+            // rather than save: a hold past the cache's engage threshold
+            // now bakes an entry, and the next drawing evicts it. On a 24fps
+            // sheet full of 6–8 frame holds that is a repeated bake/evict
+            // cycle, so the thing to watch here is a raster hitch right
+            // after a drawing lands — not a hop.
             painter: PlaybackFramePainter(
               image:
                   !inGap && cutPictureVisible && _heldCanvasSize == canvasSize
