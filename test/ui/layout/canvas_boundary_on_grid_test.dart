@@ -1,10 +1,13 @@
 import 'package:anicel/src/ui/effective_device_pixel_ratio.dart';
+import 'package:anicel/src/ui/ui_scale.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/editor_dock_host.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/scaled_test_binding.dart';
 
 /// 🎯**The round's headline.** The chain from the window origin to the
 /// canvas must land the canvas on a whole device pixel, at any effective
@@ -31,12 +34,38 @@ import 'package:flutter_test/flutter_test.dart';
 /// desynchronises MediaQuery from the render tree and builds a letterbox
 /// scale into the root.
 void main() {
-  Widget shell({double uiScale = 1.0}) => MaterialApp(
-    builder: (context, child) => EffectiveDevicePixelRatioScope(
-      uiScale: uiScale,
-      child: child ?? const SizedBox.shrink(),
+  // 🚨The BINDING half, and this file is where it matters most.
+  //
+  // The scale reaches pixels through `createViewConfigurationFor`, which
+  // lives on the binding — not through anything a widget can mount. Under
+  // the default test binding the scope below publishes `monitor × scale`
+  // to the widgets while the compositor still scales by the raw monitor
+  // ratio, so every "on the grid at 1.35" case here was checking its own
+  // arithmetic against a grid nothing rasterises to. Self-consistent, and
+  // proof of nothing.
+  //
+  // ⚠️It also replaces the 800×600 test-surface hook, so every case sets
+  // `physicalSize` itself. `setSurfaceSize` stays forbidden here.
+  ScaledTestBinding.ensureInitialized();
+
+  tearDown(() => AppUiScale.value.value = AppUiScale.defaultScale);
+
+  /// The app shell, wired to the scale the way `main.dart` wires it — the
+  /// binding reads [AppUiScale] and so does the scope, from one listener,
+  /// so the two halves cannot disagree about what the scale is.
+  ///
+  /// ⛔Do not take the scale as a parameter here. That was the old shape,
+  /// and it let a case set the widget half while leaving the binding at
+  /// 100% — which is exactly the hole this file grew.
+  Widget shell() => ValueListenableBuilder<double>(
+    valueListenable: AppUiScale.value,
+    builder: (context, scale, _) => MaterialApp(
+      builder: (context, child) => EffectiveDevicePixelRatioScope(
+        uiScale: scale,
+        child: child ?? const SizedBox.shrink(),
+      ),
+      home: const HomePage(),
     ),
-    home: const HomePage(),
   );
 
   /// The UNCOMPENSATED chain origins, in device pixels, largest first.
@@ -111,7 +140,10 @@ void main() {
       await tester.pumpWidget(shell());
       await tester.pumpAndSettle();
 
-      expectOnGrid(chainOrigins(tester, ratio).first.device, at: 'ratio $ratio');
+      expectOnGrid(
+        chainOrigins(tester, ratio).first.device,
+        at: 'ratio $ratio',
+      );
     });
   }
 
@@ -123,20 +155,27 @@ void main() {
     // constants sit on the grid at every Windows scaling step by LUCK —
     // 48 = 16×3 — and a UI scale is exactly what destroys that luck.
     //
-    // ✅The debt this case used to carry is PAID. It read: "no
-    // `createViewConfigurationFor` override exists yet, so the root matrix
-    // still scales by the raw 1.5 while this asserts against 1.35 — the
-    // assertion is self-consistent but the grid it names is not the
-    // compositor's." `AnicelBinding` now multiplies the scale into the root
-    // matrix, so 1.35 IS the compositor's grid here.
+    // ✅The debt this case used to carry is PAID, and it was paid TWICE.
+    // First the override had to exist; then this file had to actually run
+    // it. The old note claimed "1.35 IS the compositor's grid here" while
+    // the file still ran under the default binding, where it was 1.5 — the
+    // claim was true of the app and false of the test asserting it.
+    // `ScaledTestBinding` closes that, and the scale is set through the
+    // notifier the app itself reads.
     const monitor = 1.5;
     const scale = 0.9;
     tester.view.devicePixelRatio = monitor;
     tester.view.physicalSize = const Size(1600 * monitor, 1000 * monitor);
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(shell(uiScale: scale));
+    AppUiScale.value.value = scale;
+    await tester.pumpWidget(shell());
     await tester.pumpAndSettle();
+    expect(
+      tester.binding.renderViews.single.configuration.devicePixelRatio,
+      closeTo(monitor * scale, 1e-9),
+      reason: 'the ROOT matrix carries the product — not just the widgets',
+    );
 
     expectOnGrid(
       chainOrigins(tester, monitor * scale).first.device,
@@ -332,12 +371,27 @@ void main() {
       tester.view.physicalSize = const Size(2400, 1500);
       addTearDown(tester.view.reset);
 
-      await tester.pumpWidget(shell(uiScale: 1.0));
+      await tester.pumpWidget(shell());
       await tester.pumpAndSettle();
       expectOnGrid(chainOrigins(tester, 1.5).first.device, at: 'scale 100%');
 
-      // `pumpWidget` renders exactly one frame — the frame OF the change.
-      await tester.pumpWidget(shell(uiScale: 0.9));
+      // 🚨The change is a NOTIFIER write, not a new widget tree, and that is
+      // the real gesture: the user picks 90% in Preferences and nothing
+      // rebuilds the app from above. Both halves hang off this one value —
+      // the binding relays out the window, the scope re-publishes the
+      // ratio — so writing it is the only way to exercise the pair.
+      AppUiScale.value.value = 0.9;
+      // `pump` renders exactly one frame — the frame OF the change.
+      await tester.pump();
+      // ⚠️Asserted explicitly, because at THIS surface size the chain lands
+      // on the grid from the widget half alone — measured: the case stays
+      // green under the default binding. Without this line it would report
+      // on a scale the compositor never received.
+      expect(
+        tester.binding.renderViews.single.configuration.devicePixelRatio,
+        closeTo(1.5 * 0.9, 1e-9),
+        reason: 'the root matrix moved in the SAME frame, not after it',
+      );
       expectOnGrid(
         chainOrigins(tester, 1.5 * 0.9).first.device,
         at: 'the frame the scale became 90% (effective 1.35)',
