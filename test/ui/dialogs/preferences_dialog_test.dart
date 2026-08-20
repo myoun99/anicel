@@ -49,6 +49,19 @@ void main() {
 
   testWidgets('sections switch in place: Input first, every section '
       'reachable from the rail', (tester) async {
+    // ⚠️The tab strip SCROLLS by design (`AppWindow._tabBar`) — the window's
+    // width is not allowed to be decided by how many tabs it carries — so
+    // reaching the last ones means scrolling to them, exactly as a user
+    // does. Tapping without this silently misses once a tab lands past the
+    // strip's right edge, which is what the seventh section did.
+    Future<void> openSection(String name) async {
+      final tab = find.byKey(ValueKey<String>('preferences-section-$name'));
+      await tester.ensureVisible(tab);
+      await tester.pumpAndSettle();
+      await tester.tap(tab);
+      await tester.pumpAndSettle();
+    }
+
     await pumpPreferences(tester);
     expect(
       find.byKey(const ValueKey<String>('preferences-dialog')),
@@ -60,46 +73,37 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('preferences-section-autosave')),
-    );
-    await tester.pumpAndSettle();
+    await openSection('autosave');
     expect(
       find.byKey(const ValueKey<String>('settings-autosave-enabled')),
       findsOneWidget,
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('preferences-section-audio')),
-    );
-    await tester.pumpAndSettle();
+    await openSection('audio');
     expect(
       find.byKey(const ValueKey<String>('settings-av-offset-value')),
       findsOneWidget,
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('preferences-section-language')),
-    );
-    await tester.pumpAndSettle();
+    await openSection('language');
     expect(
       find.byKey(const ValueKey<String>('settings-program-language')),
       findsOneWidget,
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('preferences-section-accent')),
-    );
-    await tester.pumpAndSettle();
+    await openSection('accent');
     expect(
       find.byKey(const ValueKey<String>('settings-accent1-swatch')),
       findsOneWidget,
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('preferences-section-system')),
+    await openSection('display');
+    expect(
+      find.byKey(const ValueKey<String>('ui-scale-stop-100')),
+      findsOneWidget,
     );
-    await tester.pumpAndSettle();
+
+    await openSection('system');
     expect(
       find.byKey(const ValueKey<String>('system-status-section')),
       findsOneWidget,
