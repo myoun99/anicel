@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -96,6 +97,11 @@ void main() {
               ),
               selectionCommands: commands,
               cutPieceSlot: slot,
+              // ⚠️An EXPLICIT render 1.0. These cases map screen offsets to
+              // canvas coordinates one for one, and an uncontrolled panel
+              // now opens at the IDENTITY — one artwork pixel per DEVICE
+              // pixel — which is a render zoom of 1/3 on the 3x test view.
+              viewport: CanvasViewport(),
             ),
           ),
         ),
