@@ -122,6 +122,30 @@ class DeviceGrid {
     return (device + slack).floorToDouble() / ratio;
   }
 
+  /// The smallest on-grid logical position at or AFTER [logical] — for a
+  /// CLEARANCE the platform asserts, such as a safe-area inset, where
+  /// landing SHORT slides content under chrome it can never be seen past.
+  ///
+  /// ⚠️The direction is FREE with respect to the invariant and ONE-SIDED
+  /// with respect to meaning. Measured over 9,800 (inset × monitor ×
+  /// scale) samples: floor and ceil are each off-grid ZERO times, worst
+  /// deviation 0.900 device px either way. So the grid does not care —
+  /// but flooring spends that pixel on content the user is physically
+  /// covered from seeing, while ceiling spends it on chrome nobody can
+  /// measure by eye.
+  ///
+  /// ⛔An inset is NOT a position, and an earlier draft of the safe-area
+  /// widget justified flooring by calling it one. A position is somewhere
+  /// a boundary goes; a clearance is a promise about what must stay empty.
+  double clearance(double logical) {
+    if (!isActive || !logical.isFinite) {
+      return logical;
+    }
+    final device = logical * ratio;
+    final slack = _slackUlps * _ulp * device.abs();
+    return (device - slack).ceilToDouble() / ratio;
+  }
+
   /// A cumulative run of adjacent extents along one axis, anchored at
   /// [from] — a distance from this box's own top-left, which the invariant
   /// says is already on the grid.

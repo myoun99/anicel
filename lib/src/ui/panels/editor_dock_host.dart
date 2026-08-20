@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../layout/device_grid.dart';
 import '../theme/app_theme.dart' show AppColors;
 import 'editor_panel_layout.dart';
 import 'editor_panel_tabs.dart';
@@ -149,6 +150,15 @@ class EditorDockDropZone extends StatelessWidget {
 
   static const double thickness = 26;
 
+  /// The gap between the band and the dock's edge, on all four sides.
+  static const double margin = 2;
+
+  /// What the zone occupies in the layout — the band plus both margins.
+  /// This is what shifts the canvas, so this is what has to be on the
+  /// device grid.
+  static double footprintOf(BuildContext context) =>
+      DeviceGrid.of(context).position(thickness + margin * 2);
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -165,15 +175,36 @@ class EditorDockDropZone extends StatelessWidget {
           onAcceptWithDetails: (details) => onDropped(details.data),
           builder: (context, candidateData, rejectedData) {
             final hovered = candidateData.isNotEmpty;
+            // 🚨This zone exists ONLY while a tab is in the air, and its
+            // whole footprint shifts everything beside it — including the
+            // canvas. So the x the canvas starts at is 0 / this / 48
+            // depending on app state, and it changes on the tab-lift
+            // frame, which is itself a layout-change frame. 30 × 1.25 =
+            // 37.5: half a device pixel, on exactly the frame that hops.
+            //
+            // The FOOTPRINT is what the chain needs on the grid, and the
+            // band absorbs the residue — which is the run rule working:
+            // the total is quantized once and the last extent takes what
+            // is left. Measured footprint at 1.125 / 1.25 / 1.35 / 1.75:
+            // 33 / 37 / 40 / 52 device px, integral at all four.
+            //
+            // ⚠️The band's OWN edges stay off the grid, because leaf
+            // crispness is a later PR's job. ⛔That is not "two runs over
+            // one boundary" — an earlier draft of this comment said so
+            // and was wrong: the margin/band split is nested inside the
+            // footprint and shares no boundary with the outer chain, so
+            // a run taking [2, 26, 2] would be the documented composing
+            // pattern, not the forbidden one.
+            final band = footprintOf(context) - margin * 2;
             return Container(
               key: ValueKey<String>('editor-dock-drop-rail-$dockId'),
               width: expandToFill
                   ? null
-                  : (axis == Axis.vertical ? thickness : null),
+                  : (axis == Axis.vertical ? band : null),
               height: expandToFill
                   ? null
-                  : (axis == Axis.horizontal ? thickness : null),
-              margin: const EdgeInsets.all(2),
+                  : (axis == Axis.horizontal ? band : null),
+              margin: const EdgeInsets.all(margin),
               decoration: BoxDecoration(
                 color: hovered
                     ? colorScheme.primary.withValues(alpha: 0.25)

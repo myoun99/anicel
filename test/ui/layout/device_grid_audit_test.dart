@@ -284,7 +284,7 @@ void main() {
     // filtered population, after the leaf work in PRs 8-10.
     useRatio(tester, 1.25, logical: const Size(1600, 1000));
 
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpWidget(_shell());
     await tester.pumpAndSettle();
 
     final report = DeviceGridAudit.sweep();
@@ -302,6 +302,49 @@ void main() {
       0,
       reason: 'every surface in the shell should be locatable',
     );
+    // Shape guard. The count is allowed to FALL as the quantization PRs
+    // land — that is the monotone contract — but a sudden jump either way
+    // means the population changed rather than the alignment, and the
+    // reading stops being comparable to the one above it.
+    expect(
+      report.violations.length + report.onGrid,
+      greaterThanOrEqualTo(10),
+      reason: 'the census collapsed — the audit is watching almost nothing',
+    );
+  });
+
+  testWidgets('LIVENESS GATE at a UI SCALE — the instrument can see one', (
+    tester,
+  ) async {
+    // 🚨The round exists to make the app native-sharp at ANY UI scale, and
+    // the gate was the one place that could not see a scale at all: it
+    // pumped `MaterialApp(home: HomePage())`, which mounts no
+    // `EffectiveDevicePixelRatioScope`, so every phase came from the
+    // MediaQuery fallback — the raw monitor ratio — rather than from the
+    // effective ratio the whole round is built on.
+    //
+    // 0.9 × 1.25 = 1.125, a PRODUCT ratio: the case where the arithmetic
+    // stops being exact and where the audit's own tolerance has to hold.
+    useRatio(tester, 1.25, logical: const Size(1600, 1000));
+
+    await tester.pumpWidget(_shell(uiScale: 0.9));
+    await tester.pumpAndSettle();
+
+    final report = DeviceGridAudit.sweep();
+    expect(report.unmeasurable, 0, reason: 'a scale must not blind it');
+    expect(report.violations, isNotEmpty);
+    // Every phase it reports is a real signed distance, not an artefact of
+    // the product ratio being inexact.
+    for (final violation in report.violations) {
+      for (final value in <double>[
+        violation.originPhase.dx,
+        violation.originPhase.dy,
+        violation.sizePhase.dx,
+        violation.sizePhase.dy,
+      ]) {
+        expect(value.abs(), lessThanOrEqualTo(0.5 + 1e-9), reason: '$violation');
+      }
+    }
   });
 
   testWidgets('install() is idempotent and inert while strict is false', (
@@ -320,6 +363,21 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
+
+/// The app's real shell, mounted the way `main.dart` mounts it — the scope
+/// inside `MaterialApp.builder`, above the Navigator.
+///
+/// ⛔A bare `MaterialApp(home: HomePage())` is NOT this. It mounts no
+/// `EffectiveDevicePixelRatioScope`, so every measurement falls back to
+/// MediaQuery's raw monitor ratio and the instrument cannot see a UI scale
+/// — which is the one thing this round exists to get right.
+Widget _shell({double uiScale = 1.0}) => MaterialApp(
+  builder: (context, child) => EffectiveDevicePixelRatioScope(
+    uiScale: uiScale,
+    child: child ?? const SizedBox.shrink(),
+  ),
+  home: const HomePage(),
+);
 
 /// A size that lands on whole device pixels at [ratio].
 Size _onGrid(double ratio) {

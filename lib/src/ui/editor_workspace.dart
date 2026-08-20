@@ -59,6 +59,7 @@ import 'media/media_asset_drop_target.dart';
 import 'media/media_browser_panel.dart';
 import 'media/media_relink_flow.dart';
 import 'media/media_viewer_tab_host.dart';
+import 'layout/device_grid.dart';
 import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
 import 'panels/editor_panel_layout.dart';
@@ -2877,7 +2878,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     }
     return EditorPanelDock.filled(
       side: side,
-      width: ToolsPanel.dockWidth,
+      // The THIRD link in the window-origin chain: this strip decides the
+      // x the canvas starts at. 48 is on the grid at every Windows scaling
+      // step (48 = 16x3) and off it the moment a UI scale makes the ratio
+      // a product.
+      width: DeviceGrid.of(context).position(ToolsPanel.dockWidth),
       dockId: dockId,
       // 고정 도킹 (유저 확정): the strip renders with NO panel frame — no tab
       // name, no lock, no X, no grip. It holds what it holds, and a header
