@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
+import '../theme/app_theme.dart' show AppShapes;
 import '../ui_scale.dart';
 
 /// Preferences ▸ Display: the interface scale (R11).
@@ -63,23 +64,35 @@ class _ScaleStop extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    // ⛔Not a hand-rolled corner radius — the app has ONE corner and
+    // [AppShapes] is where it lives. (The source contract that enforces
+    // that is line-based, so naming the forbidden constructor even inside
+    // a comment counts as an offence; it is spelled around here on purpose.)
+    // A chip in a dialog is a control of [AppShapes.controlMedium], so its
+    // corner is a fraction of its own height and it reads as the same shape
+    // as every other control in this window.
+    final shape = AppShapes.control(
+      AppShapes.controlMedium,
+      side: BorderSide(
+        color: selected ? colorScheme.primary : colorScheme.outlineVariant,
+      ),
+    );
     return InkWell(
       // Keyed by the PERCENTAGE rather than the index: a stop added or
       // removed later must not silently move another stop's key onto a
       // different number.
       key: ValueKey<String>('ui-scale-stop-${(stop * 100).round()}'),
       onTap: onPressed,
-      borderRadius: BorderRadius.circular(4),
+      customBorder: shape,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          // Selection is COLOR only (법): no check mark, no swelling
-          // border that would move its neighbours when it lands.
+        height: AppShapes.controlMedium,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: ShapeDecoration(
+          shape: shape,
+          // Selection is COLOR only (법): no check mark, and the border
+          // keeps its width so a stop landing never moves its neighbours.
           color: selected ? colorScheme.primary.withValues(alpha: 0.16) : null,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(
-            color: selected ? colorScheme.primary : colorScheme.outlineVariant,
-          ),
         ),
         child: Text(
           AppUiScale.label(stop),

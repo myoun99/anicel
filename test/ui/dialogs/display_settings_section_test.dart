@@ -57,18 +57,26 @@ void main() {
     await pump(tester);
     session.setUiScale(1.5);
     await tester.pump();
-    final selected = tester.widget<Container>(
-      find.descendant(of: stop(1.5), matching: find.byType(Container)),
-    );
-    final unselected = tester.widget<Container>(
-      find.descendant(of: stop(1.0), matching: find.byType(Container)),
-    );
+    ShapeDecoration decorationOf(double scale) =>
+        tester.widget<Container>(
+              find.descendant(of: stop(scale), matching: find.byType(Container)),
+            ).decoration!
+            as ShapeDecoration;
+
+    final selected = decorationOf(1.5);
+    final unselected = decorationOf(1.0);
     expect(
-      (selected.decoration! as BoxDecoration).color,
+      selected.color,
       isNotNull,
       reason: 'selection is COLOR only (법) — the chosen stop is filled',
     );
-    expect((unselected.decoration! as BoxDecoration).color, isNull);
+    expect(unselected.color, isNull);
+    // ⛔And the SHAPE does not change with selection: a border that thickens
+    // when a stop lands would shove its neighbours sideways.
+    expect(
+      (selected.shape as RoundedSuperellipseBorder).side.width,
+      (unselected.shape as RoundedSuperellipseBorder).side.width,
+    );
   });
 
   testWidgets('an off-ladder value from outside is snapped, not shown raw', (
