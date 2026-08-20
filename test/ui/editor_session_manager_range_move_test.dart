@@ -969,7 +969,11 @@ void main() {
     expect(selection.endIndexExclusive, 4);
 
     // Starting a CELL selection clears the lane selection — and back.
-    s.updateFrameRangeSelectionDrag(layerId: a.id, anchorIndex: 0, headIndex: 0);
+    s.updateFrameRangeSelectionDrag(
+      layerId: a.id,
+      anchorIndex: 0,
+      headIndex: 0,
+    );
     expect(s.laneRangeSelection.value, isNull);
     expect(s.frameRangeSelection.value, isNotNull);
     s.updateLaneRangeSelectionDrag(
@@ -999,6 +1003,61 @@ void main() {
     // ONE undo restores the lane.
     s.undo();
     expect(layer().transformTrack.position.keys.keys.toSet(), {2, 8});
+  });
+
+  test('a REFUSED lane-move begin leaves the drag in flight alone', () {
+    // 🚨The same law the block move wears, pinned on the family that also
+    // moved to a drag object: a begin that refuses must not touch a drag
+    // already running. The first wiring of the drag-session type wrote null
+    // over a live drag and stranded its preview in the channel.
+    //
+    // The second begin here refuses at the KEYED gate — the selection moved
+    // onto a lane with no keys in range — which is the reachable refusal
+    // for this family.
+    final (s, a, _) = fixture();
+    s.repository.replaceLayer(
+      layer: s.layers
+          .firstWhere((l) => l.id == a.id)
+          .copyWith(
+            transformTrack: TransformTrack.properties(
+              anchorPoint: PropertyTrack.empty(),
+              position: PropertyTrack<CanvasPoint>().withKey(
+                2,
+                CanvasPoint(x: 1, y: 1),
+              ),
+              scale: PropertyTrack.empty(),
+              rotation: PropertyTrack.empty(),
+              opacity: PropertyTrack.empty(),
+            ),
+          ),
+    );
+    s.updateLaneRangeSelectionDrag(
+      layerId: a.id,
+      laneId: 'position',
+      anchorIndex: 1,
+      headIndex: 3,
+    );
+    expect(s.beginLaneRangeMoveDrag(), isTrue);
+    s.updateLaneRangeMoveDrag(frameDelta: 2);
+    expect(s.dragPreview.value, isNotNull, reason: 'a move is in flight');
+
+    // A keyless span on the SAME row: nothing to move, so the begin refuses.
+    s.updateLaneRangeSelectionDrag(
+      layerId: a.id,
+      laneId: 'scale',
+      anchorIndex: 1,
+      headIndex: 3,
+    );
+    expect(s.beginLaneRangeMoveDrag(), isFalse);
+    expect(
+      s.dragPreview.value,
+      isNotNull,
+      reason: 'the refusal is not a cancel — the live drag kept its preview',
+    );
+
+    // And the original drag still closes the normal way.
+    s.cancelLaneRangeMoveDrag();
+    expect(s.dragPreview.value, isNull);
   });
 
   test('R26 #3: a lane span covers MULTIPLE lane rows (headLaneId), the '
@@ -1153,11 +1212,7 @@ void main() {
       s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: seIds[0]);
       s.endFrameRangeMoveDrag();
 
-      expect(
-        seRow(s, seIds[1]).timeline,
-        isEmpty,
-        reason: 'the sound left S2',
-      );
+      expect(seRow(s, seIds[1]).timeline, isEmpty, reason: 'the sound left S2');
       expect(seRow(s, seIds[0]).timeline.containsKey(0), isTrue);
 
       s.undo();
@@ -1200,10 +1255,7 @@ void main() {
       s.undo();
       expect(seRow(s, seIds[1]).timeline.containsKey(0), isTrue);
       expect(
-        s.layers
-            .firstWhere((l) => l.id == cam)
-            .instructions
-            .containsKey(0),
+        s.layers.firstWhere((l) => l.id == cam).instructions.containsKey(0),
         isTrue,
       );
     });
