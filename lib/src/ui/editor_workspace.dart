@@ -3138,11 +3138,32 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     // rather than one for the stop and another for the gap.
     final top = grid.position((onTop ? stop : 0) + _railGroupGap);
     final available = math.max(0.0, height - top - (onTop ? 0 : stop));
-    var content = 0.0;
+    // 🚨★★The band has to be laid out by the SAME arithmetic as the
+    // column, in the same order, or it describes a rail that is not
+    // drawn. The column runs `take(height)` then `take(gap)` per group, so
+    // this runs the identical sequence and reads the position after the
+    // last HEIGHT — the trailing gap is taken and never counted, exactly
+    // as there.
+    //
+    // ⛔A raw sum here became measurably wrong the moment the column
+    // became a run: driven on a height grip, 40 of 40 steps disagreed at
+    // 1.125, 1.25 and 1.35, worst 0.98 device px. It reproduced at 1.25,
+    // where every other quantization in this round is inert — which is
+    // what identified the run conversion as the cause rather than the
+    // ratio.
+    //
+    // ⚠️The two loops are still hand-duplicated: this one measures against
+    // `available`, the column against its own `railExtent`. They agree by
+    // care rather than by construction, and the honest fix is for the
+    // column to publish its geometry — a larger change than this round.
+    final run = grid.run(from: top);
+    var contentEnd = top;
     for (final id in open) {
-      content += _railGroupHeight(id, available) + _railGroupGap;
+      run.take(_railGroupHeight(id, available));
+      contentEnd = run.position;
+      run.take(_railGroupGap);
     }
-    content -= _railGroupGap;
+    final content = contentEnd - top;
     return (top: top, bottom: top + math.min(content, available));
   }
 
@@ -4414,17 +4435,34 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                                   ),
                                 )
                                 .toDouble();
-                        // 🚨★★TWO VALUES, and the split is the point. The
-                        // RAW span is what a drag accumulates against; the
-                        // quantized span is what the layout uses.
+                        // 🚨★★★ONE VALUE PER BOUNDARY. `_detented` must aim
+                        // at the same number `_railPassesBottom` compares
+                        // against, or the pass-through state is not
+                        // reachable at all.
                         //
-                        // ⛔Feeding the quantized value back into the grips
-                        // re-creates, at one-device-pixel granularity, the
-                        // defect this file already records: a detent that
-                        // eats the drag, so the thing moves less than the
-                        // cursor. The comparison survives quantization —
-                        // both sides floor the same way — but the
-                        // ACCUMULATOR does not.
+                        // ⛔An earlier draft split this into raw and
+                        // quantized, feeding the grips the raw span while
+                        // the gate compared the quantized one — and the two
+                        // rails quantize in OPPOSITE directions (the left
+                        // floors, the right ceils, because the right is
+                        // derived from a snapped far edge). Measured, one
+                        // driven drag: 28 of 45 steps asymmetric at 1.125
+                        // and at 1.35, with the rails 355 logical px apart
+                        // at the detent — and the magnet pulls the user
+                        // INTO that state, which is its whole job. Zero at
+                        // 1.25 and 1.75, where `position` happens to be the
+                        // identity for these numbers.
+                        //
+                        // ⛔And the reason that draft gave was FALSE. It
+                        // cited this file's own "the detent ate the drag"
+                        // defect, but R3 #2 already made that unreachable:
+                        // the accumulator is `_bottomInsetDragRaw` and the
+                        // reported travel is `raw - before`, neither of
+                        // which can see this span. Measured travel ratio
+                        // 1.000000 on both grips at every ratio, with the
+                        // magnet releasing exactly on schedule. ⇒ Snapping
+                        // the span costs no travel; splitting it broke a
+                        // gate.
                         final leftRailSpanRaw = hasLeftDock
                             ? leftWidth + _railGroupGap
                             : 0.0;
@@ -4501,8 +4539,24 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                                 )
                             ? regionPanelSpan
                             : 0.0;
-                        final leftStop = columnStop(leftRailSpan);
-                        final rightStop = columnStop(rightRailSpan);
+                        // 🚨★★★RAW on BOTH sides. This gate is a semantic
+                        // question — "is the region wide enough to reach
+                        // past the rail" — and the answer must not depend
+                        // on which way each side happens to snap.
+                        //
+                        // ⛔The two spans quantize in OPPOSITE directions:
+                        // the left FLOORS (it is a distance from the
+                        // origin) and the right CEILS (it is derived from
+                        // a snapped far edge). Comparing one raw inset
+                        // against those gives different answers for the
+                        // two rails at the same inset — measured, 28 of 45
+                        // drag steps behaved differently at 1.125 and 1.35
+                        // while 1.25 and 1.75 were untouched, because
+                        // `position` is the identity for those numbers.
+                        // The detent magnet then pulls the user into that
+                        // window, which is its whole job.
+                        final leftStop = columnStop(leftRailSpanRaw);
+                        final rightStop = columnStop(rightRailSpanRaw);
 
                         return Stack(
                           children: [
@@ -4553,13 +4607,26 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                             // inside the column.
                             Positioned(
                               left: 0,
-                              top: (onTop ? leftStop : 0) + _railGroupGap,
+                              // ★These two widgets are what actually CARRY a
+                              // rail-docked canvas, so this is where the
+                              // chain lands on the grid or does not. The
+                              // right span especially: it is subtracted
+                              // from an on-grid right edge, so a raw width
+                              // here puts the column's LEFT edge — and
+                              // everything docked in it — between two
+                              // device pixels.
+                              top: grid.position(
+                                (onTop ? leftStop : 0) + _railGroupGap,
+                              ),
                               bottom: onTop ? 0 : leftStop,
                               // The gap is INSIDE the column's box now: the
-                              // rail's own scrollbar rides it.
-                              width: hasLeftDock
-                                  ? leftWidth + _railGroupGap
-                                  : null,
+                              // rail's own scrollbar rides it. ⛔Take the
+                              // quantized span rather than re-adding the
+                              // gap: `floorCover`, `columnStop` and this
+                              // widget have to be one spelling of one
+                              // boundary, or the canvas is framed against
+                              // an edge the rail is not drawn at.
+                              width: hasLeftDock ? leftRailSpan : null,
                               child: _buildRailColumn(
                                 EditorPanelDockSide.left,
                                 width: leftWidth,
@@ -4568,11 +4635,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                             ),
                             Positioned(
                               right: 0,
-                              top: (onTop ? rightStop : 0) + _railGroupGap,
+                              top: grid.position(
+                                (onTop ? rightStop : 0) + _railGroupGap,
+                              ),
                               bottom: onTop ? 0 : rightStop,
-                              width: hasRightDock
-                                  ? rightWidth + _railGroupGap
-                                  : null,
+                              width: hasRightDock ? rightRailSpan : null,
                               child: _buildRailColumn(
                                 EditorPanelDockSide.right,
                                 width: rightWidth,
@@ -4708,8 +4775,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                                           right: false,
                                           inset: bottomInset,
                                           onTop: onTop,
-                                          // ⛔RAW, not the quantized span:
-                                          // this is a drag ACCUMULATOR.
+                                          // RAW, to match the gate above.
                                           railSpan: leftRailSpanRaw,
                                           maxInset: math.max(
                                             0.0,
@@ -4722,7 +4788,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                                           right: true,
                                           inset: bottomInset,
                                           onTop: onTop,
-                                          // ⛔RAW — see the left grip.
+                                          // RAW, to match the gate above.
                                           railSpan: rightRailSpanRaw,
                                           maxInset: math.max(
                                             0.0,
