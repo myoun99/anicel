@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/device_viewport.dart';
 
 import '../helpers/canvas_pill.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -957,9 +958,15 @@ void main() {
       viewportHeight: viewportSize.height,
     );
 
-    expect(canvas.viewport.zoom, expected.zoom);
-    expect(canvas.viewport.panX, expected.panX);
-    expect(canvas.viewport.panY, expected.panY);
+    // ⚠️`closeTo`, not `==`: the view is STORED in device pixels, so the
+    // panel's own fit result comes back through a multiply and a divide by
+    // the same ratio and can land one ulp off (measured: 5.919999999999999
+    // for 5.92). The tolerance is a millionth of a pixel — far below what
+    // this pin is about, which is that Fit measures the EDITOR viewport
+    // rather than the whole panel.
+    expect(canvas.viewport.zoom, closeTo(expected.zoom, 1e-9));
+    expect(canvas.viewport.panX, closeTo(expected.panX, 1e-6));
+    expect(canvas.viewport.panY, closeTo(expected.panY, 1e-6));
   });
 
   testWidgets('reset action restores the identity viewport', (tester) async {
@@ -1452,6 +1459,11 @@ void main() {
     expect(syncedViewports.single.panX, isNot(0));
   });
 
+  // ⚠️Every recorder in here runs the reported viewport through `renderOf`.
+  // The panel publishes DEVICE pixels, and these pins reason in the logical
+  // units a gesture is measured in — a 12-pixel drag is 12 logical pixels,
+  // whatever the display is. Converting once at the recorder keeps every
+  // assertion below reading in the unit it was written in.
   group('viewport gestures (panel-level, frame-independent)', () {
     // The gesture layer lives on the panel, so navigation must work when the
     // viewport shows the blank paper (no editable frame) — coordinator null,
@@ -1501,7 +1513,11 @@ void main() {
       tester,
     ) async {
       final viewports = <CanvasViewport>[];
-      await tester.pumpWidget(blankPanel(onViewportChanged: viewports.add));
+      await tester.pumpWidget(
+        blankPanel(
+          onViewportChanged: (v) => viewports.add(renderOf(tester, v)),
+        ),
+      );
       await tester.pump();
 
       final pointer = TestPointer(1, PointerDeviceKind.mouse);
@@ -1527,7 +1543,11 @@ void main() {
       tester,
     ) async {
       final viewports = <CanvasViewport>[];
-      await tester.pumpWidget(blankPanel(onViewportChanged: viewports.add));
+      await tester.pumpWidget(
+        blankPanel(
+          onViewportChanged: (v) => viewports.add(renderOf(tester, v)),
+        ),
+      );
       await tester.pump();
 
       final gesture = await tester.createGesture(
@@ -1546,7 +1566,11 @@ void main() {
 
     testWidgets('trackpad two-finger pan pans the viewport', (tester) async {
       final viewports = <CanvasViewport>[];
-      await tester.pumpWidget(blankPanel(onViewportChanged: viewports.add));
+      await tester.pumpWidget(
+        blankPanel(
+          onViewportChanged: (v) => viewports.add(renderOf(tester, v)),
+        ),
+      );
       await tester.pump();
 
       final gesture = await tester.createGesture(
@@ -1570,7 +1594,11 @@ void main() {
 
     testWidgets('trackpad pinch zooms the viewport', (tester) async {
       final viewports = <CanvasViewport>[];
-      await tester.pumpWidget(blankPanel(onViewportChanged: viewports.add));
+      await tester.pumpWidget(
+        blankPanel(
+          onViewportChanged: (v) => viewports.add(renderOf(tester, v)),
+        ),
+      );
       await tester.pump();
 
       final gesture = await tester.createGesture(
@@ -1597,7 +1625,11 @@ void main() {
       tester,
     ) async {
       final viewports = <CanvasViewport>[];
-      await tester.pumpWidget(blankPanel(onViewportChanged: viewports.add));
+      await tester.pumpWidget(
+        blankPanel(
+          onViewportChanged: (v) => viewports.add(renderOf(tester, v)),
+        ),
+      );
       await tester.pump();
 
       final firstFinger = await tester.createGesture(
@@ -1650,7 +1682,7 @@ void main() {
                 // view controls live (법: 뷰 컨트롤은 바닥에만).
                 floorCover: EdgeInsets.zero,
                 canvasSize: const CanvasSize(width: 300, height: 300),
-                onViewportChanged: viewports.add,
+                onViewportChanged: (v) => viewports.add(renderOf(tester, v)),
               ),
             ),
           ),
@@ -1704,7 +1736,7 @@ void main() {
                 // view controls live (법: 뷰 컨트롤은 바닥에만).
                 floorCover: EdgeInsets.zero,
                 canvasSize: const CanvasSize(width: 300, height: 300),
-                onViewportChanged: viewports.add,
+                onViewportChanged: (v) => viewports.add(renderOf(tester, v)),
               ),
             ),
           ),
@@ -1752,7 +1784,7 @@ void main() {
                 // view controls live (법: 뷰 컨트롤은 바닥에만).
                 floorCover: EdgeInsets.zero,
                 canvasSize: const CanvasSize(width: 300, height: 300),
-                onViewportChanged: viewports.add,
+                onViewportChanged: (v) => viewports.add(renderOf(tester, v)),
               ),
             ),
           ),

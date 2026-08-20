@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/device_viewport.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
@@ -40,10 +41,13 @@ void main() {
     tester,
   ) async {
     final changes = <CanvasViewport>[];
-    var viewport = CanvasViewport();
+    // ⚠️The seed and the callback are DEVICE pixels; `changes` is kept in
+    // RENDER units so every assertion below reads in the units it was
+    // written in. Converting at the boundary and nowhere else is the point.
+    var viewport = seedFromRender(tester, CanvasViewport());
     void onChanged(CanvasViewport next) {
       viewport = next;
-      changes.add(next);
+      changes.add(renderOf(tester, next));
     }
 
     await pumpPanel(tester, viewport: viewport, onViewportChanged: onChanged);
@@ -95,10 +99,10 @@ void main() {
     tester,
   ) async {
     final changes = <CanvasViewport>[];
-    var viewport = CanvasViewport(zoom: 2.0);
+    var viewport = seedFromRender(tester, CanvasViewport(zoom: 2.0));
     void onChanged(CanvasViewport next) {
       viewport = next;
-      changes.add(next);
+      changes.add(renderOf(tester, next));
     }
 
     await pumpPanel(tester, viewport: viewport, onViewportChanged: onChanged);

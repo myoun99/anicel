@@ -4,6 +4,7 @@ import 'dart:ui' show ImageByteFormat;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/device_viewport.dart';
 
 import '../helpers/canvas_pill.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -69,7 +70,10 @@ void main() {
               // so the panel shows the apron AND what lies beyond it,
               // which is the whole point of the number.
               pasteboardMargin: 0.25,
-              viewport: CanvasViewport(zoom: 0.05, panX: 450, panY: 300),
+              viewport: seedFromRender(
+                tester,
+                CanvasViewport(zoom: 0.05, panX: 450, panY: 300),
+              ),
             ),
           ),
         ),
@@ -144,7 +148,10 @@ void main() {
                 cacheInvalidationSink: BrushEditCacheInvalidationSink(),
                 canvasSize: BrushCanvasFixture.canvasSize,
                 floorCover: EdgeInsets.zero,
-                viewport: CanvasViewport(zoom: 0.05, panX: 450, panY: 300),
+                viewport: seedFromRender(
+                  tester,
+                  CanvasViewport(zoom: 0.05, panX: 450, panY: 300),
+                ),
               ),
             ),
           ),
@@ -203,7 +210,10 @@ void main() {
                 canvasSize: BrushCanvasFixture.canvasSize,
                 floorCover: EdgeInsets.zero,
                 backdropArgb: own,
-                viewport: CanvasViewport(zoom: 0.05, panX: 450, panY: 300),
+                viewport: seedFromRender(
+                  tester,
+                  CanvasViewport(zoom: 0.05, panX: 450, panY: 300),
+                ),
               ),
             ),
           ),
@@ -347,6 +357,9 @@ void main() {
     // A pointer-down outside dismisses (the shared window's rule, R27 #5).
     await tester.tapAt(const Offset(5, 5));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey<String>('color-picker-wheel')), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('color-picker-wheel')),
+      findsNothing,
+    );
   });
 }

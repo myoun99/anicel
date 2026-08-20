@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
-import 'package:anicel/src/models/viewport_point.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
@@ -57,45 +57,81 @@ void main() {
       expect(CanvasZoomScale(double.nan), CanvasZoomScale(double.nan));
     });
 
-    test('rescaledFrom holds the DISPLAY zoom across a ratio change', () {
-      final anchor = ViewportPoint(x: 200, y: 150);
-      final viewport = CanvasViewport(zoom: 0.8, panX: 30, panY: -12);
+    test('device units round-trip, and the device identity is a bare one', () {
+      for (final ratio in <double>[1, 1.25, 1.5, 1.875, 3]) {
+        final scale = CanvasZoomScale(ratio);
+        final view = CanvasViewport(
+          zoom: 0.8,
+          panX: 31,
+          panY: -12,
+          rotationDegrees: 15,
+          flipHorizontal: true,
+        );
+        final back = scale.fromDevice(scale.toDevice(view));
+        expect(back.zoom, closeTo(view.zoom, 1e-12));
+        expect(back.panX, closeTo(view.panX, 1e-12));
+        expect(back.panY, closeTo(view.panY, 1e-12));
+        // Angles and signs carry no factor — that is the half of the claim
+        // a zoom-only conversion would get wrong.
+        expect(back.rotationDegrees, view.rotationDegrees);
+        expect(back.flipHorizontal, view.flipHorizontal);
+
+        // ⭐The identity in DEVICE units is `CanvasViewport()` — the exact
+        // value that was WRONG in render units. Storing the view in these
+        // units is what makes "nothing has framed this yet" and "one
+        // artwork pixel per device pixel" the same object.
+        expect(scale.toDevice(scale.identityViewport).zoom, closeTo(1, 1e-12));
+        // And the device zoom IS the percentage, with no conversion left.
+        expect(
+          scale.toDevice(view).zoom,
+          closeTo(scale.display(view.zoom), 1e-12),
+        );
+      }
+    });
+
+    test('a ratio change moves NOTHING when the view is kept in device '
+        'units — no re-zoom, no anchor', () {
+      // 🎯The property layer 3 rests on, and the reason the hold can go: a
+      // stored device view converted out at a DIFFERENT ratio puts every
+      // artwork point back on the device pixel it was already on. The old
+      // `rescaledFrom` could only promise this for ONE point (the anchor)
+      // and only while a panel was mounted to run it.
+      const before = CanvasZoomScale(1.5);
+      const after = CanvasZoomScale(1.875); // the same monitor at 125% UI
+      final stored = before.toDevice(
+        CanvasViewport(zoom: 0.8, panX: 31, panY: -12, rotationDegrees: 15),
+      );
+
+      final was = before.fromDevice(stored);
+      final now = after.fromDevice(stored);
+      for (final point in <CanvasPoint>[
+        CanvasPoint(x: 0, y: 0),
+        CanvasPoint(x: 300, y: 200),
+        CanvasPoint(x: -140, y: 990),
+      ]) {
+        // Logical positions differ — the root matrix grew by the factor.
+        // DEVICE positions are identical, which is what the eye reads.
+        final wasDevice = was.canvasToViewport(point);
+        final nowDevice = now.canvasToViewport(point);
+        expect(wasDevice.x * 1.5, closeTo(nowDevice.x * 1.875, 1e-9));
+        expect(wasDevice.y * 1.5, closeTo(nowDevice.y * 1.875, 1e-9));
+      }
+    });
+
+    test('the DISPLAY zoom is the invariant across a ratio change', () {
+      // What `rescaledFrom` used to compute the hard way. Kept because it
+      // is the user-visible promise — "the percentage you set is the
+      // percentage you keep" — not because of how it is arrived at.
       const from = CanvasZoomScale(1.25);
       const to = CanvasZoomScale(2.0);
+      final stored = from.toDevice(CanvasViewport(zoom: 0.8, panX: 30));
 
-      final held = to.rescaledFrom(from, viewport, anchor: anchor);
-      expect(
-        to.display(held.zoom),
-        closeTo(from.display(viewport.zoom), 1e-12),
-      );
+      expect(to.display(to.fromDevice(stored).zoom), closeTo(1.0, 1e-12));
+      expect(from.display(from.fromDevice(stored).zoom), closeTo(1.0, 1e-12));
       // ⭐The artwork covers the same DEVICE pixels — that IS the exclusion.
-      expect(held.zoom * 2.0, closeTo(viewport.zoom * 1.25, 1e-12));
-    });
-
-    test('rescaledFrom keeps the anchored canvas point under the anchor', () {
-      final anchor = ViewportPoint(x: 200, y: 150);
-      final viewport = CanvasViewport(zoom: 0.8, panX: 30, panY: -12);
-      final before = viewport.viewportToCanvas(anchor);
-      final held = const CanvasZoomScale(
-        2.0,
-      ).rescaledFrom(const CanvasZoomScale(1.25), viewport, anchor: anchor);
-      final after = held.viewportToCanvas(anchor);
-      expect(after.x, closeTo(before.x, 1e-9));
-      expect(after.y, closeTo(before.y, 1e-9));
-    });
-
-    test('an unchanged ratio returns the identical viewport', () {
-      final viewport = CanvasViewport(zoom: 0.8, panX: 30);
       expect(
-        identical(
-          const CanvasZoomScale(1.5).rescaledFrom(
-            const CanvasZoomScale(1.5),
-            viewport,
-            anchor: ViewportPoint(x: 0, y: 0),
-          ),
-          viewport,
-        ),
-        isTrue,
+        to.fromDevice(stored).zoom * 2.0,
+        closeTo(from.fromDevice(stored).zoom * 1.25, 1e-12),
       );
     });
 
@@ -184,16 +220,20 @@ void main() {
       tester.view.physicalSize = const Size(2400, 1800);
       addTearDown(tester.view.reset);
 
-      // A logical zoom of 1.0 on a 1.5 display puts one artwork pixel into
-      // 1.5 device pixels — which is 150%, and used to read "100%".
+      // ⚠️`viewport:` is in DEVICE units, so it IS the percentage — 1.5
+      // device pixels per artwork pixel reads 150%, on any display. The
+      // number the caller writes and the number the user reads are finally
+      // the same number.
       await tester.pumpWidget(
-        harness(uiScale: 1.0, viewport: CanvasViewport(zoom: 1.0)),
+        harness(uiScale: 1.0, viewport: CanvasViewport(zoom: 1.5)),
       );
       await tester.pump();
       expect(readout(tester), '150%');
 
+      // And the bare constructor is 100% here — the same value that, read
+      // as a logical zoom, put the artwork at 150% and called it 100%.
       await tester.pumpWidget(
-        harness(uiScale: 1.0, viewport: CanvasViewport(zoom: 1 / 1.5)),
+        harness(uiScale: 1.0, viewport: CanvasViewport()),
       );
       await tester.pump();
       expect(readout(tester), '100%');
@@ -206,7 +246,8 @@ void main() {
       tester.view.physicalSize = const Size(2400, 1800);
       addTearDown(tester.view.reset);
 
-      CanvasViewport? reported;
+      final owner = ValueNotifier<CanvasViewport?>(null);
+      addTearDown(owner.dispose);
       Widget scaled(double uiScale) {
         final frameKeys = BrushCanvasFixture.createFrameKeys();
         return MediaQuery(
@@ -230,7 +271,7 @@ void main() {
                     cacheInvalidationSink: BrushEditCacheInvalidationSink(),
                     floorCover: EdgeInsets.zero,
                     canvasSize: const CanvasSize(width: 300, height: 300),
-                    onViewportChanged: (v) => reported = v,
+                    viewportController: owner,
                   ),
                 ),
               ),
@@ -245,18 +286,15 @@ void main() {
 
       // The user picks 125%: the root matrix grows, and this view must not.
       await tester.pumpWidget(scaled(1.25));
-      // ⛔Read it on the FIRST frame, before any `pump()`. This is the whole
-      // point of the held viewport: the post-frame commit would make frame
-      // 2 right on its own, so a test that settles first passes with the
-      // hold deleted and the user still sees one wrong frame. Deleting
-      // `_ratioHeldViewport ??` from the `_viewport` getter must turn THIS
-      // line red.
+      // ⛔Read it on the FIRST frame, before any `pump()`. The old hold made
+      // frame 2 right on its own, so a pin that settled first passed with
+      // the correction deleted and the user still saw one wrong frame.
+      // Nothing corrects anything now — the stored value never moved — so
+      // this line is the claim that there is no frame to be wrong.
       expect(
         readout(tester),
         before,
-        reason:
-            'the FIRST frame after a scale change is already correct — '
-            'the hold, not the post-frame commit, is what makes it so',
+        reason: 'the FIRST frame after a scale change is already correct',
       );
       await tester.pump();
       expect(
@@ -264,12 +302,15 @@ void main() {
         before,
         reason: 'the percentage is the invariant across a scale change',
       );
-      // And the panel really re-zoomed rather than the readout lying: the
-      // logical zoom dropped by exactly the factor the matrix gained.
-      expect(reported, isNotNull);
-      // The DEVICE coverage is what must be unchanged: render x effective
-      // ratio is the display zoom, and the view opened at 100%.
-      expect(reported!.zoom * (1.5 * 1.25), closeTo(1.0, 1e-9));
+      // ⭐And the STORED value is untouched, which is the whole of layer 3:
+      // it is in device units, so it means the same thing at both ratios.
+      // Still null, in fact — nobody framed this view, and "unframed" and
+      // "one artwork pixel per device pixel" are the same value here.
+      expect(
+        owner.value,
+        isNull,
+        reason: 'a ratio change writes NOTHING — there is nothing to correct',
+      );
     });
 
     testWidgets('an OWNER that reframes the view repaints the canvas, not '
@@ -285,6 +326,9 @@ void main() {
       // gesture layer takes the viewport as a build-time value — and it is
       // what turns a press into an artwork coordinate, so a stale one means
       // the strokes land where the picture used to be.
+      tester.view.devicePixelRatio = 1.5;
+      tester.view.physicalSize = const Size(2400, 1800);
+      addTearDown(tester.view.reset);
       final owner = ValueNotifier<CanvasViewport?>(null);
       addTearDown(owner.dispose);
 
@@ -298,23 +342,71 @@ void main() {
           .viewport;
       final opened = layerViewport();
 
-      owner.value = opened.copyWith(panX: opened.panX + 37);
+      // ⚠️The owner writes DEVICE pixels; the layer is handed LOGICAL ones.
+      // Crossing the boundary in the assertion is the point — 37 device
+      // pixels of pan must show up as 37/1.5 logical, and a pin that wrote
+      // and read the same number would pass with the projection deleted.
+      owner.value = CanvasViewport(panX: 37);
       await tester.pump();
       expect(
         layerViewport().panX,
-        closeTo(opened.panX + 37, 1e-9),
+        closeTo(opened.panX + 37 / 1.5, 1e-9),
         reason: "the owner's frame is the canvas's frame, in one pump",
+      );
+    });
+
+    testWidgets('⭐a view that was UNMOUNTED across the scale change comes '
+        'back at the percentage it left at (C5)', (tester) async {
+      // 🚨The blocker device units exist to make unrepresentable. A document
+      // tab the user closed has no panel, so nothing was there to re-zoom
+      // its stored view when the UI scale moved — it came back having
+      // absorbed the scale factor in full. Every fix that kept the view in
+      // logical units needed someone AWAKE at the moment of the change: the
+      // tab itself (not mounted), or an owner walking its viewports (which
+      // is a list nobody can be sure is complete).
+      //
+      // Stored in device pixels, the value simply does not depend on the
+      // ratio, so being asleep through the change costs nothing.
+      tester.view.devicePixelRatio = 1.5;
+      tester.view.physicalSize = const Size(2400, 1800);
+      addTearDown(tester.view.reset);
+      // A tab framed at 400% before it was closed.
+      final closedTab = ValueNotifier<CanvasViewport?>(
+        CanvasViewport(zoom: 4.0, panX: 60),
+      );
+      addTearDown(closedTab.dispose);
+
+      // It is NOT on screen while the scale moves — that is the whole
+      // scenario, so the panel never mounts at the old ratio at all.
+      await tester.pumpWidget(harness(uiScale: 1.0));
+      await tester.pump();
+
+      // The user raises the UI scale, then reopens the tab.
+      await tester.pumpWidget(harness(uiScale: 1.25, controller: closedTab));
+      await tester.pumpAndSettle();
+
+      expect(
+        readout(tester),
+        '400%',
+        reason: 'the percentage it was closed at, not that times the scale',
+      );
+      expect(
+        closedTab.value!.zoom,
+        4.0,
+        reason: 'and nothing rewrote the stored value to make that true',
       );
     });
 
     testWidgets('a scale change survives a host that setStates on the '
         'viewport callback', (tester) async {
       // 🚨The defect this exists for shipped past a harness that only wrote
-      // the value down. The REAL consumer (`editor_canvas_area.dart`)
-      // answers `onViewportChanged` with its own `setState`, and the
-      // ratio-change hold used to commit from `didChangeDependencies` —
-      // inside the panel's rebuild — so every scale change raised
-      // "setState() called during build" on an ancestor.
+      // the value down. The REAL consumer answers `onViewportChanged` with
+      // its own `setState`, and the ratio-change correction used to run
+      // from `didChangeDependencies` — inside the panel's rebuild — so
+      // every scale change raised "setState() called during build" on an
+      // ancestor. The correction is gone, and this stays: it is the pin
+      // that a scale change writes nothing at all, which is the strongest
+      // possible form of "it does not write during build".
       tester.view.devicePixelRatio = 1.5;
       tester.view.physicalSize = const Size(2400, 1800);
       addTearDown(tester.view.reset);
@@ -322,19 +414,27 @@ void main() {
       await tester.pumpWidget(const _ScaleHost(uiScale: 1.0));
       await tester.pump();
       expect(tester.takeException(), isNull);
+      final opened = readout(tester);
 
       await tester.pumpWidget(const _ScaleHost(uiScale: 1.25));
       await tester.pumpAndSettle();
       expect(
         tester.takeException(),
         isNull,
-        reason: 'the hold must not commit from inside a build',
+        reason: 'a scale change must not write from inside a build',
       );
 
-      // And it really did land — the host holds the re-zoomed view.
       final state = tester.state<_ScaleHostState>(find.byType(_ScaleHost));
-      expect(state.viewport, isNotNull);
-      expect(state.viewport!.zoom * (1.5 * 1.25), closeTo(1.0, 1e-9));
+      expect(
+        state.viewport,
+        isNull,
+        reason: 'the host was never called — a ratio change is not an edit',
+      );
+      expect(
+        readout(tester),
+        opened,
+        reason: 'and the view held its percentage anyway',
+      );
     });
 
     testWidgets('1:1 means one artwork pixel per device pixel', (tester) async {

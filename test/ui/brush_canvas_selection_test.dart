@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/device_viewport.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
@@ -95,11 +96,16 @@ void main() {
     }
 
     // ⚠️Default to an EXPLICIT render 1.0. These cases map screen pixels
-    // to canvas pixels one-for-one, and an uncontrolled panel now opens at
-    // the identity (one artwork px per DEVICE px), which on the 3x test
-    // view is a render zoom of 1/3. Saying it here keeps the geometry the
+    // to canvas pixels one-for-one, and an uncontrolled panel opens at the
+    // identity (one artwork px per DEVICE px), which on the 3x test view is
+    // a render zoom of 1/3. Saying it here keeps the geometry the
     // assertions were written against, and states the assumption.
-    var liveViewport = viewport ?? CanvasViewport();
+    //
+    // ⛔Through `seedFromRender`, because the panel's viewport channels are
+    // in DEVICE pixels — a bare `CanvasViewport()` here means 100%, and
+    // every one-screen-pixel-is-one-canvas-pixel claim below would be off
+    // by the harness ratio.
+    var liveViewport = viewport ?? seedFromRender(tester, CanvasViewport());
     var liveTool = tool;
     Future<void> pumpWith(CanvasTool tool) async {
       liveTool = tool;
@@ -795,7 +801,7 @@ void main() {
     // off" is a question the raster can answer.
     final env = await pumpSelectionPanel(
       tester,
-      viewport: CanvasViewport(zoom: 3),
+      viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
       sourceDabs: [dab(40, 40)],
     );
     // Select it, then move: a selection makes the region's own bounds the
@@ -1328,7 +1334,7 @@ void main() {
       tool: CanvasTool.move,
       canvasSize: big,
       sourceDabs: [dab(100, 100), dab(700, 600), dab(1500, 1200)],
-      viewport: CanvasViewport(),
+      viewport: seedFromRender(tester, CanvasViewport()),
     );
 
     final origin = tester.getTopLeft(find.byKey(layerKey));
@@ -1385,7 +1391,7 @@ void main() {
       // viewport, and therefore outside every window the preview ever
       // computed during the drag below.
       sourceDabs: [dab(100, 100), dab(700, 600), dab(1500, 1200)],
-      viewport: CanvasViewport(),
+      viewport: seedFromRender(tester, CanvasViewport()),
     );
     expect(
       inkAt(env.coordinator, 1500, 1200),
@@ -2363,9 +2369,10 @@ void main() {
       // (Both matter — the cel is the pre-image half of the composition —
       // so both are asserted.)
       final committedBefore = currentSurface(env.coordinator);
-      final floatSurfaces = floatPainters(tester, committedBefore)
-          .map((painter) => painter.surface)
-          .toList();
+      final floatSurfaces = floatPainters(
+        tester,
+        committedBefore,
+      ).map((painter) => painter.surface).toList();
       expect(
         floatSurfaces,
         isNotEmpty,

@@ -219,34 +219,39 @@ class BrushCanvasPanel extends StatefulWidget {
   /// compares as a caller edit and never gets reverted. Passing this a
   /// constant is therefore harmless — see the marker in [build].
   ///
-  /// ⛔Prefer [viewportController] for new callers. This channel costs a
-  /// rebuild of the caller per pan frame, and it cannot express "not
-  /// framed yet" — a bare `CanvasViewport()` is render 1.0, which under
-  /// this round's convention means `ratio × 100%`, not 100%.
+  /// ⛔Prefer [viewportController] for new callers: this channel costs the
+  /// caller a rebuild per pan frame.
   final CanvasViewport? viewport;
 
   /// The view, OWNED by the caller — the single copy, not a value to echo.
-  ///
-  /// Null in it means "not framed yet", which the panel resolves to the
-  /// identity at READ time rather than seeding, so an untouched view
-  /// follows the effective ratio with nothing stored to go stale.
   ///
   /// ⛔A caller that passes this must not also pass [viewport]; the seed
   /// would be ignored, which is worse than an error.
   final ValueNotifier<CanvasViewport?>? viewportController;
 
-  /// The view as the CALLER can see it — the controller's value when there
-  /// is one, the pushed value otherwise, and null while nothing is framed.
+  /// The view as the CALLER holds it, in DEVICE pixels.
+  ///
+  /// 🎯**Everything outside this panel speaks device units** — both
+  /// channels above, this getter, and [onViewportChanged]. The panel
+  /// projects into logical units for its painters and nowhere else, which
+  /// is what lets a view sit in a closed tab, or a notifier nobody is
+  /// listening to, and stay correct across a UI-scale change.
+  ///
+  /// ⚠️Non-null by construction: `null` means "nobody has framed this yet",
+  /// and in device units that IS `CanvasViewport()` — one artwork pixel per
+  /// device pixel. Callers get an answer instead of a null to resolve with
+  /// a ratio they would have to go find.
   ///
   /// 🚨One place resolves the two channels, so nothing outside has to know
   /// which one a given host wired. It used to be open-coded as
   /// `panel.viewport!` in pins, and every one of them read a null the day
   /// its host moved to a controller — a stale oracle asserts about a
   /// default and passes while the real view sits somewhere else.
-  CanvasViewport? get publishedViewport =>
-      viewportController != null ? viewportController!.value : viewport;
+  CanvasViewport get publishedViewport =>
+      (viewportController != null ? viewportController!.value : viewport) ??
+      CanvasViewport();
 
-  /// Fired when the panel moves the view — a side channel for owners that
+  /// Fired when the panel moves the view, in DEVICE pixels — a side channel for owners that
   /// react (persisting elsewhere, re-framing a sibling), never the storage.
   final ValueChanged<CanvasViewport>? onViewportChanged;
 
@@ -569,42 +574,36 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   ValueNotifier<CanvasViewport?> get _viewportNotifier =>
       widget.viewportController ?? _ownViewport;
 
-  /// The view a ratio change has re-zoomed to but not yet COMMITTED.
+  /// The view in LOGICAL units — what every painter, every hit test and
+  /// every gesture in this panel works in.
   ///
-  /// 🚨It exists because the commit cannot happen where the ratio change is
-  /// noticed. [didChangeDependencies] runs inside this element's rebuild,
-  /// and committing calls `widget.onViewportChanged`, whose real consumer
-  /// (`editor_canvas_area.dart`) answers with an ANCESTOR `setState` — a
-  /// `markNeedsBuild` on an element already built this frame, which is the
-  /// "setState() called during build" assert, on every scale change.
+  /// 🎯**The stored form is DEVICE units; this is the projection.** The
+  /// panel is the only boundary the two units meet at: read here, write in
+  /// the setter, and nothing in between has to know a ratio exists.
   ///
-  /// ⛔And the commit cannot simply wait a frame either: the artwork would
-  /// be visibly wrong for that frame, which this codebase does not allow.
-  /// So the value is held HERE, where the getter below finds it in the very
-  /// build that follows — no notify, no `setState` — and the commit rides a
-  /// post-frame callback, out of the build.
+  /// 🚨What that buys is the whole of the exclusion, for free. A ratio
+  /// change — a new UI scale, a window dragged to another monitor — moves
+  /// the projection and not the stored value, so the artwork keeps every
+  /// device pixel it had. There is no re-zoom to run, no anchor to pick,
+  /// and, crucially, **nothing that has to be MOUNTED to happen**: a closed
+  /// document tab comes back at the percentage it left at because its value
+  /// never meant anything ratio-dependent in the first place.
   ///
-  /// The readout is right in the meantime without doing anything: the
-  /// percentage is the invariant across a ratio change, so the old value
-  /// and the new one print the same.
-  CanvasViewport? _ratioHeldViewport;
-
-  /// The view, with "nobody has framed it yet" resolved to the IDENTITY —
-  /// one artwork pixel per device pixel, re-derived whenever the effective
-  /// ratio moves.
+  /// ⛔The three mechanisms this replaced are gone, not disabled: the
+  /// re-zoom (`rescaledFrom`), the held value that carried it through the
+  /// build it was noticed in, and the post-frame commit that got it out of
+  /// that build. Each existed only because the stored number moved.
   ///
-  /// ⚠️Resolving it HERE rather than seeding a field is what keeps an
-  /// untouched view correct across a scale change for free: there is
-  /// nothing stored to go stale.
+  /// ⚠️`null` is "nobody has framed this yet", and in device units that is
+  /// exactly `CanvasViewport()` — one artwork pixel per device pixel. The
+  /// bare constructor was the WRONG value in render units; it is the right
+  /// one here, which is the clearest sign the unit belongs at the storage.
   CanvasViewport get _viewport =>
-      _ratioHeldViewport ??
-      _viewportNotifier.value ??
-      _zoomScale.identityViewport;
+      _zoomScale.fromDevice(_viewportNotifier.value ?? CanvasViewport());
 
   set _viewport(CanvasViewport value) {
-    _ratioHeldViewport = null;
     _publishingViewport = true;
-    _viewportNotifier.value = value;
+    _viewportNotifier.value = _zoomScale.toDevice(value);
     _publishingViewport = false;
   }
 
@@ -629,13 +628,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// into the notifier): the value was right and the canvas kept painting
   /// the playback framing.
   ///
-  /// ⛔The hold dies here too — an owner that framed the view outranks a
-  /// ratio correction the panel was still carrying.
   void _handleViewportMovedByOwner() {
     if (_publishingViewport || !mounted) {
       return;
     }
-    setState(() => _ratioHeldViewport = null);
+    // The value already lives in the notifier — this call IS the repaint.
+    setState(() {});
   }
 
   /// The last value the CALLER handed us through [BrushCanvasPanel.viewport].
@@ -799,10 +797,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   void Function()? _installedCutPasteHandler;
 
-  /// The effective ratio this panel last framed its view against — the
-  /// other half of the document-view exclusion.
-  CanvasZoomScale? _lastZoomScale;
-
   CanvasZoomScale get _zoomScale => CanvasZoomScale.of(context);
 
   @override
@@ -810,83 +804,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     super.didChangeDependencies();
     _readStageColors();
     _onFloor = CanvasFloorInsets.isFloor(context);
-    _holdDisplayZoomAcrossRatioChange();
-  }
-
-  /// Keeps the artwork covering the same DEVICE pixels when the effective
-  /// ratio moves under it — a new UI scale, or the window dragged to a
-  /// display with a different ratio.
-  ///
-  /// 🚨This is what makes "the scale does not touch document views" true
-  /// (유저 확정 2026-08-21). The root matrix has just changed by the scale
-  /// factor, so a view left at the same LOGICAL zoom would jump by exactly
-  /// that factor; re-zooming by the inverse holds the percentage, which is
-  /// the number the user set and the one they read.
-  ///
-  /// ⛔Around the visible centre, not the box's — the same anchor every
-  /// other zoom verb here uses, so a scale change does not walk the picture
-  /// toward an edge a dock is covering.
-  void _holdDisplayZoomAcrossRatioChange() {
-    final next = _zoomScale;
-    final previous = _lastZoomScale;
-    _lastZoomScale = next;
-    if (previous == null) {
-      // 🚨FIRST build. The frame itself is already right — the `_viewport`
-      // getter resolves an unset view to `next.identityViewport`, so the
-      // document opens at 100% at whatever the ratio is. What is missing
-      // is that the HOST does not know that number yet, and the host is
-      // what draws the readout and answers the zoom verbs.
-      //
-      // ⛔So publish it, but never from here: this runs inside
-      // `didChangeDependencies`, and the notifier now belongs to the
-      // owner, whose listeners live ABOVE this panel — writing it here is
-      // `setState` during build. Measured: it took out every headline pin
-      // in the round. The rule this leaves behind is general — **never
-      // write a shared notifier during the build phase.**
-      if (_viewportNotifier.value == null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          // Anything that moved the view in between already owns it.
-          if (!mounted || _viewportNotifier.value != null) {
-            return;
-          }
-          _setViewport(_zoomScale.identityViewport);
-        });
-      }
-      return;
-    }
-    if (previous == next) {
-      return;
-    }
-    // 🚨The STORED value, not `_viewport` — the getter answers `null` with
-    // `_zoomScale.identityViewport`, and `_zoomScale` has already moved to
-    // the new ratio by the time this runs. Rescaling THAT applies the
-    // factor twice (measured: 100% became 80% across 1.0 → 1.25). A view
-    // that was never set has nothing to hold: its fallback already tracks
-    // the ratio, which is the invariant this method exists to defend.
-    final current = _ratioHeldViewport ?? _viewportNotifier.value;
-    if (current == null) {
-      return;
-    }
-    final held = next.rescaledFrom(
-      previous,
-      current,
-      anchor: _viewportCenterAnchor,
-    );
-    if (held == current) {
-      return;
-    }
-    // Rendered THIS frame (the getter reads it), committed after it — see
-    // [_ratioHeldViewport] for why the two cannot be the same moment.
-    _ratioHeldViewport = held;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // ⚠️`identical`, not `==`: anything that moved the view in between
-      // already cleared the hold, and re-committing this value would undo
-      // the user's own gesture.
-      if (!mounted || !identical(_ratioHeldViewport, held)) {
-        return;
-      }
-      _setViewport(held);
-    });
+    // ⛔Nothing here answers a RATIO change any more, deliberately. Holding
+    // the percentage across one used to take a remembered scale, a re-zoom
+    // around a chosen anchor, a value held through the build that noticed
+    // it, and a post-frame commit to get the write out of that build — and
+    // it still only worked while a panel was MOUNTED to run it. Storing the
+    // view in device units makes the whole sequence a no-op: see
+    // [_viewport].
   }
 
   /// One undoable selection step (R11-⑧) — the layer's marquee commits and
@@ -1762,7 +1686,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // prop when the CALLER changed it, and never when the panel did.
     if (widget.viewport != null && widget.viewport != _lastSeenViewportInput) {
       _lastSeenViewportInput = widget.viewport;
-      _viewport = widget.viewport!;
+      // ⛔Straight into the notifier, NOT through `_viewport` — the prop is
+      // already in DEVICE units, and the setter's job is to convert INTO
+      // them. Going through it would multiply by the ratio a second time.
+      _publishingViewport = true;
+      _viewportNotifier.value = widget.viewport;
+      _publishingViewport = false;
     }
     // R27 #17: a cursor that armed mid-gesture gets a starting position.
     _seedEyedropperHoverIfNeeded();
@@ -2696,13 +2625,24 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     setState(() => _viewport = viewport.clamped());
   }
 
-  /// Tells the owner the view moved.
+  /// Tells the owner the view moved, in DEVICE pixels.
   ///
   /// ⚠️Notification ONLY. The value is already in the owner's notifier by
   /// the time this runs — writing a "last published" marker here is what
   /// used to make the panel revert itself.
+  ///
+  /// ⛔The STORED value, not `toDevice(_viewport)`: the two agree to within
+  /// a float ulp, and handing out the one that is already in the notifier
+  /// means a caller that echoes it straight back is a no-op rather than a
+  /// change. It also keeps the rule with no exceptions — every viewport
+  /// that crosses this panel's boundary, in either direction and through
+  /// any of the three channels, is in device pixels.
   void _syncViewportParent() {
-    widget.onViewportChanged?.call(_viewport);
+    final onChanged = widget.onViewportChanged;
+    if (onChanged == null) {
+      return;
+    }
+    onChanged(_viewportNotifier.value ?? CanvasViewport());
   }
 
   /// One press of the pill's − / +. Back with the buttons themselves
@@ -4594,7 +4534,9 @@ class _CanvasViewportBottomBar extends StatelessWidget {
                 builder: (_) => Row(
                   mainAxisSize: MainAxisSize.min,
                   children: viewControlsFor(
-                    liveViewport.value ?? zoomScale.identityViewport,
+                    zoomScale.fromDevice(
+                      liveViewport.value ?? CanvasViewport(),
+                    ),
                   ),
                 ),
               ),
@@ -4651,7 +4593,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
                       builder: (_, view) => Row(
                         mainAxisSize: MainAxisSize.min,
                         children: viewControlsFor(
-                          view ?? zoomScale.identityViewport,
+                          zoomScale.fromDevice(view ?? CanvasViewport()),
                         ),
                       ),
                     ),
