@@ -210,14 +210,19 @@ class BrushCanvasPanel extends StatefulWidget {
 
   final BrushToolState brushToolState;
   final HistoryManager? historyManager;
-  /// A STARTING view for a panel that owns its own — a seed, not a
-  /// binding.
+
+  /// The view PUSHED by a caller that keeps it in its own `setState` — an
+  /// input, re-applied whenever the caller changes it.
   ///
-  /// ⚠️Read once. Changing it later does nothing, deliberately: a caller
-  /// that wants to drive the view owns it through [viewportController].
-  /// It used to be re-applied on every build whenever it differed from
-  /// what the panel had last published, which made a constant prop fight
-  /// the user's own panning.
+  /// ⚠️"Whenever the CALLER changed it", not "whenever it differs": the
+  /// panel tracks the last value it was HANDED, so its own panning never
+  /// compares as a caller edit and never gets reverted. Passing this a
+  /// constant is therefore harmless — see the marker in [build].
+  ///
+  /// ⛔Prefer [viewportController] for new callers. This channel costs a
+  /// rebuild of the caller per pan frame, and it cannot express "not
+  /// framed yet" — a bare `CanvasViewport()` is render 1.0, which under
+  /// this round's convention means `ratio × 100%`, not 100%.
   final CanvasViewport? viewport;
 
   /// The view, OWNED by the caller — the single copy, not a value to echo.
@@ -229,6 +234,17 @@ class BrushCanvasPanel extends StatefulWidget {
   /// ⛔A caller that passes this must not also pass [viewport]; the seed
   /// would be ignored, which is worse than an error.
   final ValueNotifier<CanvasViewport?>? viewportController;
+
+  /// The view as the CALLER can see it — the controller's value when there
+  /// is one, the pushed value otherwise, and null while nothing is framed.
+  ///
+  /// 🚨One place resolves the two channels, so nothing outside has to know
+  /// which one a given host wired. It used to be open-coded as
+  /// `panel.viewport!` in pins, and every one of them read a null the day
+  /// its host moved to a controller — a stale oracle asserts about a
+  /// default and passes while the real view sits somewhere else.
+  CanvasViewport? get publishedViewport =>
+      viewportController != null ? viewportController!.value : viewport;
 
   /// Fired when the panel moves the view — a side channel for owners that
   /// react (persisting elsewhere, re-framing a sibling), never the storage.
@@ -587,7 +603,39 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   set _viewport(CanvasViewport value) {
     _ratioHeldViewport = null;
+    _publishingViewport = true;
     _viewportNotifier.value = value;
+    _publishingViewport = false;
+  }
+
+  /// The notifier this panel is currently subscribed to — [_viewportNotifier]
+  /// is a getter whose identity changes with the prop, so the object to
+  /// UNSUBSCRIBE from has to be remembered rather than recomputed.
+  ValueNotifier<CanvasViewport?>? _listenedViewport;
+
+  /// True while the panel is writing the view itself.
+  ///
+  /// Its own writes ride a `setState` already, so hearing them back would
+  /// only schedule a second build for the same change.
+  bool _publishingViewport = false;
+
+  /// Repaints when the OWNER moves the view.
+  ///
+  /// 🚨The hole this closes is the price of sharing the object. The view
+  /// used to arrive as a PROP, so an owner that re-framed it rebuilt this
+  /// panel by definition; now it writes into a notifier the panel merely
+  /// reads, and nothing schedules a frame. Measured on the playback stop
+  /// restore (`editor_canvas_area.dart` writes the pre-play view straight
+  /// into the notifier): the value was right and the canvas kept painting
+  /// the playback framing.
+  ///
+  /// ⛔The hold dies here too — an owner that framed the view outranks a
+  /// ratio correction the panel was still carrying.
+  void _handleViewportMovedByOwner() {
+    if (_publishingViewport || !mounted) {
+      return;
+    }
+    setState(() => _ratioHeldViewport = null);
   }
 
   /// The last value the CALLER handed us through [BrushCanvasPanel.viewport].
@@ -630,8 +678,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// composite underlay reads. Owned here because it outlives both — the
   /// selection layer is mounted and unmounted by tool changes, and the
   /// underlay is rebuilt by the host.
-  final SelectionFloatOverlay _selectionFloat =
-      SelectionFloatOverlay(null);
+  final SelectionFloatOverlay _selectionFloat = SelectionFloatOverlay(null);
 
   /// R28-S: the dash phase for the ants the panel paints when NO selection
   /// layer is mounted — the region belongs to the document, so it keeps
@@ -731,6 +778,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _bindViewCommands();
     _altHeld = HardwareKeyboard.instance.isAltPressed;
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    _listenedViewport = _viewportNotifier
+      ..addListener(_handleViewportMovedByOwner);
     widget.selectionCommands?.addListener(_handleSelectionChannelChanged);
     _bindSelectionHistoryRecorder();
     _bindCutPasteHandler();
@@ -782,36 +831,48 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     final previous = _lastZoomScale;
     _lastZoomScale = next;
     if (previous == null) {
-      // 🚨FIRST build. An UNCONTROLLED panel's viewport was a bare
-      // `CanvasViewport()` — a render zoom of 1.0, which under this
-      // round's convention is `ratio × 100%`. So a document opened at
-      // 150% on a 1.5 display, at 200% on the iPad, and — since the scale
-      // persists while the viewport does not — a project reopened after
-      // the user raised the chrome to 150% came back half again as big.
+      // 🚨FIRST build. The frame itself is already right — the `_viewport`
+      // getter resolves an unset view to `next.identityViewport`, so the
+      // document opens at 100% at whatever the ratio is. What is missing
+      // is that the HOST does not know that number yet, and the host is
+      // what draws the readout and answers the zoom verbs.
       //
-      // Resolving it here rather than at the field initialiser is what
-      // makes it possible at all: `didChangeDependencies` is the first
-      // place with a `context` to read the ratio from, and it runs BEFORE
-      // this element's first build, so the corrected value is what the
-      // first frame paints.
-      //
-      // ⛔Written straight to the notifier, not through `_setViewport`:
-      // that would call `widget.onViewportChanged` during the build phase,
-      // which is an ancestor `setState`.
-      if (widget.viewport == null) {
-        _viewportNotifier.value = next.identityViewport;
+      // ⛔So publish it, but never from here: this runs inside
+      // `didChangeDependencies`, and the notifier now belongs to the
+      // owner, whose listeners live ABOVE this panel — writing it here is
+      // `setState` during build. Measured: it took out every headline pin
+      // in the round. The rule this leaves behind is general — **never
+      // write a shared notifier during the build phase.**
+      if (_viewportNotifier.value == null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          // Anything that moved the view in between already owns it.
+          if (!mounted || _viewportNotifier.value != null) {
+            return;
+          }
+          _setViewport(_zoomScale.identityViewport);
+        });
       }
       return;
     }
     if (previous == next) {
       return;
     }
+    // 🚨The STORED value, not `_viewport` — the getter answers `null` with
+    // `_zoomScale.identityViewport`, and `_zoomScale` has already moved to
+    // the new ratio by the time this runs. Rescaling THAT applies the
+    // factor twice (measured: 100% became 80% across 1.0 → 1.25). A view
+    // that was never set has nothing to hold: its fallback already tracks
+    // the ratio, which is the invariant this method exists to defend.
+    final current = _ratioHeldViewport ?? _viewportNotifier.value;
+    if (current == null) {
+      return;
+    }
     final held = next.rescaledFrom(
       previous,
-      _viewport,
+      current,
       anchor: _viewportCenterAnchor,
     );
-    if (held == _viewport) {
+    if (held == current) {
       return;
     }
     // Rendered THIS frame (the getter reads it), committed after it — see
@@ -900,6 +961,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // view the moment a panel unmounts, taking every other reader of it
     // with it. Measured: "A ValueNotifier was used after being disposed"
     // on the first rail-group fold.
+    //
+    // ⚠️Unsubscribe FIRST, and from the REMEMBERED object: the owner's
+    // notifier outlives this panel, so a listener left behind holds a dead
+    // `State` and calls `setState` on it at the owner's next write.
+    _listenedViewport?.removeListener(_handleViewportMovedByOwner);
+    _listenedViewport = null;
     _ownViewport.dispose();
     // A mid-stroke teardown must release the session's warm hold — a
     // leaked hold would gate prerendering forever. Same for a mid-drag
@@ -1377,6 +1444,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (!identical(oldWidget.viewCommands, widget.viewCommands)) {
       oldWidget.viewCommands?.unbind(this);
       _bindViewCommands();
+    }
+    // A host can hand over a DIFFERENT view to own — a document tab
+    // swapping slots. Follow the new object, and stop hearing the old one.
+    final notifier = _viewportNotifier;
+    if (!identical(_listenedViewport, notifier)) {
+      _listenedViewport?.removeListener(_handleViewportMovedByOwner);
+      _listenedViewport = notifier..addListener(_handleViewportMovedByOwner);
     }
     if (!identical(oldWidget.selectionCommands, widget.selectionCommands)) {
       oldWidget.selectionCommands?.removeListener(
@@ -1876,18 +1950,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                               // different phenomenon from the layer offset
                               // this paragraph is about.
                               RepaintBoundary(
-                                  key: const ValueKey<String>(
-                                    'canvas-content-boundary',
-                                  ),
-                                  // The stage's outer planes (R3b): the BACKDROP
-                                  // fills the panel and the PASTEBOARD lies on it
-                                  // where the pasteboard actually is, RGBA and
-                                  // project data (R28 #9 reversed) — thinning it
-                                  // reveals the floor, on screen exactly as in an
-                                  // export. The alpha-preview toggle swaps BOTH for
-                                  // the checkerboard: an alpha export excludes them,
-                                  // so the preview must too.
-                                  child: _StagePlanes(
+                                key: const ValueKey<String>(
+                                  'canvas-content-boundary',
+                                ),
+                                // The stage's outer planes (R3b): the BACKDROP
+                                // fills the panel and the PASTEBOARD lies on it
+                                // where the pasteboard actually is, RGBA and
+                                // project data (R28 #9 reversed) — thinning it
+                                // reveals the floor, on screen exactly as in an
+                                // export. The alpha-preview toggle swaps BOTH for
+                                // the checkerboard: an alpha export excludes them,
+                                // so the preview must too.
+                                child: _StagePlanes(
                                   backdropArgb: _stageBackdropArgb,
                                   pasteboardArgb: _stagePasteboardArgb,
                                   pasteboardMargin: _stagePasteboardMargin,
@@ -2058,10 +2132,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                         // and the stamp, and
                                                         // both were acting on
                                                         // fingers in flip mode.
-                                                        if (!AppInput
-                                                            .toolAcceptsPointer(
-                                                              event.kind,
-                                                            )) {
+                                                        if (!AppInput.toolAcceptsPointer(
+                                                          event.kind,
+                                                        )) {
                                                           return;
                                                         }
                                                         _toolTapHandler()!(
@@ -2095,9 +2168,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                             event,
                                                           ),
                                                       onPointerUp: (_) =>
-                                                          _lastStampCenter = null,
+                                                          _lastStampCenter =
+                                                              null,
                                                       onPointerCancel: (_) =>
-                                                          _lastStampCenter = null,
+                                                          _lastStampCenter =
+                                                              null,
                                                     ),
                                                   ),
                                                 // Eyedropper cursor (R11-②): crosshair +
@@ -2275,16 +2350,16 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                             selectionCommands:
                                                                 widget
                                                                     .selectionCommands,
-                                                            onTransformDragActiveChanged: (active) {
-                                                              if (_transformDragActive !=
-                                                                  active) {
-                                                                setState(
-                                                                  () =>
-                                                                      _transformDragActive =
+                                                            onTransformDragActiveChanged:
+                                                                (active) {
+                                                                  if (_transformDragActive !=
+                                                                      active) {
+                                                                    setState(
+                                                                      () => _transformDragActive =
                                                                           active,
-                                                                );
-                                                              }
-                                                            },
+                                                                    );
+                                                                  }
+                                                                },
                                                             onDragActiveChanged: (active) {
                                                               if (_selectionDragActive !=
                                                                   active) {
@@ -2794,11 +2869,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           if (piece == null) {
             return;
           }
-          _commitStampDabs([buildCutStampDab(
-            piece: piece,
-            center: point,
-            opacity: widget.brushToolState.cutStampOpacity,
-          )]);
+          _commitStampDabs([
+            buildCutStampDab(
+              piece: piece,
+              center: point,
+              opacity: widget.brushToolState.cutStampOpacity,
+            ),
+          ]);
           // A press is also the start of a possible drag, and the drag
           // measures its spacing from the stamp that just landed.
           _lastStampCenter = point;
@@ -2913,10 +2990,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// move continues from the last stamp that actually landed, so a slow
   /// drag and a fast one lay the same number of stamps over the same
   /// distance.
-  CanvasPoint _canvasPointOf(PointerEvent event) =>
-      _viewport.viewportToCanvas(
-        ViewportPoint(x: event.localPosition.dx, y: event.localPosition.dy),
-      );
+  CanvasPoint _canvasPointOf(PointerEvent event) => _viewport.viewportToCanvas(
+    ViewportPoint(x: event.localPosition.dx, y: event.localPosition.dy),
+  );
 
   /// TS7: the tap layer's press verb, continued while the pointer is held.
   ///
@@ -3161,7 +3237,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (coordinator == null || preSurface == null) {
       return;
     }
-    final postSurface = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
+    final postSurface = coordinator.currentSurfaceOf(
+      coordinator.activeFrameKey,
+    );
     if (identical(postSurface, preSurface) ||
         postSurface.tileSize != preSurface.tileSize) {
       return;
@@ -3707,10 +3785,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                     // edge. The collapsed row frames nothing, so it is not
                     // in `insets` — but it is exactly where this bar was,
                     // which is what the user saw.
-                    bottom:
-                        insets.bottom +
-                        bottomOverlaySpan +
-                        _capsuleMargin,
+                    bottom: insets.bottom + bottomOverlaySpan + _capsuleMargin,
                     child: Align(
                       alignment: Alignment.bottomCenter,
                       child: _capsule(
@@ -4528,8 +4603,10 @@ class _CanvasViewportBottomBar extends StatelessWidget {
               const PanelFlyoutDivider(),
               PanelFlyoutRow(
                 keyValue: 'canvas-settings-color-row',
-                builder: (_) =>
-                    Row(mainAxisSize: MainAxisSize.min, children: colorControls),
+                builder: (_) => Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: colorControls,
+                ),
               ),
             ],
           ];

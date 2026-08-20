@@ -115,6 +115,13 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// The view, OWNED by the caller — forwarded to
   /// [BrushCanvasPanel.viewportController].
   final ValueNotifier<CanvasViewport?>? viewportController;
+
+  /// The view as the caller can see it — see
+  /// [BrushCanvasPanel.publishedViewport] for why the two channels resolve
+  /// in one place instead of at each reader.
+  CanvasViewport? get publishedViewport =>
+      viewportController != null ? viewportController!.value : viewport;
+
   final ValueChanged<CanvasViewport>? onViewportChanged;
 
   final BrushToolState brushToolState;
@@ -290,7 +297,9 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
   Widget build(BuildContext context) {
     final coordinator = _coordinator;
     final hasEditableFrame =
-        widget.rowAcceptsStrokes && _frameKeys.isNotEmpty && coordinator != null;
+        widget.rowAcceptsStrokes &&
+        _frameKeys.isNotEmpty &&
+        coordinator != null;
     // The blank canvas is for having NO COORDINATOR — a project where
     // nothing has been drawn yet, so the panel has no editing stack to
     // show. It is deliberately NOT the answer to "the playhead is on an

@@ -145,10 +145,9 @@ void main() {
     // lives in a per-tool keep-alive stack, so several instances are
     // mounted at once and the first one found is whichever tool was
     // visited first — it would answer "rectangle" forever.
-    CanvasShapeKind shapeOf() =>
-        tester.widget<CanvasSelectionLayer>(
-          find.byType(CanvasSelectionLayer),
-        ).shapeKind;
+    CanvasShapeKind shapeOf() => tester
+        .widget<CanvasSelectionLayer>(find.byType(CanvasSelectionLayer))
+        .shapeKind;
 
     await tester.sendKeyEvent(LogicalKeyboardKey.keyM);
     await tester.pumpAndSettle();
@@ -164,12 +163,13 @@ void main() {
     tester,
   ) async {
     await pumpHome(tester);
-    // The canvas area syncs every viewport change back into the host's
-    // viewport param — a stable oracle even without an editable frame.
+    // ⚠️`publishedViewport`, not `.viewport` — the canvas area OWNS the view
+    // through a notifier now, so the value prop it used to echo into is
+    // permanently null and this oracle would assert about a default.
     CanvasViewport viewportOf() =>
         tester
             .widget<MainCanvasBrushHost>(find.byType(MainCanvasBrushHost))
-            .viewport ??
+            .publishedViewport ??
         CanvasViewport();
 
     await tester.sendKeyEvent(LogicalKeyboardKey.keyR);
