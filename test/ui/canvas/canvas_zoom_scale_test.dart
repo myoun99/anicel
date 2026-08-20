@@ -248,6 +248,36 @@ void main() {
       expect(reported!.zoom * 1.25, closeTo(1.0, 1e-9));
     });
 
+    testWidgets('a scale change survives a host that setStates on the '
+        'viewport callback', (tester) async {
+      // 🚨The defect this exists for shipped past a harness that only wrote
+      // the value down. The REAL consumer (`editor_canvas_area.dart`)
+      // answers `onViewportChanged` with its own `setState`, and the
+      // ratio-change hold used to commit from `didChangeDependencies` —
+      // inside the panel's rebuild — so every scale change raised
+      // "setState() called during build" on an ancestor.
+      tester.view.devicePixelRatio = 1.5;
+      tester.view.physicalSize = const Size(2400, 1800);
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(const _ScaleHost(uiScale: 1.0));
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(const _ScaleHost(uiScale: 1.25));
+      await tester.pumpAndSettle();
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'the hold must not commit from inside a build',
+      );
+
+      // And it really did land — the host holds the re-zoomed view.
+      final state = tester.state<_ScaleHostState>(find.byType(_ScaleHost));
+      expect(state.viewport, isNotNull);
+      expect(state.viewport!.zoom * 1.25, closeTo(1.0, 1e-9));
+    });
+
     testWidgets('1:1 means one artwork pixel per device pixel', (tester) async {
       tester.view.devicePixelRatio = 1.5;
       tester.view.physicalSize = const Size(2400, 1800);
@@ -266,4 +296,54 @@ void main() {
       expect(readout(tester), '100%');
     });
   });
+}
+
+/// A host that answers `onViewportChanged` the way the real one does — with
+/// its own `setState`. That is the whole point: a harness that only records
+/// the value measures "the callback fired", never "it fired somewhere it was
+/// allowed to".
+class _ScaleHost extends StatefulWidget {
+  const _ScaleHost({required this.uiScale});
+
+  final double uiScale;
+
+  @override
+  State<_ScaleHost> createState() => _ScaleHostState();
+}
+
+class _ScaleHostState extends State<_ScaleHost> {
+  CanvasViewport? viewport;
+
+  @override
+  Widget build(BuildContext context) {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    return MediaQuery(
+      data: MediaQueryData.fromView(
+        WidgetsBinding.instance.platformDispatcher.views.first,
+      ),
+      child: EffectiveDevicePixelRatioScope(
+        uiScale: widget.uiScale,
+        child: MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 600,
+              height: 420,
+              child: BrushCanvasPanel(
+                coordinator: BrushCanvasFixture.createCoordinator(
+                  frameKeys: frameKeys,
+                  canvasSize: const CanvasSize(width: 300, height: 300),
+                ),
+                availableFrameKeys: frameKeys,
+                cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+                floorCover: EdgeInsets.zero,
+                canvasSize: const CanvasSize(width: 300, height: 300),
+                viewport: viewport,
+                onViewportChanged: (next) => setState(() => viewport = next),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

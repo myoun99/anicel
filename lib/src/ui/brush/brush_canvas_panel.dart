@@ -515,8 +515,33 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     widget.viewport ?? CanvasViewport(),
   );
 
-  CanvasViewport get _viewport => _viewportNotifier.value;
-  set _viewport(CanvasViewport value) => _viewportNotifier.value = value;
+  /// The view a ratio change has re-zoomed to but not yet COMMITTED.
+  ///
+  /// 🚨It exists because the commit cannot happen where the ratio change is
+  /// noticed. [didChangeDependencies] runs inside this element's rebuild,
+  /// and committing calls `widget.onViewportChanged`, whose real consumer
+  /// (`editor_canvas_area.dart`) answers with an ANCESTOR `setState` — a
+  /// `markNeedsBuild` on an element already built this frame, which is the
+  /// "setState() called during build" assert, on every scale change.
+  ///
+  /// ⛔And the commit cannot simply wait a frame either: the artwork would
+  /// be visibly wrong for that frame, which this codebase does not allow.
+  /// So the value is held HERE, where the getter below finds it in the very
+  /// build that follows — no notify, no `setState` — and the commit rides a
+  /// post-frame callback, out of the build.
+  ///
+  /// The readout is right in the meantime without doing anything: the
+  /// percentage is the invariant across a ratio change, so the old value
+  /// and the new one print the same.
+  CanvasViewport? _ratioHeldViewport;
+
+  CanvasViewport get _viewport =>
+      _ratioHeldViewport ?? _viewportNotifier.value;
+
+  set _viewport(CanvasViewport value) {
+    _ratioHeldViewport = null;
+    _viewportNotifier.value = value;
+  }
 
   CanvasViewport? _lastWidgetViewport;
   Size? _editorViewportSize;
@@ -712,9 +737,21 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       _viewport,
       anchor: _viewportCenterAnchor,
     );
-    if (held != _viewport) {
-      _setViewport(held);
+    if (held == _viewport) {
+      return;
     }
+    // Rendered THIS frame (the getter reads it), committed after it — see
+    // [_ratioHeldViewport] for why the two cannot be the same moment.
+    _ratioHeldViewport = held;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // ⚠️`identical`, not `==`: anything that moved the view in between
+      // already cleared the hold, and re-committing this value would undo
+      // the user's own gesture.
+      if (!mounted || !identical(_ratioHeldViewport, held)) {
+        return;
+      }
+      _setViewport(held);
+    });
   }
 
   /// One undoable selection step (R11-⑧) — the layer's marquee commits and
