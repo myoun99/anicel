@@ -3125,12 +3125,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     required double stop,
     required bool onTop,
     required double height,
+    required DeviceGrid grid,
   }) {
     final open = _openRailGroups(right: right);
     if (open.isEmpty) {
       return null;
     }
-    final top = (onTop ? stop : 0) + _railGroupGap;
+    // The band's own top is a link in the chain to a rail-docked canvas:
+    // the panel, and anything docked in it, begins here. `stop` is
+    // already on the grid, and `position` composes exactly against a
+    // snapped anchor — so this carries ONE rounding for the whole thing
+    // rather than one for the stop and another for the gap.
+    final top = grid.position((onTop ? stop : 0) + _railGroupGap);
     final available = math.max(0.0, height - top - (onTop ? 0 : stop));
     var content = 0.0;
     for (final id in open) {
@@ -3277,19 +3283,31 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
             );
           }
 
+          // The rail's own cumulative chain, and the textbook case for a
+          // run: floor each cumulative POSITION and take each extent as
+          // the difference of neighbours. ⛔Snapping `heights[i]` and
+          // `_railGroupGap` on their own instead would drift — n groups
+          // would carry n roundings, all in the same direction, and the
+          // last panel would walk off the rail's bottom.
+          //
+          // ⚠️A gap of 8 is 9 device px at 1.125 and 10.8 at 1.35, so the
+          // run legitimately hands back slightly different gaps; that is
+          // the residue landing where it must rather than accumulating.
           final children = <Widget>[];
-          var y = 0.0;
+          final run = DeviceGrid.of(context).run();
           for (var i = 0; i < open.length; i += 1) {
+            final top = run.position;
+            final height = run.take(heights[i]);
             children.add(
               Positioned(
                 left: 0,
                 right: 0,
-                top: y,
-                height: heights[i],
+                top: top,
+                height: height,
                 child: group(i),
               ),
             );
-            y += heights[i] + _railGroupGap;
+            run.take(_railGroupGap);
           }
 
           final column = SizedBox(
@@ -3298,10 +3316,22 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
           );
           // The panels themselves keep their own width; the gap beside them
           // is the rail's, and belongs to the strip side.
+          // The gap beside the strip. It is a link in the chain to the
+          // RAIL-DOCKED canvas — everything inside the rail panel starts
+          // after it — and 8 × 1.35 is 10.8, so it is off the grid at
+          // exactly the product ratios a UI scale produces.
+          final gap = DeviceGrid.of(context).position(_railGroupGap);
           Widget inGap(Widget child) => Padding(
+            // Keyed so the quantization can be PINNED. It is otherwise
+            // unobservable from the canvas: 8 is already integral at
+            // 1.125, 1.25 and 1.75, and at 1.35 — the one ratio where it
+            // matters — a larger fraction upstream still dominates the
+            // rail-docked boundary. Unpinned quantization is quantization
+            // that a later edit undoes in silence.
+            key: const ValueKey<String>('rail-group-gap'),
             padding: EdgeInsets.only(
-              left: right ? 0 : _railGroupGap,
-              right: right ? _railGroupGap : 0,
+              left: right ? 0 : gap,
+              right: right ? gap : 0,
             ),
             child: child,
           );
@@ -4384,11 +4414,38 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                                   ),
                                 )
                                 .toDouble();
-                        final leftRailSpan = hasLeftDock
+                        // 🚨★★TWO VALUES, and the split is the point. The
+                        // RAW span is what a drag accumulates against; the
+                        // quantized span is what the layout uses.
+                        //
+                        // ⛔Feeding the quantized value back into the grips
+                        // re-creates, at one-device-pixel granularity, the
+                        // defect this file already records: a detent that
+                        // eats the drag, so the thing moves less than the
+                        // cursor. The comparison survives quantization —
+                        // both sides floor the same way — but the
+                        // ACCUMULATOR does not.
+                        final leftRailSpanRaw = hasLeftDock
                             ? leftWidth + _railGroupGap
                             : 0.0;
-                        final rightRailSpan = hasRightDock
+                        final rightRailSpanRaw = hasRightDock
                             ? rightWidth + _railGroupGap
+                            : 0.0;
+                        final grid = DeviceGrid.of(context);
+                        final leftRailSpan = grid.position(leftRailSpanRaw);
+                        // ⚠️The RIGHT span is a distance from the FAR edge,
+                        // so snapping it as if it were measured from the
+                        // origin puts the content's right boundary between
+                        // two pixels. Snap the boundary itself — one run
+                        // across the axis — and derive the span from it.
+                        // `constraints.maxWidth × ratio` is integral by
+                        // construction (the window's physical size is), so
+                        // an integer minus an integer stays one.
+                        final rightRailSpan = hasRightDock
+                            ? constraints.maxWidth -
+                                  grid.position(
+                                    constraints.maxWidth - rightRailSpanRaw,
+                                  )
                             : 0.0;
                         // Which edge the region is on. Everything below reads
                         // this and nothing anywhere else has to.
@@ -4475,12 +4532,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                                   stop: leftStop,
                                   onTop: onTop,
                                   height: constraints.maxHeight,
+                                  grid: grid,
                                 ),
                                 rightRailBand: _railBand(
                                   right: true,
                                   stop: rightStop,
                                   onTop: onTop,
                                   height: constraints.maxHeight,
+                                  grid: grid,
                                 ),
                                 child: floor!,
                               ),
@@ -4649,7 +4708,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                                           right: false,
                                           inset: bottomInset,
                                           onTop: onTop,
-                                          railSpan: leftRailSpan,
+                                          // ⛔RAW, not the quantized span:
+                                          // this is a drag ACCUMULATOR.
+                                          railSpan: leftRailSpanRaw,
                                           maxInset: math.max(
                                             0.0,
                                             (constraints.maxWidth -
@@ -4661,7 +4722,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                                           right: true,
                                           inset: bottomInset,
                                           onTop: onTop,
-                                          railSpan: rightRailSpan,
+                                          // ⛔RAW — see the left grip.
+                                          railSpan: rightRailSpanRaw,
                                           maxInset: math.max(
                                             0.0,
                                             (constraints.maxWidth -

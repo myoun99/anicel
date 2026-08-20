@@ -4,6 +4,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/editor_dock_host.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// 🎯**The round's headline.** The chain from the window origin to the
@@ -133,40 +134,90 @@ void main() {
     );
   });
 
-  testWidgets(
-    'the RAIL-DOCKED canvas chain is still off — owned by the workspace and '
-    'rail PRs',
-    (tester) async {
-      // 🚨An honest record, not an aspiration. That wrapper's chain runs
-      // through the panel strip and the rail column, which this PR did not
-      // touch — `EditorPanelTabs.stripHeight = 30` and `_railGroupGap = 8`
-      // are what hold it off. Pinning the state lets the round watch it
-      // close instead of assuming it did.
-      //
-      // ⛔When the workspace and rail PRs land, this test FAILS. That is
-      // the signal to move this boundary into the on-grid group above, not
-      // to delete the case.
-      const ratio = 1.35;
+  group('the RAIL-DOCKED canvas chain', () {
+    Future<Offset> railDockedAt(WidgetTester tester, double ratio) async {
       tester.view.devicePixelRatio = ratio;
-      tester.view.physicalSize = const Size(1600 * ratio, 1000 * ratio);
+      tester.view.physicalSize = Size(1600 * ratio, 1000 * ratio);
       addTearDown(tester.view.reset);
-
       await tester.pumpWidget(shell());
       await tester.pumpAndSettle();
-
       final origins = chainOrigins(tester, ratio);
       expect(origins.length, greaterThanOrEqualTo(2));
-      final railDocked = origins[1].device;
-      expect(
-        offGridBy(railDocked.dx) + offGridBy(railDocked.dy),
-        greaterThan(1e-3),
-        reason:
-            'the rail-docked canvas is on the grid at $railDocked — if the '
-            'workspace/rail quantization landed, move it into the on-grid '
-            'group above rather than deleting this case',
+      return origins[1].device;
+    }
+
+    // The strip height and the rail gap were what held this boundary off.
+    // With both quantized it closes at the ratios whose denominators the
+    // chain's constants can satisfy.
+    for (final ratio in <double>[1.25, 1.75]) {
+      testWidgets('is on the grid at ratio $ratio', (tester) async {
+        expectOnGrid(await railDockedAt(tester, ratio), at: 'rail $ratio');
+      });
+    }
+
+    testWidgets('is STILL off at 1.125 and 1.35 — the region split and the '
+        'column stop own the rest', (tester) async {
+      // 🚨An honest record, not an aspiration, and the measured residue is
+      // 0.5 device px on x at 1.125 and 0.2 on both axes at 1.35. What is
+      // left is upstream of the rail: the column stop and the bottom
+      // region's 2/3 split, which are the workspace closure's own
+      // arithmetic rather than the rail's.
+      //
+      // ⛔When that lands, this test FAILS. That is the signal to move
+      // these two ratios up into the group above, not to delete the case —
+      // a round that quietly loses its record of what was still open
+      // cannot tell whether it finished.
+      for (final ratio in <double>[1.125, 1.35]) {
+        final railDocked = await railDockedAt(tester, ratio);
+        expect(
+          offGridBy(railDocked.dx) + offGridBy(railDocked.dy),
+          greaterThan(1e-3),
+          reason:
+              'the rail-docked canvas is now on the grid at ratio $ratio '
+              '($railDocked) — move this ratio into the on-grid group above '
+              'rather than deleting this case',
+        );
+      }
+    });
+  });
+
+  testWidgets('the rail gap beside the strip is a whole number of device '
+      'pixels', (tester) async {
+    // ⚠️Pinned DIRECTLY, because it is currently unobservable from the
+    // canvas: 8 is already integral at 1.125, 1.25 and 1.75, and the one
+    // ratio where it matters — 1.35, where 8 × 1.35 is 10.8 — is a ratio
+    // at which a larger fraction upstream still dominates the rail-docked
+    // boundary. Without this the quantization would ship unpinned and a
+    // later edit could undo it silently, only for the defect to surface
+    // when the upstream work finally lands.
+    const ratio = 1.35;
+    tester.view.devicePixelRatio = ratio;
+    tester.view.physicalSize = const Size(1600 * ratio, 1000 * ratio);
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(shell());
+    await tester.pumpAndSettle();
+
+    final found = find
+        .byKey(const ValueKey<String>('rail-group-gap'))
+        .evaluate();
+    expect(found, isNotEmpty, reason: 'the rail gap must be in the tree');
+    for (final element in found) {
+      final padding = (element.renderObject! as RenderPadding).padding.resolve(
+        TextDirection.ltr,
       );
-    },
-  );
+      for (final side in <double>[padding.left, padding.right]) {
+        if (side == 0) {
+          continue;
+        }
+        expect(
+          offGridBy(side * ratio),
+          lessThan(1e-3),
+          reason: 'a rail gap of $side logical is ${side * ratio} device px',
+        );
+      }
+    }
+  });
 
   group('the empty dock drop zone', () {
     for (final ratio in <double>[1.125, 1.25, 1.35, 1.75]) {
