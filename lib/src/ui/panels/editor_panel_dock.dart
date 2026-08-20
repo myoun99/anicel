@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../layout/device_grid.dart';
 
 /// Which screen edge the dock is attached to; the hairline border sits on
 /// the edge facing the canvas.
@@ -88,7 +89,10 @@ class _EditorPanelDockState extends State<EditorPanelDock> {
           : ListView.separated(
               controller: _scrollController,
               itemCount: children.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              // ⚠️A separator is a cumulative offset for every item
+              // after it, so an off-grid one walks the whole list.
+              separatorBuilder: (context, _) =>
+                  SizedBox(height: DeviceGrid.of(context).position(8)),
               itemBuilder: (context, index) => children[index],
             ),
     );

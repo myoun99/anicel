@@ -4,6 +4,7 @@ import 'brush_tool_state.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
 import '../widgets/static_raster.dart';
+import '../layout/device_grid.dart';
 
 /// The Photoshop/Clip-Studio style tool switcher (brush ⇄ eraser): a
 /// dockable PANEL whose home is a slim vertical edge dock, so it lives on
@@ -100,7 +101,13 @@ class ToolsPanel extends StatelessWidget {
     // settings below it, so its column can be shorter than the buttons —
     // it scrolls instead of overflowing.
     return SingleChildScrollView(
-      padding: const EdgeInsets.only(left: 3, top: 6, bottom: 6),
+      // ⚠️Quantized because this panel scrolls — see the onion-skin
+      // panel for why. 3 and 6 are both off the grid at 1.35.
+      padding: EdgeInsets.only(
+        left: DeviceGrid.of(context).position(3),
+        top: DeviceGrid.of(context).position(6),
+        bottom: DeviceGrid.of(context).position(6),
+      ),
       // Baked inside the scroller, because a viewport is itself a repaint
       // boundary and the edge dock outside it can never reach past one.
       // This column is in the FLOOR — it is on screen with every panel

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../layout/device_grid_scroll_controller.dart';
 
 /// Horizontal scroll viewport and content wrapper for the timeline frame grid.
 ///
@@ -27,12 +28,16 @@ class TimelineFrameScrollViewport extends StatelessWidget {
         key: const ValueKey<String>('timeline-frame-scroll-viewport'),
         controller: controller,
         scrollDirection: Axis.horizontal,
-        child: KeyedSubtree(
-          key: const ValueKey<String>('timeline-frame-scroll-content'),
-          child: SizedBox(
-            width: contentWidth,
-            height: contentHeight,
-            child: child,
+        child: DeviceGridScrollBody(
+          controller: controller,
+          axisDirection: AxisDirection.right,
+          child: KeyedSubtree(
+            key: const ValueKey<String>('timeline-frame-scroll-content'),
+            child: SizedBox(
+              width: contentWidth,
+              height: contentHeight,
+              child: child,
+            ),
           ),
         ),
       ),

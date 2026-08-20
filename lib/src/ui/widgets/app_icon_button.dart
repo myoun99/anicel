@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../layout/device_grid.dart';
 import '../input/value_control_pointers.dart';
 import '../theme/app_theme.dart';
 
@@ -64,6 +65,7 @@ class AppIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final grid = DeviceGrid.of(context);
     // 🚨★★★ 유저 #1 (2026-08-14): 「액티브 레이어가 아닌 다른 레이어의 버튼
     // 누르면 작동안함 … 레이어에 있는 **모든 버튼이나 편집이** 그럼」.
     //
@@ -82,22 +84,45 @@ class AppIconButton extends StatelessWidget {
       onPointerUp: (event) => releaseTapForControl(event.pointer),
       onPointerCancel: (event) => releaseTapForControl(event.pointer),
       child: IconButton(
-      key: ValueKey<String>(keyValue),
-      tooltip: tooltip,
-      onPressed: onPressed,
-      isSelected: isSelected,
-      style: IconButton.styleFrom(
-        minimumSize: Size(size.minWidth, size.height),
-        maximumSize: Size(size.maxWidth, size.height),
-        padding: EdgeInsets.zero,
-        iconSize: size.iconSize,
-        // Its own height, not the theme's default box: a bar button and a
-        // strip button are different sizes, and the app's corner is a RATIO
-        // of the short axis, so each has to ask for its own.
-        shape: AppShapes.control(size.height),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        foregroundColor: isSelected ? AppColors.accent : null,
-      ),
+        key: ValueKey<String>(keyValue),
+        tooltip: tooltip,
+        onPressed: onPressed,
+        isSelected: isSelected,
+        style: IconButton.styleFrom(
+          // 🎯The single largest source of off-grid PAINTED edges in this
+          // app — 34 of them come from this one widget, because every
+          // toolbar and rail button is an AppIconButton and each draws a
+          // Material shape at its own bounds. `controlLarge` is 42, and
+          // 42 × 1.25 = 52.5.
+          //
+          // ⚠️MEASURED, and smaller than it looks: painted boxes off the
+          // grid go 350 → 340 at 1.25 and 356 → 356 at 1.35. Size
+          // quantization alone buys almost nothing while ORIGINS are off,
+          // because a box whose origin is fractional has a fractional far
+          // edge whatever its width. What this actually earns is that the
+          // button stops ADDING a fraction — it is what keeps the row on
+          // the grid once the origins are fixed, not what fixes them.
+          //
+          // ⛔So do not read this as the pattern to copy across the other
+          // wrappers: the same edit on five more of them would cost five
+          // diffs for the same ~3%. The origins are the lever.
+          minimumSize: Size(
+            grid.position(size.minWidth),
+            grid.position(size.height),
+          ),
+          maximumSize: Size(
+            grid.position(size.maxWidth),
+            grid.position(size.height),
+          ),
+          padding: EdgeInsets.zero,
+          iconSize: size.iconSize,
+          // Its own height, not the theme's default box: a bar button and a
+          // strip button are different sizes, and the app's corner is a RATIO
+          // of the short axis, so each has to ask for its own.
+          shape: AppShapes.control(size.height),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          foregroundColor: isSelected ? AppColors.accent : null,
+        ),
         icon: icon,
       ),
     );
