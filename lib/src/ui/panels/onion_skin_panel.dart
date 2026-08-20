@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 import '../widgets/color_swatch_button.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
+import '../layout/device_grid.dart';
 
 /// The onion-skin dock panel: the light-table graph every 2D package
 /// speaks (TVPaint's light table, Krita's onion docker) — ONE strip
@@ -47,7 +48,10 @@ class OnionSkinPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(8),
+      // ⚠️Quantized because this panel scrolls: the scroll body
+      // cancels the OFFSET fraction and nothing else, so an
+      // unquantized padding keeps its own. 8 × 1.35 = 10.8.
+      padding: EdgeInsets.all(DeviceGrid.of(context).position(8)),
       // This panel is baked like every other, and its history is worth a
       // line because it was the one that would not: the parity test found
       // a band inside the strip that was present painting through and

@@ -60,6 +60,7 @@ import 'media/media_browser_panel.dart';
 import 'media/media_relink_flow.dart';
 import 'media/media_viewer_tab_host.dart';
 import 'layout/device_grid.dart';
+import 'layout/device_grid_scroll_controller.dart';
 import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
 import 'panels/editor_panel_layout.dart';
@@ -3419,9 +3420,19 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                       hitTestBehavior: HitTestBehavior.deferToChild,
                       // Top-aligned when it does not fill, which is what the
                       // `Align` used to do on the non-scrolling branch.
-                      child: Align(
-                        alignment: Alignment.topCenter,
-                        child: column,
+                      //
+                      // ⚠️OUTERMOST FIRST: this rail is the outer scroller
+                      // of the app's deepest chain, and a leaf corrected
+                      // under an uncorrected ancestor buys nothing —
+                      // measured 4.985e-1 inner-only against 1.4e-14 with
+                      // both.
+                      child: DeviceGridScrollBody(
+                        controller: controller,
+                        axisDirection: AxisDirection.down,
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          child: column,
+                        ),
                       ),
                     ),
                   ),
