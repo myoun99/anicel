@@ -31,11 +31,19 @@ import '../src/ui/canvas/bitmap_tile_image_cache.dart';
 import '../src/ui/canvas/brush_edit_canvas_view.dart';
 import '../src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import '../src/ui/editor_workspace.dart';
+import '../src/ui/effective_device_pixel_ratio.dart';
 import '../src/ui/home_page.dart';
 import '../src/ui/theme/app_scroll_behavior.dart';
 import '../src/ui/theme/app_theme.dart';
+import '../src/ui/ui_scale.dart';
+import '../src/ui/ui_scale_binding.dart';
 
 void main() {
+  // The lab measures the PRODUCTION pixel pipeline, so it boots the
+  // production binding: the UI scale multiplies into the root device
+  // matrix, and a lab on the plain binding would quantize against a grid
+  // the app does not use.
+  AnicelBinding.ensureInitialized();
   runApp(const _BrushLabApp());
 }
 
@@ -50,6 +58,13 @@ class _BrushLabApp extends StatelessWidget {
       // The lab is the same app with a driver on top — it gets the same
       // scrollbars, or it stops being a place to judge them from.
       scrollBehavior: const AppScrollBehavior(),
+      // Same reason: without the scope every `DeviceGrid.of` below falls
+      // back to MediaQuery, which reports the RAW view ratio and would
+      // disagree with the binding above at any scale but 100%.
+      builder: (context, child) => EffectiveDevicePixelRatioScope(
+        uiScale: AppUiScale.value.value,
+        child: child ?? const SizedBox.shrink(),
+      ),
       home: const _BrushLabDriver(child: HomePage()),
     );
   }

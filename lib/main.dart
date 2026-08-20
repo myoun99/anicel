@@ -9,6 +9,7 @@ import 'package:flutter/services.dart'
 import 'src/services/input/pen_sidecars.dart';
 import 'src/services/pdf/pdf_render_service.dart';
 import 'src/services/persistence/app_documents.dart' show AppStorage;
+import 'src/services/persistence/app_ui_scale_store.dart';
 import 'src/ui/debug/frame_stats.dart';
 import 'src/ui/debug/frame_stats_readout.dart';
 import 'src/ui/debug/repaint_cause.dart';
@@ -19,8 +20,10 @@ import 'src/ui/layout/device_grid_audit.dart';
 import 'src/ui/input/app_input_settings.dart' show AppInput;
 import 'src/ui/theme/app_scroll_behavior.dart';
 import 'src/ui/theme/app_theme.dart';
+import 'src/ui/ui_scale.dart';
+import 'src/ui/ui_scale_binding.dart';
 
-void main() {
+Future<void> main() async {
   // FIRST, before anything reaches for a platform channel. The pen
   // sidecars do: PencilInteractionService installs a handler on
   // `qa_pen/ios`, and a MethodChannel needs the binding's messenger to
@@ -29,7 +32,10 @@ void main() {
   // Android, macOS or Linux, and stopped the app dead at a white screen
   // on iPad and iPhone. CI could not see it either: it builds for iOS,
   // it does not launch there.
-  WidgetsFlutterBinding.ensureInitialized();
+  //
+  // [AnicelBinding] rather than [WidgetsFlutterBinding]: it is the same
+  // binding plus the UI scale in the root device matrix.
+  AnicelBinding.ensureInitialized();
   // Full screen on the platforms that have an OS strip to give up (유저
   // 확정, 프로크리·카리페그처럼): the clock and the battery cost a band of
   // canvas across the top, and a drawing app is the case the immersive
@@ -81,6 +87,17 @@ void main() {
   // persistent frame callback cannot be removed, so registering it
   // anywhere that re-runs would stack duplicates.
   DeviceGridAudit.install();
+  // AWAITED, unlike every other settings restore. The rest land late and
+  // the app repaints; this one decides how large the window's contents are
+  // laid out, so restoring it after the first frame would show 100% and
+  // then jump. One small file read, before a frame that costs far more.
+  //
+  // A failure here is a default, not a crash: `load` swallows a missing or
+  // corrupt file and returns null.
+  final storedScale = await AppUiScaleStore().load();
+  if (storedScale != null) {
+    AppUiScale.value.value = storedScale;
+  }
   runApp(const AnicelApp());
 }
 
@@ -101,6 +118,12 @@ class AnicelApp extends StatelessWidget {
         // on a tablet, where a --dart-define costs a rebuild and an
         // install.
         MeasurementMode.frameTimingOverlay,
+        // The UI scale has TWO halves and this is the widget one: the
+        // binding rescales the root matrix, and this rebuild carries the
+        // matching MediaQuery down (see
+        // [EffectiveDevicePixelRatioScope]). Both hang off the same
+        // notifier so they cannot land a frame apart.
+        AppUiScale.value,
       ]),
       builder: (context, _) => MaterialApp(
         title: 'Anicel',
@@ -127,6 +150,7 @@ class AnicelApp extends StatelessWidget {
         // `ListenableBuilder` above). Moving it there is fine; moving it
         // BELOW the Navigator is not.
         builder: (context, child) => EffectiveDevicePixelRatioScope(
+          uiScale: AppUiScale.value.value,
           child: MeasurementReadoutHost(child: child ?? const SizedBox.shrink()),
         ),
         home: const HomePage(),
