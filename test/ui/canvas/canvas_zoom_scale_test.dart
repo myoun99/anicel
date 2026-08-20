@@ -236,6 +236,18 @@ void main() {
 
       // The user picks 125%: the root matrix grows, and this view must not.
       await tester.pumpWidget(scaled(1.25));
+      // ⛔Read it on the FIRST frame, before any `pump()`. This is the whole
+      // point of the held viewport: the post-frame commit would make frame
+      // 2 right on its own, so a test that settles first passes with the
+      // hold deleted and the user still sees one wrong frame. Deleting
+      // `_ratioHeldViewport ??` from the `_viewport` getter must turn THIS
+      // line red.
+      expect(
+        readout(tester),
+        before,
+        reason: 'the FIRST frame after a scale change is already correct — '
+            'the hold, not the post-frame commit, is what makes it so',
+      );
       await tester.pump();
       expect(
         readout(tester),

@@ -71,12 +71,20 @@ void main() {
       reason: 'selection is COLOR only (법) — the chosen stop is filled',
     );
     expect(unselected.color, isNull);
-    // ⛔And the SHAPE does not change with selection: a border that thickens
-    // when a stop lands would shove its neighbours sideways.
+    // ⛔And nothing that changes the chip's SIZE may change with selection,
+    // or the whole row slides sideways when a stop lands. Two of those:
+    // the border width, and the font weight — a w600 digit is wider than a
+    // w400 one. ⚠️Neither is observable by measuring the rendered box: the
+    // test font gives every glyph the same advance, so this has to read
+    // the resolved style.
     expect(
       (selected.shape as RoundedSuperellipseBorder).side.width,
       (unselected.shape as RoundedSuperellipseBorder).side.width,
     );
+    TextStyle styleOf(double scale) => tester
+        .widget<Text>(find.descendant(of: stop(scale), matching: find.byType(Text)))
+        .style!;
+    expect(styleOf(1.5).fontWeight, styleOf(1.0).fontWeight);
   });
 
   testWidgets('an off-ladder value from outside is snapped, not shown raw', (

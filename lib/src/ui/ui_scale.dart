@@ -1,5 +1,6 @@
 import 'dart:ui' show DisplayFeature;
 
+import 'package:flutter/gestures.dart' show DeviceGestureSettings;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
@@ -143,6 +144,17 @@ MediaQueryData scaleMediaQueryData(MediaQueryData data, double uiScale) {
     viewPadding: data.viewPadding / uiScale,
     viewInsets: data.viewInsets / uiScale,
     systemGestureInsets: data.systemGestureInsets / uiScale,
+    // ⚠️`touchSlop` is a LENGTH too — `MediaQueryData.fromView` computes it
+    // as `physicalTouchSlop / rawRatio`, so leaving it alone makes every
+    // drag threshold grow physically with the scale: at 150% on a 2x
+    // tablet a drag would have to travel 36 physical px instead of 24
+    // before any recognizer accepts, which is further than every other app
+    // on the device. `panSlop` is derived from it and follows.
+    gestureSettings: data.gestureSettings.touchSlop == null
+        ? data.gestureSettings
+        : DeviceGestureSettings(
+            touchSlop: data.gestureSettings.touchSlop! / uiScale,
+          ),
     // Foldables: a hinge's bounds are logical pixels like everything else.
     // Cheap to carry and impossible to notice missing until an app runs on
     // the one device that has one.

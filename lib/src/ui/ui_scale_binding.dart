@@ -1,3 +1,7 @@
+import 'dart:collection' show Queue;
+import 'dart:ui' as ui show PointerDataPacket;
+
+import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
@@ -45,6 +49,90 @@ mixin UiScaleViewConfiguration on RendererBinding {
     );
   }
 
+  /// 🚨🚨**THE THIRD HALF.** The scale has to reach the POINTER as well as
+  /// the matrix and the MediaQuery, and this is the piece that is easiest
+  /// to miss because nothing complains.
+  ///
+  /// `GestureBinding` converts incoming pointer data to logical pixels by
+  /// dividing by `FlutterView.devicePixelRatio` — the RAW ratio, which
+  /// [createViewConfigurationFor] does not touch. Everything below the root
+  /// is laid out in `raw × uiScale` instead, so at any stop but 100% the
+  /// hit-test space and the layout space differ by exactly the scale: at
+  /// 125% on a 1.0 monitor a click lands 25% down and right of the pixel
+  /// the user aimed at, and the right fifth of the window cannot be hit at
+  /// all. Hover, drag deltas, touch slop and every stylus sample are off by
+  /// the same factor.
+  ///
+  /// ⛔It is fixed HERE, at the packet, and not by overriding
+  /// `handlePointerEvent` and dividing `position`/`delta`. `copyWith`
+  /// carries neither `scrollDelta` nor the pan/zoom fields, so a wheel step
+  /// and a trackpad pan would keep the raw-ratio value — and every
+  /// `globalToLocal(event.position)` in the app would still be reading a
+  /// coordinate from the wrong space. Handing the converter the effective
+  /// ratio corrects every field at once, including ones added later.
+  ///
+  /// ⚠️`WidgetTester` feeds `handlePointerEvent` already-logical positions
+  /// and never runs `PointerEventConverter`, so a normal widget test cannot
+  /// see any of this. `ui_scale_binding_test.dart` drives a real packet.
+  @override
+  void initInstances() {
+    super.initInstances();
+    // `GestureBinding.initInstances` installed its own handler on the way
+    // up; take it over now that it is there.
+    platformDispatcher.onPointerDataPacket = _handleScaledPointerDataPacket;
+    // ⛔The subscription lives HERE and not in `AnicelBinding`, so the
+    // test binding cannot wear a copy of it. It used to, and that made the
+    // wire untestable: deleting the production `addListener` left every
+    // test green because the test binding had its own.
+    AppUiScale.value.addListener(handleUiScaleChanged);
+  }
+
+  /// Mirrors `GestureBinding`'s own queue, whose field is private. Without
+  /// it, events that arrive while the binding is locked (a reassemble)
+  /// would be dispatched into a half-rebuilt tree instead of waiting.
+  final Queue<PointerEvent> _pendingScaledPointerEvents = Queue<PointerEvent>();
+
+  double? _effectiveRatioOfView(int viewId) {
+    final raw = platformDispatcher.view(id: viewId)?.devicePixelRatio;
+    if (raw == null) {
+      return null;
+    }
+    final scale = AppUiScale.value.value;
+    return raw * (scale.isFinite && scale > 0 ? scale : 1.0);
+  }
+
+  void _handleScaledPointerDataPacket(ui.PointerDataPacket packet) {
+    try {
+      _pendingScaledPointerEvents.addAll(
+        PointerEventConverter.expand(packet.data, _effectiveRatioOfView),
+      );
+      if (!locked) {
+        _flushScaledPointerEvents();
+      }
+    } on Object catch (error, stack) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'anicel ui scale',
+          context: ErrorDescription('while handling a pointer data packet'),
+        ),
+      );
+    }
+  }
+
+  @override
+  void unlocked() {
+    super.unlocked();
+    _flushScaledPointerEvents();
+  }
+
+  void _flushScaledPointerEvents() {
+    while (_pendingScaledPointerEvents.isNotEmpty) {
+      handlePointerEvent(_pendingScaledPointerEvents.removeFirst());
+    }
+  }
+
   /// A scale change IS a metrics change: the same handler that answers a
   /// window resize re-derives every render view's configuration and forces
   /// a frame. `RenderView.configuration=` then replaces the root layer,
@@ -75,6 +163,5 @@ class AnicelBinding extends WidgetsFlutterBinding with UiScaleViewConfiguration 
   void initInstances() {
     super.initInstances();
     _instance = this;
-    AppUiScale.value.addListener(handleUiScaleChanged);
   }
 }

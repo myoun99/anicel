@@ -96,10 +96,15 @@ class _ScaleStop extends StatelessWidget {
         ),
         child: Text(
           AppUiScale.label(stop),
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: selected ? colorScheme.primary : null,
-            fontWeight: selected ? FontWeight.w600 : null,
-          ),
+          // ⛔No weight change. A w600 digit has a different advance width
+          // from a w400 one, so bolding the selected chip would resize it
+          // and slide every chip after it in the `Wrap` — a row that
+          // jitters under the finger, which is the exact thing the
+          // colour-only law forbids. Selection already reads through the
+          // fill, the border and the text colour.
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: selected ? colorScheme.primary : null),
         ),
       ),
     );

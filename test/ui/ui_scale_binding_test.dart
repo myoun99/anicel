@@ -1,3 +1,6 @@
+import 'dart:ui' as ui show PointerData, PointerDataPacket, PointerChange;
+
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -31,7 +34,26 @@ class _ScaledTestBinding extends AutomatedTestWidgetsFlutterBinding
   void initInstances() {
     super.initInstances();
     _instance = this;
-    AppUiScale.value.addListener(handleUiScaleChanged);
+    // ⛔No `AppUiScale.value.addListener` here. It used to be, and that is
+    // exactly what made the production wire untestable: deleting the
+    // `addListener` from `UiScaleViewConfiguration` left this file green
+    // because the copy below it still fired. The subscription now lives in
+    // the mixin, so this binding wears the real one.
+  }
+
+  /// Pushes a REAL pointer packet through the production conversion.
+  ///
+  /// ⚠️`withPointerEventSource(test, …)` is not cosmetic. A packet arrives
+  /// tagged as coming from the device, and the test binding routes device
+  /// events to a live-test dispatcher that does not exist here — they are
+  /// converted correctly and then dropped, which looks exactly like a
+  /// conversion bug. Tagging the dispatch as test-sourced sends it down the
+  /// same path `WidgetTester.tap` uses, while the CONVERSION above it is
+  /// still the shipped one. That conversion is the thing under test.
+  void pumpPointerPacket(ui.PointerDataPacket packet) {
+    withPointerEventSource(TestBindingEventSource.test, () {
+      platformDispatcher.onPointerDataPacket!(packet);
+    });
   }
 }
 
@@ -119,6 +141,110 @@ void main() {
     // listener can produce a new layout here.
     await tester.pump();
     expect(given.width, closeTo(unscaled.width / 1.5, 1e-9));
+  });
+
+  group('the POINTER is converted with the effective ratio', () {
+    // 🚨The half that is invisible to every ordinary widget test.
+    // `WidgetTester.tap` hands `handlePointerEvent` an already-logical
+    // position and never runs `PointerEventConverter`, so a tap test
+    // passes at every scale whether or not the conversion is right. These
+    // push a real `PointerDataPacket` with PHYSICAL coordinates, which is
+    // the only path that exercises it.
+    // ⚠️A press and its release, in one packet. A second `down` for a
+    // pointer that never went up is dropped before it reaches the tree —
+    // which is how the first draft of this file measured only its first
+    // ladder stop and looked like a conversion bug at the second.
+    Future<void> sendTap(WidgetTester tester, Offset physical) async {
+      ui.PointerData at(ui.PointerChange change) => ui.PointerData(
+        viewId: tester.view.viewId,
+        change: change,
+        kind: PointerDeviceKind.touch,
+        physicalX: physical.dx,
+        physicalY: physical.dy,
+      );
+      binding.pumpPointerPacket(
+        ui.PointerDataPacket(
+          data: <ui.PointerData>[
+            at(ui.PointerChange.down),
+            at(ui.PointerChange.up),
+          ],
+        ),
+      );
+      await tester.pump();
+    }
+
+    for (final stop in AppUiScale.ladder) {
+      testWidgets('a press lands where it was aimed at ${AppUiScale.label(stop)}', (
+        tester,
+      ) async {
+        AppUiScale.value.value = stop;
+        Offset? pressedAt;
+        await tester.pumpWidget(
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: Listener(
+              // ⚠️`deferToChild` is the default and an empty `SizedBox` is
+              // not hit-testable, so without this the press converts
+              // correctly and then hits nothing.
+              behavior: HitTestBehavior.opaque,
+              onPointerDown: (event) => pressedAt = event.position,
+              child: const SizedBox.expand(),
+            ),
+          ),
+        );
+
+        final raw = tester.view.devicePixelRatio;
+        const physical = Offset(600, 400);
+        await sendTap(tester, physical);
+
+        expect(pressedAt, isNotNull);
+        // The logical coordinate the tree is laid out in — physical over
+        // the ratio the ROOT MATRIX uses, not over the raw one. Divide by
+        // the raw ratio instead and this is off by exactly the scale.
+        expect(pressedAt!.dx, closeTo(physical.dx / (raw * stop), 1e-9));
+        expect(pressedAt!.dy, closeTo(physical.dy / (raw * stop), 1e-9));
+      });
+    }
+
+    testWidgets('a press reaches the button under those physical pixels', (
+      tester,
+    ) async {
+      // The user-facing form of the same claim: the thing you can see at
+      // those pixels is the thing that gets pressed.
+      AppUiScale.value.value = 1.25;
+      var pressed = false;
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          // ⚠️CENTRED, and small. A target at the origin survives the bug:
+          // a 25% error on a centre of (20,20) is 5px, still inside a 40px
+          // box, so the pin would pass with the raw ratio. Out at the
+          // middle of the tree the same 25% is hundreds of pixels.
+          child: Center(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: (_) => pressed = true,
+              child: const SizedBox(width: 24, height: 24),
+            ),
+          ),
+        ),
+      );
+
+      final box = tester.renderObject<RenderBox>(
+        find.byType(GestureDetector),
+      );
+      final logicalCentre = box.localToGlobal(box.size.center(Offset.zero));
+      final ratio = tester.view.devicePixelRatio * 1.25;
+      await sendTap(tester, logicalCentre * ratio);
+
+      expect(
+        pressed,
+        isTrue,
+        reason: 'the 40x40 box painted at those device pixels must be the '
+            'one the press reaches — divide by the raw ratio instead and '
+            'the press lands 25% away and misses',
+      );
+    });
   });
 
   testWidgets('every ladder stop lands its exact product', (tester) async {
