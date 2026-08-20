@@ -1,5 +1,4 @@
-import 'dart:ui'
-    show DisplayFeature, DisplayFeatureState, DisplayFeatureType;
+import 'dart:ui' show DisplayFeature, DisplayFeatureState, DisplayFeatureType;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -43,7 +42,10 @@ void main() {
     test('stepped walks the ladder and stops at both ends', () {
       expect(AppUiScale.stepped(1.0, 1), 1.1);
       expect(AppUiScale.stepped(1.0, -1), 0.9);
-      expect(AppUiScale.stepped(AppUiScale.ladder.last, 1), AppUiScale.ladder.last);
+      expect(
+        AppUiScale.stepped(AppUiScale.ladder.last, 1),
+        AppUiScale.ladder.last,
+      );
       expect(
         AppUiScale.stepped(AppUiScale.ladder.first, -1),
         AppUiScale.ladder.first,
@@ -140,7 +142,10 @@ void main() {
       );
       final raw = base.copyWith(size: const Size(2400 / 1.5, 1600 / 1.5));
       final scaled = scaleMediaQueryData(raw, 1.25);
-      expect(scaled.size.width, closeTo(config.logicalConstraints.maxWidth, 1e-9));
+      expect(
+        scaled.size.width,
+        closeTo(config.logicalConstraints.maxWidth, 1e-9),
+      );
       expect(
         scaled.size.height,
         closeTo(config.logicalConstraints.maxHeight, 1e-9),
@@ -164,7 +169,10 @@ void main() {
         ],
       );
       final scaled = scaleMediaQueryData(folded, 1.25);
-      expect(scaled.displayFeatures.single.bounds, const Rect.fromLTRB(396, 0, 404, 640));
+      expect(
+        scaled.displayFeatures.single.bounds,
+        const Rect.fromLTRB(396, 0, 404, 640),
+      );
       expect(scaled.displayFeatures.single.type, DisplayFeatureType.hinge);
     });
   });
@@ -256,20 +264,44 @@ void main() {
     testWidgets('with no ambient MediaQuery it still publishes a ratio', (
       tester,
     ) async {
+      // 🚨`wrapWithView: false` + `RawView`, and that is the whole point of
+      // this pin. `pumpWidget` normally wraps in `View`, which mounts a
+      // `MediaQuery` of its own — so this case used to run WITH an ambient
+      // one and proved nothing about the branch it is named after. A test
+      // that reports on a path it never takes is worse than no test: it
+      // reads as coverage.
+      //
+      // `RawView` is the half of `View` that attaches the render tree
+      // WITHOUT the MediaQuery, which is the only way to stand a subtree in
+      // a context that genuinely has none.
       late double gridRatio;
+      late double rawRatio;
       await tester.pumpWidget(
-        EffectiveDevicePixelRatioScope(
-          uiScale: 1.25,
-          child: Builder(
-            builder: (context) {
-              gridRatio = DeviceGrid.of(context).ratio;
-              return const SizedBox.shrink();
-            },
+        wrapWithView: false,
+        RawView(
+          view: tester.view,
+          child: EffectiveDevicePixelRatioScope(
+            uiScale: 1.25,
+            child: Builder(
+              builder: (context) {
+                expect(
+                  MediaQuery.maybeOf(context),
+                  isNull,
+                  reason: 'the branch under test has to actually be taken',
+                );
+                gridRatio = DeviceGrid.of(context).ratio;
+                rawRatio = EffectiveDevicePixelRatio.rawViewRatioOf(context);
+                return const SizedBox.shrink();
+              },
+            ),
           ),
         ),
       );
       // Falls through to the View's own ratio × the scale.
       expect(gridRatio, closeTo(tester.view.devicePixelRatio * 1.25, 1e-9));
+      // And the scope's own input fell through the same way — the scale is
+      // applied once, to a hardware number nobody rewrote.
+      expect(rawRatio, closeTo(tester.view.devicePixelRatio, 1e-9));
     });
   });
 }

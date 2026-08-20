@@ -5,60 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/ui_scale.dart';
-import 'package:anicel/src/ui/ui_scale_binding.dart';
 
-/// The test binding with the PRODUCTION override mixed in.
-///
-/// `AnicelBinding` itself cannot be the binding under `flutter_test` — the
-/// framework installs its own — so the override lives in
-/// [UiScaleViewConfiguration] and both bindings wear the same one. Without
-/// this file the round's central claim ("a scale change reaches the root
-/// device matrix") would rest on reading the code.
-///
-/// ⚠️It replaces `AutomatedTestWidgetsFlutterBinding`'s own configuration
-/// hook, which is what forces the 800×600 test surface — so sizes in THIS
-/// file come from the `TestFlutterView` (2400×1800 at ratio 3), not from
-/// the usual test surface. That is the point: it is the real path.
-class _ScaledTestBinding extends AutomatedTestWidgetsFlutterBinding
-    with UiScaleViewConfiguration {
-  static _ScaledTestBinding ensureInitialized() {
-    if (_instance == null) {
-      _ScaledTestBinding();
-    }
-    return _instance!;
-  }
-
-  static _ScaledTestBinding? _instance;
-
-  @override
-  void initInstances() {
-    super.initInstances();
-    _instance = this;
-    // ⛔No `AppUiScale.value.addListener` here. It used to be, and that is
-    // exactly what made the production wire untestable: deleting the
-    // `addListener` from `UiScaleViewConfiguration` left this file green
-    // because the copy below it still fired. The subscription now lives in
-    // the mixin, so this binding wears the real one.
-  }
-
-  /// Pushes a REAL pointer packet through the production conversion.
-  ///
-  /// ⚠️`withPointerEventSource(test, …)` is not cosmetic. A packet arrives
-  /// tagged as coming from the device, and the test binding routes device
-  /// events to a live-test dispatcher that does not exist here — they are
-  /// converted correctly and then dropped, which looks exactly like a
-  /// conversion bug. Tagging the dispatch as test-sourced sends it down the
-  /// same path `WidgetTester.tap` uses, while the CONVERSION above it is
-  /// still the shipped one. That conversion is the thing under test.
-  void pumpPointerPacket(ui.PointerDataPacket packet) {
-    withPointerEventSource(TestBindingEventSource.test, () {
-      platformDispatcher.onPointerDataPacket!(packet);
-    });
-  }
-}
+import '../helpers/scaled_test_binding.dart';
 
 void main() {
-  final binding = _ScaledTestBinding.ensureInitialized();
+  final binding = ScaledTestBinding.ensureInitialized();
 
   tearDown(() => AppUiScale.value.value = AppUiScale.defaultScale);
 
@@ -71,11 +22,17 @@ void main() {
 
     AppUiScale.value.value = 1.25;
     await tester.pump();
-    expect(binding.renderViews.single.configuration.devicePixelRatio, raw * 1.25);
+    expect(
+      binding.renderViews.single.configuration.devicePixelRatio,
+      raw * 1.25,
+    );
 
     AppUiScale.value.value = 0.75;
     await tester.pump();
-    expect(binding.renderViews.single.configuration.devicePixelRatio, raw * 0.75);
+    expect(
+      binding.renderViews.single.configuration.devicePixelRatio,
+      raw * 0.75,
+    );
   });
 
   testWidgets('the root matrix is a PURE SCALE — no translation', (
@@ -174,36 +131,37 @@ void main() {
     }
 
     for (final stop in AppUiScale.ladder) {
-      testWidgets('a press lands where it was aimed at ${AppUiScale.label(stop)}', (
-        tester,
-      ) async {
-        AppUiScale.value.value = stop;
-        Offset? pressedAt;
-        await tester.pumpWidget(
-          Directionality(
-            textDirection: TextDirection.ltr,
-            child: Listener(
-              // ⚠️`deferToChild` is the default and an empty `SizedBox` is
-              // not hit-testable, so without this the press converts
-              // correctly and then hits nothing.
-              behavior: HitTestBehavior.opaque,
-              onPointerDown: (event) => pressedAt = event.position,
-              child: const SizedBox.expand(),
+      testWidgets(
+        'a press lands where it was aimed at ${AppUiScale.label(stop)}',
+        (tester) async {
+          AppUiScale.value.value = stop;
+          Offset? pressedAt;
+          await tester.pumpWidget(
+            Directionality(
+              textDirection: TextDirection.ltr,
+              child: Listener(
+                // ⚠️`deferToChild` is the default and an empty `SizedBox` is
+                // not hit-testable, so without this the press converts
+                // correctly and then hits nothing.
+                behavior: HitTestBehavior.opaque,
+                onPointerDown: (event) => pressedAt = event.position,
+                child: const SizedBox.expand(),
+              ),
             ),
-          ),
-        );
+          );
 
-        final raw = tester.view.devicePixelRatio;
-        const physical = Offset(600, 400);
-        await sendTap(tester, physical);
+          final raw = tester.view.devicePixelRatio;
+          const physical = Offset(600, 400);
+          await sendTap(tester, physical);
 
-        expect(pressedAt, isNotNull);
-        // The logical coordinate the tree is laid out in — physical over
-        // the ratio the ROOT MATRIX uses, not over the raw one. Divide by
-        // the raw ratio instead and this is off by exactly the scale.
-        expect(pressedAt!.dx, closeTo(physical.dx / (raw * stop), 1e-9));
-        expect(pressedAt!.dy, closeTo(physical.dy / (raw * stop), 1e-9));
-      });
+          expect(pressedAt, isNotNull);
+          // The logical coordinate the tree is laid out in — physical over
+          // the ratio the ROOT MATRIX uses, not over the raw one. Divide by
+          // the raw ratio instead and this is off by exactly the scale.
+          expect(pressedAt!.dx, closeTo(physical.dx / (raw * stop), 1e-9));
+          expect(pressedAt!.dy, closeTo(physical.dy / (raw * stop), 1e-9));
+        },
+      );
     }
 
     testWidgets('a press reaches the button under those physical pixels', (
@@ -230,9 +188,7 @@ void main() {
         ),
       );
 
-      final box = tester.renderObject<RenderBox>(
-        find.byType(GestureDetector),
-      );
+      final box = tester.renderObject<RenderBox>(find.byType(GestureDetector));
       final logicalCentre = box.localToGlobal(box.size.center(Offset.zero));
       final ratio = tester.view.devicePixelRatio * 1.25;
       await sendTap(tester, logicalCentre * ratio);
@@ -240,7 +196,8 @@ void main() {
       expect(
         pressed,
         isTrue,
-        reason: 'the 40x40 box painted at those device pixels must be the '
+        reason:
+            'the 40x40 box painted at those device pixels must be the '
             'one the press reaches — divide by the raw ratio instead and '
             'the press lands 25% away and misses',
       );
