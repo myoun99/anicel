@@ -267,7 +267,10 @@ void main() {
     'prefsAudio': (s) => s.prefsAudio,
     'prefsLanguage': (s) => s.prefsLanguage,
     'prefsAccent': (s) => s.prefsAccent,
+    'prefsDisplay': (s) => s.prefsDisplay,
     'prefsSystem': (s) => s.prefsSystem,
+    // R11: the interface scale, in the Display section.
+    'uiScaleLabel': (s) => s.uiScaleLabel,
     'accentTitle': (s) => s.accentTitle,
     'accent1Label': (s) => s.accent1Label,
     'accent1Help': (s) => s.accent1Help,
