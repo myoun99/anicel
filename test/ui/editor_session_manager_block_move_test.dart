@@ -198,6 +198,43 @@ void main() {
     );
   });
 
+  test('a REFUSED begin leaves the drag in flight alone', () {
+    // 🚨The hazard the drag-session split names by hand: the first wiring of
+    // that type assigned the slot from the factory unconditionally, so a
+    // refusal wrote null over a LIVE drag and its preview stayed stuck in
+    // the channel with nothing left to clear it. A second grip landing on
+    // an SE row is exactly how a user reaches that.
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    s.createDrawingAtCurrentFrame();
+    final seLayer = s.layers.firstWhere((l) => l.name.startsWith('S'));
+
+    expect(
+      s.beginDrawingBlockMoveDrag(
+        layerId: s.activeLayer!.id,
+        blockStartIndex: 0,
+      ),
+      isTrue,
+    );
+    s.updateDrawingBlockMoveDrag(frameDelta: 2);
+    expect(s.dragPreview.value, isNotNull, reason: 'a move is in flight');
+
+    expect(
+      s.beginDrawingBlockMoveDrag(layerId: seLayer.id, blockStartIndex: 0),
+      isFalse,
+    );
+    expect(
+      s.isBlockMoveDragActive,
+      isTrue,
+      reason: 'the refusal is not a cancel',
+    );
+    expect(s.dragPreview.value, isNotNull, reason: 'and it kept its preview');
+
+    // And the original drag can still be closed the normal way.
+    s.cancelDrawingBlockMoveDrag();
+    expect(s.isBlockMoveDragActive, isFalse);
+    expect(s.dragPreview.value, isNull);
+  });
+
   group('BrushFrameStore.rekeyFrames', () {
     BrushFrameKey key(String layer) => BrushFrameKey(
       projectId: const ProjectId('p'),

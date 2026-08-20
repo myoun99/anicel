@@ -43,6 +43,7 @@ import 'brush/brush_tool_state.dart' show CanvasTool;
 import 'input/app_input_settings.dart';
 import 'session/drags/audio_clip_offset_drag.dart';
 import 'session/drags/cut_move_drag.dart';
+import 'session/drags/drawing_block_move_drag.dart';
 import 'session/drags/movie_end_drag.dart';
 import 'session/drags/row_order_drag.dart';
 import 'session/drags/run_frames_add_drag.dart';
@@ -200,8 +201,7 @@ import 'timeline/property_lane_model.dart'
     show TimelineDisplayRow, folderAggregateRuns;
 // ⑨: the row selection grows through the SAME span law the cell selection
 // uses — the rail's own drawn row list.
-import 'timeline/timeline_row_span_resolver.dart'
-    show resolveSelectionSpanRows;
+import 'timeline/timeline_row_span_resolver.dart' show resolveSelectionSpanRows;
 import 'timeline/timeline_current_row.dart' show currentRowIsInsideGroup;
 import 'timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
 import 'timeline/layer_timeline_display_adapter.dart'
@@ -1014,8 +1014,7 @@ class EditorSessionManager extends ChangeNotifier {
     // (now on the DOWN) would wipe the move it was starting.
     final lanes = laneRangeSelection.value;
     if (lanes != null && frameIndex != null && row is LaneRowAddress) {
-      final laneAxisFrame =
-          !frameIsGlobal && isTrackSeLayerId(row.layerId)
+      final laneAxisFrame = !frameIsGlobal && isTrackSeLayerId(row.layerId)
           ? frameIndex + activeCutGlobalStartFrame
           : frameIndex;
       if (lanes.coversLane(row.layerId, row.laneId) &&
@@ -2167,9 +2166,7 @@ class EditorSessionManager extends ChangeNotifier {
     final range = trackFrameRangeSelection.value;
     if (range != null && range.trackId == selectedTrackId) {
       final axis = trackFrameAxis();
-      if (axis
-          .cutsIn(range.startFrame, range.endFrameExclusive)
-          .isNotEmpty) {
+      if (axis.cutsIn(range.startFrame, range.endFrameExclusive).isNotEmpty) {
         return null;
       }
       return _cutCreationAt(
@@ -4073,20 +4070,16 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     _effectSequence += 1;
-    updateTrackEffects(
-      trackId,
-      [
-        ...track.effects,
-        LayerEffect.defaults(
-          id: EffectId(
-            'fx-${trackId.value}-'
-            '${DateTime.now().microsecondsSinceEpoch}-$_effectSequence',
-          ),
-          kind: kind,
+    updateTrackEffects(trackId, [
+      ...track.effects,
+      LayerEffect.defaults(
+        id: EffectId(
+          'fx-${trackId.value}-'
+          '${DateTime.now().microsecondsSinceEpoch}-$_effectSequence',
         ),
-      ],
-      description: 'Add ${kind.label}',
-    );
+        kind: kind,
+      ),
+    ], description: 'Add ${kind.label}');
   }
 
   void removeEffectFromTrack(TrackId trackId, EffectId effectId) {
@@ -5452,27 +5445,30 @@ class EditorSessionManager extends ChangeNotifier {
             );
             notifyListeners();
           },
-      commitTrackEffects: (trackId, effects) => updateTrackEffects(
-        trackId,
-        effects,
-        description: 'Reorder effects',
-      ),
-      commitLayerEffects: ({required cutId, required layerId, required effects}) {
-        _cutCommandCoordinator.updateLayerEffects(
-          cutId: cutId,
-          layerId: layerId,
-          effects: effects,
-          description: 'Reorder effects',
-        );
-        _refreshAfterCutCommand(preferredActiveLayerId: layerId);
-        notifyListeners();
-      },
+      commitTrackEffects: (trackId, effects) =>
+          updateTrackEffects(trackId, effects, description: 'Reorder effects'),
+      commitLayerEffects:
+          ({required cutId, required layerId, required effects}) {
+            _cutCommandCoordinator.updateLayerEffects(
+              cutId: cutId,
+              layerId: layerId,
+              effects: effects,
+              description: 'Reorder effects',
+            );
+            _refreshAfterCutCommand(preferredActiveLayerId: layerId);
+            notifyListeners();
+          },
       commitSeOrder: ({required trackId, required order}) {
         _cutCommandCoordinator.setTrackSeOrder(trackId: trackId, order: order);
         notifyListeners();
       },
       commitPlacement:
-          ({required cutId, required plan, required subjectLayerId, required movedIds}) {
+          ({
+            required cutId,
+            required plan,
+            required subjectLayerId,
+            required movedIds,
+          }) {
             _cutCommandCoordinator.setLayerPlacement(
               cutId: cutId,
               order: plan.order,
@@ -5771,10 +5767,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// whose flag is the layer's own and must flip from a gap too. The cut id
   /// is command bookkeeping the write never reads.
   void toggleLayerTimesheet(LayerId layerId) {
-    final layer = requireLayerAnywhere(
-      _repository.requireProject(),
-      layerId,
-    );
+    final layer = requireLayerAnywhere(_repository.requireProject(), layerId);
     _cutCommandCoordinator.setLayerTimesheet(
       cutId: activeCutOrNull?.id,
       layerId: layerId,
@@ -6448,10 +6441,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// timeline import, pool only (no clip link). Non-audio kinds register
   /// with their detected kind (R3b) — the batch stays one undo through
   /// [addMediaAssets].
-  void importMediaFiles(
-    List<String> paths, {
-    required bool copyIntoProject,
-  }) {
+  void importMediaFiles(List<String> paths, {required bool copyIntoProject}) {
     final pool = mediaAssets;
     final known = {for (final asset in pool) asset.path};
     final added = <MediaAsset>[];
@@ -7286,8 +7276,7 @@ class EditorSessionManager extends ChangeNotifier {
       parsed: parsed,
       // The export writes POSIX-ish relative paths (`[003] D/[0004] D.png`)
       // whichever platform wrote it.
-      resolveFile: (relative) =>
-          '$directory/${relative.replaceAll('\\', '/')}',
+      resolveFile: (relative) => '$directory/${relative.replaceAll('\\', '/')}',
       mint: mint,
       // The clip's own shooting frame becomes a zoom against THIS project's
       // frame — a cut import must not repoint the project's camera.
@@ -7613,7 +7602,8 @@ class EditorSessionManager extends ChangeNotifier {
       _voiceRecording.voiceRecordPreviewLane;
 
   /// Lit while the last block of input clipped.
-  ValueNotifier<bool> get voiceRecordClipLit => _voiceRecording.voiceRecordClipLit;
+  ValueNotifier<bool> get voiceRecordClipLit =>
+      _voiceRecording.voiceRecordClipLit;
 
   /// The path a live take's preview waveform answers to (REC1-C).
   static const String voiceRecordPreviewPath =
@@ -8083,7 +8073,8 @@ class EditorSessionManager extends ChangeNotifier {
   /// Re-probes the pool. Notifies only when the answer changed, so calling
   /// it after an import that touched nothing missing is free.
   void refreshMediaExistence() {
-    final probe = debugMediaFileExists ?? (String path) => File(path).existsSync();
+    final probe =
+        debugMediaFileExists ?? (String path) => File(path).existsSync();
     final missing = <String>{};
     final modified = <String, DateTime>{};
     for (final asset in mediaAssets) {
@@ -8650,9 +8641,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
     return switch (layer.kind) {
       LayerKind.se => canCreateDrawingAtCurrentFrame,
-      LayerKind.folder ||
-      LayerKind.adjustment ||
-      LayerKind.transition => false,
+      LayerKind.folder || LayerKind.adjustment || LayerKind.transition => false,
       _ => true,
     };
   }
@@ -9506,7 +9495,8 @@ class EditorSessionManager extends ChangeNotifier {
             count: run.count,
           );
     final cels = <FrameId>{
-      for (final exposure in clip?.exposures.values ?? const <TimelineExposure>[])
+      for (final exposure
+          in clip?.exposures.values ?? const <TimelineExposure>[])
         if (exposure.frameId != null) exposure.frameId!,
     };
     _copiedFrame = _CopiedFrameReference(
@@ -11726,11 +11716,12 @@ class EditorSessionManager extends ChangeNotifier {
   // a block move never retimes other blocks. Same channel discipline as
   // the edge drags: repo untouched until release, one undo per drag.
 
-  Layer? _blockMoveSourceBefore;
-  int? _blockMoveBlockStart;
-  DrawingBlockMovePlan? _blockMovePlan;
+  /// The drag in flight, or null. ⛔The only thing this class keeps about a
+  /// block move now: its mid-drag state lives on the object and dies with
+  /// the gesture (see [DrawingBlockMoveDrag]).
+  DrawingBlockMoveDrag? _blockMoveDrag;
 
-  bool get isBlockMoveDragActive => _blockMoveSourceBefore != null;
+  bool get isBlockMoveDragActive => _blockMoveDrag != null;
 
   /// Whether [layerId] can take part in a block move (source or target):
   /// a plain drawing-section layer. Track-SE rows live on the global axis
@@ -12185,8 +12176,7 @@ class EditorSessionManager extends ChangeNotifier {
     final toGlobal = !framesAreGlobal && isTrackSeLayerId(layerId)
         ? activeCutGlobalStartFrame
         : 0;
-    final start =
-        math.max(0, math.min(anchorIndex, headIndex)) + toGlobal;
+    final start = math.max(0, math.min(anchorIndex, headIndex)) + toGlobal;
     final endExclusive = math.max(anchorIndex, headIndex) + 1 + toGlobal;
     if (endExclusive <= start) {
       return;
@@ -12226,7 +12216,8 @@ class EditorSessionManager extends ChangeNotifier {
   /// The in-flight lane range move (UI-R23 #3 part 2): the drag-start
   /// snapshot plus the last VALID shifted payload (blocked steps HOLD it,
   /// the #10 policy).
-  ({_LaneMoveSubject subject, TimelineLaneSelection selection})? _laneMoveBefore;
+  ({_LaneMoveSubject subject, TimelineLaneSelection selection})?
+  _laneMoveBefore;
   TransformTrack? _laneMoveShifted;
 
   /// The in-flight EFFECT-lane move's last valid chain (R6) — the effect
@@ -12268,8 +12259,7 @@ class EditorSessionManager extends ChangeNotifier {
         commitTransform: (_) {},
         commitEffects: (next) =>
             updateTrackEffects(track.id, next, description: _laneMoveWhy),
-        previewTransform: (_) =>
-            const BlockMoveDragPreview(previewLayers: {}),
+        previewTransform: (_) => const BlockMoveDragPreview(previewLayers: {}),
         previewEffects: (next) => BlockMoveDragPreview(
           previewLayers: const {},
           previewTrackEffects: {track.id: next},
@@ -12332,9 +12322,13 @@ class EditorSessionManager extends ChangeNotifier {
             }
           : null,
       commitTransform: isCamera
-          ? (next) => updateActiveCutCameraTrack(next, description: _laneMoveWhy)
-          : (next) =>
-                updateLayerTransformTrack(layer.id, next, description: _laneMoveWhy),
+          ? (next) =>
+                updateActiveCutCameraTrack(next, description: _laneMoveWhy)
+          : (next) => updateLayerTransformTrack(
+              layer.id,
+              next,
+              description: _laneMoveWhy,
+            ),
       commitEffects: (next) =>
           updateLayerEffects(layer.id, next, description: _laneMoveWhy),
       previewTransform: isCamera
@@ -12356,7 +12350,9 @@ class EditorSessionManager extends ChangeNotifier {
       previewEffects: (next) => BlockMoveDragPreview(
         previewLayers: {layer.id: layer.copyWith(effects: next)},
       ),
-      onPreviewTransform: isCamera ? (next) => _cameraLaneTrackPreview = next : null,
+      onPreviewTransform: isCamera
+          ? (next) => _cameraLaneTrackPreview = next
+          : null,
     );
   }
 
@@ -12943,20 +12939,44 @@ class EditorSessionManager extends ChangeNotifier {
     required LayerId layerId,
     required int blockStartIndex,
   }) {
-    if (!_blockMoveEligible(layerId)) {
-      _noticeSyncedAttachRefusal(layerId);
+    // ⚠️Assigned only on SUCCESS. A refused begin must not touch a drag
+    // already in flight — the first wiring of the session type overwrote
+    // the slot with null and left a preview stuck in the channel.
+    final drag = DrawingBlockMoveDrag.begin(
+      layerId: layerId,
+      blockStartIndex: blockStartIndex,
+      layerById: _layerById,
+      isEligibleRow: _blockMoveEligible,
+      noticeIneligible: _noticeSyncedAttachRefusal,
+      cutFrameCount: () => _activeCutFrameCount,
+      preview: dragPreview,
+      land: _landDrawingBlockMove,
+    );
+    if (drag == null) {
       return false;
     }
-    final layer = _layerById(layerId);
-    final entry = layer?.timeline[blockStartIndex];
-    // Ghost repeat instances are DERIVED — their timing is the region's,
-    // not draggable (UI-R8).
-    if (layer == null || entry == null || !entry.isDrawing || entry.ghost) {
-      return false;
-    }
-    _blockMoveSourceBefore = layer;
-    _blockMoveBlockStart = blockStartIndex;
+    _blockMoveDrag = drag;
     return true;
+  }
+
+  /// The session's half of the block-move commit: one undo step built by
+  /// the SHARED single-row builder, then the selection, the cache warm and
+  /// the notify — all of which are this class's jobs, not the gesture's.
+  void _landDrawingBlockMove(DrawingBlockMovePlan plan, Layer source) {
+    _historyManager.execute(
+      _singleRowMoveCommand(
+        plan,
+        source: source,
+        description: 'Move drawing block',
+      ),
+    );
+    // The selection follows the block onto its new layer (R12-④): the
+    // user grabbed THAT drawing — keep working on it where it landed.
+    if (plan.isCrossLayer) {
+      _layerController.selectLayer(plan.targetAfter!.id);
+    }
+    _warmActiveCut();
+    notifyListeners();
   }
 
   /// Applies the drag's cumulative deltas as a live preview on
@@ -12969,45 +12989,10 @@ class EditorSessionManager extends ChangeNotifier {
   void updateDrawingBlockMoveDrag({
     required int frameDelta,
     LayerId? targetLayerId,
-  }) {
-    final source = _blockMoveSourceBefore;
-    final blockStart = _blockMoveBlockStart;
-    if (source == null || blockStart == null) {
-      return;
-    }
-    Layer? target = source;
-    if (targetLayerId != null && targetLayerId != source.id) {
-      target = _blockMoveEligible(targetLayerId)
-          ? _layerById(targetLayerId)
-          : null;
-    }
-    final plan = target == null
-        ? null
-        : planDrawingBlockMove(
-            source: source,
-            target: target,
-            blockStartIndex: blockStart,
-            frameDelta: frameDelta,
-            cutFrameCount: _activeCutFrameCount,
-          );
-    _blockMovePlan = plan;
-    // Ghosts follow the moved run LIVE (UI-R8 rederive on the preview).
-    dragPreview.value = plan == null
-        ? null
-        : BlockMoveDragPreview(
-            previewLayers: {
-              plan.sourceAfter.id: rederiveRunBehaviors(
-                plan.sourceAfter,
-                cutFrameCount: _activeCutFrameCount,
-              ),
-              if (plan.targetAfter != null)
-                plan.targetAfter!.id: rederiveRunBehaviors(
-                  plan.targetAfter!,
-                  cutFrameCount: _activeCutFrameCount,
-                ),
-            },
-          );
-  }
+  }) => _blockMoveDrag?.update(
+    frameDelta: frameDelta,
+    targetLayerId: targetLayerId,
+  );
 
   /// The single undo step a ONE-ROW move lands as: the source row's
   /// rewrite, the target row's rewrite when the move crossed rows, and the
@@ -13067,37 +13052,18 @@ class EditorSessionManager extends ChangeNotifier {
   /// an illegal or unchanged landing). Cross-layer moves compose the two
   /// layer updates with the brush-store rekey so undo restores everything.
   void endDrawingBlockMoveDrag() {
-    final source = _blockMoveSourceBefore;
-    final plan = _blockMovePlan;
-    _blockMoveSourceBefore = null;
-    _blockMoveBlockStart = null;
-    _blockMovePlan = null;
-    dragPreview.value = null;
-    if (source == null || plan == null) {
-      return;
-    }
-    _historyManager.execute(
-      _singleRowMoveCommand(
-        plan,
-        source: source,
-        description: 'Move drawing block',
-      ),
-    );
-    // The selection follows the block onto its new layer (R12-④): the
-    // user grabbed THAT drawing — keep working on it where it landed.
-    if (plan.isCrossLayer) {
-      _layerController.selectLayer(plan.targetAfter!.id);
-    }
-    _warmActiveCut();
-    notifyListeners();
+    // ⚠️Forgotten BEFORE the commit runs, so neither closer can be reached
+    // twice and the landing cannot see a drag that is already over.
+    final drag = _blockMoveDrag;
+    _blockMoveDrag = null;
+    drag?.commit();
   }
 
   /// Drops an in-flight move preview without touching history.
   void cancelDrawingBlockMoveDrag() {
-    _blockMoveSourceBefore = null;
-    _blockMoveBlockStart = null;
-    _blockMovePlan = null;
-    dragPreview.value = null;
+    final drag = _blockMoveDrag;
+    _blockMoveDrag = null;
+    drag?.cancel();
   }
 
   // --- Frame RANGE move drag (UI-R8: drag the selected range) --------------
@@ -13723,9 +13689,7 @@ class EditorSessionManager extends ChangeNotifier {
           trackId: owner.id,
           before: owner.transitionLayer,
           after: owner.transitionLayer.copyWith(
-            instructions: SplayTreeMap<int, InstructionEvent>.from(
-              entry.value,
-            ),
+            instructions: SplayTreeMap<int, InstructionEvent>.from(entry.value),
           ),
           label: 'Move transition',
         )
@@ -14270,9 +14234,7 @@ class EditorSessionManager extends ChangeNotifier {
         }
         final layer = _layerById(entry.key);
         if (layer != null) {
-          previewLayers[entry.key] = layer.copyWith(
-            instructions: entry.value,
-          );
+          previewLayers[entry.key] = layer.copyWith(instructions: entry.value);
         }
       }
       dragPreview.value = BlockMoveDragPreview(
@@ -14970,8 +14932,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
     return switch (layer.kind) {
       LayerKind.camera || LayerKind.instruction => hasActiveNonNegativeCell,
-      LayerKind.se =>
-        selectedFrame != null || canCreateDrawingAtCurrentFrame,
+      LayerKind.se => selectedFrame != null || canCreateDrawingAtCurrentFrame,
       _ => canRenameFrameAtCurrentFrame,
     };
   }
@@ -15276,12 +15237,15 @@ class EditorSessionManager extends ChangeNotifier {
   void updateSelectedSeEntry({required String dialogue, String? seName}) {
     final layer = activeLayer;
     final frame = selectedFrame;
-    if (layer == null ||
-        frame == null ||
-        !canRenameFrameAtCurrentFrame) {
+    if (layer == null || frame == null || !canRenameFrameAtCurrentFrame) {
       return;
     }
-    updateSeEntryForLayer(layer.id, frame.id, dialogue: dialogue, seName: seName);
+    updateSeEntryForLayer(
+      layer.id,
+      frame.id,
+      dialogue: dialogue,
+      seName: seName,
+    );
   }
 
   /// The same edit addressed by ROW + ENTRY instead of by standing (B6
@@ -15842,8 +15806,9 @@ class EditorSessionManager extends ChangeNotifier {
   /// divide there (the timeline's own creation law); gate and dispatch
   /// read the ONE cursor resolver (T25).
   bool get canCreateStoryboardPanelAtCursor {
-    if (_storyboardCursorBlockOrNull()
-        case _StoryboardCursorStoryboardPanel(:final panelStartIndex)) {
+    if (_storyboardCursorBlockOrNull() case _StoryboardCursorStoryboardPanel(
+      :final panelStartIndex,
+    )) {
       return _timelineController.currentFrameIndex != panelStartIndex;
     }
     return false;
@@ -15853,11 +15818,10 @@ class EditorSessionManager extends ChangeNotifier {
   /// splits, the new drawing taking the rest of the hold, exactly as the
   /// timeline's ＋ divides a held block.
   void createStoryboardPanelAtCursor() {
-    if (_storyboardCursorBlockOrNull()
-        case _StoryboardCursorStoryboardPanel(
-          :final row,
-          :final panelStartIndex,
-        )) {
+    if (_storyboardCursorBlockOrNull() case _StoryboardCursorStoryboardPanel(
+      :final row,
+      :final panelStartIndex,
+    )) {
       if (_timelineController.currentFrameIndex == panelStartIndex) {
         return;
       }
@@ -16299,8 +16263,7 @@ class EditorSessionManager extends ChangeNotifier {
       // playhead drag's genuine crossing as tap-shaped and the canvas
       // froze on the previous cut). A pointer-down alone still engages
       // nothing: the no-flash rule is about the DOWN, not about moves.
-      if ((parked != null && parked != globalFrame ||
-              _scrubTouchedTerritory) &&
+      if ((parked != null && parked != globalFrame || _scrubTouchedTerritory) &&
           !frameScrubActive.value) {
         frameScrubActive.value = true;
       }
@@ -16760,11 +16723,9 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// The fingerprints as the file should keep them: only for media the
   /// project still references.
-  Map<String, Object?> _mediaCrcsToStore() => _mediaFingerprints
-      .narrowedTo({
-        for (final asset in mediaAssets) _normalizedPath(asset.path),
-      })
-      .toJson();
+  Map<String, Object?> _mediaCrcsToStore() => _mediaFingerprints.narrowedTo({
+    for (final asset in mediaAssets) _normalizedPath(asset.path),
+  }).toJson();
 
   @visibleForTesting
   MediaFingerprints get debugMediaFingerprints => _mediaFingerprints;
@@ -17045,7 +17006,8 @@ class EditorSessionManager extends ChangeNotifier {
     // work. (A snapshot from an older build is a whole archive opened as
     // [filePath]; same reasoning, same field.) Reset on an ordinary open
     // so a later session never inherits another one's exception.
-    _recoveredFromSidecar = overlayPath ?? (recoverAs == null ? null : filePath);
+    _recoveredFromSidecar =
+        overlayPath ?? (recoverAs == null ? null : filePath);
     // A different project is a different session; a discard that belonged
     // to the last one must not silence this one's snapshots.
     _discardedUnsavedWork = false;
