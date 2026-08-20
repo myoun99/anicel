@@ -441,7 +441,11 @@ class AppStrings {
   String get prefsAudio => _s('prefsAudio');
   String get prefsLanguage => _s('prefsLanguage');
   String get prefsAccent => _s('prefsAccent');
+  String get prefsDisplay => _s('prefsDisplay');
   String get prefsSystem => _s('prefsSystem');
+
+  // --- Display (R11) ---
+  String get uiScaleLabel => _s('uiScaleLabel');
 
   // --- Accent colours ---
   String get accentTitle => _s('accentTitle');
@@ -1262,7 +1266,9 @@ class AppStrings {
     'prefsAudio': 'Audio',
     'prefsLanguage': 'Language',
     'prefsAccent': 'Accent colors',
+    'prefsDisplay': 'Display',
     'prefsSystem': 'System',
+    'uiScaleLabel': 'Interface scale',
     'accentTitle': 'Accent colors',
     'accent1Label': 'Accent 1',
     'accent1Help': 'Selection, playhead, active toggles.',
@@ -2004,7 +2010,9 @@ class AppStrings {
     'prefsAudio': 'オーディオ',
     'prefsLanguage': '言語',
     'prefsAccent': 'アクセントカラー',
+    'prefsDisplay': '表示',
     'prefsSystem': 'システム',
+    'uiScaleLabel': 'UIの大きさ',
     'accentTitle': 'アクセントカラー',
     'accent1Label': 'アクセント1',
     'accent1Help': '選択・再生ヘッド・オンの状態に使われます。',
@@ -2783,7 +2791,9 @@ class AppStrings {
     'prefsAudio': '오디오',
     'prefsLanguage': '언어',
     'prefsAccent': '강조 색상',
+    'prefsDisplay': '화면',
     'prefsSystem': '시스템',
+    'uiScaleLabel': 'UI 크기',
     'accentTitle': '강조 색상',
     'accent1Label': '강조색 1',
     'accent1Help': '선택·플레이헤드·켜진 토글에 쓰입니다.',
