@@ -255,4 +255,84 @@ void main() {
       });
     }
   });
+
+  group('ON THE FRAME OF A LAYOUT CHANGE', () {
+    // 🎯**The group that decides whether the two defensive measures can be
+    // retired**, and the one measurement the previous attempt never had.
+    //
+    // #1106 retired `willChange: true` and leaned on [IntegralLayerOffset]
+    // instead. It came back on device (2026-08-17) for ONE reason, written
+    // in that widget's own doc: the wrapper MEASURES, from a post-frame
+    // callback, so the frame OF an ancestor layout change still paints
+    // with the PREVIOUS compensation — and the jump moments (a panel
+    // opening, a tool change, an active-layer switch) ARE
+    // ancestor-layout-change frames.
+    //
+    // R11 does not measure. It makes every app-chosen offset an integral
+    // count of device pixels IN LAYOUT, so a layout-change frame lays out
+    // on the grid in that same frame. There is no stale compensation
+    // because there is no compensation.
+    //
+    // ⛔So these pump EXACTLY ONE frame after the change. Settling first
+    // lets the wrapper's post-frame chain catch up, and would measure the
+    // state that was never in doubt.
+    for (final ratio in <double>[1.25, 1.35]) {
+      testWidgets('opening a panel leaves the chain on the grid at $ratio', (
+        tester,
+      ) async {
+        tester.view.devicePixelRatio = ratio;
+        tester.view.physicalSize = Size(1600 * ratio, 1000 * ratio);
+        addTearDown(tester.view.reset);
+
+        await tester.pumpWidget(shell());
+        await tester.pumpAndSettle();
+        expectOnGrid(
+          chainOrigins(tester, ratio).first.device,
+          at: 'settled at $ratio',
+        );
+
+        // Opening the menu is setup, not the moment under test.
+        await tester.tap(
+          find.byKey(const ValueKey<String>('top-strip-settings-button')),
+        );
+        await tester.pumpAndSettle();
+        final entry = find.byKey(
+          const ValueKey<String>('panels-menu-item-media'),
+        );
+        await tester.ensureVisible(entry);
+        await tester.pumpAndSettle();
+
+        await tester.tap(entry);
+        // ⛔ONE frame. This is the frame the wrapper cannot help with.
+        await tester.pump();
+
+        expectOnGrid(
+          chainOrigins(tester, ratio).first.device,
+          at: 'the frame a panel opened, at $ratio',
+        );
+        await tester.pumpAndSettle();
+      });
+    }
+
+    testWidgets('a UI SCALE change leaves the chain on the grid in the '
+        'same frame', (tester) async {
+      // The largest ancestor layout change the app can produce: every
+      // logical length in the shell moves at once.
+      tester.view.devicePixelRatio = 1.5;
+      tester.view.physicalSize = const Size(2400, 1500);
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(shell(uiScale: 1.0));
+      await tester.pumpAndSettle();
+      expectOnGrid(chainOrigins(tester, 1.5).first.device, at: 'scale 100%');
+
+      // `pumpWidget` renders exactly one frame — the frame OF the change.
+      await tester.pumpWidget(shell(uiScale: 0.9));
+      expectOnGrid(
+        chainOrigins(tester, 1.5 * 0.9).first.device,
+        at: 'the frame the scale became 90% (effective 1.35)',
+      );
+      await tester.pumpAndSettle();
+    });
+  });
 }

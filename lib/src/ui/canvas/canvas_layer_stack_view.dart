@@ -782,10 +782,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     );
     _bake.keepFor(compositeKey);
     return IgnorePointer(
-      // ★★FINAL LAW — `willChange: true`: this picture refuses the desktop
-      // (Skia) engine raster cache, PERMANENTLY. Full flip-flop history,
-      // kept because each leg was device-verified and the losing legs keep
-      // getting re-proposed:
+      // ⛔**THE `willChange: true` HINT IS GONE** — from this picture and
+      // from the three siblings that copied it. The history stays because
+      // the losing legs keep getting re-proposed:
       //
       //  · #1100 A/B — the 1px axis-aligned edge hop at pen-down / pen-up /
       //    layer switch / tool buttons was device-confirmed to be Skia's
@@ -809,19 +808,32 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       //    an ancestor layout change still paints with the PREVIOUS
       //    compensation — the exact frame those chrome actions produce —
       //    and on that frame the boundary sits fractional while this
-      //    picture is stable-cached: the snap is live again
-      //    (`integral_layer_offset_test.dart` quantifies the gap).
+      //    picture is stable-cached: the snap is live again.
       //
-      // ⇒ Proven-on-device beats theoretically-clean: the hint returns and
-      // is the LAW; `IntegralLayerOffset` STAYS (they compose — the wrapper
-      // keeps the boundary integral for every OTHER picture under it that
-      // the engine may still cache, and holds the settled-state phase).
-      // Cost of the hint is ~0: an idle canvas schedules no frames, and a
-      // neighboring repaint replays a few buffer blits, not a re-record.
-      // ⛔Do not retire this hint again without a device-verified
-      // replacement for the layout-change frame.
+      //  · R11 — the quantization round, and why the hint is GONE as of
+      //    this commit. R11 does not measure anything: every app-chosen
+      //    offset from the window origin down is an integral count of
+      //    device pixels IN LAYOUT, so a layout-change frame is already on
+      //    the grid in that same frame. That is exactly the hole #1106 fell
+      //    into, which is what makes this not a repeat of it —
+      //    `canvas_boundary_on_grid_test.dart`'s "ON THE FRAME OF A LAYOUT
+      //    CHANGE" group measures the uncompensated chain one single frame
+      //    after a panel opens and after a UI-scale change, at 1.25, 1.35
+      //    and the 1.5x0.9 product.
+      //
+      // 🚨The mechanism this block used to assert was also wrong. The
+      // engine source says the hint suppresses raster CACHING but not the
+      // snap: the snap applies whenever a cache entry exists, and the cache
+      // key discards translation. The hint never did what the text claimed
+      // — what it did was stop the entry from existing at all.
+      //
+      // ⚠️WATCH FOR (this is the symptom that means the retirement was
+      // wrong): an axis-aligned artwork edge jumping 1px at the moment a
+      // panel opens or closes, a tool is picked, or the active layer
+      // changes — at zoom >= 100%, on WINDOWS only. Impeller carries no
+      // raster cache, so mobile never had this. The retirement is one
+      // commit and reverts whole.
       child: CustomPaint(
-        willChange: true,
         painter: _LayerStackPainter(
           nodes: nodes,
           activeSurfacePainter: widget.activeSurfacePainter,

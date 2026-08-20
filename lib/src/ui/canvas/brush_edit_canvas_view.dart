@@ -50,14 +50,16 @@ class BrushEditCanvasView extends StatelessWidget {
       key: const ValueKey<String>('brush-edit-canvas-view-boundary'),
       child: CustomPaint(
         key: const ValueKey<String>('brush-edit-canvas-custom-paint'),
-        // Keep the Skia raster cache from baking this picture while
-        // idle: the cached layer's origin snaps to integer device
-        // pixels while direct rendering uses the fractional layout
-        // offset, so the cached<->live transition shifted the artwork
-        // by a subpixel at fractional zoom (and a focus switch purges
-        // the cache, which is why the shift appeared after switching
-        // apps).
-        willChange: true,
+        // ⛔The `willChange: true` hint that stood here is GONE. It kept
+        // the Skia raster cache from baking this picture, because a cached
+        // layer's origin snaps to integer device pixels while a live
+        // repaint used the fractional offset layout produced — so the
+        // cached<->live transition shifted the artwork by a subpixel (a
+        // focus switch purges the cache, which is why it showed up after
+        // switching apps). R11's quantization removes the premise: the
+        // layout offset IS an integral count of device pixels, so the two
+        // renders land in the same place. The full history and the symptom
+        // to watch for are in `canvas_layer_stack_view.dart`.
         painter: BitmapSurfacePainter(
           surface: sessionState.canvasState.currentSurface,
           viewport: viewport,

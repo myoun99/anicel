@@ -349,13 +349,14 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
       final cameraView = widget.cameraViewEnabled;
       layers.add(
         CustomPaint(
-          // Same class as the editing stack's hint (see
-          // `canvas_layer_stack_view.dart` — the #1100→#1106 flip-flop):
-          // a parked gap shows this stack STILL, the picture goes stable,
-          // and the desktop raster cache would snap its layer to integral
-          // device translation on engage — the 1px artwork hop. Refuse it;
-          // an idle parked canvas schedules no frames, so the hint is free.
-          willChange: true,
+          // ⛔The `willChange: true` hint this picture carried is GONE with
+          // the editing stack's (see `canvas_layer_stack_view.dart` for the
+          // #1100→R11 history and the symptom to watch for). It was here
+          // because a parked gap shows this stack STILL, the picture goes
+          // stable, and the desktop raster cache would snap its layer to
+          // integral device translation on engage — the 1px artwork hop.
+          // The layout offset it would have snapped away from is now
+          // integral to begin with.
           painter: PlaybackFramePainter(
             image:
                 cutPictureVisible &&

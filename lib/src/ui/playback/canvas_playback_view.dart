@@ -245,16 +245,14 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
         fit: StackFit.expand,
         children: [
           CustomPaint(
-            // Same class as the editing stack's hint (see
-            // `canvas_layer_stack_view.dart` — the #1100→#1106 flip-flop):
-            // this picture draws artwork-aligned edges into the canvas
-            // content boundary, and a PAUSED frame goes stable, so the
-            // desktop raster cache would snap its layer to integral device
+            // ⛔The `willChange: true` hint this picture carried is GONE
+            // with the editing stack's (see `canvas_layer_stack_view.dart`
+            // for the #1100→R11 history and the symptom to watch for). It
+            // was here because a PAUSED frame goes stable, so the desktop
+            // raster cache would snap its layer to integral device
             // translation on engage — a 1px hop against the fractional
-            // offset panel layout produced. While actually playing, the
-            // picture changes every frame and the cache never engages, so
-            // the hint costs nothing there either.
-            willChange: true,
+            // offset panel layout used to produce. Layout no longer
+            // produces a fractional one.
             painter: PlaybackFramePainter(
               image:
                   !inGap && cutPictureVisible && _heldCanvasSize == canvasSize
