@@ -782,10 +782,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     );
     _bake.keepFor(compositeKey);
     return IgnorePointer(
-      // ★★FINAL LAW — `willChange: true`: this picture refuses the desktop
-      // (Skia) engine raster cache, PERMANENTLY. Full flip-flop history,
-      // kept because each leg was device-verified and the losing legs keep
-      // getting re-proposed:
+      // ⛔**THE `willChange: true` HINT IS GONE** — from this picture and
+      // from the three siblings that copied it. The history stays because
+      // the losing legs keep getting re-proposed:
       //
       //  · #1100 A/B — the 1px axis-aligned edge hop at pen-down / pen-up /
       //    layer switch / tool buttons was device-confirmed to be Skia's
@@ -800,28 +799,72 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       //    in-picture transform can see.
       //  · #1103 — `willChange: true` here. Device-verified: ALL transition
       //    hops gone.
-      //  · #1106 — replaced the hint with `IntegralLayerOffset` (above the
-      //    canvas content boundary in `brush_canvas_panel.dart`) and turned
-      //    the cache back on. Device 2026-08-17: the hops CAME BACK
+      //  · #1106 — replaced the hint with `IntegralLayerOffset`, a
+      //    post-frame self-measuring wrapper that used to sit above the
+      //    canvas content boundary in `brush_canvas_panel.dart` (deleted
+      //    with the hints), and turned the cache back on.
+      //    Device 2026-08-17: the hops CAME BACK
       //    (active-layer switch, tool change, wheel-click pan start — at
       //    zoom >= 100% only, the nearest-filter half of the display law).
       //    The wrapper's measurement is a post-frame chain, so the frame OF
       //    an ancestor layout change still paints with the PREVIOUS
       //    compensation — the exact frame those chrome actions produce —
       //    and on that frame the boundary sits fractional while this
-      //    picture is stable-cached: the snap is live again
-      //    (`integral_layer_offset_test.dart` quantifies the gap).
+      //    picture is stable-cached: the snap is live again.
       //
-      // ⇒ Proven-on-device beats theoretically-clean: the hint returns and
-      // is the LAW; `IntegralLayerOffset` STAYS (they compose — the wrapper
-      // keeps the boundary integral for every OTHER picture under it that
-      // the engine may still cache, and holds the settled-state phase).
-      // Cost of the hint is ~0: an idle canvas schedules no frames, and a
-      // neighboring repaint replays a few buffer blits, not a re-record.
-      // ⛔Do not retire this hint again without a device-verified
-      // replacement for the layout-change frame.
+      //  · R11 — the quantization round, and why the hint is GONE as of
+      //    this commit. R11 does not measure anything: every app-chosen
+      //    offset from the window origin down is an integral count of
+      //    device pixels IN LAYOUT, so a layout-change frame is already on
+      //    the grid in that same frame. That is exactly the hole #1106 fell
+      //    into, which is what makes this not a repeat of it —
+      //    `canvas_boundary_on_grid_test.dart`'s "ON THE FRAME OF A LAYOUT
+      //    CHANGE" group measures the uncompensated chain one single frame
+      //    after a panel opens and after a UI-scale change, at 1.25, 1.35
+      //    and the 1.5x0.9 product. The wrapper went in the same commit:
+      //    with the chain integral in layout there is nothing left for a
+      //    post-frame measurement to correct.
+      //
+      // ⚠️SCOPE — the hint was never this picture's alone. This
+      // `CustomPaint` has no `RepaintBoundary` of its own, and
+      // `RenderCustomPaint.paint` sets the hint on whatever layer is being
+      // RECORDED, which is the `canvas-content-boundary` layer. It covered
+      // the stage planes too. That is why the failure signature is "the
+      // whole canvas contents shift together against the chrome", not "the
+      // artwork shifts against its own paper".
+      //
+      // 🚨And with the artwork cacheable again, a canvas-space painter that
+      // does NOT clip to its own box stops being harmlessly uncacheable and
+      // starts sizing a cache entry from its display-list bounds. An
+      // unclipped stage-plane quad once measured ~1 GB of picture cache on
+      // an EMPTY project. `test/ui/brush/stage_planes_clip_test.dart` is
+      // that guard, and its invariant is load-bearing now rather than tidy.
+      //
+      // 🚨The mechanism this block used to assert was also wrong. The
+      // engine source says the hint suppresses raster CACHING but not the
+      // snap: the snap applies whenever a cache entry exists, and the cache
+      // key discards translation. The hint never did what the text claimed
+      // — what it did was stop the entry from existing at all.
+      //
+      // ⚠️WATCH FOR — two symptoms, both WINDOWS only (Impeller carries no
+      // raster cache, so none of this can happen on iPad or Android) and
+      // both only at fractional display scaling; neither can occur at 100%
+      // or 200%.
+      //  (1) A JUMP. A hard edge of the drawing, or the paper border
+      //      against the panel, hops 1px for an instant at zoom >= 100% —
+      //      pen-down/up, active-layer switch, a tool button, wheel-click
+      //      pan start, or alt-tabbing away and back (a focus switch purges
+      //      the cache; the oldest repro, and the one no test can produce).
+      //      That means the chain went fractional on some layout-change
+      //      frame, i.e. the hint's half was wrong.
+      //  (2) BLUR. Nothing jumps, but 1px ink edges and the paper border
+      //      read soft at 125% or 1.35. That is the settled offset itself
+      //      sitting half a pixel off — the WRAPPER's half — and it is the
+      //      harder one to notice.
+      // The retirement is one commit and reverts whole. The cheap positive
+      // check that it did what it claims: Settings ▸ Frame Stats on
+      // Windows, where `pictureCacheCount` should RISE.
       child: CustomPaint(
-        willChange: true,
         painter: _LayerStackPainter(
           nodes: nodes,
           activeSurfacePainter: widget.activeSurfacePainter,

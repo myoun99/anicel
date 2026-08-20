@@ -216,8 +216,10 @@ class AppWindow extends StatelessWidget {
         border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
       ),
       // Scrolls rather than overflows: a window may carry more tabs than
-      // its width fits (Preferences has six, one of them long), and the
+      // its width fits (Preferences has seven, one of them long), and the
       // strip must never be the thing that decides the window's width.
+      // ⚠️A test that taps a tab must `ensureVisible` it first — the
+      // seventh section landed past the right edge and `tap()` missed.
       child: UnbarredScrollable(
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,

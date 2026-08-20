@@ -33,6 +33,7 @@ import '../models/app_language.dart';
 // signature even though nothing here reads them.
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
+import '../services/persistence/app_ui_scale_store.dart';
 import '../services/persistence/app_workspace_colors_store.dart';
 import '../services/persistence/app_input_settings_store.dart';
 import '../services/persistence/app_save_settings.dart';
@@ -268,6 +269,7 @@ class EditorSessionManager extends ChangeNotifier {
     AppSaveSettingsStore? saveSettingsStore,
     AudioSyncSettingsStore? audioSyncSettingsStore,
     AppWorkspaceColorsStore? workspaceColorsStore,
+    AppUiScaleStore? uiScaleStore,
   }) : _editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioConformStore = audioConformStore,
        _appSettings = EditorAppSettings(
@@ -277,6 +279,7 @@ class EditorSessionManager extends ChangeNotifier {
          inputSettingsStore: inputSettingsStore,
          saveSettingsStore: saveSettingsStore,
          audioSyncSettingsStore: audioSyncSettingsStore,
+         uiScaleStore: uiScaleStore,
        ),
        _repository = ProjectRepository(initialProject: initialProject) {
     _appSettings.restore();
@@ -346,6 +349,10 @@ class EditorSessionManager extends ChangeNotifier {
 
   void setAccentSettings(AppAccentSettings settings) =>
       _appSettings.setAccentSettings(settings);
+
+  /// R11: the chrome's scale. Reading it is [AppUiScale.value], app-wide
+  /// like the accents — this is only the write half.
+  void setUiScale(double scale) => _appSettings.setUiScale(scale);
 
   void setInputSettings(AppInputSettings settings) =>
       _appSettings.setInputSettings(settings);

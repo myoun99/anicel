@@ -97,6 +97,17 @@ class FrameStatsSnapshot {
   /// from scratch and caching has to be done by hand.
   final int layerCacheCount;
   final double layerCacheMegabytes;
+
+  /// ⚠️These two used to report the app's cacheable population MINUS the
+  /// four artwork pictures, which carried `willChange: true` and so never
+  /// entered the cache at all. R11 retired those hints, so the artwork can
+  /// enter now: **a RISE here is the expected reading, not a leak.**
+  ///
+  /// It is also the only route from Dart to observe whether the artwork
+  /// actually did enter, which makes a Windows before/after reading the
+  /// cheap positive confirmation that the retirement did what it claims
+  /// (the history is in `canvas_layer_stack_view.dart`). ⛔Impeller holds
+  /// no picture cache, so on mobile these do not move.
   final int pictureCacheCount;
   final double pictureCacheMegabytes;
 

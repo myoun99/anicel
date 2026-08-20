@@ -11,6 +11,7 @@ import '../../services/import/raster_cel_import.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/file_type_groups.dart';
+import '../canvas/canvas_zoom_scale.dart';
 import '../brush/brush_canvas_panel.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../editor_session_manager.dart';
@@ -554,8 +555,18 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     // The lazy render for the visible page, at the current zoom's tier.
     ui.Image? pageImage;
     if (pdf != null && pageCount > 0) {
+      // 🚨The tier is chosen from DEVICE coverage, not from the render
+      // zoom. The viewer is a document view, so R11 excludes it from the
+      // UI scale by DIVIDING its render zoom when the scale goes up — so
+      // reading the raw zoom made raising the interface LOWER the tier
+      // while the page deliberately stayed the same size on screen: same
+      // dimensions, visibly softer, and the only thing the user changed was
+      // how big the chrome is.
       final zoom = widget.viewport?.zoom ?? 1.0;
-      final scale = _pdfRenderScaleFor(zoom, docSize);
+      final scale = _pdfRenderScaleFor(
+        CanvasZoomScale.of(context).display(zoom),
+        docSize,
+      );
       _ensurePdfPageRendered(pageIndex, scale);
       pageImage = _pdfPageCache[pageIndex]?.image;
     } else if (frames != null && frames.isNotEmpty) {

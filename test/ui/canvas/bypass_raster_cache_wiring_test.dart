@@ -31,12 +31,12 @@ import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 import 'package:anicel/src/ui/storyboard_timeline_layout.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
 
-/// ★★FINAL LAW: every canvas-content picture that draws artwork-aligned
-/// edges carries `willChange: true` — the desktop (Skia) engine raster
-/// cache is REFUSED for the artwork, permanently.
+/// ⛔**A TRIPWIRE, and it now pins the OPPOSITE of what it used to.** No
+/// canvas-content picture carries `willChange: true` any more; the
+/// desktop (Skia) raster cache is allowed to bake the artwork again.
 ///
-/// The full flip-flop history, pinned here because both legs were
-/// device-verified and the losing leg keeps looking attractive:
+/// The full flip-flop history stays, because every losing leg here has
+/// been re-proposed at least once:
 ///
 ///  · #1100 A/B — the 1px axis-aligned edge hop at pen-down / pen-up /
 ///    layer switch / tool buttons was device-confirmed to be Skia's
@@ -63,16 +63,32 @@ import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
 ///    `integral_layer_offset_test.dart` quantifies that one-frame gap
 ///    deterministically.
 ///
-/// ⇒ Proven-on-device beats theoretically-clean. The hint is the law;
-/// `IntegralLayerOffset` STAYS (they compose — the wrapper holds the
-/// settled-state offset integral for every other picture under the
-/// boundary the engine may still cache). The hint's cost is ~0: an idle
-/// canvas schedules no frames at all, and on a neighbor's repaint the
-/// replay is a few buffer blits, not a re-record. Impeller (mobile)
-/// carries no such cache and ignores the hint entirely.
+///  · R11 — the quantization round, and why this file now pins the
+///    absence. Read #1106's failure precisely: it is NOT "the wrapper is
+///    weaker than the hint", it is "the wrapper MEASURES, one frame late,
+///    and the jump moments are layout-change frames". R11 measures
+///    nothing. Every app-chosen offset from the window origin down is an
+///    integral count of device pixels IN LAYOUT, so a layout-change frame
+///    is on the grid in that same frame — the hole #1106 fell into is the
+///    one R11 fills, which is what makes this not a repeat of it.
 ///
-/// ⛔Retiring the hint again requires a device-verified replacement that
-/// covers the LAYOUT-CHANGE frame, not just the settled state.
+/// ⇒ **The protection MOVED; it was not dropped.** It lives in
+/// `canvas_boundary_on_grid_test.dart`, whose "ON THE FRAME OF A LAYOUT
+/// CHANGE" group pumps exactly ONE frame after a panel opens and after a
+/// UI-scale change, and measures the uncompensated chain at 1.25, 1.35
+/// and the 1.5x0.9 product. That is the measurement #1106 never had.
+///
+/// 🚨The mechanism the old text asserted was wrong in any case: the engine
+/// source says the hint suppresses raster CACHING but not the snap — the
+/// snap applies whenever a cache entry exists, and the cache key discards
+/// translation. The hint never did what this file claimed it did; what it
+/// did was stop the entry from existing.
+///
+/// ⛔If you are re-adding a hint, you are reverting a decision. Read the
+/// history above, and check the symptom first: a 1px jump of an
+/// axis-aligned artwork edge when a panel opens, a tool is picked or the
+/// active layer changes, at zoom >= 100%, on WINDOWS only (Impeller
+/// carries no such cache, so mobile never had it).
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
   const projectId = ProjectId('project');
@@ -106,8 +122,8 @@ void main() {
   );
 
   testWidgets(
-    'the editing stack picture opts OUT of the raster cache — '
-    'willChange pinned TRUE (the #1103 law, restored over #1106)',
+    'the editing stack picture no longer refuses the raster cache — '
+    'willChange pinned ABSENT (R11 replaced it)',
     (tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -142,20 +158,22 @@ void main() {
 
       expect(
         stackPaint.willChange,
-        isTrue,
-        reason: 'device-proven law (#1103, re-proven 2026-08-17): the '
-            'engine raster cache snaps a stable picture layer to integral '
-            'device translation and the flip against live renders hops '
-            'axis-aligned artwork edges by 1px at every engage/disengage '
-            'moment. IntegralLayerOffset holds only the SETTLED frame '
-            'integral — the frame of an ancestor layout change paints with '
-            'stale compensation, so the hint must refuse the cache.',
+        isFalse,
+        reason: 'R11 retired the hint. The cache snaps a stable picture '
+            'layer to INTEGRAL device translation — which is where layout '
+            'now puts it anyway, so the cached and the live render land in '
+            'the same place and there is nothing to flip between. If you '
+            'are putting this back, read the history at the top of this '
+            'file: the thing to check first is whether the chain is still '
+            'on the grid ON THE FRAME OF A LAYOUT CHANGE '
+            '(canvas_boundary_on_grid_test.dart), because that frame is '
+            'what #1106 actually got wrong.',
       );
     },
   );
 
   testWidgets(
-    'the playback view picture opts OUT of the raster cache — a paused '
+    'the playback view picture no longer refuses the raster cache — a paused '
     'frame goes stable and would snap on cache engage',
     (tester) async {
       final store = BrushFrameStore();
@@ -206,18 +224,17 @@ void main() {
       expect(paint.painter, isA<PlaybackFramePainter>());
       expect(
         paint.willChange,
-        isTrue,
-        reason: 'same class as the editing stack: this picture draws '
-            'artwork-aligned edges into the canvas content boundary, and a '
-            'PAUSED playback frame is a stable picture the engine cache '
-            'would snap on engage — the 1px hop. While playing, the '
-            'picture changes every frame and the hint costs nothing.',
+        isFalse,
+        reason: 'retired with the editing stack\'s. A PAUSED playback frame '
+            'is a stable picture the cache will now bake — and it bakes it '
+            'at the integral translation layout already chose, so there is '
+            'no hop to flip into.',
       );
     },
   );
 
   testWidgets(
-    'every parked track-stack picture opts OUT of the raster cache — a '
+    'no parked track-stack picture refuses the raster cache any more — a '
     'parked gap shows a still stack that would snap on cache engage',
     (tester) async {
       final store = BrushFrameStore();
@@ -274,11 +291,12 @@ void main() {
       for (final paint in paints) {
         expect(
           paint.willChange,
-          isTrue,
-          reason: 'the parked stack is the stillest canvas content there '
-              'is — the engine cache would engage within frames and snap '
-              'the artwork layer; the hint refuses it, and an idle parked '
-              'canvas schedules no frames so the refusal is free.',
+          isFalse,
+          reason: 'retired with the editing stack\'s. The parked stack is '
+              'the stillest canvas content there is, so the cache engages '
+              'within frames — and now that is a WIN rather than a hop, '
+              'because the layer offset it bakes at is the one layout '
+              'chose.',
         );
       }
     },

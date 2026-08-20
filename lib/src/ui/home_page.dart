@@ -14,6 +14,7 @@ import '../models/canvas_shape_kind.dart';
 import '../models/project.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
+import '../services/persistence/app_ui_scale_store.dart';
 import '../services/persistence/app_workspace_colors_store.dart';
 import '../services/persistence/app_input_settings_store.dart';
 import '../services/persistence/app_save_settings.dart';
@@ -246,6 +247,12 @@ class _HomePageState extends State<HomePage> {
       workspaceColorsStore: Platform.environment.containsKey('FLUTTER_TEST')
           ? null
           : AppWorkspaceColorsStore(),
+      // R11: the UI scale's WRITE half only — it is RESTORED in `main()`
+      // before the first frame, because a late restore would lay the
+      // window out at 100% and then jump.
+      uiScaleStore: Platform.environment.containsKey('FLUTTER_TEST')
+          ? null
+          : AppUiScaleStore(),
     );
     // R16-①: undo/redo over a PENDING move session adopts it into history
     // first — an undo never pops out from under the unadopted lift.

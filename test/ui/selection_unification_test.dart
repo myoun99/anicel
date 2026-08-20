@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
@@ -70,6 +71,11 @@ void main() {
               historyManager: history,
               brushToolState: BrushToolState.defaults.copyWith(tool: tool),
               selectionCommands: commands,
+              // ⚠️An EXPLICIT render 1.0. These cases map screen offsets to
+              // canvas coordinates one for one, and an uncontrolled panel
+              // now opens at the IDENTITY — one artwork px per DEVICE px,
+              // i.e. 1/3 on the 3x test view.
+              viewport: CanvasViewport(),
             ),
           ),
         ),

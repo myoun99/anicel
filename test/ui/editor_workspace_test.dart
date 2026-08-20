@@ -985,7 +985,10 @@ void main() {
           )
           .first;
 
-      expect(panbar().viewport.zoom, 1.0);
+      // ⚠️The sheet opens at the IDENTITY — one document pixel per DEVICE
+      // pixel — not at a render 1.0. What is under test is that a CHANGE
+      // survives a rebuild, so the opening number is not the point.
+      expect(panbar().viewport.zoom, isNot(1.75));
       panbar().onViewportChanged(panbar().viewport.copyWith(zoom: 1.75));
       await tester.pumpAndSettle();
       expect(panbar().viewport.zoom, 1.75);

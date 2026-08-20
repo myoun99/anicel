@@ -30,12 +30,12 @@ import '../../services/history_manager.dart';
 import '../canvas/bitmap_surface_painter.dart';
 import '../canvas/active_stroke_overlay.dart';
 import '../canvas/canvas_selection_layer.dart';
+import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/selection_ants_painter.dart';
 import '../canvas/selection_float_overlay.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../canvas/flip_hud_overlay.dart';
-import '../canvas/integral_layer_offset.dart';
 import 'canvas_floor_insets.dart';
 import '../input/app_input_settings.dart';
 import '../../models/brush_blend_mode.dart';
@@ -514,8 +514,33 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     widget.viewport ?? CanvasViewport(),
   );
 
-  CanvasViewport get _viewport => _viewportNotifier.value;
-  set _viewport(CanvasViewport value) => _viewportNotifier.value = value;
+  /// The view a ratio change has re-zoomed to but not yet COMMITTED.
+  ///
+  /// 🚨It exists because the commit cannot happen where the ratio change is
+  /// noticed. [didChangeDependencies] runs inside this element's rebuild,
+  /// and committing calls `widget.onViewportChanged`, whose real consumer
+  /// (`editor_canvas_area.dart`) answers with an ANCESTOR `setState` — a
+  /// `markNeedsBuild` on an element already built this frame, which is the
+  /// "setState() called during build" assert, on every scale change.
+  ///
+  /// ⛔And the commit cannot simply wait a frame either: the artwork would
+  /// be visibly wrong for that frame, which this codebase does not allow.
+  /// So the value is held HERE, where the getter below finds it in the very
+  /// build that follows — no notify, no `setState` — and the commit rides a
+  /// post-frame callback, out of the build.
+  ///
+  /// The readout is right in the meantime without doing anything: the
+  /// percentage is the invariant across a ratio change, so the old value
+  /// and the new one print the same.
+  CanvasViewport? _ratioHeldViewport;
+
+  CanvasViewport get _viewport =>
+      _ratioHeldViewport ?? _viewportNotifier.value;
+
+  set _viewport(CanvasViewport value) {
+    _ratioHeldViewport = null;
+    _viewportNotifier.value = value;
+  }
 
   CanvasViewport? _lastWidgetViewport;
   Size? _editorViewportSize;
@@ -672,11 +697,82 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   void Function()? _installedCutPasteHandler;
 
+  /// The effective ratio this panel last framed its view against — the
+  /// other half of the document-view exclusion.
+  CanvasZoomScale? _lastZoomScale;
+
+  CanvasZoomScale get _zoomScale => CanvasZoomScale.of(context);
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _readStageColors();
     _onFloor = CanvasFloorInsets.isFloor(context);
+    _holdDisplayZoomAcrossRatioChange();
+  }
+
+  /// Keeps the artwork covering the same DEVICE pixels when the effective
+  /// ratio moves under it — a new UI scale, or the window dragged to a
+  /// display with a different ratio.
+  ///
+  /// 🚨This is what makes "the scale does not touch document views" true
+  /// (유저 확정 2026-08-21). The root matrix has just changed by the scale
+  /// factor, so a view left at the same LOGICAL zoom would jump by exactly
+  /// that factor; re-zooming by the inverse holds the percentage, which is
+  /// the number the user set and the one they read.
+  ///
+  /// ⛔Around the visible centre, not the box's — the same anchor every
+  /// other zoom verb here uses, so a scale change does not walk the picture
+  /// toward an edge a dock is covering.
+  void _holdDisplayZoomAcrossRatioChange() {
+    final next = _zoomScale;
+    final previous = _lastZoomScale;
+    _lastZoomScale = next;
+    if (previous == null) {
+      // 🚨FIRST build. An UNCONTROLLED panel's viewport was a bare
+      // `CanvasViewport()` — a render zoom of 1.0, which under this
+      // round's convention is `ratio × 100%`. So a document opened at
+      // 150% on a 1.5 display, at 200% on the iPad, and — since the scale
+      // persists while the viewport does not — a project reopened after
+      // the user raised the chrome to 150% came back half again as big.
+      //
+      // Resolving it here rather than at the field initialiser is what
+      // makes it possible at all: `didChangeDependencies` is the first
+      // place with a `context` to read the ratio from, and it runs BEFORE
+      // this element's first build, so the corrected value is what the
+      // first frame paints.
+      //
+      // ⛔Written straight to the notifier, not through `_setViewport`:
+      // that would call `widget.onViewportChanged` during the build phase,
+      // which is an ancestor `setState`.
+      if (widget.viewport == null) {
+        _viewportNotifier.value = next.identityViewport;
+      }
+      return;
+    }
+    if (previous == next) {
+      return;
+    }
+    final held = next.rescaledFrom(
+      previous,
+      _viewport,
+      anchor: _viewportCenterAnchor,
+    );
+    if (held == _viewport) {
+      return;
+    }
+    // Rendered THIS frame (the getter reads it), committed after it — see
+    // [_ratioHeldViewport] for why the two cannot be the same moment.
+    _ratioHeldViewport = held;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // ⚠️`identical`, not `==`: anything that moved the view in between
+      // already cleared the hold, and re-committing this value would undo
+      // the user's own gesture.
+      if (!mounted || !identical(_ratioHeldViewport, held)) {
+        return;
+      }
+      _setViewport(held);
+    });
   }
 
   /// One undoable selection step (R11-⑧) — the layer's marquee commits and
@@ -1685,36 +1781,33 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                             clipBehavior: Clip.none,
                             children: [
                               // ★The artwork layer sits on the DEVICE-PIXEL
-                              // grid. Panel layout above this point lands the
-                              // boundary below at fractional device offsets,
-                              // and Skia's raster cache snaps a stable
-                              // picture's layer to integral translation while
-                              // live repaints render it fractional — the 1px
-                              // edge hop at every pen-down/pen-up/layer
-                              // switch. The wrapper measures its accumulated
-                              // offset each frame and cancels the fraction —
-                              // in the SETTLED state. Its measurement is a
-                              // post-frame chain, so the frame OF an
-                              // ancestor layout change (tool panels, wheel-
-                              // click chrome) still paints fractional, which
-                              // is why retiring the willChange bypass on the
-                              // wrapper's strength (#1106) failed on device
-                              // (2026-08-17): the artwork pictures carry
-                              // `willChange: true` again (the final law —
-                              // `canvas_layer_stack_view.dart`) and the
-                              // wrapper stays for every OTHER picture under
-                              // this boundary the engine may still cache.
+                              // grid — and as of R11 it does so BY
+                              // CONSTRUCTION, with nothing here to make it
+                              // true.
                               //
-                              // ⛔ORDER IS THE LAW: the wrapper must sit
-                              // ABOVE the content boundary. Below it the
-                              // shift would be recorded in-picture, and the
-                              // cache replays the same picture at a snapped
-                              // CTM — an in-picture correction contradicts
-                              // itself (why #1101's snap could not close
-                              // this; its in-picture PAN snap still owns pan
-                              // jitter and stays).
-                              IntegralLayerOffset(
-                                child: RepaintBoundary(
+                              // An `IntegralLayerOffset` used to wrap this
+                              // boundary. It measured its own accumulated
+                              // offset after each frame and cancelled the
+                              // fraction, which worked in the settled state
+                              // and failed on the frame OF an ancestor
+                              // layout change — a post-frame measurement is
+                              // one frame behind exactly when a tool panel
+                              // opens or the active layer switches, which
+                              // are the moments the artwork was seen to hop
+                              // (#1106, device 2026-08-17). R11 quantizes
+                              // every app-chosen offset from the window
+                              // origin down, in LAYOUT, so this boundary is
+                              // integral on the change frame too;
+                              // `canvas_boundary_on_grid_test.dart` measures
+                              // it there.
+                              //
+                              // ⛔What is NOT retired: `#1101`'s in-picture
+                              // PAN snap (`renderSnappedViewport`). It owns
+                              // pan jitter — our own fractional-phase blits,
+                              // recorded inside the picture — which is a
+                              // different phenomenon from the layer offset
+                              // this paragraph is about.
+                              RepaintBoundary(
                                   key: const ValueKey<String>(
                                     'canvas-content-boundary',
                                   ),
@@ -2261,7 +2354,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                     ),
                                   ),
                                 ),
-                                ),
                               ),
                               ..._toolCursorLayers(),
                             ],
@@ -2488,9 +2580,21 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     final center = _resolvedVisibleRect().center;
     final anchor = ViewportPoint(x: center.dx, y: center.dy);
     setState(() {
-      _viewport = _viewport.zoomedAround(nextZoom: nextZoom, anchor: anchor);
+      // ⛔The clamp is in DISPLAY units, and it is the same one for every
+      // absolute zoom verb. The ± buttons used to stop at the model's
+      // RENDER rail while the readout stopped at 10–1600%, so on a 2×
+      // tablet the buttons reached 3200% and then a one-pixel nudge of the
+      // readout halved the view in a single step.
+      _viewport = _viewport.zoomedAround(
+        nextZoom: _zoomScale.clampRender(nextZoom),
+        anchor: anchor,
+      );
     });
-    widget.onViewportChanged?.call(_viewport);
+    // ⚠️Through the shared publisher, not `onViewportChanged` directly:
+    // that left `_lastWidgetViewport` stale for one build, and the
+    // controlled re-apply on the next build would then overwrite — and
+    // discard a ratio hold that had just been set.
+    _syncViewportParent();
   }
 
   void _fitToView() {
@@ -2506,7 +2610,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     setState(() {
       _viewport = _fittedInto(_resolvedVisibleRect(), canvasRect: target);
     });
-    widget.onViewportChanged?.call(_viewport);
+    _syncViewportParent();
   }
 
   /// The panel's LAYOUT box — the surface you touch. Pan bars, the gesture
@@ -2528,8 +2632,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   Rect _resolvedVisibleRect() =>
       canvasVisibleRect(_resolvedEditorViewportSize(), _framingInsets);
 
+  /// The 1:1 button. ⛔NOT `CanvasViewport()`: a bare zoom of 1.0 is one
+  /// artwork pixel per LOGICAL pixel, which on a 1.5 display drew the
+  /// artwork at 150% while the readout said 100%. The button's own glyph
+  /// says "1:1" and now it means it — one artwork pixel, one device pixel,
+  /// whatever the monitor and the UI scale are.
   void _resetView() {
-    _setViewport(CanvasViewport());
+    _setViewport(_zoomScale.identityViewport);
   }
 
   ViewportPoint get _viewportCenterAnchor {
@@ -4040,22 +4149,33 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       onPressed: onZoomIn,
     );
 
-    Widget zoomReadout() => DragValueLabel(
-      keyValue: 'canvas-viewport-zoom-label',
-      inputKeyValue: 'canvas-viewport-zoom-input',
-      text: '${(viewport.zoom * 100).round()}%',
-      tooltip: AppText.strings.viewZoomDrag,
-      width: _zoomReadoutWidth,
-      textStyle: const TextStyle(fontSize: 12),
-      onDragDelta: (units) =>
-          onZoomSet(((viewport.zoom * 100 + units).clamp(10.0, 1600.0)) / 100),
-      onEditSubmit: (text) {
-        final parsed = double.tryParse(text.replaceAll('%', '').trim());
-        if (parsed != null) {
-          onZoomSet(parsed.clamp(10.0, 1600.0) / 100);
-        }
-      },
-    );
+    // 100% = one artwork pixel per DEVICE pixel (유저 확정 2026-08-21,
+    // matching Photoshop/Clip Studio/Krita). The readout is the ONLY place
+    // in this file that speaks display units; `onZoomSet` takes the render
+    // zoom, as every other zoom verb does.
+    final zoomScale = CanvasZoomScale.of(context);
+    Widget zoomReadout() {
+      final displayPercent = zoomScale.display(viewport.zoom) * 100;
+      return DragValueLabel(
+        keyValue: 'canvas-viewport-zoom-label',
+        inputKeyValue: 'canvas-viewport-zoom-input',
+        text: '${displayPercent.round()}%',
+        tooltip: AppText.strings.viewZoomDrag,
+        width: _zoomReadoutWidth,
+        textStyle: const TextStyle(fontSize: 12),
+        // ⛔No second bound here. `_zoomToAroundCenter` clamps in display
+        // units for every absolute zoom verb, so the readout, the ± buttons
+        // and a typed value all stop at the same number this label shows.
+        onDragDelta: (units) =>
+            onZoomSet(zoomScale.render((displayPercent + units) / 100)),
+        onEditSubmit: (text) {
+          final parsed = double.tryParse(text.replaceAll('%', '').trim());
+          if (parsed != null) {
+            onZoomSet(zoomScale.render(parsed / 100));
+          }
+        },
+      );
+    }
 
     // THE HOST'S OWN VERBS, unfolded. A flyout item already carries
     // everything a button needs — the key tests hold it by, the label its

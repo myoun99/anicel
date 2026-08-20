@@ -3,14 +3,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// The law: geometry reads the EFFECTIVE ratio (monitor × UI scale), and
-/// `MediaQuery` is NOT that number.
+/// the FRAMEWORK's `MediaQuery` is not that number — so the scope replaces
+/// it with one that is.
 ///
 /// This is not a hypothetical. The hook that owns the root device matrix
 /// is `RendererBinding.createViewConfigurationFor`, and a probe overriding
 /// it measured `MediaQuery` and `View.of` still reporting the raw monitor
 /// ratio while the real root transform carried the product. Anything that
-/// sizes a raster or snaps to the device grid off `MediaQuery` would be
-/// silently wrong the day a UI scale ships.
+/// sizes a raster or snaps to the device grid off the RAW `MediaQuery`
+/// would be silently wrong the day a UI scale ships.
+///
+/// 🚨**The answer to that is not "leave MediaQuery raw and be careful".**
+/// It was, for the three PRs before the scale existed. Then the binding
+/// override landed and the rest of the framework — `SafeArea`'s insets, a
+/// keyboard's `viewInsets`, every dialog sized from `MediaQuery.sizeOf` —
+/// turned out to read the same raw numbers for LAYOUT, where they are
+/// wrong by the scale factor. So the scope now mounts a corrected
+/// MediaQuery and the two agree below it. The raw hardware ratio is still
+/// reachable, from the `FlutterView`, which nothing rewrites.
 ///
 /// ⚠️Fractional DPR throughout, and BOTH `devicePixelRatio` and
 /// `physicalSize` are set: changing the ratio alone silently moves the
@@ -41,8 +51,8 @@ void main() {
     ),
   );
 
-  testWidgets('scope multiplies the view ratio by the UI scale, and '
-      'MediaQuery keeps reporting the RAW ratio', (tester) async {
+  testWidgets('scope multiplies the view ratio by the UI scale, and the '
+      'MediaQuery below it agrees', (tester) async {
     tester.view.devicePixelRatio = 1.25;
     tester.view.physicalSize = const Size(2000, 1250);
     addTearDown(tester.view.reset);
@@ -52,10 +62,12 @@ void main() {
     final read = probe(tester);
     // 1.25 × 0.9 — the fractional product the canon names.
     expect(read.effective, closeTo(1.125, 1e-9));
-    // ★The whole point: MediaQuery did NOT move. A geometry site reading
-    // it would size against 1.25 while the compositor uses 1.125.
-    expect(read.mediaQuery, closeTo(1.25, 1e-9));
-    expect(read.effective, isNot(closeTo(read.mediaQuery, 1e-6)));
+    // ★Below the scope the two are ONE number. A geometry site that
+    // reaches for MediaQuery here is no longer silently on another grid —
+    // and, more to the point, neither is `SafeArea` or a sized dialog.
+    expect(read.mediaQuery, closeTo(1.125, 1e-9));
+    // ★And the hardware ratio is still knowable: the FlutterView keeps it.
+    expect(tester.view.devicePixelRatio, 1.25);
   });
 
   testWidgets('scale 1.0 is behaviour-neutral — effective == MediaQuery', (

@@ -93,7 +93,17 @@ Future<EditorSessionManager> _pumpConte(WidgetTester tester) async {
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
-      home: Scaffold(body: ConteTabHost(session: session, thumbnailFor: null)),
+      home: Scaffold(
+        body: ConteTabHost(
+          session: session,
+          thumbnailFor: null,
+          // ⚠️An EXPLICIT render 1.0 — this file maps document coordinates
+          // to screen offsets one for one, and an uncontrolled panel now
+          // opens at the IDENTITY (one document px per DEVICE px), which
+          // is 1/3 on the 3x test view.
+          viewport: CanvasViewport(),
+        ),
+      ),
     ),
   );
   await tester.pumpAndSettle();

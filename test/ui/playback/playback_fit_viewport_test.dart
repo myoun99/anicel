@@ -94,15 +94,18 @@ void main() {
       'manual pan survives start, crossings and stop', (tester) async {
     final (session, _) = await pumpArea(tester, cameraView: false);
     final before = panelViewport(tester);
-    expect(before.zoom, 1.0);
+    // ⚠️Whatever the view OPENED at — the identity, not a render 1.0. The
+    // claim here is that playback does not touch it, so the number itself
+    // is not the point.
+    final opened = before.zoom;
 
     session.playback.play(scope: PlaybackScope.allCuts);
     await tester.pump();
     await tester.pump();
     expect(
       panelViewport(tester).zoom,
-      1.0,
-      reason: 'toggle OFF = 재생 시 fit 안 함 (유저 확정 08-18)',
+      opened,
+      reason: "toggle OFF = 재생 시 fit 안 함 (유저 확정 08-18)",
     );
 
     // Pan by hand mid-run, then cross into cut 2 exactly at local 0.

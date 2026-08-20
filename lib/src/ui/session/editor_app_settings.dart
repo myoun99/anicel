@@ -9,6 +9,7 @@ import '../../services/persistence/app_input_settings_store.dart';
 import '../../services/persistence/app_language_settings_store.dart';
 import '../../services/persistence/app_save_settings.dart';
 import '../../services/persistence/app_save_settings_store.dart';
+import '../../services/persistence/app_ui_scale_store.dart';
 import '../../services/persistence/app_workspace_colors_store.dart';
 import '../../services/persistence/audio_sync_settings_store.dart';
 import '../input/app_input_settings.dart';
@@ -17,6 +18,7 @@ import '../text/app_strings.dart';
 import '../theme/app_accents.dart';
 import '../theme/app_theme.dart' show AppColors;
 import '../theme/app_workspace_colors.dart';
+import '../ui_scale.dart';
 
 /// The APP-level settings an editor session restores once at construction and
 /// persists on every set: language, accents, workspace colors, input, save and
@@ -40,12 +42,14 @@ class EditorAppSettings {
     AppInputSettingsStore? inputSettingsStore,
     AppSaveSettingsStore? saveSettingsStore,
     AudioSyncSettingsStore? audioSyncSettingsStore,
+    AppUiScaleStore? uiScaleStore,
   }) : _languageSettingsStore = languageSettingsStore,
        _accentSettingsStore = accentSettingsStore,
        _workspaceColorsStore = workspaceColorsStore,
        _inputSettingsStore = inputSettingsStore,
        _saveSettingsStore = saveSettingsStore,
-       _audioSyncSettingsStore = audioSyncSettingsStore;
+       _audioSyncSettingsStore = audioSyncSettingsStore,
+       _uiScaleStore = uiScaleStore;
 
   /// Starts all six restores, in the order the session started them in.
   ///
@@ -58,6 +62,32 @@ class EditorAppSettings {
     unawaited(_restoreInputSettings());
     unawaited(_restoreSaveSettings());
     unawaited(_restoreAudioSyncSettings());
+  }
+
+  // --- UI scale (R11) -------------------------------------------------------
+
+  /// Injectable persistence; null (tests) keeps the in-memory default.
+  final AppUiScaleStore? _uiScaleStore;
+
+  /// ⚠️**Persist only — there is no `_restoreUiScale` above.** Every other
+  /// setting here restores asynchronously and the app repaints when it
+  /// lands; the UI scale decides how large the window's contents are laid
+  /// out, so a late restore would show 100% and then jump. `main()` awaits
+  /// it before `runApp` instead. This half stays here so the WRITE path
+  /// looks like its neighbours.
+  ///
+  /// Snapped on the way in: the value has to be one the settings row can
+  /// show as selected.
+  void setUiScale(double scale) {
+    final snapped = AppUiScale.snap(scale);
+    if (snapped == AppUiScale.value.value) {
+      return;
+    }
+    AppUiScale.value.value = snapped;
+    final store = _uiScaleStore;
+    if (store != null) {
+      unawaited(store.save(snapped));
+    }
   }
 
   // --- Language settings (UI-R10 #7) ----------------------------------------

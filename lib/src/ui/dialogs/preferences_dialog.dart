@@ -5,17 +5,30 @@ import '../widgets/app_window.dart';
 import 'accent_settings_dialog.dart' show AccentSettingsSection;
 import 'audio_settings_section.dart';
 import 'autosave_settings_section.dart';
+import 'display_settings_section.dart';
 import 'input_settings_dialog.dart' show InputSettingsSection;
 import 'language_settings_dialog.dart' show LanguageSettingsSection;
 import 'system_status_section.dart';
 import '../text/app_strings.dart';
 
 /// SAVE-1: the unified Preferences dialog — Input, Autosave, Audio,
-/// Language, Accent Colors and System (the runtime-path report) as
-/// sections of ONE window (the old per-domain Edit menu entries
+/// Language, Accent Colors, Display and System (the runtime-path report)
+/// as sections of ONE window (the old per-domain Edit menu entries
 /// collapsed here; their dialogs remain as thin wrappers around the same
 /// section widgets for tests and deep links).
-enum PreferencesSection { input, autosave, audio, language, accent, system }
+///
+/// Display is R11's: the interface scale. It is its own section rather
+/// than a row under Accent Colors, which is about colour and nothing else
+/// — a scale filed there would be a setting nobody could find.
+enum PreferencesSection {
+  input,
+  autosave,
+  audio,
+  language,
+  accent,
+  display,
+  system,
+}
 
 Future<void> showPreferencesDialog(
   BuildContext context, {
@@ -53,6 +66,7 @@ class _PreferencesDialogState extends State<_PreferencesDialog> {
       PreferencesSection.audio => strings.prefsAudio,
       PreferencesSection.language => strings.prefsLanguage,
       PreferencesSection.accent => strings.prefsAccent,
+      PreferencesSection.display => strings.prefsDisplay,
       PreferencesSection.system => strings.prefsSystem,
     };
   }
@@ -67,6 +81,9 @@ class _PreferencesDialogState extends State<_PreferencesDialog> {
       session: widget.session,
     ),
     PreferencesSection.accent => AccentSettingsSection(session: widget.session),
+    PreferencesSection.display => DisplaySettingsSection(
+      session: widget.session,
+    ),
     PreferencesSection.system => const SystemStatusSection(),
   };
 

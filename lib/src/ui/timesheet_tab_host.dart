@@ -15,6 +15,7 @@ import 'widgets/app_icon_button.dart';
 import 'widgets/drag_value_label.dart';
 import 'timesheet/timesheet_document_painter.dart';
 import 'timesheet/timesheet_header_edit_layer.dart';
+import 'effective_device_pixel_ratio.dart';
 import 'widgets/static_raster.dart';
 import 'timesheet/timesheet_notation.dart';
 import 'timesheet/timesheet_ink_controller.dart';
@@ -582,6 +583,14 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                 document: document,
                                 layout: layout,
                                 viewport: viewport,
+                                // The per-cell text cutoff is a legibility
+                                // question, so it counts DEVICE pixels.
+                                // Raising the interface scale used to erase
+                                // every text while the sheet stayed exactly
+                                // the same size on screen.
+                                effectiveRatio: EffectiveDevicePixelRatio.of(
+                                  context,
+                                ),
                                 layers: const {
                                   SheetPaintLayer.paper,
                                   SheetPaintLayer.form,
@@ -610,6 +619,14 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                 document: document,
                                 layout: layout,
                                 viewport: viewport,
+                                // The per-cell text cutoff is a legibility
+                                // question, so it counts DEVICE pixels.
+                                // Raising the interface scale used to erase
+                                // every text while the sheet stayed exactly
+                                // the same size on screen.
+                                effectiveRatio: EffectiveDevicePixelRatio.of(
+                                  context,
+                                ),
                                 layers: const {SheetPaintLayer.content},
                                 dragPreview: session.dragPreview,
                                 // Which cut the sheet is printing, so a

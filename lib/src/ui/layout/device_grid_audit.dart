@@ -119,14 +119,19 @@ class DeviceGridReport {
 /// written that way is a trap. The honest contract is monotone: the count
 /// falls, and named members leave.
 ///
-/// 🚨**Coupling that must be honoured by the UI-scale PR.** The phase is
-/// computed from `EffectiveDevicePixelRatio` (monitor × UI scale) while
-/// the root matrix still uses the raw view ratio, because no
-/// `createViewConfigurationFor` override exists yet. The two coincide only
-/// while the scale is 1.0. Measured with them deliberately mismatched, the
-/// audit reported a violation of 0.70 on a genuinely on-grid surface and
-/// 0.5875 on one whose true phase was 0.875 — **both numbers wrong**. The
-/// override and this audit have to land in the same PR.
+/// ✅**The coupling this paragraph used to warn about is closed.** It read:
+/// the phase is computed from `EffectiveDevicePixelRatio` (monitor × UI
+/// scale) while the root matrix still uses the raw view ratio, "because no
+/// `createViewConfigurationFor` override exists yet", so the two coincide
+/// only at a scale of 1.0. `AnicelBinding` now multiplies the scale into
+/// the root matrix, so the phase measured here IS the compositor's.
+///
+/// ⛔The warning behind it stands, which is why the paragraph is kept:
+/// measured with the two deliberately mismatched, this audit reported a
+/// violation of 0.70 on a genuinely on-grid surface and 0.5875 on one
+/// whose true phase was 0.875 — **both numbers wrong**. Anything that
+/// changes where the root matrix's ratio comes from has to move this
+/// source with it, or the audit reports confident nonsense.
 abstract final class DeviceGridAudit {
   /// Device pixels within which a surface counts as aligned. Same value
   /// [DeviceGrid.isOnGrid] uses — ⛔the two definitions of "on grid" must

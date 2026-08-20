@@ -19,6 +19,7 @@ import 'input/app_input_settings.dart' show AppInput;
 import 'brush/canvas_selection_commands.dart';
 import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
+import 'canvas/canvas_zoom_scale.dart';
 import 'canvas/viewport_canvas_transform.dart';
 import 'brush/brush_canvas_panel.dart' show CanvasAutoFrameRequest;
 import 'brush/main_canvas_brush_host.dart';
@@ -160,7 +161,19 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// entry rather than one per pointer sample.
   CutGuides? _liveGuides;
 
-  CanvasViewport _canvasViewport = CanvasViewport();
+  /// Null until something frames the canvas — the user, playback fit, or a
+  /// camera restore.
+  ///
+  /// 🚨It used to be a bare `CanvasViewport()`: a render zoom of 1.0, which
+  /// under R11's convention is `ratio × 100%`. The canvas opened at 150% on
+  /// a 1.5 display and 200% on the iPad, and because the UI scale persists
+  /// while this does not, reopening a project after raising the chrome to
+  /// 150% brought the artwork back half again as large.
+  ///
+  /// Resolved at the READ site instead, so an untouched view re-derives the
+  /// identity whenever the ratio moves — no hold and no notify, which is
+  /// exactly the invariant this round wants.
+  CanvasViewport? _canvasViewport;
 
   /// [nodes] with the onion ghosts inserted directly UNDER the active
   /// layer — where they belong visually, and (since the merge) inside
@@ -734,7 +747,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               frameStore: session.brushFrameStore,
               cacheInvalidationSink: session.cacheInvalidationHub,
               historyManager: session.historyManager,
-              viewport: _canvasViewport,
+              // ⛔Resolved HERE, not at the field. An untouched canvas then
+              // re-derives "one artwork pixel per device pixel" every time
+              // the effective ratio moves.
+              viewport:
+                  _canvasViewport ??
+                  CanvasZoomScale.of(context).identityViewport,
               onViewportChanged: (viewport) {
                 setState(() => _canvasViewport = viewport);
               },

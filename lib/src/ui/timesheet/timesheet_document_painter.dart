@@ -383,8 +383,16 @@ class TimesheetDocumentPainter extends CustomPainter {
     this.layers,
     this.dragPreview,
     this.cutId,
+    this.effectiveRatio = 1.0,
   }) : accent = AppColors.accent,
        super(repaint: dragPreview);
+
+  /// Device pixels per LOGICAL pixel — monitor ratio × UI scale.
+  ///
+  /// Only [_textZoomThreshold] uses it, and only because that threshold is
+  /// a legibility question and therefore a device-pixel one. Defaulting to
+  /// 1.0 keeps every focused test and the PSD export path unchanged.
+  final double effectiveRatio;
 
   /// The accent at the moment this painter was BUILT.
   ///
@@ -479,7 +487,22 @@ class TimesheetDocumentPainter extends CustomPainter {
   static const Color _gridMedium = Color(0xFFA9A296);
   static const Color _gridBold = Color(0xFF6E6759);
 
-  /// Below this zoom the per-cell texts stop painting (paper overview).
+  /// Below this many DEVICE pixels per document pixel the per-cell texts
+  /// stop painting (paper overview).
+  ///
+  /// 🚨Compared against `zoom × effectiveRatio`, NOT against the render
+  /// zoom alone. The timesheet is a document view, so R11 excludes it from
+  /// the UI scale by DIVIDING its render zoom when the scale goes up —
+  /// which meant a raw comparison moved the cutoff with the chrome:
+  /// raising the interface to 150% held the sheet at exactly the same
+  /// physical size and made every cell text vanish, with the readout still
+  /// saying 45%. On a 2× tablet at 150% the cutoff sat at a readout of
+  /// 105%, i.e. textless at every zoom anyone works at.
+  ///
+  /// ⚠️This also moves the cutoff on high-DPR displays (render 0.175 on a
+  /// 2× screen). That is the physically correct reading — the question is
+  /// whether the glyphs are legible, which is a device-pixel question —
+  /// and it is what the canvas layer stack already does.
   static const double _textZoomThreshold = 0.35;
 
   /// Turns the culling off, so a test can prove it changes no pixel.
@@ -547,7 +570,9 @@ class TimesheetDocumentPainter extends CustomPainter {
                   size.width / resolvedViewport.zoom,
                   size.height / resolvedViewport.zoom,
                 ));
-    final drawTexts = (resolvedViewport?.zoom ?? 1.0) >= _textZoomThreshold;
+    // DEVICE pixels per document pixel — see [_textZoomThreshold].
+    final drawTexts =
+        (resolvedViewport?.zoom ?? 1.0) * effectiveRatio >= _textZoomThreshold;
 
     if (layout.continuous) {
       _paintPaper(canvas, 0);
