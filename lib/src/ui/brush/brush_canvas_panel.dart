@@ -728,7 +728,29 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     final next = _zoomScale;
     final previous = _lastZoomScale;
     _lastZoomScale = next;
-    if (previous == null || previous == next) {
+    if (previous == null) {
+      // 🚨FIRST build. An UNCONTROLLED panel's viewport was a bare
+      // `CanvasViewport()` — a render zoom of 1.0, which under this
+      // round's convention is `ratio × 100%`. So a document opened at
+      // 150% on a 1.5 display, at 200% on the iPad, and — since the scale
+      // persists while the viewport does not — a project reopened after
+      // the user raised the chrome to 150% came back half again as big.
+      //
+      // Resolving it here rather than at the field initialiser is what
+      // makes it possible at all: `didChangeDependencies` is the first
+      // place with a `context` to read the ratio from, and it runs BEFORE
+      // this element's first build, so the corrected value is what the
+      // first frame paints.
+      //
+      // ⛔Written straight to the notifier, not through `_setViewport`:
+      // that would call `widget.onViewportChanged` during the build phase,
+      // which is an ancestor `setState`.
+      if (widget.viewport == null) {
+        _viewportNotifier.value = next.identityViewport;
+      }
+      return;
+    }
+    if (previous == next) {
       return;
     }
     final held = next.rescaledFrom(
@@ -2558,9 +2580,21 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     final center = _resolvedVisibleRect().center;
     final anchor = ViewportPoint(x: center.dx, y: center.dy);
     setState(() {
-      _viewport = _viewport.zoomedAround(nextZoom: nextZoom, anchor: anchor);
+      // ⛔The clamp is in DISPLAY units, and it is the same one for every
+      // absolute zoom verb. The ± buttons used to stop at the model's
+      // RENDER rail while the readout stopped at 10–1600%, so on a 2×
+      // tablet the buttons reached 3200% and then a one-pixel nudge of the
+      // readout halved the view in a single step.
+      _viewport = _viewport.zoomedAround(
+        nextZoom: _zoomScale.clampRender(nextZoom),
+        anchor: anchor,
+      );
     });
-    widget.onViewportChanged?.call(_viewport);
+    // ⚠️Through the shared publisher, not `onViewportChanged` directly:
+    // that left `_lastWidgetViewport` stale for one build, and the
+    // controlled re-apply on the next build would then overwrite — and
+    // discard a ratio hold that had just been set.
+    _syncViewportParent();
   }
 
   void _fitToView() {
@@ -2576,7 +2610,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     setState(() {
       _viewport = _fittedInto(_resolvedVisibleRect(), canvasRect: target);
     });
-    widget.onViewportChanged?.call(_viewport);
+    _syncViewportParent();
   }
 
   /// The panel's LAYOUT box — the surface you touch. Pan bars, the gesture
@@ -4129,13 +4163,15 @@ class _CanvasViewportBottomBar extends StatelessWidget {
         tooltip: AppText.strings.viewZoomDrag,
         width: _zoomReadoutWidth,
         textStyle: const TextStyle(fontSize: 12),
-        onDragDelta: (units) => onZoomSet(
-          zoomScale.render((displayPercent + units).clamp(10.0, 1600.0) / 100),
-        ),
+        // ⛔No second bound here. `_zoomToAroundCenter` clamps in display
+        // units for every absolute zoom verb, so the readout, the ± buttons
+        // and a typed value all stop at the same number this label shows.
+        onDragDelta: (units) =>
+            onZoomSet(zoomScale.render((displayPercent + units) / 100)),
         onEditSubmit: (text) {
           final parsed = double.tryParse(text.replaceAll('%', '').trim());
           if (parsed != null) {
-            onZoomSet(zoomScale.render(parsed.clamp(10.0, 1600.0) / 100));
+            onZoomSet(zoomScale.render(parsed / 100));
           }
         },
       );

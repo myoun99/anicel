@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/brush/brush_cursor_overlay.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_input_settings.dart';
+import 'package:anicel/src/ui/canvas/canvas_zoom_scale.dart';
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
@@ -1100,10 +1101,15 @@ void main() {
         find.byKey(const ValueKey<String>('canvas-viewport-zoom-input')),
         findsNothing,
       );
-      // Untouched: the panel's own default is a render 1.0, which on this
-      // 3× test view reads as 300%.
-      expect(viewportOf(tester).zoom, 1.0);
-      expect(find.text('300%'), findsOneWidget);
+      // Untouched: an uncontrolled panel opens at the IDENTITY — one
+      // artwork pixel per device pixel — so the readout is 100% whatever
+      // the display's ratio is. (It used to be a bare render 1.0, which
+      // read as 300% here and put a project back 3x too large on reopen.)
+      expect(
+        viewportOf(tester).zoom,
+        closeTo(1 / tester.view.devicePixelRatio, 1e-12),
+      );
+      expect(find.text('100%'), findsOneWidget);
     });
 
     testWidgets('out-of-range entries clamp to the zoom bounds', (
@@ -1503,13 +1509,18 @@ void main() {
       await tester.sendEventToBinding(pointer.scroll(const Offset(0, -120)));
       await tester.pump();
 
+      // ⚠️RELATIVE to where the panel opened, not absolute. A fresh
+      // document view opens at the IDENTITY now — one artwork pixel per
+      // device pixel, i.e. render `1/ratio` — so an absolute expectation
+      // here would only be pinning the test view's ratio.
+      final opened = CanvasZoomScale(tester.view.devicePixelRatio).render(1);
       expect(viewports, isNotEmpty);
-      expect(viewports.last.zoom, closeTo(1.1, 1e-9));
+      expect(viewports.last.zoom, closeTo(opened * 1.1, 1e-9));
 
       await tester.sendEventToBinding(pointer.scroll(const Offset(0, 120)));
       await tester.pump();
 
-      expect(viewports.last.zoom, closeTo(1.0, 1e-9));
+      expect(viewports.last.zoom, closeTo(opened, 1e-9));
     });
 
     testWidgets('middle mouse drag pans without an editable frame', (
@@ -1548,7 +1559,11 @@ void main() {
       await tester.pump();
 
       expect(viewports, isNotEmpty);
-      expect(viewports.last.zoom, 1.0);
+      // A pan must not touch the zoom — whatever the view opened at.
+      expect(
+        viewports.last.zoom,
+        closeTo(CanvasZoomScale(tester.view.devicePixelRatio).render(1), 1e-9),
+      );
       expect(viewports.last.panX, 14);
       expect(viewports.last.panY, -9);
     });
@@ -1568,7 +1583,11 @@ void main() {
       await tester.pump();
 
       expect(viewports, isNotEmpty);
-      expect(viewports.last.zoom, closeTo(2.0, 1e-9));
+      // Relative: a 2x pinch doubles whatever the view opened at.
+      expect(
+        viewports.last.zoom,
+        closeTo(CanvasZoomScale(tester.view.devicePixelRatio).render(1) * 2, 1e-9),
+      );
     });
 
     testWidgets('two-finger touch pinch zooms and pans without a frame', (
@@ -1594,8 +1613,10 @@ void main() {
       await secondFinger.up();
       await tester.pump();
 
+      final opened = CanvasZoomScale(tester.view.devicePixelRatio).render(1);
       expect(viewports, isNotEmpty);
-      expect(viewports.last.zoom, closeTo(2.0, 1e-9));
+      // Relative: the pinch doubles whatever the view opened at.
+      expect(viewports.last.zoom, closeTo(opened * 2, 1e-9));
       expect(viewports.last.panX, closeTo(-40, 1e-9));
       // The focal's ABSOLUTE y is what doubling reflects, so this counts
       // the clearance the gestures started below.
@@ -1694,10 +1715,17 @@ void main() {
       await tester.pump();
 
       expect(viewports, isNotEmpty);
-      expect(viewports.last.zoom, closeTo(1.1, 1e-9));
+      // Relative to where the view opened (the identity, not render 1.0).
+      expect(
+        viewports.last.zoom,
+        closeTo(
+          CanvasZoomScale(tester.view.devicePixelRatio).render(1) * 1.1,
+          1e-9,
+        ),
+      );
     });
 
-    testWidgets('wheel zoom is suppressed while a stroke is active', (
+    testWidgets("wheel zoom is suppressed while a stroke is active", (
       tester,
     ) async {
       final frameKeys = BrushCanvasFixture.createFrameKeys();
@@ -1754,9 +1782,15 @@ void main() {
         wheelPointer.scroll(const Offset(0, -120)),
       );
       await tester.pump();
-
       expect(viewports, isNotEmpty);
-      expect(viewports.last.zoom, closeTo(1.1, 1e-9));
+      // Relative to where the view opened (the identity, not render 1.0).
+      expect(
+        viewports.last.zoom,
+        closeTo(
+          CanvasZoomScale(tester.view.devicePixelRatio).render(1) * 1.1,
+          1e-9,
+        ),
+      );
     });
   });
 
@@ -1810,9 +1844,13 @@ void main() {
                   )
                   .painter
               as BrushCursorPainter;
-      // A 40px brush at 100% is an outline, not the small-brush crosshair.
+      // A 40px brush is an outline, not the small-brush crosshair. The
+      // radius is in SCREEN pixels, so it follows the render zoom — and a
+      // fresh view now opens at the identity (one artwork px per device
+      // px) rather than at render 1.0.
+      final opened = CanvasZoomScale(tester.view.devicePixelRatio).render(1);
       expect(painter.shape, isNotNull);
-      expect(painter.shape!.majorRadius, closeTo(20, 1e-9));
+      expect(painter.shape!.majorRadius, closeTo(20 * opened, 1e-9));
     });
 
     testWidgets('the eraser wears it too', (tester) async {

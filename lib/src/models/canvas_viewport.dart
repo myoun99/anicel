@@ -4,8 +4,25 @@ import 'canvas_point.dart';
 import 'viewport_point.dart';
 
 class CanvasViewport {
-  static const double minZoom = 0.1;
-  static const double maxZoom = 16.0;
+  /// The absolute RENDER-zoom rail — a sanity guard, not the user-facing
+  /// limit.
+  ///
+  /// 🚨R11 moved the user-facing zoom to DISPLAY units (100% = one artwork
+  /// pixel per DEVICE pixel), so the reachable percentage is
+  /// `render × effectiveRatio` and a rail expressed in render units binds
+  /// at a different percentage on every display. At 0.1/16.0 it bound
+  /// INSIDE the advertised 10%–1600%: on a 2× tablet the readout's bottom
+  /// half did not exist, and — worse — a UI-scale change at either end
+  /// silently clamped, so the document view absorbed the scale factor in
+  /// full and grew on screen. That is the one thing the exclusion promises
+  /// will not happen.
+  ///
+  /// The rail is now wide enough that it cannot bind for any effective
+  /// ratio the ladder can produce (0.75 × 1.0 through 1.5 × 4.0), and
+  /// `CanvasZoomScale` carries the real 10%–1600% limit in display units,
+  /// where the readout already advertises it.
+  static const double minZoom = 0.0125;
+  static const double maxZoom = 22.0;
 
   CanvasViewport({
     this.zoom = 1.0,

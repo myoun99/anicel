@@ -57,6 +57,27 @@ class CanvasZoomScale {
   /// The viewport zoom that renders [displayZoom].
   double render(double displayZoom) => displayZoom / ratio;
 
+  /// The user-facing zoom range, as the readout has always advertised it:
+  /// 10% to 1600%, in DEVICE pixels per artwork pixel.
+  ///
+  /// 🚨It lives here rather than on [CanvasViewport] because it is a
+  /// DISPLAY-unit limit, and the render zoom that reaches it moves with the
+  /// effective ratio. The model's own `minZoom`/`maxZoom` stayed behind as
+  /// a wide sanity rail — if that rail is ever the binding one again, the
+  /// exclusion breaks silently at the ends of the range.
+  static const double minDisplayZoom = 0.1;
+  static const double maxDisplayZoom = 16.0;
+
+  /// [renderZoom] clamped to the advertised range.
+  ///
+  /// Every absolute zoom verb goes through this — the ± buttons, the
+  /// readout's drag, a typed percentage — so all three stop at the same
+  /// number the label promises.
+  double clampRender(double renderZoom) => renderZoom.clamp(
+    render(minDisplayZoom),
+    render(maxDisplayZoom),
+  );
+
   /// The identity view: artwork 1px = device 1px, whatever the monitor and
   /// the UI scale are.
   ///

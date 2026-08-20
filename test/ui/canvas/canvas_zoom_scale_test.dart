@@ -257,7 +257,9 @@ void main() {
       // And the panel really re-zoomed rather than the readout lying: the
       // logical zoom dropped by exactly the factor the matrix gained.
       expect(reported, isNotNull);
-      expect(reported!.zoom * 1.25, closeTo(1.0, 1e-9));
+      // The DEVICE coverage is what must be unchanged: render x effective
+      // ratio is the display zoom, and the view opened at 100%.
+      expect(reported!.zoom * (1.5 * 1.25), closeTo(1.0, 1e-9));
     });
 
     testWidgets('a scale change survives a host that setStates on the '
@@ -287,7 +289,7 @@ void main() {
       // And it really did land — the host holds the re-zoomed view.
       final state = tester.state<_ScaleHostState>(find.byType(_ScaleHost));
       expect(state.viewport, isNotNull);
-      expect(state.viewport!.zoom * 1.25, closeTo(1.0, 1e-9));
+      expect(state.viewport!.zoom * (1.5 * 1.25), closeTo(1.0, 1e-9));
     });
 
     testWidgets('1:1 means one artwork pixel per device pixel', (tester) async {
@@ -300,9 +302,15 @@ void main() {
       // harness rather than by the code under test.
       await tester.pumpWidget(harness(uiScale: 1.0));
       await tester.pump();
-      // The panel's own default is a logical 1.0, which on this display is
-      // 150% — the discrepancy this convention exists to close.
-      expect(readout(tester), '150%');
+      // An uncontrolled panel already OPENS at the identity, so frame it
+      // somewhere else first or the button has nothing to prove.
+      expect(readout(tester), '100%');
+      await tester.tap(
+        find.byKey(const ValueKey<String>('canvas-viewport-fit')),
+      );
+      await tester.pump();
+      expect(readout(tester), isNot('100%'));
+
       // 1:1 folds into the gear on any pill that is not the floor's.
       await tapInViewSettings(tester, 'canvas-viewport-reset');
       expect(readout(tester), '100%');
