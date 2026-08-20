@@ -4,6 +4,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/editor_dock_host.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// 🎯**The round's headline.** The chain from the window origin to the
@@ -133,40 +134,74 @@ void main() {
     );
   });
 
-  testWidgets(
-    'the RAIL-DOCKED canvas chain is still off — owned by the workspace and '
-    'rail PRs',
-    (tester) async {
-      // 🚨An honest record, not an aspiration. That wrapper's chain runs
-      // through the panel strip and the rail column, which this PR did not
-      // touch — `EditorPanelTabs.stripHeight = 30` and `_railGroupGap = 8`
-      // are what hold it off. Pinning the state lets the round watch it
-      // close instead of assuming it did.
-      //
-      // ⛔When the workspace and rail PRs land, this test FAILS. That is
-      // the signal to move this boundary into the on-grid group above, not
-      // to delete the case.
-      const ratio = 1.35;
+  group('the RAIL-DOCKED canvas chain', () {
+    Future<Offset> railDockedAt(WidgetTester tester, double ratio) async {
       tester.view.devicePixelRatio = ratio;
-      tester.view.physicalSize = const Size(1600 * ratio, 1000 * ratio);
+      tester.view.physicalSize = Size(1600 * ratio, 1000 * ratio);
       addTearDown(tester.view.reset);
-
       await tester.pumpWidget(shell());
       await tester.pumpAndSettle();
-
       final origins = chainOrigins(tester, ratio);
       expect(origins.length, greaterThanOrEqualTo(2));
-      final railDocked = origins[1].device;
-      expect(
-        offGridBy(railDocked.dx) + offGridBy(railDocked.dy),
-        greaterThan(1e-3),
-        reason:
-            'the rail-docked canvas is on the grid at $railDocked — if the '
-            'workspace/rail quantization landed, move it into the on-grid '
-            'group above rather than deleting this case',
+      return origins[1].device;
+    }
+
+    // 🎯Closed at every ratio. What finally did it was the two `Positioned`
+    // widgets that actually CARRY the column: they were still re-adding a
+    // raw `_railGroupGap` to a raw width, while the quantized spans sat
+    // 130 lines above and were handed only to `floorCover` and
+    // `columnStop`. The canvas is framed against one boundary and the rail
+    // was drawn at another.
+    //
+    // ⚠️An earlier draft of this file blamed "the column stop and the
+    // bottom region's 2/3 split", and that was wrong on both counts —
+    // `_regionOnTop` is false, so the stops land in `bottom:` and never in
+    // `top:`, and the bottom region is not an ancestor of this chain at
+    // all. A wrong culprit in a test comment aims the next PR at nothing.
+    for (final ratio in <double>[1.125, 1.25, 1.35, 1.75]) {
+      testWidgets('is on the grid at ratio $ratio', (tester) async {
+        expectOnGrid(await railDockedAt(tester, ratio), at: 'rail $ratio');
+      });
+    }
+  });
+
+  testWidgets('the rail gap beside the strip is a whole number of device '
+      'pixels', (tester) async {
+    // ⚠️Pinned DIRECTLY, because it is currently unobservable from the
+    // canvas: 8 is already integral at 1.125, 1.25 and 1.75, and the one
+    // ratio where it matters — 1.35, where 8 × 1.35 is 10.8 — is a ratio
+    // at which a larger fraction upstream still dominates the rail-docked
+    // boundary. Without this the quantization would ship unpinned and a
+    // later edit could undo it silently, only for the defect to surface
+    // when the upstream work finally lands.
+    const ratio = 1.35;
+    tester.view.devicePixelRatio = ratio;
+    tester.view.physicalSize = const Size(1600 * ratio, 1000 * ratio);
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(shell());
+    await tester.pumpAndSettle();
+
+    final found = find
+        .byKey(const ValueKey<String>('rail-group-gap'))
+        .evaluate();
+    expect(found, isNotEmpty, reason: 'the rail gap must be in the tree');
+    for (final element in found) {
+      final padding = (element.renderObject! as RenderPadding).padding.resolve(
+        TextDirection.ltr,
       );
-    },
-  );
+      for (final side in <double>[padding.left, padding.right]) {
+        if (side == 0) {
+          continue;
+        }
+        expect(
+          offGridBy(side * ratio),
+          lessThan(1e-3),
+          reason: 'a rail gap of $side logical is ${side * ratio} device px',
+        );
+      }
+    }
+  });
 
   group('the empty dock drop zone', () {
     for (final ratio in <double>[1.125, 1.25, 1.35, 1.75]) {

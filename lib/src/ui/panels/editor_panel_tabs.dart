@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../layout/device_grid.dart';
 import '../theme/app_theme.dart';
 import '../widgets/grip_band.dart';
 import '../widgets/panel_flyout.dart';
@@ -296,7 +297,16 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     final strip = widget.chromeless
         ? null
         : Container(
-            height: EditorPanelTabs.stripHeight,
+            // A link in the chain to the RAIL-DOCKED canvas: everything in
+            // the panel below this strip starts at this height, and a
+            // docked canvas is one of those things. 30 × 1.25 = 37.5 —
+            // unlike the 48s in the window chain, this one is off the grid
+            // at Windows' own scaling steps, and it is measurably what
+            // held the second canvas boundary off at every ratio while the
+            // editing canvas was already clean.
+            height: DeviceGrid.of(
+              context,
+            ).position(EditorPanelTabs.stripHeight),
             color: colorScheme.surfaceContainerLow,
             child: Stack(
               children: [
