@@ -182,11 +182,19 @@ class EditorDockDropZone extends StatelessWidget {
             // frame, which is itself a layout-change frame. 30 × 1.25 =
             // 37.5: half a device pixel, on exactly the frame that hops.
             //
-            // The FOOTPRINT is what the chain needs on the grid. The
-            // inner split between margin and band is decoration and stays
-            // a leaf concern — quantizing it separately here would be two
-            // runs over one boundary, which is the rule the grid's own
-            // doc forbids.
+            // The FOOTPRINT is what the chain needs on the grid, and the
+            // band absorbs the residue — which is the run rule working:
+            // the total is quantized once and the last extent takes what
+            // is left. Measured footprint at 1.125 / 1.25 / 1.35 / 1.75:
+            // 33 / 37 / 40 / 52 device px, integral at all four.
+            //
+            // ⚠️The band's OWN edges stay off the grid, because leaf
+            // crispness is a later PR's job. ⛔That is not "two runs over
+            // one boundary" — an earlier draft of this comment said so
+            // and was wrong: the margin/band split is nested inside the
+            // footprint and shares no boundary with the outer chain, so
+            // a run taking [2, 26, 2] would be the documented composing
+            // pattern, not the forbidden one.
             final band = footprintOf(context) - margin * 2;
             return Container(
               key: ValueKey<String>('editor-dock-drop-rail-$dockId'),

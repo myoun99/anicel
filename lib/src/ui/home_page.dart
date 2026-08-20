@@ -727,8 +727,17 @@ class _HomePageState extends State<HomePage> {
                                 // 사이엔 없거든? 상단띠에도 아래에 추가).
                                 // Same `outlineVariant` and the same idiom as
                                 // `EditorPanelDock` — the border is drawn
-                                // INSIDE the strip's own 48px, so the canvas
-                                // below does not move to make room for it.
+                                // INSIDE the strip's own height, so the
+                                // canvas below does not move to make room
+                                // for it. ⚠️Its own HEIGHT, not 48: the
+                                // line above quantizes it, so at an
+                                // effective 1.35 the strip is 47.41. The
+                                // seam the user sees — this border's bottom
+                                // edge against the canvas — is what lands
+                                // on the grid; the border's own 1.0-logical
+                                // width is 1.35 device px and can never be
+                                // crisp, which is a hairline problem and
+                                // not this link's.
                                 decoration: BoxDecoration(
                                   border: Border(
                                     bottom: BorderSide(

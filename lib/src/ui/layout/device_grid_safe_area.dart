@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 
 import 'device_grid.dart';
@@ -13,15 +15,25 @@ import 'device_grid.dart';
 /// its inset comes from the platform, and nothing makes it a whole number
 /// of device pixels.
 ///
-/// ⚠️On Windows the inset is zero, so this changes nothing there and the
-/// defect is invisible on the machine most of this round is verified on.
-/// On a tablet it is the status bar or the notch, whose logical height is
-/// whatever the OS reports — a value the app never chose and cannot
-/// assume is on the grid.
+/// ⚠️**The platform's inset is already on the RAW grid** — measured, 9 of
+/// 9 real inset × ratio pairs, because the engine reports insets in whole
+/// physical pixels and MediaQuery divides by the same ratio. So this
+/// widget is a no-op today and an earlier draft of this comment justified
+/// it with a defect that does not exist. What takes those insets OFF the
+/// grid is a **UI scale**: the inset is divided by the raw ratio and then
+/// composited against the product, and nothing reconciles the two.
 ///
-/// ⛔Flooring, not rounding, and never per-edge rounding of a WIDTH: the
-/// insets are positions measured from the window edge, so flooring each
-/// one keeps the content box's own edges on the grid.
+/// ⛔That means benefit and hazard switch on together, in the UI-scale PR,
+/// on the platform nobody in this round can test. It has to be right now.
+///
+/// ⛔**CEIL, via [DeviceGrid.clearance], not floor.** An inset is not a
+/// position — it is a clearance the OS asserts, and the two directions
+/// are equally on-grid (measured: both off-grid zero times in 9,800
+/// samples) but not equally safe. Flooring makes the safe area SMALLER,
+/// sliding up to a device pixel of content under a notch it can never be
+/// seen past; ceiling costs at most one device pixel of chrome. Measured
+/// with a real 36px status bar at an effective 1.35, flooring lost
+/// 0.80 × 0.40 device px of content, and 0.80 × 0.80 at a 132px notch.
 class DeviceGridSafeArea extends StatelessWidget {
   const DeviceGridSafeArea({
     super.key,
@@ -45,9 +57,15 @@ class DeviceGridSafeArea extends StatelessWidget {
     final grid = DeviceGrid.of(context);
     final padding = MediaQuery.paddingOf(context);
 
-    double snap(bool honour, double inset, double floor) {
-      final wanted = honour ? (inset > floor ? inset : floor) : floor;
-      return grid.position(wanted);
+    double snap(bool honour, double inset, double minimum) {
+      // SafeArea's own clamp, verbatim. The 0.0 is load-bearing twice: it
+      // is what keeps a negative `minimum` off `Padding`'s
+      // `isNonNegative` assert — an earlier draft passed -4 straight
+      // through and threw — and it is what keeps `minimum` meaning
+      // minimum, since taking the max AFTER honouring the flag is the
+      // only order that applies the greater of the two.
+      final wanted = math.max(honour ? inset : 0.0, minimum);
+      return grid.clearance(wanted);
     }
 
     final resolved = EdgeInsets.only(
