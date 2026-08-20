@@ -5,6 +5,7 @@ import 'package:anicel/main.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/ui/layout/device_grid_safe_area.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_timeline_layout.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
@@ -642,9 +643,14 @@ void main() {
     await tester.pumpWidget(const AnicelApp());
 
     expect(find.byType(MaterialApp), findsOneWidget);
-    // PEN-8 #1: the editor body sits inside a SafeArea so tablet OS
+    // PEN-8 #1: the editor body sits inside a safe area so tablet OS
     // chrome (status bar, gesture areas) never overlaps the app.
-    expect(find.byType(SafeArea), findsWidgets);
+    //
+    // R11: a DeviceGridSafeArea, not a bare SafeArea. Same intent, plus
+    // the inset is floored onto the device-pixel grid — it is the FIRST
+    // link in the window-origin chain, and a fractional inset there puts
+    // every panel below it between two device pixels.
+    expect(find.byType(DeviceGridSafeArea), findsWidgets);
     // R26 #24: the app-name label is gone from the top strip.
     expect(find.text('Anicel'), findsNothing);
     expect(
