@@ -44,6 +44,7 @@ import 'input/app_input_settings.dart';
 import 'session/drags/audio_clip_offset_drag.dart';
 import 'session/drags/cut_move_drag.dart';
 import 'session/drags/drawing_block_move_drag.dart';
+import 'session/drags/lane_range_move_drag.dart';
 import 'session/drags/movie_end_drag.dart';
 import 'session/drags/row_order_drag.dart';
 import 'session/drags/run_frames_add_drag.dart';
@@ -216,7 +217,6 @@ import 'timeline/effect_lane_editing.dart'
         effectsWithLaneKeyRemoved,
         effectsWithLaneRangeNamed,
         effectsWithLaneKeyToggled,
-        effectsWithLaneSpanKeysShifted,
         effectsWithGroupReset;
 import 'timeline/effect_lane_policy.dart'
     show effectLaneDisplayOrder, effectLaneSpan, parseEffectLaneId;
@@ -226,16 +226,12 @@ import 'timeline/transform_lane_editing.dart'
         transformTrackWithLaneKeyRemoved,
         transformTrackWithLaneRangeNamed,
         transformTrackWithLaneKeyToggled,
-        transformTrackWithLaneSpanKeysShifted,
         transformTrackWithGroupReset;
-import 'timeline/se_name_tag_lane_editing.dart'
-    show seNameTagTrackWithLaneSpanKeysShifted;
 import 'timeline/se_name_tag_lane_policy.dart'
     show
         laneIsSeNameTag,
         seNameTagGroupLaneId,
         seNameTagLaneDisplayOrder,
-        seNameTagLaneKeyFrames,
         seNameTagLaneSpan;
 import 'timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder, transformLaneSpan;
@@ -12213,37 +12209,18 @@ class EditorSessionManager extends ChangeNotifier {
     }
   }
 
-  /// The in-flight lane range move (UI-R23 #3 part 2): the drag-start
-  /// snapshot plus the last VALID shifted payload (blocked steps HOLD it,
-  /// the #10 policy).
-  ({_LaneMoveSubject subject, TimelineLaneSelection selection})?
-  _laneMoveBefore;
-  TransformTrack? _laneMoveShifted;
+  /// The lane range move in flight, or null (UI-R23 #3 part 2). ⛔The only
+  /// thing this class keeps about one: the drag-start snapshot and the last
+  /// valid shifted payload live on the object and die with the gesture.
+  LaneRangeMoveDrag? _laneMoveDrag;
 
-  /// The in-flight EFFECT-lane move's last valid chain (R6) — the effect
-  /// counterpart of [_laneMoveShifted]; exactly one of the three family
-  /// slots is ever set.
-  List<LayerEffect>? _laneMoveShiftedEffects;
-
-  /// The in-flight NAME-TAG move's last valid track (C①) — the third
-  /// family slot.
-  SeNameTagTrack? _laneMoveShiftedNameTag;
-
-  /// WHAT a lane selection edits: where its keys live, how they go back,
-  /// and what a step in flight previews as.
+  /// Resolves WHAT a lane selection edits — see [LaneMoveSubject], which
+  /// carries the answer and the doc for why there is one resolver.
   ///
-  /// The move path used to name its subjects inline, in three methods that
-  /// each had to remember the whole list — and two subjects were missing
-  /// from all three. A CAMERA lane edits `cut.camera.track`, not the camera
-  /// layer's own (unused) transform track, so opening the band there would
-  /// have written keys where nothing reads them; that is why camera keys
-  /// were left with a private marker drag while every other lane moved by
-  /// selection. A V TRACK's EFFECT chain was simply never looked at, so an
-  /// fx key range on that row answered "nothing to move" and refused in
-  /// silence.
-  ///
-  /// One resolver instead, and the three steps stop knowing.
-  _LaneMoveSubject? _laneMoveSubjectFor(TimelineLaneSelection selection) {
+  /// ⛔It stays HERE rather than moving with the drag: it reaches into
+  /// tracks, layers and the cut's camera, which is this class's map of the
+  /// project, not a gesture's.
+  LaneMoveSubject? _laneMoveSubjectFor(TimelineLaneSelection selection) {
     // The V TRACK's own lanes (R4b, the carrier route).
     final carrierTrackId = trackIdOfTransformLaneCarrier(selection.layerId);
     if (carrierTrackId != null) {
@@ -12253,7 +12230,7 @@ class EditorSessionManager extends ChangeNotifier {
       }
       // EFFECT lanes only: the V row has no transform of its own, so a
       // transform key range on it has nothing to move and says so.
-      return _LaneMoveSubject(
+      return LaneMoveSubject(
         transformTrack: TransformTrack.empty(),
         effects: track.effects,
         commitTransform: (_) {},
@@ -12279,7 +12256,7 @@ class EditorSessionManager extends ChangeNotifier {
       return null;
     }
     final isSe = layer.kind == LayerKind.se;
-    return _LaneMoveSubject(
+    return LaneMoveSubject(
       transformTrack: cameraTrack ?? layer.transformTrack,
       effects: layer.effects,
       // The name-tag arm (C①): armed only on SE rows (the commit verb
@@ -12358,8 +12335,8 @@ class EditorSessionManager extends ChangeNotifier {
 
   static const String _laneMoveWhy = 'Move lane keys';
 
-  /// Starts moving the current lane selection; false when there is none
-  /// or it covers no keys on ANY spanned lane (nothing to move).
+  /// Starts moving the current lane selection; false when there is none or
+  /// it covers no keys on ANY spanned lane (nothing to move).
   bool beginLaneRangeMoveDrag() {
     final selection = laneRangeSelection.value;
     if (selection == null) {
@@ -12369,199 +12346,46 @@ class EditorSessionManager extends ChangeNotifier {
     if (subject == null) {
       return false;
     }
-    // R6: an EFFECT lane selection moves the effect chain's keys instead of
-    // the transform track's — same rigid all-or-nothing group, same drag.
-    //
-    // ONE mode for the whole span, decided the same way
-    // [updateLaneRangeMoveDrag] decides it. Asking per lane would let this
-    // answer "there are keys" about a lane the step is not going to shift.
-    final moveTargets = _laneVerbTargets(
-      selection.spanLaneIds,
-      effects: subject.effects,
+    // ⚠️Assigned only on SUCCESS: a refused begin must not touch a drag
+    // already in flight.
+    final drag = LaneRangeMoveDrag.begin(
+      selection: selection,
+      subject: subject,
+      laneVerbTargets: _laneVerbTargets,
+      preview: dragPreview,
+      selectionChannel: laneRangeSelection,
+      clearCameraPreview: () => _cameraLaneTrackPreview = null,
     );
-    final isEffectSelection = moveTargets.any(
-      (laneId) => parseEffectLaneId(laneId) != null,
-    );
-    // C①: the name-tag family is the third mode. Safe as an any() because
-    // the span switch keeps a lane selection single-family.
-    final isNameTagSelection =
-        !isEffectSelection && moveTargets.any(laneIsSeNameTag);
-    final nameTagKeys = subject.seNameTag?.track ?? SeNameTagTrack.empty();
-    final keyed = moveTargets.any(
-      (laneId) => isEffectSelection
-          ? effectLaneKeyFrames(subject.effects, laneId).any(selection.contains)
-          : isNameTagSelection
-          ? seNameTagLaneKeyFrames(nameTagKeys, laneId).any(selection.contains)
-          : transformLaneKeyFrames(
-              subject.transformTrack,
-              laneId,
-            ).any(selection.contains),
-    );
-    if (!keyed) {
+    if (drag == null) {
       return false;
     }
-    _laneMoveBefore = (subject: subject, selection: selection);
-    _laneMoveShifted = null;
-    // All in-flight slots clear together: a stale payload here would send
-    // the commit down the wrong branch.
-    _laneMoveShiftedEffects = null;
-    _laneMoveShiftedNameTag = null;
-
+    _laneMoveDrag = drag;
     return true;
   }
 
   /// A lane-move drag step: shifts EVERY spanned lane's ranged keys by
-  /// [frameDelta] (R26 #3 — one rigid group, all-or-nothing across
-  /// lanes) and previews via [dragPreview]. A blocked landing HOLDS the
-  /// last valid preview (UI-R23 #10 — no snap-back).
-  void updateLaneRangeMoveDrag({required int frameDelta}) {
-    final before = _laneMoveBefore;
-    if (before == null) {
-      return;
-    }
-    if (frameDelta == 0) {
-      _laneMoveShifted = null;
-      _laneMoveShiftedEffects = null;
-      _laneMoveShiftedNameTag = null;
-      _cameraLaneTrackPreview = null;
-
-      dragPreview.value = null;
-      laneRangeSelection.value = before.selection;
-      return;
-    }
-    final subject = before.subject;
-    final targets = _laneVerbTargets(
-      before.selection.spanLaneIds,
-      effects: subject.effects,
-    );
-    if (targets.any((laneId) => parseEffectLaneId(laneId) != null)) {
-      final shiftedEffects = effectsWithLaneSpanKeysShifted(
-        subject.effects,
-        laneIds: targets,
-        rangeStartIndex: before.selection.startIndex,
-        rangeEndIndexExclusive: before.selection.endIndexExclusive,
-        frameDelta: frameDelta,
-      );
-      if (shiftedEffects == null) {
-        // Blocked landing: the last valid preview and outline HOLD.
-        return;
-      }
-      _laneMoveShiftedEffects = shiftedEffects;
-      dragPreview.value = subject.previewEffects(shiftedEffects);
-      _rideLaneMoveSelection(before.selection, frameDelta);
-      return;
-    }
-    // C①: the name-tag family's branch — same rigid group, same hold.
-    if (targets.any(laneIsSeNameTag)) {
-      final tag = subject.seNameTag;
-      final previewNameTag = subject.previewSeNameTag;
-      if (tag == null || previewNameTag == null) {
-        return;
-      }
-      final shiftedTag = seNameTagTrackWithLaneSpanKeysShifted(
-        tag.track ?? SeNameTagTrack.empty(),
-        laneIds: targets,
-        rangeStartIndex: before.selection.startIndex,
-        rangeEndIndexExclusive: before.selection.endIndexExclusive,
-        frameDelta: frameDelta,
-      );
-      if (shiftedTag == null) {
-        // Blocked landing: the last valid preview and outline HOLD.
-        return;
-      }
-      _laneMoveShiftedNameTag = shiftedTag;
-      dragPreview.value = previewNameTag(tag.copyWith(track: shiftedTag));
-      _rideLaneMoveSelection(before.selection, frameDelta);
-      return;
-    }
-    final shifted = transformTrackWithLaneSpanKeysShifted(
-      subject.transformTrack,
-      laneIds: targets,
-      rangeStartIndex: before.selection.startIndex,
-      rangeEndIndexExclusive: before.selection.endIndexExclusive,
-      frameDelta: frameDelta,
-    );
-    if (shifted == null) {
-      // Blocked landing: the last valid preview and outline HOLD.
-      return;
-    }
-    _laneMoveShifted = shifted;
-    // A subject whose lanes are not built from the row's own Layer (the
-    // camera's live on the CUT) parks its preview where the lane provider
-    // reads it; the channel below still fires, to trip the row's gate.
-    subject.onPreviewTransform?.call(shifted);
-    dragPreview.value = subject.previewTransform(shifted);
-    _rideLaneMoveSelection(before.selection, frameDelta);
-  }
-
-  /// The lane-move step's selection ride, one law for all three family
-  /// branches: the outline follows the shifted span (never below 0).
-  void _rideLaneMoveSelection(TimelineLaneSelection selection, int frameDelta) {
-    final newStart = selection.startIndex + frameDelta;
-    if (newStart < 0) {
-      return;
-    }
-    laneRangeSelection.value = TimelineLaneSelection(
-      layerId: selection.layerId,
-      laneId: selection.laneId,
-      startIndex: newStart,
-      endIndexExclusive: selection.endIndexExclusive + frameDelta,
-      laneIds: selection.laneIds,
-    );
-  }
+  /// [frameDelta] (R26 #3 — one rigid group, all-or-nothing across lanes)
+  /// and previews via [dragPreview]. A blocked landing HOLDS the last valid
+  /// preview (UI-R23 #10 — no snap-back).
+  void updateLaneRangeMoveDrag({required int frameDelta}) =>
+      _laneMoveDrag?.update(frameDelta: frameDelta);
 
   /// Commits the lane move as ONE undo step; the selection stays on the
   /// landed span.
   void endLaneRangeMoveDrag() {
-    final before = _laneMoveBefore;
-    final shifted = _laneMoveShifted;
-    final shiftedEffects = _laneMoveShiftedEffects;
-    final shiftedNameTag = _laneMoveShiftedNameTag;
-    final landed = laneRangeSelection.value;
-    _laneMoveBefore = null;
-    _laneMoveShifted = null;
-    _laneMoveShiftedEffects = null;
-    _laneMoveShiftedNameTag = null;
-    _cameraLaneTrackPreview = null;
-
-    dragPreview.value = null;
-    if (before != null && shiftedEffects != null) {
-      before.subject.commitEffects(shiftedEffects);
-      laneRangeSelection.value = landed;
-      return;
-    }
-    if (before != null && shiftedNameTag != null) {
-      final tag = before.subject.seNameTag ?? const SeNameTag();
-      before.subject.commitSeNameTag?.call(tag.copyWith(track: shiftedNameTag));
-      laneRangeSelection.value = landed;
-      return;
-    }
-    if (before == null || shifted == null) {
-      if (before != null) {
-        laneRangeSelection.value = before.selection;
-      }
-      return;
-    }
-    before.subject.commitTransform(shifted);
-    laneRangeSelection.value = landed;
+    final drag = _laneMoveDrag;
+    _laneMoveDrag = null;
+    drag?.commit();
   }
 
   /// Drops an in-flight lane-move preview, restoring the selection.
   void cancelLaneRangeMoveDrag() {
-    final before = _laneMoveBefore;
-    _laneMoveBefore = null;
-    _laneMoveShifted = null;
-    _laneMoveShiftedEffects = null;
-    _laneMoveShiftedNameTag = null;
-    _cameraLaneTrackPreview = null;
-
-    dragPreview.value = null;
-    if (before != null) {
-      laneRangeSelection.value = before.selection;
-    }
+    final drag = _laneMoveDrag;
+    _laneMoveDrag = null;
+    drag?.cancel();
   }
 
-  /// The CAMERA lane move's in-flight track (see [_LaneMoveSubject]).
+  /// The CAMERA lane move's in-flight track (see [LaneMoveSubject]).
   ///
   /// A camera row's transform lanes are built from the CUT, not from the
   /// row's own Layer, so the preview cannot ride the layer channel the way
@@ -17669,53 +17493,6 @@ enum _CutEdgeDragVerb {
   /// rippling glued and the cut's length riding the row end (feedback
   /// #9; the edge unification retired the division verb this replaced).
   comma,
-}
-
-/// WHERE a lane-range move's keys live, how they go back, and what a step
-/// in flight looks like — resolved once from the selection so the drag's
-/// three steps stop naming their subjects inline.
-///
-/// See [EditorSessionManager._laneMoveSubjectFor] for why this exists: the
-/// two subjects the old inline lists forgot are exactly the two rows whose
-/// keys could not be moved by selection at all.
-class _LaneMoveSubject {
-  const _LaneMoveSubject({
-    required this.transformTrack,
-    required this.effects,
-    required this.commitTransform,
-    required this.commitEffects,
-    required this.previewTransform,
-    required this.previewEffects,
-    this.seNameTag,
-    this.commitSeNameTag,
-    this.previewSeNameTag,
-    this.onPreviewTransform,
-  });
-
-  /// The transform lanes' keys, the effect chain's, and — on SE rows —
-  /// the name tag's. Which one a drag reads is the LANE's question — an
-  /// effect lane on a camera row moves the layer's chain while its
-  /// Position lane moves the cut's camera.
-  final TransformTrack transformTrack;
-  final List<LayerEffect> effects;
-
-  /// The row's name tag (C①). Null on rows that cannot carry one — the
-  /// nametag arm is only armed where a tag can exist, because the commit
-  /// verb throws for non-SE layers.
-  final SeNameTag? seNameTag;
-
-  final void Function(TransformTrack next) commitTransform;
-  final void Function(List<LayerEffect> next) commitEffects;
-  final void Function(SeNameTag next)? commitSeNameTag;
-
-  final BlockMoveDragPreview Function(TransformTrack next) previewTransform;
-  final BlockMoveDragPreview Function(List<LayerEffect> next) previewEffects;
-  final BlockMoveDragPreview Function(SeNameTag next)? previewSeNameTag;
-
-  /// A side channel for subjects whose lanes are NOT built from the row's
-  /// own Layer, so the preview cannot travel in [previewTransform]'s
-  /// payload. Only the camera has one today.
-  final void Function(TransformTrack next)? onPreviewTransform;
 }
 
 /// B8 — the block under the STORYBOARD cursor (standing row × track-global
