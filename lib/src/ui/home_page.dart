@@ -49,6 +49,8 @@ import 'timeline/timeline_action_toolbar.dart'
     show showTimelineCommaCountDialog;
 import 'text/app_strings.dart';
 import 'canvas/flip_hud_controller.dart' show FlipHudController;
+import 'layout/device_grid.dart';
+import 'layout/device_grid_safe_area.dart';
 import 'timeline/timeline_layer_nav.dart' show TimelineLayerNavCommands;
 import 'widgets/cursor_notice.dart';
 
@@ -652,7 +654,7 @@ class _HomePageState extends State<HomePage> {
         // The app-level shortcut layer (P1): the manager stands bare-letter
         // shortcuts down while a text field has focus; the bindings notifier
         // rebuilds the map live as the user re-records keys.
-        body: SafeArea(
+        body: DeviceGridSafeArea(
           bottom: false,
           child: ListenableBuilder(
             listenable: _shortcuts,
@@ -712,7 +714,14 @@ class _HomePageState extends State<HomePage> {
                             Material(
                               color: colorScheme.surface,
                               child: Container(
-                                height: 48,
+                                // The strip is the SECOND link in the
+                                // window-origin chain: everything below it,
+                                // including the canvas, starts at this
+                                // height. 48 is on the grid at every Windows
+                                // scaling step (48 = 16x3) and OFF it the
+                                // moment a UI scale makes the ratio a
+                                // product — 48 x 1.35 is 64.8.
+                                height: DeviceGrid.of(context).position(48),
                                 // The seam the tool rail already had and this
                                 // strip did not (유저, R4 #1: 상단띠랑 캔버스
                                 // 사이엔 없거든? 상단띠에도 아래에 추가).

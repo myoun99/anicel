@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../layout/device_grid.dart';
 import '../theme/app_theme.dart' show AppColors;
 import 'editor_panel_layout.dart';
 import 'editor_panel_tabs.dart';
@@ -149,6 +150,15 @@ class EditorDockDropZone extends StatelessWidget {
 
   static const double thickness = 26;
 
+  /// The gap between the band and the dock's edge, on all four sides.
+  static const double margin = 2;
+
+  /// What the zone occupies in the layout — the band plus both margins.
+  /// This is what shifts the canvas, so this is what has to be on the
+  /// device grid.
+  static double footprintOf(BuildContext context) =>
+      DeviceGrid.of(context).position(thickness + margin * 2);
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -165,15 +175,28 @@ class EditorDockDropZone extends StatelessWidget {
           onAcceptWithDetails: (details) => onDropped(details.data),
           builder: (context, candidateData, rejectedData) {
             final hovered = candidateData.isNotEmpty;
+            // 🚨This zone exists ONLY while a tab is in the air, and its
+            // whole footprint shifts everything beside it — including the
+            // canvas. So the x the canvas starts at is 0 / this / 48
+            // depending on app state, and it changes on the tab-lift
+            // frame, which is itself a layout-change frame. 30 × 1.25 =
+            // 37.5: half a device pixel, on exactly the frame that hops.
+            //
+            // The FOOTPRINT is what the chain needs on the grid. The
+            // inner split between margin and band is decoration and stays
+            // a leaf concern — quantizing it separately here would be two
+            // runs over one boundary, which is the rule the grid's own
+            // doc forbids.
+            final band = footprintOf(context) - margin * 2;
             return Container(
               key: ValueKey<String>('editor-dock-drop-rail-$dockId'),
               width: expandToFill
                   ? null
-                  : (axis == Axis.vertical ? thickness : null),
+                  : (axis == Axis.vertical ? band : null),
               height: expandToFill
                   ? null
-                  : (axis == Axis.horizontal ? thickness : null),
-              margin: const EdgeInsets.all(2),
+                  : (axis == Axis.horizontal ? band : null),
+              margin: const EdgeInsets.all(margin),
               decoration: BoxDecoration(
                 color: hovered
                     ? colorScheme.primary.withValues(alpha: 0.25)
