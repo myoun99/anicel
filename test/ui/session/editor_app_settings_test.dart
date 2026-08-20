@@ -9,6 +9,7 @@ import 'package:anicel/src/services/persistence/app_input_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_language_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/services/persistence/app_save_settings_store.dart';
+import 'package:anicel/src/services/persistence/app_ui_scale_store.dart';
 import 'package:anicel/src/services/persistence/app_workspace_colors_store.dart';
 import 'package:anicel/src/services/persistence/audio_sync_settings_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -19,13 +20,13 @@ import 'package:anicel/src/ui/theme/app_accents.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/theme/app_workspace_colors.dart';
 
-/// The six app-level settings families the session hands to
+/// The seven app-level settings families the session hands to
 /// `EditorAppSettings`: each has to be persisted through ITS OWN injected
 /// store and read back by the next session.
 ///
 /// Written when the settings block moved out of the session manager. A move
 /// refactor passes the existing suite by construction — nothing there
-/// constructs a session with all six stores — so the thing worth asserting is
+/// constructs a session with all seven stores — so the thing worth asserting is
 /// the WIRING. Drop one store from the constructor call, or one restore from
 /// `EditorAppSettings.restore()`, and exactly one expectation below dies.
 void main() {
@@ -46,7 +47,7 @@ void main() {
       'injected store', () async {
     final directory = await Directory.systemTemp.createTemp('qa-app-settings');
     addTearDown(() => directory.delete(recursive: true));
-    const names = ['lang', 'accent', 'colors', 'input', 'save', 'av'];
+    const names = ['lang', 'accent', 'colors', 'input', 'save', 'av', 'uiscale'];
     String path(String name) => '${directory.path}/$name.json';
 
     EditorSessionManager openSession() => EditorSessionManager(
@@ -57,6 +58,7 @@ void main() {
       inputSettingsStore: AppInputSettingsStore(filePath: path('input')),
       saveSettingsStore: AppSaveSettingsStore(filePath: path('save')),
       audioSyncSettingsStore: AudioSyncSettingsStore(filePath: path('av')),
+      uiScaleStore: AppUiScaleStore(filePath: path('uiscale')),
     );
 
     final first = openSession();
@@ -83,6 +85,13 @@ void main() {
     first.setAudioSyncSettings(
       const AudioSyncSettings(offset: 42, micGainDb: 3),
     );
+    // R11, and ⚠️only the WRITE half crosses the boundary: the UI scale is
+    // restored in `main()` before `runApp` rather than by the session, so
+    // the second session below does not read it back. Deleting the
+    // `store.save` in `EditorAppSettings.setUiScale` was green until this
+    // line existed — the setting could have stopped persisting entirely
+    // while the Preferences row went on looking like it worked.
+    first.setUiScale(1.25);
     // The saves are fire-and-forget. Waiting on the files rather than on a
     // fixed delay keeps this honest on a machine that is busy building.
     await _settleUntil(
