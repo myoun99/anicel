@@ -34,6 +34,7 @@ class CutEnvelopeTabHost extends StatefulWidget {
     this.formId = CutEnvelopePresets.analogId,
     this.onFormIdChanged,
     this.viewport,
+    this.viewportController,
     this.onViewportChanged,
     this.inkController,
     this.brushToolState,
@@ -52,6 +53,10 @@ class CutEnvelopeTabHost extends StatefulWidget {
 
   /// Owned above the tab group so zoom/pan survive tab switches.
   final CanvasViewport? viewport;
+
+  /// The view, OWNED by the caller — forwarded to
+  /// [BrushCanvasPanel.viewportController].
+  final ValueNotifier<CanvasViewport?>? viewportController;
   final ValueChanged<CanvasViewport>? onViewportChanged;
 
   /// Envelope ink store, owned above the tab group so annotations survive
@@ -140,6 +145,7 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
       cacheInvalidationSink: _cacheInvalidationSink,
       canvasSize: paper,
       viewport: widget.viewport,
+      viewportController: widget.viewportController,
       onViewportChanged: widget.onViewportChanged,
       // The paper never rotates (the timesheet's rule).
       allowViewRotation: false,

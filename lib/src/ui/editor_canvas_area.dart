@@ -19,7 +19,6 @@ import 'input/app_input_settings.dart' show AppInput;
 import 'brush/canvas_selection_commands.dart';
 import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
-import 'canvas/canvas_zoom_scale.dart';
 import 'canvas/viewport_canvas_transform.dart';
 import 'brush/brush_canvas_panel.dart' show CanvasAutoFrameRequest;
 import 'brush/main_canvas_brush_host.dart';
@@ -173,7 +172,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// Resolved at the READ site instead, so an untouched view re-derives the
   /// identity whenever the ratio moves — no hold and no notify, which is
   /// exactly the invariant this round wants.
-  CanvasViewport? _canvasViewport;
+  final ValueNotifier<CanvasViewport?> _canvasViewport = ValueNotifier(null);
 
   /// [nodes] with the onion ghosts inserted directly UNDER the active
   /// layer — where they belong visually, and (since the merge) inside
@@ -278,14 +277,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     if (playback.isActive != _playbackWasActive) {
       _playbackWasActive = playback.isActive;
       if (playback.isActive) {
-        _prePlaybackViewport = _canvasViewport;
+        _prePlaybackViewport = _canvasViewport.value;
       } else {
         final saved = _prePlaybackViewport;
         _prePlaybackViewport = null;
         if (saved != null && widget.cameraViewEnabled.value && mounted) {
           // 카메라 토글 ON: 재생 fit + 정지 시 복원. OFF stops fitting
           // altogether below, so there is nothing to undo there.
-          setState(() => _canvasViewport = saved);
+          _canvasViewport.value = saved;
         }
       }
     }
@@ -747,15 +746,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               frameStore: session.brushFrameStore,
               cacheInvalidationSink: session.cacheInvalidationHub,
               historyManager: session.historyManager,
-              // ⛔Resolved HERE, not at the field. An untouched canvas then
-              // re-derives "one artwork pixel per device pixel" every time
-              // the effective ratio moves.
-              viewport:
-                  _canvasViewport ??
-                  CanvasZoomScale.of(context).identityViewport,
-              onViewportChanged: (viewport) {
-                setState(() => _canvasViewport = viewport);
-              },
+              // ⛔The notifier ITSELF. Null in it means "not framed yet",
+              // which the panel resolves to the identity at read time — so
+              // an untouched canvas re-derives "one artwork pixel per
+              // device pixel" every time the effective ratio moves, with
+              // nothing stored to go stale. And because the panel writes
+              // into this same object, panning no longer round-trips
+              // through a `setState` here.
+              viewportController: _canvasViewport,
               // 유저 R2 #14: the pill takes the corner AWAY from the tool
               // strip — the strip is where the hand already is.
               brushToolState: toolState,

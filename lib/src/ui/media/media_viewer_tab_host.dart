@@ -118,6 +118,7 @@ class MediaViewerTabHost extends StatefulWidget {
     this.isPathRegistered,
     this.onAssetDropped,
     this.viewport,
+    this.viewportController,
     this.onViewportChanged,
     this.filePicker,
   });
@@ -178,6 +179,10 @@ class MediaViewerTabHost extends StatefulWidget {
 
   /// Owned above the tab group so zoom/pan survive tab switches.
   final CanvasViewport? viewport;
+
+  /// The view, OWNED by the caller — forwarded to
+  /// [BrushCanvasPanel.viewportController].
+  final ValueNotifier<CanvasViewport?>? viewportController;
   final ValueChanged<CanvasViewport>? onViewportChanged;
 
   /// Injectable loose-file picker (tests).
@@ -584,6 +589,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
         height: docSize.height.ceil().clamp(1, 1 << 14).toInt(),
       ),
       viewport: widget.viewport,
+      viewportController: widget.viewportController,
       onViewportChanged: widget.onViewportChanged,
       // Paper rule: the viewer never rotates the view.
       allowViewRotation: false,

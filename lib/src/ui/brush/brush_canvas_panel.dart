@@ -125,6 +125,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.brushToolState = BrushToolState.defaults,
     this.historyManager,
     this.viewport,
+    this.viewportController,
     this.onViewportChanged,
     this.viewportOverlayBuilder,
     this.viewportUnderlayBuilder,
@@ -209,7 +210,28 @@ class BrushCanvasPanel extends StatefulWidget {
 
   final BrushToolState brushToolState;
   final HistoryManager? historyManager;
+  /// A STARTING view for a panel that owns its own — a seed, not a
+  /// binding.
+  ///
+  /// ⚠️Read once. Changing it later does nothing, deliberately: a caller
+  /// that wants to drive the view owns it through [viewportController].
+  /// It used to be re-applied on every build whenever it differed from
+  /// what the panel had last published, which made a constant prop fight
+  /// the user's own panning.
   final CanvasViewport? viewport;
+
+  /// The view, OWNED by the caller — the single copy, not a value to echo.
+  ///
+  /// Null in it means "not framed yet", which the panel resolves to the
+  /// identity at READ time rather than seeding, so an untouched view
+  /// follows the effective ratio with nothing stored to go stale.
+  ///
+  /// ⛔A caller that passes this must not also pass [viewport]; the seed
+  /// would be ignored, which is worse than an error.
+  final ValueNotifier<CanvasViewport?>? viewportController;
+
+  /// Fired when the panel moves the view — a side channel for owners that
+  /// react (persisting elsewhere, re-framing a sibling), never the storage.
   final ValueChanged<CanvasViewport>? onViewportChanged;
 
   /// The host's OWN controls, at the head of the pill: the timesheet's
@@ -499,20 +521,37 @@ final ValueNotifier<TransformToolOptions> _defaultTransformOptions =
 
 class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     with SingleTickerProviderStateMixin {
-  /// The live view, as a NOTIFIER rather than a plain field.
+  /// The panel's OWN storage, used only when no owner supplied one.
   ///
-  /// The panel rebuilds itself with `setState`, which is enough for
-  /// everything drawn inside it — but the settings list is an overlay
-  /// route built once when it opens, so nothing in there would ever see a
-  /// rotation land or a flip toggle. A knob that does not show its own
-  /// state is a knob nobody can read.
-  ///
-  /// The getter/setter pair below is what keeps this cheap: every
-  /// `_viewport = x` in this file still reads as an assignment and now
-  /// also publishes, so no call site had to learn about it.
-  late final ValueNotifier<CanvasViewport> _viewportNotifier = ValueNotifier(
-    widget.viewport ?? CanvasViewport(),
+  /// The view is a notifier rather than a plain field because the settings
+  /// list is an overlay route built once when it opens, so nothing in
+  /// there would ever see a rotation land or a flip toggle. A knob that
+  /// does not show its own state is a knob nobody can read.
+  /// ⚠️`late`, so [widget] is readable: [BrushCanvasPanel.viewport] is the
+  /// SEED, taken once here. Null stays null and the getter below resolves
+  /// it to the identity.
+  late final ValueNotifier<CanvasViewport?> _ownViewport = ValueNotifier(
+    widget.viewport,
   );
+
+  /// 🎯**Where the view actually lives — ONE object, not a copy.**
+  ///
+  /// The panel used to take the view as a VALUE and keep a copy, pushing
+  /// changes back through a callback and re-applying the prop whenever it
+  /// differed from the last value it had emitted. That is two sources of
+  /// truth with a marker between them, and the marker meant two different
+  /// things in the two places that wrote it — "what the owner gave me" in
+  /// the re-apply and "what I gave the owner" in the publish. The moment
+  /// an owner was a frame late, the panel read its own emission as a
+  /// stale prop and reverted its own change. That is one measured defect
+  /// (a document tab absorbing a UI-scale change) and one near miss (a
+  /// zoom press discarding a ratio correction) from the same line.
+  ///
+  /// ⛔Every owner ALREADY held a `ValueNotifier` — the workspace's three
+  /// document viewports and the media slot's — so this is not a new
+  /// concept, it is the end of unwrapping one and re-wrapping it.
+  ValueNotifier<CanvasViewport?> get _viewportNotifier =>
+      widget.viewportController ?? _ownViewport;
 
   /// The view a ratio change has re-zoomed to but not yet COMMITTED.
   ///
@@ -534,15 +573,29 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// and the new one print the same.
   CanvasViewport? _ratioHeldViewport;
 
+  /// The view, with "nobody has framed it yet" resolved to the IDENTITY —
+  /// one artwork pixel per device pixel, re-derived whenever the effective
+  /// ratio moves.
+  ///
+  /// ⚠️Resolving it HERE rather than seeding a field is what keeps an
+  /// untouched view correct across a scale change for free: there is
+  /// nothing stored to go stale.
   CanvasViewport get _viewport =>
-      _ratioHeldViewport ?? _viewportNotifier.value;
+      _ratioHeldViewport ??
+      _viewportNotifier.value ??
+      _zoomScale.identityViewport;
 
   set _viewport(CanvasViewport value) {
     _ratioHeldViewport = null;
     _viewportNotifier.value = value;
   }
 
-  CanvasViewport? _lastWidgetViewport;
+  /// The last value the CALLER handed us through [BrushCanvasPanel.viewport].
+  ///
+  /// ⛔An INPUT marker, written in `build` and nowhere else. Writing it
+  /// from the publish path is what made the panel revert itself.
+  CanvasViewport? _lastSeenViewportInput;
+
   Size? _editorViewportSize;
 
   /// True while a brush stroke is in progress; the viewport gesture layer
@@ -842,7 +895,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   @override
   void dispose() {
-    _viewportNotifier.dispose();
+    // ⛔ONLY the panel's own. `_viewportNotifier` may BE the owner's — the
+    // whole point of the controller — and disposing that would kill the
+    // view the moment a panel unmounts, taking every other reader of it
+    // with it. Measured: "A ValueNotifier was used after being disposed"
+    // on the first rail-group fold.
+    _ownViewport.dispose();
     // A mid-stroke teardown must release the session's warm hold — a
     // leaked hold would gate prerendering forever. Same for a mid-drag
     // selection interaction (R15-⑤: a leaked hold would block seeks).
@@ -1618,9 +1676,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   @override
   Widget build(BuildContext context) {
-    if (widget.viewport != null && widget.viewport != _lastWidgetViewport) {
+    // 🚨The marker is an INPUT marker, and that is the whole fix.
+    //
+    // It used to be written from two places with two different meanings —
+    // "what the caller gave me" here, and "what I gave the caller" in the
+    // publish path. So the moment the panel moved the view, the marker
+    // became the panel's own emission, the caller's prop (still a frame
+    // behind) compared as DIFFERENT, and the panel reverted its own
+    // change. That is one measured defect and one near miss from a single
+    // line. Written only here, it means what the condition needs: take the
+    // prop when the CALLER changed it, and never when the panel did.
+    if (widget.viewport != null && widget.viewport != _lastSeenViewportInput) {
+      _lastSeenViewportInput = widget.viewport;
       _viewport = widget.viewport!;
-      _lastWidgetViewport = widget.viewport;
     }
     // R27 #17: a cursor that armed mid-gesture gets a starting position.
     _seedEyedropperHoverIfNeeded();
@@ -2553,8 +2621,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     setState(() => _viewport = viewport.clamped());
   }
 
+  /// Tells the owner the view moved.
+  ///
+  /// ⚠️Notification ONLY. The value is already in the owner's notifier by
+  /// the time this runs — writing a "last published" marker here is what
+  /// used to make the panel revert itself.
   void _syncViewportParent() {
-    _lastWidgetViewport = _viewport;
     widget.onViewportChanged?.call(_viewport);
   }
 
@@ -4001,7 +4073,11 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   /// The SAME view as [viewport], as a signal the settings list can hold.
   /// The field is what this bar draws with; the listenable is what the
   /// overlay route redraws on.
-  final ValueListenable<CanvasViewport> liveViewport;
+  ///
+  /// ⚠️Nullable, because the owner may not have framed the view yet — and
+  /// "not framed" resolves to the IDENTITY, which depends on the effective
+  /// ratio and therefore cannot be stored anywhere.
+  final ValueListenable<CanvasViewport?> liveViewport;
 
   final ValueChanged<CanvasViewport> onViewportChanged;
   final VoidCallback onViewportChangeEnd;
@@ -4442,7 +4518,9 @@ class _CanvasViewportBottomBar extends StatelessWidget {
                 listenable: liveViewport,
                 builder: (_) => Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: viewControlsFor(liveViewport.value),
+                  children: viewControlsFor(
+                    liveViewport.value ?? zoomScale.identityViewport,
+                  ),
                 ),
               ),
             ],
@@ -4481,18 +4559,23 @@ class _CanvasViewportBottomBar extends StatelessWidget {
                     // away on every frame of a rotate drag. The slice is
                     // the three values the accents and the readout read.
                     SlicedValueListenableBuilder<
-                      CanvasViewport,
+                      CanvasViewport?,
                       (double, bool, bool)
                     >(
                       valueListenable: liveViewport,
+                      // ⚠️`null` is "not framed yet", and the identity it
+                      // resolves to has no rotation or flip — so the slice
+                      // is the same three values either way.
                       slice: (view) => (
-                        view.rotationDegrees,
-                        view.flipHorizontal,
-                        view.flipVertical,
+                        view?.rotationDegrees ?? 0,
+                        view?.flipHorizontal ?? false,
+                        view?.flipVertical ?? false,
                       ),
                       builder: (_, view) => Row(
                         mainAxisSize: MainAxisSize.min,
-                        children: viewControlsFor(view),
+                        children: viewControlsFor(
+                          view ?? zoomScale.identityViewport,
+                        ),
                       ),
                     ),
                   ],

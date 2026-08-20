@@ -45,6 +45,7 @@ class ConteTabHost extends StatefulWidget {
     required this.thumbnailFor,
     this.thumbnailRepaint,
     this.viewport,
+    this.viewportController,
     this.onViewportChanged,
     this.inkController,
     this.brushToolState,
@@ -65,6 +66,10 @@ class ConteTabHost extends StatefulWidget {
 
   /// Owned above the tab group so zoom/pan survive tab switches.
   final CanvasViewport? viewport;
+
+  /// The view, OWNED by the caller — forwarded to
+  /// [BrushCanvasPanel.viewportController].
+  final ValueNotifier<CanvasViewport?>? viewportController;
   final ValueChanged<CanvasViewport>? onViewportChanged;
 
   /// Conte ink store, owned above the tab group so annotations survive
@@ -344,6 +349,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
               height: metrics.pageHeight.ceil(),
             ),
       viewport: widget.viewport,
+      viewportController: widget.viewportController,
       onViewportChanged: widget.onViewportChanged,
       // The paper never rotates (the timesheet's rule).
       allowViewRotation: false,

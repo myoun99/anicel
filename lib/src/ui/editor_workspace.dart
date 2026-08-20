@@ -1634,8 +1634,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
           position: slot.position.value,
           onPositionChanged: (position) => slot.position.value = position,
           onRequestPicked: slot.open,
-          viewport: slot.viewport.value,
-          onViewportChanged: (viewport) => slot.viewport.value = viewport,
+          viewportController: slot.viewport,
           onSwapViewers: () => _swapViewers(fromTabId: tabId),
           // 유저 확정 ⑱: the promote button calls the SAME import every
           // other entrance calls, and takes the SAME copy-or-reference
@@ -2637,10 +2636,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
               // directly (its compared fields don't change for async
               // pictures).
               thumbnailRepaint: _storyboardThumbnails,
-              viewport: _conteViewport.value,
-              onViewportChanged: (viewport) {
-                _conteViewport.value = viewport;
-              },
+              // The notifier ITSELF — the panel writes into this one, so
+              // there is no copy to echo and nothing to go stale while the
+              // panel is unmounted.
+              viewportController: _conteViewport,
               inkController: _conteInk,
               brushToolState: _brushTool,
               inkEnabled: _conteInkEnabled.value,
@@ -2677,10 +2676,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
               onFormIdChanged: (formId) {
                 _envelopeFormId.value = formId;
               },
-              viewport: _envelopeViewport.value,
-              onViewportChanged: (viewport) {
-                _envelopeViewport.value = viewport;
-              },
+              viewportController: _envelopeViewport,
               inkController: _envelopeInk,
               brushToolState: _brushTool,
               inkEnabled: _envelopeInkEnabled.value,
@@ -2732,10 +2728,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
               onPageChanged: (page) {
                 _timesheetPage.value = page;
               },
-              viewport: _timesheetViewport.value,
-              onViewportChanged: (viewport) {
-                _timesheetViewport.value = viewport;
-              },
+              viewportController: _timesheetViewport,
               inkController: _timesheetInk,
               brushToolState: _brushTool,
               inkEnabled: _timesheetInkEnabled.value,

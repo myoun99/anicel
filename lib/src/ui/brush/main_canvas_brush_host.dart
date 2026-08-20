@@ -51,6 +51,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.cacheInvalidationSink,
     this.historyManager,
     this.viewport,
+    this.viewportController,
     this.onViewportChanged,
     this.brushToolState = BrushToolState.defaults,
     this.viewportOverlayBuilder,
@@ -110,6 +111,10 @@ class MainCanvasBrushHost extends StatefulWidget {
 
   final HistoryManager? historyManager;
   final CanvasViewport? viewport;
+
+  /// The view, OWNED by the caller — forwarded to
+  /// [BrushCanvasPanel.viewportController].
+  final ValueNotifier<CanvasViewport?>? viewportController;
   final ValueChanged<CanvasViewport>? onViewportChanged;
 
   final BrushToolState brushToolState;
@@ -365,6 +370,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       guides: widget.guides,
       historyManager: widget.historyManager,
       viewport: widget.viewport,
+      viewportController: widget.viewportController,
       onViewportChanged: widget.onViewportChanged,
       brushToolState: widget.brushToolState,
       viewportOverlayBuilder: widget.viewportOverlayBuilder,
