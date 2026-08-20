@@ -30,6 +30,7 @@ import '../../services/history_manager.dart';
 import '../canvas/bitmap_surface_painter.dart';
 import '../canvas/active_stroke_overlay.dart';
 import '../canvas/canvas_selection_layer.dart';
+import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/selection_ants_painter.dart';
 import '../canvas/selection_float_overlay.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
@@ -672,11 +673,48 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   void Function()? _installedCutPasteHandler;
 
+  /// The effective ratio this panel last framed its view against — the
+  /// other half of the document-view exclusion.
+  CanvasZoomScale? _lastZoomScale;
+
+  CanvasZoomScale get _zoomScale => CanvasZoomScale.of(context);
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _readStageColors();
     _onFloor = CanvasFloorInsets.isFloor(context);
+    _holdDisplayZoomAcrossRatioChange();
+  }
+
+  /// Keeps the artwork covering the same DEVICE pixels when the effective
+  /// ratio moves under it — a new UI scale, or the window dragged to a
+  /// display with a different ratio.
+  ///
+  /// 🚨This is what makes "the scale does not touch document views" true
+  /// (유저 확정 2026-08-21). The root matrix has just changed by the scale
+  /// factor, so a view left at the same LOGICAL zoom would jump by exactly
+  /// that factor; re-zooming by the inverse holds the percentage, which is
+  /// the number the user set and the one they read.
+  ///
+  /// ⛔Around the visible centre, not the box's — the same anchor every
+  /// other zoom verb here uses, so a scale change does not walk the picture
+  /// toward an edge a dock is covering.
+  void _holdDisplayZoomAcrossRatioChange() {
+    final next = _zoomScale;
+    final previous = _lastZoomScale;
+    _lastZoomScale = next;
+    if (previous == null || previous == next) {
+      return;
+    }
+    final held = next.rescaledFrom(
+      previous,
+      _viewport,
+      anchor: _viewportCenterAnchor,
+    );
+    if (held != _viewport) {
+      _setViewport(held);
+    }
   }
 
   /// One undoable selection step (R11-⑧) — the layer's marquee commits and
@@ -2528,8 +2566,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   Rect _resolvedVisibleRect() =>
       canvasVisibleRect(_resolvedEditorViewportSize(), _framingInsets);
 
+  /// The 1:1 button. ⛔NOT `CanvasViewport()`: a bare zoom of 1.0 is one
+  /// artwork pixel per LOGICAL pixel, which on a 1.5 display drew the
+  /// artwork at 150% while the readout said 100%. The button's own glyph
+  /// says "1:1" and now it means it — one artwork pixel, one device pixel,
+  /// whatever the monitor and the UI scale are.
   void _resetView() {
-    _setViewport(CanvasViewport());
+    _setViewport(_zoomScale.identityViewport);
   }
 
   ViewportPoint get _viewportCenterAnchor {
@@ -4040,22 +4083,31 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       onPressed: onZoomIn,
     );
 
-    Widget zoomReadout() => DragValueLabel(
-      keyValue: 'canvas-viewport-zoom-label',
-      inputKeyValue: 'canvas-viewport-zoom-input',
-      text: '${(viewport.zoom * 100).round()}%',
-      tooltip: AppText.strings.viewZoomDrag,
-      width: _zoomReadoutWidth,
-      textStyle: const TextStyle(fontSize: 12),
-      onDragDelta: (units) =>
-          onZoomSet(((viewport.zoom * 100 + units).clamp(10.0, 1600.0)) / 100),
-      onEditSubmit: (text) {
-        final parsed = double.tryParse(text.replaceAll('%', '').trim());
-        if (parsed != null) {
-          onZoomSet(parsed.clamp(10.0, 1600.0) / 100);
-        }
-      },
-    );
+    // 100% = one artwork pixel per DEVICE pixel (유저 확정 2026-08-21,
+    // matching Photoshop/Clip Studio/Krita). The readout is the ONLY place
+    // in this file that speaks display units; `onZoomSet` takes the render
+    // zoom, as every other zoom verb does.
+    final zoomScale = CanvasZoomScale.of(context);
+    Widget zoomReadout() {
+      final displayPercent = zoomScale.display(viewport.zoom) * 100;
+      return DragValueLabel(
+        keyValue: 'canvas-viewport-zoom-label',
+        inputKeyValue: 'canvas-viewport-zoom-input',
+        text: '${displayPercent.round()}%',
+        tooltip: AppText.strings.viewZoomDrag,
+        width: _zoomReadoutWidth,
+        textStyle: const TextStyle(fontSize: 12),
+        onDragDelta: (units) => onZoomSet(
+          zoomScale.render((displayPercent + units).clamp(10.0, 1600.0) / 100),
+        ),
+        onEditSubmit: (text) {
+          final parsed = double.tryParse(text.replaceAll('%', '').trim());
+          if (parsed != null) {
+            onZoomSet(zoomScale.render(parsed.clamp(10.0, 1600.0) / 100));
+          }
+        },
+      );
+    }
 
     // THE HOST'S OWN VERBS, unfolded. A flyout item already carries
     // everything a button needs — the key tests hold it by, the label its

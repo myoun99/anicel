@@ -398,7 +398,7 @@ void main() {
     }
   });
 
-  testWidgets('DeviceGrid.of reads the EFFECTIVE ratio, not MediaQuery', (
+  testWidgets('DeviceGrid.of reads the EFFECTIVE ratio, not the hardware', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1.25;
@@ -426,6 +426,11 @@ void main() {
     );
 
     expect(grid.ratio, closeTo(1.125, 1e-9));
-    expect(mediaQuery, closeTo(1.25, 1e-9));
+    // The scope corrects MediaQuery to match, so a site that reaches for
+    // it lands on the same grid. The HARDWARE ratio stays reachable from
+    // the FlutterView, which nothing rewrites — that is the number a
+    // form-factor question wants, and the grid never does.
+    expect(mediaQuery, closeTo(1.125, 1e-9));
+    expect(tester.view.devicePixelRatio, 1.25);
   });
 }

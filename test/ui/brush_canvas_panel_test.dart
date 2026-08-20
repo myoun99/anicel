@@ -999,7 +999,19 @@ void main() {
       find.byType(InteractiveBrushEditCanvasView),
     );
 
-    expect(canvas.viewport, CanvasViewport());
+    // 1:1 means one artwork pixel per DEVICE pixel (유저 확정 2026-08-21),
+    // so the render zoom it lands on is the inverse of the effective ratio
+    // — ⛔NOT a bare `CanvasViewport()`, which is one artwork pixel per
+    // LOGICAL pixel and drew at 300% on this 3× test view while the button
+    // beside it said "1:1".
+    expect(
+      canvas.viewport.zoom,
+      closeTo(1 / tester.view.devicePixelRatio, 1e-12),
+    );
+    expect(canvas.viewport.panX, CanvasViewport().panX);
+    expect(canvas.viewport.panY, CanvasViewport().panY);
+    expect(canvas.viewport.rotationDegrees, 0);
+    expect(find.text('100%'), findsOneWidget);
   });
 
   group('zoom label inline percent entry', () {
@@ -1063,7 +1075,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(input, findsNothing);
-      expect(viewportOf(tester).zoom, 2.5);
+      // The typed number is a DEVICE-pixel percentage (유저 확정
+      // 2026-08-21), so the render zoom it commits is that over the
+      // effective ratio. On this 3× test view, 250% is a render 0.8333.
+      expect(
+        viewportOf(tester).zoom,
+        closeTo(2.5 / tester.view.devicePixelRatio, 1e-12),
+      );
       expect(find.text('250%'), findsOneWidget);
     });
 
@@ -1082,8 +1100,10 @@ void main() {
         find.byKey(const ValueKey<String>('canvas-viewport-zoom-input')),
         findsNothing,
       );
+      // Untouched: the panel's own default is a render 1.0, which on this
+      // 3× test view reads as 300%.
       expect(viewportOf(tester).zoom, 1.0);
-      expect(find.text('100%'), findsOneWidget);
+      expect(find.text('300%'), findsOneWidget);
     });
 
     testWidgets('out-of-range entries clamp to the zoom bounds', (
@@ -1099,7 +1119,16 @@ void main() {
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
-      expect(viewportOf(tester).zoom, 16.0);
+      // The readout's own bound is 1600% and it is a DISPLAY percentage
+      // now, so the render zoom it lands on is 1600% over the effective
+      // ratio. ⚠️`CanvasViewport`'s [minZoom]/[maxZoom] are a SECOND,
+      // absolute bound on the render zoom, and the tighter of the two
+      // wins: the reachable range in device terms is unchanged from before
+      // this convention — only the number on the label moved.
+      expect(
+        viewportOf(tester).zoom,
+        closeTo(16.0 / tester.view.devicePixelRatio, 1e-12),
+      );
       expect(find.text('1600%'), findsOneWidget);
     });
   });
