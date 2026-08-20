@@ -7,6 +7,7 @@ import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
@@ -608,13 +609,18 @@ void main() {
             return null;
           },
           onEyedropperPick: (_) {},
+          // ⚠️An EXPLICIT render 1.0. This case maps a screen offset
+          // straight to canvas coordinates, and an uncontrolled panel now
+          // opens at the IDENTITY (one artwork px per DEVICE px), which is
+          // a render zoom of 1/3 on the 3x test view.
+          viewport: CanvasViewport(),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    // Tap a known offset INSIDE the interactive canvas: viewport identity
-    // maps the local offset straight to canvas coordinates.
+    // Tap a known offset INSIDE the interactive canvas: at a render zoom of
+    // 1 the local offset IS the canvas coordinate.
     final canvasTopLeft = tester.getTopLeft(
       find.byType(InteractiveBrushEditCanvasView),
     );

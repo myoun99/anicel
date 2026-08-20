@@ -94,7 +94,12 @@ void main() {
       coordinator.commitSourceStroke(sourceDabs: dabs);
     }
 
-    var liveViewport = viewport;
+    // ⚠️Default to an EXPLICIT render 1.0. These cases map screen pixels
+    // to canvas pixels one-for-one, and an uncontrolled panel now opens at
+    // the identity (one artwork px per DEVICE px), which on the 3x test
+    // view is a render zoom of 1/3. Saying it here keeps the geometry the
+    // assertions were written against, and states the assumption.
+    var liveViewport = viewport ?? CanvasViewport();
     var liveTool = tool;
     Future<void> pumpWith(CanvasTool tool) async {
       liveTool = tool;
