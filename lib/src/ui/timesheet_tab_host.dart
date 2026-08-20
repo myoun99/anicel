@@ -37,6 +37,7 @@ class TimesheetTabHost extends StatefulWidget {
     this.page = 0,
     this.onPageChanged,
     this.viewport,
+    this.viewportController,
     this.onViewportChanged,
     this.inkController,
     this.brushToolState,
@@ -60,6 +61,10 @@ class TimesheetTabHost extends StatefulWidget {
 
   /// Owned above the tab group so zoom/pan survive tab switches.
   final CanvasViewport? viewport;
+
+  /// The view, OWNED by the caller — forwarded to
+  /// [BrushCanvasPanel.viewportController].
+  final ValueNotifier<CanvasViewport?>? viewportController;
   final ValueChanged<CanvasViewport>? onViewportChanged;
 
   /// Sheet ink stores, owned above the tab group so annotations survive
@@ -437,6 +442,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
             cacheInvalidationSink: _cacheInvalidationSink,
             canvasSize: const CanvasSize(width: 780, height: 1080),
             viewport: widget.viewport,
+            viewportController: widget.viewportController,
             onViewportChanged: widget.onViewportChanged,
             allowViewRotation: false,
             bottomBarLeading: [
@@ -526,6 +532,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                       height: documentSize.height.ceil(),
                     ),
                     viewport: widget.viewport,
+                    viewportController: widget.viewportController,
                     onViewportChanged: widget.onViewportChanged,
                     bottomBarLeading: [
                       ..._panelActions(),

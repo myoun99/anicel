@@ -79,8 +79,27 @@ void main() {
     return (session, cameraViewEnabled);
   }
 
-  CanvasViewport panelViewport(WidgetTester tester) =>
-      tester.widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel)).viewport!;
+  /// ⚠️`publishedViewport`, not `.viewport` — the canvas area OWNS the view
+  /// through a notifier now, so the value prop is permanently null here and
+  /// the `!` would throw (or, worse for a nullable oracle, read a default).
+  CanvasViewport panelViewport(WidgetTester tester) => tester
+      .widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel))
+      .publishedViewport!;
+
+  /// Frames the view the way a hand does — into the object the canvas area
+  /// OWNS, which is where the panel's own gestures land too.
+  ///
+  /// ⚠️This used to call `onViewportChanged!`. That callback was the
+  /// storage channel before the area kept the view in a notifier; it is
+  /// null here now, and a pin that drives through a dead channel proves
+  /// nothing about the live one.
+  void frameByHand(WidgetTester tester, CanvasViewport viewport) {
+    tester
+            .widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel))
+            .viewportController!
+            .value =
+        viewport;
+  }
 
   /// Drains the prerender scheduler's debounced warming (the established
   /// EditorCanvasArea test epilogue — its Future.delayed timers cannot be
@@ -110,9 +129,7 @@ void main() {
 
     // Pan by hand mid-run, then cross into cut 2 exactly at local 0.
     final panned = panelViewport(tester).copyWith(panX: 40);
-    tester
-        .widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel))
-        .onViewportChanged!(panned);
+    frameByHand(tester, panned);
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump();
     expect(
@@ -133,9 +150,7 @@ void main() {
     final (session, _) = await pumpArea(tester, cameraView: true);
     // A distinctive pre-play framing to restore.
     final prePlay = panelViewport(tester).copyWith(panX: 123, zoom: 2.0);
-    tester
-        .widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel))
-        .onViewportChanged!(prePlay);
+    frameByHand(tester, prePlay);
     await tester.pump();
 
     session.playback.play(scope: PlaybackScope.allCuts);
@@ -149,9 +164,7 @@ void main() {
     // no row — only the D12 notifier can carry the crossing, and the
     // re-fit stomps the mid-cut pan back to the frame fit.
     final panned = fitStart.copyWith(panX: fitStart.panX + 40);
-    tester
-        .widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel))
-        .onViewportChanged!(panned);
+    frameByHand(tester, panned);
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump();
     expect(

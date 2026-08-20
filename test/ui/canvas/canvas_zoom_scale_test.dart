@@ -6,6 +6,7 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/viewport_point.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/canvas/canvas_zoom_scale.dart';
 import 'package:anicel/src/ui/effective_device_pixel_ratio.dart';
 
@@ -63,7 +64,10 @@ void main() {
       const to = CanvasZoomScale(2.0);
 
       final held = to.rescaledFrom(from, viewport, anchor: anchor);
-      expect(to.display(held.zoom), closeTo(from.display(viewport.zoom), 1e-12));
+      expect(
+        to.display(held.zoom),
+        closeTo(from.display(viewport.zoom), 1e-12),
+      );
       // ⭐The artwork covers the same DEVICE pixels — that IS the exclusion.
       expect(held.zoom * 2.0, closeTo(viewport.zoom * 1.25, 1e-12));
     });
@@ -126,7 +130,11 @@ void main() {
   group('the panel speaks the convention', () {
     // Wide enough that the pill shows its whole zoom cluster — the 1:1
     // button is the first thing a narrow panel folds away.
-    Widget harness({required double uiScale, CanvasViewport? viewport}) {
+    Widget harness({
+      required double uiScale,
+      CanvasViewport? viewport,
+      ValueNotifier<CanvasViewport?>? controller,
+    }) {
       final frameKeys = BrushCanvasFixture.createFrameKeys();
       return MediaQuery(
         data: MediaQueryData.fromView(
@@ -149,6 +157,7 @@ void main() {
                   floorCover: EdgeInsets.zero,
                   canvasSize: const CanvasSize(width: 300, height: 300),
                   viewport: viewport,
+                  viewportController: controller,
                 ),
               ),
             ),
@@ -245,7 +254,8 @@ void main() {
       expect(
         readout(tester),
         before,
-        reason: 'the FIRST frame after a scale change is already correct — '
+        reason:
+            'the FIRST frame after a scale change is already correct — '
             'the hold, not the post-frame commit, is what makes it so',
       );
       await tester.pump();
@@ -260,6 +270,41 @@ void main() {
       // The DEVICE coverage is what must be unchanged: render x effective
       // ratio is the display zoom, and the view opened at 100%.
       expect(reported!.zoom * (1.5 * 1.25), closeTo(1.0, 1e-9));
+    });
+
+    testWidgets('an OWNER that reframes the view repaints the canvas, not '
+        'just the readout', (tester) async {
+      // 🚨The hole the controller opened. The view used to arrive as a PROP,
+      // so an owner that reframed it rebuilt the panel by definition; handed
+      // a notifier, the owner writes into an object the panel only READS and
+      // nothing schedules a frame. Measured on the playback stop restore.
+      //
+      // ⛔The witness is the GESTURE LAYER, deliberately, and not the pill's
+      // percentage: the pill is handed the notifier itself and listens on its
+      // own, so it prints the new number whether or not the canvas moved. The
+      // gesture layer takes the viewport as a build-time value — and it is
+      // what turns a press into an artwork coordinate, so a stale one means
+      // the strokes land where the picture used to be.
+      final owner = ValueNotifier<CanvasViewport?>(null);
+      addTearDown(owner.dispose);
+
+      await tester.pumpWidget(harness(uiScale: 1.0, controller: owner));
+      await tester.pump();
+
+      CanvasViewport layerViewport() => tester
+          .widget<CanvasViewportGestureLayer>(
+            find.byType(CanvasViewportGestureLayer).first,
+          )
+          .viewport;
+      final opened = layerViewport();
+
+      owner.value = opened.copyWith(panX: opened.panX + 37);
+      await tester.pump();
+      expect(
+        layerViewport().panX,
+        closeTo(opened.panX + 37, 1e-9),
+        reason: "the owner's frame is the canvas's frame, in one pump",
+      );
     });
 
     testWidgets('a scale change survives a host that setStates on the '

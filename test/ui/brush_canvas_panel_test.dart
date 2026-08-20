@@ -1586,7 +1586,10 @@ void main() {
       // Relative: a 2x pinch doubles whatever the view opened at.
       expect(
         viewports.last.zoom,
-        closeTo(CanvasZoomScale(tester.view.devicePixelRatio).render(1) * 2, 1e-9),
+        closeTo(
+          CanvasZoomScale(tester.view.devicePixelRatio).render(1) * 2,
+          1e-9,
+        ),
       );
     });
 
@@ -1756,6 +1759,11 @@ void main() {
         ),
       );
       await tester.pump();
+      // ⚠️A panel opened without a `viewport` publishes the one it opened at
+      // (the identity for this ratio) once, after its first frame — the host
+      // draws the readout and answers the zoom verbs, so it has to be told.
+      // That emission is not a zoom, and this pin is about the WHEEL.
+      viewports.clear();
 
       // Start a stroke with the primary button and keep it held.
       final strokeGesture = await tester.createGesture(
