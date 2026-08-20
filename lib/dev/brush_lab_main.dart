@@ -23,6 +23,7 @@ import 'package:flutter/scheduler.dart';
 
 import '../src/models/brush_tip_mask.dart';
 import '../src/services/persistence/anicel_project_archive.dart';
+import '../src/services/persistence/app_ui_scale_store.dart';
 import '../src/models/canvas_resize_anchor.dart';
 import '../src/models/canvas_size.dart';
 import '../src/native/qa_native_engine.dart';
@@ -38,12 +39,23 @@ import '../src/ui/theme/app_theme.dart';
 import '../src/ui/ui_scale.dart';
 import '../src/ui/ui_scale_binding.dart';
 
-void main() {
+Future<void> main() async {
   // The lab measures the PRODUCTION pixel pipeline, so it boots the
   // production binding: the UI scale multiplies into the root device
   // matrix, and a lab on the plain binding would quantize against a grid
   // the app does not use.
   AnicelBinding.ensureInitialized();
+  // 🚨AND it restores the scale, for the same reason `lib/main.dart` does
+  // — but here there is a second, sharper one. This entrypoint mounts the
+  // production `HomePage`, which injects a LIVE `AppUiScaleStore`, so
+  // without this the lab starts at 100%, and the first time anything
+  // writes the setting it overwrites the user's real `ui_scale.json` with
+  // a value they never chose. A measuring instrument must not change the
+  // thing it measures.
+  final storedScale = await AppUiScaleStore().load();
+  if (storedScale != null) {
+    AppUiScale.value.value = storedScale;
+  }
   runApp(const _BrushLabApp());
 }
 
@@ -52,20 +64,29 @@ class _BrushLabApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Anicel Brush Lab',
-      theme: buildAppTheme(),
-      // The lab is the same app with a driver on top — it gets the same
-      // scrollbars, or it stops being a place to judge them from.
-      scrollBehavior: const AppScrollBehavior(),
-      // Same reason: without the scope every `DeviceGrid.of` below falls
-      // back to MediaQuery, which reports the RAW view ratio and would
-      // disagree with the binding above at any scale but 100%.
-      builder: (context, child) => EffectiveDevicePixelRatioScope(
-        uiScale: AppUiScale.value.value,
-        child: child ?? const SizedBox.shrink(),
+    // ⚠️`ListenableBuilder`, exactly as `lib/main.dart` has it. The binding
+    // half follows `AppUiScale` live; a scope that read it once at build
+    // would leave the widget half frozen, which is the "either one alone
+    // leaves the app measuring against a box it is not laid out in" state
+    // that `ui_scale_binding.dart` calls fatal — and the lab exists to
+    // measure exactly that box.
+    return ListenableBuilder(
+      listenable: AppUiScale.value,
+      builder: (context, _) => MaterialApp(
+        title: 'Anicel Brush Lab',
+        theme: buildAppTheme(),
+        // The lab is the same app with a driver on top — it gets the same
+        // scrollbars, or it stops being a place to judge them from.
+        scrollBehavior: const AppScrollBehavior(),
+        // Same reason: without the scope every `DeviceGrid.of` below falls
+        // back to MediaQuery, which reports the RAW view ratio and would
+        // disagree with the binding above at any scale but 100%.
+        builder: (context, child) => EffectiveDevicePixelRatioScope(
+          uiScale: AppUiScale.value.value,
+          child: child ?? const SizedBox.shrink(),
+        ),
+        home: const _BrushLabDriver(child: HomePage()),
       ),
-      home: const _BrushLabDriver(child: HomePage()),
     );
   }
 }
