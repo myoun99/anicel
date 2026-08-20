@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/device_viewport.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -101,7 +102,7 @@ Future<EditorSessionManager> _pumpConte(WidgetTester tester) async {
           // to screen offsets one for one, and an uncontrolled panel now
           // opens at the IDENTITY (one document px per DEVICE px), which
           // is 1/3 on the 3x test view.
-          viewport: CanvasViewport(),
+          viewport: seedFromRender(tester, CanvasViewport()),
         ),
       ),
     ),
@@ -226,6 +227,10 @@ void main() {
                 page: page,
                 brushToolState: BrushToolState.defaults,
                 historyManager: historyManager,
+                // ⛔NOT `seedFromRender`. The device-unit rule is
+                // `BrushCanvasPanel`'s boundary and the hosts that forward
+                // to it; this is a LEAF that paints, so it takes the logical
+                // viewport every painter takes.
                 viewport: CanvasViewport(),
                 strokeActive: strokeActive,
               ),

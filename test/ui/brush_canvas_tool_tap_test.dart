@@ -1,8 +1,9 @@
-﻿import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/gestures.dart' show kMiddleMouseButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/device_viewport.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
@@ -61,9 +62,9 @@ void main() {
     coordinator.commitSourceStroke(
       sourceDabs: [
         for (var x = 0; x <= 12; x += 2)
-          fillDab(0xFF000000).copyWith(
-            center: CanvasPoint(x: x.toDouble(), y: 4),
-          ),
+          fillDab(
+            0xFF000000,
+          ).copyWith(center: CanvasPoint(x: x.toDouble(), y: 4)),
       ],
     );
     expect(inkAt(coordinator, 4, 4), isNonZero, reason: 'ink to erase');
@@ -550,7 +551,8 @@ void main() {
     expect(
       swatchColor(),
       isNot(restingColor),
-      reason: 'R28 #8: the swatch must track a button-held move, not freeze '
+      reason:
+          'R28 #8: the swatch must track a button-held move, not freeze '
           'wherever it was seeded',
     );
     expect(
@@ -613,7 +615,7 @@ void main() {
           // straight to canvas coordinates, and an uncontrolled panel now
           // opens at the IDENTITY (one artwork px per DEVICE px), which is
           // a render zoom of 1/3 on the 3x test view.
-          viewport: CanvasViewport(),
+          viewport: seedFromRender(tester, CanvasViewport()),
         ),
       ),
     );

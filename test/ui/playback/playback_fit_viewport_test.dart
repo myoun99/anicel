@@ -84,7 +84,7 @@ void main() {
   /// the `!` would throw (or, worse for a nullable oracle, read a default).
   CanvasViewport panelViewport(WidgetTester tester) => tester
       .widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel))
-      .publishedViewport!;
+      .publishedViewport;
 
   /// Frames the view the way a hand does — into the object the canvas area
   /// OWNS, which is where the panel's own gestures land too.

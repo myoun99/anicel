@@ -1,7 +1,6 @@
 import 'package:flutter/widgets.dart';
 
 import '../../models/canvas_viewport.dart';
-import '../../models/viewport_point.dart';
 import '../effective_device_pixel_ratio.dart';
 
 /// The two units a document view's zoom is spoken in, and the one number
@@ -73,10 +72,8 @@ class CanvasZoomScale {
   /// Every absolute zoom verb goes through this — the ± buttons, the
   /// readout's drag, a typed percentage — so all three stop at the same
   /// number the label promises.
-  double clampRender(double renderZoom) => renderZoom.clamp(
-    render(minDisplayZoom),
-    render(maxDisplayZoom),
-  );
+  double clampRender(double renderZoom) =>
+      renderZoom.clamp(render(minDisplayZoom), render(maxDisplayZoom));
 
   /// The identity view: artwork 1px = device 1px, whatever the monitor and
   /// the UI scale are.
@@ -86,27 +83,45 @@ class CanvasZoomScale {
   /// the artwork at 150% and called it 100%.
   CanvasViewport get identityViewport => CanvasViewport(zoom: render(1));
 
-  /// [viewport] re-zoomed so it still covers the same DEVICE pixels after
-  /// the effective ratio changed from [previous] to this one, keeping the
-  /// canvas point under [anchor] fixed.
+  /// The view measured in DEVICE pixels — the form it is STORED in.
   ///
-  /// 🚨This is the exclusion's moving part. The ratio changes when the user
-  /// picks a new UI scale and when the window is dragged to a display with
-  /// a different ratio; in both cases the percentage is the invariant, and
-  /// without this the artwork would jump by the scale factor.
-  CanvasViewport rescaledFrom(
-    CanvasZoomScale previous,
-    CanvasViewport viewport, {
-    required ViewportPoint anchor,
-  }) {
-    if (previous.ratio == ratio) {
-      return viewport;
-    }
-    return viewport.zoomedAround(
-      nextZoom: render(previous.display(viewport.zoom)),
-      anchor: anchor,
-    );
-  }
+  /// 🎯**The whole transform is a uniform scale by [ratio].** Not just the
+  /// zoom: [CanvasViewport.panX]/[CanvasViewport.panY] are viewport-space
+  /// offsets, so they carry the same factor, while the rotation and the
+  /// flips are angles and signs and carry none. Read the forward map and
+  /// it falls out —
+  ///
+  ///     canvasToViewport(p) · ratio = p · (zoom · ratio) + (pan · ratio)
+  ///
+  /// — the device-space answer IS the logical one scaled, with no residue.
+  ///
+  /// 🚨Which is why a view kept in these units survives a ratio change by
+  /// doing NOTHING. Convert out at the new ratio and every artwork pixel
+  /// lands on the device pixel it was already on: no re-zoom, no anchor to
+  /// choose, and nothing to get wrong while a panel is unmounted.
+  ///
+  /// ⛔The device zoom IS the percentage the user reads — [display] and
+  /// [render] are the same conversion, and the readout stops converting.
+  CanvasViewport toDevice(CanvasViewport view) => view.copyWith(
+    zoom: view.zoom * ratio,
+    panX: view.panX * ratio,
+    panY: view.panY * ratio,
+  );
+
+  /// [device] mapped back into the LOGICAL units every painter and hit test
+  /// works in — the inverse of [toDevice].
+  CanvasViewport fromDevice(CanvasViewport device) => device.copyWith(
+    zoom: device.zoom / ratio,
+    panX: device.panX / ratio,
+    panY: device.panY / ratio,
+  );
+
+  // ⛔There is no `rescaledFrom` here any more, and adding one back would be
+  // a regression. It re-zoomed a stored view when the effective ratio moved,
+  // around a chosen anchor, and it had three problems the unit does not:
+  // it could only hold ONE point exactly, it needed a mounted panel to run,
+  // and it needed each panel to remember the ratio it last framed against.
+  // A view stored in device units survives a ratio change by doing nothing.
 
   @override
   bool operator ==(Object other) =>

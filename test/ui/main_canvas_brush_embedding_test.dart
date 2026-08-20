@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/device_viewport.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -453,7 +454,13 @@ void main() {
       layerId: LayerId('layer-a'),
       frameId: FrameId('frame-a'),
     );
-    final viewport = CanvasViewport(zoom: 2, panX: -25, panY: -30);
+    // ⚠️DEVICE units at the prop; the assertion below reads the canvas
+    // view, which is LOGICAL — so the seed converts and the expectation
+    // stays the render numbers this pin was written with.
+    final viewport = seedFromRender(
+      tester,
+      CanvasViewport(zoom: 2, panX: -25, panY: -30),
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: StatefulBuilder(
@@ -505,7 +512,7 @@ void main() {
             find.byType(InteractiveBrushEditCanvasView),
           )
           .viewport,
-      viewport,
+      renderOf(tester, viewport),
     );
     await tester.tap(find.text('Switch selection'));
     await tester.pumpAndSettle();
@@ -515,7 +522,7 @@ void main() {
             find.byType(InteractiveBrushEditCanvasView),
           )
           .viewport,
-      viewport,
+      renderOf(tester, viewport),
     );
   });
 

@@ -116,11 +116,12 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// [BrushCanvasPanel.viewportController].
   final ValueNotifier<CanvasViewport?>? viewportController;
 
-  /// The view as the caller can see it — see
+  /// The view as the caller holds it, in DEVICE pixels — see
   /// [BrushCanvasPanel.publishedViewport] for why the two channels resolve
-  /// in one place instead of at each reader.
-  CanvasViewport? get publishedViewport =>
-      viewportController != null ? viewportController!.value : viewport;
+  /// in one place, and why the unit is the device's.
+  CanvasViewport get publishedViewport =>
+      (viewportController != null ? viewportController!.value : viewport) ??
+      CanvasViewport();
 
   final ValueChanged<CanvasViewport>? onViewportChanged;
 

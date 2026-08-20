@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/device_viewport.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
@@ -101,7 +102,7 @@ void main() {
               // canvas coordinates one for one, and an uncontrolled panel
               // now opens at the IDENTITY — one artwork pixel per DEVICE
               // pixel — which is a render zoom of 1/3 on the 3x test view.
-              viewport: CanvasViewport(),
+              viewport: seedFromRender(tester, CanvasViewport()),
             ),
           ),
         ),
@@ -122,11 +123,7 @@ void main() {
     );
   }
 
-  Future<void> dragOnLayer(
-    WidgetTester tester,
-    Offset from,
-    Offset to,
-  ) async {
+  Future<void> dragOnLayer(WidgetTester tester, Offset from, Offset to) async {
     final origin = tester.getTopLeft(find.byKey(layerKey));
     final gesture = await tester.startGesture(
       origin + from,
@@ -625,10 +622,7 @@ void main() {
       sourceDabs: [
         buildCutStampDab(
           piece: piece,
-          center: CanvasPoint(
-            x: landLeft + width / 2,
-            y: landTop + height / 2,
-          ),
+          center: CanvasPoint(x: landLeft + width / 2, y: landTop + height / 2),
         ),
       ],
     );

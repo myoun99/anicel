@@ -166,11 +166,9 @@ void main() {
     // ⚠️`publishedViewport`, not `.viewport` — the canvas area OWNS the view
     // through a notifier now, so the value prop it used to echo into is
     // permanently null and this oracle would assert about a default.
-    CanvasViewport viewportOf() =>
-        tester
-            .widget<MainCanvasBrushHost>(find.byType(MainCanvasBrushHost))
-            .publishedViewport ??
-        CanvasViewport();
+    CanvasViewport viewportOf() => tester
+        .widget<MainCanvasBrushHost>(find.byType(MainCanvasBrushHost))
+        .publishedViewport;
 
     await tester.sendKeyEvent(LogicalKeyboardKey.keyR);
     await tester.pumpAndSettle();

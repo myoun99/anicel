@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/device_viewport.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -75,7 +76,7 @@ void main() {
               // canvas coordinates one for one, and an uncontrolled panel
               // now opens at the IDENTITY — one artwork px per DEVICE px,
               // i.e. 1/3 on the 3x test view.
-              viewport: CanvasViewport(),
+              viewport: seedFromRender(tester, CanvasViewport()),
             ),
           ),
         ),
@@ -132,7 +133,11 @@ void main() {
       const Offset(70, 70),
     );
     expect(env.commands.region, isNotNull);
-    expect(find.byKey(idleAntsKey), findsNothing, reason: 'the layer owns them');
+    expect(
+      find.byKey(idleAntsKey),
+      findsNothing,
+      reason: 'the layer owns them',
+    );
 
     // Switch to the BRUSH: the interaction layer unmounts, the selection
     // does NOT (it used to die with the layer's State).
@@ -219,7 +224,12 @@ void main() {
 
     // Default 추가: two disjoint drags select BOTH lobes.
     expect(env.commands.combineMode, SelectionCombineMode.add);
-    await dragOnLayer(tester, layer, const Offset(10, 10), const Offset(40, 40));
+    await dragOnLayer(
+      tester,
+      layer,
+      const Offset(10, 10),
+      const Offset(40, 40),
+    );
     await dragOnLayer(
       tester,
       layer,
@@ -262,7 +272,12 @@ void main() {
     env.commands.combineMode = SelectionCombineMode.replace;
     await tester.pump();
 
-    await dragOnLayer(tester, layer, const Offset(10, 10), const Offset(40, 40));
+    await dragOnLayer(
+      tester,
+      layer,
+      const Offset(10, 10),
+      const Offset(40, 40),
+    );
     // SHIFT held: adds instead of replacing, even though the tool setting
     // says 갱신.
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
@@ -297,7 +312,12 @@ void main() {
     final layer = find.byKey(layerKey);
     final entriesBefore = env.history.undoCount;
 
-    await dragOnLayer(tester, layer, const Offset(10, 10), const Offset(40, 40));
+    await dragOnLayer(
+      tester,
+      layer,
+      const Offset(10, 10),
+      const Offset(40, 40),
+    );
     await dragOnLayer(
       tester,
       layer,
