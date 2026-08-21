@@ -465,8 +465,35 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                           offstage:
                               tab.id != active.id ||
                               (widget.collapsed && tab.collapsedExtent <= 0),
+                          // 🚨결정 3 (유저 2026-08-22, 세 번째 요청) — **A
+                          // TICKER RUNS WHERE THE PANEL SHOWS.**
+                          //
+                          // > 「아직도 접기 직전의 인덱스 상태 기준으로
+                          // > 활성/비활성 **색**. **내부 로직 자체는 제대로
+                          // > 작동**하니 **겉모습만** 갱신 안 되는 듯. 그리고
+                          // > **3번째 말하는 것 같은데** 접고나서 **버튼 호버시
+                          // > 바탕 흰색** 되는 게 사라진다」
+                          //
+                          // ⛔This read `&& !widget.collapsed`, which muted a
+                          // tab that had DECLARED a collapsed form — a
+                          // surface the line directly above keeps ON SCREEN.
+                          // Every `IconButton`'s colour crosses an
+                          // `AnimatedTheme` and every hover wash is an
+                          // `InkHighlight` fade; both are driven by tickers,
+                          // so both froze at the value they held when the
+                          // fold happened. That is exactly "the logic is
+                          // right and only the look is stale", and it is why
+                          // the two complaints were one bug.
+                          //
+                          // ★The condition is the offstage one, negated —
+                          // said once, so a button cannot need a rule of its
+                          // own to look right in a place it is visible. A tab
+                          // with no collapsed form is still muted, which is
+                          // what the mute was for.
                           child: TickerMode(
-                            enabled: tab.id == active.id && !widget.collapsed,
+                            enabled:
+                                tab.id == active.id &&
+                                !(widget.collapsed && tab.collapsedExtent <= 0),
                             child: PanelVisibilityScope(
                               visible: _visibilityFor(
                                 tab.id,
