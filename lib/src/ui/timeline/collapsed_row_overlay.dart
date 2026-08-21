@@ -172,104 +172,109 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
         opacity: collapsedRowOverlayOpacity,
         child: SizedBox(
           height: CollapsedRowOverlay.height,
-        // ★The rail window is CLAMPED to the room that exists. The stored
-        // width is the splitter's answer for a panel as wide as the region,
-        // and the collapsed row is laid over a region that can be pulled
-        // narrower than that — an inflexible 434 beside an `Expanded` then
-        // overflows by the difference rather than yielding, which is exactly
-        // what the region tests caught. Clamping keeps the rail model's own
-        // rule: the window never exceeds what there is to window.
-        child: LayoutBuilder(
-          builder: (context, constraints) => Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // ★THE RAIL MODEL, from the widget that owns it rather than
-              // rebuilt by hand: 「레일은 자기 자연 크기로 눕고, 스플리터는
-              // 그 위의 창을 정하고, 꼬리가 그냥 잘린다」.
-              //
-              // ⛔This was a `SizedBox(min(railWidth, maxWidth))` wrapping a
-              // `ClipRect` + `OverflowBox` — the same three jobs
-              // [LayerRailWindow] does, spelled out a second time. The copy
-              // could not answer the one question that mattered: a stored
-              // extent of null means NATURAL, and only the window widget
-              // knows that. `availableExtent` carries over the clamp the
-              // `min()` was doing, which is what keeps a narrowed region
-              // from overflowing.
-              LayerRailWindow(
-                axis: Axis.horizontal,
-                rail: widget.rail ?? (_ownedRail ??= LayerRailExtent()),
-                naturalExtent: widget.naturalRailWidth,
-                availableExtent: constraints.maxWidth,
-                child: _haloed(
-                  context,
-                  // A layer row is the REAL row, chromeless. A property
-                  // lane is its name and its value, which is what the rail
-                  // shows there — so the caller hands null instead.
-                  widget.railChild ?? _rail(row, colorScheme),
+          // ★The rail window is CLAMPED to the room that exists. The stored
+          // width is the splitter's answer for a panel as wide as the region,
+          // and the collapsed row is laid over a region that can be pulled
+          // narrower than that — an inflexible 434 beside an `Expanded` then
+          // overflows by the difference rather than yielding, which is exactly
+          // what the region tests caught. Clamping keeps the rail model's own
+          // rule: the window never exceeds what there is to window.
+          child: LayoutBuilder(
+            builder: (context, constraints) => Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // ★THE RAIL MODEL, from the widget that owns it rather than
+                // rebuilt by hand: 「레일은 자기 자연 크기로 눕고, 스플리터는
+                // 그 위의 창을 정하고, 꼬리가 그냥 잘린다」.
+                //
+                // ⛔This was a `SizedBox(min(railWidth, maxWidth))` wrapping a
+                // `ClipRect` + `OverflowBox` — the same three jobs
+                // [LayerRailWindow] does, spelled out a second time. The copy
+                // could not answer the one question that mattered: a stored
+                // extent of null means NATURAL, and only the window widget
+                // knows that. `availableExtent` carries over the clamp the
+                // `min()` was doing, which is what keeps a narrowed region
+                // from overflowing.
+                LayerRailWindow(
+                  axis: Axis.horizontal,
+                  rail: widget.rail ?? (_ownedRail ??= LayerRailExtent()),
+                  naturalExtent: widget.naturalRailWidth,
+                  availableExtent: constraints.maxWidth,
+                  child: _haloed(
+                    context,
+                    // A layer row is the REAL row, chromeless. A property
+                    // lane is its name and its value, which is what the rail
+                    // shows there — so the caller hands null instead.
+                    widget.railChild ?? _rail(row, colorScheme),
+                  ),
                 ),
-              ),
-            Expanded(
-              child: ClipRect(
-                child: LayoutBuilder(
-                  builder: (context, frameConstraints) {
-                    final build = widget.frameRowBuilder;
-                    if (build == null) {
-                      return CustomPaint(
-                        painter: _CollapsedStripPainter(
-                          snapshot: snapshot,
-                          row: row,
-                          pixelsPerFrame: widget.pixelsPerFrame,
-                          framesPerSecond: widget.framesPerSecond,
-                          colorScheme: colorScheme,
-                        ),
-                      );
-                    }
-                    // Republished per layout, value only — the handle's
-                    // identity is what the row memo keys on.
-                    _geometry.value = TimelineFrameGeometry(
-                      frameCellExtent: widget.pixelsPerFrame,
-                      frameStartIndex: 0,
-                      frameEndIndexExclusive: widget.pixelsPerFrame <= 0
-                          ? 0
-                          : (frameConstraints.maxWidth / widget.pixelsPerFrame)
-                                .ceil(),
-                    );
-                    // 🚨THE GRID LINES, and they were never removed — this
-                    // painter was simply not mounted here. Every plain
-                    // per-cell border is `Colors.transparent` on purpose
-                    // (`timeline_cell_style`: 「the GRID OVERLAY owns every
-                    // plain per-cell line now」), so a row without this
-                    // overlay has no lines at all, and chromeless mode was
-                    // wrongly blamed for erasing them.
-                    //
-                    // 🎁The cut-end shading rides in the same painter, so
-                    // mounting it brings both back at once — and the shading
-                    // is information rather than chrome (유저 확정 08-10),
-                    // which is why it belongs on a folded row too.
-                    return Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        build(context, _geometry),
-                        IgnorePointer(
-                          child: CustomPaint(
-                            key: const ValueKey<String>(
-                              'collapsed-beat-lines',
-                            ),
-                            painter: TimelineBeatLinesPainter(
-                              frameCellExtent: widget.pixelsPerFrame,
+                Expanded(
+                  child: ClipRect(
+                    child: LayoutBuilder(
+                      builder: (context, frameConstraints) {
+                        final build = widget.frameRowBuilder;
+                        if (build == null) {
+                          return CustomPaint(
+                            painter: _CollapsedStripPainter(
+                              snapshot: snapshot,
+                              row: row,
+                              pixelsPerFrame: widget.pixelsPerFrame,
                               framesPerSecond: widget.framesPerSecond,
                               colorScheme: colorScheme,
-                              crossCellExtent: CollapsedRowOverlay.height,
                             ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
+                          );
+                        }
+                        // Republished per layout, value only — the handle's
+                        // identity is what the row memo keys on.
+                        _geometry.value = TimelineFrameGeometry(
+                          frameCellExtent: widget.pixelsPerFrame,
+                          frameStartIndex: 0,
+                          frameEndIndexExclusive: widget.pixelsPerFrame <= 0
+                              ? 0
+                              : (frameConstraints.maxWidth /
+                                        widget.pixelsPerFrame)
+                                    .ceil(),
+                        );
+                        // 🚨THE GRID LINES, and they were never removed — this
+                        // painter was simply not mounted here. Every plain
+                        // per-cell border is `Colors.transparent` on purpose
+                        // (`timeline_cell_style`: 「the GRID OVERLAY owns every
+                        // plain per-cell line now」), so a row without this
+                        // overlay has no lines at all, and chromeless mode was
+                        // wrongly blamed for erasing them.
+                        //
+                        // 🎁The cut-end shading rides in the same painter, so
+                        // mounting it brings both back at once — and the shading
+                        // is information rather than chrome (유저 확정 08-10),
+                        // which is why it belongs on a folded row too.
+                        return Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            build(context, _geometry),
+                            IgnorePointer(
+                              child: CustomPaint(
+                                key: const ValueKey<String>(
+                                  'collapsed-beat-lines',
+                                ),
+                                painter: TimelineBeatLinesPainter(
+                                  frameCellExtent: widget.pixelsPerFrame,
+                                  framesPerSecond: widget.framesPerSecond,
+                                  colorScheme: colorScheme,
+                                  // ⛔NULL: the folded row lies over the ARTWORK at
+                                  // 70%, so there is no single ground to multiply
+                                  // against — these lines stay source-over.
+                                  ground: null,
+                                  crossCellExtent: CollapsedRowOverlay.height,
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            ],
+              ],
             ),
           ),
         ),
@@ -390,10 +395,7 @@ class _CollapsedStripPainter extends CustomPainter {
       if (ink == null) {
         continue;
       }
-      final position = timelineFrameBoundaryLinePosition(
-        frame,
-        pixelsPerFrame,
-      );
+      final position = timelineFrameBoundaryLinePosition(frame, pixelsPerFrame);
       canvas.drawLine(
         Offset(position, 0),
         Offset(position, size.height),
@@ -445,9 +447,7 @@ class _CollapsedStripPainter extends CustomPainter {
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = covered ? 2 : 1
-          ..color = covered
-              ? colorScheme.primary
-              : const Color(0x9EE9E7E2),
+          ..color = covered ? colorScheme.primary : const Color(0x9EE9E7E2),
       );
       _label(canvas, rect, run.label.isEmpty ? '○' : run.label);
     }

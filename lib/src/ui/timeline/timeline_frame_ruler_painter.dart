@@ -216,11 +216,21 @@ class TimelineFrameRulerPainter extends CustomPainter {
       final rect = headerRectFor(frameIndex);
       // The LAW's snap (it was this ruler's own +0.5 first — D8 promoted
       // it so the overlay lands on the same pixel).
+      //
+      // D43 (유저, 2026-08-21): and the LAW's over-ground treatment too.
+      // The ink and the position were already shared; the COMPOSITE was
+      // not — the ruler laid its line over the header paper source-over
+      // while a block's interior seam multiplied, so one grid read
+      // lighter here and darker there. PASS 1 has just filled this
+      // header, so the ground is known exactly rather than assumed.
       canvas.drawLine(
         Offset(rect.left + timelineGridLineSnap, rect.top),
         Offset(rect.left + timelineGridLineSnap, rect.bottom),
         linePaint
-          ..color = ink.color
+          ..color = timelineGridLineInkOnGround(
+            ink,
+            headerModelAt(frameIndex).background,
+          )
           ..strokeWidth = ink.strokeWidth,
       );
     }
