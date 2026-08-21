@@ -234,11 +234,28 @@ class EditorWorkspace extends StatefulWidget {
   /// Half the window (유저 원문: 「타임라인 세로 = 화면 절반」).
   static const double bottomDockHeightFraction = 0.5;
 
-  /// A dock may grow until the CENTRE is still 4/3 of it — the user's
-  /// "중간 크기의 3/4까지". Solved for the dock: `d ≤ ¾·(rest − d)` gives
-  /// `d ≤ 3/7 · rest`, where `rest` already has the other dock taken out,
-  /// so the pair honours the same promise the single one does.
-  static const double _dockCentreShare = 3 / 7;
+  /// 🚨결정 8 (유저 확정 2026-08-22) — **A RAIL'S CEILING IS A SHARE OF THE
+  /// WINDOW, AND OF NOTHING ELSE.**
+  ///
+  /// > 「①**창 폭의 절반의 3/4** (=37.5%)」
+  ///
+  /// ⛔What stood here was `3/7 · rest`, where `rest` had the OTHER dock's
+  /// current width taken out. That is a faithful reading of 「중간의 3/4」 and
+  /// it is exactly what the user reported: 「한쪽 띠 크기를 바꿀 때 **반대쪽도
+  /// 바뀐다**」. A ceiling that names the other side makes the two sides one
+  /// quantity — every build re-derived the right from the already-clamped
+  /// left, so equal stored widths drew unequal and dragging either moved
+  /// both.
+  ///
+  /// ★A fraction of the WINDOW cannot do that. Two rails at 37.5% leave 25%
+  /// for the centre, so they always fit and neither has to ask about the
+  /// other. The user picked the number that makes the coupling unnecessary
+  /// rather than the one that describes its result.
+  static const double sideDockCeilingFraction = 0.375;
+
+  /// The bottom dock's own ceiling — 「하단 = **화면 절반**까지」, the same
+  /// sentence on the other axis.
+  static const double bottomDockCeilingFraction = 0.5;
 
   /// ⚠️Fallbacks for a window whose size is not known yet (an unbounded
   /// host, a test harness that never lays out). Every path that HAS the
@@ -286,18 +303,29 @@ class EditorWorkspace extends StatefulWidget {
     );
   }
 
-  /// How wide one side dock may be dragged, given what the OTHER one is
-  /// already taking. See [_dockCentreShare].
+  /// How wide one side dock may be dragged — [sideDockCeilingFraction] of
+  /// the window, and never so much that the pair could crowd the centre out
+  /// on a narrow one.
+  ///
+  /// ⚠️It takes no `otherDockWidth`, and that absence IS the fix (결정 8).
+  /// Both rails get the same answer from the same window, so one can never
+  /// move the other.
+  ///
+  /// ⚠️The second term binds only below roughly 550px of window, where
+  /// 37.5% twice would leave the centre under its floor. It still names no
+  /// dock — it halves what is left after the floor, which both sides can
+  /// take at once.
   static double sideDockCeiling({
     required double availableWidth,
     required double gaps,
-    required double otherDockWidth,
+    required double minCentreWidth,
   }) {
     if (!availableWidth.isFinite) {
       return double.infinity;
     }
-    final rest = availableWidth - gaps - otherDockWidth;
-    return math.max(0.0, rest * _dockCentreShare);
+    final share = availableWidth * sideDockCeilingFraction;
+    final room = (availableWidth - gaps - minCentreWidth) / 2;
+    return math.max(0.0, math.min(share, room));
   }
 
   /// How many GROUPS a rail can hold.
@@ -3636,6 +3664,34 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     );
   }
 
+  /// 🚨결정 8: 「하단 = **화면 절반**까지」 — how far the dock may be DRAGGED,
+  /// and how tall it OPENS. The number the user gave was never in the code
+  /// as a limit; it lived only in the opening fallback.
+  ///
+  /// ⚠️Deliberately NOT [_bottomDockCeiling]. That one answers a different
+  /// question — what the WINDOW can physically spare — and the dock's own
+  /// minimum (the height its panels need to render at all) is measured
+  /// against it. Folding half the window into that answer squeezed panels
+  /// below their floor on any window taller than twice the timeline's
+  /// minimum, which is most of them; measured, it took a row of lanes off
+  /// two test surfaces that had nothing to do with dock size.
+  ///
+  /// ★A ceiling on the HAND is not a licence to under-draw. Half the window
+  /// is where a drag stops; a panel that needs more than that to exist at
+  /// all still gets what the window can spare.
+  double _bottomDockDragCeiling(double availableExtent) {
+    if (!availableExtent.isFinite) {
+      return double.infinity;
+    }
+    return math.max(
+      0.0,
+      math.min(
+        availableExtent * EditorWorkspace.bottomDockCeilingFraction,
+        _bottomDockCeiling(availableExtent),
+      ),
+    );
+  }
+
   /// The collapsed floating region: its 문턱 plus whatever the ACTIVE tab
   /// says it needs at that size ([EditorPanelTab.collapsedExtent]).
   ///
@@ -3764,6 +3820,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     // 「타임라인 세로 = 화면 절반」). A dock the user HAS sized keeps its
     // pixels — see [sideDockWidthFraction] for why a fraction is the
     // opening and not a binding.
+    // ⛔결정 8 does NOT clamp HERE, and the attempt is recorded because it
+    // looked obviously right. 「하단 = 화면 절반까지」 limits the HAND, and
+    // this expression is not the hand: the opening fallback is already half
+    // the window, so capping it changes nothing that OPENS. What it does
+    // change is a dock whose panels need more than half to render at all —
+    // that dock then draws under its own floor. Measured: it took a row of
+    // lanes off two test surfaces that never touch dock size.
     final wanted = math.max(
       _layout.dockExtent(
         EditorWorkspace.bottomGroupId,
@@ -4641,31 +4704,26 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                         // the drag: a layout saved before it existed can sit
                         // above it, and the host must draw what the drag would
                         // now allow rather than what the file remembers.
-                        leftWidth = math.min(
-                          leftWidth,
-                          EditorWorkspace.sideDockCeiling(
-                            availableWidth: constraints.maxWidth,
-                            gaps: gaps,
-                            otherDockWidth: rightWidth,
-                          ),
+                        //
+                        // 🚨결정 8: ONE ceiling, computed from the window, and
+                        // the SAME one for both sides. It used to take the
+                        // other dock's width — so the right was clamped
+                        // against an already-clamped left, and equal stored
+                        // widths drew unequal.
+                        final ceiling = EditorWorkspace.sideDockCeiling(
+                          availableWidth: constraints.maxWidth,
+                          gaps: gaps,
+                          minCentreWidth: minCenterWidth,
                         );
-                        rightWidth = math.min(
-                          rightWidth,
-                          EditorWorkspace.sideDockCeiling(
-                            availableWidth: constraints.maxWidth,
-                            gaps: gaps,
-                            otherDockWidth: leftWidth,
-                          ),
-                        );
-                        final room =
-                            (constraints.maxWidth - gaps - minCenterWidth)
-                                .clamp(0.0, double.infinity);
-                        final wanted = leftWidth + rightWidth;
-                        if (wanted > room && wanted > 0) {
-                          final scale = room / wanted;
-                          leftWidth *= scale;
-                          rightWidth *= scale;
-                        }
+                        leftWidth = math.min(leftWidth, ceiling);
+                        rightWidth = math.min(rightWidth, ceiling);
+                        // ⛔The proportional squeeze that stood here is GONE.
+                        // It scaled BOTH sides by one factor whenever the pair
+                        // overflowed, which is the other half of 「한쪽을
+                        // 바꾸면 반대쪽도 바뀐다」 and the half that only
+                        // showed on a small window. With a ceiling of at most
+                        // half the room, two rails cannot overflow, so there
+                        // is nothing left to share out.
                         // ⛔Snapped AFTER the squeeze, not before: the scale
                         // above is a fraction and would push an on-grid width
                         // back off it.
@@ -4884,11 +4942,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                                 EditorPanelDockSide.left,
                                 width: leftWidth,
                                 hosts: leftRailHosts,
-                                dragCeiling: EditorWorkspace.sideDockCeiling(
-                                  availableWidth: constraints.maxWidth,
-                                  gaps: gaps,
-                                  otherDockWidth: rightWidth,
-                                ),
+                                // 결정 8: the same ceiling both sides read.
+                                dragCeiling: ceiling,
                               ),
                             ),
                             Positioned(
@@ -4902,11 +4957,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                                 EditorPanelDockSide.right,
                                 width: rightWidth,
                                 hosts: rightRailHosts,
-                                dragCeiling: EditorWorkspace.sideDockCeiling(
-                                  availableWidth: constraints.maxWidth,
-                                  gaps: gaps,
-                                  otherDockWidth: leftWidth,
-                                ),
+                                // 결정 8: the same ceiling both sides read.
+                                dragCeiling: ceiling,
                               ),
                             ),
                             // ★The collapsed row, over the artwork and OUTSIDE
@@ -5017,10 +5069,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                                                   // lifting it is a separate
                                                   // decision from fixing the
                                                   // banking.
+                                                  // 결정 8: the HAND stops at
+                                                  // half the window.
                                                   maxExtent: math.min(
                                                     EditorPanelLayoutModel
                                                         .maxDockExtent,
-                                                    _bottomDockCeiling(
+                                                    _bottomDockDragCeiling(
                                                       constraints.maxHeight,
                                                     ),
                                                   ),
