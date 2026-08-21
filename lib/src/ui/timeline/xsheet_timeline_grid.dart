@@ -997,17 +997,38 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
         child: child,
       );
     }
+    // 🚨B4-3: the same wiring the horizontal rail got. A lane row cannot be
+    // RE-ORDERED unless it heads a chain, but every row can be SELECTED —
+    // two questions, and only the first one ever needed an answer here.
+    Widget selectOnly() {
+      if (hooks.onSelectBegin == null || widget.onRowSelectionSpan == null) {
+        return child;
+      }
+      return LayerRowDragTarget(
+        subject: LaneRowSubject(entry.layer.id, lane.laneId),
+        slotBefore: entry.layerIndex,
+        rowExtent: _metrics.layerRowHeight,
+        axis: Axis.vertical,
+        hooks: hooks,
+        isLastRow: false,
+        onCrossed: (_, _) {},
+        onSelectCrossed: (rowDelta) =>
+            widget.onRowSelectionSpan?.call(_dragRows, rowDelta),
+        child: child,
+      );
+    }
+
     if (!lane.isGroupHeader) {
-      return child;
+      return selectOnly();
     }
     final parsed = parseEffectLaneId(lane.laneId);
     if (parsed == null || parsed.parameterId != null) {
-      return child;
+      return selectOnly();
     }
     final headers = effectHeaderRowsOf(_dragRows, entry.layer.id);
     final slot = headers.indexWhere((h) => h.effectId == parsed.effectId);
     if (slot < 0) {
-      return child;
+      return selectOnly();
     }
     final myRowIndex = headers[slot].rowIndex;
     return LayerRowDragTarget(
@@ -1026,6 +1047,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
           headers.length,
         ),
       ),
+      // B4-3: the SELECT half, the same one every other row already had.
+      onSelectCrossed: hooks.onSelectBegin == null
+          ? null
+          : (rowDelta) => widget.onRowSelectionSpan?.call(_dragRows, rowDelta),
       child: child,
     );
   }

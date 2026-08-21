@@ -26,6 +26,7 @@ import 'timeline/timeline_lane_provider.dart';
 import 'timeline/layer_row_drag.dart'
     show
         EffectRowSubject,
+        LaneRowSubject,
         LayerRowDragSubject,
         LayerRowSubject,
         TimelineRowDragHooks,
@@ -262,6 +263,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           effectGroupLaneId(effectId),
         ),
         TrackRowSubject(:final trackId) => TrackRowAddress(trackId),
+        // B4-3: a lane anchors a selection at its OWN address. The fx
+        // header case above lands on the same kind of address — it is
+        // reached through the subject that can also re-order a chain.
+        LaneRowSubject(:final layerId, :final laneId) => LaneRowAddress(
+          layerId,
+          laneId,
+        ),
       };
 
   /// The LABEL half of the same rule: pressing a lane's name stands on it,

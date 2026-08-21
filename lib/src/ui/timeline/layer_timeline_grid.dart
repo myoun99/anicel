@@ -1283,17 +1283,34 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   Widget _effectDraggable(TimelineDisplayRow row, Widget child) {
     final hooks = widget.rowDragHooks;
     final lane = row.lane;
-    if (hooks == null || lane == null || !lane.isGroupHeader) {
+    if (hooks == null || lane == null) {
       return child;
     }
+    // 🚨B4-3 (유저, 몇 번째인지 세지 않겠다고 했다) — **EVERY ROW JOINS A
+    // SELECTION.**
+    //
+    // > 「행의 **다른 fx끼리 넘어서 선택범위가 불가능.** 그 너머의 다른 행
+    // > 선택해야 그때서야 가능. **이런 다른규칙 삭제좀하자고.**」
+    //
+    // ⛔The span resolver never had a rule about lanes — it is a plain slice
+    // of the drawn row list. What was missing is WIRING: a lane row that is
+    // not an fx chain header got no drag target at all, and the one that IS
+    // a header was given `onCrossed` and never `onSelectCrossed`, which is
+    // the only thing that grows a selection during a drag. So a span
+    // anchored on a lane simply never updated, and a span anchored anywhere
+    // else could not stop on one.
+    //
+    // ★A lane row cannot be RE-ORDERED unless it heads a chain, but every
+    // row can be SELECTED. Those are two questions, and only the first one
+    // ever needed an answer here.
     final parsed = parseEffectLaneId(lane.laneId);
-    if (parsed == null || parsed.parameterId != null) {
-      return child;
+    if (!lane.isGroupHeader || parsed == null || parsed.parameterId != null) {
+      return _laneSelectOnlyTarget(row, lane.laneId, hooks, child);
     }
     final headers = effectHeaderRowsOf(_dragRows, row.layer.id);
     final slot = headers.indexWhere((h) => h.effectId == parsed.effectId);
     if (slot < 0) {
-      return child;
+      return _laneSelectOnlyTarget(row, lane.laneId, hooks, child);
     }
     final displayEffects = [for (final header in headers) header.effectId];
     final myRowIndex = headers[slot].rowIndex;
@@ -1322,6 +1339,40 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
           headers.length,
         ),
       ),
+      // B4-3: the SELECT half, the same one every layer row already had.
+      onSelectCrossed: hooks.onSelectBegin == null
+          ? null
+          : (rowDelta) => widget.onRowSelectionSpan?.call(_dragRows, rowDelta),
+      child: child,
+    );
+  }
+
+  /// A lane row that heads nothing still takes part in a SELECTION — a
+  /// target with no reorder to offer, only the span (B4-3).
+  ///
+  /// ⚠️`slotBefore` and `isLastRow` are the reorder caret's inputs and this
+  /// target never fires one, so they say "this row, not the last" and stop
+  /// there. `onCrossed` is a no-op for the same reason: a transform lane or
+  /// an fx parameter holds no place in any list a drop could rewrite.
+  Widget _laneSelectOnlyTarget(
+    TimelineDisplayRow row,
+    String laneId,
+    TimelineRowDragHooks hooks,
+    Widget child,
+  ) {
+    if (hooks.onSelectBegin == null || widget.onRowSelectionSpan == null) {
+      return child;
+    }
+    return LayerRowDragTarget(
+      subject: LaneRowSubject(row.layer.id, laneId),
+      slotBefore: row.layerIndex,
+      rowExtent: _metrics.layerRowHeight,
+      axis: Axis.horizontal,
+      hooks: hooks,
+      isLastRow: false,
+      onCrossed: (_, _) {},
+      onSelectCrossed: (rowDelta) =>
+          widget.onRowSelectionSpan?.call(_dragRows, rowDelta),
       child: child,
     );
   }
