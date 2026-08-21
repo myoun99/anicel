@@ -23,7 +23,7 @@ void main() {
       expect(cut.name, 'Opening Cut');
       expect(cut.duration, defaultCutDuration);
       expect(cut.canvasSize, defaultCutCanvasSize);
-      // One drawing layer, the DIR 1 sheet fixture, and the always-present
+      // One drawing layer, the Direction 1 sheet fixture, and the always-present
       // camera layer (the S1·S2 SE rows are TRACK fixtures now).
       expect(cut.layers, hasLength(3));
 
@@ -41,7 +41,7 @@ void main() {
         LayerKind.instruction,
         LayerKind.camera,
       ]);
-      expect(cut.layers.map((layer) => layer.name), ['A', 'DIR 1', 'Camera']);
+      expect(cut.layers.map((layer) => layer.name), ['A', 'Direction 1', 'Camera']);
 
       final cameraLayer = cut.layers.last;
       expect(cameraLayer.id, cameraLayerIdForCut(const CutId('cut-new')));

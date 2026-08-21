@@ -532,7 +532,18 @@ void main() {
       );
     });
 
-    testWidgets('the cluster fades out of the way of a stroke', (tester) async {
+    testWidgets('⛔the cluster does NOT fade for a stroke (H3, 유저 확정 '
+        '2026-08-21: 「알약 불투명도 낮추는거만 심플하게 삭제」)', (tester) async {
+      // 🚨This asserted the OPPOSITE, and the reasoning was mine: 「the
+      // controls are in the way exactly while the hand works」. The user's
+      // answer is that chrome half-vanishing mid-stroke reads as the app
+      // flickering, not as room being made. Kept as a REFUSAL so the
+      // argument cannot talk the fade back in.
+      //
+      // ⚠️Nothing here touches whether reaching the pill INTERRUPTS a
+      // stroke — that is a pointer question, and the user kept it in the
+      // same breath that removed the fade.
+      //
       // A panel that is drawable, standing in for the floor — the app's
       // empty default project has no cel under the playhead, so no stroke
       // can start in it and the assertion below would pass vacuously.
@@ -558,18 +569,18 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      double clusterOpacity() => tester
-          .widget<AnimatedOpacity>(
-            find.byKey(const ValueKey<String>('canvas-floating-controls')),
-          )
-          .opacity;
+      final cluster = find.byKey(
+        const ValueKey<String>('canvas-floating-controls'),
+      );
+      expect(cluster, findsOneWidget);
+      // No opacity widget over the cluster at all — not one sitting at 1.0,
+      // which would leave the machinery in place for a flag to flip.
+      expect(
+        find.descendant(of: cluster, matching: find.byType(AnimatedOpacity)),
+        findsNothing,
+        reason: 'the fade is removed, not merely turned off',
+      );
 
-      expect(clusterOpacity(), 1.0);
-
-      // Hover is not available to answer this: touch has none, and a pen
-      // hovers over the DRAWING rather than over the controls. What the app
-      // already knows is that a stroke is live, and that is the moment the
-      // controls are in the way.
       final gesture = await tester.startGesture(
         tester.getCenter(find.byType(InteractiveBrushEditCanvasView)),
         kind: PointerDeviceKind.stylus,
@@ -578,11 +589,14 @@ void main() {
       await gesture.moveBy(const Offset(20, 12));
       await tester.pump();
 
-      expect(clusterOpacity(), lessThan(1.0));
+      expect(
+        find.descendant(of: cluster, matching: find.byType(AnimatedOpacity)),
+        findsNothing,
+        reason: 'and a live stroke does not bring it back',
+      );
 
       await gesture.up();
       await tester.pumpAndSettle();
-      expect(clusterOpacity(), 1.0);
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
     });

@@ -91,24 +91,32 @@ Layer createSeLayer({required CutId cutId, required int slot}) {
   );
 }
 
-Layer createInstructionLayer({required CutId cutId, String name = 'DIR 1'}) {
+/// A direction row's name, spelled OUT (유저 2026-08-21, A4-2: 「이름
+/// 축약하지마. DIR가아니라 제대로 풀네임 Direction N이 되도록」).
+///
+/// ⛔The abbreviation was mine. The kind's rename CAM → Direction was the
+/// user's own (2026-08-09) and it explicitly retired the old vocabulary;
+/// naming the rows `DIR` put half of the retired word straight back.
+/// Saved files keep whatever name they carry — no migration, as before.
+String instructionLayerName(int index) => 'Direction $index';
+
+Layer createInstructionLayer({required CutId cutId, String? name}) {
   return Layer(
     id: instructionLayerIdForCut(cutId),
-    name: name,
+    name: name ?? instructionLayerName(1),
     frames: const [],
     timeline: const {},
     kind: LayerKind.instruction,
   );
 }
 
-/// Names an additional direction row: DIR 2, DIR 3, … skipping names the
-/// cut already uses. (The kind was renamed CAM → Direction by the user on
-/// 2026-08-09; saved files keep whatever name they carry — no migration.)
+/// Names an additional direction row: Direction 2, Direction 3, … skipping
+/// names the cut already uses.
 String nextInstructionLayerName(List<Layer> layers) {
   final usedNames = layers.map((layer) => layer.name).toSet();
   var index = 1;
   while (true) {
-    final name = 'DIR $index';
+    final name = instructionLayerName(index);
     if (!usedNames.contains(name)) {
       return name;
     }
