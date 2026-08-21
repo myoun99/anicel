@@ -22,6 +22,30 @@ import 'timeline/timeline_frame_range_policy.dart'
 import 'timeline/timeline_frame_window.dart';
 import 'timeline/timeline_glyph_cache.dart';
 
+/// The ground EVERY piece of CARRIED writing on a cut block receives — the
+/// cut's own number and length on the bands, and a panel's name and comma
+/// on their plates.
+///
+/// 🚨D29-2 (유저 2026-08-22) — it takes no thumbnail argument, and that is
+/// the point: carried writing never rides a picture, so there is nothing
+/// about the picture to ask.
+///
+/// > 「컷 제목이랑 스토리보드블록의 썸네일없는공간이랑 **뭐가 다른거지?**」
+///
+/// The answer was: nothing, once both are carried. Before this, the panel
+/// labels sat ON the thumbnails and had to take the picture's ground, which
+/// resolved BLACK ink while the cut's title — carried by its band — resolved
+/// WHITE. Same block, two inks.
+Color storyboardCarriedWritingGround(
+  StoryboardCutBlockVisual block,
+  ColorScheme colorScheme,
+) => storyboardCutBlockBackgroundColor(
+  colorScheme,
+  active: block.isActive,
+  hovered: block.isHovered,
+  rangeSelected: block.isRangeSelected,
+);
+
 /// One cut block as the painter draws it — THE probe surface, in place of
 /// the widget keys the blocks used to carry.
 class StoryboardCutBlockVisual {
@@ -550,12 +574,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
   /// blocks tint whole, unfolded ones tint exactly the bands), so this is
   /// one expression of the same fills [_paintBlock] lays down.
   Color _bandGround(StoryboardCutBlockVisual block) =>
-      storyboardCutBlockBackgroundColor(
-        colorScheme,
-        active: block.isActive,
-        hovered: block.isHovered,
-        rangeSelected: block.isRangeSelected,
-      );
+      storyboardCarriedWritingGround(block, colorScheme);
 
   /// The STRIP's underlay — the ground for writing that rides the picture
   /// area (panel names and commas, the folded block's labels). A range
@@ -575,8 +594,66 @@ class StoryboardCutBlocksPainter extends CustomPainter {
   /// for text): with thumbnails on, the glyphs ride the paper-white
   /// composite pictures, and reading the dark plate there resolved WHITE
   /// ink on white thumbnails. Without thumbnails the plate is honest.
+  ///
+  /// ⚠️This is for writing that has NOWHERE else to go — a folded block's
+  /// labels and the create `+`. Writing that CAN be carried takes
+  /// [_paintPlatedGlyph] instead, which makes the ground true rather than
+  /// guessing what the picture under it will be (D29-2).
   Color _stripWritingGround(StoryboardCutBlockVisual block) =>
       showThumbnails ? storyboardPanelPictureGroundColor : _stripGround(block);
+
+  /// A glyph on its OWN plate — the bands' answer, one level down.
+  ///
+  /// 🚨D29-2 (유저 2026-08-22) — **MAKE THE GROUND THE SAME, DON'T MEASURE
+  /// IT.**
+  ///
+  /// > 「컷블록 내 스토리보드레이어의 블록이름/코마수 텍스트가 아직도 컷블록
+  /// > 이랑 규칙 다름 … 그렇게 할거면 **타임라인도** 그렇게 해야하는거야.
+  /// > 통일이니까. 그런데 **무거우니까 하기싫고** 그냥 애초에 **받는 바탕을
+  /// > 똑같게** 하면 되는거 아닌가? **컷 제목이랑 스토리보드블록의
+  /// > 썸네일없는공간이랑 뭐가 다른거지?**」
+  ///
+  /// ⛔My answer was to MEASURE the thumbnail's luminance, and the user
+  /// struck it down twice over: it would owe the timeline the same
+  /// treatment, and it is expensive. The question underneath — what IS
+  /// different — has a one-line answer: the cut's title left the picture
+  /// (「THE BANDS carry the writing」) and the panel's labels never did.
+  ///
+  /// ★So carry them too. The plate is the band's own fill, so these glyphs
+  /// receive exactly what the cut title receives and the ink law resolves
+  /// the same on both — no measuring, and nothing for the timeline to
+  /// match, because nothing new was invented.
+  void _paintPlatedGlyph(
+    Canvas canvas,
+    Offset offset,
+    String text,
+    TextStyle style, {
+    required Color ground,
+    double? maxWidth,
+  }) {
+    final glyph = timelineGlyphPainter(text, style, maxWidth: maxWidth);
+    final plate = Rect.fromLTWH(
+      offset.dx - 1,
+      offset.dy - 1,
+      glyph.width + 2,
+      glyph.height + 2,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        plate,
+        const Radius.circular(AppShapes.wellRadius),
+      ),
+      Paint()..color = ground,
+    );
+    paintTimelineGlyphOnGround(
+      canvas,
+      offset,
+      text,
+      style,
+      ground: ground,
+      maxWidth: maxWidth,
+    );
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -921,12 +998,13 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       // thumbnail-display writing sits where the sheet's cut number does,
       // not centred the way block-display glyphs are — the two thumbnail
       // surfaces read as one.
-      paintTimelineGlyphOnGround(
+      // D29-2: carried on its own plate, so its ground IS the cut title's.
+      _paintPlatedGlyph(
         canvas,
         Offset(slot.left + _padding / 2, slot.top + 1),
         name,
         nameStyle,
-        ground: _stripWritingGround(block),
+        ground: _bandGround(block),
       );
     }
     final comma = block.cellCommaLabels[index];
@@ -943,7 +1021,9 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       // run label's anchor, in the panel's own coordinates (the slot's
       // edges ARE the cell edges: panels tile the strip).
       final lastCellCentre = slot.right - _cellExtent / 2;
-      paintTimelineGlyphOnGround(
+      // D29-2: the same carry as the name above — the comma reads against
+      // the band's fill, which is what the cut's own length reads against.
+      _paintPlatedGlyph(
         canvas,
         Offset(
           lastCellCentre - glyph.width / 2,
@@ -951,7 +1031,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
         ),
         comma,
         commaStyle,
-        ground: _stripWritingGround(block),
+        ground: _bandGround(block),
       );
     }
   }
