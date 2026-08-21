@@ -104,6 +104,37 @@ final class EffectRowSubject extends LayerRowDragSubject {
   int get hashCode => Object.hash(EffectRowSubject, layerId, effectId);
 }
 
+/// ANY lane row, as a SELECTION anchor — a transform lane, an fx parameter,
+/// an effect header being spanned rather than re-ordered.
+///
+/// 🚨B4-3 (유저): 「행의 **다른 fx끼리 넘어서 선택범위가 불가능.** 그 너머의
+/// 다른 행 선택해야 그때서야 가능. **이런 다른규칙 삭제좀하자고.**」
+///
+/// ⚠️It answers [sharesLaneWith] false for everything, and that is the whole
+/// difference: this subject can be selected FROM and never re-ordered, so it
+/// must raise no caret anywhere. [EffectRowSubject] stays for the rows that
+/// really do move a chain — being re-orderable is a capability some lanes
+/// have, not a second kind of row.
+final class LaneRowSubject extends LayerRowDragSubject {
+  const LaneRowSubject(this.layerId, this.laneId);
+
+  final LayerId layerId;
+  final String laneId;
+
+  @override
+  bool sharesLaneWith(LayerRowDragSubject other) => false;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LaneRowSubject &&
+          other.layerId == layerId &&
+          other.laneId == laneId;
+
+  @override
+  int get hashCode => Object.hash(LaneRowSubject, layerId, laneId);
+}
+
 /// A row drag in flight, as the rails draw it.
 class LayerRowDragState {
   const LayerRowDragState({
@@ -685,6 +716,11 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
           LayerRowSubject(:final layerId) => layerId.value,
           EffectRowSubject(:final effectId) => effectId.value,
           TrackRowSubject(:final trackId) => trackId.value,
+          // B4-3: a select-only lane never raises either of these — the
+          // key exists so the switch stays exhaustive, not because a
+          // caret or a swallow can be drawn for one.
+          LaneRowSubject(:final layerId, :final laneId) =>
+            '${layerId.value}:$laneId',
         }}',
       ),
       child: IgnorePointer(
@@ -786,6 +822,11 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
           LayerRowSubject(:final layerId) => layerId.value,
           EffectRowSubject(:final effectId) => effectId.value,
           TrackRowSubject(:final trackId) => trackId.value,
+          // B4-3: a select-only lane never raises either of these — the
+          // key exists so the switch stays exhaustive, not because a
+          // caret or a swallow can be drawn for one.
+          LaneRowSubject(:final layerId, :final laneId) =>
+            '${layerId.value}:$laneId',
         }}',
       ),
       left: horizontal ? 0 : (atStart ? -layerRowCaretThickness / 2 : null),
