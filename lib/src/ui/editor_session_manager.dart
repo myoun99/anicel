@@ -15483,9 +15483,11 @@ class EditorSessionManager extends ChangeNotifier {
     }
     return switch (_storyboardCursorBlockOrNull()) {
       null => false,
-      // The controller resolves track-SE commit layers through the active
-      // cut's lens machinery; a parked playhead has no cut to lens through.
-      _StoryboardCursorSeBlock() => activeCutOrNull != null,
+      // ⛔An SE block used to answer `activeCutOrNull != null` here, on the
+      // grounds that "a parked playhead has no cut to lens through" — the
+      // lens is 0 for a track row and the lookup no longer wants a cut
+      // (H11). A global row is reachable wherever it is standing.
+      _StoryboardCursorSeBlock() ||
       _StoryboardCursorCutBlock() ||
       _StoryboardCursorTransitionSpan() ||
       _StoryboardCursorStoryboardPanel() => true,
@@ -15526,9 +15528,8 @@ class EditorSessionManager extends ChangeNotifier {
     // branch reads the cut-local notifier alone).
     final trackTargets = _trackSelectionBlockStartsByLayer();
     if (trackTargets != null) {
-      if (activeCutOrNull == null) {
-        return;
-      }
+      // ⛔No active-cut guard: these starts are ALREADY global keys and the
+      // retime applies no lens, so a gap changes nothing about them (H11).
       _timelineController.retimeBlocksForLayers({
         for (final entry in trackTargets.entries)
           entry.key: {for (final start in entry.value) start: comma},
@@ -15600,7 +15601,8 @@ class EditorSessionManager extends ChangeNotifier {
   bool get canDeleteBlockAtStoryboardCursor =>
       switch (_storyboardCursorBlockOrNull()) {
         null => false,
-        _StoryboardCursorSeBlock() => activeCutOrNull != null,
+        // H11: a track row answers wherever it stands — see the create gate.
+        _StoryboardCursorSeBlock() ||
         _StoryboardCursorCutBlock() ||
         _StoryboardCursorTransitionSpan() ||
         // D28 ⚠️: delete keeps the CUT answer for now — whether the shared
@@ -15633,12 +15635,14 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// Whether the frame `＋` can author a fresh SE entry on the standing S
-  /// row: standing there, an EMPTY cursor frame, and an active cut for the
-  /// fills funnel's lens to resolve through.
+  /// row: standing there, on an EMPTY cursor frame. That is the whole gate.
+  ///
+  /// ⛔It used to ask for an ACTIVE CUT as well, so the button went dead in
+  /// a gap — 「S행이 컷이 없는 갭에서 프레임추가가 안됨. 버튼활성안됨」
+  /// (유저 H11, 2026-08-22). The cut was never this row's business; it was
+  /// standing in for `_requireLayer`, which demanded a cut before it would
+  /// reach the track's own layers. That lookup answers for a track row now.
   bool get canCreateSeEntryAtStoryboardCursor {
-    if (activeCutOrNull == null) {
-      return false;
-    }
     final row = selectedRow;
     if (row is! LayerRowAddress || isTrackTransitionLayerId(row.layerId)) {
       return false;
