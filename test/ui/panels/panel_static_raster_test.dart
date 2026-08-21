@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 
+import '../../helpers/panel_finders.dart';
+
 /// The rule this file exists to keep: **a docked panel is baked into one
 /// image while it is not changing, and nobody has to remember to make
 /// that happen.**
@@ -233,11 +235,18 @@ void main() {
       raster.captureCauses.clear();
     }
 
+    // ⛔A point on the VISIBLE canvas, not a hardcoded one. (800, 500) was
+    // on the drawing while the bottom region opened 350 tall; D37 opens it
+    // at half the window, so that coordinate is now under the timeline —
+    // the hover never reached the canvas and the channel had nothing to
+    // report. [visibleCanvasPoint] takes the same visible rect every
+    // framing verb uses, and its own doc describes this exact trap.
+    final start = visibleCanvasPoint(tester);
     final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
-    await gesture.addPointer(location: const Offset(800, 500));
+    await gesture.addPointer(location: start);
     addTearDown(gesture.removePointer);
     for (var i = 0; i < 6; i += 1) {
-      await gesture.moveTo(Offset(800 + i * 4, 500));
+      await gesture.moveTo(start + Offset(i * 4, 0));
       await tester.pump();
     }
 
@@ -269,120 +278,121 @@ void main() {
     }
   });
 
-  testWidgets('🥇 every tab the app can open is audited, not just the open ones', (
-    tester,
-  ) async {
-    // The blindness this file shipped with. `_tabFor` builds fifteen
-    // panels; the default layout shows five of them. Everything the
-    // enforcement below asserts was only ever asserted about those five.
-    //
-    // Tabs are activated through `EditorPanelTabs.onTabSelected` rather
-    // than by tapping buttons, which side-steps four separate traps: the
-    // button key is `tab.buttonKey ?? ValueKey('panel-tab-<id>')` and
-    // four of the panels under investigation use the first form; a
-    // prefix match also finds the overflow menu; the rail group buttons
-    // are toggles that would CLOSE the groups that ship open; and an
-    // offstage tab's `StaticRaster` is not in the tree at all, so
-    // anything collected after the loop has already lost it.
-    await _pumpWorkspace(tester);
+  testWidgets(
+    '🥇 every tab the app can open is audited, not just the open ones',
+    (tester) async {
+      // The blindness this file shipped with. `_tabFor` builds fifteen
+      // panels; the default layout shows five of them. Everything the
+      // enforcement below asserts was only ever asserted about those five.
+      //
+      // Tabs are activated through `EditorPanelTabs.onTabSelected` rather
+      // than by tapping buttons, which side-steps four separate traps: the
+      // button key is `tab.buttonKey ?? ValueKey('panel-tab-<id>')` and
+      // four of the panels under investigation use the first form; a
+      // prefix match also finds the overflow menu; the rail group buttons
+      // are toggles that would CLOSE the groups that ship open; and an
+      // offstage tab's `StaticRaster` is not in the tree at all, so
+      // anything collected after the loop has already lost it.
+      await _pumpWorkspace(tester);
 
-    final byGroup = <String, List<String>>{};
-    for (final host in tester.widgetList<EditorPanelTabs>(
-      find.byType(EditorPanelTabs),
-    )) {
-      final group = host.groupId;
-      if (group != null) {
-        byGroup[group] = host.tabs.map((t) => t.id).toList();
+      final byGroup = <String, List<String>>{};
+      for (final host in tester.widgetList<EditorPanelTabs>(
+        find.byType(EditorPanelTabs),
+      )) {
+        final group = host.groupId;
+        if (group != null) {
+          byGroup[group] = host.tabs.map((t) => t.id).toList();
+        }
       }
-    }
-    expect(byGroup, isNotEmpty, reason: 'no tab host had a group id');
+      expect(byGroup, isNotEmpty, reason: 'no tab host had a group id');
 
-    final visited = <String>{};
-    final offenders = <String>[];
-    final report = <String>[];
+      final visited = <String>{};
+      final offenders = <String>[];
+      final report = <String>[];
 
-    for (final entry in byGroup.entries) {
-      for (final tabId in entry.value) {
-        // Re-find the host every time: selecting a tab rebuilds the tree.
-        final host = tester
-            .widgetList<EditorPanelTabs>(find.byType(EditorPanelTabs))
-            .where((h) => h.groupId == entry.key)
-            .firstOrNull;
-        if (host == null) {
-          continue;
-        }
-        host.onTabSelected(tabId);
-        await tester.pumpAndSettle();
-        visited.add(tabId);
-
-        // Collect INSIDE the loop — the surfaces vanish when the tab does.
-        final live = _surfaces().toList();
-        final baked = live.where((r) => r.captureCount > 0).length;
-        report.add('$tabId: ${live.length} surfaces, $baked baked');
-
-        for (final label in _mustBakeWhenActive[tabId] ?? const <String>[]) {
-          final named = live.where((r) => r.debugLabel == label).toList();
-          expect(
-            named,
-            isNotEmpty,
-            reason:
-                'no surface called `$label` exists while `$tabId` is active, '
-                'so whatever the allowlist says it yields to is not there',
-          );
-          for (final raster in named) {
-            expect(
-              raster.captureCount,
-              greaterThan(0),
-              reason:
-                  '$label exists but has never baked while `$tabId` is '
-                  'active.\nRefused because: ${raster.debugCaptureRefusal}\n'
-                  'Nested boundary: ${raster.debugNestedBoundaryPath}',
-            );
-          }
-        }
-
-        for (final raster in live) {
-          if (!raster.debugNestedBoundary) {
+      for (final entry in byGroup.entries) {
+        for (final tabId in entry.value) {
+          // Re-find the host every time: selecting a tab rebuilds the tree.
+          final host = tester
+              .widgetList<EditorPanelTabs>(find.byType(EditorPanelTabs))
+              .where((h) => h.groupId == entry.key)
+              .firstOrNull;
+          if (host == null) {
             continue;
           }
-          if (!_knownToPaintThrough.containsKey(raster.debugLabel)) {
-            offenders.add(
-              '$tabId → ${raster.debugLabel}\n'
-              '      blocked by: ${raster.debugNestedBoundaryPath}',
+          host.onTabSelected(tabId);
+          await tester.pumpAndSettle();
+          visited.add(tabId);
+
+          // Collect INSIDE the loop — the surfaces vanish when the tab does.
+          final live = _surfaces().toList();
+          final baked = live.where((r) => r.captureCount > 0).length;
+          report.add('$tabId: ${live.length} surfaces, $baked baked');
+
+          for (final label in _mustBakeWhenActive[tabId] ?? const <String>[]) {
+            final named = live.where((r) => r.debugLabel == label).toList();
+            expect(
+              named,
+              isNotEmpty,
+              reason:
+                  'no surface called `$label` exists while `$tabId` is active, '
+                  'so whatever the allowlist says it yields to is not there',
             );
+            for (final raster in named) {
+              expect(
+                raster.captureCount,
+                greaterThan(0),
+                reason:
+                    '$label exists but has never baked while `$tabId` is '
+                    'active.\nRefused because: ${raster.debugCaptureRefusal}\n'
+                    'Nested boundary: ${raster.debugNestedBoundaryPath}',
+              );
+            }
+          }
+
+          for (final raster in live) {
+            if (!raster.debugNestedBoundary) {
+              continue;
+            }
+            if (!_knownToPaintThrough.containsKey(raster.debugLabel)) {
+              offenders.add(
+                '$tabId → ${raster.debugLabel}\n'
+                '      blocked by: ${raster.debugNestedBoundaryPath}',
+              );
+            }
           }
         }
       }
-    }
 
-    debugPrint('StaticRaster TAB SWEEP:\n${report.join('\n')}');
+      debugPrint('StaticRaster TAB SWEEP:\n${report.join('\n')}');
 
-    expect(
-      offenders,
-      isEmpty,
-      reason:
-          'these panels pay their full raster price on every frame the app '
-          'produces, and look identical while doing it:\n'
-          '${offenders.join('\n')}\n'
-          'Remove the boundary, move the bake inside it (a viewport is '
-          'itself a boundary — see EditorPanelBody), or add it to '
-          '_knownToPaintThrough WITH a reason.',
-    );
+      expect(
+        offenders,
+        isEmpty,
+        reason:
+            'these panels pay their full raster price on every frame the app '
+            'produces, and look identical while doing it:\n'
+            '${offenders.join('\n')}\n'
+            'Remove the boundary, move the bake inside it (a viewport is '
+            'itself a boundary — see EditorPanelBody), or add it to '
+            '_knownToPaintThrough WITH a reason.',
+      );
 
-    final missed = EditorWorkspace.debugAllTabIds
-        .where((id) => !visited.contains(id))
-        .where((id) => !_unreachableInDefaultLayout.containsKey(id))
-        .toList();
-    expect(
-      missed,
-      isEmpty,
-      reason:
-          'these tabs exist in `_tabFor` and this sweep never opened them, '
-          'so nothing above says anything about them: $missed\n'
-          'Either make the sweep reach them or list them in '
-          '_unreachableInDefaultLayout with a reason.',
-    );
-  });
+      final missed = EditorWorkspace.debugAllTabIds
+          .where((id) => !visited.contains(id))
+          .where((id) => !_unreachableInDefaultLayout.containsKey(id))
+          .toList();
+      expect(
+        missed,
+        isEmpty,
+        reason:
+            'these tabs exist in `_tabFor` and this sweep never opened them, '
+            'so nothing above says anything about them: $missed\n'
+            'Either make the sweep reach them or list them in '
+            '_unreachableInDefaultLayout with a reason.',
+      );
+    },
+  );
 
   testWidgets('a wrapped panel that is on screen really does bake', (
     tester,

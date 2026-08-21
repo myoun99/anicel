@@ -295,29 +295,32 @@ void main() {
       return tile.selected;
     }
 
-    testWidgets('the highlighted shape tile follows the shape that was picked', (
-      tester,
-    ) async {
-      await _pumpHome(tester);
-      await tester.tap(find.byKey(const ValueKey<String>('tool-cut-button')));
-      await tester.pumpAndSettle();
+    testWidgets(
+      'the highlighted shape tile follows the shape that was picked',
+      (tester) async {
+        await _pumpHome(tester);
+        await tester.tap(find.byKey(const ValueKey<String>('tool-cut-button')));
+        await tester.pumpAndSettle();
 
-      expect(await tileSelected(tester, 'sub-tool-cut-rect'), isTrue);
+        expect(await tileSelected(tester, 'sub-tool-cut-rect'), isTrue);
 
-      await tester.tap(find.byKey(const ValueKey<String>('sub-tool-cut-lasso')));
-      await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey<String>('sub-tool-cut-lasso')),
+        );
+        await tester.pumpAndSettle();
 
-      expect(
-        await tileSelected(tester, 'sub-tool-cut-lasso'),
-        isTrue,
-        reason: 'the picked outline is the one highlighted',
-      );
-      expect(
-        await tileSelected(tester, 'sub-tool-cut-rect'),
-        isFalse,
-        reason: 'and the old one lets go',
-      );
-    });
+        expect(
+          await tileSelected(tester, 'sub-tool-cut-lasso'),
+          isTrue,
+          reason: 'the picked outline is the one highlighted',
+        );
+        expect(
+          await tileSelected(tester, 'sub-tool-cut-rect'),
+          isFalse,
+          reason: 'and the old one lets go',
+        );
+      },
+    );
 
     testWidgets('the fill tiles follow too — it was one cache, not one tool', (
       tester,
@@ -330,7 +333,9 @@ void main() {
       // keep-alive key, so that hop builds cold and would pass either way —
       // the staleness only shows when the shape changes with the verb
       // already active, which is exactly how a person uses it.
-      await tester.tap(find.byKey(const ValueKey<String>('sub-tool-fill-rect')));
+      await tester.tap(
+        find.byKey(const ValueKey<String>('sub-tool-fill-rect')),
+      );
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey<String>('sub-tool-fill-polygon')),
@@ -388,9 +393,13 @@ void main() {
       await _pumpHome(tester);
       await tester.tap(find.byKey(const ValueKey<String>('tool-cut-button')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey<String>('sub-tool-cut-lasso')));
+      await tester.tap(
+        find.byKey(const ValueKey<String>('sub-tool-cut-lasso')),
+      );
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey<String>('sub-tool-cut-stamp')));
+      await tester.tap(
+        find.byKey(const ValueKey<String>('sub-tool-cut-stamp')),
+      );
       await tester.pumpAndSettle();
       expect(await tileSelected(tester, 'sub-tool-cut-stamp'), isTrue);
 
@@ -611,14 +620,23 @@ void main() {
         reason: 'nothing is on the floor yet',
       );
 
-      await _dragTab(
-        tester,
-        find.byKey(_timesheetTabKey),
-        () => tester.getCenter(
+      // ⛔NOT the zone's centre. The empty floor's zone is `expandToFill`,
+      // so it reaches UNDER the region floating over the artwork — and once
+      // that region opens at half the window (D37), the geometric centre is
+      // behind it. A person aims at what they can see; a `getCenter` aims
+      // at arithmetic, and this one used to land on the visible part only
+      // because the region was short.
+      await _dragTab(tester, find.byKey(_timesheetTabKey), () {
+        final zone = tester.getRect(
           find.byKey(const ValueKey<String>('editor-dock-drop-rail-center')),
-        ),
+        );
+        return Offset(zone.center.dx, zone.top + 40);
+      });
+      expect(
+        find.byKey(const ValueKey<String>('top-strip-floor-timesheet')),
+        findsOneWidget,
+        reason: 'the drag landed it on the floor',
       );
-      expect(find.byType(TimesheetTabHost), findsOneWidget);
 
       // It is on the floor, so the switch offers it — after the two homes,
       // which stay listed whatever is down there.
@@ -1014,16 +1032,17 @@ void main() {
     await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .handlePlatformMessage(
           SystemChannels.system.name,
-          SystemChannels.system.codec.encodeMessage(
-            const <String, dynamic>{'type': 'memoryPressure'},
-          ),
+          SystemChannels.system.codec.encodeMessage(const <String, dynamic>{
+            'type': 'memoryPressure',
+          }),
           (_) {},
         );
 
     expect(
       session.brushFrameStore.hotCelByteBudget,
       512 * 1024 * 1024,
-      reason: 'addObserver + didHaveMemoryPressure + the session forward '
+      reason:
+          'addObserver + didHaveMemoryPressure + the session forward '
           'must all hold for the halving to land',
     );
   });

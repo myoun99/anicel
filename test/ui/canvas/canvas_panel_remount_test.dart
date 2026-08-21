@@ -10,6 +10,8 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/input/app_input_settings.dart';
 
+import '../../helpers/panel_finders.dart';
+
 /// The canvas panel must stay MOUNTED as the playhead crosses "no cel ↔
 /// cel". It did not: the host wrapped the panel in a refusal [Listener]
 /// only when there was nothing to draw on, and a [ValueKey] holds identity
@@ -56,7 +58,10 @@ void main() {
   /// passes against the defect.
   BrushFrameKey? activeCel(WidgetTester tester) => tester
       .widget<MainCanvasBrushHost>(
-        find.ancestor(of: mainPanel, matching: find.byType(MainCanvasBrushHost)),
+        find.ancestor(
+          of: mainPanel,
+          matching: find.byType(MainCanvasBrushHost),
+        ),
       )
       .resolvedActiveFrameKey;
 
@@ -117,8 +122,12 @@ void main() {
     expect(activeCel(tester), isNull, reason: 'standing on empty paper');
 
     final layerBefore = tester.element(mainGestureLayer);
+    // ⛔The VISIBLE canvas, not the box centre: the canvas is full-bleed
+    // under the floating region, and D37 opens that region at half the
+    // window — so `getCenter` now lands on the timeline and the flip
+    // gesture never starts. [visibleCanvasPoint] documents this trap.
     final finger = await tester.startGesture(
-      tester.getCenter(mainGestureLayer),
+      visibleCanvasPoint(tester),
       kind: PointerDeviceKind.touch,
     );
     // Lock the horizontal axis without completing a step...
