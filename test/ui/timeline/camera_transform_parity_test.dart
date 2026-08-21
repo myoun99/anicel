@@ -142,10 +142,8 @@ void main() {
       );
       expect(
         timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 24),
-        (timelineLaneKeyMarkerSize(28, frameCellExtent: 24) * 1.5).clamp(
-          6.0,
-          28.0,
-        ),
+        timelineLaneKeyMarkerSize(28, frameCellExtent: 24) * 1.5,
+        reason: 'at the default cell there is room for the whole ×1.5',
       );
     });
 
@@ -172,15 +170,41 @@ void main() {
       // riding ON the fitted size rather than re-inflating past the cell.
       expect(
         timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 8),
-        (timelineLaneKeyMarkerSize(28, frameCellExtent: 8) * 1.5).clamp(
-          6.0,
-          28.0,
-        ),
-      );
-      expect(
-        timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 8),
         lessThan(timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 24)),
       );
+    });
+
+    /// 🚨D39-2 (유저 스크린샷 3장, 2026-08-22) — 「크기가 종횡비 유지한채로
+    /// 작아지는게아니라 **한 변만 작아지는** 느낌」.
+    ///
+    /// The mark is one square Container turned 45°, so asking for more than
+    /// the cell is wide gets the WIDTH squeezed by the parent and the height
+    /// left alone: a lozenge. The size law has to be the thing that never
+    /// asks, because a widget cannot un-squeeze itself.
+    test('D39-2: no mark is ever wider than the cell it stands in', () {
+      for (final cell in const [24.0, 16.0, 12.0, 8.0, 6.0, 4.0, 3.0, 2.0]) {
+        expect(
+          timelineLaneKeyMarkerSize(rowHeight, frameCellExtent: cell),
+          lessThanOrEqualTo(cell),
+          reason: 'a member key at a $cell px cell',
+        );
+        expect(
+          timelineLaneUnionKeyMarkerSize(rowHeight, frameCellExtent: cell),
+          lessThanOrEqualTo(cell),
+          reason: 'a union key at a $cell px cell — the ×1.5 used to escape '
+              'the fit and hand an 8px cell a 9.36px diamond',
+        );
+      }
+    });
+
+    test('and no mark is ever taller than the row it stands in', () {
+      for (final row in const [28.0, 20.0, 14.0, 9.0, 5.0]) {
+        expect(
+          timelineLaneUnionKeyMarkerSize(row, frameCellExtent: 999),
+          lessThanOrEqualTo(row),
+          reason: 'the other axis of the same square, at a $row px row',
+        );
+      }
     });
 
     testWidgets('the camera union mark and the fx transform header union '
