@@ -1415,24 +1415,35 @@ class TimelineController {
 
   Layer _requireLayer(LayerId layerId) {
     final cut = _findCutOrNull();
-    if (cut == null) {
-      throw StateError('Cut not found: $_cutId');
-    }
-
-    for (final layer in cut.layers) {
+    for (final layer in cut?.layers ?? const <Layer>[]) {
       if (layer.id == layerId) {
         return layer;
       }
     }
 
+    // 🚨A TRACK-OWNED ROW IS NOT A CUT'S TENANT (유저 H11, 2026-08-22).
+    //
+    // > 「다시말하지만 각 행들은 **독립적인 글로벌행**이라 뭐든 가능해야함」
+    //
     // Track-owned SE rows: mutations edit the GLOBAL layer (never the
     // cut-local display clone) — indexes shift via _editFrameIndexFor.
+    //
+    // ⛔This lookup used to demand the cut FIRST and throw without one, so
+    // the fallback below was unreachable in a gap parking. Three separate
+    // gates then had to say "a parked playhead has no cut to lens through"
+    // — the same sentence three times, guarding one lookup. The row lives
+    // on the TRACK, so the gap has no bearing on finding it: the shift it
+    // asks for is `activeCutGlobalStartFrame`, which is 0 with no cut,
+    // which is exactly the identity a global row wants.
     for (final layer in _trackSeLayers?.call() ?? const <Layer>[]) {
       if (layer.id == layerId) {
         return layer;
       }
     }
 
+    if (cut == null) {
+      throw StateError('Cut not found: $_cutId');
+    }
     throw StateError('Layer not found: $layerId');
   }
 
