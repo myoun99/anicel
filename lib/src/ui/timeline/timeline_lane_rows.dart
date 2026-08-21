@@ -1310,27 +1310,62 @@ class _LaneKeyName extends StatelessWidget {
 double timelineLaneKeyMarkerSize(
   double crossExtent, {
   required double frameCellExtent,
-}) => timelineFittedGlyphFontSize(
-  (crossExtent * 0.32).clamp(6.0, 11.0).toDouble(),
-  frameCellExtent,
+}) => _squareInCell(
+  timelineFittedGlyphFontSize(
+    (crossExtent * 0.32).clamp(6.0, 11.0).toDouble(),
+    frameCellExtent,
+    crossExtent: crossExtent,
+  ),
   crossExtent: crossExtent,
+  frameCellExtent: frameCellExtent,
 );
 
-/// The UNION mark's size — half again a member's key (㉗), capped by the
-/// row. The ×1.5 rides ON the fitted member size, so the summary keeps
-/// reading as "the sum of members" at every zoom (at the fit's 4px floor
-/// the union is exactly 6 — still half again).
+/// The UNION mark's size — half again a member's key (㉗), inside the same
+/// cell. The ×1.5 rides ON the fitted member size, so the summary keeps
+/// reading as "the sum of members" at every zoom.
 double timelineLaneUnionKeyMarkerSize(
   double crossExtent, {
   required double frameCellExtent,
-}) =>
-    (timelineLaneKeyMarkerSize(
-              crossExtent,
-              frameCellExtent: frameCellExtent,
-            ) *
-            1.5)
-        .clamp(6.0, crossExtent)
-        .toDouble();
+}) => _squareInCell(
+  timelineLaneKeyMarkerSize(crossExtent, frameCellExtent: frameCellExtent) *
+      1.5,
+  crossExtent: crossExtent,
+  frameCellExtent: frameCellExtent,
+);
+
+/// 🚨D39-2 (유저 스크린샷 3장, 2026-08-22) — **A KEY MARK IS A SQUARE, SO
+/// IT IS CAPPED BY THE TIGHTER AXIS OF ITS CELL.**
+///
+/// > 「1-일반상태, 2-**다이아몬드가 종횡비가 이상해지기 시작**, 3-이상해짐.
+/// > 크기가 종횡비 유지한채로 작아지는게아니라 **한 변만 작아지는** 느낌」
+///
+/// [TimelineLaneKeyMarker] draws one `Container` with an explicit width AND
+/// height and rotates it 45°. Ask for more than the cell is wide and the
+/// parent's constraint squeezes the WIDTH while the height holds — a
+/// rectangle, and a rotated rectangle is a lozenge, not a diamond. That is
+/// exactly the degradation the three screenshots step through.
+///
+/// The member size already ran through [timelineFittedGlyphFontSize], which
+/// takes whichever axis is tighter — but two things escaped it: the fit's
+/// own 4px floor, and the union's ×1.5 on top. Both are now caught here, in
+/// ONE place, so the rule is "a mark never outgrows its cell" rather than a
+/// patch on whichever caller showed it first.
+///
+/// ⚠️The floor yields to the room. A 3px cell gets a 3px mark, because a
+/// square that does not fit is not a smaller square.
+double _squareInCell(
+  double wanted, {
+  required double crossExtent,
+  required double frameCellExtent,
+}) {
+  final room = crossExtent < frameCellExtent ? crossExtent : frameCellExtent;
+  final floor = _keyMarkerFloor < room ? _keyMarkerFloor : room;
+  return wanted.clamp(floor, room).toDouble();
+}
+
+/// The smallest a key mark may be drawn while it still has room — the same
+/// floor [timelineFittedGlyphFontSize] holds every other mark to.
+const double _keyMarkerFloor = 4.0;
 
 /// The UNION summary markers of one row, as [TimelineFrameSpan] children
 /// for the row's span layout — the CAMERA row's key marks (B4).
