@@ -20,12 +20,26 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 ///
 /// ★Both halves are the contract, and the second is the harder one: a scrub
 /// raises no session notify on purpose (that is what keeps a ruler drag
-/// cheap), so the toolbar never re-asked. A notifier that fires on every
-/// crossed frame would fix the staleness and re-introduce exactly the cost
-/// the design avoids.
+/// cheap), so nothing re-asks unless something says the playhead moved.
 ///
-/// ⇒ The count is the test. Twenty frames of drag across one block boundary
-/// is TWO notifications, not twenty.
+/// ## 🚨 #10 (2026-08-21) — the first answer was a PROXY, and it was wrong
+///
+/// This file used to pin `playheadHasCel`: one boolean standing in for a
+/// whole toolbar, on the argument that the buttons 「거의 다 “플레이헤드
+/// 밑에 셀이 있나”로 환원된다」. Measured, it failed twice over —
+///
+///  * it was synced ONLY from [EditorSessionManager.scrubFrameIndex], so a
+///    committed seek left it holding the previous drag's answer. At a frame
+///    that HAS a cel it read false, and the next drag's first crossing
+///    could not flip it;
+///  * one boolean cannot carry twenty-five buttons: a scrub from a drawn
+///    frame to an empty one moves NINE of them.
+///
+/// The proxy is retired. [EditorSessionManager.playheadMoved] says only
+/// what it knows — the playhead moved — and every subscriber re-derives its
+/// OWN answer, rebuilding only if that answer changed. The efficiency half
+/// survives exactly, and this file pins it where it now lives: the ANSWER
+/// changes twice across a drag that crosses one block, not twenty times.
 void main() {
   EditorSessionManager session() {
     final manager = EditorSessionManager(
@@ -75,40 +89,95 @@ void main() {
     return manager;
   }
 
-  test('the answer flips as the ruler crosses the block', () {
+  /// What the bar's frame and shared buttons actually read — the toolbar's
+  /// own token, restated here so this file pins the ANSWER rather than a
+  /// stand-in for it. A new directly-rendered gate belongs in both places.
+  Object gates(EditorSessionManager s) => (
+    s.selectedFrame != null,
+    s.canCreateDrawingAtCurrentFrame,
+    s.canRenameFrameAtCurrentFrame,
+    s.canBlankExposureAtCurrentFrame,
+    s.canToggleMarkAtCurrentFrame,
+    s.canCopyFrameAtCurrentFrame,
+    s.canPasteLinkedFrameAtCurrentFrame,
+    s.canCutRunAtCurrentFrame,
+    s.canPasteIndependentFrameAtCurrentFrame,
+    s.canEditCellInstanceAtCurrentFrame,
+    s.canDeleteCellAtCurrentFrame,
+    s.canDecreaseSelectedExposure,
+    s.canIncreaseSelectedExposure,
+    s.canSetCommaForSelectionOrCurrent,
+  );
+
+  test('the playhead SAYS it moved on a scrub, not only on the release', () {
+    final manager = session();
+    var ticks = 0;
+    manager.playheadMoved.addListener(() => ticks += 1);
+
+    manager.scrubFrameIndex(5);
+    expect(
+      ticks,
+      greaterThan(0),
+      reason:
+          'a committed seek fires on the RELEASE — a bar that heard only '
+          'that one was stale for the whole drag',
+    );
+
+    final duringDrag = ticks;
+    manager.selectFrameIndex(5);
+    expect(
+      ticks,
+      greaterThan(duringDrag),
+      reason:
+          'and the commit still speaks: a same-frame commit after a scrub '
+          'must still reach the surfaces that take committed state only',
+    );
+  });
+
+  test('the ANSWER flips as the ruler crosses the block', () {
     final manager = session();
     manager.scrubFrameIndex(0);
-    expect(manager.playheadHasCel.value, isFalse);
+    final outside = gates(manager);
 
     manager.scrubFrameIndex(11);
     expect(
-      manager.playheadHasCel.value,
-      isTrue,
+      gates(manager),
+      isNot(outside),
       reason: 'the toolbar had no way to learn this during a drag',
     );
 
     manager.scrubFrameIndex(20);
-    expect(manager.playheadHasCel.value, isFalse);
+    expect(gates(manager), outside, reason: 'and back out is back to before');
   });
 
-  test('⛔and it fires ONCE per crossing, not once per frame', () {
+  test('⛔and it changes ONCE per crossing, not once per frame', () {
     final manager = session();
     manager.scrubFrameIndex(0);
 
-    var notifications = 0;
-    manager.playheadHasCel.addListener(() => notifications += 1);
+    final changedAt = <int>[];
+    var previous = gates(manager);
 
     // A twenty-frame drag over one block: in at 10, out at 14.
     for (var frame = 1; frame <= 20; frame += 1) {
       manager.scrubFrameIndex(frame);
+      final next = gates(manager);
+      if (next != previous) {
+        changedAt.add(frame);
+        previous = next;
+      }
     }
 
     expect(
-      notifications,
-      2,
+      changedAt,
+      [10, 11, 14],
       reason:
-          'a notification per crossed frame would put back the per-frame '
-          'rebuild the scrub exists to avoid — 「효율좋게」',
+          'the subscribers derive on every move and REBUILD only on these — '
+          'a rebuild per crossed frame would put back the cost the design '
+          'avoids (「있으면 한번, 없으면 한번」). THREE, not two, and the '
+          'third one is the honest part: the proxy this replaced was a '
+          'boolean that could not see it. 10 enters the block, 11 leaves '
+          'its START (a run head answers differently from the frames it '
+          'holds — renaming, for one), 14 leaves the block',
     );
   });
 }

@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-
 import '../models/cut_id.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart' show LayerKind;
@@ -32,8 +31,7 @@ import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'storyboard_playhead_mapping.dart';
 import 'storyboard_timeline_layout.dart';
-import 'timeline/timeline_frame_range_gesture.dart'
-    show TimelineLaneRangeHooks;
+import 'timeline/timeline_frame_range_gesture.dart' show TimelineLaneRangeHooks;
 import 'timeline/timeline_command_bar.dart';
 import 'timeline/timeline_view_cluster.dart';
 import 'timeline/transform_lane_editing.dart';
@@ -501,487 +499,493 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               child: Offstage(
                 offstage: PanelCollapsedScope.of(context),
                 child: ListenableBuilder(
-                listenable: _session.voiceRecordPreviewLane,
-                builder: (context, _) => StoryboardPanel(
-                  project: _session.repository.requireProject(),
-                  rowFilter: widget.rowFilter,
-                  seLanePreview: _session.voiceRecordPreviewLane.value,
-                  dragPreview: _session.dragPreview,
-                  // While playing, the highlight follows the PLAYING cut
-                  // (onStopped syncs the real active cut).
-                  activeCutId: _session.playback.isActive
-                      ? _session.playback.position?.cutId ??
-                            _session.activeCutId
-                      : _session.activeCutId,
-                  // THE cells' press (the timeline's cell contract): pick the
-                  // row, then seek to the frame under the pointer. The seek
-                  // is the ruler's own, so a press in a GAP parks there — an
-                  // empty cell is still a cell, and the two paths cannot
-                  // disagree about what a frame means.
-                  //
-                  // The row half comes FIRST and does only the row: a track
-                  // row that promoted the playhead's cut here would switch
-                  // cuts twice, since the pressed frame decides the cut.
-                  onRowFramePress: (row, globalFrame) {
-                    switch (row) {
-                      case LayerRowAddress():
-                        _session.selectRow(row);
-                        // ⑭: the INDEX decides the active cut, whichever row
-                        // was pressed. This used to park — an SE row owns no
-                        // cuts, so pressing one said where you ARE without
-                        // saying which cut you edit (feedback #7) — but that
-                        // sentence was written while SEVERAL tracks could
-                        // cover one frame and "which cut did you mean" had no
-                        // answer. One track later there is exactly one cut
-                        // under the press, so every row lands the same seek
-                        // and a gap still parks (the seek's own gap branch).
-                        seekStoryboardGlobalFrame(_session, globalFrame);
-                      case LaneRowAddress():
-                        // A property strip lands the way its layer row does:
-                        // the row you pressed was never what chose the cut.
-                        _session.selectRow(row);
-                        seekStoryboardGlobalFrame(_session, globalFrame);
-                      case TrackRowAddress(:final trackId):
-                        _session.selectTrackRow(trackId);
-                        seekStoryboardGlobalFrame(_session, globalFrame);
-                    }
-                  },
-                  activeLayerId: _session.activeLayerId,
-                  // The rail speaks ROW ADDRESSES, and selecting one lands
-                  // the editing focus on it (user 2026-07-29, superseding
-                  // #741's "row picks never move the focus"): the row lands
-                  // where the playhead already stands — the same landing its
-                  // own cell press makes — and ⑭ then reads the INDEX for the
-                  // cut, so an S row and a V row agree about which cut is
-                  // active (a gap still parks, on either).
-                  selectedRow: _session.selectedRow,
-                  // A CLICK CLEARS (유저 확정) — this rail's taps too, through
-                  // the same verb since T4. `takesLayerActive: false` is this
-                  // panel's own rule: the row you stand on and the layer you
-                  // draw on are separate states here (유저 2026-07-27). The
-                  // seek afterwards is the storyboard's — a row press says
-                  // where you ARE on the global axis.
-                  onSelectLayer: (layerId) {
-                    _session.standOnRow(
-                      LayerRowAddress(layerId),
-                      takesLayerActive: false,
-                    );
-                    final frame = storyboardPlayheadFrame(_session);
-                    if (frame != null) {
-                      seekStoryboardGlobalFrame(_session, frame);
-                    }
-                  },
-                  onSelectTrack: (trackId) =>
-                      _session.standOnRow(TrackRowAddress(trackId)),
-                  pixelsPerFrame: widget.pixelsPerFrame,
-                  trackLaneHeight: widget.trackLaneHeight,
-                  showSeconds: widget.showSeconds,
-                  onShowSecondsChanged: widget.onShowSecondsChanged,
-                  railExtent: widget.railExtent,
-                  projectFrameRate: _session.projectFrameRate,
-                  // The strip's edges preview live and commit ONE undo on
-                  // release, like the timeline's comma drags. Which verb a
-                  // drag belongs to is settled at BEGIN — by where the grip
-                  // sat — and the SESSION keeps that answer (feedback #5's
-                  // first attempt kept it here, where a rebuild mid-drag
-                  // could re-route the release onto a verb whose fields
-                  // were never set): the continuations are one funnel.
-                  stripEdges: StoryboardStripEdgeCallbacks(
-                    onCutEdgeBegin: (cutId, edge, panelIndex) =>
-                        _session.beginCutEdgeDrag(
-                          cutId: cutId,
-                          edge: edge,
-                          panelIndex: panelIndex,
-                        ),
-                    onCommaBegin: (cutId, blockStartIndex) =>
-                        _session.beginStoryboardCommaDrag(
-                          cutId: cutId,
-                          blockStartIndex: blockStartIndex,
-                        ),
-                    onUpdate: _session.updateCutEdgeDrag,
-                    onEnd: _session.endCutEdgeDrag,
-                    onCancel: _session.cancelCutEdgeDrag,
-                  ),
-                  // Whole-block moves (R10-④): a drag re-times the cut where
-                  // it has room and REORDERS the track where it reaches past
-                  // a neighbour — one rule, one undo per drag.
-                  cutMove: StoryboardCutMoveCallbacks(
-                    onBegin: _session.beginCutMoveDrag,
-                    onUpdate: _session.updateCutMoveDrag,
-                    onEnd: _session.endCutMoveDrag,
-                    onCancel: _session.cancelCutMoveDrag,
-                  ),
-                  // Cut range selection (UI-R18 #1): drag = select a run,
-                  // drag inside the selection = slide the whole run, tap =
-                  // clear; the delete command batches the selection.
-                  cutSelect: StoryboardCutSelectCallbacks(
-                    selectedRange: _session.trackFrameRangeSelection,
-                    onDrag: _session.updateStoryboardCutSelectionByFrame,
-                    onClear: _session.clearStoryboardCutSelection,
-                  ),
-                  // The STRIP's selection is the CUT-LOCAL one — the same
-                  // object the timeline uses, on that cut's storyboard layer.
-                  // It has to be: a cut-local index can only name frames of
-                  // the active cut, which the cells press has just made
-                  // active by pressing there.
-                  stripSelect: StoryboardStripSelectCallbacks(
-                    selection: _session.frameRangeSelection,
-                    onDrag:
-                        ({
-                          required layerId,
-                          required anchorIndex,
-                          required headIndex,
-                        }) => _session.updateFrameRangeSelectionDrag(
-                          layerId: layerId,
-                          anchorIndex: anchorIndex,
-                          headIndex: headIndex,
-                        ),
-                    onClear: _session.clearFrameRangeSelection,
-                    // Sliding the panels is the CUT-LOCAL move — the same
-                    // one the timeline's rows use, because the strip's
-                    // selection is that same object on that same axis.
-                    move: StoryboardRangeMoveCallbacks(
-                      onBegin: _session.beginFrameRangeMoveDrag,
-                      onUpdate: (frameDelta, targetLayerId) =>
-                          _session.updateFrameRangeMoveDrag(
-                            frameDelta: frameDelta,
-                            targetLayerId: targetLayerId,
+                  listenable: _session.voiceRecordPreviewLane,
+                  builder: (context, _) => StoryboardPanel(
+                    project: _session.repository.requireProject(),
+                    rowFilter: widget.rowFilter,
+                    seLanePreview: _session.voiceRecordPreviewLane.value,
+                    dragPreview: _session.dragPreview,
+                    // While playing, the highlight follows the PLAYING cut
+                    // (onStopped syncs the real active cut).
+                    activeCutId: _session.playback.isActive
+                        ? _session.playback.position?.cutId ??
+                              _session.activeCutId
+                        : _session.activeCutId,
+                    // THE cells' press (the timeline's cell contract): pick the
+                    // row, then seek to the frame under the pointer. The seek
+                    // is the ruler's own, so a press in a GAP parks there — an
+                    // empty cell is still a cell, and the two paths cannot
+                    // disagree about what a frame means.
+                    //
+                    // The row half comes FIRST and does only the row: a track
+                    // row that promoted the playhead's cut here would switch
+                    // cuts twice, since the pressed frame decides the cut.
+                    onRowFramePress: (row, globalFrame) {
+                      switch (row) {
+                        case LayerRowAddress():
+                          _session.selectRow(row);
+                          // ⑭: the INDEX decides the active cut, whichever row
+                          // was pressed. This used to park — an SE row owns no
+                          // cuts, so pressing one said where you ARE without
+                          // saying which cut you edit (feedback #7) — but that
+                          // sentence was written while SEVERAL tracks could
+                          // cover one frame and "which cut did you mean" had no
+                          // answer. One track later there is exactly one cut
+                          // under the press, so every row lands the same seek
+                          // and a gap still parks (the seek's own gap branch).
+                          seekStoryboardGlobalFrame(_session, globalFrame);
+                        case LaneRowAddress():
+                          // A property strip lands the way its layer row does:
+                          // the row you pressed was never what chose the cut.
+                          _session.selectRow(row);
+                          seekStoryboardGlobalFrame(_session, globalFrame);
+                        case TrackRowAddress(:final trackId):
+                          _session.selectTrackRow(trackId);
+                          seekStoryboardGlobalFrame(_session, globalFrame);
+                      }
+                    },
+                    activeLayerId: _session.activeLayerId,
+                    // The rail speaks ROW ADDRESSES, and selecting one lands
+                    // the editing focus on it (user 2026-07-29, superseding
+                    // #741's "row picks never move the focus"): the row lands
+                    // where the playhead already stands — the same landing its
+                    // own cell press makes — and ⑭ then reads the INDEX for the
+                    // cut, so an S row and a V row agree about which cut is
+                    // active (a gap still parks, on either).
+                    selectedRow: _session.selectedRow,
+                    // A CLICK CLEARS (유저 확정) — this rail's taps too, through
+                    // the same verb since T4. `takesLayerActive: false` is this
+                    // panel's own rule: the row you stand on and the layer you
+                    // draw on are separate states here (유저 2026-07-27). The
+                    // seek afterwards is the storyboard's — a row press says
+                    // where you ARE on the global axis.
+                    onSelectLayer: (layerId) {
+                      _session.standOnRow(
+                        LayerRowAddress(layerId),
+                        takesLayerActive: false,
+                      );
+                      final frame = storyboardPlayheadFrame(_session);
+                      if (frame != null) {
+                        seekStoryboardGlobalFrame(_session, frame);
+                      }
+                    },
+                    onSelectTrack: (trackId) =>
+                        _session.standOnRow(TrackRowAddress(trackId)),
+                    pixelsPerFrame: widget.pixelsPerFrame,
+                    trackLaneHeight: widget.trackLaneHeight,
+                    showSeconds: widget.showSeconds,
+                    onShowSecondsChanged: widget.onShowSecondsChanged,
+                    railExtent: widget.railExtent,
+                    projectFrameRate: _session.projectFrameRate,
+                    // The strip's edges preview live and commit ONE undo on
+                    // release, like the timeline's comma drags. Which verb a
+                    // drag belongs to is settled at BEGIN — by where the grip
+                    // sat — and the SESSION keeps that answer (feedback #5's
+                    // first attempt kept it here, where a rebuild mid-drag
+                    // could re-route the release onto a verb whose fields
+                    // were never set): the continuations are one funnel.
+                    stripEdges: StoryboardStripEdgeCallbacks(
+                      onCutEdgeBegin: (cutId, edge, panelIndex) =>
+                          _session.beginCutEdgeDrag(
+                            cutId: cutId,
+                            edge: edge,
+                            panelIndex: panelIndex,
                           ),
-                      onEnd: _session.endFrameRangeMoveDrag,
-                      onCancel: _session.cancelFrameRangeMoveDrag,
-                    ),
-                  ),
-                  // D30: the no-layer cut's create affordance — gate and
-                  // dispatch are the session's ONE add-layer pair (T25),
-                  // aimed at the cut the press just activated.
-                  onCreateStoryboardLayer: (cutId) {
-                    if (_session.activeCutOrNull?.id == cutId &&
-                        _session.canAddLayerOfKind(LayerKind.storyboard)) {
-                      _session.addLayerOfKind(LayerKind.storyboard);
-                    }
-                  },
-                  // The end line edits the MOVIE length (UI-R20 #3): the
-                  // project's trailing gap, never the cuts.
-                  movieEnd: StoryboardMovieEndCallbacks(
-                    onBegin: _session.beginMovieEndDrag,
-                    onUpdate: _session.updateMovieEndDrag,
-                    onEnd: _session.endMovieEndDrag,
-                    onCancel: _session.cancelMovieEndDrag,
-                  ),
-                  playheadFrame: _playheadGlobalFrame,
-                  revealSelectionTick: _session.revealSelectionTick,
-                  frameReadySignal: _frameReadySignal,
-                  onSeekGlobalFrame: (frame) =>
-                      seekStoryboardGlobalFrame(_session, frame),
-                  // Ruler drags ride the cursor path (the host rebuilds
-                  // per cursor move — the same cost playback ticks pay);
-                  // the release commits the selection once.
-                  onScrubGlobalFrame: (frame) =>
-                      scrubStoryboardGlobalFrame(_session, frame),
-                  onScrubEnd: () => commitStoryboardScrub(_session),
-                  isFrameReady: (frame) => storyboardFrameReady(
-                    _session,
-                    frame,
-                    layout: _activeTrackLayout(),
-                  ),
-                  thumbnailFor: widget.thumbnailFor,
-                  audioPeaksFor: _session.audioPeaksForDisplay,
-                  // The tooltip string doubles as the clip-marker switch
-                  // (REC1-D), matching the timeline host: null while the
-                  // clipping notice setting is off.
-                  seClipMarkerTooltip:
-                      _session.audioSyncSettings.value.clippingNotice
-                      ? _session.uiStrings.recordClipMarkerTooltip
-                      : null,
-                  // Rail parity with the timeline rows: twirl-down audio
-                  // lanes and the V track's cut-fade (Opacity) lane.
-                  expandedSeAudioRows: _expandedSeAudioRows,
-                  onToggleSeRowLane: (track, slot) => _toggleSetEntry(
-                    _expandedSeAudioRows,
-                    StoryboardPanel.seRowKey(track, slot),
-                  ),
-                  expandedTransformTracks: _expandedTransformTracks,
-                  onToggleTrackLane: (track) =>
-                      _toggleSetEntry(_expandedTransformTracks, track.id.value),
-                  // AE group collapse for the V tracks' and S rows'
-                  // Transform groups (default collapsed).
-                  expandedTransformGroups: _expandedTransformGroups,
-                  onToggleTransformGroup: (groupKey) =>
-                      _toggleSetEntry(_expandedTransformGroups, groupKey),
-                  // The V track's OWN Transform lanes (AE precomp: the
-                  // whole picture moving on the screen; R4b: global axis,
-                  // no cut needed) and the S rows' layer Transform lanes.
-                  trackLaneEditFor: _trackLaneEditFor,
-                  laneRange: TimelineLaneRangeHooks(
-                    // This rail IS the track's global axis — the master
-                    // one — so it reads and writes the span unshifted.
-                    selection: _session.laneRangeSelection,
-                    // C②: the head LANE arrives resolved by the PANEL off
-                    // its own row geometry — the stale hand-kept walk
-                    // (transform lanes for a rail that draws fx lanes,
-                    // null for every SE anchor) retired with it.
-                    onSelectUpdate:
-                        (
-                          layerId,
-                          laneId,
-                          anchorIndex,
-                          headIndex,
-                          headLaneId,
-                        ) => _session.updateLaneRangeSelectionDrag(
-                          layerId: layerId,
-                          laneId: laneId,
-                          anchorIndex: anchorIndex,
-                          headIndex: headIndex,
-                          framesAreGlobal: true,
-                          headLaneId: headLaneId,
-                        ),
-                    // R10: a lane band is a place you can STAND. The
-                    // storyboard's strips run on the GLOBAL axis, so the
-                    // frame the tap reports is a global one.
-                    //
-                    // R5 #9: and it STANDS there. This used to seek and
-                    // stop, so pressing a member's frame cell lit nothing
-                    // here while the same press on the timeline moved the
-                    // subject — the rail label was the only half of
-                    // "stand" this panel had.
-                    //
-                    // C6 (2026-08-17): through THE standing verb, like the
-                    // timeline's twin — the hand-rolled clear+seek that
-                    // stood here restated `standOnRow` without its T10
-                    // guard, and with standing on the DOWN now (the cells'
-                    // press law) an unguarded clear would wipe the very
-                    // lane selection a move-press was about to slide.
-                    //
-                    // `takesLayerActive: false` is this rail's one stated
-                    // difference (유저 2026-07-27) — it also keeps a V
-                    // row's SYNTHETIC carrier id out of the layer
-                    // selection, which was the old shape's whole reason.
-                    onTapAt: (layerId, laneId, globalFrame) =>
-                        _session.standOnRow(
-                          LaneRowAddress(layerId, laneId),
-                          globalFrameIndex: globalFrame,
-                          takesLayerActive: false,
-                        ),
-                    onMoveBegin: _session.beginLaneRangeMoveDrag,
-                    onMoveUpdate: (frameDelta) => _session
-                        .updateLaneRangeMoveDrag(frameDelta: frameDelta),
-                    onMoveEnd: _session.endLaneRangeMoveDrag,
-                    onMoveCancel: _session.cancelLaneRangeMoveDrag,
-                  ),
-                  // R10 #19's rail half. Standing is not seeking, so a
-                  // label press moves the SUBJECT and leaves the playhead
-                  // (and the active cut) exactly where they were — the
-                  // band's press is the one that lands on a frame.
-                  currentRowHooks: TimelineCurrentRowHooks(
-                    currentRow: _session.currentRowListenable,
-                    // T4: standing here clears too — 「어떤 행이든 액티브
-                    // 바꾸면 풀리도록」 is not a timeline-only law.
-                    onStandOnLane: (layerId, laneId) => _session.standOnRow(
-                      LaneRowAddress(layerId, laneId),
-                      takesLayerActive: false,
-                    ),
-                  ),
-                  // The S rows take the rail's row-order drag; the V rows
-                  // are tracks and keep their order.
-                  rowDragHooks: TimelineRowDragHooks(
-                    drag: _session.layerRowDrag,
-                    onBegin: _session.beginLayerRowDrag,
-                    onUpdate: _session.updateLayerRowDrag,
-                    onRowTarget: _session.updateLayerRowDropOnRow,
-                    // R5 #9: the V row re-orders TRACKS, and the track list
-                    // is the composite order (user, 2026-08-09) — so this
-                    // is only offered where tracks are on screen.
-                    onTrackUpdate: _session.updateTrackRowDrag,
-                    onEffectUpdate: _session.updateEffectRowDrag,
-                    onEnd: _session.endLayerRowDrag,
-                    onCancel: _session.cancelLayerRowDrag,
-                  ),
-                  layerLaneEdit: _layerLaneEdit,
-                  activeCutFrameCursor: _activeCutFrameCursor,
-                  onSelectFrameIndex: _session.selectFrameIndex,
-                  poseDisplaySize: _session.cameraFrameSize,
-                  // No onSetCutFade: the fade handles went with the V row's
-                  // transform. F.I/F.O spans on the transition row are the
-                  // fade now — an always-visible row rather than two twirls
-                  // deep, and the user did not want the block-edge drag kept
-                  // ("애초에 마음에 안 들었었으니까", 2026-08-10).
-                  // Timeline-parity layer controls on the ACTIVE cut's SE
-                  // rows — the SAME session hooks the timeline host wires.
-                  onToggleLayerVisibility: _session.toggleLayerVisibility,
-                  onOpenLayerMixer: (anchorContext, layerId) => unawaited(
-                    showSeLayerMixer(
-                      anchorContext,
-                      session: _session,
-                      layerId: layerId,
-                    ),
-                  ),
-                  isLayerSoloed: (layerId) =>
-                      _session.soloedSeLayerIds.value.contains(layerId),
-                  onLayerOpacityChanged: _session.previewLayerOpacity,
-                  onLayerOpacityChangeEnd: _session.commitLayerOpacity,
-                  onLayerMarkSelected: _session.setLayerMark,
-                  // B5③ (ordered twice): the timeline rows' sheet toggle on
-                  // this rail too — the same session verb.
-                  onToggleLayerTimesheet: _session.toggleLayerTimesheet,
-                  layerFxStateOf: _session.layerFxState,
-                  onToggleLayerFx: _session.toggleLayerFx,
-                  // The timeline's rail legend on this panel too (UI-R5): the
-                  // same session-backed bulk flyouts + master opacity bar; the
-                  // row solos stand down (the storyboard rail is track-global,
-                  // no row filter here).
-                  visibilitySoloEnabled: _session.layerVisibilitySoloEnabled,
-                  legend: LayerLegendCallbacks(
-                    onShowAllLayers: () =>
-                        _session.setAllLayersVisibility(true),
-                    onHideAllLayers: () =>
-                        _session.setAllLayersVisibility(false),
-                    onToggleVisibilitySolo: _session.toggleLayerVisibilitySolo,
-                    onSheetAllOn: () => _session.setAllLayersOnTimesheet(true),
-                    onSheetAllOff: () =>
-                        _session.setAllLayersOnTimesheet(false),
-                    onClearAllMarks: _session.clearAllLayerMarks,
-                    onClearAllFillReferences: _session.clearAllFillReferences,
-                    onMuteAllSe: () => _session.setAllSeLayersMuted(true),
-                    onUnmuteAllSe: () => _session.setAllSeLayersMuted(false),
-                    onBypassAllFx: () => _session.setAllLayersFxBypassed(true),
-                    onEnableAllFx: () => _session.setAllLayersFxBypassed(false),
-                    // R5 #9: the chips are LIVE here now — same filter
-                    // object as the timeline's, so setting one on either
-                    // surface sets it on both.
-                    onToggleMarkFilter: (mark) =>
-                        widget.onSetRowFilter?.call(
-                          widget.rowFilter.toggledMark(mark),
-                        ),
-                    onToggleKindFilter: (kind) =>
-                        widget.onSetRowFilter?.call(
-                          widget.rowFilter.toggledKind(kind),
-                        ),
-                    onToggleSheetOnlyFilter: () =>
-                        widget.onSetRowFilter?.call(
-                          widget.rowFilter.copyWith(
-                            onTimesheetOnly: !widget.rowFilter.onTimesheetOnly,
+                      onCommaBegin: (cutId, blockStartIndex) =>
+                          _session.beginStoryboardCommaDrag(
+                            cutId: cutId,
+                            blockStartIndex: blockStartIndex,
                           ),
-                        ),
-                    onToggleFxOnlyFilter: () => widget.onSetRowFilter?.call(
-                      widget.rowFilter.copyWith(
-                        fxOnly: !widget.rowFilter.fxOnly,
+                      onUpdate: _session.updateCutEdgeDrag,
+                      onEnd: _session.endCutEdgeDrag,
+                      onCancel: _session.cancelCutEdgeDrag,
+                    ),
+                    // Whole-block moves (R10-④): a drag re-times the cut where
+                    // it has room and REORDERS the track where it reaches past
+                    // a neighbour — one rule, one undo per drag.
+                    cutMove: StoryboardCutMoveCallbacks(
+                      onBegin: _session.beginCutMoveDrag,
+                      onUpdate: _session.updateCutMoveDrag,
+                      onEnd: _session.endCutMoveDrag,
+                      onCancel: _session.cancelCutMoveDrag,
+                    ),
+                    // Cut range selection (UI-R18 #1): drag = select a run,
+                    // drag inside the selection = slide the whole run, tap =
+                    // clear; the delete command batches the selection.
+                    cutSelect: StoryboardCutSelectCallbacks(
+                      selectedRange: _session.trackFrameRangeSelection,
+                      onDrag: _session.updateStoryboardCutSelectionByFrame,
+                      onClear: _session.clearStoryboardCutSelection,
+                    ),
+                    // The STRIP's selection is the CUT-LOCAL one — the same
+                    // object the timeline uses, on that cut's storyboard layer.
+                    // It has to be: a cut-local index can only name frames of
+                    // the active cut, which the cells press has just made
+                    // active by pressing there.
+                    stripSelect: StoryboardStripSelectCallbacks(
+                      selection: _session.frameRangeSelection,
+                      onDrag:
+                          ({
+                            required layerId,
+                            required anchorIndex,
+                            required headIndex,
+                          }) => _session.updateFrameRangeSelectionDrag(
+                            layerId: layerId,
+                            anchorIndex: anchorIndex,
+                            headIndex: headIndex,
+                          ),
+                      onClear: _session.clearFrameRangeSelection,
+                      // Sliding the panels is the CUT-LOCAL move — the same
+                      // one the timeline's rows use, because the strip's
+                      // selection is that same object on that same axis.
+                      move: StoryboardRangeMoveCallbacks(
+                        onBegin: _session.beginFrameRangeMoveDrag,
+                        onUpdate: (frameDelta, targetLayerId) =>
+                            _session.updateFrameRangeMoveDrag(
+                              frameDelta: frameDelta,
+                              targetLayerId: targetLayerId,
+                            ),
+                        onEnd: _session.endFrameRangeMoveDrag,
+                        onCancel: _session.cancelFrameRangeMoveDrag,
                       ),
                     ),
-                    onToggleFillReferenceOnlyFilter: () =>
-                        widget.onSetRowFilter?.call(
-                          widget.rowFilter.copyWith(
-                            fillReferenceOnly:
-                                !widget.rowFilter.fillReferenceOnly,
-                          ),
-                        ),
-                    onPreviewLayersOpacity: _session.previewLayersOpacity,
-                    onCommitLayersOpacity: _session.commitLayersOpacity,
-                  ),
-                  // Master-bar drags (UI-R6 #2): S-row sliders follow the
-                  // preview channel live; the bar rests on the last committed
-                  // value instead of an average.
-                  opacityDragPreview: _session.opacityDragPreview,
-                  legendOpacityValue: _session.lastMasterOpacity,
-                  // The V row's picture eye (R9): session view state the
-                  // playback display reads.
-                  cutPictureVisibleOf: _session.isCutPictureVisible,
-                  onToggleCutPictureVisibility:
-                      _session.toggleCutPictureVisibility,
-                  // R9 #21: the TRACK's own fx master and static opacity —
-                  // persisted model state, unlike the cut toggles above.
-                  trackFxStateOf: (track) => _session.trackFxState(track.id),
-                  onToggleTrackFx: (track) => _session.toggleTrackFx(track.id),
-                  // The V row's chain: one effect's own bypass, from its lane
-                  // group header.
-                  onToggleTrackEffectEnabled: (track, effectId) =>
-                      _session.toggleTrackEffectEnabled(track.id, effectId),
-                  // R5: AE's group Reset on the V row's chain.
-                  onResetTrackEffectGroup: (track, headerLaneId) =>
-                      _session.resetTrackEffectGroup(track.id, headerLaneId),
-                  trackOpacityOf: (track) =>
-                      _session.trackStaticOpacity(track.id),
-                  onTrackOpacityChanged: (track, opacity) =>
-                      _session.previewTrackOpacity(track.id, opacity),
-                  onTrackOpacityChangeEnd: (track, opacity) =>
-                      _session.commitTrackOpacity(track.id, opacity),
-                  // S-row range selection: the SAME track-axis selection the
-                  // cut row paints, one row up. The timeline mounts its range
-                  // gesture on every layer row (UI-R20 #2) and these rows had
-                  // none, which is the last place the two panels' cells still
-                  // behaved differently.
-                  seSelect: StoryboardSeSelectCallbacks(
-                    selectedRange: _session.trackFrameRangeSelection,
-                    onDrag: _session.updateTrackRowRangeSelectionByFrame,
-                    onClear: _session.clearStoryboardCutSelection,
-                    // Sliding the selection: the timeline's own range-move
-                    // machine, entered on the track axis (its sources commit
-                    // to the global layer either way).
-                    move: StoryboardRangeMoveCallbacks(
-                      onBegin: (layerId) =>
-                          _session.beginTrackRangeMoveDrag(layerId),
-                      onUpdate: (frameDelta, targetLayerId) =>
-                          _session.updateFrameRangeMoveDrag(
-                            frameDelta: frameDelta,
-                            targetLayerId: targetLayerId,
-                          ),
-                      onEnd: _session.endFrameRangeMoveDrag,
-                      onCancel: _session.cancelFrameRangeMoveDrag,
+                    // D30: the no-layer cut's create affordance — gate and
+                    // dispatch are the session's ONE add-layer pair (T25),
+                    // aimed at the cut the press just activated.
+                    onCreateStoryboardLayer: (cutId) {
+                      if (_session.activeCutOrNull?.id == cutId &&
+                          _session.canAddLayerOfKind(LayerKind.storyboard)) {
+                        _session.addLayerOfKind(LayerKind.storyboard);
+                      }
+                    },
+                    // The end line edits the MOVIE length (UI-R20 #3): the
+                    // project's trailing gap, never the cuts.
+                    movieEnd: StoryboardMovieEndCallbacks(
+                      onBegin: _session.beginMovieEndDrag,
+                      onUpdate: _session.updateMovieEndDrag,
+                      onEnd: _session.endMovieEndDrag,
+                      onCancel: _session.cancelMovieEndDrag,
                     ),
-                  ),
-                  // The ACTIVE cut's SE blocks reuse the timeline's comma
-                  // edge grips (live preview + ONE undo per drag).
-                  // The strip passes GLOBAL block starts (UI-R7 #5: every
-                  // cut's blocks drag here, not just the active cut's).
-                  seCommaDrag: TimelineCommaDragCallbacks(
-                    onBegin: (layerId, blockStartIndex, edge) =>
-                        _session.beginExposureEdgeDrag(
-                          layerId: layerId,
-                          blockStartIndex: blockStartIndex,
-                          edge: edge,
-                          blockStartIsGlobal: true,
-                        ),
-                    onUpdate: _session.updateExposureEdgeDrag,
-                    onEnd: _session.endExposureEdgeDrag,
-                    onCancel: _session.cancelExposureEdgeDrag,
-                  ),
-                  // The Audio lane's slide edit (active cut).
-                  onSetAudioClipOffset: _session.setAudioClipOffset,
-                  // The TRANSITION row. This panel is its only editor: the
-                  // row is track-owned and its spans address the global
-                  // axis, so the cut timeline shows them read-only.
-                  transitionDefById: _session.cameraInstructionSet.defById,
-                  // D26: crossing fades are refused and wear the red
-                  // corner — the session answers by global key on this
-                  // authoring axis, with the SAME predicate the ramp and
-                  // のりしろ read.
-                  transitionCrossingTooltip:
-                      _session.transitionCrossingWarningAtGlobalKey,
-                  transitionPreview: _session.transitionEdgeDragPreview,
-                  transitionCommaDrag: TimelineCommaDragCallbacks(
-                    onBegin: (layerId, blockStartIndex, edge) =>
-                        _session.beginTransitionEdgeDrag(
-                          layerId: layerId,
-                          spanStartIndex: blockStartIndex,
-                          edge: edge,
-                        ),
-                    onUpdate: _session.updateTransitionEdgeDrag,
-                    onEnd: _session.endTransitionEdgeDrag,
-                    onCancel: _session.cancelTransitionEdgeDrag,
-                  ),
-                  onEditTransitionSpan: _editTransitionSpan,
-                  // B6: the SE blocks' same-cell double tap opens the SAME
-                  // instance dialog the timeline's SE cells open, addressed
-                  // on the global axis (this rail's standing row never
-                  // moves the drawing target).
-                  onEditSeEntry: (layerId, globalFrame) => unawaited(
-                    editSeEntryInstance(
-                      context,
+                    playheadFrame: _playheadGlobalFrame,
+                    revealSelectionTick: _session.revealSelectionTick,
+                    frameReadySignal: _frameReadySignal,
+                    onSeekGlobalFrame: (frame) =>
+                        seekStoryboardGlobalFrame(_session, frame),
+                    // Ruler drags ride the cursor path (the host rebuilds
+                    // per cursor move — the same cost playback ticks pay);
+                    // the release commits the selection once.
+                    onScrubGlobalFrame: (frame) =>
+                        scrubStoryboardGlobalFrame(_session, frame),
+                    onScrubEnd: () => commitStoryboardScrub(_session),
+                    isFrameReady: (frame) => storyboardFrameReady(
                       _session,
-                      layerId: layerId,
-                      globalFrame: globalFrame,
+                      frame,
+                      layout: _activeTrackLayout(),
+                    ),
+                    thumbnailFor: widget.thumbnailFor,
+                    audioPeaksFor: _session.audioPeaksForDisplay,
+                    // The tooltip string doubles as the clip-marker switch
+                    // (REC1-D), matching the timeline host: null while the
+                    // clipping notice setting is off.
+                    seClipMarkerTooltip:
+                        _session.audioSyncSettings.value.clippingNotice
+                        ? _session.uiStrings.recordClipMarkerTooltip
+                        : null,
+                    // Rail parity with the timeline rows: twirl-down audio
+                    // lanes and the V track's cut-fade (Opacity) lane.
+                    expandedSeAudioRows: _expandedSeAudioRows,
+                    onToggleSeRowLane: (track, slot) => _toggleSetEntry(
+                      _expandedSeAudioRows,
+                      StoryboardPanel.seRowKey(track, slot),
+                    ),
+                    expandedTransformTracks: _expandedTransformTracks,
+                    onToggleTrackLane: (track) => _toggleSetEntry(
+                      _expandedTransformTracks,
+                      track.id.value,
+                    ),
+                    // AE group collapse for the V tracks' and S rows'
+                    // Transform groups (default collapsed).
+                    expandedTransformGroups: _expandedTransformGroups,
+                    onToggleTransformGroup: (groupKey) =>
+                        _toggleSetEntry(_expandedTransformGroups, groupKey),
+                    // The V track's OWN Transform lanes (AE precomp: the
+                    // whole picture moving on the screen; R4b: global axis,
+                    // no cut needed) and the S rows' layer Transform lanes.
+                    trackLaneEditFor: _trackLaneEditFor,
+                    laneRange: TimelineLaneRangeHooks(
+                      // This rail IS the track's global axis — the master
+                      // one — so it reads and writes the span unshifted.
+                      selection: _session.laneRangeSelection,
+                      // C②: the head LANE arrives resolved by the PANEL off
+                      // its own row geometry — the stale hand-kept walk
+                      // (transform lanes for a rail that draws fx lanes,
+                      // null for every SE anchor) retired with it.
+                      onSelectUpdate:
+                          (
+                            layerId,
+                            laneId,
+                            anchorIndex,
+                            headIndex,
+                            headLaneId,
+                          ) => _session.updateLaneRangeSelectionDrag(
+                            layerId: layerId,
+                            laneId: laneId,
+                            anchorIndex: anchorIndex,
+                            headIndex: headIndex,
+                            framesAreGlobal: true,
+                            headLaneId: headLaneId,
+                          ),
+                      // R10: a lane band is a place you can STAND. The
+                      // storyboard's strips run on the GLOBAL axis, so the
+                      // frame the tap reports is a global one.
+                      //
+                      // R5 #9: and it STANDS there. This used to seek and
+                      // stop, so pressing a member's frame cell lit nothing
+                      // here while the same press on the timeline moved the
+                      // subject — the rail label was the only half of
+                      // "stand" this panel had.
+                      //
+                      // C6 (2026-08-17): through THE standing verb, like the
+                      // timeline's twin — the hand-rolled clear+seek that
+                      // stood here restated `standOnRow` without its T10
+                      // guard, and with standing on the DOWN now (the cells'
+                      // press law) an unguarded clear would wipe the very
+                      // lane selection a move-press was about to slide.
+                      //
+                      // `takesLayerActive: false` is this rail's one stated
+                      // difference (유저 2026-07-27) — it also keeps a V
+                      // row's SYNTHETIC carrier id out of the layer
+                      // selection, which was the old shape's whole reason.
+                      onTapAt: (layerId, laneId, globalFrame) =>
+                          _session.standOnRow(
+                            LaneRowAddress(layerId, laneId),
+                            globalFrameIndex: globalFrame,
+                            takesLayerActive: false,
+                          ),
+                      onMoveBegin: _session.beginLaneRangeMoveDrag,
+                      onMoveUpdate: (frameDelta) => _session
+                          .updateLaneRangeMoveDrag(frameDelta: frameDelta),
+                      onMoveEnd: _session.endLaneRangeMoveDrag,
+                      onMoveCancel: _session.cancelLaneRangeMoveDrag,
+                    ),
+                    // R10 #19's rail half. Standing is not seeking, so a
+                    // label press moves the SUBJECT and leaves the playhead
+                    // (and the active cut) exactly where they were — the
+                    // band's press is the one that lands on a frame.
+                    currentRowHooks: TimelineCurrentRowHooks(
+                      currentRow: _session.currentRowListenable,
+                      // T4: standing here clears too — 「어떤 행이든 액티브
+                      // 바꾸면 풀리도록」 is not a timeline-only law.
+                      onStandOnLane: (layerId, laneId) => _session.standOnRow(
+                        LaneRowAddress(layerId, laneId),
+                        takesLayerActive: false,
+                      ),
+                    ),
+                    // The S rows take the rail's row-order drag; the V rows
+                    // are tracks and keep their order.
+                    rowDragHooks: TimelineRowDragHooks(
+                      drag: _session.layerRowDrag,
+                      onBegin: _session.beginLayerRowDrag,
+                      onUpdate: _session.updateLayerRowDrag,
+                      onRowTarget: _session.updateLayerRowDropOnRow,
+                      // R5 #9: the V row re-orders TRACKS, and the track list
+                      // is the composite order (user, 2026-08-09) — so this
+                      // is only offered where tracks are on screen.
+                      onTrackUpdate: _session.updateTrackRowDrag,
+                      onEffectUpdate: _session.updateEffectRowDrag,
+                      onEnd: _session.endLayerRowDrag,
+                      onCancel: _session.cancelLayerRowDrag,
+                    ),
+                    layerLaneEdit: _layerLaneEdit,
+                    activeCutFrameCursor: _activeCutFrameCursor,
+                    onSelectFrameIndex: _session.selectFrameIndex,
+                    poseDisplaySize: _session.cameraFrameSize,
+                    // No onSetCutFade: the fade handles went with the V row's
+                    // transform. F.I/F.O spans on the transition row are the
+                    // fade now — an always-visible row rather than two twirls
+                    // deep, and the user did not want the block-edge drag kept
+                    // ("애초에 마음에 안 들었었으니까", 2026-08-10).
+                    // Timeline-parity layer controls on the ACTIVE cut's SE
+                    // rows — the SAME session hooks the timeline host wires.
+                    onToggleLayerVisibility: _session.toggleLayerVisibility,
+                    onOpenLayerMixer: (anchorContext, layerId) => unawaited(
+                      showSeLayerMixer(
+                        anchorContext,
+                        session: _session,
+                        layerId: layerId,
+                      ),
+                    ),
+                    isLayerSoloed: (layerId) =>
+                        _session.soloedSeLayerIds.value.contains(layerId),
+                    onLayerOpacityChanged: _session.previewLayerOpacity,
+                    onLayerOpacityChangeEnd: _session.commitLayerOpacity,
+                    onLayerMarkSelected: _session.setLayerMark,
+                    // B5③ (ordered twice): the timeline rows' sheet toggle on
+                    // this rail too — the same session verb.
+                    onToggleLayerTimesheet: _session.toggleLayerTimesheet,
+                    layerFxStateOf: _session.layerFxState,
+                    onToggleLayerFx: _session.toggleLayerFx,
+                    // The timeline's rail legend on this panel too (UI-R5): the
+                    // same session-backed bulk flyouts + master opacity bar; the
+                    // row solos stand down (the storyboard rail is track-global,
+                    // no row filter here).
+                    visibilitySoloEnabled: _session.layerVisibilitySoloEnabled,
+                    legend: LayerLegendCallbacks(
+                      onShowAllLayers: () =>
+                          _session.setAllLayersVisibility(true),
+                      onHideAllLayers: () =>
+                          _session.setAllLayersVisibility(false),
+                      onToggleVisibilitySolo:
+                          _session.toggleLayerVisibilitySolo,
+                      onSheetAllOn: () =>
+                          _session.setAllLayersOnTimesheet(true),
+                      onSheetAllOff: () =>
+                          _session.setAllLayersOnTimesheet(false),
+                      onClearAllMarks: _session.clearAllLayerMarks,
+                      onClearAllFillReferences: _session.clearAllFillReferences,
+                      onMuteAllSe: () => _session.setAllSeLayersMuted(true),
+                      onUnmuteAllSe: () => _session.setAllSeLayersMuted(false),
+                      onBypassAllFx: () =>
+                          _session.setAllLayersFxBypassed(true),
+                      onEnableAllFx: () =>
+                          _session.setAllLayersFxBypassed(false),
+                      // R5 #9: the chips are LIVE here now — same filter
+                      // object as the timeline's, so setting one on either
+                      // surface sets it on both.
+                      onToggleMarkFilter: (mark) => widget.onSetRowFilter?.call(
+                        widget.rowFilter.toggledMark(mark),
+                      ),
+                      onToggleKindFilter: (kind) => widget.onSetRowFilter?.call(
+                        widget.rowFilter.toggledKind(kind),
+                      ),
+                      onToggleSheetOnlyFilter: () =>
+                          widget.onSetRowFilter?.call(
+                            widget.rowFilter.copyWith(
+                              onTimesheetOnly:
+                                  !widget.rowFilter.onTimesheetOnly,
+                            ),
+                          ),
+                      onToggleFxOnlyFilter: () => widget.onSetRowFilter?.call(
+                        widget.rowFilter.copyWith(
+                          fxOnly: !widget.rowFilter.fxOnly,
+                        ),
+                      ),
+                      onToggleFillReferenceOnlyFilter: () =>
+                          widget.onSetRowFilter?.call(
+                            widget.rowFilter.copyWith(
+                              fillReferenceOnly:
+                                  !widget.rowFilter.fillReferenceOnly,
+                            ),
+                          ),
+                      onPreviewLayersOpacity: _session.previewLayersOpacity,
+                      onCommitLayersOpacity: _session.commitLayersOpacity,
+                    ),
+                    // Master-bar drags (UI-R6 #2): S-row sliders follow the
+                    // preview channel live; the bar rests on the last committed
+                    // value instead of an average.
+                    opacityDragPreview: _session.opacityDragPreview,
+                    legendOpacityValue: _session.lastMasterOpacity,
+                    // The V row's picture eye (R9): session view state the
+                    // playback display reads.
+                    cutPictureVisibleOf: _session.isCutPictureVisible,
+                    onToggleCutPictureVisibility:
+                        _session.toggleCutPictureVisibility,
+                    // R9 #21: the TRACK's own fx master and static opacity —
+                    // persisted model state, unlike the cut toggles above.
+                    trackFxStateOf: (track) => _session.trackFxState(track.id),
+                    onToggleTrackFx: (track) =>
+                        _session.toggleTrackFx(track.id),
+                    // The V row's chain: one effect's own bypass, from its lane
+                    // group header.
+                    onToggleTrackEffectEnabled: (track, effectId) =>
+                        _session.toggleTrackEffectEnabled(track.id, effectId),
+                    // R5: AE's group Reset on the V row's chain.
+                    onResetTrackEffectGroup: (track, headerLaneId) =>
+                        _session.resetTrackEffectGroup(track.id, headerLaneId),
+                    trackOpacityOf: (track) =>
+                        _session.trackStaticOpacity(track.id),
+                    onTrackOpacityChanged: (track, opacity) =>
+                        _session.previewTrackOpacity(track.id, opacity),
+                    onTrackOpacityChangeEnd: (track, opacity) =>
+                        _session.commitTrackOpacity(track.id, opacity),
+                    // S-row range selection: the SAME track-axis selection the
+                    // cut row paints, one row up. The timeline mounts its range
+                    // gesture on every layer row (UI-R20 #2) and these rows had
+                    // none, which is the last place the two panels' cells still
+                    // behaved differently.
+                    seSelect: StoryboardSeSelectCallbacks(
+                      selectedRange: _session.trackFrameRangeSelection,
+                      onDrag: _session.updateTrackRowRangeSelectionByFrame,
+                      onClear: _session.clearStoryboardCutSelection,
+                      // Sliding the selection: the timeline's own range-move
+                      // machine, entered on the track axis (its sources commit
+                      // to the global layer either way).
+                      move: StoryboardRangeMoveCallbacks(
+                        onBegin: (layerId) =>
+                            _session.beginTrackRangeMoveDrag(layerId),
+                        onUpdate: (frameDelta, targetLayerId) =>
+                            _session.updateFrameRangeMoveDrag(
+                              frameDelta: frameDelta,
+                              targetLayerId: targetLayerId,
+                            ),
+                        onEnd: _session.endFrameRangeMoveDrag,
+                        onCancel: _session.cancelFrameRangeMoveDrag,
+                      ),
+                    ),
+                    // The ACTIVE cut's SE blocks reuse the timeline's comma
+                    // edge grips (live preview + ONE undo per drag).
+                    // The strip passes GLOBAL block starts (UI-R7 #5: every
+                    // cut's blocks drag here, not just the active cut's).
+                    seCommaDrag: TimelineCommaDragCallbacks(
+                      onBegin: (layerId, blockStartIndex, edge) =>
+                          _session.beginExposureEdgeDrag(
+                            layerId: layerId,
+                            blockStartIndex: blockStartIndex,
+                            edge: edge,
+                            blockStartIsGlobal: true,
+                          ),
+                      onUpdate: _session.updateExposureEdgeDrag,
+                      onEnd: _session.endExposureEdgeDrag,
+                      onCancel: _session.cancelExposureEdgeDrag,
+                    ),
+                    // The Audio lane's slide edit (active cut).
+                    onSetAudioClipOffset: _session.setAudioClipOffset,
+                    // The TRANSITION row. This panel is its only editor: the
+                    // row is track-owned and its spans address the global
+                    // axis, so the cut timeline shows them read-only.
+                    transitionDefById: _session.cameraInstructionSet.defById,
+                    // D26: crossing fades are refused and wear the red
+                    // corner — the session answers by global key on this
+                    // authoring axis, with the SAME predicate the ramp and
+                    // のりしろ read.
+                    transitionCrossingTooltip:
+                        _session.transitionCrossingWarningAtGlobalKey,
+                    transitionPreview: _session.transitionEdgeDragPreview,
+                    transitionCommaDrag: TimelineCommaDragCallbacks(
+                      onBegin: (layerId, blockStartIndex, edge) =>
+                          _session.beginTransitionEdgeDrag(
+                            layerId: layerId,
+                            spanStartIndex: blockStartIndex,
+                            edge: edge,
+                          ),
+                      onUpdate: _session.updateTransitionEdgeDrag,
+                      onEnd: _session.endTransitionEdgeDrag,
+                      onCancel: _session.cancelTransitionEdgeDrag,
+                    ),
+                    onEditTransitionSpan: _editTransitionSpan,
+                    // B6: the SE blocks' same-cell double tap opens the SAME
+                    // instance dialog the timeline's SE cells open, addressed
+                    // on the global axis (this rail's standing row never
+                    // moves the drawing target).
+                    onEditSeEntry: (layerId, globalFrame) => unawaited(
+                      editSeEntryInstance(
+                        context,
+                        _session,
+                        layerId: layerId,
+                        globalFrame: globalFrame,
+                      ),
                     ),
                   ),
-                ),
                 ),
               ),
             ),
@@ -1087,8 +1091,12 @@ class _CursorGatedStoryboardToolbarState
   }
 
   static List<Listenable> _signalsOf(_CursorGatedStoryboardToolbar widget) => [
-    widget.session.frameSeekCommitted,
-    widget.session.gapParkingListenable,
+    // #10 (2026-08-21): ONE channel for the playhead, shared with the
+    // timeline's bar and the shift pair. This listed the committed seek
+    // and the gap parking by hand and missed the cursor, so a ruler drag
+    // INSIDE the film left the bar answering about the frame the drag
+    // began on — a committed seek fires on the release.
+    widget.session.playheadMoved,
     widget.session.currentRowListenable,
     widget.session.languageSettings,
     // The selections the gates read are notifiers on purpose (they grow
