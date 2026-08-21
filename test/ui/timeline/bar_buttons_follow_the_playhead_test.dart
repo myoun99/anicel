@@ -60,6 +60,54 @@ Map<String, bool> _bar(WidgetTester tester) {
   return out;
 }
 
+/// The ink each keyed button is actually PAINTING.
+///
+/// 🚨결정 3 (유저 2026-08-22, 세 번째 요청) — this file used to say it could
+/// see only STATE and that 「the user watches COLOUR」. It can see colour now,
+/// because a collapsed panel's tickers run: an `IconButton`'s colour crosses
+/// an `AnimatedTheme`, and a muted ticker left that tween evaluating to the
+/// value it held at the instant of the fold.
+///
+/// ⚠️Read off the glyph's own `RichText`, not off `Icon.color` — the buttons
+/// whose colour froze are exactly the ones that pass `color: null` and take
+/// the icon theme. Reading `Icon.color` would have found `null` on every one
+/// of them and proved nothing.
+Map<String, Color?> _barInk(WidgetTester tester) {
+  final out = <String, Color?>{};
+  Color? inkOf(Element root) {
+    Color? found;
+    void look(Element element) {
+      if (found != null) {
+        return;
+      }
+      final widget = element.widget;
+      if (widget is RichText) {
+        found = widget.text.style?.color;
+        return;
+      }
+      element.visitChildren(look);
+    }
+
+    root.visitChildren(look);
+    return found;
+  }
+
+  for (final bar in find.byType(TimelineCommandBar).evaluate()) {
+    void visit(Element element) {
+      final widget = element.widget;
+      final key = widget.key;
+      if (key is ValueKey<String> &&
+          (widget is IconButton || widget is TextButton)) {
+        out[key.value] = inkOf(element);
+      }
+      element.visitChildren(visit);
+    }
+
+    bar.visitChildren(visit);
+  }
+  return out;
+}
+
 Future<void> _pump(WidgetTester tester, {required bool storyboard}) async {
   await tester.binding.setSurfaceSize(const Size(1500, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -210,4 +258,60 @@ void main() {
     'the folded STORYBOARD bar reads exactly like the open one',
     (tester) => foldReadsLikeOpen(tester, storyboard: true),
   );
+
+  /// 🚨결정 3 (유저 2026-08-22) — 「아직도 접기 직전의 인덱스 상태 기준으로
+  /// 활성/비활성 **색**. **내부 로직 자체는 제대로 작동**하니 **겉모습만**
+  /// 갱신 안 되는 듯」
+  ///
+  /// The state tests above were green while the user was still looking at
+  /// the wrong colours, which is the whole reason this one exists. A
+  /// collapsed panel's ticker was muted, so every `AnimatedTheme` under it
+  /// held the tint it had at the moment of the fold.
+  testWidgets('and folded, the bar\'s COLOUR follows too — the half the '
+      'state tests could not see', (tester) async {
+    await _pump(tester, storyboard: false);
+    final session = _sessionOf(tester);
+    session.selectFrameIndex(0);
+    session.createDrawingAtCurrentFrame();
+    await tester.pumpAndSettle();
+
+    await _collapse(tester);
+    expect(_isCollapsed(tester), isTrue, reason: 'really folded');
+
+    session.selectFrameIndex(0);
+    await tester.pumpAndSettle();
+    final onState = _bar(tester);
+    final onInk = _barInk(tester);
+    expect(onInk, isNotEmpty, reason: 'the bar paints something');
+
+    session.selectFrameIndex(6);
+    await tester.pumpAndSettle();
+    final offState = _bar(tester);
+    final offInk = _barInk(tester);
+
+    // ⚠️NOT `expect(offInk, isNot(onInk))`. That passed with the bug still
+    // in — a handful of buttons bake their colour at build time (accent and
+    // danger pass `Icon.color`; the comma buttons animate in zero time), so
+    // ONE of those moving satisfied a whole-map comparison while every
+    // frozen button stayed frozen. Measured, not assumed: the mutation ran
+    // green.
+    final flipped = [
+      for (final key in onState.keys)
+        if (offState[key] != null && offState[key] != onState[key]) key,
+    ];
+    expect(
+      flipped,
+      isNotEmpty,
+      reason: 'the premise: stepping off the block does disable something',
+    );
+    for (final key in flipped) {
+      expect(
+        offInk[key],
+        isNot(onInk[key]),
+        reason: '$key changed what it DOES and not how it LOOKS — 「내부 '
+            '로직 자체는 제대로 작동하니 겉모습만 갱신 안 되는 듯」, in one '
+            'button. Every entry here is a button the user would see lying',
+      );
+    }
+  });
 }
