@@ -151,8 +151,7 @@ class TimelineOutsideCutWashPainter extends CustomPainter {
       axis == Axis.horizontal
           ? Rect.fromLTWH(start, 0, size.width - start, size.height)
           : Rect.fromLTWH(0, start, size.width, size.height - start),
-      Paint()
-        ..color = AppColors.washUp.withValues(alpha: 0.54),
+      Paint()..color = AppColors.washUp.withValues(alpha: 0.54),
     );
   }
 
@@ -168,6 +167,7 @@ class TimelineBeatLinesPainter extends CustomPainter {
     required this.frameCellExtent,
     required this.framesPerSecond,
     required this.colorScheme,
+    required this.ground,
     this.axis = Axis.horizontal,
     this.crossCellExtent = 0,
   });
@@ -176,6 +176,29 @@ class TimelineBeatLinesPainter extends CustomPainter {
   final int framesPerSecond;
   final ColorScheme colorScheme;
 
+  /// The surface this overlay is painted ON, so its lines take the SAME
+  /// treatment the block-interior seams take (유저, 2026-08-21: 「그리드
+  /// 오버레이랑 블록 내부 이음매같은게 색이나 생긴게 달라서 통일하고싶다」).
+  ///
+  /// 🚨The two differed by OPERATION, not by value. Over empty ground the
+  /// line was source-over — `lerp(ground, line, line.a)`, which in a dark
+  /// theme is LIGHTER than its ground — while over a block the tile
+  /// multiplied: `lerp(paper, line×paper, line.a)`, always DARKER. Same
+  /// ink, same position, same cadence, two composites, so one grid changed
+  /// character wherever paper began. The ground here puts both through
+  /// [timelineGridLineInkOnGround].
+  ///
+  /// ⛔Passed IN rather than read off [colorScheme]: the hosts genuinely
+  /// sit on different surfaces — the timeline panel and the X-sheet on
+  /// `surfaceContainerHighest`, the storyboard on `surface`. Guessing one
+  /// here would have been right three times out of four, which is the
+  /// worst kind of wrong.
+  ///
+  /// ⚠️Null = "the ground is not a single known colour". The folded row's
+  /// overlay lies over the ARTWORK at 70%, so there is nothing to multiply
+  /// against and its lines stay source-over.
+  final Color? ground;
+
   /// The FRAME axis' direction: horizontal (timeline, storyboard) draws
   /// vertical lines; vertical (X-sheet) draws horizontal ones.
   final Axis axis;
@@ -183,6 +206,15 @@ class TimelineBeatLinesPainter extends CustomPainter {
   /// The uniform row height (timeline) / column width (X-sheet) for the
   /// cross-axis ROW seam lines; 0 skips them (hosts that draw their own).
   final double crossCellExtent;
+
+  /// [ink] as it must land on this overlay's ground — the block-interior
+  /// treatment, applied to the empty-space lines too.
+  Color _inkOnGround(({Color color, double strokeWidth}) ink) {
+    final ground = this.ground;
+    return ground == null
+        ? ink.color
+        : timelineGridLineInkOnGround(ink, ground);
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -215,7 +247,7 @@ class TimelineBeatLinesPainter extends CustomPainter {
     // so no per-boundary allocation happens on this content-length walk.
     final baseInk = timelineGridBaseLineInk(colorScheme);
     final basePaint = Paint()
-      ..color = baseInk.color
+      ..color = _inkOnGround(baseInk)
       ..strokeWidth = baseInk.strokeWidth;
     final cadence = timelineGridLineEveryFrames(frameCellExtent);
     for (
@@ -236,7 +268,10 @@ class TimelineBeatLinesPainter extends CustomPainter {
     // rows' own hairline language extended into the cell area.
     if (crossCellExtent > 0) {
       final seamPaint = Paint()
-        ..color = colorScheme.outlineVariant
+        ..color = _inkOnGround((
+          color: colorScheme.outlineVariant,
+          strokeWidth: 1.0,
+        ))
         ..strokeWidth = 1;
       for (
         var seam = crossCellExtent;
@@ -253,11 +288,11 @@ class TimelineBeatLinesPainter extends CustomPainter {
 
     final sixInk = timelineGridSixLineInk(colorScheme);
     final sixPaint = Paint()
-      ..color = sixInk.color
+      ..color = _inkOnGround(sixInk)
       ..strokeWidth = sixInk.strokeWidth;
     final secondInk = timelineGridSecondLineInk();
     final secondPaint = Paint()
-      ..color = secondInk.color
+      ..color = _inkOnGround(secondInk)
       ..strokeWidth = secondInk.strokeWidth;
     // 6f is the sheet convention regardless of fps.
     const beatPeriod = 6;
@@ -281,6 +316,7 @@ class TimelineBeatLinesPainter extends CustomPainter {
       oldDelegate.frameCellExtent != frameCellExtent ||
       oldDelegate.framesPerSecond != framesPerSecond ||
       oldDelegate.colorScheme != colorScheme ||
+      oldDelegate.ground != ground ||
       oldDelegate.axis != axis ||
       oldDelegate.crossCellExtent != crossCellExtent;
 }

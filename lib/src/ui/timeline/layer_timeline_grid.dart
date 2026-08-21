@@ -736,7 +736,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     // change or a collapse moves the boundary under a stationary scroll —
     // and then the "old" bucket is a number nobody ever rendered.
     if (newBucket != _rowWindowBucket.value) {
-      _rowWindowBucket.value = newBucket;
+      _rowWindowBucket.value = newBucket;
     }
   }
 
@@ -1834,9 +1834,31 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                       : viewportHeight;
                                   // Rows are no longer uniformly tall: collapsed sections
                                   // fold to a slim strip.
+                                  //
+                                  // 🚨D43 (유저, 2026-08-21: 「타임라인패널만 빈공간에
+                                  // 그리드가 안생기는데」): the VIEWPORT is a floor on
+                                  // this, because the grid overlay is `Positioned.fill`
+                                  // inside the content — so content that stopped at the
+                                  // last row took the grid with it and everything below
+                                  // was blank. Measured at 1600×1000: the overlay reached
+                                  // 168px inside a 476px region, leaving 244px with no
+                                  // grid at all. D37 opening the region at half the
+                                  // window is what made that gap large enough to see.
+                                  //
+                                  // ⚠️The fx rows are the control: their cells paint
+                                  // nothing but a 7px key diamond, so the grid shows
+                                  // through them completely — same overlay, same reach.
+                                  // Where rows exist the grid was never missing; it
+                                  // simply ended where they did.
+                                  //
+                                  // ⛔A floor, not a replacement: rows taller than the
+                                  // viewport still scroll on their own extent.
                                   final verticalContentHeight = math.max(
-                                    timelineDisplayRowsExtent(rows, _metrics),
-                                    _metrics.layerRowHeight,
+                                    math.max(
+                                      timelineDisplayRowsExtent(rows, _metrics),
+                                      _metrics.layerRowHeight,
+                                    ),
+                                    bodyViewportHeight,
                                   );
                                   // Layer-axis window: only the rows in view (plus
                                   // overscan) are built; spacers preserve the scroll
@@ -2667,6 +2689,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                               frameCellExtent: _metrics.frameCellWidth,
                                                                               framesPerSecond: _countingFps,
                                                                               colorScheme: colorScheme,
+                                                                              // D43: the panel's own Material colour — see
+                                                                              // TimelineBeatLinesPainter.ground.
+                                                                              ground: colorScheme.surfaceContainerHighest,
                                                                               crossCellExtent: _metrics.layerRowHeight,
                                                                             ),
                                                                           ),

@@ -3314,19 +3314,23 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                                       key: const ValueKey<String>(
                                                         'storyboard-frame-lines',
                                                       ),
-                                                      painter:
-                                                          TimelineBeatLinesPainter(
-                                                            frameCellExtent: scale
-                                                                .pixelsPerFrame,
-                                                            framesPerSecond:
-                                                                _countingFps,
-                                                            colorScheme:
-                                                                colorScheme,
-                                                            // Row seams are the
-                                                            // storyboard rail's
-                                                            // own hairlines.
-                                                            crossCellExtent: 0,
-                                                          ),
+                                                      painter: TimelineBeatLinesPainter(
+                                                        frameCellExtent: scale
+                                                            .pixelsPerFrame,
+                                                        framesPerSecond:
+                                                            _countingFps,
+                                                        colorScheme:
+                                                            colorScheme,
+                                                        // D43: the storyboard panel sits
+                                                        // on `surface`, not the timeline's
+                                                        // container colour.
+                                                        ground:
+                                                            colorScheme.surface,
+                                                        // Row seams are the
+                                                        // storyboard rail's
+                                                        // own hairlines.
+                                                        crossCellExtent: 0,
+                                                      ),
                                                     ),
                                                   ),
                                                 ),

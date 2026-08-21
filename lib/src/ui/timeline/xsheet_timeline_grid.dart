@@ -2046,6 +2046,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                                 _countingFps,
                                                                             colorScheme:
                                                                                 colorScheme,
+                                                                            // D43: the sheet host's Material colour.
+                                                                            ground:
+                                                                                colorScheme.surfaceContainerHighest,
                                                                           ),
                                                                         ),
                                                                       ),
