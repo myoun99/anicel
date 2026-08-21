@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/layer_kind.dart';
 import '../text/app_strings.dart';
 import 'layer_label_controls.dart';
+import 'row_control_surface.dart';
 
 /// The rail row's COLUMN SKELETON — the one declaration of slot ORDER and
 /// slot WIDTH, shared by every surface that draws a horizontal rail row.
@@ -71,10 +72,19 @@ const double layerRailLeadingWidth =
 /// stood-up column header spends it as height. Both read the same numbers
 /// from the same list — an axis parameter, not a second skeleton, because a
 /// second skeleton is exactly what R9 #22 was.
+/// 🚨H1 (유저 2026-08-21): a slot that HOLDS something is a CONTROL, and a
+/// control is not a place to grab the row by — 「버튼쪽 클릭하면 선택범위
+/// 작동 안 하도록 … 레이어이름영역이나 그 외 버튼 요소가 아닌 부분만」.
+///
+/// Marked HERE, in the one builder every rail surface goes through, rather
+/// than at each control: a control added later is covered by construction.
+/// ⛔An EMPTY slot stays grabbable on purpose — reserved space is not a
+/// button, and this rail reserves a great deal of it.
 Widget layerRailSlot(Axis axis, double extent, [Widget? child]) {
+  final content = child == null ? null : RowControlSurface(child: child);
   return axis == Axis.horizontal
-      ? SizedBox(width: extent, child: child)
-      : SizedBox(height: extent, child: child);
+      ? SizedBox(width: extent, child: content)
+      : SizedBox(height: extent, child: content);
 }
 
 /// The cells BEFORE a rail row's name, in order. Null cells reserve their
