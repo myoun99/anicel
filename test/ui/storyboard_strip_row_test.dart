@@ -282,35 +282,37 @@ void main() {
     expect(bandRect.width, moreOrLessEquals(10 * ppf, epsilon: 1));
   });
 
-  testWidgets('D30: the create affordance is the ACTIVE cut\'s — the first '
-      'press on a no-layer cut\'s centre SELECTS, the next one creates', (
-    tester,
-  ) async {
+  /// 🚨H13 (유저 2026-08-22) — 「스토리보드레이어 추가버튼, **액티브컷에만
+  /// 띄우는게아니라 그런 규칙 두지말고** 그냥 다른 컷블록도 없으면 띄우도록」
+  ///
+  /// ⚠️This test used to assert the opposite ("the first press SELECTS, the
+  /// next one creates"), which is the rule the user struck. D30's REAL
+  /// guard — the press layer judging the PRE-press snapshot — is untouched
+  /// and still pinned below; what went is the disagreement between what was
+  /// drawn and what was pressable.
+  testWidgets('H13: every layerless cut wears the +, active or not — one '
+      'press on the drawn + creates', (tester) async {
     await _openStoryboard(tester);
     expect(requireCutBlock(tester, 'cut-3').hasStoryboardLayer, isFalse);
-    expect(requireCutBlock(tester, 'cut-3').isActive, isFalse);
-
-    // First press at cut-3's centre — the exact point a block-select tap
-    // lands on. Cut-3 was NOT active, so its slot drew no affordance and
-    // the press stays a SELECT: it activates the cut and creates nothing.
-    await tester.tapAt(_stripPoint(tester, 25));
-    await tester.pumpAndSettle();
-    expect(requireCutBlock(tester, 'cut-3').isActive, isTrue);
     expect(
-      requireCutBlock(tester, 'cut-3').hasStoryboardLayer,
+      requireCutBlock(tester, 'cut-3').isActive,
       isFalse,
-      reason: 'a select tap on a non-active cut must never create — the '
-          'affordance belongs to the ACTIVE cut («액티브 컷에 없으면 생성»)',
+      reason: 'the premise: cut-3 is layerless AND not the active cut',
     );
 
-    // Now the slot draws the +. The same point creates.
+    // One press at cut-3's centre — where its + is now drawn.
     await tester.tapAt(_stripPoint(tester, 25));
     await tester.pumpAndSettle();
     expect(
       requireCutBlock(tester, 'cut-3').hasStoryboardLayer,
       isTrue,
-      reason: 'gate and dispatch are the session\'s one add-layer pair — '
-          'the drawn + is the pressable one',
+      reason: 'the + was on screen before the press, so pressing it means '
+          'what it says — no second press to earn the affordance first',
+    );
+    expect(
+      requireCutBlock(tester, 'cut-3').isActive,
+      isTrue,
+      reason: 'and the press still takes the cut, as a press on any block does',
     );
   });
 
@@ -319,27 +321,24 @@ void main() {
   ) async {
     await _openStoryboard(tester);
 
-    // Make cut-3 ACTIVE first (its affordance only exists then).
+    // Frame 21 is inside cut-3 but left of the centred 22px affordance, so
+    // it selects the cut and nothing more — twice over, to show the miss is
+    // not a "first press earns it" rung (H13 retired that).
     await tester.tapAt(_stripPoint(tester, 21));
     await tester.pumpAndSettle();
     expect(requireCutBlock(tester, 'cut-3').isActive, isTrue);
 
-    // Frame 21 is inside cut-3 but left of the centred 22px affordance.
     await tester.tapAt(_stripPoint(tester, 21));
     await tester.pumpAndSettle();
 
     expect(requireCutBlock(tester, 'cut-3').hasStoryboardLayer, isFalse);
   });
 
-  testWidgets('D30: a SECONDARY-button press on the active cut\'s + never '
-      'creates — the create runs under the press\'s own button gate', (
-    tester,
-  ) async {
+  testWidgets('D30: a SECONDARY-button press on the + never creates — the '
+      'create runs under the press\'s own button gate', (tester) async {
     await _openStoryboard(tester);
-    await tester.tapAt(_stripPoint(tester, 25));
-    await tester.pumpAndSettle();
-    expect(requireCutBlock(tester, 'cut-3').isActive, isTrue);
-
+    // No priming press: cut-3 wears its + from the first frame (H13), so
+    // the secondary button is the only thing this test varies.
     final gesture = await tester.startGesture(
       _stripPoint(tester, 25),
       kind: PointerDeviceKind.mouse,
@@ -353,13 +352,13 @@ void main() {
   });
 
   testWidgets('D30: a press INSIDE the live cut selection is starting a '
-      'move — it neither seeks nor creates, even over the active cut\'s +', (
+      'move — it neither seeks nor creates, even over a drawn +', (
     tester,
   ) async {
     await _openStoryboard(tester);
-    // Activate cut-3 (its slot then draws the +).
-    await tester.tapAt(_stripPoint(tester, 25));
-    await tester.pumpAndSettle();
+    // No priming press: cut-3 wears its + from the first frame (H13), so a
+    // press that lands on it while a selection is live is the only thing
+    // being varied here.
     // Take a cut-run selection covering cut-3 on the BAND (the cut's own
     // handle).
     await _drag(tester, _bandPoint(tester, 21), _bandPoint(tester, 28));

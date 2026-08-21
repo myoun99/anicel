@@ -464,12 +464,30 @@ class StoryboardCutBlocksPainter extends CustomPainter {
   /// D30: the CREATE affordance a block actually wears, or null — ONE
   /// eligibility AND geometry for the painter and the press layer (this
   /// row's rule: where it is drawn is where it is hit, and only what is
-  /// drawn is pressable). ACTIVE cut only («액티브 컷에 없으면 생성
-  /// 버튼»): the affordance sits where a block-select tap naturally
-  /// lands, so on a non-active cut that tap must stay a SELECT. A small
+  /// drawn is pressable). EVERY layerless block wears it. A small
   /// block-cornered square centred in the strip.
+  ///
+  /// 🚨H13 (유저 2026-08-22) — **NO ACTIVE-CUT RULE.**
+  ///
+  /// > 「컷블록에 스토리보드레이어 없을때 뜨는 스토리보드레이어 추가버튼,
+  /// > **액티브컷에만 띄우는게아니라 그런 규칙 두지말고** 그냥 다른
+  /// > 컷블록도 없으면 띄우도록」
+  ///
+  /// ⚠️`|| !block.isActive` used to stand here, and the reason it stood
+  /// was real: a press ACTIVATES the cut it lands on, so if the affordance
+  /// were read after that activation, one press would both select and
+  /// create. D30 answered that with two guards — this one, and the press
+  /// layer judging the PRE-press snapshot.
+  ///
+  /// ★The second guard is the one that carries the weight, and it still
+  /// stands. What this one added was a DISAGREEMENT between the two: on a
+  /// non-active cut the '+' was not drawn, so the tap that landed on it
+  /// had to mean something else. Drawing the '+' everywhere removes the
+  /// disagreement rather than relaxing it — pre-press and post-press now
+  /// answer the same, so pressing a '+' the user can SEE creates, which is
+  /// this row's rule read straight.
   static Rect? createAffordanceRectOf(StoryboardCutBlockVisual block) {
-    if (block.hasStoryboardLayer || block.bandsFolded || !block.isActive) {
+    if (block.hasStoryboardLayer || block.bandsFolded) {
       return null;
     }
     // A strip too narrow or too flat to hold the whole square holds NO
