@@ -1344,12 +1344,37 @@ class TimelineController {
     return trimmed;
   }
 
+  /// Whether an AUTHORED exposure still points at [frameId] — the question
+  /// every cel-lifetime decision in this file is really asking.
+  ///
+  /// 🚨⛔`!ghost`, and the filter is the whole fix for a measured defect.
+  /// A ghost is DERIVED: a repeat run recomputes its instances from the
+  /// authored exposure that owns them. Counting one as a reference means
+  /// "keep this cel because something that only exists while the cel's own
+  /// block exists is pointing at it" — circular, and it comes apart the
+  /// moment the block goes. Put an end-hold on an animation row and delete
+  /// the cel and you got `frames=1 / timeline={}`: the ghosts kept the cel
+  /// alive through the delete, then re-derived themselves out of existence
+  /// and left it orphaned.
+  ///
+  /// ⚠️Measured before changing it, because the note that filed this said
+  /// "셀뱅크·undo 파급이라 별도 라운드": there is none. [BrushFrameStore]
+  /// has no removal API at all (it is append-only), so what leaves
+  /// `layer.frames` frees nothing there either way; and all three callers
+  /// build an `after` layer for a command whose undo restores `before`
+  /// wholesale, so the shape of an undo step does not change. The blast
+  /// radius is `layer.frames` and nothing else.
+  ///
+  /// ⛔And no caller wants the other answer. Deletion, splice and relink
+  /// each ask "is this cel still spoken for by something a person wrote";
+  /// a ghost is never that.
   bool _timelineReferencesFrame(
     Map<int, TimelineExposure> timeline,
     FrameId frameId,
   ) {
     return timeline.values.any(
-      (exposure) => exposure.isDrawing && exposure.frameId == frameId,
+      (exposure) =>
+          exposure.isDrawing && !exposure.ghost && exposure.frameId == frameId,
     );
   }
 
