@@ -1264,14 +1264,60 @@ class EditorSessionManager extends ChangeNotifier {
   void handOffCurrentRowOnFold(LayerId layerId, {String? laneId}) {
     final row = currentRow;
     if (laneId == null) {
+      _foldRowSelection(
+        vanished: (address) =>
+            address is LaneRowAddress && address.layerId == layerId,
+        swallower: LayerRowAddress(layerId),
+      );
       if (row is LaneRowAddress && row.layerId == layerId) {
         selectLayer(layerId);
       }
       return;
     }
+    _foldRowSelection(
+      vanished: (address) => currentRowIsInsideGroup(address, layerId, laneId),
+      swallower: LaneRowAddress(layerId, laneId),
+    );
     if (currentRowIsInsideGroup(row, layerId, laneId)) {
       selectRow(LaneRowAddress(layerId, laneId));
     }
+  }
+
+  /// 🚨H6 (유저 2026-08-21) — THE FOLD LAW'S OTHER HALF.
+  ///
+  /// > 「이 앱의 특징은 **행이 보이는 곳만 조작**한다는 점임. 지금 레이어의
+  /// > 프레임블록+fx행 선택범위하고 레이어 접고 펼치면 **fx행까지 선택한 게
+  /// > 남아있는데**, 접을 때 **선택범위 바꿔서 사라진 건 선택 안 하게**
+  /// > 되도록. 접고나서 이동할 때 fx행 반영 안 되는거 보니 **로직적으론 잘
+  /// > 되있는거같고 선택범위 UI만** 그에 맞춰 제대로」
+  ///
+  /// ⛔The law above already SAID this — 「what disappears never keeps the
+  /// selection」 — and only ever did it for the ONE standing row. The
+  /// selection BAND kept its folded rows, so the band drew over rows that
+  /// were no longer on screen while the verbs (correctly) ignored them:
+  /// the user's own reading, that the logic was right and the UI was not.
+  ///
+  /// The swallower takes their place rather than the selection emptying —
+  /// the same answer the standing row gets, for the same reason. A user
+  /// who had rows selected still has rows selected after a fold.
+  void _foldRowSelection({
+    required bool Function(TimelineRowAddress address) vanished,
+    required TimelineRowAddress swallower,
+  }) {
+    final selection = rowSelection.value;
+    if (selection.isEmpty) {
+      return;
+    }
+    final kept = [
+      for (final address in selection)
+        if (!vanished(address)) address,
+    ];
+    if (kept.length == selection.length) {
+      return;
+    }
+    rowSelection.value = kept.isEmpty
+        ? [swallower]
+        : (kept.contains(swallower) ? kept : [...kept, swallower]);
   }
 
   /// THE selected row of the STORYBOARD's rail — exactly ONE, whichever row
@@ -5595,6 +5641,23 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final wasCollapsed = cut.layers.folderById(layerId)?.collapsed ?? false;
     _layerController.toggleLayerCollapsed(layerId);
+    // H6: the fold law's selection half, on the FOLDER fold too — every
+    // row inside a folder that just shut is off the screen, and the band
+    // must not go on drawing over them ([_foldRowSelection]). The active
+    // layer's own hand-off below is the standing-row half of the same law.
+    if (!wasCollapsed) {
+      bool insideThisFolder(LayerId? id) =>
+          id != null &&
+          cut.layers.isInsideFolder(cut.layers.byId(id)?.folderId, layerId);
+      _foldRowSelection(
+        vanished: (address) => switch (address) {
+          LayerRowAddress(:final layerId) => insideThisFolder(layerId),
+          LaneRowAddress(:final layerId) => insideThisFolder(layerId),
+          _ => false,
+        },
+        swallower: LayerRowAddress(layerId),
+      );
+    }
     final activeId = activeLayerId;
     if (!wasCollapsed &&
         activeId != null &&
