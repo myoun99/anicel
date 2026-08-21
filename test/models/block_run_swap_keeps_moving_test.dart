@@ -15,11 +15,16 @@ import 'package:anicel/src/models/block_run_move.dart';
 /// neighbour were unreachable and ②from there on only the cursor moved,
 /// which is what "measured from where I started dragging" looks like.
 ///
-/// ⛔The neighbour is NOT pinned while this happens: a swap TRADES seats,
-/// the neighbour pulling into the space the run vacated. Holding it still
-/// instead is what broke three confirmed tests on 2026-08-14 — with the
-/// neighbour pinned, a 1-frame block can never reach the seat under the
-/// cursor because its 10-frame neighbour is still standing there.
+/// ⛔The neighbour is NOT pinned while this happens: when the run comes to
+/// rest ON the neighbour's own start, the two TRADE seats and the neighbour
+/// pulls into the space the run vacated. Holding it still instead is what
+/// broke three confirmed tests on 2026-08-14 — with the neighbour pinned, a
+/// 1-frame block can never reach the seat under the cursor because its
+/// 10-frame neighbour is still standing there.
+///
+/// ⚠️The trade answers only THAT question. A neighbour whose own start
+/// nobody took keeps it (H9/H10, 2026-08-22) — see the tests below that say
+/// so, and `block_run_move`'s own note for why the two compose.
 ///
 /// ⚠️`block_run_move` is the ONE rule both axes use.
 BlockRunMoveLayout _move({
@@ -66,13 +71,27 @@ void main() {
       expect(layout.startOf(0), 50);
     });
 
-    test('the neighbour pulls into the space the run left, not pinned', () {
+    test('past B\'s end, B keeps the start nobody took', () {
       final layout = _move(slots: slots, runStart: 0, runEnd: 0, frameDelta: 31);
       expect(
         layout.startOf(1),
-        0,
-        reason: 'a swap trades seats: B takes the gap of the position it '
-            'moved into, which is the head of the row',
+        21,
+        reason: 'H9/H10 「집이 비어있으면 집으로」 — A came to rest past B\'s '
+            'last frame, so the road home is clear all the way and B is '
+            'already standing on it',
+      );
+    });
+
+    test('and gives up exactly as much of that road as A stands on', () {
+      // The seat is 30. Landing on it puts A where B began, so B walks home
+      // and stops one frame short of its own start for each frame A took.
+      final layout = _move(slots: slots, runStart: 0, runEnd: 0, frameDelta: 30);
+      expect(layout.order, [1, 0]);
+      expect(
+        layout.startOf(1),
+        20,
+        reason: '「최대한 그 길 향해서 이동」 — not the head of the row, and '
+            'not frozen either: as near to 21 as A leaves room for',
       );
     });
   });
@@ -107,8 +126,9 @@ void main() {
       expect(layout.startOf(1), 2);
       expect(
         layout.startOf(0),
-        6,
-        reason: 'the follower absorbs the difference, as it does on a slide',
+        5,
+        reason: 'B never had to leave 5 — A came to rest three frames short '
+            'of it, so nothing was ever standing on B\'s road home',
       );
     });
 
@@ -136,7 +156,12 @@ void main() {
 
     expect(layout.order, [1, 0, 2], reason: 'X passed Y');
     expect(layout.startOf(0), 5);
-    expect(layout.startOf(1), 0, reason: 'Y pulled into the head X vacated');
+    expect(
+      layout.startOf(1),
+      4,
+      reason: 'Y gave up its own frame and not one more — it is not flung to '
+          'the head X vacated, and it walks back to 5 the moment X moves on',
+    );
     expect(layout.startOf(2), 10, reason: 'Z never moved');
   });
 

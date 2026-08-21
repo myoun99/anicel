@@ -132,8 +132,8 @@ void main() {
     expect(plan.order, [c, a, b]);
   });
 
-  group('a reorder carries the second answer too — the gaps stay with the '
-      'position (R5 #13 on the cut axis, D16)', () {
+  group('a reorder carries the second answer too — and every cut it passes '
+      'is walking back to its own start (R5 #13 / H9 on the cut axis, D16)', () {
     /// Five empty frames, then A[5,15), then B[15,25) glued to A's end.
     List<CutMoveSlot> sparseHead() => const [
       (id: a, leadingGapFrames: 5, duration: 10),
@@ -169,9 +169,11 @@ void main() {
       );
 
       expect(plan.order, [b, a]);
-      // A sits under the hand at 18 — three frames past the seat it
-      // swapped into, because a reorder is not the end of the drag.
-      expect(plan.gaps, {b: 5, a: 3});
+      // A sits under the hand at 18 — three frames past the seat it swapped
+      // into, because a reorder is not the end of the drag. B follows it
+      // home: pushed off its own 15, it walks back to 8, as near that start
+      // as A leaves room for (H9/H10, 2026-08-22).
+      expect(plan.gaps, {b: 8, a: 0});
     });
   });
 
