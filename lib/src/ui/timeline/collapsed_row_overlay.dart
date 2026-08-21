@@ -59,6 +59,7 @@ class CollapsedRowOverlay extends StatefulWidget {
     required this.naturalRailWidth,
     required this.pixelsPerFrame,
     required this.framesPerSecond,
+    this.height = defaultHeight,
     this.railChild,
     this.frameRowBuilder,
     this.laneValue,
@@ -113,8 +114,23 @@ class CollapsedRowOverlay extends StatefulWidget {
   /// the rail prints it. Null on layer rows.
   final String? laneValue;
 
-  /// One timeline row tall — this is a row, and it should measure as one.
-  static const double height = timelineLayerRowHeight;
+  /// THE ROW'S OWN HEIGHT (유저 확정 2026-08-21: 「간편오버레이 높이도 해당
+  /// 행 높이에따라서 맞춤. 이 높이 맞추는건 타임라인의 간편오버레이든
+  /// 동일하게」).
+  ///
+  /// ⛔It used to be `static const height = timelineLayerRowHeight`, and a
+  /// constant cannot be a row's height — it can only be one KIND of row's.
+  /// That was invisible while the folded row was always a timeline layer
+  /// row (every timeline row is `timelineDisplayRowExtent`, one number),
+  /// and wrong the moment the storyboard folded: a V track is as tall as
+  /// its own splitter left it. The host asks the row and passes the
+  /// answer, so a row height that changes anywhere changes here for free.
+  final double height;
+
+  /// The height of a plain timeline layer row — the value the constant
+  /// used to be, kept for hosts that mount the overlay without a row to
+  /// measure (tests, and the fallback strip).
+  static const double defaultHeight = timelineLayerRowHeight;
 
   @override
   State<CollapsedRowOverlay> createState() => _CollapsedRowOverlayState();
@@ -171,7 +187,7 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
       child: Opacity(
         opacity: collapsedRowOverlayOpacity,
         child: SizedBox(
-          height: CollapsedRowOverlay.height,
+          height: widget.height,
           // ★The rail window is CLAMPED to the room that exists. The stored
           // width is the splitter's answer for a panel as wide as the region,
           // and the collapsed row is laid over a region that can be pulled
@@ -264,7 +280,7 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
                                   // 70%, so there is no single ground to multiply
                                   // against — these lines stay source-over.
                                   ground: null,
-                                  crossCellExtent: CollapsedRowOverlay.height,
+                                  crossCellExtent: widget.height,
                                 ),
                               ),
                             ),

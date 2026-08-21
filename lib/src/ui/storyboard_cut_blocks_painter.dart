@@ -109,6 +109,79 @@ class StoryboardCutBlockVisual {
   final List<ui.Image?> thumbnails;
 }
 
+/// THE cut row's picture, built from the material every drawer of it has:
+/// the track's layout entries and the room to draw them in.
+///
+/// D15 (유저 2026-08-21): the folded storyboard has to show the row it
+/// folded, and 「썸네일 띄움 · 텍스트같은것도 같은 규칙따라서 위치 맞춤」 is
+/// not a list of features to re-implement over there — it is what asking
+/// the SAME painter gets you. The two derived maps are the reason this is
+/// a function rather than a constructor call at each site: resolving a
+/// cut's storyboard-layer name and its coverage cells by hand is exactly
+/// the copy that drifts, and the row already had to do both.
+///
+/// The interactive inputs stay optional, so a display-only host (the
+/// collapsed row) omits them and gets the same picture minus the states
+/// nothing can enter: no selection tint, no hover.
+StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
+  required List<StoryboardTimelineLayoutEntry> entries,
+  required TimelineFrameGeometryHandle geometry,
+  required double crossAxisExtent,
+  required double minBlockWidth,
+  required CutId? activeCutId,
+  required TimelineRowAddress rowAddress,
+  required ColorScheme colorScheme,
+  required Brightness brightness,
+  required TextStyle baseTextStyle,
+  required bool showSeconds,
+  required int countingBase,
+  ValueListenable<TrackFrameRangeSelection?>? selectedRange,
+  ValueListenable<CutId?>? hoveredCutId,
+  StoryboardThumbnailResolver? thumbnailFor,
+  ValueListenable<int>? windowBucket,
+  double viewportMainExtent = 0,
+}) => StoryboardCutBlocksPainter(
+  entries: entries,
+  // Resolved HERE, not in the painter: a cut holding two storyboard
+  // layers is a StateError, and a painter that throws takes the frame
+  // down with it.
+  storyboardLayerNames: {
+    for (final entry in entries)
+      if (storyboardLayerForCut(entry.cut) case final layer?)
+        entry.cutId: layer.name,
+  },
+  // The STRIP's content: the cut's panels, under the coverage rule — the
+  // same reading the row's edge grips hang on.
+  storyboardCellsByCut: {
+    for (final entry in entries)
+      entry.cutId: storyboardCoverageCells(
+        timeline: storyboardLayerForCut(entry.cut)?.timeline,
+        cutDuration: entry.duration,
+      ),
+  },
+  geometry: geometry,
+  crossAxisExtent: crossAxisExtent,
+  minBlockWidth: minBlockWidth,
+  activeCutId: activeCutId,
+  selectedRange: selectedRange,
+  rowAddress: rowAddress,
+  hoveredCutId: hoveredCutId ?? _noHover,
+  colorScheme: colorScheme,
+  brightness: brightness,
+  baseTextStyle: baseTextStyle,
+  showSeconds: showSeconds,
+  countingBase: countingBase,
+  thumbnailFor: thumbnailFor,
+  showThumbnails: thumbnailFor != null,
+  windowBucket: windowBucket,
+  viewportMainExtent: viewportMainExtent,
+);
+
+/// The hover channel for hosts that have no pointer to hover with — a
+/// single shared constant rather than one notifier per build, which would
+/// re-subscribe the painter's `repaint` merge every pass.
+final ValueNotifier<CutId?> _noHover = ValueNotifier<CutId?>(null);
+
 /// The cut row's blocks, PAINTED (the storyboard's half of the timeline's
 /// row painterization).
 ///
@@ -784,10 +857,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
         // the 4px-deflated inner rect, so a border there would sit off
         // the true frame edges the grips are mounted on.
         canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            slot.deflate(0.5),
-            timelineBlockCornerRadius,
-          ),
+          RRect.fromRectAndRadius(slot.deflate(0.5), timelineBlockCornerRadius),
           Paint()
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1

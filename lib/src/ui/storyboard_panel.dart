@@ -460,7 +460,12 @@ class StoryboardPanel extends StatefulWidget {
   /// Blocks are strictly frame-linear (Premiere-style): a large minimum
   /// width would make neighbours overlap when zoomed out. The tiny floor
   /// only keeps zero-length cuts visible.
-  static const double _minBlockWidth = 8;
+  ///
+  /// Public since D15: the folded storyboard draws the same blocks and
+  /// must not carry a floor of its own — a second `8` over there is a
+  /// second answer the day this one moves.
+  static const double cutBlockMinWidth = 8;
+  static const double _minBlockWidth = cutBlockMinWidth;
 
   // Wide enough for the timeline-style rows (icon + names) the rail mirrors.
   // 140 → 240 when the S rows gained the timeline-parity layer controls
@@ -1863,7 +1868,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       _trackDraggable(
         track,
         index,
-        _StoryboardTrackLabel(
+        StoryboardTrackLabelRow(
           track: track,
           trackLabel: 'V${index + 1}',
           laneHeight: widget.trackLaneHeight,
@@ -5229,8 +5234,15 @@ class _StoryboardLaneStripRow extends StatelessWidget {
 /// edge reads near-identically to the timeline's layers/sections rail
 /// (user direction). The track row opens its section like the timeline's
 /// heavier section divider.
-class _StoryboardTrackLabel extends StatelessWidget {
-  const _StoryboardTrackLabel({
+/// The V row's RAIL half — the track's label and its columns.
+///
+/// Public because the folded storyboard mounts this very widget (D15): the
+/// timeline's folded row already mounts its real `TimelineLayerControlsRow`
+/// rather than re-listing its slots, and 「트랙이 보여야 하는데 프레임이
+/// 보인다」 was the storyboard having no such row to mount at all.
+class StoryboardTrackLabelRow extends StatelessWidget {
+  const StoryboardTrackLabelRow({
+    super.key,
     required this.track,
     required this.trackLabel,
     required this.laneHeight,
@@ -5247,7 +5259,18 @@ class _StoryboardTrackLabel extends StatelessWidget {
     this.trackOpacity = 1.0,
     this.onTrackOpacityChanged,
     this.onTrackOpacityChangeEnd,
+    this.chromeless = false,
   });
+
+  /// The rail's own width — what a host windows this row against.
+  static const double railWidth = StoryboardPanel._trackLabelWidth;
+
+  /// GROUND OFF: no fill, no active wash, no seams (the folded row's whole
+  /// design is the negative space — see [CollapsedRowOverlay]). It is the
+  /// same flag, spelled the same way, that the timeline's rail row takes:
+  /// 「chromeless는 셀이 아니라 행의 성질」, so a row that paints ground has
+  /// to read it wherever it paints.
+  final bool chromeless;
 
   final Track track;
   final String trackLabel;
@@ -5307,18 +5330,20 @@ class _StoryboardTrackLabel extends StatelessWidget {
         width: StoryboardPanel._trackLabelWidth,
         height: laneHeight,
         padding: const EdgeInsets.only(right: 8),
-        decoration: BoxDecoration(
-          color: active
-              ? colorScheme.secondaryContainer.withValues(alpha: 0.55)
-              : colorScheme.surface,
-          // Side/bottom borders only (UI-R10 #20): stacked rail rows keep
-          // single-pixel seams, like the timeline rail.
-          border: Border(
-            left: BorderSide(color: colorScheme.outlineVariant),
-            right: BorderSide(color: colorScheme.outlineVariant),
-            bottom: BorderSide(color: colorScheme.outlineVariant),
-          ),
-        ),
+        decoration: chromeless
+            ? null
+            : BoxDecoration(
+                color: active
+                    ? colorScheme.secondaryContainer.withValues(alpha: 0.55)
+                    : colorScheme.surface,
+                // Side/bottom borders only (UI-R10 #20): stacked rail rows
+                // keep single-pixel seams, like the timeline rail.
+                border: Border(
+                  left: BorderSide(color: colorScheme.outlineVariant),
+                  right: BorderSide(color: colorScheme.outlineVariant),
+                  bottom: BorderSide(color: colorScheme.outlineVariant),
+                ),
+              ),
         child: Semantics(
           // The rail's ONE selection marker, shared with the S rows: a V
           // row is a row like any other, so both kinds answer here.
@@ -5920,19 +5945,12 @@ class _StoryboardTrackRow extends StatelessWidget {
 
     // Held in a local so the press layer hit-tests the SAME visuals the
     // paint lays down (the D30 create affordance reads block.strip).
-    final blocksPainter = StoryboardCutBlocksPainter(
+    //
+    // Through the shared builder (D15): the folded storyboard draws its
+    // row with this same call, so the picture there cannot be a second
+    // opinion about thumbnails, names or where the writing sits.
+    final blocksPainter = storyboardCutBlocksPainterFor(
       entries: layoutEntries,
-      // Resolved HERE, not in the painter: a cut holding two
-      // storyboard layers is a StateError, and a painter that
-      // throws takes the frame down with it.
-      storyboardLayerNames: {
-        for (final entry in layoutEntries)
-          if (storyboardLayerForCut(entry.cut) case final layer?)
-            entry.cutId: layer.name,
-      },
-      // The STRIP's content: the cut's panels, under the
-      // coverage rule — the same reading the grips hang on.
-      storyboardCellsByCut: cellsByCut,
       geometry: frameGeometry,
       crossAxisExtent: laneHeight,
       minBlockWidth: timelineScale.minBlockWidth,
@@ -5948,7 +5966,6 @@ class _StoryboardTrackRow extends StatelessWidget {
       showSeconds: showSeconds,
       countingBase: projectFrameRate.countingBase,
       thumbnailFor: thumbnailFor,
-      showThumbnails: thumbnailFor != null,
       windowBucket: windowBucket,
       viewportMainExtent: viewportWidth,
     );
