@@ -52,10 +52,7 @@ Layer _seLayer() => Layer(
   ],
 );
 
-Project _project({
-  Cut Function(Cut cut)? mapCut,
-  List<Layer>? seLayers,
-}) {
+Project _project({Cut Function(Cut cut)? mapCut, List<Layer>? seLayers}) {
   var cut = Cut(
     id: const CutId('lane-cut'),
     name: 'Lane Cut',
@@ -332,14 +329,16 @@ void main() {
     // first display row and downward is toward 'lane-se'.
     //
     // ④: the landing is the gap the POINTER is nearest, so WHERE in the row
-    // the drag began counts — and this one begins on the visibility button,
-    // not in the row's middle. The travel therefore clears the next
-    // boundary from anywhere in the row's upper half rather than being
-    // exactly one row.
+    // the drag began counts.
+    //
+    // ⚠️H1 (2026-08-21) MOVED THE GRAB. This used to begin ON THE
+    // VISIBILITY BUTTON, and that is refused now — 「버튼쪽 클릭하면
+    // 선택범위 작동 안 하도록」. It begins on the row itself instead, which
+    // is what a person grabs a row by. Vertically that is the same place
+    // the button's centre was, and the drag reads the MAIN axis alone, so
+    // the grab fraction and the landing below are unchanged.
     await tester.drag(
-      find.byKey(
-        const ValueKey<String>('storyboard-layer-visibility-lane-se2'),
-      ),
+      find.byKey(const ValueKey<String>('storyboard-se-label-lane-track-2')),
       const Offset(0, 50),
     );
     await tester.pumpAndSettle();

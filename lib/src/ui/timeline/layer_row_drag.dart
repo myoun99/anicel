@@ -22,6 +22,7 @@ import '../../models/track_id.dart';
 import '../input/app_input_settings.dart' show AppInput;
 import '../input/eager_pan_gesture_recognizer.dart';
 import '../theme/app_theme.dart' show AppShapes;
+import 'row_control_surface.dart';
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 
 /// WHAT a row drag is moving. Two kinds share the gesture, the caret and
@@ -392,7 +393,29 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
   /// pointer in the NEXT row, which travel-from-the-grab cannot tell you.
   double _grabFraction = 0.5;
 
-  void _begin(Offset localPosition) {
+  /// True while this press landed on a CONTROL and so starts nothing.
+  bool _onControl = false;
+
+  void _begin(Offset localPosition, {required Offset globalPosition}) {
+    // 🚨H1 (유저 2026-08-21): 「버튼쪽 탭다운해서 움직이면 선택범위
+    // 작동해버리는데 … 버튼쪽 클릭하면 선택범위 작동 안 하도록. 그 외 부분.
+    // 레이어이름영역이나 그 외 버튼 요소가 아닌 부분만 작동하도록」.
+    //
+    // The recognizer has to cover the WHOLE row — the name area and the
+    // blank between controls are what you grab a row by, and neither is a
+    // widget of its own — so the exclusion is asked at the PRESS instead
+    // of carved out of the gesture's box. [RowControlSurface] is the mark
+    // the rail's shared slot builder puts on every slot that holds
+    // something; an empty slot is reserved space, not a button, and stays
+    // grabbable.
+    //
+    // ⛔Decided ONCE here, like which drag this is: a gesture that changed
+    // its mind halfway would be a row that starts moving because the
+    // finger drifted off a button.
+    _onControl = RowControlSurface.covers(context, globalPosition);
+    if (_onControl) {
+      return;
+    }
     _travelled = 0;
     final extent = widget.rowExtent;
     final main = widget.axis == Axis.horizontal
@@ -433,6 +456,12 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
   /// select has nothing to roll back (the span it drew IS the result), and
   /// the move's own cancel is the hooks'.
   void _end({bool cancelled = false}) {
+    // H1: a press that landed on a control started nothing, so there is no
+    // grip to release and no verb to commit or cancel.
+    if (_onControl) {
+      _onControl = false;
+      return;
+    }
     widget.onGripReleased?.call();
     if (_selecting) {
       _selecting = false;
@@ -517,6 +546,12 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
   );
 
   void _update(DragUpdateDetails details) {
+    // H1: the press was a control's. Nothing began, so nothing moves —
+    // and in particular the auto-pan below must not run, or dragging a
+    // slider near the rail's edge would scroll the rail under it.
+    if (_onControl) {
+      return;
+    }
     final delta = details.delta;
     _travelled += widget.axis == Axis.horizontal ? delta.dy : delta.dx;
     _travelled += _autoPanEdge(details.globalPosition);
@@ -574,8 +609,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
             showing.onRowTarget != null &&
             widget.subject == LayerRowSubject(showing.onRowTarget!);
         final caretShowing = showing != null && showing.onRowTarget == null;
-        final leading =
-            caretShowing && showing.caretSlot == widget.slotBefore;
+        final leading = caretShowing && showing.caretSlot == widget.slotBefore;
         final trailing =
             caretShowing &&
             widget.isLastRow &&
@@ -618,8 +652,10 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
                   context,
                 );
                 recognizer.dragStartBehavior = DragStartBehavior.down;
-                recognizer.onStart = (details) =>
-                    _begin(details.localPosition);
+                recognizer.onStart = (details) => _begin(
+                  details.localPosition,
+                  globalPosition: details.globalPosition,
+                );
                 recognizer.onUpdate = _update;
                 // ⑨: a SELECT drag ends its own way. Falling through to the
                 // move's end would run the DROP COMMIT for a gesture that
