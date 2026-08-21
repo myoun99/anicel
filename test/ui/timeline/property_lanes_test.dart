@@ -87,7 +87,11 @@ Future<void> _pump(WidgetTester tester, Project project) async {
   // against a 112px x-sheet header; the sheet's header is the whole rail
   // stood up now, so a dock that used to leave several frame rows left
   // barely one — and a marker at the clip edge cannot be dragged.
-  await tester.binding.setSurfaceSize(const Size(1280, 1200));
+  // ⚠️결정 8 (2026-08-22): a drag may open the bottom dock to HALF the
+  // window and no further, so the window has to be twice what these rows
+  // need. It used to lean on a ceiling of "everything but the canvas's
+  // floor", which let this drag reach 1074 of 1200 — 89% of the screen.
+  await tester.binding.setSurfaceSize(const Size(1280, 2200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(MaterialApp(home: HomePage(initialProject: project)));
   await tester.pumpAndSettle();

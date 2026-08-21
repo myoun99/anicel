@@ -66,35 +66,58 @@ void main() {
     });
   });
 
-  group('the ceiling is ¾ of the centre', () {
-    test('one dock may take 3/7 of what is left', () {
-      // d ≤ ¾·(rest − d) solves to d ≤ 3/7 · rest.
+  /// 🚨결정 8 (유저 확정 2026-08-22): 「①**창 폭의 절반의 3/4** (=37.5%)」.
+  ///
+  /// ⚠️This group used to assert `3/7 · rest`, where `rest` had the OTHER
+  /// dock taken out. It was a faithful reading of 「중간의 3/4」 — and it was
+  /// the bug: 「한쪽 띠 크기를 바꿀 때 **반대쪽도 바뀐다**」. A ceiling that
+  /// names the other side makes the two sides one quantity.
+  group('the ceiling is a share of the WINDOW', () {
+    test('one dock may take 37.5% of it', () {
       expect(
         EditorWorkspace.sideDockCeiling(
           availableWidth: 1400,
           gaps: 0,
-          otherDockWidth: 0,
+          minCentreWidth: 120,
         ),
-        closeTo(600, 0.5),
+        closeTo(525, 0.5),
       );
     });
 
-    test('★and the pair honours the same promise the single one does', () {
-      // With the other dock already taking 300, the centre this one must
-      // leave is measured against what remains — not against the window.
+    test('★the answer does not move when the other dock does — which is the '
+        'whole complaint', () {
+      // The signature carries no other-dock argument at all, so the only
+      // way to state this is that the same window gives the same number to
+      // both sides. That IS the fix: two rails at 37.5% leave 25% for the
+      // centre, so neither has to ask about the other.
       const available = 1400.0;
-      const other = 300.0;
       final ceiling = EditorWorkspace.sideDockCeiling(
         availableWidth: available,
-        gaps: 0,
-        otherDockWidth: other,
+        gaps: 16,
+        minCentreWidth: 120,
       );
-      final centre = available - other - ceiling;
+      expect(ceiling * 2 + 16, lessThan(available));
       expect(
-        ceiling,
-        closeTo(centre * 0.75, 1e-9),
-        reason: 'at the ceiling the dock is exactly ¾ of the centre',
+        available - ceiling * 2 - 16,
+        greaterThanOrEqualTo(120),
+        reason: 'the pair always fits with the centre above its floor, so '
+            'the proportional squeeze that scaled BOTH sides is gone',
       );
+    });
+
+    test('and on a NARROW window it halves the room rather than naming a '
+        'dock', () {
+      // Below roughly 550 the 37.5% pair would crowd the centre out. The
+      // second term binds — and it still mentions no dock, so the two sides
+      // stay independent where the coupling used to show itself.
+      const available = 400.0;
+      final ceiling = EditorWorkspace.sideDockCeiling(
+        availableWidth: available,
+        gaps: 16,
+        minCentreWidth: 120,
+      );
+      expect(ceiling, closeTo((400 - 16 - 120) / 2, 1e-9));
+      expect(ceiling, lessThan(available * 0.375));
     });
 
     test('a window too small for a centre yields a ceiling of zero, not '
@@ -103,7 +126,7 @@ void main() {
         EditorWorkspace.sideDockCeiling(
           availableWidth: 100,
           gaps: 40,
-          otherDockWidth: 200,
+          minCentreWidth: 200,
         ),
         0,
       );
