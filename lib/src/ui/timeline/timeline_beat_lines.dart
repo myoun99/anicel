@@ -38,6 +38,47 @@ import 'timeline_cell_style.dart';
 ///   a zoom that thins the empty-space 1f lines thins the block seams
 ///   too — same question, same answer).
 
+/// The frame AREA's own leading edge — the hairline that marks where the
+/// frames begin, mirroring the rail row's right border (D8, UI-R10 #20's
+/// seam law: the splitter gap between them means neither line doubles the
+/// other).
+///
+/// 🚨D8-2 (유저 2026-08-22) — **AND THE RULER WEARS IT TOO.** The user gave
+/// this as a standing law, not as one instruction:
+///
+/// > 「프레임영역 왼쪽 선 좋은데 **룰러도 통일.** 프레임영역은 **기본 뭔가
+/// > 바뀌면 룰러랑 통일**임」
+///
+/// ⇒ ★So it is a WIDGET, not a `BoxDecoration` written out twice. Whoever
+/// changes this line changes it once, and the ruler cannot fall behind the
+/// rows again — which is exactly how it fell behind this time.
+///
+/// ⚠️Viewport-STATIC: it marks the AREA, so it must not scroll with the
+/// content. Both wearers put it on the widget that owns the viewport, never
+/// on the scrolled child.
+///
+/// ⚠️The border is drawn in the FOREGROUND and takes no layout room, so
+/// wrapping a `LayoutBuilder` in it does not change the constraints that
+/// builder reads.
+class TimelineFrameAreaEdge extends StatelessWidget {
+  const TimelineFrameAreaEdge({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      position: DecorationPosition.foreground,
+      decoration: BoxDecoration(
+        border: Border(
+          left: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
 /// BASE line — the faint per-cell cadence line.
 ({Color color, double strokeWidth}) timelineGridBaseLineInk(
   ColorScheme colorScheme,

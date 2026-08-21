@@ -1973,8 +1973,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                               width:
                                                   LayerRailSplitter.thickness,
                                             ),
+                                            // D8-2 (유저 2026-08-22): the ruler
+                                            // takes the frame area's own leading
+                                            // edge — 「프레임영역은 기본 뭔가
+                                            // 바뀌면 룰러랑 통일임」. Same widget
+                                            // as the body's, so this cannot fall
+                                            // behind the rows again.
                                             Expanded(
-                                              child: LayoutBuilder(
+                                              child: TimelineFrameAreaEdge(
+                                                child: LayoutBuilder(
                                                 builder: (context, constraints) {
                                                   final viewportWidth =
                                                       constraints
@@ -2188,6 +2195,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                     ),
                                                   );
                                                 },
+                                              ),
                                               ),
                                             ),
                                           ],
@@ -2491,31 +2499,12 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                               >(
                                                                 'timeline-frame-grid-area',
                                                               ),
-                                                          // D8 (2026-08-18): the
-                                                          // frame area's LEFT edge
-                                                          // hairline — the mirror
-                                                          // of the rail row's
-                                                          // right border (UI-R10
-                                                          // #20's seam law: the
-                                                          // splitter gap between
-                                                          // them means neither
-                                                          // line doubles the
-                                                          // other). Viewport-
-                                                          // static: it marks the
-                                                          // AREA, so it must not
-                                                          // scroll with content.
-                                                          child: DecoratedBox(
-                                                            position:
-                                                                DecorationPosition
-                                                                    .foreground,
-                                                            decoration: BoxDecoration(
-                                                              border: Border(
-                                                                left: BorderSide(
-                                                                  color: colorScheme
-                                                                      .outlineVariant,
-                                                                ),
-                                                              ),
-                                                            ),
+                                                          // D8: the frame area's
+                                                          // LEFT edge hairline.
+                                                          // D8-2: the ruler wears
+                                                          // the SAME widget above
+                                                          // — one line, two areas.
+                                                          child: TimelineFrameAreaEdge(
                                                             child: LayoutBuilder(
                                                               builder:
                                                                   (
