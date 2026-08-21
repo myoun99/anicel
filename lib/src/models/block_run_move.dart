@@ -202,61 +202,131 @@ BlockRunMoveLayout planBlockRunMove({
   final others = [for (final other in rest) other.index];
   final order = <int>[...others.take(rank), ...moving, ...others.skip(rank)];
 
-  // THE GAPS STAY WITH THE POSITION, not with the block that arrived
-  // carrying one (R5 #13).
+  // 🚨★★★ EVERY BLOCK IS ALWAYS HEADING HOME (유저 H9/H10, 2026-08-22).
   //
-  // They used to travel: `[for (final index in order) slots[index]...]`
-  // reads each block's OWN leading gap in the new sequence. The total
-  // span survives that either way — a permutation moves the same numbers
-  // around — but the PLACES do not, and places are what a reorder is
-  // for. A row whose first block sits at frame 19 with eighteen empty
-  // frames ahead of it, and a second block glued to its end, has gaps
-  // 18 and 0; swapping the two carried the 0 to the front and the block
-  // landed on frame 1, with the emptiness pushed between them. Nothing
-  // was lost and nothing was where the user put it.
+  // > 「**원래 공간으로 회귀하려하는 시스템**을 넣고싶음. 지금 1,2,3,4가
+  // > 바뀐위치에 그냥 고정되있는데, 그게아니라 **원래 위치가 비어있다면
+  // > 거기로 최대한 회귀**하는 거」
   //
-  // Reading the gaps by POSITION makes a swap a swap: each block takes
-  // over the leading space of the slot it moved into, so the two trade
-  // places and everything outside the run holds still. On a row with no
-  // gaps (blocks packed end to end) the two rules agree exactly, which
-  // is why this only ever showed itself at the head of a sparse row.
-  final gaps = [
-    for (var position = 0; position < order.length; position += 1)
-      slots[position].leadingGap,
-  ];
-
-  // The run's own position in the sequence it just landed in, and the one
-  // behind it. When the rank held, these are `runStart` and `runEnd + 1`
-  // and everything below reduces to the plain slide it always was.
+  // > 「**집으로 향하는 길이 비어있으면 최대한 그 길 향해서 이동**하도록
+  // > 하는게 목표야. **집이 비어있으면 집으로이동 / 아니면 지금처럼
+  // > 원래자리 고정이 아니야**」
+  //
+  // ⛔NOT A CONDITIONAL, A GRADIENT — the second sentence is the user
+  // striking down exactly the two-branch reading of the first. There is no
+  // "home was taken, so now something else decides". A block walks toward
+  // the frame it started on and stops where the road stops. Home free means
+  // it arrives; home taken means it parks against whatever took it.
+  //
+  // ⛔Two earlier answers are retired by this and neither may come back:
+  //
+  //  * gaps travelling WITH the block put the head of a sparse row on the
+  //    wrong block — two blocks at 18 and 21 with an 18-frame empty head
+  //    have gaps 18 and 0, so a swap carried the 0 to the front and the
+  //    block landed on frame 1;
+  //  * gaps staying with the POSITION (R5 #13, which fixed that) is what
+  //    the user photographed: a positional gap has no memory of where its
+  //    block was, so the blocks a run passes freeze wherever the
+  //    permutation left them, and a run jumping from last place to first
+  //    hands its big leading gap to whoever lands there.
+  //
+  // ★An anchor has that memory and says both in one line. The 18/21 pair
+  // still trades places — P heads for 18, finds the run standing on it, and
+  // parks at 21, which is where the other block was. R5 #13's case is a
+  // SPECIAL CASE of heading home, not a rule beside it.
+  //
+  // The run's own start is PINNED, never nudged: T14's law is that the
+  // block is exactly under the cursor at the instant it moves, so the
+  // others answer around it — backwards on the near side, forwards on the
+  // far one.
   final runPosition = rank;
   final afterRun = rank + moving.length;
-  final isLast = afterRun >= order.length;
 
-  // Re-time inside the free space the new neighbours leave — or, past the
-  // last of them, up to the axis's own end when it has one.
+  // Each block's own starting frame — the anchor it returns to.
+  final anchorOf = <int, int>{
+    for (var index = 0; index < slots.length; index += 1) index: starts[index],
+  };
+
+  // 🚨A block only ever gives way to a run that has CROSSED it. The ones the
+  // run has not reached are WALLS: a slide stops at contact instead of
+  // bulldozing, which is the rule this whole library was extracted for.
   //
-  // The slack is the pair of gaps AROUND the run: sliding right hands the
-  // follower's space to the leader and sliding left hands it back, which is
-  // the same "the follower absorbs the difference" the slide always did,
-  // said as a total instead of as an increment. Everything outside that
-  // pair holds still, so a swap that lands mid-gap disturbs nothing the
-  // swap itself did not already move.
+  // The crossed ones are exactly those between the old rank and the new, and
+  // they sit next to the run in the new order — behind it when the hand went
+  // right, ahead of it when the hand went left.
+  final crossedBehind = rank > originalRank ? rank - originalRank : 0;
+  final crossedAhead = rank < originalRank ? originalRank - rank : 0;
+
+  // Where the run lands. The floor is the nearest UNCROSSED block behind it,
+  // standing on its own anchor, plus room for everyone it did cross.
   var floor = 0;
-  for (var position = 0; position < runPosition; position += 1) {
-    floor += gaps[position] + slots[order[position]].length;
+  final lastWallBehind = runPosition - crossedBehind - 1;
+  if (lastWallBehind >= 0) {
+    final wall = order[lastWallBehind];
+    floor = anchorOf[wall]! + slots[wall].length;
   }
-  final slack = gaps[runPosition] + (isLast ? 0 : gaps[afterRun]);
-  final ceiling = isLast
-      ? (axisEndExclusive == null ? null : axisEndExclusive - runLength)
-      : floor + slack;
+  for (var position = runPosition - crossedBehind; position < runPosition; position += 1) {
+    floor += slots[order[position]].length;
+  }
+
+  // …and the ceiling is that same sentence read from the other end, never
+  // past whatever end the axis itself declares.
+  int? ceiling = axisEndExclusive == null ? null : axisEndExclusive - runLength;
+  final firstWallAhead = afterRun + crossedAhead;
+  if (firstWallAhead < order.length) {
+    var wall = anchorOf[order[firstWallAhead]]!;
+    for (var position = afterRun; position < firstWallAhead; position += 1) {
+      wall -= slots[order[position]].length;
+    }
+    final contact = wall - runLength;
+    if (ceiling == null || contact < ceiling) {
+      ceiling = contact;
+    }
+  }
+
   var landed = wanted < floor ? floor : wanted;
   if (ceiling != null && landed > ceiling) {
     landed = ceiling < floor ? floor : ceiling;
   }
 
-  gaps[runPosition] = landed - floor;
-  if (!isLast) {
-    gaps[afterRun] = slack - (landed - floor);
+  // The run travels as ONE unit: every member keeps the distance it already
+  // held from the run's head, internal gaps included.
+  final placed = List<int>.filled(order.length, 0);
+  for (var position = runPosition; position < afterRun; position += 1) {
+    placed[position] = landed + (starts[order[position]] - runFrom);
+  }
+
+  // BEHIND the run, right to left: head for home and get as far along that
+  // road as the block ahead of you (ultimately the run) leaves open. Frame 0
+  // is the wall.
+  var limit = landed;
+  for (var position = runPosition - 1; position >= 0; position -= 1) {
+    final length = slots[order[position]].length;
+    final home = anchorOf[order[position]]!;
+    var start = home + length > limit ? limit - length : home;
+    if (start < 0) {
+      start = 0;
+    }
+    placed[position] = start;
+    limit = start;
+  }
+
+  // AHEAD of the run, left to right: the same sentence, mirrored.
+  var ahead = landed + runLength;
+  for (var position = afterRun; position < order.length; position += 1) {
+    final home = anchorOf[order[position]]!;
+    final start = home < ahead ? ahead : home;
+    placed[position] = start;
+    ahead = start + slots[order[position]].length;
+  }
+
+  // The layout speaks in leading gaps, so the absolute places become the
+  // distances between them.
+  final gaps = <int>[];
+  var previousEnd = 0;
+  for (var position = 0; position < order.length; position += 1) {
+    gaps.add(placed[position] - previousEnd);
+    previousEnd = placed[position] + slots[order[position]].length;
   }
   return BlockRunMoveLayout(slots: slots, order: order, leadingGaps: gaps);
 }

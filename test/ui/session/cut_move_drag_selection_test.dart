@@ -99,24 +99,36 @@ void main() {
       'old width over a neighbour that did not move', () {
     final log = begin(selection: runSelection());
 
-    // +14 reaches the seat past C: order [C,A,B,D], the run's interior
-    // gap re-keys 4→0, so the run lands as A[14,24) B[24,34) — 20 frames
-    // where it left as 24.
+    // +14 reaches the seat past C: order [C,A,B,D]. The run is RIGID —
+    // it carries its own 4-frame interior gap, so its 24 frames stop at
+    // contact with D, which nobody crossed: A[10,20) B[24,34).
+    //
+    // ⛔The interior gap used to re-key 4→0 against the destination
+    // POSITION, which let the run reach 14 by SHRINKING to 20 frames. A
+    // dragged run deforming itself is the same defect H9/H10 named, one
+    // size down (2026-08-22).
     log.drag!.update(14);
     final midDrag = log.published.last!;
-    expect(midDrag.startFrame, 14);
+    expect(midDrag.startFrame, 10);
     expect(
       midDrag.endFrameExclusive,
       34,
-      reason: 'a rigid shift would say 38 and overlap D[34,44) — the '
-          'frames × layout derivation would then hand D to the delete verbs',
+      reason: 'a rigid shift to the cursor would say 38 and overlap '
+          'D[34,44) — the frames × layout derivation would then hand D to '
+          'the delete verbs',
     );
 
     log.drag!.commit();
     expect(log.orderCommits.single.order, [c, a, b, d]);
-    expect(log.orderCommits.single.afterGaps, {a: 4, b: 0});
+    expect(
+      log.orderCommits.single.afterGaps,
+      isEmpty,
+      reason: 'every cut still holds the lead-in it started with — the '
+          'reorder is pure sequence, which is what "each block keeps its '
+          'own place" buys',
+    );
     final landed = log.published.last!;
-    expect(landed.startFrame, 14);
+    expect(landed.startFrame, 10);
     expect(landed.endFrameExclusive, 34);
     expect(landed.anchorRow, const TrackRowAddress(trackId));
   });

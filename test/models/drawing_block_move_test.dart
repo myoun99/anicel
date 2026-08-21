@@ -105,11 +105,10 @@ void main() {
 
     test('reaching past the neighbour\'s midpoint REORDERS instead, and the '
         'two blocks TRADE PLACES (R5 #13)', () {
-      // a[0,2) b[3,5) c[6,8). Dragging a three right puts its own midpoint
-      // level with b's, so a lands where b was — and b lands where a was.
-      // The leading gaps belong to the POSITIONS, so the pair swaps and c
-      // never moves. (They used to travel with their block, which put b at
-      // 1: neither where a had been nor where b had been.)
+      // a[0,2) b[3,5) c[6,8). Dragging a three right lands it on b's own
+      // start, so b heads home and gets as near 3 as a leaves room for —
+      // frame 1 — while c, whom nobody disturbed, never moves at all
+      // (H9/H10 「최대한 그 길 향해서 이동」).
       final layer = layerWith(
         'a',
         {
@@ -130,14 +129,15 @@ void main() {
       expect(plan, isNotNull);
       final timeline = plan!.sourceAfter.timeline;
       expect(plan.destinationStartIndex, 3);
-      expect(timeline[0]!.frameId, const FrameId('a-f2'));
+      expect(timeline[1]!.frameId, const FrameId('a-f2'));
       expect(timeline[3]!.frameId, const FrameId('a-f1'));
       expect(timeline[6]!.frameId, const FrameId('a-f3'));
       expect(timeline.length, 3);
     });
 
-    test('a drag that reaches the seat exchanges the pair', () {
-      // Rightward: a dragged onto b's seat takes b's place, and b takes a's.
+    test('a drag that reaches the seat displaces the pair', () {
+      // Rightward: a dragged onto b's start takes it, and b — pushed off its
+      // own — walks back toward it and stops against a.
       // ⚠️This used to be asserted with a FAR drag (+8) and the name "not a
       // landing in the space beyond", which pinned the old seat-and-stop:
       // the run froze on its seat and the rest of the drag was ignored. The
@@ -159,9 +159,10 @@ void main() {
         frameDelta: 5,
       );
       expect(right, isNotNull);
-      // A clean exchange: a moves to 5 where b was, b to 0 where a was.
+      // a moves to 5, where b was; b backs off exactly the two frames a
+      // took, rather than being flung to the head of the row.
       expect(right!.destinationStartIndex, 5);
-      expect(right.sourceAfter.timeline[0]!.frameId, const FrameId('a-f2'));
+      expect(right.sourceAfter.timeline[3]!.frameId, const FrameId('a-f2'));
       expect(right.sourceAfter.timeline[5]!.frameId, const FrameId('a-f1'));
       expect(right.sourceAfter.timeline.length, 2);
 
@@ -186,7 +187,7 @@ void main() {
       expect(left, isNotNull);
       expect(left!.destinationStartIndex, 4);
       expect(left.sourceAfter.timeline[4]!.frameId, const FrameId('a-f2'));
-      expect(left.sourceAfter.timeline[8]!.frameId, const FrameId('a-f1'));
+      expect(left.sourceAfter.timeline[6]!.frameId, const FrameId('a-f1'));
       expect(left.sourceAfter.timeline.length, 2);
     });
 
@@ -211,7 +212,12 @@ void main() {
 
       expect(plan, isNotNull);
       expect(plan!.destinationStartIndex, 8, reason: 'where the hand is');
-      expect(plan.sourceAfter.timeline[0]!.frameId, const FrameId('a-f2'));
+      expect(
+        plan.sourceAfter.timeline[5]!.frameId,
+        const FrameId('a-f2'),
+        reason: 'and b is home again — a walked far enough past 5 that the '
+            'road back is clear (H9/H10)',
+      );
       expect(plan.sourceAfter.timeline[8]!.frameId, const FrameId('a-f1'));
       expect(plan.sourceAfter.timeline.length, 2);
     });

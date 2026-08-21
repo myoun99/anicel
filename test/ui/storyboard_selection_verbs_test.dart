@@ -303,16 +303,19 @@ void main() {
       );
 
       session.beginTrackRangeMoveDrag(_seLayerId);
-      // +7 drives [2,5) level with [9,12)'s midpoint: the two TRADE PLACES
-      // (R5 #13). The leading gaps belong to the POSITIONS, so each sound
-      // lands exactly where the other was and the row's span holds. They
-      // used to carry their own lead-in across, which put the second sound
-      // on frame 4 — a place neither of them had been.
+      // +7 drives [2,5) onto [9,12)'s own start, so the two change places.
+      // The second sound is pushed off frame 9 and heads straight back for
+      // it, stopping the instant it touches the run — frame 6 (H9/H10,
+      // 2026-08-22, in the block-move law both axes share).
+      //
+      // ⛔It does NOT land on frame 2 where the FIRST sound used to be. A
+      // block standing somewhere it has never been is exactly what the user
+      // photographed and asked to be rid of.
       session.updateFrameRangeMoveDrag(frameDelta: 7);
       session.endFrameRangeMoveDrag();
 
-      expect(seLayerOf(session).timeline.keys, [2, 9]);
-      expect(seLayerOf(session).timeline[2]!.frameId, const FrameId('se-two'));
+      expect(seLayerOf(session).timeline.keys, [6, 9]);
+      expect(seLayerOf(session).timeline[6]!.frameId, const FrameId('se-two'));
       expect(seLayerOf(session).timeline[9]!.frameId, const FrameId('se-one'));
     });
 
