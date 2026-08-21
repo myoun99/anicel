@@ -92,6 +92,7 @@ class TimelineRowCellsPainter extends CustomPainter {
     this.coverageIdentity,
     this.chromeless = false,
     this.framesPerSecond = 24,
+    this.rowGround,
   }) : super(
          repaint: Listenable.merge([
            geometry,
@@ -211,6 +212,26 @@ class TimelineRowCellsPainter extends CustomPainter {
   /// strip painter used while it owned this drawing — so nothing about the
   /// confirmed appearance is being re-decided here, only re-hosted.
   final bool chromeless;
+
+  /// The ROW's own ground — what the widget lays down behind these cells
+  /// (the surface fill, plus the active wash when this row is the active
+  /// one). Null when the row paints no ground at all: a chromeless row
+  /// lies over the artwork, so its empty-cell lines stay source-over.
+  ///
+  /// 🚨D43-2 (유저 2026-08-21): 「행이 있는데 블록이 없는 곳에 그리드가
+  /// 없단거야. 근데 fx행은 존재한단거고」. The grid overlay sits UNDER the
+  /// rows and a row paints an OPAQUE full-width ground, so the overlay is
+  /// covered for the whole width of every row that draws one — while a
+  /// lane row, which draws none, shows it. That is the whole of the
+  /// report, and it means the empty cells' lines cannot come from the
+  /// overlay: they have to be drawn by the row, on the row's own ground.
+  ///
+  /// ⛔Not read off [colorScheme] here: the ground the row actually paints
+  /// is `surface` (plus a wash), while the PANEL behind it is
+  /// `surfaceContainerHighest`. Guessing would put the empty-cell lines on
+  /// the wrong paper — the same trap the overlay's `ground` avoids by
+  /// being passed in.
+  final Color? rowGround;
 
   // ⛔The two per-cell alphas are GONE (유저 확정 2026-08-14): 「반투명 =
   // 오버레이 루트 하나, 70%」. `0x66` on a block's body and `0x9E` on its
@@ -493,10 +514,17 @@ class TimelineRowCellsPainter extends CustomPainter {
   /// so the baked and classic passes cannot drift.
   ({Rect rect, Color color})? heldSeamLineFor(int frameIndex) {
     final model = cellModelAt(frameIndex);
-    if (model.ghost ||
-        _cameraSummaryRow ||
-        !model.segment.isBlock ||
-        !model.segment.continuesFromPrevious) {
+    if (model.ghost || _cameraSummaryRow) {
+      return null;
+    }
+    // INSIDE a block the line is the interior seam; OUTSIDE one it is the
+    // empty-space grid, which the row has to draw for itself (D43-2 — see
+    // [rowGround]). A block's LEADING boundary is its edge and belongs to
+    // neither: the run starts there.
+    final insideBlock =
+        model.segment.isBlock && model.segment.continuesFromPrevious;
+    final onEmpty = !model.segment.isBlock;
+    if (!insideBlock && !onEmpty) {
       return null;
     }
     final ink = timelineFrameBoundaryLineInk(
@@ -509,8 +537,16 @@ class TimelineRowCellsPainter extends CustomPainter {
       return null;
     }
     final rect = cellRectFor(frameIndex);
-    final ground = resolvedCellStyleFor(frameIndex).background;
-    final color = timelineGridLineInkOnGround(ink, ground);
+    // A block's ground is its own paper. An empty cell paints NOTHING
+    // (UI-R21 #2), so its ground is the ROW's — and where the row paints
+    // none either, the line stays the law's own ink, source-over, exactly
+    // as the overlay does over artwork.
+    final ground = insideBlock
+        ? resolvedCellStyleFor(frameIndex).background
+        : rowGround;
+    final color = ground == null
+        ? ink.color
+        : timelineGridLineInkOnGround(ink, ground);
     final width = ink.strokeWidth;
     return (
       rect: axis == Axis.horizontal
@@ -875,6 +911,9 @@ class TimelineRowCellsPainter extends CustomPainter {
       // T16: the ground rule is a painted fact like any other. One row can
       // switch (the collapsed overlay folds and unfolds under a live panel).
       oldDelegate.chromeless != chromeless ||
+      // D43-2: and so is the ground the row paints — the active wash moves
+      // it, and the empty cells' lines are multiplied onto it.
+      oldDelegate.rowGround != rowGround ||
       oldDelegate.devicePixelRatio != devicePixelRatio;
 
   @override
@@ -972,6 +1011,18 @@ Widget timelineRowCellsPaintArea({
     substrateGeneration: substrateGeneration,
     devicePixelRatio: EffectiveDevicePixelRatio.of(context),
     framesPerSecond: framesPerSecond,
+    // D43-2: the ground the WIDGET lays down below, composited the same
+    // way it stacks — the surface fill with the active wash over it. The
+    // empty cells' grid lines land on this, because the overlay under the
+    // row cannot be seen through it.
+    rowGround: chromeless
+        ? null
+        : (active
+              ? Color.alphaBlend(
+                  timelineActiveRowWashColor(Theme.of(context).colorScheme),
+                  Theme.of(context).colorScheme.surface,
+                )
+              : Theme.of(context).colorScheme.surface),
   );
   // Read LIVE: the row that built this closure survives zoom steps now.
   bool inWindow(int frameIndex) => geometry.value.contains(frameIndex);

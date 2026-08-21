@@ -1835,30 +1835,26 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                   // Rows are no longer uniformly tall: collapsed sections
                                   // fold to a slim strip.
                                   //
-                                  // 🚨D43 (유저, 2026-08-21: 「타임라인패널만 빈공간에
-                                  // 그리드가 안생기는데」): the VIEWPORT is a floor on
-                                  // this, because the grid overlay is `Positioned.fill`
-                                  // inside the content — so content that stopped at the
-                                  // last row took the grid with it and everything below
-                                  // was blank. Measured at 1600×1000: the overlay reached
-                                  // 168px inside a 476px region, leaving 244px with no
-                                  // grid at all. D37 opening the region at half the
-                                  // window is what made that gap large enough to see.
+                                  // ⛔D43-2 (유저 확정, 2026-08-21): the viewport is NOT
+                                  // a floor on this, and a version of this file that made
+                                  // it one is reverted. 「레이어가 없는곳에 그리드를
+                                  // 만들란게아니야. 행이 없는곳은 지금까지처럼 그리드
+                                  // 없어도 되고」 — the report was about the empty cells
+                                  // INSIDE a row, and stretching the content to the
+                                  // viewport answered a question nobody asked while
+                                  // leaving the real one open.
                                   //
-                                  // ⚠️The fx rows are the control: their cells paint
-                                  // nothing but a 7px key diamond, so the grid shows
-                                  // through them completely — same overlay, same reach.
-                                  // Where rows exist the grid was never missing; it
-                                  // simply ended where they did.
-                                  //
-                                  // ⛔A floor, not a replacement: rows taller than the
-                                  // viewport still scroll on their own extent.
+                                  // ★The real cause is one layer up: a row paints an
+                                  // OPAQUE full-width ground, and the line overlay sits
+                                  // UNDER the rows — so the overlay is covered for the
+                                  // whole width of every row that draws one, and shows
+                                  // only where no row does (lane rows, and past the last
+                                  // row). ⇒ the empty cells' lines are the ROW's to draw
+                                  // ([TimelineRowCellsPainter.rowGround]), not the
+                                  // overlay's to reach further.
                                   final verticalContentHeight = math.max(
-                                    math.max(
-                                      timelineDisplayRowsExtent(rows, _metrics),
-                                      _metrics.layerRowHeight,
-                                    ),
-                                    bodyViewportHeight,
+                                    timelineDisplayRowsExtent(rows, _metrics),
+                                    _metrics.layerRowHeight,
                                   );
                                   // Layer-axis window: only the rows in view (plus
                                   // overscan) are built; spacers preserve the scroll
