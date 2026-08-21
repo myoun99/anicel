@@ -86,11 +86,21 @@ void main() {
 
     final painter =
         tester.widget<CustomPaint>(lines).painter! as TimelineBeatLinesPainter;
+    final overlay = tester.widget<CollapsedRowOverlay>(
+      find.byType(CollapsedRowOverlay),
+    );
     expect(
       painter.crossCellExtent,
-      CollapsedRowOverlay.height,
+      overlay.height,
       reason: 'the lines span the row they are drawn on, not the grid\'s row '
           'height — a folded row is one row tall and measures as one',
+    );
+    expect(
+      overlay.height,
+      CollapsedRowOverlay.defaultHeight,
+      reason: 'D15: the height is THE ROW\'s now, and a timeline layer row\'s '
+          'answer is this number — the constant stopped being the law and '
+          'became one row\'s answer to it',
     );
   });
 }

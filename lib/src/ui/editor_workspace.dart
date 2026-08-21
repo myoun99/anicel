@@ -81,7 +81,8 @@ import '../models/envelope/cut_envelope_presets.dart';
 import 'envelope/cut_envelope_ink.dart';
 import 'envelope/cut_envelope_tab_host.dart';
 import 'storyboard_cut_thumbnail_store.dart';
-import 'storyboard_panel.dart' show StoryboardPanel;
+import 'storyboard_cut_blocks_painter.dart' show storyboardCutBlocksPainterFor;
+import 'storyboard_panel.dart' show StoryboardPanel, StoryboardTrackLabelRow;
 import 'storyboard_playhead_mapping.dart';
 import '../models/timeline_row_address.dart';
 import 'playback/canvas_playback_controller.dart' show PlaybackScope;
@@ -3979,9 +3980,47 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     );
   }
 
+  /// Whether the folded row is the STORYBOARD's — its track row rather
+  /// than the timeline's layer row.
+  ///
+  /// D15 (유저 2026-08-21: 「트랙이 보여야 하는데 프레임이 보임 … 심지어
+  /// 수정 전 구버전 간편오버레이가 보임」). Both symptoms were one cause and
+  /// it was not a copy: `_collapsedRowOverlay` let either tab through and
+  /// then built the timeline's row unconditionally, so a folded storyboard
+  /// showed the timeline's — unfamiliar, and rightly reported as "an old
+  /// version". There was no storyboard branch at all.
+  bool get _collapsedRowIsStoryboard =>
+      _layout.activeTabIn(EditorWorkspace.bottomGroupId) ==
+      EditorWorkspace.storyboardTabId;
+
+  /// THE folded row's height — the height of the row it is showing.
+  ///
+  /// 유저 확정 (2026-08-21): 「간편오버레이 높이도 해당 행 높이에따라서 맞춤.
+  /// 이 높이 맞추는건 타임라인의 간편오버레이든 동일하게」 — one law, both
+  /// panels. The storyboard's V row is as tall as its own splitter left it
+  /// ([StoryboardPanel.trackLaneHeight], D15 ④); a timeline row asks the
+  /// timeline's own per-row rule, which answers one number today and stays
+  /// the place to change if it ever answers two.
+  ///
+  /// ⚠️Every consumer of the fold's height reads THIS — the row itself, the
+  /// space the region reserves above the canvas, and the floor inset. That
+  /// was already the intent (「그래야 수정했을때 아무것도 안고치고
+  /// 반영되니까」); it just had a constant to read instead of a row.
+  /// ⚠️The timeline half is `layerRowHeight` because that is what
+  /// [timelineDisplayRowExtent] answers for EVERY timeline row — the rule
+  /// is real, it simply has one answer today. If it ever grows a second,
+  /// that function is where it grows and this line follows it there.
+  double _collapsedRowHeight() => _collapsedRowIsStoryboard
+      ? _storyboardTrackLaneHeight.value
+      : TimelineGridMetrics.defaults.layerRowHeight;
+
   Widget _collapsedRow() {
+    if (_collapsedRowIsStoryboard) {
+      return _collapsedTrackRow();
+    }
     final rail = _railExtents[LayerRailId.timeline];
     return CollapsedRowOverlay(
+      height: _collapsedRowHeight(),
       snapshot: _flipHudSnapshot(FlipHudAxis.frame),
       // 유저 확정: 레일 폭은 가로 스플리터를 그대로 따라간다 — the same
       // stored window the panel's own rail lays out against, so narrowing
@@ -4004,6 +4043,84 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       framesPerSecond: widget.session.projectFrameRate.countingBase,
       railChild: _collapsedRailRow(),
       frameRowBuilder: _collapsedFrameRowBuilder(),
+    );
+  }
+
+  /// The folded STORYBOARD's row — the track, with its cuts as blocks.
+  ///
+  /// Same shell, same law, different row: the rail half mounts the panel's
+  /// own [StoryboardTrackLabelRow] chromeless (the timeline half mounts its
+  /// real controls row for exactly this reason) and the frame half asks
+  /// [storyboardCutBlocksPainterFor], the call the panel's track row makes.
+  /// 「썸네일 띄움 · 텍스트같은것도 같은 규칙따라서 위치 맞춤」 (D15 ③) is
+  /// therefore not implemented here at all — it arrives with the painter.
+  ///
+  /// ⚠️Its rail is the STORYBOARD's window, not the timeline's: they are
+  /// two splitters over two different rails, and reading the timeline's
+  /// here is what would put the folded row's columns out of step with the
+  /// panel it folded.
+  Widget _collapsedTrackRow() {
+    final session = widget.session;
+    final trackId = session.selectedTrackId;
+    final entries = [
+      for (final entry in session.projectTimelineLayout())
+        if (entry.trackId == trackId) entry,
+    ];
+    final track = entries.isEmpty
+        ? null
+        : session.trackOwningCut(entries.first.cutId);
+    final pixelsPerFrame = _storyboardPixelsPerFrame.value;
+    final height = _collapsedRowHeight();
+    return CollapsedRowOverlay(
+      height: height,
+      // The TRACK snapshot — the same one the flip window shows on this
+      // axis, so the two summaries of "where am I" cannot disagree.
+      snapshot: _flipHudTrackSnapshot(session),
+      rail: _railExtents[LayerRailId.storyboard],
+      naturalRailWidth: StoryboardTrackLabelRow.railWidth,
+      pixelsPerFrame: pixelsPerFrame,
+      framesPerSecond: session.projectFrameRate.countingBase,
+      // No track (an empty film) falls back to the overlay's own strip,
+      // which draws the snapshot — the same fallback the timeline's lane
+      // rows take.
+      railChild: track == null
+          ? null
+          : StoryboardTrackLabelRow(
+              track: track,
+              // The panel labels its V rows by POSITION, and this is the
+              // selected one; a film has one track (전제 8), so the index
+              // is 0 and the label is V1.
+              trackLabel: 'V1',
+              laneHeight: height,
+              chromeless: true,
+              activeCut: session.activeCutOrNull,
+              subjectCut: session.activeCutOrNull,
+              cutPictureVisibleOf: session.isCutPictureVisible,
+            ),
+      frameRowBuilder: track == null
+          ? null
+          : (context, geometry) => CustomPaint(
+              key: const ValueKey<String>('collapsed-storyboard-cut-blocks'),
+              painter: storyboardCutBlocksPainterFor(
+                entries: entries,
+                geometry: geometry,
+                crossAxisExtent: height,
+                minBlockWidth: StoryboardPanel.cutBlockMinWidth,
+                activeCutId: session.activeCutOrNull?.id,
+                rowAddress: TrackRowAddress(track.id),
+                colorScheme: Theme.of(context).colorScheme,
+                brightness: Theme.of(context).brightness,
+                baseTextStyle:
+                    Theme.of(context).textTheme.labelSmall ??
+                    DefaultTextStyle.of(context).style,
+                showSeconds: _showSecondsDisplay.value,
+                countingBase: session.projectFrameRate.countingBase,
+                // D15 ③: the thumbnails come from the store the panel
+                // draws from, so a picture rendered for one is already
+                // rendered for the other.
+                thumbnailFor: _storyboardThumbnails.thumbnailFor,
+              ),
+            ),
     );
   }
 
@@ -4097,7 +4214,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
         TimelineGridMetrics.defaults.minimumVisibleFrameCells,
     layerControlsWidth: TimelineGridMetrics.defaults.layerControlsWidth,
     frameCellWidth: _timelinePixelsPerFrame.value,
-    layerRowHeight: CollapsedRowOverlay.height,
+    layerRowHeight: _collapsedRowHeight(),
     verticalScrollbarWidth: TimelineGridMetrics.defaults.verticalScrollbarWidth,
     sectionLabelGutterWidth:
         TimelineGridMetrics.defaults.sectionLabelGutterWidth,
@@ -4117,6 +4234,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   /// channel, one layer down.
   ///
   /// Bound ONCE: a merge rebuilt per pass re-subscribes on every build.
+  ///
+  /// ⚠️BOTH panels' channels are in here, because either can be the folded
+  /// row (D15). A storyboard-only zoom or a V-splitter drag changes this
+  /// row's shape exactly as the timeline's own do, and a merge that knew
+  /// only the timeline's would leave the folded track row showing the
+  /// build it was born with — the very symptom ⑩ was.
   late final Listenable _collapsedRowStructure = Listenable.merge([
     widget.session,
     _expandedLaneLayerIds,
@@ -4126,6 +4249,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     _collapsedAttachBaseIds,
     _timelinePixelsPerFrame,
     _railExtents[LayerRailId.timeline],
+    _storyboardPixelsPerFrame,
+    _storyboardTrackLaneHeight,
+    _showSecondsDisplay,
+    _railExtents[LayerRailId.storyboard],
   ]);
 
   /// R26 #44's fact bundle for the collapsed row — bound ONCE, exactly like
@@ -4213,7 +4340,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
             chromeless: true,
             playbackFrameCount: session.activeCutPlaybackFrameCount,
             geometry: geometry,
-            crossAxisExtent: CollapsedRowOverlay.height,
+            crossAxisExtent: _collapsedRowHeight(),
             exposureStateForLayer: session.exposureStateForLayer,
             frameNameForLayer: session.frameNameForLayer,
             celContent: _collapsedCelContent,
@@ -4244,7 +4371,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
           leadingFrameSpacerWidth: 0,
           metrics: metrics,
           exposureStateForLayer: session.exposureStateForLayer,
-          crossAxisExtent: CollapsedRowOverlay.height,
+          crossAxisExtent: _collapsedRowHeight(),
         ),
       ],
     );
@@ -4649,7 +4776,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                                   math.max(
                                     DockEdgeSplitter.thickness,
                                     _bottomDockCollapsed
-                                        ? CollapsedRowOverlay.height
+                                        ? _collapsedRowHeight()
                                         : 0.0,
                                   )
                             : 0.0;
@@ -4699,7 +4826,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                                     hasBottomDock &&
                                         _bottomDockCollapsed &&
                                         !onTop
-                                    ? CollapsedRowOverlay.height
+                                    ? _collapsedRowHeight()
                                     : 0,
                                 // WHERE each column actually is, not just how
                                 // wide it is. A rail panel is as tall as it was
@@ -4796,7 +4923,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                                 right: bottomInset,
                                 top: onTop ? bottomHeight : null,
                                 bottom: onTop ? null : bottomHeight,
-                                height: CollapsedRowOverlay.height,
+                                height: _collapsedRowHeight(),
                                 child: _collapsedRowOverlay(),
                               ),
                             Positioned(
