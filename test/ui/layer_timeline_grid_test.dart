@@ -1804,12 +1804,10 @@ void main() {
     );
 
     expect(column, findsOneWidget);
-    // The playhead tint spans the grid's CONTENT extent, not the rows'
-    // (rows are no longer uniformly tall once a section collapses to its
-    // slim strip). D43: that content is floored at the body's viewport,
-    // so the frame grid reaches the bottom of the region even with one
-    // layer — and the current frame's column is tinted for the whole of
-    // it rather than stopping mid-grid at the last row.
+    // The playhead tint spans the grid's CONTENT extent, not a per-row
+    // number (rows are no longer uniformly tall once a section collapses
+    // to its slim strip) — and that content is the ROWS' extent, which
+    // with one layer is one row (D43-2's refusal, pinned below).
     expect(tester.getSize(column).width, 48);
     expect(
       tester.getSize(column).height,
@@ -1819,20 +1817,25 @@ void main() {
           )
           .height,
     );
-    expect(tester.getSize(column).height, greaterThan(52));
+    expect(tester.getSize(column).height, 52);
 
     final container = tester.widget<Container>(column);
     expect(container.color, timelinePlayheadColor.withValues(alpha: 0.18));
     expect(container.decoration, isNull);
   });
 
-  testWidgets('D43: the frame grid reaches the BOTTOM of the region, not the '
-      'last row (유저: 「타임라인패널만 빈공간에 그리드가 안생긴다」)', (tester) async {
-    // One layer in a region far taller than one row: the rows' own extent
-    // is 52 and the panel's body is the rest. The overlay fills the scroll
-    // CONTENT, so a content sized to the rows alone left the space under
-    // them with no grid at all — visible since the docks started opening
-    // at half the window (D37).
+  testWidgets('⛔D43-2: the content stops at the ROWS — the space past the '
+      'last row is not the grid\'s to fill (유저 확정 2026-08-21)', (tester) async {
+    // 🚨A previous version floored this at the body's viewport, so the
+    // overlay stretched into the empty region below the rows. 유저:
+    // 「레이어가 없는곳에 그리드를 만들란게아니야. 행이 없는곳은 지금까지처럼
+    // 그리드 없어도 되고 행이 있는데 블록이 없는곳에 그리드가 없단거야」 —
+    // the report was about the empty cells INSIDE a row, and stretching the
+    // content answered a question nobody asked.
+    //
+    // ⇒ pinned as a REFUSAL so the same well-meant fix cannot come back:
+    // the content is the rows' extent, and the empty cells' lines are the
+    // ROW's to draw (`TimelineRowCellsPainter.rowGround`).
     await tester.pumpWidget(
       _grid(
         layers: [_layer(id: 'layer-1', name: 'Layer 1')],
@@ -1847,11 +1850,15 @@ void main() {
     final body = tester.getSize(
       find.byKey(const ValueKey<String>('timeline-scrollable-body')),
     );
-    expect(tester.getSize(overlay).height, body.height);
     expect(
       tester.getSize(overlay).height,
-      greaterThan(52),
-      reason: 'the empty space below the single row is gridded too',
+      body.height,
+      reason: 'the overlay still fills the content it lives in',
+    );
+    expect(
+      body.height,
+      52,
+      reason: 'and that content is ONE row tall — not the region\'s height',
     );
   });
 

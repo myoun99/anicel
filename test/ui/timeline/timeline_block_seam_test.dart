@@ -95,10 +95,23 @@ void main() {
       ),
       reason: 'the law\'s snap and width — one line, at the boundary',
     );
+    // ⚠️CONTRACT CHANGED (D43-2, 2026-08-21): past the run there is no
+    // BLOCK to seam, but there IS a grid line — the empty-space one, which
+    // the row draws for itself now (the overlay under the row is covered by
+    // the row's own opaque ground, which is why those lines went missing).
+    // This painter passes no `rowGround`, so it lands as the law's raw ink.
+    final past = painter.heldSeamLineFor(4)!;
     expect(
-      painter.heldSeamLineFor(4),
-      isNull,
-      reason: 'past the run there is no block to seam',
+      past.color,
+      timelineFrameBoundaryLineInk(
+        frameIndex: 4,
+        frameCellExtent: 24,
+        framesPerSecond: 24,
+        colorScheme: scheme,
+      )!.color,
+      reason:
+          'no ground was given, so no multiply — see '
+          'row_draws_its_own_empty_grid_test for the grounded case',
     );
   });
 
@@ -107,9 +120,7 @@ void main() {
     // 8px cells: the base cadence is coarser than 1 (the law test pins
     // that premise), so a plain interior boundary goes silent…
     final painter = painterFor(
-      blockLayer({
-        2: const TimelineExposure.drawing(FrameId('f1'), length: 8),
-      }),
+      blockLayer({2: const TimelineExposure.drawing(FrameId('f1'), length: 8)}),
       frameCellExtent: 8,
     );
     expect(painter.heldSeamLineFor(3), isNull);
@@ -149,7 +160,11 @@ void main() {
     final painter = painterFor(
       blockLayer({
         0: const TimelineExposure.drawing(FrameId('f1'), length: 4),
-        6: const TimelineExposure.drawing(FrameId('f1'), length: 4, ghost: true),
+        6: const TimelineExposure.drawing(
+          FrameId('f1'),
+          length: 4,
+          ghost: true,
+        ),
       }),
     );
     expect(painter.heldSeamLineFor(7), isNull);
