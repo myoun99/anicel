@@ -966,6 +966,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     }
     final lane = entry.lane;
     if (lane == null) {
+      // A5-4: the same refusal the horizontal rail makes — the camera and
+      // transition columns hold their place, so they offer no grip.
+      if (!layerKindReordersInCut(entry.layer.kind)) {
+        return child;
+      }
       return LayerRowDragTarget(
         subject: LayerRowSubject(entry.layer.id),
         slotBefore: entry.layerIndex,

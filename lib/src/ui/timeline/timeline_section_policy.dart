@@ -32,9 +32,40 @@ TimelineSection timelineSectionForLayerKind(LayerKind kind) {
   };
 }
 
+/// 🚨A5-4 (유저 2026-08-22) — **THE CAMERA SECTION HAS AN ORDER, AND IT IS A
+/// RULE.**
+///
+/// > 「위에서부터 **카메라/트랜지션/디렉션** 고정. 지금 **디렉션을 카메라 위로
+/// > 옮길 수 있고 되돌릴 수 없다.** 카메라·트랜지션 = **드래그 불가**,
+/// > 디렉션 = **디렉션끼리만**」
+///
+/// ⛔It was never written down anywhere. All three kinds share ONE section,
+/// so the cross-section refusal never fired between them, and the order on
+/// screen fell out of two unrelated insertion sites — `withEnsuredSection
+/// Layers` putting a Direction row before the camera, and the layer
+/// controller splicing the transition clone at the camera's index. Neither
+/// repairs a list that has already been disturbed.
+///
+/// Raw order, so LOW sorts to the bottom of the screen: direction, then
+/// transition, then camera on top.
+int timelineCameraSectionRank(LayerKind kind) => switch (kind) {
+  LayerKind.camera => _cameraSectionTopRank,
+  LayerKind.transition => 1,
+  // Direction rows — and every kind outside this section, where a rank
+  // means nothing because it is only ever compared within one section.
+  _ => 0,
+};
+
+const int _cameraSectionTopRank = 2;
+
 /// Stable-sorts layers into section order (raw orientation), preserving the
-/// relative order within each section. Defensive: the model usually already
-/// keeps camera last, but display must not depend on that.
+/// relative order within each section — except inside the CAMERA section,
+/// where [timelineCameraSectionRank] IS the order and the incoming list has
+/// no say (A5-4).
+///
+/// ⚠️That exception is what repairs a project already saved with a Direction
+/// row above the camera. Refusing the drag stops it happening again; this
+/// puts the rows back for someone who already has one.
 List<Layer> sectionedLayerOrder(List<Layer> layers) {
   final buckets = <TimelineSection, List<Layer>>{
     for (final section in TimelineSection.values) section: <Layer>[],
@@ -42,8 +73,18 @@ List<Layer> sectionedLayerOrder(List<Layer> layers) {
   for (final layer in layers) {
     buckets[timelineSectionForLayerKind(layer.kind)]!.add(layer);
   }
+  // A partition by rank, which is stable by construction: same-rank rows
+  // keep the order they arrived in, and that is what lets several Direction
+  // rows be re-ordered among themselves.
+  final camera = buckets[TimelineSection.camera]!;
+  final ranked = <Layer>[
+    for (var rank = 0; rank <= _cameraSectionTopRank; rank += 1)
+      for (final layer in camera)
+        if (timelineCameraSectionRank(layer.kind) == rank) layer,
+  ];
   return List<Layer>.unmodifiable([
-    for (final section in TimelineSection.values) ...buckets[section]!,
+    for (final section in TimelineSection.values)
+      ...(section == TimelineSection.camera ? ranked : buckets[section]!),
   ]);
 }
 

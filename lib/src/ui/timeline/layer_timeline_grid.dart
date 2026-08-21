@@ -1228,6 +1228,17 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// rows counts in.
   Widget _draggable(TimelineDisplayRow row, Widget child) {
     final hooks = widget.rowDragHooks;
+    // 🚨A5-4 (유저 2026-08-22): 「카메라·트랜지션 = **드래그 불가**」. Their
+    // place is a rule, so the row offers no grip at all — a drag that can
+    // only ever be refused still lifts the row and still leaves the user to
+    // work out why nothing happened.
+    //
+    // ⚠️The transition row could never commit anyway (a track-owned clone
+    // has no run in `cut.layers`, so the plan came back null), but it DID
+    // lift and fade. That is the shape this removes.
+    if (!layerKindReordersInCut(row.layer.kind)) {
+      return child;
+    }
     return LayerRowDragTarget(
       subject: LayerRowSubject(row.layer.id),
       slotBefore: row.layerIndex,

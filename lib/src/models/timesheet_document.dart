@@ -350,9 +350,17 @@ class TimesheetDocument {
     final cameraSlotCount = backedCameraSlots > cameraColumnCount
         ? backedCameraSlots
         : cameraColumnCount;
-    final transitionSlot = transitionLayer == null
-        ? -1
-        : 1 + instructionLayers.length;
+    // 🚨A5-4 (유저 2026-08-22): 「위에서부터 카메라/트랜지션/디렉션 고정 …
+    // **타임시트에도 이 위치관계 반영**」.
+    //
+    // ⛔The sheet used to print camera → directions → transition, which was
+    // a THIRD answer to the same question: the rail said camera, transition,
+    // direction, and the sheet GRID (which reads `sectionedLayerOrder`) said
+    // whatever a stray drag had left behind. One relationship, three
+    // renderings — so the transition takes the slot right after the camera
+    // here too, and the directions follow it.
+    final transitionSlot = transitionLayer == null ? -1 : 1;
+    final firstInstructionSlot = transitionLayer == null ? 1 : 2;
 
     final columns = <TimesheetColumn>[
       // Animation layers fill the ACTION block in order, headed by their
@@ -446,40 +454,47 @@ class TimesheetDocument {
         TimesheetColumn(
           kind: TimesheetColumnKind.camera,
           label: '${slot + 1}',
-          layerName: slot >= 1 && slot - 1 < instructionLayers.length
-              ? instructionLayers[slot - 1].name
-              : slot == transitionSlot
+          layerName: slot == transitionSlot
               ? transitionLayer!.name
+              : slot >= firstInstructionSlot &&
+                    slot - firstInstructionSlot < instructionLayers.length
+              ? instructionLayers[slot - firstInstructionSlot].name
               : null,
           // Instruction slots carry their layer id so edge drags preview
           // live on the sheet (UI-R18 #7), like action/SE columns.
-          layerId: slot >= 1 && slot - 1 < instructionLayers.length
-              ? instructionLayers[slot - 1].id
-              : slot == transitionSlot
+          layerId: slot == transitionSlot
               ? transitionLayer!.id
+              : slot >= firstInstructionSlot &&
+                    slot - firstInstructionSlot < instructionLayers.length
+              ? instructionLayers[slot - firstInstructionSlot].id
               : null,
           cells: slot == 0
               ? (cameraOnSheet
                     ? _cameraCells(cut: cut, rowCount: rowCount)
                     : _blankCells(rowCount))
-              : slot - 1 < instructionLayers.length
-              ? _instructionCells(
-                  layer: instructionLayers[slot - 1],
-                  rowCount: rowCount,
-                  defById: instructionDefById,
-                )
               // D31: the transition's spans through the SAME instruction
               // recipe — one mark vocabulary (bowtie/wedge, A→B, memo),
               // no second printer. Its marks may legitimately run into
-              // the のりしろ rows.
+              // the のりしろ rows. A5-4 moved it up to slot 1, directly
+              // under the camera, to match the rail.
               : slot == transitionSlot
               ? _instructionCells(
                   layer: transitionLayer!,
                   rowCount: rowCount,
                   defById: instructionDefById,
                 )
+              : slot >= firstInstructionSlot &&
+                    slot - firstInstructionSlot < instructionLayers.length
+              ? _instructionCells(
+                  layer: instructionLayers[slot - firstInstructionSlot],
+                  rowCount: rowCount,
+                  defById: instructionDefById,
+                )
               : _blankCells(rowCount),
-          previewCellsBuilder: slot >= 1 && slot - 1 < instructionLayers.length
+          previewCellsBuilder:
+              slot == transitionSlot ||
+                  (slot >= firstInstructionSlot &&
+                      slot - firstInstructionSlot < instructionLayers.length)
               ? (layer) => _instructionCells(
                   layer: layer,
                   rowCount: rowCount,

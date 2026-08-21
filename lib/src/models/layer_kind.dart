@@ -482,6 +482,23 @@ bool layerKindIsClipboardCopyable(LayerKind kind) {
 /// placement is a projection and editing it would be editing a lie.
 bool layerKindIsReadOnlyInCut(LayerKind kind) => kind == LayerKind.transition;
 
+/// Whether a row of [kind] may be RE-ORDERED by dragging it in a cut's rail.
+///
+/// 🚨A5-4 (유저 2026-08-22): 「위에서부터 **카메라/트랜지션/디렉션** 고정 …
+/// 카메라·트랜지션 = **드래그 불가**, 디렉션 = **디렉션끼리만**」
+///
+/// The camera row's place is the top of its section and the transition's is
+/// under it; neither is a preference, so neither offers a grip. Direction
+/// rows still drag — among themselves, which the drop policy's rank check
+/// enforces (`timelineCameraSectionRank`).
+///
+/// ⚠️Not the same question as [layerKindIsReadOnlyInCut]. That one is about
+/// a row whose truth lives on another axis, and the transition answers yes
+/// to both for different reasons; the camera row is fully editable here and
+/// simply has nowhere else to be.
+bool layerKindReordersInCut(LayerKind kind) =>
+    kind != LayerKind.camera && kind != LayerKind.transition;
+
 /// Whether a row of [kind] carries INSTRUCTION EVENTS rather than cels — the
 /// sheet's CAM column shape: named spans with a bar arrow or an O.L bowtie,
 /// their writing on the row overlay instead of in the cells.
