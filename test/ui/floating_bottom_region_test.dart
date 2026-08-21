@@ -2,7 +2,6 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/canvas_visible_rect.dart';
@@ -426,7 +425,17 @@ void main() {
       // 유저, R3 #5: a rail panel is as tall as it was left at, so a short
       // one covers a BAND and not an edge. Stepping in for the whole edge
       // left the bar hanging in the middle of nothing.
-      await pumpApp(tester);
+      //
+      // ⚠️A TALLER window than the rest of the file, and that is the point
+      // of this case rather than a workaround. D37 opens the bottom region
+      // at half the window, so at 1000 tall the rail column and the bar's
+      // row are both squeezed into the same short band and no amount of
+      // shrinking a group gets the column clear of the bar — measured, the
+      // bar sat at y∈[203,364] inside a column running y∈[56,519]. The
+      // claim here is about a rail beside the bar, not about a short
+      // window, so give it a window where "beside" and "not beside" are
+      // both reachable.
+      await pumpApp(tester, size: const Size(1600, 1400));
       // At its saved height the panel DOES reach the bar's row, so it is
       // stepped in to begin with.
       final dodged = tester.getRect(vBar()).right;

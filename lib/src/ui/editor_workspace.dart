@@ -91,10 +91,10 @@ import 'timeline/timeline_cel_content_source.dart'
     show TimelineCelContentSource;
 import 'timeline/timeline_frame_cells_row.dart' show TimelineFrameCellsRow;
 import 'timeline/timeline_frame_cursor_layer.dart' show TimelineCursorLayer;
-import 'timeline/timeline_frame_geometry.dart'
-    show TimelineFrameGeometryHandle;
+import 'timeline/timeline_frame_geometry.dart' show TimelineFrameGeometryHandle;
 import 'timeline/timeline_lane_rows.dart' show TimelineLaneFrameRow;
-import 'timeline/timeline_layer_controls_row.dart' show TimelineLayerControlsRow;
+import 'timeline/timeline_layer_controls_row.dart'
+    show TimelineLayerControlsRow;
 import 'timeline/frame_panel_sill_controls.dart';
 import 'timeline/timeline_command_bar.dart' show TimelineCommandBar;
 import 'timeline/layer_rail_window.dart';
@@ -216,8 +216,88 @@ class EditorWorkspace extends StatefulWidget {
   /// and reopens closed (X-ed) ones.
   final WorkspacePanelsMenuController? panelsMenu;
 
+  /// D37 (유저, 2026-08-17): a dock's size opens as a FRACTION of the
+  /// window, not a fixed number of pixels.
+  ///
+  /// 🚨What is proportional is the DEFAULT and the CEILING — the stored
+  /// value stays pixels. A dock the user has dragged to a width is a width
+  /// they chose; making it track the window would move it under them every
+  /// time they resize, which no editor does. The complaint was that 260
+  /// was too narrow on a large monitor and too wide on a small one, and
+  /// that the drag hit a ceiling too early. Both are answered here.
+  ///
+  /// 0.18 of the window ≈ the old 260 at 1440 wide, so a monitor near that
+  /// size sees no change; it is the far ends that move.
+  static const double sideDockWidthFraction = 0.18;
+
+  /// Half the window (유저 원문: 「타임라인 세로 = 화면 절반」).
+  static const double bottomDockHeightFraction = 0.5;
+
+  /// A dock may grow until the CENTRE is still 4/3 of it — the user's
+  /// "중간 크기의 3/4까지". Solved for the dock: `d ≤ ¾·(rest − d)` gives
+  /// `d ≤ 3/7 · rest`, where `rest` already has the other dock taken out,
+  /// so the pair honours the same promise the single one does.
+  static const double _dockCentreShare = 3 / 7;
+
+  /// ⚠️Fallbacks for a window whose size is not known yet (an unbounded
+  /// host, a test harness that never lays out). Every path that HAS the
+  /// extent uses the fractions above — see [sideDockWidthFor] and
+  /// [bottomDockHeightFallbackFor].
   static const double bottomPanelHeight = 350;
   static const double sideDockWidth = 260;
+
+  /// The side dock's opening width for a window [availableWidth] wide,
+  /// landed on the device grid.
+  ///
+  /// ⛔Quantized HERE and not at the reader: a fraction of a window is a
+  /// fraction of a pixel almost always (0.18 × 1366 = 245.88), and R11's
+  /// whole chain rests on the boundaries between the docks being integral
+  /// device positions.
+  /// ⚠️Floored at the old fixed width, and the floor is load-bearing:
+  /// 0.18 of an 800-wide window is 144, at which the timesheet's own pill
+  /// folds its buttons away (measured — it turned a test red). A fraction
+  /// is a claim about how a dock should GROW, not a licence to open one
+  /// too narrow to use, so it only ever wins upward.
+  static double sideDockWidthFor(double availableWidth, DeviceGrid grid) {
+    if (!availableWidth.isFinite || availableWidth <= 0) {
+      return sideDockWidth;
+    }
+    return grid.position(
+      math.max(availableWidth * sideDockWidthFraction, sideDockWidth),
+    );
+  }
+
+  /// The bottom dock's opening height for a window [availableHeight] tall,
+  /// landed on the device grid.
+  ///
+  /// ⚠️Floored the same way and for the same reason as
+  /// [sideDockWidthFor] — half of a short window is less than the timeline
+  /// needs to show a row of blocks.
+  static double bottomDockHeightFallbackFor(
+    double availableHeight,
+    DeviceGrid grid,
+  ) {
+    if (!availableHeight.isFinite || availableHeight <= 0) {
+      return bottomPanelHeight;
+    }
+    return grid.position(
+      math.max(availableHeight * bottomDockHeightFraction, bottomPanelHeight),
+    );
+  }
+
+  /// How wide one side dock may be dragged, given what the OTHER one is
+  /// already taking. See [_dockCentreShare].
+  static double sideDockCeiling({
+    required double availableWidth,
+    required double gaps,
+    required double otherDockWidth,
+  }) {
+    if (!availableWidth.isFinite) {
+      return double.infinity;
+    }
+    final rest = availableWidth - gaps - otherDockWidth;
+    return math.max(0.0, rest * _dockCentreShare);
+  }
 
   /// How many GROUPS a rail can hold.
   ///
@@ -747,10 +827,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     final id = sanitizeBrushTipId(
       nextUserBrushTipId(sequence: _registeredCutTipSequence),
     );
-    await _tipLibrary.register(
-      cutPieceToTipMask(piece, id: id),
-      name: trimmed,
-    );
+    await _tipLibrary.register(cutPieceToTipMask(piece, id: id), name: trimmed);
   }
 
   /// Which preset is highlighted PER painting tool (R11-④: the brush and
@@ -1140,8 +1217,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   /// Writes both viewers back into the project — no command, so no undo
   /// entry and no dirty flag (see [MediaViewerBookmark]).
   void _writeViewerBookmarks() {
-    if (_viewersSeededFrom == null ||
-        !widget.session.repository.hasProject) {
+    if (_viewersSeededFrom == null || !widget.session.repository.hasProject) {
       // Before the first seed there is nothing to write, and writing
       // would erase what we are about to read.
       return;
@@ -2167,11 +2243,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                             .copyWith(tool: tool),
                         shapeKind:
                             toolState.activeShapeKind ?? CanvasShapeKind.rect,
-                        onShapeKindChanged: (verb, kind) =>
-                            _brushTool.value = _brushTool.value.withShapeKind(
-                              kind,
-                              forTool: verb,
-                            ),
+                        onShapeKindChanged: (verb, kind) => _brushTool.value =
+                            _brushTool.value.withShapeKind(kind, forTool: verb),
                         brushLibrary: ListenableBuilder(
                           listenable: _presetLibrary,
                           builder: (context, _) => BrushPresetPanel(
@@ -2238,23 +2311,23 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
           // scroll position, CSP-style.
           builder: (context) => ValueListenableBuilder<BrushToolState>(
             valueListenable: _brushTool,
-            builder: (context, toolState, _) =>
-                ValueListenableBuilder<FloodFillOptions>(
-                  valueListenable: _fillOptions,
-                  builder: (context, fillOptions, _) =>
-                      KeyedKeepAliveStack<
-                        CanvasTool,
-                        (BrushToolState, FloodFillOptions)
-                      >(
-                        keys: CanvasTool.values,
-                        activeKey: toolState.tool,
-                        stateOf: () => (toolState, fillOptions),
-                        // The inner listenables SUBSCRIBE for themselves,
-                        // which is why they need not appear in the
-                        // keep-alive tuple above: that tuple decides when
-                        // the kept-alive subtree is thrown away, not when
-                        // it rebuilds.
-                        builder: (context) => ValueListenableBuilder<TransformToolOptions>(
+            builder: (context, toolState, _) => ValueListenableBuilder<FloodFillOptions>(
+              valueListenable: _fillOptions,
+              builder: (context, fillOptions, _) =>
+                  KeyedKeepAliveStack<
+                    CanvasTool,
+                    (BrushToolState, FloodFillOptions)
+                  >(
+                    keys: CanvasTool.values,
+                    activeKey: toolState.tool,
+                    stateOf: () => (toolState, fillOptions),
+                    // The inner listenables SUBSCRIBE for themselves,
+                    // which is why they need not appear in the
+                    // keep-alive tuple above: that tuple decides when
+                    // the kept-alive subtree is thrown away, not when
+                    // it rebuilds.
+                    builder: (context) =>
+                        ValueListenableBuilder<TransformToolOptions>(
                           valueListenable: _transformOptions,
                           builder: (context, transformOptions, _) =>
                               ValueListenableBuilder<SelectionMaskOptions>(
@@ -2349,8 +2422,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                                     ),
                               ),
                         ),
-                      ),
-                ),
+                  ),
+            ),
           ),
         );
       // R9 #14: there is no Color TAB. The wheel and the palette are the
@@ -3165,6 +3238,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     EditorPanelDockSide side, {
     required double width,
     required Map<String, Widget> hosts,
+
+    /// D37's "up to ¾ of the centre", resolved against what the OTHER dock
+    /// is taking — so the grip stops where the drawn width stops.
+    ///
+    /// ⚠️Passed in rather than computed here: only the caller knows the
+    /// window, and a grip whose ceiling disagreed with the layout's would
+    /// spend the drag moving a number nobody draws.
+    required double dragCeiling,
   }) {
     final right = side == EditorPanelDockSide.right;
     final open = _openRailGroups(right: right);
@@ -3259,7 +3340,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                         final used = _layout.resizeDock(
                           EditorWorkspace.railWidthKey(right: right),
                           right ? -delta : delta,
-                          fallback: EditorWorkspace.sideDockWidth,
+                          fallback: width,
+                          maxExtent: dragCeiling,
                         );
                         return right ? -used : used;
                       },
@@ -3677,10 +3759,17 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     // Clamped on the way OUT as well as on the drag: a workspace saved
     // before this floor existed, or one whose bottom dock gained a taller
     // tab since, must still open at a height its panels fit in.
+    // D37: half the window when nothing has been dragged (유저 원문:
+    // 「타임라인 세로 = 화면 절반」). A dock the user HAS sized keeps its
+    // pixels — see [sideDockWidthFraction] for why a fraction is the
+    // opening and not a binding.
     final wanted = math.max(
       _layout.dockExtent(
         EditorWorkspace.bottomGroupId,
-        fallback: EditorWorkspace.bottomPanelHeight,
+        fallback: EditorWorkspace.bottomDockHeightFallbackFor(
+          availableExtent,
+          DeviceGrid.of(context),
+        ),
       ),
       _verticalDockMinimumExtent(EditorWorkspace.bottomGroupId),
     );
@@ -4004,7 +4093,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   /// measurement — rail width, section gutter, frame cell — comes from the
   /// panel so the columns line up under it.
   TimelineGridMetrics _collapsedMetrics() => TimelineGridMetrics(
-    minimumVisibleFrameCells: TimelineGridMetrics.defaults.minimumVisibleFrameCells,
+    minimumVisibleFrameCells:
+        TimelineGridMetrics.defaults.minimumVisibleFrameCells,
     layerControlsWidth: TimelineGridMetrics.defaults.layerControlsWidth,
     frameCellWidth: _timelinePixelsPerFrame.value,
     layerRowHeight: CollapsedRowOverlay.height,
@@ -4393,16 +4483,24 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                         // squeeze the canvas out: scale both down proportionally
                         // when the window can't fit them.
                         const minCenterWidth = 120.0;
+                        final grid = DeviceGrid.of(context);
+                        // D37: the OPENING width is a fraction of this window.
+                        // A dock the user has sized keeps its pixels; only a
+                        // dock that has never been dragged reads this.
+                        final opening = EditorWorkspace.sideDockWidthFor(
+                          constraints.maxWidth,
+                          grid,
+                        );
                         var leftWidth = hasLeftDock
                             ? _layout.dockExtent(
                                 EditorWorkspace.railWidthKey(right: false),
-                                fallback: EditorWorkspace.sideDockWidth,
+                                fallback: opening,
                               )
                             : 0.0;
                         var rightWidth = hasRightDock
                             ? _layout.dockExtent(
                                 EditorWorkspace.railWidthKey(right: true),
-                                fallback: EditorWorkspace.sideDockWidth,
+                                fallback: opening,
                               )
                             : 0.0;
                         // The gap between the strip and the panel floating
@@ -4410,8 +4508,28 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                         // beyond the panel itself; the width grips are
                         // overlays and cost nothing.
                         final gaps =
-                            (hasLeftDock ? _railGroupGap : 0) +
-                            (hasRightDock ? _railGroupGap : 0);
+                            (hasLeftDock ? _railGroupGap : 0.0) +
+                            (hasRightDock ? _railGroupGap : 0.0);
+                        // D37's ceiling, applied on the way OUT as well as on
+                        // the drag: a layout saved before it existed can sit
+                        // above it, and the host must draw what the drag would
+                        // now allow rather than what the file remembers.
+                        leftWidth = math.min(
+                          leftWidth,
+                          EditorWorkspace.sideDockCeiling(
+                            availableWidth: constraints.maxWidth,
+                            gaps: gaps,
+                            otherDockWidth: rightWidth,
+                          ),
+                        );
+                        rightWidth = math.min(
+                          rightWidth,
+                          EditorWorkspace.sideDockCeiling(
+                            availableWidth: constraints.maxWidth,
+                            gaps: gaps,
+                            otherDockWidth: leftWidth,
+                          ),
+                        );
                         final room =
                             (constraints.maxWidth - gaps - minCenterWidth)
                                 .clamp(0.0, double.infinity);
@@ -4421,6 +4539,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                           leftWidth *= scale;
                           rightWidth *= scale;
                         }
+                        // ⛔Snapped AFTER the squeeze, not before: the scale
+                        // above is a fraction and would push an on-grid width
+                        // back off it.
+                        leftWidth = grid.position(leftWidth);
+                        rightWidth = grid.position(rightWidth);
                         final bottomHeight = hasBottomDock
                             ? _bottomDockHeight(constraints.maxHeight)
                             : 0.0;
@@ -4473,7 +4596,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                         final rightRailSpanRaw = hasRightDock
                             ? rightWidth + _railGroupGap
                             : 0.0;
-                        final grid = DeviceGrid.of(context);
                         final leftRailSpan = grid.position(leftRailSpanRaw);
                         // ⚠️The RIGHT span is a distance from the FAR edge,
                         // so snapping it as if it were measured from the
@@ -4635,6 +4757,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                                 EditorPanelDockSide.left,
                                 width: leftWidth,
                                 hosts: leftRailHosts,
+                                dragCeiling: EditorWorkspace.sideDockCeiling(
+                                  availableWidth: constraints.maxWidth,
+                                  gaps: gaps,
+                                  otherDockWidth: rightWidth,
+                                ),
                               ),
                             ),
                             Positioned(
@@ -4648,6 +4775,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                                 EditorPanelDockSide.right,
                                 width: rightWidth,
                                 hosts: rightRailHosts,
+                                dragCeiling: EditorWorkspace.sideDockCeiling(
+                                  availableWidth: constraints.maxWidth,
+                                  gaps: gaps,
+                                  otherDockWidth: leftWidth,
+                                ),
                               ),
                             ),
                             // ★The collapsed row, over the artwork and OUTSIDE
@@ -4716,58 +4848,58 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                                             bottom: onTop ? 0 : null,
                                             height: DockEdgeSplitter.thickness,
                                             child: DockEdgeSplitter(
-                                            key: const ValueKey<String>(
-                                              'dock-resize-bottom',
-                                            ),
-                                            axis: Axis.horizontal,
-                                            onDragDelta: (delta) {
-                                              // What the edge used, back in
-                                              // POINTER units — the sign flip
-                                              // below has to be undone or the
-                                              // splitter would bank the debt
-                                              // the wrong way round.
-                                              final used = _layout.resizeDock(
-                                                EditorWorkspace.bottomGroupId,
-                                                // Toward the artwork GROWS the
-                                                // region, on either edge: down
-                                                // when it is on top, up when it
-                                                // is on the bottom.
-                                                onTop ? delta : -delta,
-                                                fallback: EditorWorkspace
-                                                    .bottomPanelHeight,
-                                                // The splitter stops where the
-                                                // panels stop shrinking, and
-                                                // never banks height past what
-                                                // the window can show — a
-                                                // surplus behind the ceiling is
-                                                // spent before the edge moves
-                                                // again, which reads as a
-                                                // splitter that lags the cursor.
-                                                minExtent: math.min(
-                                                  _verticalDockMinimumExtent(
-                                                    EditorWorkspace
-                                                        .bottomGroupId,
+                                              key: const ValueKey<String>(
+                                                'dock-resize-bottom',
+                                              ),
+                                              axis: Axis.horizontal,
+                                              onDragDelta: (delta) {
+                                                // What the edge used, back in
+                                                // POINTER units — the sign flip
+                                                // below has to be undone or the
+                                                // splitter would bank the debt
+                                                // the wrong way round.
+                                                final used = _layout.resizeDock(
+                                                  EditorWorkspace.bottomGroupId,
+                                                  // Toward the artwork GROWS the
+                                                  // region, on either edge: down
+                                                  // when it is on top, up when it
+                                                  // is on the bottom.
+                                                  onTop ? delta : -delta,
+                                                  fallback: EditorWorkspace
+                                                      .bottomPanelHeight,
+                                                  // The splitter stops where the
+                                                  // panels stop shrinking, and
+                                                  // never banks height past what
+                                                  // the window can show — a
+                                                  // surplus behind the ceiling is
+                                                  // spent before the edge moves
+                                                  // again, which reads as a
+                                                  // splitter that lags the cursor.
+                                                  minExtent: math.min(
+                                                    _verticalDockMinimumExtent(
+                                                      EditorWorkspace
+                                                          .bottomGroupId,
+                                                    ),
+                                                    _bottomDockCeiling(
+                                                      constraints.maxHeight,
+                                                    ),
                                                   ),
-                                                  _bottomDockCeiling(
-                                                    constraints.maxHeight,
+                                                  // The model's own 640 still
+                                                  // applies here — the region
+                                                  // has always had it, and
+                                                  // lifting it is a separate
+                                                  // decision from fixing the
+                                                  // banking.
+                                                  maxExtent: math.min(
+                                                    EditorPanelLayoutModel
+                                                        .maxDockExtent,
+                                                    _bottomDockCeiling(
+                                                      constraints.maxHeight,
+                                                    ),
                                                   ),
-                                                ),
-                                                // The model's own 640 still
-                                                // applies here — the region
-                                                // has always had it, and
-                                                // lifting it is a separate
-                                                // decision from fixing the
-                                                // banking.
-                                                maxExtent: math.min(
-                                                  EditorPanelLayoutModel
-                                                      .maxDockExtent,
-                                                  _bottomDockCeiling(
-                                                    constraints.maxHeight,
-                                                  ),
-                                                ),
-                                              );
-                                              return onTop ? used : -used;
-                                            },
+                                                );
+                                                return onTop ? used : -used;
+                                              },
                                             ),
                                           ),
                                         // The region's side grips. TWO of

@@ -373,14 +373,30 @@ void main() {
       // check below fails LOUDLY with "must actually reach the overlapping
       // case" rather than passing on a case it never reached; re-measure
       // and move the number.
+      // ⚠️MEASURED at runtime rather than a fixed delta. It used to be +40
+      // from a 260 default; D37 opens the rail at a fraction of the window,
+      // so that delta landed on 248 and the case stopped reaching the
+      // overlap it is named for. Subtracting from the measured width is the
+      // same instruction the note above gives — "re-measure and move the
+      // number" — carried out by the test, so the next default change
+      // cannot quietly empty this case.
+      //
+      // ⛔The sign: a RIGHT rail grows as the pointer moves LEFT, so a
+      // positive dx shrinks it.
+      const overlappingWidth = 220.0;
+      final railWidth = tester
+          .getRect(
+            find.byKey(const ValueKey<String>('editor-panel-dock-right')),
+          )
+          .width;
       await tester.drag(
         find.byKey(const ValueKey<String>('dock-resize-rail-R2')),
-        const Offset(40, 0),
+        Offset(railWidth - overlappingWidth, 0),
       );
       await tester.pumpAndSettle();
       await tester.drag(
         find.byKey(const ValueKey<String>('dock-resize-rail-R2-height')),
-        const Offset(0, -400),
+        const Offset(0, -2000),
       );
       await tester.pumpAndSettle();
 
