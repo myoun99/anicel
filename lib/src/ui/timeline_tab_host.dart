@@ -954,9 +954,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               // re-orders the chain.
               isInRowSelection: (subject) =>
                   _session.rowIsSelected(_addressOfDragSubject(subject)),
-              onSelectBegin: (subject) => _session.beginRowSelection(
-                _addressOfDragSubject(subject),
-              ),
+              onSelectBegin: (subject) =>
+                  _session.beginRowSelection(_addressOfDragSubject(subject)),
               onSelectEnd: _session.endRowSelection,
             ),
             onRowSelectionSpan: _session.updateRowSelection,
@@ -1339,20 +1338,31 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
   void initState() {
     super.initState();
     _actionsToken = _deriveActionsToken();
-    widget.session.frameSeekCommitted.addListener(_handleExternalSignal);
     // 🚨유저 #6 (2026-08-14): 「룰러로 이동할때 … 버튼 상태 바꼈으면 좋겠는데
     // 안바뀜. **효율좋게** 하는데 … 해당 인덱스에 **버튼이 있으면 한번,
     // 없으면 한번** 이런식으로?」
     //
-    // ⛔`frameSeekCommitted` fires on the RELEASE, so for a whole ruler drag
-    // the toolbar kept whatever enablement it had when the drag began. A
-    // scrub deliberately raises no session notify — that is what keeps the
-    // drag cheap — so nothing else was ever going to re-ask.
+    // ⛔`frameSeekCommitted` alone fires on the RELEASE, so for a whole
+    // ruler drag the toolbar kept whatever enablement it had when the drag
+    // began. A scrub deliberately raises no session notify — that is what
+    // keeps the drag cheap — so nothing else was ever going to re-ask.
     //
-    // [EditorSessionManager.playheadHasCel] fires only when the ANSWER
-    // flips, so this costs one rebuild on the frame that reaches a block
-    // and one on the frame that leaves it, whatever the drag's length.
-    widget.session.playheadHasCel.addListener(_handleExternalSignal);
+    // 🚨#10 (2026-08-21): the answer to that used to be `playheadHasCel`, a
+    // BOOLEAN PROXY for the whole bar — 「거의 다 “플레이헤드 밑에 셀이
+    // 있나”로 환원된다」 was the argument, and it was wrong twice over.
+    // Measured on the default project: a scrub from a drawn frame 0 to an
+    // empty frame 6 moves NINE of the bar's twenty-five buttons, and the
+    // proxy read `false` at BOTH — it was synced only on the scrub path, so
+    // every drag started from whatever the last one left behind and the
+    // first crossing was missed by construction.
+    //
+    // [EditorSessionManager.playheadMoved] is the honest signal and the
+    // shared one: the same listenable the storyboard's bar and the shift
+    // pair take. The efficiency half of the instruction stays exactly where
+    // it belongs — in the token comparison below: a crossed frame costs one
+    // derivation (measured 15.6µs in debug for seventeen gates) and
+    // rebuilds nothing unless an ANSWER changed.
+    widget.session.playheadMoved.addListener(_handleExternalSignal);
     // A language switch moves its own notifier and fires NO session notify,
     // so nothing else would ever re-derive the tokens for it.
     widget.session.languageSettings.addListener(_handleExternalSignal);
@@ -1372,10 +1382,7 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
   void didUpdateWidget(covariant _SeekGatedTimelineToolbar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.session, widget.session)) {
-      oldWidget.session.frameSeekCommitted.removeListener(
-        _handleExternalSignal,
-      );
-      oldWidget.session.playheadHasCel.removeListener(_handleExternalSignal);
+      oldWidget.session.playheadMoved.removeListener(_handleExternalSignal);
       oldWidget.session.languageSettings.removeListener(_handleExternalSignal);
       oldWidget.session.currentRowListenable.removeListener(
         _handleExternalSignal,
@@ -1383,8 +1390,7 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       oldWidget.session.frameRangeSelection.removeListener(
         _handleExternalSignal,
       );
-      widget.session.frameSeekCommitted.addListener(_handleExternalSignal);
-      widget.session.playheadHasCel.addListener(_handleExternalSignal);
+      widget.session.playheadMoved.addListener(_handleExternalSignal);
       widget.session.languageSettings.addListener(_handleExternalSignal);
       widget.session.currentRowListenable.addListener(_handleExternalSignal);
       widget.session.frameRangeSelection.addListener(_handleExternalSignal);
@@ -1395,8 +1401,7 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
 
   @override
   void dispose() {
-    widget.session.frameSeekCommitted.removeListener(_handleExternalSignal);
-    widget.session.playheadHasCel.removeListener(_handleExternalSignal);
+    widget.session.playheadMoved.removeListener(_handleExternalSignal);
     widget.session.languageSettings.removeListener(_handleExternalSignal);
     widget.session.currentRowListenable.removeListener(_handleExternalSignal);
     widget.session.frameRangeSelection.removeListener(_handleExternalSignal);

@@ -17023,6 +17023,32 @@ class EditorSessionManager extends ChangeNotifier {
   /// session notify.
   final ValueNotifier<int> frameSeekCommitted = ValueNotifier<int>(0);
 
+  /// ★THE PLAYHEAD MOVED — every channel it can move on, as one listenable
+  /// (#10, 2026-08-21: 「버튼이 제대로 인덱스에 맞춰서 활성화/비활성화가
+  /// 안된다 … 버튼 싹 다 맞춰서」).
+  ///
+  /// A button whose enablement reads the playhead subscribes HERE and
+  /// nowhere else. Hand-listing the channels is what produced the report:
+  /// three surfaces each picked a different subset, so the same drag left
+  /// a different set of buttons stale on each of them —
+  ///
+  ///  * the ruler DRAG moves [editingFrameCursor] and commits nothing until
+  ///    the release, so a bar listening only to [frameSeekCommitted] was
+  ///    stale for the whole gesture (measured: 9 of 25 buttons);
+  ///  * a scrub that leaves the cut's territory parks instead, moving
+  ///    [gapParkingListenable] and NOT the cursor — which is why the
+  ///    storyboard's shift pair stayed lit past the film's end while the
+  ///    rest of its bar had already caught up.
+  ///
+  /// ⛔Playback is deliberately not a channel here: none of these three
+  /// move while it runs, so a bar cannot start re-deriving 24 times a
+  /// second because the film is playing.
+  late final Listenable playheadMoved = Listenable.merge([
+    frameSeekCommitted,
+    editingFrameCursor,
+    gapParkingListenable,
+  ]);
+
   /// True while a ruler scrub is in flight.
   ///
   /// 🚨★★★ #26 (2026-08-15): THIS NO LONGER SWAPS THE DISPLAY. It used to —
@@ -17044,7 +17070,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// [frameScrubActive] was already true (its flip is the only rebuild
   /// trigger the content mount had), and the cursor never fires out of
   /// territory — so `inGap` was never recomputed and the canvas kept the
-  /// previous cut's picture until release. This is the [playheadHasCel]
+  /// previous cut's picture until release. This is the retired `playheadHasCel`
   /// mechanism applied to that missing edge: one comparison per move,
   /// fires only when the ANSWER flips (out↔in), so the per-move parking
   /// stays as quiet as UI-R7 #9 demands. Set only while the gesture is
@@ -17068,7 +17094,6 @@ class EditorSessionManager extends ChangeNotifier {
     if (frameIndex != _timelineController.currentFrameIndex) {
       _timelineController.selectFrameIndex(frameIndex);
       editingFrameCursor.value = frameIndex;
-      _syncPlayheadHasCel();
       // Each crossed frame plays its slice of the mix (2D audio scrub).
       audioScrubber.onScrubFrame(frameIndex);
       if (!frameScrubActive.value) {
@@ -17082,30 +17107,29 @@ class EditorSessionManager extends ChangeNotifier {
     }
   }
 
-  /// 🚨★★★ 유저 #6 (2026-08-14): 「룰러로 이동할때, **블록이 있으면 사용가능**
-  /// 타임라인버튼 활성화되는식으로 버튼 상태 바꼈으면 좋겠는데 안바뀜.
-  /// **효율좋게** 하는데 바뀌게 하고싶음. 갱신을 매 룰러 드래그마다가 아니라
-  /// **해당 인덱스에 버튼이 있으면 한번, 없으면 한번** 이런식으로?」
-  ///
-  /// ★The user named the mechanism, and this is it: a scrub deliberately
-  /// does NOT notify the session — 「Seeks are NOT session notifies」, which
-  /// is what keeps a ruler drag from rebuilding every panel per frame — so
-  /// the toolbar never re-asked its predicates and the buttons sat stale
-  /// for the whole gesture.
-  ///
-  /// A `ValueNotifier<bool>` costs one comparison per crossed frame and
-  /// fires only when the ANSWER flips, so a drag across twenty empty frames
-  /// rebuilds the toolbar零 times and the frame that reaches a block
-  /// rebuilds it once. That is 「있으면 한번, 없으면 한번」 exactly.
-  ///
-  /// ⛔One boolean rather than each button's own predicate: they nearly all
-  /// reduce to 「is there a cel under the playhead」, and a notifier per verb
-  /// would put the per-frame cost back that this exists to avoid.
-  final ValueNotifier<bool> playheadHasCel = ValueNotifier<bool>(false);
-
-  void _syncPlayheadHasCel() {
-    playheadHasCel.value = selectedFrame != null;
-  }
+  // 🚨★★★ 유저 #6 (2026-08-14): 「룰러로 이동할때, **블록이 있으면 사용가능**
+  // 타임라인버튼 활성화되는식으로 버튼 상태 바꼈으면 좋겠는데 안바뀜.
+  // **효율좋게** 하는데 바뀌게 하고싶음. 갱신을 매 룰러 드래그마다가 아니라
+  // **해당 인덱스에 버튼이 있으면 한번, 없으면 한번** 이런식으로?」
+  //
+  // ⛔`playheadHasCel` LIVED HERE and is retired (#10, 2026-08-21). It was a
+  // single boolean standing in for a whole toolbar, argued for as 「거의 다
+  // “플레이헤드 밑에 셀이 있나”로 환원된다」, and it failed on both counts:
+  //
+  //  * it was synced ONLY from [scrubFrameIndex], so a committed seek left
+  //    it holding the previous drag's answer. Measured: at a frame that HAS
+  //    a cel it read `false`, so the first crossing of the next drag — the
+  //    one the user is watching — could not flip it;
+  //  * one boolean cannot carry twenty-five buttons. Measured on the
+  //    default project: a scrub from a drawn frame to an empty one moves
+  //    NINE of them.
+  //
+  // ★The replacement is not another proxy: every consumer subscribes to
+  // [editingFrameCursor] — the playhead's own channel, moved by a scrub and
+  // by a commit alike, and never by playback — and re-derives ITS OWN
+  // answer, rebuilding only when that answer differs. The user's efficiency
+  // instruction is kept exactly where it belongs: a crossed frame costs one
+  // derivation and zero rebuilds unless something actually changed.
 
   /// The scrub gesture's release: ends the preview and commits the
   /// scrubbed playhead as ONE ordinary seek (warm + committed-seek signal).

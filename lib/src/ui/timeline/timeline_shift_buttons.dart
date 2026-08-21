@@ -80,15 +80,20 @@ class _TimelineShiftButtonsState extends State<TimelineShiftButtons> {
   }
 
   void _listen(EditorSessionManager session) {
-    // The ANCHOR moving (a seek is not a session notify) …
-    session.frameSeekCommitted.addListener(_reread);
+    // The ANCHOR moving (a seek is not a session notify), in every way it
+    // can move — #10 (2026-08-21). This used to be `frameSeekCommitted`
+    // alone, which fires on the RELEASE, so a ruler drag held both answers
+    // at the frame it began on; and past the film's end the playhead moves
+    // by PARKING, which is a third channel again. One listenable answers
+    // all of them, and the flip gate in [_reread] keeps it cheap.
+    session.playheadMoved.addListener(_reread);
     // … and the ARRANGEMENT changing (T17). An edit notifies; a seek does not.
     // Both are needed because the two predicates read both.
     session.addListener(_reread);
   }
 
   void _unlisten(EditorSessionManager session) {
-    session.frameSeekCommitted.removeListener(_reread);
+    session.playheadMoved.removeListener(_reread);
     session.removeListener(_reread);
   }
 
