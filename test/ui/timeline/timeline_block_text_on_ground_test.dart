@@ -480,25 +480,49 @@ void main() {
     }
   });
 
-  test('D29: the strip\'s WRITING reads the picture ground when thumbnails '
-      'are on — the B1 grip fix, applied to the text', () {
+  /// 🚨D29-2 (유저 2026-08-22) — this test used to require THREE users of
+  /// the picture-aware ground: the panel name, the comma and the create `+`.
+  /// Two of those left the picture entirely.
+  ///
+  /// > 「그냥 애초에 **받는 바탕을 똑같게** 하면 되는거 아닌가? **컷 제목이랑
+  /// > 스토리보드블록의 썸네일없는공간이랑 뭐가 다른거지?**」
+  ///
+  /// ⚠️The picture-aware ground is still RIGHT for writing that has nowhere
+  /// else to go, and D29's finding stands for those — so the rule is not
+  /// deleted, it is scoped. What must never come back is a CARRIED glyph
+  /// guessing at the picture beneath it.
+  test('D29: writing that really does ride the picture still reads the '
+      'picture ground — and only that writing', () {
     final painter = File(
       'lib/src/ui/storyboard_cut_blocks_painter.dart',
     ).readAsStringSync();
     expect(
       painter,
       contains('storyboardPanelPictureGroundColor'),
-      reason: 'the glyphs sit on paper-white composite thumbnails — the '
-          'dark plate resolved WHITE ink on white pictures',
+      reason: 'a folded block\'s labels and the create + genuinely sit on '
+          'paper-white composite thumbnails — the dark plate resolved WHITE '
+          'ink on white pictures there',
     );
     expect(
       RegExp(r'ground: _stripWritingGround\(block\)')
           .allMatches(painter)
           .length,
+      greaterThanOrEqualTo(1),
+      reason: 'the create + still takes it: a no-layer cut paints its '
+          'coverage cell\'s paper-white composite right under the glyph',
+    );
+    expect(
+      RegExp(r'_paintPlatedGlyph\(').allMatches(painter).length,
       greaterThanOrEqualTo(3),
-      reason: 'panel name, comma AND the D30 create + all take the '
-          'picture-aware ground (a no-layer cut still paints its '
-          'coverage cell\'s paper-white composite under the +)',
+      reason: 'the panel NAME and its COMMA are carried now (D29-2), plus '
+          'the helper\'s own definition — they receive the band\'s fill, '
+          'which is what the cut title receives, so one block cannot wear '
+          'two inks again',
+    );
+    expect(
+      RegExp(r'ground: _bandGround\(block\)').allMatches(painter).length,
+      greaterThanOrEqualTo(2),
+      reason: 'and what they are handed is the CARRIED ground by name',
     );
     expect(
       painter,
