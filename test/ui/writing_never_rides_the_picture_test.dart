@@ -3,8 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
-import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart'
-    show timelineTextOnColor;
 
 /// 🚨D29-2 (유저 2026-08-22) — **MAKE THE GROUND THE SAME, DON'T MEASURE IT.**
 ///
