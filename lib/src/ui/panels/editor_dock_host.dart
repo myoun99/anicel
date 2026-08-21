@@ -167,9 +167,24 @@ class EditorDockDropZone extends StatelessWidget {
       builder: (context, dragging, _) {
         final eligible = dragging != null && canAcceptTab(dragging);
         if (!eligible) {
+          // ★THE SPACE IS ALWAYS RESERVED; only the BAND comes and goes
+          // (유저 2026-08-21: 「통일할까요? 란 질문이면 통일이 좋은데」 —
+          // and [no-ui-that-pops-into-existence] had already said it:
+          // 「자리는 항상 예약하고 내용만 바꾼다」).
+          //
+          // ⛔It used to be `SizedBox.shrink()`, which made this zone one
+          // of 0 / 30 / 48 wide depending on app state — and the change
+          // landed on the TAB-LIFT frame, shifting everything beside it,
+          // the canvas included. The quantization round put all three on
+          // the device grid, so the jump stopped being a half-pixel smear
+          // and stayed a jump. A footprint that only ever changes what it
+          // DRAWS cannot jump at all.
           return expandToFill
               ? ColoredBox(color: colorScheme.surfaceContainerLowest)
-              : const SizedBox.shrink();
+              : SizedBox(
+                  width: axis == Axis.vertical ? footprintOf(context) : null,
+                  height: axis == Axis.horizontal ? footprintOf(context) : null,
+                );
         }
         return DragTarget<EditorPanelTabDragData>(
           onAcceptWithDetails: (details) => onDropped(details.data),

@@ -301,6 +301,20 @@ void main() {
               'the zone occupies ${rendered.width} logical = '
               '${rendered.width * ratio} device px at $ratio',
         );
+
+        // …and it occupies the SAME width with nothing in the air (유저
+        // 2026-08-21: 통일). Landing on the grid stopped the change from
+        // smearing across half a device pixel; it did not stop the change.
+        // The zone reserves its place and alters only what it DRAWS —
+        // which is the standing law (「자리는 항상 예약하고 내용만
+        // 바꾼다」) finally arriving here.
+        dragging.value = null;
+        await tester.pump();
+        expect(
+          tester.getSize(find.byType(EditorDockDropZone)).width,
+          rendered.width,
+          reason: 'the tab-lift frame must not move the canvas beside it',
+        );
       });
     }
   });
