@@ -2218,12 +2218,47 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// the rail's own answer, exactly as the timeline's ring falls back from
   /// an off-screen lane to the active layer's row: showing nothing reads as
   /// broken rather than as elsewhere.
+  /// 🚨H12 (유저 2026-08-22) — **THE OUTLINE RIDES THE DRAG.**
+  ///
+  /// > 「스토리보드패널, **이 패널만** 선택범위로 선택하고 드래그시,
+  /// > 선택범위의 **ui 실루엣이 원래 블록 자리에 남음.** 드래그 끝나야
+  /// > 사라짐. **타임라인패널이랑 다르니까 통일**」
+  ///
+  /// The band above this one was never the problem — it is drawn from the
+  /// selection's own frame numbers and the cut drag republishes those every
+  /// step. THIS is what stayed behind: the standing outline resolved its
+  /// rect from the COMMITTED project and subscribed to nothing but the
+  /// standing row and the playhead, so while the blocks moved underneath it
+  /// the accent rectangle held the seat the run had left.
+  ///
+  /// ⚠️The timeline's twin already did the right thing —
+  /// `TimelineCursorLayer` merges the drag preview into its listenables and
+  /// reads its selected-exposure outline off the PREVIEWED layer. Same
+  /// sentence, said on this axis.
   Widget _trackStandingCellRing(Track track, TimelineScale scale) {
     final currentRow = widget.currentRowHooks?.currentRow;
     final playhead = widget.playheadFrame;
     if (currentRow == null || playhead == null || scale.pixelsPerFrame <= 0) {
       return const SizedBox.shrink();
     }
+    final dragPreview = widget.dragPreview;
+    if (dragPreview == null) {
+      return _standingCellRingFor(track, scale, currentRow, playhead, null);
+    }
+    return ValueListenableBuilder<TimelineDragPreview?>(
+      valueListenable: dragPreview,
+      builder: (context, preview, _) =>
+          _standingCellRingFor(track, scale, currentRow, playhead, preview),
+    );
+  }
+
+  Widget _standingCellRingFor(
+    Track track,
+    TimelineScale scale,
+    ValueListenable<TimelineRowAddress?> currentRow,
+    ValueListenable<int?> playhead,
+    TimelineDragPreview? preview,
+  ) {
     return ValueListenableBuilder<TimelineRowAddress?>(
       valueListenable: currentRow,
       builder: (context, standing, _) {
@@ -2244,7 +2279,12 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             if (frame == null) {
               return const SizedBox.shrink();
             }
-            final block = _standingBlockAt(track, standingRow, frame);
+            final block = _standingBlockAt(
+              track,
+              standingRow,
+              frame,
+              preview: preview,
+            );
             final ring = Semantics(
               key: const ValueKey<String>('storyboard-standing-cell'),
               label: 'selected cell',
@@ -2308,8 +2348,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   ({int startIndex, int endIndexExclusive})? _standingBlockAt(
     Track track,
     TimelineRowAddress row,
-    int frame,
-  ) {
+    int frame, {
+    required TimelineDragPreview? preview,
+  }) {
     switch (row) {
       case LayerRowAddress(:final layerId):
         // The transition row's blocks are its SPANS: standing on one outlines
@@ -2346,10 +2387,30 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         // The same walk [_cutAtPlayheadOn] takes, which is what decides
         // which cut is active — so the outline and the active cut are one
         // answer rather than two that agree by luck.
+        CutId? standingCut;
         for (final entry in buildStoryboardTimelineLayout(widget.project)) {
           if (entry.trackId == track.id &&
               frame >= entry.startFrame &&
               frame < entry.endFrame) {
+            standingCut = entry.cut.id;
+            break;
+          }
+        }
+        if (standingCut == null) {
+          return null;
+        }
+        // 🚨H12: WHICH cut you stand on is a committed fact — a drag does
+        // not change it — but WHERE that cut is is the previewed one. Ask
+        // the two questions of the two films.
+        //
+        // ⛔Asking both of the previewed film reads as "hold still": the
+        // playhead does not travel with the run, so a neighbour slides
+        // under it and the outline lands on the same pixels wearing a
+        // different cut's name. That is the shape this bug already had.
+        for (final entry in buildStoryboardTimelineLayout(
+          projectWithTimelineDragPreview(widget.project, preview),
+        )) {
+          if (entry.trackId == track.id && entry.cut.id == standingCut) {
             return (
               startIndex: entry.startFrame,
               endIndexExclusive: entry.endFrame,
