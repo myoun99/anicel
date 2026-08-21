@@ -34,7 +34,7 @@ Cut _cut(List<Layer> layers) {
 void main() {
   group('withEnsuredSectionLayers (instruction fixture; SE moved to the '
       'track)', () {
-    test('backfills DIR 1 before the camera layer', () {
+    test('backfills Direction 1 before the camera layer', () {
       final layers = [
         _layer('cel', LayerKind.animation),
         _layer('cam', LayerKind.camera),
@@ -47,7 +47,7 @@ void main() {
         LayerKind.instruction,
         LayerKind.camera,
       ]);
-      expect(ensured.map((layer) => layer.name), ['cel', 'DIR 1', 'cam']);
+      expect(ensured.map((layer) => layer.name), ['cel', 'Direction 1', 'cam']);
       expect(ensured[1].id, instructionLayerIdForCut(_cutId));
     });
 
@@ -141,23 +141,23 @@ void main() {
 
   group('nextInstructionLayerName', () {
     test('skips names the cut already uses', () {
-      expect(nextInstructionLayerName([]), 'DIR 1');
+      expect(nextInstructionLayerName([]), 'Direction 1');
       expect(
         nextInstructionLayerName([
-          _layer('a', LayerKind.instruction, name: 'DIR 1'),
-          _layer('b', LayerKind.instruction, name: 'DIR 2'),
+          _layer('a', LayerKind.instruction, name: 'Direction 1'),
+          _layer('b', LayerKind.instruction, name: 'Direction 2'),
         ]),
-        'DIR 3',
+        'Direction 3',
       );
     });
 
     test('saved CAM names from old files are ordinary names — a new row '
-        'starts the DIR scheme beside them, no migration', () {
+        'starts the Direction scheme beside them, no migration', () {
       expect(
         nextInstructionLayerName([
           _layer('a', LayerKind.instruction, name: 'CAM 1'),
         ]),
-        'DIR 1',
+        'Direction 1',
       );
     });
   });

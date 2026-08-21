@@ -49,6 +49,10 @@ void main() {
                 layer('base', 'A'),
                 layer('up', 'A+1', attachedTo: const LayerId('base')),
                 layer('down', 'A-2', attachedTo: const LayerId('base')),
+                // H5 (유저 2026-08-21): a rider the USER named, keeping the
+                // owner's name in front — 「주인 B, 어태치 B_F 이어도 앞부분
+                // B라는게 같으니 바꾸면 바뀌도록」.
+                layer('prefixed', 'A_F', attachedTo: const LayerId('base')),
                 layer('custom', '셀북따기', attachedTo: const LayerId('base')),
                 // A LOOKALIKE on a different base: 'A+1' by name but not
                 // A's attach — the pattern must only reach A's own rows.
@@ -76,8 +80,8 @@ void main() {
       .firstWhere((layer) => layer.id == LayerId(id))
       .name;
 
-  test('default-named attaches follow the base rename, hand-named ones '
-      'and strangers stay, and one undo restores everything', () {
+  test('an attach whose name starts with the owner\'s follows the rename, '
+      'others and strangers stay, and one undo restores everything', () {
     final s = session();
     addTearDown(s.dispose);
 
@@ -92,9 +96,16 @@ void main() {
           'state',
     );
     expect(
+      nameOf(s, 'prefixed'),
+      'B_F',
+      reason: 'H5: the PREFIX is the rule, not the generated ±N shape — a '
+          'rider the user named themselves keeps following its owner',
+    );
+    expect(
       nameOf(s, 'custom'),
       '셀북따기',
-      reason: 'a hand-touched name is never touched',
+      reason: 'a name that does not start with the owner\'s stays put — the '
+          'rule widened, it did not become "rename everything attached"',
     );
     expect(
       nameOf(s, 'other-attach'),
@@ -106,6 +117,7 @@ void main() {
     expect(nameOf(s, 'base'), 'A');
     expect(nameOf(s, 'up'), 'A+1');
     expect(nameOf(s, 'down'), 'A-2');
+    expect(nameOf(s, 'prefixed'), 'A_F');
     expect(
       nameOf(s, 'custom'),
       '셀북따기',

@@ -506,34 +506,44 @@ class CutCommandCoordinator {
       return;
     }
 
-    // #23 — 유저: 「주인 레이어의 이름 바꾸면 어태치레이어도 적용시키고싶음.
-    // 다만 (…) 어태치레이어들은 **이름이 기본값이면 바뀌도록**」.
+    // #23 — 유저: 「주인 레이어의 이름 바꾸면 어태치레이어도 적용시키고싶음」.
     //
-    // ★"Default" is DERIVED, not stored — the attach default is
-    // `base.name±N` ([nextAttachedLayerName]) — so the only moment the
-    // question can be answered is RIGHT HERE, against the OLD base name.
-    // Ask later and the old default is gone with the name it hung off.
-    // A hand-touched name never matches the pattern and is never touched;
-    // the suffix rides over verbatim (numbers may be non-contiguous after
-    // deletions, and re-numbering would be inventing state).
+    // 🚨H5 (유저 2026-08-21) WIDENED the rule: 「주인 B, 어태치 **B_F**
+    // 이어도 **앞부분 B라는게 같으니** 바꾸면 바뀌도록」. It used to match
+    // only the GENERATED default `base.name±N` ([nextAttachedLayerName]),
+    // so a rider the user had named themselves — `B_F`, `B_shadow` —
+    // stopped following its owner the moment they typed it, which is when
+    // the pairing is worth most.
+    //
+    // ⇒ THE PREFIX is the rule: an attach whose name starts with the
+    // owner's OLD name follows, and whatever comes after that prefix rides
+    // over verbatim. The `±N` default is now one case of this instead of
+    // the only one, and nothing is renumbered (numbers go non-contiguous
+    // after deletions, and renumbering would be inventing state).
+    //
+    // ★Still answered RIGHT HERE, against the OLD name: ask a moment later
+    // and the prefix is gone with the name it hung off.
+    //
+    // ⚠️A prefix is a prefix: with an owner named `B`, an attach named
+    // `Bob` follows too. That is the rule as asked for — narrowing it
+    // (demand a separator, demand the default shape) would put back the
+    // very "my own name stopped following" surprise this removes.
     final followers = <Command>[];
-    final defaultPattern = RegExp(
-      '^${RegExp.escape(layer.name)}([+-]\\d+)\$',
-    );
+    final ownerPrefix = layer.name;
     for (final attached in attachedLayersOf(
       layerId,
       _requireCut(cutId).layers,
     )) {
-      final match = defaultPattern.firstMatch(attached.name);
-      if (match == null) {
+      if (!attached.name.startsWith(ownerPrefix)) {
         continue;
       }
+      final suffix = attached.name.substring(ownerPrefix.length);
       followers.add(
         UpdateLayerNameCommand(
           repository: repository,
           cutId: cutId,
           layerId: attached.id,
-          name: '$trimmedName${match.group(1)}',
+          name: '$trimmedName$suffix',
         ),
       );
     }
@@ -1348,7 +1358,10 @@ class CutCommandCoordinator {
       layerId: layerId,
     )) {
       final isSource = target.cutId == cutId && target.layerId == layerId;
-      final track = requireLayerAnywhere(project, target.layerId).transformTrack;
+      final track = requireLayerAnywhere(
+        project,
+        target.layerId,
+      ).transformTrack;
       if (transformLaneUsesName(
         track,
         property,
@@ -1555,11 +1568,7 @@ class CutCommandCoordinator {
     for (final layerId in attach.detachIds) {
       for (final use in _linkedRowUses(project, cutId: cutId, rowId: layerId)) {
         final cut = requireCut(project, use.cutId);
-        final row = requireLayer(
-          project,
-          cutId: use.cutId,
-          layerId: use.rowId,
-        );
+        final row = requireLayer(project, cutId: use.cutId, layerId: use.rowId);
         if (row.attachedToLayerId == null) {
           continue;
         }
@@ -1591,11 +1600,7 @@ class CutCommandCoordinator {
         cutId: cutId,
         rowId: sideChange.layerId,
       )) {
-        final row = requireLayer(
-          project,
-          cutId: use.cutId,
-          layerId: use.rowId,
-        );
+        final row = requireLayer(project, cutId: use.cutId, layerId: use.rowId);
         if (row.attachedToLayerId == null ||
             row.attachedPlacement == sideChange.placement) {
           continue;
@@ -1752,9 +1757,7 @@ class CutCommandCoordinator {
     required CutId cutId,
     required LayerId rowId,
   }) {
-    final uses = <({CutId cutId, LayerId rowId})>[
-      (cutId: cutId, rowId: rowId),
-    ];
+    final uses = <({CutId cutId, LayerId rowId})>[(cutId: cutId, rowId: rowId)];
     for (final siblingId in linkedCutSiblings(project, cutId: cutId)) {
       final counterpart = linkCounterpartIn(
         project,

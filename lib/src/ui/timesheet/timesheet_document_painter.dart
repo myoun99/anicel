@@ -481,7 +481,14 @@ class TimesheetDocumentPainter extends CustomPainter {
     return rebuild(previewLayer);
   }
 
-  static const Color _paper = Color(0xFFF6F4F0);
+  /// H4 (유저 2026-08-21): 「타임시트패널의 타임시트 바탕 용지색, 애매한
+  /// 회색인데 **완전한 흰색으로**」.
+  ///
+  /// ⛔It was `0xFFF6F4F0`, a warm off-white chosen to read as paper stock.
+  /// The sheet is a document of dense small type, so that tint spent
+  /// contrast against the ink to suggest something nobody asked for — and
+  /// 「애매한 회색」 is exactly how an unasked-for tint reads.
+  static const Color _paper = Color(0xFFFFFFFF);
   static const Color _ink = Color(0xFF33322F);
   static const Color _gridLight = Color(0xFFCFC9BF);
   static const Color _gridMedium = Color(0xFFA9A296);
@@ -1433,7 +1440,9 @@ class TimesheetDocumentPainter extends CustomPainter {
       ),
       centerX:
           columnLeft + columnWidth - instructionLabelInset - glyphWidth / 2,
-      top: spanTop + spanLength * TimesheetDocumentLayout.rowHeight / 2 -
+      top:
+          spanTop +
+          spanLength * TimesheetDocumentLayout.rowHeight / 2 -
           needed / 2,
       mainExtent: needed,
       naturalCellExtent: naturalCellExtent,

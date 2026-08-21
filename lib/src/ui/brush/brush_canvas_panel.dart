@@ -1727,8 +1727,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               cover: widget.floorCover,
               railBand: widget.floorRailBand,
               bottomOverlaySpan: widget.floorBottomOverlaySpan,
-              strokeActive: _strokeActive || _selectionDragActive,
-              contentStrokeActive: widget.contentStrokeActive,
               child: LayoutBuilder(
                 builder: (context, viewportConstraints) {
                   final viewportSize = Size(
@@ -3529,8 +3527,6 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     this.pageStrip = const <Widget>[],
     this.bottomOverlaySpan = 0,
     this.railBand,
-    this.strokeActive = false,
-    this.contentStrokeActive,
   });
 
   final Widget child;
@@ -3543,15 +3539,11 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// See [BrushCanvasPanel.pageStrip] — empty means no capsule at all.
   final List<Widget> pageStrip;
 
-  /// The floor's controls fade while a stroke is in progress.
-  ///
-  /// Hover is not the answer this reaches for and cannot be: touch has no
-  /// hover at all, and a pen hovers over the DRAWING rather than over the
-  /// controls, so a hover-to-reveal cluster would be invisible exactly when
-  /// the hand is working. What the app already knows is when a stroke is
-  /// live, and that is the moment the controls are in the way.
-  final bool strokeActive;
-  final ValueListenable<bool>? contentStrokeActive;
+  // ⛔`strokeActive` and `contentStrokeActive` are GONE from this layout
+  // (H3, 유저 2026-08-21). They existed for ONE consumer — the floor
+  // controls' stroke fade — and carrying a live stroke signal down here
+  // for a look that no longer exists is how a dead input survives a
+  // deletion. The panel still knows both; nothing else here asked.
 
   /// What panels floating over this one hide from the artwork.
   ///
@@ -3758,8 +3750,6 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                 constraints.maxHeight.clamp(0.0, double.infinity),
               );
               return _FloatingCanvasControls(
-                strokeActive: strokeActive,
-                contentStrokeActive: contentStrokeActive,
                 children: [
                   // THE PAGE STRIP, at the LEFT CENTRE (유저 확정 ⑥).
                   //
@@ -3879,44 +3869,34 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   }
 }
 
-/// The floor's controls, laid on the drawing and fading out of the way of
-/// a stroke.
+/// The floor's controls, laid on the drawing.
 ///
 /// The Stack takes pointers only where its children are, so the empty
 /// middle — most of the screen — still belongs to the canvas.
+///
+/// ⛔THE STROKE FADE IS GONE (H3, 유저 2026-08-21: 「스트로크중에 캔버스
+/// 패널의 알약 살짝 안보이게하는 기능 있는데, **삭제.** 다른 알약에도
+/// 이런거있으면 삭제 … 진짜 그냥 **알약 불투명도 낮추는거만 심플하게 삭제**」).
+///
+/// It dropped to 0.16 for the duration of a stroke, argued for as "the
+/// controls are in the way exactly then". They are not: the Stack already
+/// leaves the artwork every pixel the controls do not cover, and chrome
+/// that half-vanishes while the hand works reads as the app flickering
+/// rather than as room being made.
+///
+/// ⚠️What is NOT removed, in the user's own breath: 「스트로크중 알약 위치로
+/// 이동했다고 스트로크 끊는다거나 그런건 그대로 둠」. Whether reaching the
+/// pill interrupts a stroke is a POINTER question and is untouched here.
 class _FloatingCanvasControls extends StatelessWidget {
-  const _FloatingCanvasControls({
-    required this.strokeActive,
-    required this.contentStrokeActive,
-    required this.children,
-  });
+  const _FloatingCanvasControls({required this.children});
 
-  final bool strokeActive;
-  final ValueListenable<bool>? contentStrokeActive;
   final List<Widget> children;
 
-  static Widget _dim({required bool active, required Widget child}) =>
-      AnimatedOpacity(
-        key: const ValueKey<String>('canvas-floating-controls'),
-        opacity: active ? 0.16 : 1,
-        duration: const Duration(milliseconds: 120),
-        child: child,
-      );
-
   @override
-  Widget build(BuildContext context) {
-    final stack = Stack(children: children);
-    final content = contentStrokeActive;
-    if (content == null) {
-      return _dim(active: strokeActive, child: stack);
-    }
-    return ValueListenableBuilder<bool>(
-      valueListenable: content,
-      builder: (context, contentActive, child) =>
-          _dim(active: strokeActive || contentActive, child: child!),
-      child: stack,
-    );
-  }
+  Widget build(BuildContext context) => Stack(
+    key: const ValueKey<String>('canvas-floating-controls'),
+    children: children,
+  );
 }
 
 /// The pill: a canvas panel's whole vocabulary of controls, in a capsule
