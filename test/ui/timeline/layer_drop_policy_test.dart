@@ -614,6 +614,88 @@ void main() {
         isNull,
       );
     });
+
+    /// 🚨A5-3 (유저 2026-08-22) — **THE TIMELINE'S REAL DISPLAY LIST.**
+    ///
+    /// > 「se레이어가 **2개 있을경우 se행끼리 순서바꾸기가 안됐음** … 레이어
+    /// > 2개일땐 그냥 안되고 **3개일땐 2번째 레이어가 드래그가 안 되고 1번
+    /// > 3번은 됨.** 뭔가 이상한 규칙이 있는듯」
+    ///
+    /// ⚠️Every test above hands in an SE-ONLY list, which is what the
+    /// STORYBOARD's rail does — and it works there. The timeline composes
+    /// the whole film (camera, then se, then drawing, each section
+    /// reversed), so the SE block sits in the MIDDLE and both ends of the
+    /// list fall outside the stack. That is the only shape that failed, and
+    /// nothing covered it, so the panel was broken while this file was green.
+    group('…through the composed list the timeline actually renders', () {
+      /// What the layer controller composes and the display adapter
+      /// reverses: the cut's layers, then the track's SE clones.
+      List<Layer> composed(List<Layer> se) => horizontalLayerDisplayOrder([
+        _row('draw-1'),
+        _row('draw-2'),
+        _row('cam-1', kind: LayerKind.camera),
+        ...se,
+      ]);
+
+      /// [slot] counted from the TOP of the SE block, which is where the
+      /// track's last SE row renders.
+      List<String>? move(List<Layer> se, String movingId, int slot) {
+        final rows = composed(se);
+        final top = rows.indexWhere((row) => row.id == se.last.id);
+        final order = resolveTrackSeDrop(
+          seLayers: se,
+          displayRows: rows,
+          movingId: LayerId(movingId),
+          slot: top + slot,
+        );
+        return order == null ? null : _ids(order);
+      }
+
+      test('the premise: the SE block really is in the middle', () {
+        final se = [
+          _row('s1', kind: LayerKind.se),
+          _row('s2', kind: LayerKind.se),
+        ];
+        final rows = composed(se);
+        expect(rows.first.id.value, isNot(startsWith('s')));
+        expect(rows.last.id.value, isNot(startsWith('s')));
+      });
+
+      test('TWO SE rows can trade places — every landing used to collapse '
+          'onto one seat and the guard refused both', () {
+        final se = [
+          _row('s1', kind: LayerKind.se),
+          _row('s2', kind: LayerKind.se),
+        ];
+        expect(move(se, 's1', 0), ['s2', 's1']);
+        expect(move(se, 's2', 2), ['s2', 's1']);
+      });
+
+      test('and with THREE the MIDDLE one moves like the others', () {
+        final se = [
+          _row('s1', kind: LayerKind.se),
+          _row('s2', kind: LayerKind.se),
+          _row('s3', kind: LayerKind.se),
+        ];
+        expect(
+          move(se, 's2', 0),
+          ['s1', 's3', 's2'],
+          reason: 's2 to the top of the block — the reachable set used to be '
+              '{1, 2}, and both of those are s2\'s own seat',
+        );
+        expect(move(se, 's2', 3), ['s2', 's1', 's3']);
+      });
+
+      test('a landing on its own seat is still refused', () {
+        final se = [
+          _row('s1', kind: LayerKind.se),
+          _row('s2', kind: LayerKind.se),
+          _row('s3', kind: LayerKind.se),
+        ];
+        expect(move(se, 's3', 0), isNull, reason: 's3 already renders first');
+        expect(move(se, 's1', 3), isNull, reason: 's1 already renders last');
+      });
+    });
   });
 
   // R5 #15. A caret lives BETWEEN rows, and two intents have no gap to

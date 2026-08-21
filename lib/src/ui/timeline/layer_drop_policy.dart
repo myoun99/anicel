@@ -168,8 +168,41 @@ int? modelInsertionForSlot({
   }
   // An END slot: which end depends on which way this surface runs, and the
   // two lists say it without being asked.
-  final firstModel = modelIndex[displayRows.first.id];
-  final lastModel = modelIndex[displayRows.last.id];
+  //
+  // 🚨A5-3 (유저 2026-08-22) — **ASK THE ROWS OF THIS STACK, NOT THE ENDS OF
+  // THE LIST.**
+  //
+  // > 「타임라인패널에서, **se레이어가 2개 있을경우 se행끼리 순서바꾸기가
+  // > 안됐음** … 레이어 2개일땐 그냥 안되고 **3개일땐 2번째 레이어가
+  // > 드래그가 안 되고 1번 3번은 됨.** 뭔가 이상한 규칙이 있는듯」
+  //
+  // ⛔This used to read `displayRows.first` and `displayRows.last`, which
+  // works only when the surface shows THIS stack and nothing else. The
+  // storyboard's rail does (it hands in the track's SE rows alone), so it
+  // was right there and wrong on the timeline, whose display list is the
+  // whole composed film — camera rows, then SE rows, then drawing rows.
+  // The track's SE block sits in the MIDDLE, so both ends fell outside
+  // `modelIndex`, `reversed` was forced to false, and the end-slot
+  // arithmetic came out one seat short.
+  //
+  // 📐What that produced is exactly what the user counted: with two SE rows
+  // every reachable landing collapsed onto 1 and the "already there" guard
+  // refused both; with three the reachable set was {1, 2}, so the outer two
+  // could still find a landing and the MIDDLE one could not.
+  //
+  // ★The rows of [stack] the display actually shows are the ones that know
+  // which way it runs. When the ends already belong to the stack this picks
+  // the same two rows, so every surface that was right stays right.
+  int? firstModel;
+  int? lastModel;
+  for (final row in displayRows) {
+    final at = modelIndex[row.id];
+    if (at == null) {
+      continue;
+    }
+    firstModel ??= at;
+    lastModel = at;
+  }
   final reversed =
       firstModel != null && lastModel != null && firstModel > lastModel;
   final atListEnd = before != null;
