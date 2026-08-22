@@ -159,15 +159,15 @@ void main() {
     });
 
     test('ignores pixels outside the pasteboard', () {
-      // Canvas 1×1 → 5x5 pasteboard [-2, 3)². A square dab over [-3, -1)²
-      // clips to the pasteboard: only the [-2, -1)² pixel survives.
+      // Canvas 1×1 → 3×3 pasteboard [-1, 2)² (H2, 2026-08-22). A square
+      // dab over [-2, 0)² clips to it: only the [-1, 0)² pixel survives.
       final original = surface(width: 1, height: 1, tileSize: 1);
       final result = materializeBrushDabSequenceOnBitmapSurface(
         surface: original,
-        sequence: BrushDabSequence([squareDab(centerX: -2, centerY: -2)]),
+        sequence: BrushDabSequence([squareDab(centerX: -1, centerY: -1)]),
       );
 
-      expect(result.dirtyTiles.coords, {TileCoord(x: -2, y: -2)});
+      expect(result.dirtyTiles.coords, {TileCoord(x: -1, y: -1)});
       expect(result.surface.tiles.length, 1);
     });
 

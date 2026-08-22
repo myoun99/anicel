@@ -10,7 +10,9 @@ import 'package:anicel/src/services/canvas_segment_clipper.dart';
 void main() {
   const clipper = CanvasSegmentClipper();
   const size = CanvasSize(width: 100, height: 80);
-  // Pasteboard (5x5): x ∈ [-200, 300), y ∈ [-160, 240).
+  // Pasteboard (3×3, H2 유저 확정 2026-08-22): x ∈ [-100, 200),
+  // y ∈ [-80, 160). It was 5×5 — the wall moved in, so every figure
+  // below moved with it.
 
   test('crossing the STAGE edge does not clip — off-canvas travel is '
       'drawable pasteboard', () {
@@ -49,7 +51,7 @@ void main() {
 
     expect(segment, isNotNull);
     expect(segment!.start.x, 50);
-    expect(segment.end.x, 300, reason: 'pasteboard right wall = 3×width');
+    expect(segment.end.x, 200, reason: 'pasteboard right wall = 2×width');
     expect(segment.startsNewVisibleSegment, isFalse);
   });
 
@@ -62,7 +64,7 @@ void main() {
     );
 
     expect(segment, isNotNull);
-    expect(segment!.start.x, -200, reason: 'pasteboard left wall = -2×width');
+    expect(segment!.start.x, -100, reason: 'pasteboard left wall = -1×width');
     expect(segment.end.x, 0);
     expect(segment.startsNewVisibleSegment, isTrue);
   });
