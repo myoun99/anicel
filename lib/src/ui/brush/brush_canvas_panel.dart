@@ -138,6 +138,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.floorRailBand,
     this.floorBottomOverlaySpan = 0,
     this.autoFrame,
+    this.unframedFit,
     this.contentStrokeActive,
     this.sampleColorAt,
     this.paperColor = ProjectBackground.defaultPaperArgb,
@@ -410,6 +411,31 @@ class BrushCanvasPanel extends StatefulWidget {
   /// viewport.
   final CanvasAutoFrameRequest? autoFrame;
 
+  /// The framing to resolve an UNFRAMED view to (canvas space), instead of
+  /// the 1:1 identity — playback's camera fit is the one that uses it.
+  ///
+  /// 🎯**A standing-in-front-of, not a reframe.** [autoFrame] is an EVENT:
+  /// it fires, the panel writes the viewport, and an owner that wants the
+  /// user's framing back afterwards has to have saved a copy and write it
+  /// back. This is a STATE — while it is non-null the panel simply resolves
+  /// `null` (see the `_viewport` getter) to a fit of this rect. The stored
+  /// framing is never touched, so:
+  ///
+  ///  * the first frame that sees it is already fitted — there is no
+  ///    post-frame write and so no frame of lag, and 유저 asked for exactly
+  ///    that (「한프레임 늦추면 뭔가 시간적인 느낌이 이상해지지않을까」);
+  ///  * ending it is dropping it, with no restore to run and no condition
+  ///    that can make the restore not run;
+  ///  * a save taken mid-playback persists the USER's framing, because the
+  ///    fit was never in the object that gets saved.
+  ///
+  /// ⚠️It pairs with an owner handing over a DIFFERENT [viewportController]
+  /// for the duration — the fit resolves only while the notifier in force
+  /// reads null, so a pan during playback (D13 keeps pan/zoom live) writes
+  /// that notifier and takes over from the fit exactly as it would from the
+  /// identity. Re-arming the fit is `notifier.value = null`.
+  final Rect? unframedFit;
+
   /// Raised by contentOverride content that hosts its OWN brush input (the
   /// timesheet ink layer): while true, the panel's gesture layer holds
   /// navigation exactly as it does for the panel's own strokes.
@@ -598,8 +624,26 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// exactly `CanvasViewport()` — one artwork pixel per device pixel. The
   /// bare constructor was the WRONG value in render units; it is the right
   /// one here, which is the clearest sign the unit belongs at the storage.
-  CanvasViewport get _viewport =>
-      _zoomScale.fromDevice(_viewportNotifier.value ?? CanvasViewport());
+  ///
+  /// 🎯**[BrushCanvasPanel.unframedFit] is the SECOND answer to that same
+  /// `null`.** An owner that has a framing in mind for a view nobody has
+  /// framed hands over the RECT, not a viewport, and the fit resolves HERE,
+  /// at the read — so the very first build that sees it already paints
+  /// fitted. Nothing is stored, so nothing has to wait for the frame to end
+  /// to store it, and there is nothing to put back afterwards.
+  CanvasViewport get _viewport {
+    final stored = _viewportNotifier.value;
+    if (stored != null) {
+      return _zoomScale.fromDevice(stored);
+    }
+    final unframed = widget.unframedFit;
+    if (unframed == null) {
+      return _zoomScale.fromDevice(CanvasViewport());
+    }
+    // ⛔No `fromDevice`: [_fittedInto] works in the LAYOUT box's own
+    // coordinates, which are already the logical units this getter owes.
+    return _fittedInto(_resolvedVisibleRect(), canvasRect: unframed);
+  }
 
   set _viewport(CanvasViewport value) {
     _publishingViewport = true;

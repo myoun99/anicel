@@ -20,7 +20,6 @@ import 'brush/canvas_selection_commands.dart';
 import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
 import 'canvas/viewport_canvas_transform.dart';
-import 'brush/brush_canvas_panel.dart' show CanvasAutoFrameRequest;
 import 'brush/main_canvas_brush_host.dart';
 import 'camera/camera_frame_overlay.dart';
 import 'canvas/active_stroke_overlay.dart';
@@ -265,29 +264,38 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   int _playbackFitStart = 0;
   int _playbackFitEnd = -1;
 
-  /// R6q2 (유저 확정 08-18): the viewport as it stood when playback
-  /// STARTED — camera view ON pairs its playback fit with a restore on
-  /// stop, so the fit never costs the user their framing. Camera OFF
-  /// never fits (and so never restores).
-  CanvasViewport? _prePlaybackViewport;
-  bool _playbackWasActive = false;
+  /// R6q2 (유저 확정 08-18): playback's OWN framing — a second view object
+  /// that stands in front of [_canvasViewport] for as long as it plays, so
+  /// the fit never costs the user their framing.
+  ///
+  /// 🎯**Two framings are two OBJECTS, not one field taking turns.** This
+  /// used to be a save-mutate-restore: playback wrote the fit into the
+  /// document's own viewport, having copied the old value aside to write
+  /// back on stop. Three things came free from making it a separate object
+  /// the panel is handed instead (유저 08-22, 「좀 더 근본적인 해결법은 혹시
+  /// 있나? 한프레임 늦추면 뭔가 시간적인 느낌이 이상해지지않을까」):
+  ///
+  ///  * **No frame of lag.** The fit was a WRITE, writes are illegal during
+  ///    build, so it went out on a post-frame callback whose `setState`
+  ///    cost a second frame. Handing over an EMPTY view plus the rect to
+  ///    fit (`BrushCanvasPanel.unframedFit`) makes the fit a read, and the
+  ///    first frame of playback is already fitted.
+  ///  * **Nothing to put back.** Stopping is swapping this object out.
+  ///    The old restore ran only if `mounted` and the camera toggle still
+  ///    agreed — conditions under which a user's framing could quietly not
+  ///    come back.
+  ///  * **A save taken mid-playback keeps the user's framing**, because the
+  ///    fit was never in the object that gets saved.
+  ///
+  /// ⚠️`null` in here is "playback has not framed yet", which is what makes
+  /// D13 work: a pan during playback writes THIS object, taking over from
+  /// the fit exactly as it takes over from the identity on a fresh canvas.
+  /// [_syncPlaybackFitCut] re-arms it (back to null) on each cut entry, so
+  /// every cut still gets the fit the way the token used to give it.
+  final ValueNotifier<CanvasViewport?> _playbackViewport = ValueNotifier(null);
 
   void _syncPlaybackFitCut() {
     final playback = widget.session.playback;
-    if (playback.isActive != _playbackWasActive) {
-      _playbackWasActive = playback.isActive;
-      if (playback.isActive) {
-        _prePlaybackViewport = _canvasViewport.value;
-      } else {
-        final saved = _prePlaybackViewport;
-        _prePlaybackViewport = null;
-        if (saved != null && widget.cameraViewEnabled.value && mounted) {
-          // 카메라 토글 ON: 재생 fit + 정지 시 복원. OFF stops fitting
-          // altogether below, so there is nothing to undo there.
-          _canvasViewport.value = saved;
-        }
-      }
-    }
     final global = playback.isActive
         ? playback.globalFrameIndexListenable.value
         : null;
@@ -312,7 +320,34 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     _playbackFitEnd = _playbackFitStart + position.cut.duration;
     if (!identical(_playbackFitCut.value, position.cut)) {
       _playbackFitCut.value = position.cut;
+      // ★Entering a cut re-arms the fit, which is what the old per-cut
+      // token bought: a pan taken during the previous cut does not follow
+      // the playhead into this one. Emptying the view IS the re-arm — the
+      // panel resolves an unframed view to `unframedFit`.
+      _playbackViewport.value = null;
     }
+  }
+
+  /// The framing playback stands in front of the user's with, or null when
+  /// it is not standing there at all.
+  ///
+  /// 🚨It survives a playlist GAP on purpose. The gap has no cut and so no
+  /// fit to re-take, but snapping back to the user's framing for the length
+  /// of a hole and then away again is the flicker the fit exists to avoid —
+  /// so this asks whether playback is RUNNING, not whether it is inside a
+  /// cut. The camera frame is the project's, so every cut fits the same
+  /// rect anyway; what changes per cut is only the re-arm above.
+  ///
+  /// 유저 확정 08-18 (R6q2): camera view OFF never fits — the user's framing
+  /// is the framing.
+  Rect? _playbackFramingRect() {
+    if (!widget.cameraViewEnabled.value ||
+        !widget.session.playback.isActive) {
+      return null;
+    }
+    final frame = widget.session.cameraFrameSize;
+    return Offset.zero &
+        Size(frame.width.toDouble(), frame.height.toDouble());
   }
 
   @override
@@ -329,6 +364,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     playback.globalFrameIndexListenable.removeListener(_syncPlaybackFitCut);
     playback.isActiveListenable.removeListener(_syncPlaybackFitCut);
     _playbackFitCut.dispose();
+    _playbackViewport.dispose();
     _activeStrokeOverlay.dispose();
     super.dispose();
   }
@@ -665,26 +701,16 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           builder: (context, _) {
             final toolState = widget.brushToolState.value;
             // D12 × R6q2 (유저 확정 08-18): playback fit is the CAMERA
-            // VIEW's — toggle ON fits the camera's output frame at the
-            // origin per cut entry (the painter's frameRect) and the
-            // stop restores the pre-play viewport; toggle OFF never
-            // fits at all (the user's framing is the framing). One
-            // request per cut ENTRY through the panel's own
-            // playback-follow law (CanvasAutoFrameRequest); the
-            // identity comes from [_playbackFitCut] — see its doc for
-            // why no existing channel carries the crossing here.
-            final cameraViewOn = widget.cameraViewEnabled.value;
-            final playbackCut = cameraViewOn ? _playbackFitCut.value : null;
-            final playbackAutoFrame = playbackCut == null
-                ? null
-                : CanvasAutoFrameRequest(
-                    token: (playbackCut.id, cameraViewOn),
-                    rect: Offset.zero &
-                        Size(
-                          session.cameraFrameSize.width.toDouble(),
-                          session.cameraFrameSize.height.toDouble(),
-                        ),
-                  );
+            // VIEW's — toggle ON frames the camera's output frame at the
+            // origin (the painter's frameRect) for as long as it plays;
+            // toggle OFF never fits at all (the user's framing is the
+            // framing).
+            //
+            // ★ONE condition, TWO props, so they can never disagree: while
+            // playback frames the view, the panel is handed playback's own
+            // view object AND the rect to resolve it against. See
+            // [_playbackViewport] for why this is a swap and not a write.
+            final playbackFraming = _playbackFramingRect();
             // INSIDE the builder, deliberately: the standing row is
             // published without a session notify, so a manipulator gate
             // computed above would answer the row you left. Same trap the
@@ -753,12 +779,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // nothing stored to go stale. And because the panel writes
               // into this same object, panning no longer round-trips
               // through a `setState` here.
-              viewportController: _canvasViewport,
+              viewportController: playbackFraming == null
+                  ? _canvasViewport
+                  : _playbackViewport,
               // 유저 R2 #14: the pill takes the corner AWAY from the tool
               // strip — the strip is where the hand already is.
               brushToolState: toolState,
               fitFocusRect: fitFocusRect,
-              autoFrame: playbackAutoFrame,
+              unframedFit: playbackFraming,
               viewCommands: widget.canvasViewCommands,
               selectionCommands: widget.canvasSelectionCommands,
               cutPieceSlot: widget.cutPieceSlot,
