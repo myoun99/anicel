@@ -531,11 +531,11 @@ void main() {
 
       // The MAIN canvas by key: other brush panels (the tip editor's, the
       // envelope's) are mounted too and would make this ambiguous.
-      bool canvasTakesStrokes() => tester
-          .widget<BrushCanvasPanel>(
-            find.byKey(const ValueKey<String>('main-canvas-brush-host')),
-          )
-          .celEditable;
+      BrushCanvasPanel canvas() => tester.widget<BrushCanvasPanel>(
+        find.byKey(const ValueKey<String>('main-canvas-brush-host')),
+      );
+      bool canvasTakesStrokes() => canvas().rowAcceptsStrokes;
+      bool canvasHasCel() => canvas().celEditable;
 
       expect(
         canvasTakesStrokes(),
@@ -554,12 +554,28 @@ void main() {
             'old fudge kept the layer underneath drawable',
       );
 
+      // 🚨H19 (유저 2026-08-23): 「**서있는 곳이 fx행이면 현재 있는 레이어의
+      // 그림이 사라짐.** 대체 이딴규칙 누가만드는거지?」
+      //
+      // ⛔THIS TEST USED TO READ `celEditable` FOR THE LINE ABOVE, because
+      // the two questions were one flag — and `celEditable` is the one that
+      // stands the interactive view down and leaves a blank canvas. So the
+      // very thing this test was calling "refuses strokes" was ALSO erasing
+      // the artwork, and the test had no way to see the difference.
+      expect(
+        canvasHasCel(),
+        isTrue,
+        reason: '⛔the cel is still THERE — a lane refuses the STROKE, it '
+            'does not empty the canvas',
+      );
+
       // And back: the layer row takes strokes again.
       await tester.tap(
         find.byKey(const ValueKey<String>('timeline-layer-row-$_drawId')),
       );
       await tester.pumpAndSettle();
       expect(canvasTakesStrokes(), isTrue);
+      expect(canvasHasCel(), isTrue);
     });
   });
 
