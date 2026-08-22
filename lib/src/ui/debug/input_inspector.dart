@@ -7,6 +7,7 @@ import '../../services/input/pen_sidecars.dart';
 import '../../services/input/platform_pen_channel_service.dart';
 import '../../services/input/raw_pen_input_service.dart';
 import '../../services/input/wintab_pen_service.dart';
+import '../canvas/canvas_touch_contacts.dart' show CanvasTouchContacts;
 import '../theme/app_theme.dart' show AppColors;
 
 /// The cross-platform INPUT INSPECTOR (pen program, PEN-1).
@@ -276,6 +277,10 @@ class InputInspectorHost extends StatelessWidget {
     // called at all, which is exactly what the freeze report needed and
     // exactly what the card could not show.
     InputInspector.arrivals += 1;
+    // 🚨D34: the app-wide finger census rides the same always-mounted
+    // observer — it is the only place that sees a touch whichever panel it
+    // lands on. NOT gated on visibility: this is app state, not a probe.
+    CanvasTouchContacts.noteAppWide(event);
     if (InputInspector.visible.value) {
       InputInspector.record(event);
     }

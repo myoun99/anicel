@@ -1086,7 +1086,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           : '(${position.dx.round()},${position.dy.round()})';
       InputInspector.note(
         'aim $source -> $where'
-        ' held=$_aimIsHeld touch=${CanvasTouchContacts.count}'
+        ' held=$_aimIsHeld touch=${CanvasTouchContacts.appWideCount}/${CanvasTouchContacts.count}'
         ' draws=${AppInput.touchDraws}',
       );
     }
@@ -1197,7 +1197,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // 🚨D34: and a MOUSE that a finger produced does not aim either.
     if (aimIsPromotedTouch(
       kind: kind,
-      touchContacts: CanvasTouchContacts.count,
+      touchContacts: CanvasTouchContacts.appWideCount,
       touchDraws: AppInput.touchDraws,
     )) {
       return;
