@@ -103,6 +103,85 @@ void main() {
     expect(InputInspector.arrivals, greaterThan(whileHidden));
   });
 
+  /// 🚨★★★H21 — **THE FREEZE.** (유저 2026-08-23, 스택 트레이스): 「인스펙터
+  /// 키고 **터치하거나 키보드 조작하거나 마우스 클릭하거나 하면 뜸**」
+  ///
+  /// ```
+  /// setState() or markNeedsBuild() called during build.
+  ///   #6 InputInspector.note   #7 _buildInteractiveCanvas
+  ///   #11 _FrameRetargetScopeState.build
+  /// ```
+  ///
+  /// ⛔`State.setState` runs its callback and THEN marks the element dirty,
+  /// so the throw leaves the value updated and the element clean: the card
+  /// keeps the frame it was showing and nothing can wake it again. The
+  /// recorder was never broken — only the picture stopped.
+  ///
+  /// ⚠️**THIS TEST DOES NOT REPRODUCE THE THROW, AND SAYING SO IS THE
+  /// POINT.** The app's stack goes `_RenderLayoutBuilder.performLayout` →
+  /// `BuildOwner.buildScope` — a NESTED build scope opened during LAYOUT,
+  /// with the card outside it, which is what makes the assert fire. A plain
+  /// rebuild here keeps the card inside the same scope, so Flutter permits
+  /// the dirty mark and nothing throws either way (checked: it passes with
+  /// the deferral removed).
+  ///
+  /// ⇒ What it DOES pin is the contract that survives the refactor: a probe
+  /// fired from inside a build still reaches the card, one rebuild per
+  /// frame. The freeze itself is fixed on the strength of the user's stack
+  /// trace, not on the strength of this test, and I would rather write that
+  /// down than let a green tick imply more than it earned.
+  testWidgets('a probe fired DURING BUILD does not throw, and the card still '
+      'updates — the freeze was the notification, not the recorder', (
+    tester,
+  ) async {
+    InputInspector.visible.value = true;
+    // The child probes from inside its own build, as
+    // `_buildInteractiveCanvas` does.
+    final rebuild = ValueNotifier<int>(0);
+    addTearDown(rebuild.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InputInspectorHost(
+          child: ValueListenableBuilder<int>(
+            valueListenable: rebuild,
+            builder: (context, tick, _) {
+              InputInspector.note('probe $tick');
+              return const SizedBox.expand();
+            },
+          ),
+        ),
+      ),
+    );
+    // ⚠️The FIRST build cannot show the bug: the card is a later sibling in
+    // the host's Stack, so it is not listening yet when that probe fires.
+    // The freeze needs a rebuild while the card is ALREADY mounted — which
+    // is the situation on screen, and why this has to be a second pump.
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('input-inspector-card')),
+      findsOneWidget,
+      reason: 'fixture premise: the card is mounted and listening',
+    );
+    final before = InputInspector.revision.value;
+
+    rebuild.value += 1;
+    await tester.pump();
+
+    expect(
+      tester.takeException(),
+      isNull,
+      reason:
+          '⛔this is the report: notifying during build threw, and the '
+          'throw left the card permanently un-dirty',
+    );
+    expect(InputInspector.notes, isNotEmpty);
+
+    // And the deferred bump really does arrive.
+    await tester.pump();
+    expect(InputInspector.revision.value, greaterThan(before));
+  });
+
   /// 🚨H21 (유저): 「터치 다운도 **껏다켜도 리셋안되고**」 — which was not a
   /// bug in the counter. Closing only flipped `visible`; nothing cleared, so
   /// re-opening showed the session before last.
