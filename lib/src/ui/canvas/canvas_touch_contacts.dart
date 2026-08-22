@@ -63,12 +63,43 @@ class CanvasTouchContacts {
   /// Fingers currently down ANYWHERE — any panel, any surface.
   static int get appWideCount => _appWide.length;
 
+  /// 🚨★★★D34 최종 (유저 2026-08-23, 실기): 「**커서는 일단 커서ui랑 같은곳에
+  /// 있는게 최우선**이고, **터치는 커서 없애고 펜은 커서 보이는채로 유지**하는
+  /// 그런것만 가능할까싶은데」
+  ///
+  /// 🧪The measurement that settles it. After the seed guard the ring
+  /// stopped teleporting — 「100번중에 한번꼴」 — but when a mouse had already
+  /// put a ring on screen it now STAYS while Windows drags the real cursor
+  /// to the touch centroid: 「실제 커서는 물론 터치의 중앙에 있고」. The two
+  /// disagree, and the user names the priority that resolves it.
+  ///
+  /// ⇒ ★THE APP CANNOT KEEP THE RING HONEST DURING A TOUCH. The promoted
+  /// mouse arrives after the contacts are already gone (`touch=0/0` in the
+  /// capture), so no contact-based gate can catch it, and nothing in the
+  /// event distinguishes it from a hand on a mouse. What the app CAN do is
+  /// stop claiming: a finger on the glass means the pointing device is not
+  /// the one this ring was drawn for. A pen or mouse writes it back on its
+  /// next sample, at a position that is true again.
+  static final Set<VoidCallback> _appWideTouchListeners = <VoidCallback>{};
+
+  /// Fires when a finger lands ANYWHERE — the tool cursors drop their aim
+  /// on it. Separate from [addMultiTouchListener], which asks a different
+  /// question (a SECOND finger on ink, to stand a running stroke down).
+  static void addAppWideTouchListener(VoidCallback listener) =>
+      _appWideTouchListeners.add(listener);
+
+  static void removeAppWideTouchListener(VoidCallback listener) =>
+      _appWideTouchListeners.remove(listener);
+
   static void noteAppWide(PointerEvent event) {
     if (event.kind != PointerDeviceKind.touch) {
       return;
     }
     if (event is PointerDownEvent) {
       _appWide.add(event.pointer);
+      for (final listener in _appWideTouchListeners.toList(growable: false)) {
+        listener();
+      }
     } else if (event is PointerUpEvent || event is PointerCancelEvent) {
       _appWide.remove(event.pointer);
     }
