@@ -62,6 +62,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.contentOverride,
     this.fitFocusRect,
     this.autoFrame,
+    this.unframedFit,
     this.sampleColorAt,
     this.paperColor = ProjectBackground.defaultPaperArgb,
     this.onPaperColorChanged,
@@ -163,6 +164,11 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// (D12 — playback defaults to fit, one token per playing cut). Null
   /// never reframes — every other mount of this host stays byte-identical.
   final CanvasAutoFrameRequest? autoFrame;
+
+  /// Forwarded to [BrushCanvasPanel.unframedFit]: the framing an unframed
+  /// view resolves to instead of the 1:1 identity, which is how playback's
+  /// camera fit stands in front of the user's own without writing over it.
+  final Rect? unframedFit;
 
   /// Forwarded to [BrushCanvasPanel]: the P5 eyedropper's composite sampler
   /// and pick handlers, and the P6 fill dab builder.
@@ -391,6 +397,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       contentOverride: contentOverride,
       fitFocusRect: widget.fitFocusRect,
       autoFrame: widget.autoFrame,
+      unframedFit: widget.unframedFit,
       sampleColorAt: widget.sampleColorAt,
       paperColor: widget.paperColor,
       onPaperColorChanged: widget.onPaperColorChanged,
