@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 
 import '../../native/qa_tablet_bridge.dart' show QaPenRawState, QaTabletPacket;
 import '../../services/input/pen_sidecars.dart';
@@ -76,6 +77,57 @@ abstract final class InputInspector {
   static const int capacity = 120;
   static const int notesCapacity = 5;
 
+  /// 🚨★★★H21 — **THE FREEZE, AND IT WAS THIS.** (유저 2026-08-23, 스택
+  /// 트레이스 첨부): 「인스펙터 키고 **터치하거나 키보드 조작하거나 마우스
+  /// 클릭하거나 하면 뜸.** 이게 멈추는 원인같기도하고」
+  ///
+  /// ```
+  /// setState() or markNeedsBuild() called during build.
+  ///   #3 _ValueListenableBuilderState._valueChanged
+  ///   #5 ValueNotifier.value=
+  ///   #6 InputInspector.note (input_inspector.dart:87)
+  ///   #7 _EditorCanvasAreaState._buildInteractiveCanvas (…:604)
+  ///   #11 _FrameRetargetScopeState.build
+  /// ```
+  ///
+  /// ⛔A PROBE THAT NOTIFIES DURING BUILD KILLS ITS OWN DISPLAY — **once,
+  /// permanently.** `State.setState` runs its callback and THEN calls
+  /// `markNeedsBuild()`, so the builder's `_value` is updated and the
+  /// element is never marked dirty: the card holds the frame it was
+  /// showing and no later notification can wake it, because every
+  /// subsequent build-time probe throws the same way.
+  ///
+  /// 🎯That is the whole report. The recorder was never broken — `record`
+  /// kept filling `samples` and `seen` kept climbing (유저 스샷:
+  /// `touch downs=2 seen=6783`); only the picture stopped. Hovering was
+  /// fine because it does not take the canvas' build path, while a touch, a
+  /// key or a click does — 「호버중엔 인스펙터 정상작동해」.
+  ///
+  /// ⚠️And this is why the frozen card was such bad evidence: it kept
+  /// rendering an old frame rather than going blank, so it looked like
+  /// live testimony. I read it as such three times.
+  ///
+  /// ★So the bump waits for the frame to end whenever one is running.
+  /// Coalesced: a build that emits ten probes schedules one rebuild.
+  static bool _bumpScheduled = false;
+
+  static void _bumpRevision() {
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    if (phase == SchedulerPhase.idle ||
+        phase == SchedulerPhase.postFrameCallbacks) {
+      revision.value += 1;
+      return;
+    }
+    if (_bumpScheduled) {
+      return;
+    }
+    _bumpScheduled = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _bumpScheduled = false;
+      revision.value += 1;
+    });
+  }
+
   static void note(String line) {
     if (!visible.value) {
       return;
@@ -84,7 +136,7 @@ abstract final class InputInspector {
     if (notes.length > notesCapacity) {
       notes.removeRange(0, notes.length - notesCapacity);
     }
-    revision.value += 1;
+    _bumpRevision();
   }
 
   static void record(PointerEvent event, {String? phaseOverride}) {
@@ -103,7 +155,7 @@ abstract final class InputInspector {
     if (phase == 'down' && event.kind == PointerDeviceKind.touch) {
       touchDownCount += 1;
     }
-    revision.value += 1;
+    _bumpRevision();
   }
 
   static String? _phaseOf(PointerEvent event) => switch (event) {
@@ -125,7 +177,7 @@ abstract final class InputInspector {
     touchDownCount = 0;
     arrivals = 0;
     notes.clear();
-    revision.value += 1;
+    _bumpRevision();
   }
 
   /// Full reset for tests (visibility included).
