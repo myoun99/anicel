@@ -81,7 +81,8 @@ void main() {
       expect(
         cursor,
         findsNothing,
-        reason: 'the finger is navigating, not aiming — nothing about the '
+        reason:
+            'the finger is navigating, not aiming — nothing about the '
             'brush should follow it',
       );
 
@@ -124,7 +125,8 @@ void main() {
     expect(
       cursor,
       findsOneWidget,
-      reason: 'and it may not DELETE that aim on the way out either — a '
+      reason:
+          'and it may not DELETE that aim on the way out either — a '
           'pointer the census refuses to write from is a pointer with '
           'nothing here to erase',
     );
@@ -165,7 +167,8 @@ void main() {
     expect(
       cursor,
       findsOneWidget,
-      reason: 'the pen has not exited and nobody asked for its aim to go — '
+      reason:
+          'the pen has not exited and nobody asked for its aim to go — '
           'a hovering device is a holder the down-set cannot represent',
     );
     expect(tester.getTopLeft(cursor), penAim);
@@ -200,9 +203,7 @@ void main() {
 
     // A finger comes and goes. The mouse never left, so its aim stays.
     for (var i = 0; i < 2; i += 1) {
-      final finger = await tester.createGesture(
-        kind: PointerDeviceKind.touch,
-      );
+      final finger = await tester.createGesture(kind: PointerDeviceKind.touch);
       await finger.down(canvasGlobalOffset(tester, const Offset(150, 130)));
       await tester.pump();
       await finger.up();
@@ -211,7 +212,8 @@ void main() {
       expect(
         cursor,
         findsOneWidget,
-        reason: 'lift $i: the pen\'s exit released the PEN\'s hold, not the '
+        reason:
+            'lift $i: the pen\'s exit released the PEN\'s hold, not the '
             'mouse\'s — one flag for a per-device fact handed the mouse\'s '
             'ring to every finger that followed, and it vanished',
       );
@@ -246,7 +248,8 @@ void main() {
     expect(
       cursor,
       findsNothing,
-      reason: 'the finger was admitted at DOWN, so its lift still ends its '
+      reason:
+          'the finger was admitted at DOWN, so its lift still ends its '
           'span — re-asking the live setting here would strand this ring',
     );
 
@@ -262,7 +265,8 @@ void main() {
     expect(
       cursor,
       findsNothing,
-      reason: 'a stranded id would have made this unreachable for the rest '
+      reason:
+          'a stranded id would have made this unreachable for the rest '
           'of the session — D34 back, and silently',
     );
   });
@@ -287,7 +291,8 @@ void main() {
     expect(
       cursor,
       findsOneWidget,
-      reason: 'a press is a SPAN and they overlap — the aim belongs to the '
+      reason:
+          'a press is a SPAN and they overlap — the aim belongs to the '
           'span, so it survives until the LAST holder lifts',
     );
 
@@ -329,7 +334,8 @@ void main() {
     expect(
       cursor,
       findsNothing,
-      reason: 'and the aim goes with the finger. Flutter delivers a region '
+      reason:
+          'and the aim goes with the finger. Flutter delivers a region '
           'exit only for mouse and stylus, so the exit that clears this '
           'never runs for a finger — the ring stayed at the last touched '
           'point for the rest of the session (D34)',
@@ -361,9 +367,52 @@ void main() {
       expect(
         cursor,
         findsNothing,
-        reason: '$kind: the contact ending IS its exit — nothing else is '
+        reason:
+            '$kind: the contact ending IS its exit — nothing else is '
             'ever coming',
       );
     }
+  });
+
+  /// 🚨★★D34 (유저 2026-08-23, 실기): 「확대축소시 매번 보이는게아니라
+  /// **생겼다 없었다** 하고 … 커서 생길때는 **2핑거 조작후 0.5초정도 뒤에
+  /// 생기는느낌** … 커서 생긴상태에서 손뗄때도 생겼을때는 **커서가
+  /// 존재하는채로 순간이동**」
+  ///
+  /// ⛔`_seedToolCursorIfNeeded` runs from `build()` and republished the
+  /// last known position whenever the ring was null. A zoom changes the
+  /// viewport, so a pinch REBUILDS the panel — and each rebuild put the
+  /// ring back at coordinates nobody was pointing at, a beat after the
+  /// gesture. It seeds only while someone still HOLDS the aim now.
+  ///
+  /// ⚠️Distinct from the write gate: that stops a promoted mouse from
+  /// WRITING a position, this stops one already stored from being
+  /// republished. Two verbs, one field.
+  testWidgets('a rebuild does not resurrect the aim of a pointer that has '
+      'LEFT — the seed is for arming, never for reviving', (tester) async {
+    useOneFingerSlot(CanvasTouchDragAction.flip);
+    await pumpPanel(tester);
+
+    final pen = await tester.createGesture(kind: PointerDeviceKind.stylus);
+    await pen.addPointer(location: Offset.zero);
+    await pen.moveTo(canvasGlobalOffset(tester, const Offset(40, 40)));
+    await tester.pump();
+    expect(cursor, findsOneWidget, reason: 'fixture premise: the pen aimed');
+
+    await pen.moveTo(const Offset(-500, -500));
+    await pen.removePointer();
+    await tester.pump();
+    expect(cursor, findsNothing, reason: 'fixture premise: the pen left');
+
+    // Rebuild the panel the way a pinch-zoom does.
+    await tester.pumpAndSettle();
+
+    expect(
+      cursor,
+      findsNothing,
+      reason:
+          '⛔the report: a rebuild put the ring back where the pointer '
+          'HAD been, a beat after the touch that caused the rebuild',
+    );
   });
 }
