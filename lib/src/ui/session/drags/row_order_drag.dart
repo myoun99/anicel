@@ -228,17 +228,22 @@ class RowOrderDrag {
     // The row's OWN track, not the selected one: an S row is a track
     // fixture and re-orders its own track's list wherever the open cut is.
     if (_trackSeAnywhere(subject.layerId)?.track case final seTrack?) {
-      final order = resolveTrackSeDrop(
-        seLayers: seTrack.seLayers,
-        displayRows: displayLayers,
-        movingId: subject.layerId,
-        slot: slot,
+      final landing = _nearestLanding(
+        displayLayers,
+        subject.layerId,
+        slot,
+        (probe) => resolveTrackSeDrop(
+          seLayers: seTrack.seLayers,
+          displayRows: displayLayers,
+          movingId: subject.layerId,
+          slot: probe,
+        ),
       );
-      _seOrder = order;
+      _seOrder = landing?.value;
       _channel.value = LayerRowDragState(
         subject: subject,
-        caretSlot: slot,
-        legal: order != null,
+        caretSlot: landing?.slot ?? slot,
+        legal: landing != null,
       );
       return;
     }
@@ -246,27 +251,82 @@ class RowOrderDrag {
     if (cut == null) {
       return;
     }
-    final insertAt = modelInsertionForSlot(
-      stack: cut.layers,
-      displayRows: displayLayers,
-      slot: slot,
-    );
-    final plan = insertAt == null
-        ? null
-        : resolveLayerDrop(
-            stack: cut.layers,
-            movingId: subject.layerId,
-            insertAt: insertAt,
-            alsoMoving: _rowSelectionCarriedBy(subject.layerId),
-          );
+    final landing = _nearestLanding(displayLayers, subject.layerId, slot, (
+      probe,
+    ) {
+      final insertAt = modelInsertionForSlot(
+        stack: cut.layers,
+        displayRows: displayLayers,
+        slot: probe,
+      );
+      return insertAt == null
+          ? null
+          : resolveLayerDrop(
+              stack: cut.layers,
+              movingId: subject.layerId,
+              insertAt: insertAt,
+              alsoMoving: _rowSelectionCarriedBy(subject.layerId),
+            );
+    });
+    final plan = landing?.value;
     _plan = plan;
     _channel.value = LayerRowDragState(
       subject: subject,
-      caretSlot: slot,
+      caretSlot: landing?.slot ?? slot,
       legal: plan != null,
       joinLabel:
           noticeLabel ?? _rowDropLabel(cut.id, cut.layers, subject.layerId, plan),
     );
+  }
+
+  /// 결정 6 (유저 확정 2026-08-22) — **THE CARET STANDS AT THE NEAREST SLOT
+  /// THAT WOULD ACTUALLY LAND**, searching back toward the row's own place.
+  ///
+  /// > 「놓을 수 없는 곳엔 선을 안 그리고, 커서가 넘어가면 **갈 수 있는 마지막
+  /// > 자리에 붙여둔다** — 전 섹션 공통」
+  ///
+  /// 🎯**One law, not two.** The rail already refused to draw a caret it had
+  /// called illegal (the painter gates on `legal`), so the visible half of the
+  /// complaint was the OTHER half: past the last legal slot the line did not
+  /// stay put, it VANISHED — the drag looked dead while it was merely being
+  /// asked for something it could not do. Pinning to the nearest landing makes
+  /// the first clause moot rather than implementing it twice: there is no
+  /// "illegal caret" state left to hide.
+  ///
+  /// ⛔The search stops AT the row's own place rather than passing through it.
+  /// A run owns the gaps at both its ends and putting it back there is not a
+  /// landing (④, 2026-08-12) — walking past would let a drag that has gone
+  /// nowhere draw a caret on the far side, which is the announcement ④
+  /// removed. So "nothing legal between here and home" still draws nothing.
+  ///
+  /// ⚠️It walks one slot at a time because legality is not an interval: a
+  /// section boundary, a group that cannot be split and a folder run all
+  /// refuse for different reasons and can sit in any arrangement. The walk
+  /// only runs when the slot under the pointer is already refused, and it is
+  /// bounded by the distance home, so an ordinary in-section drag pays one
+  /// resolve exactly as before.
+  ({int slot, T value})? _nearestLanding<T>(
+    List<Layer> displayLayers,
+    LayerId movingId,
+    int slot,
+    T? Function(int probe) resolveAt,
+  ) {
+    final home = displayLayers.indexWhere((layer) => layer.id == movingId);
+    // The two gaps the row itself occupies; a caret in neither direction has
+    // anywhere to walk to when the row is not on this surface at all.
+    final lower = home < 0 ? slot : home;
+    final upper = home < 0 ? slot : home + 1;
+    var probe = slot.clamp(0, displayLayers.length);
+    while (true) {
+      final value = resolveAt(probe);
+      if (value != null) {
+        return (slot: probe, value: value);
+      }
+      if (probe >= lower && probe <= upper) {
+        return null;
+      }
+      probe += probe > upper ? -1 : 1;
+    }
   }
 
   /// R5 #15: the pointer is ON [targetId] rather than between rows.
