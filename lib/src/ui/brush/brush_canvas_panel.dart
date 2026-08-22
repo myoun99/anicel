@@ -1082,9 +1082,28 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (!mounted || AppInput.touchDraws) {
       return;
     }
-    if (_toolCursorHover.value == null) {
+    if (_toolCursorHover.value == null && _lastCanvasPointer == null) {
       return;
     }
+    // 🚨THE POSITION GOES TOO, and forgetting that is how the first attempt
+    // failed. 유저 캡처 (2026-08-23):
+    //
+    //   aim touch-landed -> null       touch=1/0   ← cleared
+    //   aim seed         -> (1769,464) touch=2/0   ← put straight back
+    //
+    // ⛔`_seedToolCursorIfNeeded` republishes `_lastCanvasPointer` on the
+    // next build whenever the ring is null, so clearing the NOTIFIER alone
+    // buys exactly one frame — 「터치 다운했을때 1프레임정도 사라지는거같은데
+    // 그 뒤 다시 … 과거 자리에서 다시 생겨」.
+    //
+    // ⚠️And `_aimIsHeld` does not save it: Flutter still counts the mouse
+    // as inside (`held=true` in the capture) because no `onExit` ever comes
+    // — the OS cursor moved, the framework's idea of it did not.
+    //
+    // 🚨★This is the SAME asymmetry #1184 fixed on the MouseRegion exits,
+    // reintroduced by me in the fix for it. A field with two writers has to
+    // be cleared by both, every time.
+    _lastCanvasPointer = null;
     _setToolCursorHover(null, 'touch-landed');
   }
 
