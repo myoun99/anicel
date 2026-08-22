@@ -1037,7 +1037,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// (the tracker's `MouseCursor.none` is mounted regardless) and nothing
   /// drawn in its place: the "커서가 사라짐" report. Seeding from here on
   /// the first frame the cursor arms gives the icon somewhere to be.
-  Offset? _lastCanvasPointer;
 
   /// Guards the seeding to once per arming.
   bool _eyedropperHoverSeeded = false;
@@ -1057,7 +1056,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (!mounted) {
       return;
     }
-    _lastCanvasPointer = null;
     _setToolCursorHover(null, 'forget');
     _eyedropperHover.value = null;
   }
@@ -1082,7 +1080,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (!mounted || AppInput.touchDraws) {
       return;
     }
-    if (_toolCursorHover.value == null && _lastCanvasPointer == null) {
+    if (_toolCursorHover.value == null) {
       return;
     }
     // 🚨THE POSITION GOES TOO, and forgetting that is how the first attempt
@@ -1103,7 +1101,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // 🚨★This is the SAME asymmetry #1184 fixed on the MouseRegion exits,
     // reintroduced by me in the fix for it. A field with two writers has to
     // be cleared by both, every time.
-    _lastCanvasPointer = null;
     _setToolCursorHover(null, 'touch-landed');
   }
 
@@ -1251,7 +1248,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     )) {
       return;
     }
-    _lastCanvasPointer = localPosition;
     // The brush outline rides the same census — including the moves of a
     // stroke already in flight, which is most of what it has to follow.
     //
@@ -1260,6 +1256,23 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // disagreed, so this is hygiene rather than a fix — but it leaves ONE
     // sentence as the contract: the always-mounted census WRITES, everything
     // else READS.
+    //
+    // 🚨★★★THE AIM IS ONE VALUE NOW, and it is written unconditionally.
+    // There used to be a second field, `_lastCanvasPointer`, holding the
+    // same position for the moments no cursor was armed — and a cursor
+    // ARMING later read it back through a build-time seed. Two fields that
+    // had to move together, which is how D34 kept coming back: #1184 fixed
+    // two clear sites that dropped only one of them, and #1189 fixed a
+    // THIRD that I introduced in the fix for the first. See
+    // [[make-the-invariant-unrepresentable]] — the cure for 「these two must
+    // always be cleared together」 is not another clear site, it is one
+    // field. A fourth site cannot get this wrong because there is nothing
+    // left to get wrong.
+    //
+    // The cursors were always mounted behind their own `_brushCursorActive`
+    // gates, so the value simply being there is what arms them — the seed
+    // was doing by hand what the mount already does.
+    _setToolCursorHover(localPosition, 'census:${kind.name}');
     if (_brushCursorActive ||
         _fillCursorActive ||
         // The stamp's piece preview reads the same census — one writer,
@@ -1271,7 +1284,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // the Frame Stats readout say "this panel re-baked on `pointer`",
       // which is otherwise invisible — see [RepaintCause].
       RepaintCause.note('pointer');
-      _setToolCursorHover(localPosition, 'census:${kind.name}');
     }
     if (!sample) {
       return;
@@ -1331,18 +1343,21 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// the glass, so [_aimIsHeld] is true and that fix is untouched. What it
   /// must never do is put a ring back for a pointer that has left, at
   /// coordinates nobody is pointing at any more.
-  void _seedToolCursorIfNeeded() {
-    if (!_brushCursorActive && !_fillCursorActive) {
-      return;
-    }
-    if (_toolCursorHover.value != null) {
-      return;
-    }
-    if (!_aimIsHeld) {
-      return;
-    }
-    _setToolCursorHover(_lastCanvasPointer, 'seed');
-  }
+  // ⛔THE SEED IS GONE. It existed because the aim lived in TWO fields: the
+  // notifier the ring reads, and a plain `_lastCanvasPointer` that kept the
+  // position while no cursor was armed — so arming one later had to copy
+  // the second into the first, from `build()`.
+  //
+  // 🚨That copy is the whole D34 tail. It republished a position nobody was
+  // pointing at any more (#1184), and it undid the touch-landed clear one
+  // frame later (#1189) — because clearing one field never cleared the
+  // other. Three fixes, one shape.
+  //
+  // ★The notifier holds the aim unconditionally now, and every cursor is
+  // already mounted behind its own `_brushCursorActive` gate: the value
+  // simply being there IS the arming. R3 #8's report — 「선택툴 누르고 필이나
+  // 지우개나 다른툴누르면 커서가 사라짐」 — stays fixed, by construction
+  // rather than by a build-time copy.
 
   /// The four tool cursors' VISUALS, for the deck above the artwork.
   ///
@@ -1506,7 +1521,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (_eyedropperHoverSeeded || _eyedropperHover.value != null) {
       return;
     }
-    final position = _lastCanvasPointer;
+    final position = _toolCursorHover.value;
     if (position == null) {
       return;
     }
@@ -1885,7 +1900,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     }
     // R27 #17: a cursor that armed mid-gesture gets a starting position.
     _seedEyedropperHoverIfNeeded();
-    _seedToolCursorIfNeeded();
 
     return Padding(
       key: const ValueKey<String>('brush-canvas-panel'),
