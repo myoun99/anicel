@@ -44,6 +44,30 @@ abstract final class InputInspector {
   /// the touches before the app ever saw them.
   static int touchDownCount = 0;
 
+  /// 🚨★★H21 (유저 2026-08-23): 「인풋 인스펙터가 **리셋도안먹고 처음 키고
+  /// 1초정도 조작하면 멈춰.** 초반1초조작만 인식하고 그 뒤 인식 안하는거같은데」
+  ///
+  /// ⛔A BROKEN INSTRUMENT IS WORSE THAN NO INSTRUMENT — this one was read
+  /// as evidence three times in a day. And the freeze could not be
+  /// diagnosed FROM the card, because every number on it came through the
+  /// same [record] that had stopped: nothing on screen could tell 「the
+  /// Listener is no longer called」 apart from 「the Listener is called and
+  /// the recorder drops it」.
+  ///
+  /// ★So this counts ARRIVALS, ahead of every gate — bumped by the host's
+  /// observer the instant an event reaches it, whether or not the inspector
+  /// is visible and whether or not the sample is kept. One glance now
+  /// separates the two failures:
+  ///
+  /// * `seen` climbing while the rows stand still ⇒ the RECORDER is at
+  ///   fault (a gate, the ring, the phase filter);
+  /// * `seen` frozen as well ⇒ DELIVERY stopped, and the fault is in the
+  ///   tree above this host.
+  ///
+  /// ⚠️Deliberately NOT gated on [visible]: a counter that stops counting
+  /// when you stop looking cannot answer the question it exists for.
+  static int arrivals = 0;
+
   /// PEN-10: free-form probe lines (newest last) — call sites annotate
   /// where an event landed (e.g. the timeline down/IN probes). Ignored
   /// while the inspector is hidden.
@@ -99,6 +123,7 @@ abstract final class InputInspector {
     samples.clear();
     peakPressure = 0;
     touchDownCount = 0;
+    arrivals = 0;
     notes.clear();
     revision.value += 1;
   }
@@ -194,6 +219,11 @@ class InputInspectorHost extends StatelessWidget {
     // while NOTHING reaches the window is what a tablet-eating context
     // looks like from the inside.
     WintabPenService.instance.notePointerActivity();
+    // H21: counted BEFORE every gate — see [InputInspector.arrivals]. This
+    // is the one number that can say whether this observer is still being
+    // called at all, which is exactly what the freeze report needed and
+    // exactly what the card could not show.
+    InputInspector.arrivals += 1;
     if (InputInspector.visible.value) {
       InputInspector.record(event);
     }
@@ -395,7 +425,16 @@ class _InspectorCard extends StatelessWidget {
                         tooltip: 'Close',
                         visualDensity: VisualDensity.compact,
                         iconSize: 14,
-                        onPressed: () => InputInspector.visible.value = false,
+                        // 🚨H21 (유저 2026-08-23): 「터치 다운도 **껏다켜도
+                        // 리셋안되고**」 — and that was not a bug in the
+                        // counter. Closing only flipped [visible]; NOTHING
+                        // cleared, so re-opening showed the session before
+                        // last. A diagnosis surface you just re-opened is a
+                        // fresh one by every reasonable reading.
+                        onPressed: () {
+                          InputInspector.clear();
+                          InputInspector.visible.value = false;
+                        },
                         icon: const Icon(Icons.close),
                       ),
                     ],
@@ -420,7 +459,14 @@ class _InspectorCard extends StatelessWidget {
                   // PEN-10 diagnosis strip: the touch-down counter (the
                   // pen-hover palm-rejection check) + probe notes.
                   Text(
-                    'touch downs=${InputInspector.touchDownCount}',
+                    'touch downs=${InputInspector.touchDownCount}'
+                    // 🚨H21: `seen` is counted at the observer, ahead of
+                    // every gate. If it climbs while the rows above stand
+                    // still, the recorder is dropping events; if it stands
+                    // still too, delivery to this host has stopped. That
+                    // one distinction is what the card could not make
+                    // while it was the thing being diagnosed.
+                    ' seen=${InputInspector.arrivals}',
                     key: const ValueKey<String>('input-inspector-touch-count'),
                     style: rowStyle.copyWith(color: _inspectorSecondInk),
                   ),
