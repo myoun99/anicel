@@ -2165,21 +2165,46 @@ class EditorSessionManager extends ChangeNotifier {
     pruneConformCache();
   }
 
+  /// Every row the ACTIVE cut SHOWS — the cut's own layers plus the
+  /// TRACK-owned rows that join them, which is exactly what
+  /// `LayerController.layers` composes.
+  ///
+  /// 🚨H17 (유저 2026-08-22): 「**트랜지션 레이어에 서있을때 엔드라인 드래그로
+  /// 조작하면 액티브레이어가 액션레이어로 바뀜.** 또 통일안하고 멋대로 이상한
+  /// 규칙 만들어낸흔적」.
+  ///
+  /// ⛔[_activeCutHasLayer] USED TO RE-DERIVE THIS MEMBERSHIP BY KIND, and
+  /// had been told about only two of the three sources: the cut's layers,
+  /// and track-SE rows (a hand-written arm added by W4). The track
+  /// TRANSITION row joined the composed list later 「on the same terms as
+  /// the SE rows」 and this predicate was never told — so standing on it and
+  /// committing ANY cut command answered "that layer is gone", the rebuilt
+  /// controller started with no preference, and `_activeLayerId ??=
+  /// layers.first.id` handed the active row to the bottom of the raw list:
+  /// the action layer.
+  ///
+  /// 🧪Measured, not reasoned: the transition row is still in `layers` the
+  /// whole time, and `currentRow` never moved — only the ACTIVE layer did,
+  /// and only for this one row kind (camera and SE both survive the same
+  /// drag). A fourth row kind must join HERE, next to the composition it
+  /// mirrors, rather than buying another arm on a predicate.
+  List<Layer> get activeCutRowLayers {
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return const [];
+    }
+    return [
+      ...cut.layers,
+      ...trackSeDisplayLayers,
+      trackTransitionDisplayLayer,
+    ];
+  }
+
   bool _activeCutHasLayer(LayerId? layerId) {
     if (layerId == null) {
       return false;
     }
-    final cut = activeCutOrNull;
-    if (cut == null) {
-      return false;
-    }
-    if (cut.layers.any((layer) => layer.id == layerId)) {
-      return true;
-    }
-    // Track-SE rows are selectable layers too (W4): their selection
-    // survives cut commands the same way (UI-R20 #1).
-    return isTrackSeLayerId(layerId) &&
-        activeTrack.seLayers.any((layer) => layer.id == layerId);
+    return activeCutRowLayers.any((layer) => layer.id == layerId);
   }
 
   // --- Cut commands -------------------------------------------------------
