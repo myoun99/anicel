@@ -9576,6 +9576,45 @@ class EditorSessionManager extends ChangeNotifier {
     }
   }
 
+  /// 결정 14 ②ⓐ — the clipboard entries for every swept row BESIDES the
+  /// anchor, in the span's own order.
+  ///
+  /// Empty with no band, which is what makes the single-row copy the same
+  /// code path rather than a branch beside it.
+  ///
+  /// ⚠️Same rows a paste would accept ([_pasteTargetRowsBesides]): a row
+  /// that cannot receive a clip has no business putting one on the board,
+  /// and a cut must not lift what a paste could never put back.
+  List<_CopiedRow> _copiedRowsBesides(Layer anchor) {
+    final selection = frameRangeSelection.value;
+    if (selection == null || !selection.coversLayer(anchor.id)) {
+      return const [];
+    }
+    final entries = <_CopiedRow>[];
+    for (final row in _pasteTargetRowsBesides(anchor)) {
+      final clip = _timelineController.copyRunForLayer(
+        layerId: row.id,
+        index: _commitBlockStart(row.id, selection.startIndex),
+        count: selection.lengthFrames,
+      );
+      final ids = <FrameId>{
+        for (final exposure in clip.exposures.values)
+          if (exposure.frameId != null) exposure.frameId!,
+      };
+      entries.add(
+        _CopiedRow(
+          layerId: row.id,
+          clip: clip,
+          cels: [
+            for (final cel in row.frames)
+              if (ids.contains(cel.id)) cel,
+          ],
+        ),
+      );
+    }
+    return entries;
+  }
+
   void copyFrameAtCurrentFrame() {
     final layer = activeLayer;
     final frame = selectedFrame;
@@ -9608,6 +9647,19 @@ class EditorSessionManager extends ChangeNotifier {
       cels: [
         for (final cel in layer.frames)
           if (cels.contains(cel.id)) cel,
+      ],
+      // 🚨결정 14 ②ⓐ — the board takes EVERY swept row, the anchor first.
+      rows: [
+        if (clip != null)
+          _CopiedRow(
+            layerId: layer.id,
+            clip: clip,
+            cels: [
+              for (final cel in layer.frames)
+                if (cels.contains(cel.id)) cel,
+            ],
+          ),
+        ..._copiedRowsBesides(layer),
       ],
     );
     notifyListeners();
@@ -9655,15 +9707,36 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     copyFrameAtCurrentFrame();
+    // 🚨결정 14 ②ⓐ — the lift takes every row the copy just banked, in ONE
+    // undo. ⛔It reads the CLIPBOARD's rows rather than re-resolving the
+    // band: the two must not be able to disagree about which rows were
+    // taken, because a row lifted but not banked is work that cannot come
+    // back — 「클립보드가 담지 않은 것을 들어내면 그건 삭제지 잘라내기가
+    // 아니다」.
+    final selection = frameRangeSelection.value;
+    final banked = _copiedFrame?.rows ?? const <_CopiedRow>[];
     _timelineController.spliceRunsForLayers(
       runs: [
-        (
-          layerId: layer.id,
-          index: run.index,
-          liftCount: run.count,
-          clip: null,
-          bornFrames: const <Frame>[],
-        ),
+        for (final row in banked)
+          (
+            layerId: row.layerId,
+            index: row.layerId == layer.id
+                ? run.index
+                : _commitBlockStart(row.layerId, selection!.startIndex),
+            liftCount: row.layerId == layer.id
+                ? run.count
+                : selection!.lengthFrames,
+            clip: null,
+            bornFrames: const <Frame>[],
+          ),
+        if (banked.isEmpty)
+          (
+            layerId: layer.id,
+            index: run.index,
+            liftCount: run.count,
+            clip: null,
+            bornFrames: const <Frame>[],
+          ),
       ],
       description: 'Cut frames',
     );
@@ -10055,14 +10128,41 @@ class EditorSessionManager extends ChangeNotifier {
             List<Frame> bornFrames,
           })
         >[];
-    for (final target in <Layer>[layer, ..._pasteTargetRowsBesides(layer)]) {
+    final targets = <Layer>[layer, ..._pasteTargetRowsBesides(layer)];
+    for (var i = 0; i < targets.length; i += 1) {
+      final target = targets[i];
+      // 🚨결정 14 ②ⓐ×③ⓐ — WHICH row of the board this target receives.
+      //
+      // A ONE-row clip goes to every target (③ⓐ: 「모든 행에 같은 것을」).
+      // A clip that already holds several rows pairs with them IN ORDER —
+      // there is no other reading that preserves what was copied — and the
+      // pairing stops when the board runs out, because a target with no row
+      // to receive has nothing to be given.
+      final board = copied.rows;
+      final TimelineClipRow? mine;
+      final List<Frame> mineCels;
+      if (board.length <= 1) {
+        mine = clip;
+        mineCels = copied.cels;
+      } else if (i < board.length) {
+        mine = board[i].clip;
+        mineCels = board[i].cels;
+      } else {
+        continue;
+      }
       // ⚠️ONCE per row. The independent branch MINTS inside here, so asking
       // twice would coin two sets of cels and reference only one of them —
       // the layer would carry orphans nothing points at.
       final placed = _placedClipFor(
         layer: target,
-        clip: clip,
-        copied: copied,
+        clip: mine,
+        copied: _CopiedFrameReference(
+          layerId: copied.layerId,
+          frameId: copied.frameId,
+          frameName: copied.frameName,
+          clip: mine,
+          cels: mineCels,
+        ),
         independent: independent,
       );
       runs.add((
@@ -17730,6 +17830,27 @@ class EditorSessionManager extends ChangeNotifier {
   }
 }
 
+/// 🚨결정 14 ②ⓐ (유저 확정 2026-08-22) — ONE ROW OF THE CLIPBOARD.
+///
+/// The board held a single row until copy learned the band. It holds a LIST
+/// now, and this is one entry: which row it came from, the run of cells, and
+/// the cels those cells point at.
+class _CopiedRow {
+  const _CopiedRow({
+    required this.layerId,
+    required this.clip,
+    this.cels = const [],
+  });
+
+  final LayerId layerId;
+  final TimelineClipRow clip;
+
+  /// Carried BY VALUE, for [_CopiedFrameReference.cels]'s reason: a
+  /// 잘라내기 orphans what it lifted, and a clipboard that does not hold
+  /// what was put on it is not one.
+  final List<Frame> cels;
+}
+
 class _CopiedFrameReference {
   const _CopiedFrameReference({
     required this.layerId,
@@ -17737,7 +17858,19 @@ class _CopiedFrameReference {
     required this.frameName,
     this.clip,
     this.cels = const [],
+    this.rows = const [],
   });
+
+  /// 🚨결정 14 ②ⓐ — EVERY swept row, in display order, the anchor first.
+  ///
+  /// > 「지우기 눌렀다고해서 현재 행만 지우는게아니라 **선택된 모든게**
+  /// > 지워지는걸 말하는거임. **복사든 뭐든 마찬가지**」
+  ///
+  /// ⚠️The scalar fields below still describe the ANCHOR — the status line
+  /// and the paste gates read those. This is the whole board. A copy with no
+  /// band writes ONE entry, so the single-row clipboard is this list of
+  /// length one rather than a second shape standing beside it.
+  final List<_CopiedRow> rows;
 
   final LayerId layerId;
 
