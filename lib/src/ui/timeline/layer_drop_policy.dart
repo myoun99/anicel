@@ -365,6 +365,7 @@ LayerDropPlan? resolveLayerDrop({
   }
   final moving = stack.firstWhere((layer) => layer.id == movingId);
   final movingSection = timelineSectionForLayerKind(moving.kind);
+  final movingRank = timelineCameraSectionRank(moving.kind);
 
   final carried = stack.sublist(run.start, run.endExclusive);
   final rest = [
@@ -382,8 +383,21 @@ LayerDropPlan? resolveLayerDrop({
   final below = restInsertAt > 0 ? rest[restInsertAt - 1] : null;
   final above = restInsertAt < rest.length ? rest[restInsertAt] : null;
   final neighbour = below ?? above;
+  // 🚨A5-4: the RANK travels with the section. Inside the camera section the
+  // three kinds have a fixed order (camera on top, then transition, then
+  // direction), so 「디렉션 = 디렉션끼리만」 is the same sentence as "may not
+  // cross a section", one level down.
+  //
+  // ⚠️This is also what made the move IRREVERSIBLE. The section is read off
+  // the row BELOW the slot, so one gap answers differently depending on
+  // which side is asked — a Direction row could climb past the camera and
+  // then find the single gap that would put it back refused, because that
+  // gap's `below` is a drawing row. Comparing the rank refuses the climb
+  // itself, and the pair stops being asymmetric because neither direction
+  // is legal.
   if (neighbour != null &&
-      timelineSectionForLayerKind(neighbour.kind) != movingSection) {
+      (timelineSectionForLayerKind(neighbour.kind) != movingSection ||
+          timelineCameraSectionRank(neighbour.kind) != movingRank)) {
     return null;
   }
 
