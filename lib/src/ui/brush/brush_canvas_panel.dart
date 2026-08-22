@@ -40,6 +40,7 @@ import '../canvas/flip_hud_controller.dart';
 import '../canvas/flip_hud_overlay.dart';
 import 'canvas_floor_insets.dart';
 import '../input/app_input_settings.dart';
+import '../debug/input_inspector.dart' show InputInspector;
 import '../../models/brush_blend_mode.dart';
 import '../../services/cut_piece_lift.dart';
 import '../../services/cut_piece_slot.dart';
@@ -1053,8 +1054,43 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return;
     }
     _lastCanvasPointer = null;
-    _toolCursorHover.value = null;
+    _setToolCursorHover(null, 'forget');
     _eyedropperHover.value = null;
+  }
+
+  /// 🚨★★D34 PROBE — **the ONE writer of the aim, and it says who wrote it.**
+  ///
+  /// 유저 재보고 (2026-08-23): the ring still appears on a pinch after the
+  /// promoted-touch gate and the seed guard both shipped. Four candidate
+  /// paths were eliminated from source (a finger writing the aim; a
+  /// promoted mouse arriving as an app event; the zoom re-mapping the
+  /// position; the seed republishing a stale one) — so if it still happens
+  /// there is a FIFTH route I have not read, and no amount of further
+  /// reading has found it.
+  ///
+  /// ★So stop reading and measure. Every write goes through here and names
+  /// itself; the Input Inspector prints the line the moment the ring
+  /// appears, and whichever source is on that line IS the answer.
+  ///
+  /// ⚠️This became possible only after H21 — the card used to freeze on the
+  /// first build-time probe, which is exactly why the same question cost
+  /// three wrong guesses yesterday. The instrument had to be repaired
+  /// before it could be believed.
+  ///
+  /// Costs nothing while the inspector is hidden: [InputInspector.note]
+  /// returns on the visibility check before touching anything.
+  void _setToolCursorHover(Offset? position, String source) {
+    if (InputInspector.visible.value && _toolCursorHover.value != position) {
+      final where = position == null
+          ? 'null'
+          : '(${position.dx.round()},${position.dy.round()})';
+      InputInspector.note(
+        'aim $source -> $where'
+        ' held=$_aimIsHeld touch=${CanvasTouchContacts.count}'
+        ' draws=${AppInput.touchDraws}',
+      );
+    }
+    _toolCursorHover.value = position;
   }
 
   /// Pointers that are DOWN and could drive a tool — the census's own
@@ -1186,7 +1222,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // the Frame Stats readout say "this panel re-baked on `pointer`",
       // which is otherwise invisible — see [RepaintCause].
       RepaintCause.note('pointer');
-      _toolCursorHover.value = localPosition;
+      _setToolCursorHover(localPosition, 'census:${kind.name}');
     }
     if (!sample) {
       return;
@@ -1256,7 +1292,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (!_aimIsHeld) {
       return;
     }
-    _toolCursorHover.value = _lastCanvasPointer;
+    _setToolCursorHover(_lastCanvasPointer, 'seed');
   }
 
   /// The four tool cursors' VISUALS, for the deck above the artwork.
