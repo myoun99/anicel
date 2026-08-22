@@ -747,10 +747,43 @@ void timelineGridEmitSubstrate(
     final style = painter.resolvedCellStyleFor(frameIndex);
     final background = style.background;
     final border = style.border;
+    final rect = painter.cellRectFor(frameIndex);
+    // 🚨D43-2 재개 (유저 2026-08-22, 스크린샷) — 「**아직도 레이어행에만
+    // 그리드 없거든? fx쪽엔 있는데**」.
+    //
+    // ⛔THE EMPTINESS SKIP CANNOT COME FIRST. An empty cell paints no
+    // background and no border BY DESIGN (UI-R21 #2: 빈 칸은 아무것도 안
+    // 칠한다), so that test was true for exactly the cells D43-2 exists to
+    // serve, and the grid line sixty lines below was never reached. The
+    // classic pass draws it correctly — and the classic pass is skipped
+    // wherever a tile covers the span, which is everywhere that matters.
+    // fx rows were never affected: they lay down no opaque ground, so the
+    // overlay UNDER the rows still shows through them, which is exactly the
+    // difference the user reported.
+    //
+    // 🚨And this is why the law file stayed green. `row_draws_its_own_empty_
+    // grid` asks the PAINTER, and the painter was right all along. The tile
+    // emitter is a SECOND reader of the same contract and it dropped the
+    // answer on the floor — the fourth shape of "the law file is green and
+    // the panel is broken" this round.
     if (background.a <= 0 && border.a <= 0) {
+      final onEmpty = painter.heldSeamLineFor(frameIndex);
+      if (onEmpty != null) {
+        final seamLocal = horizontal
+            ? onEmpty.rect.shift(Offset(-originMain, 0))
+            : onEmpty.rect.shift(Offset(0, -originMain));
+        writer.rrectFill(
+          seamLocal.left * devicePixelRatio,
+          seamLocal.top * devicePixelRatio,
+          seamLocal.width * devicePixelRatio,
+          seamLocal.height * devicePixelRatio,
+          0,
+          0,
+          timelineGridPackRgba(onEmpty.color),
+        );
+      }
       continue;
     }
-    final rect = painter.cellRectFor(frameIndex);
     final local = horizontal
         ? rect.shift(Offset(-originMain, 0))
         : rect.shift(Offset(0, -originMain));

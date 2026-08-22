@@ -9,6 +9,8 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show buildAppTheme;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart'
+    show timelineGridSubstrateOps;
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import 'timeline_frame_geometry_probe.dart';
@@ -159,5 +161,64 @@ void main() {
       isNotNull,
       reason: 'and the 6f beat survives, in empty space too',
     );
+  });
+
+  /// 🚨D43-2 재개 (유저 2026-08-22, 스크린샷) — 「**아직도 레이어행에만
+  /// 그리드 없거든? fx쪽엔 있는데**」.
+  ///
+  /// ⛔EVERY TEST ABOVE ASKS THE PAINTER, AND THE PAINTER WAS ALWAYS RIGHT.
+  /// The tile emitter is a SECOND reader of the same contract, and it
+  /// skipped any cell with no background and no border — which is the exact
+  /// definition of an empty cell — before it ever reached the line. The
+  /// classic pass does draw it, and the classic pass is skipped wherever a
+  /// tile covers the span, so on screen nobody drew it at all. fx rows were
+  /// never affected: they lay down no opaque ground, so the overlay under
+  /// them still shows through, which is precisely the split reported.
+  ///
+  /// ⇒ these ask the EMITTER. "The law file is green and the panel is
+  /// broken" is this round's recurring shape, and the cure is always to pin
+  /// the reader the screen actually goes through.
+  group('the TILE path carries the empty-cell line too', () {
+    int opWordsFor(int start, int endExclusive) => timelineGridSubstrateOps(
+      painter: painterFor(rowGround: scheme.surface),
+      spanStartIndex: start,
+      spanEndIndexExclusive: endExclusive,
+      devicePixelRatio: 1,
+    ).length;
+
+    test('a span of PURELY EMPTY cells still emits ops', () {
+      // 2..8 hold no block at all — the fixture's block is at 10..13.
+      expect(
+        opWordsFor(2, 9),
+        greaterThan(0),
+        reason: '⛔this was ZERO. An empty cell paints no background and no '
+            'border by design (UI-R21 #2), so the emitter\'s "nothing to '
+            'draw" test was true for exactly the cells D43-2 serves',
+      );
+    });
+
+    test('the emitted stream grows with the number of lines the law names',
+        () {
+      final painter = painterFor(rowGround: scheme.surface);
+      var lines = 0;
+      for (var frame = 2; frame < 9; frame += 1) {
+        if (painter.heldSeamLineFor(frame) != null) {
+          lines += 1;
+        }
+      }
+      expect(lines, greaterThan(1), reason: 'presence first');
+      // Two empty spans, one strictly longer: more lines must mean more
+      // stream. An emitter that dropped some would flatten this.
+      expect(
+        opWordsFor(2, 9),
+        greaterThan(opWordsFor(2, 4)),
+        reason: 'a longer empty span carries more of the law\'s lines',
+      );
+    });
+
+    test('a span with a BLOCK still emits MORE than an empty one — the fix '
+        'did not turn paper into bare lines', () {
+      expect(opWordsFor(10, 14), greaterThan(opWordsFor(2, 6)));
+    });
   });
 }
