@@ -100,8 +100,7 @@ void main() {
   // heldSeamLineFor contract now, mirrored here as plain opaque rect
   // fills (the multiply onto the paper was computed in Dart).
   test('the emitter probes the painter: the covered span opens with the '
-      'block fill, mirrors the seam line, and the empty span emits '
-      'nothing', () {
+      'block fill, and an EMPTY span still carries the law\'s lines', () {
     final painter = painterFor(blockLayer());
     final covered = timelineGridSubstrateOps(
       painter: painter,
@@ -115,10 +114,8 @@ void main() {
     // radius map, mask TL|BL = 5).
     expect(covered[6], 5, reason: 'corner mask');
     expect(covered[5], timelineGridQ8(6), reason: 'radius 6 in q8');
-    // No border strokes anywhere in the stream — every op is a fill
-    // (2 cell bodies + 1 interior seam for the 2-frame block), so the
-    // stream walks in rrectFill strides of 8.
-    expect(covered.length, 3 * 8);
+    // No border strokes anywhere in the stream — every op is a fill, so
+    // the stream walks in rrectFill strides of 8.
     for (var i = 0; i < covered.length; i += 8) {
       expect(
         covered[i],
@@ -133,16 +130,56 @@ void main() {
       reason: 'fixture premise: a seam exists at frame 1',
     );
 
-    // Uncovered cells emit NOTHING (UI-R21 #2): empties are transparent
-    // — the row underlay owns the paper, so an empty span is zero ops
-    // and the tile stays fully transparent there.
+    // 🚨D43-2 재개 (유저 2026-08-22, 스크린샷) — 「**아직도 레이어행에만
+    // 그리드 없거든? fx쪽엔 있는데**」.
+    //
+    // ⛔THIS ASSERTION USED TO READ `expect(empty, isEmpty)`, AND THAT WAS
+    // THE BUG WRITTEN DOWN AS LAW. It cited UI-R21 #2 — 「빈 칸은 아무것도
+    // 안 칠한다」 — which is true of the PAPER and was never true of the
+    // grid line. D43-2 gave empty cells their line in the PAINTER and left
+    // this contract saying they emit nothing, so the tile path went on
+    // dropping it while the painter's own law file stayed green. The user
+    // saw exactly that split: layer rows blank, fx rows lined — fx rows lay
+    // down no opaque ground, so the overlay beneath them still shows.
+    //
+    // ⇒ an empty span emits the LINES and nothing else. Counted off the
+    // painter rather than written out, so a cadence change cannot turn this
+    // back into a formula that recites whatever the code happens to do.
+    const emptyStart = 8;
+    const emptyEndExclusive = 12;
+    var expectedLines = 0;
+    for (var frame = emptyStart; frame < emptyEndExclusive; frame += 1) {
+      expect(
+        painter.resolvedCellStyleFor(frame).background.a,
+        0,
+        reason: 'fixture premise: frame $frame really is empty paper',
+      );
+      if (painter.heldSeamLineFor(frame) != null) {
+        expectedLines += 1;
+      }
+    }
+    expect(expectedLines, greaterThan(0), reason: 'the law puts lines here');
     final empty = timelineGridSubstrateOps(
       painter: painter,
-      spanStartIndex: 8,
-      spanEndIndexExclusive: 12,
+      spanStartIndex: emptyStart,
+      spanEndIndexExclusive: emptyEndExclusive,
       devicePixelRatio: 1.0,
     );
-    expect(empty, isEmpty);
+    expect(
+      empty.length,
+      expectedLines * 8,
+      reason: 'one fill per line the painter names, and nothing more — the '
+          'paper really is absent, so UI-R21 #2 still holds for the FILL. '
+          'It never governed the line.',
+    );
+    for (var i = 0; i < empty.length; i += 8) {
+      expect(empty[i], TimelineGridTileOp.rrectFill);
+      expect(
+        empty[i + 6],
+        0,
+        reason: 'a grid line is a plain rect — no corner mask',
+      );
+    }
   });
 
   test('T3: tiles carry the FOREGROUND ink too — the drawing cell\'s ○ '
