@@ -24,10 +24,7 @@ import 'timeline/effect_lane_editing.dart'
 import 'timeline/effect_lane_policy.dart' show laneIsEffectLane;
 import 'timeline/property_lane_model.dart' show PropertyLaneEditCallbacks;
 import 'timeline/layer_row_drag.dart'
-    show
-        TimelineRowDragHooks,
-        TrackRowSubject,
-        timelineRowAddressOfDragSubject;
+    show TimelineRowDragHooks, TrackRowSubject, timelineRowAddressOfDragSubject;
 import 'timeline/se_layer_mixer.dart';
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_layer_controls_header.dart' show LayerLegendCallbacks;
@@ -766,6 +763,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                             globalFrameIndex: globalFrame,
                             takesLayerActive: false,
                           ),
+                      // H18: the cells family's release rule, here too.
+                      onTapClear: _session.clearLaneRangeSelection,
                       onMoveBegin: _session.beginLaneRangeMoveDrag,
                       onMoveUpdate: (frameDelta) => _session
                           .updateLaneRangeMoveDrag(frameDelta: frameDelta),

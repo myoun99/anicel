@@ -305,9 +305,7 @@ class _TimelineFrameRangeGestureLayerState
   /// Raw pixels, not a row count: dividing by this row's height would
   /// assume every other row matches it (R9 #25).
   double _crossOffsetAt(Offset localPosition) {
-    return widget.axis == Axis.horizontal
-        ? localPosition.dy
-        : localPosition.dx;
+    return widget.axis == Axis.horizontal ? localPosition.dy : localPosition.dx;
   }
 
   void _updateDrag(DragUpdateDetails details) {
@@ -523,6 +521,7 @@ class TimelineLaneRangeHooks {
     required this.selection,
     required this.onSelectUpdate,
     required this.onTapAt,
+    required this.onTapClear,
     required this.onMoveBegin,
     required this.onMoveUpdate,
     required this.onMoveEnd,
@@ -548,6 +547,15 @@ class TimelineLaneRangeHooks {
   /// A press on the band: STAND on the frame of this (layer, lane).
   final void Function(LayerId layerId, String laneId, int frameIndex) onTapAt;
 
+  /// A plain tap on the band (no drag): clears the selection — the CELLS
+  /// family's `TimelineRangeGestureCallbacks.onTapClear`, restated for lanes.
+  ///
+  /// 🚨H18 (유저 2026-08-22): 「fx헤더,멤버행의 선택범위 규칙이 다름 … 또
+  /// 몇번째인지 모를정도의 통일 안한흔적」. BOTH families publish the anchor
+  /// span at drag start; only the cells family took it back when the press
+  /// settled into a tap, so a click on an fx row left a one-cell band.
+  final VoidCallback onTapClear;
+
   final bool Function() onMoveBegin;
   final void Function(int frameDelta) onMoveUpdate;
   final VoidCallback onMoveEnd;
@@ -563,6 +571,7 @@ class TimelineLaneRangeCallbacks {
     required this.selection,
     required this.onSelectUpdate,
     required this.onTapAt,
+    required this.onTapClear,
     required this.onMoveBegin,
     required this.onMoveUpdate,
     required this.onMoveEnd,
@@ -609,6 +618,11 @@ class TimelineLaneRangeCallbacks {
   /// on the DOWN, before a pan may follow — so ranging on an fx row stands
   /// first exactly as ranging on a cells row does.
   final void Function(LayerId layerId, String laneId, int frameIndex) onTapAt;
+
+  /// A plain tap on the band (no drag): clears the selection — the CELLS
+  /// family's [TimelineRangeGestureCallbacks.onTapClear], restated for
+  /// lanes (H18, 유저 2026-08-22: 「fx헤더,멤버행의 선택범위 규칙이 다름」).
+  final VoidCallback onTapClear;
 
   final bool Function() onMoveBegin;
   final void Function(int frameDelta) onMoveUpdate;
@@ -720,9 +734,7 @@ class _TimelineLaneRangeGestureLayerState
   /// row's height would assume every other row matches it (R9 #25, and
   /// the storyboard rail is exactly where that fails).
   double _crossOffsetAt(Offset localPosition) {
-    return widget.axis == Axis.horizontal
-        ? localPosition.dy
-        : localPosition.dx;
+    return widget.axis == Axis.horizontal ? localPosition.dy : localPosition.dx;
   }
 
   void _updateDrag(DragUpdateDetails details) {
@@ -839,13 +851,36 @@ class _TimelineLaneRangeGestureLayerState
           widget.laneId,
           _frameAt(localPosition),
         ),
-        child: RawGestureDetector(
+        // 🚨H18 (유저 2026-08-22): 「**fx헤더,멤버행의 선택범위 규칙이 다름.**
+        // 일반 프레임셀은 클릭한다고 선택범위 작동 안하는데 fx헤더,멤버행은
+        // 클릭한다고 선택범위 작동하는거같음. **또 몇번째인지 모를정도의 통일
+        // 안한흔적**」
+        //
+        // ⛔THE CELLS FAMILY HAD THIS RULE AND THIS ONE DID NOT. Both layers
+        // publish the ANCHOR span the moment the eager pan starts
+        // (`onSelectUpdate(frame, frame)`) — that is what makes a drag paint
+        // from its first pixel. The cells layer then clears it on the
+        // RELEASE when the press turns out to be a tap
+        // (`TimelineFrameRangeCallbacks.onTapClear`, T10: 「클릭하고 떼면 뭐든
+        // 비우게」). The lane band never got that half, so every click left a
+        // one-cell band behind: the same gesture, two grammars, decided by
+        // whether you happened to press an fx row.
+        //
+        // A real drag never settles into a tap, so select drags are
+        // untouched; a press INSIDE the selection is the MOVE's (see
+        // `_startDrag`), and its tap clears here exactly as the cells' does.
+        child: GestureDetector(
           behavior: HitTestBehavior.translucent,
-          gestures: <Type, GestureRecognizerFactory>{
-            EagerPanGestureRecognizer:
-                GestureRecognizerFactoryWithHandlers<EagerPanGestureRecognizer>(
-                  () => EagerPanGestureRecognizer(debugOwner: this),
-                  (recognizer) {
+          onTapUp: (_) => widget.callbacks.onTapClear(),
+          child: RawGestureDetector(
+            behavior: HitTestBehavior.translucent,
+            gestures: <Type, GestureRecognizerFactory>{
+              EagerPanGestureRecognizer:
+                  GestureRecognizerFactoryWithHandlers<
+                    EagerPanGestureRecognizer
+                  >(() => EagerPanGestureRecognizer(debugOwner: this), (
+                    recognizer,
+                  ) {
                     recognizer.supportedDevices =
                         AppInput.timelineEditPanDevices;
                     // PEN-11: device gesture settings (RawGestureDetector
@@ -858,9 +893,9 @@ class _TimelineLaneRangeGestureLayerState
                     recognizer.onUpdate = _updateDrag;
                     recognizer.onEnd = (_) => _endDrag();
                     recognizer.onCancel = _cancelDrag;
-                  },
-                ),
-          },
+                  }),
+            },
+          ),
         ),
       ),
     );

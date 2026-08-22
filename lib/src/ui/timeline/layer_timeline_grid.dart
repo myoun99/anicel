@@ -1791,6 +1791,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                   );
                 },
             onTapAt: hostLaneRange.onTapAt,
+            onTapClear: hostLaneRange.onTapClear,
             onMoveBegin: hostLaneRange.onMoveBegin,
             onMoveUpdate: hostLaneRange.onMoveUpdate,
             onMoveEnd: hostLaneRange.onMoveEnd,
