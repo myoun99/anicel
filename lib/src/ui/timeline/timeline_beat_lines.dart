@@ -126,6 +126,82 @@ Color timelineGridLineInkOnGround(
   return Color.lerp(ground, multiplied, line.a)!;
 }
 
+/// 🚨THE GROUND [timelineGridLineInkOnGround] MUST BE HANDED — what the eye
+/// actually sees at that pixel, after [painted] has gone down over [under].
+///
+/// ⛔The law above ends in `lerp(ground, multiplied, ink.a)`, which
+/// interpolates the ALPHA as well as the colour. Hand it a TRANSLUCENT
+/// colour and the result climbs toward opaque while its rgb stays where the
+/// translucent colour was: the line comes out MORE opaque than everything
+/// around it, which on a pale wash means a line LIGHTER than its ground.
+///
+/// 🧪That is not a hypothetical. An unworked block is the paper at 43%, and
+/// the cell painter used to pass it straight through: ground L=0.461, line
+/// L=0.471 — 유저 2026-08-22, 「블록이 회색일때 그리드선이 흰색」. The 6f and
+/// second lines survived only by being dark enough to still read as darker,
+/// at about half the strength the law asks for.
+///
+/// Every surface that paints over the grid overlay resolves through HERE.
+/// The run labels already had this rule in their own words (they take a
+/// `backdropColor` and resolve the translucent paper against it before
+/// choosing an ink) — which is exactly why the user could see that the two
+/// laws disagreed: same paper, one composited first and one did not.
+Color? timelineGridGroundOver({
+  required Color? under,
+  required Color? painted,
+}) {
+  if (painted == null) {
+    return under;
+  }
+  // Opaque paint IS what is seen; nothing under it matters.
+  if (painted.a >= 1) {
+    return painted;
+  }
+  // No known ground below (a row lying over the ARTWORK): there is nothing
+  // to composite against, so the line stays the law's raw ink, source-over,
+  // exactly as the folded row's overlay does.
+  if (under == null) {
+    return painted.a <= 0 ? null : painted;
+  }
+  return Color.alphaBlend(painted, under);
+}
+
+/// 🚨THE GRID'S GROUND AND CADENCE, PUBLISHED ONCE PER HOST — so a surface
+/// that paints over the beat-line overlay cannot draw its own grid without
+/// knowing what it is drawing on.
+///
+/// The overlay sits UNDER the rows (D32): whatever a row paints occludes it,
+/// so every opaque or washed row owes the grid a redraw through the law. The
+/// hosts genuinely sit on different colours (the timeline and X-sheet on
+/// `surfaceContainerHighest`, the storyboard on `surface`, a folded row on
+/// the artwork = null), which is why this is inherited rather than guessed.
+///
+/// ⛔Do not read the ground off `colorScheme` at the point of use. That
+/// guess is right three times in four, which is the worst kind of wrong.
+class TimelineGridLaw extends InheritedWidget {
+  const TimelineGridLaw({
+    super.key,
+    required this.ground,
+    required this.framesPerSecond,
+    required super.child,
+  });
+
+  /// The host's own Material colour under the overlay; null where the grid
+  /// lies over the artwork and there is nothing to multiply against.
+  final Color? ground;
+
+  /// The counting fps — which boundaries are SECOND boundaries.
+  final int framesPerSecond;
+
+  static TimelineGridLaw? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<TimelineGridLaw>();
+
+  @override
+  bool updateShouldNotify(TimelineGridLaw oldWidget) =>
+      oldWidget.ground != ground ||
+      oldWidget.framesPerSecond != framesPerSecond;
+}
+
 /// The ink of the grid line at the boundary STARTING frame [frameIndex]
 /// — the one grid language shared by the cell grid overlay and the frame
 /// ruler (R26 #40: "룰러도 프레임 셀 그리드랑 통일감").
@@ -211,6 +287,7 @@ class TimelineBeatLinesPainter extends CustomPainter {
     required this.ground,
     this.axis = Axis.horizontal,
     this.crossCellExtent = 0,
+    this.frameStartIndex = 0,
   });
 
   final double frameCellExtent;
@@ -247,6 +324,12 @@ class TimelineBeatLinesPainter extends CustomPainter {
   /// The uniform row height (timeline) / column width (X-sheet) for the
   /// cross-axis ROW seam lines; 0 skips them (hosts that draw their own).
   final double crossCellExtent;
+
+  /// The ABSOLUTE frame at this canvas' origin — so a windowed surface (a
+  /// single lane band inside a virtualised row) draws the boundaries that
+  /// actually fall in its window rather than counting from its own left
+  /// edge. 0 is the whole-panel overlay and changes nothing.
+  final int frameStartIndex;
 
   /// [ink] as it must land on this overlay's ground — the block-interior
   /// treatment, applied to the empty-space lines too.
@@ -286,23 +369,30 @@ class TimelineBeatLinesPainter extends CustomPainter {
     // ink comes from the LAW's named functions and the position from its
     // snap — the stride loops below are the law's own cadence hoisted,
     // so no per-boundary allocation happens on this content-length walk.
+    // The first boundary of period [period] at or after the window start —
+    // the hoisted form of "which absolute frames does this canvas show".
+    int firstBoundary(int period) => frameStartIndex <= 0
+        ? period
+        : ((frameStartIndex + period - 1) ~/ period) * period;
+    double positionOf(int frame) => timelineFrameBoundaryLinePosition(
+      frame - frameStartIndex,
+      frameCellExtent,
+    );
+
     final baseInk = timelineGridBaseLineInk(colorScheme);
     final basePaint = Paint()
       ..color = _inkOnGround(baseInk)
       ..strokeWidth = baseInk.strokeWidth;
     final cadence = timelineGridLineEveryFrames(frameCellExtent);
     for (
-      var frame = cadence;
-      frame * frameCellExtent <= mainExtent;
+      var frame = firstBoundary(cadence);
+      (frame - frameStartIndex) * frameCellExtent <= mainExtent;
       frame += cadence
     ) {
       if (frame % 6 == 0) {
         continue;
       }
-      mainAxisLine(
-        timelineFrameBoundaryLinePosition(frame, frameCellExtent),
-        basePaint,
-      );
+      mainAxisLine(positionOf(frame), basePaint);
     }
 
     // ROW seams (UI-R18 #10/#12): full-strength, zoom-independent — the
@@ -338,17 +428,14 @@ class TimelineBeatLinesPainter extends CustomPainter {
     // 6f is the sheet convention regardless of fps.
     const beatPeriod = 6;
     for (
-      var frame = beatPeriod;
-      frame * frameCellExtent <= mainExtent;
+      var frame = firstBoundary(beatPeriod);
+      (frame - frameStartIndex) * frameCellExtent <= mainExtent;
       frame += beatPeriod
     ) {
       final paint = framesPerSecond > 0 && frame % framesPerSecond == 0
           ? secondPaint
           : sixPaint;
-      mainAxisLine(
-        timelineFrameBoundaryLinePosition(frame, frameCellExtent),
-        paint,
-      );
+      mainAxisLine(positionOf(frame), paint);
     }
   }
 
@@ -359,5 +446,6 @@ class TimelineBeatLinesPainter extends CustomPainter {
       oldDelegate.colorScheme != colorScheme ||
       oldDelegate.ground != ground ||
       oldDelegate.axis != axis ||
+      oldDelegate.frameStartIndex != frameStartIndex ||
       oldDelegate.crossCellExtent != crossCellExtent;
 }

@@ -24,6 +24,8 @@ import '../text/app_strings.dart' show AppText;
 import 'layer_rail_columns.dart'
     show layerRailTrailingCells, layerRailTwirlIcon;
 import 'property_lane_model.dart';
+import 'timeline_beat_lines.dart'
+    show TimelineBeatLinesPainter, TimelineGridLaw, timelineGridGroundOver;
 import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 import 'timeline_cell_style.dart'
     show
@@ -658,8 +660,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                         ),
                         iconSize: 14,
                         tooltip: AppText.strings.tlResetGroup,
-                        onPressed: () =>
-                            widget.onResetLaneGroup!(layer, lane),
+                        onPressed: () => widget.onResetLaneGroup!(layer, lane),
                         icon: Icon(
                           Icons.settings_backup_restore,
                           size: 14,
@@ -1019,10 +1020,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
             crossExtent,
             frameCellExtent: cellExtent,
           )
-        : timelineLaneKeyMarkerSize(
-            crossExtent,
-            frameCellExtent: cellExtent,
-          );
+        : timelineLaneKeyMarkerSize(crossExtent, frameCellExtent: cellExtent);
     final hitSize = (markerSize + 8).clamp(14.0, crossExtent).toDouble();
     final horizontal = axis == Axis.horizontal;
 
@@ -1142,9 +1140,25 @@ class TimelineLaneFrameRow extends StatelessWidget {
     ];
 
     final selectionListenable = laneRange?.selection;
+    // 🚨D43-2 재개 c (유저 2026-08-22): 「**fx행쪽은 또 그리드선 다르고** 뭐
+    // 일을 이따구로한거지? 너 무조건 통일 안했지 이거」.
+    //
+    // ⛔THE OVERLAY SITS UNDER THE ROWS (D32), SO EVERY ROW OWES THE GRID A
+    // REDRAW. The frame rows do — `heldSeamLineFor`, the law's ink on their
+    // own paper. This band never did: it washes at 60% and let the buried
+    // overlay show THROUGH, which is a third composite of the same ink (the
+    // law resolved against the PANEL's ground, then 40% of that surviving
+    // under this wash). Same cadence, same ink, three different lines on
+    // one screen — which is exactly what the user could see.
+    //
+    // The band draws the law itself now, on the ground it actually makes:
+    // its wash composited onto the host's colour. The SAME painter class
+    // the panel overlay uses, so there is no copy here to drift.
+    final bandWash = AppColors.washDown.withValues(alpha: 0.6);
+    final gridLaw = TimelineGridLaw.maybeOf(context);
     final band = DecoratedBox(
       decoration: BoxDecoration(
-        color: AppColors.washDown.withValues(alpha: 0.6),
+        color: bandWash,
         // The divider faces the NEXT lane: below in the timeline, to the
         // right in the X-sheet.
         border: horizontal
@@ -1164,6 +1178,34 @@ class TimelineLaneFrameRow extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
+          // THE GRID, first — under the gesture layer and the markers, the
+          // same place it sits on every other row.
+          if (gridLaw != null)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  key: ValueKey<String>(
+                    '$keyPrefix-lane-grid-${layer.id}-${lane.laneId}',
+                  ),
+                  painter: TimelineBeatLinesPainter(
+                    axis: axis,
+                    frameCellExtent: cellExtent,
+                    framesPerSecond: gridLaw.framesPerSecond,
+                    colorScheme: colorScheme,
+                    ground: timelineGridGroundOver(
+                      under: gridLaw.ground,
+                      painted: bandWash,
+                    ),
+                    // The band is ONE row: its own bottom border is the
+                    // cross seam, so the overlay must not draw a second.
+                    crossCellExtent: 0,
+                    // The band's canvas starts at the visible window, not
+                    // at frame 0 — the spacers are its siblings.
+                    frameStartIndex: frameStartIndex,
+                  ),
+                ),
+              ),
+            ),
           // The band-wide LANE gesture (UI-R23 #3 part 2), UNDER the
           // markers: pans on the band select THIS lane; marker drags keep
           // their arena priority above. The GROUP HEADER band selects too

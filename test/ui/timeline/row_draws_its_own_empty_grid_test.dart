@@ -4,11 +4,14 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show buildAppTheme;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
+    show timelineDrawingHeldColor;
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart'
     show timelineGridSubstrateOps;
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
@@ -191,14 +194,14 @@ void main() {
       expect(
         opWordsFor(2, 9),
         greaterThan(0),
-        reason: '⛔this was ZERO. An empty cell paints no background and no '
+        reason:
+            '⛔this was ZERO. An empty cell paints no background and no '
             'border by design (UI-R21 #2), so the emitter\'s "nothing to '
             'draw" test was true for exactly the cells D43-2 serves',
       );
     });
 
-    test('the emitted stream grows with the number of lines the law names',
-        () {
+    test('the emitted stream grows with the number of lines the law names', () {
       final painter = painterFor(rowGround: scheme.surface);
       var lines = 0;
       for (var frame = 2; frame < 9; frame += 1) {
@@ -220,5 +223,97 @@ void main() {
         'did not turn paper into bare lines', () {
       expect(opWordsFor(10, 14), greaterThan(opWordsFor(2, 6)));
     });
+  });
+
+  // 🚨D43-2 재개 b (유저 2026-08-22): 「**카메라레이어는 그리드 안보이고**」.
+  //
+  // The camera row was excluded from `heldSeamLineFor` outright — a guard I
+  // wrote in 07334e2b that nobody asked for and that no reason survives.
+  // Its cells are key-summary markers, which changes what the row DRAWS,
+  // not where the frames are.
+  test('the CAMERA row is on the same sheet — its boundaries get the same '
+      'line as everybody else\'s', () {
+    final camera = Layer(
+      id: const LayerId('cam'),
+      name: 'Camera',
+      kind: LayerKind.camera,
+      frames: const [],
+      timeline: const {},
+    );
+    final cameraLine = TimelineRowCellsPainter(
+      layer: camera,
+      geometry: testFrameGeometry(
+        frameCellExtent: 24,
+        frameEndIndexExclusive: 40,
+      ),
+      crossAxisExtent: 28,
+      exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
+      colorScheme: scheme,
+      baseTextStyle: const TextStyle(fontSize: 11),
+      framesPerSecond: 24,
+      rowGround: scheme.surface,
+    ).heldSeamLineFor(5);
+
+    expect(
+      cameraLine,
+      isNotNull,
+      reason:
+          '⛔a row does not opt out of the grid — the grid is where the '
+          'frames are, and every row stands on the same frames',
+    );
+    expect(
+      cameraLine!.color,
+      painterFor(rowGround: scheme.surface).heldSeamLineFor(5)!.color,
+      reason: 'and it is the SAME line, not a camera-flavoured one',
+    );
+  });
+
+  _grid43Round();
+}
+
+/// 🚨D43-2 재개 b (유저 2026-08-22) — **ONE GRID LAW, AND IT RESOLVES ITS
+/// GROUND FIRST.**
+///
+/// > 「왜 아직 **블록이 회색일때 그리드선이 흰색**인거지? 안보일까봐 같은
+/// > 이유라면 **코마텍스트도 흰색으로 했을 상황**일텐데」 · 「**카메라레이어는
+/// > 그리드 안보이고**」
+///
+/// Two places had not been put through the law. An UNWORKED block is
+/// 43%-alpha paper over the row's underlay, and the multiply was handed
+/// that translucent colour as if it were opaque — `lerp` climbs the ALPHA
+/// too, so the line came out MORE opaque than its surroundings and read
+/// white. And the camera row was excluded from the line outright.
+void _grid43Round() {
+  final scheme = buildAppTheme().colorScheme;
+  double lum(Color c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+
+  test('a TRANSLUCENT paper is composited before the multiply — the line is '
+      'darker than what the eye actually sees there', () {
+    final row = scheme.surface;
+    final unworked = timelineDrawingHeldColor.withValues(alpha: 0.43);
+    final seen = Color.alphaBlend(unworked, row);
+    final ink = timelineGridBaseLineInk(scheme);
+
+    final resolved = timelineGridLineInkOnGround(ink, seen);
+    final onScreen = Color.alphaBlend(resolved, row);
+    expect(
+      lum(onScreen),
+      lessThan(lum(seen)),
+      reason:
+          '⛔the pre-fix path multiplied against the 43% colour and came '
+          'out LIGHTER than its ground (measured: 0.471 vs 0.461) — that is '
+          'the white line on the grey block',
+    );
+
+    // And the un-composited form is the bug, kept here so the difference is
+    // a fact in the file rather than a claim in a commit message.
+    final naive = timelineGridLineInkOnGround(ink, unworked);
+    expect(
+      lum(Color.alphaBlend(naive, row)),
+      greaterThan(lum(seen)),
+      reason:
+          'fixture premise: multiplying the translucent colour really '
+          'does produce a lighter line',
+    );
   });
 }
