@@ -2628,6 +2628,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             );
           },
       onTapAt: host.onTapAt,
+      onTapClear: host.onTapClear,
       onMoveBegin: host.onMoveBegin,
       onMoveUpdate: host.onMoveUpdate,
       onMoveEnd: host.onMoveEnd,

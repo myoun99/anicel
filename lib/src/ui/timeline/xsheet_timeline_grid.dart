@@ -1445,6 +1445,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                               );
                             },
                         onTapAt: hostLaneRange.onTapAt,
+                        onTapClear: hostLaneRange.onTapClear,
                         onMoveBegin: hostLaneRange.onMoveBegin,
                         onMoveUpdate: hostLaneRange.onMoveUpdate,
                         onMoveEnd: hostLaneRange.onMoveEnd,

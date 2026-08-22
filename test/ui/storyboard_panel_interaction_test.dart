@@ -1432,6 +1432,7 @@ void main() {
           onSelectUpdate: (layerId, laneId, anchor, head, headLaneId) =>
               inGroup.add((laneId, headLaneId)),
           onTapAt: (_, _, _) {},
+          onTapClear: () {},
           onMoveBegin: () => false,
           onMoveUpdate: (_) {},
           onMoveEnd: () {},
@@ -1488,16 +1489,12 @@ void main() {
       expect(last.layerId, seId);
       expect(last.headRow, LayerRowAddress(seId));
       expect(last.anchorRow, LaneRowAddress(seId, 'position'));
-      expect(
-        last.spanRows,
-        [
-          LayerRowAddress(seId),
-          LaneRowAddress(seId, transformGroupHeaderLane.laneId),
-          LaneRowAddress(seId, 'anchor-point'),
-          LaneRowAddress(seId, 'position'),
-        ],
-        reason: 'the display slice, top to bottom',
-      );
+      expect(last.spanRows, [
+        LayerRowAddress(seId),
+        LaneRowAddress(seId, transformGroupHeaderLane.laneId),
+        LaneRowAddress(seId, 'anchor-point'),
+        LaneRowAddress(seId, 'position'),
+      ], reason: 'the display slice, top to bottom');
     });
 
     testWidgets('DOWN past the group\'s last member reaches the V row — '
@@ -1522,7 +1519,8 @@ void main() {
       expect(
         log.escalated.last.headRow,
         TrackRowAddress(log.track.id),
-        reason: 'the cut row is a rail row like any other — the span may '
+        reason:
+            'the cut row is a rail row like any other — the span may '
             'end on it (선택범위는 자유롭게)',
       );
     });

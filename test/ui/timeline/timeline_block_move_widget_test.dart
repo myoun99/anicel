@@ -215,7 +215,8 @@ void main() {
     expect(
       spans.last,
       isNotEmpty,
-      reason: 'an empty span means the grid computed the slice and threw it '
+      reason:
+          'an empty span means the grid computed the slice and threw it '
           'away — the selection then falls back to a model walk, which is '
           'the whole thing this round removed',
     );
@@ -377,6 +378,7 @@ void main() {
                 );
               },
               onTapAt: (_, _, _) => laneSelection.value = null,
+              onTapClear: () {},
               onMoveBegin: () => false,
               onMoveUpdate: (_) {},
               onMoveEnd: () {},
@@ -966,7 +968,8 @@ void main() {
     expect(
       find.byKey(const ValueKey<String>('timeline-range-gesture-layer-00')),
       findsOneWidget,
-      reason: 'the held row is pinned against the window (A5/D42) — '
+      reason:
+          'the held row is pinned against the window (A5/D42) — '
           'unmounting it would fire the dispose backstop mid-drag',
     );
     expect(
@@ -1025,7 +1028,8 @@ void main() {
       const ValueKey<String>('timeline-range-gesture-layer-00'),
     );
     // Press on an EMPTY cell of the first row (past its block) — a SELECT.
-    final start = tester.getTopLeft(gestureLayer) + const Offset(24 + 5 * 48, 26);
+    final start =
+        tester.getTopLeft(gestureLayer) + const Offset(24 + 5 * 48, 26);
     final gesture = await tester.startGesture(
       start,
       kind: PointerDeviceKind.mouse,
@@ -1040,7 +1044,8 @@ void main() {
     expect(
       find.byKey(const ValueKey<String>('timeline-range-gesture-layer-00')),
       findsOneWidget,
-      reason: 'the anchor row is pinned — unpinned, its recognizer '
+      reason:
+          'the anchor row is pinned — unpinned, its recognizer '
           'disposes with the window slide and the sweep silently freezes',
     );
     final updatesAtEdge = selectUpdates.length;
@@ -1512,6 +1517,7 @@ void main() {
                 onSelectUpdate: (_, _, anchor, _, _) =>
                     selectUpdates.add(anchor),
                 onTapAt: (_, _, _) {},
+                onTapClear: () {},
                 onMoveBegin: () => true,
                 onMoveUpdate: moveUpdates.add,
                 onMoveEnd: () {},
@@ -1686,6 +1692,7 @@ void main() {
                 // The production host seeks here; this harness stands in
                 // for it with the same one line.
                 onTapAt: (_, _, frame) => cursor.value = frame,
+                onTapClear: () {},
                 onMoveBegin: () => false,
                 onMoveUpdate: (_) {},
                 onMoveEnd: () {},
