@@ -14741,9 +14741,59 @@ class EditorSessionManager extends ChangeNotifier {
     return false;
   }
 
+  /// 🚨결정 9 / R8-c (유저 확정 2026-08-22) — **THE MARK LEARNED THE BAND.**
+  ///
+  /// > 「지우기 눌렀다고해서 **현재 행만 지우는게아니라 선택된 모든게
+  /// > 지워지는걸** 말하는거임. **복사든 뭐든 마찬가지**」
+  ///
+  /// The swept frames of the swept rows, or empty when no band is up. This
+  /// is the rung the ● did not have: it used to END the ladder at a live
+  /// band ([bandNamesRowsThisPressWouldMiss]) because dotting the active row
+  /// while the highlight sat elsewhere would edit something nobody swept.
+  /// Refusing was the honest answer for a verb that could only reach one
+  /// row; now that it can reach the band, serving it is.
+  ///
+  /// ⚠️SYNCED attach and non-drawing rows are filtered HERE rather than in
+  /// the controller, for the same reason the delete collector does it: the
+  /// button and the dispatch have to read one answer, and three downstream
+  /// copies of a filter is how they stop agreeing.
+  Map<LayerId, List<int>> _markableFramesForSelection() {
+    final selection = frameRangeSelection.value;
+    if (selection == null) {
+      return const {};
+    }
+    final ids = <LayerId>[];
+    for (final id in selection.spanLayerIds) {
+      final layer = _rangeLayerById(id);
+      if (layer == null ||
+          !layerKindHoldsDrawings(layer.kind) ||
+          isSyncedAttachedLayer(layer)) {
+        continue;
+      }
+      ids.add(id);
+    }
+    if (ids.isEmpty) {
+      return const {};
+    }
+    return _timelineController.markableFramesInBand(
+      layerIds: ids,
+      startIndex: selection.startIndex,
+      endIndexExclusive: selection.endIndexExclusive,
+    );
+  }
+
+  bool get canToggleMarkForSelection =>
+      _markableFramesForSelection().isNotEmpty;
+
   bool get canToggleMarkAtCurrentFrame {
-    // The dot edits an EXISTING hold and has no band rung, so a live band
-    // ends the ladder here instead of dotting whatever row is active.
+    if (canToggleMarkForSelection) {
+      return true;
+    }
+    // ⛔A band that names rows this press would miss still ENDS the ladder.
+    // The band rung above is the whole of the new reach: a band holding
+    // nothing markable makes the press a no-op, never a redirect onto
+    // whatever row happens to be active (a cell drag never moves the active
+    // layer, so those are routinely different rows).
     if (bandNamesRowsThisPressWouldMiss) {
       return false;
     }
@@ -14763,6 +14813,18 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   void toggleMarkAtCurrentFrame() {
+    final banded = _markableFramesForSelection();
+    if (banded.isNotEmpty) {
+      // SET the whole band one way, never toggle each frame: a mixed band
+      // would invert under the hand and hand back the complement of what
+      // was there. All marked → clear; anything unmarked → mark them all.
+      _timelineController.setMarksForFrames(
+        banded,
+        marked: !_timelineController.bandFramesAreAllMarked(banded),
+      );
+      notifyListeners();
+      return;
+    }
     final layer = activeLayer;
     if (layer == null || !canToggleMarkAtCurrentFrame) {
       return;
