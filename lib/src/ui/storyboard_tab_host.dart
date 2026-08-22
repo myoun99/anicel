@@ -23,7 +23,11 @@ import 'timeline/effect_lane_editing.dart'
     show effectsWithLaneKeyToggled, effectsWithLaneValueEdited;
 import 'timeline/effect_lane_policy.dart' show laneIsEffectLane;
 import 'timeline/property_lane_model.dart' show PropertyLaneEditCallbacks;
-import 'timeline/layer_row_drag.dart' show TimelineRowDragHooks;
+import 'timeline/layer_row_drag.dart'
+    show
+        TimelineRowDragHooks,
+        TrackRowSubject,
+        timelineRowAddressOfDragSubject;
 import 'timeline/se_layer_mixer.dart';
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_layer_controls_header.dart' show LayerLegendCallbacks;
@@ -795,7 +799,41 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       onEffectUpdate: _session.updateEffectRowDrag,
                       onEnd: _session.endLayerRowDrag,
                       onCancel: _session.cancelLayerRowDrag,
+                      // 🚨A5-3② (유저 2026-08-22): 「스토리보드패널에서는 되긴
+                      // 하는데 **통일이 안 돼 있다** — 선택범위로 선택하고
+                      // 이동하는 게 규칙인데 **그냥 바로 드래그 작동**해버림」.
+                      //
+                      // ⑨'s law is ONE law: the first drag SELECTS, and a drag
+                      // that starts INSIDE the selection moves it. It was
+                      // never the timeline's own — it is the cells' grammar
+                      // transposed, and both rails draw cells. This rail
+                      // simply passed null for the three hooks, and null means
+                      // "this surface takes no part in row selection", so
+                      // every press here went straight to the move.
+                      //
+                      // ⛔The V rows are OUT, and null is how the hook says
+                      // so — "this subject takes no part in row selection",
+                      // which leaves a track drag moving on the first press
+                      // exactly as it always has. A5-3 is about the S rows
+                      // (「se트랙은 트랙끼리 드래그이동」); putting tracks
+                      // behind a select step is a real change to a different
+                      // gesture, and it is not mine to make unasked. Their
+                      // reorder pins caught this the moment the hook was
+                      // unconditional, which is the pins doing their job.
+                      isInRowSelection: (subject) => subject is TrackRowSubject
+                          ? null
+                          : _session.rowIsSelected(
+                              timelineRowAddressOfDragSubject(subject),
+                            ),
+                      onSelectBegin: (subject) => _session.beginRowSelection(
+                        timelineRowAddressOfDragSubject(subject),
+                      ),
+                      onSelectEnd: _session.endRowSelection,
                     ),
+                    // The span half — the three hooks above only ARM the
+                    // selection; without this the press would select one row
+                    // and then refuse to grow.
+                    onSeRowSelectionSpan: _session.updateRowSelection,
                     layerLaneEdit: _layerLaneEdit,
                     activeCutFrameCursor: _activeCutFrameCursor,
                     onSelectFrameIndex: _session.selectFrameIndex,

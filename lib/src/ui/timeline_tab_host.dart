@@ -24,13 +24,7 @@ import 'timeline/effect_lane_policy.dart';
 import 'timeline/property_lane_model.dart';
 import 'timeline/timeline_lane_provider.dart';
 import 'timeline/layer_row_drag.dart'
-    show
-        EffectRowSubject,
-        LaneRowSubject,
-        LayerRowDragSubject,
-        LayerRowSubject,
-        TimelineRowDragHooks,
-        TrackRowSubject;
+    show TimelineRowDragHooks, timelineRowAddressOfDragSubject;
 import 'timeline/timeline_cel_content_source.dart';
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_cut_end_handle.dart';
@@ -245,32 +239,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       frameIndex: frameIndex,
     );
   }
-
-  /// T5: what a row drag's subject is CALLED in the selection's own words.
-  ///
-  /// The two vocabularies existed side by side — the drag names a subject,
-  /// the selection names an address — and the seam between them was where
-  /// 「이 종류는 선택 못 함」 hid. Naming every subject makes the question
-  /// disappear rather than answering it per kind.
-  ///
-  /// An fx header's address is its GROUP LANE, which is what the rail already
-  /// draws it as; nothing new is invented here.
-  TimelineRowAddress _addressOfDragSubject(LayerRowDragSubject subject) =>
-      switch (subject) {
-        LayerRowSubject(:final layerId) => LayerRowAddress(layerId),
-        EffectRowSubject(:final layerId, :final effectId) => LaneRowAddress(
-          layerId,
-          effectGroupLaneId(effectId),
-        ),
-        TrackRowSubject(:final trackId) => TrackRowAddress(trackId),
-        // B4-3: a lane anchors a selection at its OWN address. The fx
-        // header case above lands on the same kind of address — it is
-        // reached through the subject that can also re-order a chain.
-        LaneRowSubject(:final layerId, :final laneId) => LaneRowAddress(
-          layerId,
-          laneId,
-        ),
-      };
 
   /// The LABEL half of the same rule: pressing a lane's name stands on it,
   /// exactly as the layer row's name selects its layer. No seek — a label
@@ -961,9 +929,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               // selection and the drag selects; start inside it and the drag
               // re-orders the chain.
               isInRowSelection: (subject) =>
-                  _session.rowIsSelected(_addressOfDragSubject(subject)),
+                  _session.rowIsSelected(timelineRowAddressOfDragSubject(subject)),
               onSelectBegin: (subject) =>
-                  _session.beginRowSelection(_addressOfDragSubject(subject)),
+                  _session.beginRowSelection(timelineRowAddressOfDragSubject(subject)),
               onSelectEnd: _session.endRowSelection,
             ),
             onRowSelectionSpan: _session.updateRowSelection,
