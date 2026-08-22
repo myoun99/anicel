@@ -25,7 +25,11 @@ import 'layer_rail_columns.dart'
     show layerRailTrailingCells, layerRailTwirlIcon;
 import 'property_lane_model.dart';
 import 'timeline_beat_lines.dart'
-    show TimelineBeatLinesPainter, TimelineGridLaw, timelineGridGroundOver;
+    show
+        TimelineBeatLinesPainter,
+        TimelineGridLaw,
+        timelineGridGroundOver,
+        timelineGridRowSeamInk;
 import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 import 'timeline_cell_style.dart'
     show
@@ -1156,24 +1160,29 @@ class TimelineLaneFrameRow extends StatelessWidget {
     // the panel overlay uses, so there is no copy here to drift.
     final bandWash = AppColors.washDown.withValues(alpha: 0.6);
     final gridLaw = TimelineGridLaw.maybeOf(context);
+    // The ROW SEAM, from the law — see the border below.
+    final seamInk = timelineGridRowSeamInk(colorScheme);
+    final bandSeam = BorderSide(
+      color: seamInk.color,
+      width: seamInk.strokeWidth,
+    );
     final band = DecoratedBox(
       decoration: BoxDecoration(
         color: bandWash,
         // The divider faces the NEXT lane: below in the timeline, to the
         // right in the X-sheet.
-        border: horizontal
-            ? Border(
-                bottom: BorderSide(
-                  color: colorScheme.outlineVariant,
-                  width: 0.5,
-                ),
-              )
-            : Border(
-                right: BorderSide(
-                  color: colorScheme.outlineVariant,
-                  width: 0.5,
-                ),
-              ),
+        //
+        // 🚨D43-2 재개 d (유저 2026-08-23): 「fx행엔 그리드의 가로선 있는데
+        // 레이어쪽 프레임쪽엔 없거든? 그거 통일로 추가해주고」. THIS was the
+        // line that existed — a `BorderSide` written here in its own words
+        // (outlineVariant at HALF width), while the frame cells rows drew
+        // nothing at all and the overlay's seam wrote a third spelling. The
+        // value comes from the law now, so the row that just grew a seam
+        // and the row that always had one are the same line.
+        border: Border(
+          bottom: horizontal ? bandSeam : BorderSide.none,
+          right: horizontal ? BorderSide.none : bandSeam,
+        ),
       ),
       child: Stack(
         clipBehavior: Clip.none,

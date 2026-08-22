@@ -157,6 +157,14 @@ void main() {
       if (painter.heldSeamLineFor(frame) != null) {
         expectedLines += 1;
       }
+      // 🚨D43-2 재개 d (유저 2026-08-23): 「fx행엔 그리드의 **가로선** 있는데
+      // 레이어쪽 프레임쪽엔 없거든? 그거 통일로 추가해주고」 — the CROSS-axis
+      // seam is emitted per cell too. Counted off the painter like its
+      // sibling, which is what keeps this from turning into a formula that
+      // recites whatever the emitter happens to do.
+      if (painter.rowSeamLineFor(frame) != null) {
+        expectedLines += 1;
+      }
     }
     expect(expectedLines, greaterThan(0), reason: 'the law puts lines here');
     final empty = timelineGridSubstrateOps(
@@ -168,7 +176,8 @@ void main() {
     expect(
       empty.length,
       expectedLines * 8,
-      reason: 'one fill per line the painter names, and nothing more — the '
+      reason:
+          'one fill per line the painter names, and nothing more — the '
           'paper really is absent, so UI-R21 #2 still holds for the FILL. '
           'It never governed the line.',
     );

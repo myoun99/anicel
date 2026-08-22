@@ -96,6 +96,22 @@ class TimelineFrameAreaEdge extends StatelessWidget {
 ({Color color, double strokeWidth}) timelineGridSecondLineInk() =>
     (color: AppColors.beatLine, strokeWidth: 1.5);
 
+/// ROW SEAM — the grid's CROSS-axis line, between one row and the next.
+/// Full strength and zoom-independent (UI-R18 #10/#12: the rows' hairline
+/// language extended into the cell area).
+///
+/// 🚨D43-2 재개 d (유저 2026-08-23): 「**fx행엔 그리드의 가로선 있는데
+/// 레이어쪽 프레임쪽엔 없거든?** 그거 통일로 추가해주고」
+///
+/// ⛔The value used to be spelled out wherever a seam was drawn — an inline
+/// tuple inside the overlay, a `BorderSide(outlineVariant, 0.5)` on the fx
+/// band, and NOTHING at all on the frame cells rows, which paint an opaque
+/// ground straight over the overlay's (D32's z-order). Three spellings, one
+/// of them silence. Named here so a seam is one line however it is reached.
+({Color color, double strokeWidth}) timelineGridRowSeamInk(
+  ColorScheme colorScheme,
+) => (color: colorScheme.outlineVariant, strokeWidth: 1.0);
+
 /// The position convention: a boundary line's center sits half a pixel
 /// past the boundary — the frame ruler's own snap, now the law's.
 const double timelineGridLineSnap = 0.5;
@@ -398,12 +414,10 @@ class TimelineBeatLinesPainter extends CustomPainter {
     // ROW seams (UI-R18 #10/#12): full-strength, zoom-independent — the
     // rows' own hairline language extended into the cell area.
     if (crossCellExtent > 0) {
+      final seamInk = timelineGridRowSeamInk(colorScheme);
       final seamPaint = Paint()
-        ..color = _inkOnGround((
-          color: colorScheme.outlineVariant,
-          strokeWidth: 1.0,
-        ))
-        ..strokeWidth = 1;
+        ..color = _inkOnGround(seamInk)
+        ..strokeWidth = seamInk.strokeWidth;
       for (
         var seam = crossCellExtent;
         seam < crossExtent;

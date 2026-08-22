@@ -766,22 +766,30 @@ void timelineGridEmitSubstrate(
     // emitter is a SECOND reader of the same contract and it dropped the
     // answer on the floor — the fourth shape of "the law file is green and
     // the panel is broken" this round.
-    if (background.a <= 0 && border.a <= 0) {
-      final onEmpty = painter.heldSeamLineFor(frameIndex);
-      if (onEmpty != null) {
-        final seamLocal = horizontal
-            ? onEmpty.rect.shift(Offset(-originMain, 0))
-            : onEmpty.rect.shift(Offset(0, -originMain));
-        writer.rrectFill(
-          seamLocal.left * devicePixelRatio,
-          seamLocal.top * devicePixelRatio,
-          seamLocal.width * devicePixelRatio,
-          seamLocal.height * devicePixelRatio,
-          0,
-          0,
-          timelineGridPackRgba(onEmpty.color),
-        );
+    // 🚨D43-2 재개 d: BOTH axes of the grid, and both BEFORE the emptiness
+    // skip — the vertical boundary and the cross-axis ROW SEAM are one law,
+    // and an empty cell owes the grid both of them.
+    void emitLine(({Rect rect, Color color})? line) {
+      if (line == null) {
+        return;
       }
+      final lineLocal = horizontal
+          ? line.rect.shift(Offset(-originMain, 0))
+          : line.rect.shift(Offset(0, -originMain));
+      writer.rrectFill(
+        lineLocal.left * devicePixelRatio,
+        lineLocal.top * devicePixelRatio,
+        lineLocal.width * devicePixelRatio,
+        lineLocal.height * devicePixelRatio,
+        0,
+        0,
+        timelineGridPackRgba(line.color),
+      );
+    }
+
+    if (background.a <= 0 && border.a <= 0) {
+      emitLine(painter.heldSeamLineFor(frameIndex));
+      emitLine(painter.rowSeamLineFor(frameIndex));
       continue;
     }
     final local = horizontal
@@ -843,20 +851,9 @@ void timelineGridEmitSubstrate(
     // ([TimelineRowCellsPainter.heldSeamLineFor]) probed and mirrored, an
     // opaque plain-rect fill (the multiply was computed in Dart, so no
     // blend op is needed here).
-    final seam = painter.heldSeamLineFor(frameIndex);
-    if (seam != null) {
-      final seamLocal = horizontal
-          ? seam.rect.shift(Offset(-originMain, 0))
-          : seam.rect.shift(Offset(0, -originMain));
-      writer.rrectFill(
-        seamLocal.left * devicePixelRatio,
-        seamLocal.top * devicePixelRatio,
-        seamLocal.width * devicePixelRatio,
-        seamLocal.height * devicePixelRatio,
-        0,
-        0,
-        timelineGridPackRgba(seam.color),
-      );
-    }
+    emitLine(painter.heldSeamLineFor(frameIndex));
+    // D43-2 재개 d: the CROSS-axis seam rides the same emission — one law,
+    // both axes, and neither pass can drift from the other.
+    emitLine(painter.rowSeamLineFor(frameIndex));
   }
 }
