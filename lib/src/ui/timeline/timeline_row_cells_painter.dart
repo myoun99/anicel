@@ -17,6 +17,7 @@ import 'timeline_cell_exposure_state.dart';
 import 'timeline_beat_lines.dart'
     show
         timelineFrameBoundaryLineInk,
+        timelineGridGroundOver,
         timelineGridLineInkOnGround,
         timelineGridLineSnap;
 import 'timeline_cell_style.dart';
@@ -514,7 +515,15 @@ class TimelineRowCellsPainter extends CustomPainter {
   /// so the baked and classic passes cannot drift.
   ({Rect rect, Color color})? heldSeamLineFor(int frameIndex) {
     final model = cellModelAt(frameIndex);
-    if (model.ghost || _cameraSummaryRow) {
+    // 🚨D43-2 재개 b (유저 2026-08-22): 「**카메라레이어는 그리드 안보이고**」.
+    //
+    // ⛔THE CAMERA ROW USED TO BE EXCLUDED FROM THE LINE OUTRIGHT, and no
+    // reason for it survives reading. Its cells are key-summary markers,
+    // which changes what the row DRAWS — not where the frame boundaries
+    // are. The grid is the sheet's ruling and every row stands on the same
+    // frames, so a row opting out of it is a row claiming its columns sit
+    // somewhere else.
+    if (model.ghost) {
       return null;
     }
     // INSIDE a block the line is the interior seam; OUTSIDE one it is the
@@ -541,9 +550,32 @@ class TimelineRowCellsPainter extends CustomPainter {
     // (UI-R21 #2), so its ground is the ROW's — and where the row paints
     // none either, the line stays the law's own ink, source-over, exactly
     // as the overlay does over artwork.
-    final ground = insideBlock
-        ? resolvedCellStyleFor(frameIndex).background
-        : rowGround;
+    //
+    // 🚨D43-2 재개 b (유저 2026-08-22): 「**왜 아직 블록이 회색일때 그리드선이
+    // 흰색인거지? 안보일까봐 같은이유라면 코마텍스트도 흰색으로 했을
+    // 상황일텐데**」.
+    //
+    // ⛔THE GROUND MUST BE RESOLVED BEFORE IT IS MULTIPLIED. An UNWORKED
+    // block is 43%-alpha paper over the row's underlay, and this handed the
+    // law that translucent colour as if it were opaque. The law ends in
+    // `lerp(ground, multiplied, ink.a)`, which interpolates the ALPHA too —
+    // so it climbed from 0.43 toward 1 while the rgb stayed paper-ish, and
+    // the line came out MORE OPAQUE than the paper around it. 🧪Measured on
+    // the real colours: ground L=0.461, line L=0.471 — lighter, which is
+    // the white line that was reported. The 6f and 24f lines survived by
+    // being dark enough to still read as darker, but at roughly half the
+    // strength the law asks for (0.258 where it should be 0.131).
+    //
+    // 🎯**And this is exactly the rule the TEXT already has.** The run
+    // labels are handed `backdropColor` and resolve the translucent paper
+    // against it before choosing an ink — 「an unworked block is the
+    // 43%-alpha paper over the row's underlay, and its number flips to the
+    // light ink there」. The user read the inconsistency straight off the
+    // screen: one law composited first, the other did not.
+    final ground = timelineGridGroundOver(
+      under: rowGround,
+      painted: insideBlock ? resolvedCellStyleFor(frameIndex).background : null,
+    );
     final color = ground == null
         ? ink.color
         : timelineGridLineInkOnGround(ink, ground);

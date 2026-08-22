@@ -65,7 +65,8 @@ import 'timeline/transform_lane_policy.dart'
         transformPropertyLanes;
 import 'input/app_input_settings.dart' show AppInput;
 import 'widgets/instant_tap_region.dart' show InstantTapRegion;
-import 'timeline/timeline_beat_lines.dart' show TimelineBeatLinesPainter;
+import 'timeline/timeline_beat_lines.dart'
+    show TimelineBeatLinesPainter, TimelineGridLaw;
 import 'timeline/timeline_cell_double_tap.dart'
     show timelineCellDoubleTapActivation, timelineCellDoubleTapRecord;
 import 'timeline/timeline_drag_preview.dart';
@@ -3013,71 +3014,80 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     // The splitter's value is read at the TOP here and nowhere deeper:
     // the strip viewport's width is the first thing this build derives
     // from it, and the rail rows keep stating their natural width.
-    return ValueListenableBuilder<double?>(
-      valueListenable: _railExtent,
-      builder: (context, _, child) => LayoutBuilder(
-        builder: (context, constraints) {
-          // Viewport paper fill (UI-R12 #16): the strips run to the
-          // viewport's right edge — recorded FIRST so the SE strip rows and
-          // the body agree on the rendered extent within one build.
-          // What the panel can spare for the rail: everything but its own
-          // chrome and the strips' two-cell reserve. Recorded so
-          // `_buildBody` and every part of the rail read the ONE value.
-          _availableRailWidth = constraints.hasBoundedWidth
-              ? (constraints.maxWidth -
-                        StoryboardPanel._scrollbarLaneWidth -
-                        LayerRailSplitter.thickness -
-                        layerRailFrameReserveExtent)
-                    .clamp(0.0, double.infinity)
-                    .toDouble()
-              : null;
-          _stripViewportWidth = constraints.hasBoundedWidth
-              ? (constraints.maxWidth -
-                        StoryboardPanel._scrollbarLaneWidth -
-                        _railExtent.windowExtent(
-                          _naturalRailWidth,
-                          availableExtent: _availableRailWidth,
-                        ) -
-                        LayerRailSplitter.thickness)
-                    .clamp(0.0, double.infinity)
-                    .toDouble()
-              : 0.0;
-          _viewportFillFrameCells = endlessViewportFillFrames(
-            viewportExtent: _stripViewportWidth,
-            frameCellExtent: _scale.pixelsPerFrame,
-          );
-          // The V rows' geometry for this pass. `frameStartIndex` is 0 and
-          // there is no leading spacer: the storyboard's x IS the track-global
-          // frame axis, which is exactly why the timeline's gesture layer can
-          // read it without knowing whose row it is on.
-          _frameGeometry.value = TimelineFrameGeometry(
-            frameCellExtent: _scale.pixelsPerFrame,
-            frameStartIndex: 0,
-            frameEndIndexExclusive:
-                _totalFrames(
-                  widget.project,
-                  buildStoryboardTimelineLayout(widget.project),
-                ) +
-                _endlessTrailingFrames +
-                _viewportFillFrameCells,
-          );
-          // SE rows are built OUTSIDE the drag-preview builder from the RAW
-          // project (R10-③): their content is track-global, so a cut trim
-          // never changes them — handing the per-step rebuild IDENTICAL row
-          // instances lets Flutter skip their whole subtrees (waveform
-          // painters included). The trade: an in-flight trim doesn't slide
-          // their cut-boundary marks until release. SE comma drags edit the
-          // ACTIVE layer through the timeline gates, unaffected here.
-          final trackGlobalStripRowsByTrack = _trackGlobalStripRowsByTrack();
-          // The body builds from the COMMITTED project, once. The drag
-          // preview is read further down, at [_trackGroupSection] — see the
-          // measurement in its doc for why the difference is not small.
-          return _buildBody(
-            context,
-            widget.project,
-            trackGlobalStripRowsByTrack,
-          );
-        },
+    //
+    // 🚨D43-2 재개: the grid's ground, stated once above both the overlay
+    // and every row that covers it. The storyboard sits on `surface`, not
+    // the timeline's container colour — which is exactly why this is
+    // inherited rather than guessed at the point of use.
+    return TimelineGridLaw(
+      ground: Theme.of(context).colorScheme.surface,
+      framesPerSecond: _countingFps,
+      child: ValueListenableBuilder<double?>(
+        valueListenable: _railExtent,
+        builder: (context, _, child) => LayoutBuilder(
+          builder: (context, constraints) {
+            // Viewport paper fill (UI-R12 #16): the strips run to the
+            // viewport's right edge — recorded FIRST so the SE strip rows and
+            // the body agree on the rendered extent within one build.
+            // What the panel can spare for the rail: everything but its own
+            // chrome and the strips' two-cell reserve. Recorded so
+            // `_buildBody` and every part of the rail read the ONE value.
+            _availableRailWidth = constraints.hasBoundedWidth
+                ? (constraints.maxWidth -
+                          StoryboardPanel._scrollbarLaneWidth -
+                          LayerRailSplitter.thickness -
+                          layerRailFrameReserveExtent)
+                      .clamp(0.0, double.infinity)
+                      .toDouble()
+                : null;
+            _stripViewportWidth = constraints.hasBoundedWidth
+                ? (constraints.maxWidth -
+                          StoryboardPanel._scrollbarLaneWidth -
+                          _railExtent.windowExtent(
+                            _naturalRailWidth,
+                            availableExtent: _availableRailWidth,
+                          ) -
+                          LayerRailSplitter.thickness)
+                      .clamp(0.0, double.infinity)
+                      .toDouble()
+                : 0.0;
+            _viewportFillFrameCells = endlessViewportFillFrames(
+              viewportExtent: _stripViewportWidth,
+              frameCellExtent: _scale.pixelsPerFrame,
+            );
+            // The V rows' geometry for this pass. `frameStartIndex` is 0 and
+            // there is no leading spacer: the storyboard's x IS the track-global
+            // frame axis, which is exactly why the timeline's gesture layer can
+            // read it without knowing whose row it is on.
+            _frameGeometry.value = TimelineFrameGeometry(
+              frameCellExtent: _scale.pixelsPerFrame,
+              frameStartIndex: 0,
+              frameEndIndexExclusive:
+                  _totalFrames(
+                    widget.project,
+                    buildStoryboardTimelineLayout(widget.project),
+                  ) +
+                  _endlessTrailingFrames +
+                  _viewportFillFrameCells,
+            );
+            // SE rows are built OUTSIDE the drag-preview builder from the RAW
+            // project (R10-③): their content is track-global, so a cut trim
+            // never changes them — handing the per-step rebuild IDENTICAL row
+            // instances lets Flutter skip their whole subtrees (waveform
+            // painters included). The trade: an in-flight trim doesn't slide
+            // their cut-boundary marks until release. SE comma drags edit the
+            // ACTIVE layer through the timeline gates, unaffected here.
+            final trackGlobalStripRowsByTrack = _trackGlobalStripRowsByTrack();
+            // The body builds from the COMMITTED project, once. The drag
+            // preview is read further down, at [_trackGroupSection] — see the
+            // measurement in its doc for why the difference is not small.
+            return _buildBody(
+              context,
+              widget.project,
+              trackGlobalStripRowsByTrack,
+            );
+          },
+        ),
       ),
     );
   }
