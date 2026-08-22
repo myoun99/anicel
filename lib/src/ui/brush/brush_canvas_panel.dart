@@ -30,6 +30,7 @@ import '../../services/history_manager.dart';
 import '../canvas/bitmap_surface_painter.dart';
 import '../canvas/active_stroke_overlay.dart';
 import '../canvas/canvas_selection_layer.dart';
+import '../canvas/canvas_touch_contacts.dart' show CanvasTouchContacts;
 import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/selection_ants_painter.dart';
 import '../canvas/selection_float_overlay.dart';
@@ -1154,6 +1155,28 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     bool sample = true,
   }) {
     if (!AppInput.toolAcceptsPointer(kind)) {
+      return;
+    }
+    // 🚨D34 재개 (유저 2026-08-21): 「어떤 툴을 쓰든 **터치조작 하고나면
+    // 마우스 커서가 해당 위치로 이동**해 있음」.
+    //
+    // ⛔A MOUSE SAMPLE ARRIVING AROUND A TOUCH IS NOT A HAND ON A MOUSE.
+    // Windows synthesizes legacy mouse messages from touch — the engine
+    // never suppresses them (see [CanvasTouchContacts]) — and that
+    // synthesis physically drags the system cursor to the touch point. The
+    // sample is honest about where the cursor IS; it is dishonest about
+    // anyone having pointed there.
+    //
+    // ⚠️The census already refuses the FINGER itself
+    // ([AppInput.toolAcceptsPointer], R10). This is the other half: the
+    // promoted MOUSE that the same touch produces, which passes that gate
+    // because it says it is a mouse.
+    //
+    // ⛔Only the AIM stands down. The event keeps every other job it has —
+    // this is a question about which position the cursor should be drawn
+    // at, not about whether the pointer happened.
+    if (kind == PointerDeviceKind.mouse &&
+        CanvasTouchContacts.mouseIsProbablyPromotedTouch) {
       return;
     }
     _lastCanvasPointer = localPosition;
