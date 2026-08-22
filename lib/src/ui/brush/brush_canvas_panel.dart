@@ -30,6 +30,8 @@ import '../../services/history_manager.dart';
 import '../canvas/bitmap_surface_painter.dart';
 import '../canvas/active_stroke_overlay.dart';
 import '../canvas/canvas_selection_layer.dart';
+import '../canvas/canvas_touch_contacts.dart' show CanvasTouchContacts;
+import 'promoted_touch_aim_policy.dart' show aimIsPromotedTouch;
 import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/selection_ants_painter.dart';
 import '../canvas/selection_float_overlay.dart';
@@ -1154,6 +1156,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     bool sample = true,
   }) {
     if (!AppInput.toolAcceptsPointer(kind)) {
+      return;
+    }
+    // 🚨D34: and a MOUSE that a finger produced does not aim either.
+    if (aimIsPromotedTouch(
+      kind: kind,
+      touchContacts: CanvasTouchContacts.count,
+      touchDraws: AppInput.touchDraws,
+    )) {
       return;
     }
     _lastCanvasPointer = localPosition;
