@@ -829,15 +829,20 @@ void main() {
       'coordinate — the base pass skipped that tile, so a clamped image '
       'would cut a transparent strip through committed artwork',
       () async {
-        // The overlay grid divides the canvas but NOT the pasteboard
-        // (3× the canvas), so the last coordinate is a partial rect: 40×3
-        // = 120 wide, and a 32px grid puts the wall mid-tile.
+        // The overlay grid divides the canvas but NOT the pasteboard, so
+        // the last coordinate is a partial rect and a 32px grid puts the
+        // wall mid-tile.
+        //
+        // ⚠️H2 (2026-08-22) moved the wall in: the pasteboard now reaches
+        // 2× the canvas, i.e. 40×2 = 80, not 120. The dabs below moved
+        // with it — at their old places they sat entirely PAST the wall,
+        // where nothing is written and there is no partial tile to test.
         const overlayTile = 32;
         final base = materializeBrushDabSequenceOnBitmapSurface(
           surface: BitmapSurface(canvasSize: _canvasSize, tileSize: overlayTile),
           sequence: BrushDabSequence([
             _dab(
-              x: 113.5,
+              x: 73.5,
               y: 12.5,
               size: 20,
               color: 0xFF994411,
@@ -849,7 +854,7 @@ void main() {
         ).surface;
         final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
         final region = rasterizer.blendFrom([
-          _dab(x: 112.5, y: 14.5, size: 10, color: 0xFF2266AA),
+          _dab(x: 72.5, y: 14.5, size: 10, color: 0xFF2266AA),
         ], from: 0)!;
 
         final model = ActiveStrokeOverlayModel(tileSize: overlayTile)

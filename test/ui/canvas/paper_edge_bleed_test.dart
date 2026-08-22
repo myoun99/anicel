@@ -42,7 +42,19 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 /// blit cannot dilute it). Over a dark backdrop, ink pixels read 0 and
 /// the backdrop 16 — ANY bright pixel is the bug.
 void main() {
-  const canvasSize = CanvasSize(width: 2016, height: 1266);
+  // ⚠️H2 (3×3 pasteboard, 2026-08-22): the canvas GREW from 2016. The
+  // scaled path engages only when the composed rect crosses the 8192 cap,
+  // and that rect is bounded by the pasteboard — three canvases wide now
+  // instead of five, so the old figure stopped reaching the cap and this
+  // fixture silently stopped testing the path it is named after.
+  //
+  // 🧪MEASURED, not derived: at 2016 and 3024 the engagement probe comes
+  // back null; at 4096 and 6016 it engages. I could not account for the
+  // threshold sitting between 3024 and 4096 from the source alone, and I
+  // will not pretend otherwise — the engagement pin below is precisely the
+  // guard that says so out loud. If it ever reads null again, this fixture
+  // has stopped measuring the path it is named after.
+  const canvasSize = CanvasSize(width: 4096, height: 1266);
   final tileCache = BitmapTileImageCache.instance;
 
   BitmapSurface blackFilledSurface() {

@@ -307,14 +307,21 @@ void main() {
   ) async {
     await tester.runAsync(() async {
       final cache = BitmapTileImageCache();
-      // The commit clips at the pasteboard wall, so the composition has
-      // to. A 3-wide canvas walls off at x = 9 (the pasteboard runs to
-      // three canvas widths), and a 2 px tile at column 4 STRADDLES it:
-      // x = 8 is on, x = 9 is off. Without the clip the composed tile
-      // shows ink at x = 9 for a frame and then loses it when the real
-      // decode lands without it — a picture that promises what the commit
-      // did not deliver.
-      final edge = TileCoord(x: 4, y: 0);
+      // The commit clips at the pasteboard wall, so the composition has to.
+      //
+      // ⚠️H2 (3×3, 2026-08-22) moved this fixture to the LEFT wall. It used
+      // to straddle the right one at x = 9; with ONE canvas per edge that
+      // wall is 2×width — always even, like every 2 px tile boundary — so
+      // no tile can straddle it any more. The left wall is −width, which
+      // for an odd canvas falls strictly inside a tile, and straddling is
+      // the entire point of the fixture.
+      //
+      // A 3-wide canvas walls off at x = −3, and the 2 px tile at column −2
+      // covers x = −4 (past the wall) and x = −3 (inside it). Without the
+      // clip the composed tile shows ink at x = −4 for a frame and then
+      // loses it when the real decode lands without it — a picture that
+      // promises what the commit did not deliver.
+      final edge = TileCoord(x: -2, y: 0);
       final post = surfaceOf([tile(edge)], width: 3);
       final seeded = seedProvisionalTilePictures(
         preSurface: surfaceOf([tile(edge)], width: 3),
@@ -334,13 +341,13 @@ void main() {
       final composed = cache.displayImageFor(post.tileAt(edge)!)!;
       final data = await composed.toByteData(format: ui.ImageByteFormat.rawRgba);
       final bytes = data!.buffer.asUint8List();
-      expect(bytes[3], 255, reason: 'canvas x=8 is inside the wall');
       expect(
-        bytes[7],
+        bytes[3],
         0,
-        reason: 'canvas x=9 is past the wall, where the commit writes '
+        reason: 'canvas x=-4 is past the wall, where the commit writes '
             'nothing',
       );
+      expect(bytes[7], 255, reason: 'canvas x=-3 is inside the wall');
     });
   });
 }
