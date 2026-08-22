@@ -586,12 +586,36 @@ abstract final class AppInput {
   /// The device set every timeline EDIT pan uses (range select/move,
   /// comma grips, run handles, block moves): touch joins exactly while
   /// the timeline scroll does NOT own it.
+  ///
+  /// 🚨결정 10 (유저 확정 2026-08-22) — **A FINGER IS A MOUSE WHEN IT
+  /// DRAWS.**
+  ///
+  /// > 「1핑거 드로잉모드일때는 타임라인 터치시 **선택범위나 엣지조작
+  /// > 작동하게하고싶은데 안돼있음.** 1핑거 드로잉일땐 **터치를 마우스로
+  /// > 인식**하게하면 **다른 패널도 공통적으로** 마우스로 할수있는조작
+  /// > 할수있게되서 **통일성면에서도 좋을거같음**」
+  ///
+  /// [touchDraws] is the user's own global input MODE. They have already
+  /// said, in the canvas, that one finger is the drawing hand; outside the
+  /// canvas that same statement reads "one finger is the pointer". So the
+  /// timeline's scroll ownership yields to it and every edit pan takes the
+  /// finger — the whole surface follows from this one set (eight call
+  /// sites: range select/move, comma grips, run handles, the cut-end
+  /// handle, lane rows, row chrome, the rail's own row drag).
+  ///
+  /// ⚠️The cost was named by the USER first, not discovered afterwards:
+  /// 「그러면 1핑거 드로잉에선 **타임라인 스크롤 불가**해지는거지. 대신
+  /// 엣지조작이나 선택범위가 작동하는거고. **그걸 원해서 한 말이야.**
+  /// 어차피 2핑거로 스크롤되니까 문제없고」.
+  ///
+  /// ⛔It does not reach into the CANVAS — [toolPointerDevices] is that
+  /// question and already answers it. This is the outside.
   static Set<PointerDeviceKind> get timelineEditPanDevices => {
     PointerDeviceKind.mouse,
     PointerDeviceKind.stylus,
     PointerDeviceKind.invertedStylus,
     PointerDeviceKind.unknown,
-    if (!touchTimelineScroll) PointerDeviceKind.touch,
+    if (!touchTimelineScroll || touchDraws) PointerDeviceKind.touch,
   };
 
   /// Whether a CELL press of [kind] moves the ACTIVE target — **every device
