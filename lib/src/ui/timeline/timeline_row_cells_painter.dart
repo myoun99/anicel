@@ -19,7 +19,8 @@ import 'timeline_beat_lines.dart'
         timelineFrameBoundaryLineInk,
         timelineGridGroundOver,
         timelineGridLineInkOnGround,
-        timelineGridLineSnap;
+        timelineGridLineSnap,
+        timelineGridRowSeamInk;
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
 import 'timeline_frame_geometry.dart';
@@ -598,6 +599,63 @@ class TimelineRowCellsPainter extends CustomPainter {
     );
   }
 
+  /// The grid's CROSS-axis line under this cell — the seam between this row
+  /// and the next, in the segment this cell spans.
+  ///
+  /// 🚨D43-2 재개 d (유저 2026-08-23): 「**fx행엔 그리드의 가로선 있는데
+  /// 레이어쪽 프레임쪽엔 없거든?** 그거 통일로 추가해주고」
+  ///
+  /// ⛔SAME SHAPE AS THE VERTICAL LINES, one axis over. The overlay draws
+  /// row seams across the whole grid, and it sits UNDER the rows (D32), so a
+  /// row that lays down an opaque ground erases its own. The fx band kept
+  /// one because it had written a `BorderSide` of its own; the frame cells
+  /// row had written nothing, so it simply had no seam.
+  ///
+  /// Per CELL rather than one line per row, because the tile emitter bakes
+  /// per cell — the segments abut and read as one line, and the classic and
+  /// baked passes cannot drift.
+  ///
+  /// ⚠️Chromeless rows answer null: a row lying ON the artwork has no seam
+  /// to draw, exactly as it has no ground.
+  ({Rect rect, Color color})? rowSeamLineFor(int frameIndex) {
+    if (chromeless) {
+      return null;
+    }
+    final ink = timelineGridRowSeamInk(colorScheme);
+    final rect = cellRectFor(frameIndex);
+    final model = cellModelAt(frameIndex);
+    final insideBlock = !model.ghost && model.segment.isBlock;
+    // The same ground question the vertical line asks, so one boundary and
+    // one seam land on the same colour where they cross.
+    final ground = timelineGridGroundOver(
+      under: rowGround,
+      painted: insideBlock ? resolvedCellStyleFor(frameIndex).background : null,
+    );
+    final color = ground == null
+        ? ink.color
+        : timelineGridLineInkOnGround(ink, ground);
+    final width = ink.strokeWidth;
+    // The TRAILING cross edge, snapped the law's way — the seam belongs to
+    // the boundary between this row and the next, so it sits at the end of
+    // this row's cross extent and the next row's leading edge is untouched.
+    return (
+      rect: axis == Axis.horizontal
+          ? Rect.fromLTWH(
+              rect.left,
+              rect.bottom - width / 2 - timelineGridLineSnap,
+              rect.width,
+              width,
+            )
+          : Rect.fromLTWH(
+              rect.right - width / 2 - timelineGridLineSnap,
+              rect.top,
+              width,
+              rect.height,
+            ),
+      color: color,
+    );
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     _passModels = {};
@@ -778,6 +836,11 @@ class TimelineRowCellsPainter extends CustomPainter {
     }
     if (seam != null) {
       canvas.drawRect(seam.rect, fillPaint..color = seam.color);
+    }
+    // D43-2 재개 d: and the CROSS-axis seam, the same law one axis over.
+    final rowSeam = rowSeamLineFor(frameIndex);
+    if (rowSeam != null) {
+      canvas.drawRect(rowSeam.rect, fillPaint..color = rowSeam.color);
     }
   }
 

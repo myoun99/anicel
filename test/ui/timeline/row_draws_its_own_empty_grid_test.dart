@@ -268,6 +268,110 @@ void main() {
     );
   });
 
+  // 🚨D43-2 재개 d (유저 2026-08-23): 「**fx행엔 그리드의 가로선 있는데
+  // 레이어쪽 프레임쪽엔 없거든?** 그거 통일로 추가해주고」.
+  //
+  // ⛔SAME SHAPE AS THE VERTICAL LINES, one axis over: the overlay draws row
+  // seams and sits UNDER the rows (D32), so a row with an opaque ground
+  // erased its own. The fx band kept one only because it had written a
+  // `BorderSide` of its own — in its own words, at half the law's width.
+  group('the CROSS-axis row seam is the same law', () {
+    test('a frame cells row draws its own seam, on its own ground', () {
+      final painter = painterFor(rowGround: scheme.surface);
+      final seam = painter.rowSeamLineFor(5)!;
+      final ink = timelineGridRowSeamInk(scheme);
+
+      expect(seam.color, timelineGridLineInkOnGround(ink, scheme.surface));
+      expect(seam.rect.height, ink.strokeWidth);
+      expect(
+        seam.rect.width,
+        painter.cellRectFor(5).width,
+        reason:
+            'per CELL, so the baked tiles and the classic pass emit the '
+            'same segments and cannot drift',
+      );
+    });
+
+    test('it sits at the row\'s TRAILING edge — the boundary to the next '
+        'row, not inside this one', () {
+      final painter = painterFor(rowGround: scheme.surface);
+      final cell = painter.cellRectFor(5);
+      final seam = painter.rowSeamLineFor(5)!;
+      // Its CENTRE sits the law's snap in from the row's trailing edge, so
+      // the whole stroke lands inside this row's own extent rather than
+      // half of it bleeding into the next row's canvas.
+      expect(
+        seam.rect.center.dy,
+        closeTo(cell.bottom - timelineGridLineSnap, 0.01),
+      );
+      expect(seam.rect.bottom, lessThanOrEqualTo(cell.bottom));
+    });
+
+    test('the seam takes the block\'s paper where it crosses one — the same '
+        'ground question the vertical line asks', () {
+      final painter = painterFor(rowGround: scheme.surface);
+      expect(
+        painter.rowSeamLineFor(11)!.color,
+        isNot(painter.rowSeamLineFor(5)!.color),
+        reason: 'fixture premise: 11 is inside the block, 5 is empty',
+      );
+      final ink = timelineGridRowSeamInk(scheme);
+      final blockGround = painter.resolvedCellStyleFor(11).background;
+      expect(
+        painter.rowSeamLineFor(11)!.color,
+        timelineGridLineInkOnGround(
+          ink,
+          Color.alphaBlend(blockGround, scheme.surface),
+        ),
+        reason:
+            '⛔the translucent paper is composited FIRST here too — the '
+            'seam cannot repeat the white-line bug on the other axis',
+      );
+    });
+
+    test('a CHROMELESS row draws none — a row lying on the artwork has no '
+        'seam, exactly as the folded overlay draws none', () {
+      final chromeless = TimelineRowCellsPainter(
+        layer: layer,
+        geometry: testFrameGeometry(
+          frameCellExtent: 24,
+          frameEndIndexExclusive: 40,
+        ),
+        crossAxisExtent: 28,
+        exposureStateForLayer: stateFor,
+        colorScheme: scheme,
+        baseTextStyle: const TextStyle(fontSize: 11),
+        framesPerSecond: 24,
+        chromeless: true,
+      );
+      expect(chromeless.rowSeamLineFor(5), isNull);
+      expect(
+        chromeless.heldSeamLineFor(5),
+        isNotNull,
+        reason:
+            'the FRAME boundaries still run there — it is the row-to-row '
+            'seam that has no meaning over artwork, which is the same call '
+            '`collapsed_row_overlay` already makes (crossCellExtent 0)',
+      );
+    });
+
+    test('the TILE path carries it too — the emitter is the reader the '
+        'screen actually goes through', () {
+      List<int> opsFor(int start, int endExclusive) => timelineGridSubstrateOps(
+        painter: painterFor(rowGround: scheme.surface),
+        spanStartIndex: start,
+        spanEndIndexExclusive: endExclusive,
+        devicePixelRatio: 1,
+      );
+
+      // Every cell owes a seam, empty ones included — so a span of purely
+      // empty cells emits strictly more than it did when only the vertical
+      // boundaries were carried. Growing with LENGTH is what proves the
+      // per-cell emission actually reaches the writer.
+      expect(opsFor(2, 9).length, greaterThan(opsFor(2, 4).length));
+    });
+  });
+
   _grid43Round();
 }
 
