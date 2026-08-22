@@ -8464,7 +8464,49 @@ class EditorSessionManager extends ChangeNotifier {
   /// current cell (and the rest of the old hold) becomes empty.
   ///
   /// ⛔Renamed off "cut" in T3 — see [blankExposureAtCurrentFrame].
+  /// 🚨결정 14 ①ⓑ (유저 확정 2026-08-22) — **X BLANKS EXACTLY THE SWEPT
+  /// CELLS.**
+  ///
+  /// The rows the band names, each with the swept span. The playhead X
+  /// truncates a block at the pressed frame; over a band that would blank
+  /// PAST the sweep, so the swept cells go empty and the block's tail stays
+  /// where it stands (see [TimelineController.blankableSpanInBand]).
+  ///
+  /// ⚠️The kind filters live HERE, beside the delete collector's, so the
+  /// button and the dispatch read one answer rather than two copies.
+  Map<LayerId, ({int start, int endExclusive})> _blankableSpanForSelection() {
+    final selection = frameRangeSelection.value;
+    if (selection == null) {
+      return const {};
+    }
+    final ids = <LayerId>[];
+    for (final id in selection.spanLayerIds) {
+      final layer = _rangeLayerById(id);
+      if (layer == null ||
+          !layerKindHoldsDrawings(layer.kind) ||
+          layerKindHoldsSingleCel(layer.kind) ||
+          isSyncedAttachedLayer(layer)) {
+        continue;
+      }
+      ids.add(id);
+    }
+    if (ids.isEmpty) {
+      return const {};
+    }
+    return _timelineController.blankableSpanInBand(
+      layerIds: ids,
+      startIndex: selection.startIndex,
+      endExclusive: selection.endIndexExclusive,
+    );
+  }
+
+  bool get canBlankExposureForSelection =>
+      _blankableSpanForSelection().isNotEmpty;
+
   bool get canBlankExposureAtCurrentFrame {
+    if (canBlankExposureForSelection) {
+      return true;
+    }
     // A live band CLAIMS this press exactly as it claims Delete's and the
     // comma's — X edits an EXISTING hold, so a band that resolves to
     // nothing blankable ends the ladder rather than redirecting onto
@@ -9968,6 +10010,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// — so the code name follows the button and the new verb takes the word
   /// the user gave it.
   void blankExposureAtCurrentFrame() {
+    final banded = _blankableSpanForSelection();
+    if (banded.isNotEmpty) {
+      _timelineController.blankSpansForLayers(banded);
+      notifyListeners();
+      return;
+    }
     final layer = activeLayer;
     if (layer == null || !canBlankExposureAtCurrentFrame) {
       return;
