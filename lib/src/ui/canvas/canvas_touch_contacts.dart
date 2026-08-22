@@ -1,3 +1,10 @@
+import 'package:flutter/gestures.dart'
+    show
+        PointerCancelEvent,
+        PointerDeviceKind,
+        PointerDownEvent,
+        PointerEvent,
+        PointerUpEvent;
 import 'package:flutter/foundation.dart' show VoidCallback;
 
 /// The ink views' SHARED finger census (R26 #5).
@@ -18,6 +25,54 @@ class CanvasTouchContacts {
 
   /// Fingers currently down on ANY ink surface.
   static int get count => _pointers.length;
+
+  /// 🚨★★★D34 — **FINGERS ANYWHERE IN THE APP**, not just on ink.
+  ///
+  /// 🧪유저 캡처 (2026-08-23) — a pure touch operation, and the aim probe
+  /// printed the answer outright:
+  ///
+  /// ```
+  /// touch move   #15 (1172,807)
+  /// mouse hover  #0  (1070,751)      ← during the touch
+  /// mouse scroll #0  (1070,751)      ← the pinch, promoted to a WHEEL
+  /// touch move   #14 (970,698)
+  /// aim census:mouse -> (1009,693) held=true touch=0 draws=false
+  /// ```
+  ///
+  /// ⛔TWO of my conclusions were wrong, and this counter is the second one.
+  ///
+  /// 1. 「승격된 마우스는 앱 이벤트로 안 온다」 — I said that from ONE frozen
+  ///    screenshot that happened not to contain any. It does: Windows
+  ///    promotes the pinch to `mouse hover` + `mouse scroll` at the
+  ///    centroid, and Flutter delivers them.
+  /// 2. The gate I built on [count] reads **`touch=0` while fingers are on
+  ///    the glass** — because [count] only knows contacts on INK surfaces.
+  ///    A pinch on the timeline or the timesheet registers nowhere, so the
+  ///    gate was blind exactly where the user was working.
+  ///
+  /// ⚠️[count] must NOT be widened to fix this. It has a job of its own —
+  /// a second finger on an ink surface stands a running stroke down — and
+  /// counting a finger on the timeline there would abort strokes for a
+  /// gesture that never touched the canvas. Two questions, two counters.
+  ///
+  /// Fed by the app's ONE always-mounted pointer observer
+  /// (`InputInspectorHost`), which already sees every event regardless of
+  /// which panel it lands on.
+  static final Set<int> _appWide = <int>{};
+
+  /// Fingers currently down ANYWHERE — any panel, any surface.
+  static int get appWideCount => _appWide.length;
+
+  static void noteAppWide(PointerEvent event) {
+    if (event.kind != PointerDeviceKind.touch) {
+      return;
+    }
+    if (event is PointerDownEvent) {
+      _appWide.add(event.pointer);
+    } else if (event is PointerUpEvent || event is PointerCancelEvent) {
+      _appWide.remove(event.pointer);
+    }
+  }
 
   /// Views listen so a stroke already running on ANOTHER view can stand
   /// down the moment a second finger lands — the sibling never sees that
@@ -47,5 +102,8 @@ class CanvasTouchContacts {
       _pointers.removeAll(pointers);
 
   /// Test seam.
-  static void reset() => _pointers.clear();
+  static void reset() {
+    _pointers.clear();
+    _appWide.clear();
+  }
 }
