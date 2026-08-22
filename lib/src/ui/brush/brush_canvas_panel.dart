@@ -1216,11 +1216,44 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// synthesises enter/exit for a freshly mounted region but never a hover,
   /// so there is nothing to wait for: the position we already know IS the
   /// answer.
+  /// 🚨★★D34 (유저 2026-08-23, 실기): 「확대축소시 매번 보이는게아니라
+  /// **생겼다 없었다** 하고 … **남아있으면 다음 터치시 계속 남아있고,
+  /// 사라지고나서 터치하면 비교적 커서 안생기는거같아.** 다만 커서 생길때는
+  /// **2핑거 조작후 0.5초정도 뒤에 생기는느낌** … 커서 생긴상태에서 손뗄때도
+  /// 생겼을때는 **커서가 존재하는채로 순간이동**」
+  ///
+  /// ⛔THIS RUNS FROM `build()`, AND IT RESURRECTS A DEAD AIM. All five of
+  /// those observations are this one line:
+  ///
+  /// * a zoom changes the viewport, so the panel REBUILDS — and every
+  ///   rebuild re-publishes the stale position (생겼다 없었다);
+  /// * it fires on a rebuild rather than on an event, so it lands a beat
+  ///   late (0.5초 뒤에 생기는 느낌);
+  /// * what it republishes is wherever the pointer last WAS, so the ring
+  ///   comes back somewhere else entirely (순간이동);
+  /// * once non-null it early-returns, and a refused finger clears nothing,
+  ///   so it stays (남아있으면 계속);
+  /// * after a real clear `_lastCanvasPointer` is null too, so there is
+  ///   nothing left to resurrect (사라지고나서 터치하면 안 생김).
+  ///
+  /// ⚠️The D34 write gate does NOT cover this: that one stops a promoted
+  /// mouse from WRITING the position, while this republishes one already
+  /// stored. Two different verbs on the same field.
+  ///
+  /// ★So the seed asks whether anyone still HOLDS the aim. It exists for
+  /// R3 #8 — arming a cursor while the pointer sits still, which is exactly
+  /// what pressing a tool button does — and there the mouse or pen IS on
+  /// the glass, so [_aimIsHeld] is true and that fix is untouched. What it
+  /// must never do is put a ring back for a pointer that has left, at
+  /// coordinates nobody is pointing at any more.
   void _seedToolCursorIfNeeded() {
     if (!_brushCursorActive && !_fillCursorActive) {
       return;
     }
     if (_toolCursorHover.value != null) {
+      return;
+    }
+    if (!_aimIsHeld) {
       return;
     }
     _toolCursorHover.value = _lastCanvasPointer;
@@ -2222,10 +2255,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                       hitTestBehavior:
                                                           HitTestBehavior
                                                               .translucent,
+                                                      // 🚨D34: through the ONE
+                                                      // writer, which clears the
+                                                      // POSITION too. Nulling the
+                                                      // notifier alone left
+                                                      // `_lastCanvasPointer` holding
+                                                      // the departed pointer, and the
+                                                      // build-time seed republished
+                                                      // it on the next rebuild — so
+                                                      // the ring came back where
+                                                      // nobody was pointing.
                                                       onExit: (_) =>
-                                                          _toolCursorHover
-                                                                  .value =
-                                                              null,
+                                                          _forgetCanvasPointer(),
                                                       // ⛔No tracker of its own: the
                                                       // census writes this notifier
                                                       // for the fill tool now. This
@@ -2267,10 +2308,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                       hitTestBehavior:
                                                           HitTestBehavior
                                                               .translucent,
+                                                      // 🚨D34: through the ONE
+                                                      // writer, which clears the
+                                                      // POSITION too. Nulling the
+                                                      // notifier alone left
+                                                      // `_lastCanvasPointer` holding
+                                                      // the departed pointer, and the
+                                                      // build-time seed republished
+                                                      // it on the next rebuild — so
+                                                      // the ring came back where
+                                                      // nobody was pointing.
                                                       onExit: (_) =>
-                                                          _toolCursorHover
-                                                                  .value =
-                                                              null,
+                                                          _forgetCanvasPointer(),
                                                       child:
                                                           const SizedBox.expand(),
                                                     ),
