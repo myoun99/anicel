@@ -197,13 +197,41 @@ void main() {
     }
 
     test('and the subject maps to the lane\'s own address', () {
+      // ⚠️A5-3② moved this switch OUT of the timeline's host and beside the
+      // subjects, because both rails have to give the same answer and a
+      // surface with no way to name its subjects could not offer row
+      // selection at all. This pin follows it rather than being deleted:
+      // the arm it guards is the same arm, and it now guards it for every
+      // rail at once instead of for one host.
       expect(
-        source('lib/src/ui/timeline_tab_host.dart'),
-        contains('LaneRowSubject('),
+        source('lib/src/ui/timeline/layer_row_drag.dart'),
+        contains('LaneRowSubject(:final layerId, :final laneId)'),
         reason: 'a select-only lane anchors where it is drawn; without this '
             'arm the switch would not compile, which is the point of a '
             'sealed subject',
       );
+    });
+
+    test('and BOTH rails reach that one map', () {
+      // 🚨A5-3② — the storyboard passed null for the selection hooks, and
+      // null means "this surface takes no part in row selection". The rail
+      // that cannot name its subjects is the rail that skips the select
+      // step, so naming and offering are pinned together.
+      for (final path in [
+        'lib/src/ui/timeline_tab_host.dart',
+        'lib/src/ui/storyboard_tab_host.dart',
+      ]) {
+        expect(
+          source(path),
+          contains('timelineRowAddressOfDragSubject'),
+          reason: '$path must reach the shared map, not keep its own',
+        );
+        expect(
+          source(path),
+          contains('isInRowSelection:'),
+          reason: '$path must offer the select-first phase (A5-3②)',
+        );
+      }
     });
   });
 }

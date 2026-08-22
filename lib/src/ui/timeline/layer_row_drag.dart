@@ -18,10 +18,12 @@ import 'package:flutter/material.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart' show EffectId;
 import '../../models/layer_id.dart';
+import '../../models/timeline_row_address.dart';
 import '../../models/track_id.dart';
 import '../input/app_input_settings.dart' show AppInput;
 import '../input/eager_pan_gesture_recognizer.dart';
 import '../theme/app_theme.dart' show AppShapes;
+import 'effect_lane_policy.dart' show effectGroupLaneId;
 import 'row_control_surface.dart';
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 
@@ -134,6 +136,40 @@ final class LaneRowSubject extends LayerRowDragSubject {
   @override
   int get hashCode => Object.hash(LaneRowSubject, layerId, laneId);
 }
+
+/// T5: what a row drag's subject is CALLED in the selection's own words.
+///
+/// The two vocabularies existed side by side — the drag names a subject, the
+/// selection names an address — and the seam between them was where 「이 종류는
+/// 선택 못 함」 hid. Naming every subject makes the question disappear rather
+/// than answering it per kind.
+///
+/// An fx header's address is its GROUP LANE, which is what the rail already
+/// draws it as; nothing new is invented here.
+///
+/// ⚠️It lives BESIDE the subjects rather than on a rail, because both rails
+/// have to give the same answer. It sat as a private method of the timeline's
+/// host, which is why the storyboard's rail could not offer row selection at
+/// all: the hooks that need it are optional, and a surface with no way to
+/// name its subjects passed null for all of them and silently skipped the
+/// select-first step (A5-3②).
+TimelineRowAddress timelineRowAddressOfDragSubject(
+  LayerRowDragSubject subject,
+) => switch (subject) {
+  LayerRowSubject(:final layerId) => LayerRowAddress(layerId),
+  EffectRowSubject(:final layerId, :final effectId) => LaneRowAddress(
+    layerId,
+    effectGroupLaneId(effectId),
+  ),
+  TrackRowSubject(:final trackId) => TrackRowAddress(trackId),
+  // B4-3: a lane anchors a selection at its OWN address. The fx header case
+  // above lands on the same kind of address — it is reached through the
+  // subject that can also re-order a chain.
+  LaneRowSubject(:final layerId, :final laneId) => LaneRowAddress(
+    layerId,
+    laneId,
+  ),
+};
 
 /// A row drag in flight, as the rails draw it.
 class LayerRowDragState {

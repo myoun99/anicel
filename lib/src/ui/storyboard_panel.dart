@@ -417,6 +417,7 @@ class StoryboardPanel extends StatefulWidget {
     this.laneRange,
     this.currentRowHooks,
     this.rowDragHooks,
+    this.onSeRowSelectionSpan,
     this.layerLaneEdit,
     this.activeCutFrameCursor,
     this.onSelectFrameIndex,
@@ -736,6 +737,16 @@ class StoryboardPanel extends StatefulWidget {
   /// order is the film's compositing order — a different decision, and not
   /// this round's (user, 2026-08-07).
   final TimelineRowDragHooks? rowDragHooks;
+
+  /// A5-3② — the SPAN half of ⑨'s select-then-move, for the S rows.
+  ///
+  /// [rowDragHooks]'s three selection hooks only ARM a selection (they say
+  /// whether this press starts one and where it anchors); growing it as the
+  /// pointer crosses rows is this. Null leaves a press selecting the single
+  /// row it landed on, which is still the right FIRST phase — but the rail
+  /// then cannot select a range, so it is wired wherever the hooks are.
+  final void Function(List<TimelineDisplayRow> rows, int rowDelta)?
+  onSeRowSelectionSpan;
 
   /// Lane edit hooks for the S rows' Transform lanes — the timeline's
   /// layer-transform lane editing on the ACTIVE cut's slot layers. Null =
@@ -1613,6 +1624,20 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// shared drag widget takes one extent, not a list. The V rows have the
   /// same limitation for the same reason, and one per-row extent list
   /// would close both.
+  /// The track's S rows in the order the RAIL draws them — top-down from the
+  /// highest slot, so slot 0 sits just above the V row.
+  ///
+  /// ⚠️Track-owned rows, so the GLOBAL layers — never the display clones a
+  /// move would refuse to commit to. Two things read this now (the frame
+  /// area's move drag and A5-3②'s row selection) and they must walk the rows
+  /// in the same order or a span and a slide would disagree about which row
+  /// the pointer just crossed.
+  List<TimelineDisplayRow> _seRowsInDisplayOrder(Track track) => [
+    for (var slot = _seSlotCount(track) - 1; slot >= 0; slot -= 1)
+      if (_trackSeAt(track, slot) case final layer?)
+        TimelineDisplayRow.layer(layer, layerIndex: slot),
+  ];
+
   Widget _draggableSeRow(Track track, int slot, Layer? trackLayer, Widget row) {
     final hooks = widget.rowDragHooks;
     // No active-cut gate: an S row is a TRACK fixture and re-orders its
@@ -1641,6 +1666,17 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         displayRows,
         slotForSteps(displayIndex, steps, displayRows.length),
       ),
+      // 🚨A5-3② — the SELECT half of the same drag, which this rail simply
+      // did not have. ⑨'s law is that the first drag SELECTS and a drag
+      // starting INSIDE the selection moves; without these the press went
+      // straight to the move here while the timeline made you select first,
+      // and 「통일이 안 돼 있다」 was exactly that.
+      onSelectCrossed: widget.onSeRowSelectionSpan == null
+          ? null
+          : (rowDelta) => widget.onSeRowSelectionSpan!(
+              _seRowsInDisplayOrder(track),
+              rowDelta,
+            ),
       child: row,
     );
   }
@@ -2776,15 +2812,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     double width,
     TimelineScale scale,
   ) {
-    // The rail draws S rows TOP-DOWN from the highest slot, so the move's
-    // row delta walks them in that order (slot 0 sits just above the V
-    // row). Track-owned rows, so the global layers — never the display
-    // clones a move would refuse to commit to.
-    final seRowsInDisplayOrder = <TimelineDisplayRow>[
-      for (var slot = _seSlotCount(track) - 1; slot >= 0; slot -= 1)
-        if (_trackSeAt(track, slot) case final layer?)
-          TimelineDisplayRow.layer(layer, layerIndex: slot),
-    ];
+    final seRowsInDisplayOrder = _seRowsInDisplayOrder(track);
     Widget seRow(int slot, Layer? layer) => _StoryboardSeRow(
       railRowAt: (anchorRow, crossOffset) => _railRowAtCrossOffset(
         track: track,
