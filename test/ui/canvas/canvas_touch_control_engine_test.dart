@@ -11,8 +11,7 @@ import 'package:anicel/src/ui/input/app_input_settings.dart';
 /// untouched (this file opts in per test).
 void main() {
   tearDown(() {
-    AppInput.settings.value = AppInputSettings.testCorpusBaseline;
-    AppInput.debugTouchOnlyFormFactorOverride = null;
+    AppInput.settings.value = AppInputSettings.testCorpusBaseline;
   });
 
   Future<

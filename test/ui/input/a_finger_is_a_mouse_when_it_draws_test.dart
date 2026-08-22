@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/input/app_input_settings.dart';
@@ -19,11 +21,9 @@ import 'package:anicel/src/ui/input/app_input_settings.dart';
 void main() {
   setUp(() {
     AppInput.settings.value = const AppInputSettings();
-    AppInput.debugTouchOnlyFormFactorOverride = null;
   });
   tearDown(() {
     AppInput.settings.value = const AppInputSettings();
-    AppInput.debugTouchOnlyFormFactorOverride = null;
   });
 
   bool touchEdits() =>
@@ -78,19 +78,35 @@ void main() {
     }
   });
 
-  test('a phone forces drawing, so a phone finger edits the timeline', () {
-    // ⚠️iPhone-class hardware has no pen, so the one-finger slot is FORCED
-    // to draw regardless of the stored preference. That is the very device
-    // the feedback came from — 「스마트폰으로 확인했는데」 — so the mode has
-    // to reach the timeline through the forced answer too, not only through
-    // the stored one.
-    AppInput.debugTouchOnlyFormFactorOverride = true;
-    AppInput.settings.value = const AppInputSettings(
-      touchTimelineScroll: true,
-      touchDragOneFinger: CanvasTouchDragAction.navigate,
-    );
-    expect(AppInput.touchDraws, isTrue);
-    expect(touchEdits(), isTrue);
+  test('⛔the app never asks WHAT DEVICE it is on — the mode is the whole '
+      'answer', () {
+    // 유저 확정 2026-08-22: 「아이폰이면 강제 터치그리기같은거 없애. **기종
+    // 묻지말고 그냥 핑거 모드따라가도록**」.
+    //
+    // There used to be a capability rule: iOS below a physical-size
+    // threshold had no pen, so the one-finger slot was FORCED to draw
+    // whatever the user had chosen. It measured hardware to guess an intent
+    // the user states directly, and it made the setting silently inert on
+    // one platform — a user who set one finger to navigate watched it not
+    // happen with no way to find out why.
+    for (final platform in TargetPlatform.values) {
+      debugDefaultTargetPlatformOverride = platform;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      AppInput.settings.value = const AppInputSettings(
+        touchDragOneFinger: CanvasTouchDragAction.navigate,
+      );
+      expect(
+        AppInput.touchDraws,
+        isFalse,
+        reason: 'on $platform the STORED mode says navigate, so a finger '
+            'navigates — no platform gets to override it',
+      );
+      AppInput.settings.value = const AppInputSettings(
+        touchDragOneFinger: CanvasTouchDragAction.draw,
+      );
+      expect(AppInput.touchDraws, isTrue, reason: 'and draw means draw');
+    }
+    debugDefaultTargetPlatformOverride = null;
   });
 
   test('⛔the canvas is a different question and keeps its own answer', () {

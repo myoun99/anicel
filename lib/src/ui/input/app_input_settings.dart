@@ -452,42 +452,29 @@ abstract final class AppInput {
 
   static bool get touchTimelineScroll => settings.value.touchTimelineScroll;
 
-  /// Test hook: forces the touch-only form-factor answer.
-  static bool? debugTouchOnlyFormFactorOverride;
-
-  /// iPhone-class devices (iOS, phone-sized) have NO pen — touch must
-  /// draw there regardless of the stored preference (PEN-7b capability
-  /// rule: 아이폰=그리기 강제).
-  static bool get touchOnlyFormFactor {
-    final override = debugTouchOnlyFormFactorOverride;
-    if (override != null) {
-      return override;
-    }
-    if (defaultTargetPlatform != TargetPlatform.iOS) {
-      return false;
-    }
-    final view = PlatformDispatcher.instance.implicitView;
-    if (view == null) {
-      return false;
-    }
-    // RAW view ratio, deliberately NOT the effective one: this asks how
-    // big the HARDWARE is, and a UI scale does not change the hardware.
-    // Dividing by a scaled ratio would let a user who shrinks the UI read
-    // as sitting at a tablet. See `EffectiveDevicePixelRatio`.
-    final shortestSide = view.physicalSize.shortestSide / view.devicePixelRatio;
-    return shortestSide < 600;
-  }
-
   /// The drag action assigned to a finger-count slot (3+ fingers share
-  /// the three-finger slot). Touch-only form factors force the
-  /// one-finger slot to DRAW (PEN-7b capability rule: 아이폰=그리기
-  /// 강제 — no pen exists there).
+  /// the three-finger slot) — **the stored setting, and nothing else**.
+  ///
+  /// ⛔**THE APP DOES NOT ASK WHAT DEVICE IT IS ON** (유저 확정 2026-08-22):
+  /// 「아이폰이면 강제 터치그리기같은거 없애. **기종 묻지말고 그냥 핑거
+  /// 모드따라가도록**」.
+  ///
+  /// There used to be a capability rule here: iOS below a physical-size
+  /// threshold had no pen, so the one-finger slot was FORCED to draw no
+  /// matter what the user had chosen. Three things were wrong with it. It
+  /// measured hardware to guess an intent the user states directly one
+  /// screen away. It made the setting silently inert on one platform, so a
+  /// user who set one finger to navigate watched it not happen and had no
+  /// way to find out why. And it needed a debug override to be testable at
+  /// all, which is the shape of a rule that cannot be reasoned about
+  /// locally.
+  ///
+  /// ⇒ the mode is the whole answer, everywhere. A phone user who wants a
+  /// drawing finger sets a drawing finger.
   static CanvasTouchDragAction touchDragActionFor(int fingerCount) {
     final value = settings.value;
     if (fingerCount <= 1) {
-      return touchOnlyFormFactor
-          ? CanvasTouchDragAction.draw
-          : value.touchDragOneFinger;
+      return value.touchDragOneFinger;
     }
     if (fingerCount == 2) {
       return value.touchDragTwoFingers;
