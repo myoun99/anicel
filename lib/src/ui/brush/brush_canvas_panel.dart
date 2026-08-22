@@ -118,6 +118,7 @@ class BrushCanvasPanel extends StatefulWidget {
     super.key,
     required this.coordinator,
     this.celEditable = true,
+    this.rowAcceptsStrokes = true,
     required this.availableFrameKeys,
     required this.cacheInvalidationSink,
     this.canvasSize = BrushCanvasDefaults.canvasSize,
@@ -183,7 +184,8 @@ class BrushCanvasPanel extends StatefulWidget {
   /// [celEditable].
   final BrushFrameEditingCoordinator? coordinator;
 
-  /// Whether the frame under the playhead can be drawn on.
+  /// Whether there IS a cel under the playhead — the frame this panel would
+  /// paint and could be drawn on.
   ///
   /// Split from [coordinator] deliberately. The two used to be one — the
   /// host handed over a null coordinator on an empty frame — which meant
@@ -191,14 +193,30 @@ class BrushCanvasPanel extends StatefulWidget {
   /// crossed "no cel ↔ cel". Every pixel verb still refuses on an empty
   /// frame; it asks [_editableCoordinator] instead of this field, so the
   /// guards read exactly as they did.
+  ///
+  /// ⛔This one, and ONLY this one, stands the interactive view down — a
+  /// blank canvas is the honest answer to "there is nothing here", and a
+  /// wrong answer to anything else. See [rowAcceptsStrokes].
   final bool celEditable;
+
+  /// Whether the ROW the frame-axis verbs stand on takes strokes at all;
+  /// false on a property lane (`MainCanvasBrushHost.rowAcceptsStrokes`).
+  ///
+  /// 🚨H19 (유저 2026-08-23): 「**서있는 곳이 fx행이면 현재 있는 레이어의
+  /// 그림이 사라짐.** 대체 이딴규칙 누가만드는거지?」 — this used to arrive
+  /// folded into [celEditable], which is the flag that blanks the view, so
+  /// standing on an fx row painted an empty canvas over a cel that exists.
+  ///
+  /// ★"Is there a cel" decides what is PAINTED. "Does this row take strokes"
+  /// decides what a press may DO. Only the second belongs on the verbs.
+  final bool rowAcceptsStrokes;
 
   /// The coordinator for the verbs that EDIT PIXELS — null whenever this
   /// frame cannot be drawn on, which is the condition every one of those
   /// verbs was already written against. Only the interactive view itself
   /// reads [coordinator] directly, because it stays mounted either way.
   BrushFrameEditingCoordinator? get _editableCoordinator =>
-      celEditable ? coordinator : null;
+      celEditable && rowAcceptsStrokes ? coordinator : null;
 
   final List<BrushFrameKey> availableFrameKeys;
   final CacheInvalidationSink cacheInvalidationSink;

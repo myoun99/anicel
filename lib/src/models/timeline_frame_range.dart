@@ -53,13 +53,29 @@ class TimelineFrameRangeSelection {
       layerIds.isEmpty ? id == layerId : layerIds.contains(id);
 
   /// Whether THIS row — of any kind — is in the swept run.
+  ///
+  /// 🚨★★★H20 (유저 2026-08-23, **두 번째**): 「블록 선택하고 이동할때
+  /// **트랜스폼쪽이나 fx쪽이 선택범위ui 작동**해버리는데 대체 누가? 내가 저번에
+  /// 그렇게 하지 말라고한거같은데 또 멋대로 만들어냈거든? fx랑 블록이랑 같이
+  /// 움직이게할거면 **둘다 유저가 선택하게 할거니까** … **선택한 곳만
+  /// 움직이게하라고**」
+  ///
+  /// ⛔THE LANE FALLBACK WAS A RULE NOBODY ASKED FOR. It read
+  /// `LaneRowAddress(:final layerId) => coversLayer(layerId)` — "select a
+  /// layer's cells and you have selected all of its lanes too". A lane row
+  /// is its OWN row on the rail; a drag that never touched it did not select
+  /// it, and the four range-MOVE paths all publish without [rows], so every
+  /// block move fell into this fallback and lit up the whole transform group.
+  ///
+  /// ★A lane is covered when the drag actually swept it, and never by
+  /// inheritance from its layer.
   bool coversRow(TimelineRowAddress row) {
     if (rows.isNotEmpty) {
       return rows.contains(row);
     }
     return switch (row) {
       LayerRowAddress(:final layerId) => coversLayer(layerId),
-      LaneRowAddress(:final layerId) => coversLayer(layerId),
+      LaneRowAddress() => false,
       TrackRowAddress() => false,
     };
   }

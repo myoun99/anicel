@@ -303,10 +303,23 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
   @override
   Widget build(BuildContext context) {
     final coordinator = _coordinator;
-    final hasEditableFrame =
-        widget.rowAcceptsStrokes &&
-        _frameKeys.isNotEmpty &&
-        coordinator != null;
+    // 🚨H19 (유저 2026-08-23): 「**서있는 곳이 fx행이면 현재 있는 레이어의
+    // 그림이 사라짐.** 대체 이딴규칙 누가만드는거지?」
+    //
+    // ⛔TWO DIFFERENT QUESTIONS WERE SHARING ONE FLAG, and one of them
+    // answers with a blank screen:
+    //   * IS THERE A CEL under the playhead — no cel, nothing to paint, so
+    //     `InteractiveBrushEditCanvasView` stands down and draws nothing.
+    //     That is correct, and it is what the flag was written for.
+    //   * DOES THIS ROW TAKE STROKES — a property lane does not. But the
+    //     cel is still THERE, and the canvas is where you look at it.
+    //
+    // `rowAcceptsStrokes` was folded into the first question, so standing
+    // on an fx row blanked artwork that exists. They are separate now: the
+    // CEL question decides what is PAINTED, the ROW question decides what a
+    // press may DO.
+    final hasCelUnderPlayhead = _frameKeys.isNotEmpty && coordinator != null;
+    final hasEditableFrame = widget.rowAcceptsStrokes && hasCelUnderPlayhead;
     // The blank canvas is for having NO COORDINATOR — a project where
     // nothing has been drawn yet, so the panel has no editing stack to
     // show. It is deliberately NOT the answer to "the playhead is on an
@@ -358,13 +371,17 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
               }
               onDrawRefused();
             },
-      child: _buildPanel(coordinator, hasEditableFrame, contentOverride),
+      child: _buildPanel(
+        coordinator,
+        hasCelUnderPlayhead,
+        contentOverride,
+      ),
     );
   }
 
   Widget _buildPanel(
     BrushFrameEditingCoordinator? coordinator,
-    bool hasEditableFrame,
+    bool hasCelUnderPlayhead,
     Widget Function(BuildContext, CanvasViewport)? contentOverride,
   ) {
     return BrushCanvasPanel(
@@ -379,7 +396,10 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       floorBottomOverlaySpan:
           CanvasFloorInsets.maybeOf(context)?.bottomOverlaySpan ?? 0,
       coordinator: coordinator,
-      celEditable: hasEditableFrame,
+      celEditable: hasCelUnderPlayhead,
+      // H19: the row question, carried separately — the pixel verbs still
+      // refuse on a property lane, the artwork still shows.
+      rowAcceptsStrokes: widget.rowAcceptsStrokes,
       availableFrameKeys: _frameKeys,
       cacheInvalidationSink: _cacheInvalidationSink,
       canvasSize: widget.canvasSize,
