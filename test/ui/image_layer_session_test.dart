@@ -480,8 +480,20 @@ void main() {
       headIndex: 1,
     );
 
+    // 🚨결정 9/14 (유저 확정 2026-08-22) — **X LEFT THIS LIST.** It has a
+    // band rung now: 「지우기 눌렀다고해서 현재 행만 지우는게아니라 **선택된
+    // 모든게** 지워지는걸 말하는거임. **복사든 뭐든 마찬가지**」. So it does
+    // not refuse here — it acts on the SWEPT row, which is this test's own
+    // axis read from the other side. What this test guards is unchanged and
+    // is asserted below: the UNSWEPT active row must not move.
+    expect(
+      s.canBlankExposureAtCurrentFrame,
+      isTrue,
+      reason: 'X serves the band now (결정 14 ①ⓑ) rather than ending the '
+          'ladder — it was on this list only because it had no rung',
+    );
+
     for (final (name, gate) in [
-      ('X-here', s.canBlankExposureAtCurrentFrame),
       ('mark', s.canToggleMarkAtCurrentFrame),
       ('잘라내기', s.canCutRunAtCurrentFrame),
       ('rename', s.canEditCellInstanceAtCurrentFrame),
@@ -511,7 +523,15 @@ void main() {
       rowATimeline(),
       before,
       reason: 'and none of the presses touched the row the user did not '
-          'sweep',
+          'sweep — including the X, which now acts but acts THERE',
+    );
+    // The other half of X's new law, stated here so this file cannot pass
+    // by X quietly doing nothing at all: the swept row really was blanked.
+    expect(
+      s.layers.firstWhere((layer) => layer.id == rowB).timeline[0],
+      isNull,
+      reason: '결정 14 ①ⓑ — the band named row B, so row B is where the '
+          'blank landed',
     );
 
     // THE OTHER HALF OF THE AXIS: a band that DOES cover the active row
