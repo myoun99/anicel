@@ -839,6 +839,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   void initState() {
     super.initState();
     _bindViewCommands();
+    // 🚨D34 최종: a finger ANYWHERE drops the tool aim — see
+    // [CanvasTouchContacts.addAppWideTouchListener] and [_handleAppWideTouch].
+    CanvasTouchContacts.addAppWideTouchListener(_handleAppWideTouch);
     _altHeld = HardwareKeyboard.instance.isAltPressed;
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
     _listenedViewport = _viewportNotifier
@@ -945,6 +948,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   @override
   void dispose() {
+    CanvasTouchContacts.removeAppWideTouchListener(_handleAppWideTouch);
     // ⛔ONLY the panel's own. `_viewportNotifier` may BE the owner's — the
     // whole point of the controller — and disposing that would kill the
     // view the moment a panel unmounts, taking every other reader of it
@@ -1056,6 +1060,32 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _lastCanvasPointer = null;
     _setToolCursorHover(null, 'forget');
     _eyedropperHover.value = null;
+  }
+
+  /// 🚨★★★D34 최종 (유저 2026-08-23, 실기): 「**커서는 일단 커서ui랑 같은곳에
+  /// 있는게 최우선**이고, **터치는 커서 없애고 펜은 커서 보이는채로 유지**」
+  ///
+  /// A finger landed somewhere in the app. Windows has already dragged the
+  /// real cursor to it (D34), so the ring standing at the old position is
+  /// now a lie about where the pointer is — 「실제 커서는 물론 터치의 중앙에
+  /// 있고」. The app cannot make the ring true, so it stops claiming.
+  ///
+  /// ⛔A DRAWING finger is exempt: there the finger IS the tool, the aim it
+  /// writes is its own, and 「1핑거 드로잉일때 커서생기는건 ok」.
+  ///
+  /// ⚠️This supersedes the older 「a finger never displaces the cursor the
+  /// pen put down」 — that rule was about not MOVING the ring to the
+  /// finger, which still holds. Hiding it is the opposite: it refuses to
+  /// point anywhere rather than pointing somewhere wrong. A hovering pen
+  /// writes it back on its very next sample.
+  void _handleAppWideTouch() {
+    if (!mounted || AppInput.touchDraws) {
+      return;
+    }
+    if (_toolCursorHover.value == null) {
+      return;
+    }
+    _setToolCursorHover(null, 'touch-landed');
   }
 
   /// 🚨★★D34 PROBE — **the ONE writer of the aim, and it says who wrote it.**
