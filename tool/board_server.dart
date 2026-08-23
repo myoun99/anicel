@@ -477,6 +477,7 @@ _Gh _cache(_Gh gh) {
 /// `open` is deliberately absent — a ready item wears no badge at all, because
 /// the section it sits in already said so.
 const _stateLabels = <String, String>{
+  'wip': '진행 중',
   'ask': '답 기다림',
   'gate': '지시 대기',
   'queue': '순서 대기',
@@ -521,8 +522,14 @@ String _render(List<_Entry> entries, _Gh gh) {
           e.state != 'inbox' &&
           (e.pr == null || !claimed.containsKey(e.pr)))
       .toList();
-  final ready = loose.where((e) => !_waiting.contains(e.state)).toList();
-  final waiting = loose.where((e) => _waiting.contains(e.state)).toList();
+  // Work can be underway before there is a PR to point at -- an investigation,
+  // a round mid-flight. Without this those items sat in 착수 가능 claiming to
+  // be unstarted, which is the one thing they are not.
+  final underway = loose.where((e) => e.state == 'wip').toList();
+  final rest = loose.where((e) => e.state != 'wip').toList();
+  final ready = rest.where((e) => !_waiting.contains(e.state)).toList();
+  final waiting = rest.where((e) => _waiting.contains(e.state)).toList();
+  now.addAll(underway.map(_itemPanel));
 
   final b = StringBuffer();
   b.writeln('<!doctype html><html><head><meta charset="utf-8">'
@@ -537,17 +544,21 @@ String _render(List<_Entry> entries, _Gh gh) {
     b.write(' · <span class="warn">gh 를 못 불렀습니다 — PR 칸은 비어 있습니다</span>');
   }
   b.writeln('</p>');
-  b.writeln('<p class="rule" id="ruleline">줄을 누르면 펼쳐집니다. 메모 칸에 <b>스크린샷을 그대로 붙여넣을 수</b> '
-      '있습니다(Win+Shift+S → Ctrl+V). '
-      'PR 상태는 <b>이 페이지를 열 때</b>만 읽습니다 — 감시하지 않습니다. '
-      '<button class="ghost sm" onclick="refresh()">↻ PR 다시 읽기</button>'
-      '<span class="state"></span></p>');
+  b.writeln('<p class="rule" id="ruleline">줄을 누르면 펼쳐집니다. '
+      '메모 칸에 <b>스크린샷을 그대로 붙여넣을 수</b> 있습니다'
+      '(Win+Shift+S → Ctrl+V).</p>');
 
   b.write(_intakeForm());
   b.write(_group('분류 전', inbox.length, '내가 읽고 분류한다', inbox.map(_itemPanel)));
   b.write(_group('답할 것', asks.length, '고르고 제출', asks.map(_askPanel)));
   b.write(_group('실기 확인', checks.length, '메모가 비면 OK', checks.map(_checkPanel)));
-  b.write(_group('지금', now.length, 'GitHub 이 답한다', now));
+  // The refresh lives here because this is the only section it changes, and a
+  // control parked away from what it affects is a control you have to remember
+  // the meaning of.
+  b.write(_group('지금', now.length, '열린 PR + PR 없이 진행 중', now,
+      control: '<span class="ctl">'
+          '<button class="ghost sm" onclick="refresh(event)">↻ PR 다시 읽기</button>'
+          '<span class="state">열 때만 읽습니다</span></span>'));
   b.write(_group('착수 가능', ready.length, '명령만 내리면 착수', ready.map(_itemPanel)));
   b.write(_group('대기 중', waiting.length, '배지가 무엇을 기다리는지 말한다',
       waiting.map(_itemPanel)));
@@ -565,11 +576,14 @@ String _render(List<_Entry> entries, _Gh gh) {
 /// 지금 vanished when nothing was in flight, and an empty PR section looked
 /// identical to a broken `gh`. A heading that says 0 is information; a heading
 /// that is absent is a question.
-String _group(String title, int n, String why, Iterable<String> panels) {
+String _group(String title, int n, String why, Iterable<String> panels,
+    {String control = ''}) {
   final b = StringBuffer();
-  b.writeln('<details class="grp" open><summary class="gh">'
+  b.writeln('<details class="grp" open id="g-${_esc(title)}">'
+      '<summary class="gh">'
       '<span class="gt">${_esc(title)}</span><span class="n">$n</span>'
-      '${why.isEmpty ? '' : '<span class="why">${_esc(why)}</span>'}</summary>');
+      '${why.isEmpty ? '' : '<span class="why">${_esc(why)}</span>'}'
+      '$control</summary>');
   b.writeln('<div class="stack">');
   if (n == 0) {
     b.writeln('<p class="none">없음</p>');
@@ -815,8 +829,11 @@ function purge(id){
     .then(()=>location.reload())
     .catch(e=>stateOf(c).textContent = '실패: '+e.message);
 }
-function refresh(){
-  const c = document.getElementById('ruleline');
+function refresh(ev){
+  // The button lives inside a <summary>, so without this the click also folds
+  // the section it was meant to update.
+  ev.preventDefault(); ev.stopPropagation();
+  const c = ev.target.closest('.ctl');
   post('/refresh', {}, c)
     .then(()=>location.reload())
     .catch(e=>stateOf(c).textContent = '실패: '+e.message);
@@ -902,6 +919,7 @@ padding:4px 0 8px;user-select:none}
 color:var(--ink3);font-weight:700}
 .grp[open] .gt{color:var(--ink2)}
 .none{font-size:12.5px;color:var(--ink3);margin:0;padding:6px 2px}
+.ctl{margin-left:auto;display:flex;align-items:center;gap:7px;flex:none}
 .stack{display:flex;flex-direction:column;gap:5px}
 .p{background:var(--card);border:1px solid var(--line);border-radius:5px}
 .p[open]{border-color:var(--line2)}
