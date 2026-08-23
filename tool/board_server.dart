@@ -141,6 +141,20 @@ Future<void> _handle(HttpRequest req) async {
         });
       case '/intake':
         newId = _intake(body);
+      case '/edit':
+        final text = '${body['text'] ?? ''}'.trim();
+        final first = text.split('\n').first;
+        _append({
+          'kind': 'item',
+          'id': body['id'],
+          'title': first.length > 70 ? '${first.substring(0, 70)}…' : first,
+          'note': text,
+          'ts': _now(),
+        });
+      case '/purge':
+        _purge('${body['id']}');
+      case '/refresh':
+        _ghAt = DateTime.fromMillisecondsSinceEpoch(0);
       case '/shot':
         _saveShot(body);
       default:
@@ -183,21 +197,57 @@ void _append(Map<String, dynamic> line) {
 /// makes people not write things down. Classification comes later -- it lands
 /// in `inbox`, which is a section on the board and not a synonym for done.
 String _intake(Map<String, dynamic> body) {
-  final idea = body['kind'] == 'idea';
+  final kind = '${body['kind']}';
   final text = '${body['text'] ?? ''}'.trim();
   final tag = '${body['tag'] ?? ''}'.trim();
-  final id = _nextId(idea ? 'I' : 'F');
+  // 임시 is its own filing, not a lesser feedback: it says the thought is not
+  // finished yet, so whoever reads it should expect to ask rather than act.
+  final (prefix, label) = switch (kind) {
+    'idea' => ('I', '아이디어'),
+    'draft' => ('M', '임시'),
+    _ => ('F', '피드백'),
+  };
+  final id = _nextId(prefix);
   final firstLine = text.split('\n').first;
   _append({
     'kind': 'item',
     'id': id,
-    'title': firstLine.length > 70 ? '${firstLine.substring(0, 70)}…' : firstLine,
+    'title': firstLine.isEmpty
+        ? '(스크린샷만)'
+        : (firstLine.length > 70 ? '${firstLine.substring(0, 70)}…' : firstLine),
     'note': text,
-    'tags': [idea ? '아이디어' : '피드백', if (tag.isNotEmpty) tag],
+    'tags': [label, if (tag.isNotEmpty) tag],
     'state': 'inbox',
     'ts': _now(),
   });
   return id;
+}
+
+/// Rewrites the records without a given id — a real delete, not an `archived`
+/// line, so the number goes back into the pool.
+///
+/// Only an inbox item may be purged. Everything else is history someone
+/// reasoned from, and an append-only log that quietly loses entries is worse
+/// than one that keeps a few dead ones.
+bool _purge(String id) {
+  final entry = _readRecords(File(_recordsPath)).where((e) => e.id == id);
+  if (entry.isEmpty || entry.first.state != 'inbox') return false;
+  final kept = File(_recordsPath).readAsLinesSync().where((line) {
+    final t = line.trim();
+    if (t.isEmpty) return false;
+    try {
+      return (jsonDecode(t) as Map<String, dynamic>)['id'] != id;
+    } catch (_) {
+      return true; // unreadable lines are somebody else's problem, not ours
+    }
+  });
+  File(_recordsPath).writeAsStringSync('${kept.join('\n')}\n');
+  for (final f in Directory(_shotsDir).listSync()) {
+    final name = f.path.split(RegExp(r'[\\/]')).last;
+    if (name.startsWith('$id-')) f.deleteSync();
+  }
+  stdout.writeln('board: purged $id');
+  return true;
 }
 
 /// Next free number for a prefix, read from the records themselves so two
@@ -427,6 +477,7 @@ _Gh _cache(_Gh gh) {
 /// `open` is deliberately absent — a ready item wears no badge at all, because
 /// the section it sits in already said so.
 const _stateLabels = <String, String>{
+  'wip': '진행 중',
   'ask': '답 기다림',
   'gate': '지시 대기',
   'queue': '순서 대기',
@@ -471,8 +522,14 @@ String _render(List<_Entry> entries, _Gh gh) {
           e.state != 'inbox' &&
           (e.pr == null || !claimed.containsKey(e.pr)))
       .toList();
-  final ready = loose.where((e) => !_waiting.contains(e.state)).toList();
-  final waiting = loose.where((e) => _waiting.contains(e.state)).toList();
+  // Work can be underway before there is a PR to point at -- an investigation,
+  // a round mid-flight. Without this those items sat in 착수 가능 claiming to
+  // be unstarted, which is the one thing they are not.
+  final underway = loose.where((e) => e.state == 'wip').toList();
+  final rest = loose.where((e) => e.state != 'wip').toList();
+  final ready = rest.where((e) => !_waiting.contains(e.state)).toList();
+  final waiting = rest.where((e) => _waiting.contains(e.state)).toList();
+  now.addAll(underway.map(_itemPanel));
 
   final b = StringBuffer();
   b.writeln('<!doctype html><html><head><meta charset="utf-8">'
@@ -487,14 +544,21 @@ String _render(List<_Entry> entries, _Gh gh) {
     b.write(' · <span class="warn">gh 를 못 불렀습니다 — PR 칸은 비어 있습니다</span>');
   }
   b.writeln('</p>');
-  b.writeln('<p class="rule">줄을 누르면 펼쳐집니다. 메모 칸에 <b>스크린샷을 그대로 붙여넣을 수</b> '
-      '있습니다(Win+Shift+S → Ctrl+V).</p>');
+  b.writeln('<p class="rule" id="ruleline">줄을 누르면 펼쳐집니다. '
+      '메모 칸에 <b>스크린샷을 그대로 붙여넣을 수</b> 있습니다'
+      '(Win+Shift+S → Ctrl+V).</p>');
 
   b.write(_intakeForm());
   b.write(_group('분류 전', inbox.length, '내가 읽고 분류한다', inbox.map(_itemPanel)));
   b.write(_group('답할 것', asks.length, '고르고 제출', asks.map(_askPanel)));
   b.write(_group('실기 확인', checks.length, '메모가 비면 OK', checks.map(_checkPanel)));
-  b.write(_group('지금', now.length, 'GitHub 이 답한다', now));
+  // The refresh lives here because this is the only section it changes, and a
+  // control parked away from what it affects is a control you have to remember
+  // the meaning of.
+  b.write(_group('지금', now.length, '열린 PR + PR 없이 진행 중', now,
+      control: '<span class="ctl">'
+          '<button class="ghost sm" onclick="refresh(event)">↻ PR 다시 읽기</button>'
+          '<span class="state">열 때만 읽습니다</span></span>'));
   b.write(_group('착수 가능', ready.length, '명령만 내리면 착수', ready.map(_itemPanel)));
   b.write(_group('대기 중', waiting.length, '배지가 무엇을 기다리는지 말한다',
       waiting.map(_itemPanel)));
@@ -506,16 +570,28 @@ String _render(List<_Entry> entries, _Gh gh) {
   return b.toString();
 }
 
-String _group(String title, int n, String why, Iterable<String> panels) {
-  if (n == 0) return '';
+/// A section is always drawn, even empty.
+///
+/// Hiding it when the count is zero made the board's shape change under you --
+/// 지금 vanished when nothing was in flight, and an empty PR section looked
+/// identical to a broken `gh`. A heading that says 0 is information; a heading
+/// that is absent is a question.
+String _group(String title, int n, String why, Iterable<String> panels,
+    {String control = ''}) {
   final b = StringBuffer();
-  b.writeln('<h2>${_esc(title)} <span class="n">$n</span>'
-      '${why.isEmpty ? '' : '<span class="why">${_esc(why)}</span>'}</h2>');
+  b.writeln('<details class="grp" open id="g-${_esc(title)}">'
+      '<summary class="gh">'
+      '<span class="gt">${_esc(title)}</span><span class="n">$n</span>'
+      '${why.isEmpty ? '' : '<span class="why">${_esc(why)}</span>'}'
+      '$control</summary>');
   b.writeln('<div class="stack">');
+  if (n == 0) {
+    b.writeln('<p class="none">없음</p>');
+  }
   for (final p in panels) {
     b.writeln(p);
   }
-  b.writeln('</div>');
+  b.writeln('</div></details>');
   return b.toString();
 }
 
@@ -532,10 +608,11 @@ String _intakeForm() {
 <textarea id="intake-text" rows="4"
  placeholder="떠오른 대로 적으세요. 번호와 제목은 제가 붙입니다.&#10;스크린샷은 Ctrl+V 로 그대로 붙여넣기."></textarea>
 <div id="intake-shots" class="shots"></div>
-<input id="intake-tag" placeholder="분야 (비워도 됩니다 — 제가 정리합니다)">
+<input type="text" id="intake-tag" placeholder="분야 (비워도 됩니다 — 제가 정리합니다)">
 <div class="foot">
 <button onclick="file('feedback')">피드백 — 지금 이게 잘못됐다</button>
 <button class="alt" onclick="file('idea')">아이디어 — 이런 게 있으면 좋겠다</button>
+<button class="ghost" onclick="file('draft')">임시저장 — 아직 정리 전</button>
 <span class="state"></span></div>
 </div></details>
 ''';
@@ -623,19 +700,31 @@ String _checkPanel(_Entry c) {
 }
 
 String _itemPanel(_Entry e) {
-  // Ready items carry no state badge at all; only the inbox is coloured,
-  // because it is the one state that is asking someone to do something.
-  final badge = e.state == 'open' ? '' : (_stateLabels[e.state] ?? e.state);
-  final cls = e.state == 'inbox' ? 'run' : '';
+  // No badge for a ready item, and none for the inbox either: both are already
+  // named by the section they sit in. The tag (피드백 / 아이디어 / 임시) is the
+  // part that actually differs between rows.
+  final inbox = e.state == 'inbox';
+  final badge =
+      (e.state == 'open' || inbox) ? '' : (_stateLabels[e.state] ?? e.state);
   final b = StringBuffer();
-  b.writeln('<details class="p${e.state == 'inbox' ? ' box' : ''}" '
-      'id="c-${_esc(e.id)}">');
-  b.writeln(_head(e.id, e.title, e.tags, badge, cls));
+  b.writeln('<details class="p${inbox ? ' box' : ''}" id="c-${_esc(e.id)}">');
+  b.writeln(_head(e.id, e.title, e.tags, badge, ''));
   b.writeln('<div class="body">');
-  b.writeln(e.note.isEmpty
-      ? '<p class="d">메모 없음.</p>'
-      : '<p class="d">${_esc(e.note)}</p>');
-  b.writeln(_shotStrip(e.id));
+  if (inbox) {
+    // Still editable, because a filing made mid-thought is usually wrong in
+    // some small way and the moment to fix it is when you notice.
+    b.writeln('<textarea rows="4">${_esc(e.note)}</textarea>');
+    b.writeln(_shotStrip(e.id));
+    b.writeln('<div class="foot">'
+        '<button onclick="save(\'${_esc(e.id)}\')">저장</button>'
+        '<button class="ghost" onclick="purge(\'${_esc(e.id)}\')">삭제</button>'
+        '<span class="state"></span></div>');
+  } else {
+    b.writeln(e.note.isEmpty
+        ? '<p class="d">메모 없음.</p>'
+        : '<p class="d">${_esc(e.note)}</p>');
+    b.writeln(_shotStrip(e.id));
+  }
   b.writeln('</div></details>');
   return b.toString();
 }
@@ -727,6 +816,28 @@ function drop(id){
     .then(()=>location.reload())
     .catch(e=>stateOf(c).textContent = '실패: '+e.message);
 }
+function save(id){
+  const c = document.getElementById('c-'+id);
+  post('/edit', {id:id, text:(c.querySelector('textarea').value||'')}, c)
+    .then(()=>location.reload())
+    .catch(e=>stateOf(c).textContent = '실패: '+e.message);
+}
+function purge(id){
+  const c = document.getElementById('c-'+id);
+  if(!confirm(id + ' 을(를) 완전히 지웁니다. 번호도 다시 쓰입니다.')) return;
+  post('/purge', {id:id}, c)
+    .then(()=>location.reload())
+    .catch(e=>stateOf(c).textContent = '실패: '+e.message);
+}
+function refresh(ev){
+  // The button lives inside a <summary>, so without this the click also folds
+  // the section it was meant to update.
+  ev.preventDefault(); ev.stopPropagation();
+  const c = ev.target.closest('.ctl');
+  post('/refresh', {}, c)
+    .then(()=>location.reload())
+    .catch(e=>stateOf(c).textContent = '실패: '+e.message);
+}
 function file(kind){
   const c = document.getElementById('c-intake');
   const text = (document.getElementById('intake-text').value||'').trim();
@@ -794,11 +905,21 @@ font-size:15px;line-height:1.55;word-break:keep-all}
 h1{font-size:22px;margin:0 0 3px;letter-spacing:-.02em}
 h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.1em;
 color:var(--ink3);margin:26px 0 7px;display:flex;align-items:baseline;gap:8px}
-h2 .n{font-family:var(--mono);color:var(--ink)}
-h2 .why{text-transform:none;letter-spacing:0;font-size:12px}
+.gh .n{font-family:var(--mono);color:var(--ink);font-size:13px}
+.gh .why{font-size:12px;color:var(--ink3)}
 .stamp{font-family:var(--mono);font-size:12px;color:var(--ink3);margin:0}
 .warn{color:var(--bad)}
-.rule{font-size:12.5px;color:var(--ink3);margin:8px 0 16px}
+.rule{font-size:12.5px;color:var(--ink3);margin:8px 0 16px;
+display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.grp{margin:22px 0 0}
+.gh{display:flex;align-items:baseline;gap:8px;cursor:pointer;list-style:none;
+padding:4px 0 8px;user-select:none}
+.gh::-webkit-details-marker{display:none}
+.gt{font-size:11.5px;text-transform:uppercase;letter-spacing:.1em;
+color:var(--ink3);font-weight:700}
+.grp[open] .gt{color:var(--ink2)}
+.none{font-size:12.5px;color:var(--ink3);margin:0;padding:6px 2px}
+.ctl{margin-left:auto;display:flex;align-items:center;gap:7px;flex:none}
 .stack{display:flex;flex-direction:column;gap:5px}
 .p{background:var(--card);border:1px solid var(--line);border-radius:5px}
 .p[open]{border-color:var(--line2)}
@@ -832,7 +953,10 @@ border:1px solid var(--line);border-radius:4px;cursor:pointer}
 .ob .chip{align-self:flex-start;margin-top:2px}
 .what{font-size:12.5px;color:var(--ink2)}
 .cost{font-size:12px;color:var(--ink3)}
-textarea,input{width:100%;background:var(--bg);color:var(--ink);
+/* type-scoped on purpose: a bare `input` selector also hits the radios, and
+   width:100% + padding turned every option into a full-width box with its
+   label crushed into a one-character column. */
+textarea,input[type="text"]{width:100%;background:var(--bg);color:var(--ink);
 border:1px solid var(--line);border-radius:4px;padding:7px 9px;
 font-family:var(--sans);font-size:13px}
 textarea{resize:vertical}
@@ -846,6 +970,7 @@ color:var(--ok);cursor:pointer}
 button:hover{background:var(--ok);color:var(--card)}
 button.alt{border-color:var(--live);background:transparent;color:var(--live)}
 button.alt:hover{background:var(--live);color:var(--card)}
+button.sm{padding:2px 9px;font-size:11.5px;font-weight:500}
 button.ghost{border-color:var(--line2);background:transparent;color:var(--ink3)}
 button.ghost:hover{border-color:var(--bad);color:var(--bad);background:transparent}
 .state{font-size:12px;color:var(--ink3)}
