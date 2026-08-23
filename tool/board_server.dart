@@ -22,14 +22,15 @@
 // only slow input, so it is cached for a few seconds and shared by every
 // request in that window.
 //
-// SUBMIT WRITES THE RECORD. The buttons POST back here and the answer is
-// appended to the records file immediately -- no copying by hand, nothing to
-// forget, and the answer is on disk before the page even redraws.
+// THE PAGE WRITES BACK. Submitting an answer, filing feedback, pasting a
+// screenshot, dismissing a landed item -- each POSTs here and lands in the
+// records file (or the shots folder) before the page redraws. Nothing is
+// copied by hand and there is nothing to forget.
 //
 // It is an instrument, so here is what it looks like when it lies:
 //   - `gh` unreachable (offline, not logged in) -> the header says so and PR
-//     sections render empty. It never invents a state, and it never silently
-//     shows an empty "지금" as if that were good news.
+//     sections render empty. It never invents a state, and it never shows an
+//     empty "지금" as if that were good news.
 //   - a malformed JSONL line -> the line number is printed to the console and
 //     the line is skipped. The page still renders; silence would be worse.
 //   - the records file missing -> refuses to start rather than serving an
@@ -45,7 +46,17 @@ import 'dart:io';
 const _repo = 'myoun99/anicel';
 const _ghCacheSeconds = 20;
 
+/// A PR body line that carries the Korean one-liner for the board.
+///
+/// PR titles stay English: a squash merge turns the title into the commit
+/// subject, so it is git history in a public repository, and history that
+/// disagrees in language with the code it describes is worse than history
+/// nobody can skim. This trailer puts the readable line where the board can
+/// find it without anyone writing a second record.
+const _koTrailer = 'Board-ko:';
+
 late final String _recordsPath;
+late final String _shotsDir;
 late final String _ghPath;
 
 Future<void> main(List<String> args) async {
@@ -58,6 +69,8 @@ Future<void> main(List<String> args) async {
         'usage: dart run tool/board_server.dart --records <file.jsonl>');
     exit(2);
   }
+  _shotsDir = '${File(_recordsPath).parent.path}/board-shots';
+  Directory(_shotsDir).createSync(recursive: true);
 
   HttpServer server;
   try {
@@ -70,7 +83,7 @@ Future<void> main(List<String> args) async {
 
   stdout.writeln('board  ->  http://localhost:$port');
   stdout.writeln('records:   $_recordsPath');
-  stdout.writeln('ctrl+c to stop.');
+  stdout.writeln('shots:     $_shotsDir');
 
   await for (final request in server) {
     try {
@@ -88,54 +101,145 @@ String? _flag(List<String> args, String name) {
   return i >= 0 && i + 1 < args.length ? args[i + 1] : null;
 }
 
-Future<void> _handle(HttpRequest request) async {
-  final path = request.uri.path;
-  if (request.method == 'POST' && (path == '/submit' || path == '/dismiss')) {
-    final body = jsonDecode(await utf8.decoder.bind(request).join())
-        as Map<String, dynamic>;
-    _append(path == '/submit' ? _answerLine(body) : _dismissLine(body));
-    request.response
+// ----------------------------------------------------------------- routes
+
+Future<void> _handle(HttpRequest req) async {
+  final path = req.uri.path;
+
+  if (path.startsWith('/shot/') && req.method == 'GET') {
+    final file = File('$_shotsDir/${Uri.decodeComponent(path.substring(6))}');
+    if (!file.existsSync() || !file.path.endsWith('.png')) {
+      req.response.statusCode = 404;
+      await req.response.close();
+      return;
+    }
+    req.response.headers.contentType = ContentType('image', 'png');
+    await req.response.addStream(file.openRead());
+    await req.response.close();
+    return;
+  }
+
+  if (req.method == 'POST') {
+    final body =
+        jsonDecode(await utf8.decoder.bind(req).join()) as Map<String, dynamic>;
+    String? newId;
+    switch (path) {
+      case '/submit':
+        _append({
+          'kind': body['kind'] ?? 'decision',
+          'id': body['id'],
+          'answer': body['answer'] ?? '',
+          'answerNote': body['memo'] ?? '',
+          'ts': _now(),
+        });
+      case '/dismiss':
+        _append({
+          'kind': 'item',
+          'id': body['id'],
+          'state': 'archived',
+          'ts': _now(),
+        });
+      case '/intake':
+        newId = _intake(body);
+      case '/shot':
+        _saveShot(body);
+      default:
+        req.response.statusCode = 404;
+        await req.response.close();
+        return;
+    }
+    req.response
       ..statusCode = 200
       ..headers.contentType = ContentType.json
-      ..write('{"ok":true}');
-    await request.response.close();
+      ..write(jsonEncode({'ok': true, 'id': ?newId}));
+    await req.response.close();
     return;
   }
+
   if (path != '/') {
-    request.response.statusCode = 404;
-    await request.response.close();
+    req.response.statusCode = 404;
+    await req.response.close();
     return;
   }
-  final entries = _readRecords(File(_recordsPath));
-  final gh = await _prs();
-  request.response
+  req.response
     ..headers.contentType = ContentType.html
     ..headers.set('Cache-Control', 'no-store')
-    ..write(_render(entries, gh));
-  await request.response.close();
+    ..write(_render(_readRecords(File(_recordsPath)), await _prs()));
+  await req.response.close();
 }
 
-Map<String, dynamic> _answerLine(Map<String, dynamic> body) => {
-      'kind': body['kind'] ?? 'decision',
-      'id': body['id'],
-      'answer': body['answer'] ?? '',
-      'answerNote': body['memo'] ?? '',
-      'ts': DateTime.now().toIso8601String(),
-    };
-
-Map<String, dynamic> _dismissLine(Map<String, dynamic> body) => {
-      'kind': 'item',
-      'id': body['id'],
-      'state': 'archived',
-      'ts': DateTime.now().toIso8601String(),
-    };
+String _now() => DateTime.now().toIso8601String();
 
 void _append(Map<String, dynamic> line) {
-  File(_recordsPath).writeAsStringSync(
-    '${jsonEncode(line)}\n',
-    mode: FileMode.append,
-  );
+  File(_recordsPath)
+      .writeAsStringSync('${jsonEncode(line)}\n', mode: FileMode.append);
   stdout.writeln('board: recorded ${line['id']}');
+}
+
+/// Files a new idea or piece of feedback and hands back the id it was given.
+///
+/// The id is allocated here rather than asked for: the person filing it is
+/// mid-thought, and "what should I call this" is exactly the friction that
+/// makes people not write things down. Classification comes later -- it lands
+/// in `inbox`, which is a section on the board and not a synonym for done.
+String _intake(Map<String, dynamic> body) {
+  final idea = body['kind'] == 'idea';
+  final text = '${body['text'] ?? ''}'.trim();
+  final tag = '${body['tag'] ?? ''}'.trim();
+  final id = _nextId(idea ? 'I' : 'F');
+  final firstLine = text.split('\n').first;
+  _append({
+    'kind': 'item',
+    'id': id,
+    'title': firstLine.length > 70 ? '${firstLine.substring(0, 70)}…' : firstLine,
+    'note': text,
+    'tags': [idea ? '아이디어' : '피드백', if (tag.isNotEmpty) tag],
+    'state': 'inbox',
+    'ts': _now(),
+  });
+  return id;
+}
+
+/// Next free number for a prefix, read from the records themselves so two
+/// filings in a row cannot collide and nothing has to remember a counter.
+String _nextId(String prefix) {
+  final used = <int>{};
+  final pattern = RegExp('^$prefix-([0-9]+)\$');
+  for (final e in _readRecords(File(_recordsPath))) {
+    final m = pattern.firstMatch(e.id);
+    if (m != null) used.add(int.parse(m.group(1)!));
+  }
+  var n = 1;
+  while (used.contains(n)) {
+    n++;
+  }
+  return '$prefix-$n';
+}
+
+/// Screenshots are stored as files named after the item, so the folder IS the
+/// index -- there is no second place that can disagree about which shots an
+/// item has, and deleting the file is deleting the attachment.
+void _saveShot(Map<String, dynamic> body) {
+  final id = '${body['id']}'.replaceAll(RegExp(r'[^A-Za-z0-9_.-]'), '_');
+  final data = '${body['data']}';
+  final comma = data.indexOf(',');
+  if (comma < 0) return;
+  final bytes = base64Decode(data.substring(comma + 1));
+  final name = '$id-${DateTime.now().millisecondsSinceEpoch}.png';
+  File('$_shotsDir/$name').writeAsBytesSync(bytes);
+  stdout.writeln('board: shot $name (${(bytes.length / 1024).round()} KB)');
+}
+
+List<String> _shotsFor(String id) {
+  final dir = Directory(_shotsDir);
+  if (!dir.existsSync()) return const [];
+  final out = <String>[];
+  for (final f in dir.listSync()) {
+    final name = f.path.split(RegExp(r'[\\/]')).last;
+    if (name.startsWith('$id-') && name.endsWith('.png')) out.add(name);
+  }
+  out.sort();
+  return out;
 }
 
 // ---------------------------------------------------------------- records
@@ -219,8 +323,6 @@ class _Pr {
   final int number;
   final String state;
   final String title;
-
-  /// green / red / pending / none — folded from the check rollup.
   final String checks;
 }
 
@@ -246,14 +348,13 @@ Future<_Gh> _prs() async {
   try {
     result = await Process.run(_ghPath, [
       'pr', 'list', '--repo', _repo, '--state', 'all', '--limit', '40',
-      '--json', 'number,state,title,statusCheckRollup',
+      '--json', 'number,state,title,body,statusCheckRollup',
     ]);
   } catch (_) {
     return _cache(_Gh(const [], ok: false));
   }
-  if (result.exitCode != 0) {
-    return _cache(_Gh(const [], ok: false));
-  }
+  if (result.exitCode != 0) return _cache(_Gh(const [], ok: false));
+
   final prs = <_Pr>[];
   for (final row in jsonDecode(result.stdout as String) as List) {
     final map = row as Map<String, dynamic>;
@@ -270,11 +371,23 @@ Future<_Gh> _prs() async {
     prs.add(_Pr(
       (map['number'] as num).toInt(),
       map['state'] as String,
-      map['title'] as String,
+      _koOr(map['body'] as String? ?? '', map['title'] as String),
       checks,
     ));
   }
   return _cache(_Gh(prs, ok: true));
+}
+
+/// The Korean line from the PR body if it carries one, else the English title.
+String _koOr(String body, String title) {
+  for (final line in body.split('\n')) {
+    final t = line.trim();
+    if (t.startsWith(_koTrailer)) {
+      final ko = t.substring(_koTrailer.length).trim();
+      if (ko.isNotEmpty) return ko;
+    }
+  }
+  return title;
 }
 
 _Gh _cache(_Gh gh) {
@@ -292,28 +405,28 @@ const _stateLabels = <String, String>{
   'later': '나중',
   'gate': '게이트',
   'mine': '내 몫',
+  'inbox': '분류 전',
 };
 
 String _esc(String s) => const HtmlEscape().convert(s);
 
 String _render(List<_Entry> entries, _Gh gh) {
-  final live = entries.where((e) => e.state != 'archived').toList();
-  final asks = live.where((e) => e.kind == 'decision' && e.answer == null).toList();
-  final checks = live.where((e) => e.kind == 'check' && e.answer == null).toList();
-  final settled = live
+  final alive = entries.where((e) => e.state != 'archived').toList();
+  final inbox = alive.where((e) => e.state == 'inbox').toList();
+  final asks = alive.where((e) => e.kind == 'decision' && e.answer == null).toList();
+  final checks = alive.where((e) => e.kind == 'check' && e.answer == null).toList();
+  final settled = alive
       .where((e) => (e.kind == 'decision' || e.kind == 'check') && e.answer != null)
       .toList();
 
-  // A record may claim a PR; anything GitHub knows about that no record claims
-  // becomes an item on its own, so routine work never needs to be written down.
-  final claimed = {for (final e in live) if (e.pr != null) e.pr!: e};
-  final archived = entries.where((e) => e.state == 'archived').map((e) => e.id).toSet();
+  final claimed = {for (final e in alive) if (e.pr != null) e.pr!: e};
+  final gone = entries.where((e) => e.state == 'archived').map((e) => e.id).toSet();
 
   final now = <String>[];
   final landed = <String>[];
   for (final pr in gh.prs) {
     final e = claimed[pr.number];
-    if (e == null && archived.contains('pr-${pr.number}')) continue;
+    if (e == null && gone.contains('pr-${pr.number}')) continue;
     final panel = _prPanel(pr, e);
     if (pr.state == 'OPEN') {
       now.add(panel);
@@ -322,8 +435,11 @@ String _render(List<_Entry> entries, _Gh gh) {
     }
   }
 
-  final todo = live
-      .where((e) => e.kind == 'item' && (e.pr == null || !claimed.containsKey(e.pr)))
+  final todo = alive
+      .where((e) =>
+          e.kind == 'item' &&
+          e.state != 'inbox' &&
+          (e.pr == null || !claimed.containsKey(e.pr)))
       .toList();
 
   final b = StringBuffer();
@@ -332,15 +448,19 @@ String _render(List<_Entry> entries, _Gh gh) {
       '<title>Anicel 보드</title><style>${_css()}</style></head><body>');
   b.writeln('<div class="wrap">');
   b.write('<h1>Anicel 보드</h1>');
-  b.write('<p class="stamp">답할 것 <b>${asks.length}</b> · 실기 확인 '
-      '<b>${checks.length}</b> · 지금 <b>${now.length}</b> · 작업 목록 <b>${todo.length}</b>');
+  b.write('<p class="stamp">분류 전 <b>${inbox.length}</b> · 답할 것 <b>${asks.length}</b>'
+      ' · 실기 확인 <b>${checks.length}</b> · 지금 <b>${now.length}</b>'
+      ' · 작업 목록 <b>${todo.length}</b>');
   if (!gh.ok) {
     b.write(' · <span class="warn">gh 를 못 불렀습니다 — PR 칸은 비어 있습니다</span>');
   }
   b.writeln('</p>');
-  b.writeln('<p class="rule">줄을 누르면 펼쳐집니다. '
-      '<b>제출하면 그 자리에서 기록 파일에 적힙니다.</b></p>');
+  b.writeln('<p class="rule">줄을 누르면 펼쳐집니다. 메모 칸에 <b>스크린샷을 그대로 붙여넣을 수</b> '
+      '있습니다(Win+Shift+S → Ctrl+V).</p>');
 
+  b.write(_intakeForm());
+  b.write(_group('분류 전', inbox.length, '내가 분류해서 작업 목록으로 옮긴다',
+      inbox.map(_itemPanel)));
   b.write(_group('답할 것', asks.length, '고르고 제출', asks.map(_askPanel)));
   b.write(_group('실기 확인', checks.length, '메모가 비면 OK', checks.map(_checkPanel)));
   b.write(_group('지금', now.length, 'GitHub 이 답한다', now));
@@ -366,12 +486,46 @@ String _group(String title, int n, String why, Iterable<String> panels) {
   return b.toString();
 }
 
+/// The intake. Two buttons rather than a type dropdown, because the choice is
+/// the whole classification a person can make while still mid-thought: this is
+/// broken (feedback) or this would be good (idea). Everything else -- number,
+/// title, which area it belongs to -- is sorted out later, on the board.
+String _intakeForm() {
+  return '''
+<details class="p intake" id="c-intake">
+<summary><span class="k">＋</span><span class="t">새 피드백 · 아이디어</span>
+<span class="right"><span class="chip run badge">여기에 던져두세요</span></span></summary>
+<div class="body">
+<textarea id="intake-text" rows="4"
+ placeholder="떠오른 대로 적으세요. 번호와 제목은 제가 붙입니다.&#10;스크린샷은 Ctrl+V 로 그대로 붙여넣기."></textarea>
+<div id="intake-shots" class="shots"></div>
+<input id="intake-tag" placeholder="분야 (비워도 됩니다 — 제가 정리합니다)">
+<div class="foot">
+<button onclick="file('feedback')">피드백 — 지금 이게 잘못됐다</button>
+<button class="alt" onclick="file('idea')">아이디어 — 이런 게 있으면 좋겠다</button>
+<span class="state"></span></div>
+</div></details>
+''';
+}
+
 String _head(String id, String title, List<String> tags, String badge, String cls) {
   final chips = tags.map((t) => '<span class="chip">${_esc(t)}</span>').join();
   return '<summary><span class="k">${_esc(id)}</span>'
       '<span class="t">${_esc(title)}</span>'
       '<span class="right">$chips'
       '<span class="chip $cls badge">${_esc(badge)}</span></span></summary>';
+}
+
+String _shotStrip(String id) {
+  final shots = _shotsFor(id);
+  if (shots.isEmpty) return '';
+  final b = StringBuffer('<div class="shots">');
+  for (final s in shots) {
+    b.write('<a href="/shot/$s" target="_blank">'
+        '<img src="/shot/$s" alt="${_esc(s)}"></a>');
+  }
+  b.write('</div>');
+  return b.toString();
 }
 
 String _askPanel(_Entry d) {
@@ -402,7 +556,9 @@ String _askPanel(_Entry d) {
   b.write('<input type="radio" name="ans-${_esc(d.id)}" value="other">');
   b.writeln('<span class="ob"><b>다른 안 / 더 물어볼 것</b>'
       '<span class="what">아래 칸에 적어 주세요</span></span></label>');
-  b.writeln('<textarea rows="2" placeholder="메모 — 왜 그렇게 정했는지"></textarea>');
+  b.writeln('<textarea rows="2" placeholder="메모 — 왜 그렇게 정했는지 '
+      '(스크린샷은 Ctrl+V)"></textarea>');
+  b.writeln(_shotStrip(d.id));
   b.writeln('<div class="foot"><button onclick="send(\'${_esc(d.id)}\')">제출</button>'
       '<span class="state"></span></div>');
   b.writeln('</div></details>');
@@ -420,8 +576,9 @@ String _checkPanel(_Entry c) {
   if (c.why.isNotEmpty) {
     b.writeln('<p class="d"><b>왜 중요한가</b> — ${_esc(c.why)}</p>');
   }
-  b.writeln('<textarea rows="2" '
-      'placeholder="문제가 있으면 적어 주세요 — 비워 두면 OK"></textarea>');
+  b.writeln('<textarea rows="2" placeholder="문제가 있으면 적어 주세요 — 비워 두면 OK '
+      '(스크린샷은 Ctrl+V)"></textarea>');
+  b.writeln(_shotStrip(c.id));
   b.writeln('<div class="foot"><button onclick="send(\'${_esc(c.id)}\')">제출</button>'
       '<span class="state"></span></div>');
   b.writeln('</div></details>');
@@ -429,13 +586,20 @@ String _checkPanel(_Entry c) {
 }
 
 String _itemPanel(_Entry e) {
-  final body = e.note.isEmpty
-      ? '<div class="body"><p class="d">메모 없음.</p></div>'
-      : '<div class="body"><p class="d">${_esc(e.note)}</p></div>';
-  final cls = e.state == 'gate' ? 'bad' : '';
-  return '<details class="p">'
-      '${_head(e.id, e.title, e.tags, _stateLabels[e.state] ?? e.state, cls)}'
-      '$body</details>';
+  final cls = e.state == 'gate'
+      ? 'bad'
+      : (e.state == 'inbox' ? 'run' : '');
+  final b = StringBuffer();
+  b.writeln('<details class="p${e.state == 'inbox' ? ' box' : ''}" '
+      'id="c-${_esc(e.id)}">');
+  b.writeln(_head(e.id, e.title, e.tags, _stateLabels[e.state] ?? e.state, cls));
+  b.writeln('<div class="body">');
+  b.writeln(e.note.isEmpty
+      ? '<p class="d">메모 없음.</p>'
+      : '<p class="d">${_esc(e.note)}</p>');
+  b.writeln(_shotStrip(e.id));
+  b.writeln('</div></details>');
+  return b.toString();
 }
 
 String _prPanel(_Pr pr, _Entry? e) {
@@ -478,26 +642,33 @@ String _settledPanel(_Entry d) {
   final label = d.kind == 'check'
       ? (d.answerNote.isEmpty ? 'OK' : '피드백')
       : '${picked['label']}';
-  final body = '<div class="body">'
-      '<p class="d"><b>→ ${_esc(label)}</b></p>'
-      '${d.answerNote.isEmpty ? '' : '<p class="d">${_esc(d.answerNote)}</p>'}'
-      '<div class="foot"><button class="ghost" '
+  final b = StringBuffer();
+  b.writeln('<details class="p" id="c-${_esc(d.id)}">');
+  b.writeln(_head(d.id, d.title, d.tags, '정해짐', 'ok'));
+  b.writeln('<div class="body"><p class="d"><b>→ ${_esc(label)}</b></p>');
+  if (d.answerNote.isNotEmpty) {
+    b.writeln('<p class="d">${_esc(d.answerNote)}</p>');
+  }
+  b.writeln(_shotStrip(d.id));
+  b.writeln('<div class="foot"><button class="ghost" '
       'onclick="drop(\'${_esc(d.id)}\')">삭제</button>'
-      '<span class="state"></span></div></div>';
-  return '<details class="p">'
-      '${_head(d.id, d.title, d.tags, '정해짐', 'ok')}$body</details>';
+      '<span class="state"></span></div></div></details>');
+  return b.toString();
 }
 
+/// Paste-to-attach is wired at the document, not per textarea, so every memo
+/// box on the page gets it -- including ones added later. A screenshot is the
+/// cheapest thing a person can give and the most expensive thing to describe
+/// in words, so it should never be the box that does not take one.
 String _js() => r'''
+var queued = [];
+function stateOf(el){ return el.querySelector('.state'); }
+
 async function post(url, body, el){
-  el.querySelector('.state').textContent = '저장 중…';
-  try{
-    const r = await fetch(url, {method:'POST', body: JSON.stringify(body)});
-    if(!r.ok) throw new Error(r.status);
-    location.reload();
-  }catch(e){
-    el.querySelector('.state').textContent = '실패: ' + e.message;
-  }
+  stateOf(el).textContent = '저장 중…';
+  const r = await fetch(url, {method:'POST', body: JSON.stringify(body)});
+  if(!r.ok) throw new Error(r.status);
+  return r.json();
 }
 function send(id){
   const c = document.getElementById('c-'+id);
@@ -506,15 +677,66 @@ function send(id){
   const answer = r ? r.value : '';
   const memo = t ? (t.value||'').trim() : '';
   if(c.dataset.kind === 'decision' && !answer && !memo){
-    c.querySelector('.state').textContent = '고르거나 메모를 적어 주세요';
-    return;
+    stateOf(c).textContent = '고르거나 메모를 적어 주세요'; return;
   }
-  post('/submit', {id:id, kind:c.dataset.kind, answer:answer||'ok', memo:memo}, c);
+  post('/submit', {id:id, kind:c.dataset.kind, answer:answer||'ok', memo:memo}, c)
+    .then(()=>location.reload())
+    .catch(e=>stateOf(c).textContent = '실패: '+e.message);
 }
 function drop(id){
   const c = document.getElementById('c-'+id);
-  post('/dismiss', {id:id}, c);
+  post('/dismiss', {id:id}, c)
+    .then(()=>location.reload())
+    .catch(e=>stateOf(c).textContent = '실패: '+e.message);
 }
+function file(kind){
+  const c = document.getElementById('c-intake');
+  const text = (document.getElementById('intake-text').value||'').trim();
+  if(!text && queued.length === 0){
+    stateOf(c).textContent = '내용을 적거나 스크린샷을 붙여넣어 주세요'; return;
+  }
+  post('/intake', {kind:kind, text:text,
+                   tag:(document.getElementById('intake-tag').value||'').trim()}, c)
+    .then(async res => {
+      for(const data of queued){
+        await fetch('/shot', {method:'POST',
+          body: JSON.stringify({id:res.id, data:data})});
+      }
+      queued = [];
+      location.reload();
+    })
+    .catch(e=>stateOf(c).textContent = '실패: '+e.message);
+}
+
+document.addEventListener('paste', function(e){
+  const ta = e.target;
+  if(!ta || ta.tagName !== 'TEXTAREA') return;
+  const items = (e.clipboardData && e.clipboardData.items) || [];
+  for(const it of items){
+    if(it.type.indexOf('image/') !== 0) continue;
+    e.preventDefault();
+    const reader = new FileReader();
+    reader.onload = function(){
+      const card = ta.closest('details');
+      const id = card.id.replace(/^c-/, '');
+      if(id === 'intake'){
+        queued.push(reader.result);
+        const strip = document.getElementById('intake-shots');
+        const img = document.createElement('img');
+        img.src = reader.result;
+        strip.appendChild(img);
+        stateOf(card).textContent = '스크린샷 ' + queued.length + '장 — 제출하면 같이 올라갑니다';
+      } else {
+        stateOf(card).textContent = '스크린샷 올리는 중…';
+        fetch('/shot', {method:'POST',
+          body: JSON.stringify({id:id, data:reader.result})})
+          .then(()=>location.reload())
+          .catch(err=>stateOf(card).textContent = '실패: '+err.message);
+      }
+    };
+    reader.readAsDataURL(it.getAsFile());
+  }
+});
 ''';
 
 String _css() => '''
@@ -538,12 +760,14 @@ h2 .n{font-family:var(--mono);color:var(--ink)}
 h2 .why{text-transform:none;letter-spacing:0;font-size:12px}
 .stamp{font-family:var(--mono);font-size:12px;color:var(--ink3);margin:0}
 .warn{color:var(--bad)}
-.rule{font-size:12.5px;color:var(--ink3);margin:8px 0 0}
+.rule{font-size:12.5px;color:var(--ink3);margin:8px 0 16px}
 .stack{display:flex;flex-direction:column;gap:5px}
 .p{background:var(--card);border:1px solid var(--line);border-radius:5px}
 .p[open]{border-color:var(--line2)}
 .ask{border-left:3px solid var(--run)}
 .chk{border-left:3px solid var(--live)}
+.box{border-left:3px solid var(--run)}
+.intake{border:1px dashed var(--line2)}
 summary{display:flex;align-items:center;gap:10px;padding:10px 13px;
 cursor:pointer;list-style:none;user-select:none}
 summary::-webkit-details-marker{display:none}
@@ -560,7 +784,7 @@ white-space:nowrap;border:1px solid var(--line2);color:var(--ink3)}
 .body{padding:2px 14px 13px;border-top:1px solid var(--line);
 display:flex;flex-direction:column;gap:7px}
 .body>*:first-child{margin-top:10px}
-.d{font-size:13px;color:var(--ink2);margin:0}
+.d{font-size:13px;color:var(--ink2);margin:0;white-space:pre-wrap}
 .opt{display:flex;gap:9px;align-items:flex-start;padding:8px 10px;
 border:1px solid var(--line);border-radius:4px;cursor:pointer}
 .opt.rec{border-color:var(--ok)}
@@ -570,14 +794,20 @@ border:1px solid var(--line);border-radius:4px;cursor:pointer}
 .ob .chip{align-self:flex-start;margin-top:2px}
 .what{font-size:12.5px;color:var(--ink2)}
 .cost{font-size:12px;color:var(--ink3)}
-textarea{width:100%;background:var(--bg);color:var(--ink);
+textarea,input{width:100%;background:var(--bg);color:var(--ink);
 border:1px solid var(--line);border-radius:4px;padding:7px 9px;
-font-family:var(--sans);font-size:13px;resize:vertical}
-.foot{display:flex;align-items:center;gap:10px}
-button{font-family:var(--sans);font-size:13px;font-weight:600;padding:6px 16px;
+font-family:var(--sans);font-size:13px}
+textarea{resize:vertical}
+.shots{display:flex;gap:6px;flex-wrap:wrap}
+.shots img{max-height:120px;border:1px solid var(--line2);border-radius:4px;
+cursor:zoom-in}
+.foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+button{font-family:var(--sans);font-size:13px;font-weight:600;padding:6px 14px;
 border-radius:4px;border:1px solid var(--ok);background:var(--okbg);
 color:var(--ok);cursor:pointer}
 button:hover{background:var(--ok);color:var(--card)}
+button.alt{border-color:var(--live);background:transparent;color:var(--live)}
+button.alt:hover{background:var(--live);color:var(--card)}
 button.ghost{border-color:var(--line2);background:transparent;color:var(--ink3)}
 button.ghost:hover{border-color:var(--bad);color:var(--bad);background:transparent}
 .state{font-size:12px;color:var(--ink3)}
