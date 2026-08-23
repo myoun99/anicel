@@ -320,7 +320,14 @@ class _Entry {
 /// Folds the append-only log into current state: a later line with the same id
 /// overwrites only the fields it names, so "this now has an answer" is one
 /// short line rather than a restatement of the whole record.
+/// Lines the reader could not use. The board still draws -- thirty items beat
+/// none -- but it says so at the top, because an item that silently stops
+/// existing is the one failure this format can still have. This replaces a
+/// Stop hook that cost 2.4s of every turn to answer the same question.
+List<int> _badLines = const [];
+
 List<_Entry> _readRecords(File file) {
+  final bad = <int>[];
   final byId = <String, _Entry>{};
   final order = <String>[];
   var lineNo = 0;
@@ -333,6 +340,7 @@ List<_Entry> _readRecords(File file) {
       json = jsonDecode(trimmed) as Map<String, dynamic>;
     } catch (_) {
       stderr.writeln('board: line $lineNo is not valid JSON, skipped');
+      bad.add(lineNo);
       continue;
     }
     final kind = json['kind'] as String? ?? '';
@@ -340,6 +348,7 @@ List<_Entry> _readRecords(File file) {
     final id = json['id'] as String?;
     if (id == null) {
       stderr.writeln('board: line $lineNo has no id, skipped');
+      bad.add(lineNo);
       continue;
     }
     final e = byId.putIfAbsent(id, () {
@@ -366,6 +375,7 @@ List<_Entry> _readRecords(File file) {
           .toList();
     }
   }
+  _badLines = bad;
   return [for (final id in order) byId[id]!];
 }
 
@@ -621,6 +631,11 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits) {
   b.writeln('<p class="rule" id="ruleline">줄을 누르면 펼쳐집니다. '
       '메모 칸에 <b>스크린샷을 그대로 붙여넣을 수</b> 있습니다'
       '(Win+Shift+S → Ctrl+V).</p>');
+  if (_badLines.isNotEmpty) {
+    b.writeln('<p class="alarm">⚠️ 기록 파일에서 <b>${_badLines.length}줄</b>을 '
+        '읽지 못했습니다 — 그 항목은 이 화면에 <b>없습니다</b>. '
+        '줄 ${_badLines.join(', ')}</p>');
+  }
 
   b.write(_intakeForm());
   b.write(_group('분류 전', inbox.length, '내가 읽고 분류한다', inbox.map(_itemPanel)));
@@ -1051,6 +1066,8 @@ padding:4px 0 8px;user-select:none}
 color:var(--ink3);font-weight:700}
 .grp[open] .gt{color:var(--ink2)}
 .none{font-size:12.5px;color:var(--ink3);margin:0;padding:6px 2px}
+.alarm{background:var(--badbg);color:var(--bad);border:1px solid var(--bad);
+border-radius:5px;padding:9px 12px;font-size:13px;margin:0 0 14px}
 .ctl{margin-left:auto;display:flex;align-items:center;gap:7px;flex:none}
 .pick{flex:none;margin:0}
 .mono{font-family:var(--mono);font-size:11.5px;word-break:break-all}
