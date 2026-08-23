@@ -179,11 +179,46 @@ Future<void> _handle(HttpRequest req) async {
     await req.response.close();
     return;
   }
+  // Order matters: reading the records is what loads the 최근 착지 mark, and
+  // the baseline write needs to know whether one is already there.
+  final entries = _readRecords(File(_recordsPath));
+  final gh = await _prs();
+  _markLandedBaseline(gh);
   req.response
     ..headers.contentType = ContentType.html
     ..headers.set('Cache-Control', 'no-store')
-    ..write(_render(_readRecords(File(_recordsPath)), await _prs(), await _checkouts()));
+    ..write(_render(entries, gh, await _checkouts()));
   await req.response.close();
+}
+
+/// Writes the 최근 착지 mark once, the first time a board ever draws.
+///
+/// This is the only place the board writes without being asked. The
+/// alternative is a first visit that dumps every merge within reach and asks
+/// the reader to confirm history they watched happen.
+///
+/// A FAILED LOOKUP MUST NEVER SET THE BASELINE. gh returns an empty list when
+/// it cannot answer, and an empty list looks exactly like "nothing has landed
+/// yet" -- mark on that and every merge in the repo is silently older than the
+/// mark, so the section stays empty forever and nobody finds out. `ok` is the
+/// only field that can tell those two apart.
+///
+/// An empty list from a gh that DID answer needs no guard of its own: marking
+/// a repo with no merges yet is harmless, since everything that lands after
+/// still lands after. A guard for it was here and was removed -- it made the
+/// `ok` check untestable by shadowing it on every path a test could reach.
+void _markLandedBaseline(_Gh gh) {
+  if (_landedSince != null) return;
+  if (!gh.ok) return;
+
+  final at = DateTime.now().toUtc().toIso8601String();
+  _append({
+    'kind': 'meta',
+    'landedSince': at,
+    'note': '최근 착지의 기준선 — 이 시각까지 머지된 것은 이미 본 것으로 친다. '
+        '보드가 생기기 전에 머지된 PR을 다시 확인하라고 물을 이유가 없다.',
+  });
+  _landedSince = DateTime.parse(at);
 }
 
 String _now() => DateTime.now().toIso8601String();
@@ -191,7 +226,7 @@ String _now() => DateTime.now().toIso8601String();
 void _append(Map<String, dynamic> line) {
   File(_recordsPath)
       .writeAsStringSync('${jsonEncode(line)}\n', mode: FileMode.append);
-  stdout.writeln('board: recorded ${line['id']}');
+  stdout.writeln('board: recorded ${line['id'] ?? line['kind']}');
 }
 
 /// Files a new idea or piece of feedback and hands back the id it was given.
@@ -326,7 +361,35 @@ class _Entry {
 /// Stop hook that cost 2.4s of every turn to answer the same question.
 List<int> _badLines = const [];
 
+/// 최근 착지 reports only what landed AFTER this moment.
+///
+/// Without it the section was a window onto all of git history: it showed the
+/// eight newest merges, and ticking those eight revealed the next eight, and
+/// so on for as far back as `gh pr list` would reach -- each tick also costing
+/// a permanent `pr-N archived` line. But a PR that merged before this board
+/// existed was watched as it merged. It is not news, and asking for it to be
+/// confirmed is asking twice.
+///
+/// So the section is bounded by a mark instead of a count: everything at or
+/// before the mark is already seen. The mark is written once, by the board
+/// itself, the first time it runs -- which is what removed the cap. The list
+/// is short now because it is genuinely short.
+DateTime? _landedSince;
+
+/// Did this land after the mark?
+bool _isNews(_Pr pr) {
+  final since = _landedSince;
+  if (since == null) return true;
+  final at = pr.mergedAt;
+  // A merge gh gave no timestamp for cannot be placed against the mark. Show
+  // it: 확인 can dismiss a row, nothing can recover one that was never drawn.
+  return at == null || at.isAfter(since);
+}
+
 List<_Entry> _readRecords(File file) {
+  // Reset, not update: the file is the state. A mark that survived a read of a
+  // file that no longer carries one would be a mark nobody can remove.
+  _landedSince = null;
   final bad = <int>[];
   final byId = <String, _Entry>{};
   final order = <String>[];
@@ -344,7 +407,13 @@ List<_Entry> _readRecords(File file) {
       continue;
     }
     final kind = json['kind'] as String? ?? '';
-    if (kind == 'meta') continue;
+    if (kind == 'meta') {
+      // meta lines are notes to self and carry no id, with one exception: the
+      // 최근 착지 mark. A later line wins, same as every other field here.
+      final since = json['landedSince'] as String?;
+      if (since != null) _landedSince = DateTime.tryParse(since);
+      continue;
+    }
     final id = json['id'] as String?;
     if (id == null) {
       stderr.writeln('board: line $lineNo has no id, skipped');
@@ -382,12 +451,17 @@ List<_Entry> _readRecords(File file) {
 // --------------------------------------------------------------------- gh
 
 class _Pr {
-  _Pr(this.number, this.state, this.title, this.checks);
+  _Pr(this.number, this.state, this.title, this.checks, this.mergedAt);
 
   final int number;
   final String state;
   final String title;
   final String checks;
+
+  /// When it landed, or null while it is still open. Not the PR number: those
+  /// run in the order work STARTED, and a branch opened last week can land
+  /// after one opened this morning. 최근 착지 means recently landed.
+  final DateTime? mergedAt;
 }
 
 class _Gh {
@@ -414,7 +488,7 @@ Future<_Gh> _prs() async {
       _ghPath,
       [
         'pr', 'list', '--repo', _repo, '--state', 'all', '--limit', '40',
-        '--json', 'number,state,title,body,statusCheckRollup',
+        '--json', 'number,state,title,body,statusCheckRollup,mergedAt',
       ],
       // Windows decodes a subprocess with the system codepage unless told
       // otherwise, which turns every Korean character in a PR body into
@@ -451,11 +525,13 @@ Future<_Gh> _prs() async {
           }.contains(c['conclusion']));
       checks = bad ? 'red' : (pending ? 'pending' : 'green');
     }
+    final merged = map['mergedAt'] as String?;
     prs.add(_Pr(
       (map['number'] as num).toInt(),
       map['state'] as String,
       _koOr(map['body'] as String? ?? '', map['title'] as String),
       checks,
+      merged == null ? null : DateTime.tryParse(merged),
     ));
   }
   return _cache(_Gh(prs, ok: true));
@@ -588,17 +664,23 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits) {
   final gone = entries.where((e) => e.state == 'archived').map((e) => e.id).toSet();
 
   final now = <String>[];
-  final landed = <String>[];
+  final fresh = <_Pr>[];
   for (final pr in gh.prs) {
     final e = claimed[pr.number];
     if (e == null && gone.contains('pr-${pr.number}')) continue;
-    final panel = _prPanel(pr, e);
     if (pr.state == 'OPEN') {
-      now.add(panel);
-    } else if (pr.state == 'MERGED' && landed.length < 8) {
-      landed.add(panel);
+      now.add(_prPanel(pr, e));
+    } else if (pr.state == 'MERGED' && _isNews(pr)) {
+      fresh.add(pr);
     }
   }
+  fresh.sort((a, b) {
+    final x = a.mergedAt, y = b.mergedAt;
+    if (x == null) return y == null ? 0 : -1;
+    if (y == null) return 1;
+    return y.compareTo(x);
+  });
+  final landed = [for (final pr in fresh) _prPanel(pr, claimed[pr.number])];
 
   final loose = alive
       .where((e) =>
