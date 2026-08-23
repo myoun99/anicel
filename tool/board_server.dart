@@ -187,7 +187,8 @@ Future<void> _handle(HttpRequest req) async {
   req.response
     ..headers.contentType = ContentType.html
     ..headers.set('Cache-Control', 'no-store')
-    ..write(_render(entries, gh, await _checkouts()));
+    ..write(_render(entries, gh, await _checkouts(),
+        landedPage: int.tryParse(req.uri.queryParameters['landed'] ?? '') ?? 1));
   await req.response.close();
 }
 
@@ -651,7 +652,8 @@ const _waiting = <String>{'ask', 'gate', 'queue', 'mine'};
 
 String _esc(String s) => const HtmlEscape().convert(s);
 
-String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits) {
+String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
+    {int landedPage = 1}) {
   final alive = entries.where((e) => e.state != 'archived').toList();
   final inbox = alive.where((e) => e.state == 'inbox').toList();
   final asks = alive.where((e) => e.kind == 'decision' && e.answer == null).toList();
@@ -680,7 +682,12 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits) {
     if (y == null) return 1;
     return y.compareTo(x);
   });
-  final landed = [for (final pr in fresh) _prPanel(pr, claimed[pr.number])];
+  final pages = fresh.isEmpty ? 1 : (fresh.length + _landedPerPage - 1) ~/ _landedPerPage;
+  final page = landedPage.clamp(1, pages);
+  final landed = [
+    for (final pr in fresh.skip((page - 1) * _landedPerPage).take(_landedPerPage))
+      _prPanel(pr, claimed[pr.number]),
+  ];
 
   final loose = alive
       .where((e) =>
@@ -735,8 +742,13 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits) {
   b.write(_group('착수 가능', ready.length, '명령만 내리면 착수', ready.map(_itemPanel)));
   b.write(_group('대기 중', waiting.length, '배지가 무엇을 기다리는지 말한다',
       waiting.map(_itemPanel)));
-  b.write(_group('최근 착지', landed.length, '', landed,
+  // The count is the whole list, not the page: this section used to show a
+  // number that was really a cap, and that is exactly what made it lie.
+  b.write(_group('최근 착지', fresh.length, '', landed,
+      footer: _pager(fresh.length, page),
       control: '<span class="ctl">'
+          '<button class="ghost sm" title="이 페이지의 모든 항목을 체크합니다" '
+          'onclick="pickAll(event)">전체선택</button>'
           '<button class="ghost sm" title="체크한 항목을 목록에서 치웁니다" '
           'onclick="confirmPicked(event)">확인</button>'
           '<span class="state"></span></span>'));
@@ -755,7 +767,7 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits) {
 /// identical to a broken `gh`. A heading that says 0 is information; a heading
 /// that is absent is a question.
 String _group(String title, int n, String why, Iterable<String> panels,
-    {String control = ''}) {
+    {String control = '', String footer = ''}) {
   final b = StringBuffer();
   b.writeln('<details class="grp" open id="g-${_esc(title)}">'
       '<summary class="gh">'
@@ -769,7 +781,28 @@ String _group(String title, int n, String why, Iterable<String> panels,
   for (final p in panels) {
     b.writeln(p);
   }
+  b.writeln(footer);
   b.writeln('</div></details>');
+  return b.toString();
+}
+
+/// How many landed rows fit on one page.
+const _landedPerPage = 20;
+
+/// The pager for 최근 착지.
+///
+/// It is drawn even when there is only one page, and the count it shows is the
+/// TOTAL rather than the page: a section that hides its own size is the thing
+/// the eight-row cap was, and a control that appears only once the list is long
+/// enough is a control nobody knows exists.
+String _pager(int total, int page) {
+  final pages = total <= _landedPerPage ? 1 : (total + _landedPerPage - 1) ~/ _landedPerPage;
+  final b = StringBuffer('<div class="pager"><span class="pgn">$page / $pages</span>');
+  for (var i = 1; i <= pages; i++) {
+    final cls = i == page ? 'ghost sm on' : 'ghost sm';
+    b.write('<a class="$cls" href="?landed=$i">$i</a>');
+  }
+  b.write('</div>');
   return b.toString();
 }
 
@@ -1058,10 +1091,20 @@ function refresh(ev){
     .then(()=>swapSection('g-지금'))
     .catch(e=>stateOf(c).textContent = '실패: '+e.message);
 }
+function pickAll(ev){
+  ev.preventDefault(); ev.stopPropagation();
+  const c = ev.target.closest('.ctl');
+  // This page only -- the other pages are not in the document, so there is
+  // nothing here that could tick a row the reader has not seen.
+  const boxes = [...c.closest('.grp').querySelectorAll('.pick')];
+  const turnOn = boxes.some(b => !b.checked);
+  boxes.forEach(b => b.checked = turnOn);
+  stateOf(c).textContent = turnOn ? boxes.length + '개 선택' : '';
+}
 function confirmPicked(ev){
   ev.preventDefault(); ev.stopPropagation();
   const c = ev.target.closest('.ctl');
-  const ids = [...document.querySelectorAll('.pick:checked')].map(x=>x.value);
+  const ids = [...c.closest('.grp').querySelectorAll('.pick:checked')].map(x=>x.value);
   if(ids.length === 0){ stateOf(c).textContent = '체크한 게 없습니다'; return; }
   post('/dismiss', {ids:ids}, c)
     .then(()=>location.reload())
@@ -1152,6 +1195,10 @@ color:var(--ink3);font-weight:700}
 border-radius:5px;padding:9px 12px;font-size:13px;margin:0 0 14px}
 .ctl{margin-left:auto;display:flex;align-items:center;gap:7px;flex:none}
 .pick{flex:none;margin:0}
+.pager{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 2px 2px}
+.pgn{font-size:12px;color:var(--ink3);margin-right:4px}
+.pager a{text-decoration:none;min-width:26px;text-align:center}
+.pager a.on{border-color:var(--live);color:var(--live)}
 .mono{font-family:var(--mono);font-size:11.5px;word-break:break-all}
 .stack{display:flex;flex-direction:column;gap:5px}
 .p{background:var(--card);border:1px solid var(--line);border-radius:5px}
