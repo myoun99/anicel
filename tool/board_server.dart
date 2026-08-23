@@ -346,17 +346,36 @@ Future<_Gh> _prs() async {
   }
   ProcessResult result;
   try {
-    result = await Process.run(_ghPath, [
-      'pr', 'list', '--repo', _repo, '--state', 'all', '--limit', '40',
-      '--json', 'number,state,title,body,statusCheckRollup',
-    ]);
+    result = await Process.run(
+      _ghPath,
+      [
+        'pr', 'list', '--repo', _repo, '--state', 'all', '--limit', '40',
+        '--json', 'number,state,title,body,statusCheckRollup',
+      ],
+      // Windows decodes a subprocess with the system codepage unless told
+      // otherwise, which turns every Korean character in a PR body into
+      // mojibake and the whole response into unparseable JSON. Titles are
+      // English, so this stayed invisible until bodies were read.
+      stdoutEncoding: utf8,
+    );
   } catch (_) {
     return _cache(_Gh(const [], ok: false));
   }
   if (result.exitCode != 0) return _cache(_Gh(const [], ok: false));
 
+  final List<dynamic> rows;
+  try {
+    rows = jsonDecode(result.stdout as String) as List;
+  } catch (e) {
+    // A response we cannot read is a failed lookup, not a failed page: the
+    // board still has work to show, and saying "gh 를 못 불렀습니다" is both
+    // true and better than a 500 that shows nothing at all.
+    stderr.writeln('board: could not parse gh output: $e');
+    return _cache(_Gh(const [], ok: false));
+  }
+
   final prs = <_Pr>[];
-  for (final row in jsonDecode(result.stdout as String) as List) {
+  for (final row in rows) {
     final map = row as Map<String, dynamic>;
     final rollup = (map['statusCheckRollup'] as List?) ?? const [];
     var checks = 'none';
@@ -398,15 +417,26 @@ _Gh _cache(_Gh gh) {
 
 // ------------------------------------------------------------------ render
 
+/// The only thing a waiting item's badge has to say is WHAT IT WAITS ON.
+///
+/// It used to say 「나중」 and 「게이트」 side by side, which are the same news
+/// (not now) told two ways, and 「열림」 on everything else, which is the
+/// section's name repeated on every row. What was missing is the one fact that
+/// changes what to do about it: whose move is it.
+///
+/// `open` is deliberately absent — a ready item wears no badge at all, because
+/// the section it sits in already said so.
 const _stateLabels = <String, String>{
-  'open': '열림',
-  'blocked': '결정 대기',
-  'idea': '아이디어',
-  'later': '나중',
-  'gate': '게이트',
-  'mine': '내 몫',
+  'ask': '답 기다림',
+  'gate': '지시 대기',
+  'queue': '순서 대기',
+  'mine': '내가 정리 중',
   'inbox': '분류 전',
 };
+
+/// Item states that mean "not startable yet". Anything else with no PR is
+/// ready to go.
+const _waiting = <String>{'ask', 'gate', 'queue', 'mine'};
 
 String _esc(String s) => const HtmlEscape().convert(s);
 
@@ -435,12 +465,14 @@ String _render(List<_Entry> entries, _Gh gh) {
     }
   }
 
-  final todo = alive
+  final loose = alive
       .where((e) =>
           e.kind == 'item' &&
           e.state != 'inbox' &&
           (e.pr == null || !claimed.containsKey(e.pr)))
       .toList();
+  final ready = loose.where((e) => !_waiting.contains(e.state)).toList();
+  final waiting = loose.where((e) => _waiting.contains(e.state)).toList();
 
   final b = StringBuffer();
   b.writeln('<!doctype html><html><head><meta charset="utf-8">'
@@ -450,7 +482,7 @@ String _render(List<_Entry> entries, _Gh gh) {
   b.write('<h1>Anicel 보드</h1>');
   b.write('<p class="stamp">분류 전 <b>${inbox.length}</b> · 답할 것 <b>${asks.length}</b>'
       ' · 실기 확인 <b>${checks.length}</b> · 지금 <b>${now.length}</b>'
-      ' · 작업 목록 <b>${todo.length}</b>');
+      ' · 착수 가능 <b>${ready.length}</b> · 대기 <b>${waiting.length}</b>');
   if (!gh.ok) {
     b.write(' · <span class="warn">gh 를 못 불렀습니다 — PR 칸은 비어 있습니다</span>');
   }
@@ -459,12 +491,13 @@ String _render(List<_Entry> entries, _Gh gh) {
       '있습니다(Win+Shift+S → Ctrl+V).</p>');
 
   b.write(_intakeForm());
-  b.write(_group('분류 전', inbox.length, '내가 분류해서 작업 목록으로 옮긴다',
-      inbox.map(_itemPanel)));
+  b.write(_group('분류 전', inbox.length, '내가 읽고 분류한다', inbox.map(_itemPanel)));
   b.write(_group('답할 것', asks.length, '고르고 제출', asks.map(_askPanel)));
   b.write(_group('실기 확인', checks.length, '메모가 비면 OK', checks.map(_checkPanel)));
   b.write(_group('지금', now.length, 'GitHub 이 답한다', now));
-  b.write(_group('작업 목록', todo.length, '명령만 내리면 착수', todo.map(_itemPanel)));
+  b.write(_group('착수 가능', ready.length, '명령만 내리면 착수', ready.map(_itemPanel)));
+  b.write(_group('대기 중', waiting.length, '배지가 무엇을 기다리는지 말한다',
+      waiting.map(_itemPanel)));
   b.write(_group('최근 착지', landed.length, '확인했으면 삭제', landed));
   b.write(_group('정해진 것', settled.length, '', settled.map(_settledPanel)));
 
@@ -510,10 +543,14 @@ String _intakeForm() {
 
 String _head(String id, String title, List<String> tags, String badge, String cls) {
   final chips = tags.map((t) => '<span class="chip">${_esc(t)}</span>').join();
+  // An empty badge renders nothing: a ready item is already labelled by the
+  // section it sits in, and repeating that on every row is noise, not news.
+  final mark = badge.isEmpty
+      ? ''
+      : '<span class="chip $cls badge">${_esc(badge)}</span>';
   return '<summary><span class="k">${_esc(id)}</span>'
       '<span class="t">${_esc(title)}</span>'
-      '<span class="right">$chips'
-      '<span class="chip $cls badge">${_esc(badge)}</span></span></summary>';
+      '<span class="right">$chips$mark</span></summary>';
 }
 
 String _shotStrip(String id) {
@@ -586,13 +623,14 @@ String _checkPanel(_Entry c) {
 }
 
 String _itemPanel(_Entry e) {
-  final cls = e.state == 'gate'
-      ? 'bad'
-      : (e.state == 'inbox' ? 'run' : '');
+  // Ready items carry no state badge at all; only the inbox is coloured,
+  // because it is the one state that is asking someone to do something.
+  final badge = e.state == 'open' ? '' : (_stateLabels[e.state] ?? e.state);
+  final cls = e.state == 'inbox' ? 'run' : '';
   final b = StringBuffer();
   b.writeln('<details class="p${e.state == 'inbox' ? ' box' : ''}" '
       'id="c-${_esc(e.id)}">');
-  b.writeln(_head(e.id, e.title, e.tags, _stateLabels[e.state] ?? e.state, cls));
+  b.writeln(_head(e.id, e.title, e.tags, badge, cls));
   b.writeln('<div class="body">');
   b.writeln(e.note.isEmpty
       ? '<p class="d">메모 없음.</p>'
