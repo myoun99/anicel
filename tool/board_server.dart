@@ -343,6 +343,14 @@ class _Entry {
   List<String> tags = const [];
   String state = 'open';
   String note = '';
+
+  /// On a `law` record: what to read first in this area, and what must not be
+  /// done. Separate from `note` because a caution outlives the status line it
+  /// would otherwise be buried in.
+  String care = '';
+
+  /// On a `law` record: the tag whose cards this law governs.
+  String tag = '';
   String where = '';
   String why = '';
   String how = '';
@@ -429,6 +437,8 @@ List<_Entry> _readRecords(File file) {
     if (json['title'] != null) e.title = json['title'] as String;
     if (json['state'] != null) e.state = json['state'] as String;
     if (json['note'] != null) e.note = json['note'] as String;
+    if (json['care'] != null) e.care = json['care'] as String;
+    if (json['tag'] != null) e.tag = json['tag'] as String;
     if (json['where'] != null) e.where = json['where'] as String;
     if (json['why'] != null) e.why = json['why'] as String;
     if (json['how'] != null) e.how = json['how'] as String;
@@ -655,6 +665,9 @@ String _esc(String s) => const HtmlEscape().convert(s);
 String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
     {int landedPage = 1}) {
   final alive = entries.where((e) => e.state != 'archived').toList();
+  // Laws are not work: they never appear as a card of their own, they attach
+  // to the cards whose tag they name. Set before anything renders.
+  _laws = alive.where((e) => e.kind == 'law').toList();
   final inbox = alive.where((e) => e.state == 'inbox').toList();
   final asks = alive.where((e) => e.kind == 'decision' && e.answer == null).toList();
   final checks = alive.where((e) => e.kind == 'check' && e.answer == null).toList();
@@ -875,6 +888,10 @@ String _askPanel(_Entry d) {
   if (d.why.isNotEmpty) {
     b.writeln('<p class="d"><b>왜 막혔나</b> — ${_esc(d.why)}</p>');
   }
+  // A decision about an area is bound by that area's laws too -- an option
+  // that a law already forbids is not an option, and finding that out after
+  // the answer is submitted wastes the round.
+  b.writeln(_care(d));
   for (final o in d.options) {
     final key = '${o['key']}';
     final rec = d.recommend == key;
@@ -912,6 +929,7 @@ String _checkPanel(_Entry c) {
   if (c.why.isNotEmpty) {
     b.writeln('<p class="d"><b>왜 중요한가</b> — ${_esc(c.why)}</p>');
   }
+  b.writeln(_care(c));
   b.writeln('<textarea rows="2" placeholder="문제가 있으면 적어 주세요 — 비워 두면 OK '
       '(스크린샷은 Ctrl+V)"></textarea>');
   b.writeln(_shotStrip(c.id));
@@ -945,11 +963,37 @@ String _itemPanel(_Entry e) {
     b.writeln(e.note.isEmpty
         ? '<p class="d">메모 없음.</p>'
         : '<p class="d">${_esc(e.note)}</p>');
+    b.writeln(_care(e));
     b.writeln(_shotStrip(e.id));
   }
   b.writeln('</div></details>');
   return b.toString();
 }
+
+/// Laws in force for this card, found by tag.
+///
+/// KEYED BY TAG, NOT COPIED ONTO CARDS. The same law governs every card in its
+/// area -- eleven of them carry 렌더링 -- and writing it onto each one would
+/// rebuild the exact problem this move was meant to end: one fact kept in
+/// several places, drifting apart the first time one of them is edited. A law
+/// is one record; the cards it governs name it by tag.
+///
+/// It is also not `note`. `note` says why this card sits where it sits; a law
+/// says what breaks if you start without knowing. Merged, the status line
+/// disappears under a caution several times its length.
+String _care(_Entry e) {
+  final hits = _laws.where((l) => e.tags.contains(l.tag) && l.care.isNotEmpty);
+  if (hits.isEmpty) return '';
+  final b = StringBuffer();
+  for (final l in hits) {
+    b.write('<div class="care"><span class="carelabel">손대기 전에</span>'
+        '<span>${_esc(l.care)}</span></div>');
+  }
+  return b.toString();
+}
+
+/// Area laws, refreshed on every render from the records file.
+List<_Entry> _laws = const [];
 
 String _prPanel(_Pr pr, _Entry? e) {
   final id = e?.id ?? 'pr-${pr.number}';
@@ -1234,6 +1278,10 @@ white-space:nowrap;border:1px solid var(--line2);color:var(--ink3)}
 display:flex;flex-direction:column;gap:7px}
 .body>*:first-child{margin-top:10px}
 .d{font-size:13px;color:var(--ink2);margin:0;white-space:pre-wrap}
+.care{display:flex;gap:8px;align-items:flex-start;background:var(--runbg);
+border-left:3px solid var(--run);border-radius:0 5px 5px 0;padding:8px 10px;
+font-size:12.5px;color:var(--ink2);white-space:pre-wrap}
+.carelabel{flex:none;font-weight:600;color:var(--run)}
 .opt{display:flex;gap:9px;align-items:flex-start;padding:8px 10px;
 border:1px solid var(--line);border-radius:4px;cursor:pointer}
 .opt.rec{border-color:var(--ok)}
