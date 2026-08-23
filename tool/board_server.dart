@@ -734,11 +734,9 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   // control parked away from what it affects is a control you have to remember
   // the meaning of.
   b.write(_group('지금', now.length, '', now,
-      control: '<span class="ctl">'
-          '<button class="ghost sm" title="PR 상태는 페이지를 열 때만 읽습니다. '
+      control: _ctl('<button class="ghost sm" title="PR 상태는 페이지를 열 때만 읽습니다. '
           '지금 다시 읽으려면 누르세요 — 이 칸만 갱신됩니다." '
-          'onclick="refresh(event)">↻</button>'
-          '<span class="state"></span></span>'));
+          'onclick="refresh(event)">↻</button>')));
   b.write(_group('착수 가능', ready.length, '명령만 내리면 착수', ready.map(_itemPanel)));
   b.write(_group('대기 중', waiting.length, '배지가 무엇을 기다리는지 말한다',
       waiting.map(_itemPanel)));
@@ -746,12 +744,10 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   // number that was really a cap, and that is exactly what made it lie.
   b.write(_group('최근 착지', fresh.length, '', landed,
       footer: _pager(fresh.length, page),
-      control: '<span class="ctl">'
-          '<button class="ghost sm" title="이 페이지의 모든 항목을 체크합니다" '
+      control: _ctl('<button class="ghost sm" title="이 페이지의 모든 항목을 체크합니다" '
           'onclick="pickAll(event)">전체선택</button>'
           '<button class="ghost sm" title="체크한 항목을 목록에서 치웁니다" '
-          'onclick="confirmPicked(event)">확인</button>'
-          '<span class="state"></span></span>'));
+          'onclick="confirmPicked(event)">확인</button>')));
   b.write(_group('정해진 것', settled.length, '', settled.map(_settledPanel)));
   b.write(_group('로컬 상태', gits.length, '', gits.map(_checkoutPanel)));
 
@@ -785,6 +781,20 @@ String _group(String title, int n, String why, Iterable<String> panels,
   b.writeln('</div></details>');
   return b.toString();
 }
+
+/// A group header's control cluster: STATUS FIRST, then the buttons.
+///
+/// The order is the whole point. `.ctl` is pushed to the right edge by
+/// `margin-left:auto`, so the cluster grows leftward -- put the status text
+/// after the buttons and every message ("1개 선택", "읽는 중…", "실패: …")
+/// shoves them sideways under the reader's cursor. Put it first and the
+/// buttons never move.
+///
+/// It is a function rather than two more string literals because both control
+/// rows had the wrong order, written the same way twice. A law that lives in
+/// one place cannot be half-applied by the next row that gets added.
+String _ctl(String buttons) =>
+    '<span class="ctl"><span class="state"></span>$buttons</span>';
 
 /// How many landed rows fit on one page.
 const _landedPerPage = 20;
