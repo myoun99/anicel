@@ -58,10 +58,12 @@ const _koTrailer = 'Board-ko:';
 late final String _recordsPath;
 late final String _shotsDir;
 late final String _ghPath;
+late final String _gitRoot;
 
 Future<void> main(List<String> args) async {
   _recordsPath = _flag(args, '--records') ?? '';
   _ghPath = _flag(args, '--gh') ?? 'gh';
+  _gitRoot = _flag(args, '--git') ?? Directory.current.path;
   final port = int.tryParse(_flag(args, '--port') ?? '4321') ?? 4321;
 
   if (_recordsPath.isEmpty || !File(_recordsPath).existsSync()) {
@@ -133,12 +135,14 @@ Future<void> _handle(HttpRequest req) async {
           'ts': _now(),
         });
       case '/dismiss':
-        _append({
-          'kind': 'item',
-          'id': body['id'],
-          'state': 'archived',
-          'ts': _now(),
-        });
+        for (final id in (body['ids'] as List?) ?? [body['id']]) {
+          _append({
+            'kind': 'item',
+            'id': id,
+            'state': 'archived',
+            'ts': _now(),
+          });
+        }
       case '/intake':
         newId = _intake(body);
       case '/edit':
@@ -178,7 +182,7 @@ Future<void> _handle(HttpRequest req) async {
   req.response
     ..headers.contentType = ContentType.html
     ..headers.set('Cache-Control', 'no-store')
-    ..write(_render(_readRecords(File(_recordsPath)), await _prs()));
+    ..write(_render(_readRecords(File(_recordsPath)), await _prs(), await _checkouts()));
   await req.response.close();
 }
 
@@ -465,6 +469,76 @@ _Gh _cache(_Gh gh) {
   return gh;
 }
 
+// -------------------------------------------------------------------- git
+
+/// One checkout: where it is, what branch it holds, how far it has drifted
+/// from origin/master, and whether anything is uncommitted in it.
+class _Checkout {
+  _Checkout(this.path, this.branch, this.ahead, this.behind, this.dirty);
+
+  final String path;
+  final String branch;
+  final int ahead;
+  final int behind;
+  final int dirty;
+
+  /// Empty when there is nothing to say — an aligned, clean checkout needs no
+  /// sentence, and printing one anyway is how a status line stops being read.
+  String get trouble => [
+        if (behind > 0) '$behind 뒤',
+        if (ahead > 0) '$ahead 앞',
+        if (dirty > 0) '커밋 안 된 파일 $dirty',
+      ].join(' · ');
+}
+
+List<_Checkout>? _gitCache;
+DateTime _gitAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+/// Reads every worktree of the repository, so "which checkout am I looking at
+/// and is it current" stops being something you find out by being told it is
+/// five commits behind.
+Future<List<_Checkout>> _checkouts() async {
+  if (_gitCache != null &&
+      DateTime.now().difference(_gitAt).inSeconds < _ghCacheSeconds) {
+    return _gitCache!;
+  }
+  String run(String dir, List<String> args) {
+    try {
+      final r = Process.runSync('git', ['-C', dir, ...args],
+          stdoutEncoding: utf8);
+      return r.exitCode == 0 ? (r.stdout as String).trim() : '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  final list = run(_gitRoot, ['worktree', 'list', '--porcelain']);
+  final out = <_Checkout>[];
+  String? path;
+  for (final line in const LineSplitter().convert(list)) {
+    if (line.startsWith('worktree ')) {
+      path = line.substring(9).trim();
+    } else if (line.startsWith('branch ') && path != null) {
+      final branch = line.substring(7).replaceFirst('refs/heads/', '').trim();
+      final counts = run(path, [
+        'rev-list', '--left-right', '--count', 'origin/master...HEAD',
+      ]).split(RegExp(r'\s+'));
+      final dirty = run(path, ['status', '--porcelain']);
+      out.add(_Checkout(
+        path,
+        branch,
+        counts.length > 1 ? (int.tryParse(counts[1]) ?? 0) : 0,
+        counts.isNotEmpty ? (int.tryParse(counts[0]) ?? 0) : 0,
+        dirty.isEmpty ? 0 : const LineSplitter().convert(dirty).length,
+      ));
+      path = null;
+    }
+  }
+  _gitCache = out;
+  _gitAt = DateTime.now();
+  return out;
+}
+
 // ------------------------------------------------------------------ render
 
 /// The only thing a waiting item's badge has to say is WHAT IT WAITS ON.
@@ -491,7 +565,7 @@ const _waiting = <String>{'ask', 'gate', 'queue', 'mine'};
 
 String _esc(String s) => const HtmlEscape().convert(s);
 
-String _render(List<_Entry> entries, _Gh gh) {
+String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits) {
   final alive = entries.where((e) => e.state != 'archived').toList();
   final inbox = alive.where((e) => e.state == 'inbox').toList();
   final asks = alive.where((e) => e.kind == 'decision' && e.answer == null).toList();
@@ -555,15 +629,22 @@ String _render(List<_Entry> entries, _Gh gh) {
   // The refresh lives here because this is the only section it changes, and a
   // control parked away from what it affects is a control you have to remember
   // the meaning of.
-  b.write(_group('지금', now.length, '열린 PR + PR 없이 진행 중', now,
+  b.write(_group('지금', now.length, '', now,
       control: '<span class="ctl">'
-          '<button class="ghost sm" onclick="refresh(event)">↻ PR 다시 읽기</button>'
-          '<span class="state">열 때만 읽습니다</span></span>'));
+          '<button class="ghost sm" title="PR 상태는 페이지를 열 때만 읽습니다. '
+          '지금 다시 읽으려면 누르세요 — 이 칸만 갱신됩니다." '
+          'onclick="refresh(event)">↻</button>'
+          '<span class="state"></span></span>'));
   b.write(_group('착수 가능', ready.length, '명령만 내리면 착수', ready.map(_itemPanel)));
   b.write(_group('대기 중', waiting.length, '배지가 무엇을 기다리는지 말한다',
       waiting.map(_itemPanel)));
-  b.write(_group('최근 착지', landed.length, '확인했으면 삭제', landed));
+  b.write(_group('최근 착지', landed.length, '', landed,
+      control: '<span class="ctl">'
+          '<button class="ghost sm" title="체크한 항목을 목록에서 치웁니다" '
+          'onclick="confirmPicked(event)">확인</button>'
+          '<span class="state"></span></span>'));
   b.write(_group('정해진 것', settled.length, '', settled.map(_settledPanel)));
+  b.write(_group('로컬 상태', gits.length, '', gits.map(_checkoutPanel)));
 
   b.writeln('<script>${_js()}</script>');
   b.writeln('</div></body></html>');
@@ -618,14 +699,15 @@ String _intakeForm() {
 ''';
 }
 
-String _head(String id, String title, List<String> tags, String badge, String cls) {
+String _head(String id, String title, List<String> tags, String badge, String cls,
+    {String lead = ''}) {
   final chips = tags.map((t) => '<span class="chip">${_esc(t)}</span>').join();
   // An empty badge renders nothing: a ready item is already labelled by the
   // section it sits in, and repeating that on every row is noise, not news.
   final mark = badge.isEmpty
       ? ''
       : '<span class="chip $cls badge">${_esc(badge)}</span>';
-  return '<summary><span class="k">${_esc(id)}</span>'
+  return '<summary>$lead<span class="k">${_esc(id)}</span>'
       '<span class="t">${_esc(title)}</span>'
       '<span class="right">$chips$mark</span></summary>';
 }
@@ -745,18 +827,42 @@ String _prPanel(_Pr pr, _Entry? e) {
       : (pr.checks == 'red' ? 'bad' : 'run');
   final b = StringBuffer();
   b.writeln('<details class="p" id="c-${_esc(id)}">');
-  b.writeln(_head(id, title, e?.tags ?? const [], badge, cls));
+  // A landed item is confirmed by ticking it, not by opening it: the whole
+  // point of the row is that you already know what it was.
+  final tick = merged
+      ? '<input type="checkbox" class="pick" value="${_esc(id)}" '
+          'onclick="event.stopPropagation()">'
+      : '';
+  b.writeln(_head(id, title, e?.tags ?? const [], badge, cls, lead: tick));
   b.writeln('<div class="body">');
   if (e != null && e.note.isNotEmpty) {
     b.writeln('<p class="d">${_esc(e.note)}</p>');
   }
   b.writeln('<p class="d"><a href="https://github.com/$_repo/pull/${pr.number}" '
       'target="_blank">PR #${pr.number} 열기 →</a></p>');
-  if (merged) {
-    b.writeln('<div class="foot"><button class="ghost" '
-        'onclick="drop(\'${_esc(id)}\')">확인했음 — 삭제</button>'
-        '<span class="state"></span></div>');
-  }
+  b.writeln('</div></details>');
+  return b.toString();
+}
+
+/// One checkout, said plainly enough to decide from.
+///
+/// The badge is the branch, because that is the thing you are choosing between;
+/// the trouble line only appears when there IS trouble. A checkout that is
+/// aligned and clean says 정렬됨 and nothing else — "깨끗하다" and "최신이다" are
+/// different claims, and conflating them is how a main checkout sat five
+/// commits behind while looking fine.
+String _checkoutPanel(_Checkout c) {
+  final name = c.path.split(RegExp(r'[\\/]')).last;
+  final trouble = c.trouble;
+  final b = StringBuffer();
+  b.writeln('<details class="p" id="c-git-${_esc(name)}">');
+  b.writeln(_head(name, trouble.isEmpty ? '정렬됨 · 깨끗' : trouble,
+      const [], c.branch, trouble.isEmpty ? 'ok' : 'run'));
+  b.writeln('<div class="body">');
+  b.writeln('<p class="d mono">${_esc(c.path)}</p>');
+  b.writeln('<p class="d">브랜치 <b>${_esc(c.branch)}</b> · '
+      'origin/master 기준 <b>${c.behind}</b> 뒤 / <b>${c.ahead}</b> 앞 · '
+      '커밋 안 된 파일 <b>${c.dirty}</b></p>');
   b.writeln('</div></details>');
   return b.toString();
 }
@@ -829,12 +935,38 @@ function purge(id){
     .then(()=>location.reload())
     .catch(e=>stateOf(c).textContent = '실패: '+e.message);
 }
+// Swaps just the 지금 section rather than reloading: everything else on the
+// page is unaffected by a PR lookup, and a full reload throws away every panel
+// you had open to read.
+function swapSection(id, done){
+  return fetch('/', {cache:'no-store'})
+    .then(r=>r.text())
+    .then(html=>{
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const fresh = doc.getElementById(id);
+      const live = document.getElementById(id);
+      if(fresh && live){ live.replaceWith(fresh); }
+      const s = doc.querySelector('.stamp');
+      if(s){ document.querySelector('.stamp').replaceWith(s); }
+      if(done) done();
+    });
+}
 function refresh(ev){
   // The button lives inside a <summary>, so without this the click also folds
   // the section it was meant to update.
   ev.preventDefault(); ev.stopPropagation();
   const c = ev.target.closest('.ctl');
-  post('/refresh', {}, c)
+  stateOf(c).textContent = '읽는 중…';
+  fetch('/refresh', {method:'POST', body:'{}'})
+    .then(()=>swapSection('g-지금'))
+    .catch(e=>stateOf(c).textContent = '실패: '+e.message);
+}
+function confirmPicked(ev){
+  ev.preventDefault(); ev.stopPropagation();
+  const c = ev.target.closest('.ctl');
+  const ids = [...document.querySelectorAll('.pick:checked')].map(x=>x.value);
+  if(ids.length === 0){ stateOf(c).textContent = '체크한 게 없습니다'; return; }
+  post('/dismiss', {ids:ids}, c)
     .then(()=>location.reload())
     .catch(e=>stateOf(c).textContent = '실패: '+e.message);
 }
@@ -920,6 +1052,8 @@ color:var(--ink3);font-weight:700}
 .grp[open] .gt{color:var(--ink2)}
 .none{font-size:12.5px;color:var(--ink3);margin:0;padding:6px 2px}
 .ctl{margin-left:auto;display:flex;align-items:center;gap:7px;flex:none}
+.pick{flex:none;margin:0}
+.mono{font-family:var(--mono);font-size:11.5px;word-break:break-all}
 .stack{display:flex;flex-direction:column;gap:5px}
 .p{background:var(--card);border:1px solid var(--line);border-radius:5px}
 .p[open]{border-color:var(--line2)}
