@@ -1097,27 +1097,103 @@ function send(id){
     stateOf(c).textContent = '고르거나 메모를 적어 주세요'; return;
   }
   post('/submit', {id:id, kind:c.dataset.kind, answer:answer||'ok', memo:memo}, c)
-    .then(()=>location.reload())
+    .then(()=>redraw(c.id))
     .catch(e=>stateOf(c).textContent = '실패: '+e.message);
 }
 function drop(id){
   const c = document.getElementById('c-'+id);
   post('/dismiss', {id:id}, c)
-    .then(()=>location.reload())
+    .then(()=>redraw())
     .catch(e=>stateOf(c).textContent = '실패: '+e.message);
 }
 function save(id){
   const c = document.getElementById('c-'+id);
   post('/edit', {id:id, text:(c.querySelector('textarea').value||'')}, c)
-    .then(()=>location.reload())
+    .then(()=>redraw(c.id))
     .catch(e=>stateOf(c).textContent = '실패: '+e.message);
 }
 function purge(id){
   const c = document.getElementById('c-'+id);
   if(!confirm(id + ' 을(를) 완전히 지웁니다. 번호도 다시 쓰입니다.')) return;
   post('/purge', {id:id}, c)
-    .then(()=>location.reload())
+    .then(()=>redraw())
     .catch(e=>stateOf(c).textContent = '실패: '+e.message);
+}
+// Redraws every section from the server WITHOUT reloading the page.
+//
+// There is no auto-refresh on this board and never was -- no timer, no meta
+// refresh. What there was is worse: every action called location.reload(), and
+// a reload empties every textarea on the page. Paste a screenshot into a card
+// while writing a note and the note is gone, which is exactly the thing you
+// least want a notes board to do. Measured before the fix: type into the
+// intake box, reload, both the text and the tag come back empty.
+//
+// It also felt like the scroll position was lost. The browser does restore
+// scrollY -- but every open panel closes on reload, the page collapses to a
+// fraction of its height, and the restored offset lands nowhere near what you
+// were reading.
+//
+// So: fetch the page, swap the sections, and put back the three things a
+// person had invested in it -- what they typed, what they had open, where they
+// were. Nothing here is a timer; it runs only when an action asks for it.
+// `skipId` is the card whose fields must NOT be restored -- the one whose own
+// submit caused this redraw. Everywhere else the person's text wins, including
+// over a value the server rendered: an inbox card arrives with its saved note
+// already in the box, and someone halfway through rewriting it holds the newer
+// version. Letting the server win there silently reverted their edit, which a
+// first attempt at this did.
+function redraw(skipId, done){
+  const typed = {}, opened = [];
+  // Open state covers groups AND cards; fields are read from cards only.
+  // A group is a <details> too, so scanning every <details> for fields picked
+  // up each card's box a second time under the GROUP's key -- and that copy
+  // ignored skipId, so it wrote the stale draft straight back over the value
+  // the server had just returned.
+  document.querySelectorAll('details').forEach(function(d){
+    if(d.id && d.open) opened.push(d.id);
+  });
+  document.querySelectorAll('details.p').forEach(function(d){
+    if(!d.id || d.id === skipId) return;
+    d.querySelectorAll('textarea, input[type=text]').forEach(function(f, i){
+      if(f.value) typed[d.id + '#' + i] = f.value;
+    });
+  });
+  const y = window.scrollY;
+  return fetch('/', {cache:'no-store'})
+    .then(r=>r.text())
+    .then(html=>{
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      doc.querySelectorAll('.grp').forEach(function(fresh){
+        const live = document.getElementById(fresh.id);
+        if(live) live.replaceWith(fresh);
+      });
+      const s = doc.querySelector('.stamp');
+      if(s && document.querySelector('.stamp')){
+        document.querySelector('.stamp').replaceWith(s);
+      }
+      opened.forEach(function(id){
+        const d = document.getElementById(id);
+        if(d) d.open = true;
+      });
+      document.querySelectorAll('details.p').forEach(function(d){
+        if(!d.id) return;
+        d.querySelectorAll('textarea, input[type=text]').forEach(function(f, i){
+          const v = typed[d.id + '#' + i];
+          if(v) f.value = v;
+        });
+      });
+      // Thumbnails of shots pasted but not yet submitted live only in `queued`.
+      const strip = document.getElementById('intake-shots');
+      if(strip && queued.length){
+        queued.forEach(function(d){
+          const img = document.createElement('img');
+          img.src = d;
+          strip.appendChild(img);
+        });
+      }
+      window.scrollTo(0, y);
+      if(done) done();
+    });
 }
 // Swaps just the 지금 section rather than reloading: everything else on the
 // page is unaffected by a PR lookup, and a full reload throws away every panel
@@ -1161,7 +1237,7 @@ function confirmPicked(ev){
   const ids = [...c.closest('.grp').querySelectorAll('.pick:checked')].map(x=>x.value);
   if(ids.length === 0){ stateOf(c).textContent = '체크한 게 없습니다'; return; }
   post('/dismiss', {ids:ids}, c)
-    .then(()=>location.reload())
+    .then(()=>redraw())
     .catch(e=>stateOf(c).textContent = '실패: '+e.message);
 }
 function file(kind){
@@ -1178,7 +1254,13 @@ function file(kind){
           body: JSON.stringify({id:res.id, data:data})});
       }
       queued = [];
-      location.reload();
+      // The intake card is not inside any group, so a redraw cannot reset it.
+      // What was just filed has to be cleared here or it sits there looking
+      // unfiled and gets typed over or submitted twice.
+      document.getElementById('intake-text').value = '';
+      document.getElementById('intake-tag').value = '';
+      document.getElementById('intake-shots').innerHTML = '';
+      redraw('c-intake');
     })
     .catch(e=>stateOf(c).textContent = '실패: '+e.message);
 }
@@ -1205,7 +1287,7 @@ document.addEventListener('paste', function(e){
         stateOf(card).textContent = '스크린샷 올리는 중…';
         fetch('/shot', {method:'POST',
           body: JSON.stringify({id:id, data:reader.result})})
-          .then(()=>location.reload())
+          .then(()=>redraw())
           .catch(err=>stateOf(card).textContent = '실패: '+err.message);
       }
     };
