@@ -1343,6 +1343,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     );
     widget.layerNav?.bind(this, _stepDisplayedLayer);
     widget.flipHud?.bind(this, _flipHudSnapshot);
+    _syncFlipAxisWithTimeline();
     // The viewers follow the PROJECT: seed them from it now, and again
     // whenever a different one is opened under us.
     _syncViewersWithProject();
@@ -1351,6 +1352,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       slot.request.addListener(_writeViewerBookmarks);
       slot.position.addListener(_writeViewerBookmarks);
     }
+  }
+
+  /// F-28: the canvas flip reads its frame direction off the sheet the user
+  /// is looking at — 「타임라인패널 x시트일 경우 … 세로가 프레임이동 가로가
+  /// 레이어이동 되도록. 그게 직관적임」.
+  ///
+  /// Told to the HUD rather than threaded down to the gesture layer: the HUD
+  /// is already the one object this shell and the canvas gesture both hold,
+  /// and it is the flip's own state.
+  void _syncFlipAxisWithTimeline() {
+    widget.flipHud?.framesRunVertically =
+        _timelineOrientation.value == TimelineOrientation.vertical;
   }
 
   /// What the flip HUD draws: the rows the timeline is DISPLAYING, in its
@@ -2614,6 +2627,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
               orientation: _timelineOrientation.value,
               onOrientationChanged: (orientation) {
                 _timelineOrientation.value = orientation;
+                _syncFlipAxisWithTimeline();
               },
               pixelsPerFrame: _timelinePixelsPerFrame.value,
               pixelsPerFrameListenable: _timelinePixelsPerFrame,
