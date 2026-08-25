@@ -3018,23 +3018,29 @@ class _LayerHeader extends StatelessWidget {
               // is the column's "below the name" (R5 #2). Same key grammar
               // as the rail so a folder and an attach base read alike here
               // too.
-              if (hasGroupFold && onToggleGroupFold != null)
-                InkWell(
-                  key: ValueKey<String>(
-                    layerKindGroupsLayers(layer.kind)
-                        ? 'xsheet-folder-twirl-${layer.id}'
-                        : 'xsheet-attach-twirl-${layer.id}',
-                  ),
-                  onTap: () => onToggleGroupFold!(layer.id),
-                  customBorder: const CircleBorder(), // R26 #28
-                  child: SizedBox(
-                    height: layerLaneToggleSlotWidth,
-                    child: Icon(
-                      layerRailTwirlIcon(expanded: groupFoldExpanded),
-                      size: 16,
-                    ),
-                  ),
-                ),
+              //
+              // F-29: the SLOT is always here. A column that folds nothing
+              // used to drop it, which pulled every cell below up by 20px —
+              // the same fixed-position complaint the rail's twirl got, one
+              // axis over.
+              SizedBox(
+                height: layerLaneToggleSlotWidth,
+                child: hasGroupFold && onToggleGroupFold != null
+                    ? InkWell(
+                        key: ValueKey<String>(
+                          layerKindGroupsLayers(layer.kind)
+                              ? 'xsheet-folder-twirl-${layer.id}'
+                              : 'xsheet-attach-twirl-${layer.id}',
+                        ),
+                        onTap: () => onToggleGroupFold!(layer.id),
+                        customBorder: const CircleBorder(), // R26 #28
+                        child: Icon(
+                          layerRailTwirlIcon(expanded: groupFoldExpanded),
+                          size: 16,
+                        ),
+                      )
+                    : null,
+              ),
               ...layerRailTrailingCells(
                 axis: Axis.vertical,
                 hasOnionColumn: onToggleLayerOnionSkin != null,
