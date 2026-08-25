@@ -36,8 +36,21 @@ import 'canvas_playback_controller.dart';
 /// plain TAP on the canvas picture stops playback — that is
 /// `CanvasPlaybackView`'s own tap handler, awake again now that pointers
 /// reach it (the pre-T28-c stop it always carried). KEYBOARD actuations
-/// keep the stop law everywhere — bound zoom keys included: the hole is
-/// pointer navigation only.
+/// keep the stop law everywhere: the hole is pointer navigation only.
+///
+/// 🚨R6q3 (2026-08-25) — the sentence above used to end 「bound zoom keys
+/// included」, and there are none. Nothing in [EditorActionIds] zooms the
+/// viewport and nothing in the canvas reads a key for it; zoom is the wheel,
+/// the pinch, the bar buttons and the panbars, all of them POINTER, all of
+/// them already through the D13 hole.
+///
+/// The user's answer to "어디까지 만질 수 있게 할까" was 2번 —
+/// 「키보드 줌도 통과시킨다. 재생 중 줌은 입력 수단과 무관하게 한 법으로」 —
+/// which this already satisfies by having no second case to disagree with.
+/// ⚠️It becomes a real question the day a zoom key is bound: the law is then
+/// "a viewport ZOOM passes whatever the device", and it belongs in the same
+/// two places the pointer hole does (this handler and the action funnel's
+/// `_consumedByPlayback`), never as a check inside a zoom action.
 ///
 /// ✅유저 확정 — the two questions this had, both answered (⛔재론 금지):
 /// 1. **「입력」 = actuation only**: key DOWN, pointer DOWN, wheel/zoom.

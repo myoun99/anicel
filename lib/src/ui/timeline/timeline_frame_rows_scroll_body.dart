@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
+import '../../models/timeline_row_address.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
@@ -71,6 +72,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.showSeconds = false,
     this.commaDrag,
     this.rangeGesture,
+    this.currentRow,
     this.laneRange,
     this.lanesForLayer,
     this.unionLaneForLayer,
@@ -184,6 +186,9 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// The range select/move gesture bundle (UI-R8 — the block-body move
   /// handle's successor); null keeps rows display-only.
   final TimelineRangeGestureCallbacks? rangeGesture;
+
+  /// F-25: the standing row, so a lane BAND lights with its rail half.
+  final ValueListenable<TimelineRowAddress?>? currentRow;
 
   /// The LANE selection domain's gesture bundle (UI-R23 #3 part 2); null
   /// keeps the lane bands display-only.
@@ -536,6 +541,7 @@ class _TimelineFrameRowsScrollBodyState
         : TimelineLaneFrameRow(
             layer: layer,
             lane: _laneOf(row, layer),
+            currentRow: widget.currentRow,
             frameStartIndex: widget.frameStartIndex,
             frameEndIndexExclusive: widget.frameEndIndexExclusive,
             leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
