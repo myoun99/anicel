@@ -388,6 +388,13 @@ void main() {
       // so it LOOKS right, while every previously saved drawing reads as
       // empty. Data loss with a green suite; asserted here through a
       // real save, whose archive must still hold the base cel.
+      //
+      // Pinned to the DESKTOP branch: the Save As proof below answers
+      // through debugSaveDestinationPicker, which only the desktop flow
+      // consults — on the macOS CI runner the real platform is scoped and
+      // Save As would head for the export channel instead.
+      FolderPicker.debugOperatingSystem = 'windows';
+      addTearDown(() => FolderPicker.debugOperatingSystem = null);
       final s = EditorSessionManager(initialProject: createDefaultProject());
       // A real drawn cel in the BASE — the thing the wrong arm loses.
       s.createDrawingAtCurrentFrame();
