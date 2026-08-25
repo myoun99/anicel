@@ -7,6 +7,7 @@ import '../../models/canvas_viewport.dart';
 import '../input/app_input_settings.dart';
 import '../input/wheel_law.dart';
 import '../../models/viewport_point.dart';
+import 'canvas_touch_contacts.dart';
 import 'flip_hud_controller.dart';
 
 /// Viewport pan/zoom input for the canvas panel, independent of what the
@@ -353,7 +354,33 @@ class _CanvasViewportGestureLayerState
 
   void _lockGroup({required Offset firstMovedDelta}) {
     _groupLocked = true;
-    _groupAction = AppInput.touchDragActionFor(_groupPointers.length);
+    // 🚨★★★H24 (유저 2026-08-25): 「터치 제스처가 패널을 통과」 — two fingers
+    // on the glass, one of them over the timeline, and the canvas ran a
+    // ONE-finger gesture: the timeline flipped frames while the user was
+    // trying to pinch.
+    //
+    // ★THE LAW: a gesture you do not hold ALL of is not your gesture.
+    // This layer counts the fingers IT received. When the app is holding
+    // more than that, the rest are somewhere else — and what is happening
+    // is not the N-finger gesture this count names. Standing down is the
+    // only honest answer: reclassifying would be a guess about a finger
+    // this layer cannot see.
+    //
+    // ⚠️It reads the APP-WIDE census, never [CanvasTouchContacts.count] —
+    // that one counts fingers on INK and has its own job (a second finger
+    // stands a running stroke down). Two questions, two counters, and the
+    // note on `appWideCount` says why widening either is wrong.
+    //
+    // 🧪The card asked for the census to be MEASURED before trusting it,
+    // because an over-count would kill canvas gestures outright. It cannot
+    // over-count from the promoted-mouse path this file already documents:
+    // `noteAppWide` filters to `PointerDeviceKind.touch`, and Windows
+    // promotes a pinch to MOUSE hover/scroll. `panel_touch_is_whole_test`
+    // drives that case and the leak paths (cancel, a panel disposed
+    // mid-touch) through the real observer.
+    _groupAction = CanvasTouchContacts.appWideCount > _groupPointers.length
+        ? CanvasTouchDragAction.none
+        : AppInput.touchDragActionFor(_groupPointers.length);
     switch (_groupAction) {
       case CanvasTouchDragAction.flip:
         final horizontal = firstMovedDelta.dx.abs() >= firstMovedDelta.dy.abs();
