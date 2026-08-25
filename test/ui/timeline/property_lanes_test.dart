@@ -719,8 +719,8 @@ void main() {
 
       // The union marks are the SHARED widget at the SHARED union size —
       // not a text glyph of their own any more.
-      expect(cameraUnionMarker(tester, 0).hold, isFalse);
-      expect(cameraUnionMarker(tester, 8).hold, isFalse);
+      expect(cameraUnionMarker(tester, 0).shape, PropertyLaneKeyShape.smooth);
+      expect(cameraUnionMarker(tester, 8).shape, PropertyLaneKeyShape.smooth);
       expect(
         cameraUnionMarker(tester, 0).markerSize,
         timelineLaneUnionKeyMarkerSize(
@@ -774,11 +774,11 @@ void main() {
         ),
       );
 
-      expect(cameraUnionMarker(tester, 4).hold, isTrue);
+      expect(cameraUnionMarker(tester, 4).shape, PropertyLaneKeyShape.hold);
       // A linear key (the second withKey overwrote hold with the default
       // linear) reads as a diamond even when another lane would hold
       // elsewhere — [transformKeyHoldUnion], the one ■ law.
-      expect(cameraUnionMarker(tester, 8).hold, isFalse);
+      expect(cameraUnionMarker(tester, 8).shape, PropertyLaneKeyShape.smooth);
     });
   });
 

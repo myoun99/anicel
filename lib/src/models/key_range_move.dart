@@ -63,7 +63,32 @@ Set<int> transformKeyFrameUnion(TransformTrack track) => {
 /// glyph; the 2026-08-17 unification (B4) made it the ONE law every union
 /// mark reads — camera row and transform group header alike — through
 /// [transformUnionHeader]'s hold set.
-Set<int> transformKeyHoldUnion(TransformTrack track) {
+Set<int> transformKeyHoldUnion(TransformTrack track) =>
+    _transformKeyShapeUnions(track).hold;
+
+/// The union frames whose keyed lanes DISAGREE — some hold, some do not.
+///
+/// 🚨F-17 (유저): 「**멤버 타입이 서로 다르면 헤더에 동그라미**」. The union
+/// mark had two shapes and three cases: ■ where every keyed member holds,
+/// ◆ everywhere else — so "they all interpolate" and "they disagree" drew
+/// the same mark, and the header claimed an agreement that was not there.
+///
+/// ⚠️A ○ used to exist. The camera row's summary was a text glyph channel
+/// with its own ◆/■/○ table, and the 2026-08-17 unification (B4) folded it
+/// into [transformKeyHoldUnion] — which has no room for a third answer, so
+/// the ○ was dropped rather than moved. It comes back HERE, as the one
+/// derivation both the camera row and the fx header read, which is what
+/// that unification was for.
+///
+/// ⛔Never overlaps [transformKeyHoldUnion]: a frame where every member
+/// holds agrees, and a frame that disagrees is not all-hold. The two sets
+/// are computed from the same walk so they cannot drift into claiming both.
+Set<int> transformKeyMixedUnion(TransformTrack track) =>
+    _transformKeyShapeUnions(track).mixed;
+
+({Set<int> hold, Set<int> mixed}) _transformKeyShapeUnions(
+  TransformTrack track,
+) {
   final lanes = [
     track.anchorPoint,
     track.position,
@@ -72,19 +97,25 @@ Set<int> transformKeyHoldUnion(TransformTrack track) {
     track.opacity,
   ];
   final holds = <int>{};
+  final mixed = <int>{};
   for (final frame in transformKeyFrameUnion(track)) {
     final interpolations = [
       for (final lane in lanes)
         if (lane.keyAt(frame) case final key?) key.interpolation,
     ];
-    if (interpolations.isNotEmpty &&
-        interpolations.every(
-          (interpolation) => interpolation == PropertyKeyInterpolation.hold,
-        )) {
-      holds.add(frame);
+    if (interpolations.isEmpty) {
+      continue;
     }
+    final first = interpolations.first;
+    if (interpolations.every((interpolation) => interpolation == first)) {
+      if (first == PropertyKeyInterpolation.hold) {
+        holds.add(frame);
+      }
+      continue;
+    }
+    mixed.add(frame);
   }
-  return holds;
+  return (hold: holds, mixed: mixed);
 }
 
 /// The union header's NAME at each frame.
