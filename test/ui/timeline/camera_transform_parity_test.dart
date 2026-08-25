@@ -234,8 +234,8 @@ void main() {
           frameCellExtent: TimelineGridMetrics.defaults.frameCellWidth,
         ),
       );
-      expect(cameraMark.hold, isFalse);
-      expect(headerMark.hold, isFalse);
+      expect(cameraMark.shape, PropertyLaneKeyShape.smooth);
+      expect(headerMark.shape, PropertyLaneKeyShape.smooth);
     });
 
     testWidgets('the all-hold ■ law is ONE law: both union marks read '
@@ -262,16 +262,16 @@ void main() {
             .widget<TimelineLaneKeyMarker>(
               _marker(_camId, transformGroupHeaderLane.laneId, 4),
             )
-            .hold,
-        isTrue,
+            .shape,
+        PropertyLaneKeyShape.hold,
       );
       expect(
         tester
             .widget<TimelineLaneKeyMarker>(
               _marker(_drawId, transformGroupHeaderLane.laneId, 4),
             )
-            .hold,
-        isTrue,
+            .shape,
+        PropertyLaneKeyShape.hold,
       );
     });
   });
@@ -316,8 +316,8 @@ void main() {
             .widget<TimelineLaneKeyMarker>(
               _marker(_camId, transformGroupHeaderLane.laneId, 10),
             )
-            .hold,
-        isFalse,
+            .shape,
+        PropertyLaneKeyShape.smooth,
         reason: 'a linear key reads as a diamond mid-drag',
       );
       for (var frame = 0; frame < 12; frame += 1) {
@@ -381,8 +381,8 @@ void main() {
       expect(
         tester
             .widget<TimelineLaneKeyMarker>(_marker(_drawId, 'position', 10))
-            .hold,
-        isFalse,
+            .shape,
+        PropertyLaneKeyShape.smooth,
       );
 
       await gesture.up();

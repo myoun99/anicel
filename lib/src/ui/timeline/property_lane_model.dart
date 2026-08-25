@@ -102,12 +102,30 @@ bool _isDigit(String character) {
   return code >= 0x30 && code <= 0x39;
 }
 
+/// What a key mark on a lane LOOKS like — the AE vocabulary, plus the third
+/// answer a UNION needs (F-17).
+///
+/// An enum rather than the pair of booleans the drawing used to take: with
+/// two flags "hold and mixed at once" is a state something can be handed,
+/// and a mark cannot be both.
+enum PropertyLaneKeyShape {
+  /// AE's diamond — this key interpolates (and on a union, they all do).
+  smooth,
+
+  /// AE's square — this key holds (and on a union, they all do).
+  hold,
+
+  /// A UNION whose members disagree. Never reachable on a member lane.
+  mixed,
+}
+
 class PropertyLaneRow {
   const PropertyLaneRow({
     required this.laneId,
     required this.label,
     required this.keyedFrames,
     this.holdOutFrames = const {},
+    this.mixedFrames = const {},
     this.keyNames = const {},
     this.valueLabel,
     this.valueKind = PropertyLaneValueKind.number,
@@ -148,6 +166,31 @@ class PropertyLaneRow {
 
   /// Keys whose OUT interpolation is HOLD (drawn as squares, AE-style).
   final Set<int> holdOutFrames;
+
+  /// 🚨F-17: UNION headers only — frames whose keyed members DISAGREE about
+  /// their interpolation, drawn as a circle (「멤버 타입이 서로 다르면 헤더에
+  /// 동그라미」).
+  ///
+  /// ⛔Always empty on a member lane, and it has to be: a single key holds
+  /// or it does not, and there is nothing for it to disagree with. Only a
+  /// summary can be mixed.
+  ///
+  /// ⚠️Never overlaps [holdOutFrames] — [transformKeyMixedUnion] and
+  /// [transformKeyHoldUnion] come out of one walk for exactly that reason.
+  /// The shape a mark takes is resolved ONCE, by
+  /// [PropertyLaneRow.keyShapeAt], so no drawing site can reach a state
+  /// where a key is both.
+  final Set<int> mixedFrames;
+
+  /// Which mark [frame] draws on this lane.
+  ///
+  /// ★The one place the three sets become a shape. A widget that took two
+  /// booleans could be handed "hold AND mixed"; this cannot be.
+  PropertyLaneKeyShape keyShapeAt(int frame) => mixedFrames.contains(frame)
+      ? PropertyLaneKeyShape.mixed
+      : holdOutFrames.contains(frame)
+      ? PropertyLaneKeyShape.hold
+      : PropertyLaneKeyShape.smooth;
 
   /// Names on this lane's keys, by frame — "same name, same value" made
   /// visible where the link lives. Frames absent here are unnamed, which

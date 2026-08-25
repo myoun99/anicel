@@ -5,6 +5,7 @@ import '../../models/key_range_move.dart'
     show
         transformKeyFrameUnion,
         transformKeyHoldUnion,
+        transformKeyMixedUnion,
         transformKeyNameUnion;
 import '../../models/layer_id.dart';
 import '../../models/property_track.dart';
@@ -36,6 +37,7 @@ PropertyLaneRow transformGroupHeader({
   required bool expanded,
   Set<int> keyedFrames = const {},
   Set<int> holdOutFrames = const {},
+  Set<int> mixedFrames = const {},
   Map<int, String> keyNames = const {},
   bool? enabled,
 }) {
@@ -45,6 +47,10 @@ PropertyLaneRow transformGroupHeader({
     keyedFrames: keyedFrames,
     // The all-hold frames — see [transformKeyHoldUnion] (the ■ law).
     holdOutFrames: holdOutFrames,
+    // F-17: and the frames whose members DISAGREE (the ○ law) — see
+    // [transformKeyMixedUnion]. The two come out of one walk, so a frame
+    // can never claim both.
+    mixedFrames: mixedFrames,
     // ㉚: the members' name where they agree, `...` where they do not —
     // see [transformKeyNameUnion].
     keyNames: keyNames,
@@ -79,6 +85,8 @@ PropertyLaneRow transformUnionHeader({
     expanded: expanded,
     keyedFrames: transformKeyFrameUnion(track),
     holdOutFrames: transformKeyHoldUnion(track),
+    // F-17: the third answer the ■/◆ pair could not give.
+    mixedFrames: transformKeyMixedUnion(track),
     keyNames: transformKeyNameUnion(track),
     enabled: enabled,
   );

@@ -1233,7 +1233,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
               key: ValueKey<String>(
                 '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
               ),
-              hold: lane.holdOutFrames.contains(frame),
+              shape: lane.keyShapeAt(frame),
               markerSize: markerSize,
               // Selected markers ring in ACCENT 1 (UI-R23 #3/#4): the
               // LANE selection owns the ring now — frame selection is a
@@ -1648,7 +1648,7 @@ List<Widget> timelineUnionKeyMarkerSpans({
               key: ValueKey<String>(
                 '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
               ),
-              hold: lane.holdOutFrames.contains(frame),
+              shape: lane.keyShapeAt(frame),
               markerSize: timelineLaneUnionKeyMarkerSize(
                 crossExtent,
                 frameCellExtent: cellExtent,
@@ -1671,12 +1671,17 @@ List<Widget> timelineUnionKeyMarkerSpans({
 class TimelineLaneKeyMarker extends StatelessWidget {
   const TimelineLaneKeyMarker({
     super.key,
-    required this.hold,
+    required this.shape,
     required this.markerSize,
     this.selected = false,
   });
 
-  final bool hold;
+  /// 🚨F-17: a SHAPE, not a `hold` flag. The union needs a third answer —
+  /// 「멤버 타입이 서로 다르면 헤더에 동그라미」 — and a second boolean
+  /// beside `hold` would have made "hold and mixed at once" something a
+  /// caller could hand this widget. [PropertyLaneRow.keyShapeAt] resolves
+  /// it once, from sets that cannot overlap.
+  final PropertyLaneKeyShape shape;
   final double markerSize;
 
   /// Inside the live lane selection (UI-R23 #4): the marker rings in the
@@ -1690,11 +1695,17 @@ class TimelineLaneKeyMarker extends StatelessWidget {
     // EVERY key diamond fills WHITE like the frame blocks (UI-R24 #9 —
     // union headers, member lanes, camera lanes alike); selection speaks
     // through the accent silhouette alone.
-    final shape = Container(
+    final plate = Container(
       width: markerSize,
       height: markerSize,
       decoration: BoxDecoration(
         color: timelineDrawingStartColor,
+        // The MIXED mark is the same plate, round — one drawing with one
+        // border rule, so a union's third shape cannot drift in colour or
+        // in ring weight from the two that were already here.
+        shape: shape == PropertyLaneKeyShape.mixed
+            ? BoxShape.circle
+            : BoxShape.rectangle,
         // Selected keys ring in ACCENT 1 (UI-R23 #4) — a thin silhouette
         // stroke, color only (the selection rule); accent 2 stays on the
         // repeat wash/outline.
@@ -1704,10 +1715,14 @@ class TimelineLaneKeyMarker extends StatelessWidget {
         ),
       ),
     );
-    // AE convention: linear keys read as diamonds, hold keys as squares.
+    // AE convention: linear keys read as diamonds, hold keys as squares —
+    // and a union whose members disagree reads as a circle, which is
+    // neither of the two answers it would otherwise have to pick between.
     return IgnorePointer(
       child: Center(
-        child: hold ? shape : Transform.rotate(angle: 0.785398, child: shape),
+        child: shape == PropertyLaneKeyShape.smooth
+            ? Transform.rotate(angle: 0.785398, child: plate)
+            : plate,
       ),
     );
   }
