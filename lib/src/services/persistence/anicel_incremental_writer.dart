@@ -170,8 +170,11 @@ int _centralLocalOffset(ByteData data, int cursor, int extraStart,
 }
 
 /// Parses the central directory of [bytes] (a complete .anicel). Throws
-/// [FormatException] when no EOCD is found (torn append — the caller
-/// falls back to recovery/compaction).
+/// [FormatException] whenever the tail cannot be parsed — no EOCD (torn
+/// append) OR a corrupt record behind a surviving EOCD. One exception
+/// type on purpose: the production fallbacks (`on FormatException` at the
+/// open and incremental-save sites) are the recovery, and a RangeError
+/// escaping them turned a salvageable file into one that refused to open.
 AnicelZipLayout parseAnicelZipLayout(Uint8List bytes) {
   final data = ByteData.sublistView(bytes);
   // EOCD: scan back over a possible comment (max 64KB + 22).
@@ -196,7 +199,13 @@ AnicelZipLayout parseAnicelZipLayout(Uint8List bytes) {
   final entries = <AnicelZipEntry>[];
   var cursor = centralOffset;
   for (var i = 0; i < entryCount; i += 1) {
-    if (data.getUint32(cursor, Endian.little) != _centralSignature) {
+    // Every span is bounds-checked BEFORE it is read. A garbage length or
+    // offset behind a surviving EOCD (out-of-order page writeback, external
+    // corruption) must fall out as the FormatException the callers catch,
+    // not as a RangeError that escapes them.
+    if (cursor < 0 ||
+        cursor + 46 > bytes.length ||
+        data.getUint32(cursor, Endian.little) != _centralSignature) {
       throw const FormatException('Corrupt central directory.');
     }
     final crc = data.getUint32(cursor + 16, Endian.little);
@@ -204,6 +213,10 @@ AnicelZipLayout parseAnicelZipLayout(Uint8List bytes) {
     final nameLength = data.getUint16(cursor + 28, Endian.little);
     final extraLength = data.getUint16(cursor + 30, Endian.little);
     final commentLength = data.getUint16(cursor + 32, Endian.little);
+    if (cursor + 46 + nameLength + extraLength + commentLength >
+        bytes.length) {
+      throw const FormatException('Corrupt central directory.');
+    }
     final localOffset = _centralLocalOffset(
       data,
       cursor,
@@ -214,6 +227,9 @@ AnicelZipLayout parseAnicelZipLayout(Uint8List bytes) {
       bytes.sublist(cursor + 46, cursor + 46 + nameLength),
     );
     // Local header: fixed 30 bytes + its own name/extra lengths.
+    if (localOffset < 0 || localOffset + 30 > bytes.length) {
+      throw const FormatException('Corrupt central directory.');
+    }
     final localNameLength = data.getUint16(localOffset + 26, Endian.little);
     final localExtraLength = data.getUint16(localOffset + 28, Endian.little);
     entries.add(
@@ -286,6 +302,14 @@ AnicelZipLayout parseAnicelZipLayoutFile(String path) {
       final nameLength = data.getUint16(cursor + 28, Endian.little);
       final extraLength = data.getUint16(cursor + 30, Endian.little);
       final commentLength = data.getUint16(cursor + 32, Endian.little);
+      // Bounds first, reads second — a garbage length or offset behind a
+      // surviving EOCD must become the FormatException the callers catch
+      // (their `on FormatException` IS the recovery), not a RangeError
+      // that escapes them and refuses a salvageable file.
+      if (cursor + 46 + nameLength + extraLength + commentLength >
+          central.length) {
+        throw const FormatException('Corrupt central directory.');
+      }
       final localOffset = _centralLocalOffset(
         data,
         cursor,
@@ -295,8 +319,14 @@ AnicelZipLayout parseAnicelZipLayoutFile(String path) {
       final name = String.fromCharCodes(
         central.sublist(cursor + 46, cursor + 46 + nameLength),
       );
+      if (localOffset < 0 || localOffset + 30 > fileLength) {
+        throw const FormatException('Corrupt central directory.');
+      }
       raf.setPositionSync(localOffset + 26);
       final localLengths = ByteData.sublistView(raf.readSync(4));
+      if (localLengths.lengthInBytes < 4) {
+        throw const FormatException('Corrupt central directory.');
+      }
       entries.add(
         AnicelZipEntry(
           name: name,

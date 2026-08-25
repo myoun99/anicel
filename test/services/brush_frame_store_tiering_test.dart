@@ -256,7 +256,7 @@ void main() {
         canvasSize: canvasSize,
         tileSize: 8,
       ),
-    });
+    }, dirtyTicksAtSnapshot: store.bakedSnapshotForSave().dirtyTicks);
     expect(store.dirtyCelKeysSinceSave, isEmpty);
     expect(store.isCelFileBacked(k), isTrue);
     expect(
@@ -279,6 +279,58 @@ void main() {
       isFalse,
       reason: 'an edit invalidates the saved bytes',
     );
+  });
+
+  test('a stroke landing WHILE a save is in flight survives the adoption', () {
+    // The save snapshots at its start and adopts at its end; a cel edited
+    // in between holds pixels the save never wrote. Adopting its ref
+    // anyway — which the old wholesale dirty-clear paired with — marked
+    // the stroke clean (the next incremental save skipped it) and handed
+    // cooling a "free drop" that reverted the pixels to the file's:
+    // total, silent loss. The pen already down when Ctrl+S fired was the
+    // reachable case.
+    final store = BrushFrameStore();
+    final edited = key(frame: 'edited');
+    final untouched = key(frame: 'untouched');
+    store.storeBakedSurface(edited, inkSurface());
+    store.storeBakedSurface(untouched, inkSurface(seed: 11));
+
+    // The save begins: snapshot captured.
+    final snapshot = store.bakedSnapshotForSave();
+    // ...and while it runs, the pen lands on one cel.
+    final midSaveInk = inkSurface(seed: 3);
+    store.storeBakedSurface(edited, midSaveInk);
+
+    AnicelCelFileRef ref() => AnicelCelFileRef(
+      filePath: 'unused.anicel',
+      dataOffset: 0,
+      length: 1,
+      canvasSize: canvasSize,
+      tileSize: 8,
+    );
+    store.adoptSavedFile({
+      edited: ref(),
+      untouched: ref(),
+    }, dirtyTicksAtSnapshot: snapshot.dirtyTicks);
+
+    expect(
+      store.dirtyCelKeysSinceSave,
+      {edited},
+      reason: 'the mid-save edit keeps its mark — the next save writes it',
+    );
+    expect(
+      store.isCelFileBacked(edited),
+      isFalse,
+      reason: 'the stale ref must not land: cooling would treat it as a '
+          'free drop and revert the cel to the pre-stroke bytes',
+    );
+    expect(
+      identical(store.bakedSurfaceOrNull(edited), midSaveInk),
+      isTrue,
+      reason: 'the new pixels stay the truth',
+    );
+    expect(store.isCelFileBacked(untouched), isTrue);
+    expect(store.dirtyCelKeysSinceSave.contains(untouched), isFalse);
   });
 
   test('FULL save adopts file refs and OPEN lands every cel file-backed, '
@@ -549,7 +601,7 @@ void main() {
         canvasSize: const CanvasSize(width: 32, height: 32),
         tileSize: 8,
       ),
-    });
+    }, dirtyTicksAtSnapshot: store.bakedSnapshotForSave().dirtyTicks);
 
     // The OLD bug: switching to a 16px cut ran a store-GLOBAL resize
     // that clipped this 32px cel's outer tiles. Scoped resize of the

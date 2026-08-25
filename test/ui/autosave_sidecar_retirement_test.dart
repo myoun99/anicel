@@ -132,6 +132,36 @@ void main() {
       ).discardAutosaveSidecar();
     });
 
+    test('a snapshot armed BEFORE a save refuses to land AFTER it — the '
+        'stale check is generation-armed, not flag-armed', () async {
+      // _saveInFlight is a point-in-time flag: a snapshot that started
+      // before a save and came out of its isolate after it sees the flag
+      // down again, and would rename an overlay stamped against the
+      // PRE-save base onto the path the save just retired — a recovery
+      // file for a cleanly saved project, whose Accept can only fail the
+      // stamp check. The completed-save generation is what still says no.
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      await s.saveProjectToFile(projectPath);
+
+      final armedBeforeSave = s.beginAutosaveStaleCheck();
+      expect(armedBeforeSave(), isFalse, reason: 'nothing completed yet');
+
+      await s.saveProjectToFile(projectPath);
+
+      expect(
+        armedBeforeSave(),
+        isTrue,
+        reason: 'a save completed while this snapshot was (notionally) in '
+            'its isolate — landing now would recreate what retirement '
+            'just deleted',
+      );
+      expect(
+        s.beginAutosaveStaleCheck()(),
+        isFalse,
+        reason: 'a freshly armed check starts clean',
+      );
+    });
+
     test('Save As retires the OLD path\'s snapshot in EVERY candidate '
         'location', () async {
       // Both locations of the ABANDONED path: the current one in app

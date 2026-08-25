@@ -43,9 +43,20 @@ Map<String, MediaByteSource> projectMediaSources({
     try {
       layout = parseAnicelZipLayoutFile(projectFilePath);
     } on Object {
-      // A torn tail is the save path's problem to heal; here it just means
-      // nothing can be claimed to be inside yet.
-      layout = null;
+      // 🚨 A torn tail is NOT "nothing is inside". The crash contract says
+      // an append crash destroys only the file's tail — the media entries'
+      // bytes are still in the body — and the very next save is the HEAL
+      // that consumes this answer to decide what streams forward.
+      // Answering "nothing" here made that healing save rename a
+      // media-less archive over the file that still physically held the
+      // bytes: for an asset whose import original was gone (the whole
+      // reason carrying exists), that was silent, permanent loss. The
+      // local-header walk recovers what the tail no longer names.
+      try {
+        layout = recoverAnicelZipLayoutFile(projectFilePath);
+      } on Object {
+        layout = null;
+      }
     }
   }
 
@@ -69,6 +80,21 @@ Map<String, MediaByteSource> projectMediaSources({
     final file = MediaFileBytes(path);
     if (file.existsSync()) {
       sources[path] = file;
+      continue;
+    }
+    // Recorded as INSIDE the project and found nowhere: refusing beats
+    // certifying the loss. A save that proceeded here would write an
+    // archive without the asset and rename it over whatever still held
+    // the bytes — and the session would then forget the asset was ever
+    // embedded. (An asset that was never carried in simply stays LEFT
+    // OUT, per the doc above — that one is a findable absence the relink
+    // flow exists for.)
+    if (entryName != null) {
+      throw StateError(
+        'media "$path" is recorded inside the project, but neither the '
+        'archive nor the original file holds its bytes — saving now would '
+        'make that loss permanent',
+      );
     }
   }
   return sources;
