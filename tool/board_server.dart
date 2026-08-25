@@ -344,19 +344,17 @@ class _Entry {
   String state = 'open';
   String note = '';
 
-  /// 🚨When this card first appeared, and when it last moved (유저 2026-08-26:
-  /// 「패널에 공통값으로 날짜 넣자. 그 패널이 갱신된게 언제인지. 실기확인이
-  /// 언제 생긴건지라던가」).
+  /// 🚨When this card last moved — the date the head row shows, at the far
+  /// right after the tags (유저 2026-08-26).
   ///
-  /// The records file is append-only and merged last-wins, so both numbers
-  /// are already in it and neither needs storing twice: the FIRST line
-  /// carrying an id is its birth, the LAST is its latest word. A card that
-  /// has never been edited has them equal, which is how the panel knows to
-  /// print one date instead of two.
+  /// ONE number, not two. A 「생김 · 갱신」 pair was the first shape and the
+  /// user cut it: 「생김갱신 구분두지말고 갱신하나로 퉁치고」. The birth date
+  /// is still in the file — the first line carrying an id — and is left
+  /// there rather than surfaced, because two dates on one row is a
+  /// comparison the reader has to make before learning anything.
   ///
-  /// ⚠️Empty when a record carried no `ts` — older lines predate the field,
-  /// and a made-up date is worse than none.
-  String created = '';
+  /// ⚠️Empty when no record for this card carried a `ts` — older lines
+  /// predate the field, and a made-up date is worse than none.
   String updated = '';
 
   /// 🚨THE LANDING THIS CHECK BELONGS TO — the field that makes 확인할 것 one
@@ -465,12 +463,9 @@ List<_Entry> _readRecords(File file) {
       return _Entry(id, kind);
     });
     if (kind.isNotEmpty) e.kind = kind;
-    // First line wins for birth, last line wins for the latest word.
+    // Last line wins: the head shows when this card last moved.
     final ts = '${json['ts'] ?? ''}';
-    if (ts.isNotEmpty) {
-      if (e.created.isEmpty) e.created = ts;
-      e.updated = ts;
-    }
+    if (ts.isNotEmpty) e.updated = ts;
     if (json['title'] != null) e.title = json['title'] as String;
     if (json['state'] != null) e.state = json['state'] as String;
     if (json['note'] != null) e.note = json['note'] as String;
@@ -937,8 +932,9 @@ String _intakeForm() {
 }
 
 String _head(String id, String title, List<String> tags, String badge, String cls,
-    {String lead = ''}) {
+    {String lead = '', String date = ''}) {
   final chips = tags.map((t) => '<span class="chip">${_esc(t)}</span>').join();
+  final when = _day(date);
   // An empty badge renders nothing: a ready item is already labelled by the
   // section it sits in, and repeating that on every row is noise, not news.
   final mark = badge.isEmpty
@@ -946,27 +942,9 @@ String _head(String id, String title, List<String> tags, String badge, String cl
       : '<span class="chip $cls badge">${_esc(badge)}</span>';
   return '<summary>$lead<span class="k">${_esc(id)}</span>'
       '<span class="t">${_esc(title)}</span>'
-      '<span class="right">$chips$mark</span></summary>';
-}
-
-/// The one date line every panel carries (유저 2026-08-26). Two numbers when
-/// the card has moved since it was filed, one when it has not — a card that
-/// says 「생김 08-24 · 갱신 08-26」 has a history; one that says 「생김 08-26」
-/// has not been touched since, and printing the same date twice would only
-/// make the reader compare them.
-///
-/// ⛔Renders nothing at all when the records carried no `ts`. A blank is
-/// honest; a guessed date is a fact the board did not have.
-String _dates(_Entry e) {
-  final born = _day(e.created);
-  final moved = _day(e.updated);
-  if (born.isEmpty && moved.isEmpty) return '';
-  if (born.isEmpty || born == moved) {
-    // Still labelled 「생김」. A bare 「08-24」 makes the reader ask which of the
-    // two numbers it is, which is the exact question the line exists to answer.
-    return '<p class="dates">생김 ${_esc(moved.isEmpty ? born : moved)}</p>';
-  }
-  return '<p class="dates">생김 ${_esc(born)} · 갱신 ${_esc(moved)}</p>';
+      '<span class="right">$chips$mark'
+      '${when.isEmpty ? '' : '<span class="when">${_esc(when)}</span>'}'
+      '</span></summary>';
 }
 
 /// `2026-08-26T00:36:17.5` → `08-26`. The year is dropped because every
@@ -991,9 +969,8 @@ String _shotStrip(String id) {
 String _askPanel(_Entry d) {
   final b = StringBuffer();
   b.writeln('<details class="p ask" id="c-${_esc(d.id)}" data-kind="decision">');
-  b.writeln(_head(d.id, d.title, d.tags, '미제출', 'run'));
+  b.writeln(_head(d.id, d.title, d.tags, '미제출', 'run', date: d.updated));
   b.writeln('<div class="body">');
-  b.writeln(_dates(d));
   if (d.where.isNotEmpty) {
     b.writeln('<p class="d"><b>화면에서</b> — ${_esc(d.where)}</p>');
   }
@@ -1073,9 +1050,9 @@ String _checkRow(_Entry c, {_Pr? pr, List<_Entry> subs = const []}) {
     landed ? 'ok' : 'run',
     lead: '<input type="checkbox" class="pick" value="${_esc(c.id)}" '
         'onclick="event.stopPropagation()">',
+    date: c.updated,
   ));
   b.writeln('<div class="body">');
-  b.writeln(_dates(c));
   if (c.how.isNotEmpty) {
     b.writeln('<p class="d"><b>이렇게 본다</b> — ${_esc(c.how)}</p>');
   }
@@ -1127,9 +1104,8 @@ String _itemPanel(_Entry e) {
       (e.state == 'open' || inbox) ? '' : (_stateLabels[e.state] ?? e.state);
   final b = StringBuffer();
   b.writeln('<details class="p${inbox ? ' box' : ''}" id="c-${_esc(e.id)}">');
-  b.writeln(_head(e.id, e.title, e.tags, badge, ''));
+  b.writeln(_head(e.id, e.title, e.tags, badge, '', date: e.updated));
   b.writeln('<div class="body">');
-  b.writeln(_dates(e));
   if (inbox) {
     // Still editable, because a filing made mid-thought is usually wrong in
     // some small way and the moment to fix it is when you notice.
@@ -1197,9 +1173,9 @@ String _prPanel(_Pr pr, _Entry? e) {
       ? '<input type="checkbox" class="pick" value="${_esc(id)}" '
           'onclick="event.stopPropagation()">'
       : '';
-  b.writeln(_head(id, title, e?.tags ?? const [], badge, cls, lead: tick));
+  b.writeln(_head(id, title, e?.tags ?? const [], badge, cls,
+      lead: tick, date: e?.updated ?? ''));
   b.writeln('<div class="body">');
-  if (e != null) b.writeln(_dates(e));
   if (e != null && e.note.isNotEmpty) {
     b.writeln('<p class="d">${_esc(e.note)}</p>');
   }
@@ -1242,9 +1218,8 @@ String _settledPanel(_Entry d) {
       : '${picked['label']}';
   final b = StringBuffer();
   b.writeln('<details class="p" id="c-${_esc(d.id)}">');
-  b.writeln(_head(d.id, d.title, d.tags, '정해짐', 'ok'));
+  b.writeln(_head(d.id, d.title, d.tags, '정해짐', 'ok', date: d.updated));
   b.writeln('<div class="body">');
-  b.writeln(_dates(d));
   b.writeln('<p class="d"><b>→ ${_esc(label)}</b></p>');
   if (d.answerNote.isNotEmpty) {
     b.writeln('<p class="d">${_esc(d.answerNote)}</p>');
@@ -1543,10 +1518,12 @@ white-space:nowrap;border:1px solid var(--line2);color:var(--ink3)}
 display:flex;flex-direction:column;gap:7px}
 .body>*:first-child{margin-top:10px}
 .d{font-size:13px;color:var(--ink2);margin:0;white-space:pre-wrap}
-/* The date line sits above the panel's own writing and reads as an aside:
-   mono so the two dates line up down a column of open panels, and quiet
-   enough that it never competes with the 이렇게 본다 / 왜 중요한가 lines. */
-.dates{font-family:var(--mono);font-size:11px;color:var(--ink3);margin:0}
+/* The date rides the HEAD row, last of everything on the right (유저
+   2026-08-26: 「패널내부가아니라 타이틀쪽 제일오른쪽, 태그오른쪽에」). Mono and
+   fixed-width so the column of dates stays straight down a list whose chips
+   are all different widths, and quiet enough to read as a margin note. */
+.when{font-family:var(--mono);font-size:10.5px;color:var(--ink3);
+white-space:nowrap;flex:none;min-width:38px;text-align:right}
 .care{display:flex;gap:8px;align-items:flex-start;background:var(--runbg);
 border-left:3px solid var(--run);border-radius:0 5px 5px 0;padding:8px 10px;
 font-size:12.5px;color:var(--ink2);white-space:pre-wrap}
