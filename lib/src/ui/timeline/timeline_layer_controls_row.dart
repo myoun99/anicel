@@ -366,11 +366,25 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 ),
               ),
               Expanded(
-                child: InkWell(
+                child: KeyedSubtree(
                   key: ValueKey<String>('timeline-layer-name-${layer.id}'),
-                  onTap: () => onSelectLayer(layer.id),
-                  // No hover glow on the NAME either (UI-R24 #6).
-                  hoverColor: Colors.transparent,
+                  // 🚨F-26 (유저 2026-08-24): 「레이어 클릭하고 이름영역
+                  // 클릭시 **선택되는 애니메이션같은거 발동**하는데, 없애고
+                  // 해당영역 클릭시 레이어라벨 빈공간 클릭이랑 마찬가지로
+                  // 레이어 자체가 밝아지는 애니메이션 적용되도록.
+                  // **규칙단순화**」.
+                  //
+                  // ⛔The name used to be an InkWell of its own, selecting
+                  // the layer a SECOND time on top of the row's press-seek.
+                  // Two consequences, both the report: it rippled where the
+                  // rest of the row does not, and it picked on the RELEASE
+                  // where the row picks on the DOWN (T10) — so the same
+                  // click meant two different moments depending on which
+                  // pixel it landed on.
+                  //
+                  // ★The row's own [InstantTapRegion] already covers every
+                  // pixel of this area. Taking the InkWell away is not
+                  // removing a behaviour; it is removing a SECOND one.
                   // 🚨F-29 (유저 2026-08-24): 「접기 펼치기 아이콘 위치 조정.
                   // 지금 레이어이름 옆에 붙어있는데, 그게아니라 위치는 항상
                   // 고정으로 두고싶기때문에 레이어 이름영역의 오른쪽정렬로
@@ -392,6 +406,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
                             Flexible(
                               child: Text(
                                 layer.name,
+                                style: layerRowNameStyle(context),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),

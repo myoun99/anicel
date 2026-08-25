@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import '../../models/layer_id.dart';
 import 'selected_exposure_display_range_policy.dart';
 import 'timeline_cell_style.dart'
-    show timelineRangeSelectionBandDecoration, timelineSelectedFrameBorderColor;
+    show
+        timelineRangeSelectionBandDecoration,
+        timelineRowSelectionBandDecoration,
+        timelineSelectedFrameBorderColor;
 import 'timeline_frame_coordinate_policy.dart';
 
 /// THE ring that says "this is in the selection", wherever a selection is
@@ -226,6 +229,7 @@ class TimelineRowSelectionBands extends StatelessWidget {
 
   Widget _band(int runStart) => DecoratedBox(
     key: ValueKey<String>('timeline-row-selection-band-$runStart'),
-    decoration: timelineRangeSelectionBandDecoration,
+    // F-26: a row's corners are square, so its band's are.
+    decoration: timelineRowSelectionBandDecoration,
   );
 }

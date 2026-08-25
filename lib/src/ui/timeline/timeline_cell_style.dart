@@ -37,6 +37,22 @@ BoxDecoration get timelineRangeSelectionBandDecoration => BoxDecoration(
   borderRadius: const BorderRadius.all(Radius.circular(6)),
 );
 
+/// The same band with SQUARE corners — the one the LAYER area wears.
+///
+/// 🚨F-26 (유저 2026-08-24): 「레이어영역의 선택범위 ui, 프레임은 블록
+/// 실루엣이 모서리가 둥그니까 둥근ui로 괜찮은데, **레이어영역은 레이어 칸이
+/// 모서리가 직각이니까 선택ui도 직각이도록**」.
+///
+/// ★Not two decorations with two opinions: ONE band, taking the shape of
+/// what it is selecting. A frame block is round, so the band over a run of
+/// them is; a rail row (and an x-sheet column) is square, so the band over
+/// a run of those is. Everything else about it — the ink, the fill, the
+/// stroke width — stays the single value above.
+BoxDecoration get timelineRowSelectionBandDecoration =>
+    timelineRangeSelectionBandDecoration.copyWith(
+      borderRadius: BorderRadius.zero,
+    );
+
 /// The ring on the cell you are STANDING on, wherever that is: a layer's
 /// row, an fx header, a property lane.
 ///
