@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 
 import '../../models/canvas_point.dart';
@@ -27,7 +27,7 @@ class SelectionAntsPainter extends CustomPainter {
     required this.viewport,
     required this.committedRegion,
     required this.screenOffset,
-    required this.marqueeShape,
+    required this.marqueeShapes,
     required this.openTrail,
     this.closeTarget,
     this.closeTargetArmed = true,
@@ -48,8 +48,14 @@ class SelectionAntsPainter extends CustomPainter {
   final CanvasSelectionRegion? committedRegion;
   final Offset screenOffset;
 
-  /// The polygon being dragged right now (not yet folded into the region).
-  final CanvasSelectionShape? marqueeShape;
+  /// The polygon being dragged right now (not yet folded into the region),
+  /// with every copy a symmetry guide is making of it.
+  ///
+  /// A list because the preview has to show what will LAND: a mirrored drag
+  /// commits every copy, so a preview that traced only the pointer's own
+  /// rectangle would be a promise the commit breaks. Empty while no outline
+  /// is being dragged.
+  final List<CanvasSelectionShape> marqueeShapes;
 
   /// An outline still being drawn and not yet closable: the lasso's raw
   /// trail, or a polygon's vertices with the rubber band to the cursor on
@@ -119,11 +125,25 @@ class SelectionAntsPainter extends CustomPainter {
       );
       _paintAnts(canvas, path, phase);
     }
-    final marquee = marqueeShape;
-    if (marquee != null) {
-      final path = Path()
+    if (marqueeShapes.isNotEmpty) {
+      // Copies UNION, the same way the committed fold does — two copies
+      // that overlap trace one outline, not two crossing ones.
+      var path = Path()
         ..fillType = PathFillType.evenOdd
-        ..addPolygon([for (final point in marquee.points) _map(point)], true);
+        ..addPolygon([
+          for (final point in marqueeShapes.first.points) _map(point),
+        ], true);
+      for (final marquee in marqueeShapes.skip(1)) {
+        path = Path.combine(
+          PathOperation.union,
+          path,
+          Path()
+            ..fillType = PathFillType.evenOdd
+            ..addPolygon([
+              for (final point in marquee.points) _map(point),
+            ], true),
+        );
+      }
       _paintAnts(canvas, path, phase);
     } else if (openTrail.isNotEmpty) {
       // Not closable yet: show the outline as far as it has been drawn,
@@ -236,7 +256,7 @@ class SelectionAntsPainter extends CustomPainter {
       oldDelegate.viewport != viewport ||
       oldDelegate.committedRegion != committedRegion ||
       oldDelegate.screenOffset != screenOffset ||
-      oldDelegate.marqueeShape != marqueeShape ||
+      !listEquals(oldDelegate.marqueeShapes, marqueeShapes) ||
       oldDelegate.openTrail != openTrail ||
       oldDelegate.closeTarget != closeTarget ||
       oldDelegate.closeTargetArmed != closeTargetArmed ||

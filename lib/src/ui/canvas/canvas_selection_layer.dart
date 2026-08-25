@@ -13,6 +13,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/drawing_guide.dart';
 import '../../models/tile_coord.dart';
 import '../../models/viewport_point.dart';
 import 'dart:math' as math;
@@ -25,6 +26,7 @@ import '../widgets/app_window.dart';
 import '../../services/bitmap_surface_brush_commit.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
+import '../../services/guide_geometry.dart';
 import '../../services/resample/resample_kernel.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../brush/canvas_selection_commands.dart';
@@ -61,6 +63,7 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onShapeCommitted,
     this.onCutShape,
     this.onFillShape,
+    this.symmetry,
     this.selectionCommands,
     this.onDragActiveChanged,
     this.onTransformDragActiveChanged,
@@ -204,6 +207,14 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// selection is not touched. The undo it leaves behind is the fill
   /// itself, arriving through the stroke funnel like any other mark.
   final ValueChanged<CanvasSelectionShape>? onFillShape;
+
+  /// The symmetry guide acting right now, in CANVAS coordinates — an
+  /// outline drawn here is copied by it the same way a stroke is.
+  ///
+  /// ⚠️Canvas space, not the artwork space the drawing view's guides are
+  /// mapped into: this layer's geometry never leaves canvas coordinates
+  /// (see the class doc), so the axis must not either.
+  final SymmetryShape? symmetry;
 
   final CanvasSelectionCommands? selectionCommands;
 
@@ -2679,8 +2690,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       if (handle != null && handle != _TransformHandle.inside) {
         if (_region == null) {
           setState(
+            // The implicit region IS the whole-canvas shape on this branch
+            // (`_region` is null), so its one step has one copy.
             () => _adoptImplicitWholePictureShape(
-              implicitRegion.steps.first.shape,
+              implicitRegion.steps.first.shapes.first,
             ),
           );
         }
@@ -3293,7 +3306,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // R26 #16: the drawn polygon FOLDS into the region under the active
     // mode. A click (degenerate polygon) still deselects in 갱신 mode —
     // Photoshop's click-away — and is inert in the other three.
-    final after = CanvasSelectionRegion.combine(before, drawn, _marqueeMode());
+    final after = CanvasSelectionRegion.combineCopies(
+      before,
+      _symmetryCopies(drawn),
+      _marqueeMode(),
+    );
     if (before == null && after == null) {
       return;
     }
@@ -3309,6 +3326,32 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     } else {
       applyCommittedRegion(after);
     }
+  }
+
+  /// Every copy a symmetry guide makes of a drawn outline, the original
+  /// first — the SAME list the brush replicates a stroke over, from the
+  /// same [symmetryTransforms]. Empty for a degenerate drag, which is what
+  /// [CanvasSelectionRegion.combineCopies] reads as a click.
+  ///
+  /// A copy that lands entirely off the canvas is kept, not dropped: a
+  /// selection may extend past the edge (the pasteboard is a real place),
+  /// and dropping it would make the mirror silently asymmetric.
+  List<CanvasSelectionShape> _symmetryCopies(CanvasSelectionShape? drawn) {
+    if (drawn == null) {
+      return const [];
+    }
+    final symmetry = widget.symmetry;
+    if (symmetry == null) {
+      return [drawn];
+    }
+    return [
+      for (final copy in symmetryTransforms(symmetry))
+        copy.isIdentity
+            ? drawn
+            : CanvasSelectionShape([
+                for (final point in drawn.points) copy.apply(point),
+              ]),
+    ];
   }
 
   /// Adopts a committed region — called by the selection history command
@@ -3816,9 +3859,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                   screenOffset: _dragMode == _DragMode.move
                       ? _moveChromeOffset
                       : Offset.zero,
-                  marqueeShape: _dragMode == _DragMode.marquee
-                      ? _marqueeShape()
-                      : null,
+                  marqueeShapes: _dragMode == _DragMode.marquee
+                      ? _symmetryCopies(_marqueeShape())
+                      : const [],
                   openTrail: _tapsVertices
                       ? (widget.selectionCommands?.polygonPoints ?? const [])
                       : _dragMode == _DragMode.marquee && _tracesPointerPath

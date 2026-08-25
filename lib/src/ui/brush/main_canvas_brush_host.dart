@@ -208,7 +208,8 @@ class MainCanvasBrushHost extends StatefulWidget {
   final FlipHudController? flipHud;
   final ValueChanged<int>? onEyedropperPick;
   final ValueChanged<int>? onAltColorPick;
-  final BrushDab? Function(CanvasPoint point, int color)? fillDabAt;
+  final BrushDab? Function(CanvasPoint point, int color, SymmetryShape? symmetry)?
+  fillDabAt;
 
   /// Forwarded to [BrushCanvasPanel]: builds the dab for a drawn shape
   /// fill.

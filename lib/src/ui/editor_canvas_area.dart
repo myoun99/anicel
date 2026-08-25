@@ -893,7 +893,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // through the stroke funnel onto the active layer's frame.
               selectionMaskOptions: widget.selectionMaskOptions,
               transformOptions: widget.transformOptions,
-              fillDabAt: (point, color) => buildFillDab(
+              fillDabAt: (point, color, symmetry) => buildFillDab(
                 cut: session.requireActiveCut,
                 frameIndex: session.currentFrameIndex,
                 surfaceResolver: session.brushSurfaceForLayerFrame,
@@ -904,6 +904,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 opacity: toolState.activeOpacity,
                 options: widget.fillOptions?.value ?? const FloodFillOptions(),
                 paperColor: session.projectBackground.argb,
+                // The same guide the brush obeys, handed down by the view
+                // that read it — a symmetry that replicates strokes
+                // replicates fills.
+                symmetry: symmetry,
                 // Extended fills refuse OPEN regions (the flood reached
                 // the pasteboard apron wall) — say why nothing filled.
                 onOpenRegion: () => showAppNotice(

@@ -79,7 +79,7 @@ void main() {
             tool: CanvasTool.fill,
             fillBlendMode: BrushBlendMode.erase,
           ),
-          fillDabAt: (_, color) => fillDab(color),
+          fillDabAt: (_, color, _) => fillDab(color),
         ),
       ),
     );
@@ -107,7 +107,7 @@ void main() {
           cacheInvalidationSink: BrushEditCacheInvalidationSink(),
           sampleColorAt: (_) => 0xFF123456,
           onEyedropperPick: (_) {},
-          fillDabAt: (_, color) => fillDab(color),
+          fillDabAt: (_, color, _) => fillDab(color),
         ),
       ),
     );
@@ -338,7 +338,7 @@ void main() {
             tool: CanvasTool.fill,
             color: 0xFF3366CC,
           ),
-          fillDabAt: (point, color) {
+          fillDabAt: (point, color, _) {
             fillColors.add(color);
             return fillDab(color);
           },
@@ -397,7 +397,7 @@ void main() {
           brushToolState: BrushToolState.defaults.copyWith(
             tool: CanvasTool.fill,
           ),
-          fillDabAt: (_, _) => null,
+          fillDabAt: (_, _, _) => null,
         ),
       ),
     );

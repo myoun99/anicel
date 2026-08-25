@@ -529,7 +529,8 @@ class BrushCanvasPanel extends StatefulWidget {
 
   /// Builds the fill-region dab for a tap (P6); the panel commits it
   /// through the exact stroke funnel. Null disables the fill tool.
-  final BrushDab? Function(CanvasPoint point, int color)? fillDabAt;
+  final BrushDab? Function(CanvasPoint point, int color, SymmetryShape? symmetry)?
+  fillDabAt;
 
   /// Builds the dab for a finished SHAPE FILL outline. Supplied by the
   /// host for the same reason [fillDabAt] is — the fill's knobs live up
@@ -2483,6 +2484,20 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                                 _cutPieceFromShape,
                                                             onFillShape:
                                                                 _fillDrawnShape,
+                                                            // CANVAS space,
+                                                            // unmapped: this
+                                                            // layer never
+                                                            // leaves it,
+                                                            // unlike the
+                                                            // drawing view
+                                                            // below whose
+                                                            // guides ride
+                                                            // into artwork
+                                                            // coordinates.
+                                                            symmetry:
+                                                                widget
+                                                                    .guides
+                                                                    ?.actingSymmetry,
                                                             viewport: _viewport,
                                                             canvasSize: widget
                                                                 .canvasSize,
@@ -2621,8 +2636,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                                     idleSelection,
                                                                 screenOffset:
                                                                     Offset.zero,
-                                                                marqueeShape:
-                                                                    null,
+                                                                marqueeShapes:
+                                                                    const [],
                                                                 // The IDLE
                                                                 // ants: no
                                                                 // tool is
