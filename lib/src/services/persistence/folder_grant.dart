@@ -317,16 +317,13 @@ abstract final class FolderPicker {
     }
     if (!grantsAreScoped) {
       // Desktop: a folder path is a folder path. No grant, no bookmark.
-      try {
-        final picked = await file_selector.getDirectoryPath(
-          initialDirectory: initialDirectory,
-        );
-        return picked == null
-            ? const FolderGrant.cancelled()
-            : FolderGrant.granted(path: _normalize(picked));
-      } on Object {
+      final picked = await _pickedDirectory(initialDirectory);
+      if (picked == null) {
         return const FolderGrant.unavailable();
       }
+      return picked.isEmpty
+          ? const FolderGrant.cancelled()
+          : FolderGrant.granted(path: _normalize(picked));
     }
     return (await _invoke('pickProjectFolder', {
       'initialDirectory': initialDirectory,
@@ -440,7 +437,7 @@ abstract final class FolderPicker {
       // hold, so the plugin is the whole story — but the CONTRACT is the
       // same, which is why the move happens here.
       try {
-        final location = await file_selector.getSaveLocation(
+        final location = await _pickedSaveLocation(
           suggestedName: suggestedName ?? _fileNameOf(sourcePath),
           initialDirectory: initialDirectory,
         );
@@ -459,6 +456,64 @@ abstract final class FolderPicker {
       'suggestedName': suggestedName ?? _fileNameOf(sourcePath),
     }, GrantKind.file)).first;
   }
+
+  /// The folder the user picked: `null` when the picker itself would not
+  /// open, an EMPTY string when they cancelled, the path otherwise.
+  ///
+  /// 🚨F-14 (유저 2026-08-24): 「윈도우에서 저장 시 드라이브에 저장하려고하면
+  /// **폴더선택을 열 수 없었다고 뜨고 저장안됨**」. The hint is what refused:
+  /// a directory the platform will not accept as a starting point throws out
+  /// of `getDirectoryPath`, and the catch turned that into "no picker".
+  ///
+  /// ★[initialDirectory] is documented right here as a HINT — 「every
+  /// platform is free to ignore it」 — so it may not be able to stop the
+  /// picker from opening at all. It is dropped and asked again.
+  /// Runs [ask] with the hint, and again WITHOUT it if the hint threw.
+  ///
+  /// ⛔The second attempt is not a retry of a failure — it is the same
+  /// question with the optional half removed. A hint that the platform will
+  /// not start in may not be able to stop the picker from opening at all.
+  ///
+  /// Rethrows when the hintless attempt fails too: that is a real refusal,
+  /// and the callers turn it into [FolderPickStatus.unavailable].
+  @visibleForTesting
+  static Future<T> askingAgainWithoutHint<T>(
+    Future<T> Function(String? initialDirectory) ask,
+    String? initialDirectory,
+  ) async {
+    try {
+      return await ask(initialDirectory);
+    } on Object {
+      if (initialDirectory == null) {
+        rethrow;
+      }
+    }
+    return ask(null);
+  }
+
+  static Future<String?> _pickedDirectory(String? initialDirectory) async {
+    try {
+      return await askingAgainWithoutHint(
+        (hint) async =>
+            await file_selector.getDirectoryPath(initialDirectory: hint) ?? '',
+        initialDirectory,
+      );
+    } on Object {
+      return null;
+    }
+  }
+
+  /// [file_selector.getSaveLocation] under the same hint rule.
+  static Future<file_selector.FileSaveLocation?> _pickedSaveLocation({
+    required String suggestedName,
+    String? initialDirectory,
+  }) => askingAgainWithoutHint(
+    (hint) => file_selector.getSaveLocation(
+      suggestedName: suggestedName,
+      initialDirectory: hint,
+    ),
+    initialDirectory,
+  );
 
   static String _fileNameOf(String path) {
     final normalized = _normalize(path);
