@@ -510,10 +510,16 @@ class TimelineLayerControlsRow extends StatelessWidget {
                     onToggleLayerFx != null &&
                         layerKindShowsFxToggle(layer.kind) &&
                         !wearsBaseComposite
-                    ? FxToggleButton(
-                        keyValue: 'timeline-layer-fx-${layer.id}',
-                        state: fxState,
-                        onToggle: () => onToggleLayerFx!(layer.id),
+                    // I-1: the three toggle COLUMNS own drags that start on
+                    // them, so a press-and-drag paints the column down the
+                    // rows instead of moving the row. Kept in step with the
+                    // grid's swipe column list — see [RailSwipeColumnPointer].
+                    ? RailSwipeColumnPointer(
+                        child: FxToggleButton(
+                          keyValue: 'timeline-layer-fx-${layer.id}',
+                          state: fxState,
+                          onToggle: () => onToggleLayerFx!(layer.id),
+                        ),
                       )
                     : null,
                 // Per-layer onion toggle (UI-R17 #5) beside the eye — only
@@ -526,7 +532,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
                         layerKindAcceptsBrushInput(layer.kind)
                     ? SizedBox(
                         height: 26,
-                        child: RailControlPointer(child: IconButton(
+                        child: RailSwipeColumnPointer(child: IconButton(
                           key: ValueKey<String>(
                             'timeline-layer-onion-${layer.id}',
                           ),
@@ -549,10 +555,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
                         )),
                       )
                     : null,
-                visibility: LayerVisibilityToggleButton(
-                  keyValue: 'timeline-layer-visibility-${layer.id}',
-                  isVisible: layer.isVisible,
-                  onToggle: () => onToggleLayerVisibility(layer.id),
+                visibility: RailSwipeColumnPointer(
+                  child: LayerVisibilityToggleButton(
+                    keyValue: 'timeline-layer-visibility-${layer.id}',
+                    isVisible: layer.isVisible,
+                    onToggle: () => onToggleLayerVisibility(layer.id),
+                  ),
                 ),
                 // SE rows carry the mute speaker beside the eye (sounds
                 // silence, waveforms keep displaying). Tight SizedBox: the
