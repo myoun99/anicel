@@ -34,6 +34,8 @@ import '../../models/project_frame_rate.dart';
 import '../../models/timeline_row_address.dart';
 import 'timeline_row_cross_offset.dart';
 import 'timeline_selected_exposure_outline.dart' show TimelineSelectionRing;
+import '../input/app_input_settings.dart' show AppInput;
+import '../widgets/instant_tap_region.dart';
 import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'layer_drop_policy.dart'
     show LayerRowCaret, effectHeaderRowsOf, rowStepsBetween, slotForSteps;
@@ -2875,10 +2877,25 @@ class _LayerHeader extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final showLaneToggle = hasLanes && onToggleLanes != null;
 
-    final header = InkWell(
-      key: ValueKey<String>('xsheet-layer-header-${layer.id}'),
-      onTap: () => onSelectLayer(layer.id),
-      child: Container(
+    // 🚨F-26 (유저 2026-08-24): 「x시트가 가로모드랑 **전혀 통일화 안되어있음.
+    // 레이어 탭다운이 아니라 손을 떼야 액티브레이어 전환**되고 … 몇번째인지
+    // 모를 통일화 미스가 또 여기서 발견됐네?」.
+    //
+    // T10 (유저 확정 2026-08-14) says a CELL press moves the active target,
+    // whatever the device — 「행이든 뭐든 동일하게」 — and the rail's rows have
+    // read it through [InstantTapRegion] since. The sheet's columns are the
+    // rail turned on its side, so they ask the same widget with the same
+    // gate; an `InkWell.onTap` fires on the RELEASE, which is the report.
+    final header = InstantTapRegion(
+      pressSeeksFor: AppInput.timelineCellPressSeeks,
+      onTap: (_) => onSelectLayer(layer.id),
+      child: InkWell(
+        key: ValueKey<String>('xsheet-layer-header-${layer.id}'),
+        // ⛔A no-op `onTap`, which is not decoration: it holds a tap
+        // recognizer in the arena so scroll slop over a column behaves the
+        // way it always has (the rail's rows keep one for the same reason).
+        onTap: () {},
+        child: Container(
         width: metrics.layerRowHeight,
         height: headerExtent,
         // No padding: a 28px column has none to give, and the shared slot
@@ -3001,9 +3018,12 @@ class _LayerHeader extends StatelessWidget {
               // `Expanded` does — written vertically, because a 28px column
               // is a paper timesheet column and that is how one is read.
               Expanded(
-                child: InkWell(
+                child: KeyedSubtree(
                   key: ValueKey<String>('xsheet-layer-name-${layer.id}'),
-                  onTap: () => onSelectLayer(layer.id),
+                  // F-26: the name is not a second place to select from —
+                  // see the rail's own name area for the whole reason. The
+                  // header's press-seek above already covers this pixel.
+                  //
                   // Selection reads by COLOR only (user rule): no bold flip
                   // on the active column's name.
                   child: ClipRect(
@@ -3015,10 +3035,9 @@ class _LayerHeader extends StatelessWidget {
                       // down AND float in the middle of its own column.
                       latinForm: VerticalLatinForm.upright,
                       mainAlignment: 0,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: colorScheme.onSurface,
-                      ),
+                      style: layerRowNameStyle(
+                        context,
+                      ).copyWith(color: colorScheme.onSurface),
                     ),
                   ),
                 ),
@@ -3167,6 +3186,7 @@ class _LayerHeader extends StatelessWidget {
               ),
             ],
           ),
+        ),
         ),
       ),
     );

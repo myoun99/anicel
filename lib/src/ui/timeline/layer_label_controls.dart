@@ -410,6 +410,27 @@ bool layerKindShowsOpacityControl(LayerKind kind) =>
 /// playback or do not).
 bool layerKindShowsFxToggle(LayerKind kind) => kind != LayerKind.transition;
 
+/// The ONE style a row's NAME is written in — the timeline rail's row, the
+/// x-sheet's column, and the storyboard's V and S rows.
+///
+/// 🚨F-26 (유저 2026-08-24): 「레이어명의 폰트가 다른거같음. 가로모드는
+/// 볼드체에 글자크기도 큰거같은데 x시트는 글자 얇고 작은거같음. **가로모드에
+/// 맞춰서 통일**하고, 스토리보드패널도 겸사겸사 싹 다 폰트 통일. 지금 우선
+/// V1라는 글자만 볼드체인거 **굉장히 통일감면에서 이상함**」.
+///
+/// ★The horizontal rail is the reference the user named, and what it does is
+/// nothing: it never set a style, so its name takes the surface's body text.
+/// So this IS that — named, so the other two have somewhere to point instead
+/// of each typing a number of their own. The x-sheet's `fontSize: 11` and
+/// the storyboard's `FontWeight.bold` are what "each typing its own" looked
+/// like, and they are gone.
+///
+/// ⛔Not a colour. A row's name is coloured by what the row IS (disabled,
+/// posed, a section's), which is the caller's business — this answers the
+/// one question they were all answering differently.
+TextStyle layerRowNameStyle(BuildContext context) =>
+    DefaultTextStyle.of(context).style;
+
 /// The `fx` GLYPH — italic, bold, accent when the FX apply and dim when
 /// bypassed. Defined ONCE (R28 follow-up).
 ///

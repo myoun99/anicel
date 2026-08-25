@@ -5545,7 +5545,11 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       softWrap: false,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      // F-26: 「지금 우선 V1라는 글자만 볼드체인거 굉장히
+                      // 통일감면에서 이상함」 — a row's name is a row's name
+                      // on every surface, so the bold is gone and this
+                      // points at the one style with the rest.
+                      style: layerRowNameStyle(context),
                     ),
                     // ⛔NO SECOND LINE (⑭ 유저 2026-08-12: 「v행에 있는
                     // Track 1 이거 삭제. 그냥 V1이라고만 존재하도록. **다시는
