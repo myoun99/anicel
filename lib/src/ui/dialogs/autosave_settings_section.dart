@@ -98,8 +98,13 @@ class AutosaveSettingsSection extends StatelessWidget {
                             AppSaveSettings.defaultPeriodicSnapshotMinutes,
                         unit: ' min',
                       ),
+                      // ⛔No rounding here: the track has one stop per
+                      // minute, so `next` IS whole, and `sliderValueText`
+                      // renders a whole number whole. (`onChanged` below
+                      // still rounds — that is the MODEL's int, not the
+                      // label's text.)
                       valueTextBuilder: (next) =>
-                          sliderValueText(next.round(), unit: ' min'),
+                          sliderValueText(next, unit: ' min'),
                       onChanged: settings.periodicSnapshotMinutes == null
                           ? null
                           : (next) => session.setSaveSettings(
