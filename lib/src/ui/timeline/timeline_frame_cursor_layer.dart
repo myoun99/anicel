@@ -449,7 +449,7 @@ class TimelineCursorLayer extends StatelessWidget {
           TimelineCellExposureState stateAt(int frameIndex) =>
               timelineIndexIsGhost(layer, frameIndex)
               ? TimelineCellExposureState.uncovered
-              : layerKindCarriesInstructions(layer.kind)
+              : layerKindBandIsInstructionsOnly(layer.kind)
               ? instructionCellExposureState(layer, frameIndex)
               : exposureStateForLayer(layer, frameIndex);
           final displayRange = resolveSelectedExposureDisplayRange(

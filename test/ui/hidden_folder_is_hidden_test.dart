@@ -80,21 +80,31 @@ void main() {
 
     test('the bulk sweep does not count a row inside a hidden folder', () {
       final (s, member, folder) = sessionWithFolder();
-      s.toggleLayerOnionSkin(member);
+      // 🆕R27 #16 made the DIRECTION row a drawing row, so the default
+      // project now offers the sweep two rows rather than one. The law under
+      // test is unchanged — 「every DISPLAYED layer」 may not count a row the
+      // user cannot see — but it has to be shown with the member as the ONE
+      // that disagrees, which is what makes the answer move when it is
+      // folded away.
+      for (final layer in s.activeCutOrNull!.layers) {
+        if (layer.id != member && !s.isLayerOnionSkinEnabled(layer.id)) {
+          s.toggleLayerOnionSkin(layer.id);
+        }
+      }
       expect(
         s.displayedLayersOnionSkinEnabled,
-        isTrue,
-        reason: 'the CONTROL — the only displayed drawing row is ghosting',
+        isFalse,
+        reason: 'the CONTROL — every displayed drawing row but the folder\'s '
+            'member is ghosting, so "every" is not yet true',
       );
 
       hideFolder(s, folder);
 
       expect(
         s.displayedLayersOnionSkinEnabled,
-        isFalse,
-        reason:
-            '"every DISPLAYED layer" cannot include one the user cannot see. '
-            'The button read ON because of a row inside a folder that was off.',
+        isTrue,
+        reason: 'the row that disagreed is inside a folder that is off, and '
+            'a row the user cannot see is not a DISPLAYED layer',
       );
     });
   });

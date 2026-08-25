@@ -440,7 +440,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
           // paper blocks. A TOP-LEVEL tear-off, not a closure: the painter
           // value-compares this field, and a fresh closure per build would
           // re-record the row on every pass.
-          exposureStateForLayer: layerKindCarriesInstructions(layer.kind)
+          exposureStateForLayer: layerKindBandIsInstructionsOnly(layer.kind)
               ? instructionCellExposureState
               : exposureStateForLayer,
           frameNameForLayer: frameNameForLayer,

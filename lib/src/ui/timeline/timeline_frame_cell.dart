@@ -314,7 +314,7 @@ String _markerForCell({
     // ([timelineUnionKeyMarkerSpans]) — never a text glyph, never the ○.
     TimelineCellExposureState.drawingStart =>
       layerKindUsesSeSheetCells(layer.kind) ||
-              layerKindCarriesInstructions(layer.kind) ||
+              layerKindBandIsInstructionsOnly(layer.kind) ||
               layer.kind == LayerKind.camera
           ? ''
           : frameName == null || frameName.isEmpty
@@ -332,7 +332,7 @@ String? _semanticsLabelForCell({
   String? frameName,
 }) {
   // Instruction spans carry their own semantics on the row overlay.
-  if (layerKindCarriesInstructions(layer.kind)) {
+  if (layerKindBandIsInstructionsOnly(layer.kind)) {
     return null;
   }
   return switch (exposureState) {

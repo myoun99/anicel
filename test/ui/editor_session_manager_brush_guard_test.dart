@@ -8,9 +8,15 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// R6-④: the brush only lands on drawing-section layers — SE cels are
-/// timing/dialogue data and instruction/camera rows are notation, so they
-/// never produce an editable brush target (their existing cels still
-/// composite read-only in the editing canvas stack).
+/// timing/dialogue data and camera rows are notation, so they never produce
+/// an editable brush target (their existing cels still composite read-only
+/// in the editing canvas stack).
+///
+/// 🆕The DIRECTION row left that list (R27 #16, 유저 확정 2026-08-25):
+/// 「카메라랑 트랜지션은 지금처럼 못그리는데 **디렉션레이어는 그림 그릴수있는
+/// 행으로**」. It still carries its instruction spans; what changed is that
+/// its band is its own timeline underneath them — see
+/// [layerKindBandIsInstructionsOnly].
 void main() {
   late EditorSessionManager session;
 
@@ -19,12 +25,23 @@ void main() {
     addTearDown(session.dispose);
   });
 
-  test('the brush-input policy bans SE, instruction and camera kinds', () {
+  test('the brush-input policy bans SE, transition and camera kinds', () {
     expect(layerKindAcceptsBrushInput(LayerKind.animation), isTrue);
     expect(layerKindAcceptsBrushInput(LayerKind.storyboard), isTrue);
     expect(layerKindAcceptsBrushInput(LayerKind.image), isTrue);
+    expect(
+      layerKindAcceptsBrushInput(LayerKind.instruction),
+      isTrue,
+      reason: 'R27 #16 — the direction row is a row you draw on now',
+    );
     expect(layerKindAcceptsBrushInput(LayerKind.se), isFalse);
-    expect(layerKindAcceptsBrushInput(LayerKind.instruction), isFalse);
+    expect(
+      layerKindAcceptsBrushInput(LayerKind.transition),
+      isFalse,
+      reason: '「카메라랑 트랜지션은 지금처럼 못그리는데」 — and the '
+          'transition row could not anyway: its placement in a cut is a '
+          'projection of the global row',
+    );
     expect(layerKindAcceptsBrushInput(LayerKind.camera), isFalse);
   });
 
