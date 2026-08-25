@@ -8,6 +8,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
+import 'package:anicel/src/ui/timeline/timeline_selected_exposure_outline.dart'
+    show TimelineRowSelectionBands;
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
@@ -144,6 +146,25 @@ void main() {
     );
     expect(sheet.fontWeight, rail.fontWeight);
     expect(sheet.fontFamily, rail.fontFamily);
+  });
+
+  testWidgets('the sheet draws ONE band per run, not a ring per column', (
+    tester,
+  ) async {
+    await pumpPanel(tester, TimelineOrientation.vertical);
+
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-column-selection-ring')),
+      findsNothing,
+      reason: '유저: 「선택범위ui도 예전모습 그대로 **하나하나 실루엣 선택**'
+          '되고있음」 — a ring per column seams every boundary inside one '
+          'sweep, which is the shape the rail retired (T1)',
+    );
+    expect(
+      find.byType(TimelineRowSelectionBands),
+      findsOneWidget,
+      reason: 'the rail\'s own band widget, turned on its side',
+    );
   });
 
   /// 유저 2026-08-24: 「레이어영역의 선택범위 ui, 프레임은 블록 실루엣이

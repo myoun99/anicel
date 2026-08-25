@@ -33,7 +33,8 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_row_address.dart';
 import 'timeline_row_cross_offset.dart';
-import 'timeline_selected_exposure_outline.dart' show TimelineSelectionRing;
+import 'timeline_selected_exposure_outline.dart'
+    show TimelineRowSelectionBands;
 import '../input/app_input_settings.dart' show AppInput;
 import '../widgets/instant_tap_region.dart';
 import 'effect_lane_policy.dart' show parseEffectLaneId;
@@ -1893,124 +1894,154 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                               ),
                                                           ],
                                                         ),
-                                                        Row(
+                                                        // 🆕F-26 (유저 2026-08-24):
+                                                        // 「선택범위ui도 예전모습 그대로
+                                                        // **하나하나 실루엣 선택**되고
+                                                        // 있음」 — the sheet ringed each
+                                                        // selected column on its own
+                                                        // while the rail drew ONE band
+                                                        // per contiguous run. Same
+                                                        // widget, turned on its side.
+                                                        Stack(
                                                           children: [
-                                                            for (
-                                                              var index = 0;
-                                                              index <
-                                                                  entries
-                                                                      .length;
-                                                              index += 1
-                                                            )
-                                                              _draggableHeader(
-                                                                entries[index],
-                                                                entries[index]
-                                                                        .isLane
-                                                                    ? _laneHeader(
-                                                                        entries[index],
-                                                                      )
-                                                                    : _LayerHeader(
-                                                                        depth: entries[index]
-                                                                            .depth,
-                                                                        headerExtent:
-                                                                            _naturalHeaderExtent,
-                                                                        onToggleLayerOnionSkin:
-                                                                            widget.onToggleLayerOnionSkin,
-                                                                        onionSkinEnabled:
-                                                                            widget.layerOnionSkinEnabledOf?.call(
-                                                                              entries[index].layer.id,
-                                                                            ) ??
-                                                                            false,
-                                                                        onLayerBlendModeSelected:
-                                                                            widget.onLayerBlendModeSelected,
-                                                                        blendLanguage:
-                                                                            widget.blendLanguage,
-                                                                        wearsBaseComposite: attachRowWearsBaseComposite(
-                                                                          entries[index]
-                                                                              .layer,
-                                                                          widget
-                                                                              .layers,
-                                                                        ),
-                                                                        layer: entries[index]
-                                                                            .layer,
-                                                                        active:
-                                                                            entries[index].layer.id ==
-                                                                            widget.activeLayerId,
-                                                                        // ⑨ · T1
-                                                                        selected: widget.selectedRows.contains(
-                                                                          LayerRowAddress(
-                                                                            entries[index].layer.id,
+                                                          Row(
+                                                            children: [
+                                                              for (
+                                                                var index = 0;
+                                                                index <
+                                                                    entries
+                                                                        .length;
+                                                                index += 1
+                                                              )
+                                                                _draggableHeader(
+                                                                  entries[index],
+                                                                  entries[index]
+                                                                          .isLane
+                                                                      ? _laneHeader(
+                                                                          entries[index],
+                                                                        )
+                                                                      : _LayerHeader(
+                                                                          depth: entries[index]
+                                                                              .depth,
+                                                                          headerExtent:
+                                                                              _naturalHeaderExtent,
+                                                                          onToggleLayerOnionSkin:
+                                                                              widget.onToggleLayerOnionSkin,
+                                                                          onionSkinEnabled:
+                                                                              widget.layerOnionSkinEnabledOf?.call(
+                                                                                entries[index].layer.id,
+                                                                              ) ??
+                                                                              false,
+                                                                          onLayerBlendModeSelected:
+                                                                              widget.onLayerBlendModeSelected,
+                                                                          blendLanguage:
+                                                                              widget.blendLanguage,
+                                                                          wearsBaseComposite: attachRowWearsBaseComposite(
+                                                                            entries[index]
+                                                                                .layer,
+                                                                            widget
+                                                                                .layers,
                                                                           ),
-                                                                        ),
-                                                                        metrics:
-                                                                            _metrics,
-                                                                        onSelectLayer:
-                                                                            widget.onSelectLayer,
-                                                                        onToggleLayerVisibility:
-                                                                            widget.onToggleLayerVisibility,
-                                                                        onLayerOpacityChanged:
-                                                                            widget.onLayerOpacityChanged,
-                                                                        onLayerOpacityChangeEnd:
-                                                                            widget.onLayerOpacityChangeEnd,
-                                                                        opacityDragPreview:
-                                                                            widget.opacityDragPreview,
-                                                                        onToggleLayerTimesheet:
-                                                                            widget.onToggleLayerTimesheet,
-                                                                        fxState:
-                                                                            widget.layerFxStateOf?.call(
-                                                                              entries[index].layer.id,
-                                                                            ) ??
-                                                                            LayerFxState.on,
-                                                                        onToggleLayerFx:
-                                                                            widget.onToggleLayerFx,
-                                                                        onLayerMarkSelected:
-                                                                            widget.onLayerMarkSelected,
-                                                                        onToggleLayerFillReference:
-                                                                            widget.onToggleLayerFillReference,
-                                                                        onOpenLayerMixer:
-                                                                            widget.onOpenLayerMixer,
-                                                                        attachArrowPlacement: widget
-                                                                            .attachArrowPlacementOf
-                                                                            ?.call(
-                                                                              entries[index].layer.id,
-                                                                            ),
-                                                                        isLayerSoloed:
-                                                                            widget.isLayerSoloed?.call(
-                                                                              entries[index].layer.id,
-                                                                            ) ??
-                                                                            false,
-                                                                        hasLanes: _lanesFor(
-                                                                          entries[index]
+                                                                          layer: entries[index]
                                                                               .layer,
-                                                                        ).isNotEmpty,
-                                                                        lanesExpanded: widget
-                                                                            .expandedLaneLayerIds
-                                                                            .contains(
+                                                                          active:
+                                                                              entries[index].layer.id ==
+                                                                              widget.activeLayerId,
+                                                                          // ⑨ · T1
+                                                                          selected: widget.selectedRows.contains(
+                                                                            LayerRowAddress(
                                                                               entries[index].layer.id,
                                                                             ),
-                                                                        onToggleLanes:
-                                                                            widget.onToggleLayerLanes,
-                                                                        // One fold
-                                                                        // twirl, the
-                                                                        // rail's rule
-                                                                        // verbatim.
-                                                                        hasGroupFold:
-                                                                            entries[index].isFolder ||
-                                                                            _hasAttachGroup(
-                                                                              entries[index].layer,
-                                                                            ),
-                                                                        groupFoldExpanded:
-                                                                            entries[index].isFolder
-                                                                            ? !entries[index].layer.collapsed
-                                                                            : !widget.collapsedAttachBaseIds.contains(
+                                                                          ),
+                                                                          metrics:
+                                                                              _metrics,
+                                                                          onSelectLayer:
+                                                                              widget.onSelectLayer,
+                                                                          onToggleLayerVisibility:
+                                                                              widget.onToggleLayerVisibility,
+                                                                          onLayerOpacityChanged:
+                                                                              widget.onLayerOpacityChanged,
+                                                                          onLayerOpacityChangeEnd:
+                                                                              widget.onLayerOpacityChangeEnd,
+                                                                          opacityDragPreview:
+                                                                              widget.opacityDragPreview,
+                                                                          onToggleLayerTimesheet:
+                                                                              widget.onToggleLayerTimesheet,
+                                                                          fxState:
+                                                                              widget.layerFxStateOf?.call(
+                                                                                entries[index].layer.id,
+                                                                              ) ??
+                                                                              LayerFxState.on,
+                                                                          onToggleLayerFx:
+                                                                              widget.onToggleLayerFx,
+                                                                          onLayerMarkSelected:
+                                                                              widget.onLayerMarkSelected,
+                                                                          onToggleLayerFillReference:
+                                                                              widget.onToggleLayerFillReference,
+                                                                          onOpenLayerMixer:
+                                                                              widget.onOpenLayerMixer,
+                                                                          attachArrowPlacement: widget
+                                                                              .attachArrowPlacementOf
+                                                                              ?.call(
                                                                                 entries[index].layer.id,
                                                                               ),
-                                                                        onToggleGroupFold:
-                                                                            entries[index].isFolder
-                                                                            ? widget.onToggleLayerCollapsed
-                                                                            : widget.onToggleAttachGroup,
-                                                                      ),
+                                                                          isLayerSoloed:
+                                                                              widget.isLayerSoloed?.call(
+                                                                                entries[index].layer.id,
+                                                                              ) ??
+                                                                              false,
+                                                                          hasLanes: _lanesFor(
+                                                                            entries[index]
+                                                                                .layer,
+                                                                          ).isNotEmpty,
+                                                                          lanesExpanded: widget
+                                                                              .expandedLaneLayerIds
+                                                                              .contains(
+                                                                                entries[index].layer.id,
+                                                                              ),
+                                                                          onToggleLanes:
+                                                                              widget.onToggleLayerLanes,
+                                                                          // One fold
+                                                                          // twirl, the
+                                                                          // rail's rule
+                                                                          // verbatim.
+                                                                          hasGroupFold:
+                                                                              entries[index].isFolder ||
+                                                                              _hasAttachGroup(
+                                                                                entries[index].layer,
+                                                                              ),
+                                                                          groupFoldExpanded:
+                                                                              entries[index].isFolder
+                                                                              ? !entries[index].layer.collapsed
+                                                                              : !widget.collapsedAttachBaseIds.contains(
+                                                                                  entries[index].layer.id,
+                                                                                ),
+                                                                          onToggleGroupFold:
+                                                                              entries[index].isFolder
+                                                                              ? widget.onToggleLayerCollapsed
+                                                                              : widget.onToggleAttachGroup,
+                                                                        ),
+                                                                ),
+                                                            ],
+                                                          ),
+                                                            Positioned.fill(
+                                                              child: TimelineRowSelectionBands(
+                                                                axis: Axis.vertical,
+                                                                selectedFlags: [
+                                                                  for (final entry
+                                                                      in entries)
+                                                                    widget.selectedRows
+                                                                        .contains(
+                                                                          entry.address,
+                                                                        ),
+                                                                ],
+                                                                rowExtent: _metrics
+                                                                    .layerRowHeight,
+                                                                leadingSpacer: 0,
+                                                                crossExtent:
+                                                                    _naturalHeaderExtent,
                                                               ),
+                                                            ),
                                                           ],
                                                         ),
                                                       ],
@@ -3194,21 +3225,13 @@ class _LayerHeader extends StatelessWidget {
     // Section boundaries draw ONE shared hairline like every column
     // boundary (R3 feedback #6) — the extra 2px overlay double-lined them;
     // the band above carries the section identity.
-    if (!selected) {
-      return header;
-    }
-    // ㊴, transposed: the selection ring traces the column the wash would
-    // have filled, so a column can read as ACTIVE and SELECTED at once.
-    return Stack(
-      children: [
-        header,
-        const Positioned.fill(
-          child: TimelineSelectionRing(
-            key: ValueKey<String>('xsheet-column-selection-ring'),
-          ),
-        ),
-      ],
-    );
+    //
+    // ⛔F-26: the SELECTION is not drawn here any more. A ring per column is
+    // 「하나하나 실루엣 선택」 — it seams every boundary inside one sweep —
+    // and the rail retired exactly this shape for exactly this reason (T1).
+    // The grid lays one band per contiguous run over the header strip
+    // instead, through the same widget.
+    return header;
   }
 
   /// The header's opacity slider, live-following the session's drag preview
