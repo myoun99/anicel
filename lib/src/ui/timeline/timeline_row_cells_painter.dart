@@ -580,12 +580,17 @@ class TimelineRowCellsPainter extends CustomPainter {
     // being dark enough to still read as darker, but at roughly half the
     // strength the law asks for (0.258 where it should be 0.131).
     //
-    // 🎯**And this is exactly the rule the TEXT already has.** The run
-    // labels are handed `backdropColor` and resolve the translucent paper
-    // against it before choosing an ink — 「an unworked block is the
-    // 43%-alpha paper over the row's underlay, and its number flips to the
-    // light ink there」. The user read the inconsistency straight off the
-    // screen: one law composited first, the other did not.
+    // 🎯The rule is COMPOSITE THE GROUND FIRST, and it is this line's
+    // alone now. It used to point at the run labels for precedent — they
+    // resolved the translucent paper against the row's underlay before
+    // choosing an ink — but F-24 (2026-08-26) took the labels off the
+    // ground law entirely: a block's writing is the block's ink, whatever
+    // the block holds.
+    //
+    // ⚠️That does NOT reopen this. What the user objected to on 08-22 was
+    // a grid line coming out LIGHTER than the paper around it, which is a
+    // bug in the arithmetic below and not a question of which ink a mark
+    // takes. The line still has a real ground and still has to resolve it.
     final ground = timelineGridGroundOver(
       under: rowGround,
       painted: insideBlock ? resolvedCellStyleFor(frameIndex).background : null,
@@ -880,9 +885,8 @@ class TimelineRowCellsPainter extends CustomPainter {
     return model.ghost
         ? colorScheme.onSurface.withValues(alpha: 0.85)
         : timelineCellUsesDrawingInk(model.exposureState)
-        ? (model.dimmed
-              ? timelineDrawingInkColor.withValues(alpha: 0.55)
-              : timelineDrawingInkColor)
+        // F-24: the same ink the block's 코마 number takes.
+        ? timelineInBlockInk(dimmed: model.dimmed)
         : isEmptyX
         ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
         : model.dimmed

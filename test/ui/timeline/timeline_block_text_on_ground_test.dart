@@ -66,9 +66,10 @@ void main() {
     revision: ValueNotifier<int>(0),
   );
 
+  /// F-24: the labels painter takes no cel-content source any more — its
+  /// ink is the block's, whatever the block holds.
   TimelineRowRunLabelsPainter labelsPainter({
     LayerMark mark = LayerMark.none,
-    TimelineCelContentSource? celContent,
   }) => TimelineRowRunLabelsPainter(
     layer: blockLayer(mark: mark),
     geometry: testFrameGeometry(
@@ -78,7 +79,6 @@ void main() {
     crossAxisExtent: crossExtent,
     showSeconds: false,
     countingBase: 24,
-    celContent: celContent,
   );
 
   TimelineRowCellsPainter cellsPainter({
@@ -121,10 +121,10 @@ void main() {
           celContent: celContent,
         ).paint(canvas, const Size(width * 1.0, height * 1.0));
       }
-      labelsPainter(
-        mark: mark,
-        celContent: celContent,
-      ).paint(canvas, const Size(width * 1.0, height * 1.0));
+      labelsPainter(mark: mark).paint(
+        canvas,
+        const Size(width * 1.0, height * 1.0),
+      );
       final image = await recorder.endRecording().toImage(width, height);
       return image.toByteData(format: ui.ImageByteFormat.rawRgba);
     });
@@ -245,13 +245,21 @@ void main() {
     );
   });
 
-  testWidgets('over an EMPTY-CEL purple block on the dark lane the same '
-      'number flips to solid LIGHT — the 43%-alpha blend is the ground', (
+  testWidgets('🚨F-24: over an EMPTY-CEL purple block on the dark lane the '
+      'number stays DARK — a block\'s writing is the block\'s ink', (
     tester,
   ) async {
-    // The substrate paints the paper at the empty-cel alpha over the dark
-    // lane; the composited ground is deep (luminance ≈0.07), so the law
-    // flips to white (9.0:1) where opaque purple takes black.
+    // ⚠️This test used to assert the opposite. The label went through the
+    // ground law, so on the 43%-alpha paper over the dark lane (composited
+    // luminance ~0.07) it flipped to white — while the cel NAME inside the
+    // same block stayed black, because the name has never used that law.
+    // One block, two pieces of writing, two colours.
+    //
+    // 유저 2026-08-26: 「하고싶은건 **프레임이름이랑 통일**하고싶은것임.
+    // 지금 프레임이름이 **항상 검정색**이니까 그거에 맞게. **검정숫자가 잘
+    // 안보이는 경우는 그 통일한 상태에서 나중에 고려해서 바꿈**」 — the
+    // contrast cost is known and taken, and the answer to it is to change
+    // the BLOCK, not to give its two writings different inks.
     final blended = Color.alphaBlend(
       timelineEmptyCelPaperColor(layerMarkColor(LayerMark.purple)),
       AppColors.surface,
@@ -270,17 +278,11 @@ void main() {
       reason: 'presence anchor: glyph pixels exist on the translucent paper',
     );
     expect(
-      counts.light,
-      greaterThanOrEqualTo(4),
+      counts.dark,
+      greaterThan(counts.light),
       reason:
-          'the label ground is the COMPOSITED empty-cel blend, not the '
-          'opaque paper — black-on-dark (2.3:1) is what skipping the blend '
-          'would produce',
-    );
-    expect(
-      counts.light,
-      greaterThan(counts.dark),
-      reason: 'the glyph body is light on this ground',
+          'the number keeps the block ink here — white is what the ground '
+          'law produced, and that is the flip the report was about',
     );
   });
 
@@ -421,24 +423,42 @@ void main() {
     });
   });
 
-  test('the labels painter resolves its GROUND from the block: full paper '
-      'when the cel has a picture, the empty-cel blend when it does not', () {
+  test('🚨F-24: the block\'s NUMBER and the block\'s NAME are one ink — the '
+      'same call, not two constants that happen to match', () {
+    // ⛔This replaces "the labels painter resolves its GROUND from the
+    // block". There is no ground to resolve any more; what has to hold is
+    // that the two writings on a block agree, and they agree because they
+    // ask the same function.
+    final nameInk = cellsPainter(mark: LayerMark.purple).foregroundInkFor(
+      cellsPainter(mark: LayerMark.purple).cellModelAt(0),
+    );
+    final numberInk = labelsPainter(mark: LayerMark.purple).labelStyle.color!;
+
+    expect(nameInk, timelineInBlockInk(), reason: 'the name is the block ink');
     expect(
-      labelsPainter(mark: LayerMark.purple).groundForBlockAt(0),
-      layerMarkColor(LayerMark.purple),
+      numberInk.withValues(alpha: 1),
+      timelineInBlockInk(),
+      reason:
+          'and so is the number — it keeps its own 0.72 weighting, which '
+          'is not what the report was about',
     );
     expect(
-      labelsPainter(
-        mark: LayerMark.purple,
-        celContent: emptyCels(),
-      ).groundForBlockAt(0),
-      Color.alphaBlend(
-        timelineEmptyCelPaperColor(layerMarkColor(LayerMark.purple)),
-        AppColors.surface,
-      ),
+      timelineInBlockInk(dimmed: true).a,
+      lessThan(timelineInBlockInk().a),
+      reason: 'the dim arm the cells painter needs still exists',
     );
   });
 
+  test('⛔and the ground law is NOT retired — writing whose ground really '
+      'does vary still reads it', () {
+    // The storyboard's cut blocks, the band text, the edge grips: those
+    // sit on colours that move, and F-24 said nothing about them.
+    expect(
+      timelineTextOnColor(layerMarkColor(LayerMark.purple)),
+      timelineTextOnLightGroundColor,
+    );
+    expect(timelineTextOnColor(AppColors.surface), timelineTextOnDarkGroundColor);
+  });
   test('the inverting and outline arms are GONE from the glyph pipeline — '
       'the ground-law solid is the only arm left', () {
     final cache = File(
@@ -466,18 +486,27 @@ void main() {
           'the flag left with the arm; the resolved color keys the '
           'cache through the style\'s own color slot',
     );
-    for (final path in [
-      'lib/src/ui/timeline/timeline_row_run_labels_painter.dart',
-      'lib/src/ui/storyboard_cut_blocks_painter.dart',
-    ]) {
+    // The ledger of GROUND-LAW sites. 🚨F-24 (2026-08-26) took the
+    // timeline's run labels off it: a frame block's own writing is the
+    // block's ink, matching the cel name inside it, and the label painter
+    // no longer knows what it is sitting on.
+    for (final path in ['lib/src/ui/storyboard_cut_blocks_painter.dart']) {
       expect(
         File(path).readAsStringSync(),
         contains('paintTimelineGlyphOnGround'),
-        reason:
-            'every block/코마 text site paints the ground-law solid: '
-            '$path',
+        reason: 'this text site still paints the ground-law solid: $path',
       );
     }
+    expect(
+      File(
+        'lib/src/ui/timeline/timeline_row_run_labels_painter.dart',
+      ).readAsStringSync(),
+      isNot(contains('paintTimelineGlyphOnGround')),
+      reason:
+          '⛔F-24: the timeline block\'s 코마 number must NOT go through '
+          'the ground law — it flipped to white on an unworked block while '
+          'the name beside it stayed black',
+    );
   });
 
   /// 🚨D29-2 (유저 2026-08-22) — this test used to require THREE users of

@@ -102,6 +102,32 @@ Color timelineTextOnColor(Color ground) => timelineGroundIsLight(ground)
     ? timelineTextOnLightGroundColor
     : timelineTextOnDarkGroundColor;
 
+/// The ink for writing that sits INSIDE a frame block — the cel NAME in
+/// the cell and the 코마 number at the block's end alike.
+///
+/// 🚨F-24 (유저 2026-08-26): 「하고싶은건 **프레임이름이랑 통일**하고싶은
+/// 것임. 지금 프레임이름이 **항상 검정색**이니까 그거에 맞게」.
+///
+/// The two used to answer differently. The name has always been this flat
+/// ink — the cells painter states why: *"These glyphs sit INSIDE the paper
+/// blocks, where this ink already reads."* The number went through the
+/// GROUND law instead, so on an unworked block (43%-alpha paper over the
+/// dark lane) it flipped to white while the name beside it stayed black.
+/// One block, two rules, two colours.
+///
+/// ⚠️The user knows the cost and took it: 「**검정숫자가 잘 안보이는 경우는
+/// 그 통일한 상태에서 나중에 고려해서 바꿈**」 — the answer to a dark
+/// unworked block is to change the BLOCK, not to give its two pieces of
+/// writing different inks.
+///
+/// ⛔This is not the ground law's retirement. [timelineTextOnColor] still
+/// governs writing whose ground genuinely varies — the storyboard's cut
+/// blocks, the band text, the edge grips. What is settled here is only
+/// that a frame block's own writing is one colour.
+Color timelineInBlockInk({bool dimmed = false}) => dimmed
+    ? timelineDrawingInkColor.withValues(alpha: 0.55)
+    : timelineDrawingInkColor;
+
 /// R26 #44 / R27 #13: ACTION-section blocks whose cel holds NO picture
 /// yet read as the paper at LOW OPACITY — the user's ask ("흰색에서 그냥
 /// 불투명도 낮추는 느낌… 투명감나게"). Against the dark lane the alpha

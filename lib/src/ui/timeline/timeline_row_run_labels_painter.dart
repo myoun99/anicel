@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
 import '../../models/layer.dart';
-import '../theme/app_theme.dart' show AppColors;
-import 'layer_label_controls.dart' show layerMarkColor;
-import 'timeline_cel_content_source.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_range_policy.dart'
@@ -70,31 +67,12 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
     required this.showSeconds,
     required this.countingBase,
     this.axis = Axis.horizontal,
-    this.celContent,
-    this.backdropColor = AppColors.surface,
-  }) : super(repaint: Listenable.merge([geometry, ?celContent?.revision]));
+    // F-24: the labels no longer ask what they are sitting on, so this
+    // painter no longer watches the cel-content revision either — the ink
+    // is the block's ink whatever the block holds.
+  }) : super(repaint: geometry);
 
   final Layer layer;
-
-  /// The unworked-block tint's source (R26 #44), shared with the cells
-  /// painter: a block whose cel holds no picture is the 43%-alpha paper
-  /// over [backdropColor], and its label's GROUND is that blend — over the
-  /// dark lane it lands on the light-ink side of [timelineTextOnColor]
-  /// where the opaque paper takes the dark one. Null = every block reads
-  /// as full paper (rows the tint never applies to).
-  final TimelineCelContentSource? celContent;
-
-  /// What an empty-cel block's translucent paper composites over — the
-  /// row's underlay (`colorScheme.surface` in production).
-  final Color backdropColor;
-
-  /// Read LIVE like the cells painter's: the row repaints on a revision
-  /// bump rather than rebuilding, so a captured value would hold
-  /// yesterday's tint forever.
-  int get celContentRevision => celContent?.revision.value ?? 0;
-
-  bool Function(Layer layer, int frameIndex)? get celHasContent =>
-      celContent?.hasContent;
 
   /// The LIVE frame-axis geometry (R28 #4): a zoom step repaints this
   /// painter rather than rebuilding the row that built it.
@@ -114,9 +92,16 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
   /// The resolved label style — public so the bold/scale contract stays
   /// assertable now that there is no `Text` widget to read it off.
   ///
-  /// The COLOR is layout/cache identity only: paint() draws the label
-  /// through the ground law ([paintTimelineGlyphOnGround]), whose resolved
-  /// black/white solid supersedes any style color.
+  /// 🚨F-24: the COLOR is real now. It used to be layout/cache identity
+  /// only, because paint() ran the label through the ground law and
+  /// whatever black-or-white that resolved to superseded this; the label
+  /// takes the block's own ink instead ([timelineInBlockInk]), which is
+  /// what the cel NAME inside the block has always worn.
+  ///
+  /// ⚠️The 0.72 stays. It is what separates a block's length from its
+  /// name at a glance, it is what is on screen today wherever the ink was
+  /// already dark, and the report was about the number turning WHITE —
+  /// not about how strong it is.
   TextStyle get labelStyle => TextStyle(
     fontSize: timelineFittedGlyphFontSize(
       9,
@@ -126,7 +111,7 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
       crossExtent: crossAxisExtent,
     ),
     fontWeight: FontWeight.w700,
-    color: timelineDrawingInkColor.withValues(alpha: 0.72),
+    color: timelineInBlockInk().withValues(alpha: 0.72),
   );
 
   /// Every label this row would draw, in block order — THE probe surface.
@@ -173,19 +158,6 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
     return labels;
   }
 
-  /// The COMPOSITED color under the block's label — THE ground the text
-  /// law reads ([timelineTextOnColor]). A worked block is its layer's
-  /// paper (⑲: the color label); an unworked one is that paper at the
-  /// empty-cel alpha over the row's backdrop, blended here because
-  /// luminance is a property of the pixels, not of a translucent color.
-  Color groundForBlockAt(int startIndex) {
-    final paper = layerMarkColor(layer.mark);
-    if (celContent?.hasContent(layer, startIndex) ?? true) {
-      return paper;
-    }
-    return Color.alphaBlend(timelineEmptyCelPaperColor(paper), backdropColor);
-  }
-
   @override
   void paint(Canvas canvas, Size size) {
     final style = labelStyle;
@@ -213,18 +185,10 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
               crossAxisExtent - glyph.width - 1,
               label.anchor.dy - glyph.height / 2,
             );
-      // The ground law (2026-08-17, one rule on every surface — the
-      // difference blend replaced after it read navy on purple blocks):
-      // solid black or white by the luminance of the block this label
-      // sits on, which this painter KNOWS — the same layer paper the
-      // cells painter fills beneath it.
-      paintTimelineGlyphOnGround(
-        canvas,
-        offset,
-        label.text,
-        style,
-        ground: groundForBlockAt(label.startIndex),
-      );
+      // 🚨F-24: the block's OWN ink, the one the cel name inside the block
+      // already wears — not the ground law. The number and the name sit on
+      // the same paper and now say so in the same colour.
+      glyph.paint(canvas, offset);
       canvas.restore();
     }
   }
@@ -236,13 +200,11 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
       oldDelegate.crossAxisExtent != crossAxisExtent ||
       oldDelegate.showSeconds != showSeconds ||
       oldDelegate.countingBase != countingBase ||
-      oldDelegate.axis != axis ||
-      // Value-compared like the cells painter's: the tear-off bundle is a
-      // fresh-but-equal object per build, but a moved REVISION is a moved
-      // ground (the empty-cel blend) and must repaint the label's ink.
-      oldDelegate.celHasContent != celHasContent ||
-      oldDelegate.celContentRevision != celContentRevision ||
-      oldDelegate.backdropColor != backdropColor;
+      oldDelegate.axis != axis;
+  // ⛔The cel-content comparison went with F-24. It was here because a
+  // moved revision was a moved GROUND (the empty-cel blend) and the ink
+  // read that ground; the ink is the block's own now, so what a block
+  // holds is no longer a reason to repaint its number.
 
   @override
   SemanticsBuilderCallback get semanticsBuilder => (size) {

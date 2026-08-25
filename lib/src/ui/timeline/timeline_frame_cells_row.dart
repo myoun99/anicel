@@ -428,11 +428,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
                   showSeconds: showSeconds,
                   countingBase: projectFrameRate.countingBase,
                   axis: axis,
-                  // The label's GROUND (the text law, 2026-08-17): an
-                  // unworked block is the 43%-alpha paper over the row's
-                  // underlay, and its number flips to the light ink there.
-                  celContent: celContent,
-                  backdropColor: Theme.of(context).colorScheme.surface,
                 )
               : null,
           // Instruction-carrying rows have no timeline entries — their events
