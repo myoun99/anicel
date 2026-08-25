@@ -25,6 +25,7 @@ void main() {
               child: StatefulBuilder(
                 builder: (context, setState) => OnionSkinPanel(
                   settings: settings,
+                  currentColorOf: () => 0xFF000000,
                   onChanged: (next) => setState(() => settings = next),
                 ),
               ),

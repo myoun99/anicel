@@ -1841,6 +1841,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       onPasteboardColorChanged: widget.onPasteboardColorChanged,
       backdropColor: _stageBackdropArgb,
       onBackdropColorChanged: widget.onBackdropColorChanged,
+      // Read when a picker opens, so the memoized bar does not have to be
+      // rebuilt every time the brush colour moves.
+      currentColorOf: () => widget.brushToolState.color,
       onViewportChanged: _setViewportDuringPanbarDrag,
       onViewportChangeEnd: _syncViewportParent,
       onZoomSet: _setZoomFromLabel,
@@ -4251,6 +4254,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required this.pasteboardColor,
     required this.onPasteboardColorChanged,
     required this.backdropColor,
+    required this.currentColorOf,
     required this.onBackdropColorChanged,
     required this.onViewportChanged,
     required this.onViewportChangeEnd,
@@ -4299,6 +4303,10 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   /// The third plane of the same stage (유저, R3 #4).
   final int backdropColor;
   final ValueChanged<int>? onBackdropColorChanged;
+
+  /// The tool's own colour, handed to every picker this bar opens for
+  /// its 현재 색 반영 button (see [ColorSwatchButton.currentColorOf]).
+  final int Function() currentColorOf;
 
   /// The SAME view as [viewport], as a signal the settings list can hold.
   /// The field is what this bar draws with; the listenable is what the
@@ -4522,8 +4530,8 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     final colorControls = <Widget>[
       if (onPaper != null)
         ColorSwatchButton(
+          currentColorOf: currentColorOf,
           keyValue: 'canvas-paper-color-button',
-          title: 'Canvas',
           tooltip: AppText.strings.viewCanvasColor,
           color: paperColor,
           onChanged: onPaper,
@@ -4531,8 +4539,8 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       if (onPasteboard != null) ...[
         const SizedBox(width: 4),
         ColorSwatchButton(
+          currentColorOf: currentColorOf,
           keyValue: 'canvas-pasteboard-color-button',
-          title: 'Pasteboard',
           tooltip: AppText.strings.viewPasteboardColor,
           color: pasteboardColor,
           onChanged: onPasteboard,
@@ -4544,8 +4552,8 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       if (onBackdrop != null) ...[
         const SizedBox(width: 4),
         ColorSwatchButton(
+          currentColorOf: currentColorOf,
           keyValue: 'canvas-backdrop-color-button',
-          title: 'Backdrop',
           tooltip: AppText.strings.viewBackdropColor,
           color: backdropColor,
           // The backdrop is opaque BY CONTRACT: it is the stage's final

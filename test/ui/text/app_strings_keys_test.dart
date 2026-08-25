@@ -523,6 +523,7 @@ void main() {
     'viewCanvasColor': (s) => s.viewCanvasColor,
     'viewPasteboardColor': (s) => s.viewPasteboardColor,
     'viewBackdropColor': (s) => s.viewBackdropColor,
+    'colorUseCurrent': (s) => s.colorUseCurrent,
     'tlSections': (s) => s.tlSections,
     'tlAllDisplayedLayers': (s) => s.tlAllDisplayedLayers,
     'tlShowAll': (s) => s.tlShowAll,

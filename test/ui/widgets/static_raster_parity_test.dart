@@ -272,7 +272,11 @@ void main() {
   );
 
   Widget onionPanel() =>
-      OnionSkinPanel(settings: const OnionSkinSettings(), onChanged: (_) {});
+      OnionSkinPanel(
+        settings: const OnionSkinSettings(),
+        currentColorOf: () => 0xFF000000,
+        onChanged: (_) {},
+      );
 
   testWidgets('the comparison can see a difference at all', (tester) async {
     // The positive control has to compare two things that genuinely

@@ -908,6 +908,7 @@ class AppStrings {
   String get viewCanvasColor => _s('viewCanvasColor');
   String get viewPasteboardColor => _s('viewPasteboardColor');
   String get viewBackdropColor => _s('viewBackdropColor');
+  String get colorUseCurrent => _s('colorUseCurrent');
 
   // --- The layer-controls header (column toggles, solo, section fold) ---
   String get tlSections => _s('tlSections');
@@ -1540,6 +1541,7 @@ class AppStrings {
     'viewCanvasColor': 'Canvas color',
     'viewPasteboardColor': 'Pasteboard color',
     'viewBackdropColor': 'Backdrop color',
+    'colorUseCurrent': 'Use current color',
     'tlSections': 'Sections',
     'tlAllDisplayedLayers': 'All displayed layers',
     'tlShowAll': 'Show all',
@@ -2326,6 +2328,7 @@ class AppStrings {
     'viewCanvasColor': 'カンバスの色',
     'viewPasteboardColor': 'ペーストボードの色',
     'viewBackdropColor': '背景の色',
+    'colorUseCurrent': '現在の色を適用',
     'tlSections': 'セクション',
     'tlAllDisplayedLayers': '表示中の全レイヤー',
     'tlShowAll': 'すべて表示',
@@ -3103,6 +3106,7 @@ class AppStrings {
     'viewCanvasColor': '캔버스 색',
     'viewPasteboardColor': '페이스트보드 색',
     'viewBackdropColor': '배경 색',
+    'colorUseCurrent': '현재 색 반영',
     'tlSections': '섹션',
     'tlAllDisplayedLayers': '표시 중인 모든 레이어',
     'tlShowAll': '모두 표시',
@@ -3918,6 +3922,7 @@ class AppStrings {
     'viewCanvasColor': 'Couleur du canevas',
     'viewPasteboardColor': 'Couleur du fond',
     'viewBackdropColor': 'Couleur de l\'arrière-plan',
+    'colorUseCurrent': 'Utiliser la couleur actuelle',
     'tlSections': 'Sections',
     'tlAllDisplayedLayers': 'Tous les calques affichés',
     'tlShowAll': 'Tout afficher',
@@ -4667,6 +4672,7 @@ class AppStrings {
     'viewCanvasColor': '画布颜色',
     'viewPasteboardColor': '底板颜色',
     'viewBackdropColor': '背景颜色',
+    'colorUseCurrent': '使用当前颜色',
     'tlSections': '区段',
     'tlAllDisplayedLayers': '所有显示的图层',
     'tlShowAll': '全部显示',

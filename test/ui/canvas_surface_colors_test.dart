@@ -337,10 +337,15 @@ void main() {
     );
 
     // Drag on the wheel: any pick commits opaquely.
+    //
+    // ⚠️Aimed at the RING, not at the box's edge. The wheel takes its
+    // radius from `size.shortestSide`, so the moment the popup grew wider
+    // than tall (F-23 widened it for the hex/RGB readout) the box's left
+    // edge stopped being on the wheel at all.
     final wheel = find.byKey(const ValueKey<String>('color-picker-wheel'));
     final wheelRect = tester.getRect(wheel);
     await tester.dragFrom(
-      wheelRect.centerLeft + const Offset(6, 0),
+      wheelRect.center - Offset(wheelRect.shortestSide / 2 - 6, 0),
       const Offset(2, 2),
     );
     await tester.pumpAndSettle();
