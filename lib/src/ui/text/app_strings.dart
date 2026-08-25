@@ -97,6 +97,9 @@ class AppStrings {
   /// bottom-of-screen message strip.
   String get commonNotice => _s('commonNotice');
 
+  /// The shared pill's deselect button — the tablet's Esc.
+  String get tlSharedDeselect => _s('tlSharedDeselect');
+
   /// R27 #31: the export window's empty state — the project has no cuts
   /// at all (standing in a GAP is not this; that anchors on the first cut).
   String get exportNoCuts => _s('exportNoCuts');
@@ -977,6 +980,7 @@ class AppStrings {
     'commonRefresh': 'Refresh',
     'commonClose': 'Close',
     'commonNotice': 'Notice',
+    'tlSharedDeselect': 'Deselect',
     'exportNoCuts': 'This project has no cuts to export yet.',
     'audioOffsetTitle': 'A/V offset',
     'audioOffsetHelp':
@@ -1685,6 +1689,7 @@ class AppStrings {
     'commonRefresh': '更新',
     'commonClose': '閉じる',
     'commonNotice': 'お知らせ',
+    'tlSharedDeselect': '選択解除',
     'exportNoCuts': 'このプロジェクトには書き出せるカットがありません。',
     'audioOffsetTitle': 'A/Vオフセット',
     'audioOffsetHelp':
@@ -2468,6 +2473,7 @@ class AppStrings {
     'commonRefresh': '새로고침',
     'commonClose': '닫기',
     'commonNotice': '알림',
+    'tlSharedDeselect': '선택 해제',
     'exportNoCuts': '이 프로젝트에는 출력할 컷이 없습니다.',
     'audioOffsetTitle': 'A/V 오프셋',
     'audioOffsetHelp':
@@ -3244,6 +3250,7 @@ class AppStrings {
     'commonRefresh': 'Actualiser',
     'commonClose': 'Fermer',
     'commonNotice': 'Avis',
+    'tlSharedDeselect': 'Désélectionner',
     'exportNoCuts': 'Ce projet ne contient aucun plan à exporter.',
     'audioOffsetTitle': 'Décalage A/V',
     'audioOffsetHelp':
@@ -4060,6 +4067,7 @@ class AppStrings {
     'commonRefresh': '刷新',
     'commonClose': '关闭',
     'commonNotice': '提示',
+    'tlSharedDeselect': '取消选择',
     'exportNoCuts': '此项目暂无可导出的镜头。',
     'audioOffsetTitle': 'A/V 偏移',
     'audioOffsetHelp':

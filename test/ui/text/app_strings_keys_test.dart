@@ -30,6 +30,7 @@ void main() {
     'commonRefresh': (s) => s.commonRefresh,
     'commonClose': (s) => s.commonClose,
     'commonNotice': (s) => s.commonNotice,
+    'tlSharedDeselect': (s) => s.tlSharedDeselect,
     'exportNoCuts': (s) => s.exportNoCuts,
     'audioOffsetTitle': (s) => s.audioOffsetTitle,
     'audioOffsetHelp': (s) => s.audioOffsetHelp,
