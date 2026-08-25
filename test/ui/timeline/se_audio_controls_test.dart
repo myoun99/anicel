@@ -279,11 +279,26 @@ void main() {
     // Tap to type: Enter commits through session.setAudioClipOffset.
     await tester.tap(valueCell);
     await tester.pumpAndSettle();
+    // F-22 ②: the `f` is CHROME — the box holds the number alone, and a
+    // bare number is what commits.
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(
+              const ValueKey<String>(
+                'timeline-lane-value-field-sea-voice-se-audio',
+              ),
+            ),
+          )
+          .controller!
+          .text,
+      '0',
+    );
     await tester.enterText(
       find.byKey(
         const ValueKey<String>('timeline-lane-value-field-sea-voice-se-audio'),
       ),
-      '7f',
+      '7',
     );
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();

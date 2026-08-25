@@ -31,6 +31,77 @@ enum PropertyLaneValueKind {
   boolean,
 }
 
+/// ONE editable piece of a lane's value: the number a person types, and the
+/// FIXED text that trails it.
+typedef PropertyLaneValuePart = ({String number, String unit});
+
+/// A value label split into what is EDITED and what is chrome (F-22 ②③).
+///
+/// 유저 2026-08-24: 「**단위 같은 고정요소를 편집창에서 제거**」,
+/// 「**포지션 등 2요소는 각각 편집**(온점 없이)」.
+///
+/// The value editor used to be one text box over the whole readout, so
+/// editing Scale meant typing `85%` with the percent sign, and editing
+/// Position meant typing `120, 45` — comma, space and all — to move one of
+/// the two numbers. Neither the unit nor the separator is a value; they are
+/// the shape the value is printed in.
+///
+/// ⚠️Derived from the label rather than declared per lane. The label already
+/// says what shape it is (`85%`, `30°`, `12 px`, `120, 45`), and a second
+/// declaration would be a second answer to drift from — the exact mistake
+/// the rail's column skeleton was built to end. [joinPropertyLaneValueParts]
+/// puts it back in the form every lane's parser already accepts, which is
+/// what keeps the commit path untouched.
+///
+/// ⛔A label only SPLITS when every comma-separated piece reads as a number:
+/// a text value that happens to contain a comma is one value, not two.
+List<PropertyLaneValuePart> propertyLaneValueParts(String label) {
+  final pieces = label.split(',');
+  final parts = <PropertyLaneValuePart>[];
+  for (final piece in pieces) {
+    final part = _numberAndUnit(piece.trim());
+    if (part == null) {
+      return [(number: label, unit: '')];
+    }
+    parts.add(part);
+  }
+  return parts.isEmpty ? [(number: label, unit: '')] : parts;
+}
+
+/// [propertyLaneValueParts] put back together — the text form the lane's own
+/// parser reads, byte for byte what the label was.
+String joinPropertyLaneValueParts(List<PropertyLaneValuePart> parts) =>
+    parts.map((part) => '${part.number}${part.unit}').join(', ');
+
+/// `85%` → (85, '%'), `12 px` → (12, ' px'), `-3.5` → (-3.5, ''). Null when
+/// the text does not lead with a number at all, which is every value that is
+/// not one — a colour, a font name, a flag.
+PropertyLaneValuePart? _numberAndUnit(String text) {
+  var end = 0;
+  if (end < text.length && (text[end] == '-' || text[end] == '+')) {
+    end += 1;
+  }
+  final digitsStart = end;
+  while (end < text.length && _isDigit(text[end])) {
+    end += 1;
+  }
+  if (end < text.length && text[end] == '.') {
+    end += 1;
+    while (end < text.length && _isDigit(text[end])) {
+      end += 1;
+    }
+  }
+  if (end == digitsStart) {
+    return null;
+  }
+  return (number: text.substring(0, end), unit: text.substring(end));
+}
+
+bool _isDigit(String character) {
+  final code = character.codeUnitAt(0);
+  return code >= 0x30 && code <= 0x39;
+}
+
 class PropertyLaneRow {
   const PropertyLaneRow({
     required this.laneId,
