@@ -15183,8 +15183,24 @@ class EditorSessionManager extends ChangeNotifier {
   /// deleting asks what is deletable, renaming asks what is renameable, and
   /// those are not the same set (a camera row selects and renames but does
   /// not delete).
-  EditInstanceSubject get editInstanceSubject {
-    if (trackFrameRangeSelection.value != null) {
+  EditInstanceSubject get editInstanceSubject =>
+      editInstanceSubjectFor(cutsAreThisPanels: true);
+
+  /// [editInstanceSubject], asked of a PANEL.
+  ///
+  /// 🚨R5q1 (유저 2026-08-25, 답 1번): 「삭제·편집도 패널을 따라 대상을
+  /// 바꾼다 — 스토리보드에서는 스토리보드의 것을, 타임라인에서는 타임라인의
+  /// 것을 지운다」, matching the law D28 already gave 커서·코마·＋.
+  ///
+  /// ⚠️This narrows ⑰ (2026-08-12), which said the verb asks WHAT IS
+  /// SELECTED and never which button was pressed. It still does — what the
+  /// panel decides is which selections are ITS nouns, and CUTS are the
+  /// storyboard's. The two later rulings (D28, then this) win on the
+  /// repo's own tie-break: 확정이 둘이면 나중 것이 이긴다.
+  EditInstanceSubject editInstanceSubjectFor({
+    required bool cutsAreThisPanels,
+  }) {
+    if (cutsAreThisPanels && trackFrameRangeSelection.value != null) {
       return EditInstanceSubject.cuts;
     }
     if (renameableSelectedLayerIds().isNotEmpty) {
@@ -15205,8 +15221,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// places before this (the cut menu, the layer menu, a loose layer button),
   /// each hard-wired to one noun, which is why the same word did different
   /// things depending on where you reached for it.
-  DeleteSubject get deleteSubject {
-    if (trackFrameRangeSelection.value != null) {
+  DeleteSubject get deleteSubject => deleteSubjectFor(cutsAreThisPanels: true);
+
+  /// [deleteSubject], asked of a PANEL — see [editInstanceSubjectFor] for
+  /// why the cuts rung is a question and not a given (R5q1).
+  DeleteSubject deleteSubjectFor({required bool cutsAreThisPanels}) {
+    if (cutsAreThisPanels && trackFrameRangeSelection.value != null) {
       return DeleteSubject.cuts;
     }
     // ⑨: rows outrank cells. A row selection is the more specific statement
@@ -15222,8 +15242,8 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Runs whatever [deleteSubject] names. One undo step either way — the cell
   /// path already composes its own.
-  void deleteSelectionSubject() {
-    switch (deleteSubject) {
+  void deleteSelectionSubject({bool cutsAreThisPanels = true}) {
+    switch (deleteSubjectFor(cutsAreThisPanels: cutsAreThisPanels)) {
       case DeleteSubject.cuts:
         deleteActiveCut();
       case DeleteSubject.layers:
