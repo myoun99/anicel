@@ -165,7 +165,9 @@ void main() {
         canvasSize: canvas,
       );
 
-      final points = moved!.steps.single.shape.points;
+      // ⚠️`shapes`, not `shape`: a step holds the copies a guide made of one
+      // act since the guide round, and a plain drag is the one-copy case.
+      final points = moved!.steps.single.shapes.single.points;
       expect(points.first.x, closeTo(50, 0.001));
       expect(points.first.y, closeTo(100, 0.001));
     });
