@@ -415,8 +415,13 @@ class TimelineBeatLinesPainter extends CustomPainter {
     // rows' own hairline language extended into the cell area.
     if (crossCellExtent > 0) {
       final seamInk = timelineGridRowSeamInk(colorScheme);
+      // F-3: FLAT, never `_inkOnGround` — the seam is the layer area's row
+      // divider continued into the cells, not part of the frame grid. See
+      // [TimelineRowCellsPainter.rowSeamLineFor], which carries the whole
+      // reasoning; the two must agree or the divider changes colour halfway
+      // across a row.
       final seamPaint = Paint()
-        ..color = _inkOnGround(seamInk)
+        ..color = seamInk.color
         ..strokeWidth = seamInk.strokeWidth;
       for (
         var seam = crossCellExtent;

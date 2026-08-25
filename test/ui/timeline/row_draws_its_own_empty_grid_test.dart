@@ -276,12 +276,17 @@ void main() {
   // erased its own. The fx band kept one only because it had written a
   // `BorderSide` of its own — in its own words, at half the law's width.
   group('the CROSS-axis row seam is the same law', () {
-    test('a frame cells row draws its own seam, on its own ground', () {
+    test('a frame cells row draws its own seam, FLAT', () {
       final painter = painterFor(rowGround: scheme.surface);
       final seam = painter.rowSeamLineFor(5)!;
       final ink = timelineGridRowSeamInk(scheme);
 
-      expect(seam.color, timelineGridLineInkOnGround(ink, scheme.surface));
+      // F-3 (유저 2026-08-25): 「가로선만 레이어영역 흰색계열로 통일」. This
+      // used to expect `timelineGridLineInkOnGround(ink, scheme.surface)` —
+      // the FRAME grid's treatment, applied to a line that is not part of
+      // the frame grid. The seam is the rail's row divider continued into
+      // the cells, and the rail draws it flat.
+      expect(seam.color, ink.color);
       expect(seam.rect.height, ink.strokeWidth);
       expect(
         seam.rect.width,
@@ -307,25 +312,27 @@ void main() {
       expect(seam.rect.bottom, lessThanOrEqualTo(cell.bottom));
     });
 
-    test('the seam takes the block\'s paper where it crosses one — the same '
-        'ground question the vertical line asks', () {
+    test('the seam does NOT take the block\'s paper — the one place it '
+        'parts company with the vertical line', () {
       final painter = painterFor(rowGround: scheme.surface);
-      expect(
-        painter.rowSeamLineFor(11)!.color,
-        isNot(painter.rowSeamLineFor(5)!.color),
-        reason: 'fixture premise: 11 is inside the block, 5 is empty',
-      );
       final ink = timelineGridRowSeamInk(scheme);
-      final blockGround = painter.resolvedCellStyleFor(11).background;
+
+      // F-3: 「가로선만 레이어영역 흰색계열로 통일. 세로나 그 외는 그대로」.
+      // 11 is inside the block and 5 is empty space — the FRAME line below
+      // still tells them apart, and the seam deliberately no longer does.
+      expect(
+        painter.heldSeamLineFor(11)!.color,
+        isNot(painter.heldSeamLineFor(5)!.color),
+        reason: 'fixture premise: 11 is inside the block, 5 is empty, and '
+            'the frame grid rules the paper it crosses',
+      );
+      expect(painter.rowSeamLineFor(11)!.color, ink.color);
+      expect(painter.rowSeamLineFor(5)!.color, ink.color);
       expect(
         painter.rowSeamLineFor(11)!.color,
-        timelineGridLineInkOnGround(
-          ink,
-          Color.alphaBlend(blockGround, scheme.surface),
-        ),
-        reason:
-            '⛔the translucent paper is composited FIRST here too — the '
-            'seam cannot repeat the white-line bug on the other axis',
+        painter.rowSeamLineFor(5)!.color,
+        reason: 'one divider, one colour, all the way across the row — the '
+            'rail draws it flat and the fx band always did too',
       );
     });
 
