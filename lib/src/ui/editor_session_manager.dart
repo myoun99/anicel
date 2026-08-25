@@ -812,12 +812,49 @@ class EditorSessionManager extends ChangeNotifier {
       trackSeLayers: () => activeTrack.seLayers,
     );
     editingFrameCursor.value = _timelineController.currentFrameIndex;
+    // F-20, the DELETE half: a row whose layer no longer exists is not a
+    // deliberate stand anywhere — it is a dangling id. A row that still
+    // resolves is left alone, which is what keeps the storyboard's S rows
+    // (they resolve through the track) out of this.
+    final strandedOwner = _verbRow?.owningLayerId;
+    if (strandedOwner != null && _rangeLayerById(strandedOwner) == null) {
+      _verbRow = null;
+      _timelineRow = null;
+      _seatVerbRowOnActiveLayer();
+    }
     // A cut switch re-seats the active layer, which is what the drawn row
     // falls back to when nothing is engaged.
     _publishCurrentRow();
     // The window moved, so the part of a track-global lane span this cut
     // can see moved with it. The selection itself is untouched.
     _publishCutLocalLaneRange();
+  }
+
+  /// 🚨F-20 (유저 2026-08-24): 「새 레이어를 만들어도 내부 액티브 레이어가 안
+  /// 바뀐다 — 그 상태에서 아래 화살표를 누르면 바로 밑이 아니라 밑의 밑이
+  /// 선택된다. 🚨UI만 바꾸고 내부를 안 바꾸는 자리가 더 있는지 전수 점검」.
+  ///
+  /// [selectLayer] keeps `_verbRow` in step with the active layer, and it is
+  /// not the only way the active layer moves: Add Layer seats one straight on
+  /// the controller, and a controller REBUILD seats one through
+  /// `initialActiveLayerId`. After either, the row was still the old layer's —
+  /// so ↓ counted from there and landed a row further than it looked, and the
+  /// flip counted the old row's blocks.
+  ///
+  /// ⛔It CANNOT be enforced at the read (the shape tried first). A row whose
+  /// layer is not the active layer is legitimate: the storyboard's rails stand
+  /// on a row WITHOUT taking the cut's drawing target (유저 2026-07-27,
+  /// `takesLayerActive: false`), so an S row and the active cel layer disagree
+  /// on purpose there — and overriding the read put the ring on the wrong row.
+  /// The two writers say it instead, each where it moved the layer.
+  void _seatVerbRowOnActiveLayer() {
+    final seated = _layerController.activeLayerId;
+    if (seated == null || _verbRow == LayerRowAddress(seated)) {
+      return;
+    }
+    _verbRow = LayerRowAddress(seated);
+    _timelineRow = _verbRow;
+    _publishCurrentRow();
   }
 
   int _clampedFrameIndex(int frameIndex) {
@@ -5167,6 +5204,10 @@ class EditorSessionManager extends ChangeNotifier {
       case LayerKind.camera:
         _layerController.addLayerWithDefaults(layerId: layerId);
     }
+    // F-20: the row you just made IS the subject now. Every arm above seats
+    // the controller's active layer directly, so none of them went through
+    // [selectLayer].
+    _seatVerbRowOnActiveLayer();
     notifyListeners();
   }
 
@@ -17337,6 +17378,19 @@ class EditorSessionManager extends ChangeNotifier {
   void selectNextDrawing() => _flipRow(forward: true);
 
   void _flipRow({required bool forward}) {
+    // 🚨F-13 (유저 2026-08-24): 「선택범위로 선택하고 취소되는 행동
+    // 늘리고싶음. 지금 선택하고 플립등으로 프레임 이동하면 취소안되고 레이어
+    // 이동하면 취소되는데, 플립하면 선택범위 취소되도록. 다만 룰러 스크럽시
+    // 취소안되는건 그대로 남김」.
+    //
+    // The same clear [standOnRow] does, for the same reason: a flip is a
+    // deliberate move to another column, so whatever was selected on the
+    // old one is not what the next verb is about.
+    //
+    // ⛔It lives in the FLIP and not in [selectFrameIndex], which the ruler
+    // scrub also goes through — 「룰러쪽 조작은 지금처럼 그대로 취소안되도록」.
+    // Seeking is not the verb here; flipping is.
+    clearAllSelections();
     switch (currentRow) {
       case TrackRowAddress(:final trackId):
         _flipCuts(trackId, forward: forward);
@@ -17400,8 +17454,22 @@ class EditorSessionManager extends ChangeNotifier {
       // keep reading raw coverage).
       columnAt: (frame) => holdMergedFlipColumnAt(layer, frame),
     );
-    if (next != current && next >= 0) {
-      selectFrameIndex(next);
+    // 🚨F-21 (유저 2026-08-24): 「1번인덱스에 홀드인 블록하나 있을때
+    // 중간인덱스, 5번인덱스인 상태에서 왼쪽 플립하면 인덱스 이동안함. 해당
+    // 상황같은 이동할수없는 상황에서는 우선 1번인덱스로 이동하도록」.
+    //
+    // A hold that starts at frame 0 makes the WHOLE row one column, so a
+    // leftward step from inside it asks for frame -1 and the guard below
+    // refused — the flip did nothing at all, from anywhere in the row.
+    // Falling to the axis's first frame is the honest answer: there is
+    // nowhere further back, and where the column begins is somewhere.
+    //
+    // ⛔The clamp is HERE and not in [flipColumnStep], which is unbounded on
+    // purpose — "callers clamp, because only they know which axis they were
+    // counting on" is that function's own rule.
+    final landing = next < 0 ? 0 : next;
+    if (landing != current) {
+      selectFrameIndex(landing);
     }
   }
 
@@ -17440,11 +17508,14 @@ class EditorSessionManager extends ChangeNotifier {
       },
     );
     // The start of the film is the only floor; rightward the runway past
-    // the last cut is a place you may stand.
-    if (next != globalFrame && next >= 0) {
+    // the last cut is a place you may stand. F-21: and a step that falls
+    // through that floor lands ON it rather than doing nothing — the layer
+    // row's law, on the axis this row counts.
+    final landing = next < 0 ? 0 : next;
+    if (landing != globalFrame) {
       // Land on the axis the step was measured on: this row may name a
       // track that is not the selected one.
-      selectGlobalFrame(next, onAxis: axis);
+      selectGlobalFrame(landing, onAxis: axis);
     }
   }
 

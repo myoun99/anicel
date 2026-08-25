@@ -71,6 +71,20 @@ class FlipHudController extends ChangeNotifier {
   Timer? _hideTimer;
   Timer? _clearTimer;
 
+  /// 🚨F-28 (유저 2026-08-24): 「타임라인패널 x시트일 경우, 플립 그냥
+  /// 반전시키자. 세로가 프레임이동 가로가 레이어이동 되도록. 그게 직관적임」.
+  ///
+  /// WHICH SCREEN DIRECTION THE FRAME AXIS RUNS IN. The canvas flip locks to
+  /// the axis the finger moved along and then has to say what that axis MEANS
+  /// — and the answer is whatever the sheet the user is looking at says. On
+  /// the X-sheet the frames run down the page, so a downward flip is a frame
+  /// flip there and a sideways one walks the rows.
+  ///
+  /// ⚠️It lives HERE because the flip HUD is already the one object the canvas
+  /// gesture and the shell both hold — threading a bool down four widget
+  /// layers to reach the gesture would put the same fact in five places.
+  bool framesRunVertically = false;
+
   (int, int)? _lastPosition;
   DateTime? _lastLandedAt;
   Duration? _lastStepInterval;

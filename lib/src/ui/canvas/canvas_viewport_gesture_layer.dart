@@ -361,7 +361,7 @@ class _CanvasViewportGestureLayerState
         // The HUD appears on the LOCK, not on touchdown: a tap or a plain
         // pan must never flash it.
         widget.flipHud?.begin(
-          axis: horizontal ? FlipHudAxis.frame : FlipHudAxis.row,
+          axis: _flipsFrames(horizontal) ? FlipHudAxis.frame : FlipHudAxis.row,
           anchor: _groupCentroid(_groupDownPositions),
           frameStep: _flipFrameStep,
         );
@@ -402,6 +402,15 @@ class _CanvasViewportGestureLayerState
     return sum / _groupPointers.length.toDouble();
   }
 
+  /// Whether a gesture locked to this screen direction walks FRAMES.
+  ///
+  /// F-28: the frame axis is sideways on the timeline and downward on the
+  /// X-sheet, and the flip follows the sheet the user is reading — 「타임라인
+  /// 패널 x시트일 경우 … 세로가 프레임이동 가로가 레이어이동 되도록. 그게
+  /// 직관적임」. One question, asked in both places that need it.
+  bool _flipsFrames(bool horizontal) =>
+      horizontal != (widget.flipHud?.framesRunVertically ?? false);
+
   void _updateFlip() {
     final horizontal = _flipAxisHorizontal;
     if (horizontal == null) {
@@ -420,14 +429,14 @@ class _CanvasViewportGestureLayerState
       final forward = steps > _flipEmittedSteps;
       _flipEmittedSteps += forward ? 1 : -1;
       final fine = _flipModifierActive;
-      final actionId = horizontal
+      final actionId = _flipsFrames(horizontal)
           ? (forward
-                // Drag right = next, drag left = previous; the modifier
-                // steps ONE FRAME (the Ctrl+arrow mapping) instead of one
-                // drawing.
+                // Along the frame axis, forward = next; the modifier steps
+                // ONE FRAME (the Ctrl+arrow mapping) instead of one drawing.
                 ? (fine ? 'frame-next' : 'drawing-next')
                 : (fine ? 'frame-previous' : 'drawing-previous'))
-          // Drag up = layer up (the arrow-key arbitration path).
+          // Across it, the flip walks the ROW STACK (the arrow-key
+          // arbitration path).
           : (forward ? 'selection-nudge-down' : 'selection-nudge-up');
       widget.onInvokeAction?.call(actionId);
     }
@@ -465,8 +474,12 @@ class _CanvasViewportGestureLayerState
   /// has a finer unit to drop to — the vertical walk is rows either way,
   /// so reporting the modifier there would make the HUD claim a mode
   /// change that did not happen.
-  bool get _flipFrameStep =>
-      (_flipAxisHorizontal ?? false) && _flipModifierActive;
+  bool get _flipFrameStep {
+    final horizontal = _flipAxisHorizontal;
+    // F-28: "the frame mode" is a fact about the LOCKED AXIS meaning frames,
+    // not about the finger having gone sideways.
+    return horizontal != null && _flipsFrames(horizontal) && _flipModifierActive;
+  }
 
   void _engageModifier() {
     if (_groupAction == CanvasTouchDragAction.flip) {
