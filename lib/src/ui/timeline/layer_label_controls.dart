@@ -978,6 +978,52 @@ class _MarkSwatch extends StatelessWidget {
 /// [FieldSlider]; every other rail control was still bare, so its press
 /// also fired the row's PICK and moved the drawing target. EVERY control in
 /// this file — and the row's inline chevrons/toggles — wears the claim now.
+/// A press on a rail TOGGLE COLUMN belongs to that column, drag and all.
+///
+/// 🚨I-1 (유저 2026-08-24): 「레이어의 버튼 조작하는거 **일괄조작**하는 기능
+/// … 탭 다운 한 채로 아래로 드래그하면 **해당 다른 레이어도 버튼조작**되도록」.
+///
+/// ⛔[RailControlPointer]'s claim is the WEAK one on purpose, and the reason
+/// is written where it lives: 「a button owns its TAP; it does not own drags
+/// — claiming the pointer outright broke a real one, because the
+/// storyboard's row-order drag deliberately starts ON the visibility
+/// button」. That is still true of the storyboard. It stopped being true of
+/// the RAIL the moment a drag from a rail button became a verb of its own,
+/// and until then the rail's Krita-style eye swipe could never run at all:
+/// the row's eager pan won every gesture that started on the eye.
+///
+/// ⇒ The strong claim, applied by the RAIL to the columns it can swipe —
+/// never by the widget, which the storyboard shares.
+///
+/// ⚠️Keep this in step with the grid's swipe column list. A column that
+/// claims but is not listed swallows drags for nothing; one that is listed
+/// but does not claim is unreachable, which is exactly the state the eye
+/// was found in.
+class RailSwipeColumnPointer extends StatelessWidget {
+  const RailSwipeColumnPointer({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: (event) {
+        claimTapForControl(event.pointer);
+        claimPointerForValueControl(event.pointer);
+      },
+      onPointerUp: (event) {
+        releaseTapForControl(event.pointer);
+        releasePointerForValueControl(event.pointer);
+      },
+      onPointerCancel: (event) {
+        releaseTapForControl(event.pointer);
+        releasePointerForValueControl(event.pointer);
+      },
+      child: child,
+    );
+  }
+}
+
 class RailControlPointer extends StatelessWidget {
   const RailControlPointer({super.key, required this.child});
 

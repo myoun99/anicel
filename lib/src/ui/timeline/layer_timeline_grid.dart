@@ -48,7 +48,12 @@ import 'timeline_frame_rows_scroll_body.dart';
 import 'timeline_frame_window.dart';
 import 'layer_rail_window.dart';
 import 'layer_label_controls.dart'
-    show SectionBandZone, layerSectionLabelSlotWidth, layerVisibilitySlotWidth;
+    show
+        SectionBandZone,
+        layerFxSlotWidth,
+        layerOnionSlotWidth,
+        layerSectionLabelSlotWidth,
+        layerVisibilitySlotWidth;
 import 'layer_rail_columns.dart'
     show LayerRailTrailingSlot, layerRailTrailingWidth;
 import 'timeline_grid_metrics.dart';
@@ -493,6 +498,14 @@ typedef _LegendMemoInputs = ({
   bool hasBlendBulk,
 });
 
+/// One TOGGLE column a rail swipe can paint down: where it is, what a row's
+/// value there is, and how to flip one (I-1).
+typedef _RowToggleColumn = ({
+  ({double left, double right}) band,
+  bool Function(Layer layer) valueOf,
+  void Function(LayerId layerId) toggle,
+});
+
 class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// The integer rate the grid COUNTS with — the ruler's second marks
   /// and row labels are frame arithmetic, never real time (see
@@ -564,36 +577,79 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   final GlobalKey _rulerScrubViewportKey = GlobalKey();
   int? _lastRulerScrubbedFrameIndex;
 
-  // Krita-style eye-column swipe (R2): a vertical drag over the eye column
-  // toggles every crossed row's visibility to the value LATCHED from the
-  // first row (paint-swipe). Null target = no swipe in progress.
-  bool? _eyeSwipeTargetVisible;
-  final Set<LayerId> _eyeSwipePainted = {};
+  // Krita-style column swipe (R2, widened by I-1): a vertical drag over ANY
+  // toggle column sets every crossed row to the value LATCHED from the first
+  // row (paint-swipe). Null column/target = no swipe in progress.
+  _RowToggleColumn? _swipeColumn;
+  bool? _swipeTargetValue;
+  final Set<LayerId> _swipePainted = {};
 
-  /// The eye column's horizontal band within the rail rows' Column, derived
-  /// from the slot layout so it tracks the row's own control order.
-  ({double left, double right}) _eyeColumnBand() {
+  /// The TOGGLE columns a swipe may paint down, right to left in rail order.
+  ///
+  /// 🚨I-1 (유저 2026-08-24): 「레이어의 버튼 조작하는거 **일괄조작**하는 기능
+  /// … 즉 여러 레이어 드래그하면서 **비지블버튼 off**한다거나 그런느낌.
+  /// **타임시트버튼이든 뭐 그런것들**」.
+  ///
+  /// ⚠️Trailing slots only, and that is geometry rather than a choice: the
+  /// trailing run is right-aligned, so ONE x-range answers for every row.
+  /// The leading run (the timesheet toggle among them) sits after the
+  /// nesting indent, so its x moves with a row's depth — a swipe crossing
+  /// rows at different depths would leave the column it started in. Boarded.
+  ///
+  /// A column whose host gave no callback is simply absent: a swipe cannot
+  /// paint what a tap could not.
+  List<_RowToggleColumn> _swipeColumns() {
     final rowWidth =
         _metrics.layerControlsWidth - _metrics.sectionLabelGutterWidth;
-    // From the row's right edge: 8px padding, then every trailing slot the
-    // rows actually draw, up to and including the eye.
-    //
-    // R10 R6: this used to restate the tail by hand — '8px padding,
-    // opacity(64), mute(18)' — which was wrong twice over: opacity is 42,
-    // and R27 #6 put the BLEND column to opacity's right without anyone
-    // updating the arithmetic, so the swipe band sat 58px off the eye
-    // whenever blend was shown. Restating derived geometry by hand is the
-    // exact failure this round exists to retire; the tail is read from the
-    // skeleton now, with the same host gates the rows use.
     const rightPadding = 8.0;
-    final tailAfterEye = layerRailTrailingWidth(
-      from: LayerRailTrailingSlot.mute,
-      hasBlendColumn: widget.onLayerBlendModeSelected != null,
-    );
-    final eyeRight = rowWidth - rightPadding - tailAfterEye;
-    final eyeLeft = eyeRight - layerVisibilitySlotWidth;
-    // A little tolerance so the thin 22px band is easy to hit with a pen.
-    return (left: eyeLeft - 4, right: eyeRight + 4);
+    final hasOnion = widget.onToggleLayerOnionSkin != null;
+    final hasBlend = widget.onLayerBlendModeSelected != null;
+
+    // Everything from [after] onward is what sits to this column's right,
+    // read off the slot skeleton — the same derivation the eye band used, so
+    // adding a column still cannot put the bands out of date.
+    ({double left, double right}) band(
+      LayerRailTrailingSlot after,
+      double width,
+    ) {
+      final right =
+          rowWidth -
+          rightPadding -
+          layerRailTrailingWidth(
+            from: after,
+            hasOnionColumn: hasOnion,
+            hasBlendColumn: hasBlend,
+          );
+      // A little tolerance so a thin band is easy to hit with a pen.
+      return (left: right - width - 4, right: right + 4);
+    }
+
+    final onToggleFx = widget.onToggleLayerFx;
+    final fxStateOf = widget.layerFxStateOf;
+    final onToggleOnion = widget.onToggleLayerOnionSkin;
+    final onionOf = widget.layerOnionSkinEnabledOf;
+    return [
+      (
+        band: band(LayerRailTrailingSlot.mute, layerVisibilitySlotWidth),
+        valueOf: (layer) => layer.isVisible,
+        toggle: widget.onToggleLayerVisibility,
+      ),
+      if (hasOnion && onionOf != null)
+        (
+          band: band(LayerRailTrailingSlot.visibility, layerOnionSlotWidth),
+          valueOf: (layer) => onionOf(layer.id),
+          toggle: onToggleOnion!,
+        ),
+      if (onToggleFx != null && fxStateOf != null)
+        (
+          band: band(LayerRailTrailingSlot.onion, layerFxSlotWidth),
+          // The fx column is TRI-state; a swipe paints the one thing a tap
+          // paints — on, or not on — and the "only rows that disagree" rule
+          // in [_paintSwipeAt] is what keeps the third state out of its way.
+          valueOf: (layer) => fxStateOf(layer.id) == LayerFxState.on,
+          toggle: onToggleFx,
+        ),
+    ];
   }
 
   /// Resolves a rail-local vertical position to a LAYER row (lane rows and
@@ -612,15 +668,21 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     return row.isLane ? null : row.layer;
   }
 
-  void _paintEyeSwipeAt(Layer? layer) {
-    if (layer == null || _eyeSwipeTargetVisible == null) {
+  void _paintSwipeAt(Layer? layer) {
+    final column = _swipeColumn;
+    final target = _swipeTargetValue;
+    if (layer == null || column == null || target == null) {
       return;
     }
-    if (!_eyeSwipePainted.add(layer.id)) {
+    if (!_swipePainted.add(layer.id)) {
       return;
     }
-    if (layer.isVisible != _eyeSwipeTargetVisible) {
-      widget.onToggleLayerVisibility(layer.id);
+    // Only rows that DISAGREE are touched: a swipe sets a value, it does not
+    // flip each row it passes (drag back over one and it must not come
+    // undone), and on the tri-state fx column it is what keeps the third
+    // state out of the sweep's way.
+    if (column.valueOf(layer) != target) {
+      column.toggle(layer.id);
     }
   }
 
@@ -1978,6 +2040,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                     final leadingRowSpacerHeight =
                                         rowWindow.startIndex *
                                         _metrics.layerRowHeight;
+                                    // I-1: the toggle columns a swipe may
+                                    // paint down. Read once per pass — the
+                                    // bands are geometry, and the swipe's
+                                    // own callbacks index into this list.
+                                    final swipeColumns = _swipeColumns();
                                     final trailingRowSpacerHeight =
                                         (rows.length -
                                             rowWindow.endIndexExclusive) *
@@ -2359,10 +2426,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                               // leading slot, the zone overlay
                                                               // paints the old gutter bracket
                                                               // over it.
-                                                              child: _EyeSwipeDetector(
-                                                                band:
-                                                                    _eyeColumnBand(),
-                                                                onStart: (localY) {
+                                                              child: _RowButtonSwipeDetector(
+                                                                bands: [
+                                                                  for (final column
+                                                                      in swipeColumns)
+                                                                    column.band,
+                                                                ],
+                                                                onStart: (bandIndex, localY) {
                                                                   final layer =
                                                                       _layerAtRailY(
                                                                         localY,
@@ -2373,18 +2443,23 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                       null) {
                                                                     return false;
                                                                   }
-                                                                  _eyeSwipeTargetVisible =
-                                                                      !layer
-                                                                          .isVisible;
-                                                                  _eyeSwipePainted
+                                                                  final column =
+                                                                      swipeColumns[bandIndex];
+                                                                  _swipeColumn =
+                                                                      column;
+                                                                  _swipeTargetValue =
+                                                                      !column.valueOf(
+                                                                        layer,
+                                                                      );
+                                                                  _swipePainted
                                                                       .clear();
-                                                                  _paintEyeSwipeAt(
+                                                                  _paintSwipeAt(
                                                                     layer,
                                                                   );
                                                                   return true;
                                                                 },
                                                                 onUpdate: (localY) =>
-                                                                    _paintEyeSwipeAt(
+                                                                    _paintSwipeAt(
                                                                       _layerAtRailY(
                                                                         localY,
                                                                         windowRows,
@@ -2392,9 +2467,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                       ),
                                                                     ),
                                                                 onEnd: () {
-                                                                  _eyeSwipeTargetVisible =
+                                                                  _swipeColumn =
                                                                       null;
-                                                                  _eyeSwipePainted
+                                                                  _swipeTargetValue =
+                                                                      null;
+                                                                  _swipePainted
                                                                       .clear();
                                                                 },
                                                                 child: Stack(
@@ -2984,36 +3061,62 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   }
 }
 
-/// Wraps the rail rows' Column and turns a vertical drag STARTING inside
-/// [band] (the eye column's x-range) into a Krita-style paint-swipe.
+/// Wraps the rail rows' Column and turns a vertical drag that STARTS on a
+/// row button into a Krita-style paint-swipe down the rows.
+///
+/// 🚨I-1 (유저 2026-08-24): 「레이어의 버튼 조작하는거 **일괄조작**하는 기능
+/// 넣고싶음 … 탭 다운 한 채로 아래로 드래그하면 **해당 다른 레이어도
+/// 버튼조작**되도록. 즉 여러 레이어 드래그하면서 **비지블버튼 off**한다거나」.
+///
+/// ⛔It used to be the EYE and nothing else, with the eye's band typed in
+/// as a constructor argument. The swipe was never about the eye — it is
+/// about a COLUMN — so the column is the argument now and the host lists
+/// the ones it has.
+///
 /// [onStart] latches (returns false to decline, e.g. the down landed on a
-/// spacer); [onUpdate] paints each crossed row; [onEnd] clears. Uses a
-/// vertical-drag recognizer so single taps still reach the eye buttons and
-/// the outer vertical scroll keeps working outside the band.
-class _EyeSwipeDetector extends StatefulWidget {
-  const _EyeSwipeDetector({
-    required this.band,
+/// spacer, or between columns); [onUpdate] paints each crossed row; [onEnd]
+/// clears. A vertical-drag recognizer, so single taps still reach the
+/// buttons and the outer scroll keeps working — see [supportedDevices] for
+/// the other half of that (F-8).
+class _RowButtonSwipeDetector extends StatefulWidget {
+  const _RowButtonSwipeDetector({
+    required this.bands,
     required this.onStart,
     required this.onUpdate,
     required this.onEnd,
     required this.child,
   });
 
-  final ({double left, double right}) band;
-  final bool Function(double localY) onStart;
+  /// The x-ranges a swipe may start in, in the order they are tested. A
+  /// press outside every one of them is not a swipe.
+  final List<({double left, double right})> bands;
+
+  /// The press: which BAND it landed in, and where down the rail. Returns
+  /// false to decline.
+  final bool Function(int bandIndex, double localY) onStart;
   final ValueChanged<double> onUpdate;
   final VoidCallback onEnd;
   final Widget child;
 
   @override
-  State<_EyeSwipeDetector> createState() => _EyeSwipeDetectorState();
+  State<_RowButtonSwipeDetector> createState() =>
+      _RowButtonSwipeDetectorState();
 }
 
-class _EyeSwipeDetectorState extends State<_EyeSwipeDetector> {
+class _RowButtonSwipeDetectorState extends State<_RowButtonSwipeDetector> {
   bool _engaged = false;
+  int _pressedBand = -1;
 
-  bool _inBand(Offset local) =>
-      local.dx >= widget.band.left && local.dx <= widget.band.right;
+  /// The band the press landed in, or -1.
+  int _bandAt(Offset local) {
+    for (var index = 0; index < widget.bands.length; index += 1) {
+      final band = widget.bands[index];
+      if (local.dx >= band.left && local.dx <= band.right) {
+        return index;
+      }
+    }
+    return -1;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3037,13 +3140,14 @@ class _EyeSwipeDetectorState extends State<_EyeSwipeDetector> {
       // becomes the pointer the moment one finger is the drawing hand.
       supportedDevices: AppInput.timelineEditPanDevices,
       onVerticalDragDown: (details) {
-        _engaged = _inBand(details.localPosition);
+        _pressedBand = _bandAt(details.localPosition);
+        _engaged = _pressedBand >= 0;
       },
       onVerticalDragStart: (details) {
         if (!_engaged) {
           return;
         }
-        _engaged = widget.onStart(details.localPosition.dy);
+        _engaged = widget.onStart(_pressedBand, details.localPosition.dy);
       },
       onVerticalDragUpdate: (details) {
         if (_engaged) {
