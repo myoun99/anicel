@@ -1197,42 +1197,138 @@ Future<ProjectPick?> pickProjectToOpen(BuildContext context) async {
   return (path: path, folderBookmark: grant!.bookmark);
 }
 
-/// Save As: the system's own save dialog, on every platform.
+/// Save As.
 ///
-/// PICK-6: the in-app name prompt and the overwrite confirmation are both
-/// GONE. Both existed only because iOS has no save panel — and the export
-/// picker turned out to let the user edit the name right there (verified on
-/// device), so the workaround has nothing left to work around. The system
-/// dialog asks about replacing too.
+/// Desktop: the system save dialog answers with a PATH — nothing is
+/// created, nothing moves — and the save that follows writes it (temp
+/// beside the destination + rename, atomic against whatever it replaces).
+/// The dialog it used to share with the scoped platforms staged a 22-byte
+/// placeholder in the system temp and moved it into place, which is how
+/// Save As to any drive but C: failed outright (`File.rename` cannot cross
+/// volumes) and how a Save As pointed at the LIVE project replaced it with
+/// 22 bytes before the save could read its own cels.
 ///
-/// 🚨What is handed to the picker is a PLACEHOLDER, not the project. Media
-/// lives inside the file now, so a finished project can be gigabytes;
-/// staging that in the app container would need the space twice and fail
-/// AFTER the user chose a name and a place — the worst possible moment. A
-/// minimal valid archive claims the spot instead, and the real save writes
-/// to the path that comes back.
+/// Scoped platforms (iOS/Android — no save panel exists): a staged file is
+/// handed to the export picker, which MOVES it and reports where it
+/// landed. 🚨The staged file is a COPY OF THE LIVE ARCHIVE when one
+/// exists, and the minimal valid archive only for a never-saved project.
+/// The picker moves its source over whatever the user points it at, so a
+/// decoy placeholder made "replace an existing project" destroy that
+/// project the moment the picker confirmed — with the real bytes staged,
+/// the destination holds a complete archive until the save lands on top.
 @visibleForTesting
 Future<ProjectPick?> pickProjectSaveTarget(
   BuildContext context,
   String suggestedName,
-  String initialDirectory,
-) async {
+  String initialDirectory, {
+  String? currentProjectPath,
+}) async {
   var name = suggestedName;
   if (!name.toLowerCase().endsWith(anicelProjectSuffix)) {
     name = '$name$anicelProjectSuffix';
   }
+  if (!FolderPicker.grantsAreScoped) {
+    return _pickDesktopSaveTarget(context, name, initialDirectory);
+  }
+  return _pickScopedSaveTarget(context, name, currentProjectPath);
+}
+
+Future<ProjectPick?> _pickDesktopSaveTarget(
+  BuildContext context,
+  String name,
+  String initialDirectory,
+) async {
+  final grant = await pickSaveDestinationForUser(
+    context,
+    suggestedName: name,
+    initialDirectory: initialDirectory,
+    // The dialog filters to the project type; Windows shows the filter but
+    // never appends the extension itself, so the suffix answer below stays.
+    acceptedTypeGroups: const [FileTypeGroups.anicelProject],
+  );
+  final picked = grant?.path;
+  if (picked == null || !context.mounted) {
+    return null;
+  }
+  if (picked.toLowerCase().endsWith(anicelProjectSuffix)) {
+    return (path: picked, folderBookmark: grant!.bookmark);
+  }
+  // F-14: the suffix is the pick's answer. But appending it claims a
+  // DIFFERENT path than the one the dialog's replace prompt asked about —
+  // "type Foo over an existing Foo.anicel" was a silent overwrite — so
+  // when the real target is taken, the question is asked again about it.
+  final suffixed = '$picked$anicelProjectSuffix';
+  if (File(suffixed).existsSync()) {
+    final strings = AppText.strings;
+    final replace = await showDialog<bool>(
+      context: context,
+      builder: (context) => AppConfirmDialog(
+        windowKey: const ValueKey<String>('save-as-replace-dialog'),
+        title: strings.replaceFileTitle,
+        titleIcon: Icons.save_as_outlined,
+        message: strings.replaceFileMessageTemplate.replaceAll(
+          '{name}',
+          suffixed.split('/').last,
+        ),
+        actions: [
+          AppWindowAction(
+            label: strings.commonCancel,
+            actionKey: const ValueKey<String>('save-as-replace-cancel'),
+            onPressed: () => Navigator.of(context).pop(false),
+          ),
+          AppWindowAction(
+            label: strings.commonReplace,
+            actionKey: const ValueKey<String>('save-as-replace-confirm'),
+            emphasis: AppWindowActionEmphasis.danger,
+            onPressed: () => Navigator.of(context).pop(true),
+          ),
+        ],
+      ),
+    );
+    if (replace != true || !context.mounted) {
+      return null;
+    }
+  }
+  return (path: suffixed, folderBookmark: grant!.bookmark);
+}
+
+Future<ProjectPick?> _pickScopedSaveTarget(
+  BuildContext context,
+  String name,
+  String? currentProjectPath,
+) async {
   // Its own directory so the cleanup below cannot reach anything else.
   final Directory stagingDirectory;
   final File staged;
   try {
     stagingDirectory = Directory.systemTemp.createTempSync('anicel_save_');
     staged = File('${stagingDirectory.path}/$name');
-    // SYNC on purpose: async `dart:io` never completes under the widget-test
-    // clock, and this sits before the picker — awaiting the async twin here
-    // makes the whole Save As flow untestable (it hangs at this line rather
-    // than failing, which reads as "the exporter was never called").
-    staged.writeAsBytesSync(_emptyAnicelArchive, flush: true);
-  } on Object {
+    if (currentProjectPath != null && File(currentProjectPath).existsSync()) {
+      // The live archive, whole. ASYNC — this can be gigabytes and must
+      // not stop the UI isolate; a test that drives this branch runs under
+      // `tester.runAsync` (the fake clock never completes real dart:io).
+      await File(currentProjectPath).copy(staged.path);
+    } else {
+      // A never-saved project has nothing to copy; a minimal valid archive
+      // claims the spot so anything opening it before the save lands reads
+      // an empty project rather than a corrupt file.
+      //
+      // SYNC on purpose: async `dart:io` never completes under the
+      // widget-test clock, and this sits before the picker.
+      staged.writeAsBytesSync(_emptyAnicelArchive, flush: true);
+    }
+  } on Object catch (error) {
+    // A staging failure used to return null silently — the Save As button
+    // read as dead, and on the exit path it silently cancelled the close.
+    if (context.mounted) {
+      unawaited(
+        showAppNotice(
+          context,
+          title: AppText.strings.commonNotice,
+          message: '$error',
+        ),
+      );
+    }
     return null;
   }
   if (!context.mounted) {
@@ -1243,59 +1339,22 @@ Future<ProjectPick?> pickProjectSaveTarget(
     context,
     sourcePath: staged.path,
     suggestedName: name,
-    // A desktop hint only; the Apple pickers reopen where the user was.
-    initialDirectory: FolderPicker.grantsAreScoped ? null : initialDirectory,
   );
-  // On success the placeholder was MOVED out and only the empty directory is
-  // left; on cancel the placeholder is still in it. Same cleanup.
+  // On success the staged file was MOVED out and only the empty directory
+  // is left; on cancel it is still in it. Same cleanup.
   _discardStaging(stagingDirectory);
   final placed = grant?.path;
   if (placed == null) {
     return null;
   }
-  // 🚨F-14 (유저 2026-08-24): 「저장 시 **22바이트의 저장명으로 된 확장자없는
-  // 파일**이 생김 … **삭제안되는것도** 애플에서도 삭제 안되는 상황일텐데」.
-  //
-  // That file is the placeholder above, and this is where it was orphaned.
-  // The picker returns whatever name the user typed — Windows does not force
-  // an extension — and the CALLER used to append `.anicel` afterwards. So
-  // the placeholder claimed `Foo` and the project was written to
-  // `Foo.anicel`: a 22-byte file named after the save, with no extension,
-  // that nothing ever came back for. Nothing platform-specific about it; the
-  // report's Apple half was right too.
-  //
-  // ★The suffix is decided HERE now, where the placeholder can be answered
-  // for. A claim on a spot we are not going to write to is not ours to keep.
-  if (placed.toLowerCase().endsWith(anicelProjectSuffix)) {
-    return (path: placed, folderBookmark: grant!.bookmark);
-  }
-  _discardPlacedPlaceholder(placed);
-  return (path: '$placed$anicelProjectSuffix', folderBookmark: grant!.bookmark);
-}
-
-/// Removes a placeholder the picker placed and the save is not going to use.
-///
-/// ⛔Only if it still IS the placeholder, byte for byte. The user may have
-/// pointed the picker at a name that already existed, and the file sitting
-/// there is then theirs — a save that quietly deleted it because it was in
-/// the way would be the worst bug in this file.
-void _discardPlacedPlaceholder(String path) {
-  try {
-    final file = File(path);
-    if (!file.existsSync() || file.lengthSync() != _emptyAnicelArchive.length) {
-      return;
-    }
-    final bytes = file.readAsBytesSync();
-    for (var i = 0; i < bytes.length; i += 1) {
-      if (bytes[i] != _emptyAnicelArchive[i]) {
-        return;
-      }
-    }
-    file.deleteSync();
-  } on Object {
-    // Leaving one behind is the old behaviour; failing the save over it
-    // would be worse than the file.
-  }
+  // The placed path is accepted AS-IS. The old flow chased a missing
+  // `.anicel` suffix by deleting the placed file and claiming the suffixed
+  // sibling — but the security scope and the bookmark cover exactly the
+  // item the picker placed, so the "corrected" path was one the sandbox
+  // refused and the bookmark named a file that no longer existed. A
+  // bare-named project is reachable (recents, and the OS keeps the
+  // extension in its own UI); an unsaveable one is not.
+  return (path: placed, folderBookmark: grant!.bookmark);
 }
 
 /// Removes the staging directory. A leak here must never fail a save — or a
@@ -1384,7 +1443,7 @@ Future<void> promptSaveProjectAs(
   final ProjectPick? pick;
   if (savePicker != null) {
     final injected = await savePicker(suggested);
-    // The injected picker places no placeholder, so it answers the suffix
+    // The injected picker places no staged file, so it answers the suffix
     // question the plain way — but it still has to ANSWER it, because the
     // caller below no longer does (F-14).
     pick = injected == null
@@ -1396,7 +1455,14 @@ Future<void> promptSaveProjectAs(
             folderBookmark: null,
           );
   } else {
-    pick = await pickProjectSaveTarget(context, suggested, initialDirectory);
+    pick = await pickProjectSaveTarget(
+      context,
+      suggested,
+      initialDirectory,
+      // What a scoped platform stages: the live archive, so the export
+      // picker never moves a decoy over a real project.
+      currentProjectPath: session.projectFilePath,
+    );
   }
   if (pick == null || !context.mounted) {
     return;
