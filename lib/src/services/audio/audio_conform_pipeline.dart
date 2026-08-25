@@ -37,6 +37,7 @@ library;
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../media/media_byte_source.dart';
 import '../persistence/anicel_incremental_writer.dart' show anicelCrc32;
 import '../persistence/app_save_settings.dart' show AppSave;
 import 'audio_peaks_extractor.dart';
@@ -393,14 +394,26 @@ class AudioConformPipeline {
   ConformResult ensureConform({
     required String sourcePath,
     required String? conformPath,
+    MediaByteSource? source,
   }) {
-    final stat = statOf(sourcePath);
-    if (stat == null) {
+    // Where the bytes actually are: the file at the path unless the caller
+    // says otherwise — an archive range for media the project carries.
+    // This is the read side carrying grew in the audit round: the save
+    // could always stream an embedded asset forward, but THIS pipeline
+    // kept asking the filesystem, so deleting the import original — the
+    // act carrying exists to survive — reported sourceMissing, burned the
+    // retry budget, and silenced the clip for the session and the export.
+    final src = source ?? MediaFileBytes(sourcePath);
+    if (!src.existsSync()) {
       return const ConformResult(
         outcome: ConformOutcome.sourceMissing,
         error: 'the source file is missing',
       );
     }
+    // Null is "no cheap facts", not "missing" — an archive entry has no
+    // stat to give and skips straight to the content answer (which it
+    // happens to hold for free: ZIP wrote the CRC in the entry header).
+    final stat = src.statSync();
 
     final existing = conformPath == null ? null : _readConform(conformPath);
     // A conform at another rate is stale even with a matching source: the
@@ -420,7 +433,30 @@ class AudioConformPipeline {
     // open, and skipping it made every project pay a full read of every
     // original before it could discover there was nothing to do — on the
     // very devices where a big allocation gets the app killed.
-    if (settingsMatch && existing.sourceStat?.matches(stat) == true) {
+    if (settingsMatch &&
+        stat != null &&
+        existing.sourceStat?.matches(
+              ConformSourceStat(
+                sourceLength: stat.lengthBytes,
+                sourceModifiedMicros: stat.modifiedMicros,
+              ),
+            ) ==
+            true) {
+      return _reuse(existing, conformPath);
+    }
+
+    // The archive's fast path: the entry header already knows the CRC, so
+    // the whole identity question is answered without reading a byte.
+    final knownCrc = src.knownCrc32;
+    if (settingsMatch &&
+        knownCrc != null &&
+        conformMatchesSource(
+          existing,
+          ConformSourceFingerprint(
+            sourceLength: src.lengthSync(),
+            sourceCrc32: knownCrc,
+          ),
+        )) {
       return _reuse(existing, conformPath);
     }
 
@@ -430,15 +466,25 @@ class AudioConformPipeline {
     // wrong. The content decides.
     final Uint8List sourceBytes;
     try {
-      sourceBytes = File(sourcePath).readAsBytesSync();
+      sourceBytes = src.readSync();
     } on Object catch (error) {
-      // It EXISTS — statOf just said so — so this is transient: an
-      // unhydrated cloud placeholder, or a handle held elsewhere. Calling
-      // it "missing" spends one of three attempts on a file that is fine,
-      // and three of those silence the clip for the rest of the session.
+      // It EXISTS — the check above just said so — so this is transient:
+      // an unhydrated cloud placeholder, or a handle held elsewhere.
+      // Calling it "missing" spends one of three attempts on a file that
+      // is fine, and three of those silence the clip for the session.
       return ConformResult(
         outcome: ConformOutcome.sourceUnreadable,
         error: 'could not read the source (retrying): $error',
+      );
+    }
+    // An archive range read under a COMPACTION reads whatever moved into
+    // those bytes — the offsets were resolved when the request was built.
+    // The entry CRC is the tripwire: a mismatch is transient (the next
+    // attempt resolves fresh offsets), never a decode of the wrong sound.
+    if (knownCrc != null && anicelCrc32(sourceBytes) != knownCrc) {
+      return const ConformResult(
+        outcome: ConformOutcome.sourceUnreadable,
+        error: 'the archive changed underneath this read (retrying)',
       );
     }
     final fingerprint = fingerprintOf(sourceBytes);
@@ -509,8 +555,15 @@ class AudioConformPipeline {
             // Recorded from the stat taken BEFORE the read, so the hint
             // describes the file this conform actually came from. Re-statting
             // now could catch a write that landed mid-build and bless a
-            // conform of the previous contents.
-            sourceStat: stat,
+            // conform of the previous contents. Null for an archive range —
+            // no stat exists, and the content fingerprint above is the
+            // whole identity there anyway.
+            sourceStat: stat == null
+                ? null
+                : ConformSourceStat(
+                    sourceLength: stat.lengthBytes,
+                    sourceModifiedMicros: stat.modifiedMicros,
+                  ),
             speedNumerator: speedNumerator,
             speedDenominator: speedDenominator,
           ),

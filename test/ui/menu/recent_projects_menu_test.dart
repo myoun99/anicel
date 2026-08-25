@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:file_selector/file_selector.dart' show XTypeGroup;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
@@ -27,6 +28,8 @@ void main() {
     AppRecent.projects.value = const RecentProjects();
     RecentProjectsStore().save(const RecentProjects());
     FolderPicker.debugFolderPicker = null;
+    FolderPicker.debugFilePicker = null;
+    FolderPicker.debugBookmarkResolver = null;
     try {
       folder.deleteSync(recursive: true);
     } on Object {
@@ -129,21 +132,28 @@ void main() {
     expect(AppRecent.projects.value.entries.single.needsReconnect, isFalse);
   });
 
-  testWidgets('a remembered project that is gone offers the folder picker', (
+  testWidgets('a remembered project that is gone offers the FILE picker', (
     tester,
   ) async {
     // No bookmark — the desktop and Android shape. Before the reconnect fix
     // this branch showed "not found" and left the row permanently labelled
-    // Reconnect with nothing behind it.
+    // Reconnect with nothing behind it. The picker is FILE mode now: the
+    // folder-then-rejoin shape was the folder-as-permission-unit leftover,
+    // and folder mode is the one Google Drive refuses on iOS — a reconnect
+    // that dead-ended on the very provider file mode un-blocked.
     final missing = '${folder.path.replaceAll('\\', '/')}/Gone.anicel';
     seed(const RecentProjects().withOpened(
       RecentProject(path: missing),
     ));
     var pickerAsked = false;
-    FolderPicker.debugFolderPicker = ({String? initialDirectory}) async {
-      pickerAsked = true;
-      return const FolderGrant.cancelled();
-    };
+    FolderPicker.debugFilePicker =
+        ({
+          required List<XTypeGroup> acceptedTypeGroups,
+          required bool allowMultiple,
+        }) async {
+          pickerAsked = true;
+          return const [FolderGrant.cancelled()];
+        };
 
     await openProjectMenu(tester);
     await tester.tap(find.byKey(ValueKey<String>('menu-recent-$missing')));
@@ -155,5 +165,56 @@ void main() {
       isTrue,
       reason: 'and the row is flagged, not deleted',
     );
+  });
+
+  testWidgets('a FILE bookmark resolves to the project itself — no name '
+      'join, no false reconnect', (tester) async {
+    // Since PICK-6 both Open and Save As store FILE bookmarks, whose
+    // resolved path IS the project. The old folder-dialect join built
+    // '/…/Foo.anicel/Foo.anicel', failed the exists-check, and flagged
+    // every Apple row "Reconnect" for ever — with the reconnect picker
+    // being the one mode Google Drive refuses, a Drive project's row was
+    // permanently dead. The resolved item's own name is the discriminator.
+    final path = writeProject('Cut 12.anicel');
+    seed(const RecentProjects().withOpened(
+      RecentProject(path: path, folderBookmark: 'FILE-BOOK=='),
+    ));
+    FolderPicker.debugBookmarkResolver = (bookmark, kind) async =>
+        FolderGrant.granted(
+          path: path,
+          bookmark: 'FRESH==',
+          kind: GrantKind.file,
+        );
+
+    await openProjectMenu(tester);
+    await tester.tap(find.byKey(ValueKey<String>('menu-recent-$path')));
+    await tester.pumpAndSettle();
+
+    expect(
+      AppRecent.projects.value.entries.single.needsReconnect,
+      isFalse,
+      reason: 'the resolved FILE path is the project — joining the name '
+          'onto it built a path that exists nowhere',
+    );
+  });
+
+  testWidgets('a FOLDER bookmark still joins the file name', (tester) async {
+    // The legacy dialect (pre-PICK-6 rows) keeps working: the resolved
+    // item is the folder, so the project is name-joined inside it.
+    final path = writeProject('Cut 12.anicel');
+    seed(const RecentProjects().withOpened(
+      RecentProject(path: path, folderBookmark: 'DIR-BOOK=='),
+    ));
+    FolderPicker.debugBookmarkResolver = (bookmark, kind) async =>
+        FolderGrant.granted(
+          path: folder.path.replaceAll('\\', '/'),
+          bookmark: 'FRESH==',
+        );
+
+    await openProjectMenu(tester);
+    await tester.tap(find.byKey(ValueKey<String>('menu-recent-$path')));
+    await tester.pumpAndSettle();
+
+    expect(AppRecent.projects.value.entries.single.needsReconnect, isFalse);
   });
 }

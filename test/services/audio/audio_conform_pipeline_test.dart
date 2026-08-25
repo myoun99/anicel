@@ -5,6 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_resampler_reference.dart';
 import 'package:anicel/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/services/media/media_byte_source.dart';
+import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
+    show anicelCrc32;
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -751,6 +754,63 @@ void main() {
       );
       expect(result.outcome, ConformOutcome.undecodable);
       expect(result.error, isNotNull);
+      expect(result.isUsable, isFalse);
+    });
+  });
+
+  group('carried media reads from the archive', () {
+    /// [wav] embedded at an offset inside a container file — the shape of
+    /// a STORE'd archive entry, without needing a whole .anicel here.
+    MediaArchiveBytes embedded(String name, Uint8List wav, {int? crc}) {
+      final container = '${temp.path}/$name';
+      final junk = List<int>.filled(8, 0xEE);
+      File(container).writeAsBytesSync([...junk, ...wav], flush: true);
+      return MediaArchiveBytes(
+        archivePath: container,
+        dataOffset: junk.length,
+        length: wav.length,
+        entryCrc32: crc ?? anicelCrc32(wav),
+      );
+    }
+
+    test('a deleted import original is not "missing" when the bytes are an '
+        'archive range', () {
+      // The very act carrying exists to survive. The pipeline used to ask
+      // the filesystem regardless, so the clip fell to sourceMissing,
+      // burned the retry budget, and stayed silent for the session and
+      // the export while the bytes sat inside the project.
+      final original = writeSource('대사.wav');
+      final wav = File(original).readAsBytesSync();
+      final source = embedded('project.anicel', wav);
+      File(original).deleteSync();
+
+      final result = pipelineFor().ensureConform(
+        sourcePath: original,
+        conformPath: null,
+        source: source,
+      );
+
+      expect(result.outcome, isNot(ConformOutcome.sourceMissing));
+      expect(result.isUsable, isTrue, reason: 'decoded from the archive');
+    });
+
+    test('an archive range that no longer matches its CRC retries instead '
+        'of decoding whatever moved into the window', () {
+      // Offsets are resolved when the request is built; a compaction can
+      // move every byte before the read happens. The entry CRC is the
+      // tripwire, and the miss is TRANSIENT — the next attempt resolves
+      // fresh offsets — never a decode of the wrong sound.
+      final original = writeSource('take.wav');
+      final wav = File(original).readAsBytesSync();
+      final source = embedded('stale.anicel', wav, crc: 0x12345678);
+
+      final result = pipelineFor().ensureConform(
+        sourcePath: original,
+        conformPath: null,
+        source: source,
+      );
+
+      expect(result.outcome, ConformOutcome.sourceUnreadable);
       expect(result.isUsable, isFalse);
     });
   });

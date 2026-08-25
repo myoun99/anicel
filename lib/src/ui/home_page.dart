@@ -825,73 +825,13 @@ class _HomePageState extends State<HomePage> {
     // R26 #43: an UNEDITED project just closes — the prompt exists to
     // protect work, and there is none. "Edited" is the dirty flag the
     // history manager raises on every executed command.
-    if (!_session.hasUnsavedChanges) {
-      return true;
-    }
+    //
+    // The question itself lives in [ensureUnsavedWorkSettled] now, shared
+    // with the OPEN flow — which closes the current project just as surely
+    // as this button and used to do it with no gate at all.
     _exitDialogOpen = true;
     try {
-      final choice = await showDialog<_ExitChoice>(
-        context: context,
-        builder: (context) => AppConfirmDialog(
-          windowKey: const ValueKey<String>('system-exit-dialog'),
-          title: AppText.strings.closeProjectTitle,
-          titleIcon: Icons.logout_outlined,
-          message: AppText.strings.closeProjectBody,
-          actions: [
-            AppWindowAction(
-              label: AppText.strings.commonCancel,
-              actionKey: const ValueKey<String>('system-exit-cancel'),
-              onPressed: () => Navigator.of(context).pop(_ExitChoice.cancel),
-            ),
-            AppWindowAction(
-              label: AppText.strings.commonSaveAs,
-              actionKey: const ValueKey<String>('system-exit-save-as'),
-              onPressed: () => Navigator.of(context).pop(_ExitChoice.saveAs),
-            ),
-            AppWindowAction(
-              label: AppText.strings.commonSave,
-              actionKey: const ValueKey<String>('system-exit-save'),
-              onPressed: () => Navigator.of(context).pop(_ExitChoice.save),
-            ),
-            AppWindowAction(
-              label: AppText.strings.commonClose,
-              actionKey: const ValueKey<String>('system-exit-close'),
-              emphasis: AppWindowActionEmphasis.primary,
-              onPressed: () => Navigator.of(context).pop(_ExitChoice.close),
-            ),
-          ],
-        ),
-      );
-      switch (choice) {
-        case null || _ExitChoice.cancel:
-          return false;
-        case _ExitChoice.close:
-          // Discarding the work discards its sidecar too. Left alive it
-          // outlives the session that made it, and the next open offers
-          // to restore precisely what the user just chose to throw away
-          // — with recovery reading a surviving sidecar as "the app
-          // crashed", keeping one here makes that signal lie.
-          _session.discardAutosaveSidecar();
-          return true;
-        case _ExitChoice.save:
-        case _ExitChoice.saveAs:
-          if (!mounted) {
-            return false;
-          }
-          // The existing File-menu flows do the work (one writer, one
-          // picker); a save that fails or a cancelled picker leaves the
-          // project dirty, so the close is called off.
-          final path = _session.projectFilePath;
-          if (choice == _ExitChoice.saveAs || path == null) {
-            await promptSaveProjectAs(context, _session);
-          } else {
-            // Through the shared flow, so this save shows what it is doing
-            // and — the part this path used to get wrong — REPORTS a
-            // failure instead of throwing past the `return` below.
-            await saveProjectShowingProgress(context, _session, path);
-          }
-          return !_session.hasUnsavedChanges;
-      }
+      return await ensureUnsavedWorkSettled(context, _session);
     } finally {
       _exitDialogOpen = false;
     }
@@ -937,5 +877,5 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-/// R26 #43: the exit prompt's four answers.
-enum _ExitChoice { cancel, save, saveAs, close }
+/// R26 #43's four answers live in [UnsavedWorkChoice] now, shared with the
+// open flow's gate.

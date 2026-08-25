@@ -6,6 +6,7 @@ import '../../services/audio/audio_conform_pipeline.dart';
 import '../../services/audio/audio_conform_runner.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/audio/conform_wav_stream.dart';
+import '../../services/media/media_byte_source.dart';
 
 class _ConformFailure {
   const _ConformFailure({
@@ -37,6 +38,7 @@ class _ConformFailure {
 class AudioConformStore extends ChangeNotifier {
   AudioConformStore({
     required this.resolveConformPath,
+    this.resolveByteSource,
     ConformRunner? runner,
     ResampleRunner? resampleRunner,
     int Function()? resolveProjectSampleRate,
@@ -61,6 +63,15 @@ class AudioConformStore extends ChangeNotifier {
   /// project file yet). Injected rather than computed here because only
   /// the session knows the current `.anicel` path.
   final String? Function(String sourcePath) resolveConformPath;
+
+  /// Where [sourcePath]'s BYTES are right now — an archive range for
+  /// media the project carries, so a deleted import original no longer
+  /// silences the clip. Injected for the same reason as
+  /// [resolveConformPath]: only the session knows the entry names and the
+  /// archive path. Null (tests, passive hosts) reads the file at the
+  /// path, exactly as before. Resolved per REQUEST, never held — offsets
+  /// belong to one layout and a compaction moves them.
+  final MediaByteSource Function(String sourcePath)? resolveByteSource;
 
   final ConformRunner _runner;
   final ResampleRunner _resampleRunner;
@@ -344,6 +355,7 @@ class AudioConformStore extends ChangeNotifier {
         ConformRequest(
           sourcePath: sourcePath,
           conformPath: resolveConformPath(sourcePath),
+          source: resolveByteSource?.call(sourcePath),
           projectSampleRate: projectSampleRate,
           bucketsPerSecond: bucketsPerSecond,
           speedNumerator: speed.numerator,

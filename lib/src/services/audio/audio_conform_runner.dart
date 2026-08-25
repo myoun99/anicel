@@ -17,6 +17,7 @@ import 'dart:typed_data';
 import '../../native/qa_audio_decoder.dart';
 import '../../native/qa_audio_native.dart';
 import '../../native/qa_engine_abi.dart';
+import '../media/media_byte_source.dart';
 import 'audio_conform_pipeline.dart';
 import 'audio_resampler_reference.dart';
 
@@ -26,6 +27,7 @@ class ConformRequest {
   const ConformRequest({
     required this.sourcePath,
     required this.conformPath,
+    this.source,
     this.projectSampleRate = 48000,
     this.bucketsPerSecond = 80,
     this.speedNumerator = 1,
@@ -34,6 +36,21 @@ class ConformRequest {
   });
 
   final String sourcePath;
+
+  /// Where [sourcePath]'s bytes actually ARE — an archive range for media
+  /// the project carries, null for "the file at the path" (which
+  /// [MediaByteSource] was built to say without every consumer learning
+  /// the difference). This is the read side carrying finally grew: the
+  /// save could always stream an embedded asset forward, but playback,
+  /// the waveform and the existence probe kept asking the filesystem, so
+  /// deleting the import original — the very act carrying exists to
+  /// survive — silenced the clip and hung a "missing" banner on an asset
+  /// the project owns. Plain data, so it crosses the isolate like the
+  /// rest of the request.
+  final MediaByteSource? source;
+
+  /// The way to read this request's bytes, wherever they are.
+  MediaByteSource get effectiveSource => source ?? MediaFileBytes(sourcePath);
 
   /// Null = memory-only (the unsaved-project case; see
   /// [AudioConformPipeline.ensureConform]).
@@ -170,5 +187,6 @@ ConformResult runConformHere(ConformRequest request) {
   return pipeline.ensureConform(
     sourcePath: request.sourcePath,
     conformPath: request.conformPath,
+    source: request.source,
   );
 }

@@ -161,10 +161,24 @@ class EditorTopStrip extends StatelessWidget {
   /// the path this round promoted.
   Future<void> _openWithRecovery(BuildContext context, ProjectPick pick) async {
     final path = pick.path;
-    // A newer autosave sidecar offers recovery (crash / sync loss).
-    // SAVE-1: the sidecar may live beside the file OR in the user's
-    // sidecar directory (and the setting may have changed since it was
-    // written) — every candidate location is checked, newest wins.
+    // Opening ANOTHER project closes this one as surely as the window's X,
+    // and this was the one door with no gate: a single Recents tap
+    // silently discarded a dirty session (and after F-1 the loss window is
+    // the whole autosave interval). Same question, same window, same keys
+    // as the exit gate. Reopening the CURRENT project deliberately skips
+    // it — that flow's semantics (recovery re-offer, sidecar kept as the
+    // one way back) are documented below and a gate in front of them
+    // would retire the very sidecar the reopen exists to reach.
+    if (session.projectFilePath != path) {
+      if (!await ensureUnsavedWorkSettled(context, session) ||
+          !context.mounted) {
+        return;
+      }
+    }
+    // A newer autosave sidecar offers recovery (crash / sync loss). The
+    // snapshot lives in the app-support Recovery folder now, with the
+    // legacy beside-the-file spot kept as a read-only candidate — every
+    // candidate location is checked, newest wins.
     var openPath = path;
     String? recoverAs;
     String? overlayPath;
@@ -342,7 +356,18 @@ class EditorTopStrip extends StatelessWidget {
     if (bookmark != null) {
       final grant = await FolderPicker.resolveBookmark(bookmark);
       if (grant.isGranted) {
-        path = '${grant.path}/${entry.name}';
+        // The stored field carries TWO dialects: the reconnect flow mints
+        // FOLDER bookmarks, but since PICK-6 both Open and Save As store
+        // FILE bookmarks — whose resolved path IS the project. Joining the
+        // name onto a file path built '/…/Foo.anicel/Foo.anicel', so every
+        // file-bookmarked recent failed its exists-check, wore "Reconnect"
+        // for ever, and on iPad dropped Drive projects into the one picker
+        // mode Drive refuses. The resolved item's own name is the
+        // discriminator.
+        final resolved = grant.path!;
+        path = resolved.split('/').last == entry.name
+            ? resolved
+            : '$resolved/${entry.name}';
         bookmark = grant.bookmark ?? bookmark;
       } else {
         storeRecentProjects(
@@ -396,18 +421,30 @@ class EditorTopStrip extends StatelessWidget {
     await _openWithRecovery(context, (path: path, folderBookmark: bookmark));
   }
 
-  /// Asks for the folder a remembered project has moved to, and looks for it
-  /// there by FILE NAME. Null when the user backs out.
+  /// Asks for the project a remembered row has lost track of — with the
+  /// FILE picker, the same door Open uses.
+  ///
+  /// It used to raise the FOLDER picker and rejoin by file name, a shape
+  /// left over from the folder-as-permission-unit world. That mode is the
+  /// one Google Drive refuses on iOS, so the reconnect flow for a Drive
+  /// project was a dead end pointing at the very provider the file-mode
+  /// round un-blocked. Picking the file itself needs no name join, works
+  /// everywhere file mode works, and hands back the file bookmark the
+  /// recents row wants anyway.
   Future<ProjectPick?> _relink(
     BuildContext context,
     RecentProject entry,
   ) async {
-    final regrant = await pickFolderGrantForUser(context);
-    final folder = regrant?.path;
-    if (folder == null) {
+    final grants = await pickFileGrantsForUser(
+      context,
+      acceptedTypeGroups: const [FileTypeGroups.anicelProject],
+    );
+    final grant = grants.isEmpty ? null : grants.first;
+    final path = grant?.path;
+    if (path == null) {
       return null;
     }
-    return (path: '$folder/${entry.name}', folderBookmark: regrant!.bookmark);
+    return (path: path, folderBookmark: grant!.bookmark);
   }
 
   /// The PROJECT popover: the file itself, and the two doors it has to the
@@ -1383,6 +1420,89 @@ const List<int> _emptyAnicelArchive = [
   0, 0, 0, 0, // offset of the central directory
   0, 0, // comment length
 ];
+
+/// What a dirty session's user chose at the gate.
+enum UnsavedWorkChoice { cancel, saveAs, save, discard }
+
+/// The one question both doors ask before a dirty session is torn down.
+///
+/// The window's close button had this gate; Open and the Recents rows —
+/// which close the current project just as surely — did not, so one tap
+/// on a recent row silently discarded every live edit. One window, one
+/// set of keys (the `system-exit-*` names the exit tests already pin),
+/// so the matrix cell cannot re-open by one door forgetting.
+///
+/// Returns whether the tear-down may proceed: the save landed, or the
+/// user discarded (which retires the sidecar — 「저장 안 하고 닫기 =
+/// 버리기」 stays literal). False calls the whole thing off.
+Future<bool> ensureUnsavedWorkSettled(
+  BuildContext context,
+  EditorSessionManager session,
+) async {
+  if (!session.hasUnsavedChanges) {
+    return true;
+  }
+  final strings = AppText.strings;
+  final choice = await showDialog<UnsavedWorkChoice>(
+    context: context,
+    builder: (context) => AppConfirmDialog(
+      windowKey: const ValueKey<String>('system-exit-dialog'),
+      title: strings.closeProjectTitle,
+      titleIcon: Icons.logout_outlined,
+      message: strings.closeProjectBody,
+      actions: [
+        AppWindowAction(
+          label: strings.commonCancel,
+          actionKey: const ValueKey<String>('system-exit-cancel'),
+          onPressed: () => Navigator.of(context).pop(UnsavedWorkChoice.cancel),
+        ),
+        AppWindowAction(
+          label: strings.commonSaveAs,
+          actionKey: const ValueKey<String>('system-exit-save-as'),
+          onPressed: () => Navigator.of(context).pop(UnsavedWorkChoice.saveAs),
+        ),
+        AppWindowAction(
+          label: strings.commonSave,
+          actionKey: const ValueKey<String>('system-exit-save'),
+          onPressed: () => Navigator.of(context).pop(UnsavedWorkChoice.save),
+        ),
+        AppWindowAction(
+          label: strings.commonClose,
+          actionKey: const ValueKey<String>('system-exit-close'),
+          emphasis: AppWindowActionEmphasis.primary,
+          onPressed: () => Navigator.of(context).pop(UnsavedWorkChoice.discard),
+        ),
+      ],
+    ),
+  );
+  switch (choice) {
+    case null || UnsavedWorkChoice.cancel:
+      return false;
+    case UnsavedWorkChoice.discard:
+      // Discarding the work discards its sidecar too. Left alive it
+      // outlives the session that made it, and the next open offers to
+      // restore precisely what the user just chose to throw away — with
+      // recovery reading a surviving sidecar as "the app crashed",
+      // keeping one here makes that signal lie.
+      session.discardAutosaveSidecar();
+      return true;
+    case UnsavedWorkChoice.save:
+    case UnsavedWorkChoice.saveAs:
+      if (!context.mounted) {
+        return false;
+      }
+      // The existing File-menu flows do the work (one writer, one
+      // picker); a save that fails or a cancelled picker leaves the
+      // project dirty, so the tear-down is called off.
+      final path = session.projectFilePath;
+      if (choice == UnsavedWorkChoice.saveAs || path == null) {
+        await promptSaveProjectAs(context, session);
+      } else {
+        await saveProjectShowingProgress(context, session, path);
+      }
+      return !session.hasUnsavedChanges;
+  }
+}
 
 /// 🔑 THE ONE WAY a manual save runs: behind a window that shows it
 /// happening and then says it landed.
