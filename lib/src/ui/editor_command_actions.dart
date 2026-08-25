@@ -16,8 +16,10 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../models/cut_id.dart';
 import '../models/layer_kind.dart';
+import 'dialogs/app_confirm_dialog.dart' show showAppNotice;
 import 'dialogs/convert_to_linked_cut_dialog.dart';
 import 'editor_session_manager.dart';
+import 'text/app_strings.dart';
 import 'export/ae_keyframe_data.dart';
 
 /// The kind-dispatched "make one here" verb: a drawing cel, a camera key,
@@ -117,7 +119,11 @@ void copyCameraAeKeyframes(BuildContext context, EditorSessionManager session) {
     ),
   );
   unawaited(Clipboard.setData(ClipboardData(text: text)));
-  ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-    const SnackBar(content: Text('Camera keyframes copied for After Effects.')),
+  unawaited(
+    showAppNotice(
+      context,
+      title: AppText.strings.commonNotice,
+      message: 'Camera keyframes copied for After Effects.',
+    ),
   );
 }

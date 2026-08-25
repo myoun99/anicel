@@ -1,10 +1,14 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 
 import '../../models/media_asset.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/persistence/folder_grant.dart' show FolderGrant;
+import '../dialogs/app_confirm_dialog.dart' show showAppNotice;
 import '../dialogs/app_prompt_dialog.dart';
 import '../dialogs/folder_pick_flow.dart';
+
 import '../text/app_strings.dart';
 import '../text/byte_size_label.dart';
 import '../theme/app_theme.dart' show AppColors;
@@ -181,8 +185,12 @@ class MediaBrowserPanel extends StatelessWidget {
     }
     // Already carried, or a kind that never is. Saying nothing would read
     // as a menu item that does not work.
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      SnackBar(content: Text(AppText.strings.mediaAlreadyInProject)),
+    unawaited(
+      showAppNotice(
+        context,
+        title: AppText.strings.commonNotice,
+        message: AppText.strings.mediaAlreadyInProject,
+      ),
     );
   }
 
@@ -190,8 +198,12 @@ class MediaBrowserPanel extends StatelessWidget {
     if (onRemoveAsset(asset.path)) {
       return;
     }
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      SnackBar(content: Text(AppText.strings.mediaStillLinked)),
+    unawaited(
+      showAppNotice(
+        context,
+        title: AppText.strings.commonNotice,
+        message: AppText.strings.mediaStillLinked,
+      ),
     );
   }
 

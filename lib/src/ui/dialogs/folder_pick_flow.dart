@@ -252,11 +252,11 @@ Future<FolderGrant?> _spokenFor(
           !_driveNoticeShown &&
           folderPickCancelMayBeDrive(_operatingSystem)) {
         _driveNoticeShown = true;
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          SnackBar(
-            key: const ValueKey<String>('folder-pick-drive-notice'),
-            content: Text(AppText.strings.folderPickDriveNotice),
-          ),
+        await showAppNotice(
+          context,
+          windowKey: const ValueKey<String>('folder-pick-drive-notice'),
+          title: AppText.strings.commonNotice,
+          message: AppText.strings.folderPickDriveNotice,
         );
       }
       return null;
@@ -264,8 +264,10 @@ Future<FolderGrant?> _spokenFor(
       await _showNoFilesystemPathNotice(context);
       return null;
     case FolderPickStatus.unavailable:
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text(AppText.strings.folderPickUnavailable)),
+      await showAppNotice(
+        context,
+        title: AppText.strings.commonNotice,
+        message: AppText.strings.folderPickUnavailable,
       );
       return null;
   }

@@ -10,6 +10,7 @@ import 'package:anicel/src/services/persistence/recent_projects.dart';
 import 'package:anicel/src/services/persistence/recent_projects_store.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
@@ -476,7 +477,16 @@ void main() {
       );
       // Waits for the failure to surface rather than for a fixed span, so
       // the assertion is not just "we did not wait long enough".
-      await settleIsolate(tester, () => find.byType(SnackBar).evaluate().isNotEmpty);
+      //
+      // F-10: the failure is told in the shared notice window now, not in a
+      // strip at the bottom edge. Asserted as WELL as waited on, because a
+      // `settleIsolate` predicate that never comes true just runs out of
+      // attempts and the test still passes.
+      await settleIsolate(
+        tester,
+        () => find.byType(AppConfirmDialog).evaluate().isNotEmpty,
+      );
+      expect(find.byType(AppConfirmDialog), findsOneWidget);
       await tester.pumpAndSettle();
 
       expect(sidecar.existsSync(), isTrue);

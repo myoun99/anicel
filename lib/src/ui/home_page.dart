@@ -328,9 +328,13 @@ class _HomePageState extends State<HomePage> {
     if (message == null || !mounted) {
       return;
     }
-    ScaffoldMessenger.maybeOf(
-      context,
-    )?.showSnackBar(SnackBar(content: Text(message)));
+    unawaited(
+      showAppNotice(
+        context,
+        title: AppText.strings.commonNotice,
+        message: message,
+      ),
+    );
   }
 
   /// SAVE-1: (re)builds the autosave service to the current policy —

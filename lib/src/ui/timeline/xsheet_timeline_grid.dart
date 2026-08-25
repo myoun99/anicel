@@ -3188,8 +3188,8 @@ class _LayerHeader extends StatelessWidget {
       min: 0,
       max: 1,
       value: value,
-      valueText: '${(value * 100).round()}%',
-      valueTextBuilder: (next) => '${(next * 100).round()}%',
+      valueText: sliderValueText(value * 100, unit: '%'),
+      valueTextBuilder: (next) => sliderValueText(next * 100, unit: '%'),
       height: 18,
       onChanged: (opacity) => onLayerOpacityChanged(layer.id, opacity),
       onChangeEnd: onLayerOpacityChangeEnd == null

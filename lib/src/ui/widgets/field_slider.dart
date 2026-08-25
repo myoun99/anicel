@@ -9,6 +9,28 @@ import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import 'axis_bar_gesture.dart';
 
+/// THE value text a slider shows (F-9, 유저 2026-08-24).
+///
+/// > 「슬라이더 값에 소수점 텍스트 표시 (1.2px) … 브러시 사이즈만이 아니라
+/// > **조절 가능한 모든 슬라이더**」
+///
+/// One decimal, and a whole number stays whole: `1.2 px`, `50%`, `2 px`. The
+/// panels used to `.round()` at each call site, so a bar you could set to 1.2
+/// read `1` — and then setting it again from the number you could see moved
+/// the value. Rounding is a DISPLAY choice, and it was being made by twenty
+/// call sites that could not agree.
+///
+/// ⚠️A slider whose value really is an integer (a tolerance, a count, an RGB
+/// channel) renders identically through here — no `.0` appears — which is why
+/// every caller can use it and none has to decide.
+String sliderValueText(num value, {String unit = ''}) {
+  final rounded = (value * 10).round() / 10;
+  final text = rounded == rounded.roundToDouble()
+      ? rounded.toStringAsFixed(0)
+      : rounded.toStringAsFixed(1);
+  return '$text$unit';
+}
+
 /// How a [FieldSlider] maps track position to value.
 enum FieldSliderScale {
   /// Uniform mapping across the track.

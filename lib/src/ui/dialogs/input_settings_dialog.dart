@@ -5,6 +5,7 @@ import '../../services/input/wintab_pen_service.dart';
 import '../editor_session_manager.dart';
 import '../input/app_input_settings.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/settings_rows.dart';
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
 
@@ -66,12 +67,10 @@ class InputSettingsSection extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SwitchListTile(
-              key: const ValueKey<String>('settings-touch-timeline-scroll'),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: Text(strings.inputTouchScroll),
-              subtitle: Text(strings.inputTouchScrollHelp),
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('settings-touch-timeline-scroll'),
+              label: strings.inputTouchScroll,
+              help: strings.inputTouchScrollHelp,
               value: settings.touchTimelineScroll,
               onChanged: (enabled) => session.setInputSettings(
                 settings.copyWith(touchTimelineScroll: enabled),
@@ -202,45 +201,37 @@ class InputSettingsSection extends StatelessWidget {
                 settings.copyWith(touchDragThreeFingers: action),
               ),
             ),
-            SwitchListTile(
-              key: const ValueKey<String>('settings-extra-finger'),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: Text(strings.inputExtraFinger),
-              subtitle: Text(strings.inputExtraFingerHelp),
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('settings-extra-finger'),
+              label: strings.inputExtraFinger,
+              help: strings.inputExtraFingerHelp,
               value: settings.extraFingerModifier,
               onChanged: (enabled) => session.setInputSettings(
                 settings.copyWith(extraFingerModifier: enabled),
               ),
             ),
-            SwitchListTile(
-              key: const ValueKey<String>('settings-flip-haptics'),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: Text(strings.inputFlipHaptics),
-              subtitle: Text(strings.inputFlipHapticsHelp),
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('settings-flip-haptics'),
+              label: strings.inputFlipHaptics,
+              help: strings.inputFlipHapticsHelp,
               value: settings.flipHaptics,
               onChanged: (enabled) => session.setInputSettings(
                 settings.copyWith(flipHaptics: enabled),
               ),
             ),
-            SwitchListTile(
-              key: const ValueKey<String>('settings-nav-rotation'),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: Text(strings.inputTwoFingerRotation),
-              subtitle: Text(strings.inputTwoFingerRotationHelp),
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('settings-nav-rotation'),
+              label: strings.inputTwoFingerRotation,
+              help: strings.inputTwoFingerRotationHelp,
               value: settings.navigationRotationEnabled,
               onChanged: (enabled) => session.setInputSettings(
                 settings.copyWith(navigationRotationEnabled: enabled),
               ),
             ),
-            SwitchListTile(
-              key: const ValueKey<String>('settings-nav-rot-lock'),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: Text(strings.inputRotationLock),
-              subtitle: Text(strings.inputRotationLockHelp),
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('settings-nav-rot-lock'),
+              label: strings.inputRotationLock,
+              help: strings.inputRotationLockHelp,
               value: settings.navigationModifierRotationLock,
               onChanged: settings.navigationRotationEnabled
                   ? (enabled) => session.setInputSettings(
@@ -309,21 +300,25 @@ class InputSettingsSection extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    RadioListTile<TabletService>(
-                      key: const ValueKey<String>('settings-tablet-standard'),
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      title: Text(strings.inputTabletStandard),
-                      subtitle: Text(strings.inputTabletStandardHelp),
-                      value: TabletService.standard,
+                    settingsHelpTooltip(
+                      strings.inputTabletStandardHelp,
+                      RadioListTile<TabletService>(
+                        key: const ValueKey<String>('settings-tablet-standard'),
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: Text(strings.inputTabletStandard),
+                        value: TabletService.standard,
+                      ),
                     ),
-                    RadioListTile<TabletService>(
-                      key: const ValueKey<String>('settings-tablet-wintab'),
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      title: Text(strings.inputTabletWintab),
-                      subtitle: Text(strings.inputTabletWintabHelp),
-                      value: TabletService.wintab,
+                    settingsHelpTooltip(
+                      strings.inputTabletWintabHelp,
+                      RadioListTile<TabletService>(
+                        key: const ValueKey<String>('settings-tablet-wintab'),
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: Text(strings.inputTabletWintab),
+                        value: TabletService.wintab,
+                      ),
                     ),
                   ],
                 ),

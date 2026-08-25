@@ -72,9 +72,28 @@ void main() {
     // A real cancel costs the user one line they can ignore. Repeating it on
     // every backed-out pick would turn "the thing you could not have known"
     // into noise, and noise is how a notice stops being read.
+    //
+    // F-10: it is a MODAL window now rather than a bottom-of-screen strip, so
+    // the second pick has to happen after the first one is dismissed — which
+    // is also the only way to tell "said once" from "said twice, on top of
+    // itself".
     debugOperatingSystemOverride = 'ios';
-    await pumpAndPickFolder(tester, times: 3);
+    await pumpAndPickFolder(tester);
     expect(find.byKey(notice), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey<String>('app-notice-close')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(notice), findsNothing);
+
+    for (var i = 0; i < 2; i += 1) {
+      await tester.tap(find.text('go'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(notice),
+        findsNothing,
+        reason: 'pick ${i + 2} must say nothing',
+      );
+    }
   });
 
   testWidgets('a granted pick says nothing', (tester) async {

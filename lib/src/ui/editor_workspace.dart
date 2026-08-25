@@ -61,6 +61,7 @@ import 'media/media_relink_flow.dart';
 import 'media/media_viewer_tab_host.dart';
 import 'layout/device_grid.dart';
 import 'layout/device_grid_scroll_controller.dart';
+import 'dialogs/app_confirm_dialog.dart' show showAppNotice;
 import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
 import 'panels/editor_panel_layout.dart';
@@ -2013,9 +2014,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     if (message == null || !mounted) {
       return;
     }
-    ScaffoldMessenger.maybeOf(
-      context,
-    )?.showSnackBar(SnackBar(content: Text(message)));
+    unawaited(
+      showAppNotice(
+        context,
+        title: AppText.strings.commonNotice,
+        message: message,
+      ),
+    );
   }
 
   Future<void> _importBrushFile() async {
@@ -2023,9 +2028,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     if (message == null || !mounted) {
       return;
     }
-    ScaffoldMessenger.maybeOf(
-      context,
-    )?.showSnackBar(SnackBar(content: Text(message)));
+    unawaited(
+      showAppNotice(
+        context,
+        title: AppText.strings.commonNotice,
+        message: message,
+      ),
+    );
   }
 
   /// Whether the storyboard tab is the active tab of any section (visible

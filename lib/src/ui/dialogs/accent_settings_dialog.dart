@@ -5,6 +5,7 @@ import '../theme/app_accents.dart';
 import '../theme/app_theme.dart' show AppColors;
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
+import '../widgets/settings_rows.dart';
 
 /// The two-accent settings dialog (UI-R22 #5): accent 1 (selection,
 /// playhead, active toggles) and accent 2 (the secondary highlight —
@@ -125,11 +126,14 @@ class _AccentRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Text(label, style: Theme.of(context).textTheme.titleSmall),
+            // F-2: what this accent colours is a TOOLTIP on its name now,
+            // not a caption under it.
+            settingsHelpTooltip(
+              help,
+              Text(label, style: Theme.of(context).textTheme.titleSmall),
+            ),
           ],
         ),
-        const SizedBox(height: 4),
-        Text(help, style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: 8),
         Wrap(
           spacing: 6,

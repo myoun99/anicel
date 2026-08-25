@@ -11,6 +11,7 @@ import '../../services/canvas_selection_region.dart';
 import '../../services/resample/resample_kernel.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/settings_rows.dart';
 import 'brush_settings_panel.dart';
 import 'brush_tool_state.dart';
 import 'guide_panels.dart';
@@ -527,7 +528,8 @@ class _SelectionSettings extends StatelessWidget {
             label: AppText.strings.brGrowShrink,
             valueText: maskOptions.growPx == 0
                 ? 'off'
-                : '${maskOptions.growPx > 0 ? '+' : ''}${maskOptions.growPx} px',
+                : '${maskOptions.growPx > 0 ? '+' : ''}'
+                      '${sliderValueText(maskOptions.growPx, unit: ' px')}',
             onChanged: (value) =>
                 onMask(maskOptions.copyWith(growPx: value.round())),
           ),
@@ -541,7 +543,7 @@ class _SelectionSettings extends StatelessWidget {
             label: AppText.strings.brFeather,
             valueText: maskOptions.featherPx <= 0
                 ? 'off'
-                : '${maskOptions.featherPx.round()} px',
+                : sliderValueText(maskOptions.featherPx, unit: ' px'),
             onChanged: (value) =>
                 onMask(maskOptions.copyWith(featherPx: value.roundToDouble())),
           ),
@@ -1045,7 +1047,7 @@ class _FillSettings extends StatelessWidget {
           divisions: 128,
           value: options.tolerance.toDouble().clamp(0, 128),
           label: AppText.strings.brTolerance,
-          valueText: '${options.tolerance}',
+          valueText: sliderValueText(options.tolerance),
           onChanged: (value) =>
               onChanged(options.copyWith(tolerance: value.round())),
         ),
@@ -1057,7 +1059,7 @@ class _FillSettings extends StatelessWidget {
           divisions: 4,
           value: options.expandPx.toDouble().clamp(0, 4),
           label: AppText.strings.brExpand,
-          valueText: '${options.expandPx} px',
+          valueText: sliderValueText(options.expandPx, unit: ' px'),
           onChanged: (value) =>
               onChanged(options.copyWith(expandPx: value.round())),
         ),
@@ -1071,7 +1073,7 @@ class _FillSettings extends StatelessWidget {
           label: AppText.strings.brGapClose,
           valueText: options.gapClosePx == 0
               ? 'off'
-              : '${options.gapClosePx} px',
+              : sliderValueText(options.gapClosePx, unit: ' px'),
           onChanged: (value) =>
               onChanged(options.copyWith(gapClosePx: value.round())),
         ),
@@ -1083,12 +1085,10 @@ class _FillSettings extends StatelessWidget {
           value: options.antiAlias,
           onChanged: (value) => onChanged(options.copyWith(antiAlias: value)),
         ),
-        SwitchListTile(
-          key: const ValueKey<String>('fill-extend-beyond-canvas-switch'),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: Text(AppText.strings.brFillBeyondCanvas),
-          subtitle: Text(AppText.strings.brOpenRegionsRefuse),
+        SettingsSwitchRow(
+          tileKey: const ValueKey<String>('fill-extend-beyond-canvas-switch'),
+          label: AppText.strings.brFillBeyondCanvas,
+          help: AppText.strings.brOpenRegionsRefuse,
           value: options.extendBeyondCanvas,
           onChanged: (value) =>
               onChanged(options.copyWith(extendBeyondCanvas: value)),

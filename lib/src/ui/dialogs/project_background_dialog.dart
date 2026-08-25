@@ -4,6 +4,7 @@ import '../../models/project_background.dart';
 import '../editor_session_manager.dart';
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
+import '../widgets/settings_rows.dart';
 
 /// File > Project Background… — the STAGE's colors (R3b, four planes:
 /// backdrop → pasteboard → paper → pictures). Paper keeps its preset
@@ -147,12 +148,17 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
     );
   }
 
-  Widget _sectionHeader(String label) {
+  Widget _sectionHeader(String label, {String? help}) {
     return Align(
       alignment: Alignment.centerLeft,
       child: Padding(
         padding: const EdgeInsets.only(top: 10, bottom: 2),
-        child: Text(label, style: Theme.of(context).textTheme.titleSmall),
+        // F-2: the four-plane explanation used to be a paragraph at the
+        // bottom of the window. It is a tooltip on the heading it explains.
+        child: settingsHelpTooltip(
+          help,
+          Text(label, style: Theme.of(context).textTheme.titleSmall),
+        ),
       ),
     );
   }
@@ -326,15 +332,13 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
                 ),
               ],
             ),
-            _sectionHeader(strings.stageBackdropSection),
+            _sectionHeader(
+              strings.stageBackdropSection,
+              help: strings.backgroundHelp,
+            ),
             _hexField(
               _backdropHexController,
               key: const ValueKey<String>('background-backdrop-hex'),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              strings.backgroundHelp,
-              style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
         ),

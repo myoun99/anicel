@@ -10,6 +10,7 @@ import '../../services/persistence/app_save_settings.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
 import '../text/byte_size_label.dart';
+import '../widgets/settings_rows.dart';
 import 'folder_pick_flow.dart';
 
 /// SAVE-1: the autosave policy section (Preferences ▸ Autosave).
@@ -36,66 +37,52 @@ class AutosaveSettingsSection extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Crash recovery',
-              style: TextStyle(fontWeight: FontWeight.w600),
+            const SettingsSectionHeading(
+              label: 'Crash recovery',
+              help:
+                  'Snapshots unsaved changes so a crash or a flat battery '
+                  'does not cost them. The project file itself only changes '
+                  'when you save; a snapshot is discarded the moment the '
+                  'work stops being unsaved.',
             ),
             const SizedBox(height: 4),
-            const Text(
-              'Snapshots unsaved changes so a crash or a flat battery does '
-              'not cost them. The project file itself only changes when you '
-              'save; a snapshot is discarded the moment the work stops '
-              'being unsaved.',
-              style: TextStyle(fontSize: 12),
-            ),
-            SwitchListTile(
-              key: const ValueKey<String>('settings-autosave-enabled'),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: const Text('When leaving the app'),
-              subtitle: const Text(
-                'Closing the project, switching away, or the system putting '
-                'the app to sleep. Costs nothing — nobody is drawing — and '
-                'on a phone or tablet it is the only warning the system '
-                'gives before it stops the app.',
-              ),
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('settings-autosave-enabled'),
+              label: 'When leaving the app',
+              help:
+                  'Closing the project, switching away, or the system '
+                  'putting the app to sleep. Costs nothing — nobody is '
+                  'drawing — and on a phone or tablet it is the only '
+                  'warning the system gives before it stops the app.',
               value: settings.lifecycleSnapshotEnabled,
               onChanged: (enabled) => session.setSaveSettings(
                 settings.copyWith(lifecycleSnapshotEnabled: enabled),
               ),
             ),
-            SwitchListTile(
-              key: const ValueKey<String>('settings-autosave-pause'),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: const Text('When you pause'),
-              subtitle: const Text(
-                'A few seconds without touching anything is enough. Once per '
-                'pause, not on a repeat — sitting idle does not keep '
-                'rewriting the same file.',
-              ),
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('settings-autosave-pause'),
+              label: 'When you pause',
+              help:
+                  'A few seconds without touching anything is enough. Once '
+                  'per pause, not on a repeat — sitting idle does not keep '
+                  'rewriting the same file.',
               value: settings.pauseSnapshotEnabled,
               onChanged: (enabled) => session.setSaveSettings(
                 settings.copyWith(pauseSnapshotEnabled: enabled),
               ),
             ),
-            SwitchListTile(
-              key: const ValueKey<String>('settings-autosave-periodic'),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: const Text('While you keep working'),
-              subtitle: Text(
-                settings.periodicSnapshotMinutes == null
-                    // The reason to want it: a long focused stretch never
-                    // pauses, so a pause-only guard covers nothing during
-                    // exactly the hours that hold the most work.
-                    ? 'Off. Pauses alone cover a session that has them — a '
-                          'long stretch without one goes unprotected.'
-                    : 'At most ${settings.periodicSnapshotMinutes} minutes '
-                          'of work is ever unprotected. Any snapshot resets '
-                          'the count, so this only fires when nothing else '
-                          'did.',
-              ),
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('settings-autosave-periodic'),
+              label: 'While you keep working',
+              // The reason to want it: a long focused stretch never pauses,
+              // so a pause-only guard covers nothing during exactly the
+              // hours that hold the most work.
+              help: settings.periodicSnapshotMinutes == null
+                  ? 'Off. Pauses alone cover a session that has them — a '
+                        'long stretch without one goes unprotected.'
+                  : 'At most ${settings.periodicSnapshotMinutes} minutes of '
+                        'work is ever unprotected. Any snapshot resets the '
+                        'count, so this only fires when nothing else did.',
               value: settings.periodicSnapshotMinutes != null,
               onChanged: (enabled) => session.setSaveSettings(
                 settings.copyWith(
@@ -133,16 +120,13 @@ class AutosaveSettingsSection extends StatelessWidget {
             // REC1-B2: the take shelf. Mobile shows where takes land but
             // cannot move it (the app documents home is the only sane
             // place there); desktop may point it anywhere.
-            const Text(
-              'Recordings folder',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Where voice takes land. Saving copies the ones a project '
-              'uses into the project file; every take stays here either '
-              'way, so a recording is never in one place only.',
-              style: TextStyle(fontSize: 12),
+            const SettingsSectionHeading(
+              label: 'Recordings folder',
+              help:
+                  'Where voice takes land. Saving copies the ones a '
+                  'project uses into the project file; every take stays '
+                  'here either way, so a recording is never in one place '
+                  'only.',
             ),
             const SizedBox(height: 4),
             Row(
@@ -189,18 +173,14 @@ class AutosaveSettingsSection extends StatelessWidget {
             // mobile the app container is the one place writable without
             // asking an OS, and a cache in a scoped folder would need a
             // grant held for a session that writes to it unannounced.
-            const Text(
-              'Conform cache',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Decoded audio, kept so a waveform and playback do not decode '
-              'the same file twice. A conform is around twelve times the '
-              'size of its source, so point this at a drive with room — and '
-              'out of a cloud-synced folder. Deleting it costs time, never '
-              'content.',
-              style: TextStyle(fontSize: 12),
+            const SettingsSectionHeading(
+              label: 'Conform cache',
+              help:
+                  'Decoded audio, kept so a waveform and playback do not '
+                  'decode the same file twice. A conform is around twelve '
+                  'times the size of its source, so point this at a drive '
+                  'with room — and out of a cloud-synced folder. Deleting '
+                  'it costs time, never content.',
             ),
             const SizedBox(height: 4),
             Row(
