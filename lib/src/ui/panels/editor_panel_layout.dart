@@ -82,6 +82,15 @@ class EditorPanelLayoutModel extends ChangeNotifier {
   double dockExtent(String dockId, {required double fallback}) =>
       _dockExtents[dockId] ?? fallback;
 
+  /// Whether this dock has a size OF ITS OWN — one a hand dragged it to, as
+  /// opposed to the opening its host computes from the window.
+  ///
+  /// The two must not be clamped alike (H22): a window ceiling has to bind
+  /// a dragged extent, because the hand chose it in a window that is gone,
+  /// and must NOT bind an opening, which was derived from the window that
+  /// is here and already answers to whatever the dock needs.
+  bool hasDockExtent(String dockId) => _dockExtents.containsKey(dockId);
+
   /// Adjusts a dock's extent by a drag delta (positive grows the dock).
   ///
   /// [minExtent] is what the dock's own PANELS need along this axis (the

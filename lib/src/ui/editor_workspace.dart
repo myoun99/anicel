@@ -3910,22 +3910,48 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     // 「타임라인 세로 = 화면 절반」). A dock the user HAS sized keeps its
     // pixels — see [sideDockWidthFraction] for why a fraction is the
     // opening and not a binding.
-    // ⛔결정 8 does NOT clamp HERE, and the attempt is recorded because it
-    // looked obviously right. 「하단 = 화면 절반까지」 limits the HAND, and
-    // this expression is not the hand: the opening fallback is already half
-    // the window, so capping it changes nothing that OPENS. What it does
-    // change is a dock whose panels need more than half to render at all —
-    // that dock then draws under its own floor. Measured: it took a row of
-    // lanes off two test surfaces that never touch dock size.
+    // ⛔결정 8 did NOT clamp HERE, and the attempt is left recorded because
+    // it looked obviously right and was not: 「하단 = 화면 절반까지」 limits
+    // the HAND, and capping this expression at a bare half changed a dock
+    // whose panels need more than half to render at all — that dock then
+    // drew under its own floor. Measured: it took a row of lanes off two
+    // test surfaces that never touch dock size.
+    //
+    // 🆕H22 (유저 2026-08-23): 「타임라인패널 크기 키워둔채로 창 크기
+    // 축소하면 **그 크기 그대로 유지**되어있음. 창 크기 바꾸면 사이드띠의
+    // 패널이랑 통일해서 비율대로 작아져야하는데」 — so the half DOES bind on
+    // the way out. It is what the side rails have always done (their 37.5%
+    // ceiling is applied where they are drawn, not only where they are
+    // dragged), and this dock being the one exception is the report.
+    //
+    // ★Both readings hold at once because the floor is folded into the
+    // ceiling rather than left underneath it: the half stops a DRAGGED
+    // height from surviving a window that shrank, and a dock that needs
+    // more than half to exist at all is still never squeezed below what it
+    // needs. 결정 8's failure mode was a ceiling that could win against the
+    // floor; this one cannot.
+    final floor = _verticalDockMinimumExtent(EditorWorkspace.bottomGroupId);
+    final opening = EditorWorkspace.bottomDockHeightFallbackFor(
+      availableExtent,
+      DeviceGrid.of(context),
+    );
+    // ★The half binds a DRAGGED height and nothing else, and that is the
+    // whole difference between this and the attempt 결정 8 rejected. An
+    // opening is already computed from the window in front of us; clamping
+    // it again is what squeezed a dock under its own floor. A dragged
+    // height was chosen in a window that may be gone, so it is the one that
+    // has to answer to the window that is here.
     final wanted = math.max(
-      _layout.dockExtent(
-        EditorWorkspace.bottomGroupId,
-        fallback: EditorWorkspace.bottomDockHeightFallbackFor(
-          availableExtent,
-          DeviceGrid.of(context),
-        ),
-      ),
-      _verticalDockMinimumExtent(EditorWorkspace.bottomGroupId),
+      _layout.hasDockExtent(EditorWorkspace.bottomGroupId)
+          ? math.min(
+              _layout.dockExtent(
+                EditorWorkspace.bottomGroupId,
+                fallback: opening,
+              ),
+              _bottomDockDragCeiling(availableExtent),
+            )
+          : opening,
+      floor,
     );
     // …but never past what the window has. A floor is a promise about how
     // the dock divides its own height, not a claim on someone else's: when
