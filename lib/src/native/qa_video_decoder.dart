@@ -10,9 +10,14 @@ import 'qa_engine_abi.dart';
 /// The export path's mirror ([QaVideoEncoder]): both go through the
 /// operating system's own codec stack rather than an ffmpeg binary a
 /// tablet does not have. Windows reads through Media Foundation's Source
-/// Reader; the platforms whose reader is not written yet answer
-/// [isSupported] false, and the app says "no decoder in this build"
-/// instead of failing as a corrupt file.
+/// Reader, Apple through AVAssetImageGenerator, Android through the NDK
+/// media codecs; anything else answers [isSupported] false, and the app
+/// says "no decoder in this build" instead of failing as a corrupt file.
+///
+/// 2026-08-25: this paragraph used to say the non-Windows readers were not
+/// written yet. They were, and the stale note had readers believing in a
+/// limit that no longer existed. Decision comments are never deleted here,
+/// which only works if a wrong one is CORRECTED.
 ///
 /// ONE document at a time, like the export session — scrubbing a preview
 /// is the driving case and it looks at one movie.

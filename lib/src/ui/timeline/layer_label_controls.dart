@@ -623,7 +623,13 @@ IconData layerKindIcon(LayerKind kind) {
     // odd one out, and not because of how it looked: every other kind here
     // names WHAT THE ROW IS (a book, a photo, a note, a camera) while this
     // one named the TOOL you draw it with. A row is a noun.
-    LayerKind.animation => Icons.filter_frames,
+    //
+    // 유저 2026-08-24 (F-6) SUPERSEDES the glyph, not the reasoning: the
+    // animation row takes the picture glyph the image row used to wear.
+    // ⚠️The image row's replacement is NOT decided yet (board decision
+    // Q-image-layer-icon), so the two kinds deliberately share a glyph
+    // until the user picks. Do not invent one for the image row here.
+    LayerKind.animation => Icons.image_outlined,
     LayerKind.storyboard => Icons.auto_stories_outlined,
     LayerKind.image => Icons.image_outlined,
     LayerKind.text => Icons.title_outlined,

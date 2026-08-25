@@ -510,8 +510,20 @@ class _SeNameBox extends StatelessWidget {
     // a long vowel or a bracket — `ドアー`, `[SE]` — kept those glyphs lying
     // the wrong way while the timesheet beside it rotated them. It reads
     // the one shared table now.
+    //
+    // 유저 2026-08-24 (F-27): 「se블록의 이름이 세로쓰기세로표기 인거같은데,
+    // 가로쓰기 세로표기가 되도록. x시트는 그대로 냅둠」 — the two readings
+    // the user named on 2026-08-08 ([VerticalLatinForm]): the SCREEN block
+    // stands its Latin up, and the PRINT timesheet keeps the Japanese
+    // typesetting default. The X-sheet arm below is the `Text` branch, so
+    // it is untouched by construction rather than by an exception.
     final writing = axis == Axis.horizontal
-        ? VerticalWritingText(text: name, style: style, lineHeight: 1.05)
+        ? VerticalWritingText(
+            text: name,
+            style: style,
+            lineHeight: 1.05,
+            latinForm: VerticalLatinForm.upright,
+          )
         : Text(name, maxLines: 1, softWrap: false, style: style);
     final box = Semantics(
       label: 'SE name $name',

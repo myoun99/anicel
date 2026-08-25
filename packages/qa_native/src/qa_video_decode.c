@@ -14,9 +14,14 @@
 //   Windows  — Media Foundation's Source Reader, which also converts to
 //              RGB32 for us (the advanced video processing attribute), so
 //              our only pixel job is BGRA → RGBA and the stride.
-//   Apple    — AVAssetReader (not yet; it belongs with the device that can
-//              verify it).
-//   Android  — NDK AMediaExtractor + AMediaCodec (likewise).
+//   Apple    — AVAssetImageGenerator, forwarded to qa_video_apple.m.
+//   Android  — NDK AMediaExtractor + AMediaCodec, resolved with dlsym, so
+//              support is what libmediandk.so actually answers.
+//
+// 2026-08-25: the two lines above used to read "not yet" and "likewise".
+// Both readers had been written; the stale note taught the next reader a
+// limit that was not there. Decision comments are never deleted in this
+// repo, and the other half of that rule is that a wrong one gets FIXED.
 //
 // Absence is an ANSWER, never a crash: qa_video_decode_supported() is 0 on
 // a platform whose path is not written, and the app says "no decoder in

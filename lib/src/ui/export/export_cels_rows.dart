@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../../models/attached_layer_resolve.dart';
 import '../../models/attached_mode.dart';
 import '../../models/layer.dart';
-import '../../models/layer_kind.dart';
-import '../timeline/layer_label_controls.dart' show layerMarkColor;
+import '../timeline/layer_label_controls.dart'
+    show layerKindIcon, layerMarkColor;
 
 /// The shared compact layer-label row (v10 간략 컴포넌트: 색마크바 +
 /// 아이콘 + 이름): the Cels label list, the Add-from-timeline sub list
@@ -36,19 +36,6 @@ class ExportLayerRow extends StatelessWidget {
 
   /// The small dim tag at the end (기준/sync/free).
   final String? trailingTag;
-
-  static IconData kindIcon(LayerKind kind) => switch (kind) {
-    LayerKind.animation => Icons.edit_outlined,
-    LayerKind.storyboard => Icons.sticky_note_2_outlined,
-    LayerKind.image => Icons.image_outlined,
-    LayerKind.text => Icons.title_outlined,
-    LayerKind.se => Icons.volume_up_outlined,
-    LayerKind.instruction => Icons.swipe_right_alt_outlined,
-    LayerKind.transition => Icons.compare_arrows_outlined,
-    LayerKind.camera => Icons.videocam_outlined,
-    LayerKind.folder => Icons.folder_outlined,
-    LayerKind.adjustment => Icons.tune,
-  };
 
   /// The trailing attach tag (기준 rows show none).
   static String? attachTag(Layer layer) {
@@ -113,7 +100,7 @@ class ExportLayerRow extends StatelessWidget {
             ),
             const SizedBox(width: 4),
             Icon(
-              kindIcon(layer.kind),
+              layerKindIcon(layer.kind),
               size: 10,
               color: theme.colorScheme.onSurfaceVariant,
             ),

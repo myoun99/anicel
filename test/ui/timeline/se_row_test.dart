@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
+import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
     show seNameBoxExtent;
 
@@ -219,6 +220,39 @@ void main() {
       _seDialogueAt(tester, 'timeline-se-label-se-voice-1'),
       '그건 아니라고 생각해',
     );
+  });
+
+
+  // F-27: the two readings the user named on 2026-08-08 — the SCREEN block
+  // stands Latin up, the PRINT timesheet lays it down. Asserting the enum
+  // on the widget, not a pixel: the renderer's own tests own how `upright`
+  // draws, and a golden here would go red for reasons that are not this.
+  testWidgets('the SE name block stands its writing up, not sideways', (
+    tester,
+  ) async {
+    await _pumpHome(
+      tester,
+      _project(
+        frames: [
+          Frame(
+            id: const FrameId('se-f1'),
+            duration: 3,
+            name: '그건 아니라고 생각해',
+            seName: 'Door SE',
+            strokes: const [],
+          ),
+        ],
+      ),
+    );
+    await _ensureRowVisible(tester, _seLayerId);
+
+    final writing = tester.widget<VerticalWritingText>(
+      find.descendant(
+        of: find.bySemanticsLabel('SE name Door SE'),
+        matching: find.byType(VerticalWritingText),
+      ),
+    );
+    expect(writing.latinForm, VerticalLatinForm.upright);
   });
 
   testWidgets('the XSheet SE name box is a slim horizontal band, never a '
