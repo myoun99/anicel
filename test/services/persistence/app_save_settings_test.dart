@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
+import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/app_save_settings_store.dart';
 
 /// SAVE-1: the save/recovery policy — defaults, persistence, and where a
@@ -67,8 +68,11 @@ void main() {
   test('json roundtrip', () {
     const settings = AppSaveSettings(
       periodicSnapshotMinutes: 20,
-      recordingsDirectory: '/tmp/takes',
-      conformDirectory: '/tmp/conforms',
+      recordingsDirectory: GrantedDirectory(path: '/tmp/takes'),
+      conformDirectory: GrantedDirectory(
+        path: '/tmp/conforms',
+        bookmark: 'Ym9va21hcms=',
+      ),
     );
     expect(AppSaveSettings.fromJson(settings.toJson()), settings);
     expect(
@@ -81,14 +85,88 @@ void main() {
       isNull,
     );
     expect(settings.copyWith(conformDirectory: null).conformDirectory, isNull);
-    expect(settings.copyWith().recordingsDirectory, '/tmp/takes');
-    expect(settings.copyWith().conformDirectory, '/tmp/conforms');
+    expect(
+      settings.copyWith().recordingsDirectory,
+      const GrantedDirectory(path: '/tmp/takes'),
+    );
+    expect(
+      settings.copyWith().conformDirectory?.path,
+      '/tmp/conforms',
+    );
     // The two must not be one field wearing two names: moving the cache
     // must not move the take shelf with it.
     expect(
-      settings.copyWith(conformDirectory: '/elsewhere').recordingsDirectory,
-      '/tmp/takes',
+      settings
+          .copyWith(
+            conformDirectory: const GrantedDirectory(path: '/elsewhere'),
+          )
+          .recordingsDirectory,
+      const GrantedDirectory(path: '/tmp/takes'),
     );
+  });
+
+  test('a folder written by an older build (bare path) still reads — and '
+      'the path travels with its token, never apart', () {
+    // Q-scoped-folder-settings (유저 08-26 「알아서 맡김」 → A): the value
+    // is ONE thing on purpose. A bookmark stored as a second field could
+    // outlive the path it belongs to; travelling together makes a stale
+    // token unrepresentable.
+    final legacy = AppSaveSettings.fromJson(const {
+      'recordingsDirectory': r'D:\old\takes',
+    });
+    expect(
+      legacy.recordingsDirectory,
+      const GrantedDirectory(path: 'D:/old/takes'),
+      reason: 'the bare-string spelling reads as a token-less folder',
+    );
+    expect(GrantedDirectory.fromJson(''), isNull);
+    expect(GrantedDirectory.fromJson(const {'bookmark': 'T'}), isNull);
+  });
+
+  test('resolving reopens moved folders and leaves unresolvable ones '
+      'UNTOUCHED — unavailable is not deleted', () async {
+    FolderPicker.debugBookmarkResolver = (base64, kind) async =>
+        base64 == 'MOVED=='
+            ? const FolderGrant.granted(
+                path: '/mounted/conforms',
+                bookmark: 'FRESH==',
+              )
+            : const FolderGrant.unavailable();
+    addTearDown(() => FolderPicker.debugBookmarkResolver = null);
+
+    AppSave.settings.value = const AppSaveSettings(
+      recordingsDirectory: GrantedDirectory(
+        path: '/gone/takes',
+        bookmark: 'DEAD==',
+      ),
+      conformDirectory: GrantedDirectory(
+        path: '/old/conforms',
+        bookmark: 'MOVED==',
+      ),
+    );
+    addTearDown(() => AppSave.settings.value = const AppSaveSettings());
+
+    final resolved = await AppSave.resolveSettingsDirectories();
+    expect(resolved, isNotNull, reason: 'one folder moved');
+    expect(
+      resolved!.conformDirectory,
+      const GrantedDirectory(path: '/mounted/conforms', bookmark: 'FRESH=='),
+    );
+    expect(
+      resolved.recordingsDirectory,
+      const GrantedDirectory(path: '/gone/takes', bookmark: 'DEAD=='),
+      reason: 'the provider may simply not be signed in yet — the setting '
+          'still names what the user meant',
+    );
+
+    // Nothing to resolve, nothing to store.
+    AppSave.settings.value = resolved;
+    FolderPicker.debugBookmarkResolver = (base64, kind) async =>
+        FolderGrant.granted(
+          path: base64 == 'FRESH==' ? '/mounted/conforms' : '/gone/takes',
+          bookmark: base64,
+        );
+    expect(await AppSave.resolveSettingsDirectories(), isNull);
   });
 
   test('a setting whose feature is gone is read and DROPPED', () {
@@ -151,7 +229,9 @@ void main() {
       filePath: '${directory.path}/save_settings.json',
     );
     expect(await store.load(), isNull);
-    const settings = AppSaveSettings(recordingsDirectory: '/takes');
+    const settings = AppSaveSettings(
+      recordingsDirectory: GrantedDirectory(path: '/takes'),
+    );
     await store.save(settings);
     expect(await store.load(), settings);
 

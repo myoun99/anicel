@@ -195,7 +195,7 @@ void main() {
   test('a custom recordings folder (desktop setting) replaces the '
       'default shelf', () {
     final custom = '${directory.path.replaceAll('\\', '/')}/my-takes';
-    AppSave.settings.value = AppSaveSettings(recordingsDirectory: custom);
+    AppSave.settings.value = AppSaveSettings(recordingsDirectory: GrantedDirectory(path: custom));
     final manager = session();
     final lane = manager.activeTrack.seLayers.first;
     expect(

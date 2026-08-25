@@ -3,6 +3,62 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import 'app_support_path.dart';
+import 'folder_grant.dart';
+
+/// A user-chosen folder plus the token that reopens it after a relaunch
+/// on the scoped platforms (Q-scoped-folder-settings, 유저 08-26 「알아서
+/// 맡김」 → A: bookmarks ride along, the project-grants machinery reused).
+///
+/// ONE value on purpose, not two parallel fields: a bookmark written
+/// beside its path can drift — a copyWith that moves the path and keeps
+/// the token is a grant for somewhere else, silently. Travelling
+/// together makes that unrepresentable.
+///
+/// On Windows/Linux/Android the [bookmark] is simply null — a real path
+/// keeps working on its own there, exactly like the project grants.
+@immutable
+class GrantedDirectory {
+  const GrantedDirectory({required this.path, this.bookmark});
+
+  final String path;
+  final String? bookmark;
+
+  /// A settings file's spelling: the bare path when there is no token
+  /// (byte-identical to what older builds wrote), a map when there is.
+  Object toJson() =>
+      bookmark == null ? path : {'path': path, 'bookmark': bookmark};
+
+  /// Reads both spellings; null for anything else (an older build's
+  /// reader treats the map as absent and falls back to the default —
+  /// a folder setting, not data, so that costs a re-pick at worst).
+  static GrantedDirectory? fromJson(Object? json) {
+    if (json is String && json.isNotEmpty) {
+      return GrantedDirectory(path: json.replaceAll('\\', '/'));
+    }
+    if (json is Map) {
+      final path = json['path'];
+      final bookmark = json['bookmark'];
+      if (path is String && path.isNotEmpty) {
+        return GrantedDirectory(
+          path: path.replaceAll('\\', '/'),
+          bookmark: bookmark is String && bookmark.isNotEmpty
+              ? bookmark
+              : null,
+        );
+      }
+    }
+    return null;
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is GrantedDirectory &&
+      other.path == path &&
+      other.bookmark == bookmark;
+
+  @override
+  int get hashCode => Object.hash(path, bookmark);
+}
 
 /// SAVE-1: the save/recovery policy (the 2026-07 저장 설계 확정).
 ///
@@ -52,11 +108,11 @@ class AppSaveSettings {
   /// guard's arithmetic is the ceiling's and stays that way.
   final int? periodicSnapshotMinutes;
 
-  /// Where a never-saved project's voice takes land; null/empty = the
-  /// app documents `Recordings` folder.
-  final String? recordingsDirectory;
+  /// Where a never-saved project's voice takes land; null = the app
+  /// documents `Recordings` folder.
+  final GrantedDirectory? recordingsDirectory;
 
-  /// Where audio conforms are cached; null/empty = the app support folder.
+  /// Where audio conforms are cached; null = the app support folder.
   ///
   /// This exists to place them on a PARTICULAR DEVICE'S disk — out of a
   /// cloud-synced folder, onto an SD card, onto a fast drive — because a
@@ -64,7 +120,7 @@ class AppSaveSettings {
   /// beside the project, which meant it synced with it. It is NOT a way to
   /// share a cache between machines: that trade spends gigabytes of
   /// transfer to save minutes of CPU.
-  final String? conformDirectory;
+  final GrantedDirectory? conformDirectory;
 
   static const Object _unset = Object();
 
@@ -78,16 +134,16 @@ class AppSaveSettings {
         : periodicSnapshotMinutes as int?,
     recordingsDirectory: identical(recordingsDirectory, _unset)
         ? this.recordingsDirectory
-        : recordingsDirectory as String?,
+        : recordingsDirectory as GrantedDirectory?,
     conformDirectory: identical(conformDirectory, _unset)
         ? this.conformDirectory
-        : conformDirectory as String?,
+        : conformDirectory as GrantedDirectory?,
   );
 
   Map<String, dynamic> toJson() => {
     'periodicSnapshotMinutes': periodicSnapshotMinutes,
-    'recordingsDirectory': recordingsDirectory,
-    'conformDirectory': conformDirectory,
+    'recordingsDirectory': recordingsDirectory?.toJson(),
+    'conformDirectory': conformDirectory?.toJson(),
   };
 
   /// `sidecarDirectory` left by an older build is READ AND DROPPED — the
@@ -106,8 +162,6 @@ class AppSaveSettings {
   /// that outlives its feature is a number the next reader has to work out
   /// is dead. What survives is the clock alone.
   static AppSaveSettings fromJson(Map<String, dynamic> json) {
-    final recordings = json['recordingsDirectory'];
-    final conforms = json['conformDirectory'];
     final interval =
         json['periodicSnapshotMinutes'] ?? json['autosaveIntervalMinutes'];
     return AppSaveSettings(
@@ -121,12 +175,12 @@ class AppSaveSettings {
               maxPeriodicSnapshotMinutes,
             )
           : null,
-      recordingsDirectory: recordings is String && recordings.isNotEmpty
-          ? recordings
-          : null,
-      conformDirectory: conforms is String && conforms.isNotEmpty
-          ? conforms
-          : null,
+      // Both spellings: the bare path older builds wrote, or the
+      // path+bookmark map this build writes on scoped platforms.
+      recordingsDirectory: GrantedDirectory.fromJson(
+        json['recordingsDirectory'],
+      ),
+      conformDirectory: GrantedDirectory.fromJson(json['conformDirectory']),
     );
   }
 
@@ -165,13 +219,17 @@ abstract final class AppSave {
   /// an app-support path: tests reach this through the production save and
   /// open wiring, and without the redirect a test run would drop snapshots
   /// into the real user's folder and read the ones left there.
-  static String recoveryPathFor(String projectFilePath) {
-    final name = encodeRecoveryFileName(projectFilePath);
+  static String recoveryPathFor(String projectFilePath) =>
+      '${recoveryDirectory()}/${encodeRecoveryFileName(projectFilePath)}';
+
+  /// The one folder recovery snapshots live in — what the Preferences
+  /// list enumerates and the abandoned-snapshot sweep walks.
+  static String recoveryDirectory() {
     if (Platform.environment['FLUTTER_TEST'] == 'true') {
       return '${Directory.systemTemp.path.replaceAll('\\', '/')}'
-          '/qa_test_recovery_$pid/$name';
+          '/qa_test_recovery_$pid';
     }
-    return appSupportFilePath('Recovery/$name');
+    return appSupportFilePath('Recovery');
   }
 
   /// Every place a recovery snapshot for [projectFilePath] may be found.
@@ -253,13 +311,53 @@ abstract final class AppSave {
   /// that sets one is asking for.
   static String get conformRootDirectory {
     final configured = settings.value.conformDirectory;
-    if (configured != null && configured.isNotEmpty) {
-      return configured.replaceAll('\\', '/');
+    if (configured != null) {
+      return configured.path;
     }
     if (Platform.environment['FLUTTER_TEST'] == 'true') {
       return '${Directory.systemTemp.path.replaceAll('\\', '/')}'
           '/qa_test_conform_$pid';
     }
     return appSupportFilePath('Conformed');
+  }
+
+  /// Re-establishes the settings folders' grants for THIS run, answering
+  /// the settings value the caller should store when a folder moved — or
+  /// null when nothing changed.
+  ///
+  /// Q-scoped-folder-settings (유저 08-26 「알아서 맡김」 → A): on macOS
+  /// the sandbox forgets a picked path at relaunch, so a setting that
+  /// stored only the path stayed on screen while every write quietly
+  /// failed. Resolving the bookmark reopens the scope (the same machinery
+  /// as the project grants) and follows a folder the user renamed.
+  ///
+  /// A bookmark that will not resolve leaves the stored value UNTOUCHED —
+  /// unavailable is not deleted (the provider may simply not be signed in
+  /// yet), and the path still names what the user meant.
+  static Future<AppSaveSettings?> resolveSettingsDirectories() async {
+    final current = settings.value;
+    Future<GrantedDirectory?> resolve(GrantedDirectory? directory) async {
+      final token = directory?.bookmark;
+      if (token == null) {
+        return directory;
+      }
+      final grant = await FolderPicker.resolveBookmark(token);
+      final path = grant.path;
+      if (!grant.isGranted || path == null) {
+        return directory;
+      }
+      return GrantedDirectory(path: path, bookmark: grant.bookmark ?? token);
+    }
+
+    final recordings = await resolve(current.recordingsDirectory);
+    final conforms = await resolve(current.conformDirectory);
+    if (recordings == current.recordingsDirectory &&
+        conforms == current.conformDirectory) {
+      return null;
+    }
+    return current.copyWith(
+      recordingsDirectory: recordings,
+      conformDirectory: conforms,
+    );
   }
 }

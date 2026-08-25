@@ -291,6 +291,21 @@ class _HomePageState extends State<HomePage> {
     // the interval rebuild it; the settings notifier is the one source.
     _syncAutosaveService();
     AppSave.settings.addListener(_syncAutosaveService);
+    // Q-recovery-gc (유저 08-26: 「30일좋고」): snapshots whose project was
+    // deleted or moved outside the app miss all three retirement moments
+    // and would otherwise pile up in the app container for ever. Once per
+    // launch, here, because this page is what makes snapshots exist at all.
+    ProjectAutosaveService.sweepAbandonedRecovery();
+    // Q-scoped-folder-settings: reopen the folder settings' scopes for
+    // this run (macOS forgets them at relaunch); stored only when a
+    // folder actually moved, through the one settings write path.
+    unawaited(
+      AppSave.resolveSettingsDirectories().then((resolved) {
+        if (resolved != null && mounted) {
+          _session.setSaveSettings(resolved);
+        }
+      }),
+    );
     GestureBinding.instance.pointerRouter.addGlobalRoute(_noteUserActivity);
     _lifecycle = AppLifecycleListener(
       onExitRequested: _handleExitRequested,

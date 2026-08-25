@@ -299,6 +299,13 @@ class AppStrings {
   // --- Project lifecycle confirmations ---
   String get recoverAutosaveTitle => _s('recoverAutosaveTitle');
   String get recoverAutosaveBody => _s('recoverAutosaveBody');
+
+  /// The Preferences snapshot list's delete confirmation. `{n}` is the
+  /// selected count. A snapshot can be the only copy of unsaved crash
+  /// work, so unlike the conform cache this delete DOES ask.
+  String get recoveryDeleteTitle => _s('recoveryDeleteTitle');
+  String get recoveryDeleteMessageTemplate =>
+      _s('recoveryDeleteMessageTemplate');
   /// The button that does NOT recover — and deletes the snapshot doing it.
   ///
   /// The label carries the verb on its own, because [recoverOpenSavedHint]
@@ -1123,6 +1130,10 @@ class AppStrings {
     'guideVanishingPointAtInfinity': 'Parallel (at infinity)',
     'guideAddVanishingPoint': 'Add vanishing point',
     'guideMakeVertical': 'Make exactly vertical',
+    'recoveryDeleteTitle': 'Delete recovery snapshots',
+    'recoveryDeleteMessageTemplate':
+        '{n} snapshots hold work that was never saved to a project file. '
+        'Deleted, that work cannot be restored.',
     'recoverAutosaveTitle': 'Recover autosaved changes?',
     'recoverAutosaveBody':
         'A newer autosave exists for this project. Recover it, or open the '

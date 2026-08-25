@@ -160,6 +160,8 @@ void main() {
     'guideMakeVertical': (s) => s.guideMakeVertical,
     'recoverAutosaveTitle': (s) => s.recoverAutosaveTitle,
     'recoverAutosaveBody': (s) => s.recoverAutosaveBody,
+    'recoveryDeleteTitle': (s) => s.recoveryDeleteTitle,
+    'recoveryDeleteMessageTemplate': (s) => s.recoveryDeleteMessageTemplate,
     'recoverOpenSaved': (s) => s.recoverOpenSaved,
     'recoverOpenSavedHint': (s) => s.recoverOpenSavedHint,
     'recoverAction': (s) => s.recoverAction,

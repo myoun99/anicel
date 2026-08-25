@@ -3,6 +3,32 @@ import 'dart:io';
 
 import 'app_save_settings.dart';
 
+/// One recovery snapshot on disk — a row of the Preferences list.
+class RecoverySnapshotInfo {
+  const RecoverySnapshotInfo({
+    required this.path,
+    required this.projectName,
+    required this.projectPath,
+    required this.modified,
+    required this.bytes,
+  });
+
+  /// The snapshot file itself.
+  final String path;
+
+  /// The project's file name, decoded out of the snapshot's name
+  /// (`basename.<hash>.autosave`).
+  final String projectName;
+
+  /// The full project path when a known project still maps to this
+  /// snapshot; null for an orphan — the file name holds only a hash of
+  /// the path, so once nothing remembers the path there is no way back.
+  final String? projectPath;
+
+  final DateTime modified;
+  final int bytes;
+}
+
 /// Autosave (P3): a DIRTY session's work is snapshotted into the app's
 /// recovery folder on the periodic tick — F-1 (유저 2026-08-26) made the
 /// clock the ONLY trigger (「심플하게 명시적저장 / n분주기 자동저장만」).
@@ -130,6 +156,103 @@ class ProjectAutosaveService {
       // A locked sidecar (cloud sync mid-upload) is harmless — recovery
       // compares timestamps.
     }
+  }
+
+  /// Every recovery snapshot in the app's Recovery folder, newest first —
+  /// the Preferences list (유저 08-26: 「스냅샷 눈으로 볼수있게 설정같은데서
+  /// … 위치나 수정날짜같은거 다 있고 거기서 여러개 선택해서 삭제」).
+  ///
+  /// [knownProjectPaths] (the recent-projects list) is what resolves a
+  /// snapshot back to its project's location; a snapshot no path maps to
+  /// shows its decoded project NAME only.
+  static List<RecoverySnapshotInfo> listRecoverySnapshots({
+    required Iterable<String> knownProjectPaths,
+  }) {
+    final directory = Directory(AppSave.recoveryDirectory());
+    if (!directory.existsSync()) {
+      return const [];
+    }
+    final pathBySnapshot = {
+      for (final path in knownProjectPaths)
+        AppSave.recoveryPathFor(path): path,
+    };
+    final rows = <RecoverySnapshotInfo>[];
+    for (final entity in directory.listSync(followLinks: false)) {
+      if (entity is! File) {
+        continue;
+      }
+      final path = entity.path.replaceAll('\\', '/');
+      // `.tmp-<micros>` temps are a write in flight (or that write's
+      // corpse — the sweep takes those), not snapshots to offer.
+      if (!path.endsWith('.autosave')) {
+        continue;
+      }
+      final stat = FileStat.statSync(path);
+      if (stat.type == FileSystemEntityType.notFound) {
+        continue;
+      }
+      final name = path.split('/').last;
+      final trimmed = name.substring(0, name.length - '.autosave'.length);
+      final dot = trimmed.lastIndexOf('.');
+      rows.add(
+        RecoverySnapshotInfo(
+          path: path,
+          projectName: dot <= 0 ? trimmed : trimmed.substring(0, dot),
+          projectPath: pathBySnapshot[path],
+          modified: stat.modified,
+          bytes: stat.size,
+        ),
+      );
+    }
+    rows.sort((a, b) => b.modified.compareTo(a.modified));
+    return rows;
+  }
+
+  /// Deletes everything in the Recovery folder not modified for
+  /// [olderThan] — 유저 결정 08-26 (Q-recovery-gc: 「30일좋고」).
+  ///
+  /// A snapshot's normal deaths are the three retirement moments of its
+  /// OWN project; a project deleted or moved outside the app strands its
+  /// snapshot past all three, for ever. Of the surveyed pro tools the
+  /// invisible stores either never clean (Word's crash store, CSP's
+  /// recovery leftovers — the multi-gigabyte cautionary tale) or wipe on
+  /// every clean exit (Photoshop, whose snapshots are self-contained);
+  /// the time-based precedents are Word's unsaved drafts (4 days) and
+  /// Final Cut (a few days). 30 days is far more conservative than
+  /// either, and our snapshot is a DELTA — without its base it could
+  /// only ever restore partial work, so an aged orphan protects almost
+  /// nothing to begin with.
+  ///
+  /// Age takes the write temps too: the post-rename sweep only runs on a
+  /// later write of the SAME project, which an abandoned project never
+  /// gets. Returns how many files went.
+  static int sweepAbandonedRecovery({
+    Duration olderThan = const Duration(days: 30),
+    DateTime? now,
+  }) {
+    final directory = Directory(AppSave.recoveryDirectory());
+    if (!directory.existsSync()) {
+      return 0;
+    }
+    final cutoff = (now ?? DateTime.now()).subtract(olderThan);
+    var swept = 0;
+    for (final entity in directory.listSync(followLinks: false)) {
+      if (entity is! File) {
+        continue;
+      }
+      final stat = FileStat.statSync(entity.path);
+      if (stat.type == FileSystemEntityType.notFound ||
+          !stat.modified.isBefore(cutoff)) {
+        continue;
+      }
+      try {
+        entity.deleteSync();
+        swept += 1;
+      } catch (_) {
+        // Locked by a sync client or an open handle: next launch retries.
+      }
+    }
+    return swept;
   }
 
   /// Whether [sidecarPath] holds a same-or-newer snapshot than [filePath]

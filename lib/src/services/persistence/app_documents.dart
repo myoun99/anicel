@@ -38,8 +38,8 @@ String appDocumentsDirectory() {
 /// setting.
 String appRecordingsDirectory() {
   final custom = AppSave.settings.value.recordingsDirectory;
-  if (custom != null && custom.isNotEmpty) {
-    return custom.replaceAll('\\', '/');
+  if (custom != null) {
+    return custom.path;
   }
   return '${appDocumentsDirectory()}/Recordings';
 }

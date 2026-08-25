@@ -16,6 +16,9 @@ import '../../services/audio/audio_mixer_reference.dart' show AudioMixSource;
 import '../../services/export/xdts_builder.dart';
 import '../../services/persistence/app_export_settings.dart';
 import '../../services/persistence/app_export_settings_store.dart';
+import '../../services/persistence/app_save_settings.dart'
+    show GrantedDirectory;
+import '../../services/persistence/folder_grant.dart' show FolderPicker;
 import '../editor_session_manager.dart';
 import '../../models/attached_layer_resolve.dart'
     show attachedLayersOf, isAttachedLayer;
@@ -116,8 +119,27 @@ class ExportDialogState extends State<ExportDialog> {
   ExportTab _tab = ExportTab.sequence;
   late ExportTabSpecs _specs;
   String? _location;
+
+  /// The security-scoped token for [_location], when the OS issued one
+  /// (macOS/iOS). Persisted with the path so the replayed location can be
+  /// WRITTEN to after a relaunch, not just displayed
+  /// (Q-scoped-folder-settings, 유저 08-26).
+  ///
+  /// ⚠️ The pair moves through [_setLocation] ONLY. Written separately
+  /// they drift, and a bookmark that outlived its path is a grant for
+  /// somewhere else — jobs carry bare paths, so the setter is what
+  /// decides the token's fate on every move.
+  String? _locationBookmark;
   bool _presetsOpen = true;
   bool _queueOpen = true;
+
+  /// See [_locationBookmark] — the one door the pair moves through.
+  /// A path with no [bookmark] (a queue job replay, the test seam)
+  /// clears the token: better to re-ask than to write somewhere else.
+  void _setLocation(String? path, {String? bookmark}) {
+    _location = path;
+    _locationBookmark = bookmark;
+  }
   final Map<String, bool> _expanded = {};
   final ExportQueueModel _queue = ExportQueueModel();
 
@@ -169,7 +191,10 @@ class ExportDialogState extends State<ExportDialog> {
     _anchorCut = _session.exportAnchorCutOrNull;
     final restored = AppExport.settings.value;
     _specs = restored.lastSpecs;
-    _location = restored.lastLocation;
+    _setLocation(
+      restored.lastLocation?.path,
+      bookmark: restored.lastLocation?.bookmark,
+    );
     _presetsOpen = restored.presetsDrawerOpen;
     _queueOpen = restored.queueDrawerOpen;
     final projectName = sanitizeExportFileComponent(
@@ -220,11 +245,37 @@ class ExportDialogState extends State<ExportDialog> {
     AppExport.settings.value = loaded;
     setState(() {
       _specs = loaded.lastSpecs;
-      _location = loaded.lastLocation ?? _location;
+      final location = loaded.lastLocation;
+      if (location != null) {
+        _setLocation(location.path, bookmark: location.bookmark);
+      }
       _presetsOpen = loaded.presetsDrawerOpen;
       _queueOpen = loaded.queueDrawerOpen;
       _syncControllersFromSpecs();
     });
+    unawaited(_resolveLocationGrant());
+  }
+
+  /// Reopens the replayed location's scope for this run — on macOS a
+  /// stored path without its resolved bookmark is refused at the first
+  /// write, silently. Follows a folder the user renamed, and persists
+  /// only when something actually moved. A token that will not resolve
+  /// leaves the pair untouched (unavailable is not deleted).
+  Future<void> _resolveLocationGrant() async {
+    final token = _locationBookmark;
+    if (token == null) {
+      return;
+    }
+    final grant = await FolderPicker.resolveBookmark(token);
+    final path = grant.path;
+    if (!mounted || !grant.isGranted || path == null) {
+      return;
+    }
+    final moved = path != _location;
+    setState(() => _setLocation(path, bookmark: grant.bookmark ?? token));
+    if (moved) {
+      _persist();
+    }
   }
 
   @override
@@ -269,9 +320,12 @@ class ExportDialogState extends State<ExportDialog> {
   // --- state plumbing -------------------------------------------------------
 
   void _persist() {
+    final location = _location;
     final next = AppExport.settings.value.copyWith(
       lastSpecs: _specs,
-      lastLocation: _location,
+      lastLocation: location == null
+          ? null
+          : GrantedDirectory(path: location, bookmark: _locationBookmark),
       presetsDrawerOpen: _presetsOpen,
       queueDrawerOpen: _queueOpen,
     );
@@ -784,7 +838,7 @@ class ExportDialogState extends State<ExportDialog> {
   /// Test seam: sets the destination without the platform picker.
   @visibleForTesting
   void debugSetLocationForTests(String location) {
-    setState(() => _location = location);
+    setState(() => _setLocation(location));
   }
 
   String _sequenceFileNameFor(int index) {
@@ -1510,7 +1564,7 @@ class ExportDialogState extends State<ExportDialog> {
     setState(() {
       _tab = job.tab;
       _specs = _specs.withSpec(job.spec);
-      _location = job.outputDirectory;
+      _setLocation(job.outputDirectory);
       final controller = _fileControllerFor(job.tab);
       final fileName = job.fileName;
       if (controller != null && fileName != null) {
@@ -1543,6 +1597,7 @@ class ExportDialogState extends State<ExportDialog> {
     final snapshotTab = _tab;
     final snapshotSpecs = _specs;
     final snapshotLocation = _location;
+    final snapshotLocationBookmark = _locationBookmark;
     setState(() {
       _isExporting = true;
       _cancelRequested = false;
@@ -1564,7 +1619,7 @@ class ExportDialogState extends State<ExportDialog> {
         setState(() {
           _tab = job.tab;
           _specs = _specs.withSpec(job.spec);
-          _location = job.outputDirectory;
+          _setLocation(job.outputDirectory);
           final controller = _fileControllerFor(job.tab);
           final fileName = job.fileName;
           if (controller != null && fileName != null) {
@@ -1608,7 +1663,7 @@ class ExportDialogState extends State<ExportDialog> {
           _progress = null;
           _tab = snapshotTab;
           _specs = snapshotSpecs;
-          _location = snapshotLocation;
+          _setLocation(snapshotLocation, bookmark: snapshotLocationBookmark);
           _syncControllersFromSpecs();
           _statusMessage =
               'Queue: $succeeded ${_plural(succeeded, 'job')} done'
@@ -2069,13 +2124,24 @@ class ExportDialogState extends State<ExportDialog> {
     // on the next launch, so it has to be a durable real path. `getDirectoryPath`
     // gave a SAF tree URI on Android and threw on iOS — either way the stored
     // value would come back a dead location one session later.
-    final directory = widget.exportDirectoryPicker != null
-        ? await widget.exportDirectoryPicker!()
-        : await pickFolderForUser(context);
-    if (directory == null || !mounted) {
+    if (widget.exportDirectoryPicker != null) {
+      final directory = await widget.exportDirectoryPicker!();
+      if (directory == null || !mounted) {
+        return;
+      }
+      setState(() => _setLocation(directory));
+      _persist();
       return;
     }
-    setState(() => _location = directory);
+    // The GRANT flavour: `lastLocation` is replayed at the next launch,
+    // and on macOS a stored path without its token is refused at the
+    // first write there (Q-scoped-folder-settings, 유저 08-26).
+    final grant = await pickFolderGrantForUser(context);
+    final path = grant?.path;
+    if (path == null || !mounted) {
+      return;
+    }
+    setState(() => _setLocation(path, bookmark: grant!.bookmark));
     _persist();
   }
 

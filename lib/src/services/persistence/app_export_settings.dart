@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/export_preset.dart';
 import '../../models/export_spec.dart';
+import 'app_save_settings.dart' show GrantedDirectory;
 
 /// APP-side export UI state (출력 UI v10): the per-tab presets, the last
 /// used spec per tab, the last output location and the drawer states.
@@ -20,8 +21,10 @@ class AppExportSettings {
   final List<ExportPreset> presets;
   final ExportTabSpecs lastSpecs;
 
-  /// The last chosen output directory; null until the first export.
-  final String? lastLocation;
+  /// The last chosen output directory; null until the first export. The
+  /// bookmark half is what lets the replayed location be WRITTEN to
+  /// after a relaunch on macOS (Q-scoped-folder-settings, 유저 08-26).
+  final GrantedDirectory? lastLocation;
 
   final bool presetsDrawerOpen;
   final bool queueDrawerOpen;
@@ -44,7 +47,7 @@ class AppExportSettings {
     lastSpecs: lastSpecs ?? this.lastSpecs,
     lastLocation: identical(lastLocation, _unset)
         ? this.lastLocation
-        : lastLocation as String?,
+        : lastLocation as GrantedDirectory?,
     presetsDrawerOpen: presetsDrawerOpen ?? this.presetsDrawerOpen,
     queueDrawerOpen: queueDrawerOpen ?? this.queueDrawerOpen,
   );
@@ -52,14 +55,13 @@ class AppExportSettings {
   Map<String, dynamic> toJson() => {
     'presets': [for (final preset in presets) preset.toJson()],
     'lastSpecs': lastSpecs.toJson(),
-    if (lastLocation != null) 'lastLocation': lastLocation,
+    if (lastLocation != null) 'lastLocation': lastLocation!.toJson(),
     if (!presetsDrawerOpen) 'presetsDrawerOpen': false,
     if (!queueDrawerOpen) 'queueDrawerOpen': false,
   };
 
   static AppExportSettings fromJson(Map<String, dynamic> json) {
     final rawPresets = json['presets'] as List<dynamic>? ?? const [];
-    final location = json['lastLocation'];
     return AppExportSettings(
       presets: [
         for (final preset in rawPresets)
@@ -68,9 +70,8 @@ class AppExportSettings {
       lastSpecs: json['lastSpecs'] == null
           ? const ExportTabSpecs()
           : ExportTabSpecs.fromJson(json['lastSpecs'] as Map<String, dynamic>),
-      lastLocation: location is String && location.isNotEmpty
-          ? location
-          : null,
+      // Both spellings: the bare path older builds wrote, or path+bookmark.
+      lastLocation: GrantedDirectory.fromJson(json['lastLocation']),
       presetsDrawerOpen: json['presetsDrawerOpen'] as bool? ?? true,
       queueDrawerOpen: json['queueDrawerOpen'] as bool? ?? true,
     );

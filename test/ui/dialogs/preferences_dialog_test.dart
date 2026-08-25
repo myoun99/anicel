@@ -152,6 +152,12 @@ void main() {
       reason: 'and inert — a null onChanged dims it and refuses input',
     );
 
+    // Scrolled back into view first: the section has grown below (the
+    // recovery-snapshot list), and a tap that misses records nothing.
+    await tester.ensureVisible(
+      find.byKey(const ValueKey<String>('settings-autosave-enabled')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey<String>('settings-autosave-enabled')),
     );
@@ -212,7 +218,9 @@ void main() {
     );
 
     session.setSaveSettings(
-      AppSave.settings.value.copyWith(recordingsDirectory: '/tmp/takes'),
+      AppSave.settings.value.copyWith(
+        recordingsDirectory: const GrantedDirectory(path: '/tmp/takes'),
+      ),
     );
     await tester.pumpAndSettle();
     expect(tester.widget<Text>(recordingsPath).data, '/tmp/takes');
