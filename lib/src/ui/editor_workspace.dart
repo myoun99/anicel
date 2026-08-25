@@ -2558,6 +2558,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
             valueListenable: widget.session.onionSkinSettings,
             builder: (context, settings, _) => OnionSkinPanel(
               settings: settings,
+              currentColorOf: () => _brushTool.value.color,
               onChanged: (next) =>
                   widget.session.onionSkinSettings.value = next,
             ),

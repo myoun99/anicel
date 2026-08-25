@@ -30,10 +30,15 @@ class OnionSkinPanel extends StatelessWidget {
     super.key,
     required this.settings,
     required this.onChanged,
+    required this.currentColorOf,
   });
 
   final OnionSkinSettings settings;
   final ValueChanged<OnionSkinSettings> onChanged;
+
+  /// The tool's colour, for the picker's 「현재 색 반영」 — see
+  /// [ColorSwatchButton.currentColorOf] for why it is a callback.
+  final int Function() currentColorOf;
 
   static String _stepLabel(OnionSkinStep step) => switch (step) {
     OnionSkinStep.blocks => 'Blocks',
@@ -115,18 +120,18 @@ class OnionSkinPanel extends StatelessWidget {
                 const SizedBox(width: 8),
                 ColorSwatchButton(
                   keyValue: 'onion-tint-before',
-                  title: AppText.strings.onionBefore,
                   tooltip: AppText.strings.onionBeforeTint,
                   color: settings.tintBefore,
+                  currentColorOf: currentColorOf,
                   onChanged: (color) =>
                       onChanged(settings.copyWith(tintBefore: color)),
                 ),
                 const SizedBox(width: 6),
                 ColorSwatchButton(
                   keyValue: 'onion-tint-after',
-                  title: AppText.strings.onionAfter,
                   tooltip: AppText.strings.onionAfterTint,
                   color: settings.tintAfter,
+                  currentColorOf: currentColorOf,
                   onChanged: (color) =>
                       onChanged(settings.copyWith(tintAfter: color)),
                 ),

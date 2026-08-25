@@ -45,10 +45,14 @@ class ColorSlotPair extends StatelessWidget {
         key: ValueKey<String>(key),
         width: _slot,
         height: _slot,
+        // 🚨F-23 (유저 2026-08-24): 「앞으로 그런 **색 보여주는건 싹 다 일반
+        // 동그라미로 변경**」 — the canvas swatch was already a circle, this
+        // pair and the readout's chip were rounded rectangles, and three
+        // shapes for one meaning is the report.
         decoration: BoxDecoration(
           color: color,
           border: Border.all(color: colorScheme.outlineVariant),
-          borderRadius: BorderRadius.circular(4),
+          shape: BoxShape.circle,
         ),
       );
     }

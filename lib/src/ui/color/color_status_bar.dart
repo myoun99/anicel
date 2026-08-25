@@ -121,9 +121,11 @@ class _ColorStatusBarState extends State<ColorStatusBar> {
             key: const ValueKey<String>('color-status-swatch'),
             width: 14,
             height: 14,
+            // F-23: a chip that shows a colour is a circle, here as
+            // everywhere ([ColorSlotPair] carries the whole reason).
             decoration: BoxDecoration(
               color: Color(widget.color),
-              borderRadius: BorderRadius.circular(3),
+              shape: BoxShape.circle,
               border: Border.all(color: colorScheme.outlineVariant),
             ),
           ),
