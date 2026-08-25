@@ -1642,13 +1642,19 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     final rangeGesture = rangeHooks == null
         ? null
         : TimelineRangeGestureCallbacks(
-            // Every row this grid mounts is a LAYER row, so the address
-            // resolves back to a layer id at this one seam.
+            // WHICH LAYER the pressed row belongs to — a lane row answers
+            // with the layer it sits inside ([TimelineRowAddress.owningLayerId]).
+            //
+            // 🚨F-5/C3-lane-move: this read `row is LayerRowAddress`, so a lane
+            // row was never "inside" the selection it was visibly inside, and
+            // the press that should have started a MOVE fell through to the
+            // select path and silently redrew the band.
             isInSelection: (row, frameIndex) {
               final selection = rangeHooks.selection.value;
-              return row is LayerRowAddress &&
+              final layerId = row.owningLayerId;
+              return layerId != null &&
                   selection != null &&
-                  selection.coversLayer(row.layerId) &&
+                  selection.coversLayer(layerId) &&
                   selection.contains(frameIndex);
             },
             // Cross-row select (UI-R17 #8): the gesture's row delta maps
@@ -1670,11 +1676,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
               // here is how the transition clone and the lane rows came to
               // be unanchorable one kind at a time (유저 2026-08-12: 「헤더니까
               // 뭐 다르게한다거나 제발좀 절대로좀 그만좀하자」).
-              final layerId = switch (row) {
-                LayerRowAddress(:final layerId) => layerId,
-                LaneRowAddress(:final layerId) => layerId,
-                TrackRowAddress() => null,
-              };
+              final layerId = row.owningLayerId;
               if (layerId == null) {
                 return;
               }
@@ -1712,8 +1714,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
               );
             },
             onTapClear: (_) => rangeHooks.onClear(),
-            onMoveBegin: (row, _) =>
-                row is LayerRowAddress && _rangeMoveResolver.begin(row.layerId),
+            // A lane row begins the move of the layer it belongs to — the
+            // fallback [LaneRowAddress] documents. Refusing here is what made
+            // "grab the band on an fx row" do nothing at all.
+            onMoveBegin: (row, _) {
+              final layerId = row.owningLayerId;
+              return layerId != null && _rangeMoveResolver.begin(layerId);
+            },
             onMoveUpdate: _rangeMoveResolver.update,
             onMoveEnd: _rangeMoveResolver.end,
             onMoveCancel: _rangeMoveResolver.cancel,
