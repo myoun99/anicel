@@ -191,11 +191,16 @@ abstract final class AppSave {
     String? newest;
     DateTime? newestModified;
     for (final candidate in recoveryCandidatesFor(projectFilePath)) {
-      final file = File(candidate);
-      if (!file.existsSync()) {
+      // ONE stat, not exists-then-mtime: the legacy beside-the-file
+      // candidate lives in the user's (possibly cloud-synced) folder, and a
+      // file a sync client prunes between the two calls would throw out of
+      // the open flow before its try. statSync never throws — a vanished or
+      // unreadable candidate simply reports notFound.
+      final stat = FileStat.statSync(candidate);
+      if (stat.type == FileSystemEntityType.notFound) {
         continue;
       }
-      final modified = file.lastModifiedSync();
+      final modified = stat.modified;
       if (newestModified == null || modified.isAfter(newestModified)) {
         newest = candidate;
         newestModified = modified;

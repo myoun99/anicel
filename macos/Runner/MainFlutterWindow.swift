@@ -66,15 +66,16 @@ class PenSidecarStreamHandler: NSObject, FlutterStreamHandler {
 /// macOS looks like Windows and behaves like iPadOS. It runs sandboxed
 /// (`com.apple.security.app-sandbox` in both entitlement files), so a panel
 /// selection extends the sandbox to EXACTLY the item picked and to nothing
-/// beside it. A project is `<name>.anicel` plus a sibling `<name>.assets/`
-/// directory plus an autosave sidecar written every five minutes — so
-/// picking the project FILE grants the one item that cannot be saved, and
-/// the folder is the unit of permission for a PROJECT exactly as on iPad.
+/// beside it. Since the single-file format a project is ONE `.anicel` and
+/// its recovery overlay lives in the app container, so the file itself is
+/// the unit of permission for a PROJECT (PICK-6) — every save appends into
+/// exactly the item picked. Folder mode remains for the folder-shaped picks
+/// (cut-folder import, sequence export, the recordings directory, relink).
 ///
-/// A referenced MEDIA file is the other case and it wants the opposite: the
-/// file is the whole of what the project needs, it is not written to, and
-/// asking the user to grant its containing folder would be asking for more
-/// than the job needs. Hence two modes over one grant vocabulary.
+/// A referenced MEDIA file wants the same file-shaped grant for the
+/// opposite reason: it is not written to, and asking the user to grant its
+/// containing folder would be asking for more than the job needs. Hence two
+/// modes over one grant vocabulary.
 ///
 /// The two entitlements this needs are `files.user-selected.read-write` (or
 /// the panel opens and every read of its result fails) and
@@ -86,7 +87,7 @@ final class PathGrantHandler {
   /// Items this process holds a scope on, keyed by path — FILES as well as
   /// folders since PICK-5. Nothing removes entries — see the iOS twin for
   /// why: stopping a scope mid-session would pull the floor out from under
-  /// an open project's autosave.
+  /// the open project's own saves and carried-media reads.
   private var scopedItems: [String: URL] = [:]
 
   func handle(

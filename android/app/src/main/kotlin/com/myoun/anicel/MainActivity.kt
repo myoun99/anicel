@@ -74,12 +74,12 @@ class MainActivity : FlutterActivity() {
     // into a REAL PATH.
     //
     // ACTION_OPEN_DOCUMENT_TREE returns a SAF tree Uri, and this app is
-    // built on real paths end to end: incremental saves rewrite a ZIP's
-    // central directory in place, the autosave sidecar is a sibling file,
-    // and <project>.assets/ is a real directory tree. None of that survives
-    // a content:// Uri. So the tree is used as a LOCATION CHOOSER only - the
-    // system UI picks the folder, and the existing MANAGE_EXTERNAL_STORAGE
-    // grant is what actually opens it.
+    // built on real paths end to end: incremental saves rewrite the single
+    // `.anicel` ZIP's central directory in place, and carried-media reads
+    // seek into it by offset. None of that survives a content:// Uri. So
+    // the tree is used as a LOCATION CHOOSER only - the system UI picks the
+    // folder, and the existing MANAGE_EXTERNAL_STORAGE grant is what
+    // actually opens it.
     //
     // When no real path exists behind the choice (Drive and other document
     // providers), that is reported rather than papered over: a project saved

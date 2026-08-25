@@ -32,9 +32,10 @@ String appDocumentsDirectory() {
 /// REC1-B2: the take shelf — where a never-saved project's voice takes
 /// land. A folder ordinary file managers show (`Recordings` under the
 /// app documents home, the DAW convention), NOT the hidden OS temp: a
-/// discarded session leaves its takes findable. The first real save
-/// moves a project's referenced takes into its `Media/`; a custom shelf
-/// is a desktop-only setting.
+/// discarded session leaves its takes findable. Nothing ever moves off
+/// the shelf — takes are carried, so the save absorbs their bytes into
+/// the archive from wherever they sit. A custom shelf is a desktop-only
+/// setting.
 String appRecordingsDirectory() {
   final custom = AppSave.settings.value.recordingsDirectory;
   if (custom != null && custom.isNotEmpty) {

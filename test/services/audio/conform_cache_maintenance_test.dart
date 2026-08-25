@@ -98,6 +98,13 @@ void main() {
     );
   });
 
+  test('the SHIPPED budget is 2GB', () {
+    // Every prune in this file injects its budget, so only this line reads
+    // what production actually enforces — without it, a fat-fingered
+    // constant (2MB, 2TB) keeps every suite green.
+    expect(conformCacheBudgetBytes, 2 * 1024 * 1024 * 1024);
+  });
+
   test('an absent cache measures zero rather than throwing', () {
     // The first run of a fresh install, and every run before any audio is
     // imported. Preferences asks for this number on open.

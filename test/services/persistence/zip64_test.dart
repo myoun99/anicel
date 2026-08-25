@@ -49,6 +49,13 @@ void main() {
     // should say which value it is depending on.
     setUp(() => anicelAlwaysZip64 = true);
 
+    test('the SHIPPED default is always-ZIP64', () {
+      // The mutable switch is reset by the test config, so only the const
+      // mirror can pin what production actually starts with — without
+      // this, flipping the shipped default keeps every suite green.
+      expect(anicelAlwaysZip64Shipped, isTrue);
+    });
+
     test('a three-entry archive round-trips through the ZIP64 records', () {
       final path = '${temp.path}/tiny64.anicel';
       writeAnicelArchiveFile(path: path, entries: manyEntries(3));

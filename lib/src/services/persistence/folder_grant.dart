@@ -376,18 +376,23 @@ abstract final class FolderPicker {
       try {
         // `initialDirectory` is a desktop hint only — the Apple pickers
         // reopen wherever the user last was, which is the behaviour Files
-        // trains them to expect.
-        final picked = allowMultiple
-            ? await file_selector.openFiles(
-                acceptedTypeGroups: acceptedTypeGroups,
-                initialDirectory: initialDirectory,
-              )
-            : <file_selector.XFile?>[
-                await file_selector.openFile(
+        // trains them to expect. Under the same F-14 hint rule as the
+        // other three dialogs ([askingAgainWithoutHint]): a hint the
+        // platform refuses must not read as "no picker" on the OPEN door.
+        final picked = await askingAgainWithoutHint(
+          (hint) async => allowMultiple
+              ? await file_selector.openFiles(
                   acceptedTypeGroups: acceptedTypeGroups,
-                  initialDirectory: initialDirectory,
-                ),
-              ].whereType<file_selector.XFile>().toList();
+                  initialDirectory: hint,
+                )
+              : <file_selector.XFile?>[
+                  await file_selector.openFile(
+                    acceptedTypeGroups: acceptedTypeGroups,
+                    initialDirectory: hint,
+                  ),
+                ].whereType<file_selector.XFile>().toList(),
+          initialDirectory,
+        );
         if (picked.isEmpty) {
           return const [FolderGrant.cancelled()];
         }

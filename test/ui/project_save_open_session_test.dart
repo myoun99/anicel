@@ -13,7 +13,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// P3 through the session: save/open round-trip, the load→edit→undo
 /// lifecycle (both undo stacks clear on load), the dirty flag and the
-/// autosave sidecar.
+/// recovery overlay.
 void main() {
   late Directory directory;
 
@@ -190,15 +190,54 @@ void main() {
     expect(sidecar.existsSync(), isFalse);
   });
 
-  test('recovery opens the SIDECAR bytes under the real file path and '
-      'stays dirty until saved', () async {
+  test('recovery lays the snapshot OVER the real file — the saved drawing '
+      'survives, and the session stays dirty until saved', () async {
+    // The modern route (`overlayPath:`), not the legacy `recoverAs:` arm —
+    // a snapshot is a DELTA now, and this test once fed one through the
+    // whole-archive arm with a drawing-free fixture, which could not see
+    // that opening a delta AS the project drops every base cel.
     final s = EditorSessionManager(initialProject: createDefaultProject());
+    // A real drawn cel in the BASE — the thing recovery must not lose.
+    s.createDrawingAtCurrentFrame();
+    final selection = s.activeBrushEditorSelection!;
+    final drawnKey = s.brushFrameKeyForCut(
+      s.requireActiveCut,
+      selection.layerId,
+      selection.frameId,
+    );
+    BrushFrameEditingCoordinator(
+      initialFrameKey: drawnKey,
+      frameStore: s.brushFrameStore,
+      sessionStore: BrushFrameEditSessionStore(
+        canvasSize: s.requireActiveCut.canvasSize,
+        tileSize: 256,
+      ),
+      historyPolicy: const BrushHistoryPolicy(
+        userUndoLimit: 8,
+        deferredBakeRatio: 0,
+      ),
+    ).commitSourceStroke(
+      sourceDabs: [
+        BrushDab(
+          center: CanvasPoint(x: 10, y: 10),
+          color: 0xFF000000,
+          size: 4,
+          opacity: 1,
+          flow: 1,
+          hardness: 1,
+          tipShape: BrushTipShape.round,
+          pressure: 1,
+          sequence: 0,
+        ),
+      ],
+    );
     final path = '${directory.path}/scene.anicel';
     await s.saveProjectToFile(path);
 
-    // A newer autosave with one extra cut.
+    // A newer snapshot with one extra cut.
     s.createCut();
-    await s.writeAutosaveSnapshot('$path.autosave');
+    final overlay = '${directory.path}/scene.recovery';
+    await s.writeAutosaveSnapshot(overlay);
     final recoveredCutCount = s.repository
         .requireProject()
         .tracks
@@ -207,12 +246,18 @@ void main() {
         .length;
 
     final fresh = EditorSessionManager(initialProject: createDefaultProject());
-    await fresh.openProjectFromFile('$path.autosave', recoverAs: path);
+    await fresh.openProjectFromFile(path, overlayPath: overlay);
     expect(
       fresh.repository.requireProject().tracks.first.cuts.length,
       recoveredCutCount,
     );
     expect(fresh.projectFilePath, path, reason: 'saves go to the real file');
     expect(fresh.hasUnsavedChanges, isTrue);
+    expect(
+      fresh.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles,
+      isNotEmpty,
+      reason: 'the overlay holds only the delta — the base cel must come '
+          'from the project file underneath it',
+    );
   });
 }

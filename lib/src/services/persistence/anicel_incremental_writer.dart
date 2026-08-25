@@ -94,7 +94,13 @@ const int _zip32Max = 0xFFFFFFFF;
 /// The switch stays because it is the one-line revert if some reader in
 /// the wild turns out to disagree, and because it is how the OTHER shape
 /// stays under test — see the group that pins it false.
-bool anicelAlwaysZip64 = true;
+///
+/// The const is the SHIPPED default, initializer-only so the two cannot
+/// drift; it exists because tests reset the mutable switch, so only the
+/// const can pin what production actually starts with.
+const bool anicelAlwaysZip64Shipped = true;
+
+bool anicelAlwaysZip64 = anicelAlwaysZip64Shipped;
 
 /// Reads the ZIP64 entry count and central-directory offset when the
 /// plain EOCD is flying all-ones flags, or null when it is not.
@@ -856,12 +862,13 @@ Uint8List _centralDirectoryBytes(List<AnicelZipEntry> entries) {
   final central = BytesBuilder(copy: false);
   for (final entry in entries) {
     final nameBytes = Uint8List.fromList(entry.name.codeUnits);
-    // A single entry over 4GB would need its SIZES in a ZIP64 extra too,
-    // and nothing this app writes can reach that: a cel is a tile sheet
-    // and the only media that travels inside is audio, images and PDFs
-    // (video is a reference by the kind rule). Refused loudly rather than
-    // handled, because a silently truncated size is a file that opens and
-    // reads the wrong bytes.
+    // A single entry over 4GB would need its SIZES in a ZIP64 extra too.
+    // Since 2026-08-14 a user CAN carry a video (the kind ceiling became a
+    // default), so this line is reachable by importing a >4GB movie as
+    // Keep — the import side owes a policy for that (board:
+    // Q-save-4gb-carry). Until then: refused loudly rather than handled,
+    // because a silently truncated size is a file that opens and reads
+    // the wrong bytes.
     if (entry.length > _zip32Max) {
       throw StateError(
         'entry "${entry.name}" is ${entry.length} bytes; the writer does '

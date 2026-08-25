@@ -98,15 +98,6 @@ void main() {
           isTrue);
     });
 
-    test('reconnecting stores the new bookmark and clears the flag', () {
-      final list = const RecentProjects()
-          .withOpened(project('a', bookmark: 'old'))
-          .withReconnectNeeded('/drive/work/a.anicel');
-      final fixed = list.withReconnected('/drive/work/a.anicel', 'fresh');
-      expect(fixed.entries.first.folderBookmark, 'fresh');
-      expect(fixed.entries.first.needsReconnect, isFalse);
-    });
-
     test('removing an entry drops exactly it', () {
       final list = const RecentProjects()
           .withOpened(project('a'))
