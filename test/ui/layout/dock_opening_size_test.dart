@@ -7,10 +7,17 @@ import 'package:anicel/src/ui/layout/device_grid.dart';
 /// (중간 크기의 3/4까지 확대 가능), 타임라인 세로 = 화면 절반」.
 ///
 /// 🚨What is proportional is the OPENING and the CEILING — a dock the user
-/// has dragged keeps its pixels. Making the width track the window would
-/// move it under them on every resize, which no editor does; the complaint
-/// was that one number was wrong at both ends of the monitor range and that
-/// the drag stopped too early.
+/// has dragged keeps its pixels *up to that ceiling*. Making the width
+/// track the window outright would move it under them on every resize,
+/// which no editor does; the complaint was that one number was wrong at
+/// both ends of the monitor range and that the drag stopped too early.
+///
+/// 🆕H22 (유저 2026-08-23) settled which half of that sentence binds on a
+/// RESIZE: 「타임라인패널 크기 키워둔채로 창 크기 축소하면 그 크기 그대로
+/// 유지되어있음. 창 크기 바꾸면 사이드띠의 패널이랑 통일해서 비율대로
+/// 작아져야하는데」 — the ceiling does, and the rails had always applied
+/// theirs where they are drawn. The bottom dock was the exception, and the
+/// exception was the report. See `bottom_dock_follows_the_window_test`.
 void main() {
   const grid = DeviceGrid(2);
 
