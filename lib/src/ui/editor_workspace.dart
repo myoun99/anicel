@@ -36,6 +36,7 @@ import 'brush/canvas_floor_insets.dart';
 import 'color/color_panels.dart' show ColorPickerKind, ColorPickerPanel;
 import 'color/color_slot_pair.dart';
 import 'theme/app_theme.dart';
+import 'brush/brush_hand_settings_store.dart';
 import 'brush/brush_preset_panel.dart';
 import 'brush/brush_tip_library.dart';
 import 'brush/brush_tool_state.dart';
@@ -865,6 +866,48 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   /// [PaintToolStateNotifier]'s bank).
   final Map<CanvasTool, BrushPresetId?> _activePresetByTool = {};
 
+  /// 🚨H25 — WHAT THE HAND LAST SET ON EACH BRUSH.
+  ///
+  /// 유저 2026-08-23: 「브러시 고르고 브러시크기 설정하면 다음에 같은 브러시
+  /// 선택할때 해당 브러시크기 남아있도록. 불투명도도 마찬가지」. A brush with no
+  /// entry here reads the size baked into its own file — the other half of the
+  /// answer, and the reason this is a bank and not a rewrite of the preset.
+  ///
+  /// ⛔The preset FILE is not touched (Q-brush-store): a slider drag must not
+  /// write a document to disk. Persisted beside the app's other editor state.
+  final Map<String, BrushHandSettings> _brushHandSettings = {};
+  final BrushHandSettingsStore _brushHandSettingsStore =
+      BrushHandSettingsStore();
+  Timer? _brushHandSettingsSave;
+
+  /// Records the live size/opacity against the ACTIVE preset.
+  ///
+  /// ⚠️Reads the state's own tool, never the notifier's last-known one: the
+  /// eraser carries its own preset (R11-④), so recording under the wrong tool
+  /// would give two brushes one memory.
+  void _rememberBrushHandSettings() {
+    final state = _brushTool.value;
+    final presetId = _activePresetByTool[state.tool];
+    if (presetId == null) {
+      return;
+    }
+    final next = (size: state.size, opacity: state.activeOpacity);
+    if (_brushHandSettings[presetId.value] == next) {
+      return;
+    }
+    _brushHandSettings[presetId.value] = next;
+    // Debounced: this fires on every slider frame, and the file is the
+    // cheapest thing in the app to write too often.
+    _brushHandSettingsSave?.cancel();
+    _brushHandSettingsSave = Timer(const Duration(milliseconds: 400), () {
+      unawaited(
+        _brushHandSettingsStore.save(Map<String, BrushHandSettings>.of(
+          _brushHandSettings,
+        )),
+      );
+    });
+  }
+
   /// The fill tool's flood options (Tool Settings knobs).
   final ValueNotifier<FloodFillOptions> _fillOptions = ValueNotifier(
     const FloodFillOptions(),
@@ -1284,6 +1327,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _tipLibrary = BrushTipLibrary(service: widget.tipLibraryService);
+    // H25: what the hand last set on each brush, from the last session.
+    _brushTool.addListener(_rememberBrushHandSettings);
+    unawaited(
+      _brushHandSettingsStore.load().then((saved) {
+        if (!mounted || saved.isEmpty) {
+          return;
+        }
+        _brushHandSettings.addAll(saved);
+      }),
+    );
     _presetLibrary = BrushPresetLibrary(
       fileService: widget.presetFileService,
       filePicker: widget.brushFilePicker,
@@ -1898,6 +1951,17 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _brushTool.removeListener(_rememberBrushHandSettings);
+    // A pending debounce would write after the tree is gone; the values are
+    // in memory, so writing them NOW is both safe and the last chance.
+    if (_brushHandSettingsSave?.isActive ?? false) {
+      _brushHandSettingsSave!.cancel();
+      unawaited(
+        _brushHandSettingsStore.save(
+          Map<String, BrushHandSettings>.of(_brushHandSettings),
+        ),
+      );
+    }
     _storyboardThumbnails.dispose();
     _presetLibrary.dispose();
     _tipLibrary.dispose();
@@ -2002,6 +2066,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     _brushTool.value = current.withPresetSettings(
       preset.settings,
       tool: targetTool,
+      // H25: what the hand last set on THIS brush, or nothing — in which case
+      // the brush's own baked size wins.
+      handSet: _brushHandSettings[preset.id.value],
     );
     _activePresetByTool[targetTool] = preset.id;
     _presetLibrary.markActive(preset.id);

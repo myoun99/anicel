@@ -7,6 +7,7 @@ import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/brush_tip_shape.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../canvas/brush_edit_canvas_input_settings.dart';
+import 'brush_hand_settings_store.dart' show BrushHandSettings;
 
 /// The strip's standing hand settings — the group whose members a tool
 /// either honours or has no use for (TP2). See [BrushToolState.supports].
@@ -801,26 +802,37 @@ class BrushToolState {
   /// method exists.
   ///
   /// ⚠️Two exceptions stay, and they are named because they are DECISIONS,
-  /// not omissions: **size and colour live inside the shape** and are the
-  /// user's hand anyway.
+  /// not omissions.
   ///
-  /// * size — R26 #10, 「브러시 다른거 선택한다고 사이즈/블렌딩모드가 바뀌지
-  ///   않음」
   /// * colour — R9 #2. A preset stores one so it can round-trip through
   ///   export, and most of the roster carries the default black, so without
   ///   this every brush swap silently repainted the palette black.
+  /// * size — used to be one too: R26 #10, 「브러시 다른거 선택한다고
+  ///   사이즈/블렌딩모드가 바뀌지 않음」, kept the HAND's size across a swap.
+  ///   🚨H25 (유저 2026-08-23) asks the opposite and was answered:
+  ///   「브러시 고르고 브러시크기 설정하면 다음에 같은 브러시 선택할때 해당
+  ///   브러시크기 남아있도록. 불투명도도 마찬가지」 — so a brush wears ITS OWN
+  ///   size again. Later ruling wins, and R26 #10 stays written here because
+  ///   the next reader will otherwise find this a bug.
   ///
-  /// The list went from eleven entries to two, and the two that remain are
-  /// the only ones a reader has to be able to justify. (The stabilizer and
+  /// [handSet] is what the hand last set ON THIS BRUSH (null for a brush
+  /// nobody has touched, which then reads the size baked into its own file —
+  /// the user's answer to Q-brush-param). Individual arguments win over
+  /// `shape:` in [copyWith], which is exactly the order this needs.
+  ///
+  /// The list went from eleven entries to one, and the one that remains is
+  /// the only one a reader has to be able to justify. (The stabilizer and
   /// the brush blend were on the old list for the same reason and no longer
   /// need to be — they are outside the shape, so they are already safe.)
   BrushToolState withPresetSettings(
     BrushSettings settings, {
     required CanvasTool tool,
+    BrushHandSettings? handSet,
   }) => copyWith(
     shape: settings.shape,
     tool: tool,
-    size: size,
+    size: handSet?.size,
+    opacity: handSet?.opacity,
     color: color,
   );
 
