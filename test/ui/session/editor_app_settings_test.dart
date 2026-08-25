@@ -77,10 +77,7 @@ void main() {
       ),
     );
     first.setSaveSettings(
-      const AppSaveSettings(
-        pauseSnapshotEnabled: false,
-        periodicSnapshotMinutes: 7,
-      ),
+      const AppSaveSettings(periodicSnapshotMinutes: 7),
     );
     first.setAudioSyncSettings(
       const AudioSyncSettings(offset: 42, micGainDb: 3),
@@ -131,7 +128,6 @@ void main() {
     expect(AppWorkspaceColors.settings.value.pasteboardArgb, 0xFF204060);
     expect(AppInput.settings.value.touchTimelineScroll, isFalse);
     expect(AppInput.settings.value.pressureCurveGamma, 1.5);
-    expect(AppSave.settings.value.pauseSnapshotEnabled, isFalse);
     expect(AppSave.settings.value.periodicSnapshotMinutes, 7);
     expect(second.audioSyncSettings.value.offset, 42);
     expect(second.audioSyncSettings.value.micGainDb, 3);

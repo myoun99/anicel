@@ -4,6 +4,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/app_documents.dart'
     show appRecordingsDirectory;
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/dialogs/preferences_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/input/app_input_settings.dart';
@@ -110,53 +111,75 @@ void main() {
     );
   });
 
-  testWidgets('the Autosave section drives the live policy: toggle, '
-      'interval commit, and the sidecar folder switch', (tester) async {
+  testWidgets('🚨F-1: the Autosave section is ONE switch and ONE slider', (
+    tester,
+  ) async {
     await pumpPreferences(tester, initialSection: PreferencesSection.autosave);
 
-    // Three triggers, three switches, and they move independently — the
-    // one switch that used to cover all of them also silenced the
-    // lifecycle snapshot, which is the only one a mobile OS leaves room
-    // for.
-    await tester.tap(
-      find.byKey(const ValueKey<String>('settings-autosave-enabled')),
-    );
-    await tester.pumpAndSettle();
-    expect(AppSave.settings.value.lifecycleSnapshotEnabled, isFalse);
-    expect(AppSave.settings.value.pauseSnapshotEnabled, isTrue);
-
-    // Back on.
-    await tester.tap(
-      find.byKey(const ValueKey<String>('settings-autosave-enabled')),
-    );
-    await tester.pumpAndSettle();
-    expect(AppSave.settings.value.lifecycleSnapshotEnabled, isTrue);
-
-    await tester.tap(
-      find.byKey(const ValueKey<String>('settings-autosave-pause')),
-    );
-    await tester.pumpAndSettle();
-    expect(AppSave.settings.value.pauseSnapshotEnabled, isFalse);
-    expect(AppSave.settings.value.lifecycleSnapshotEnabled, isTrue);
-
-    // The clock is off by default and reveals its interval only once on.
+    // ⛔Three switches stood here — leaving the app, pausing, and the
+    // clock — and two of them named triggers that no longer exist
+    // (유저 2026-08-26: 「자동저장 on off만 남기고 … 심플하게 명시적저장 /
+    // n분주기 자동저장만 남김」). Asserted rather than merely deleted, so
+    // putting a trigger back has to argue with a test.
     expect(
-      find.byKey(const ValueKey<String>('settings-autosave-20')),
+      find.byKey(const ValueKey<String>('settings-autosave-pause')),
       findsNothing,
     );
-    await tester.tap(
+    expect(
       find.byKey(const ValueKey<String>('settings-autosave-periodic')),
+      findsNothing,
+    );
+    for (final minutes in const <int>[5, 10, 20, 30]) {
+      expect(
+        find.byKey(ValueKey<String>('settings-autosave-$minutes')),
+        findsNothing,
+        reason: 'the four chips are a slider now',
+      );
+    }
+
+    // ⛔The slider's ROW is here whether autosave is on or off — 없다가
+    // 생기는 UI 금지. It goes inert instead of absent.
+    final slider = find.byKey(
+      const ValueKey<String>('settings-autosave-minutes'),
+    );
+    expect(AppSave.settings.value.periodicSnapshotMinutes, isNull);
+    await tester.ensureVisible(slider);
+    await tester.pumpAndSettle();
+    expect(slider, findsOneWidget, reason: 'reserved while switched off');
+    expect(
+      tester.widget<FieldSlider>(slider).onChanged,
+      isNull,
+      reason: 'and inert — a null onChanged dims it and refuses input',
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('settings-autosave-enabled')),
     );
     await tester.pumpAndSettle();
-    expect(AppSave.settings.value.periodicSnapshotMinutes, 10);
-    // The chips appear below the fold in this viewport; a tap that lands
-    // on nothing would leave the value at its default and read as a pass.
-    final twenty = find.byKey(const ValueKey<String>('settings-autosave-20'));
-    await tester.ensureVisible(twenty);
+    expect(
+      AppSave.settings.value.periodicSnapshotMinutes,
+      AppSaveSettings.defaultPeriodicSnapshotMinutes,
+    );
+
+    // The track is the model's range, in whole minutes.
+    final live = tester.widget<FieldSlider>(slider);
+    expect(live.min, AppSaveSettings.minPeriodicSnapshotMinutes.toDouble());
+    expect(live.max, AppSaveSettings.maxPeriodicSnapshotMinutes.toDouble());
+    expect(live.onChanged, isNotNull);
+    live.onChanged!(23.4);
     await tester.pumpAndSettle();
-    await tester.tap(twenty);
+    expect(
+      AppSave.settings.value.periodicSnapshotMinutes,
+      23,
+      reason: 'whole minutes — the clock cannot use a fraction',
+    );
+
+    // Off again, and the number goes with it.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('settings-autosave-enabled')),
+    );
     await tester.pumpAndSettle();
-    expect(AppSave.settings.value.periodicSnapshotMinutes, 20);
+    expect(AppSave.settings.value.periodicSnapshotMinutes, isNull);
 
     // The sidecar-folder row is GONE: the recovery snapshot lives in the
     // app's own support folder and there is nothing to point anywhere.

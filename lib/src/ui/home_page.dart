@@ -22,7 +22,7 @@ import '../services/persistence/app_save_settings_store.dart';
 import '../services/persistence/recent_projects.dart';
 import '../services/persistence/recent_projects_store.dart';
 import '../services/persistence/audio_sync_settings_store.dart';
-import '../services/persistence/idle_snapshot_guard.dart';
+import '../services/persistence/autosave_clock.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/color_palette_file_service.dart';
 import '../services/project_repository.dart';
@@ -176,12 +176,11 @@ class _HomePageState extends State<HomePage> {
   /// service decides WHETHER; the two triggers below decide WHEN.
   ProjectAutosaveService? _autosave;
 
-  /// The crash guard for the exits no lifecycle callback sees — a SIGSEGV
-  /// or a dead battery mid-session. Its rule (armed by activity, disarmed
-  /// by firing) lives in the guard rather than here, because a policy held
-  /// as two fields on a State is a policy nothing can test.
-  late final IdleSnapshotGuard _idleGuard = IdleSnapshotGuard(
-    idleAfter: const Duration(seconds: 15),
+  /// 🚨F-1: THE autosave trigger. The clock's rule (count from the last
+  /// snapshot, hold a fire until the pen lifts) lives in the clock rather
+  /// than here, because a policy held as fields on a State is a policy
+  /// nothing can test.
+  late final AutosaveClock _autosaveClock = AutosaveClock(
     onSnapshot: () => unawaited(_autosave?.saveNow()),
   );
 
@@ -298,10 +297,9 @@ class _HomePageState extends State<HomePage> {
       // Every way the app can stop being in front of the user, because the
       // platforms disagree about which of these they send and in what
       // order — and on mobile the process may simply never wake up again.
-      onInactive: _snapshotForRecovery,
-      onHide: _snapshotForRecovery,
-      onPause: _snapshotForRecovery,
-      onDetach: _snapshotForRecovery,
+      // F-1: no lifecycle snapshot any more — see the note by
+      // [_noteUserActivity]. The exit GATE stays: leaving with unsaved
+      // work still asks.
     );
     // REC1-B: takes the TRANSPORT finishes (stop pressed mid-take) report
     // through this channel — the toggle button was not the caller, so its
@@ -343,9 +341,8 @@ class _HomePageState extends State<HomePage> {
   void _syncAutosaveService() {
     final settings = AppSave.settings.value;
     final minutes = settings.periodicSnapshotMinutes;
-    _idleGuard.configure(
-      pauseEnabled: settings.pauseSnapshotEnabled,
-      ceiling: minutes == null ? null : Duration(minutes: minutes),
+    _autosaveClock.configure(
+      interval: minutes == null ? null : Duration(minutes: minutes),
     );
     // Built unconditionally now. It used to be torn down when autosave was
     // switched off, which also silenced the lifecycle snapshot — so the
@@ -370,25 +367,22 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// Snapshots the session because the app is about to stop being in front
-  /// of the user.
+  /// ⛔F-1 (유저 2026-08-26): the LIFECYCLE snapshot is gone — 「앱 떠날때,
+  /// 손 멈출때 스냅샷 기능 삭제. 심플하게 명시적저장 / n분주기 자동저장만
+  /// 남김」.
   ///
-  /// This is the whole trigger now. A clock never knew when work was at
-  /// risk; leaving the app is the moment that does — and on mobile it is
-  /// the only warning there is, because the OS may never come back to ask
-  /// again. Fires on inactive/hidden/paused rather than one of them: which
-  /// of those a platform sends, and in what order, is not something to
-  /// depend on, and the service collapses the burst itself.
-  void _snapshotForRecovery() {
-    if (!AppSave.settings.value.lifecycleSnapshotEnabled) {
-      return;
-    }
-    // This trigger just wrote one, so the guard no longer owes anything.
-    _idleGuard.standDown();
-    unawaited(_autosave?.saveNow());
-  }
+  /// It used to fire on inactive/hidden/paused/detach and was the cheapest
+  /// trigger by a distance (nobody is drawing on the way out). ⚠️On mobile
+  /// it was also the ONLY warning the OS gives before it stops the
+  /// process, so what an OS kill now costs is the work since the last
+  /// tick. That is the price of 「심플하게」 and it was taken knowingly;
+  /// it is written here rather than in a commit message so the next reader
+  /// finds it where the hole is.
+  ///
+  /// ⛔Do not quietly put it back. If it should return it returns as the
+  /// user's call, not as a fix for a bug report that is really this.
 
-  /// Any pointer activity: the user is here, so push the guard back.
+  /// Any pointer activity — the clock only wants to know about the PEN.
   ///
   /// Watched through the global pointer route rather than a [Listener]
   /// wrapped around the app: a global route OBSERVES events without
@@ -400,7 +394,7 @@ class _HomePageState extends State<HomePage> {
     } else if (event is PointerUpEvent || event is PointerCancelEvent) {
       _pointersDown.remove(event.pointer);
     }
-    _idleGuard.noteActivity(strokeInFlight: _pointersDown.isNotEmpty);
+    _autosaveClock.noteActivity(strokeInFlight: _pointersDown.isNotEmpty);
   }
 
   @override
@@ -410,7 +404,7 @@ class _HomePageState extends State<HomePage> {
     _session.voiceRecordingNotice.removeListener(_showVoiceRecordingNotice);
     AppSave.settings.removeListener(_syncAutosaveService);
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_noteUserActivity);
-    _idleGuard.dispose();
+    _autosaveClock.dispose();
     _lifecycle?.dispose();
     _session.dispose();
     _panelsMenu.dispose();
