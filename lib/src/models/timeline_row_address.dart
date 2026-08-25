@@ -22,6 +22,26 @@ sealed class TimelineRowAddress {
   /// way — and track rows carry a prefix so the two namespaces cannot
   /// collide.
   String get keySuffix;
+
+  /// WHICH LAYER this row belongs to, or null for a row that belongs to no
+  /// layer at all (a track's cut row).
+  ///
+  /// 🚨★★★This exists so nothing has to write `row is LayerRowAddress` again.
+  /// That test is not "which layer" — it is "which layer, and lanes do not
+  /// count", and the second half was never a rule anyone asked for. It was
+  /// typed once per site and then meant something different at each one: a
+  /// lane row could not begin a move, could not be recognised as inside the
+  /// selection it was visibly inside, and was dropped out of the span the
+  /// band had already advertised. The user's law is one line and older than
+  /// all of them — 「선택범위는 어떤 레이어를 건너든 자유롭게, 규칙 두지 말
+  /// 것」, and [LaneRowAddress]'s own doc says a lane falls back to its
+  /// layer rather than refusing.
+  ///
+  /// ⚠️A verb with no lane meaning is still allowed to say no — ROW ORDER
+  /// does, because you cannot re-order a property inside its layer. But it
+  /// says so where the verb lives, with a reason, rather than by re-deriving
+  /// "is this a real row" from the type.
+  LayerId? get owningLayerId;
 }
 
 /// A LAYER's cells row (the timeline and X-sheet grids, the storyboard's SE
@@ -30,6 +50,9 @@ final class LayerRowAddress extends TimelineRowAddress {
   const LayerRowAddress(this.layerId);
 
   final LayerId layerId;
+
+  @override
+  LayerId? get owningLayerId => layerId;
 
   @override
   String get keySuffix => layerId.value;
@@ -69,6 +92,9 @@ final class LaneRowAddress extends TimelineRowAddress {
   final String laneId;
 
   @override
+  LayerId? get owningLayerId => layerId;
+
+  @override
   String get keySuffix => '${layerId.value}-lane-$laneId';
 
   @override
@@ -91,6 +117,10 @@ final class TrackRowAddress extends TimelineRowAddress {
   const TrackRowAddress(this.trackId);
 
   final TrackId trackId;
+
+  /// A cut row belongs to no layer: its blocks are CUTS.
+  @override
+  LayerId? get owningLayerId => null;
 
   @override
   String get keySuffix => 'track-${trackId.value}';

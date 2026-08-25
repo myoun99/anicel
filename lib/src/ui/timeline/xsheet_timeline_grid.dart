@@ -1337,13 +1337,15 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                 _rangeGesture = rangeHooks == null
                     ? null
                     : TimelineRangeGestureCallbacks(
-                        // Every row this grid mounts is a LAYER row (the
-                        // address resolves back at this one seam).
+                        // The horizontal grid's twin, one law: a lane row
+                        // answers with the layer it sits inside
+                        // ([TimelineRowAddress.owningLayerId]).
                         isInSelection: (row, frameIndex) {
                           final selection = rangeHooks.selection.value;
-                          return row is LayerRowAddress &&
+                          final layerId = row.owningLayerId;
+                          return layerId != null &&
                               selection != null &&
-                              selection.coversLayer(row.layerId) &&
+                              selection.coversLayer(layerId) &&
                               selection.contains(frameIndex);
                         },
                         // Cross-row select (UI-R17 #8), transposed like the moves.
@@ -1355,7 +1357,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                         // this closes.
                         onSelectUpdate:
                             (row, anchorIndex, headIndex, headCrossOffset) {
-                              if (row is! LayerRowAddress) {
+                              final rowLayerId = row.owningLayerId;
+                              if (rowLayerId == null) {
                                 return;
                               }
                               // R9 #25: raw pixels in, resolved here — this
@@ -1366,22 +1369,24 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                     rowExtent: _metrics.layerRowHeight,
                                   );
                               rangeHooks.onSelectUpdate(
-                                row.layerId,
+                                rowLayerId,
                                 anchorIndex,
                                 headIndex,
                                 headLayerId: headRowDelta == 0
                                     ? null
                                     : resolveBlockMoveTargetLayer(
                                         rows: _dragRows,
-                                        sourceLayerId: row.layerId,
+                                        sourceLayerId: rowLayerId,
                                         rowDelta: headRowDelta,
                                       ),
                               );
                             },
                         onTapClear: (_) => rangeHooks.onClear(),
-                        onMoveBegin: (row, _) =>
-                            row is LayerRowAddress &&
-                            _rangeMoveResolver.begin(row.layerId),
+                        onMoveBegin: (row, _) {
+                          final layerId = row.owningLayerId;
+                          return layerId != null &&
+                              _rangeMoveResolver.begin(layerId);
+                        },
                         onMoveUpdate: _rangeMoveResolver.update,
                         onMoveEnd: _rangeMoveResolver.end,
                         onMoveCancel: _rangeMoveResolver.cancel,

@@ -11833,13 +11833,17 @@ class EditorSessionManager extends ChangeNotifier {
     final lanes = <RangeBlock? Function(int)>[
       for (final row in spanned) ?_trackRowSnapLane(row, axis),
     ];
-    final span = lanes.isEmpty
-        ? null
-        : snapSpanToBlocks(
-            lanes: lanes,
-            anchorIndex: anchorGlobalFrame,
-            headIndex: headGlobalFrame,
-          );
+    // 🚨No `lanes.isEmpty ? null` short-circuit. A span made only of LANE
+    // rows has no block lane to snap against — the lane domain's own rule
+    // is raw cells — and treating "nothing to snap to" as "nothing to
+    // select" made a selection that stayed inside one fx group vanish as
+    // it was drawn. [snapSpanToBlocks] with no lanes IS the raw span,
+    // which is exactly the right answer here.
+    final span = snapSpanToBlocks(
+      lanes: lanes,
+      anchorIndex: anchorGlobalFrame,
+      headIndex: headGlobalFrame,
+    );
     // A span that only crosses a GAP still selects: these are frame-block
     // rows like any other, and an empty cell is selectable on every one of
     // them. It simply covers no blocks, so the verbs that act on them find
@@ -12084,11 +12088,13 @@ class EditorSessionManager extends ChangeNotifier {
   _frameShiftScope({TimelineRowAddress? currentRow}) {
     final trackSelection = trackFrameRangeSelection.value;
     if (trackSelection != null) {
-      final rows = [
-        for (final row in trackSelection.spanRows)
-          if (row is LayerRowAddress &&
-              trackSeGlobalLayerById(row.layerId) != null)
-            row.layerId,
+      final rows = <LayerId>[
+        ...{
+          for (final row in trackSelection.spanRows)
+            if (row.owningLayerId case final id?
+                when trackSeGlobalLayerById(id) != null)
+              id,
+        },
       ];
       if (rows.isNotEmpty) {
         return (
@@ -12945,11 +12951,14 @@ class EditorSessionManager extends ChangeNotifier {
     }
     // The layer half of what was swept, in display order — derived from the
     // rows rather than rebuilt, so the two can never disagree.
+    // Deduped in display order: a layer row and its own lane rows are
+    // several rows of ONE layer. Asking the ADDRESS which layer it belongs
+    // to (rather than testing its type) is what keeps a span that runs
+    // cell → lane → lane → cell from losing the rows in the middle.
     final spanIds = spanRows.isEmpty
         ? _selectionSpanLayerIds(layerId, headLayerId ?? layerId)
         : <LayerId>[
-            for (final row in spanRows)
-              if (row is LayerRowAddress) row.layerId,
+            ...{for (final row in spanRows) ?row.owningLayerId},
           ];
     if (spanIds.length <= 1) {
       frameRangeSelection.value = spanRows.isEmpty
@@ -13237,11 +13246,16 @@ class EditorSessionManager extends ChangeNotifier {
     // C②: an ESCALATED span anchors on a LANE row — its owning layer is
     // the machine's anchor layer, so the span the band advertises is the
     // span the move machine accepts.
-    final anchorLayerId = switch (live?.anchorRow) {
-      LayerRowAddress(:final layerId) => layerId,
-      LaneRowAddress(:final layerId) => layerId,
-      _ => null,
-    };
+    //
+    // 🚨C3-lane-move: this used to switch on the address TYPE and fall to
+    // null on anything else, and the `layerIds` below dropped every row
+    // that was not a `LayerRowAddress`. Both are the same mistake stated
+    // twice: a lane row HAS an owning layer, so asking the address for it
+    // ([TimelineRowAddress.owningLayerId]) is the whole answer. Without it
+    // a band that advertised a move quietly became a re-select — the move
+    // machine got a null span and the press fell through to the select
+    // path, with nothing on screen to say so.
+    final anchorLayerId = live?.anchorRow.owningLayerId;
     if (live == null || anchorLayerId == null) {
       return null;
     }
@@ -13249,10 +13263,11 @@ class EditorSessionManager extends ChangeNotifier {
       layerId: anchorLayerId,
       startIndex: live.startFrame,
       endIndexExclusive: live.endFrameExclusive,
-      layerIds: [
-        for (final row in live.spanRows)
-          if (row is LayerRowAddress) row.layerId,
-      ],
+      // Deduped in display order: a layer row and its own lane rows are
+      // several rows of ONE layer, and the move machine plans per layer.
+      layerIds: {
+        for (final row in live.spanRows) ?row.owningLayerId,
+      }.toList(),
     );
   }
 
@@ -13403,11 +13418,19 @@ class EditorSessionManager extends ChangeNotifier {
     // the move machine's existing INSTRUCTION-source arm, exactly as the
     // cut-local instruction rows do in [beginFrameRangeMoveDrag].
     final instructionSources = <Layer>[];
+    // 🚨C3-lane-move: keyed by the row's OWNING layer, not by the row's
+    // TYPE. A lane row is one of its layer's rows — skipping it here is
+    // what made a band anchored on an fx row refuse to move and fall
+    // through to a silent re-select. The `seen` set is the other half: a
+    // layer row and its own lane rows are several rows of ONE layer, and
+    // sourcing that layer twice would plan its slide twice.
+    final seen = <LayerId>{};
     for (final row in live.spanRows) {
-      if (row is! LayerRowAddress) {
+      final rowLayerId = row.owningLayerId;
+      if (rowLayerId == null || !seen.add(rowLayerId)) {
         continue;
       }
-      final transition = _trackTransitionOwner(row.layerId)?.transitionLayer;
+      final transition = _trackTransitionOwner(rowLayerId)?.transitionLayer;
       if (transition != null) {
         final hasSpan = transition.instructions.keys.any(
           (key) => key >= live.startFrame && key < live.endFrameExclusive,
@@ -13417,7 +13440,7 @@ class EditorSessionManager extends ChangeNotifier {
         }
         continue;
       }
-      final commit = trackSeGlobalLayerById(row.layerId);
+      final commit = trackSeGlobalLayerById(rowLayerId);
       if (commit == null) {
         continue;
       }
@@ -15594,10 +15617,14 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final byLayer = <LayerId, List<int>>{};
     for (final row in selection.spanRows) {
-      if (row is! LayerRowAddress) {
+      // The row's OWNING layer (C3-lane-move): a lane row is one of its
+      // layer's rows, and the map keys by layer anyway, so a repeat is a
+      // no-op rather than something to filter out by type.
+      final rowLayerId = row.owningLayerId;
+      if (rowLayerId == null) {
         continue;
       }
-      final layer = trackSeGlobalLayerById(row.layerId);
+      final layer = trackSeGlobalLayerById(rowLayerId);
       if (layer == null) {
         continue;
       }
@@ -15607,7 +15634,7 @@ class EditorSessionManager extends ChangeNotifier {
         selection.endFrameExclusive,
       );
       if (starts.isNotEmpty) {
-        byLayer[row.layerId] = starts;
+        byLayer[rowLayerId] = starts;
       }
     }
     return byLayer.isEmpty ? null : byLayer;
@@ -15965,11 +15992,14 @@ class EditorSessionManager extends ChangeNotifier {
   /// standing in for `_requireLayer`, which demanded a cut before it would
   /// reach the track's own layers. That lookup answers for a track row now.
   bool get canCreateSeEntryAtStoryboardCursor {
-    final row = selectedRow;
-    if (row is! LayerRowAddress || isTrackTransitionLayerId(row.layerId)) {
+    // Standing on one of the row's LANES answers with the row (C3-lane-move,
+    // and [LaneRowAddress]'s own law: standing on a property must never cost
+    // you the layer).
+    final rowLayerId = selectedRow.owningLayerId;
+    if (rowLayerId == null || isTrackTransitionLayerId(rowLayerId)) {
       return false;
     }
-    final global = trackSeGlobalLayerById(row.layerId);
+    final global = trackSeGlobalLayerById(rowLayerId);
     final frame = editingGlobalFrame;
     return global != null &&
         frame >= 0 &&
