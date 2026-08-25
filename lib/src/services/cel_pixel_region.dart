@@ -6,7 +6,7 @@ import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/transform_track.dart' show TransformPose;
-import '../ui/canvas/layer_pose_paint.dart' show layerPoseMatrix;
+import 'layer_pose_matrix.dart' show layerPoseMatrix;
 import 'canvas_selection.dart' show SelectionMaskOptions, buildSelectionMask;
 import 'canvas_selection_region.dart';
 import 'cel_pixel_overwrite.dart';
