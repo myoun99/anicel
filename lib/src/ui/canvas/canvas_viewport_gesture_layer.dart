@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
@@ -349,7 +350,43 @@ class _CanvasViewportGestureLayerState
       }
       _lockGroup(firstMovedDelta: event.localPosition - down);
     }
-    _dispatchGroupUpdate();
+    _scheduleGroupUpdate();
+  }
+
+  /// 🚨★★★F-11 (유저): 「터치 확대축소 **떨림** … 확대율이 튀어 **1프레임
+  /// 확대됐다 돌아오는** 현상」.
+  ///
+  /// 🧪Measured, not guessed. A pinch's two fingers move in the SAME frame
+  /// but arrive as SEPARATE events, and the update ran on each one — so
+  /// between finger A's event and finger B's, the distance was computed
+  /// from A's new position and B's OLD one. On a pure pan (distance
+  /// constant) the emitted zoom read `1.05 → 1.00 → 1.05` inside one
+  /// batch: a full step out and back, every frame, which is the shimmer.
+  ///
+  /// ⇒ One update per BATCH, off the freshest position of every finger.
+  /// A microtask rather than a frame callback, because 「**반응성 최우선 —
+  /// 느려지면 안 된다**」: the pointer queue drains synchronously, so this
+  /// runs the instant the batch ends and still inside the same frame. A
+  /// `scheduleFrameCallback` would have cost a frame of latency to fix a
+  /// one-frame wobble.
+  ///
+  /// ⚠️It changes WHEN the update runs, never what it computes — the
+  /// arithmetic below is untouched, and a batch carrying one finger's
+  /// event behaves exactly as before.
+  bool _groupUpdateScheduled = false;
+
+  void _scheduleGroupUpdate() {
+    if (_groupUpdateScheduled) {
+      return;
+    }
+    _groupUpdateScheduled = true;
+    scheduleMicrotask(() {
+      _groupUpdateScheduled = false;
+      if (!mounted || !_groupLocked) {
+        return;
+      }
+      _dispatchGroupUpdate();
+    });
   }
 
   void _lockGroup({required Offset firstMovedDelta}) {
