@@ -36,7 +36,7 @@ import 'timeline_row_cross_offset.dart';
 import 'timeline_selected_exposure_outline.dart' show TimelineSelectionRing;
 import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'layer_drop_policy.dart'
-    show effectHeaderRowsOf, effectStepsBetween, slotForSteps;
+    show LayerRowCaret, effectHeaderRowsOf, rowStepsBetween, slotForSteps;
 import 'layer_row_drag.dart';
 import 'timeline_current_row.dart';
 import 'timeline_edge_auto_pan.dart';
@@ -971,28 +971,30 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       if (!layerKindReordersInCut(entry.layer.kind)) {
         return child;
       }
+      // F-31, transposed: the sheet counts the COLUMNS on screen, through
+      // the same object the rail counts its rows with.
+      final caret = LayerRowCaret.of(_dragRows, entry.layer.id);
+      if (caret == null) {
+        return child;
+      }
       return LayerRowDragTarget(
         subject: LayerRowSubject(entry.layer.id),
-        slotBefore: entry.layerIndex,
+        slotBefore: caret.slot,
         rowExtent: _metrics.layerRowHeight,
         axis: Axis.vertical,
         hooks: hooks,
-        isLastRow: entry.layerIndex == widget.layers.length - 1,
+        isLastRow: caret.isLastRow,
         // R5 #15: the sheet's columns take the ON-COLUMN drop the way the
         // rail's rows do — the band is measured along whichever axis this
         // surface runs, so the transposition costs nothing.
         onCrossed: (steps, onRow) {
-          final slot = slotForSteps(
-            entry.layerIndex,
-            steps,
-            widget.layers.length,
-          );
-          final target = onRow == null ? null : entry.layerIndex + onRow;
-          if (target != null && target >= 0 && target < widget.layers.length) {
-            hooks.onRowTarget(widget.layers, slot, widget.layers[target].id);
+          final slot = caret.slotFor(steps);
+          final target = caret.onRowLayer(onRow);
+          if (target != null) {
+            hooks.onRowTarget(caret.layers, slot, target.id);
             return;
           }
-          hooks.onUpdate(widget.layers, slot);
+          hooks.onUpdate(caret.layers, slot);
         },
         // ⑨: the SELECT half, counted in the sheet's own display columns.
         onSelectCrossed: hooks.onSelectBegin == null
@@ -1048,7 +1050,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
         [for (final header in headers) header.effectId],
         slotForSteps(
           slot,
-          effectStepsBetween(headers, myRowIndex, steps),
+          rowStepsBetween(
+            [for (final header in headers) header.rowIndex],
+            myRowIndex,
+            steps,
+          ),
           headers.length,
         ),
       ),
