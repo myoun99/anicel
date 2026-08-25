@@ -1160,6 +1160,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
           : TimelineLaneFrameRow(
               axis: Axis.vertical,
               keyPrefix: 'xsheet',
+              // F-25, transposed: the sheet's lane COLUMN lights with its
+              // header, same law one axis over.
+              currentRow: widget.currentRowHooks?.currentRow,
               layer: layer,
               // R10: the previewed lane while a key drag is in flight —
               // the same re-derivation the horizontal body does.

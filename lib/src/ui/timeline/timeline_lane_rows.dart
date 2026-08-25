@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
@@ -33,6 +34,7 @@ import 'timeline_beat_lines.dart'
 import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 import 'timeline_cell_style.dart'
     show
+        timelineActiveRowWashColor,
         timelineDrawingInkColor,
         timelineDrawingStartColor,
         timelineFittedGlyphFontSize;
@@ -976,6 +978,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
     this.laneRange,
     this.axis = Axis.horizontal,
     this.keyPrefix = 'timeline',
+    this.currentRow,
   });
 
   final Layer layer;
@@ -1007,8 +1010,39 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// Key namespace ('timeline' | 'xsheet').
   final String keyPrefix;
 
+  /// 🚨F-25 (유저 2026-08-24): 「레이어 영역은 fx멤버에 서있을경우
+  /// 레이어/헤더/멤버 3군데가 바탕이 강조색되는데 프레임영역은 그러지 않으니
+  /// 통일」.
+  ///
+  /// The RAIL half of this row has read the standing row since 2026-08-07 —
+  /// 「layer ▸ Blur ▸ Radius all lit」 — and answers it through
+  /// [currentRowIsLane] / [currentRowIsInsideGroup], which exist so no
+  /// surface invents its own test. The FRAME half never asked, so the chain
+  /// lit on one side of the splitter and not the other.
+  ///
+  /// Null leaves the band unlit (the storyboard's display-only lanes, and
+  /// the harnesses that mount a row with no session).
+  final ValueListenable<TimelineRowAddress?>? currentRow;
+
   @override
   Widget build(BuildContext context) {
+    final standing = currentRow;
+    if (standing == null) {
+      return _buildBand(context, lit: false);
+    }
+    return ValueListenableBuilder<TimelineRowAddress?>(
+      valueListenable: standing,
+      builder: (context, row, _) => _buildBand(
+        context,
+        lit:
+            currentRowIsLane(row, layer.id, lane.laneId) ||
+            (lane.isGroupHeader &&
+                currentRowIsInsideGroup(row, layer.id, lane.laneId)),
+      ),
+    );
+  }
+
+  Widget _buildBand(BuildContext context, {required bool lit}) {
     final colorScheme = Theme.of(context).colorScheme;
     final cellExtent = metrics.frameCellWidth;
     // Cross-axis extent: rail-row height in the timeline, column width in
@@ -1178,6 +1212,16 @@ class TimelineLaneFrameRow extends StatelessWidget {
     final bandGround =
         timelineGridGroundOver(under: gridLaw?.ground, painted: bandWash) ??
         bandWash;
+    // F-25: the standing wash the LAYER row's frame half already wears
+    // ([TimelineRowCellsPainter]'s `rowGround`), composited the same way —
+    // over the band's own ground, so the band stays OPAQUE and keeps
+    // occluding the buried grid (F-7).
+    final litGround = lit
+        ? Color.alphaBlend(
+            timelineActiveRowWashColor(colorScheme),
+            bandGround,
+          )
+        : bandGround;
     // The ROW SEAM, from the law — see the border below.
     final seamInk = timelineGridRowSeamInk(colorScheme);
     final bandSeam = BorderSide(
@@ -1186,7 +1230,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
     );
     final band = DecoratedBox(
       decoration: BoxDecoration(
-        color: bandGround,
+        color: litGround,
         // The divider faces the NEXT lane: below in the timeline, to the
         // right in the X-sheet.
         //
@@ -1222,7 +1266,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
                     // The SAME composited colour the band actually paints
                     // (F-7) — computed once above so the ink and the fill
                     // cannot disagree about what is underneath.
-                    ground: bandGround,
+                    ground: litGround,
                     // The band is ONE row: its own bottom border is the
                     // cross seam, so the overlay must not draw a second.
                     crossCellExtent: 0,

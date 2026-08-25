@@ -2651,6 +2651,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                             verticalContentHeight,
                                                                         child: TimelineFrameGridStack(
                                                                           rowsBody: TimelineFrameRowsScrollBody(
+                                                                            // F-25: the lane bands light
+                                                                            // with their rail halves.
+                                                                            currentRow: widget
+                                                                                .currentRowHooks
+                                                                                ?.currentRow,
                                                                             rows:
                                                                                 windowRows,
                                                                             leadingLayerSpacerHeight:
