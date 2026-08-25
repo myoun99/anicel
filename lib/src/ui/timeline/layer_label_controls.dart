@@ -645,12 +645,20 @@ IconData layerKindIcon(LayerKind kind) {
     // names WHAT THE ROW IS (a book, a photo, a note, a camera) while this
     // one named the TOOL you draw it with. A row is a noun.
     //
-    // 유저 2026-08-24 (F-6) SUPERSEDES the glyph, not the reasoning: the
-    // animation row takes the picture glyph the image row used to wear.
-    // ⚠️The image row's replacement is NOT decided yet (board decision
-    // Q-image-layer-icon), so the two kinds deliberately share a glyph
-    // until the user picks. Do not invent one for the image row here.
-    LayerKind.animation => Icons.image_outlined,
+    // 🚨F-6, decided 2026-08-26 — and it came out the other way round from
+    // how the round was framed. The plan was "the animation row takes the
+    // picture glyph, the image row gets something new"; the user looked at
+    // the candidates and swapped which row moved:
+    //
+    // > 「이미지는 지금의 액자 그림을 그냥 다시 이미지레이어 아이콘으로 하고,
+    // > **겹친 장을 애니메이션레이어 아이콘으로** 하자」
+    //
+    // ★And that reads better, which is why it is worth recording rather
+    // than just applying: an ANIMATION row is several drawings — the
+    // stacked sheets say exactly that — while the IMAGE row is one picture,
+    // which the single framed picture already said. The row that needed a
+    // new noun was the one holding many, not the one holding one.
+    LayerKind.animation => Icons.filter_outlined,
     LayerKind.storyboard => Icons.auto_stories_outlined,
     LayerKind.image => Icons.image_outlined,
     LayerKind.text => Icons.title_outlined,

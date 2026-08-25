@@ -156,7 +156,7 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-layer-kind-icon-layer-a')),
       findsOneWidget,
     );
-    expect(_layerKindIcon(tester, _layerAId), Icons.image_outlined);
+    expect(_layerKindIcon(tester, _layerAId), Icons.filter_outlined);
 
     await _renameLayer(tester, 'BG');
 
@@ -164,7 +164,7 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-layer-kind-icon-layer-a')),
       findsOneWidget,
     );
-    expect(_layerKindIcon(tester, _layerAId), Icons.image_outlined);
+    expect(_layerKindIcon(tester, _layerAId), Icons.filter_outlined);
   });
 }
 
