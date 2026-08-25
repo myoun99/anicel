@@ -708,6 +708,7 @@ class AppStrings {
   String get panelMediaViewer => _s('panelMediaViewer');
   String get panelMediaViewerSub => _s('panelMediaViewerSub');
   String get panelOnionSkin => _s('panelOnionSkin');
+  String get panelToolSize => _s('panelToolSize');
   String get panelStoryboard => _s('panelStoryboard');
   String get panelTimeline => _s('panelTimeline');
   String get panelTimesheet => _s('panelTimesheet');
@@ -1361,6 +1362,7 @@ class AppStrings {
     'panelColorPalette': 'Palette',
     'panelMedia': 'Media',
     'panelOnionSkin': 'Onion skin',
+    'panelToolSize': 'Tool size',
     'panelStoryboard': 'Storyboard',
     'panelTimeline': 'Timeline',
     'panelTimesheet': 'Timesheet',
@@ -2148,6 +2150,7 @@ class AppStrings {
     'panelColorPalette': 'パレット',
     'panelMedia': 'メディア',
     'panelOnionSkin': 'オニオンスキン',
+    'panelToolSize': 'ツールサイズ',
     'panelStoryboard': '絵コンテ',
     'panelTimeline': 'タイムライン',
     'panelTimesheet': 'タイムシート',
@@ -2929,6 +2932,7 @@ class AppStrings {
     'panelColorPalette': '팔레트',
     'panelMedia': '미디어',
     'panelOnionSkin': '어니언 스킨',
+    'panelToolSize': '툴 사이즈',
     'panelStoryboard': '콘티',
     'panelTimeline': '타임라인',
     'panelTimesheet': '타임시트',
@@ -3739,6 +3743,7 @@ class AppStrings {
     'panelColorPalette': 'Palette',
     'panelMedia': 'Médias',
     'panelOnionSkin': "Pelure d'oignon",
+    'panelToolSize': 'Taille de l\'outil',
     'panelStoryboard': 'Storyboard',
     'panelTimeline': 'Timeline',
     'panelTimesheet': 'Feuille de temps',
@@ -4495,6 +4500,7 @@ class AppStrings {
     'panelColorPalette': '色板',
     'panelMedia': '媒体',
     'panelOnionSkin': '洋葱皮',
+    'panelToolSize': '工具大小',
     'panelStoryboard': '分镜',
     'panelTimeline': '时间轴',
     'panelTimesheet': '摄影表',

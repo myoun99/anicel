@@ -115,6 +115,7 @@ import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_section_policy.dart';
 import '../models/onion_skin_settings.dart';
 import 'panels/onion_skin_panel.dart';
+import 'panels/tool_size_preset_panel.dart';
 import 'storyboard_tab_host.dart';
 import '../models/canvas_viewport.dart';
 import 'timeline/timeline_orientation.dart';
@@ -386,6 +387,13 @@ class EditorWorkspace extends StatefulWidget {
   static const String colorRgbTabId = 'color-rgb';
   static const String colorPaletteTabId = 'color-palette';
   static const String onionSkinTabId = 'onion-skin';
+
+  /// 🚨I-2 (유저 결정 2026-08-25): 「**새 패널로 만든다 — 이번은 예외**」 —
+  /// the first exception to 「툴 전용 패널을 새로 만들지 않는다」. The rule
+  /// stands for tool SETTINGS; a rack of sizes you reach for while drawing
+  /// has to be visible at the same time as the canvas, which is the one
+  /// thing the settings panel cannot be.
+  static const String toolSizeTabId = 'tool-size';
   static const String cameraTabId = 'camera';
   static const String mediaTabId = 'media';
   static const String timelineTabId = 'timeline';
@@ -423,6 +431,7 @@ class EditorWorkspace extends StatefulWidget {
     colorRgbTabId,
     colorPaletteTabId,
     onionSkinTabId,
+    toolSizeTabId,
     mediaTabId,
     mediaViewerTabId,
     mediaViewerSubTabId,
@@ -520,6 +529,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     ),
     EditorWorkspace.railGroupId(right: true, slot: 4): DockGroup(
       tabs: [EditorWorkspace.onionSkinTabId],
+    ),
+    // I-2: its own button, not a second tab behind the onion's. A rack of
+    // sizes is something you reach for WHILE drawing — sharing a group would
+    // make it the thing you have to switch to, which is the shape 도구띠's
+    // own note above rejects ("two tabs of one group … hid one behind the
+    // other").
+    EditorWorkspace.railGroupId(right: true, slot: 6): DockGroup(
+      tabs: [EditorWorkspace.toolSizeTabId],
     ),
     // 서브 뷰어 (유저 확정 ⑥): right under the media browser it is opened
     // from, and its group ships CLOSED — a reference panel earns its
@@ -2561,6 +2578,23 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
               currentColorOf: () => _brushTool.value.color,
               onChanged: (next) =>
                   widget.session.onionSkinSettings.value = next,
+            ),
+          ),
+        );
+      // I-2: the tool's sizes as buttons. It reads the SNAP list, which is
+      // already the user's own list of sizes — see [ToolSizePresetPanel].
+      case EditorWorkspace.toolSizeTabId:
+        return EditorPanelTab(
+          id: tabId,
+          label: AppText.strings.panelToolSize,
+          icon: Icons.line_weight,
+          locked: locked,
+          builder: (context) => ValueListenableBuilder<BrushToolState>(
+            valueListenable: _brushTool,
+            builder: (context, tool, _) => ToolSizePresetPanel(
+              size: tool.size,
+              onSizeSelected: (size) =>
+                  _brushTool.value = _brushTool.value.copyWith(size: size),
             ),
           ),
         );
