@@ -23,7 +23,9 @@ void main() {
   setUp(() {
     root = Directory.systemTemp.createTempSync('qa_conform_cache_');
     AppSave.settings.value = AppSaveSettings(
-      conformDirectory: root.path.replaceAll('\\', '/'),
+      conformDirectory: GrantedDirectory(
+        path: root.path.replaceAll('\\', '/'),
+      ),
     );
   });
 

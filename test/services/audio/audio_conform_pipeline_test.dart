@@ -239,7 +239,7 @@ void main() {
       // Resolved per call rather than held: a path captured before the
       // user moved the root would name a folder nothing writes to.
       AppSave.settings.value = const AppSaveSettings(
-        conformDirectory: r'D:\fast\conforms',
+        conformDirectory: GrantedDirectory(path: 'D:/fast/conforms'),
       );
       addTearDown(() => AppSave.settings.value = const AppSaveSettings());
       expect(AppSave.conformRootDirectory, 'D:/fast/conforms');
@@ -249,10 +249,11 @@ void main() {
       );
     });
 
-    test('an empty configured root falls back to the default', () {
-      // Settings round-trip an empty string as "unset" everywhere else;
-      // reading it as a root would put the cache at the filesystem root.
-      AppSave.settings.value = const AppSaveSettings(conformDirectory: '');
+    test('an unset root falls back to the default', () {
+      // An empty string used to round-trip as "unset"; a granted
+      // directory cannot hold an empty path at all (fromJson reads one
+      // as absent), so unset is simply null now.
+      AppSave.settings.value = const AppSaveSettings();
       addTearDown(() => AppSave.settings.value = const AppSaveSettings());
       expect(AppSave.conformRootDirectory, contains('qa_test_conform_'));
     });

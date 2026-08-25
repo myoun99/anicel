@@ -1,4 +1,4 @@
-import 'dart:io' show Platform;
+import 'dart:io' show File, Platform;
 
 import 'package:flutter/material.dart';
 
@@ -7,11 +7,16 @@ import '../../services/persistence/app_documents.dart'
 import '../../services/audio/conform_cache_maintenance.dart'
     show clearConformCache, conformCacheBytes;
 import '../../services/persistence/app_save_settings.dart';
+import '../../services/persistence/project_autosave_service.dart';
+import '../../services/persistence/recent_projects.dart' show AppRecent;
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
 import '../text/byte_size_label.dart';
+import '../theme/app_theme.dart' show AppShapes;
+import '../widgets/app_window.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/settings_rows.dart';
+import 'app_confirm_dialog.dart';
 import 'folder_pick_flow.dart';
 
 /// SAVE-1: the autosave policy section (Preferences ▸ Autosave).
@@ -118,6 +123,20 @@ class AutosaveSettingsSection extends StatelessWidget {
               ),
             ),
             const Divider(height: 16),
+            // Q-recovery-gc (유저 08-26): the snapshots made visible —
+            // 「위치나 수정날짜같은거 다 있고 거기서 여러개 선택해서
+            // 삭제가능하게」. The 30-day sweep handles the abandoned ones
+            // on its own; this is the by-hand door for everything else.
+            const SettingsSectionHeading(
+              label: 'Recovery snapshots',
+              help:
+                  'Unsaved work autosave has written, one per project. '
+                  'Saving a project retires its snapshot; one untouched '
+                  'for 30 days is cleaned up on launch.',
+            ),
+            const SizedBox(height: 4),
+            const _RecoverySnapshotsBlock(),
+            const Divider(height: 16),
             // REC1-B2: the take shelf. Mobile shows where takes land but
             // cannot move it (the app documents home is the only sane
             // place there); desktop may point it anywhere.
@@ -154,11 +173,20 @@ class AutosaveSettingsSection extends StatelessWidget {
                   TextButton(
                     key: const ValueKey<String>('settings-recordings-browse'),
                     onPressed: () async {
-                      final directory = await pickFolderForUser(context);
-                      if (directory != null) {
+                      // The GRANT flavour: this path is read again at the
+                      // NEXT launch, and on macOS a stored path without
+                      // its token is refused there — the setting stayed
+                      // on screen while every write quietly failed
+                      // (Q-scoped-folder-settings, 유저 「알아서 맡김」).
+                      final grant = await pickFolderGrantForUser(context);
+                      final path = grant?.path;
+                      if (path != null) {
                         session.setSaveSettings(
                           AppSave.settings.value.copyWith(
-                            recordingsDirectory: directory,
+                            recordingsDirectory: GrantedDirectory(
+                              path: path,
+                              bookmark: grant!.bookmark,
+                            ),
                           ),
                         );
                       }
@@ -206,11 +234,17 @@ class AutosaveSettingsSection extends StatelessWidget {
                   TextButton(
                     key: const ValueKey<String>('settings-conform-browse'),
                     onPressed: () async {
-                      final directory = await pickFolderForUser(context);
-                      if (directory != null) {
+                      // The GRANT flavour, same reason as the recordings
+                      // folder above.
+                      final grant = await pickFolderGrantForUser(context);
+                      final path = grant?.path;
+                      if (path != null) {
                         session.setSaveSettings(
                           AppSave.settings.value.copyWith(
-                            conformDirectory: directory,
+                            conformDirectory: GrantedDirectory(
+                              path: path,
+                              bookmark: grant!.bookmark,
+                            ),
                           ),
                         );
                       }
@@ -228,6 +262,191 @@ class AutosaveSettingsSection extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// The recovery snapshots on disk: name/location, modified date and size
+/// per row, multi-select, one Delete.
+///
+/// A stateful MEASUREMENT like the conform row below — a directory scan
+/// has no business rerunning on every settings rebuild. Unlike that row's
+/// cache, a snapshot can be the ONLY copy of unsaved crash work, so this
+/// delete confirms first.
+class _RecoverySnapshotsBlock extends StatefulWidget {
+  const _RecoverySnapshotsBlock();
+
+  @override
+  State<_RecoverySnapshotsBlock> createState() =>
+      _RecoverySnapshotsBlockState();
+}
+
+class _RecoverySnapshotsBlockState extends State<_RecoverySnapshotsBlock> {
+  late List<RecoverySnapshotInfo> _rows = _load();
+  final Set<String> _selected = <String>{};
+  final ScrollController _scroll = ScrollController();
+
+  static List<RecoverySnapshotInfo> _load() =>
+      ProjectAutosaveService.listRecoverySnapshots(
+        knownProjectPaths: [
+          for (final entry in AppRecent.projects.value.entries) entry.path,
+        ],
+      );
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  static String _dateLabel(DateTime at) {
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${at.year}-${two(at.month)}-${two(at.day)} '
+        '${two(at.hour)}:${two(at.minute)}';
+  }
+
+  Future<void> _confirmDelete() async {
+    final strings = AppText.strings;
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AppConfirmDialog(
+        windowKey: const ValueKey<String>('recovery-delete-dialog'),
+        title: strings.recoveryDeleteTitle,
+        titleIcon: Icons.delete_outline,
+        message: strings.recoveryDeleteMessageTemplate.replaceAll(
+          '{n}',
+          '${_selected.length}',
+        ),
+        actions: [
+          AppWindowAction(
+            label: strings.commonCancel,
+            actionKey: const ValueKey<String>('recovery-delete-cancel'),
+            onPressed: () => Navigator.of(context).pop(false),
+          ),
+          AppWindowAction(
+            label: strings.commonDelete,
+            actionKey: const ValueKey<String>('recovery-delete-confirm'),
+            emphasis: AppWindowActionEmphasis.danger,
+            onPressed: () => Navigator.of(context).pop(true),
+          ),
+        ],
+      ),
+    );
+    if (proceed != true || !mounted) {
+      return;
+    }
+    for (final path in _selected) {
+      try {
+        File(path).deleteSync();
+      } on Object {
+        // Locked by a sync client: the row comes back on the reload below
+        // and says so more honestly than a crash would.
+      }
+    }
+    setState(() {
+      _selected.clear();
+      _rows = _load();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    var total = 0;
+    for (final row in _rows) {
+      total += row.bytes;
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                _rows.isEmpty
+                    ? 'Empty'
+                    : '${_rows.length} · ${byteSizeLabel(total)}',
+                key: const ValueKey<String>('settings-recovery-size'),
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+            TextButton(
+              key: const ValueKey<String>('settings-recovery-delete'),
+              onPressed: _selected.isEmpty ? null : _confirmDelete,
+              child: Text(AppText.strings.commonDelete),
+            ),
+          ],
+        ),
+        // ⛔The well is always here, empty or not — 없다가 생기는 UI 금지.
+        Container(
+          height: 120,
+          clipBehavior: Clip.antiAlias,
+          decoration: ShapeDecoration(
+            shape: AppShapes.container(
+              AppShapes.wellRadius,
+              side: BorderSide(color: colorScheme.outlineVariant),
+            ),
+          ),
+          child: Scrollbar(
+            controller: _scroll,
+            child: ListView.builder(
+              controller: _scroll,
+              itemCount: _rows.length,
+              itemExtent: 24,
+              itemBuilder: (context, index) {
+                final row = _rows[index];
+                final selected = _selected.contains(row.path);
+                return InkWell(
+                  key: ValueKey<String>('settings-recovery-row-${row.path}'),
+                  onTap: () => setState(() {
+                    if (!_selected.add(row.path)) {
+                      _selected.remove(row.path);
+                    }
+                  }),
+                  child: Container(
+                    // Selection is COLOR only (법): no mark, no reflow.
+                    color: selected
+                        ? colorScheme.primary.withValues(alpha: 0.16)
+                        : null,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            row.projectPath ?? row.projectName,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: selected ? colorScheme.primary : null,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _dateLabel(row.modified),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          byteSizeLabel(row.bytes),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

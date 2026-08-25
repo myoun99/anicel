@@ -19,6 +19,10 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_image_encoder.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
+import 'package:anicel/src/services/persistence/app_save_settings.dart'
+    show GrantedDirectory;
+import 'package:anicel/src/services/persistence/folder_grant.dart'
+    show FolderGrant, FolderPicker;
 import 'package:anicel/src/services/persistence/app_export_settings_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
@@ -837,6 +841,42 @@ void main() {
         reason: 'the second dialog should adopt the store on open',
       );
       expect(find.text('p1'), findsOneWidget);
+    });
+
+    testWidgets('🚨 the replayed location reopens its grant on open, and a '
+        'moved folder is followed and persisted', (tester) async {
+      // Q-scoped-folder-settings: `lastLocation` is written to at the
+      // NEXT launch's exports — on macOS a stored path without its
+      // resolved token is refused at the first write, silently.
+      final store = AppExportSettingsStore(
+        filePath: '${temp.path.replaceAll('\\', '/')}/export_settings.json',
+      );
+      await store.save(
+        AppExportSettings(
+          lastLocation: const GrantedDirectory(
+            path: '/old/deliver',
+            bookmark: 'TOK==',
+          ),
+        ),
+      );
+      FolderPicker.debugBookmarkResolver = (base64, kind) async =>
+          const FolderGrant.granted(
+            path: '/mounted/deliver',
+            bookmark: 'FRESH==',
+          );
+      addTearDown(() => FolderPicker.debugBookmarkResolver = null);
+      AppExport.settings.value = AppExportSettings();
+
+      await pumpDialog(tester, exportSession(), settingsStore: store);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(
+        AppExport.settings.value.lastLocation,
+        const GrantedDirectory(path: '/mounted/deliver', bookmark: 'FRESH=='),
+        reason: 'the pair moved together — a fresh token for the folder the '
+            'user renamed, persisted so the NEXT launch starts right',
+      );
     });
   });
 }
