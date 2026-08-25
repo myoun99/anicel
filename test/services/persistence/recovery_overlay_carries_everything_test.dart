@@ -1,9 +1,20 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/conte/conte_ink_keys.dart';
+import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
@@ -166,6 +177,100 @@ void main() {
       },
       reason: 'a new top-level key is a decision for the overlay too — add '
           'it here once the snapshot handles it',
+    );
+  });
+
+  test('🚨 the aux ink namespaces (conte row, conte page, envelope) ride '
+      'the overlay', () async {
+    // The same law one namespace over. Cels are not project.json keys, so
+    // the parity tests above cannot see them — and before this test,
+    // deleting the `auxCelStores` argument at the snapshot call site kept
+    // every suite green while crash recovery silently lost all timesheet
+    // and envelope handwriting drawn since the last save.
+    BitmapSurface inkSurface({int seed = 1}) {
+      final pixels = Uint8List(8 * 8 * 4);
+      for (var i = 0; i < pixels.length; i += 1) {
+        pixels[i] = (i * seed * 13 + seed) & 0xFF;
+      }
+      return BitmapSurface(
+        canvasSize: const CanvasSize(width: 16, height: 16),
+        tileSize: 8,
+        tiles: {
+          TileCoord(x: 0, y: 0): BitmapTile(
+            coord: TileCoord(x: 0, y: 0),
+            size: 8,
+            pixels: pixels,
+          ),
+        },
+      );
+    }
+
+    // Graft a real storyboard block so the row-plane key survives the
+    // open's "ink dies with the drawing" prune.
+    Project project = createDefaultProject();
+    final track = project.tracks.first;
+    final baseCut = track.cuts.first;
+    project = project.copyWith(
+      tracks: [
+        track.copyWith(
+          cuts: [
+            baseCut.copyWith(
+              layers: [
+                baseCut.layers.first.copyWith(
+                  frames: [
+                    Frame(
+                      id: const FrameId('sb-f1'),
+                      duration: 8,
+                      strokes: const [],
+                    ),
+                  ],
+                  timeline: {
+                    0: const TimelineExposure.drawing(
+                      FrameId('sb-f1'),
+                      length: 8,
+                    ),
+                  },
+                ),
+                ...baseCut.layers.skip(1),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    final s = EditorSessionManager(initialProject: project);
+    final projectPath = '${directory.path.replaceAll('\\', '/')}/ink.anicel';
+    await s.saveProjectToFile(projectPath);
+
+    // Drawn AFTER the save, so only the overlay can be holding it.
+    final cutId = s.requireActiveCut.id;
+    final rowKey = conteInkRowKey(cutId, const FrameId('sb-f1'));
+    final pageKey = conteInkPageKey(0);
+    final envelopeKey = envelopeInkBoxKey(cutId, 'cel-row-3');
+    s.conteInkRowStore.storeBakedSurface(rowKey, inkSurface(seed: 3));
+    s.conteInkPageStore.storeBakedSurface(pageKey, inkSurface(seed: 4));
+    s.envelopeInkStore.storeBakedSurface(envelopeKey, inkSurface(seed: 5));
+    final overlayPath = '${directory.path.replaceAll('\\', '/')}/ink.overlay';
+    await s.writeAutosaveSnapshot(overlayPath);
+    s.dispose();
+
+    final restored = session();
+    addTearDown(restored.dispose);
+    await restored.openProjectFromFile(projectPath, overlayPath: overlayPath);
+    expect(
+      restored.conteInkRowStore.celHasRenderableContent(rowKey),
+      isTrue,
+      reason: 'the conte row plane rides the overlay',
+    );
+    expect(
+      restored.conteInkPageStore.celHasRenderableContent(pageKey),
+      isTrue,
+      reason: 'the conte page plane rides the overlay',
+    );
+    expect(
+      restored.envelopeInkStore.celHasRenderableContent(envelopeKey),
+      isTrue,
+      reason: 'the envelope sheet rides the overlay',
     );
   });
 }

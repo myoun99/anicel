@@ -141,11 +141,11 @@ class MediaAsset {
   /// being a usable proxy the moment carrying no longer means copying a
   /// file somewhere first.
   ///
-  /// 🔑 The KIND still sets the ceiling: video is never carried however
-  /// this is set, because a three-gigabyte reference inside a project file
-  /// is a project nobody can open or sync. This chooses underneath that —
-  /// a sound left outside on purpose, because the user shares the original
-  /// with another tool.
+  /// 🔑 This flag is the WHOLE answer at save time. The kind only picks
+  /// the import default ([mediaKindCarriedByDefault]: video starts as a
+  /// reference, the rest start carried) — it stopped being a ceiling on
+  /// 2026-08-14 (user decision, recorded on [mediaKindCarriedByDefault]),
+  /// and the protection moved to the [largeCarriedAssetBytes] warning.
   ///
   /// Assets from before this existed fall back to [sourcePath] being set,
   /// which is exactly the ones that WERE copied into the project: the old

@@ -16818,9 +16818,10 @@ class EditorSessionManager extends ChangeNotifier {
     _hasUnsavedChanges = true;
   }
 
-  /// The autosave sidecar for the CURRENT state (SAVE-1: beside the file
-  /// or in the user's sidecar directory — [AppSave.sidecarPathFor]);
-  /// null while the project has never been saved (the service prompts
+  /// The recovery overlay for the CURRENT state — always in the app
+  /// container ([AppSave.recoveryPathFor]), never beside the file: a
+  /// sibling would need the grant the crash just took down with it.
+  /// Null while the project has never been saved (the service prompts
   /// for a real file instead of writing into hidden app-data dirs).
   String? get autosaveSidecarPath {
     final path = _projectFilePath;
@@ -16831,11 +16832,11 @@ class EditorSessionManager extends ChangeNotifier {
   /// the project path — the recovery service's snapshot writer.
   ///
   /// An OVERLAY on the saved project: only the cels edited since the last
-  /// manual save. This runs as the app is going away, with a few seconds
-  /// and no promise of coming back, so it has to cost what the user drew
-  /// rather than what the project weighs. Everything left out is already
-  /// in the project file, unchanged, which is also what the base stamp
-  /// inside the overlay is there to guarantee.
+  /// manual save. This runs mid-session on the periodic tick (F-1 made the
+  /// clock the only trigger), so it has to cost what the user drew rather
+  /// than what the project weighs. Everything left out is already in the
+  /// project file, unchanged, which is also what the base stamp inside the
+  /// overlay is there to guarantee.
   Future<void> writeAutosaveSnapshot(String path) async {
     final base = _projectFilePath;
     if (base == null) {
@@ -17285,6 +17286,20 @@ class EditorSessionManager extends ChangeNotifier {
     String? recoverAs,
     String? overlayPath,
   }) async {
+    // The mirror of "a whole archive is refused as an overlay" (pinned in
+    // recovery_overlay_test): an OVERLAY fed through the legacy
+    // whole-archive arm is refused too. Its project.json is the full
+    // project, so it would OPEN and look right while every base cel reads
+    // as empty — and the next full rewrite makes that loss permanent.
+    // Loud beats silently lossy; the shell's routing is the one caller and
+    // routes overlays to [overlayPath].
+    if (recoverAs != null && anicelSnapshotIsOverlay(filePath)) {
+      throw const FormatException(
+        'this snapshot is a recovery overlay — it holds only what changed '
+        'since its base was saved, and has to be opened OVER that base, '
+        'never as the project itself',
+      );
+    }
     final result = await _anicelFileService.open(
       filePath: filePath,
       overlayPath: overlayPath,

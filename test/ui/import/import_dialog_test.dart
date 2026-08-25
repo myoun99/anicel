@@ -369,9 +369,10 @@ void main() {
       // It used to start on Reference everywhere but Apple, where a
       // recorded path dies at the next launch without a grant. Two things
       // moved since: the project carries its own media, so carrying costs
-      // bytes inside a ZIP rather than a second file on disk, and the KIND
-      // rule stops a 3GB movie from being carried at all — which was the
-      // reason Reference had to be the default in the first place.
+      // bytes inside a ZIP rather than a second file on disk, and video
+      // DEFAULTS to Reference (mediaKindCarriedByDefault — a default only
+      // since 2026-08-14, no longer a ceiling), so the 3GB-movie accident
+      // that made Reference the blanket default answers itself per kind.
       //
       // What is left is which failure someone meets by not choosing, and a
       // link that breaks when the original moves is the worse one.

@@ -197,6 +197,15 @@ void main() {
       session().openProjectFromFile(projectPath, overlayPath: projectPath),
       throwsA(isA<FormatException>()),
     );
+
+    // The MIRROR: an overlay fed through the legacy whole-archive arm is
+    // refused too. Its project.json is the full project, so it would open
+    // and look right while every base cel reads as empty — and the next
+    // full rewrite makes that loss permanent. Same law, both directions.
+    await expectLater(
+      session().openProjectFromFile(overlayPath, recoverAs: projectPath),
+      throwsA(isA<FormatException>()),
+    );
   });
 
   test('a RECOVERED session does not snapshot over the file its own cels '

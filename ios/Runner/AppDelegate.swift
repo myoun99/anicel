@@ -31,8 +31,9 @@ import UniformTypeIdentifiers
   /// Items this process currently holds a security scope on, keyed by
   /// path — FILES as well as folders since PICK-5. Nothing removes entries:
   /// a scope is cheap, the app grants a handful per session, and stopping
-  /// one mid-session would pull the floor out from under an open project's
-  /// autosave — which writes a sidecar beside the file every five minutes.
+  /// one mid-session would pull the floor out from under the open project —
+  /// every incremental save appends into the scoped `.anicel` itself, and
+  /// carried-media reads stream out of it between saves.
   private var scopedItems: [String: URL] = [:]
 
   override func application(
@@ -70,12 +71,10 @@ import UniformTypeIdentifiers
           for: .documentDirectory, in: .userDomainMask
         ).first!
         result(documents.appendingPathComponent("Anicel").path)
-      case "isAllFilesAccessGranted":
-        // iOS sandboxing: the app folder is always writable; foreign
-        // folders arrive per-document via pickers.
-        result(true)
-      case "requestAllFilesAccess":
-        result(nil)
+      // The all-files-access pair is Android-only on the Dart side (it
+      // short-circuits for every other platform), so no case here — the
+      // macOS twin's stance: answering would be unreachable code
+      // pretending to be a contract.
       case "pickProjectFolder":
         self.pickProjectFolder(result: result)
       case "pickFiles":
@@ -102,14 +101,15 @@ import UniformTypeIdentifiers
 
   /// Presents the system document picker in FOLDER mode.
   ///
-  /// A folder rather than a file because the security scope lands on exactly
-  /// what was picked, and a project is a file plus a sibling `.assets/`
-  /// directory plus an autosave sidecar. Picking the file would grant the one
-  /// item that cannot be saved.
+  /// Since the single-file format a PROJECT never needs this — a project is
+  /// one `.anicel`, and open/Save As grant the file itself (PICK-6). Folder
+  /// mode remains for the picks that are genuinely folder-shaped: cut-folder
+  /// import, image-sequence export, the recordings directory, relink's
+  /// "find them under this folder".
   ///
-  /// This is also the only surface on iPadOS through which Dropbox and other
-  /// providers are reachable at all: they are File Provider extensions, and
-  /// no API lets a third-party app enumerate them. (Google Drive declines
+  /// For those, this is the only surface on iPadOS through which Dropbox and
+  /// other providers are reachable at all: they are File Provider extensions,
+  /// and no API lets a third-party app enumerate them. (Google Drive declines
   /// folder mode outright — measured on iOS 26.5.2 — which is why file mode
   /// below is the one that reaches it.)
   private func pickProjectFolder(result: @escaping FlutterResult) {
@@ -173,6 +173,11 @@ import UniformTypeIdentifiers
   /// ★This mode reaches Google Drive, which folder mode does not (measured
   /// on iOS 26.5.2 — the system's own "Save to Files" lands there). That is
   /// the whole reason Save As can stop asking for a folder.
+  ///
+  /// ⚠️ The channel's `suggestedName` is deliberately unused here:
+  /// `forExporting` shows the FILE's own name, so the Dart side stages the
+  /// file under its final name first — a caller whose staged name differs
+  /// from its suggestedName gets the staged name on this platform.
   private func exportFile(sourcePath: String?, result: @escaping FlutterResult) {
     guard let sourcePath, !sourcePath.isEmpty else {
       result(["status": "unavailable"])
@@ -254,8 +259,8 @@ import UniformTypeIdentifiers
     // A bookmark for a provider that signed out, or a volume no longer
     // mounted, RESOLVES without throwing and then refuses to open its scope.
     // Reporting that as "granted" hands Dart a path every write will bounce:
-    // the project opens, the sidecar fires five minutes later, and each
-    // `dart:io` write dies inside a try that was written for a folder that
+    // the project opens, the next save appends into the archive, and each
+    // `dart:io` write dies inside a try that was written for a path that
     // was supposed to be writable. The status vocabulary already has the
     // right word for it.
     if requiringScope && !opened {

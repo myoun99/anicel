@@ -3,14 +3,23 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_history_policy.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
+import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
+import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/services/persistence/project_autosave_service.dart';
+import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/recent_projects.dart';
 import 'package:anicel/src/services/persistence/recent_projects_store.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart';
+import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
@@ -203,7 +212,9 @@ void main() {
       final recovered = EditorSessionManager(
         initialProject: createDefaultProject(),
       );
-      await recovered.openProjectFromFile(sidecar, recoverAs: projectPath);
+      // The modern route: the snapshot is an OVERLAY laid over the base
+      // (the legacy `recoverAs:` arm is for pre-overlay whole archives).
+      await recovered.openProjectFromFile(projectPath, overlayPath: sidecar);
       recovered.discardAutosaveSidecar();
 
       expect(File(sidecar).existsSync(), isTrue);
@@ -220,7 +231,7 @@ void main() {
       await s.saveProjectToFile(projectPath);
       final sidecar = '$projectPath.autosave';
       await s.writeAutosaveSnapshot(sidecar);
-      await s.openProjectFromFile(sidecar, recoverAs: projectPath);
+      await s.openProjectFromFile(projectPath, overlayPath: sidecar);
       // …then opens something else the normal way.
       final other = '${folder.path.replaceAll('\\', '/')}/Cut 99.anicel';
       await s.saveProjectToFile(other);
@@ -366,6 +377,138 @@ void main() {
         reason: 'the rest of this test is meaningless without the open',
       );
     }
+
+    testWidgets('🚨 ACCEPTING recovery routes a modern overlay through the '
+        'overlay arm — the saved drawings survive it', (tester) async {
+      // The one branch no test drove: every shell test here DECLINES.
+      // The accept handler decides between two arms — an overlay lays
+      // over the base, a legacy whole-archive snapshot opens AS the
+      // project — and if a modern overlay ever fell into the legacy arm,
+      // the delta would open as the whole project: project.json is full,
+      // so it LOOKS right, while every previously saved drawing reads as
+      // empty. Data loss with a green suite; asserted here through a
+      // real save, whose archive must still hold the base cel.
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      // A real drawn cel in the BASE — the thing the wrong arm loses.
+      s.createDrawingAtCurrentFrame();
+      final selection = s.activeBrushEditorSelection!;
+      BrushFrameEditingCoordinator(
+        initialFrameKey: s.brushFrameKeyForCut(
+          s.requireActiveCut,
+          selection.layerId,
+          selection.frameId,
+        ),
+        frameStore: s.brushFrameStore,
+        sessionStore: BrushFrameEditSessionStore(
+          canvasSize: s.requireActiveCut.canvasSize,
+          tileSize: 256,
+        ),
+        historyPolicy: const BrushHistoryPolicy(
+          userUndoLimit: 8,
+          deferredBakeRatio: 0,
+        ),
+      ).commitSourceStroke(
+        sourceDabs: [
+          BrushDab(
+            center: CanvasPoint(x: 10, y: 10),
+            color: 0xFF000000,
+            size: 4,
+            opacity: 1,
+            flow: 1,
+            hardness: 1,
+            tipShape: BrushTipShape.round,
+            pressure: 1,
+            sequence: 0,
+          ),
+        ],
+      );
+      await tester.runAsync(() => s.saveProjectToFile(projectPath));
+      final savedCels = [
+        for (final entry in parseAnicelZipLayoutFile(projectPath).entries)
+          if (entry.name.endsWith('.celz')) entry.name,
+      ];
+      expect(savedCels, isNotEmpty, reason: 'the base really holds a cel');
+      // Unsaved work on top, snapshotted as a modern OVERLAY in the
+      // current candidate spot, newer than the base.
+      s.createCut();
+      final sidecar = AppSave.recoveryPathFor(projectPath);
+      await tester.runAsync(() => s.writeAutosaveSnapshot(sidecar));
+      addTearDown(() => File(sidecar).parent.deleteSync(recursive: true));
+      File(sidecar).setLastModifiedSync(
+        File(projectPath).lastModifiedSync().add(const Duration(minutes: 5)),
+      );
+      s.dispose();
+
+      ProjectRepository? repository;
+      final seeded = const RecentProjects().withOpened(
+        RecentProject(path: projectPath),
+      );
+      AppRecent.projects.value = seeded;
+      RecentProjectsStore().save(seeded);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(onRepositoryCreated: (r) => repository = r),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await openProjectMenu(tester);
+      await tester.tap(
+        find.byKey(ValueKey<String>('menu-recent-$projectPath')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('recover-autosave-dialog')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('recover-autosave-button')),
+      );
+      await settleIsolate(
+        tester,
+        () => repository?.currentProject?.tracks.first.cuts.length == 2,
+      );
+      expect(
+        repository?.currentProject?.tracks.first.cuts.length,
+        2,
+        reason: 'the overlay\'s unsaved cut really was recovered',
+      );
+
+      // The proof: SAVE AS from the recovered session. Deliberately not a
+      // plain save — that one appends INTO the base archive, whose old cel
+      // entries survive untouched, so the file looks whole even when the
+      // session lost them. Save As writes a fresh file from what the
+      // session actually holds, which is exactly the question: did the
+      // routing hand this session the base cels or not.
+      final savedAs =
+          '${folder.path.replaceAll('\\', '/')}/Recovered Copy.anicel';
+      FolderPicker.debugSaveDestinationPicker =
+          ({required suggestedName, initialDirectory}) async =>
+              FolderGrant.granted(path: savedAs, kind: GrantKind.file);
+      await openProjectMenu(tester);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('menu-file-save-as')),
+      );
+      await settleIsolate(tester, () => File(savedAs).existsSync());
+      // The progress window lingers on "saved" behind a timer; let it fire
+      // or the binding flags it as a stray after teardown.
+      await tester.pump(appProgressDoneLinger + const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      final celsAfter = [
+        for (final entry in parseAnicelZipLayoutFile(savedAs).entries)
+          if (entry.name.endsWith('.celz')) entry.name,
+      ];
+      expect(
+        celsAfter,
+        containsAll(savedCels),
+        reason: 'the base cel is still in the file — the overlay laid OVER '
+            'the project instead of replacing it',
+      );
+      // A recovered-then-saved session still holds scheduled work; the
+      // binding checks for stray timers before teardown runs, so the tree
+      // has to go down in the body (save_shows_progress_test's idiom).
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
 
     testWidgets('Close on the exit gate retires the sidecar — discarding '
         'the work discards its snapshot', (tester) async {

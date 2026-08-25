@@ -4,25 +4,23 @@ import 'dart:io';
 import 'app_save_settings.dart';
 
 /// Autosave (P3): a DIRTY session's work is snapshotted into the app's
-/// recovery folder when the app is about to stop being in front of the
-/// user. Opening a file with a newer snapshot offers recovery (the menu's
-/// open flow).
+/// recovery folder on the periodic tick — F-1 (유저 2026-08-26) made the
+/// clock the ONLY trigger (「심플하게 명시적저장 / n분주기 자동저장만」).
+/// Opening a file with a newer snapshot offers recovery (the menu's open
+/// flow).
 ///
-/// It used to be a five-minute TIMER, and the timer is gone. Two reasons,
-/// and the second is the one that decided it:
+/// A clock was here once before and was DELETED, for reasons worth
+/// keeping because they say what had to change before it could return:
 ///
-/// - It defeated incremental saving outright. Each tick adopted every
-///   cel's file ref into the snapshot, so the next manual save could no
-///   longer see its own work in the project file and rewrote the whole
-///   thing. Incremental save only ever ran when two manual saves landed
-///   inside one interval, which in practice is never.
-/// - Nobody in the industry runs one on documents this size. Of the
-///   professional animation tools surveyed, every desktop one ships its
-///   timer OFF by default, and not one writes a complete copy of a
-///   multi-gigabyte document on a clock. What they all do instead is
-///   shrink the unit of write. The mobile ones, where the OS can kill the
-///   process without warning, write on the LIFECYCLE instead — which is
-///   the trigger that actually matches when work is at risk.
+/// - The old tick wrote a whole-archive snapshot and adopted every cel's
+///   file ref into it, so the next manual save could no longer see its
+///   own work in the project file and rewrote the whole thing —
+///   incremental save never ran. The snapshot is an OVERLAY now (only
+///   the cels since the last save, nothing adopted), which is what makes
+///   a clock affordable on documents this size.
+/// - The lifecycle triggers that replaced it in between (pause, app
+///   going background) are gone with F-1 — see the ⛔F-1 decision note in
+///   home_page for what an OS kill costs now and why that was accepted.
 ///
 /// A snapshot holds unsaved work, so it dies the moment that work stops
 /// existing — see [retireSidecarsFor] for the three moments and why a
@@ -69,10 +67,10 @@ class ProjectAutosaveService {
   /// Never throws — a failed snapshot must not disturb editing or block
   /// the lifecycle callback that asked for it.
   ///
-  /// Re-entrant calls return immediately rather than queue: the triggers
-  /// arrive in bursts (inactive, then hidden, then paused, for one trip to
-  /// the home screen) and each would otherwise rewrite what the last one
-  /// just wrote.
+  /// Re-entrant calls return immediately rather than queue: a tick can
+  /// land while the previous tick's write is still in its isolate (a big
+  /// overlay on a slow disk outlives a short interval), and queueing it
+  /// would rewrite what the write in flight is about to say.
   Future<void> saveNow() async {
     if (_writing || !isDirty()) {
       return;
@@ -142,14 +140,18 @@ class ProjectAutosaveService {
     required String filePath,
     required String sidecarPath,
   }) {
-    final file = File(filePath);
-    final sidecar = File(sidecarPath);
-    if (!sidecar.existsSync()) {
+    // Single stats, not exists-then-mtime: the project file lives in the
+    // user's folder, where a sync client can replace it between the two
+    // calls — and a throw here escapes the open flow before its try.
+    // statSync never throws; vanished reports notFound.
+    final sidecarStat = FileStat.statSync(sidecarPath);
+    if (sidecarStat.type == FileSystemEntityType.notFound) {
       return false;
     }
-    if (!file.existsSync()) {
+    final fileStat = FileStat.statSync(filePath);
+    if (fileStat.type == FileSystemEntityType.notFound) {
       return true;
     }
-    return !sidecar.lastModifiedSync().isBefore(file.lastModifiedSync());
+    return !sidecarStat.modified.isBefore(fileStat.modified);
   }
 }

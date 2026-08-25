@@ -193,26 +193,6 @@ class RecentProjects {
     return changed ? copyWith(entries: next) : this;
   }
 
-  /// Replaces an entry's bookmark after a successful reconnect, clearing the
-  /// flag with it.
-  RecentProjects withReconnected(String path, String? folderBookmark) {
-    var changed = false;
-    final next = [
-      for (final entry in entries)
-        if (entry.path == path)
-          () {
-            changed = true;
-            return RecentProject(
-              path: entry.path,
-              folderBookmark: folderBookmark,
-            );
-          }()
-        else
-          entry,
-    ];
-    return changed ? copyWith(entries: next) : this;
-  }
-
   RecentProjects without(String path) {
     if (!entries.any((entry) => entry.path == path)) {
       return this;

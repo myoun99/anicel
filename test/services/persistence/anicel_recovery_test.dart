@@ -174,14 +174,20 @@ void main() {
 
     final recovered = recoverAnicelZipLayoutFile(path);
     final entry = recovered.entryNamed(last.name);
-    if (entry != null) {
-      expect(
-        entry.localHeaderOffset,
-        lessThan(last.localHeaderOffset),
-        reason: 'the shadowed predecessor wins, not the corrupt bytes',
-      );
-    }
-    // If the final name had no predecessor, it must be gone entirely.
+    // UNCONDITIONAL: this fixture's final name HAS a shadowed predecessor
+    // (buildAppendedFile appends over it), so the law says fall BACK, not
+    // drop. Wrapped in `if (entry != null)` this test stayed green with
+    // the fallback deleted — crash recovery silently losing the last
+    // saved version of a cel it could have restored. (A final name with
+    // no predecessor must be gone entirely — that case is the torn-NEW-
+    // name test above.)
+    expect(entry, isNotNull, reason: 'the shadowed predecessor must win');
+    expect(
+      entry!.localHeaderOffset,
+      lessThan(last.localHeaderOffset),
+      reason: 'the shadowed predecessor wins, not the corrupt bytes',
+    );
+    expect(recovered.entries.length, healthy.entries.length);
   });
 
   test('END TO END: a torn file OPENS through recovery and the next save '

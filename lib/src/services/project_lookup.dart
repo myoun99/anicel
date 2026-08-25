@@ -170,12 +170,12 @@ const int largeCarriedAssetBytes = 100 * 1024 * 1024;
 
 /// Every pool path whose bytes the project should carry.
 ///
-/// TWO questions, and both have to say yes. The KIND sets the ceiling —
-/// video is never carried, whatever anyone picked — and the asset's own
-/// [MediaAsset.carried] chooses underneath it, which is where the import
-/// window's copy-or-reference answer lives. A sound left outside on
-/// purpose, because the original is shared with another tool, stays
-/// outside.
+/// ONE question: the asset's own [MediaAsset.carried], where the import
+/// window's copy-or-reference answer lives. The kind only chose the
+/// DEFAULT of that answer at import ([mediaKindCarriedByDefault]) — the
+/// old kind ceiling died 2026-08-14, see the decision there. A sound left
+/// outside on purpose, because the original is shared with another tool,
+/// stays outside.
 ///
 /// ⚠️ The POOL only. SE clips reference audio by path and are warmed by
 /// [projectAudioSourcePaths], but a clip is not a registration — what the

@@ -120,6 +120,98 @@ void main() {
     );
   });
 
+  /// Drives [ask] through a REAL save: taps [buttonKey] on the gate window
+  /// and pumps real time until the whole thing settles — the save crosses
+  /// into an isolate and the progress window spins, so neither the fake
+  /// clock nor pumpAndSettle can finish it (save_shows_progress_test's
+  /// harness, folded in).
+  Future<bool> settleThroughRealSave(
+    WidgetTester tester,
+    Future<bool> Function() ask,
+    String buttonKey,
+  ) async {
+    late bool settled;
+    var done = false;
+    await tester.runAsync(() async {
+      final future = ask().then((value) {
+        settled = value;
+        done = true;
+      });
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey<String>(buttonKey)));
+      final deadline = DateTime.now().add(const Duration(seconds: 30));
+      while (!done && DateTime.now().isBefore(deadline)) {
+        await tester.pump();
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      await future;
+    });
+    await tester.pump();
+    expect(done, isTrue, reason: 'the gate never came back');
+    return settled;
+  }
+
+  testWidgets('Save inside the gate writes the file and lets the tear-down '
+      'proceed', (tester) async {
+    // The drive-through the presence tests never took: the gate's bool is
+    // what the close reads, and a gate that answered true without the
+    // bytes landing would quit past an unsaved project.
+    final fixture = await mounted(tester);
+    final path = '${folder.path.replaceAll('\\', '/')}/gate-save.anicel';
+    await tester.runAsync(() => fixture.session.saveProjectToFile(path));
+    final savedLength = File(path).lengthSync();
+    fixture.session.createCut();
+    expect(fixture.session.hasUnsavedChanges, isTrue);
+
+    final settled = await settleThroughRealSave(
+      tester,
+      fixture.ask,
+      'system-exit-save',
+    );
+
+    expect(settled, isTrue);
+    expect(fixture.session.hasUnsavedChanges, isFalse);
+    expect(
+      File(path).lengthSync(),
+      greaterThan(savedLength),
+      reason: 'the new cut is really in the file, not just flagged saved',
+    );
+    fixture.session.dispose();
+    await tester.pump();
+  });
+
+  testWidgets('🚨 a save that FAILS inside the gate calls the close off', (
+    tester,
+  ) async {
+    // The regression the funnel exists to prevent, asserted AT the gate:
+    // "save and quit" on a failing disk must neither quit nor lie.
+    final fixture = await mounted(tester);
+    final path = '${folder.path.replaceAll('\\', '/')}/gate-fail.anicel';
+    await tester.runAsync(() async {
+      await fixture.session.saveProjectToFile(path);
+      // The project path turns into a DIRECTORY: every later write —
+      // incremental append and the full rewrite's rename alike — refuses.
+      File(path).deleteSync();
+      Directory(path).createSync();
+    });
+    fixture.session.createCut();
+
+    final settled = await settleThroughRealSave(
+      tester,
+      fixture.ask,
+      'system-exit-save',
+    );
+
+    expect(settled, isFalse, reason: 'nothing landed, so nothing may close');
+    expect(
+      fixture.session.hasUnsavedChanges,
+      isTrue,
+      reason: 'the work is not in a file, so the close must be called off',
+    );
+    fixture.session.dispose();
+    await tester.pump();
+  });
+
   testWidgets('the OPEN door is wired to the gate — a recents tap on a '
       'dirty session asks before discarding', (tester) async {
     // The WIRING, with real taps, because the function test above survives

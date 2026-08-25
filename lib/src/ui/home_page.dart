@@ -335,20 +335,22 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// SAVE-1: (re)builds the autosave service to the current policy —
-  /// disabled tears it down. No timer any more: [_snapshotForRecovery]
-  /// decides WHEN, off the app lifecycle.
+  /// SAVE-1: follows the live policy. F-1 made the CLOCK the only trigger,
+  /// so the policy is one number — [_autosaveClock] gets the interval (or
+  /// stands down on null) and that is the whole sync.
   void _syncAutosaveService() {
     final settings = AppSave.settings.value;
     final minutes = settings.periodicSnapshotMinutes;
     _autosaveClock.configure(
       interval: minutes == null ? null : Duration(minutes: minutes),
     );
-    // Built unconditionally now. It used to be torn down when autosave was
-    // switched off, which also silenced the lifecycle snapshot — so the
-    // one trigger that costs nothing and is the only one a mobile OS
-    // leaves room for went away with the two that are optional.
-    _autosave = ProjectAutosaveService(
+    // ONE service for the page's life, never rebuilt: nothing below is
+    // settings-derived (five closures reading live session state), and
+    // this listener fires on ANY settings change — a rebuild here dropped
+    // the in-flight `_writing` guard with it, so a snapshot mid-write plus
+    // a recordings-folder pick equalled two concurrent overlay writers
+    // racing for the same rename.
+    _autosave ??= ProjectAutosaveService(
       // Stands down while a manual save runs: a snapshot that lands after
       // the save's retirement leaves one behind for a project that was
       // saved and closed cleanly, and the next open then offers to recover

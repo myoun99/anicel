@@ -78,9 +78,12 @@ void main() {
     reopened.dispose();
   });
 
-  test('a movie stays outside, however big the project gets', () async {
-    // The kind law where it costs something: a three-gigabyte reference
-    // would make the project unopenable, so video is never carried.
+  test('a movie imported as a REFERENCE stays outside', () async {
+    // Not a kind ceiling — that died 2026-08-14 (decision on
+    // mediaKindCarriedByDefault); a movie the user asks to carry IS
+    // carried. This fixture says copyIntoProject: false, so what it pins
+    // is that the reference answer is honoured: carried is the whole
+    // answer, and here the answer is no.
     final editor = session();
     final projectPath = '${directory.path}/scene.anicel';
     await editor.saveProjectToFile(projectPath);
