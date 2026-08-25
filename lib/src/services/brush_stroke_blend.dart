@@ -96,6 +96,57 @@ Uint8List bitmapSurfaceRegionPixels(BitmapSurface surface, DirtyRegion bounds) {
 /// destination survives untouched" input of every commit kernel — none
 /// of them read colour behind it — and premultiplying for display zeroes
 /// those bytes anyway.
+/// The stroke's own OPACITY as a coverage byte — the channel a selection
+/// mask already speaks.
+///
+/// 🚨★F-12 (유저 2026-08-24): 「포토샵이나 다른 프로툴의 경우 불투명도 낮추면
+/// 스트로크동안 dab이 겹친다고 해도 **해당 불투명도 이상으로 안 진해지지
+/// 않나?** 지금 우리는 … **겹치면 100%만큼 진해지는거같은데**」.
+///
+/// The professional law: FLOW is what one dab lays, OPACITY is the ceiling
+/// the whole stroke may reach. Ours multiplied both into every dab, so
+/// overlapping dabs converged on 1 whatever the setting said.
+///
+/// ★It is a MASK WITH NO SHAPE, and that is the whole implementation. The
+/// selection round already had to solve "one factor on the ACCUMULATED
+/// stroke, never per dab" — masking dabs individually breaks soft edges
+/// because `srcOver(a₁·m, a₂·m) ≠ srcOver(a₁, a₂)·m` — and this is the same
+/// problem with a constant. So the opacity is folded INTO the mask bytes
+/// and every kernel downstream, C included, needs no change at all.
+int strokeOpacityCoverage(double opacity) =>
+    (opacity.clamp(0.0, 1.0) * 255).round();
+
+/// [selection] with [opacity] folded in, or a uniform mask when there is no
+/// selection — null when there is nothing to scale at all.
+///
+/// ⚠️Folded into the MASK rather than applied as a second pass, because the
+/// native kernel takes exactly one mask: `mul255(a, mul255(m, o))` is what
+/// C computes, so Dart has to compute it the same way round or the two
+/// drift by a byte at soft edges.
+Uint8List? strokeCoverageMask({
+  Uint8List? selection,
+  required int pixelCount,
+  required double opacity,
+}) {
+  final uniform = strokeOpacityCoverage(opacity);
+  if (uniform >= 255) {
+    return selection;
+  }
+  if (selection == null) {
+    return Uint8List(pixelCount)..fillRange(0, pixelCount, uniform);
+  }
+  final folded = Uint8List(pixelCount);
+  for (var i = 0; i < pixelCount; i += 1) {
+    final coverage = selection[i];
+    if (coverage == 0) {
+      continue;
+    }
+    final product = coverage * uniform + 128;
+    folded[i] = (product + (product >> 8)) >> 8;
+  }
+  return folded;
+}
+
 void applySelectionMaskToStrokeAlpha({
   required Uint8List pixels,
   required Uint8List mask,

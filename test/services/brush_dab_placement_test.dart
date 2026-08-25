@@ -112,7 +112,9 @@ void main() {
           opacityPressureCurve: BrushPressureCurve.identity(),
         ),
       );
-      expect(sequence.dabs.single.opacity, 0.4);
+      // F-12: the curve lands on the dab, the setting on the SEQUENCE.
+      expect(sequence.dabs.single.opacity, 0.5);
+      expect(sequence.opacity, 0.8);
     });
 
     test('preserves BrushSettings color into every emitted dab', () {

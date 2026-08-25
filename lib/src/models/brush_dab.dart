@@ -72,9 +72,11 @@ class BrushDab {
       size:
           settings.size *
           (settings.sizePressureCurve?.evaluate(pressure) ?? 1.0),
-      opacity:
-          settings.opacity *
-          (settings.opacityPressureCurve?.evaluate(pressure) ?? 1.0),
+      // F-12: the pressure curve ALONE. A dab's opacity is its own
+      // variation; the tool's opacity is the accumulated stroke's ceiling
+      // and rides `BrushDabSequence.opacity` (see
+      // `brushInputSamplesToBrushDabs`, which builds that sequence).
+      opacity: settings.opacityPressureCurve?.evaluate(pressure) ?? 1.0,
       flow:
           settings.flow *
           (settings.flowPressureCurve?.evaluate(pressure) ?? 1.0),

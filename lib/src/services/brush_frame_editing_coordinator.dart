@@ -160,6 +160,7 @@ class BrushFrameEditingCoordinator {
     Uint8List? prerasterizedStrokePixels,
     DirtyRegion? prerasterizedStrokeBounds,
     BrushBlendMode blendMode = BrushBlendMode.color,
+    double strokeOpacity = 1,
     BitmapSurface? promotedBase,
     List<BitmapTile>? promotedTiles,
   }) {
@@ -173,7 +174,7 @@ class BrushFrameEditingCoordinator {
       'commit.materialize',
       () => commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
         sessionState: before,
-        sequence: BrushDabSequence(sourceDabs),
+        sequence: BrushDabSequence(sourceDabs, strokeOpacity),
         layerId: _activeFrameKey.layerId,
         frameId: _activeFrameKey.frameId,
         cacheInvalidationSink:

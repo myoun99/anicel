@@ -10,7 +10,7 @@ BrushDabSequence brushInputSamplesToBrushDabs({
   required BrushSettings settings,
 }) {
   final input = samples.toList(growable: false);
-  if (input.isEmpty) return BrushDabSequence();
+  if (input.isEmpty) return BrushDabSequence(const [], settings.opacity);
 
   final dabs = <BrushDab>[];
   var nextSequence = 0;
@@ -26,7 +26,7 @@ BrushDabSequence brushInputSamplesToBrushDabs({
   }
 
   emit(input.first);
-  if (input.length == 1) return BrushDabSequence(dabs);
+  if (input.length == 1) return BrushDabSequence(dabs, settings.opacity);
 
   final spacingDistance = settings.size * settings.spacing;
   var distanceSinceLastDab = 0.0;
@@ -62,5 +62,7 @@ BrushDabSequence brushInputSamplesToBrushDabs({
     emit(finalSample);
   }
 
-  return BrushDabSequence(dabs);
+  // F-12: the tool's opacity is the SEQUENCE's ceiling, not a factor on
+  // each dab — the dabs carry only what varies between them.
+  return BrushDabSequence(dabs, settings.opacity);
 }

@@ -276,7 +276,10 @@ void main() {
         ),
         sequence: 0,
       );
-      expect(value.opacity, 0.2);
+      // F-12: the CURVE alone. The setting is the accumulated stroke's
+      // ceiling and rides `BrushDabSequence.opacity` — on the dab it would
+      // not cap anything, since dabs pile up source-over.
+      expect(value.opacity, 0.25);
     });
 
     test('fromInputSample applies the flow and hardness curves (BB-3)', () {
