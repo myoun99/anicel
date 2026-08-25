@@ -7,6 +7,7 @@ import '../playback/audio_sync_settings.dart';
 import '../playback/voice_take_processing.dart'
     show micGainFactor, voiceClipThreshold;
 import '../text/app_strings.dart';
+import '../widgets/settings_rows.dart';
 
 /// Audio program 2D: the A/V offset and the sync inspector
 /// (Preferences ▸ Audio).
@@ -103,14 +104,9 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              strings.audioOffsetTitle,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              strings.audioOffsetHelp,
-              style: const TextStyle(fontSize: 12),
+            SettingsSectionHeading(
+              label: strings.audioOffsetTitle,
+              help: strings.audioOffsetHelp,
             ),
             const SizedBox(height: 8),
             Row(
@@ -172,14 +168,9 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
               ],
             ),
             const Divider(height: 24),
-            Text(
-              strings.audioDevicesTitle,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              strings.audioDevicesHelp,
-              style: const TextStyle(fontSize: 12),
+            SettingsSectionHeading(
+              label: strings.audioDevicesTitle,
+              help: strings.audioDevicesHelp,
             ),
             const SizedBox(height: 8),
             _deviceRow(

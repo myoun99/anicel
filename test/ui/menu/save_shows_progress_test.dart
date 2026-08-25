@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 
@@ -138,8 +139,10 @@ void main() {
       findsNothing,
       reason: 'a failure that leaves the modal up is a spinner for ever',
     );
+    // F-10: the bottom-of-window strip is gone; a refusal is told in the
+    // shared notice window now.
     expect(
-      find.byType(SnackBar),
+      find.byType(AppConfirmDialog),
       findsOneWidget,
       reason: 'and the user is told, from a screen that can be seen again',
     );

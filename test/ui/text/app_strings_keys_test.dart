@@ -29,6 +29,7 @@ void main() {
     'commonApply': (s) => s.commonApply,
     'commonRefresh': (s) => s.commonRefresh,
     'commonClose': (s) => s.commonClose,
+    'commonNotice': (s) => s.commonNotice,
     'exportNoCuts': (s) => s.exportNoCuts,
     'audioOffsetTitle': (s) => s.audioOffsetTitle,
     'audioOffsetHelp': (s) => s.audioOffsetHelp,

@@ -37,6 +37,7 @@ import 'playback/canvas_track_stack_view.dart';
 import 'playback/recording_streamer_overlay.dart';
 import 'debug/input_inspector.dart';
 import 'text/app_strings.dart';
+import 'dialogs/app_confirm_dialog.dart' show showAppNotice;
 import 'text/se_name_tag_paint.dart';
 import 'timeline/layer_label_controls.dart';
 import '../models/layer.dart' show layerAcceptsBrushInput;
@@ -905,15 +906,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 paperColor: session.projectBackground.argb,
                 // Extended fills refuse OPEN regions (the flood reached
                 // the pasteboard apron wall) — say why nothing filled.
-                onOpenRegion: () =>
-                    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Region is not closed — nothing filled '
-                          '(Fill Beyond Canvas needs an enclosed area).',
-                        ),
-                      ),
-                    ),
+                onOpenRegion: () => showAppNotice(
+                  context,
+                  title: AppText.strings.commonNotice,
+                  message:
+                      'Region is not closed — nothing filled '
+                      '(Fill Beyond Canvas needs an enclosed area).',
+                ),
               ),
               // The SHAPE fill's dab. No cut, no frame, no surfaces: a
               // drawn outline is filled whatever is under it, so it never

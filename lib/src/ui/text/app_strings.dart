@@ -93,6 +93,10 @@ class AppStrings {
   String get commonRefresh => _s('commonRefresh');
   String get commonClose => _s('commonClose');
 
+  /// F-10: the title of the shared notice window that replaced the
+  /// bottom-of-screen message strip.
+  String get commonNotice => _s('commonNotice');
+
   /// R27 #31: the export window's empty state — the project has no cuts
   /// at all (standing in a GAP is not this; that anchors on the first cut).
   String get exportNoCuts => _s('exportNoCuts');
@@ -972,6 +976,7 @@ class AppStrings {
     'commonApply': 'Apply',
     'commonRefresh': 'Refresh',
     'commonClose': 'Close',
+    'commonNotice': 'Notice',
     'exportNoCuts': 'This project has no cuts to export yet.',
     'audioOffsetTitle': 'A/V offset',
     'audioOffsetHelp':
@@ -1679,6 +1684,7 @@ class AppStrings {
     'commonApply': '適用',
     'commonRefresh': '更新',
     'commonClose': '閉じる',
+    'commonNotice': 'お知らせ',
     'exportNoCuts': 'このプロジェクトには書き出せるカットがありません。',
     'audioOffsetTitle': 'A/Vオフセット',
     'audioOffsetHelp':
@@ -2461,6 +2467,7 @@ class AppStrings {
     'commonApply': '적용',
     'commonRefresh': '새로고침',
     'commonClose': '닫기',
+    'commonNotice': '알림',
     'exportNoCuts': '이 프로젝트에는 출력할 컷이 없습니다.',
     'audioOffsetTitle': 'A/V 오프셋',
     'audioOffsetHelp':
@@ -3236,6 +3243,7 @@ class AppStrings {
     'commonApply': 'Appliquer',
     'commonRefresh': 'Actualiser',
     'commonClose': 'Fermer',
+    'commonNotice': 'Avis',
     'exportNoCuts': 'Ce projet ne contient aucun plan à exporter.',
     'audioOffsetTitle': 'Décalage A/V',
     'audioOffsetHelp':
@@ -4051,6 +4059,7 @@ class AppStrings {
     'commonApply': '应用',
     'commonRefresh': '刷新',
     'commonClose': '关闭',
+    'commonNotice': '提示',
     'exportNoCuts': '此项目暂无可导出的镜头。',
     'audioOffsetTitle': 'A/V 偏移',
     'audioOffsetHelp':

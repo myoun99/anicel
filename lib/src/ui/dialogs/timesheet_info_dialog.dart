@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/timesheet_info.dart';
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
+import '../widgets/settings_rows.dart';
 
 /// Edits the sheet-header text (title/episode/scene/artist) the paper
 /// timesheet reads, and which header boxes the form prints. Pops the
@@ -170,12 +171,10 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
               strings.sheetNotation,
               style: Theme.of(context).textTheme.labelMedium,
             ),
-            SwitchListTile(
-              key: const ValueKey<String>('timesheet-info-exposure-bar'),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: Text(strings.sheetExposureBar),
-              subtitle: Text(strings.sheetExposureBarHelp),
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('timesheet-info-exposure-bar'),
+              label: strings.sheetExposureBar,
+              help: strings.sheetExposureBarHelp,
               value: _exposureBarEnabled,
               onChanged: (value) => setState(() => _exposureBarEnabled = value),
             ),

@@ -64,11 +64,11 @@ class BrushSettingsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final spacingLabel = '${(state.spacing * 100).round()}%';
-    final hardnessLabel = '${(state.hardness * 100).round()}%';
-    final flowLabel = '${(state.flow * 100).round()}%';
-    final roundnessLabel = '${(state.roundness * 100).round()}%';
-    final angleLabel = '${state.angleDegrees.round()}°';
+    final spacingLabel = sliderValueText(state.spacing * 100, unit: '%');
+    final hardnessLabel = sliderValueText(state.hardness * 100, unit: '%');
+    final flowLabel = sliderValueText(state.flow * 100, unit: '%');
+    final roundnessLabel = sliderValueText(state.roundness * 100, unit: '%');
+    final angleLabel = sliderValueText(state.angleDegrees, unit: '°');
     return EditorPanelFrame(
       title: 'Brush Settings',
       child: Column(

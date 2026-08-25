@@ -128,9 +128,13 @@ class EditorTopStrip extends StatelessWidget {
 
 
   void _showFileError(BuildContext context, Object error) {
-    ScaffoldMessenger.maybeOf(
-      context,
-    )?.showSnackBar(SnackBar(content: Text('$error')));
+    unawaited(
+      showAppNotice(
+        context,
+        title: AppText.strings.commonNotice,
+        message: '$error',
+      ),
+    );
   }
 
   Future<void> _openProject(BuildContext context) async {
@@ -257,15 +261,13 @@ class EditorTopStrip extends StatelessWidget {
       final layout = ProjectAssetLayout(path);
       if (layout.hasLegacyAssetsDirectory && context.mounted) {
         final name = layout.assetsDirectory.split('/').last;
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          SnackBar(
-            key: const ValueKey<String>('legacy-assets-folder-notice'),
-            content: Text(
-              AppText.strings.projectLegacyAssetsFolder.replaceAll(
-                '{name}',
-                name,
-              ),
-            ),
+        await showAppNotice(
+          context,
+          windowKey: const ValueKey<String>('legacy-assets-folder-notice'),
+          title: AppText.strings.commonNotice,
+          message: AppText.strings.projectLegacyAssetsFolder.replaceAll(
+            '{name}',
+            name,
           ),
         );
       }
@@ -829,7 +831,7 @@ class _BrushValueBars extends StatelessWidget {
                 // Equal travel multiplies the value, so the left half covers
                 // the small sizes where a pixel matters.
                 scale: FieldSliderScale.exponential,
-                valueText: '${state.size.round()} px',
+                valueText: sliderValueText(state.size, unit: ' px'),
                 height: _barHeight,
                 onChanged: sizeOn
                     ? (value) =>
@@ -855,7 +857,7 @@ class _BrushValueBars extends StatelessWidget {
                 value: BrushToolState.clampOpacity(state.activeOpacity),
                 min: 0,
                 max: 1,
-                valueText: '${(state.activeOpacity * 100).round()}%',
+                valueText: sliderValueText(state.activeOpacity * 100, unit: '%'),
                 height: _barHeight,
                 onChanged: opacityOn
                     ? (value) => brushTool.value = brushTool.value
@@ -1310,9 +1312,13 @@ Future<bool> saveProjectShowingProgress(
     return true;
   } catch (error) {
     if (context.mounted) {
-      ScaffoldMessenger.maybeOf(
-        context,
-      )?.showSnackBar(SnackBar(content: Text('$error')));
+      unawaited(
+        showAppNotice(
+          context,
+          title: AppText.strings.commonNotice,
+          message: '$error',
+        ),
+      );
     }
     return false;
   }

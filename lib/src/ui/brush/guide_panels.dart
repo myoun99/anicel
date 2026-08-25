@@ -4,6 +4,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/drawing_guide.dart';
 import '../text/app_strings.dart';
+import '../widgets/settings_rows.dart';
 import '../theme/app_theme.dart';
 import '../widgets/field_slider.dart';
 
@@ -377,15 +378,12 @@ class GuideSettings extends StatelessWidget {
   ) {
     final strings = AppText.strings;
     return [
-      SwitchListTile(
-        key: const ValueKey<String>('guide-line-symmetry'),
-        dense: true,
-        title: Text(strings.guideMirrorMode),
-        subtitle: Text(
-          shape.lineSymmetry
-              ? strings.guideMirrorModeOn
-              : strings.guideMirrorModeOff,
-        ),
+      SettingsSwitchRow(
+        tileKey: const ValueKey<String>('guide-line-symmetry'),
+        label: strings.guideMirrorMode,
+        help: shape.lineSymmetry
+            ? strings.guideMirrorModeOn
+            : strings.guideMirrorModeOff,
         value: shape.lineSymmetry,
         onChanged: (value) =>
             _replaceShape(guide, shape.copyWith(lineSymmetry: value)),
@@ -396,7 +394,7 @@ class GuideSettings extends StatelessWidget {
           key: const ValueKey<String>('guide-line-count'),
           label: strings.guideLineCount,
           value: shape.lineCount.toDouble(),
-          valueText: '${shape.lineCount}',
+          valueText: sliderValueText(shape.lineCount),
           min: 2,
           max: maxSymmetryLineCount.toDouble(),
           // Mirrored copies come in pairs, so the count steps by two there.
@@ -419,28 +417,25 @@ class GuideSettings extends StatelessWidget {
   ) {
     final strings = AppText.strings;
     return [
-      SwitchListTile(
-        key: const ValueKey<String>('guide-snap'),
-        dense: true,
-        title: Text(strings.guideSnap),
-        subtitle: Text(strings.guideSnapNote),
+      SettingsSwitchRow(
+        tileKey: const ValueKey<String>('guide-snap'),
+        label: strings.guideSnap,
+        help: strings.guideSnapNote,
         value: shape.snapEnabled,
         onChanged: (value) =>
             _replaceShape(guide, shape.copyWith(snapEnabled: value)),
       ),
-      SwitchListTile(
-        key: const ValueKey<String>('guide-eye-level-visible'),
-        dense: true,
-        title: Text(strings.guideEyeLevelShow),
+      SettingsSwitchRow(
+        tileKey: const ValueKey<String>('guide-eye-level-visible'),
+        label: strings.guideEyeLevelShow,
         value: shape.eyeLevelVisible,
         onChanged: (value) =>
             _replaceShape(guide, shape.copyWith(eyeLevelVisible: value)),
       ),
-      SwitchListTile(
-        key: const ValueKey<String>('guide-constrain-eye-level'),
-        dense: true,
-        title: Text(strings.guideConstrainToEyeLevel),
-        subtitle: Text(strings.guideConstrainToEyeLevelNote),
+      SettingsSwitchRow(
+        tileKey: const ValueKey<String>('guide-constrain-eye-level'),
+        label: strings.guideConstrainToEyeLevel,
+        help: strings.guideConstrainToEyeLevelNote,
         value: shape.constrainToEyeLevel,
         onChanged: (value) =>
             _replaceShape(guide, shape.copyWith(constrainToEyeLevel: value)),

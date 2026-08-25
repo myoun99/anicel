@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/app_language.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
+import '../widgets/settings_rows.dart';
 import '../widgets/app_window.dart';
 
 /// The two-language settings dialog (UI-R10 #7): program language (the
@@ -109,37 +110,37 @@ class _LanguageRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return SizedBox(
-      width: 340,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 12)),
-          const SizedBox(height: 4),
-          DropdownButton<AppLanguage>(
-            value: value,
-            isExpanded: true,
-            items: [
-              for (final language in AppLanguage.values)
-                DropdownMenuItem(
-                  key: ValueKey<String>('language-option-${language.name}'),
-                  value: language,
-                  child: Text(language.displayName),
-                ),
-            ],
-            onChanged: (language) {
-              if (language != null) {
-                onChanged(language);
-              }
-            },
-          ),
-          const SizedBox(height: 2),
-          Text(
-            help,
-            style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant),
-          ),
-        ],
+    // F-2: the caption under the picker is a TOOLTIP now. Two language
+    // pickers a few pixels apart really do need telling apart, so the words
+    // survive — they just stop taking two lines of the window each.
+    return settingsHelpTooltip(
+      help,
+      SizedBox(
+        width: 340,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: const TextStyle(fontSize: 12)),
+            const SizedBox(height: 4),
+            DropdownButton<AppLanguage>(
+              value: value,
+              isExpanded: true,
+              items: [
+                for (final language in AppLanguage.values)
+                  DropdownMenuItem(
+                    key: ValueKey<String>('language-option-${language.name}'),
+                    value: language,
+                    child: Text(language.displayName),
+                  ),
+              ],
+              onChanged: (language) {
+                if (language != null) {
+                  onChanged(language);
+                }
+              },
+            ),
+          ],
+        ),
       ),
     );
   }

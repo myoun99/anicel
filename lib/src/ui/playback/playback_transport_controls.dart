@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../models/app_language.dart' show AppLanguage;
 import '../../models/playback_quality.dart';
 import '../../services/persistence/app_documents.dart' show AppStorage;
+import '../dialogs/app_confirm_dialog.dart' show showAppNotice;
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
@@ -18,7 +19,6 @@ Future<void> toggleVoiceRecordingWithFeedback(
   BuildContext context,
   EditorSessionManager session,
 ) async {
-  final messenger = ScaffoldMessenger.maybeOf(context);
   final strings = session.uiStrings;
   final String? message;
   if (session.isVoiceRecording.value) {
@@ -34,8 +34,17 @@ Future<void> toggleVoiceRecordingWithFeedback(
       VoiceRecordStartResult.deviceFailed => strings.recordMicOpenFailed,
     };
   }
-  if (message != null) {
-    messenger?.showSnackBar(SnackBar(content: Text(message)));
+  // F-10 (유저 2026-08-24): 「se레이어가 아닌곳에서 녹음버튼누르면 앱 최하단에
+  // 메시지 뜨는데 이 메시지 ui 싹 삭제 … 이런 경고문은 공통ui창 띄우는거
+  // 사용해서 띄우도록」. THIS is the report, verbatim — the refusal used to
+  // land at the bottom edge of the window, nowhere near the button that
+  // was pressed, and leave on a timer.
+  if (message != null && context.mounted) {
+    await showAppNotice(
+      context,
+      title: strings.commonNotice,
+      message: message,
+    );
   }
 }
 

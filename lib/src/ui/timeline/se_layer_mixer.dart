@@ -6,6 +6,7 @@ import '../editor_session_manager.dart';
 import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/settings_rows.dart';
 
 /// The SE row's mixer, opened by pressing the row's SPEAKER (R10 R3).
 ///
@@ -152,47 +153,60 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
             },
           ),
           const SizedBox(height: 6),
-          FieldSlider(
-            key: const ValueKey<String>('se-mixer-pan'),
-            min: -1,
-            max: 1,
-            value: pan,
-            label: strings.audioPanLabel,
-            // A balance, not a quantity: the bar leaves CENTRE toward the
-            // side it is panned to, so hard left reads as "fully left"
-            // rather than as an empty fader.
-            fillOrigin: 0,
-            // Same unit contract as the fader: the label says L50/R50,
-            // so the field takes ±100.
-            valueText: _panText(pan),
-            valueTextBuilder: _panText,
-            onChanged: (value) => setState(() => _panDrag = value),
-            onChangeEnd: (value) {
-              setState(() => _panDrag = null);
-              widget.session.setLayerAudio(layerId: widget.layerId, pan: value);
-            },
+          settingsHelpTooltip(
+            // The one honest caveat this window owes the user: pan reaches
+            // the sound only on the device-mixer path. The platform-player
+            // fallback sets volume and drops pan entirely.
+            //
+            // 🐛It was drawn in `AppColors.hairline` — the BORDER token,
+            // 0xFF37393C, on a 0xFF303336 surface. A caveat nobody can read
+            // is not a caveat.
+            //
+            // F-2 (유저 2026-08-24): and now it is not a LINE either. It is a
+            // caveat about the control, so it belongs ON the control — a
+            // reader who wants it hovers, and the popup gets its line back.
+            // ⚠️Not treated as the warning exception: nothing is at risk
+            // here, it is a limitation of what the knob reaches.
+            strings.layerAudioPanHelp,
+            FieldSlider(
+              key: const ValueKey<String>('se-mixer-pan'),
+              min: -1,
+              max: 1,
+              value: pan,
+              label: strings.audioPanLabel,
+              // A balance, not a quantity: the bar leaves CENTRE toward the
+              // side it is panned to, so hard left reads as "fully left"
+              // rather than as an empty fader.
+              fillOrigin: 0,
+              // Same unit contract as the fader: the label says L50/R50,
+              // so the field takes ±100.
+              valueText: _panText(pan),
+              valueTextBuilder: _panText,
+              onChanged: (value) => setState(() => _panDrag = value),
+              onChangeEnd: (value) {
+                setState(() => _panDrag = null);
+                widget.session.setLayerAudio(
+                  layerId: widget.layerId,
+                  pan: value,
+                );
+              },
+            ),
           ),
-          const SizedBox(height: 6),
-          // The one honest caveat this window owes the user: pan reaches
-          // the sound only on the device-mixer path. The platform-player
-          // fallback sets volume and drops pan entirely.
-          //
-          // 🐛It was drawn in `AppColors.hairline` — the BORDER token,
-          // 0xFF37393C, on a 0xFF303336 surface. A caveat nobody can read
-          // is not a caveat.
-          Text(strings.layerAudioPanHelp, style: AnchoredPopupText.caption),
         ],
       ),
     );
   }
 
-  static String _gainText(double gain) => '${(gain * 100).round()}%';
+  static String _gainText(double gain) =>
+      sliderValueText(gain * 100, unit: '%');
 
   static String _panText(double pan) {
     if (pan == 0) {
       return 'C';
     }
-    return pan < 0 ? 'L${(-pan * 100).round()}' : 'R${(pan * 100).round()}';
+    return pan < 0
+        ? 'L${sliderValueText(-pan * 100)}'
+        : 'R${sliderValueText(pan * 100)}';
   }
 }
 
