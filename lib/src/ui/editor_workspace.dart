@@ -527,16 +527,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     EditorWorkspace.railGroupId(right: true, slot: 3): DockGroup(
       tabs: [EditorWorkspace.mediaTabId],
     ),
+    // I-2 rides WITH the onion rather than taking a sixth rail button, and
+    // that is a measurement rather than a preference: a sixth group
+    // overflowed the rail by 14px in the shortest window the shrink-floor
+    // test defends ("in a window too short to pay the floor the dock yields
+    // rather than pushing the canvas out"). The rail has no room for another
+    // button there, so the tab shares one.
     EditorWorkspace.railGroupId(right: true, slot: 4): DockGroup(
-      tabs: [EditorWorkspace.onionSkinTabId],
-    ),
-    // I-2: its own button, not a second tab behind the onion's. A rack of
-    // sizes is something you reach for WHILE drawing — sharing a group would
-    // make it the thing you have to switch to, which is the shape 도구띠's
-    // own note above rejects ("two tabs of one group … hid one behind the
-    // other").
-    EditorWorkspace.railGroupId(right: true, slot: 6): DockGroup(
-      tabs: [EditorWorkspace.toolSizeTabId],
+      tabs: [EditorWorkspace.onionSkinTabId, EditorWorkspace.toolSizeTabId],
     ),
     // 서브 뷰어 (유저 확정 ⑥): right under the media browser it is opened
     // from, and its group ships CLOSED — a reference panel earns its
