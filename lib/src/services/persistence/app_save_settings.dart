@@ -19,44 +19,37 @@ import 'app_support_path.dart';
 ///   temp; a custom folder is a desktop-only choice.
 class AppSaveSettings {
   const AppSaveSettings({
-    this.lifecycleSnapshotEnabled = true,
-    this.pauseSnapshotEnabled = true,
     this.periodicSnapshotMinutes,
     this.recordingsDirectory,
     this.conformDirectory,
   });
 
-  /// What the interval offers when the user first switches the clock on.
-  /// Ten minutes rather than the old five: the clock is a ceiling on
-  /// unprotected work now, and pauses already cover everything shorter.
+  /// What the clock offers when it is first switched on.
   static const int defaultPeriodicSnapshotMinutes = 10;
 
-  /// Whether leaving the app snapshots (default on).
-  ///
-  /// The cheapest of the three by a distance — it runs when the app is on
-  /// its way out, so nobody is drawing — and on mobile it is the only
-  /// warning the OS gives before it kills the process. Switchable because
-  /// the user asked for all three to be, not because turning it off is a
-  /// sensible thing to want.
-  final bool lifecycleSnapshotEnabled;
-
-  /// Whether a pause in the work is worth a snapshot (default on).
-  final bool pauseSnapshotEnabled;
+  /// 🚨F-1 (유저 2026-08-26): 「자동저장 분 설정은 **공통 슬라이더** 사용해서
+  /// **최소 3분, 최대 60분**」. The four chips (5/10/20/30) were a made-up
+  /// menu; a range is the honest shape for "how much work may be at risk".
+  static const int minPeriodicSnapshotMinutes = 3;
+  static const int maxPeriodicSnapshotMinutes = 60;
 
   /// Minutes of work the app will let pass without a snapshot, or null for
-  /// "only when you pause" (the default).
+  /// OFF — 🚨F-1: the whole autosave policy is this one number now.
   ///
-  /// The five-minute clock this replaces was removed because each tick
-  /// adopted every cel's file ref, so the next manual save could no longer
-  /// find its own work and rewrote the project whole. The overlay adopts
-  /// nothing now and writes a delta, so a clock is affordable again — and
-  /// a long focused stretch is exactly what a pause-only trigger cannot
-  /// cover, because it never pauses.
+  /// 유저 2026-08-26: 「**자동저장 on off만 남기고**, 앱 떠날때·손 멈출때
+  /// 스냅샷 기능 삭제. 심플하게 **명시적저장 / n분주기 자동저장**만 남김」.
   ///
-  /// 🔑 Read as a CEILING, not a cadence: any snapshot, from any trigger,
-  /// restarts the count. Ten minutes means "never more than ten minutes of
-  /// work at risk", not "write every ten minutes" — otherwise a pause at
-  /// 9:50 and a tick at 10:00 write the same bytes twice.
+  /// ⚠️Two triggers went with that, and both were real: leaving the app
+  /// (the only warning a mobile OS gives before it stops the process) and
+  /// pausing the work. What replaces them is this clock and an explicit
+  /// save, which is what was asked for — 「심플하게」. The cost is stated
+  /// where it is paid: close the app without saving and the work since the
+  /// last tick is gone, on every platform.
+  ///
+  /// 🔑 Still a CEILING rather than a cadence: a snapshot restarts the
+  /// count, so ten minutes means "never more than ten minutes of work at
+  /// risk". With one trigger left the two readings coincide, but the
+  /// guard's arithmetic is the ceiling's and stays that way.
   final int? periodicSnapshotMinutes;
 
   /// Where a never-saved project's voice takes land; null/empty = the
@@ -76,15 +69,10 @@ class AppSaveSettings {
   static const Object _unset = Object();
 
   AppSaveSettings copyWith({
-    bool? lifecycleSnapshotEnabled,
-    bool? pauseSnapshotEnabled,
     Object? periodicSnapshotMinutes = _unset,
     Object? recordingsDirectory = _unset,
     Object? conformDirectory = _unset,
   }) => AppSaveSettings(
-    lifecycleSnapshotEnabled:
-        lifecycleSnapshotEnabled ?? this.lifecycleSnapshotEnabled,
-    pauseSnapshotEnabled: pauseSnapshotEnabled ?? this.pauseSnapshotEnabled,
     periodicSnapshotMinutes: identical(periodicSnapshotMinutes, _unset)
         ? this.periodicSnapshotMinutes
         : periodicSnapshotMinutes as int?,
@@ -97,8 +85,6 @@ class AppSaveSettings {
   );
 
   Map<String, dynamic> toJson() => {
-    'lifecycleSnapshotEnabled': lifecycleSnapshotEnabled,
-    'pauseSnapshotEnabled': pauseSnapshotEnabled,
     'periodicSnapshotMinutes': periodicSnapshotMinutes,
     'recordingsDirectory': recordingsDirectory,
     'conformDirectory': conformDirectory,
@@ -108,26 +94,32 @@ class AppSaveSettings {
   /// location is fixed now, and a setting that outlives its feature is a
   /// value the next reader has to work out is dead.
   ///
-  /// The two older names ARE carried, because they still mean something:
-  /// `autosaveEnabled` was the single switch over every trigger, and the
-  /// closest thing it now names is the pause; `autosaveIntervalMinutes`
-  /// was a clock a build in between dropped, and a user who had set one
-  /// should get it back rather than silently start from the default.
-  /// A non-positive interval means "off", the same thing null means, so a
-  /// 0 from anywhere cannot become a clock that fires continuously.
+  /// `autosaveIntervalMinutes` is still carried: it was a clock a build in
+  /// between dropped, and a user who had set one should get it back rather
+  /// than silently start from the default. A non-positive interval means
+  /// "off", the same thing null means, so a 0 from anywhere cannot become
+  /// a clock that fires continuously.
+  ///
+  /// 🚨F-1: `lifecycleSnapshotEnabled`, `pauseSnapshotEnabled` and the
+  /// older `autosaveEnabled` are now READ AND DROPPED like
+  /// `sidecarDirectory` before them — their triggers are gone, so a value
+  /// that outlives its feature is a number the next reader has to work out
+  /// is dead. What survives is the clock alone.
   static AppSaveSettings fromJson(Map<String, dynamic> json) {
     final recordings = json['recordingsDirectory'];
     final conforms = json['conformDirectory'];
     final interval =
         json['periodicSnapshotMinutes'] ?? json['autosaveIntervalMinutes'];
-    final legacyEnabled = json['autosaveEnabled'] as bool?;
     return AppSaveSettings(
-      lifecycleSnapshotEnabled:
-          json['lifecycleSnapshotEnabled'] as bool? ?? true,
-      pauseSnapshotEnabled:
-          json['pauseSnapshotEnabled'] as bool? ?? legacyEnabled ?? true,
+      // F-1: clamped into the slider's range. Nothing could have written
+      // outside it — the chips this replaces were 5/10/20/30 — but a
+      // stored number is a stranger's number, and a slider whose value
+      // sits off its own track is an assert waiting for a settings file.
       periodicSnapshotMinutes: interval is int && interval > 0
-          ? interval
+          ? interval.clamp(
+              minPeriodicSnapshotMinutes,
+              maxPeriodicSnapshotMinutes,
+            )
           : null,
       recordingsDirectory: recordings is String && recordings.isNotEmpty
           ? recordings
@@ -141,16 +133,12 @@ class AppSaveSettings {
   @override
   bool operator ==(Object other) =>
       other is AppSaveSettings &&
-      other.lifecycleSnapshotEnabled == lifecycleSnapshotEnabled &&
-      other.pauseSnapshotEnabled == pauseSnapshotEnabled &&
       other.periodicSnapshotMinutes == periodicSnapshotMinutes &&
       other.recordingsDirectory == recordingsDirectory &&
       other.conformDirectory == conformDirectory;
 
   @override
   int get hashCode => Object.hash(
-    lifecycleSnapshotEnabled,
-    pauseSnapshotEnabled,
     periodicSnapshotMinutes,
     recordingsDirectory,
     conformDirectory,

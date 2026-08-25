@@ -10,15 +10,17 @@ import '../../services/persistence/app_save_settings.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
 import '../text/byte_size_label.dart';
+import '../widgets/field_slider.dart';
 import '../widgets/settings_rows.dart';
 import 'folder_pick_flow.dart';
 
 /// SAVE-1: the autosave policy section (Preferences ▸ Autosave).
 ///
 /// Autosave writes a recovery snapshot only — the project file changes on
-/// an explicit save alone. Its own knobs came down to on/off: the cadence
-/// went with the timer, and the snapshot's location is the app's own folder
-/// now rather than a place the user has to keep out of a sync client's way.
+/// an explicit save alone. 🚨F-1 (2026-08-26) cut the policy down to what
+/// the user asked for: **a switch and a number of minutes**. The location
+/// is the app's own folder rather than somewhere the user has to keep out
+/// of a sync client's way, so there is nothing else to set.
 ///
 /// The two folders below are here because they are the caches and shelves
 /// that used to sit beside the project and no longer do — the section is
@@ -38,51 +40,23 @@ class AutosaveSettingsSection extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SettingsSectionHeading(
-              label: 'Crash recovery',
+              label: 'Autosave',
               help:
-                  'Snapshots unsaved changes so a crash or a flat battery '
-                  'does not cost them. The project file itself only changes '
-                  'when you save; a snapshot is discarded the moment the '
-                  'work stops being unsaved.',
+                  'Writes a recovery snapshot every so often, so a crash or '
+                  'a flat battery costs at most that much work. The project '
+                  'file itself only changes when you save.',
             ),
             const SizedBox(height: 4),
+            // 🚨F-1 (유저 2026-08-26): 「**자동저장 on off만 남기고** … 심플
+            // 하게 명시적저장 / n분주기 자동저장만 남김」. Three switches
+            // stood here — leaving the app, pausing, and the clock — and
+            // two of them named triggers that no longer exist.
             SettingsSwitchRow(
               tileKey: const ValueKey<String>('settings-autosave-enabled'),
-              label: 'When leaving the app',
+              label: 'Autosave',
               help:
-                  'Closing the project, switching away, or the system '
-                  'putting the app to sleep. Costs nothing — nobody is '
-                  'drawing — and on a phone or tablet it is the only '
-                  'warning the system gives before it stops the app.',
-              value: settings.lifecycleSnapshotEnabled,
-              onChanged: (enabled) => session.setSaveSettings(
-                settings.copyWith(lifecycleSnapshotEnabled: enabled),
-              ),
-            ),
-            SettingsSwitchRow(
-              tileKey: const ValueKey<String>('settings-autosave-pause'),
-              label: 'When you pause',
-              help:
-                  'A few seconds without touching anything is enough. Once '
-                  'per pause, not on a repeat — sitting idle does not keep '
-                  'rewriting the same file.',
-              value: settings.pauseSnapshotEnabled,
-              onChanged: (enabled) => session.setSaveSettings(
-                settings.copyWith(pauseSnapshotEnabled: enabled),
-              ),
-            ),
-            SettingsSwitchRow(
-              tileKey: const ValueKey<String>('settings-autosave-periodic'),
-              label: 'While you keep working',
-              // The reason to want it: a long focused stretch never pauses,
-              // so a pause-only guard covers nothing during exactly the
-              // hours that hold the most work.
-              help: settings.periodicSnapshotMinutes == null
-                  ? 'Off. Pauses alone cover a session that has them — a '
-                        'long stretch without one goes unprotected.'
-                  : 'At most ${settings.periodicSnapshotMinutes} minutes of '
-                        'work is ever unprotected. Any snapshot resets the '
-                        'count, so this only fires when nothing else did.',
+                  'Off means the project only changes when you save it, and '
+                  'a crash costs everything since.',
               value: settings.periodicSnapshotMinutes != null,
               onChanged: (enabled) => session.setSaveSettings(
                 settings.copyWith(
@@ -92,30 +66,57 @@ class AutosaveSettingsSection extends StatelessWidget {
                 ),
               ),
             ),
-            if (settings.periodicSnapshotMinutes != null)
-              Padding(
-                padding: const EdgeInsets.only(left: 8, bottom: 4),
-                child: Row(
-                  children: [
-                    const Text('Minutes', style: TextStyle(fontSize: 12)),
-                    const SizedBox(width: 8),
-                    for (final minutes in const <int>[5, 10, 20, 30])
-                      Padding(
-                        padding: const EdgeInsets.only(right: 4),
-                        child: ChoiceChip(
-                          key: ValueKey<String>('settings-autosave-$minutes'),
-                          label: Text('$minutes'),
-                          selected: settings.periodicSnapshotMinutes == minutes,
-                          onSelected: (_) => session.setSaveSettings(
-                            settings.copyWith(
-                              periodicSnapshotMinutes: minutes,
-                            ),
-                          ),
-                        ),
+            // ⛔The row is always here, switched on or off — 없다가 생기는
+            // UI 금지. It goes INERT rather than absent: a FieldSlider with
+            // a null `onChanged` dims itself and stops taking input.
+            Padding(
+              padding: const EdgeInsets.only(left: 16, right: 8, bottom: 4),
+              child: Row(
+                children: [
+                  const Text('Every', style: TextStyle(fontSize: 12)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FieldSlider(
+                      key: const ValueKey<String>('settings-autosave-minutes'),
+                      min: AppSaveSettings.minPeriodicSnapshotMinutes
+                          .toDouble(),
+                      max: AppSaveSettings.maxPeriodicSnapshotMinutes
+                          .toDouble(),
+                      // Whole minutes: the range is 3..60, so the track has
+                      // one stop per minute and the number under the thumb
+                      // is the number the clock uses.
+                      divisions:
+                          AppSaveSettings.maxPeriodicSnapshotMinutes -
+                          AppSaveSettings.minPeriodicSnapshotMinutes,
+                      value:
+                          (settings.periodicSnapshotMinutes ??
+                                  AppSaveSettings
+                                      .defaultPeriodicSnapshotMinutes)
+                              .toDouble(),
+                      valueText: sliderValueText(
+                        settings.periodicSnapshotMinutes ??
+                            AppSaveSettings.defaultPeriodicSnapshotMinutes,
+                        unit: ' min',
                       ),
-                  ],
-                ),
+                      // ⛔No rounding here: the track has one stop per
+                      // minute, so `next` IS whole, and `sliderValueText`
+                      // renders a whole number whole. (`onChanged` below
+                      // still rounds — that is the MODEL's int, not the
+                      // label's text.)
+                      valueTextBuilder: (next) =>
+                          sliderValueText(next, unit: ' min'),
+                      onChanged: settings.periodicSnapshotMinutes == null
+                          ? null
+                          : (next) => session.setSaveSettings(
+                              settings.copyWith(
+                                periodicSnapshotMinutes: next.round(),
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
               ),
+            ),
             const Divider(height: 16),
             // REC1-B2: the take shelf. Mobile shows where takes land but
             // cannot move it (the app documents home is the only sane
