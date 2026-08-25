@@ -49,7 +49,7 @@ import 'timeline/timeline_lane_rows.dart'
     show TimelineLaneControlsRow, TimelineLaneFrameRow;
 import 'timeline/effect_lane_policy.dart'
     show effectPropertyLanes, parseEffectLaneId;
-import 'timeline/layer_drop_policy.dart' show effectStepsBetween, slotForSteps;
+import 'timeline/layer_drop_policy.dart' show rowStepsBetween, slotForSteps;
 import 'timeline/layer_row_drag.dart'
     show
         EffectRowSubject,
@@ -1302,7 +1302,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               displayEffects,
               slotForSteps(
                 slot,
-                effectStepsBetween(headers, index, steps),
+                rowStepsBetween(
+                  [for (final header in headers) header.rowIndex],
+                  index,
+                  steps,
+                ),
                 displayEffects.length,
               ),
             ),

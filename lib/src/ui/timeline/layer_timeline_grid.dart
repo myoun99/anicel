@@ -24,7 +24,7 @@ import 'timeline_row_span_resolver.dart'
         resolveSelectionSpanRows;
 import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'layer_drop_policy.dart'
-    show effectHeaderRowsOf, effectStepsBetween, slotForSteps;
+    show LayerRowCaret, effectHeaderRowsOf, rowStepsBetween, slotForSteps;
 import 'layer_row_drag.dart';
 import 'timeline_current_row.dart';
 import 'timeline_edge_auto_pan.dart';
@@ -1223,9 +1223,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     '${row.isFolder ? 'folder-${row.layer.id}' : row.lane?.laneId ?? 'row'}',
   );
 
-  /// [TimelineDisplayRow.layerIndex] is the slot: it is this row's place in
-  /// the DISPLAY layer list, which is exactly what a caret between layer
-  /// rows counts in.
+  /// The slot is this row's place among the layer rows ON SCREEN, and the
+  /// list handed to the policy is those rows' layers — see [layerRowsOf]
+  /// for why it cannot be [TimelineDisplayRow.layerIndex] and
+  /// `widget.layers` (F-31).
   Widget _draggable(TimelineDisplayRow row, Widget child) {
     final hooks = widget.rowDragHooks;
     // 🚨A5-4 (유저 2026-08-22): 「카메라·트랜지션 = **드래그 불가**」. Their
@@ -1239,9 +1240,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     if (!layerKindReordersInCut(row.layer.kind)) {
       return child;
     }
+    final caret = LayerRowCaret.of(_dragRows, row.layer.id);
+    if (caret == null) {
+      return child;
+    }
     return LayerRowDragTarget(
       subject: LayerRowSubject(row.layer.id),
-      slotBefore: row.layerIndex,
+      slotBefore: caret.slot,
       rowExtent: _metrics.layerRowHeight,
       axis: Axis.horizontal,
       hooks: hooks,
@@ -1251,7 +1256,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
           _heldDragRow = null;
         }
       },
-      isLastRow: row.layerIndex == widget.layers.length - 1,
+      isLastRow: caret.isLastRow,
       onCrossed: hooks == null
           ? (_, _) {}
           : (steps, onRow) {
@@ -1259,23 +1264,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
               // whole point of the middle band. The row it names is read
               // from the DISPLAY list, so which way this rail runs stays
               // the surface's business as it already is for slots.
-              final slot = slotForSteps(
-                row.layerIndex,
-                steps,
-                widget.layers.length,
-              );
-              final target = onRow == null ? null : row.layerIndex + onRow;
-              if (target != null &&
-                  target >= 0 &&
-                  target < widget.layers.length) {
-                hooks.onRowTarget(
-                  widget.layers,
-                  slot,
-                  widget.layers[target].id,
-                );
+              final slot = caret.slotFor(steps);
+              final target = caret.onRowLayer(onRow);
+              if (target != null) {
+                hooks.onRowTarget(caret.layers, slot, target.id);
                 return;
               }
-              hooks.onUpdate(widget.layers, slot);
+              hooks.onUpdate(caret.layers, slot);
             },
       // ⑨: the SELECT half of the same drag. It counts in the rail's own
       // DISPLAY rows (`_dragRows`) rather than in the layer list the caret
@@ -1346,7 +1341,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         displayEffects,
         slotForSteps(
           slot,
-          effectStepsBetween(headers, myRowIndex, steps),
+          rowStepsBetween(
+            [for (final header in headers) header.rowIndex],
+            myRowIndex,
+            steps,
+          ),
           headers.length,
         ),
       ),
@@ -2653,9 +2652,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                           rowsBody: TimelineFrameRowsScrollBody(
                                                                             // F-25: the lane bands light
                                                                             // with their rail halves.
-                                                                            currentRow: widget
-                                                                                .currentRowHooks
-                                                                                ?.currentRow,
+                                                                            currentRow:
+                                                                                widget.currentRowHooks?.currentRow,
                                                                             rows:
                                                                                 windowRows,
                                                                             leadingLayerSpacerHeight:

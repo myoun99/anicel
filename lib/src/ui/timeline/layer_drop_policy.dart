@@ -314,7 +314,9 @@ bool layerDropRefusedForNestedFolder({
   }
   return stack
       .sublist(run.start, run.endExclusive)
-      .any((layer) => layer.id != moving.id && layerKindGroupsLayers(layer.kind));
+      .any(
+        (layer) => layer.id != moving.id && layerKindGroupsLayers(layer.kind),
+      );
 }
 
 LayerDropPlan? resolveLayerDrop({
@@ -450,13 +452,16 @@ LayerDropPlan? resolveLayerDrop({
   // same as landing inside an existing group — the checks below are the
   // ones that matter — but it reaches the case a gap cannot: a base whose
   // group is still empty.
-  final target = insideGroup ??
+  final target =
+      insideGroup ??
       (forceMountBaseId == null
           ? null
           : (baseId: forceMountBaseId, placement: forceMountPlacement));
 
   var mounts =
-      const <({LayerId layerId, LayerId baseId, AttachedPlacement placement})>[];
+      const <
+        ({LayerId layerId, LayerId baseId, AttachedPlacement placement})
+      >[];
   if (target != null) {
     final insideGroup = target;
     final base = stack.firstWhere((layer) => layer.id == insideGroup.baseId);
@@ -736,23 +741,105 @@ List<({int rowIndex, EffectId effectId})> effectHeaderRowsOf(
   return headers;
 }
 
-/// How many HEADERS a travel of [rowSteps] rail rows from [fromRowIndex]
-/// passes.
-int effectStepsBetween(
-  List<({int rowIndex, EffectId effectId})> headers,
-  int fromRowIndex,
-  int rowSteps,
-) {
+/// The rail rows that are LAYER rows, in display order, with the row index
+/// each sits at — the layer list a caret can actually land in.
+///
+/// 🚨F-31 (유저 2026-08-24: 「보이는것중에서만 이동하도록」). This is
+/// [effectHeaderRowsOf]'s problem one list up, and it bites harder: travel
+/// is counted in rail ROWS while a slot indexes the LAYER list, and those
+/// two lists part company in BOTH directions. A collapsed folder or attach
+/// group contributes layers and no rows; a twirled-open layer contributes
+/// rows and no layers. Adding rail-row travel to a layer index therefore
+/// ran the caret ahead of the cursor as soon as either happened — and past
+/// a folded group the caret's slot named a gap no visible row draws, so the
+/// line went missing entirely.
+///
+/// Handing THIS list to the drop policy is also what makes the landing
+/// right: with only visible rows in it, the gap after a folded folder has
+/// the next VISIBLE row on its far side, so the insertion lands after the
+/// folder's members instead of among them.
+List<({int rowIndex, Layer layer})> layerRowsOf(List<TimelineDisplayRow> rows) {
+  final layers = <({int rowIndex, Layer layer})>[];
+  for (var index = 0; index < rows.length; index += 1) {
+    final row = rows[index];
+    if (!row.isLane) {
+      layers.add((rowIndex: index, layer: row.layer));
+    }
+  }
+  return layers;
+}
+
+/// One dragged row's view of the rail: the layer rows on screen, where the
+/// row sits among them, and the two answers a travel needs.
+///
+/// It exists so the rail and the x-sheet ask the same object rather than
+/// each doing the same arithmetic — the arithmetic they were each doing is
+/// what F-31 is (see [layerRowsOf]), and one of them getting fixed alone is
+/// how it would come back.
+class LayerRowCaret {
+  LayerRowCaret._(this.rows, this.slot);
+
+  /// Null when [movingId] has no row in this pass — the held row pinned
+  /// outside the window, which has nothing to count from.
+  static LayerRowCaret? of(List<TimelineDisplayRow> rows, LayerId movingId) {
+    final onScreen = layerRowsOf(rows);
+    final slot = onScreen.indexWhere((row) => row.layer.id == movingId);
+    return slot < 0 ? null : LayerRowCaret._(onScreen, slot);
+  }
+
+  final List<({int rowIndex, Layer layer})> rows;
+
+  /// The dragged row's index among [layers] — its own gap, and the caret's
+  /// `slotBefore`.
+  final int slot;
+
+  /// The layers a drop may land between: the ones with a row on screen.
+  List<Layer> get layers => [for (final row in rows) row.layer];
+
+  bool get isLastRow => slot == rows.length - 1;
+
+  /// The gap a travel of [rowSteps] RAIL rows lands on.
+  int slotFor(int rowSteps) => slotForSteps(
+    slot,
+    rowStepsBetween(
+      [for (final row in rows) row.rowIndex],
+      rows[slot].rowIndex,
+      rowSteps,
+    ),
+    rows.length,
+  );
+
+  /// The layer the ON-ROW band names, or null when the band is over a rail
+  /// row that is not a layer row (a lane) — a lane holds no drop.
+  Layer? onRowLayer(int? onRow) {
+    if (onRow == null) {
+      return null;
+    }
+    final targetRow = rows[slot].rowIndex + onRow;
+    for (final row in rows) {
+      if (row.rowIndex == targetRow) {
+        return row.layer;
+      }
+    }
+    return null;
+  }
+}
+
+/// How many ENTRIES of [rowIndices] a travel of [rowSteps] rail rows from
+/// [fromRowIndex] passes.
+///
+/// One walk for both lists that need it — the fx chain's headers and the
+/// layer rows — because they are the same question asked of different rows,
+/// and the layer half only ever got it wrong by not asking.
+int rowStepsBetween(List<int> rowIndices, int fromRowIndex, int rowSteps) {
   final targetRow = fromRowIndex + rowSteps;
   var steps = 0;
-  for (final header in headers) {
-    if (rowSteps > 0 &&
-        header.rowIndex > fromRowIndex &&
-        header.rowIndex <= targetRow) {
+  for (final rowIndex in rowIndices) {
+    if (rowSteps > 0 && rowIndex > fromRowIndex && rowIndex <= targetRow) {
       steps += 1;
     } else if (rowSteps < 0 &&
-        header.rowIndex < fromRowIndex &&
-        header.rowIndex >= targetRow) {
+        rowIndex < fromRowIndex &&
+        rowIndex >= targetRow) {
       steps -= 1;
     }
   }
