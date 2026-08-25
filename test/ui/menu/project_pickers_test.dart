@@ -118,6 +118,14 @@ void main() {
   });
 
   group('saving, desktop (a real save dialog answers with a path)', () {
+    // Pinned, not inherited: the local machine and the Windows/Linux CI
+    // shards are desktop anyway, but the macOS runner is DESKTOP HARDWARE
+    // on a SCOPED platform — there the scoped branch runs and this
+    // group's seam is never consulted (first seen on the Apple workflow,
+    // which skips lib/test-only pushes and surfaced it days late).
+    setUp(() => FolderPicker.debugOperatingSystem = 'windows');
+    tearDown(() => FolderPicker.debugOperatingSystem = null);
+
     String? askedName;
 
     void installDestinationPicker(FolderGrant answer) {
