@@ -48,6 +48,9 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // Back to the PRODUCTION default, not to false — a reset that quietly
   // put every test on the other shape would hide the one that ships.
   anicelAlwaysZip64 = true;
+  // A lowered limit forces the ZIP64 per-entry shape onto small fixtures;
+  // leaked, it would sentinel every entry in every other suite's archives.
+  anicelZip64FieldLimit = anicelZip64FieldLimitShipped;
   // Same hazard, same fix: the flow's platform seam decides whether a pick
   // has to clear Android's storage grant first.
   debugOperatingSystemOverride = null;

@@ -102,6 +102,31 @@ const bool anicelAlwaysZip64Shipped = true;
 
 bool anicelAlwaysZip64 = anicelAlwaysZip64Shipped;
 
+/// The value at which a per-entry 32-bit field (entry SIZES, local header
+/// OFFSET) moves into that entry's ZIP64 extra, leaving the sentinel in
+/// the fixed field.
+///
+/// 🔑 유저 결정 2026-08-26 (Q-save-4gb-carry: 「클라우드 무거워지는 건
+/// 무거운 파일 품은 유저가 감수할 문제고 **zip64로 통일화**」): a >4GB
+/// file CAN be carried — the format stretches instead of the writer
+/// refusing. Before this, an entry past 4GB threw at save time, and since
+/// the kind ceiling fell (08-14) a user could reach that throw by
+/// importing a big movie as Keep: every save failed for ever with no
+/// un-carry verb. Same sentinel-only-on-overflow law as the EOCD fields
+/// above: the fixed field carries the TRUTH whenever it fits, so ordinary
+/// archives stay byte-identical and readable by pre-ZIP64 readers.
+///
+/// `>=` rather than `>` because the sentinel VALUE itself cannot be
+/// stored plain — a field holding a literal 0xFFFFFFFF reads as flagged.
+///
+/// Mutable because 4GB fixtures are not a thing a test suite can write:
+/// tests lower it to force the ZIP64 shape onto small entries, and the
+/// shipped const pins what production starts with (the test config resets
+/// the mutable one).
+const int anicelZip64FieldLimitShipped = 0xFFFFFFFF;
+
+int anicelZip64FieldLimit = anicelZip64FieldLimitShipped;
+
 /// Reads the ZIP64 entry count and central-directory offset when the
 /// plain EOCD is flying all-ones flags, or null when it is not.
 ///
@@ -148,8 +173,8 @@ int _centralLocalOffset(ByteData data, int cursor, int extraStart,
   }
   // Walk the extra fields for id 0x0001. The 64-bit values inside appear
   // in a FIXED order — uncompressed size, compressed size, local header
-  // offset — and only for the fields that were all-ones. This writer only
-  // ever flags the offset, but a file from another tool may flag sizes
+  // offset — and only for the fields that were all-ones. Since the ZIP64
+  // size round (유저 08-26: 4GB 초과도 품는다) this writer flags sizes
   // too, so the sizes are skipped by looking at what is flagged.
   var walk = extraStart;
   final end = extraStart + extraLength;
@@ -172,6 +197,58 @@ int _centralLocalOffset(ByteData data, int cursor, int extraStart,
     walk += 4 + size;
   }
   throw const FormatException('Central record flags a ZIP64 offset with '
+      'no extra field to hold it.');
+}
+
+/// The compressed size out of a LOCAL header's ZIP64 extra, or null when
+/// no well-formed one is there. Local extras carry both sizes whenever
+/// either is flagged (spec), uncompressed first.
+int? _localZip64CompressedSize(Uint8List extraBytes) {
+  final data = ByteData.sublistView(extraBytes);
+  var walk = 0;
+  while (walk + 4 <= extraBytes.length) {
+    final id = data.getUint16(walk, Endian.little);
+    final size = data.getUint16(walk + 2, Endian.little);
+    if (id == _zip64ExtraId) {
+      if (size >= 16 && walk + 4 + 16 <= extraBytes.length) {
+        return data.getUint64(walk + 12, Endian.little);
+      }
+      return null;
+    }
+    walk += 4 + size;
+  }
+  return null;
+}
+
+/// The entry length a central record names, following its ZIP64 extra
+/// field when the fixed compressed-size field is all-ones — the size
+/// twin of [_centralLocalOffset], for entries past [anicelZip64FieldLimit].
+int _centralEntryLength(ByteData data, int cursor, int extraStart,
+    int extraLength) {
+  final fixed = data.getUint32(cursor + 20, Endian.little);
+  if (fixed != _zip32Max) {
+    return fixed;
+  }
+  var walk = extraStart;
+  final end = extraStart + extraLength;
+  while (walk + 4 <= end) {
+    final id = data.getUint16(walk, Endian.little);
+    final size = data.getUint16(walk + 2, Endian.little);
+    if (id == _zip64ExtraId) {
+      // Fixed order: uncompressed size (when flagged), compressed size.
+      // This writer flags both together, but a foreign file may flag one.
+      var at = walk + 4;
+      if (data.getUint32(cursor + 24, Endian.little) == _zip32Max) {
+        at += 8; // uncompressed size
+      }
+      if (at + 8 <= walk + 4 + size && at + 8 <= end) {
+        return data.getUint64(at, Endian.little);
+      }
+      break;
+    }
+    walk += 4 + size;
+  }
+  throw const FormatException('Central record flags a ZIP64 size with '
       'no extra field to hold it.');
 }
 
@@ -215,7 +292,6 @@ AnicelZipLayout parseAnicelZipLayout(Uint8List bytes) {
       throw const FormatException('Corrupt central directory.');
     }
     final crc = data.getUint32(cursor + 16, Endian.little);
-    final compressedSize = data.getUint32(cursor + 20, Endian.little);
     final nameLength = data.getUint16(cursor + 28, Endian.little);
     final extraLength = data.getUint16(cursor + 30, Endian.little);
     final commentLength = data.getUint16(cursor + 32, Endian.little);
@@ -223,6 +299,12 @@ AnicelZipLayout parseAnicelZipLayout(Uint8List bytes) {
         bytes.length) {
       throw const FormatException('Corrupt central directory.');
     }
+    final compressedSize = _centralEntryLength(
+      data,
+      cursor,
+      cursor + 46 + nameLength,
+      extraLength,
+    );
     final localOffset = _centralLocalOffset(
       data,
       cursor,
@@ -304,7 +386,6 @@ AnicelZipLayout parseAnicelZipLayoutFile(String path) {
         throw const FormatException('Corrupt central directory.');
       }
       final crc = data.getUint32(cursor + 16, Endian.little);
-      final compressedSize = data.getUint32(cursor + 20, Endian.little);
       final nameLength = data.getUint16(cursor + 28, Endian.little);
       final extraLength = data.getUint16(cursor + 30, Endian.little);
       final commentLength = data.getUint16(cursor + 32, Endian.little);
@@ -316,6 +397,12 @@ AnicelZipLayout parseAnicelZipLayoutFile(String path) {
           central.length) {
         throw const FormatException('Corrupt central directory.');
       }
+      final compressedSize = _centralEntryLength(
+        data,
+        cursor,
+        cursor + 46 + nameLength,
+        extraLength,
+      );
       final localOffset = _centralLocalOffset(
         data,
         cursor,
@@ -389,15 +476,29 @@ AnicelZipLayout recoverAnicelZipLayoutFile(String path) {
         break; // Central-directory remnant or torn garbage: stop.
       }
       final crc = data.getUint32(14, Endian.little);
-      final compressedSize = data.getUint32(18, Endian.little);
+      var compressedSize = data.getUint32(18, Endian.little);
       final nameLength = data.getUint16(26, Endian.little);
       final extraLength = data.getUint16(28, Endian.little);
       final dataOffset = cursor + 30 + nameLength + extraLength;
+      if (dataOffset > fileLength) {
+        break; // Torn inside the header's own name/extra.
+      }
+      final name = String.fromCharCodes(raf.readSync(nameLength));
+      if (compressedSize == _zip32Max) {
+        // An entry past [anicelZip64FieldLimit]: the truth lives in the
+        // local ZIP64 extra (both sizes, per spec). A flagged size with
+        // no extra is not a shape any writer of this format makes — stop
+        // the walk there like any other unparseable header.
+        final size = _localZip64CompressedSize(raf.readSync(extraLength));
+        if (size == null) {
+          break;
+        }
+        compressedSize = size;
+      }
       final entryEnd = dataOffset + compressedSize;
       if (entryEnd > fileLength) {
         break; // Torn final entry: its data never fully landed.
       }
-      final name = String.fromCharCodes(raf.readSync(nameLength));
       if (!byName.containsKey(name)) {
         order.add(name);
       }
@@ -841,20 +942,34 @@ Uint8List _uint32(int value) {
 
 Uint8List _localHeaderBytes(String name, int length, int crc) {
   final nameBytes = Uint8List.fromList(name.codeUnits);
+  final size64 = length >= anicelZip64FieldLimit;
+  // The spec requires a local header's ZIP64 extra to carry BOTH sizes
+  // whenever either fixed field is flagged — unlike the central record,
+  // where only the flagged fields appear.
+  final extra = size64 ? ByteData(20) : null;
+  if (extra != null) {
+    extra.setUint16(0, _zip64ExtraId, Endian.little);
+    extra.setUint16(2, 16, Endian.little); // payload size
+    extra.setUint64(4, length, Endian.little); // uncompressed
+    extra.setUint64(12, length, Endian.little); // compressed (STORE)
+  }
   final header = ByteData(30);
   header.setUint32(0, _localSignature, Endian.little);
-  header.setUint16(4, 20, Endian.little); // version needed
+  header.setUint16(4, size64 ? 45 : 20, Endian.little); // version needed
   header.setUint16(6, 0, Endian.little); // flags
   header.setUint16(8, 0, Endian.little); // method 0 = STORE
   header.setUint32(10, 0, Endian.little); // dos time/date
   header.setUint32(14, crc, Endian.little);
-  header.setUint32(18, length, Endian.little);
-  header.setUint32(22, length, Endian.little);
+  header.setUint32(18, size64 ? _zip32Max : length, Endian.little);
+  header.setUint32(22, size64 ? _zip32Max : length, Endian.little);
   header.setUint16(26, nameBytes.length, Endian.little);
-  header.setUint16(28, 0, Endian.little);
+  header.setUint16(28, extra?.lengthInBytes ?? 0, Endian.little);
   final out = BytesBuilder(copy: false)
     ..add(header.buffer.asUint8List())
     ..add(nameBytes);
+  if (extra != null) {
+    out.add(extra.buffer.asUint8List());
+  }
   return out.takeBytes();
 }
 
@@ -862,44 +977,46 @@ Uint8List _centralDirectoryBytes(List<AnicelZipEntry> entries) {
   final central = BytesBuilder(copy: false);
   for (final entry in entries) {
     final nameBytes = Uint8List.fromList(entry.name.codeUnits);
-    // A single entry over 4GB would need its SIZES in a ZIP64 extra too.
-    // Since 2026-08-14 a user CAN carry a video (the kind ceiling became a
-    // default), so this line is reachable by importing a >4GB movie as
-    // Keep — the import side owes a policy for that (board:
-    // Q-save-4gb-carry). Until then: refused loudly rather than handled,
-    // because a silently truncated size is a file that opens and reads
-    // the wrong bytes.
-    if (entry.length > _zip32Max) {
-      throw StateError(
-        'entry "${entry.name}" is ${entry.length} bytes; the writer does '
-        'not emit ZIP64 sizes',
-      );
-    }
-    final needsOffset64 = entry.localHeaderOffset > _zip32Max;
-    final extra = needsOffset64 ? ByteData(12) : null;
+    // This used to REFUSE an entry past 4GB ("the writer does not emit
+    // ZIP64 sizes") — 유저 08-26 (Q-save-4gb-carry): the format stretches
+    // instead, see [anicelZip64FieldLimit]. The sentinel law still holds:
+    // a silently truncated size would be a file that opens and reads the
+    // wrong bytes, so an oversize field moves WHOLE into the extra.
+    final size64 = entry.length >= anicelZip64FieldLimit;
+    final offset64 = entry.localHeaderOffset >= anicelZip64FieldLimit;
+    // ZIP64 Extended Information: only the fields that read 0xFFFFFFFF
+    // in the fixed record appear, in the spec's order — uncompressed
+    // size, compressed size, local header offset.
+    final payload = (size64 ? 16 : 0) + (offset64 ? 8 : 0);
+    final extra = payload > 0 ? ByteData(4 + payload) : null;
     if (extra != null) {
-      // ZIP64 Extended Information: only the fields that read 0xFFFFFFFF
-      // above appear, in the spec's order. Here that is the local header
-      // offset alone.
       extra.setUint16(0, _zip64ExtraId, Endian.little);
-      extra.setUint16(2, 8, Endian.little); // payload size
-      extra.setUint64(4, entry.localHeaderOffset, Endian.little);
+      extra.setUint16(2, payload, Endian.little);
+      var at = 4;
+      if (size64) {
+        extra.setUint64(at, entry.length, Endian.little); // uncompressed
+        extra.setUint64(at + 8, entry.length, Endian.little); // compressed
+        at += 16;
+      }
+      if (offset64) {
+        extra.setUint64(at, entry.localHeaderOffset, Endian.little);
+      }
     }
     final record = ByteData(46);
     record.setUint32(0, _centralSignature, Endian.little);
     record.setUint16(4, 20, Endian.little); // version made by
-    record.setUint16(6, needsOffset64 ? 45 : 20, Endian.little);
+    record.setUint16(6, size64 || offset64 ? 45 : 20, Endian.little);
     record.setUint16(8, 0, Endian.little);
     record.setUint16(10, 0, Endian.little); // method STORE
     record.setUint32(12, 0, Endian.little); // time/date
     record.setUint32(16, entry.crc32, Endian.little);
-    record.setUint32(20, entry.length, Endian.little);
-    record.setUint32(24, entry.length, Endian.little);
+    record.setUint32(20, size64 ? _zip32Max : entry.length, Endian.little);
+    record.setUint32(24, size64 ? _zip32Max : entry.length, Endian.little);
     record.setUint16(28, nameBytes.length, Endian.little);
     record.setUint16(30, extra?.lengthInBytes ?? 0, Endian.little);
     record.setUint32(
       42,
-      needsOffset64 ? _zip32Max : entry.localHeaderOffset,
+      offset64 ? _zip32Max : entry.localHeaderOffset,
       Endian.little,
     );
     central
