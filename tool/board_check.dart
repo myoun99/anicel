@@ -5,7 +5,7 @@
 // here costs 1.8s of JIT on EVERY turn, which is what retired the last
 // gate-side dart check. An exe starts in tens of milliseconds.
 //
-// It checks two things:
+// It checks three things:
 //
 //  1. **Every line parses.** The board renderer SKIPS a bad line and carries
 //     on — the right call for a board (30 items beat none) and the wrong one
@@ -23,6 +23,8 @@
 //     `note` blob therefore arrived on screen as a bare title with no detail
 //     and, because the radio buttons ARE the options, **no way to answer**.
 //     A rule in a document could not have caught that; this can.
+//
+//  3. **Every new line says when it was written.** See `tsRequired` below.
 import 'dart:convert';
 import 'dart:io';
 
@@ -32,6 +34,19 @@ void main(List<String> args) {
   if (!file.existsSync()) return;
 
   final bad = <int>[];
+  // 🚨Lines appended after the watermark must carry `ts`, and the watermark is
+  // a line in the file rather than a number in this source: the records file
+  // is append-only, so 「everything after this line」 is a stable rule that no
+  // later edit can shift.
+  //
+  // Why it needed a gate at all — the panel date (유저 2026-08-26: 「그 패널이
+  // 갱신된게 언제인지」) is computed from `ts`, and 252 of 408 existing lines
+  // did not have one. A date the board cannot know renders blank, which is
+  // honest but useless; the only way it stops being blank is if every line
+  // written from here on carries one. ⛔A rule in a document would not have —
+  // three of the lines missing `ts` were written the same day this was found.
+  final noTs = <int>[];
+  var tsRequired = false;
   // Merged the way the server merges: later records overwrite only the
   // fields they name, so a card is judged as it will RENDER, not as any one
   // line spells it. Without that, an amendment line touching `state` alone
@@ -54,6 +69,10 @@ void main(List<String> args) {
         bad.add(n);
         continue;
       }
+      if (tsRequired && '${json['ts'] ?? ''}'.trim().isEmpty) noTs.add(n);
+      if (json['kind'] == 'meta' && json['tsRequired'] == true) {
+        tsRequired = true;
+      }
       final id = json['id'];
       if (id is! String) continue;
       if (!merged.containsKey(id)) {
@@ -68,6 +87,14 @@ void main(List<String> args) {
   final complaints = <String>[];
   if (bad.isNotEmpty) {
     complaints.add('${bad.length}개 줄이 깨졌습니다 (줄 ${bad.join(', ')})');
+  }
+  if (noTs.isNotEmpty) {
+    complaints.add(
+      'ts 가 없는 줄: ${noTs.join(', ')}\n'
+      '보드 패널의 「생김 · 갱신」은 ts 로 그립니다 — 없으면 그 카드는 날짜가 '
+      '안 뜨거나 옛 날짜에 멈춥니다. 각 줄에 '
+      '"ts":"YYYY-MM-DDTHH:MM:SS+09:00" 를 넣으세요.',
+    );
   }
 
   // A LIVE question: a decision still asking, with no answer submitted.
