@@ -13,6 +13,24 @@ import 'timeline_section_policy.dart';
 /// One property lane under a layer: a NAMED keyed property rendered as its
 /// own timeline row. Deliberately generic — transform lanes (Position/
 /// Scale/Rotation…) today, layer-FX property lanes on the same base soon.
+/// What KIND of value a lane holds, so its editor can be the right control
+/// instead of a text box for everything.
+///
+/// 🚨F-22 (유저 2026-08-24): 「fx의 멤버 편집, **타입에 따라 확실하게 나누기.
+/// 지금 싹 다 텍스트임.** … **Bold같은 불리언 타입은 그냥 누르면 전환되는
+/// 버튼**이도록」.
+///
+/// The KIND belongs to the lane, not to the widget: only the provider knows
+/// that `name-tag:bold` is a flag, and a switch on lane ids in the row
+/// widget would be a second place to keep that knowledge.
+enum PropertyLaneValueKind {
+  /// The default — a number, typed or scrubbed.
+  number,
+
+  /// A flag: the value cell IS the control, and a tap flips it.
+  boolean,
+}
+
 class PropertyLaneRow {
   const PropertyLaneRow({
     required this.laneId,
@@ -21,6 +39,7 @@ class PropertyLaneRow {
     this.holdOutFrames = const {},
     this.keyNames = const {},
     this.valueLabel,
+    this.valueKind = PropertyLaneValueKind.number,
     this.scrubValue,
     this.showsKeyNavigator = true,
     this.isGroupHeader = false,
@@ -28,6 +47,9 @@ class PropertyLaneRow {
     this.groupEnabled,
     this.previewText,
   });
+
+  /// See [PropertyLaneValueKind].
+  final PropertyLaneValueKind valueKind;
 
   /// R5 #7: a group header may show a live PREVIEW of what it draws, in the
   /// region right of the fx column. Two fixed runs — the name and the
