@@ -60,6 +60,15 @@ class BrushFrameStore {
     _canonicalize = resolver ?? _identityKey;
   }
 
+  /// The PHYSICAL cel [key] addresses — linked rows are windows onto one
+  /// bank, and two different row keys can name the same pixels.
+  ///
+  /// Callers that walk several rows in one pass need this to avoid acting
+  /// on one cel twice: a second recolour of the same bank would record the
+  /// colour the first one just wrote as "the original", and undo would
+  /// stop halfway.
+  BrushFrameKey canonicalKeyOf(BrushFrameKey key) => _canonicalize(key);
+
   final Map<BrushFrameKey, BrushFrameDrawingState> _frames = {};
 
   /// R27 #13: bumps whenever a cel crosses the EMPTY ↔ has-picture line.

@@ -1,7 +1,7 @@
-import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/widgets.dart' show Matrix4;
+
 
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
@@ -9,37 +9,11 @@ import '../../models/canvas_viewport.dart';
 import '../../models/drawing_guide.dart';
 import '../../models/transform_track.dart';
 import '../../services/guide_geometry.dart';
+import '../../services/layer_pose_matrix.dart';
 import 'viewport_canvas_transform.dart';
 
-/// A layer's resolved GEOMETRIC transform at one frame: the shared pose
-/// (position/scale/rotation) plus the optional anchor point (null = the
-/// canvas center, the historical default). Animated opacity rides
-/// separately — it multiplies paint alpha, not geometry.
-typedef LayerPoseSample = ({TransformPose pose, CanvasPoint? anchorPoint});
-
-/// The matrix [applyLayerPoseTransform] applies — artwork space → posed
-/// canvas space: the artwork's ANCHOR POINT (canvas center unless the
-/// anchor-point lane keys one) lands on `pose.center`, scaled by
-/// `pose.zoom` and rotated clockwise by `pose.rotationDegrees` about that
-/// point. The identity pose maps to the identity matrix by construction.
-/// [rasterScale] adapts the same canvas-space pose to a scaled raster
-/// (playback quality tiers).
-Matrix4 layerPoseMatrix(
-  TransformPose pose,
-  CanvasSize canvasSize, {
-  CanvasPoint? anchorPoint,
-  double rasterScale = 1,
-}) {
-  final anchorX = (anchorPoint?.x ?? canvasSize.width / 2) * rasterScale;
-  final anchorY = (anchorPoint?.y ?? canvasSize.height / 2) * rasterScale;
-  return Matrix4.translationValues(
-      pose.center.x * rasterScale,
-      pose.center.y * rasterScale,
-      0,
-    ).multiplied(Matrix4.rotationZ(pose.rotationDegrees * math.pi / 180))
-    ..multiply(Matrix4.diagonal3Values(pose.zoom, pose.zoom, 1))
-    ..multiply(Matrix4.translationValues(-anchorX, -anchorY, 0));
-}
+export '../../services/layer_pose_matrix.dart'
+    show LayerPoseSample, layerPoseMatrix;
 
 /// Applies a layer's transform pose to [canvas] before its image draws at
 /// the origin — see [layerPoseMatrix] for the mapping.

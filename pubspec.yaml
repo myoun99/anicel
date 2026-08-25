@@ -46,6 +46,10 @@ dependencies:
   sqlite3_flutter_libs: ^0.6.0+eol
   archive: ^4.0.9
   ffi: ^2.2.0
+  # Matrix4 for the layer POSE, which services need and may not reach
+  # through flutter/widgets — the dependency direction CI enforces bans the
+  # widget framework below the UI layer (lib/src/services/layer_pose_matrix).
+  vector_math: ^2.2.0
   # The native core as an FFI plugin (2A): each platform's own toolchain
   # compiles packages/qa_native/src and ships the result with the app.
   qa_native:
