@@ -186,7 +186,16 @@ class TimelineLaneControlsRow extends StatefulWidget {
 
 class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   bool _editingValue = false;
-  late final TextEditingController _valueController = TextEditingController();
+
+  /// One controller per editable NUMBER (F-22 ②③): Position is two fields
+  /// rather than one box holding `120, 45`, and a unit is chrome beside the
+  /// box instead of text inside it.
+  final List<TextEditingController> _valueControllers = [];
+
+  /// The units those fields are wearing, parallel to [_valueControllers].
+  /// The commit puts them back, so the lane's own parser goes on reading
+  /// exactly the text form it always has.
+  List<String> _valueUnits = const [];
 
   Layer get layer => widget.layer;
   PropertyLaneRow get lane => widget.lane;
@@ -199,8 +208,15 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
 
   @override
   void dispose() {
-    _valueController.dispose();
+    _disposeValueControllers();
     super.dispose();
+  }
+
+  void _disposeValueControllers() {
+    for (final controller in _valueControllers) {
+      controller.dispose();
+    }
+    _valueControllers.clear();
   }
 
   int? get _previousKeyFrame {
@@ -224,7 +240,12 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   }
 
   void _startValueEdit(String currentValue) {
-    _valueController.text = currentValue;
+    final parts = propertyLaneValueParts(currentValue);
+    _disposeValueControllers();
+    for (final part in parts) {
+      _valueControllers.add(TextEditingController(text: part.number));
+    }
+    _valueUnits = [for (final part in parts) part.unit];
     setState(() => _editingValue = true);
   }
 
@@ -280,7 +301,15 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   }
 
   void _commitValueEdit() {
-    final input = _valueController.text;
+    // The units go back on: what leaves here is the text form the lane's
+    // parser has always read, so nothing downstream learns about fields.
+    final input = joinPropertyLaneValueParts([
+      for (var index = 0; index < _valueControllers.length; index += 1)
+        (
+          number: _valueControllers[index].text.trim(),
+          unit: index < _valueUnits.length ? _valueUnits[index] : '',
+        ),
+    ]);
     setState(() => _editingValue = false);
     widget.laneEdit?.onSetValue?.call(
       layer,
@@ -450,30 +479,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       );
     }
     if (_editingValue) {
-      return SizedBox(
-        height: 20,
-        child: TextField(
-          key: ValueKey<String>(
-            '$_keyPrefix-lane-value-field-${layer.id}-${lane.laneId}',
-          ),
-          controller: _valueController,
-          autofocus: true,
-          style: const TextStyle(fontSize: 11),
-          textAlign: widget.axis == Axis.horizontal
-              ? TextAlign.right
-              : TextAlign.center,
-          decoration: const InputDecoration(
-            isDense: true,
-            contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            border: OutlineInputBorder(),
-          ),
-          onSubmitted: (_) => _commitValueEdit(),
-          onTapOutside: (_) {
-            // Tap-away cancels (Enter commits, AE-style).
-            setState(() => _editingValue = false);
-          },
-        ),
-      );
+      return _valueEditor(colorScheme);
     }
 
     // Tap types a value; a drag SCRUBS it (AE-style — horizontal for the
@@ -536,6 +542,94 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
               : _stackedValue(_scrubPreview ?? valueLabel, colorScheme),
         ),
       ),
+    );
+  }
+
+  /// The value EDITOR: one box per number, and the fixed parts beside them.
+  ///
+  /// 🚨F-22 (유저 2026-08-24): 「**단위 같은 고정요소를 편집창에서 제거**」,
+  /// 「**포지션 등 2요소는 각각 편집**(온점 없이)」.
+  ///
+  /// It used to be one box over the whole readout, so changing Scale meant
+  /// typing the percent sign back and nudging Position's y meant retyping
+  /// `120, 45` — comma, space and all — around the one number that changed.
+  /// Neither is a value: they are the shape the value is printed in.
+  ///
+  /// ⛔The unit stays VISIBLE, just not typed. Hiding it would make the
+  /// editor say less than the readout it replaces, and a person mid-edit
+  /// would have to remember which of Scale and Rotation they were in.
+  ///
+  /// The separator does not survive: two fields ARE the pair, so a comma
+  /// between them would be a third thing to look at (「온점 없이」).
+  Widget _valueEditor(ColorScheme colorScheme) {
+    final horizontal = widget.axis == Axis.horizontal;
+    final fields = <Widget>[
+      for (var index = 0; index < _valueControllers.length; index += 1)
+        _valueField(colorScheme, index, horizontal: horizontal),
+    ];
+    if (fields.length == 1) {
+      return SizedBox(height: 20, child: fields.single);
+    }
+    // The slot is a FIXED 80px on the rail and three lines in the sheet, so
+    // the fields share it evenly rather than sizing to their contents — a
+    // box that grew with its digits would move its neighbour while typing.
+    return horizontal
+        ? Row(
+            children: [
+              for (var index = 0; index < fields.length; index += 1) ...[
+                if (index > 0) const SizedBox(width: 4),
+                Expanded(child: SizedBox(height: 20, child: fields[index])),
+              ],
+            ],
+          )
+        : Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (var index = 0; index < fields.length; index += 1) ...[
+                if (index > 0) const SizedBox(height: 2),
+                SizedBox(height: 18, child: fields[index]),
+              ],
+            ],
+          );
+  }
+
+  Widget _valueField(
+    ColorScheme colorScheme,
+    int index, {
+    required bool horizontal,
+  }) {
+    final unit = index < _valueUnits.length ? _valueUnits[index] : '';
+    return TextField(
+      key: ValueKey<String>(
+        // The first field keeps the key the single box had: it IS that box
+        // on every lane that holds one number, which is most of them.
+        index == 0
+            ? '$_keyPrefix-lane-value-field-${layer.id}-${lane.laneId}'
+            : '$_keyPrefix-lane-value-field-${layer.id}-${lane.laneId}-$index',
+      ),
+      controller: _valueControllers[index],
+      autofocus: index == 0,
+      style: const TextStyle(fontSize: 11),
+      textAlign: horizontal ? TextAlign.right : TextAlign.center,
+      decoration: InputDecoration(
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 4,
+          vertical: 2,
+        ),
+        border: const OutlineInputBorder(),
+        // The FIXED part, worn by the box instead of typed into it.
+        suffixText: unit.isEmpty ? null : unit.trim(),
+        suffixStyle: TextStyle(
+          fontSize: 10,
+          color: colorScheme.onSurfaceVariant,
+        ),
+      ),
+      onSubmitted: (_) => _commitValueEdit(),
+      onTapOutside: (_) {
+        // Tap-away cancels (Enter commits, AE-style).
+        setState(() => _editingValue = false);
+      },
     );
   }
 

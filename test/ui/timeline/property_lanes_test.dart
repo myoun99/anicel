@@ -1139,13 +1139,29 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      // F-22 ②: the percent sign is CHROME. The box opens holding the
+      // number alone, and a bare number is what commits.
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(
+                const ValueKey<String>(
+                  'timeline-lane-value-field-lane-cam-layer-scale',
+                ),
+              ),
+            )
+            .controller!
+            .text,
+        '150',
+        reason: 'the unit is not in the box the user types in',
+      );
       await tester.enterText(
         find.byKey(
           const ValueKey<String>(
             'timeline-lane-value-field-lane-cam-layer-scale',
           ),
         ),
-        '200%',
+        '200',
       );
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
@@ -1168,6 +1184,65 @@ void main() {
       // The scale lane stays keyed at frame 0 with the new value; other
       // lanes are untouched.
       expect(_laneKey('scale', 0), findsOneWidget);
+    });
+
+    testWidgets('F-22 ③: a two-element value is TWO boxes, and the comma is '
+        'not one of them', (tester) async {
+      await _pump(
+        tester,
+        _project(camera: CutCamera(keyframes: {0: _pose(100), 8: _pose(80)})),
+      );
+      await expand(tester);
+
+      const valueKey = ValueKey<String>(
+        'timeline-lane-value-lane-cam-layer-position',
+      );
+      const xKey = ValueKey<String>(
+        'timeline-lane-value-field-lane-cam-layer-position',
+      );
+      const yKey = ValueKey<String>(
+        'timeline-lane-value-field-lane-cam-layer-position-1',
+      );
+
+      final readout = tester
+          .widget<Text>(
+            find.descendant(of: find.byKey(valueKey), matching: find.byType(Text)),
+          )
+          .data!;
+      expect(readout, contains(','), reason: 'premise: the READOUT is a pair');
+
+      await tester.tap(find.byKey(valueKey));
+      await tester.pumpAndSettle();
+
+      // 🚨Two boxes, each holding one bare number. One box holding
+      // `120, 45` is what this replaced — nudging y meant retyping x, the
+      // comma and the space around the one number that changed.
+      expect(find.byKey(xKey), findsOneWidget);
+      expect(find.byKey(yKey), findsOneWidget);
+      final x = tester.widget<TextField>(find.byKey(xKey)).controller!.text;
+      final y = tester.widget<TextField>(find.byKey(yKey)).controller!.text;
+      expect(x, isNot(contains(',')));
+      expect(y, isNot(contains(',')));
+      expect('$x, $y', readout, reason: 'together they ARE the readout');
+
+      // Type into the SECOND box alone; the first stands.
+      await tester.enterText(find.byKey(yKey), '77');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<Text>(
+              find.descendant(
+                of: find.byKey(valueKey),
+                matching: find.byType(Text),
+              ),
+            )
+            .data,
+        '$x, 77',
+        reason: 'the untouched element survived the commit',
+      );
+      expect(_laneKey('position', 0), findsOneWidget);
     });
 
     test('scrubTransformLaneValue maps drag axes onto components in the '
@@ -1470,13 +1545,15 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      // F-22 ②: a bare number here too — the sheet's editor wears the unit
+      // the same way the rail's does.
       await tester.enterText(
         find.byKey(
           const ValueKey<String>(
             'xsheet-lane-value-field-lane-cam-layer-scale',
           ),
         ),
-        '200%',
+        '200',
       );
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
