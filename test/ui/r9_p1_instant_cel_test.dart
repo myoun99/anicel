@@ -87,7 +87,15 @@ void main() {
         handColor,
         reason: 'the palette is the hand, not the brush (R9 #2)',
       );
-      expect(applied.size, 77, reason: 'R26 #10');
+      // 🚨H25 (2026-08-23) took SIZE off this list: a brush wears its own
+      // size now, and only a value the hand set ON THAT BRUSH overrides it.
+      // The preset here carries the default, so the applied size is the
+      // brush's — the point of THIS test (the palette) is untouched.
+      expect(
+        applied.size,
+        BrushToolState.defaults.size,
+        reason: 'H25 supersedes R26 #10 for size',
+      );
       expect(applied.brushBlendMode, BrushBlendMode.multiply, reason: 'R26 #10');
       expect(applied.stabilizerStrength, closeTo(0.42, 1e-9), reason: 'P7');
       expect(applied.tool, CanvasTool.brush);

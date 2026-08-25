@@ -76,21 +76,43 @@ void main() {
     );
   });
 
-  test('the four HAND values still win over the preset', () {
-    // 「브러시 다른거 선택한다고 사이즈/블렌딩모드가 바뀌지 않음」 (R26 #10),
-    // the stabilizer (P7) and the colour (R9 #2). The old list named these
-    // explicitly; they survive now for the structural reason instead — they
-    // live outside `shape`, so the preset never reaches them.
+  test('the HAND values that still win over the preset', () {
+    // The stabilizer (P7) and the colour (R9 #2) — they live outside `shape`,
+    // so the preset never reaches them, and that structural reason is why
+    // they need no list of their own.
     final before = armed();
     final after = before.withPresetSettings(preset(), tool: CanvasTool.brush);
-    expect(
-      after.size,
-      before.size,
-      reason: 'a preset carrying size 99 must not resize the hand',
-    );
     expect(after.color, before.color);
     expect(after.stabilizerStrength, before.stabilizerStrength);
     expect(after.brushBlendMode, before.brushBlendMode);
+  });
+
+  test('SIZE is no longer one of them — a brush wears its own (H25)', () {
+    // 🚨This test used to read `expect(after.size, before.size)` and quote
+    // R26 #10 「브러시 다른거 선택한다고 사이즈/블렌딩모드가 바뀌지 않음」.
+    // H25 (유저 2026-08-23) asks the opposite and was answered:
+    // 「브러시 고르고 브러시크기 설정하면 다음에 같은 브러시 선택할때 해당
+    // 브러시크기 남아있도록」. Later ruling wins; the older one is still
+    // quoted at `withPresetSettings`, because a reader who does not know it
+    // existed would find this a bug.
+    final before = armed();
+
+    expect(
+      before.withPresetSettings(preset(), tool: CanvasTool.brush).size,
+      isNot(before.size),
+      reason: 'the preset carries size 99 and the brush wears it',
+    );
+    expect(
+      before
+          .withPresetSettings(
+            preset(),
+            tool: CanvasTool.brush,
+            handSet: (size: 33, opacity: null),
+          )
+          .size,
+      33,
+      reason: 'unless the hand has set one ON THIS BRUSH before',
+    );
   });
 
   test('copyWith(shape:) lays a brush down and named arguments land on top', () {
