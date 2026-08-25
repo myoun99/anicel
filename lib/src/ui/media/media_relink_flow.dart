@@ -37,7 +37,14 @@ Future<void> runMediaRelinkFlow(
   if (missing.isEmpty) {
     return;
   }
-  final folder = await pickFolderForUser(context);
+  // The GRANT flavour, not the path shorthand: the paths this flow writes
+  // into the project are read again at the NEXT launch, and on iOS/macOS a
+  // recorded path without its security-scoped token is refused there. The
+  // short spelling threw the token away, so relink — the feature that
+  // exists to make broken references work again — healed them for exactly
+  // one session and they died again at the next start.
+  final regrant = await pickFolderGrantForUser(context);
+  final folder = regrant?.path;
   if (folder == null || !context.mounted) {
     return;
   }
@@ -61,6 +68,10 @@ Future<void> runMediaRelinkFlow(
   if (apply != true) {
     return;
   }
+  // The token first, the move second — the same order the import commit
+  // uses, so the undoable path rewrite never exists without the grant
+  // that makes it readable after a relaunch.
+  session.rememberMediaGrants([regrant!]);
   session.relinkMediaAssets(plan.matched);
 }
 

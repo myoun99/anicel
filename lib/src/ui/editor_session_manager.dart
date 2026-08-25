@@ -17,7 +17,7 @@ import '../services/commands/reorder_track_command.dart';
 import '../services/import/media_identity_reader.dart';
 import '../services/media/media_fingerprints.dart';
 import '../services/persistence/anicel_incremental_writer.dart'
-    show anicelCrc32;
+    show anicelCrc32, parseAnicelZipLayoutFile;
 import '../services/media/media_byte_source.dart';
 import '../services/media/project_media_sources.dart';
 import '../services/import/media_import_planner.dart';
@@ -2144,6 +2144,7 @@ class EditorSessionManager extends ChangeNotifier {
       (_injectedAudioConformStore ??
             AudioConformStore(
               resolveConformPath: _conformPathFor,
+              resolveByteSource: mediaByteSourceFor,
               resolveProjectSampleRate: () =>
                   _repository.requireProject().audioSampleRate,
               resolveAudioSpeed: () {
@@ -8222,7 +8223,15 @@ class EditorSessionManager extends ChangeNotifier {
     final modified = <String, DateTime>{};
     for (final asset in mediaAssets) {
       if (!probe(asset.path)) {
-        missing.add(asset.path);
+        // The import original leaving is NOT "missing" for an asset whose
+        // bytes live inside the archive — deleting the original is the
+        // very act carrying exists to survive. Probing only the path put
+        // the "File missing — relink it" banner on assets the project
+        // already owns and fed them to the relink hunt, whose "success"
+        // would re-key the asset and orphan the archive entry.
+        if (!_mediaEntryNames.containsKey(asset.path)) {
+          missing.add(asset.path);
+        }
         continue;
       }
       try {
@@ -8235,6 +8244,15 @@ class EditorSessionManager extends ChangeNotifier {
     if (setEquals(missing, _missingMediaPaths) &&
         mapEquals(modified, _mediaModifiedTimes)) {
       return;
+    }
+    // A path that came BACK (the share mounted, the drive returned) may
+    // have burned its conform attempt budget while it was gone — three
+    // "missing" answers and the clip stayed silent for the whole session
+    // even after the file reappeared. Reappearing is the retry signal.
+    for (final path in _missingMediaPaths) {
+      if (!missing.contains(path)) {
+        audioConformStore.invalidate(path);
+      }
     }
     _missingMediaPaths = missing;
     _mediaModifiedTimes = modified;
@@ -16749,6 +16767,43 @@ class EditorSessionManager extends ChangeNotifier {
   /// resolve an asset's bytes without going through a save.
   Map<String, String> get mediaEntryNames =>
       Map<String, String>.unmodifiable(_mediaEntryNames);
+
+  /// Where [poolPath]'s bytes actually are RIGHT NOW — the read side of
+  /// carrying. The save always knew how to stream an embedded asset
+  /// forward; playback, the waveform and the existence probe kept asking
+  /// the filesystem, so deleting the import original (the very act
+  /// carrying exists to survive) silenced the clip and hung a "missing"
+  /// banner on an asset the project owns.
+  ///
+  /// Resolved fresh per call, never held: offsets belong to one layout
+  /// and a compaction moves every byte. The archive range carries the
+  /// entry's CRC, and the conform pipeline treats a mismatch as transient
+  /// — a read that raced a compaction retries against fresh offsets
+  /// rather than decoding whatever moved into the window.
+  MediaByteSource mediaByteSourceFor(String poolPath) {
+    final entryName = _mediaEntryNames[poolPath];
+    final archivePath = _projectFilePath;
+    if (entryName != null && archivePath != null) {
+      try {
+        final entry = parseAnicelZipLayoutFile(archivePath).entryNamed(
+          entryName,
+        );
+        if (entry != null) {
+          return MediaArchiveBytes(
+            archivePath: archivePath,
+            dataOffset: entry.dataOffset,
+            length: entry.length,
+            entryCrc32: entry.crc32,
+          );
+        }
+      } on Object {
+        // A torn or momentarily unreadable archive: the file fallback
+        // below still answers for assets whose original survives, and the
+        // conform store's transient handling covers the rest.
+      }
+    }
+    return MediaFileBytes(poolPath);
+  }
 
   /// The open project's file path; null until first saved/opened (Save
   /// falls back to Save As).

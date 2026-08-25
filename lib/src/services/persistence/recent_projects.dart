@@ -28,10 +28,16 @@ class RecentProject {
   /// The project file. Always forward slashes.
   final String path;
 
-  /// The security-scoped bookmark for the FOLDER the project sits in —
-  /// never for the file. The grant has to cover the sibling `.assets/`
-  /// directory and the autosave sidecar, neither of which a file-scoped
-  /// bookmark reaches.
+  /// The security-scoped bookmark that reopens this project — and it
+  /// carries TWO dialects. Since PICK-6 both Open and Save As store FILE
+  /// bookmarks (the single-file format removed the `.assets/` sibling and
+  /// the beside-the-file sidecar, so the file is the unit of permission);
+  /// rows written before that, and rows minted by the reconnect flow's
+  /// folder era, hold FOLDER bookmarks. The consumer tells them apart by
+  /// the resolved item's own name — see `_openRecent`, which learned this
+  /// the hard way: joining the file name onto a FILE bookmark's path built
+  /// `/…/Foo.anicel/Foo.anicel` and flagged every Apple row "Reconnect"
+  /// for ever. The field keeps its historical JSON name.
   ///
   /// Null on Windows, Linux and Android, where a path is durable by itself.
   final String? folderBookmark;
