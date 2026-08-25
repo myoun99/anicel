@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../input/value_control_pointers.dart';
+import '../input/wheel_law.dart';
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import 'axis_bar_gesture.dart';
@@ -522,11 +523,10 @@ class _FieldSliderState extends State<FieldSlider> {
         // deafen whichever later pan is handed the same id.
         onPointerCancel: (event) =>
             releasePointerForValueControl(event.pointer),
-        onPointerSignal: (event) {
-          if (event is PointerScrollEvent) {
-            _handleWheel(event);
-          }
-        },
+        // H23: registered rather than handled, so the notch this bar takes
+        // is not also taken by the canvas layer above it.
+        onPointerSignal: (event) =>
+            handleWheelUnlessScrolling(event, context, _handleWheel),
         child: bar,
       ),
     );

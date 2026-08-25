@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../models/canvas_viewport.dart';
 import '../input/app_input_settings.dart';
+import '../input/wheel_law.dart';
 import '../../models/viewport_point.dart';
 import 'flip_hud_controller.dart';
 
@@ -636,10 +637,14 @@ class _CanvasViewportGestureLayerState
     return math.atan2(vector.dy, vector.dx) * 180 / math.pi;
   }
 
-  void _handlePointerSignal(PointerSignalEvent event) {
-    if (event is! PointerScrollEvent ||
-        event.scrollDelta.dy == 0 ||
-        widget.strokeActive) {
+  /// H23: REGISTERED, not handled — see [handleWheelExclusively]. A notch
+  /// over a control that sits inside this layer used to move the control AND
+  /// zoom the view, because a `Listener` does not consume a pointer signal.
+  void _handlePointerSignal(PointerSignalEvent event) =>
+      handleWheelExclusively(event, _zoomByWheel);
+
+  void _zoomByWheel(PointerScrollEvent event) {
+    if (event.scrollDelta.dy == 0 || widget.strokeActive) {
       return;
     }
     final factor = event.scrollDelta.dy < 0 ? 1.1 : 1 / 1.1;
