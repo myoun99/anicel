@@ -19,6 +19,16 @@ import 'timeline_grid_metrics.dart';
 /// Whether two [Layer] snapshots would make [TimelineLayerControlsRow] look
 /// EXACTLY the same — the rail memo's gate.
 ///
+/// The row plate's own chrome before its first cell — the left border.
+///
+/// 🚨Every leading column therefore sits this much further in than the slot
+/// skeleton alone says, which is a whole pixel of drift for anything that
+/// LOCATES a column by measuring from the row's edge (I-1's swipe bands).
+/// Named rather than left as `BorderSide`'s default so the two readings come
+/// from one number. The chromeless row draws no border and no swipe reaches
+/// it — the collapsed overlay is a different surface.
+const double timelineLayerRowLeadingBorder = 1;
+
 /// Layer identity is the wrong question here: a timesheet edit (a drawing
 /// landed, an exposure cut, a block moved) hands back a new Layer instance
 /// whose every RAIL-visible field is unchanged, and the rail row is ~200
@@ -276,7 +286,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 // a selected frame run always has.
                 color: active ? activeColor : colorScheme.surface,
                 border: Border(
-                  left: BorderSide(color: borderColor),
+                  left: BorderSide(
+                    color: borderColor,
+                    width: timelineLayerRowLeadingBorder,
+                  ),
                   right: BorderSide(color: borderColor),
                   bottom: BorderSide(color: borderColor),
                 ),
@@ -301,10 +314,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 // attached to" with a different noun (R5 #18).
                 nestingArrow: attachArrowPlacement == null,
                 laneToggle: hasLanes && onToggleLanes != null
-                    // RailControlPointer on every row control (B3): the
-                    // twirl acts on ITS row without moving the drawing
-                    // target — the eye's law, worn by the whole rail now.
-                    ? RailControlPointer(child: InkWell(
+                    // I-1: a leading toggle COLUMN owns drags that start on
+                    // it, exactly as the trailing three do — the strong
+                    // claim, kept in step with the grid's swipe column list
+                    // (see [RailSwipeColumnPointer]).
+                    ? RailSwipeColumnPointer(child: InkWell(
                         key: ValueKey<String>(
                           'timeline-lane-toggle-${layer.id}',
                         ),
@@ -337,11 +351,17 @@ class TimelineLayerControlsRow extends StatelessWidget {
                       )
                     : layerKindEligibleForTimesheetToggle(layer.kind) &&
                           layer.attachedToLayerId == null
-                    ? LayerTimesheetToggleButton(
-                        keyPrefix: 'timeline',
-                        layerId: layer.id,
-                        onTimesheet: layer.onTimesheet,
-                        onToggle: onToggleLayerTimesheet,
+                    // I-1: the column the report named 「타임시트버튼이든 뭐
+                    // 그런것들」. The claim goes on at the RAIL, not inside
+                    // the button — the x-sheet's header shares that widget
+                    // and has no swipe.
+                    ? RailSwipeColumnPointer(
+                        child: LayerTimesheetToggleButton(
+                          keyPrefix: 'timeline',
+                          layerId: layer.id,
+                          onTimesheet: layer.onTimesheet,
+                          onToggle: onToggleLayerTimesheet,
+                        ),
                       )
                     : null,
                 mark: LayerMarkChip(
