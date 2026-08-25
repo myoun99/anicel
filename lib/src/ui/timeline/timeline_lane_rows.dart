@@ -1160,6 +1160,24 @@ class TimelineLaneFrameRow extends StatelessWidget {
     // the panel overlay uses, so there is no copy here to drift.
     final bandWash = AppColors.washDown.withValues(alpha: 0.6);
     final gridLaw = TimelineGridLaw.maybeOf(context);
+    // 🚨F-7 (유저 2026-08-24): 「스토리보드패널, fx열면 프레임영역의 선이
+    // 두꺼운데 선이 이중적용되고있는건가?」 — it was.
+    //
+    // ⛔THE OVERLAY SITS UNDER THE ROWS (D32), so a row that paints owes the
+    // grid a redraw. Every other row pays that debt with an OPAQUE ground:
+    // it covers the overlay, then draws the law itself, and one line lands.
+    // This band paid it with a 60% wash — which dims the overlay's lines
+    // instead of covering them — and then drew the law on top. Two lines,
+    // one boundary. ⇒ The band composites its wash onto the host's ground
+    // and paints THAT, so it occludes like every other row and its redraw
+    // is the only line. Same colour on screen, one line instead of two.
+    //
+    // ⚠️Null ground (a row lying over the ARTWORK) keeps the raw wash: there
+    // is nothing to composite against, and there is no overlay under it to
+    // double either.
+    final bandGround =
+        timelineGridGroundOver(under: gridLaw?.ground, painted: bandWash) ??
+        bandWash;
     // The ROW SEAM, from the law — see the border below.
     final seamInk = timelineGridRowSeamInk(colorScheme);
     final bandSeam = BorderSide(
@@ -1168,7 +1186,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
     );
     final band = DecoratedBox(
       decoration: BoxDecoration(
-        color: bandWash,
+        color: bandGround,
         // The divider faces the NEXT lane: below in the timeline, to the
         // right in the X-sheet.
         //
@@ -1201,10 +1219,10 @@ class TimelineLaneFrameRow extends StatelessWidget {
                     frameCellExtent: cellExtent,
                     framesPerSecond: gridLaw.framesPerSecond,
                     colorScheme: colorScheme,
-                    ground: timelineGridGroundOver(
-                      under: gridLaw.ground,
-                      painted: bandWash,
-                    ),
+                    // The SAME composited colour the band actually paints
+                    // (F-7) — computed once above so the ink and the fill
+                    // cannot disagree about what is underneath.
+                    ground: bandGround,
                     // The band is ONE row: its own bottom border is the
                     // cross seam, so the overlay must not draw a second.
                     crossCellExtent: 0,

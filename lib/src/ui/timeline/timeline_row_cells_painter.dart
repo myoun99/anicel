@@ -524,16 +524,29 @@ class TimelineRowCellsPainter extends CustomPainter {
     // are. The grid is the sheet's ruling and every row stands on the same
     // frames, so a row opting out of it is a row claiming its columns sit
     // somewhere else.
-    if (model.ghost) {
-      return null;
-    }
+    //
+    // 🚨F-3 (유저 2026-08-24): 「프레임 그리드가 아예 안 그려지는 레이어가
+    // 있다(확인된 것 = 이미지 레이어)」 — and it was THE SAME EXCLUSION, one
+    // field over. `if (model.ghost) return null` was here, and an IMAGE row
+    // is a single real cell at 0 followed by hold GHOSTS to the cut end
+    // (D22), so the exclusion swallowed the whole row. It was never only
+    // the image row either: every hold tail on every drawing row lost its
+    // ruling the same way — the image row is just the one that is 100%
+    // tail, which is why it is the one that got reported.
+    //
+    // ⇒ A ghost is a DERIVED cell, not a cell somewhere else. It changes
+    // what is drawn INSIDE the cell (dim dashes, no paper), which is the
+    // ground question below, and nothing about where the boundary is.
     // INSIDE a block the line is the interior seam; OUTSIDE one it is the
     // empty-space grid, which the row has to draw for itself (D43-2 — see
     // [rowGround]). A block's LEADING boundary is its edge and belongs to
     // neither: the run starts there.
-    final insideBlock =
-        model.segment.isBlock && model.segment.continuesFromPrevious;
-    final onEmpty = !model.segment.isBlock;
+    final insideBlock = !model.ghost &&
+        model.segment.isBlock &&
+        model.segment.continuesFromPrevious;
+    // A ghost joins the EMPTY arm: it paints no paper of its own, so the
+    // line lands on the row ground exactly as an uncovered cell does.
+    final onEmpty = model.ghost || !model.segment.isBlock;
     if (!insideBlock && !onEmpty) {
       return null;
     }
@@ -623,17 +636,23 @@ class TimelineRowCellsPainter extends CustomPainter {
     }
     final ink = timelineGridRowSeamInk(colorScheme);
     final rect = cellRectFor(frameIndex);
-    final model = cellModelAt(frameIndex);
-    final insideBlock = !model.ghost && model.segment.isBlock;
-    // The same ground question the vertical line asks, so one boundary and
-    // one seam land on the same colour where they cross.
-    final ground = timelineGridGroundOver(
-      under: rowGround,
-      painted: insideBlock ? resolvedCellStyleFor(frameIndex).background : null,
-    );
-    final color = ground == null
-        ? ink.color
-        : timelineGridLineInkOnGround(ink, ground);
+    // 🚨F-3 (유저 2026-08-25): 「가로선만 레이어영역 흰색계열로 통일. 세로나
+    // 그 외는 그대로」.
+    //
+    // ⛔THE ROW SEAM IS NOT MULTIPLIED ONTO THE GROUND, and the vertical
+    // boundary line above still is. They look like one law and they are
+    // two: the boundary line belongs to the FRAME grid, which rules the
+    // paper it crosses and so must darken it. The seam is the LAYER area's
+    // row divider continued into the cells — the rail draws it flat over
+    // whatever the row's ground happens to be, and the fx band's own
+    // BorderSide has always drawn it flat too. Multiplying it here was the
+    // third spelling, and the one that made the same divider read darker
+    // on the frame side than on the rail side.
+    //
+    // ⚠️Stated by CONCEPT, not by screen direction: on the X-sheet the frame
+    // axis is vertical, so this seam is the vertical line between two layer
+    // COLUMNS. Same divider, same flat ink.
+    final color = ink.color;
     final width = ink.strokeWidth;
     // The TRAILING cross edge, snapped the law's way — the seam belongs to
     // the boundary between this row and the next, so it sits at the end of

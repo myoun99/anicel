@@ -109,7 +109,13 @@ void main() {
       }
     });
 
-    test('the ROW seam takes the same treatment — it is a grid line too', () {
+    /// 🚨F-3 (유저 2026-08-25): 「가로선만 레이어영역 흰색계열로 통일. 세로나
+    /// 그 외는 그대로」. This used to expect the seam multiplied onto the
+    /// ground, "it is a grid line too" — it is not. The seam is the LAYER
+    /// area's row divider continued into the cells, and the rail draws it
+    /// flat; multiplying it here made the same divider read darker on the
+    /// frame side than on the rail side.
+    test('the ROW seam is FLAT — it is the rail\'s divider, not a grid line', () {
       const ground = Color(0xFF2A2A2E);
       final spy = _LineSpy();
       TimelineBeatLinesPainter(
@@ -123,14 +129,19 @@ void main() {
       final seam = spy.lines.singleWhere(
         (line) => line.from.dy == 40 && line.to.dy == 40,
       );
+      expect(seam.color, paintsAs(scheme.outlineVariant));
       expect(
         seam.color,
-        paintsAs(
-          timelineGridLineInkOnGround((
-            color: scheme.outlineVariant,
-            strokeWidth: 1.0,
-          ), ground),
+        isNot(
+          paintsAs(
+            timelineGridLineInkOnGround((
+              color: scheme.outlineVariant,
+              strokeWidth: 1.0,
+            ), ground),
+          ),
         ),
+        reason: 'and the ground treatment is what it must NOT take — if this '
+            'ever goes equal the fix has been undone',
       );
     });
 

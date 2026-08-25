@@ -156,7 +156,17 @@ void main() {
     );
   });
 
-  test('ghost blocks carry no seams — they carry no block chrome at all', () {
+  /// 🚨F-3 (유저 2026-08-24): 「프레임 그리드가 아예 안 그려지는 레이어가
+  /// 있다(확인된 것 = 이미지 레이어)」.
+  ///
+  /// ⛔This test used to read `expect(painter.heldSeamLineFor(7), isNull)` —
+  /// "ghost blocks carry no seams". A ghost carries no block CHROME, which is
+  /// true and is what the name meant; it does not stand on different frames.
+  /// An IMAGE row is one real cell plus hold ghosts to the cut end (D22), so
+  /// the null swallowed the whole row's ruling — and every drawing row's hold
+  /// tail with it.
+  test('a ghost carries no block chrome, and the frame boundary still rules '
+      'it — the EMPTY-space arm of the same law', () {
     final painter = painterFor(
       blockLayer({
         0: const TimelineExposure.drawing(FrameId('f1'), length: 4),
@@ -167,6 +177,17 @@ void main() {
         ),
       }),
     );
-    expect(painter.heldSeamLineFor(7), isNull);
+
+    final onGhost = painter.heldSeamLineFor(7);
+    expect(
+      onGhost,
+      isNotNull,
+      reason: 'the grid is the sheet ruling; a ghost is a derived CELL, not '
+          'a cell somewhere else',
+    );
+    // Frame 5 is plain empty space in this fixture. A ghost paints no paper
+    // of its own, so it takes the same ink an uncovered cell does — the
+    // difference is what is drawn INSIDE the cell, not where the line is.
+    expect(onGhost!.color, painter.heldSeamLineFor(5)!.color);
   });
 }
