@@ -419,6 +419,36 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// type (Enter commits and keys the value there), drag to scrub.
   Widget _valueCell(ColorScheme colorScheme, String valueLabel) {
     final laneEdit = widget.laneEdit;
+    // 🚨F-22 (유저 2026-08-24): 「fx의 멤버 편집, **타입에 따라 확실하게
+    // 나누기. 지금 싹 다 텍스트임.** … **Bold같은 불리언 타입은 그냥 누르면
+    // 전환되는 버튼**이도록」.
+    //
+    // A flag has two states and no digits, so the value cell IS the
+    // control: a tap flips it, and nothing here has to open a text box for
+    // someone to type the word `on`. Scrubbing is off for the same reason —
+    // there is nothing between the two states to scrub through.
+    if (lane.valueKind == PropertyLaneValueKind.boolean &&
+        laneEdit?.onSetValue != null) {
+      final on = valueLabel == 'on';
+      return InkWell(
+        key: ValueKey<String>(
+          '$_keyPrefix-lane-toggle-${layer.id}-${lane.laneId}',
+        ),
+        onTap: () => laneEdit!.onSetValue!.call(
+          layer,
+          lane,
+          widget.currentFrameIndex,
+          on ? 'off' : 'on',
+        ),
+        child: Center(
+          child: Icon(
+            on ? Icons.check_box_outlined : Icons.check_box_outline_blank,
+            size: 14,
+            color: on ? colorScheme.primary : colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
     if (_editingValue) {
       return SizedBox(
         height: 20,

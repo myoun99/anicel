@@ -132,11 +132,25 @@ List<PropertyLaneRow> seNameTagPropertyLanes(
           laneId: laneId,
           label: seNameTagLaneLabel(laneId),
           keyedFrames: keyed(laneId),
+          valueKind: seNameTagLaneValueKind(laneId),
           valueLabel: (frame) =>
               formatSeNameTagLaneValue(laneId, resolveAt(frame)),
         ),
   ];
 }
+
+/// What KIND of value a member holds — the one place that knows, since it
+/// is the same place that formats and parses it (F-22).
+///
+/// ⚠️The three INK lanes are still [PropertyLaneValueKind.number] and that
+/// is deliberate, not an omission: a colour circle cannot say `none`, which
+/// the box colour really is when the アフレコ box is off, and the value
+/// editor is the only way to get back to it today. See the board.
+PropertyLaneValueKind seNameTagLaneValueKind(String laneId) => switch (laneId) {
+  seNameTagBoldLaneId ||
+  seNameTagShowLineLaneId => PropertyLaneValueKind.boolean,
+  _ => PropertyLaneValueKind.number,
+};
 
 /// The member's name in the rail. English here like every other lane label;
 /// the localized strings are for controls a person reads as prose.
