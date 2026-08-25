@@ -168,6 +168,63 @@ List<Widget> layerRailLeadingCells({
   ];
 }
 
+/// The leading run's slots, in the order [layerRailLeadingCells] emits them
+/// — the twin of [LayerRailTrailingSlot], and for the same reason: a host
+/// that wants to LOCATE a leading column must not re-add the widths in a
+/// comment of its own. [name] is where the run ends and the label begins.
+enum LayerRailLeadingSlot { mark, laneToggle, timesheet, typeButton, name }
+
+/// How much sits to the LEFT of [to] on a row at [depth].
+///
+/// 🚨Unlike the trailing run this DEPENDS ON THE ROW: the nesting indent
+/// falls between the mark and the twirl, so every leading column from the
+/// twirl rightward moves by a whole slot per level of folder depth. A
+/// caller that treats a leading column as a fixed x is right only on
+/// unnested rows — which is why the rail's column swipe asks the row it was
+/// pressed on before it asks anything else (I-1).
+///
+/// [layerRailLeadingWidth] is this function at depth 0 with `to: name`, kept
+/// as a const because a window minimum needs one; `layer_rail_columns_test`
+/// pins the two together so neither can drift.
+double layerRailLeadingWidthTo({
+  required LayerRailLeadingSlot to,
+  int depth = 0,
+  bool includeSectionSlot = true,
+}) {
+  var total = includeSectionSlot ? layerSectionLabelSlotWidth : 0.0;
+  if (to == LayerRailLeadingSlot.mark) {
+    return total;
+  }
+  total += layerMarkSlotWidth + layerRailSectionGap;
+  // The nesting run: one blank cell per level, then the ↳ cell.
+  total += depth * layerRailNestingSlotWidth;
+  if (depth > 0) {
+    total += layerRailNestingSlotWidth;
+  }
+  if (to == LayerRailLeadingSlot.laneToggle) {
+    return total;
+  }
+  total += layerLaneToggleSlotWidth;
+  if (to == LayerRailLeadingSlot.timesheet) {
+    return total;
+  }
+  total += layerTimesheetSlotWidth + layerControlChipGap;
+  if (to == LayerRailLeadingSlot.typeButton) {
+    return total;
+  }
+  return total + layerTypeSlotWidth + layerControlChipGap;
+}
+
+/// What one leading cell costs. [LayerRailLeadingSlot.name] has no width of
+/// its own — it is the end of the run, not a cell — so it is not a case.
+double layerRailLeadingSlotWidth(LayerRailLeadingSlot slot) => switch (slot) {
+  LayerRailLeadingSlot.mark => layerMarkSlotWidth,
+  LayerRailLeadingSlot.laneToggle => layerLaneToggleSlotWidth,
+  LayerRailLeadingSlot.timesheet => layerTimesheetSlotWidth,
+  LayerRailLeadingSlot.typeButton => layerTypeSlotWidth,
+  LayerRailLeadingSlot.name => 0,
+};
+
 /// The cells AFTER a rail row's name, in order. Null cells reserve
 /// their slot; [hasOnionColumn]/[hasBlendColumn] false drops the column
 /// outright, which is the HOST's answer (the storyboard rail has neither),

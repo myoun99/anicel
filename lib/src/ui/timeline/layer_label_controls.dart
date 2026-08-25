@@ -999,6 +999,11 @@ class _MarkSwatch extends StatelessWidget {
 /// claims but is not listed swallows drags for nothing; one that is listed
 /// but does not claim is unreachable, which is exactly the state the eye
 /// was found in.
+///
+/// The LEADING columns wear it too now — the sheet toggle the report named
+/// and the lane twirl beside it. They are worn HERE, at the rail's call
+/// site, rather than inside the buttons: the x-sheet's column header uses
+/// the same timesheet widget and has no swipe to claim for.
 class RailSwipeColumnPointer extends StatelessWidget {
   const RailSwipeColumnPointer({super.key, required this.child});
 
