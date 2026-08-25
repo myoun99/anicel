@@ -675,9 +675,10 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   final inbox = alive.where((e) => e.state == 'inbox').toList();
   final asks = alive.where((e) => e.kind == 'decision' && e.answer == null).toList();
   final checks = alive.where((e) => e.kind == 'check' && e.answer == null).toList();
-  final settled = alive
-      .where((e) => (e.kind == 'decision' || e.kind == 'check') && e.answer != null)
-      .toList();
+  // ANYTHING answered is settled, not just the two kinds that used to be
+  // askable. A landed ITEM can now be answered too (a memo on a 확인할 것
+  // row), and without this it would answer into silence.
+  final settled = alive.where((e) => e.answer != null).toList();
 
   final claimed = {for (final e in alive) if (e.pr != null) e.pr!: e};
   final gone = entries.where((e) => e.state == 'archived').map((e) => e.id).toSet();
@@ -687,6 +688,9 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   for (final pr in gh.prs) {
     final e = claimed[pr.number];
     if (e == null && gone.contains('pr-${pr.number}')) continue;
+    // ⚠️An ANSWERED landing is done being looked at — it lives in 정해진 것
+    // now and must not come back to the list every time the page opens.
+    if (e?.answer != null) continue;
     if (pr.state == 'OPEN') {
       now.add(_prPanel(pr, e));
     } else if (pr.state == 'MERGED' && _isNews(pr)) {
@@ -701,15 +705,23 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   });
   final pages = fresh.isEmpty ? 1 : (fresh.length + _landedPerPage - 1) ~/ _landedPerPage;
   final page = landedPage.clamp(1, pages);
-  final landed = [
+  // 확인할 것 = the landings on this page, then the checks that have no PR.
+  // The hand-written ones go LAST and are never paged away: there are few of
+  // them, they are the ones that need a device, and a page-2 that hides them
+  // is how a check waits a month.
+  final toCheck = [
     for (final pr in fresh.skip((page - 1) * _landedPerPage).take(_landedPerPage))
-      _prPanel(pr, claimed[pr.number]),
+      _checkRow(claimed[pr.number] ?? _prEntry(pr), pr: pr),
+    for (final c in checks) _checkRow(c),
   ];
 
   final loose = alive
       .where((e) =>
           e.kind == 'item' &&
           e.state != 'inbox' &&
+          // An answered item has been looked at and reported on; it belongs in
+          // 정해진 것, not back in 착수 가능 claiming to be unstarted.
+          e.answer == null &&
           (e.pr == null || !claimed.containsKey(e.pr)))
       .toList();
   // Work can be underway before there is a PR to point at -- an investigation,
@@ -728,7 +740,7 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   b.writeln('<div class="wrap">');
   b.write('<h1>Anicel 보드</h1>');
   b.write('<p class="stamp">분류 전 <b>${inbox.length}</b> · 답할 것 <b>${asks.length}</b>'
-      ' · 실기 확인 <b>${checks.length}</b> · 지금 <b>${now.length}</b>'
+      ' · 확인할 것 <b>${fresh.length + checks.length}</b> · 지금 <b>${now.length}</b>'
       ' · 착수 가능 <b>${ready.length}</b> · 대기 <b>${waiting.length}</b>');
   if (!gh.ok) {
     b.write(' · <span class="warn">gh 를 못 불렀습니다 — PR 칸은 비어 있습니다</span>');
@@ -746,7 +758,6 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   b.write(_intakeForm());
   b.write(_group('분류 전', inbox.length, '내가 읽고 분류한다', inbox.map(_itemPanel)));
   b.write(_group('답할 것', asks.length, '고르고 제출', asks.map(_askPanel)));
-  b.write(_group('실기 확인', checks.length, '메모가 비면 OK', checks.map(_checkPanel)));
   // The refresh lives here because this is the only section it changes, and a
   // control parked away from what it affects is a control you have to remember
   // the meaning of.
@@ -757,9 +768,11 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   b.write(_group('착수 가능', ready.length, '명령만 내리면 착수', ready.map(_itemPanel)));
   b.write(_group('대기 중', waiting.length, '배지가 무엇을 기다리는지 말한다',
       waiting.map(_itemPanel)));
-  // The count is the whole list, not the page: this section used to show a
-  // number that was really a cap, and that is exactly what made it lie.
-  b.write(_group('최근 착지', fresh.length, '', landed,
+  // ONE list (유저 2026-08-26). The count is the whole thing, not the page:
+  // this section used to show a number that was really a cap, and that is
+  // exactly what made it lie.
+  b.write(_group('확인할 것', fresh.length + checks.length,
+      '체크 = 문제 없음 · 메모 = 문제', toCheck,
       footer: _pager(fresh.length, page),
       control: _ctl('<button class="ghost sm" title="이 페이지의 모든 항목을 체크합니다" '
           'onclick="pickAll(event)">전체선택</button>'
@@ -816,7 +829,7 @@ String _ctl(String buttons) =>
 /// How many landed rows fit on one page.
 const _landedPerPage = 20;
 
-/// The pager for 최근 착지.
+/// The pager for the LANDED half of 확인할 것.
 ///
 /// It is drawn even when there is only one page, and the count it shows is the
 /// TOTAL rather than the page: a section that hides its own size is the thing
@@ -922,18 +935,61 @@ String _askPanel(_Entry d) {
   return b.toString();
 }
 
-String _checkPanel(_Entry c) {
+/// ONE row of 확인할 것, whether it arrived as a landed PR or as a check
+/// somebody wrote (유저 2026-08-26: 「그런것도 싹 하나의 확인목록으로 병합.
+/// 다만 pr인지아닌지는 구분하고싶으니 태그로」).
+///
+/// 🚨The two lists were the same list wearing two costumes. 최근 착지 came from
+/// `gh` for free but had NOWHERE to report a result; 실기 확인 had the memo box
+/// but had to be hand-written — so one change got written twice, once as an
+/// item note and again as a check card. 유저: 「둘다 뭐가 작업됬는지 하나하나
+/// 확인하는용이라서. 그래서 너가 두군데 써넣는것도 힘들거고」.
+///
+/// ⇒ One panel, both affordances, and the DIFFERENCE says itself in a tag:
+/// [_kMerged] for a row that came from a PR, [_kHandsOn] for one that did not.
+///
+/// The two answers stay distinct because they mean different things and cost
+/// different amounts (유저 확정): the TICK is "봤고 문제 없음" and sweeps many
+/// rows at once through 확인; the MEMO is "문제가 있다" and is written per row.
+String _checkRow(_Entry c, {_Pr? pr}) {
+  final landed = pr != null;
+  // The TAG says what kind of row this is; the badge says WHICH PR. Saying
+  // 「머지」 in both was the same word twice on one line. A hands-on row needs
+  // no badge at all — every row in this section is unchecked by definition,
+  // so 「미확인」 was labelling the section, not the row.
+  final badge = landed ? '#${pr.number}' : '';
   final b = StringBuffer();
+  // data-kind is what `send` writes back, and it is `check` on BOTH shapes:
+  // the result of looking at a thing is a check result whatever put it on the
+  // list. ⚠️It is also what makes an answered row land in 정해진 것.
   b.writeln('<details class="p chk" id="c-${_esc(c.id)}" data-kind="check">');
-  b.writeln(_head(c.id, c.title, c.tags, '미확인', 'run'));
+  b.writeln(_head(
+    c.id,
+    c.title,
+    [landed ? _kMerged : _kHandsOn, ...c.tags],
+    badge,
+    landed ? 'ok' : 'run',
+    lead: '<input type="checkbox" class="pick" value="${_esc(c.id)}" '
+        'onclick="event.stopPropagation()">',
+  ));
   b.writeln('<div class="body">');
   if (c.how.isNotEmpty) {
     b.writeln('<p class="d"><b>이렇게 본다</b> — ${_esc(c.how)}</p>');
+  }
+  // A landed row's note is what the work WAS — the same sentence that used to
+  // sit in 최근 착지, kept because "무엇이 바뀌었나" is half of knowing what to
+  // look at.
+  if (landed && c.note.isNotEmpty) {
+    b.writeln('<p class="d">${_esc(c.note)}</p>');
   }
   if (c.why.isNotEmpty) {
     b.writeln('<p class="d"><b>왜 중요한가</b> — ${_esc(c.why)}</p>');
   }
   b.writeln(_care(c));
+  if (landed) {
+    b.writeln('<p class="d"><a href="https://github.com/$_repo/pull/'
+        '${pr.number}" target="_blank">PR #${pr.number} 열기 →</a></p>');
+  }
   b.writeln('<textarea rows="2" placeholder="문제가 있으면 적어 주세요 — 비워 두면 OK '
       '(스크린샷은 Ctrl+V)"></textarea>');
   b.writeln(_shotStrip(c.id));
@@ -942,6 +998,16 @@ String _checkPanel(_Entry c) {
   b.writeln('</div></details>');
   return b.toString();
 }
+
+/// The tag that says where a 확인할 것 row came from. Two values, and the
+/// board never invents a third: either a PR landed or it did not.
+const String _kMerged = '머지';
+const String _kHandsOn = '실기';
+
+/// A stand-in for a PR that no board item ever claimed — a landing the records
+/// know nothing about. It has the PR's own title and nothing else, which is
+/// exactly what 최근 착지 showed for those before.
+_Entry _prEntry(_Pr pr) => _Entry('pr-${pr.number}', 'item')..title = pr.title;
 
 String _itemPanel(_Entry e) {
   // No badge for a ready item, and none for the inbox either: both are already
