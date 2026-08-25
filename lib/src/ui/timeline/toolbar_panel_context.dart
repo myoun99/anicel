@@ -162,8 +162,11 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
   void selectRowSpan() => session.selectRowSpanForCurrentRow();
 
   @override
+  /// R5q1: CUTS are the storyboard's noun, so this panel's Edit does not
+  /// reach for them — 「타임라인에서는 타임라인의 것을」.
   bool get canEditInstance =>
-      session.editInstanceSubject != EditInstanceSubject.nothing;
+      session.editInstanceSubjectFor(cutsAreThisPanels: false) !=
+      EditInstanceSubject.nothing;
 
   @override
   bool get canCutRun => session.canCutRunAtCurrentFrame;
@@ -191,10 +194,12 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
   void pasteLinkedFrame() => session.pasteLinkedFrameAtCurrentFrame();
 
   @override
-  DeleteSubject get deleteSubject => session.deleteSubject;
+  DeleteSubject get deleteSubject =>
+      session.deleteSubjectFor(cutsAreThisPanels: false);
 
   @override
-  void deleteSelectionSubject() => session.deleteSelectionSubject();
+  void deleteSelectionSubject() =>
+      session.deleteSelectionSubject(cutsAreThisPanels: false);
 }
 
 /// What the storyboard's Edit Instance press opens — resolved ONCE

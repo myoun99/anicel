@@ -122,8 +122,14 @@ Future<void> editSelectionInstance(
   BuildContext context,
   EditorSessionManager session, {
   Axis previewAxis = Axis.horizontal,
+  // R5q1: the TIMELINE's Edit does not reach for cuts — they are the
+  // storyboard's noun. Defaulted true so the storyboard's own callers keep
+  // the rung; the timeline host passes false.
+  bool cutsAreThisPanels = true,
 }) async {
-  switch (session.editInstanceSubject) {
+  switch (session.editInstanceSubjectFor(
+    cutsAreThisPanels: cutsAreThisPanels,
+  )) {
     case EditInstanceSubject.cuts:
       await renameActiveCutWithDialog(context, session);
     case EditInstanceSubject.layers:

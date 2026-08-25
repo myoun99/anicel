@@ -192,3 +192,30 @@ class _TimelineCutEndDragHandleState extends State<TimelineCutEndDragHandle> {
     );
   }
 }
+
+/// The movie-end line's DISPLAY position while an end-line drag is live.
+///
+/// 🚨F-18 (유저 2026-08-24): 「스토리보드패널의 엔드라인 드래그시 라이브로
+/// 안보임. 어떤 다른 규칙을 만든거지? 타임라인패널이랑 통일」.
+///
+/// The storyboard's body builds from the COMMITTED project once, on purpose
+/// (the drag preview is read further down, where the measurement says it
+/// matters). The end line was built up there with it, so it stood still until
+/// release while its timeline sibling followed the pointer — one line, two
+/// rules, which is what the report is.
+///
+/// ⇒ The line reads the preview HERE instead of the panel re-reading the
+/// project: the same shape [timelineCutEndPreviewFrameCount] already uses for
+/// the cut end, one drag over.
+int movieEndPreviewTotalFrames({
+  required TimelineDragPreview? preview,
+  required int committedTotalFrames,
+  required int committedTrailingFrames,
+}) {
+  if (preview is! MovieEndDragPreview) {
+    return committedTotalFrames;
+  }
+  return committedTotalFrames -
+      committedTrailingFrames +
+      preview.trailingFrames;
+}

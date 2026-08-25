@@ -6,6 +6,7 @@ import 'package:flutter/semantics.dart' show SemanticsProperties;
 
 import '../input/app_input_settings.dart' show AppInput;
 import '../input/eager_pan_gesture_recognizer.dart';
+import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -658,6 +659,24 @@ class _TimelineRowEditChromeLayerState
 
   bool get _horizontal => widget.axis == Axis.horizontal;
 
+  /// 🚨F-15 (유저 2026-08-24): 「프레임 엣지나 +버튼으로 드래그하면서 잡아끌때,
+  /// 룰러랑 동일로직으로 보이는영역 넘어가면 스크롤하는거? 따라가는거 적용」.
+  ///
+  /// The shared apply (D42) the ruler scrub, the row drag and the range
+  /// gesture already go through — reaching past the edge scrolls, holding
+  /// still at it holds still.
+  ///
+  /// ⚠️The returned delta MUST be folded into the drag's own travel: content
+  /// moving under a stationary pointer is the same thing as the pointer
+  /// moving over stationary content, so a travel that ignores it freezes the
+  /// moment the view begins to scroll. That is the helper's own warning, and
+  /// it is why this returns a number instead of just doing the scroll.
+  double _autoPanEdge(Offset globalPosition) => edgeAutoPanApply(
+    context: context,
+    globalPosition: globalPosition,
+    axis: widget.axis,
+  );
+
   @override
   void initState() {
     super.initState();
@@ -671,8 +690,10 @@ class _TimelineRowEditChromeLayerState
     // cared.
     _gripDrag.dragStartBehavior = DragStartBehavior.down;
     _gripDrag.onStart = (_) => _startGripDrag();
-    _gripDrag.onUpdate = (details) =>
-        _updateGripDrag(_horizontal ? details.delta.dx : details.delta.dy);
+    _gripDrag.onUpdate = (details) => _updateGripDrag(
+      (_horizontal ? details.delta.dx : details.delta.dy) +
+          _autoPanEdge(details.globalPosition),
+    );
     _gripDrag.onEnd = (_) => _endGripDrag();
     _gripDrag.onCancel = _cancelGripDrag;
     _addTap.onTap = _tapAdd;
@@ -680,7 +701,13 @@ class _TimelineRowEditChromeLayerState
     // cell to the slop.
     _addPan.dragStartBehavior = DragStartBehavior.down;
     _addPan.onStart = (_) => _startAdd();
-    _addPan.onUpdate = (details) => _updateAdd(details.delta);
+    _addPan.onUpdate = (details) {
+      final panned = _autoPanEdge(details.globalPosition);
+      _updateAdd(
+        details.delta +
+            (_horizontal ? Offset(panned, 0) : Offset(0, panned)),
+      );
+    };
     _addPan.onEnd = (_) => _endAdd();
     _addPan.onCancel = _cancelAdd;
     // PEN-12 #3: the press already opened the flyout — any drag continuing

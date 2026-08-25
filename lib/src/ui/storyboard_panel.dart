@@ -32,6 +32,8 @@ import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import 'theme/app_theme.dart';
 import 'timeline/layer_label_controls.dart';
+import 'timeline/timeline_cut_end_handle.dart'
+    show movieEndPreviewTotalFrames;
 import 'timeline/layer_rail_columns.dart';
 import 'timeline/layer_rail_window.dart';
 import 'widgets/field_slider.dart';
@@ -3544,26 +3546,62 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                               // the panel's internal preview
                                               // substitution makes it follow
                                               // live.
+                                              // 🚨F-18: the line and its grip
+                                              // follow the DRAG, not the
+                                              // committed project. The body
+                                              // around them still builds
+                                              // committed-once on purpose —
+                                              // only these two read the
+                                              // preview, so nothing else
+                                              // rebuilds per step.
                                               if (totalFrames > 0)
-                                                Positioned(
-                                                  key: const ValueKey<String>(
-                                                    'storyboard-cut-end-line',
-                                                  ),
-                                                  left: scale.leftForFrame(
-                                                    totalFrames,
-                                                  ),
-                                                  top: 0,
-                                                  bottom: 0,
-                                                  width: 2,
-                                                  child: const IgnorePointer(
-                                                    child: ColoredBox(
-                                                      color: AppColors.danger,
-                                                    ),
-                                                  ),
+                                                ValueListenableBuilder<
+                                                  TimelineDragPreview?
+                                                >(
+                                                  valueListenable:
+                                                      widget.dragPreview ??
+                                                      _noDragPreview,
+                                                  builder: (context, preview, _) {
+                                                    final live =
+                                                        movieEndPreviewTotalFrames(
+                                                          preview: preview,
+                                                          committedTotalFrames:
+                                                              totalFrames,
+                                                          committedTrailingFrames:
+                                                              project
+                                                                  .trailingFrames,
+                                                        );
+                                                    return Positioned(
+                                                      key:
+                                                          const ValueKey<String>(
+                                                            'storyboard-cut-end-line',
+                                                          ),
+                                                      left: scale.leftForFrame(
+                                                        live,
+                                                      ),
+                                                      top: 0,
+                                                      bottom: 0,
+                                                      width: 2,
+                                                      child:
+                                                          const IgnorePointer(
+                                                            child: ColoredBox(
+                                                              color: AppColors
+                                                                  .danger,
+                                                            ),
+                                                          ),
+                                                    );
+                                                  },
                                                 ),
                                               if (totalFrames > 0 &&
                                                   widget.movieEnd != null)
                                                 _StoryboardEndLineHandle(
+                                                  dragPreview:
+                                                      widget.dragPreview,
+                                                  committedTotalFrames:
+                                                      totalFrames,
+                                                  committedTrailingFrames:
+                                                      project.trailingFrames,
+                                                  scale: scale,
                                                   // Grabbed from the EMPTY side of
                                                   // the line, never straddling it:
                                                   // everything left of the movie's
@@ -3573,9 +3611,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                                   // the handle put a full-height
                                                   // opaque box over that grip and
                                                   // made it unreachable.
-                                                  left: scale.leftForFrame(
-                                                    totalFrames,
-                                                  ),
                                                   pixelsPerFrame:
                                                       scale.pixelsPerFrame,
                                                   movieEnd: widget.movieEnd!,
@@ -5604,12 +5639,21 @@ class StoryboardTrackLabelRow extends StatelessWidget {
 /// live preview, ONE undo on release. It never touches the cuts.
 class _StoryboardEndLineHandle extends StatefulWidget {
   const _StoryboardEndLineHandle({
-    required this.left,
+    required this.dragPreview,
+    required this.committedTotalFrames,
+    required this.committedTrailingFrames,
+    required this.scale,
     required this.pixelsPerFrame,
     required this.movieEnd,
   });
 
-  final double left;
+  /// F-18: the grip rides the LIVE end, like the line it grips and like the
+  /// timeline's own cut-end handle. It used to be placed from the committed
+  /// project, so the finger left it behind on the first frame of a drag.
+  final ValueListenable<TimelineDragPreview?>? dragPreview;
+  final int committedTotalFrames;
+  final int committedTrailingFrames;
+  final TimelineScale scale;
   final double pixelsPerFrame;
   final StoryboardMovieEndCallbacks movieEnd;
 
@@ -5656,12 +5700,22 @@ class _StoryboardEndLineHandleState extends State<_StoryboardEndLineHandle> {
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      key: const ValueKey<String>('storyboard-cut-end-handle'),
-      left: widget.left,
-      top: 0,
-      bottom: 0,
-      width: 12,
+    return ValueListenableBuilder<TimelineDragPreview?>(
+      valueListenable: widget.dragPreview ?? _noDragPreview,
+      builder: (context, preview, child) => Positioned(
+        key: const ValueKey<String>('storyboard-cut-end-handle'),
+        left: widget.scale.leftForFrame(
+          movieEndPreviewTotalFrames(
+            preview: preview,
+            committedTotalFrames: widget.committedTotalFrames,
+            committedTrailingFrames: widget.committedTrailingFrames,
+          ),
+        ),
+        top: 0,
+        bottom: 0,
+        width: 12,
+        child: child!,
+      ),
       child: MouseRegion(
         cursor: SystemMouseCursors.resizeColumn,
         child: GestureDetector(
@@ -6402,3 +6456,8 @@ class _RenderFrameHitGate extends RenderProxyBox {
 // drifted copy of TimelineBeatLinesPainter — pre-beatLine-split second
 // color, base+beat double ink at 6f multiples, a line at x=0, no snap —
 // and the storyboard now mounts the shared painter above.
+
+/// A never-changing drag channel, for the two end-line widgets when the host
+/// hands none. Cheaper than branching the builder, and it can never notify.
+final ValueNotifier<TimelineDragPreview?> _noDragPreview =
+    ValueNotifier<TimelineDragPreview?>(null);
