@@ -129,6 +129,41 @@ void main() {
     expect(confirmButton(tester).onPressed, isNotNull);
   });
 
+  // Pins the ceiling itself, not just "some big number is refused": the
+  // number moved once (8192 -> 16384, user decision D4) and the old test
+  // above stayed green through the move, because 99999 is out of range
+  // either way. The numbers here are LITERAL on purpose: written as
+  // ${CanvasSizeDialog.maxDimension} the test moves with the constant and
+  // proves nothing about which number was agreed (verified -- it stayed
+  // green when the constant was mutated back to 8192).
+  testWidgets('confirm accepts 16384 and refuses 16385', (tester) async {
+    await pumpOpenDialog(tester);
+
+    for (final field in const <String>[
+      'canvas-size-width-field',
+      'canvas-size-height-field',
+    ]) {
+      await tester.enterText(find.byKey(ValueKey<String>(field)), '16384');
+      await tester.pump();
+      expect(
+        confirmButton(tester).onPressed,
+        isNotNull,
+        reason: '$field must accept the agreed ceiling 16384',
+      );
+
+      await tester.enterText(find.byKey(ValueKey<String>(field)), '16385');
+      await tester.pump();
+      expect(
+        confirmButton(tester).onPressed,
+        isNull,
+        reason: '$field must refuse 16385, one past the ceiling',
+      );
+
+      await tester.enterText(find.byKey(ValueKey<String>(field)), '800');
+      await tester.pump();
+    }
+  });
+
   testWidgets('preset chip fills both fields', (tester) async {
     await pumpOpenDialog(tester);
 

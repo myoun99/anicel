@@ -36,7 +36,17 @@ class CanvasSizeDialog extends StatefulWidget {
   const CanvasSizeDialog({super.key, required this.initialSize});
 
   static const int minDimension = 1;
-  static const int maxDimension = 8192;
+
+  /// User decision 2026-08-25 (D4): raised from 8192 to 16384.
+  ///
+  /// Two different 8192s lived in this app and only one of them was ever a
+  /// limit. THIS one validates what may be typed, so it decides how big a
+  /// document can be. The other -- `_maxBufferSide` in
+  /// canvas_layer_stack_view.dart -- caps the DISPLAY buffer, and crossing
+  /// it falls back to a direct walk, which is always correct and only costs
+  /// more. The model itself never had a ceiling; the dialog did.
+  /// Do not "unify" the two constants: they answer different questions.
+  static const int maxDimension = 16384;
 
   final CanvasSize initialSize;
 
