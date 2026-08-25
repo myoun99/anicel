@@ -1249,11 +1249,53 @@ Future<ProjectPick?> pickProjectSaveTarget(
   // On success the placeholder was MOVED out and only the empty directory is
   // left; on cancel the placeholder is still in it. Same cleanup.
   _discardStaging(stagingDirectory);
-  final path = grant?.path;
-  if (path == null) {
+  final placed = grant?.path;
+  if (placed == null) {
     return null;
   }
-  return (path: path, folderBookmark: grant!.bookmark);
+  // 🚨F-14 (유저 2026-08-24): 「저장 시 **22바이트의 저장명으로 된 확장자없는
+  // 파일**이 생김 … **삭제안되는것도** 애플에서도 삭제 안되는 상황일텐데」.
+  //
+  // That file is the placeholder above, and this is where it was orphaned.
+  // The picker returns whatever name the user typed — Windows does not force
+  // an extension — and the CALLER used to append `.anicel` afterwards. So
+  // the placeholder claimed `Foo` and the project was written to
+  // `Foo.anicel`: a 22-byte file named after the save, with no extension,
+  // that nothing ever came back for. Nothing platform-specific about it; the
+  // report's Apple half was right too.
+  //
+  // ★The suffix is decided HERE now, where the placeholder can be answered
+  // for. A claim on a spot we are not going to write to is not ours to keep.
+  if (placed.toLowerCase().endsWith(anicelProjectSuffix)) {
+    return (path: placed, folderBookmark: grant!.bookmark);
+  }
+  _discardPlacedPlaceholder(placed);
+  return (path: '$placed$anicelProjectSuffix', folderBookmark: grant!.bookmark);
+}
+
+/// Removes a placeholder the picker placed and the save is not going to use.
+///
+/// ⛔Only if it still IS the placeholder, byte for byte. The user may have
+/// pointed the picker at a name that already existed, and the file sitting
+/// there is then theirs — a save that quietly deleted it because it was in
+/// the way would be the worst bug in this file.
+void _discardPlacedPlaceholder(String path) {
+  try {
+    final file = File(path);
+    if (!file.existsSync() || file.lengthSync() != _emptyAnicelArchive.length) {
+      return;
+    }
+    final bytes = file.readAsBytesSync();
+    for (var i = 0; i < bytes.length; i += 1) {
+      if (bytes[i] != _emptyAnicelArchive[i]) {
+        return;
+      }
+    }
+    file.deleteSync();
+  } on Object {
+    // Leaving one behind is the old behaviour; failing the save over it
+    // would be worse than the file.
+  }
 }
 
 /// Removes the staging directory. A leak here must never fail a save — or a
@@ -1342,17 +1384,26 @@ Future<void> promptSaveProjectAs(
   final ProjectPick? pick;
   if (savePicker != null) {
     final injected = await savePicker(suggested);
-    pick = injected == null ? null : (path: injected, folderBookmark: null);
+    // The injected picker places no placeholder, so it answers the suffix
+    // question the plain way — but it still has to ANSWER it, because the
+    // caller below no longer does (F-14).
+    pick = injected == null
+        ? null
+        : (
+            path: injected.toLowerCase().endsWith(anicelProjectSuffix)
+                ? injected
+                : '$injected$anicelProjectSuffix',
+            folderBookmark: null,
+          );
   } else {
     pick = await pickProjectSaveTarget(context, suggested, initialDirectory);
   }
   if (pick == null || !context.mounted) {
     return;
   }
-  var path = pick.path;
-  if (!path.toLowerCase().endsWith(anicelProjectSuffix)) {
-    path = '$path$anicelProjectSuffix';
-  }
+  // F-14: the suffix is the PICK's answer now — it is the only place that
+  // can also answer for the placeholder it left at the un-suffixed name.
+  final path = pick.path;
   if (await saveProjectShowingProgress(context, session, path)) {
     recordRecentProject(
       RecentProject(path: path, folderBookmark: pick.folderBookmark),

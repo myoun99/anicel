@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/persistence/anicel_project_archive.dart'
+    show anicelProjectSuffix;
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 
@@ -219,6 +221,77 @@ void main() {
       expect(
         find.byKey(const ValueKey<String>('folder-no-path-dialog')),
         findsOneWidget,
+      );
+    });
+
+    /// 🚨F-14 (유저 2026-08-24): 「저장 시 **22바이트의 저장명으로 된
+    /// 확장자없는 파일**이 생김 … **삭제안되는것도** 애플에서도 삭제 안되는
+    /// 상황일텐데 점검」.
+    ///
+    /// The picker returns whatever name the user typed — Windows does not
+    /// force an extension — and the suffix used to be appended AFTER the
+    /// placeholder had already been placed at the un-suffixed name. So the
+    /// placeholder claimed `Foo` while the project went to `Foo.anicel`,
+    /// and nothing ever came back for it. Nothing platform-specific: the
+    /// report's Apple half was right too.
+    testWidgets('a placeholder placed at a name the save will not use is '
+        'taken back', (tester) async {
+      final placed = File('${folder.path}/Typed Name');
+      installExporter((sourcePath) {
+        File(sourcePath).renameSync(placed.path);
+        return FolderGrant.granted(path: placed.path, kind: GrantKind.file);
+      });
+
+      final pick = await runSave(tester, 'Typed Name');
+
+      expect(
+        pick?.path,
+        '${placed.path}$anicelProjectSuffix',
+        reason: 'the SAVE goes to the suffixed name',
+      );
+      expect(
+        placed.existsSync(),
+        isFalse,
+        reason: 'and the 22 bytes claiming the other one are gone',
+      );
+    });
+
+    testWidgets('⛔but a file that is NOT the placeholder is left alone', (
+      tester,
+    ) async {
+      // The user may point the picker at a name that already exists. What
+      // sits there is theirs — a save that deleted it because it was in the
+      // way would be the worst bug in this file.
+      final theirs = File('${folder.path}/Not Mine')
+        ..writeAsBytesSync(List<int>.filled(22, 7));
+      installExporter((sourcePath) {
+        File(sourcePath).deleteSync();
+        return FolderGrant.granted(path: theirs.path, kind: GrantKind.file);
+      });
+
+      final pick = await runSave(tester, 'Not Mine');
+
+      expect(pick?.path, '${theirs.path}$anicelProjectSuffix');
+      expect(theirs.existsSync(), isTrue);
+      expect(theirs.readAsBytesSync().first, 7);
+    });
+
+    testWidgets('a placed name that ALREADY has the suffix is kept as is', (
+      tester,
+    ) async {
+      final placed = File('${folder.path}/Kept$anicelProjectSuffix');
+      installExporter((sourcePath) {
+        File(sourcePath).renameSync(placed.path);
+        return FolderGrant.granted(path: placed.path, kind: GrantKind.file);
+      });
+
+      final pick = await runSave(tester, 'Kept');
+
+      expect(pick?.path, placed.path);
+      expect(
+        placed.existsSync(),
+        isTrue,
+        reason: 'the real save writes over THIS one — it claimed the spot',
       );
     });
   });
