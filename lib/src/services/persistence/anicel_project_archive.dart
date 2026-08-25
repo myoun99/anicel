@@ -255,9 +255,14 @@ Uint8List buildAnicelProjectJsonBytes({
 /// because it can hand back BYTES without a file — which is what fixtures
 /// want, and what `tool/cut_scale_project.dart` builds with.
 ///
-/// ⚠️ Keep it byte-compatible with the streaming writer or fixtures stop
-/// standing in for what production writes. Both are pinned against
-/// `parseAnicelArchiveBytes`, which is what makes that checkable.
+/// ⚠️ Keep it READ-compatible with the streaming writer or fixtures stop
+/// standing in for what production writes. Not byte-compatible, and that
+/// is deliberate: production always writes the ZIP64 records
+/// (`anicelAlwaysZip64`) while `ZipEncoder` here writes plain ZIP — so a
+/// fixture built here also exercises the "older (plain) files still
+/// open" half of the reader contract (zip64_test: "a reader opens both
+/// shapes, whichever wrote the file"). Both writers are pinned against
+/// `parseAnicelArchiveBytes`, which is what makes all of it checkable.
 Uint8List buildAnicelArchiveBytes({
   required Project project,
   required List<AnicelCelBlob> cels,
