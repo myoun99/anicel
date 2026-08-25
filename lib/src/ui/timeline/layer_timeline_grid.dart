@@ -22,6 +22,7 @@ import 'timeline_row_span_resolver.dart'
         resolveLaneSpanEscalation,
         resolveSelectionSpanHead,
         resolveSelectionSpanRows;
+import '../input/app_input_settings.dart' show AppInput;
 import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'layer_drop_policy.dart'
     show LayerRowCaret, effectHeaderRowsOf, rowStepsBetween, slotForSteps;
@@ -3018,6 +3019,23 @@ class _EyeSwipeDetectorState extends State<_EyeSwipeDetector> {
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
+      // 🚨F-8 (유저 2026-08-24: 「레이어영역도 … **터치로 스크롤할수있게**
+      // 사양 통일」). The doc above claims the outer vertical scroll keeps
+      // working outside the band; it did not, and a finger on the rail
+      // scrolled nothing at all (measured — the frame area beside it moved
+      // 90px on the same drag).
+      //
+      // ⛔A recognizer that has already WON cannot hand the gesture back:
+      // declining inside `onVerticalDragStart` leaves the swipe undone and
+      // the scroll dead, which is the shape this file's own neighbours are
+      // warned about ([AppInput.toolPointerDevices]). The band check runs
+      // after the arena is over, so it can only ever be the second half of
+      // the answer.
+      //
+      // 결정 10 is the first half, already written and already read by every
+      // other edit pan on this surface: a finger scrolls the timeline, and
+      // becomes the pointer the moment one finger is the drawing hand.
+      supportedDevices: AppInput.timelineEditPanDevices,
       onVerticalDragDown: (details) {
         _engaged = _inBand(details.localPosition);
       },
