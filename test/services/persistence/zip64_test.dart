@@ -261,6 +261,185 @@ void main() {
       );
     }
   });
+
+  group('ZIP64 sizes — an entry past the field limit (유저 08-26: '
+      '「zip64로 통일화」, the format stretches instead of refusing)', () {
+    // 4GB fixtures are not a thing a suite can write, so the limit is
+    // lowered until ordinary entries cross it — the sentinel shape is the
+    // thing under test, not the gigabytes. Offsets cross the same limit,
+    // so the combined extra (sizes + offset, spec order) runs here too.
+    setUp(() => anicelZip64FieldLimit = 64);
+    tearDown(() => anicelZip64FieldLimit = anicelZip64FieldLimitShipped);
+
+    // Three entries, three extra-field shapes — the combined one is the
+    // one a wrong FIELD ORDER corrupts, so a fixture without it proved
+    // nothing about the order (a mutation showed exactly that):
+    //  - `first` at offset 0, 80 bytes  → sizes flagged, offset not;
+    //  - `both` past offset 64, 200 B   → sizes AND offset flagged;
+    //  - `tiny` past offset 64, 3 bytes → offset flagged, sizes not.
+    ({String path, Uint8List first, Uint8List both, Uint8List tiny}) oversized(
+        String name) {
+      final first = Uint8List.fromList(
+        List<int>.generate(80, (i) => (i * 13 + 1) & 0xFF),
+      );
+      final both = Uint8List.fromList(
+        List<int>.generate(200, (i) => (i * 7 + 3) & 0xFF),
+      );
+      final tiny = Uint8List.fromList(const [1, 2, 3]);
+      final path = '${temp.path}/$name';
+      writeAnicelArchiveFile(
+        path: path,
+        entries: [
+          (name: 'cels/first.celz', bytes: first),
+          (name: 'cels/both.celz', bytes: both),
+          (name: 'cels/tiny.celz', bytes: tiny),
+        ],
+      );
+      return (path: path, first: first, both: both, tiny: tiny);
+    }
+
+    void expectWholeTruth(
+      AnicelZipLayout layout,
+      Uint8List file, {
+      required Uint8List first,
+      required Uint8List both,
+      required Uint8List tiny,
+    }) {
+      for (final (name, bytes) in [
+        ('cels/first.celz', first),
+        ('cels/both.celz', both),
+        ('cels/tiny.celz', tiny),
+      ]) {
+        final entry = layout.entryNamed(name)!;
+        expect(entry.length, bytes.length, reason: name);
+        expect(
+          file.sublist(entry.dataOffset, entry.dataOffset + entry.length),
+          bytes,
+          reason: '$name — the offset and length both have to be the truth: '
+              'a wrong size is a file that opens and reads the wrong bytes',
+        );
+      }
+    }
+
+    test('both parsers read every sentinel shape back whole', () {
+      final f = oversized('sizes.anicel');
+      final bytes = File(f.path).readAsBytesSync();
+      expectWholeTruth(
+        parseAnicelZipLayout(bytes),
+        bytes,
+        first: f.first,
+        both: f.both,
+        tiny: f.tiny,
+      );
+      expectWholeTruth(
+        parseAnicelZipLayoutFile(f.path),
+        bytes,
+        first: f.first,
+        both: f.both,
+        tiny: f.tiny,
+      );
+    });
+
+    test('🚨 and a STANDARD decoder reads it too', () {
+      // Same law as the count test above: our reader agreeing with our
+      // writer proves nothing about the format.
+      final f = oversized('foreign.anicel');
+      final decoded = ZipDecoder().decodeBytes(File(f.path).readAsBytesSync());
+      expect(
+        decoded.files
+            .singleWhere((e) => e.name == 'cels/both.celz')
+            .readBytes(),
+        f.both,
+      );
+      expect(
+        decoded.files
+            .singleWhere((e) => e.name == 'cels/first.celz')
+            .readBytes(),
+        f.first,
+      );
+    });
+
+    test('an append over it keeps the oversized survivors intact', () {
+      final f = oversized('append.anicel');
+      appendAnicelEntries(
+        path: f.path,
+        newEntries: {
+          'cels/new.celz': Uint8List.fromList(const [9, 9, 9]),
+        },
+      );
+      final bytes = File(f.path).readAsBytesSync();
+      final layout = parseAnicelZipLayout(bytes);
+      expectWholeTruth(
+        layout,
+        bytes,
+        first: f.first,
+        both: f.both,
+        tiny: f.tiny,
+      );
+      expect(layout.entryNamed('cels/new.celz'), isNotNull);
+    });
+
+    test('🚨 torn-tail recovery reads the sizes out of the LOCAL headers',
+        () {
+      // The walker has no central directory to lean on — the local ZIP64
+      // extra is the only place the truth survives a torn append.
+      final f = oversized('torn.anicel');
+      final healthy = parseAnicelZipLayoutFile(f.path);
+      File(f.path).openSync(mode: FileMode.append)
+        ..truncateSync(healthy.centralDirectoryOffset + 7)
+        ..closeSync();
+
+      final recovered = recoverAnicelZipLayoutFile(f.path);
+      expect(recovered.entries.length, healthy.entries.length);
+      final bytes = File(f.path).readAsBytesSync();
+      expectWholeTruth(
+        recovered,
+        bytes,
+        first: f.first,
+        both: f.both,
+        tiny: f.tiny,
+      );
+    });
+
+    test('a streamed full save patches the CRC through the longer header',
+        () {
+      // The STREAMED path writes a placeholder header first and seeks
+      // back to headerOffset+14 for the CRC once the bytes have gone by —
+      // a header that grew a ZIP64 extra must not have moved the CRC out
+      // from under that patch.
+      final big = Uint8List.fromList(
+        List<int>.generate(200, (i) => (i * 11 + 5) & 0xFF),
+      );
+      final path = '${temp.path}/streamed.anicel';
+      writeAnicelArchiveFile(
+        path: path,
+        entries: const [],
+        streamedEntries: [
+          AnicelStreamedEntry(
+            name: 'media/voice.wav',
+            length: big.length,
+            readInto: (buffer, position, size) {
+              buffer.setRange(0, size, big, position);
+              return size;
+            },
+          ),
+        ],
+      );
+      final entry = parseAnicelZipLayoutFile(path)
+          .entryNamed('media/voice.wav')!;
+      expect(entry.length, big.length);
+      expect(entry.crc32, anicelCrc32(big));
+      final bytes = File(path).readAsBytesSync();
+      expect(
+        bytes.sublist(entry.dataOffset, entry.dataOffset + entry.length),
+        big,
+      );
+    });
+
+    test('the SHIPPED limit is the 32-bit ceiling', () {
+      expect(anicelZip64FieldLimitShipped, 0xFFFFFFFF);
+    });
+  });
 }
 
 /// Whether a four-byte little-endian signature appears anywhere.
