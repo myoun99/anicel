@@ -1160,6 +1160,12 @@ class _InteractiveBrushEditCanvasViewState
         // bounds-local row-major stroke buffer the commit composites.
         strokePixels: promotable ? null : rasterizer.strokePixelsWithinBounds(),
         strokeBounds: promotable ? null : rasterizer.strokeBounds,
+        // F-12: the ceiling the live overlay has been drawing THROUGH.
+        // Promoted tiles already carry it (it is folded into the mask the
+        // pre-blend runs), and the commit's promotion path installs them
+        // untouched — so this reaches the buffer route only, which is
+        // exactly where the ceiling has not been applied yet.
+        strokeOpacity: rasterizer.strokeOpacity,
       ),
     );
     rasterizer.clear();
@@ -1474,7 +1480,12 @@ class _InteractiveBrushEditCanvasViewState
       center: localPosition,
       color: settings.color,
       size: settings.size,
-      opacity: settings.opacity,
+      // F-12: a dab carries only its OWN variation (the pressure curve and
+      // the jitter multiply this). The tool's opacity is the accumulated
+      // stroke's ceiling and rides `BrushDabSequence.opacity` instead —
+      // per dab it is not a ceiling at all, since dabs pile up source-over
+      // and any factor below 1 still converges on opaque.
+      opacity: 1,
       flow: settings.flow,
       hardness: settings.hardness,
       tipShape: settings.tipShape,
@@ -1803,6 +1814,12 @@ class _InteractiveBrushEditCanvasViewState
     // Captured once per stroke — it cannot change mid-stroke (the
     // selection layer is not mounted while a painting tool is active).
     _liveRasterizer!.selectionRegion = widget.selectionRegion;
+    // F-12: and so does the opacity ceiling, by the same route and with
+    // the same "captured once per stroke" rule — the dabs carry only their
+    // own variation now, so this is the only place the tool's opacity
+    // enters the live pixels.
+    _liveRasterizer!.strokeOpacity =
+        (_activeStrokeInputSettings ?? widget.inputSettings).opacity;
   }
 
   /// Rasterizes [newDabs] into the live buffer (exact commit math) and

@@ -3696,6 +3696,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       strokePixels: clipped.pixels,
       strokeBounds: clipped.bounds,
       blendMode: data.blendMode,
+      strokeOpacity: data.strokeOpacity,
     );
   }
 
@@ -3720,6 +3721,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           prerasterizedStrokePixels: strokeData.strokePixels,
           prerasterizedStrokeBounds: strokeData.strokeBounds,
           blendMode: strokeData.blendMode,
+          strokeOpacity: strokeData.strokeOpacity,
           promotedBase: strokeData.promotedBase,
           promotedTiles: strokeData.promotedTiles,
         );

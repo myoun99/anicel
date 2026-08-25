@@ -19,7 +19,11 @@ import '../native/qa_native_engine.dart';
 import 'brush_dab_kernel.dart';
 import 'canvas_selection_region.dart';
 import 'brush_stroke_blend.dart'
-    show preBlendStrokeOverlayPixels, strokeBlendModeNativeId;
+    show
+        preBlendStrokeOverlayPixels,
+        strokeBlendModeNativeId,
+        strokeCoverageMask,
+        strokeOpacityCoverage;
 
 /// A pre-blended overlay tile: the premultiplied bytes to upload, and the
 /// stroke [revision] they were blended at (pen-up hands the DECODED image
@@ -170,8 +174,34 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// replacing whole coordinates instead of falling back to a clip.
   CanvasSelectionRegion? selectionRegion;
 
-  /// Lazily built selection coverage per tile (see [_maskTileFor]).
+  /// 🚨★F-12 — the stroke's opacity CEILING, in the same channel and by the
+  /// same route as the selection above, because it is the same kind of
+  /// thing: **a mask with no shape.**
+  ///
+  /// Opacity cannot ride the dabs. Dabs accumulate source-over, so a
+  /// per-dab factor is not a ceiling — overlap it enough and any factor
+  /// below 1 still converges on opaque, which is the report (「불투명도
+  /// 낮춰도 dab 겹치면 100%까지 진해진다」). It has to scale the ACCUMULATED
+  /// stroke, once, which is precisely what this mask already does.
+  ///
+  /// Folding it in here rather than adding a scalar to the kernel is what
+  /// keeps the native and Dart routes parity-pinned for free: neither one
+  /// learns a new input. Like the region it is set before the first dab and
+  /// never changes mid-stroke, which is what keeps the per-tile cache valid
+  /// for the stroke's whole life.
+  double strokeOpacity = 1;
+
+  /// Lazily built stroke coverage per tile (see [_maskTileFor]).
   final Map<int, _MaskTile> _maskTiles = <int, _MaskTile>{};
+
+  /// The ceiling's own mask when there is no selection to fold it into.
+  ///
+  /// ONE tile for the whole stroke rather than one per coordinate: with no
+  /// selection every tile's coverage is the same constant, so a per-tile
+  /// copy would cost 64KB (+ a native buffer) per touched tile to hold
+  /// identical bytes. Read-only for the kernel's whole life, which is what
+  /// makes sharing it safe.
+  _MaskTile? _uniformMask;
 
   /// How many times a dab has touched each tile. A RESULT tile
   /// ([_results]) blended at revision R is current only while the stroke
@@ -243,12 +273,17 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
           native.releaseTileBuffer(buffer);
         }
       }
+      final uniform = _uniformMask?.buffer;
+      if (uniform != null) {
+        native.releaseTileBuffer(uniform);
+      }
     }
     _nativeBuffers.clear();
     _tiles.clear();
     _tileCoords.clear();
     _tileRevisions.clear();
     _maskTiles.clear();
+    _uniformMask = null;
     _results.clear();
     _resultBytes = 0;
     _strokeBounds = null;
@@ -567,28 +602,48 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     return tile.readPixels((pointer, _) => pointer);
   }
 
-  /// The selection coverage for a tile, built once per stroke.
+  /// The stroke coverage for a tile — the selection folded with the
+  /// opacity ceiling — built once per stroke.
   ///
-  /// Null = nothing to mask (no selection, or the tile lies entirely
-  /// inside it — the kernel's null-mask path is byte-identical to no
-  /// selection at all). The region cannot change mid-stroke: the
-  /// selection layer is not even mounted while a painting tool is
-  /// active, so one build per tile lasts the stroke.
+  /// Null = nothing to mask (full opacity and either no selection or a
+  /// tile lying entirely inside it — the kernel's null-mask path is
+  /// byte-identical to no mask at all). Neither input can change
+  /// mid-stroke: the selection layer is not even mounted while a painting
+  /// tool is active and the ceiling is fixed at pen-down, so one build per
+  /// tile lasts the stroke.
   _MaskTile? _maskTileFor(int key, TileCoord coord) {
     final region = selectionRegion;
     if (region == null) {
-      return null;
+      if (strokeOpacityCoverage(strokeOpacity) >= 255) {
+        return null;
+      }
+      return _uniformMask ??= _buildMaskTile(
+        strokeCoverageMask(
+          pixelCount: tileSize * tileSize,
+          opacity: strokeOpacity,
+        )!,
+      );
     }
     final cached = _maskTiles[key];
     if (cached != null) {
       return cached.allInside ? null : cached;
     }
-    final bytes = region.maskFor(
-      left: coord.x * tileSize,
-      top: coord.y * tileSize,
-      width: tileSize,
-      height: tileSize,
-    );
+    final bytes = strokeCoverageMask(
+      selection: region.maskFor(
+        left: coord.x * tileSize,
+        top: coord.y * tileSize,
+        width: tileSize,
+        height: tileSize,
+      ),
+      pixelCount: tileSize * tileSize,
+      opacity: strokeOpacity,
+    )!;
+    final mask = _buildMaskTile(bytes);
+    _maskTiles[key] = mask;
+    return mask.allInside ? null : mask;
+  }
+
+  _MaskTile _buildMaskTile(Uint8List bytes) {
     var allInside = true;
     var allOutside = true;
     for (final coverage in bytes) {
@@ -608,14 +663,12 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       buffer = native.acquireTileBuffer(tileSize * tileSize, zeroed: false);
       buffer.view.setAll(0, bytes);
     }
-    final mask = _MaskTile(
+    return _MaskTile(
       buffer: buffer,
       bytes: bytes,
       allInside: allInside,
       allOutside: allOutside,
     );
-    _maskTiles[key] = mask;
-    return allInside ? null : mask;
   }
 
   /// (Re)computes the resident RESULT tile for [key] — base bytes staged

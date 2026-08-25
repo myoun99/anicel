@@ -34,6 +34,7 @@ class BrushStrokeCommitData {
     this.strokePixels,
     this.strokeBounds,
     this.blendMode = BrushBlendMode.color,
+    this.strokeOpacity = 1,
     this.promotedBase,
     this.promotedTiles,
   }) : sourceDabs = List<BrushDab>.unmodifiable(sourceDabs);
@@ -42,6 +43,15 @@ class BrushStrokeCommitData {
   final Uint8List? strokePixels;
   final DirtyRegion? strokeBounds;
   final BrushBlendMode blendMode;
+
+  /// F-12: the stroke's opacity CEILING — carried here for the same reason
+  /// [blendMode] is, so a REDO reproduces the same pixels however the tool
+  /// has been set since.
+  ///
+  /// ⚠️A stamp route (the bucket, a shape fill, a pasted piece) leaves this
+  /// at 1 and keeps its opacity on its DAB: one stamp accumulates with
+  /// nothing, so there is nothing for a ceiling to cap.
+  final double strokeOpacity;
 
   /// The cel surface the promoted tiles were blended against.
   final BitmapSurface? promotedBase;

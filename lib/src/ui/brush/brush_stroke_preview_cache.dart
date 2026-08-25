@@ -198,9 +198,11 @@ Uint8List rasterizeBrushStrokeSample(
     // real strokes, so the list shows the configured taper (size/opacity/
     // flow/hardness alike).
     final sizeRatio = settings.sizePressureCurve?.evaluate(pressure) ?? 1.0;
-    final opacity =
-        settings.opacity *
-        (settings.opacityPressureCurve?.evaluate(pressure) ?? 1.0);
+    // F-12: the curve alone. The tool's opacity caps the ACCUMULATED
+    // swatch once, below — on the dab it would not cap anything, and the
+    // preview would go on darkening past the setting exactly the way the
+    // canvas did.
+    final opacity = settings.opacityPressureCurve?.evaluate(pressure) ?? 1.0;
     final flow =
         settings.flow *
         (settings.flowPressureCurve?.evaluate(pressure) ?? 1.0);
@@ -240,9 +242,13 @@ Uint8List rasterizeBrushStrokeSample(
     }
   }
 
+  // The ceiling, once, on what the dabs accumulated. Floored the way the
+  // per-dab value has always been: the row has to show the brush's SHAPE
+  // at any setting, so a swatch never fades to nothing.
+  final ceiling = settings.opacity.clamp(0.05, 1.0);
   final bytes = Uint8List(width * height);
   for (var index = 0; index < bytes.length; index += 1) {
-    bytes[index] = (accumulated[index].clamp(0.0, 1.0) * 255).round();
+    bytes[index] = (accumulated[index].clamp(0.0, 1.0) * ceiling * 255).round();
   }
   return bytes;
 }
