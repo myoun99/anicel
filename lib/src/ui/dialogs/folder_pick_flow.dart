@@ -179,7 +179,9 @@ Future<List<FolderGrant>> pickFileGrantsForUser(
   return grants;
 }
 
-/// PICK-6: hands a finished file to the location the user picks.
+/// PICK-6: hands a finished file to the location the user picks — the
+/// SCOPED platforms' Save As (iOS/Android have no save dialog, so the file
+/// is staged first and the OS moves it).
 ///
 /// ⚠️[sourcePath] is CONSUMED on success — the file is MOVED, not copied.
 /// From then on the returned grant's path is the only copy.
@@ -191,7 +193,6 @@ Future<FolderGrant?> exportFileForUser(
   BuildContext context, {
   required String sourcePath,
   String? suggestedName,
-  String? initialDirectory,
 }) async {
   if (!await _storageGrantCleared(context)) {
     return null;
@@ -199,7 +200,27 @@ Future<FolderGrant?> exportFileForUser(
   final grant = await FolderPicker.exportFile(
     sourcePath: sourcePath,
     suggestedName: suggestedName,
+  );
+  if (!context.mounted) {
+    return null;
+  }
+  return _spokenFor(context, grant);
+}
+
+/// The DESKTOP half of Save As: the system save dialog answers with a
+/// path, nothing is created, and the save that follows writes it. See
+/// [FolderPicker.pickSaveDestination] for why desktop stopped staging a
+/// file and moving it.
+Future<FolderGrant?> pickSaveDestinationForUser(
+  BuildContext context, {
+  required String suggestedName,
+  String? initialDirectory,
+  List<XTypeGroup> acceptedTypeGroups = const [],
+}) async {
+  final grant = await FolderPicker.pickSaveDestination(
+    suggestedName: suggestedName,
     initialDirectory: initialDirectory,
+    acceptedTypeGroups: acceptedTypeGroups,
   );
   if (!context.mounted) {
     return null;

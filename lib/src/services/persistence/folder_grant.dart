@@ -1,12 +1,12 @@
-/// PICK-2: asking the OS for a folder the app may keep writing to.
+/// PICK-2: asking the OS for a location the app may keep writing to.
 ///
-/// The whole picker round rests on one sentence: **a project is not one
-/// file.** It is `<name>.anicel` plus a sibling `<name>.assets/` folder, and
-/// an autosave sidecar lands beside it every five minutes. On iOS and macOS
-/// a security scope attaches to EXACTLY the item the user picked — deriving
-/// the parent with `deletingLastPathComponent()` yields a path the sandbox
-/// will not open — so picking the project FILE grants access to a project
-/// that cannot save. The folder is the unit of permission.
+/// This file's original headline — "a project is not one file" — is the
+/// world it was built for and no longer the world it serves. The single-file
+/// format removed the `.assets/` sibling and moved the recovery snapshot
+/// into the app container, so since PICK-6 the project FILE is the unit of
+/// permission for open and Save As; folder grants remain for the jobs that
+/// genuinely read a folder (cut-folder import, sequence export, the
+/// desktop recordings/conform locations).
 ///
 /// What comes back is deliberately not a bare `String?`. A null path today
 /// means four different things — the user cancelled, the OS handed back a
@@ -36,10 +36,10 @@ enum FolderPickStatus {
   /// The OS gave a location with no filesystem path behind it: a Drive or
   /// Dropbox document provider on Android, an SD card, a USB stick.
   ///
-  /// This is the case the save stack cannot serve. Incremental saves rewrite
-  /// a ZIP's central directory in place, and `<name>.assets/` is a real
-  /// directory tree — neither survives a `content://` URI. The user gets the
-  /// sync-app guidance rather than a project that silently fails to save.
+  /// This is the case the save stack cannot serve: incremental saves rewrite
+  /// a ZIP's central directory in place, which does not survive a
+  /// `content://` URI. The user gets the sync-app guidance rather than a
+  /// project that silently fails to save.
   noFilesystemPath,
 
   /// The platform channel is missing or threw. Distinct from [cancelled] so
@@ -245,6 +245,16 @@ abstract final class FolderPicker {
   })?
   debugFileExporter;
 
+  /// The same seam for [pickSaveDestination].
+  ///
+  /// ⚠️Reset in `test/flutter_test_config.dart`, like the seams above.
+  @visibleForTesting
+  static Future<FolderGrant> Function({
+    required String suggestedName,
+    String? initialDirectory,
+  })?
+  debugSaveDestinationPicker;
+
   /// Test seam for the OS these rules are read from.
   ///
   /// ⚠️Reset in `test/flutter_test_config.dart`, like [debugFolderPicker].
@@ -399,23 +409,23 @@ abstract final class FolderPicker {
     }, GrantKind.file);
   }
 
-  /// Reopens a folder from a stored [bookmark], re-acquiring the security
-  /// scope. Returns a grant whose path may DIFFER from the original — a
-  /// bookmark tracks the folder, so this is how a moved or renamed project
-  /// folder is followed rather than lost.
-  ///
-  /// [FolderPickStatus.unavailable] here means the bookmark is stale: the
-  /// provider was reinstalled, the account changed, or the folder is gone.
-  /// The caller keeps the row and offers to reconnect instead of deleting
-  /// what the user may still want.
-  /// PICK-6: hands a finished file to the location the user picks.
+  /// PICK-6: hands a finished file to the location the user picks — the
+  /// SCOPED platforms' half of Save As.
   ///
   /// **The file is written FIRST**, into the app container, and this places
   /// it. That order is not a preference — iOS has no save panel (Apple never
-  /// built one), so "ask where, then write there" is not available. Rather
-  /// than let one platform invert the flow, every platform shares the one
-  /// contract: *move this file to where the user says, and tell me where
-  /// that turned out to be.*
+  /// built one), so "ask where, then write there" is not available, and
+  /// Android's CREATE_DOCUMENT flow has the same shape.
+  ///
+  /// Desktop does NOT come here: it has a real save dialog, so
+  /// [pickSaveDestination] answers with a path and the save writes there
+  /// itself. It used to — this method staged the file in the system temp
+  /// and `File.rename`d it into place, which cannot cross volumes, so Save
+  /// As to any drive but the temp's failed outright (OS error 17, measured
+  /// on this repo's workstation) and a Save As pointed at the LIVE project
+  /// replaced it before the save could read its own cels. No surveyed pro
+  /// desktop app moves a staged file between volumes; the convention is
+  /// "dialog returns a path, the app writes there".
   ///
   /// ⚠️[sourcePath] is CONSUMED on success — the file is moved, not copied.
   /// Callers must treat the returned path as the only copy from then on.
@@ -426,35 +436,68 @@ abstract final class FolderPicker {
   static Future<FolderGrant> exportFile({
     required String sourcePath,
     String? suggestedName,
-    String? initialDirectory,
   }) async {
     final override = debugFileExporter;
     if (override != null) {
       return override(sourcePath: sourcePath, suggestedName: suggestedName);
     }
     if (!grantsAreScoped) {
-      // Windows and Linux have a real save dialog and no permission to
-      // hold, so the plugin is the whole story — but the CONTRACT is the
-      // same, which is why the move happens here.
-      try {
-        final location = await _pickedSaveLocation(
-          suggestedName: suggestedName ?? _fileNameOf(sourcePath),
-          initialDirectory: initialDirectory,
-        );
-        if (location == null) {
-          return const FolderGrant.cancelled();
-        }
-        final destination = _normalize(location.path);
-        await File(sourcePath).rename(destination);
-        return FolderGrant.granted(path: destination, kind: GrantKind.file);
-      } on Object {
-        return const FolderGrant.unavailable();
-      }
+      throw StateError(
+        'exportFile is the scoped-platform Save As; the desktop flow asks '
+        'pickSaveDestination for a path and writes there itself.',
+      );
     }
     return (await _invoke('exportFile', {
       'sourcePath': sourcePath,
       'suggestedName': suggestedName ?? _fileNameOf(sourcePath),
     }, GrantKind.file)).first;
+  }
+
+  /// Save As on the platforms that HAVE a save dialog: the dialog answers
+  /// with a path — nothing is created and nothing moves. The save that
+  /// follows writes the file at that path itself (temp beside the
+  /// destination + rename, atomic against whatever it replaces), which is
+  /// what every surveyed desktop pro tool does.
+  ///
+  /// [acceptedTypeGroups] reaches the dialog's file-type filter. ⚠️The
+  /// Windows plugin passes the filter to the dialog but never calls
+  /// SetDefaultExtension, so a name typed bare comes back bare — the CALLER
+  /// answers the suffix, and has to re-ask the replace question the dialog
+  /// asked about the un-suffixed name.
+  static Future<FolderGrant> pickSaveDestination({
+    required String suggestedName,
+    String? initialDirectory,
+    List<file_selector.XTypeGroup> acceptedTypeGroups = const [],
+  }) async {
+    final override = debugSaveDestinationPicker;
+    if (override != null) {
+      return override(
+        suggestedName: suggestedName,
+        initialDirectory: initialDirectory,
+      );
+    }
+    if (grantsAreScoped) {
+      throw StateError(
+        'Scoped platforms have no save dialog; Save As goes through '
+        'exportFile there.',
+      );
+    }
+    try {
+      final location = await _pickedSaveLocation(
+        suggestedName: suggestedName,
+        initialDirectory: initialDirectory,
+        acceptedTypeGroups: acceptedTypeGroups,
+      );
+      if (location == null) {
+        return const FolderGrant.cancelled();
+      }
+      return FolderGrant.granted(
+        path: _normalize(location.path),
+        kind: GrantKind.file,
+      );
+    } on Object {
+      return const FolderGrant.unavailable();
+    }
   }
 
   /// The folder the user picked: `null` when the picker itself would not
@@ -507,10 +550,12 @@ abstract final class FolderPicker {
   static Future<file_selector.FileSaveLocation?> _pickedSaveLocation({
     required String suggestedName,
     String? initialDirectory,
+    List<file_selector.XTypeGroup> acceptedTypeGroups = const [],
   }) => askingAgainWithoutHint(
     (hint) => file_selector.getSaveLocation(
       suggestedName: suggestedName,
       initialDirectory: hint,
+      acceptedTypeGroups: acceptedTypeGroups,
     ),
     initialDirectory,
   );
@@ -521,6 +566,15 @@ abstract final class FolderPicker {
     return slash < 0 ? normalized : normalized.substring(slash + 1);
   }
 
+  /// Reopens a stored [bookmark], re-acquiring the security scope. Returns
+  /// a grant whose path may DIFFER from the original — a bookmark tracks
+  /// its item, so this is how a moved or renamed project is followed rather
+  /// than lost.
+  ///
+  /// [FolderPickStatus.unavailable] here means the bookmark is stale: the
+  /// provider was reinstalled, the account changed, or the item is gone.
+  /// The caller keeps the row and offers to reconnect instead of deleting
+  /// what the user may still want.
   static Future<FolderGrant> resolveBookmark(
     String bookmark, {
     GrantKind kind = GrantKind.folder,

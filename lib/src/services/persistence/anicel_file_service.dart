@@ -597,6 +597,17 @@ class AnicelFileService {
         works.add(work);
       }
     }
+    // Scalars only, resolved HERE: the isolate closure must not capture
+    // [baked] — its hot surfaces are native-backed and cannot cross.
+    final cleanRefsToVerify = <(String, int, int)>[
+      for (final ref in baked.fileRefs.entries)
+        if (!dirty.contains(ref.key) && _samePath(ref.value.filePath, filePath))
+          (
+            anicelCelEntryName(ref.key),
+            ref.value.dataOffset,
+            ref.value.length,
+          ),
+    ];
 
     return _reportingProgress(onProgress, (port) => Isolate.run(() {
       final AnicelZipLayout layout;
@@ -604,6 +615,61 @@ class AnicelFileService {
         layout = parseAnicelZipLayoutFile(filePath);
       } on FormatException {
         return null; // Torn tail — compaction is the recovery.
+      }
+      // The refs' claim — "my bytes are already in this file" — is verified
+      // against the file itself before anything appends, because path
+      // equality is not proof. Every cel this append will NOT write must be
+      // in the layout exactly where its ref says: a name present at the
+      // wrong offset or length means the file was replaced out from under
+      // the refs (the pre-F-14 Save As placeholder did exactly that to the
+      // live project), and appending onto it would silently drop every
+      // clean cel. Replacing is the full rewrite's job, so a mismatch
+      // answers null.
+      final entriesByName = {
+        for (final entry in layout.entries) entry.name: entry,
+      };
+      for (final (name, dataOffset, length) in cleanRefsToVerify) {
+        final expected = entriesByName[name];
+        if (expected == null ||
+            expected.dataOffset != dataOffset ||
+            expected.length != length) {
+          return null;
+        }
+      }
+      // With zero clean refs the check above proved nothing — a fresh
+      // project's cels are all dirty, so the soundness precondition passed
+      // VACUOUSLY and this could be anyone's archive (Save As onto an
+      // existing name). Appending would keep every foreign entry alive
+      // under the new project.json, silently retaining the replaced
+      // project's content in the file. Only then is the target's own
+      // manifest read and its project id compared — on the ordinary save
+      // the verified refs already prove ownership, and project.json can be
+      // megabytes this path must not decode every Ctrl+S.
+      if (cleanRefsToVerify.isEmpty) {
+        final targetProjectEntry = layout.entryNamed('project.json');
+        if (targetProjectEntry == null) {
+          return null; // Not an archive of ours — replace, don't append.
+        }
+        try {
+          final raf = File(filePath).openSync();
+          Object? targetId;
+          try {
+            raf.setPositionSync(targetProjectEntry.dataOffset);
+            final decoded = jsonDecode(
+              utf8.decode(raf.readSync(targetProjectEntry.length)),
+            );
+            final targetProject = decoded is Map ? decoded['project'] : null;
+            targetId = targetProject is Map ? targetProject['id'] : null;
+          } finally {
+            raf.closeSync();
+          }
+          final targetValue = targetId is Map ? targetId['value'] : null;
+          if (targetValue != project.id.value) {
+            return null;
+          }
+        } on Object {
+          return null; // Unreadable target manifest — replace, don't append.
+        }
       }
       if (anicelNeedsCompaction(
         fileLength: File(filePath).lengthSync(),
