@@ -344,6 +344,37 @@ class _Entry {
   String state = 'open';
   String note = '';
 
+  /// 🚨When this card first appeared, and when it last moved (유저 2026-08-26:
+  /// 「패널에 공통값으로 날짜 넣자. 그 패널이 갱신된게 언제인지. 실기확인이
+  /// 언제 생긴건지라던가」).
+  ///
+  /// The records file is append-only and merged last-wins, so both numbers
+  /// are already in it and neither needs storing twice: the FIRST line
+  /// carrying an id is its birth, the LAST is its latest word. A card that
+  /// has never been edited has them equal, which is how the panel knows to
+  /// print one date instead of two.
+  ///
+  /// ⚠️Empty when a record carried no `ts` — older lines predate the field,
+  /// and a made-up date is worse than none.
+  String created = '';
+  String updated = '';
+
+  /// 🚨THE LANDING THIS CHECK BELONGS TO — the field that makes 확인할 것 one
+  /// row per SUBJECT (유저 2026-08-26: 「실기확인이랑 머지된거랑 겹치는부분
+  /// 있으면 병합하는건 확인한거맞아?」).
+  ///
+  /// It exists because the answer was no. Six checks (C-tp1..C-tp6) were the
+  /// hands-on half of the tool-preset round, and that round's PR was sitting
+  /// on the SAME list as its own row — seven rows for one thing. Nothing in
+  /// the data said so, so nothing could merge them.
+  ///
+  /// ⚠️NOT `pr`, and the difference is the whole point. `pr` means 「this card
+  /// IS that PR's work」 and only one card can hold it (`claimed` is a map).
+  /// `under` means 「this is something to look at ON that landing」 and many
+  /// can share one. One field answering both questions is how the map would
+  /// silently keep the last check and drop five.
+  int? under;
+
   /// On a `law` record: what to read first in this area, and what must not be
   /// done. Separate from `note` because a caution outlives the status line it
   /// would otherwise be buried in.
@@ -434,6 +465,12 @@ List<_Entry> _readRecords(File file) {
       return _Entry(id, kind);
     });
     if (kind.isNotEmpty) e.kind = kind;
+    // First line wins for birth, last line wins for the latest word.
+    final ts = '${json['ts'] ?? ''}';
+    if (ts.isNotEmpty) {
+      if (e.created.isEmpty) e.created = ts;
+      e.updated = ts;
+    }
     if (json['title'] != null) e.title = json['title'] as String;
     if (json['state'] != null) e.state = json['state'] as String;
     if (json['note'] != null) e.note = json['note'] as String;
@@ -446,6 +483,7 @@ List<_Entry> _readRecords(File file) {
     if (json['answer'] != null) e.answer = json['answer'] as String;
     if (json['answerNote'] != null) e.answerNote = json['answerNote'] as String;
     if (json['pr'] != null) e.pr = (json['pr'] as num).toInt();
+    if (json['under'] != null) e.under = (json['under'] as num).toInt();
     if (json['tags'] != null) {
       e.tags = (json['tags'] as List).map((t) => '$t').toList();
     }
@@ -709,11 +747,40 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   // The hand-written ones go LAST and are never paged away: there are few of
   // them, they are the ones that need a device, and a page-2 that hides them
   // is how a check waits a month.
-  final toCheck = [
-    for (final pr in fresh.skip((page - 1) * _landedPerPage).take(_landedPerPage))
-      _checkRow(claimed[pr.number] ?? _prEntry(pr), pr: pr),
-    for (final c in checks) _checkRow(c),
-  ];
+  //
+  // 🚨ONE SUBJECT, ONE ROW. Two different ways a row could double up, and both
+  // are closed here rather than left to luck:
+  //
+  //  1. A record that is BOTH a `check` and the claimer of a PR would render
+  //     once as a landing and again out of `checks` — `shown` stops that.
+  //  2. A check written as the hands-on half of a landing would sit BESIDE the
+  //     landing it belongs to. That one was real: C-tp1..C-tp6 are the device
+  //     checks for the tool-preset round, whose PR was on this very list.
+  //     `under` nests them inside it.
+  //
+  // ⚠️A check whose landing is on ANOTHER page falls through to standalone,
+  // deliberately: it then shows exactly once on every page instead of
+  // vanishing whenever its parent pages away. Never hide a check.
+  final onPage = fresh.skip((page - 1) * _landedPerPage).take(_landedPerPage);
+  final here = {for (final pr in onPage) pr.number};
+  final subs = <int, List<_Entry>>{};
+  for (final c in checks) {
+    final u = c.under;
+    if (u != null && here.contains(u)) (subs[u] ??= []).add(c);
+  }
+  final shown = <String>{};
+  final toCheck = <String>[];
+  for (final pr in onPage) {
+    final e = claimed[pr.number] ?? _prEntry(pr);
+    shown.add(e.id);
+    final mine = subs[pr.number] ?? const <_Entry>[];
+    shown.addAll(mine.map((s) => s.id));
+    toCheck.add(_checkRow(e, pr: pr, subs: mine));
+  }
+  for (final c in checks) {
+    if (shown.contains(c.id)) continue;
+    toCheck.add(_checkRow(c));
+  }
 
   final loose = alive
       .where((e) =>
@@ -882,6 +949,33 @@ String _head(String id, String title, List<String> tags, String badge, String cl
       '<span class="right">$chips$mark</span></summary>';
 }
 
+/// The one date line every panel carries (유저 2026-08-26). Two numbers when
+/// the card has moved since it was filed, one when it has not — a card that
+/// says 「생김 08-24 · 갱신 08-26」 has a history; one that says 「생김 08-26」
+/// has not been touched since, and printing the same date twice would only
+/// make the reader compare them.
+///
+/// ⛔Renders nothing at all when the records carried no `ts`. A blank is
+/// honest; a guessed date is a fact the board did not have.
+String _dates(_Entry e) {
+  final born = _day(e.created);
+  final moved = _day(e.updated);
+  if (born.isEmpty && moved.isEmpty) return '';
+  if (born.isEmpty || born == moved) {
+    // Still labelled 「생김」. A bare 「08-24」 makes the reader ask which of the
+    // two numbers it is, which is the exact question the line exists to answer.
+    return '<p class="dates">생김 ${_esc(moved.isEmpty ? born : moved)}</p>';
+  }
+  return '<p class="dates">생김 ${_esc(born)} · 갱신 ${_esc(moved)}</p>';
+}
+
+/// `2026-08-26T00:36:17.5` → `08-26`. The year is dropped because every
+/// record in this file shares it; the day is what anyone is actually asking.
+String _day(String ts) {
+  if (ts.length < 10) return '';
+  return ts.substring(5, 10);
+}
+
 String _shotStrip(String id) {
   final shots = _shotsFor(id);
   if (shots.isEmpty) return '';
@@ -899,6 +993,7 @@ String _askPanel(_Entry d) {
   b.writeln('<details class="p ask" id="c-${_esc(d.id)}" data-kind="decision">');
   b.writeln(_head(d.id, d.title, d.tags, '미제출', 'run'));
   b.writeln('<div class="body">');
+  b.writeln(_dates(d));
   if (d.where.isNotEmpty) {
     b.writeln('<p class="d"><b>화면에서</b> — ${_esc(d.where)}</p>');
   }
@@ -951,7 +1046,7 @@ String _askPanel(_Entry d) {
 /// The two answers stay distinct because they mean different things and cost
 /// different amounts (유저 확정): the TICK is "봤고 문제 없음" and sweeps many
 /// rows at once through 확인; the MEMO is "문제가 있다" and is written per row.
-String _checkRow(_Entry c, {_Pr? pr}) {
+String _checkRow(_Entry c, {_Pr? pr, List<_Entry> subs = const []}) {
   final landed = pr != null;
   // The TAG says what kind of row this is; the badge says WHICH PR. Saying
   // 「머지」 in both was the same word twice on one line. A hands-on row needs
@@ -959,6 +1054,13 @@ String _checkRow(_Entry c, {_Pr? pr}) {
   // so 「미확인」 was labelling the section, not the row.
   final badge = landed ? '#${pr.number}' : '';
   final b = StringBuffer();
+  // The sub-count goes in the HEAD because a nested check is invisible until
+  // the row is opened, and a check nobody can see is a check nobody does.
+  final tags = [
+    landed ? _kMerged : _kHandsOn,
+    if (subs.isNotEmpty) '실기 ${subs.length}',
+    ...c.tags,
+  ];
   // data-kind is what `send` writes back, and it is `check` on BOTH shapes:
   // the result of looking at a thing is a check result whatever put it on the
   // list. ⚠️It is also what makes an answered row land in 정해진 것.
@@ -966,13 +1068,14 @@ String _checkRow(_Entry c, {_Pr? pr}) {
   b.writeln(_head(
     c.id,
     c.title,
-    [landed ? _kMerged : _kHandsOn, ...c.tags],
+    tags,
     badge,
     landed ? 'ok' : 'run',
     lead: '<input type="checkbox" class="pick" value="${_esc(c.id)}" '
         'onclick="event.stopPropagation()">',
   ));
   b.writeln('<div class="body">');
+  b.writeln(_dates(c));
   if (c.how.isNotEmpty) {
     b.writeln('<p class="d"><b>이렇게 본다</b> — ${_esc(c.how)}</p>');
   }
@@ -995,6 +1098,12 @@ String _checkRow(_Entry c, {_Pr? pr}) {
   b.writeln(_shotStrip(c.id));
   b.writeln('<div class="foot"><button onclick="send(\'${_esc(c.id)}\')">제출</button>'
       '<span class="state"></span></div>');
+  // The hands-on checks that belong to this landing, nested inside it. Each
+  // keeps its own id, its own box and its own 제출 — the merge is about where
+  // a row SITS, not about answering six things with one click.
+  for (final s in subs) {
+    b.writeln(_checkRow(s));
+  }
   b.writeln('</div></details>');
   return b.toString();
 }
@@ -1020,6 +1129,7 @@ String _itemPanel(_Entry e) {
   b.writeln('<details class="p${inbox ? ' box' : ''}" id="c-${_esc(e.id)}">');
   b.writeln(_head(e.id, e.title, e.tags, badge, ''));
   b.writeln('<div class="body">');
+  b.writeln(_dates(e));
   if (inbox) {
     // Still editable, because a filing made mid-thought is usually wrong in
     // some small way and the moment to fix it is when you notice.
@@ -1089,6 +1199,7 @@ String _prPanel(_Pr pr, _Entry? e) {
       : '';
   b.writeln(_head(id, title, e?.tags ?? const [], badge, cls, lead: tick));
   b.writeln('<div class="body">');
+  if (e != null) b.writeln(_dates(e));
   if (e != null && e.note.isNotEmpty) {
     b.writeln('<p class="d">${_esc(e.note)}</p>');
   }
@@ -1132,7 +1243,9 @@ String _settledPanel(_Entry d) {
   final b = StringBuffer();
   b.writeln('<details class="p" id="c-${_esc(d.id)}">');
   b.writeln(_head(d.id, d.title, d.tags, '정해짐', 'ok'));
-  b.writeln('<div class="body"><p class="d"><b>→ ${_esc(label)}</b></p>');
+  b.writeln('<div class="body">');
+  b.writeln(_dates(d));
+  b.writeln('<p class="d"><b>→ ${_esc(label)}</b></p>');
   if (d.answerNote.isNotEmpty) {
     b.writeln('<p class="d">${_esc(d.answerNote)}</p>');
   }
@@ -1430,6 +1543,10 @@ white-space:nowrap;border:1px solid var(--line2);color:var(--ink3)}
 display:flex;flex-direction:column;gap:7px}
 .body>*:first-child{margin-top:10px}
 .d{font-size:13px;color:var(--ink2);margin:0;white-space:pre-wrap}
+/* The date line sits above the panel's own writing and reads as an aside:
+   mono so the two dates line up down a column of open panels, and quiet
+   enough that it never competes with the 이렇게 본다 / 왜 중요한가 lines. */
+.dates{font-family:var(--mono);font-size:11px;color:var(--ink3);margin:0}
 .care{display:flex;gap:8px;align-items:flex-start;background:var(--runbg);
 border-left:3px solid var(--run);border-radius:0 5px 5px 0;padding:8px 10px;
 font-size:12.5px;color:var(--ink2);white-space:pre-wrap}
