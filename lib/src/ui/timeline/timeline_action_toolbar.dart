@@ -767,12 +767,23 @@ class TimelineActionToolbar extends StatelessWidget {
   /// ㉞'s shape comes back, and the storyboard's transition row caught it
   /// immediately — its Edit Instance is enabled by the HOST's answer about
   /// the standing row and nothing else.
-  Widget _sharedPill() => ValueListenableBuilder<List<TimelineRowAddress>>(
-    valueListenable: session.rowSelection,
-    builder: (context, _, _) => ValueListenableBuilder<TimelineRowAddress?>(
-      valueListenable: session.currentRowListenable,
-      builder: (context, _, _) => _sharedPillBody(),
-    ),
+  /// ⚠️It listens to ALL FOUR selection channels, not two.
+  ///
+  /// The row selection and the standing row were enough while every button
+  /// here read a row or the playhead. The deselect button reads
+  /// [EditorSessionManager.hasAnySelection], which asks the cell band, the
+  /// lane band and the cut band as well — and a gate that is not listened to
+  /// is a button that lights one notify late. (Found by the button's own
+  /// test: a live cell band left it dark.)
+  Widget _sharedPill() => ListenableBuilder(
+    listenable: Listenable.merge([
+      session.rowSelection,
+      session.currentRowListenable,
+      session.frameRangeSelection,
+      session.laneRangeSelection,
+      session.trackFrameRangeSelection,
+    ]),
+    builder: (context, _) => _sharedPillBody(),
   );
 
   Widget _sharedPillBody() => _StaticCommandGroup(
@@ -793,10 +804,35 @@ class TimelineActionToolbar extends StatelessWidget {
       // reason the delete reads `deleteSubject` — the button's enablement
       // and what the press DOES have to come from one answer.
       onEditInstance != null && panelContext.canEditInstance,
+      // The deselect button reads the same one-question gate its press runs.
+      session.hasAnySelection,
     ),
     builder: (context) => CommandPill(
       key: const ValueKey<String>('timeline-toolbar-shared-group'),
       children: [
+        // 🚨deselect-button (유저): 「선택해제 버튼 — 태블릿엔 키보드가 없다」.
+        //
+        // On THIS pill because this pill's subject is 「지금 무엇이 선택됐나」,
+        // and letting go is that subject's own verb — not a place chosen for
+        // it. It leads the row for the same reason: the selection comes
+        // first, then what to do with it.
+        //
+        // ⚠️Its NEIGHBOUR slot is deliberately left open. The 취소 button, if
+        // it is built, sits beside this one and the two have to be laid out
+        // together (정본) — so nothing else moves in here without looking at
+        // that first.
+        //
+        // ⛔Dimmed with nothing selected, never hidden: 「없다가 생기는 UI
+        // 금지」.
+        _iconButton(
+          key: const ValueKey<String>('shared-deselect-button'),
+          tooltip: AppText.strings.tlSharedDeselect,
+          icon: Icons.deselect,
+          onPressed: session.hasAnySelection
+              ? session.clearAllSelections
+              : null,
+        ),
+        const PillDivider(),
         // 🚨T25 — Edit Instance, on the SHARED pill because its subject is
         // 「지금 무엇이 선택됐나」 and that is what this pill is for.
         //

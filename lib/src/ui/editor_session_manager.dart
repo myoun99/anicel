@@ -1146,6 +1146,24 @@ class EditorSessionManager extends ChangeNotifier {
   /// Clicking INSIDE the selection clears it too. That is the user's own
   /// call, and it is written out here because it is the surprising half —
   /// the ordinary desktop idiom keeps a selection you click into.
+  /// Whether [clearAllSelections] has anything to clear — the deselect
+  /// button's gate, and its verb's own question (T25: one answer behind
+  /// both).
+  ///
+  /// 🚨deselect-button (유저): 「선택해제 버튼 — 태블릿엔 키보드가 없다」. Esc
+  /// is not reachable on a tablet, and every other way out of a selection is
+  /// a TAP somewhere, which also moves the playhead or the standing row. This
+  /// is the one that only lets go.
+  ///
+  /// ⚠️It asks all four kinds because the ONE-SELECTION LAW means at most one
+  /// of them is live — so "is anything selected" is one question wherever it
+  /// is asked from.
+  bool get hasAnySelection =>
+      frameRangeSelection.value != null ||
+      laneRangeSelection.value != null ||
+      trackFrameRangeSelection.value != null ||
+      rowSelection.value.isNotEmpty;
+
   void clearAllSelections() {
     clearFrameRangeSelection();
     clearLaneRangeSelection();
