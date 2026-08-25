@@ -784,11 +784,9 @@ class LayerAttachArrowCell extends StatelessWidget {
           child: ExcludeSemantics(
             child: Transform.flip(
               flipY: above,
-              child: Icon(
-                Icons.subdirectory_arrow_right,
+              child: layerAttachmentArrowIcon(
+                context,
                 key: ValueKey<String>('$keyPrefix-layer-attach-arrow-$idValue'),
-                size: 16,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -804,24 +802,31 @@ class LayerAttachArrowCell extends StatelessWidget {
 /// The same glyph as [LayerAttachArrowCell]'s down-side, deliberately —
 /// both answer "what is this row attached to", one for a folder and one for
 /// a base, and they never appear on the same row.
+///
+/// 🚨F-30 (유저 2026-08-24): 「폴더 화살표는 어태치 것과 생김새·색이 달라 같은
+/// 것을 재사용할 것」. "The same glyph" was true and not enough — this one was
+/// drawn at 14px and 55% alpha and the attach one at 16px and full strength,
+/// so two rows in the same group wore two different arrows. They share the
+/// DRAWING now ([layerAttachmentArrowIcon]), not just the codepoint.
 class LayerNestingArrowCell extends StatelessWidget {
   const LayerNestingArrowCell({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: ExcludeSemantics(
-        child: Icon(
-          Icons.subdirectory_arrow_right,
-          size: 14,
-          color: Theme.of(
-            context,
-          ).colorScheme.onSurfaceVariant.withValues(alpha: 0.55),
-        ),
-      ),
+      child: ExcludeSemantics(child: layerAttachmentArrowIcon(context)),
     );
   }
 }
+
+/// THE arrow that says "this row hangs off the one above it" — one size, one
+/// colour, whether the thing above is a folder or an attach base.
+Widget layerAttachmentArrowIcon(BuildContext context, {Key? key}) => Icon(
+  Icons.subdirectory_arrow_right,
+  key: key,
+  size: 16,
+  color: Theme.of(context).colorScheme.onSurfaceVariant,
+);
 
 class LayerMarkChip extends StatelessWidget {
   const LayerMarkChip({

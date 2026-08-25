@@ -371,58 +371,87 @@ class TimelineLayerControlsRow extends StatelessWidget {
                   onTap: () => onSelectLayer(layer.id),
                   // No hover glow on the NAME either (UI-R24 #6).
                   hoverColor: Colors.transparent,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Row(
-                      children: [
-                        // Selection reads by COLOR only (user rule): no
-                        // bold flip, so the text never reflows on select.
-                        Flexible(
-                          child: Text(
-                            layer.name,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (isLinked)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 4),
-                            child: Tooltip(
-                              message: 'Linked layer — pictures are shared',
-                              child: Icon(
-                                Icons.link,
-                                key: ValueKey<String>(
-                                  'timeline-layer-link-badge-${layer.id}',
+                  // 🚨F-29 (유저 2026-08-24): 「접기 펼치기 아이콘 위치 조정.
+                  // 지금 레이어이름 옆에 붙어있는데, 그게아니라 위치는 항상
+                  // 고정으로 두고싶기때문에 레이어 이름영역의 오른쪽정렬로
+                  // 고정」.
+                  //
+                  // ⛔The twirl used to be the last child of a MIN-width Row
+                  // inside a left Align, so it sat wherever the name ended —
+                  // a different x on every row, and a moving x on a rename.
+                  // The NAME takes the space now and the twirl trails it at
+                  // the region's right edge, which is the one place it can
+                  // be that does not depend on what the row is called.
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Row(
+                          children: [
+                            // Selection reads by COLOR only (user rule): no
+                            // bold flip, so the text never reflows on select.
+                            Flexible(
+                              child: Text(
+                                layer.name,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (isLinked)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 4),
+                                child: Tooltip(
+                                  message:
+                                      'Linked layer — pictures are shared',
+                                  child: Icon(
+                                    Icons.link,
+                                    key: ValueKey<String>(
+                                      'timeline-layer-link-badge-${layer.id}',
+                                    ),
+                                    size: 14,
+                                    color: colorScheme.primary,
+                                  ),
                                 ),
-                                size: 14,
-                                color: colorScheme.primary,
                               ),
-                            ),
-                          ),
-                        // The attach-group twirl (UI-R20 #9), shown only
-                        // when the group exists — same chevron pair as the
-                        // lane twirl.
-                        if (hasGroupFold && onToggleGroupFold != null)
-                          RailControlPointer(child: InkWell(
-                            key: ValueKey<String>(
-                              layerKindGroupsLayers(layer.kind)
-                                  ? 'timeline-folder-twirl-${layer.id}'
-                                  : 'timeline-attach-twirl-${layer.id}',
-                            ),
-                            onTap: () => onToggleGroupFold!(layer.id),
-                            customBorder: const CircleBorder(), // R26 #28
-                            child: SizedBox(
-                              width: layerLaneToggleSlotWidth,
-                              height: 24,
-                              child: Icon(
-                                groupFoldExpanded
-                                    ? Icons.arrow_drop_down
-                                    : Icons.arrow_right,
-                                size: 16,
-                              ),
-                            ),
-                          )),
-                      ],
-                    ),
+                          ],
+                        ),
+                      ),
+                      // The attach-group twirl (UI-R20 #9), shown only when
+                      // the group exists — same chevron pair as the lane
+                      // twirl. Its SLOT is always here (F-29): a row that
+                      // folds nothing reserves the width rather than letting
+                      // the name run into it, so the icons on the rows that
+                      // do fold all sit on one line.
+                      SizedBox(
+                        width: layerLaneToggleSlotWidth,
+                        child: hasGroupFold && onToggleGroupFold != null
+                            ? RailControlPointer(
+                                child: InkWell(
+                                  key: ValueKey<String>(
+                                    layerKindGroupsLayers(layer.kind)
+                                        ? 'timeline-folder-twirl-${layer.id}'
+                                        : 'timeline-attach-twirl-${layer.id}',
+                                  ),
+                                  onTap: () => onToggleGroupFold!(layer.id),
+                                  // R26 #28
+                                  customBorder: const CircleBorder(),
+                                  child: SizedBox(
+                                    width: layerLaneToggleSlotWidth,
+                                    height: 24,
+                                    // The rail's ONE twirl glyph — this
+                                    // arm used to spell the pair out by
+                                    // hand while the x-sheet read the
+                                    // helper.
+                                    child: Icon(
+                                      layerRailTwirlIcon(
+                                        expanded: groupFoldExpanded,
+                                      ),
+                                      size: 16,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : null,
+                      ),
+                    ],
                   ),
                 ),
               ),

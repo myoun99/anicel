@@ -335,6 +335,9 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
   // every chrome rebuild.
   final modelStack = stack ?? layers;
   final folders = LayerFolderIndex(modelStack);
+  // Indexed once for the same reason the folder questions are (F-30 asks
+  // an attach row for its BASE's folder, once per row).
+  final layerById = {for (final layer in modelStack) layer.id: layer};
   for (var index = 0; index < layers.length; index += 1) {
     final layer = layers[index];
     // An ORGANIZER folder row ([연출]/[작감]… inside an attach group)
@@ -377,7 +380,27 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
       TimelineDisplayRow.layer(
         layer,
         layerIndex: index,
-        depth: folders.depthOf(layer.folderId),
+        // 🚨F-30 (유저 2026-08-24): 「폴더 안 어태치 레이어의 들여쓰기가
+        // 어긋난다 — 아래쪽 어태치 레이어의 화살표·버튼 위치가 폴더 바깥
+        // 레이어처럼 배치된다」.
+        //
+        // ⛔An attach row hangs off its BASE, so it is indented with its
+        // base — whatever its own `folderId` happens to say. The menu path
+        // copies the base's folder in, but a row mounted by DRAG keeps the
+        // folder it came from (usually none), and depth read that field
+        // straight. Two rows sitting one above the other in the same group
+        // then started their leading cluster on different columns.
+        //
+        // ⚠️Indent is a DISPLAY fact — "what does this row hang off" — and
+        // the model's folder membership is a different question. Fixing it
+        // by writing the folder onto the attach row would make the model
+        // agree by making it say something that is not true (the row is not
+        // a member of the folder; its base is).
+        depth: folders.depthOf(
+          attachBaseId == null
+              ? layer.folderId
+              : (layerById[attachBaseId] ?? layer).folderId,
+        ),
       ),
     );
     if (!expandedLayerIds.contains(layer.id)) {

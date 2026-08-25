@@ -27,6 +27,14 @@ import 'timeline_cell_probe.dart';
 /// were outside every row's paint window, nothing requested their spans,
 /// and no amount of waiting could fill them.
 void main() {
+  // 🚨THE STORE IS A SINGLETON WITH AN EVICTION BUDGET, so what this test
+  // can measure depends on what ran before it in the same process. Any
+  // widget test that pumps a timeline fills it, and this one asserts that a
+  // particular span IS held — so it starts from empty or it is measuring the
+  // previous file's leftovers. (Found by adding two unrelated rail tests:
+  // the file order shifted and this went red without its own code moving.)
+  setUp(TimelineGridTileStore.instance.clear);
+
   final dllPath =
       '${Directory.current.path}\\build\\native_standalone\\Release\\qa_engine.dll';
   final dllAvailable = File(dllPath).existsSync();
