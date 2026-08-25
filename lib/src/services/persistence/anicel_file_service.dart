@@ -474,7 +474,7 @@ class AnicelFileService {
         stores[index].adoptSavedFile({
           for (final entry in adopted.entries)
             if (ownKeys.contains(entry.key)) entry.key: entry.value,
-        });
+        }, dirtyTicksAtSnapshot: snapshots[index].dirtyTicks);
       }
     }
 
@@ -720,13 +720,30 @@ class AnicelFileService {
         blobs.add((work.key, work.name, work.resolveBlob()));
         progress.step();
       }
+      // Media the project no longer carries leaves the central directory
+      // with this save. An entry nothing names was invisible garbage that
+      // the compaction maths counted as ACTIVE media — raising the very
+      // floor that suppresses compaction, so a deleted 500MB track could
+      // sit in the file for ever — and worse, a live name silently
+      // reattached a RE-imported same-path asset to the OLD bytes (the
+      // presence check above skips streaming when the name already
+      // exists).
+      final wantedMediaNames = {
+        for (final path in mediaToStore.keys) anicelMediaEntryName(path),
+      };
+      final staleMediaNames = {
+        for (final entry in layout.entries)
+          if (entry.name.startsWith(anicelMediaEntryPrefix) &&
+              !wantedMediaNames.contains(entry.name))
+            entry.name,
+      };
       final appended = appendAnicelEntries(
         path: filePath,
         newEntries: {
           'project.json': projectJson,
           for (final (_, name, blob) in blobs) name: blob.bytes,
         },
-        removeNames: removeNames,
+        removeNames: {...removeNames, ...staleMediaNames},
         streamedEntries: [
           for (final entry in newMedia) _progressed(entry, progress),
         ],
@@ -830,8 +847,56 @@ class AnicelFileService {
     // SYNC rename: existing refs into the replaced file carry offsets of
     // the OLD layout, so no event may run between the swap and the
     // caller's adoptSavedFile — sync-to-return is microtask-tight.
-    temp.renameSync(filePath);
+    //
+    // Retried on failure: the moment after a file changes is exactly when
+    // a sync client, indexer or AV holds it — and cloud-synced folders are
+    // this app's home turf (Krita and Blender both landed on the same
+    // absorb-the-transient-lock answer). A rename that still fails leaves
+    // the temp IN PLACE: it holds the only complete copy of this save,
+    // and the sweep on the next successful save collects strays.
+    _renameWithRetry(temp, filePath);
+    _sweepStaleSaveTemps(filePath);
     return refs;
+  }
+
+  /// [temp] onto [filePath], absorbing the moment-after-write lock a sync
+  /// client or scanner can hold on the destination. Bounded: this blocks
+  /// the UI isolate on purpose (the swap must stay microtask-tight), so
+  /// the worst case is a beat, not a hang.
+  static void _renameWithRetry(File temp, String filePath) {
+    for (var attempt = 0; ; attempt += 1) {
+      try {
+        temp.renameSync(filePath);
+        return;
+      } on FileSystemException {
+        if (attempt >= 3) {
+          rethrow;
+        }
+        sleep(const Duration(milliseconds: 80));
+      }
+    }
+  }
+
+  /// Collects `<project>.anicel.tmp-<micros>` strays beside the project.
+  ///
+  /// A process kill mid-full-save, or a rename the retry could not land,
+  /// leaves a project-sized temp in the USER'S folder — visible, and in a
+  /// cloud-synced folder, uploaded. Swept on the next successful save,
+  /// like the recovery folder — but matching only this project's own temp
+  /// prefix: the folder is the user's, so the recovery folder's broader
+  /// `.tmp-` sweep must not run here.
+  static void _sweepStaleSaveTemps(String filePath) {
+    try {
+      final prefix = '${filePath.replaceAll('\\', '/')}.tmp-';
+      for (final entity in File(filePath).parent.listSync()) {
+        if (entity is File &&
+            entity.path.replaceAll('\\', '/').startsWith(prefix)) {
+          entity.deleteSync();
+        }
+      }
+    } on Object {
+      // Housekeeping never fails a save.
+    }
   }
 
   /// The archive write itself, off the UI isolate. Returns only the refs —
@@ -1098,10 +1163,20 @@ class AnicelFileService {
               as Map<String, dynamic>;
       final recorded = stampJson['base'];
       final actual = anicelBaseStamp(basePath);
+      if (actual == null) {
+        // Not a mismatch — the base cannot be READ right now (torn tail
+        // after an append crash, a cloud lock, a lost scope). Lumping this
+        // in with "different version" sent the user hunting for a
+        // versioning mistake nobody made; nothing was ever compared.
+        throw const FormatException(
+          'The project file cannot be read right now, so the recovery '
+          'snapshot cannot be checked against it.',
+        );
+      }
       // `recorded == null` cannot happen from this app — the writer
       // refuses to make one — but a hand-edited or truncated snapshot can
       // carry it, and `null != null` would wave that through unchecked.
-      if (recorded is! String || actual == null || recorded != actual) {
+      if (recorded is! String || recorded != actual) {
         // Refused rather than merged: a delta over the wrong base gives a
         // project that opens, looks right, and is not.
         throw const FormatException(

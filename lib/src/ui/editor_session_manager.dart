@@ -16824,8 +16824,9 @@ class EditorSessionManager extends ChangeNotifier {
       mediaCrcs: _mediaCrcsToStore(),
       // Asked again at the rename: a manual save can begin and finish
       // while this one is in the isolate, and it retires the snapshot on
-      // its way out.
-      isStale: () => autosaveShouldStandDown,
+      // its way out. Generation-armed, not just the in-flight flag — the
+      // flag is already down again by the time a spanning snapshot asks.
+      isStale: beginAutosaveStaleCheck(),
     );
   }
 
@@ -16861,6 +16862,26 @@ class EditorSessionManager extends ChangeNotifier {
   /// True while a manual save is running, so the autosave tick stands down
   /// instead of racing it. Read through [autosaveShouldStandDown].
   bool _saveInFlight = false;
+
+  /// Bumped each time a manual save COMPLETES. [_saveInFlight] is a
+  /// point-in-time flag: a snapshot that started BEFORE a save and came
+  /// out of its isolate AFTER it sees the flag down again — and would
+  /// rename an overlay stamped against the pre-save base onto the path
+  /// the save just retired. That is a recovery file for a cleanly saved
+  /// project, and its Accept can only fail the stamp check. A snapshot
+  /// therefore captures this at its start and refuses to land if it
+  /// moved — see [beginAutosaveStaleCheck].
+  int _completedSaveGeneration = 0;
+
+  /// The staleness question a recovery snapshot carries into its isolate:
+  /// armed when the snapshot starts, it answers true the moment any
+  /// manual save has completed since (or the session stood down).
+  bool Function() beginAutosaveStaleCheck() {
+    final generationAtStart = _completedSaveGeneration;
+    return () =>
+        autosaveShouldStandDown ||
+        _completedSaveGeneration != generationAtStart;
+  }
 
   /// Whether a snapshot should do nothing right now: a save is mid-flight
   /// (anything written would land beside a retirement that has already
@@ -16902,6 +16923,7 @@ class EditorSessionManager extends ChangeNotifier {
     _mediaEntryNames = mediaEntryNamesFor(mediaToStore.keys);
     _projectFilePath = filePath;
     _hasUnsavedChanges = false;
+    _completedSaveGeneration += 1;
     // The recovered work now lives in the project file, so the snapshot is
     // ordinary again and the retirement below is free to take it.
     _recoveredFromSidecar = null;

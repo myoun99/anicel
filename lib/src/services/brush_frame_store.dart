@@ -181,6 +181,19 @@ class BrushFrameStore {
   /// mere promotions) — exactly the set an incremental save must write.
   final Set<BrushFrameKey> _dirtySinceSave = {};
 
+  /// Monotonic edit clock + per-key last-edit marks, for the one question
+  /// the dirty SET cannot answer: "was this cel edited AFTER the save
+  /// snapshot was taken?" The set survives the whole save untouched, so at
+  /// adoption time a key that was dirty when the snapshot was captured and
+  /// a key that went dirty DURING the save look identical — and treating
+  /// them the same is how an in-flight stroke used to vanish: adoption
+  /// re-installed the pre-edit file ref, the wholesale clear() wiped the
+  /// mark, and cooling then "free-dropped" the only copy of the new
+  /// pixels. Marks are removed when their edit is adopted into a save, so
+  /// the map holds only unsaved work.
+  int _editTick = 0;
+  final Map<BrushFrameKey, int> _editTicks = {};
+
   Set<BrushFrameKey> get dirtyCelKeysSinceSave =>
       Set.unmodifiable(_dirtySinceSave);
 
@@ -293,6 +306,7 @@ class BrushFrameStore {
       _hotBytes -= estimate;
     }
     _dirtySinceSave.add(key);
+    _editTicks[key] = ++_editTick;
     _noteCelContent(key);
   }
 
@@ -319,6 +333,7 @@ class BrushFrameStore {
     _fileCels.remove(key);
     _storeHot(key, surface);
     _dirtySinceSave.add(key);
+    _editTicks[key] = ++_editTick;
     _noteCelContent(key);
     _scheduleCooling();
   }
@@ -332,12 +347,18 @@ class BrushFrameStore {
     Map<BrushFrameKey, BitmapSurface> hot,
     Map<BrushFrameKey, AnicelCelBlob> cold,
     Map<BrushFrameKey, AnicelCelFileRef> fileRefs,
+    Map<BrushFrameKey, int> dirtyTicks,
   })
   bakedSnapshotForSave() {
     return (
       hot: {..._bakedSurfaces},
       cold: {..._coldCels},
       fileRefs: {..._fileCels},
+      // The dirty keys WITH their edit marks — what [adoptSavedFile] needs
+      // to tell "written by this save" apart from "edited while it ran".
+      dirtyTicks: {
+        for (final key in _dirtySinceSave) key: _editTicks[key] ?? 0,
+      },
     );
   }
 
@@ -351,6 +372,7 @@ class BrushFrameStore {
     _hotBytes = 0;
     _coldBytes = 0;
     _dirtySinceSave.clear();
+    _editTicks.clear();
     // R27 #13: a whole-store swap (project open) is one crossing for
     // every cel there was — one bump covers the lot.
     if (_celsWithContent.isNotEmpty) {
@@ -392,10 +414,29 @@ class BrushFrameStore {
   /// After a successful save: every saved cel gains a file ref (hot
   /// cels KEEP their surface — hot + ref coexist until cooling drops
   /// the bytes for free), cold blobs are redundant with the file and
-  /// drop, and the dirty set clears — the next incremental save starts
-  /// from a clean slate.
-  void adoptSavedFile(Map<BrushFrameKey, AnicelCelFileRef> saved) {
+  /// drop, and the SNAPSHOT'S dirty marks clear — the next incremental
+  /// save starts from what changed since.
+  ///
+  /// [dirtyTicksAtSnapshot] is this save's own capture (what
+  /// [bakedSnapshotForSave] returned when it began). A cel whose edit
+  /// tick moved past its captured mark was edited WHILE the save ran; its
+  /// ref describes the pre-edit bytes and must not adopt. Adopting it —
+  /// which the wholesale `_dirtySinceSave.clear()` here used to pair with
+  /// — marked the stroke clean (the next incremental save skipped it) and
+  /// handed cooling a "free drop" that reverted the pixels to the file's:
+  /// total, silent loss of the edit. The pen already down when Ctrl+S
+  /// fired was the reachable case. The cel stays hot and dirty instead,
+  /// and the next save writes it.
+  void adoptSavedFile(
+    Map<BrushFrameKey, AnicelCelFileRef> saved, {
+    required Map<BrushFrameKey, int> dirtyTicksAtSnapshot,
+  }) {
+    bool editedSinceSnapshot(BrushFrameKey key) =>
+        (_editTicks[key] ?? 0) > (dirtyTicksAtSnapshot[key] ?? 0);
     for (final entry in saved.entries) {
+      if (editedSinceSnapshot(entry.key)) {
+        continue;
+      }
       final cold = _coldCels.remove(entry.key);
       if (cold != null) {
         _coldBytes -= cold.bytes.length;
@@ -408,7 +449,15 @@ class BrushFrameStore {
       // already hot or cold.
       _noteCelContent(entry.key);
     }
-    _dirtySinceSave.clear();
+    // The dirty CLEAR follows the same law, key by key. Keys the snapshot
+    // captured (written or removed by this save) go clean unless re-edited
+    // since; keys that went dirty during the save keep their mark.
+    for (final entry in dirtyTicksAtSnapshot.entries) {
+      if (!editedSinceSnapshot(entry.key)) {
+        _dirtySinceSave.remove(entry.key);
+        _editTicks.remove(entry.key);
+      }
+    }
   }
 
   /// Whether the cel shows ANY picture content — the composite/export/

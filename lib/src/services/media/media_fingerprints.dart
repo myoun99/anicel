@@ -70,9 +70,18 @@ class MediaFingerprints {
     if (moves.isEmpty || isEmpty) {
       return this;
     }
+    // The movers hand over paths as THEY spell them — open() passes the
+    // manifest's raw keys, backslashes and all on Windows — while _byPath
+    // is normalized. Looking the raw key up with a normalized one missed
+    // every time, which silently dropped the fingerprints of every asset
+    // in a traveled folder at the next save.
+    final normalizedMoves = {
+      for (final move in moves.entries)
+        normalizeFingerprintPath(move.key): move.value,
+    };
     final next = <String, MediaIdentity>{};
     for (final entry in _byPath.entries) {
-      final to = moves[entry.key];
+      final to = normalizedMoves[entry.key];
       next[to == null ? entry.key : normalizeFingerprintPath(to)] = entry.value;
     }
     return MediaFingerprints(next);

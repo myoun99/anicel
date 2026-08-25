@@ -242,7 +242,10 @@ void main() {
     // Everyday save: the cel is hot before and after — no crossing.
     store.storeBakedSurface(k, surfaceWithInk());
     final beforeClean = store.celContentRevision.value;
-    store.adoptSavedFile({k: ref});
+    store.adoptSavedFile(
+      {k: ref},
+      dirtyTicksAtSnapshot: store.bakedSnapshotForSave().dirtyTicks,
+    );
     expect(store.celContentRevision.value, beforeClean);
 
     // The cel empties between the save snapshot and the adoption: the ref
@@ -256,7 +259,10 @@ void main() {
     );
     expect(store.celHasRenderableContent(k), isFalse);
     final beforeAdopt = store.celContentRevision.value;
-    store.adoptSavedFile({k: ref});
+    store.adoptSavedFile(
+      {k: ref},
+      dirtyTicksAtSnapshot: store.bakedSnapshotForSave().dirtyTicks,
+    );
     expect(store.celHasRenderableContent(k), isTrue);
     expect(
       store.celContentRevision.value,
