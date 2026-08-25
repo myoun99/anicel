@@ -137,10 +137,10 @@ bool layerKindIsDrawingCel(LayerKind kind) {
   return switch (kind) {
     LayerKind.animation ||
     LayerKind.storyboard ||
+    LayerKind.instruction ||
     LayerKind.image ||
     LayerKind.text => true,
     LayerKind.se ||
-    LayerKind.instruction ||
     LayerKind.transition ||
     LayerKind.camera ||
     LayerKind.folder ||
@@ -162,10 +162,12 @@ bool layerKindGroupsLayers(LayerKind kind) => kind == LayerKind.folder;
 /// any of them.
 bool layerKindAcceptsBrushInput(LayerKind kind) {
   return switch (kind) {
-    LayerKind.animation || LayerKind.storyboard || LayerKind.image => true,
+    LayerKind.animation ||
+    LayerKind.storyboard ||
+    LayerKind.image ||
+    LayerKind.instruction => true,
     LayerKind.text ||
     LayerKind.se ||
-    LayerKind.instruction ||
     LayerKind.transition ||
     LayerKind.camera ||
     LayerKind.folder ||
@@ -515,6 +517,12 @@ bool layerKindReordersInCut(LayerKind kind) =>
 /// ⚠️It does NOT license editing. The EDGE GRIPS ask this AND
 /// [layerKindIsReadOnlyInCut]: the transition row's local placement is a
 /// projection, so a grip there would be dragging a lie.
+///
+/// 🆕And since R27 #16 it does not answer for the BAND either — see
+/// [layerKindBandIsInstructionsOnly]. Six of the eight facilities above are
+/// really the same question one level down ("does this row have a timeline
+/// of its own?"), and they only looked like this one because nothing had
+/// ever been both.
 bool layerKindCarriesInstructions(LayerKind kind) {
   return switch (kind) {
     LayerKind.instruction || LayerKind.transition => true,
@@ -528,6 +536,23 @@ bool layerKindCarriesInstructions(LayerKind kind) {
     LayerKind.adjustment => false,
   };
 }
+
+/// Whether a row's frame BAND is the instruction adapter and nothing else —
+/// no timeline of its own, so no cels, no names, no ○.
+///
+/// 🚨R27 #16 (유저 확정 2026-08-25): 「**카메라랑 트랜지션은 지금처럼
+/// 못그리는데 디렉션레이어는 그림 그릴수있는 행으로**」.
+///
+/// ★A DIRECTION row carries instructions AND has cels now, so "carries
+/// instructions" stopped being the same question as "has no timeline of its
+/// own". They had been one predicate only because nothing was ever both:
+/// the transition row is instructions-only and still is, and every drawing
+/// row carries no instructions. Splitting them here is what lets the
+/// direction row's band show its own drawings with the spans still over
+/// them, and it is why the SPAN OVERLAYS keep asking
+/// [layerKindCarriesInstructions] — that half did not change.
+bool layerKindBandIsInstructionsOnly(LayerKind kind) =>
+    layerKindCarriesInstructions(kind) && !layerKindIsDrawingCel(kind);
 
 /// Whether [kind] is a FIXED kind — one the user can neither convert a
 /// layer into nor convert away from (the camera fixture, folders and

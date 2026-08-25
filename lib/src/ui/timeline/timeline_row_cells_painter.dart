@@ -417,7 +417,7 @@ class TimelineRowCellsPainter extends CustomPainter {
       // to surface mid-drag when the preview outran the committed name.
       TimelineCellExposureState.drawingStart =>
         layerKindUsesSeSheetCells(layer.kind) ||
-                layerKindCarriesInstructions(layer.kind) ||
+                layerKindBandIsInstructionsOnly(layer.kind) ||
                 _cameraSummaryRow
             ? ''
             : frameName == null || frameName.isEmpty
@@ -434,7 +434,7 @@ class TimelineRowCellsPainter extends CustomPainter {
     String? frameName,
   }) {
     // Instruction spans carry their own semantics on the row overlay.
-    if (layerKindCarriesInstructions(layer.kind)) {
+    if (layerKindBandIsInstructionsOnly(layer.kind)) {
       return null;
     }
     return switch (exposureState) {
