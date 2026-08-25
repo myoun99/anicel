@@ -58,25 +58,56 @@ enum SelectionCombineMode {
 }
 
 /// One (polygon, operation) step of a composite selection.
+///
+/// Usually ONE polygon. A symmetry guide makes a single drag draw several,
+/// and those copies are one step rather than several: they are one act, so
+/// the mode applies to them TOGETHER (their union), undo takes them back
+/// together, and every reader folds them as a unit.
+///
+/// 🚨That union is the whole reason the field is a list. Folding the copies
+/// as separate steps gives the right answer for replace/add/subtract and the
+/// WRONG one for intersect — narrowing to copy A and then to copy B leaves
+/// their overlap, which for a plain left/right mirror is nothing at all. The
+/// step list is linear and cannot nest, so "∩ (A ∪ B)" has nowhere else to
+/// live.
 class CanvasSelectionStep {
-  const CanvasSelectionStep(this.shape, this.mode);
+  CanvasSelectionStep(CanvasSelectionShape shape, this.mode)
+    : shapes = List<CanvasSelectionShape>.unmodifiable([shape]);
 
-  final CanvasSelectionShape shape;
+  /// The copies one guided act drew, folded as their union.
+  CanvasSelectionStep.copies(List<CanvasSelectionShape> shapes, this.mode)
+    : shapes = List<CanvasSelectionShape>.unmodifiable(shapes),
+      assert(shapes.isNotEmpty, 'a step needs at least one polygon');
+
+  final List<CanvasSelectionShape> shapes;
   final SelectionCombineMode mode;
 
   CanvasSelectionStep mapped(CanvasPoint Function(CanvasPoint) map) =>
-      CanvasSelectionStep(
-        CanvasSelectionShape([for (final point in shape.points) map(point)]),
-        mode,
-      );
+      CanvasSelectionStep.copies([
+        for (final shape in shapes)
+          CanvasSelectionShape([for (final point in shape.points) map(point)]),
+      ], mode);
 
   @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is CanvasSelectionStep && other.shape == shape && other.mode == mode;
+  bool operator ==(Object other) {
+    if (identical(this, other)) {
+      return true;
+    }
+    if (other is! CanvasSelectionStep ||
+        other.mode != mode ||
+        other.shapes.length != shapes.length) {
+      return false;
+    }
+    for (var i = 0; i < shapes.length; i += 1) {
+      if (other.shapes[i] != shapes[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
 
   @override
-  int get hashCode => Object.hash(shape, mode);
+  int get hashCode => Object.hash(Object.hashAll(shapes), mode);
 }
 
 /// A composite selection region: an ordered list of (polygon, operation)
@@ -111,7 +142,9 @@ class CanvasSelectionRegion {
   /// The single polygon when this region IS one (the transform/lift paths
   /// that predate the composite model still read it); null otherwise.
   CanvasSelectionShape? get singleShape =>
-      steps.length == 1 ? steps.first.shape : null;
+      steps.length == 1 && steps.first.shapes.length == 1
+      ? steps.first.shapes.first
+      : null;
 
   /// Folds [shape] into the region under [mode]. Null result = nothing is
   /// selected any more (subtract/intersect can empty a region, and
@@ -120,22 +153,40 @@ class CanvasSelectionRegion {
     CanvasSelectionRegion? region,
     CanvasSelectionShape? shape,
     SelectionCombineMode mode,
+  ) => combineCopies(
+    region,
+    shape == null ? const <CanvasSelectionShape>[] : [shape],
+    mode,
+  );
+
+  /// [combine] for an outline a guide copied — the copies fold as ONE step.
+  ///
+  /// One path, not two: the plain drag is the one-copy case, so a mode can
+  /// never behave differently depending on whether a guide was on.
+  static CanvasSelectionRegion? combineCopies(
+    CanvasSelectionRegion? region,
+    List<CanvasSelectionShape> shapes,
+    SelectionCombineMode mode,
   ) {
-    if (shape == null) {
+    if (shapes.isEmpty) {
       // A degenerate drag (a click): REPLACE deselects — Photoshop's
       // click-away — while the other modes leave the region alone.
       return mode == SelectionCombineMode.replace ? null : region;
     }
     switch (mode) {
       case SelectionCombineMode.replace:
-        return CanvasSelectionRegion.shape(shape);
+        return CanvasSelectionRegion([
+          CanvasSelectionStep.copies(shapes, SelectionCombineMode.replace),
+        ]);
       case SelectionCombineMode.add:
         if (region == null) {
-          return CanvasSelectionRegion.shape(shape);
+          return CanvasSelectionRegion([
+            CanvasSelectionStep.copies(shapes, SelectionCombineMode.replace),
+          ]);
         }
         return CanvasSelectionRegion([
           ...region.steps,
-          CanvasSelectionStep(shape, SelectionCombineMode.add),
+          CanvasSelectionStep.copies(shapes, SelectionCombineMode.add),
         ]);
       case SelectionCombineMode.subtract:
       case SelectionCombineMode.intersect:
@@ -144,7 +195,7 @@ class CanvasSelectionRegion {
         }
         return CanvasSelectionRegion([
           ...region.steps,
-          CanvasSelectionStep(shape, mode),
+          CanvasSelectionStep.copies(shapes, mode),
         ]);
     }
   }
@@ -158,7 +209,14 @@ class CanvasSelectionRegion {
   bool containsPoint(CanvasPoint point) {
     var inside = false;
     for (final step in steps) {
-      final hit = step.shape.containsPoint(point);
+      // The copies of one act are a UNION, so any of them is a hit.
+      var hit = false;
+      for (final shape in step.shapes) {
+        if (shape.containsPoint(point)) {
+          hit = true;
+          break;
+        }
+      }
       inside = switch (step.mode) {
         SelectionCombineMode.replace => hit,
         SelectionCombineMode.add => inside || hit,
@@ -185,11 +243,13 @@ class CanvasSelectionRegion {
           step.mode == SelectionCombineMode.intersect) {
         continue;
       }
-      for (final point in step.shape.points) {
-        minX = math.min(minX, point.x);
-        minY = math.min(minY, point.y);
-        maxX = math.max(maxX, point.x);
-        maxY = math.max(maxY, point.y);
+      for (final shape in step.shapes) {
+        for (final point in shape.points) {
+          minX = math.min(minX, point.x);
+          minY = math.min(minY, point.y);
+          maxX = math.max(maxX, point.x);
+          maxY = math.max(maxY, point.y);
+        }
       }
     }
     // An intersect-only tail cannot happen (the first step replaces), so
@@ -256,9 +316,23 @@ class CanvasSelectionRegion {
   ui.Path pathIn(ui.Offset Function(CanvasPoint) map) {
     var combined = ui.Path();
     for (final step in steps) {
-      final polygon = ui.Path()
+      var polygon = ui.Path()
         ..fillType = ui.PathFillType.evenOdd
-        ..addPolygon([for (final point in step.shape.points) map(point)], true);
+        ..addPolygon([
+          for (final point in step.shapes.first.points) map(point),
+        ], true);
+      // Copies UNION into the step's own outline before the mode applies —
+      // one `addPolygon` per copy would even-odd them and punch a hole
+      // wherever two copies overlap.
+      for (final shape in step.shapes.skip(1)) {
+        polygon = ui.Path.combine(
+          ui.PathOperation.union,
+          polygon,
+          ui.Path()
+            ..fillType = ui.PathFillType.evenOdd
+            ..addPolygon([for (final point in shape.points) map(point)], true),
+        );
+      }
       combined = switch (step.mode) {
         SelectionCombineMode.replace => polygon,
         SelectionCombineMode.add => ui.Path.combine(
@@ -298,11 +372,12 @@ class CanvasSelectionRegion {
   }) {
     final mask = Uint8List(width * height);
     final crossings = <double>[];
+    final scratch = <double>[];
     for (var row = 0; row < height; row += 1) {
       final scanY = top + row + 0.5;
       final rowOffset = row * width;
       for (final step in steps) {
-        _scanCrossings(step.shape, scanY, crossings);
+        _scanSpans(step.shapes, scanY, crossings, scratch);
         switch (step.mode) {
           case SelectionCombineMode.replace:
             mask.fillRange(rowOffset, rowOffset + width, 0);
@@ -317,6 +392,63 @@ class CanvasSelectionRegion {
       }
     }
     return mask;
+  }
+
+  /// The row's inside spans for one step: the union of its copies, as a flat
+  /// sorted `[start, end, …]` list with overlaps merged.
+  ///
+  /// 🚨Merging SPANS, not crossings. Concatenating two polygons' crossings
+  /// and pairing them off is the even-odd rule, which cancels where the
+  /// copies overlap — the lift would then punch a hole exactly where
+  /// [containsPoint] says the point is in. One copy (nearly every region)
+  /// returns the crossings untouched.
+  static void _scanSpans(
+    List<CanvasSelectionShape> shapes,
+    double scanY,
+    List<double> out,
+    List<double> scratch,
+  ) {
+    _scanCrossings(shapes.first, scanY, out);
+    for (final shape in shapes.skip(1)) {
+      _scanCrossings(shape, scanY, scratch);
+      _mergeSpans(out, scratch);
+    }
+  }
+
+  /// `into ∪ extra`, both flat sorted span lists, left merged in [into].
+  static void _mergeSpans(List<double> into, List<double> extra) {
+    if (extra.isEmpty) {
+      return;
+    }
+    if (into.isEmpty) {
+      into.addAll(extra);
+      return;
+    }
+    final merged = <double>[];
+    var a = 0, b = 0;
+    while (a < into.length || b < extra.length) {
+      final takeA =
+          b >= extra.length || (a < into.length && into[a] <= extra[b]);
+      final start = takeA ? into[a] : extra[b];
+      final end = takeA ? into[a + 1] : extra[b + 1];
+      if (takeA) {
+        a += 2;
+      } else {
+        b += 2;
+      }
+      if (merged.isNotEmpty && start <= merged[merged.length - 1]) {
+        if (end > merged[merged.length - 1]) {
+          merged[merged.length - 1] = end;
+        }
+        continue;
+      }
+      merged
+        ..add(start)
+        ..add(end);
+    }
+    into
+      ..clear()
+      ..addAll(merged);
   }
 
   /// Sorted x crossings of [shape]'s edges at the scanline [scanY].
@@ -356,6 +488,12 @@ class CanvasSelectionRegion {
     }
   }
 
+  /// 🚨Both ends clamp into `[0, width]`, not one end each. A span that lies
+  /// entirely to the RIGHT of the window gives `start > width`, and the
+  /// fill below then runs off the end of the row — [_fillSpans] survives
+  /// that (its loop simply does not run) but this one calls `fillRange`.
+  /// The 1×1 probe a mask/hit-test parity check uses is exactly the window
+  /// small enough to reach it.
   static void _clearOutsideSpans(
     Uint8List mask,
     int rowOffset,
@@ -365,8 +503,14 @@ class CanvasSelectionRegion {
   ) {
     var cursor = 0;
     for (var c = 0; c + 1 < crossings.length; c += 2) {
-      final start = math.max((crossings[c] - 0.5).ceil() - left, 0);
-      final end = math.min((crossings[c + 1] - 0.5).ceil() - left, width);
+      final start = math.min(
+        math.max((crossings[c] - 0.5).ceil() - left, 0),
+        width,
+      );
+      final end = math.min(
+        math.max((crossings[c + 1] - 0.5).ceil() - left, 0),
+        width,
+      );
       if (start > cursor) {
         mask.fillRange(rowOffset + cursor, rowOffset + start, 0);
       }
@@ -399,5 +543,6 @@ class CanvasSelectionRegion {
   @override
   String toString() =>
       'CanvasSelectionRegion(${steps.map((step) => '${step.mode.name}:'
-          '${step.shape.points.length}pts').join(' → ')})';
+          '${step.shapes.map((shape) => '${shape.points.length}pts')
+          .join('+')}').join(' → ')})';
 }

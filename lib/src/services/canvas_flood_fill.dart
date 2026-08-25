@@ -10,6 +10,7 @@ import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
 import '../models/cut.dart';
+import '../models/drawing_guide.dart';
 import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
 import '../ui/dev_profile.dart';
@@ -17,6 +18,7 @@ import 'canvas_color_sampler.dart';
 import 'canvas_selection.dart';
 import 'canvas_selection_region.dart';
 import 'cut_frame_composite_plan.dart';
+import 'guide_geometry.dart';
 
 /// P6 fill options — the Tool Settings panel's knobs (R11-④).
 class FloodFillOptions {
@@ -1141,6 +1143,10 @@ BrushDab? buildShapeFillDab({
 /// EXTENDED fill's flood reaches the apron wall — the region is not
 /// closed; [onOpenRegion] fires so the UI can say so instead of silently
 /// flooding the surround.
+///
+/// [symmetry] makes the tap fill every copy of the seed, unioned into the
+/// same single dab — see the loop below for why the stroke path's dab
+/// replication is the wrong tool here.
 BrushDab? buildFillDab({
   required Cut cut,
   required int frameIndex,
@@ -1150,6 +1156,7 @@ BrushDab? buildFillDab({
   double opacity = 1.0,
   FloodFillOptions options = const FloodFillOptions(),
   int paperColor = canvasPaperColor,
+  SymmetryShape? symmetry,
   void Function()? onOpenRegion,
 }) {
   final raster = labProbe(
@@ -1162,20 +1169,64 @@ BrushDab? buildFillDab({
       extendBeyondCanvas: options.extendBeyondCanvas,
     ),
   );
-  final region = labProbe(
-    'fill.flood',
-    () => floodFillRegion(
-      rgb: raster.rgb,
-      width: raster.width,
-      height: raster.height,
-      seedX: point.x.floor() - raster.originX,
-      seedY: point.y.floor() - raster.originY,
-      options: options,
-      ensureComposed: raster.ensureComposedAt,
-      ensureComposedBatch: raster.ensureComposedBatch,
-      nativeHandles: raster.nativeHandles,
-    ),
-  );
+  // A symmetry guide fills every copy of the SEED, not every copy of the
+  // finished region: the mirrored region is whatever the picture encloses
+  // over there, which is the whole point of drawing under a symmetry.
+  //
+  // ⛔The stroke path's `replicateDabs` cannot do this job. A fill arrives
+  // as ONE `stamp` (an RGBA image) and the stamp blend ignores angle, so a
+  // replicated fill dab would paste an UN-mirrored copy of *this* region on
+  // the other side. Reflecting the seed and flooding again is the only
+  // thing that reads the other side's own outline.
+  //
+  // The raster is built ONCE and every flood samples it, so N copies cost N
+  // floods and not N composites — and every copy sees the same untouched
+  // picture, which is what makes the result independent of seed order.
+  final seeds = symmetry == null
+      ? <CanvasPoint>[point]
+      : [for (final copy in symmetryTransforms(symmetry)) copy.apply(point)];
+  final parts = <FloodFillRegion>[];
+  var reachedWall = false;
+  for (final seed in seeds) {
+    final part = labProbe(
+      'fill.flood',
+      () => floodFillRegion(
+        rgb: raster.rgb,
+        width: raster.width,
+        height: raster.height,
+        seedX: seed.x.floor() - raster.originX,
+        seedY: seed.y.floor() - raster.originY,
+        options: options,
+        ensureComposed: raster.ensureComposedAt,
+        ensureComposedBatch: raster.ensureComposedBatch,
+        nativeHandles: raster.nativeHandles,
+      ),
+    );
+    if (part == null) {
+      continue;
+    }
+    if (options.extendBeyondCanvas) {
+      // Leak detection: a flood that reached the apron's outer wall means
+      // the region is OPEN (nothing bounded it before the wall). Refuse
+      // the fill — the raster analogue of Flash refusing to fill an
+      // unclosed shape.
+      //
+      // Judged per COPY: one copy landing in open space says nothing about
+      // the others, and dropping the whole fill because a mirror missed
+      // would make the symmetry's own copies veto the seed's.
+      final reached =
+          part.left <= 0 ||
+          part.top <= 0 ||
+          part.left + part.width >= raster.width ||
+          part.top + part.height >= raster.height;
+      if (reached) {
+        reachedWall = true;
+        continue;
+      }
+    }
+    parts.add(part);
+  }
+  final region = _unionRegions(parts);
   if (options.extendBeyondCanvas) {
     // The extended raster grew the engine's fill arenas ~9×; give the
     // memory back once this tap's flood is done (the next canvas fill
@@ -1185,22 +1236,13 @@ BrushDab? buildFillDab({
     );
   }
   if (region == null) {
-    return null;
-  }
-  if (options.extendBeyondCanvas) {
-    // Leak detection: a flood that reached the apron's outer wall means
-    // the region is OPEN (nothing bounded it before the wall). Refuse
-    // the fill — the raster analogue of Flash refusing to fill an
-    // unclosed shape.
-    final reachedWall =
-        region.left <= 0 ||
-        region.top <= 0 ||
-        region.left + region.width >= raster.width ||
-        region.top + region.height >= raster.height;
+    // The notice is the OPEN-region one only when a flood actually hit the
+    // wall; a seed that simply landed outside the raster answers null in
+    // silence, exactly as it did before symmetry existed.
     if (reachedWall) {
       onOpenRegion?.call();
-      return null;
     }
+    return null;
   }
 
   return _colorStampDab(
@@ -1209,6 +1251,58 @@ BrushDab? buildFillDab({
     originX: raster.originX,
     originY: raster.originY,
     opacity: opacity,
+  );
+}
+
+/// The regions a fill flooded, merged into the single region the stamp path
+/// expects — coverage per pixel is the MAX of the parts, not their sum, so
+/// two copies that overlap stay one flat fill instead of a darker seam.
+///
+/// One allocation for the whole merge: the union rect is measured first and
+/// every part is blitted into it. Folding pairwise instead would re-allocate
+/// a growing mask per copy, which on a large canvas is the fill's whole
+/// budget spent on garbage.
+///
+/// A lone part is returned UNTOUCHED — the no-symmetry path, which is nearly
+/// every fill, must not pay a copy of the mask to pass through here.
+FloodFillRegion? _unionRegions(List<FloodFillRegion> parts) {
+  if (parts.isEmpty) {
+    return null;
+  }
+  if (parts.length == 1) {
+    return parts.first;
+  }
+  var left = parts.first.left;
+  var top = parts.first.top;
+  var right = parts.first.left + parts.first.width;
+  var bottom = parts.first.top + parts.first.height;
+  for (final part in parts.skip(1)) {
+    left = math.min(left, part.left);
+    top = math.min(top, part.top);
+    right = math.max(right, part.left + part.width);
+    bottom = math.max(bottom, part.top + part.height);
+  }
+  final width = right - left;
+  final height = bottom - top;
+  final mask = Uint8List(width * height);
+  for (final part in parts) {
+    for (var y = 0; y < part.height; y += 1) {
+      final source = y * part.width;
+      final target = (part.top - top + y) * width + (part.left - left);
+      for (var x = 0; x < part.width; x += 1) {
+        final coverage = part.mask[source + x];
+        if (coverage > mask[target + x]) {
+          mask[target + x] = coverage;
+        }
+      }
+    }
+  }
+  return FloodFillRegion(
+    left: left,
+    top: top,
+    width: width,
+    height: height,
+    mask: mask,
   );
 }
 

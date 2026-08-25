@@ -190,7 +190,8 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// the commit rides [onSourceStrokeCommitted], and the overlay holds
   /// until the committed tiles decode (the settling contract) — no more
   /// tile-by-tile reveal on big fills.
-  final BrushDab? Function(CanvasPoint point, int color)? fillDabAt;
+  final BrushDab? Function(CanvasPoint point, int color, SymmetryShape? symmetry)?
+  fillDabAt;
 
   /// R26 #18: the live selection region (canvas coordinates). Non-null
   /// confines the stroke to it — the region goes to the RASTERIZER, which
@@ -650,7 +651,15 @@ class _InteractiveBrushEditCanvasViewState
         // that window would interleave with it.
         return;
       }
-      final dab = fillDabAt(canvasPosition, widget.inputSettings.color);
+      // The seed and the axis come from the same pair the STROKE path uses
+      // — this view's own position and its own guides, both already in the
+      // space the pointer is in. Reading the symmetry from the project
+      // instead would put the mirror where the pen is not under a pose.
+      final dab = fillDabAt(
+        canvasPosition,
+        widget.inputSettings.color,
+        widget.guides.actingSymmetry,
+      );
       if (dab == null) {
         return;
       }
