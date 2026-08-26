@@ -100,6 +100,12 @@ class AppStrings {
   /// The shared pill's deselect button — the tablet's Esc.
   String get tlSharedDeselect => _s('tlSharedDeselect');
 
+  /// 색 변환 — replace the drawing's colour, keeping its alpha.
+  String get tlSharedReplaceColour => _s('tlSharedReplaceColour');
+
+  /// 픽셀 비우기 — empty the drawing, keeping the cel and its exposure.
+  String get tlSharedClearPixels => _s('tlSharedClearPixels');
+
   /// R27 #31: the export window's empty state — the project has no cuts
   /// at all (standing in a GAP is not this; that anchors on the first cut).
   String get exportNoCuts => _s('exportNoCuts');
@@ -990,6 +996,8 @@ class AppStrings {
     'commonClose': 'Close',
     'commonNotice': 'Notice',
     'tlSharedDeselect': 'Deselect',
+    'tlSharedReplaceColour': 'Replace Color',
+    'tlSharedClearPixels': 'Clear Pixels',
     'exportNoCuts': 'This project has no cuts to export yet.',
     'audioOffsetTitle': 'A/V offset',
     'audioOffsetHelp':
@@ -1705,6 +1713,8 @@ class AppStrings {
     'commonClose': '閉じる',
     'commonNotice': 'お知らせ',
     'tlSharedDeselect': '選択解除',
+    'tlSharedReplaceColour': '色変換',
+    'tlSharedClearPixels': 'ピクセル消去',
     'exportNoCuts': 'このプロジェクトには書き出せるカットがありません。',
     'audioOffsetTitle': 'A/Vオフセット',
     'audioOffsetHelp':
@@ -2491,6 +2501,8 @@ class AppStrings {
     'commonClose': '닫기',
     'commonNotice': '알림',
     'tlSharedDeselect': '선택 해제',
+    'tlSharedReplaceColour': '색 변환',
+    'tlSharedClearPixels': '픽셀 비우기',
     'exportNoCuts': '이 프로젝트에는 출력할 컷이 없습니다.',
     'audioOffsetTitle': 'A/V 오프셋',
     'audioOffsetHelp':
@@ -3270,6 +3282,8 @@ class AppStrings {
     'commonClose': 'Fermer',
     'commonNotice': 'Avis',
     'tlSharedDeselect': 'Désélectionner',
+    'tlSharedReplaceColour': 'Remplacer la couleur',
+    'tlSharedClearPixels': 'Effacer les pixels',
     'exportNoCuts': 'Ce projet ne contient aucun plan à exporter.',
     'audioOffsetTitle': 'Décalage A/V',
     'audioOffsetHelp':
@@ -4089,6 +4103,8 @@ class AppStrings {
     'commonClose': '关闭',
     'commonNotice': '提示',
     'tlSharedDeselect': '取消选择',
+    'tlSharedReplaceColour': '替换颜色',
+    'tlSharedClearPixels': '清空像素',
     'exportNoCuts': '此项目暂无可导出的镜头。',
     'audioOffsetTitle': 'A/V 偏移',
     'audioOffsetHelp':

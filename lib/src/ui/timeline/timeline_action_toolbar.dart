@@ -16,6 +16,7 @@ import '../widgets/static_raster.dart';
 import 'layer_label_controls.dart' show layerKindIcon;
 import 'timeline_section_policy.dart';
 import 'toolbar_panel_context.dart';
+import '../../services/cel_pixel_overwrite.dart';
 import '../theme/app_theme.dart';
 import '../text/app_strings.dart';
 import '../dialogs/app_prompt_dialog.dart';
@@ -806,6 +807,8 @@ class TimelineActionToolbar extends StatelessWidget {
       onEditInstance != null && panelContext.canEditInstance,
       // The deselect button reads the same one-question gate its press runs.
       session.hasAnySelection,
+      // …and so do the two pixel verbs.
+      session.canRunPixelVerb,
     ),
     builder: (context) => CommandPill(
       key: const ValueKey<String>('timeline-toolbar-shared-group'),
@@ -908,6 +911,37 @@ class TimelineActionToolbar extends StatelessWidget {
               onDeleteRowSelection,
             _ => panelContext.deleteSelectionSubject,
           },
+        ),
+        const PillDivider(),
+        // 🚨THE TWO PIXEL VERBS, on THIS pill.
+        //
+        // 유저 2026-08-10 put ③ here in the first place — 「다만 이 버튼은
+        // 타임라인에 두는게 나을듯」 — and the reason holds for both: the
+        // selection that decides HOW MANY drawings change is the frame range,
+        // and it is drawn here. A button belongs beside the thing that
+        // decides how much it does. The marquee only decides how much of ONE
+        // drawing.
+        //
+        // ⚠️They sit after the delete rather than beside the deselect, whose
+        // neighbour slot is held for the 취소 button (see there).
+        //
+        // ⛔Dimmed with nothing to act on, never hidden.
+        _iconButton(
+          key: const ValueKey<String>('shared-replace-colour-button'),
+          tooltip: AppText.strings.tlSharedReplaceColour,
+          icon: Icons.format_color_fill,
+          onPressed: session.canRunPixelVerb
+              ? () => session.runPixelVerb(CelPixelChannel.colour)
+              : null,
+        ),
+        _iconButton(
+          key: const ValueKey<String>('shared-clear-pixels-button'),
+          tooltip: AppText.strings.tlSharedClearPixels,
+          icon: Icons.cleaning_services_outlined,
+          danger: true,
+          onPressed: session.canRunPixelVerb
+              ? () => session.runPixelVerb(CelPixelChannel.alpha)
+              : null,
         ),
       ],
     ),

@@ -1188,6 +1188,15 @@ class EditorSessionManager extends ChangeNotifier {
   /// redrawn.
   CanvasSelectionRegion? Function()? pixelSelectionRegion;
 
+  /// The drawing colour, published by whoever owns the paint tool state.
+  ///
+  /// ⛔The BAR does not read this. A toolbar button that had to know about
+  /// brush colour would be the second place the answer lives; the verb reads
+  /// it at the moment of the press, which is also the only moment it is true.
+  ///
+  /// 🚨Its ALPHA is ignored downstream — RGB only (유저 확정).
+  int Function()? pixelBrushColour;
+
   /// WHICH cels the two PIXEL verbs would act on — see [PixelVerbSubject].
   PixelVerbSubject get pixelVerbSubject {
     if (pixelVerbCellKeys().isEmpty) {
@@ -1271,7 +1280,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// TVPaint for years.
   ///
   /// One undo step across every cel, however many the ladder named.
-  void runPixelVerb(CelPixelChannel channel, {required int argb}) {
+  void runPixelVerb(CelPixelChannel channel) {
     final coordinator = pixelEditingCoordinator;
     if (coordinator == null) {
       return;
@@ -1311,7 +1320,10 @@ class EditorSessionManager extends ChangeNotifier {
         ? CelPixelOverwriteCommand.replaceColour(
             coordinator: coordinator,
             targets: targets,
-            argb: argb,
+            // ⛔The fallback is the brush's own default, not white or
+            // transparent: a press with no publisher wired must still do the
+            // thing the user asked for, in the colour they would have got.
+            argb: pixelBrushColour?.call() ?? 0xFF000000,
           )
         : CelPixelOverwriteCommand.clearPixels(
             coordinator: coordinator,
