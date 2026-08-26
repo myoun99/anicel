@@ -530,6 +530,11 @@ class _InteractiveBrushEditCanvasViewState
           return;
         }
         _multiTouchNavigation = true;
+        // A waiting FILL tap goes with them, and for the same reason: the
+        // first finger turned out to be the start of a pinch. Nothing was
+        // drawn and nothing entered history, so this is a forget rather
+        // than an undo — which is the whole point of making the fill wait.
+        _forgetFillTap();
         // Discard only a SUB-SLOP touch stroke — the first finger turned
         // out to be the start of a pinch, not a stroke (both fingers
         // landed together). A stylus/mouse stroke keeps drawing: extra
@@ -646,24 +651,43 @@ class _InteractiveBrushEditCanvasViewState
       // Off-canvas fill taps flow through: the default (stage-bounded)
       // raster answers null for them, the extended raster fills — the
       // fill's own boundary options decide, not the pointer.
-      if (!startsInsidePasteboard || _pendingFillCommitDab != null) {
-        // A deferred fill commit is one frame away — a second tap in
-        // that window would interleave with it.
+      // The busy half of this used to be here too; it now lives in
+      // [_runFillTap], which is the only place that can be sure.
+      if (!startsInsidePasteboard) {
         return;
       }
       // The seed and the axis come from the same pair the STROKE path uses
       // — this view's own position and its own guides, both already in the
       // space the pointer is in. Reading the symmetry from the project
       // instead would put the mirror where the pen is not under a pose.
-      final dab = fillDabAt(
-        canvasPosition,
-        widget.inputSettings.color,
-        widget.guides.actingSymmetry,
-      );
-      if (dab == null) {
+      // 🚨★★★A TOUCH FILL RESOLVES ON THE LIFT, NOT ON THE TOUCH.
+      //
+      // 유저 2026-08-27, iPhone: 「필 툴인 채로 … undo가 작동안함. 브러시툴
+      // 에서는 잘 작동함. 1핑거 플립모드로 전환하면 또 잘 작동함」 — a
+      // two-finger undo tap put its FIRST finger down, the fill committed a
+      // history entry nobody asked for, and the undo that followed spent
+      // itself on that instead of on the user's work.
+      //
+      // ★The law is already here, thirty lines up: when a second finger
+      // arrives, a touch stroke that has not passed slop is DISCARDED —
+      // "the first finger turned out to be the start of a pinch, not a
+      // stroke". That branch is exactly why the brush tool works and this
+      // one did not: a zero-length stroke has nothing to commit, while the
+      // fill had already flooded, revealed and queued its commit.
+      //
+      // ⛔The fix cannot be 「commit, then undo it when the second finger
+      // shows」 — [[no-optimistic-commit-then-revert]], 유저: 「한 프레임
+      // 보이는 건 무조건 걸린다」. So the REVEAL waits with the commit; a
+      // tap that turns out to be a pinch never draws anything at all.
+      //
+      // Pen and mouse are untouched: they cannot be half of a pinch, and
+      // the instant reveal is the whole point of R22-A.
+      if (event.kind == PointerDeviceKind.touch) {
+        _fillTapPointer = event.pointer;
+        _fillTapSeed = canvasPosition;
         return;
       }
-      _handleFillDab(dab);
+      _runFillTap(canvasPosition);
       return;
     }
 
@@ -986,6 +1010,14 @@ class _InteractiveBrushEditCanvasViewState
     if (event.pointer == _altPickPointer) {
       _altPickPointer = null;
     }
+    // The lone finger lifted with nobody having joined it: the tap was this
+    // fill's after all. ⛔BEFORE the drawing-pointer gate below — a fill tap
+    // never becomes the drawing pointer, so that gate would drop it.
+    final fillSeed = _fillTapSeed;
+    if (event.pointer == _fillTapPointer && fillSeed != null) {
+      _runFillTap(fillSeed);
+      return;
+    }
     if (event.pointer != _activeDrawingPointer) {
       return;
     }
@@ -1193,6 +1225,9 @@ class _InteractiveBrushEditCanvasViewState
 
   void _handlePointerCancel(PointerCancelEvent event) {
     _lastContactButtons.remove(event.pointer);
+    if (event.pointer == _fillTapPointer) {
+      _forgetFillTap();
+    }
     _forgetTouchPointer(event.pointer);
     _releaseMappedHold(event.pointer);
     if (event.pointer == _altPickPointer) {
@@ -1830,6 +1865,53 @@ class _InteractiveBrushEditCanvasViewState
   /// tiles, so the on-screen stroke rasterizes exactly like it will after
   /// commit; decode completions repaint the canvas painter directly.
   BrushDab? _pendingFillCommitDab;
+
+  /// The touch pointer whose lift will run a fill, and where it landed.
+  ///
+  /// Both cleared together — see the second-finger branch, which is where a
+  /// tap stops being this fill's gesture.
+  int? _fillTapPointer;
+  CanvasPoint? _fillTapSeed;
+
+  /// The fill tap itself: flood at [seed], reveal, and queue the commit.
+  void _runFillTap(CanvasPoint seed) {
+    final fillDabAt = widget.fillDabAt;
+    // 🚨The busy check lives HERE rather than at each caller. It used to sit
+    // only in the pointer-down path, which was true while every fill ran
+    // from there — a touch fill now runs from the LIFT, so a pen fill and a
+    // resting finger's lift could each pass a gate the other had already
+    // walked through and land two commits for one intent.
+    if (fillDabAt == null || _pendingFillCommitDab != null) {
+      return;
+    }
+    // 🚨A fill going out RETIRES any armed tap, whoever armed it. A pen can
+    // fill while a finger rests on the glass — that finger armed a tap of
+    // its own on touchdown, and without this its lift would land a SECOND
+    // fill at wherever it happened to be resting. ⛔The busy check above
+    // cannot cover that: it clears in the post-frame callback, and a lift
+    // arrives frames later.
+    _forgetFillTap();
+    // The seed and the axis come from the same pair the STROKE path uses —
+    // this view's own position and its own guides, both already in the
+    // space the pointer is in. Reading the symmetry from the project
+    // instead would put the mirror where the pen is not under a pose.
+    final dab = fillDabAt(
+      seed,
+      widget.inputSettings.color,
+      widget.guides.actingSymmetry,
+    );
+    if (dab == null) {
+      return;
+    }
+    _handleFillDab(dab);
+  }
+
+  /// The tap is not this fill's any more — a second finger joined, or the
+  /// gesture was cancelled. ⛔Nothing to undo, because nothing was drawn.
+  void _forgetFillTap() {
+    _fillTapPointer = null;
+    _fillTapSeed = null;
+  }
   int _fillOverlayToken = 0;
 
   void _handleFillDab(BrushDab rawDab) {

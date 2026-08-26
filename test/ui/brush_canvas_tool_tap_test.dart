@@ -48,6 +48,164 @@ void main() {
       ) ??
       0;
 
+  /// H29 — 유저 2026-08-27, iPhone: 「필 툴인 채로 3손가락 핑거로 redo는 잘
+  /// 작동하는데 undo가 작동안함. 브러시툴에서는 잘 작동함. 1핑거 플립모드로
+  /// 전환하면 또 잘 작동함」(뒤에 정정: 「언두는 2핑거였어」).
+  ///
+  /// The two-finger undo tap put its FIRST finger down, the fill committed a
+  /// history entry nobody asked for, and the undo spent itself on that.
+  ///
+  /// The law was already in the view for STROKES — a second finger discards a
+  /// touch stroke that has not passed slop, "the first finger turned out to
+  /// be the start of a pinch" — which is exactly why the brush tool worked
+  /// and the fill did not. These pin the fill obeying the same law.
+  group('H29: a fill tap that turns out to be a pinch never happens', () {
+    // 🚨SAVE and restore, ⛔never assign a fresh default back. `AppInput` is
+    // a global: writing `const AppInputSettings()` in the teardown does not
+    // undo this group, it overwrites whatever the suite had set up, and the
+    // tests after it in this very file went red for reasons that had
+    // nothing to do with them.
+    late AppInputSettings savedInput;
+    setUp(() {
+      savedInput = AppInput.settings.value;
+      AppInput.settings.value = savedInput.copyWith(
+        touchDragOneFinger: CanvasTouchDragAction.draw,
+      );
+    });
+    tearDown(() {
+      AppInput.settings.value = savedInput;
+    });
+
+    Future<BrushFrameEditingCoordinator> pumpFill(WidgetTester tester) async {
+      final frameKeys = BrushCanvasFixture.createFrameKeys();
+      final coordinator = BrushCanvasFixture.createCoordinator(
+        frameKeys: frameKeys,
+      );
+      await tester.pumpWidget(
+        app(
+          BrushCanvasPanel(
+            coordinator: coordinator,
+            availableFrameKeys: frameKeys,
+            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+            brushToolState: BrushToolState.defaults.copyWith(
+              tool: CanvasTool.fill,
+            ),
+            fillDabAt: (_, color, _) => fillDab(color),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(AppInput.touchDraws, isTrue, reason: '터치 묘화 on — 유저 상태');
+      return coordinator;
+    }
+
+    Offset canvasAt(WidgetTester tester, Offset local) =>
+        tester.getTopLeft(
+          find.byKey(const ValueKey<String>('brush-canvas-view')),
+        ) +
+        local;
+
+    testWidgets('ONE finger, down and up: the fill lands', (tester) async {
+      final coordinator = await pumpFill(tester);
+      final finger = await tester.startGesture(
+        canvasAt(tester, const Offset(4, 4)),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump();
+      await finger.up();
+      await tester.pumpAndSettle();
+
+      expect(
+        inkAt(coordinator, 4, 4),
+        isNonZero,
+        reason: 'a lone tap is the fill\'s own gesture — it fills',
+      );
+    });
+
+    testWidgets('a PEN fill retires a resting finger\'s armed tap — one '
+        'intent, one fill', (tester) async {
+      final frameKeys = BrushCanvasFixture.createFrameKeys();
+      final coordinator = BrushCanvasFixture.createCoordinator(
+        frameKeys: frameKeys,
+      );
+      var fills = 0;
+      await tester.pumpWidget(
+        app(
+          BrushCanvasPanel(
+            coordinator: coordinator,
+            availableFrameKeys: frameKeys,
+            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+            brushToolState: BrushToolState.defaults.copyWith(
+              tool: CanvasTool.fill,
+            ),
+            // 🚨Each fill lands somewhere ELSE, so a second one cannot hide
+            // under the first. ⛔Not the seed point — the canvas is 2340px
+            // wide inside a small viewport, so a local offset is nowhere
+            // near the canvas coordinate of the same name.
+            fillDabAt: (_, color, _) => fillDab(color).copyWith(
+              center: CanvasPoint(x: 4 + 20.0 * fills++, y: 4),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // A finger resting on the glass arms a tap of its own on touchdown.
+      final resting = await tester.startGesture(
+        canvasAt(tester, const Offset(4, 4)),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump();
+      // The pen fills somewhere else while it rests.
+      await tester.tapAt(
+        canvasAt(tester, const Offset(20, 4)),
+        kind: PointerDeviceKind.stylus,
+      );
+      await tester.pumpAndSettle();
+      expect(inkAt(coordinator, 4, 4), isNonZero, reason: 'the pen filled');
+
+      // ⛔And the rest lifting must not fill a second time.
+      await resting.up();
+      await tester.pumpAndSettle();
+      expect(
+        inkAt(coordinator, 24, 4),
+        0,
+        reason: 'a palm rest is not a second fill',
+      );
+    });
+
+    testWidgets('a SECOND finger joins before the lift: nothing is filled '
+        'and nothing enters history', (tester) async {
+      final coordinator = await pumpFill(tester);
+      // Exactly the shape of a two-finger undo: one finger lands, the other
+      // follows, both lift.
+      final first = await tester.startGesture(
+        canvasAt(tester, const Offset(4, 4)),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump();
+      final second = await tester.startGesture(
+        canvasAt(tester, const Offset(12, 4)),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump();
+      await first.up();
+      await second.up();
+      await tester.pumpAndSettle();
+
+      // 🚨The raster, not a flag. The bug was a REAL commit — an undo entry
+      // the user never asked for, which their next undo then spent itself
+      // on. ⛔And 「filled, then reverted」 would fail here too, which is the
+      // point: nothing may be drawn at any moment of this gesture.
+      expect(
+        inkAt(coordinator, 4, 4),
+        0,
+        reason: '유저의 2핑거 언두가 자기 필을 되돌리느라 소모됐다 — 애초에 '
+            '칠하지 않는 것이 답이다',
+      );
+    });
+  });
+
   testWidgets('the bucket on the erase blend REMOVES ink', (tester) async {
     // The other half of 유저 확정 ③ (erase is in the blend list), and the
     // half that is easy to leave behind: this path builds its commit in
