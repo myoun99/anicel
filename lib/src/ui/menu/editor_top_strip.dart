@@ -342,7 +342,10 @@ class EditorTopStrip extends StatelessWidget {
           runningLabel: AppText.strings.openProgressRunning,
           doneLabel: AppText.strings.openProgressDone,
           windowKey: const ValueKey<String>('open-progress-dialog'),
-          showAfter: openWaitWindowDelay,
+          // Raised by the WAIT, not by a clock: a pick that reads
+          // immediately never says it is waiting, so a local open stays
+          // exactly as silent as it was.
+          showWhen: wait.started,
           doneLinger: Duration.zero,
           runningStatus: wait.status,
           onCancel: wait.cancel,
@@ -1297,14 +1300,6 @@ class _FloorSwitch extends StatelessWidget {
   }
 }
 
-/// How long an open may take before it draws anything.
-///
-/// A local pick lands far inside this, so the ordinary open stays exactly
-/// as silent as it was; anything slower is a file still coming down, and
-/// then the window is the only thing that separates 「waiting」 from
-/// 「broken」. Short enough that the first slow frame already has it.
-const Duration openWaitWindowDelay = Duration(milliseconds: 200);
-
 /// What a door says while a file it did not write is on its way.
 ///
 /// One object for the three things a wait needs — a line that changes, a
@@ -1318,13 +1313,22 @@ const Duration openWaitWindowDelay = Duration(milliseconds: 200);
 /// told which one it is.
 class _CloudWait {
   final ValueNotifier<String> status = ValueNotifier<String>('');
+  final Completer<void> _started = Completer<void>();
   bool _cancelled = false;
 
   /// After this, the line stops counting up quietly and says that
   /// nothing has come — which is when a person starts deciding.
   static const Duration _sayNothingArrivedAfter = Duration(seconds: 10);
 
+  /// Completes the first time the work says it is WAITING — which is what
+  /// a door raises its window on. A pick that reads straight away never
+  /// completes it, and so never draws anything.
+  Future<void> get started => _started.future;
+
   void report(Duration waited) {
+    if (!_started.isCompleted) {
+      _started.complete();
+    }
     final seconds = waited.inSeconds;
     final strings = AppText.strings;
     status.value =

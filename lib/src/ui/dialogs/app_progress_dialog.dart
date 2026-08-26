@@ -176,13 +176,19 @@ const Duration appProgressDoneLinger = Duration(milliseconds: 900);
 /// and a delay that skips the fast cases would leave exactly those showing
 /// nothing at all. A quick flash IS the answer: it was pressed, and it took.
 ///
-/// ⚠️[showAfter] buys the opposite trade for a DIFFERENT question, and the
+/// ⚠️[showWhen] buys the opposite trade for a DIFFERENT question, and the
 /// difference is what makes it not an exception. A save is rare, slow and
 /// asked about; an OPEN is constant and usually instant, and a window that
-/// blinks on every local open is noise about a thing nobody doubted. So an
-/// open passes a short delay: silence while it is quick, and a window the
-/// moment it is not — which is also the only shape that catches a file that
-/// starts fast and stalls halfway.
+/// blinks on every local open is noise about a thing nobody doubted.
+///
+/// 🚨It is a FUTURE, not a delay, and that distinction is the whole point:
+/// the work itself says when it has started waiting — a materialiser that
+/// has to sit and ask a provider again — instead of a stopwatch guessing
+/// from outside. A stopwatch is wrong in both directions. It fires for a
+/// local open that merely lost a race against the clock (every widget test
+/// that opens a project went red exactly there, and users would have seen
+/// the same blink on a slow frame), and it says nothing about a file that
+/// is genuinely stuck but has not reached the mark yet.
 ///
 /// A throw takes the window down and comes back out, so the caller's own
 /// error path is unchanged by having been wrapped.
@@ -195,25 +201,27 @@ Future<T> runWithAppProgress<T>({
   IconData? titleIcon,
   Key? windowKey,
   Duration doneLinger = appProgressDoneLinger,
-  Duration? showAfter,
+  Future<void>? showWhen,
   ValueListenable<String>? runningStatus,
   VoidCallback? onCancel,
 }) async {
   final progress = ValueNotifier<AppProgress>(const AppProgress.running(null));
-  if (showAfter != null) {
-    // Started before the window, and raced against it: the work that beats
-    // the delay never draws anything at all.
+  if (showWhen != null) {
+    // Started before the window, and raced against the work's own signal:
+    // work that finishes without ever saying 「I am waiting」 draws nothing
+    // at all. No timer is involved, so nothing is left ticking for a race
+    // that is already over.
+    //
+    // ⚠️The error arm sets `finished` rather than swallowing: the future is
+    // awaited again below, so catching here would either deliver the
+    // failure twice or lose it.
     final running = task(
       (fraction) => progress.value = AppProgress.running(fraction),
     );
     var finished = false;
-    // ⚠️`ignore` on the loser, not `catchError`: whichever future loses this
-    // race is still awaited below, and swallowing its error here would let
-    // a failure land twice — once as an unhandled async error, once at the
-    // caller — or worse, vanish.
     await Future.any<void>([
       running.then((_) => finished = true, onError: (_) => finished = true),
-      Future<void>.delayed(showAfter),
+      showWhen,
     ]);
     if (finished) {
       progress.dispose();

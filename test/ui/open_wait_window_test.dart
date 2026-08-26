@@ -21,16 +21,17 @@ void main() {
     ({
       Completer<String> task,
       Completer<void> closed,
+      Completer<void> waiting,
       ValueNotifier<String> status,
       bool Function() cancelled,
     })
   >
-  openOver(
-    WidgetTester tester, {
-    Duration showAfter = const Duration(milliseconds: 200),
-  }) async {
+  openOver(WidgetTester tester) async {
     final task = Completer<String>();
     final closed = Completer<void>();
+    // The work's own signal: completed when it starts waiting on someone
+    // else's bytes. Nothing else raises the window.
+    final waiting = Completer<void>();
     final status = ValueNotifier<String>('');
     var cancelled = false;
     late BuildContext pageContext;
@@ -54,7 +55,7 @@ void main() {
         doneLabel: 'Opened',
         windowKey: const ValueKey<String>('open-progress-dialog'),
         doneLinger: Duration.zero,
-        showAfter: showAfter,
+        showWhen: waiting.future,
         runningStatus: status,
         onCancel: () => cancelled = true,
         task: (_) => task.future,
@@ -64,41 +65,45 @@ void main() {
     return (
       task: task,
       closed: closed,
+      waiting: waiting,
       status: status,
       cancelled: () => cancelled,
     );
   }
 
-  testWidgets('an open that lands in a blink draws NOTHING', (tester) async {
+  testWidgets('an open that never says it is waiting draws NOTHING', (
+    tester,
+  ) async {
+    // 🚨And time may pass freely: the window is raised by the WORK saying
+    // it has started waiting, never by a stopwatch. A clock-triggered
+    // window blinks on a local open that merely lost a race with the
+    // frame budget — which is exactly how every open-driving widget test
+    // went red before this trigger replaced the delay.
     final run = await openOver(tester);
-    expect(
-      find.byKey(const ValueKey<String>('open-progress-dialog')),
-      findsNothing,
-      reason: 'the delay has not passed yet',
-    );
 
     run.task.complete('opened');
-    // Frame by frame across the delay: a window that flashes for even one
-    // of them is a window the user saw. Checking only at the END would
-    // pass against code that shows one and closes it again.
+    // Frame by frame: a window that flashes for even one of them is a
+    // window the user saw. Checking only at the END would pass against
+    // code that shows one and closes it again.
     for (var frame = 0; frame < 8; frame += 1) {
       await tester.pump(const Duration(milliseconds: 50));
       expect(
         find.byKey(const ValueKey<String>('open-progress-dialog')),
         findsNothing,
-        reason: 'it beat the delay, so no window may exist on any frame',
+        reason: 'nothing ever waited, so no window may exist on any frame',
       );
     }
     await tester.pumpAndSettle();
     await run.closed.future;
   });
 
-  testWidgets('an open that does not land raises the window, and the line '
-      'says whose work the wait is', (tester) async {
+  testWidgets('an open that says it is WAITING raises the window, and the '
+      'line says whose work the wait is', (tester) async {
     final run = await openOver(tester);
     run.status.value = '클라우드에서 내려받는 중 · 3초';
+    run.waiting.complete();
 
-    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump();
     await tester.pump();
 
     expect(
@@ -128,7 +133,8 @@ void main() {
     // nothing has been applied, and abandoning leaves the app where it
     // was. The button only reports the press; the work is what ends.
     final run = await openOver(tester);
-    await tester.pump(const Duration(milliseconds: 250));
+    run.waiting.complete();
+    await tester.pump();
     await tester.pump();
 
     expect(run.cancelled(), isFalse);
