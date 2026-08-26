@@ -287,7 +287,10 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// covers — grown past the canvas when the cel has pasteboard tiles).
   /// Clones survive cache eviction (the cache may dispose its image at any
   /// time; a clone shares pixels with an independent lifetime).
-  final Map<BrushFrameKey, ({ui.Image source, ui.Image clone, Rect worldRect})>
+  final Map<
+    BrushFrameKey,
+    ({ui.Image source, ui.Image clone, Rect worldRect, int? revision})
+  >
   _images = {};
   bool _preparing = false;
   bool _rerunRequested = false;
@@ -306,6 +309,15 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// exactly as hot as it was: `null == null` keeps it skipped, and the
   /// moment a revision appears the mismatch retries it.
   final Map<BrushFrameKey, (int, int?)> _failedRevisions = {};
+
+  /// The cel revision a held image was captured at.
+  ///
+  /// ⛔It rides INSIDE the held record rather than in a map beside it. A
+  /// second map would need clearing at all four `_dropImage` call sites, and
+  /// 「지우는 곳을 하나 더 추가」 is not a fix — the two would drift the first
+  /// time someone added a fifth.
+  int? _revisionOf(BrushFrameKey key) =>
+      widget.imageCache.frameStore.frameOrNull(key)?.sourceRevision;
 
   /// What a failure is recorded AGAINST: the store's whole-content
   /// generation, then the cel's own revision.
@@ -486,7 +498,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
 
   void _dropImage(
     BrushFrameKey key,
-    ({ui.Image source, ui.Image clone, Rect worldRect}) held,
+    ({ui.Image source, ui.Image clone, Rect worldRect, int? revision}) held,
   ) {
     // A6: the pin travels with the clone — held pixels are declared
     // pixels, and the declaration ends exactly when the hold does.
@@ -552,6 +564,13 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       if (_shouldSkipFailed(layer.frameKey)) {
         continue;
       }
+      // 🚨READ BEFORE THE PREPARE. The stamp has to name the revision the
+      // picture was BUILT from, not the one standing when it finished — the
+      // async twin awaits at this exact spot, and an edit landing during
+      // that await would otherwise put a just-bumped revision on a picture
+      // rendered before it, which the cold-miss guard below would then
+      // never recognise as stale. Same order in both twins, one law.
+      final revision = _revisionOf(layer.frameKey);
       final LayerFrameImage? image;
       try {
         image = widget.imageCache.prepareSyncOrNull(
@@ -569,6 +588,28 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       // again and skips a cel that builds perfectly well.
       _failedRevisions.remove(layer.frameKey);
       if (image == null) {
+        // 🚨★★★A COLD MISS IS NOT A LICENCE TO PAINT THE OLD PICTURE.
+        //
+        // Keeping the held image is right for a LAYER SWITCH — that is what
+        // this sweep exists for, and the pixels have not changed, only the
+        // cache went cold. It is wrong for an EDIT: the cel's content moved
+        // on and what is still held is the drawing as it was BEFORE it.
+        //
+        // 유저 2026-08-27, iPhone: 「두번째 변형에서 화면 갱신(줌하거나 팬하거나
+        // 그런거)하기 전까지 이전 변형하기 전 그림이 남아있었음」 — and on
+        // Windows the same thing for exactly one frame, because a desktop
+        // produces the next frame immediately while an idle phone does not
+        // produce one at all until you touch the view. Two severities, one
+        // cause.
+        //
+        // `sourceRevision` already separates the two: `markCelEdited` bumps
+        // it on every surface write, a layer switch does not touch it. So a
+        // held image whose revision no longer matches is stale and goes; one
+        // that still matches stays, and the flicker-free switch is untouched.
+        final held = _images[layer.frameKey];
+        if (held != null && held.revision != revision) {
+          _dropImage(layer.frameKey, _images.remove(layer.frameKey)!);
+        }
         continue;
       }
       final held = _images[layer.frameKey];
@@ -579,6 +620,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           source: image.image,
           clone: image.image.clone(),
           worldRect: image.worldRect,
+          revision: revision,
         );
       }
     }
@@ -614,6 +656,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           if (_shouldSkipFailed(layer.frameKey)) {
             continue;
           }
+          // Read BEFORE the await — see the sync twin for why the order is
+          // the law and not a detail.
+          final revision = _revisionOf(layer.frameKey);
           final LayerFrameImage? image;
           try {
             image = await widget.imageCache.prepare(
@@ -652,6 +697,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
               source: image.image,
               clone: image.image.clone(),
               worldRect: image.worldRect,
+              revision: revision,
             );
             changed = true;
           }
