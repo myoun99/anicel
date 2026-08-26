@@ -194,7 +194,7 @@ mpoints-1-bezieraftery=0.000000
       expect(clip13.audioTracks, isEmpty);
     });
 
-    test('reads v11 files: bare SRAW/DBOD chunks, no folders', () {
+    test('reads v10 files: bare SRAW/DBOD chunks, no folders', () {
       final b = TvppBuilder();
       b.clipProperties('284');
       b.clipHeader(width: 128, height: 64);
@@ -214,8 +214,8 @@ mpoints-1-bezieraftery=0.000000
         TvppSlotKind.image,
       ]);
       expect(layer.slots[0].compressed, isFalse);
-      expect(layer.slots[0].v11WholeCanvas, isTrue);
-      expect(layer.slots[2].v11WholeCanvas, isFalse);
+      expect(layer.slots[0].v10WholeCanvas, isTrue);
+      expect(layer.slots[2].v10WholeCanvas, isFalse);
     });
 
     test('rejects bytes with no clip header', () {

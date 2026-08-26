@@ -137,7 +137,7 @@ void main() {
       );
     });
 
-    test('v11 bare records decode identically', () {
+    test('v10 bare records decode identically', () {
       final px = testPixels();
       expectDecodes(
         fileWith(dbodRecord(px, w, h), raw: true),

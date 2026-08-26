@@ -81,7 +81,10 @@ void main() {
     }
   });
 
-  test('EMS (tvp11): uncompressed wrapper decodes', () {
+  test('EMS (tvp10.0.16): uncompressed wrapper decodes', () {
+    // The folder says tvp11 but the file's own stamp says TVP Animation
+    // 10 Pro (10.0.16) — the bare-record wrapper is v10's; real v11
+    // already zlib-wraps like v12 (see the KG check below).
     const ems =
         'G:\\My Drive\\Creative\\Coding\\Anicel\\参考\\tvp_decode\\EMS11_tvp11\\EMS11_284.tvpp';
     if (!File(ems).existsSync()) {
@@ -110,5 +113,44 @@ void main() {
       }
     }
     expect(opaque, greaterThan(0));
+  });
+
+  test('KG (tvp11.0.9): the REAL v11 — already ZCHK-wrapped like v12', () {
+    const kg =
+        'G:\\My Drive\\Creative\\Coding\\Anicel\\参考\\tvp_decode\\KG07_131_tvp11\\KG_07_131.tvpp';
+    if (!File(kg).existsSync()) {
+      markTestSkipped('참고 파일 없음 — 로컬 전용 검증');
+      return;
+    }
+    final bytes = Uint8List.fromList(File(kg).readAsBytesSync());
+    final parsed = parseTvppStructure(bytes);
+    expect(parsed.warnings, isEmpty);
+    final clip = parsed.clips.single;
+    expect(clip.name, '131');
+    expect(clip.width, 2338);
+    expect(clip.height, 3308);
+    expect(clip.frameCount, 144);
+    expect(clip.layers, hasLength(23));
+
+    var sampled = 0;
+    for (final layer in clip.layers) {
+      for (final slot in layer.slots) {
+        if (slot.kind != TvppSlotKind.image || sampled >= 10) {
+          continue;
+        }
+        expect(slot.compressed, isTrue, reason: 'v11 wraps in ZCHK');
+        expect(
+          decodeTvppSlotRgba(
+            fileBytes: bytes,
+            slot: slot,
+            width: clip.width,
+            height: clip.height,
+          ),
+          isNotNull,
+        );
+        sampled++;
+      }
+    }
+    expect(sampled, 10);
   });
 }
