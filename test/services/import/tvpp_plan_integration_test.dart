@@ -1,13 +1,13 @@
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/import/tvp_json_parse.dart';
+import 'package:anicel/src/models/import/tvp_import_model.dart';
 import 'package:anicel/src/models/import/tvpp_convert.dart';
 import 'package:anicel/src/models/import/tvpp_parse.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
-import 'package:anicel/src/services/import/tvp_json_import_planner.dart';
+import 'package:anicel/src/services/import/tvp_import_planner.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// The .tvpp pipeline end to end WITHOUT pixels: parse-model conversion
@@ -99,12 +99,11 @@ void main() {
     );
 
     final conversion = convertTvppClip(clip, clipIndex: 0);
-    final plan = planTvpJsonImport(
+    final plan = planTvpImport(
       parsed: conversion.result,
       resolveFile: (key) => key,
       mint: mint(),
       cameraFrameSize: const CanvasSize(width: 960, height: 540),
-      names: null,
     );
 
     expect(plan.cut.name, 'cut12');
@@ -132,7 +131,7 @@ void main() {
   });
 
   test('a sound track becomes an SE row: reference linked, blockized', () {
-    final parsed = TvpJsonParseResult(
+    final parsed = TvpImportClip(
       versionMajor: 0,
       versionMinor: 0,
       clipName: 'cut',
@@ -161,12 +160,11 @@ void main() {
         ),
       ],
     );
-    final plan = planTvpJsonImport(
+    final plan = planTvpImport(
       parsed: parsed,
       resolveFile: (key) => key,
       mint: mint(),
       cameraFrameSize: const CanvasSize(width: 960, height: 540),
-      names: null,
     );
     final se = plan.cut.layers.singleWhere((l) => l.kind == LayerKind.se);
     expect(se.name, '12.mp4');

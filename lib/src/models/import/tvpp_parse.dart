@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'tvp_json_parse.dart';
+import 'tvp_import_model.dart';
 
 /// TVPaint's own project file (.tvpp), read directly — structure only.
 ///

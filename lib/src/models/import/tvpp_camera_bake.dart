@@ -1,4 +1,4 @@
-import 'tvp_json_parse.dart';
+import 'tvp_import_model.dart';
 import 'tvpp_parse.dart';
 
 /// Bakes a .tvpp camera's authored keys into per-frame poses — the

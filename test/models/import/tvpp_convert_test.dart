@@ -1,4 +1,4 @@
-import 'package:anicel/src/models/import/tvp_json_parse.dart';
+import 'package:anicel/src/models/import/tvp_import_model.dart';
 import 'package:anicel/src/models/import/tvpp_convert.dart';
 import 'package:anicel/src/models/import/tvpp_parse.dart';
 import 'package:flutter_test/flutter_test.dart';
