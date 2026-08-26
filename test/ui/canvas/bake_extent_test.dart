@@ -175,6 +175,7 @@ void main() {
           key: frameKey,
           canvasSize: canvasSize,
           quality: PlaybackQuality.full,
+          sourceEffects: const [],
         ),
       );
       await tester.pumpWidget(

@@ -17084,6 +17084,18 @@ class EditorSessionManager extends ChangeNotifier {
     toggleLayerOnionSkin(layer.id);
   }
 
+  /// Whose effect chain a ghost of [layer] wears: an ATTACH row wears its
+  /// BASE's (W5), everyone else their own.
+  ///
+  /// The same carrier rule the active-row node applies — named once so the
+  /// two cannot answer differently for the same row.
+  static Layer _onionFxCarrier(Layer layer, List<Layer> layers) {
+    if (!isAttachedLayer(layer)) {
+      return layer;
+    }
+    return attachedBaseOf(layer, layers) ?? layer;
+  }
+
   /// The ghost frames to composite at the playhead: every onion-enabled
   /// VISIBLE drawing layer contributes its plan (unique drawings, peg
   /// opacities, side tints) in layer-stack order.
@@ -17111,6 +17123,19 @@ class EditorSessionManager extends ChangeNotifier {
               frameKey: brushFrameKeyForCut(cut, layer.id, plan.frameId),
               opacity: plan.opacity,
               tint: plan.tint,
+              // ✅유저 2026-08-27 (I-8-Q5): a ghost shows the pixels the
+              // screen shows. It used to carry NO chain, which read as a
+              // design ("editing scaffolding") but was really the Colors
+              // tint owning the paint's one color-filter slot — the fold in
+              // `resolveCompositeEffectPaint` retired that constraint.
+              //
+              // Sampled at the GHOST's own frame, and read off the attach
+              // BASE where there is one — an attach row wears its base's fx
+              // (W5), the same carrier rule the active-row node uses.
+              effects: resolveLayerEffectsAt(
+                effects: _onionFxCarrier(layer, cut.layers).effects,
+                frameIndex: plan.frameIndex,
+              ),
             ),
     ];
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -33,6 +34,7 @@ class _ThrowingCache extends LayerFrameImageCache {
     required BrushFrameKey key,
     required CanvasSize canvasSize,
     required PlaybackQuality quality,
+    required List<ResolvedLayerEffect> sourceEffects,
   }) {
     syncAttempts.add(key.frameId);
     if (failing.contains(key.frameId)) {
@@ -48,6 +50,7 @@ class _ThrowingCache extends LayerFrameImageCache {
     required BrushFrameKey key,
     required CanvasSize canvasSize,
     required PlaybackQuality quality,
+    required List<ResolvedLayerEffect> sourceEffects,
     bool Function()? shouldAbort,
   }) async => null;
 }

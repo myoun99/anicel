@@ -90,11 +90,13 @@ void main() {
           key: keyFor('frame-a'),
           canvasSize: canvasSize,
           quality: PlaybackQuality.full,
+          sourceEffects: const [],
         );
         await cache.prepare(
           key: keyFor('frame-b'),
           canvasSize: canvasSize,
           quality: PlaybackQuality.full,
+          sourceEffects: const [],
         );
 
         cache.retainPin(keyFor('frame-a'), PlaybackQuality.full);
@@ -105,6 +107,7 @@ void main() {
             keyFor('frame-a'),
             PlaybackQuality.full,
             canvasSize: canvasSize,
+            sourceEffects: const [],
           ),
           isNotNull,
           reason: 'the pinned slot is on screen — eviction must refuse it',
@@ -114,6 +117,7 @@ void main() {
             keyFor('frame-b'),
             PlaybackQuality.full,
             canvasSize: canvasSize,
+            sourceEffects: const [],
           ),
           isNull,
           reason: 'the unpinned slot goes as before',
@@ -132,6 +136,7 @@ void main() {
             keyFor('frame-a'),
             PlaybackQuality.full,
             canvasSize: canvasSize,
+            sourceEffects: const [],
           ),
           isNull,
           reason: 'released means evictable again',
@@ -267,6 +272,7 @@ void main() {
           key: keyFor('frame-a'),
           canvasSize: canvasSize,
           quality: PlaybackQuality.full,
+          sourceEffects: const [],
         ),
       );
 
@@ -322,11 +328,13 @@ void main() {
           key: keyFor('frame-a'),
           canvasSize: canvasSize,
           quality: PlaybackQuality.full,
+          sourceEffects: const [],
         );
         await newCache.prepare(
           key: keyFor('frame-a'),
           canvasSize: canvasSize,
           quality: PlaybackQuality.full,
+          sourceEffects: const [],
         );
       });
 

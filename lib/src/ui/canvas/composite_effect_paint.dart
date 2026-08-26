@@ -51,10 +51,12 @@ class CompositeEffectPaint {
   /// Writes the plan onto [paint] — the ONLY way a route should apply
   /// effects.
   ///
-  /// [paint]'s existing `colorFilter` (the onion-skin tint) is never
-  /// overwritten: onion ghosts are editing scaffolding and deliberately
-  /// carry no effects, so the two can never both be set. The assert makes
-  /// that a test failure rather than a look nobody can explain.
+  /// [paint] must arrive with NO `colorFilter` of its own. It once arrived
+  /// carrying the onion tint, and that is exactly what this class now takes
+  /// over ([resolveCompositeEffectPaint]'s `tint`) — the slot holds one
+  /// filter, so anything writing it beforehand silently decided the ghost
+  /// could not also wear its row's chain. The assert makes a second writer
+  /// a test failure rather than a look nobody can explain.
   void applyTo(ui.Paint paint) {
     if (isEmpty) {
       return;
@@ -155,11 +157,39 @@ List<double>? resolveColorMatrixIgnoringSpatial(
 /// show a double-strength blur. Routes that draw under a scaled CANVAS
 /// TRANSFORM (the editing stack, the camera projection) leave it 1 — Skia
 /// maps the sigma through the CTM for them.
+/// The onion-skin Colors tint as a color matrix: every pixel takes the
+/// tint's RGB and keeps only its own alpha (scaled by the tint's).
+///
+/// 🚨THIS EXISTS SO THE GHOST CAN HAVE BOTH. The tint used to be written
+/// straight onto `Paint.colorFilter`, which is ONE slot — so a ghost could
+/// wear the tint or the row's effects, never both, and the chain was
+/// dropped with a comment calling ghosts "editing scaffolding". That was
+/// the slot talking, not a decision. ✅유저 2026-08-27 (I-8-Q5) chose "the
+/// ghost shows the pixels the screen shows", and a matrix composes with the
+/// color effects for free — only a blur still needs its own buffer.
+///
+/// Rows are `ColorFilter.mode(tint, srcIn)` written out: out.rgb = tint.rgb,
+/// out.a = tint.a × in.a. The translation column is 0…255, per
+/// `ColorFilter.matrix`'s contract.
+List<double> onionTintColorMatrix(int argb) {
+  final alpha = ((argb >> 24) & 0xFF) / 255.0;
+  final red = ((argb >> 16) & 0xFF).toDouble();
+  final green = ((argb >> 8) & 0xFF).toDouble();
+  final blue = (argb & 0xFF).toDouble();
+  return <double>[
+    0, 0, 0, 0, red, //
+    0, 0, 0, 0, green,
+    0, 0, 0, 0, blue,
+    0, 0, 0, alpha, 0,
+  ];
+}
+
 CompositeEffectPaint resolveCompositeEffectPaint(
   List<ResolvedLayerEffect> effects, {
   double rasterScale = 1,
+  int? tint,
 }) {
-  if (effects.isEmpty) {
+  if (effects.isEmpty && tint == null) {
     return CompositeEffectPaint.none;
   }
 
@@ -229,6 +259,15 @@ CompositeEffectPaint resolveCompositeEffectPaint(
             : ui.ImageFilter.compose(outer: blur, inner: chain!);
         outset += blurSpreadForRadius(radiusX > radiusY ? radiusX : radiusY);
     }
+  }
+
+  if (tint != null) {
+    // LAST, over the finished pixel: the ghost is a picture of the row as
+    // the screen shows it, converted to the peg's colour.
+    final tintMatrix = onionTintColorMatrix(tint);
+    pendingColor = pendingColor == null
+        ? tintMatrix
+        : composeColorMatrices(tintMatrix, pendingColor!);
   }
 
   if (chain == null) {

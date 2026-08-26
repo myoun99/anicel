@@ -219,6 +219,7 @@ void main() {
         key: frameKey(cut(), layerId, frameId),
         canvasSize: canvasSize,
         quality: PlaybackQuality.full,
+        sourceEffects: const [],
       ),
     );
     await tester.pumpWidget(

@@ -10,11 +10,21 @@ import '../models/timeline_exposure.dart';
 class OnionSkinFramePlan {
   const OnionSkinFramePlan({
     required this.frameId,
+    required this.frameIndex,
     required this.opacity,
     this.tint,
   });
 
   final FrameId frameId;
+
+  /// The sheet index this ghost's drawing is exposed at.
+  ///
+  /// ★Carried so the ghost's EFFECT chain samples at its OWN time. Read at
+  /// the playhead instead, a keyframed brightness would paint a past
+  /// drawing with the present frame's value — a ghost is a picture of THEN
+  /// and has to answer with then's numbers.
+  final int frameIndex;
+
   final double opacity;
 
   /// ARGB tint (Colors mode); null shows the artwork's own colors.
@@ -66,6 +76,7 @@ List<OnionSkinFramePlan> planOnionSkin({
       plans.add(
         OnionSkinFramePlan(
           frameId: frameId,
+          frameIndex: index,
           opacity: pegs[peg].opacity,
           tint: settings.mode == OnionSkinMode.colors ? tint : null,
         ),
@@ -106,6 +117,7 @@ List<OnionSkinFramePlan> planOnionSkin({
         plans.add(
           OnionSkinFramePlan(
             frameId: blockFrameId,
+            frameIndex: blockStart,
             opacity: peg.opacity,
             tint: settings.mode == OnionSkinMode.colors ? tint : null,
           ),

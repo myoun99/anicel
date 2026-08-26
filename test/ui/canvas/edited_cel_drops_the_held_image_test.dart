@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -218,6 +219,7 @@ void main() {
         key: key,
         canvasSize: canvasSize,
         quality: PlaybackQuality.full,
+        sourceEffects: const [],
       ),
     );
     expect(prepared, isNotNull);
@@ -358,6 +360,7 @@ class _InFlightCache extends LayerFrameImageCache {
     required BrushFrameKey key,
     required CanvasSize canvasSize,
     required PlaybackQuality quality,
+    required List<ResolvedLayerEffect> sourceEffects,
     bool Function()? shouldAbort,
   }) {
     if (_handed) return Completer<LayerFrameImage?>().future;
@@ -370,6 +373,7 @@ class _InFlightCache extends LayerFrameImageCache {
     required BrushFrameKey key,
     required CanvasSize canvasSize,
     required PlaybackQuality quality,
+    required List<ResolvedLayerEffect> sourceEffects,
   }) => null;
 }
 
@@ -390,5 +394,6 @@ class _SyncColdCache extends LayerFrameImageCache {
     required BrushFrameKey key,
     required CanvasSize canvasSize,
     required PlaybackQuality quality,
+    required List<ResolvedLayerEffect> sourceEffects,
   }) => null;
 }
