@@ -141,7 +141,9 @@ class EditorTopStrip extends StatelessWidget {
     final ProjectPick? pick;
     if (anicelOpenFilePicker != null) {
       final injected = await anicelOpenFilePicker!();
-      pick = injected == null ? null : (path: injected, folderBookmark: null);
+      pick = injected == null
+          ? null
+          : (path: injected, folderBookmark: null, placed: false);
     } else {
       pick = await pickProjectToOpen(context);
     }
@@ -500,7 +502,10 @@ class EditorTopStrip extends StatelessWidget {
     if (!context.mounted) {
       return;
     }
-    await _openWithRecovery(context, (path: path, folderBookmark: bookmark));
+    await _openWithRecovery(
+      context,
+      (path: path, folderBookmark: bookmark, placed: false),
+    );
   }
 
   /// Asks for the project a remembered row has lost track of — with the
@@ -526,7 +531,7 @@ class EditorTopStrip extends StatelessWidget {
     if (path == null) {
       return null;
     }
-    return (path: path, folderBookmark: grant!.bookmark);
+    return (path: path, folderBookmark: grant!.bookmark, placed: false);
   }
 
   /// The PROJECT popover: the file itself, and the two doors it has to the
@@ -1278,7 +1283,12 @@ class _StripPopoverButton extends StatelessWidget {
 /// worthless without it on Apple platforms — a stored path outside the app
 /// container is refused after relaunch unless the app can produce the
 /// security scope it was granted.
-typedef ProjectPick = ({String path, String? folderBookmark});
+///
+/// [placed] says the archive is ALREADY there: the scoped picker moves a
+/// file the app wrote rather than handing back an empty destination, so
+/// the bytes at [path] are the ones just serialized and writing them a
+/// second time is at best waste — see [promptSaveProjectAs].
+typedef ProjectPick = ({String path, String? folderBookmark, bool placed});
 
 /// Open: the project FILE itself, on every platform.
 ///
@@ -1319,7 +1329,7 @@ Future<ProjectPick?> pickProjectToOpen(BuildContext context) async {
   if (path == null) {
     return null;
   }
-  return (path: path, folderBookmark: grant!.bookmark);
+  return (path: path, folderBookmark: grant!.bookmark, placed: false);
 }
 
 /// Save As.
@@ -1333,24 +1343,21 @@ Future<ProjectPick?> pickProjectToOpen(BuildContext context) async {
 /// volumes) and how a Save As pointed at the LIVE project replaced it with
 /// 22 bytes before the save could read its own cels.
 ///
-/// Scoped platforms (iOS/Android — no save panel exists): a staged file is
-/// handed to the export picker, which MOVES it and reports where it
-/// landed. 🚨The staged file is a COPY OF THE LIVE ARCHIVE when one
-/// exists, and [stageArchive]'s freshly written archive for a never-saved
-/// project. The picker moves its source over whatever the user points it
-/// at, so a decoy placeholder made "replace an existing project" destroy
-/// that project the moment the picker confirmed — and a 22-byte
-/// placeholder for the never-saved case stranded an unopenable husk
-/// whenever the provider refused the in-place save meant to fill it
-/// (실측 iPhone+Drive, 08-26). Whatever the picker places is a COMPLETE
-/// project now, both branches, and the save landing on top is an
-/// improvement rather than a rescue.
+/// Scoped platforms (iOS/Android — no save panel exists): [stageArchive]
+/// writes the whole live session into the system temp and the export
+/// picker MOVES that file to wherever the user points it, reporting where
+/// it landed. The picker moves its source over whatever it is pointed at,
+/// so a decoy placeholder made "replace an existing project" destroy that
+/// project the moment the picker confirmed, and a 22-byte placeholder
+/// stranded an unopenable husk whenever the provider refused the in-place
+/// save meant to fill it (실측 iPhone+Drive, 08-26). What the picker
+/// places is a COMPLETE, CURRENT project — which is why the caller adopts
+/// it rather than writing over it (`placed: true`).
 @visibleForTesting
 Future<ProjectPick?> pickProjectSaveTarget(
   BuildContext context,
   String suggestedName,
   String initialDirectory, {
-  String? currentProjectPath,
   required Future<void> Function(String stagingPath) stageArchive,
 }) async {
   var name = suggestedName;
@@ -1360,7 +1367,7 @@ Future<ProjectPick?> pickProjectSaveTarget(
   if (!FolderPicker.grantsAreScoped) {
     return _pickDesktopSaveTarget(context, name, initialDirectory);
   }
-  return _pickScopedSaveTarget(context, name, currentProjectPath, stageArchive);
+  return _pickScopedSaveTarget(context, name, stageArchive);
 }
 
 Future<ProjectPick?> _pickDesktopSaveTarget(
@@ -1381,7 +1388,7 @@ Future<ProjectPick?> _pickDesktopSaveTarget(
     return null;
   }
   if (picked.toLowerCase().endsWith(anicelProjectSuffix)) {
-    return (path: picked, folderBookmark: grant!.bookmark);
+    return (path: picked, folderBookmark: grant!.bookmark, placed: false);
   }
   // F-14: the suffix is the pick's answer. But appending it claims a
   // DIFFERENT path than the one the dialog's replace prompt asked about —
@@ -1419,13 +1426,12 @@ Future<ProjectPick?> _pickDesktopSaveTarget(
       return null;
     }
   }
-  return (path: suffixed, folderBookmark: grant!.bookmark);
+  return (path: suffixed, folderBookmark: grant!.bookmark, placed: false);
 }
 
 Future<ProjectPick?> _pickScopedSaveTarget(
   BuildContext context,
   String name,
-  String? currentProjectPath,
   Future<void> Function(String stagingPath) stageArchive,
 ) async {
   // Its own directory so the cleanup below cannot reach anything else.
@@ -1434,20 +1440,21 @@ Future<ProjectPick?> _pickScopedSaveTarget(
   try {
     stagingDirectory = Directory.systemTemp.createTempSync('anicel_save_');
     staged = File('${stagingDirectory.path}/$name');
-    if (currentProjectPath != null && File(currentProjectPath).existsSync()) {
-      // The live archive, whole. ASYNC — this can be gigabytes and must
-      // not stop the UI isolate; a test that drives this branch runs under
-      // `tester.runAsync` (the fake clock never completes real dart:io).
-      await File(currentProjectPath).copy(staged.path);
-    } else {
-      // A never-saved project has no archive to copy, so one is WRITTEN —
-      // whole, from the live session. It used to be a 22-byte empty-zip
-      // placeholder here, on the theory that the save landing after the
-      // move would fill it; a provider that refuses in-place writes
-      // (실측 iPhone+Drive, 08-26) turned that theory into an unopenable
-      // husk sitting exactly where the user meant to put their work.
-      await stageArchive(staged.path);
-    }
+    // WRITTEN, whole, from the live session — never copied from the file
+    // being left behind. It used to be a 22-byte empty-zip placeholder,
+    // on the theory that the save landing after the move would fill it;
+    // a provider that refuses in-place writes (실측 iPhone+Drive, 08-26)
+    // turned that theory into an unopenable husk sitting exactly where
+    // the user meant to put their work.
+    //
+    // 🚨And copying the LIVE ARCHIVE — the shape in between — was only
+    // ever correct because that same second write followed it: the
+    // archive on disk is the last SAVED state, so a Save As from a dirty
+    // session staged a file that was already out of date. The second
+    // write is gone now (the caller adopts what the picker placed), so
+    // what is placed has to be the current state, and only a fresh write
+    // is that.
+    await stageArchive(staged.path);
   } on Object catch (error) {
     // A staging failure used to return null silently — the Save As button
     // read as dead, and on the exit path it silently cancelled the close.
@@ -1485,7 +1492,9 @@ Future<ProjectPick?> _pickScopedSaveTarget(
   // refused and the bookmark named a file that no longer existed. A
   // bare-named project is reachable (recents, and the OS keeps the
   // extension in its own UI); an unsaveable one is not.
-  return (path: placed, folderBookmark: grant!.bookmark);
+  // `placed: true` — the archive the picker MOVED is the one this session
+  // just serialized, so the caller adopts it instead of writing it again.
+  return (path: placed, folderBookmark: grant!.bookmark, placed: true);
 }
 
 /// Removes the staging directory. A leak here must never fail a save — or a
@@ -1639,6 +1648,10 @@ Future<void> promptSaveProjectAs(
     return;
   }
   final ProjectPick? pick;
+  // The media the staged archive stored, kept from the staging call to the
+  // adoption below — the two are one decision ("this file is the project
+  // now") split across the picker that sits between them.
+  Map<String, String>? staged;
   if (savePicker != null) {
     final injected = await savePicker(suggested);
     // The injected picker places no staged file, so it answers the suffix
@@ -1651,18 +1664,16 @@ Future<void> promptSaveProjectAs(
                 ? injected
                 : '$injected$anicelProjectSuffix',
             folderBookmark: null,
+            placed: false,
           );
   } else {
     pick = await pickProjectSaveTarget(
       context,
       suggested,
       initialDirectory,
-      // What a scoped platform stages: the live archive, so the export
-      // picker never moves a decoy over a real project.
-      currentProjectPath: session.projectFilePath,
-      // …and for a NEVER-saved project, a full archive written on the
-      // spot — behind the same progress window a save wears, because a
-      // long-drawn session serializing whole is a save-sized wait and a
+      // What a scoped platform stages: the whole live session, written on
+      // the spot — behind the same progress window a save wears, because
+      // a long-drawn session serializing whole is a save-sized wait and a
       // frozen screen before a picker reads as a hang.
       stageArchive: (stagingPath) => runWithAppProgress<void>(
         context: context,
@@ -1671,8 +1682,12 @@ Future<void> promptSaveProjectAs(
         runningLabel: AppText.strings.saveProgressRunning,
         doneLabel: AppText.strings.saveProgressDone,
         windowKey: const ValueKey<String>('save-progress-dialog'),
-        task: (report) =>
-            session.writeArchiveCopy(stagingPath, onProgress: report),
+        task: (report) async {
+          staged = await session.writeArchiveCopy(
+            stagingPath,
+            onProgress: report,
+          );
+        },
       ),
     );
   }
@@ -1682,6 +1697,22 @@ Future<void> promptSaveProjectAs(
   // F-14: the suffix is the PICK's answer now — it is the only place that
   // can also answer for the placeholder it left at the un-suffixed name.
   final path = pick.path;
+  final written = staged;
+  if (pick.placed && written != null) {
+    // 🚨NO SECOND WRITE. The picker MOVED the archive this session just
+    // serialized, so the bytes at [path] are already current — the picker
+    // is modal, nothing could have edited them in between. Writing them
+    // again was a second full serialization AND the thing that failed:
+    // a destination the picker moved a file INTO is not one the app may
+    // write to afterwards, and Save As died with 「the location refused
+    // both a direct write and a coordinated replace」 on a path it had
+    // just successfully filled (실기 08-27, iPhone).
+    session.adoptPlacedArchive(path, mediaEntryNames: written);
+    recordRecentProject(
+      RecentProject(path: path, folderBookmark: pick.folderBookmark),
+    );
+    return;
+  }
   if (await saveProjectShowingProgress(context, session, path)) {
     recordRecentProject(
       RecentProject(path: path, folderBookmark: pick.folderBookmark),

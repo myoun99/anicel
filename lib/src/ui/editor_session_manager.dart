@@ -17306,7 +17306,9 @@ class EditorSessionManager extends ChangeNotifier {
   /// EMPTY placeholder — an unopenable husk where the user meant to put
   /// their project. A complete archive staged up front costs the same
   /// move and can never strand a husk.
-  Future<void> writeArchiveCopy(
+  /// Returns the media entry names the archive was written with, which is
+  /// what [adoptPlacedArchive] needs if this copy becomes the project.
+  Future<Map<String, String>> writeArchiveCopy(
     String path, {
     void Function(double)? onProgress,
   }) async {
@@ -17327,6 +17329,44 @@ class EditorSessionManager extends ChangeNotifier {
       onProgress: onProgress,
       adoptRefs: false,
     );
+    return mediaEntryNamesFor(mediaToStore.keys);
+  }
+
+  /// The archive at [placedPath] IS this project now — no second write.
+  ///
+  /// iOS has no save panel: the export picker MOVES a file the app wrote
+  /// and reports where it landed, so by the time Save As knows the
+  /// destination, [writeArchiveCopy]'s bytes are already sitting there and
+  /// the picker's modality means nothing could have edited them since.
+  ///
+  /// 🚨Saving AGAIN over that path was the old shape and it is not merely
+  /// wasteful. A destination the picker moved a file INTO is not one the
+  /// app may keep writing to: Save As died with 「the location refused
+  /// both a direct write and a coordinated replace」 on a path it had just
+  /// successfully filled (실기 08-27, iPhone). Adoption cannot be refused,
+  /// because there is nothing left to write.
+  ///
+  /// ⚠️Cel refs are NOT repointed into the placed file. [writeArchiveCopy]
+  /// writes with `adoptRefs: false` precisely because a file about to be
+  /// MOVED cannot back a ref, and the destination may be somewhere the app
+  /// cannot read back on demand either. The pixels stay where they were —
+  /// in RAM — which is what a never-saved session was already doing.
+  void adoptPlacedArchive(
+    String placedPath, {
+    required Map<String, String> mediaEntryNames,
+  }) {
+    final previousPath = _projectFilePath;
+    _mediaEntryNames = mediaEntryNames;
+    _projectFilePath = placedPath;
+    _hasUnsavedChanges = false;
+    _completedSaveGeneration += 1;
+    _recoveredFromSidecar = null;
+    _discardedUnsavedWork = false;
+    if (previousPath != null) {
+      ProjectAutosaveService.retireSidecarsFor(previousPath);
+    }
+    ProjectAutosaveService.retireSidecarsFor(placedPath);
+    notifyListeners();
   }
 
   /// The provider-refusal fallback: a complete archive written into the
