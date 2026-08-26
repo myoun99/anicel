@@ -53,7 +53,17 @@ runs:
         # hence the explicit sort (size descending, then path) under
         # LC_ALL=C. If two jobs disagreed, files would silently run twice
         # or not at all.
-        find test -name '*_test.dart' -printf '%s\t%p\n' \
+        # Batched wc -c rather than find -printf: -printf is GNU find's
+        # own, and the macOS suite shards (apple.yml) run on BSD find,
+        # which has no such option. One xargs batch keeps this at three
+        # processes — a per-file loop measured 2+ minutes on a Windows
+        # runner's fork costs. The awk drops xargs' per-batch "total"
+        # rows and BSD wc's column padding while keeping any spaces in
+        # the path itself.
+        find test -name '*_test.dart' -print0 \
+          | xargs -0 wc -c \
+          | awk '{sz=$1; $1=""; sub(/^ /, "");
+                  if ($0 != "total") printf "%s\t%s\n", sz, $0}' \
           | LC_ALL=C sort -k1,1nr -k2,2 > "$RUNNER_TEMP/weighted.txt"
         total_files=$(wc -l < "$RUNNER_TEMP/weighted.txt")
         # `want`, not `index` — index() is a gawk builtin and awk dies with
@@ -107,7 +117,10 @@ runs:
     # branch will then restore from. The run id keeps the seed moving
     # forward — restore-keys above matches the newest one with the same
     # prefix, so it is always a recent master rather than a frozen one.
-    - if: github.event_name == 'push' && inputs.index == '0'
+    # Schedule counts as master here too: the macOS suite only ever runs
+    # on schedule/dispatch, and without its own seed those shards would
+    # compile cold every night.
+    - if: (github.event_name == 'push' || github.event_name == 'schedule') && inputs.index == '0'
       uses: actions/cache/save@v4
       with:
         path: build/test_cache
