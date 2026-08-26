@@ -7662,6 +7662,16 @@ class EditorSessionManager extends ChangeNotifier {
             : defaultProjectCameraSize;
     final mint = _importIdMint();
     final warnings = [...parsed.warnings];
+    if (source.staged) {
+      // The last resort fired. Said out loud on purpose (유저 2026-08-27:
+      // 「최후 수단이 발동됐다는 걸 표시해줬으면」): the wait is supposed to
+      // make this road unreachable, so a build that still takes it should
+      // be visible rather than quietly slower — and if it never appears
+      // in the field, the road comes out.
+      warnings.add(
+        '제자리에서 읽지 못해 임시 사본으로 열었습니다 — 이 문구가 보이면 알려주세요.',
+      );
+    }
     final plans = <(TvpImportPlan, Map<String, TvppSlot>)>[];
     for (var c = 0; c < parsed.clips.length; c++) {
       final conversion = convertTvppClip(parsed.clips[c], clipIndex: c);

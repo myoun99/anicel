@@ -124,6 +124,9 @@ final class PathGrantHandler {
         sourcePath: arguments?["sourcePath"] as? String,
         destinationPath: arguments?["destinationPath"] as? String,
         result: result)
+    case "requestFileDownload":
+      PathGrantHandler.requestFileDownload(
+        sourcePath: arguments?["sourcePath"] as? String, result: result)
     default:
       // Only the two folder-grant methods live here. The channel's other
       // methods are mobile-only on the Dart side — `ensureInitialized` early
@@ -374,6 +377,37 @@ final class PathGrantHandler {
   /// placeholder, and a plain read of one fails even inside an open
   /// security scope. Coordinated reading tells the provider to download;
   /// the bytes are staged into [destinationPath] for Dart to read.
+  /// Asks the provider to bring a file's bytes down, and COPIES NOTHING.
+  ///
+  /// 유저 2026-08-27: 「사본은 왠만하면 만들고싶지않아」. The request used
+  /// to live inside [readFileCoordinated], which meant the only way to
+  /// trigger a download was to stage a second copy of a file the cloud
+  /// client is already keeping locally — the same bytes twice, and a
+  /// temp file whose lifetime nobody owned. Asked on its own, the open
+  /// can simply WAIT for the item the user picked and then read it where
+  /// it lies.
+  ///
+  /// Best-effort by design: this is the documented request for iCloud and
+  /// File Provider items and it throws for a plain local file, where
+  /// there was nothing to fetch in the first place. Either way the answer
+  /// is the same — ask, then let the caller's own reads decide when the
+  /// file is ready, which is the one signal every platform agrees on.
+  static func requestFileDownload(
+    sourcePath: String?, result: @escaping FlutterResult
+  ) {
+    guard let sourcePath else {
+      result(["status": "unavailable"])
+      return
+    }
+    DispatchQueue.global(qos: .userInitiated).async {
+      let source = URL(fileURLWithPath: sourcePath)
+      try? FileManager.default.startDownloadingUbiquitousItem(at: source)
+      DispatchQueue.main.async {
+        result(["status": "granted", "items": [["path": sourcePath]]])
+      }
+    }
+  }
+
   static func readFileCoordinated(
     sourcePath: String?, destinationPath: String?,
     result: @escaping FlutterResult

@@ -187,6 +187,10 @@ class EditorTopStrip extends StatelessWidget {
           task: (report) =>
               session.openTvppAsProject(tvppPath: path, onProgress: report),
         );
+      } on MaterializeCancelled {
+        // Not a failure: the user stopped waiting for the file to arrive
+        // and nothing was applied. The door closes without a word.
+        return;
       } on FileSystemException {
         // Access, not format — the same file opens once it is readable
         // (a cloud placeholder mid-download, a provider signed out).
@@ -316,7 +320,29 @@ class EditorTopStrip extends StatelessWidget {
         if (source.staged) {
           openPath = source.path;
           recoverAs = path;
+          if (!context.mounted) {
+            return;
+          }
+          // Said out loud on purpose (유저 2026-08-27): the wait is meant
+          // to make this road unreachable, so a build that still takes it
+          // must be visible rather than quietly slower. A copy also means
+          // every cel ref points into a temp file for the session — the
+          // one case where the user deserves to know before they draw.
+          await showAppNotice(
+            context,
+            windowKey: const ValueKey<String>('opened-from-staged-copy'),
+            title: AppText.strings.commonNotice,
+            message:
+                '제자리에서 읽지 못해 임시 사본으로 열었습니다 — '
+                '이 문구가 보이면 알려주세요.',
+          );
+          if (!context.mounted) {
+            return;
+          }
         }
+      } on MaterializeCancelled {
+        // Not a failure: the user stopped waiting, nothing was applied.
+        return;
       } on FileSystemException {
         if (context.mounted) {
           _showFileError(
