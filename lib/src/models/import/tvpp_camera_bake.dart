@@ -7,9 +7,9 @@ import 'tvpp_parse.dart';
 /// `positions` array TVPaint's JSON export ships ready-made and the
 /// project file does not.
 ///
-/// The model was solved against SIX of TVPaint's own bakes (SKK plus the
-/// five PROFILE_CAL differential exports of 2026-08-26; oracle runner:
-/// `tvpp_camera_oracle_check.dart`):
+/// The model was solved against EIGHT of TVPaint's own bakes (SKK plus
+/// the seven PROFILE_CAL differential exports of 2026-08-26; oracle
+/// runner: `tvpp_camera_oracle_check.dart`):
 ///
 /// * **One global time warp for the whole path.** With L = the span from
 ///   the first key's instant to the last key's, frame k maps to path
@@ -33,11 +33,10 @@ import 'tvpp_parse.dart';
 ///   flatlines there. Control-point recovery from the bake returned the
 ///   stored handle (+0.250, +0.250) to three decimals.
 ///
-/// ⚠️One older evaluator remains unmatched: SKK's authored profile says
-/// `mode=1` (these files write `mode=4`) and no reading of its stored
-/// handles reproduces its bake below ~1% of the travel. The oracle check
-/// pins that ceiling separately; everything mode-4 lands at TVPaint's
-/// own solver noise (~0.01px).
+/// A profile's `mode` is the graph's カーブタイプ — see
+/// [TvppCameraProfile.mode] for the 線形/スプライン split and the one
+/// remaining outlier (SKK). Everything else lands at TVPaint's own
+/// solver noise.
 List<TvpCameraPose> bakeTvppCamera(
   List<TvppCameraPoint> points,
   TvppCameraChannels channels, {
