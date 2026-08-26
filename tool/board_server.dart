@@ -627,6 +627,22 @@ List<_Entry> _readRecords(File file) {
     stage('${json['said'] ?? ''}'.trim(), '유저 메모', byUser: true);
     stage('${json['note'] ?? ''}'.trim(), '작업 기록');
     stage('${json['think'] ?? ''}'.trim(), 'AI 판단');
+    // 🚨★★★남은 것 IS A STAGE, not a banner recomputed from the field (유저
+    // 2026-08-26: 「남은것도 하나의 공정흐름중 하나고 그렇단건 기록해야할거란
+    // 거야. 그러니 그 다음 공정 들어왔다고 없애지말고 남기는식으로」).
+    //
+    // The first cut synthesised one row from the last-wins `rest`, so writing
+    // a shorter list next week **erased the longer one** — and the shrinking
+    // of that list is exactly the thing worth being able to read. Each write
+    // now stands where it was written; the field only answers 「is there still
+    // something left RIGHT NOW」, which is what decides the section.
+    //
+    // ⚠️Clearing (`rest: ""`) writes no stage, deliberately: nothing was said,
+    // and the correction that goes with it belongs in a note of its own.
+    final leftover = '${json['rest'] ?? ''}'.trim();
+    if (leftover.isNotEmpty && !e.log.any((l) => l.text == leftover)) {
+      e.log.add(_Log(ts, '남은 것', leftover));
+    }
     // A bare `{"id":…, "pr":N}` with nothing written still happened, and a 구현
     // with no story is better than a 구현 that vanishes.
     if (prLeft != null) {
@@ -1775,12 +1791,19 @@ String _story(_Entry e) {
     final flat = entry.text.replaceAll('\n', ' ');
     final peek = flat.length > 44 ? '${flat.substring(0, 44)}…' : flat;
     final mine = _stageName(e, i);
+    // 🚨Only the LIVE 남은 것 is loud. Earlier ones are history — a list that
+    // has since got shorter — and shouting every one of them would drown the
+    // one that is actually still owed. Live means: the card still has
+    // leftovers, and these are them.
+    final leftover = mine == '남은 것';
+    final live = leftover && e.rest == entry.text;
     // ⚠️`open` is an ATTRIBUTE, not a class. Written inside the class string
     // it renders as `class="lg open"` — valid HTML, silently folded, and 68
     // stages that were meant to stand open did not.
     b.writeln('<details class="lg'
-        '${entry.byUser || mine.startsWith('유저') ? ' says' : ''}"'
-        '${newest ? ' open' : ''}>');
+        '${entry.byUser || mine.startsWith('유저') ? ' says' : ''}'
+        '${live ? ' todo' : ''}${leftover && !live ? ' done' : ''}"'
+        '${newest || live ? ' open' : ''}>');
     b.writeln('<summary><span class="lgk">${_esc(mine)}</span>'
         '<span class="lgp">${_esc(peek)}</span>'
         '${entry.pr == null ? '' : '<span class="chip ok">#${entry.pr}</span>'}'
@@ -1791,22 +1814,6 @@ String _story(_Entry e) {
           'href="https://github.com/$_repo/pull/${entry.pr}">'
           'PR #${entry.pr} 열기 →</a></p>');
     }
-    b.writeln('</details>');
-  }
-  // 🚨남은 것 is the LAST stage, not a banner above everything (유저
-  // 2026-08-26: 「남은것항목은 젤 위에있는데 그게아니라 타임라인으로 흐르는방식
-  // 유지해야지」). It is where the card has got to — the next thing that will
-  // happen to it — so it reads in sequence with everything that already has.
-  //
-  // ⚠️It stays OPEN and stays loud (「중요한건 여전하니까 강조표시하는건 그대로
-  // 채용」): it is the reason the card is not in 확인할 것, and a fold would
-  // hide exactly that.
-  if (e.rest.isNotEmpty) {
-    b.writeln('<details class="lg todo" open>');
-    b.writeln('<summary><span class="lgk">남은 것</span>'
-        '<span class="lgp">${_esc(e.rest.length > 44 ? '${e.rest.substring(0, 44)}…' : e.rest)}'
-        '</span></summary>');
-    b.writeln('<p class="d">${_esc(e.rest)}</p>');
     b.writeln('</details>');
   }
   return b.toString();
@@ -2203,6 +2210,9 @@ white-space:nowrap;flex:1;min-width:0}
    READ before the work, not shouted during it. */
 .lg.todo{border-left-color:var(--run)}
 .lg.todo>summary>.lgk{color:var(--run);font-weight:700}
+/* A 남은 것 that has since been superseded: still in the timeline, because
+   the list getting shorter is the story, but no longer shouting. */
+.lg.done>summary>.lgk{color:var(--ink3);text-decoration:line-through}
 .lg.care{border-left-color:var(--line2)}
 .lg.care>summary>.lgk{color:var(--ink3)}
 .lg.says{border-left-color:var(--run)}
