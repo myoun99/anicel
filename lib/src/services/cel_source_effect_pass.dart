@@ -109,10 +109,7 @@ class CelColorKey {
   /// drawn as a second layer over the first, because a two-pass mix
   /// accumulates alpha ([[derived-cel-projection-pattern]] rule 6).
   int alphaFor(int red, int green, int blue, int alpha) {
-    if (alpha == 0) {
-      return 0;
-    }
-    if (matches(red, green, blue) == keepsMatches) {
+    if (alpha == 0 || !erases(red, green, blue)) {
       return alpha;
     }
     if (amount >= 1) {
@@ -120,6 +117,18 @@ class CelColorKey {
     }
     return (alpha * (1 - amount)).round();
   }
+
+  /// Whether this key NAMES the pixel for erasure — PURELY a colour
+  /// question, with no alpha in it.
+  ///
+  /// 🚨THE PURITY IS LOAD-BEARING, not tidiness. The destructive verb's undo
+  /// replays the forward walk positionally, so the selector has to pick the
+  /// same pixels the second time — and by then the forward pass has ZEROED
+  /// their alpha. Reading alpha here (even as an "already empty, skip it"
+  /// shortcut) makes the undo walk shorter than the forward one and the
+  /// recipe lands on the wrong pixels. A test caught exactly that.
+  bool erases(int red, int green, int blue) =>
+      matches(red, green, blue) != keepsMatches;
 
   /// The value identity a cache key needs. ⛔Values, not a hash: a hash
   /// collision here does not read stale, it MERGES two different pictures

@@ -563,6 +563,44 @@ class TimelineActionToolbar extends StatelessWidget {
 
   /// R26 #42: the app's standard icon button (the canvas bottom bar's
   /// style, promoted) — this toolbar used to size its own.
+  /// The 색 편집 popover's four verbs, in the order the artist reaches for
+  /// them: the two that keep the drawing, then the two that take it away.
+  ///
+  /// ⛔NO TOLERANCE KNOB HERE. 유저 2026-08-27 (I-8-Q2): 「허용차 같은
+  /// 고급설정은 fx의 색 제거 이펙트에서 하라하고 여기서는 간편하게만
+  /// 하고싶음」 — the buttons match the colour exactly, and the graded
+  /// version is the Delete Color / Keep Color EFFECT.
+  ///
+  /// Every item is live whenever the head is: they share one gate
+  /// ([EditorSessionManager.canRunPixelVerb]) and there is no way to open
+  /// the list without passing it.
+  List<PanelFlyoutEntry> _colourEditEntries() => [
+    PanelFlyoutHeader(AppText.strings.tlSharedColourEdit),
+    for (final verb in CelPixelVerb.values)
+      PanelFlyoutItem(
+        keyValue: switch (verb) {
+          // The retired buttons' own key strings, kept.
+          CelPixelVerb.replaceColour => 'shared-replace-colour-button',
+          CelPixelVerb.clearPixels => 'shared-clear-pixels-button',
+          CelPixelVerb.deleteColour => 'shared-delete-colour-button',
+          CelPixelVerb.keepColour => 'shared-keep-colour-button',
+        },
+        label: switch (verb) {
+          CelPixelVerb.replaceColour => AppText.strings.tlSharedReplaceColour,
+          CelPixelVerb.clearPixels => AppText.strings.tlSharedClearPixels,
+          CelPixelVerb.deleteColour => AppText.strings.tlSharedDeleteColour,
+          CelPixelVerb.keepColour => AppText.strings.tlSharedKeepColour,
+        },
+        icon: switch (verb) {
+          CelPixelVerb.replaceColour => Icons.format_color_fill,
+          CelPixelVerb.clearPixels => Icons.cleaning_services_outlined,
+          CelPixelVerb.deleteColour => Icons.format_color_reset,
+          CelPixelVerb.keepColour => Icons.colorize_outlined,
+        },
+        onSelected: () => session.runPixelVerb(verb),
+      ),
+  ];
+
   Widget _iconButton({
     required ValueKey<String> key,
     required String tooltip,
@@ -907,22 +945,25 @@ class TimelineActionToolbar extends StatelessWidget {
         // neighbour slot is held for the 취소 button (see there).
         //
         // ⛔Dimmed with nothing to act on, never hidden.
-        _iconButton(
-          key: const ValueKey<String>('shared-replace-colour-button'),
-          tooltip: AppText.strings.tlSharedReplaceColour,
-          icon: Icons.format_color_fill,
-          onPressed: session.canRunPixelVerb
-              ? () => session.runPixelVerb(CelPixelChannel.colour)
-              : null,
-        ),
-        _iconButton(
-          key: const ValueKey<String>('shared-clear-pixels-button'),
-          tooltip: AppText.strings.tlSharedClearPixels,
-          icon: Icons.cleaning_services_outlined,
-          danger: true,
-          onPressed: session.canRunPixelVerb
-              ? () => session.runPixelVerb(CelPixelChannel.alpha)
-              : null,
+        //
+        // ✅ONE BUTTON, FOUR VERBS (유저 2026-08-27, I-8-Q3/Q4): 「그걸 하나의
+        // 버튼으로 넣어서 앵커팝오버로 열리도록 한 버튼으로. 색 편집 버튼이란
+        // 느낌? 그 안에 색관련 편집버튼 존재하는느낌」 — and 「기존에 있던
+        // 색변환이랑 픽셀삭제 그 버튼 안에 들어가는거 잊지말고」.
+        //
+        // The head RUNS NOTHING. 색 편집 is a category, not a verb, so a
+        // press that also did one of the four would be one button answering
+        // two questions. The retired buttons' key strings live on as the
+        // menu items', so tests only gain a menu-open tap.
+        Builder(
+          builder: (context) => _iconButton(
+            key: const ValueKey<String>('shared-colour-edit-button'),
+            tooltip: AppText.strings.tlSharedColourEdit,
+            icon: Icons.palette_outlined,
+            onPressed: session.canRunPixelVerb
+                ? () => showPanelFlyout(context, entries: _colourEditEntries())
+                : null,
+          ),
         ),
       ],
     ),

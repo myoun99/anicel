@@ -1337,7 +1337,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// TVPaint for years.
   ///
   /// One undo step across every cel, however many the ladder named.
-  void runPixelVerb(CelPixelChannel channel) {
+  void runPixelVerb(CelPixelVerb verb) {
     final coordinator = pixelEditingCoordinator;
     if (coordinator == null) {
       return;
@@ -1373,29 +1373,27 @@ class EditorSessionManager extends ChangeNotifier {
         ),
       );
     }
-    final command = channel == CelPixelChannel.colour
-        ? CelPixelOverwriteCommand.replaceColour(
-            coordinator: coordinator,
-            targets: targets,
-            // 🚨WITHOUT THIS THE CANVAS DOES NOT REDRAW. The sink is optional
-            // on `restoreSurfaceSnapshot`, and omitting it silently falls to
-            // a no-op — the pixels change, every cache keeps serving the old
-            // composite, and the edit appears only after leaving the frame
-            // and coming back. 유저 2026-08-27: 「버튼 누르면 작동은하는데
-            // 캔버스쪽에서 라이브로 갱신안되서 다른 프레임 갔다가 와야
-            // 반영되있어. 이런 캔버스 조작은 바로바로 반영되야지」.
-            cacheInvalidationSink: cacheInvalidationHub,
-            // ⛔The fallback is the brush's own default, not white or
-            // transparent: a press with no publisher wired must still do the
-            // thing the user asked for, in the colour they would have got.
-            argb: pixelBrushColour?.call() ?? 0xFF000000,
-          )
-        : CelPixelOverwriteCommand.clearPixels(
-            coordinator: coordinator,
-            targets: targets,
-            cacheInvalidationSink: cacheInvalidationHub,
-          );
-    _historyManager.execute(command);
+    _historyManager.execute(
+      CelPixelOverwriteCommand.forVerb(
+        coordinator: coordinator,
+        targets: targets,
+        verb: verb,
+        // 🚨WITHOUT THIS THE CANVAS DOES NOT REDRAW. The sink is optional on
+        // `restoreSurfaceSnapshot`, and omitting it silently falls to a
+        // no-op — the pixels change, every cache keeps serving the old
+        // composite, and the edit appears only after leaving the frame and
+        // coming back. 유저 2026-08-27: 「버튼 누르면 작동은하는데 캔버스쪽에서
+        // 라이브로 갱신안되서 다른 프레임 갔다가 와야 반영되있어. 이런 캔버스
+        // 조작은 바로바로 반영되야지」.
+        cacheInvalidationSink: cacheInvalidationHub,
+        // Read at the MOMENT OF THE PRESS — the bar does not hold the brush
+        // colour, it asks for it. ⛔The fallback is the brush's own default,
+        // not white or transparent: a press with no publisher wired must
+        // still do the thing the user asked for, in the colour they would
+        // have got.
+        argb: pixelBrushColour?.call() ?? 0xFF000000,
+      ),
+    );
   }
 
   void clearAllSelections() {
