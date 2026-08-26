@@ -1,8 +1,8 @@
-import 'dart:async' show Timer;
+import 'dart:async' show Completer, Timer;
 import 'dart:collection' show SplayTreeMap;
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:ui' as ui show ImageByteFormat;
+import 'dart:ui' as ui show Image, ImageByteFormat;
 
 import 'package:flutter/foundation.dart';
 
@@ -12,6 +12,8 @@ import '../controllers/default_layer_helpers.dart';
 import '../models/import/cut_folder_parse.dart';
 import '../models/import/tvp_csv_parse.dart';
 import '../models/import/tvp_json_parse.dart';
+import '../models/import/tvpp_convert.dart';
+import '../models/import/tvpp_parse.dart';
 import '../services/commands/import_media_command.dart';
 import '../services/commands/reorder_track_command.dart';
 import '../services/import/media_identity_reader.dart';
@@ -22,8 +24,10 @@ import '../services/media/media_byte_source.dart';
 import '../services/media/project_media_sources.dart';
 import '../services/import/media_import_planner.dart';
 import '../services/import/psd_expand_import.dart';
+import '../core/straight_rgba_image.dart';
 import '../services/import/raster_cel_import.dart';
 import '../services/import/tvp_json_import_planner.dart';
+import '../services/import/tvpp_raster_decoder.dart';
 import '../services/pdf/pdf_render_service.dart';
 import '../services/project_lookup.dart'
     show cutIdOfLayer, projectAudioSourcePaths, requireLayerAnywhere;
@@ -95,6 +99,7 @@ import '../models/timesheet_document.dart' show timesheetMemoInstructionLine;
 import '../models/project_background.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
+import '../models/project_id.dart';
 import '../models/project_frame_rate.dart';
 import '../models/row_block_shift.dart';
 import '../models/property_track.dart';
@@ -7398,6 +7403,173 @@ class EditorSessionManager extends ChangeNotifier {
       // Unreadable or not a TVPaint CSV: the import proceeds without it.
       return null;
     }
+  }
+
+  /// Opens a TVPaint project file AS A PROJECT — a .tvpp holds several
+  /// cuts, so it replaces the session's project the way an .anicel open
+  /// does: every clip a cut, pixels/timeline/folders/marks/camera/audio
+  /// straight out of the file. The result is a NEW UNSAVED project (no
+  /// [projectFilePath]); the first save asks where the .anicel goes.
+  ///
+  /// Returns the accumulated warnings, or null when the file is not
+  /// readable as a TVPaint project. The CALLER gates unsaved work — this
+  /// replaces everything.
+  Future<List<String>?> openTvppAsProject({required String tvppPath}) async {
+    final Uint8List bytes;
+    final TvppParseResult parsed;
+    try {
+      bytes = await File(tvppPath).readAsBytes();
+      parsed = parseTvppStructure(bytes);
+    } on TvppParseException {
+      return null;
+    } on FileSystemException {
+      return null;
+    }
+
+    playback.stop();
+    final mint = _importIdMint();
+    final warnings = [...parsed.warnings];
+    final plans = <(TvpJsonImportPlan, Map<String, TvppSlot>)>[];
+    for (var c = 0; c < parsed.clips.length; c++) {
+      final conversion = convertTvppClip(parsed.clips[c], clipIndex: c);
+      final plan = planTvpJsonImport(
+        parsed: conversion.result,
+        // Block files are synthetic slot keys, resolved against
+        // [conversion.slotsByFile] at bake time — not paths.
+        resolveFile: (key) => key,
+        mint: mint,
+        cameraFrameSize: defaultProjectCameraSize,
+        names: null,
+      );
+      warnings.addAll(plan.warnings);
+      plans.add((plan, conversion.slotsByFile));
+    }
+    if (plans.isEmpty) {
+      return null;
+    }
+
+    final name = tvppPath
+        .replaceAll('\\', '/')
+        .split('/')
+        .last
+        .replaceAll(RegExp(r'\.tvpp$', caseSensitive: false), '');
+    _repository.replaceProject(
+      Project(
+        id: ProjectId('tvpp-${DateTime.now().toUtc().millisecondsSinceEpoch}'),
+        name: name,
+        createdAt: DateTime.now().toUtc(),
+        tracks: [
+          Track(
+            id: const TrackId('default-track'),
+            name: 'Track 1',
+            cuts: [for (final (plan, _) in plans) plan.cut],
+          ),
+        ],
+        // The sound tracks reference their files; register them so the
+        // pool knows the paths and RELINK can say when one is missing.
+        mediaAssets: const [],
+      ),
+    );
+
+    // The whole-state reset an .anicel open performs, minus the parts
+    // that only exist for saved files (recovery, cel restore, healing).
+    brushFrameStore.restoreFromFile(const {});
+    conteInkRowStore.restoreFromFile(const {});
+    conteInkPageStore.restoreFromFile(const {});
+    envelopeInkStore.restoreFromFile(const {});
+    _historyManager.clear();
+    _copiedFrame = null;
+    _layerClipboard = null;
+    clearAllSelections();
+    trackFrameRangeSelection.value = null;
+    _editingSession.setActiveCutId(plans.first.$1.cut.id);
+    _rebuildActiveCutControllers();
+    _voiceRecording.forgetShelfTakes();
+    _projectFilePath = null;
+    _recoveredFromSidecar = null;
+    _discardedUnsavedWork = false;
+
+    for (final (plan, slotsByFile) in plans) {
+      final bakedCut = _cutById(plan.cut.id);
+      if (bakedCut == null) {
+        continue;
+      }
+      for (final bake in plan.bakes) {
+        final slot = slotsByFile[bake.sourceFile];
+        if (slot == null) {
+          continue;
+        }
+        final Uint8List? rgba;
+        try {
+          rgba = decodeTvppSlotRgba(
+            fileBytes: bytes,
+            slot: slot,
+            width: plan.cut.canvasSize.width,
+            height: plan.cut.canvasSize.height,
+          );
+        } on TvppRasterDecodeException catch (error) {
+          warnings.add('${bake.sourceFile}: $error');
+          continue;
+        }
+        if (rgba == null) {
+          continue;
+        }
+        final completer = Completer<ui.Image>();
+        decodeStraightRgbaImage(
+          rgba: rgba,
+          width: plan.cut.canvasSize.width,
+          height: plan.cut.canvasSize.height,
+          onDecoded: completer.complete,
+        );
+        final image = await completer.future;
+        try {
+          final surface = await rasterizeImageToSurface(
+            image: image,
+            canvas: bakedCut.canvasSize,
+            fit: MediaFitMode.none,
+          );
+          // A blank instance (빈 셀) decodes to zero tiles: the cel stays,
+          // its pixels stay absent — same shape as the JSON path's fully
+          // transparent PNGs.
+          if (surface.tiles.isNotEmpty) {
+            bakeCelSurface(
+              brushFrameStore,
+              brushFrameKeyForCut(bakedCut, bake.layerId, bake.frameId),
+              surface,
+            );
+          }
+        } finally {
+          image.dispose();
+        }
+      }
+    }
+
+    // The audio references become pool assets so relink and existence
+    // checks see them; a missing file surfaces as a warning, not a crash.
+    final audioPaths = <String>{
+      for (final clip in parsed.clips)
+        for (final track in clip.audioTracks) track.filePath,
+    };
+    if (audioPaths.isNotEmpty) {
+      addMediaAssets(audioPaths.toList());
+      _historyManager.clear();
+      for (final path in audioPaths) {
+        if (!File(path).existsSync()) {
+          warnings.add('사운드 파일이 이 자리에 없다: $path');
+        }
+      }
+    }
+
+    _settleConformCache();
+    _warmAudioConforms();
+    refreshMediaExistence();
+    // A conversion is unsaved by definition — nothing on disk holds it.
+    _hasUnsavedChanges = true;
+    _warmActiveCut();
+    frameSeekCommitted.value += 1;
+    _refreshAfterCutCommand();
+    notifyListeners();
+    return warnings;
   }
 
   Future<List<String>?> importTvpJson({

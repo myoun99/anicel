@@ -155,6 +155,20 @@ abstract final class FileTypeGroups {
     uniformTypeIdentifiers: [anicelProjectUti],
   );
 
+  /// TVPaint project files. Same Apple-platform split as [brushesFor]:
+  /// TVPaint publishes no UTI, so iOS gets `public.data` (a wrong filter
+  /// greys out the very file the user came for) and macOS gets the
+  /// extension alone (the umbrella would swallow it).
+  static XTypeGroup tvppProjectFor(String operatingSystem) => XTypeGroup(
+    label: 'TVPaint project',
+    extensions: const ['tvpp'],
+    uniformTypeIdentifiers: operatingSystem == 'macos'
+        ? const []
+        : const [_utiData],
+  );
+
+  static XTypeGroup get tvppProject => tvppProjectFor(Platform.operatingSystem);
+
   /// Brush packs (Photoshop `.abr`, Clip Studio `.sut`/`.sutg`) — the one
   /// group that cannot be the same on every Apple platform.
   ///

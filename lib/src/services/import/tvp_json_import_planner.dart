@@ -25,6 +25,7 @@ import 'dart:math' as math;
 
 import '../../controllers/default_cut_helpers.dart';
 import '../../models/camera_pose.dart';
+import '../../models/audio_clip.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
@@ -89,6 +90,23 @@ TvpJsonImportPlan planTvpJsonImport({
   // stack as it stood in TVPaint.
   for (final source in parsed.layers) {
     final layerId = mint.nextLayerId();
+    if (source.isFolder) {
+      // Only the .tvpp reader produces these (the JSON export flattens
+      // the stack). Members link up in the fix-up pass below — the
+      // folder row sits after them in this bottom-first list, so its id
+      // does not exist yet while they are built.
+      layers.add(
+        Layer(
+          id: layerId,
+          name: source.name,
+          frames: const [],
+          timeline: SplayTreeMap<int, TimelineExposure>(),
+          opacity: source.opacity,
+          kind: LayerKind.folder,
+        ),
+      );
+      continue;
+    }
     final frames = <Frame>[];
     final timeline = SplayTreeMap<int, TimelineExposure>();
     // The drawing a block shows, keyed by the instance that owns it —
@@ -136,6 +154,7 @@ TvpJsonImportPlan planTvpJsonImport({
       timeline[block.start] = TimelineExposure.drawing(
         frameId,
         length: block.length,
+        breakdownOffsets: block.breakdownOffsets,
       );
     }
 
@@ -161,6 +180,57 @@ TvpJsonImportPlan planTvpJsonImport({
         blendMode: _blendModeFor(source, warnings),
         kind: LayerKind.animation,
         runBehaviors: _runBehaviorsFor(source, timeline),
+      ),
+    );
+  }
+
+  // Folder membership fix-up: parents sit AFTER their members in the
+  // bottom-first list, so their ids only exist now.
+  for (var i = 0; i < parsed.layers.length; i++) {
+    final parentIndex = parsed.layers[i].parentIndex;
+    if (parentIndex >= 0 && parentIndex < layers.length) {
+      layers[i] = layers[i].copyWith(folderId: layers[parentIndex].id);
+    }
+  }
+
+  // Sound tracks (only the .tvpp reader supplies these): each becomes an
+  // SE row whose one block starts where the track's offset lands and runs
+  // to the cut's end — the reference links, playback clamps to the file.
+  String baseName(String path) {
+    final normalized = path.replaceAll('\\', '/');
+    final slash = normalized.lastIndexOf('/');
+    return slash < 0 ? normalized : normalized.substring(slash + 1);
+  }
+
+  for (final track in parsed.audioTracks) {
+    final layerId = mint.nextLayerId();
+    final frameId = mint.nextFrameId(layerId);
+    final startFrame = (track.offsetSeconds * parsed.frameRate)
+        .round()
+        .clamp(0, math.max(0, duration - 1))
+        .toInt();
+    if (track.muted) {
+      warnings.add('${baseName(track.filePath)}: 트랙이 뮤트 상태였다 — 소리는 그대로 연결된다.');
+    }
+    layers.add(
+      Layer(
+        id: layerId,
+        name: baseName(track.filePath),
+        kind: LayerKind.se,
+        frames: [Frame(id: frameId, duration: 1, strokes: const [])],
+        timeline: SplayTreeMap<int, TimelineExposure>.from({
+          startFrame: TimelineExposure.drawing(
+            frameId,
+            length: math.max(1, duration - startFrame),
+          ),
+        }),
+        audioClips: [
+          AudioClip(
+            filePath: track.filePath,
+            frameId: frameId,
+            gain: math.max(0, track.volume),
+          ),
+        ],
       ),
     );
   }

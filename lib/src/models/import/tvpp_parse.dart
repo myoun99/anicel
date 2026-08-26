@@ -201,6 +201,27 @@ class TvppCameraPoint {
   final double bezierAfterY;
 }
 
+/// One `[audio+N]` sound track of a clip: a REFERENCE (the file is not
+/// embedded), plus where and how loud.
+class TvppAudioTrack {
+  const TvppAudioTrack({
+    required this.filePath,
+    required this.offsetSeconds,
+    required this.volume,
+    required this.muted,
+  });
+
+  final String filePath;
+
+  /// The track's slide on the timeline, in seconds.
+  final double offsetSeconds;
+
+  /// 0..1-ish gain (TVPaint allows over 1).
+  final double volume;
+
+  final bool muted;
+}
+
 class TvppClip {
   const TvppClip({
     required this.name,
@@ -212,6 +233,7 @@ class TvppClip {
     required this.imageMarks,
     required this.cameraPoints,
     required this.cameraDataText,
+    this.audioTracks = const [],
   });
 
   final String name;
@@ -233,6 +255,10 @@ class TvppClip {
   /// The raw `[cameradata]` INI text, kept for the parts the point model
   /// does not carry yet (position profiles for eased moves).
   final String cameraDataText;
+
+  /// The clip's sound tracks (`[audio+N]` in the clip config) — measured
+  /// live on KLM, where every cut references its rushes as an .mp4.
+  final List<TvppAudioTrack> audioTracks;
 
   int get frameCount {
     var end = -1;
@@ -422,6 +448,7 @@ TvppClip _parseClip(
   final marks = <TvppImageMark>[];
   final layers = <TvppLayer>[];
   var cameraDataText = '';
+  var audioTracks = const <TvppAudioTrack>[];
 
   // Per-layer accumulation state.
   String? name;
@@ -573,11 +600,17 @@ TvppClip _parseClip(
           ),
         );
       case 'FCFG':
-        final text = _printable(bytes, payload, length);
+        // UTF-8, not the printable filter: `[audio+N]` carries file PATHS
+        // and a mangled non-ASCII character breaks the reference.
+        final text = utf8.decode(
+          Uint8List.sublistView(bytes, payload, payload + length),
+          allowMalformed: true,
+        );
         final at = text.indexOf('[cameradata]');
         if (at >= 0) {
           cameraDataText = text.substring(at);
         }
+        audioTracks = _audioTracks(text);
       case 'TMST':
         // Every clip ends on its timestamp chunk (measured on all
         // samples); what follows is the NEXT clip's property block and
@@ -598,7 +631,43 @@ TvppClip _parseClip(
     imageMarks: List.unmodifiable(marks),
     cameraPoints: _cameraPoints(cameraDataText),
     cameraDataText: cameraDataText,
+    audioTracks: audioTracks,
   );
+}
+
+/// `[audio+N]` sections of the clip config: one per sound track.
+List<TvppAudioTrack> _audioTracks(String fcfgText) {
+  final tracks = <TvppAudioTrack>[];
+  for (var n = 0; ; n++) {
+    final at = fcfgText.indexOf('[audio+$n]');
+    if (at < 0) {
+      break;
+    }
+    var end = fcfgText.indexOf('\n[', at + 1);
+    if (end < 0) {
+      end = fcfgText.length;
+    }
+    final values = <String, String>{};
+    for (final line in fcfgText.substring(at, end).split('\n').skip(1)) {
+      final eq = line.indexOf('=');
+      if (eq > 0) {
+        values[line.substring(0, eq).trim()] = line.substring(eq + 1).trim();
+      }
+    }
+    final filePath = values['filepath'] ?? '';
+    if (filePath.isEmpty) {
+      continue;
+    }
+    tracks.add(
+      TvppAudioTrack(
+        filePath: filePath,
+        offsetSeconds: double.tryParse(values['offset'] ?? '') ?? 0,
+        volume: double.tryParse(values['volume'] ?? '') ?? 1,
+        muted: values['mute'] == '1',
+      ),
+    );
+  }
+  return List.unmodifiable(tracks);
 }
 
 String _printable(Uint8List bytes, int at, int length) {
