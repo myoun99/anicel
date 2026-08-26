@@ -73,12 +73,12 @@ void main() {
       expect(profile.progressAt(0.5), closeTo(0.822217, 5e-4));
     });
 
-    test('a mode=1 profile reads its handles as segment fractions — the '
-        'known approximation for the older curves', () {
-      // Same geometry as above but mode 1: C2 = (1 - 0.5·0.8, 1) =
-      // (0.6, 1), giving y ≈ 0.790121 (solved independently). SKK's
-      // production curve follows this within ~1% where the raw reading
-      // is 14% out.
+    test('a mode=1 (線形) profile is a polyline — its stored handles are '
+        'ignored', () {
+      // Both curve types materialize the auto-smooth handles into the
+      // file; the type alone picks the evaluator. 6_multipoint_line
+      // (mode 1) bakes the straight lines between its points while
+      // 7_multipoint_spline bakes the same handles as a bezier.
       const profile = TvppCameraProfile(mode: 1, points: [
         TvppCameraProfilePoint(
             x: 0, y: 0, bezierBeforeX: 0, bezierBeforeY: 0, bezierAfterX: 0, bezierAfterY: 0),
@@ -92,7 +92,10 @@ void main() {
             bezierAfterX: 0,
             bezierAfterY: 0),
       ]);
-      expect(profile.progressAt(0.5), closeTo(0.790121, 5e-4));
+      // Linear between (0.2, 0.5) and (1, 1): 0.5 + 0.375·0.5. The
+      // bezier reading of the same points gives 0.822217 — the handle
+      // must not bend a 線形 curve.
+      expect(profile.progressAt(0.5), closeTo(0.6875, 1e-9));
     });
 
     test('progress clamps to [0, 1] when the curve overshoots', () {

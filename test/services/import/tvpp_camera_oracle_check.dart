@@ -60,12 +60,19 @@ void main() {
       markTestSkipped('참고 파일 없음 — 로컬 전용 검증');
       return;
     }
-    for (final name in [
-      '1_untouched',
-      '2_point_added',
-      '3_point_moved',
-      '4_handle',
-      '5_custom',
+    for (final (name, ceiling) in [
+      ('1_untouched', 0.1),
+      ('2_point_added', 0.1),
+      ('3_point_moved', 0.1),
+      ('4_handle', 0.1),
+      ('5_custom', 0.1),
+      // The curve-type files share identical points AND identical
+      // materialized auto-handles; only the type differs — 線形 writes
+      // mode=1 (evaluated as a polyline, handles ignored; TVPaint's own
+      // mode-1 solver is ~100× coarser, hence the looser ceiling),
+      // スプライン writes mode=4 (the raw-handle bezier).
+      ('6_multipoint_line', 2.0),
+      ('7_multipoint_spline', 0.1),
     ]) {
       final worst = check(
         tvpp: '$base\\$name\\$name.tvpp',
@@ -75,8 +82,9 @@ void main() {
       print('$name: worst |Δ| = $worst');
       // TVPaint's own solver quantizes at ~2^-16 of a segment (the
       // untouched bake sits a constant ~7.5e-6 of the span low), which
-      // is the noise floor this ceiling allows for.
-      expect(worst, lessThan(0.1), reason: '$name matches to solver noise');
+      // is the noise floor the mode-4 ceiling allows for.
+      expect(worst, lessThan(ceiling),
+          reason: '$name matches to solver noise');
     }
   });
 
@@ -94,11 +102,13 @@ void main() {
     );
     // ignore: avoid_print
     print('SKK 18_58: worst |Δ| = $worst');
-    // This clip's authored profile says mode=1 where the calibration
-    // files write mode=4, and its bake does not follow the mode-4
-    // evaluator exactly — the residual (~1% of the 1036px pan) is a
-    // DIFFERENT, unsolved evaluator, not noise. Pinned so a regression
-    // past the known ceiling still fails.
+    // The one outlier: this 2026-05 file stores mode=1, which the
+    // calibration pair proves means "polyline", yet its bake is SMOOTH
+    // (it locally exceeds an interior point's value — impossible for a
+    // polyline or any hull-bounded reading of its stored handles). Some
+    // ingredient of the older file differs; the polyline reading lands
+    // within ~1% of the pan and is pinned here so a regression past the
+    // known ceiling still fails.
     expect(worst, lessThan(12));
   });
 }

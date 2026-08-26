@@ -132,12 +132,17 @@ class TvppCameraChannels {
 class TvppCameraProfile {
   const TvppCameraProfile({required this.points, this.mode = 4});
 
-  /// The stored `…profile-mode`. Every profile authored in the current
-  /// editor writes 4, whose evaluation the calibration files pinned
-  /// exactly. SKK's older curve says 1 and follows some other evaluator
-  /// — for it the handles read best as fractions of the segment's
-  /// Δx/Δy (within ~1% of TVPaint's bake; nothing tried gets closer, so
-  /// this stays an approximation until a mode-1 differential exists).
+  /// The stored `…profile-mode` — the graph's カーブタイプ: 1 = 線形
+  /// (a polyline through the points; the stored handles are ignored),
+  /// 4 = スプライン (the raw-handle bezier). Both types materialize the
+  /// auto-smooth handles into the file, so only this flag separates the
+  /// two — pinned by the 6/7 calibration pair, which share their points
+  /// AND handles verbatim and bake differently.
+  ///
+  /// ⚠️One outlier remains: SKK's 2026-05 file stores mode=1 yet bakes
+  /// SMOOTH (locally exceeding an interior point — impossible for a
+  /// polyline). The polyline reading lands within ~1% of that pan; its
+  /// oracle pins the ceiling.
   final int mode;
 
   /// (x=time, y=progress) control points in 0..1 with bezier handle
@@ -169,12 +174,18 @@ class TvppCameraProfile {
     if (b.x <= a.x) {
       return b.y.clamp(0.0, 1.0);
     }
-    final scaleX = mode == 1 ? b.x - a.x : 1.0;
-    final scaleY = mode == 1 ? b.y - a.y : 1.0;
-    final p1x = a.x + a.bezierAfterX * scaleX;
-    final p1y = a.y + a.bezierAfterY * scaleY;
-    final p2x = b.x + b.bezierBeforeX * scaleX;
-    final p2y = b.y + b.bezierBeforeY * scaleY;
+    if (mode == 1) {
+      // 線形: a polyline through the points, stored handles ignored —
+      // both curve types materialize the auto-smooth handles into the
+      // file, and the type alone picks the evaluator (6_multipoint_line
+      // vs 7_multipoint_spline share their handles verbatim).
+      final f = (t - a.x) / (b.x - a.x);
+      return (a.y + (b.y - a.y) * f).clamp(0.0, 1.0);
+    }
+    final p1x = a.x + a.bezierAfterX;
+    final p1y = a.y + a.bezierAfterY;
+    final p2x = b.x + b.bezierBeforeX;
+    final p2y = b.y + b.bezierBeforeY;
 
     var lo = 0.0, hi = 1.0;
     for (var step = 0; step < 32; step++) {
