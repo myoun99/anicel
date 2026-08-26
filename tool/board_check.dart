@@ -28,12 +28,18 @@
 import 'dart:convert';
 import 'dart:io';
 
+/// When `<원본id>-Q<번호>` became the way to name a question (the round that
+/// made the name the binding). Questions raised before it are not defects.
+const String _questionNamingSince = '2026-08-27';
+
 void main(List<String> args) {
   if (args.isEmpty) return;
   final file = File(args.first);
   if (!file.existsSync()) return;
 
   final bad = <int>[];
+  /// Ids that said SOMETHING on at least one line — see [emptyCards].
+  final hasWords = <String>{};
   // 🚨Lines appended after the watermark must carry `ts`, and the watermark is
   // a line in the file rather than a number in this source: the records file
   // is append-only, so 「everything after this line」 is a stable rule that no
@@ -47,6 +53,25 @@ void main(List<String> args) {
   // three of the lines missing `ts` were written the same day this was found.
   final noTs = <int>[];
   var tsRequired = false;
+  // 🚨★★★A CHECK WRITTEN INTO `rest` (유저 2026-08-27: 「이런거 잘 규칙으로
+  // 정리하자. 재발안하도록」).
+  //
+  // `rest` means CODE remains, and a card that has any drops out of 확인할 것.
+  // So a verification instruction put there does the exact opposite of what
+  // it intends: the card that just shipped and most needs looking at is the
+  // one that vanishes from the list of things to look at.
+  //
+  // ⛔A written law was not enough — I wrote that law on 08-27 and broke it
+  // the same day, on the very next card. This is a lint on my own prose,
+  // which is the honest shape: the gate is telling me I have described a
+  // CHECK in the field for WORK. The check belongs on the 구현 stage's `how`.
+  //
+  // ⚠️Judged on the MERGED card, never line by line. The file is append-only,
+  // so a `rest` I wrote badly and then cleared is still sitting in it — and a
+  // gate that read every line would complain about corrected history forever,
+  // which is the fastest way to teach someone to ignore a gate.
+  final restIsACheck = <String>[];
+  final checkWords = RegExp('실기|재확인|확인한다|확인해|검증|눌러 ?본|봐야');
   // Merged the way the server merges: later records overwrite only the
   // fields they name, so a card is judged as it will RENDER, not as any one
   // line spells it. Without that, an amendment line touching `state` alone
@@ -75,6 +100,9 @@ void main(List<String> args) {
       }
       final id = json['id'];
       if (id is! String) continue;
+      for (final field in const ['how', 'note', 'think', 'said', 'why']) {
+        if ('${json[field] ?? ''}'.trim().isNotEmpty) hasWords.add(id);
+      }
       if (!merged.containsKey(id)) {
         order.add(id);
       }
@@ -84,9 +112,109 @@ void main(List<String> args) {
     }
   }
 
+  // 🚨★★★DRAWN NOWHERE. A card can be in the file and on no list at all, and
+  // that is worse than being on the wrong one — nothing brings it back
+  // because nothing shows it (유저 2026-08-27: 「여러가지 함정있잖아? 제대로
+  // 규칙대로 안굴러가는거」).
+  //
+  // The sections, and what each demands:
+  //   분류 전   state == inbox
+  //   답할 것   kind == decision && answer == null
+  //   확인할 것 kind == check && answer == null   ·  OR a card with a pr
+  //   착수/대기 kind == item && state != inbox && answer == null
+  //
+  // ⇒ An ITEM that is answered, out of the inbox and holds no PR satisfies
+  // none of them. `C-ipad-crash` spent a turn exactly there: answered by a
+  // memo, then triaged onward, which moved its state and left the answer set.
+  final invisible = <String>[];
+  // 🚨A CARD THAT IS ONLY A TITLE (유저 2026-08-27: 「카드있는 실기확인의 pr
+  // 있는데, 그런거 가끔 진짜 pr이름만 타이틀로 있고 내용 아무것도 없을때
+  // 많거든? 진짜 심플하게 pr만 카드로 등록한게 끝인거」).
+  //
+  // Claiming the PR is not the same as saying anything about it. A card with
+  // the PR's own English title and no 이렇게 본다, no note, no story is the
+  // `카드 없음` row wearing a card's clothes — and it passes the 「is there a
+  // card」 check precisely because someone typed the two fields that make one.
+  final emptyCards = <String>[];
+  // 🚨A question that belongs to nothing. `T14-Q1` binds by NAME; anything
+  // else needs `of`. Without either, the answer has nowhere to be carried
+  // back to and the card's own Q row will never mention it.
+  final orphanQuestions = <String>[];
+  final qName = RegExp(r'^(.+)-Q\d+$');
+
+  for (final id in order) {
+    final card = merged[id]!;
+    final state = '${card['state'] ?? 'open'}';
+    if (state == 'archived' || state == 'deleted') continue;
+    final rest = '${card['rest'] ?? ''}'.trim();
+    if (rest.isNotEmpty && checkWords.hasMatch(rest)) restIsACheck.add(id);
+
+    final kind = '${card['kind'] ?? 'item'}';
+    if (kind == 'law' || kind == 'meta') continue;
+    final answered = '${card['answer'] ?? ''}'.isNotEmpty;
+    final hasPr = card['pr'] != null;
+
+    // ⚠️Only questions raised SINCE the naming convention. The old
+    // standalone ones are not defects — `Q-remaining-14` asks which of
+    // fourteen cards to do first and genuinely belongs to none of them — and
+    // a gate that complains about them every turn is a gate nobody reads.
+    if (kind == 'decision' &&
+        card['answer'] == null &&
+        '${card['ts'] ?? ''}'.compareTo(_questionNamingSince) >= 0 &&
+        !qName.hasMatch(id) &&
+        '${card['of'] ?? ''}'.trim().isEmpty) {
+      orphanQuestions.add(id);
+    }
+
+    // ⛔ITEMS only. An answered DECISION is meant to leave the lists — it
+    // lives on as the reference in its origin's Q row — and an answered
+    // CHECK was either ticked (deleted) or came back as feedback (inbox).
+    // The hole is an item: answered, moved out of the inbox, holding no PR.
+    if (kind == 'item' && answered && state != 'inbox' && !hasPr) {
+      invisible.add(id);
+    }
+    if (hasPr && !hasWords.contains(id)) emptyCards.add(id);
+  }
+
   final complaints = <String>[];
   if (bad.isNotEmpty) {
     complaints.add('${bad.length}개 줄이 깨졌습니다 (줄 ${bad.join(', ')})');
+  }
+  if (emptyCards.isNotEmpty) {
+    complaints.add(
+      '제목만 있고 내용이 없는 카드: ${emptyCards.join(', ')}\n'
+      'PR을 물었다는 것과 그 PR에 대해 뭐라도 말했다는 것은 다릅니다 — 제목이 '
+      'PR 제목 그대로면 보드를 열어도 무엇을 볼지 알 수 없습니다.\n'
+      '⇒ 최소한 하나는 있어야 합니다: how(이렇게 본다) · note(무엇을 왜 '
+      '바꿨나) · think(판단) · said(유저 원문)',
+    );
+  }
+  if (invisible.isNotEmpty) {
+    complaints.add(
+      '어느 목록에도 안 뜨는 카드: ${invisible.join(', ')}\n'
+      '답이 있으면 확인할 것에서 빠지고, state 가 inbox 가 아니면 분류 전에서도 '
+      '빠지고, 착수 가능은 답 없는 것만 받습니다 — 파일에는 있고 화면에는 '
+      '없습니다.\n'
+      '⇒ 다시 일로 돌리려면 답을 비우세요: {"id":…, "answer":"", "state":"open"}',
+    );
+  }
+  if (orphanQuestions.isNotEmpty) {
+    complaints.add(
+      '어느 카드의 질문인지 모르는 결정: ${orphanQuestions.join(', ')}\n'
+      '이름이 `<원본id>-Q<번호>` 면 이름이 곧 연결입니다(예: T14-Q1). 옛 이름을 '
+      '쓰려면 `of` 로 원본을 적으세요 — 없으면 답이 돌아갈 곳이 없고 원본 카드의 '
+      'Q 목록에도 안 뜹니다.',
+    );
+  }
+  if (restIsACheck.isNotEmpty) {
+    complaints.add(
+      '「남은 것」에 확인 방법이 들어 있는 카드: ${restIsACheck.join(', ')}\n'
+      '`rest` 는 **코드가 남았다**는 뜻입니다 — rest 가 있으면 그 카드는 '
+      '확인할 것에서 빠집니다. 방금 착지해서 확인이 필요한 카드가 확인 목록에서 '
+      '사라지는 것이 정확히 반대 결과입니다.\n'
+      '⇒ 확인 방법은 그 착지의 **구현 공정**에 씁니다: '
+      '{"id":…, "at":"구현", "pr":N, "note":…, "how":"이렇게 확인한다 …"}',
+    );
   }
   if (noTs.isNotEmpty) {
     complaints.add(

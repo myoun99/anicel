@@ -151,14 +151,45 @@ Future<void> _handle(HttpRequest req) async {
         final kind = '${body['kind'] ?? 'decision'}';
         final memo = '${body['memo'] ?? ''}'.trim();
         final ticked = kind == 'check' && memo.isEmpty;
+        final id = '${body['id']}';
+        // 🚨AN ANSWERED QUESTION STOPS BEING A CARD (유저 2026-08-27: 「답할
+        // 것의 카드는 애초에 원본 카드에서 파생?되서 이어지는 카드아닌가?
+        // 원본카드에 질문항목이 존재하고 답하면 대답 카드 자체는 사라지고
+        // 참조로서 해당 항목에 들어가는거아닌가?」).
+        //
+        // Right, and it is the same law as everything else here: a question
+        // was never a subject of its own. It goes `archived` — which is not
+        // a loss, because `_byOrigin` reads ARCHIVED questions too, so the
+        // origin's Q row keeps showing it with the answer in place.
+        //
+        // ⇒ The NEWS lands on the ORIGIN instead: that card goes to 분류 전,
+        // because an answer is something the user said that I have to read
+        // and act on. One card, one row, and the answer is where the work is.
+        final origin = kind == 'decision' ? _originOfId(id) : '';
         _append({
           'kind': kind,
-          'id': body['id'],
+          'id': id,
           'answer': body['answer'] ?? '',
           'answerNote': memo,
           'ts': _now(),
-          'state': ticked ? 'deleted' : 'inbox',
+          'state': ticked || origin.isNotEmpty ? 'archived' : 'inbox',
         });
+        if (origin.isNotEmpty) {
+          _append({
+            'kind': 'item',
+            'id': origin,
+            'state': 'inbox',
+            'ts': _now(),
+          });
+        }
+        if (ticked) {
+          _append({
+            'kind': kind,
+            'id': id,
+            'state': 'deleted',
+            'ts': _now(),
+          });
+        }
       case '/dismiss':
         for (final id in (body['ids'] as List?) ?? [body['id']]) {
           _append({
@@ -248,6 +279,32 @@ void _markLandedBaseline(_Gh gh) {
         '보드가 생기기 전에 머지된 PR을 다시 확인하라고 물을 이유가 없다.',
   });
   _landedSince = DateTime.parse(at);
+}
+
+/// Which card a question belongs to, asked at SUBMIT time — before a render
+/// has built [_byOrigin].
+///
+/// The name answers it for anything written since the `T14-Q1` convention;
+/// `of` is the override for the questions named before it, so the file is
+/// read for those. ⚠️Returns empty for a question that belongs to nothing —
+/// an old standalone one — and that answer still lands in 분류 전 as itself,
+/// because there is no origin for it to land on.
+String _originOfId(String id) {
+  final m = _qName.firstMatch(id);
+  final byName = m?.group(1) ?? '';
+  for (final line in File(_recordsPath).readAsLinesSync()) {
+    final t = line.trim();
+    if (t.isEmpty) continue;
+    try {
+      final json = jsonDecode(t);
+      if (json is! Map || json['id'] != id) continue;
+      final of = '${json['of'] ?? ''}'.trim();
+      if (of.isNotEmpty) return of;
+    } catch (_) {
+      continue;
+    }
+  }
+  return byName;
 }
 
 String _now() => DateTime.now().toIso8601String();
@@ -389,7 +446,8 @@ List<String> _shotsFor(String id) {
 /// more than one entry, always in that order — what was said, then what I made
 /// of it, then what I worked out.
 class _Log {
-  _Log(this.ts, this.at, this.text, {this.byUser = false, this.pr});
+  _Log(this.ts, this.at, this.text,
+      {this.byUser = false, this.pr, this.how = ''});
   final String ts;
 
   /// 🚨The PR this stage shipped, when it is a 구현 stage (유저 2026-08-26:
@@ -412,6 +470,21 @@ class _Log {
   /// Whose words these are. Drives nothing but the tint: the stage name
   /// already says it, and saying it twice is the 「설명 문구」 habit.
   final bool byUser;
+
+  /// 🚨HOW TO CHECK WHAT THIS STAGE SHIPPED (유저 2026-08-27: 「확인을
+  /// 어떻게 하는지를 설명하려고한다면 구현항목에 확인방법을 추가하는게
+  /// 맞지않을까」).
+  ///
+  /// 🎯Better than the card-level `how`, and for a reason the card level
+  /// cannot express: a card ships several times, and each 구현 put something
+  /// DIFFERENT in front of the user. A single 「이렇게 본다」 on the card has
+  /// to describe all of them at once, so it ends up describing the newest and
+  /// quietly dropping the rest.
+  ///
+  /// ⚠️Only a line that is a 구현 (names a `pr`, or says so with `at`) takes
+  /// its `how` here. Everywhere else `how` is still the card's, which is what
+  /// a hand-written 실기 확인 uses.
+  final String how;
 }
 
 class _Entry {
@@ -613,6 +686,12 @@ List<_Entry> _readRecords(File file) {
     // something I cannot forget to write.
     if (at.isEmpty && linePr != null) at = '구현';
     var prLeft = linePr;
+    // A 구현's own 「이렇게 확인한다」. ⚠️Only a line that IS an implementation
+    // takes the card's `how` onto its stage; everywhere else `how` stays the
+    // card's, which is what a hand-written 실기 확인 reads.
+    final stageHow = (linePr != null || at == '구현')
+        ? '${json['how'] ?? ''}'.trim()
+        : '';
     void stage(String text, String fallback, {bool byUser = false}) {
       if (text.isEmpty) return;
       final label = at.isEmpty ? fallback : at;
@@ -620,7 +699,8 @@ List<_Entry> _readRecords(File file) {
       if (e.log.any((l) => l.text == text)) return;
       // ⚠️The PR rides the FIRST stage this line opens, not all of them: it
       // shipped once, however many things the line had to say about it.
-      e.log.add(_Log(ts, label, text, byUser: byUser, pr: prLeft));
+      e.log.add(_Log(ts, label, text,
+          byUser: byUser, pr: prLeft, how: prLeft == null ? '' : stageHow));
       prLeft = null;
     }
 
@@ -646,7 +726,7 @@ List<_Entry> _readRecords(File file) {
     // A bare `{"id":…, "pr":N}` with nothing written still happened, and a 구현
     // with no story is better than a 구현 that vanishes.
     if (prLeft != null) {
-      e.log.add(_Log(ts, '구현', 'PR #$prLeft', pr: prLeft));
+      e.log.add(_Log(ts, '구현', 'PR #$prLeft', pr: prLeft, how: stageHow));
     }
     // An answer is the user's own words and belongs in the same story — it is
     // the one kind of entry the board itself writes on their behalf.
@@ -672,7 +752,22 @@ List<_Entry> _readRecords(File file) {
     if (json['why'] != null) e.why = json['why'] as String;
     if (json['how'] != null) e.how = json['how'] as String;
     if (json['recommend'] != null) e.recommend = json['recommend'] as String;
-    if (json['answer'] != null) e.answer = json['answer'] as String;
+    // 🚨AN EMPTY ANSWER IS NOT AN ANSWER — it is the way back.
+    //
+    // `answer` is what takes a card OUT of every working list, which is right
+    // for a tick. But a card answered with a MEMO comes back to 분류 전 to be
+    // triaged, and once I move it onward it is work again. Nothing could say
+    // so: `answer` only ever got set, so a triaged card fell out of 확인할 것
+    // (answered), out of 분류 전 (state moved) and out of 착수 가능
+    // (`answer == null` required) — **present in the file and on no list at
+    // all**. C-ipad-crash spent a turn like that (2026-08-27).
+    //
+    // ⚠️Empty never means 「answered」 anywhere else: a tick writes `ok` and a
+    // decision writes its option key, both non-empty.
+    if (json['answer'] != null) {
+      final answered = '${json['answer']}';
+      e.answer = answered.isEmpty ? null : answered;
+    }
     if (json['answerNote'] != null) e.answerNote = json['answerNote'] as String;
     if (json['under'] != null) e.under = (json['under'] as num).toInt();
     if (json['of'] != null) e.of = '${json['of']}';
@@ -1635,6 +1730,13 @@ String _itemPanel(_Entry e) {
   // named by the section they sit in. The tag (피드백 / 아이디어 / 임시) is the
   // part that actually differs between rows.
   final inbox = e.state == 'inbox';
+  // 🚨A card that arrived because a question of its was ANSWERED. The inbox
+  // editor exists to fix a filing made mid-thought; an origin pushed here by
+  // an answer is something to READ, and the editor branch does not draw the
+  // questions — so the answer it came to deliver would be the one thing
+  // hidden.
+  final answeredQuestion =
+      (_byOrigin[e.id] ?? const <_Entry>[]).any((q) => q.answer != null);
   // 대기 중 promises that 「배지가 무엇을 기다리는지 말한다」, and an unanswered
   // question outranks whatever the state says: it is the thing actually
   // holding the card, and it is the one the user can clear.
@@ -1650,7 +1752,9 @@ String _itemPanel(_Entry e) {
     'check' => '실기 피드백',
     // An item only 「arrives」 if the user wrote on it — a plain working card
     // has nothing new to announce.
-    _ => e.answer != null ? '유저 피드백' : '',
+    _ => e.answer != null
+        ? '유저 피드백'
+        : (answeredQuestion && inbox ? '대답' : ''),
   };
   // The user's own writing is not editable once it is an ANSWER — editing it
   // would rewrite what they said, which is the one thing this whole redesign
@@ -1658,7 +1762,8 @@ String _itemPanel(_Entry e) {
   // ⚠️`answer == null` too: an item that came BACK carrying feedback is not a
   // half-finished filing to correct, it is something to read. Showing it in an
   // edit box would offer to rewrite what the user just said.
-  final editable = inbox && e.kind == 'item' && e.answer == null;
+  final editable =
+      inbox && e.kind == 'item' && e.answer == null && !answeredQuestion;
   final b = StringBuffer();
   // data-kind drives what `send` writes back. `item` so a memo on a working
   // card is filed as feedback and lands in 분류 전, exactly like one left on
@@ -1900,6 +2005,9 @@ String _story(_Entry e) {
         '${entry.pr == null ? '' : _prChip(entry.pr!)}'
         '<span class="when">${_esc(_day(entry.ts))}</span></summary>');
     b.writeln('<p class="d">${_esc(entry.text)}</p>');
+    if (entry.how.isNotEmpty) {
+      b.writeln('<p class="d"><b>이렇게 확인한다</b> — ${_esc(entry.how)}</p>');
+    }
     if (entry.pr != null) {
       b.writeln('<p class="d"><a class="chip link" target="_blank" '
           'href="https://github.com/$_repo/pull/${entry.pr}">'
