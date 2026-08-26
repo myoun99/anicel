@@ -3,6 +3,7 @@ import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/history_manager.dart';
 
 void main() {
+  _pressureTests();
   group('HistoryManager', () {
     test('starts empty', () {
       final historyManager = HistoryManager();
@@ -118,6 +119,63 @@ void main() {
       expect(notifies, 4);
     });
   });
+}
+
+/// 🚨THE OS WARNING REACHES THE UNDO STACK (H-crash, 유저 2026-08-27: 「세번째,
+/// 네번째 변형쯤에서 말없이 앱 종료됨」 — iPhone).
+///
+/// `didHaveMemoryPressure` reached `BrushFrameStore` and stopped there. The
+/// undo stack sat beside it holding up to 512 MB of full-canvas surface
+/// snapshots — a MOVE retains a PRE and a POST per confirm — and heard
+/// nothing. On iOS that warning is the last thing before the kill.
+void _pressureTests() {
+  test('pressure drops retained snapshots, and the newest always survives', () {
+    final history = HistoryManager();
+    for (var i = 0; i < 6; i++) {
+      history.execute(_HeavyCommand(bytes: 40 * 1024 * 1024)); // 240 MB
+    }
+    expect(history.undoCount, 6, reason: 'under the 512 MB budget, all stay');
+
+    history.respondToMemoryPressure();
+
+    expect(
+      history.retainedBytes,
+      lessThanOrEqualTo(HistoryManager.retainedByteBudgetUnderPressure),
+      reason: 'the point of the signal',
+    );
+    expect(
+      history.undoCount,
+      greaterThanOrEqualTo(1),
+      reason: '⛔pressure must not cost you the undo you are about to press',
+    );
+  });
+
+  test('pressure only ever LOWERS — a second warning drops nothing more', () {
+    final history = HistoryManager();
+    history.execute(_HeavyCommand(bytes: 10 * 1024 * 1024));
+    history.respondToMemoryPressure();
+    final after = history.undoCount;
+    history.respondToMemoryPressure();
+    expect(history.undoCount, after);
+  });
+}
+
+class _HeavyCommand implements Command, RetainedBytesCommand {
+  _HeavyCommand({required this.bytes});
+
+  final int bytes;
+
+  @override
+  int get estimatedRetainedBytes => bytes;
+
+  @override
+  String get description => 'Heavy';
+
+  @override
+  void execute() {}
+
+  @override
+  void undo() {}
 }
 
 class _FakeCommand implements Command {

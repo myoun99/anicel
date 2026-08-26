@@ -441,6 +441,9 @@ class EditorSessionManager extends ChangeNotifier {
   /// lossless by construction — cels encode to cold, dirty ones stay.
   void respondToMemoryPressure() {
     brushFrameStore.respondToMemoryPressure();
+    // ⚠️And the undo stack, which was holding the larger share: a MOVE
+    // retains a pre AND a post full-canvas surface per confirm.
+    _historyManager.respondToMemoryPressure();
     enforcePlaybackCacheBudget();
   }
 
