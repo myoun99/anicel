@@ -185,8 +185,11 @@ void main() {
   });
 
   test('desktop refusals stay loud — no coordinator to appeal to', () async {
-    // grantsAreScoped is false here (the test host), so the fallback must
-    // not even be consulted: a locked file on Windows is a real error.
+    // Pinned, not inherited (ios-distribution-setup의 macOS 러너 함정):
+    // the macOS CI runner is desktop hardware on a SCOPED platform, so a
+    // test that relies on the host being non-scoped takes the wrong
+    // branch exactly there.
+    FolderPicker.debugOperatingSystem = 'windows';
     FolderPicker.debugCoordinatedReplacer = ({
       required String sourcePath,
       required String destinationPath,
