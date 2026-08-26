@@ -772,6 +772,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               guides: session.activeCutGuides,
               frameStore: session.brushFrameStore,
               cacheInvalidationSink: session.cacheInvalidationHub,
+              // The pixel verbs are pressed on the timeline and write cel
+              // surfaces; every surface write goes through this coordinator.
+              onCoordinatorChanged: (coordinator) =>
+                  session.pixelEditingCoordinator = coordinator,
               historyManager: session.historyManager,
               // ⛔The notifier ITSELF. Null in it means "not framed yet",
               // which the panel resolves to the identity at read time — so

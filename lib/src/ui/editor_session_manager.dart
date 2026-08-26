@@ -84,6 +84,12 @@ import '../models/layer_folder.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
+import '../models/pixel_verb_subject.dart';
+import '../services/brush_frame_editing_coordinator.dart';
+import '../services/canvas_selection_region.dart';
+import '../services/cel_pixel_overwrite.dart';
+import '../services/cel_pixel_region.dart';
+import '../services/commands/cel_pixel_overwrite_command.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
@@ -1166,6 +1172,165 @@ class EditorSessionManager extends ChangeNotifier {
       laneRangeSelection.value != null ||
       trackFrameRangeSelection.value != null ||
       rowSelection.value.isNotEmpty;
+
+  /// The live editing coordinator, published by the canvas host.
+  ///
+  /// 🚨Null before the canvas has built one — a fresh project, a gap parking,
+  /// a test that mounts the timeline alone. Every pixel verb asks, and the
+  /// buttons dim rather than the press throwing.
+  BrushFrameEditingCoordinator? pixelEditingCoordinator;
+
+  /// The marquee on the artwork, published by whoever owns it.
+  ///
+  /// ⛔A getter, not a copy. The region is a document-level fact that survives
+  /// tool switches (`CanvasSelectionCommands.region`), and a snapshot taken
+  /// when the toolbar was built would act on a selection the user has since
+  /// redrawn.
+  CanvasSelectionRegion? Function()? pixelSelectionRegion;
+
+  /// The drawing colour, published by whoever owns the paint tool state.
+  ///
+  /// ⛔The BAR does not read this. A toolbar button that had to know about
+  /// brush colour would be the second place the answer lives; the verb reads
+  /// it at the moment of the press, which is also the only moment it is true.
+  ///
+  /// 🚨Its ALPHA is ignored downstream — RGB only (유저 확정).
+  int Function()? pixelBrushColour;
+
+  /// WHICH cels the two PIXEL verbs would act on — see [PixelVerbSubject].
+  PixelVerbSubject get pixelVerbSubject {
+    if (pixelVerbCellKeys().isEmpty) {
+      return PixelVerbSubject.nothing;
+    }
+    return frameRangeSelection.value == null
+        ? PixelVerbSubject.standing
+        : PixelVerbSubject.range;
+  }
+
+  /// The cels a pixel verb would touch: a live frame range's whole block, or
+  /// the one cel you are standing on.
+  ///
+  /// ⛔No row-selection rung. Selecting rows says which rows are selected, not
+  /// 「recolour all of their drawings」 — 유저 2026-08-26: 「내가 비슷한얘기
+  /// 옛날에 했다가 폐기했어」. A frame range is different in kind: it is drawn
+  /// across the cels themselves.
+  List<BrushFrameKey> pixelVerbCellKeys() {
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return const [];
+    }
+    final byId = {for (final layer in layers) layer.id: layer};
+    final keys = <BrushFrameKey>[];
+    // ⛔NO DEDUPE HERE. `CelPixelOverwriteCommand.execute` already skips a cel
+    // it has done, keyed by `frameStore.canonicalKeyOf` — which is the RIGHT
+    // key, because it resolves links, and mine could only compare
+    // (layer, frame) ids. Two mechanisms for one invariant is the shape the
+    // F-20 bug came in; the one that owns the surfaces owns this.
+    void take(Layer layer, int? frameIndex) {
+      if (!layerAcceptsBrushInput(layer)) {
+        return;
+      }
+      final frame = _timelineController.resolveFrameForLayer(
+        layer: layer,
+        frameIndex: frameIndex,
+      );
+      if (frame == null) {
+        return;
+      }
+      keys.add(brushFrameKeyForCut(cut, layer.id, frame.id));
+    }
+
+    final range = frameRangeSelection.value;
+    if (range != null) {
+      final rows = range.layerIds.isEmpty ? [range.layerId] : range.layerIds;
+      for (final layerId in rows) {
+        final layer = byId[layerId];
+        if (layer == null) {
+          continue;
+        }
+        for (var i = range.startIndex; i < range.endIndexExclusive; i++) {
+          take(layer, i);
+        }
+      }
+      return keys;
+    }
+    // The playhead rung reads the ACTIVE layer, which F-20 (#1216) made the
+    // one answer — a stored verb row naming a different layer is stale.
+    final activeId = activeLayerId;
+    final active = activeId == null ? null : byId[activeId];
+    if (active != null) {
+      take(active, null);
+    }
+    return keys;
+  }
+
+  /// Whether a pixel verb has anything to do — the buttons' gate, and the
+  /// same question the press runs (T25: one answer behind both).
+  bool get canRunPixelVerb =>
+      pixelEditingCoordinator != null &&
+      pixelVerbSubject != PixelVerbSubject.nothing;
+
+  /// 색 변환 (`CelPixelChannel.colour`) and 픽셀 비우기 (`.alpha`) — one
+  /// operation with the channel swapped, which is why they are one method.
+  ///
+  /// 🚨The colour's ALPHA is ignored, RGB only (유저 확정): 「알파만 남기고
+  /// 색을 그대로 바꿔버리는거야. 그냥 진짜 색을 변환. 해당색으로. **문답무용**」.
+  /// ⛔Do not ask whether turning a painted cel into a silhouette is alright —
+  /// that IS the wanted behaviour, and the user said so having used it in
+  /// TVPaint for years.
+  ///
+  /// One undo step across every cel, however many the ladder named.
+  void runPixelVerb(CelPixelChannel channel) {
+    final coordinator = pixelEditingCoordinator;
+    if (coordinator == null) {
+      return;
+    }
+    final keys = pixelVerbCellKeys();
+    if (keys.isEmpty) {
+      return;
+    }
+    // 🚨THE SPACE AXIS, and it is one law for every cel the ladder named:
+    // 「선택 있으면 그 영역, 없으면 전체(페이스트보드 포함)」 — said three
+    // times now across ③·⑤·색 변환, so it is a law and not a preference.
+    final region = pixelSelectionRegion?.call();
+    final size = requireActiveCut.canvasSize;
+    final frameIndex = currentFrameIndex;
+    final byId = {for (final layer in layers) layer.id: layer};
+    final targets = <CelPixelTarget>[];
+    for (final key in keys) {
+      final layer = byId[key.layerId];
+      targets.add(
+        CelPixelTarget(
+          key: key,
+          // ⚠️Mapped into each layer's OWN artwork space: a posed layer draws
+          // its pixels somewhere else than the marquee was drawn, and the
+          // region has to follow. An unposed layer — the overwhelming
+          // majority — gets it back unchanged.
+          region: region == null || layer == null
+              ? region
+              : regionInArtworkSpace(
+                  region: region,
+                  pose: layerPoseAtFrame(layer, frameIndex),
+                  canvasSize: size,
+                ),
+        ),
+      );
+    }
+    final command = channel == CelPixelChannel.colour
+        ? CelPixelOverwriteCommand.replaceColour(
+            coordinator: coordinator,
+            targets: targets,
+            // ⛔The fallback is the brush's own default, not white or
+            // transparent: a press with no publisher wired must still do the
+            // thing the user asked for, in the colour they would have got.
+            argb: pixelBrushColour?.call() ?? 0xFF000000,
+          )
+        : CelPixelOverwriteCommand.clearPixels(
+            coordinator: coordinator,
+            targets: targets,
+          );
+    _historyManager.execute(command);
+  }
 
   void clearAllSelections() {
     clearFrameRangeSelection();

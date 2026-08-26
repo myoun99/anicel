@@ -1342,6 +1342,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _tipLibrary = BrushTipLibrary(service: widget.tipLibraryService);
+    // 🚨The two canvas-side facts the PIXEL verbs need, published where both
+    // of them are in scope. Getters, not copies: the marquee survives tool
+    // switches and the colour changes under the pointer, so a value captured
+    // here would be the one that was true when the editor opened.
+    widget.session.pixelSelectionRegion =
+        () => widget.canvasSelectionCommands?.region;
+    widget.session.pixelBrushColour = () => _brushTool.value.color;
     // H25: what the hand last set on each brush, from the last session.
     _brushTool.addListener(_rememberBrushHandSettings);
     unawaited(

@@ -49,6 +49,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.guides,
     this.frameStore,
     this.cacheInvalidationSink,
+    this.onCoordinatorChanged,
     this.historyManager,
     this.viewport,
     this.viewportController,
@@ -109,6 +110,21 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// Injectable invalidation sink (the session hub in production, so
   /// playback caches hear about stroke edits); defaults to a local recorder.
   final CacheInvalidationSink? cacheInvalidationSink;
+
+  /// 🚨Called when the live editing coordinator appears or is replaced, so a
+  /// verb pressed OUTSIDE the canvas can act on the cels it owns.
+  ///
+  /// The PIXEL verbs (색 변환 · 픽셀 비우기) are pressed on the TIMELINE and
+  /// write cel surfaces, and every surface write goes through this
+  /// coordinator — it is what holds the editing session and the undo history
+  /// that a second one would fight over.
+  ///
+  /// ⛔It is published UPWARD rather than threaded down as four more
+  /// constructor arguments (workspace → tab host → toolbar → button). The
+  /// session already owns `BrushFrameStore` and this host already takes it
+  /// back as an injection, so 「the session holds the shared brush state」 is
+  /// an existing fact rather than a new one.
+  final ValueChanged<BrushFrameEditingCoordinator?>? onCoordinatorChanged;
 
   final HistoryManager? historyManager;
   final CanvasViewport? viewport;
@@ -495,7 +511,9 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
     final activeKey = widget.resolvedActiveFrameKey ?? _frameKeys.first;
     final coordinator = _coordinator;
     if (coordinator == null) {
-      _coordinator = _createCoordinator(initialFrameKey: activeKey);
+      final made = _createCoordinator(initialFrameKey: activeKey);
+      _coordinator = made;
+      widget.onCoordinatorChanged?.call(made);
       return;
     }
     coordinator.selectFrame(activeKey);

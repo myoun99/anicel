@@ -158,14 +158,23 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Material(
-          child: TimelineActionToolbar(
-            session: s,
-            panelContext: TimelineToolbarPanelContext(s),
-            onAddLayer: () {},
-            onRenameLayer: () {},
-            onDeleteLayer: () {},
-            onEditInstance: () {},
-            onCreateInstance: () {},
+          // ⚠️The horizontal overflow scroller belongs to
+          // [TimelineCommandBar], not to the toolbar — mounting the toolbar
+          // bare means nothing absorbs a bar wider than the surface, and it
+          // overflows as soon as a button is added anywhere on it. Stood in
+          // for here rather than widening the surface to whatever today's
+          // bar happens to measure.
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: TimelineActionToolbar(
+              session: s,
+              panelContext: TimelineToolbarPanelContext(s),
+              onAddLayer: () {},
+              onRenameLayer: () {},
+              onDeleteLayer: () {},
+              onEditInstance: () {},
+              onCreateInstance: () {},
+            ),
           ),
         ),
       ),

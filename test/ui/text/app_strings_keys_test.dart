@@ -31,6 +31,8 @@ void main() {
     'commonClose': (s) => s.commonClose,
     'commonNotice': (s) => s.commonNotice,
     'tlSharedDeselect': (s) => s.tlSharedDeselect,
+    'tlSharedReplaceColour': (s) => s.tlSharedReplaceColour,
+    'tlSharedClearPixels': (s) => s.tlSharedClearPixels,
     'exportNoCuts': (s) => s.exportNoCuts,
     'audioOffsetTitle': (s) => s.audioOffsetTitle,
     'audioOffsetHelp': (s) => s.audioOffsetHelp,
