@@ -209,6 +209,18 @@ class FolderGrant {
 /// - **iOS, macOS, Android** each need a grant the app has to hold onto —
 ///   a security scope on Apple, a real path resolved out of a SAF tree on
 ///   Android — so they route through the `qa_storage` channel.
+/// The user stopped waiting for a file to arrive.
+///
+/// Its own type because it is not a failure: nothing was applied, nothing
+/// is broken, and the door that raised the wait should close quietly
+/// rather than say something went wrong.
+class MaterializeCancelled implements Exception {
+  const MaterializeCancelled();
+
+  @override
+  String toString() => 'MaterializeCancelled';
+}
+
 abstract final class FolderPicker {
   /// Test seam. The repo's convention for a Dart→native call is an
   /// injectable override rather than a mocked channel (`setMockMethodCallHandler`
@@ -687,49 +699,75 @@ abstract final class FolderPicker {
   }
 
   /// ONE law for every user-picked file the app opens, whatever its
-  /// format: hand back a path a plain read will actually serve. A File
-  /// Provider document (Drive, Dropbox…) can be a non-materialised
-  /// placeholder that exists and then refuses the first read even
-  /// inside the picker's open scope (실측 08-26, iPhone + Google
-  /// Drive) — when the probe fails, the bytes are staged locally
-  /// through [readFileCoordinated], which is what makes the provider
-  /// download them.
+  /// format and whatever platform it came from: hand back a path a plain
+  /// read will actually serve.
   ///
-  /// `staged` tells the caller whose file it is now: a staged copy
-  /// lives in the system temp — read-and-discard callers delete it,
-  /// keep-open callers leave it for the OS sweep and point their saves
-  /// back at the original. Throws [FileSystemException] when neither
-  /// road produces bytes: access, not format.
-  ///
-  /// 🚨IT WAITS, because the first refusal is not an answer. Fetching a
-  /// placeholder takes time, and the provider reports that by FAILING
-  /// the read it has only just started (실측 08-27, iPhone + Google
-  /// Drive: the first open said 「잠시 후 다시 시도해 주세요」, the second
+  /// 🚨IT ASKS AND WAITS — IT DOES NOT COPY. A File Provider document
+  /// (Drive, Dropbox…) can be a placeholder that exists and refuses the
+  /// first read while the fetch it just triggered runs on (실측 08-27,
+  /// iPhone: the first open said 「잠시 후 다시 시도해 주세요」, the second
   /// opened the same file). One-shot code turns that into a notice, and
-  /// the notice makes the USER the retry loop — pressing Open twice is
-  /// exactly what the app should have done itself. So the coordinated
-  /// read is re-asked, backing off, until the bytes arrive or [within]
-  /// runs out; only then is it a genuine failure (no network, a
-  /// signed-out provider) and worth telling anyone about.
+  /// the notice makes the USER the retry loop. So this asks the platform
+  /// to bring the bytes down ([requestFileDownload]) and then re-probes
+  /// THE PICK ITSELF until it reads.
   ///
-  /// ⚠️A pick with NO ENTRY at all gets the one ask and not the wait:
-  /// waiting is for bytes on their way, and nothing is on its way to a
-  /// path that does not exist. It still gets that one ask — 「exists」 is
-  /// the platform answering about a placeholder, and the coordinator may
-  /// know things `dart:io` does not, so a wrong answer there must cost
-  /// an attempt rather than the whole road.
+  /// ⛔It used to stage a local copy instead, and that was the wrong
+  /// shape twice over (유저 2026-08-27: 「사본은 왠만하면 만들고싶지
+  /// 않아」). The cloud client is already keeping a local copy — ours
+  /// would be the same bytes a second time, 10GB for a 5GB project — and
+  /// nobody owned its lifetime: the `.anicel` door left it in the system
+  /// temp for the OS to sweep while every cel ref pointed inside it.
+  ///
+  /// The staged road survives as an ALARMED last resort: `staged: true`
+  /// is the caller's cue to say so on screen, so a build that still
+  /// needs it is visible rather than quietly slower. If it never fires
+  /// in the field, it comes out.
+  ///
+  /// ⚠️A pick with NO ENTRY gets no wait and no ask — nothing is on its
+  /// way to a path that does not exist — but it does get the one staged
+  /// attempt, because 「exists」 is the platform answering about a
+  /// placeholder and a wrong answer there must cost an attempt rather
+  /// than the whole road.
   ///
   /// [within] and [step] are the waiting POLICY, named so tests can
-  /// compress it; the defaults are what a real open uses.
+  /// compress it. The default ceiling is deliberately generous: a big
+  /// file on a slow line is not a failure, and the caller's own cancel
+  /// (not a stopwatch) is what a waiting user reaches for.
   static Future<({String path, bool staged})> materializeOpenedFile(
     String path, {
-    Duration within = const Duration(seconds: 60),
+    Duration within = const Duration(minutes: 10),
     Duration step = const Duration(milliseconds: 250),
+    void Function(Duration waited)? onWaiting,
+    bool Function()? isCancelled,
   }) async {
     if (await _plainlyReadable(path)) {
       return (path: path, staged: false);
     }
-    final present = await File(path).exists();
+    if (await File(path).exists()) {
+      // Ask the platform to fetch it, then wait for the PICK to read —
+      // no copy anywhere in this loop.
+      await requestFileDownload(path);
+      var waited = Duration.zero;
+      var pause = step;
+      while (waited < within) {
+        if (isCancelled?.call() ?? false) {
+          throw const MaterializeCancelled();
+        }
+        await Future<void>.delayed(pause);
+        waited += pause;
+        onWaiting?.call(waited);
+        if (await _plainlyReadable(path)) {
+          return (path: path, staged: false);
+        }
+        // Doubling, capped: the common case lands within a second or
+        // two, and a slow fetch must not be asked a hundred times a
+        // minute.
+        pause = pause * 2;
+        if (pause > _materializeMaxStep) {
+          pause = _materializeMaxStep;
+        }
+      }
+    }
     final dot = path.lastIndexOf('.');
     final extension = dot > path.lastIndexOf(Platform.pathSeparator)
         ? path.substring(dot)
@@ -737,36 +775,41 @@ abstract final class FolderPicker {
     final staged =
         '${Directory.systemTemp.path}${Platform.pathSeparator}'
         'anicel-open-${DateTime.now().microsecondsSinceEpoch}$extension';
-    var waited = Duration.zero;
-    var pause = step;
-    while (true) {
-      if (await readFileCoordinated(
-            sourcePath: path,
-            destinationPath: staged,
-          ) &&
-          await _plainlyReadable(staged)) {
-        return (path: staged, staged: true);
-      }
-      // The download may have completed behind our back, in which case
-      // the pick itself serves and there is nothing to stage.
-      if (await _plainlyReadable(path)) {
-        return (path: path, staged: false);
-      }
-      if (!present || waited >= within) {
-        throw FileSystemException('파일을 읽지 못했습니다', path);
-      }
-      await Future<void>.delayed(pause);
-      waited += pause;
-      // Doubling, capped: the common case lands within a second or two,
-      // and a slow fetch must not be asked a hundred times a minute.
-      pause = pause * 2;
-      if (pause > _materializeMaxStep) {
-        pause = _materializeMaxStep;
-      }
+    if (await readFileCoordinated(
+          sourcePath: path,
+          destinationPath: staged,
+        ) &&
+        await _plainlyReadable(staged)) {
+      return (path: staged, staged: true);
     }
+    throw FileSystemException('파일을 읽지 못했습니다', path);
   }
 
   static const Duration _materializeMaxStep = Duration(seconds: 2);
+
+  /// Test seam for [requestFileDownload]. ⚠️Reset in
+  /// `test/flutter_test_config.dart`.
+  static Future<void> Function(String path)? debugDownloadRequester;
+
+  /// Asks the platform to bring [path]'s bytes down, copying nothing.
+  ///
+  /// Best-effort and deliberately answer-less: the platforms that have
+  /// this request answer it asynchronously anyway, and the only signal
+  /// worth acting on is the one every platform shares — whether the file
+  /// reads yet. Silent everywhere else, where there was nothing to
+  /// fetch.
+  static Future<void> requestFileDownload(String path) async {
+    final override = debugDownloadRequester;
+    if (override != null) {
+      return override(path);
+    }
+    if (!hasFileCoordinator) {
+      return;
+    }
+    await _invoke('requestFileDownload', {
+      'sourcePath': path,
+    }, GrantKind.file);
+  }
 
   /// Whether a plain read can actually produce bytes — a cloud
   /// placeholder often EXISTS and then refuses the first read, so
