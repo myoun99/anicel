@@ -627,6 +627,22 @@ List<_Entry> _readRecords(File file) {
     stage('${json['said'] ?? ''}'.trim(), '유저 메모', byUser: true);
     stage('${json['note'] ?? ''}'.trim(), '작업 기록');
     stage('${json['think'] ?? ''}'.trim(), 'AI 판단');
+    // 🚨★★★남은 것 IS A STAGE, not a banner recomputed from the field (유저
+    // 2026-08-26: 「남은것도 하나의 공정흐름중 하나고 그렇단건 기록해야할거란
+    // 거야. 그러니 그 다음 공정 들어왔다고 없애지말고 남기는식으로」).
+    //
+    // The first cut synthesised one row from the last-wins `rest`, so writing
+    // a shorter list next week **erased the longer one** — and the shrinking
+    // of that list is exactly the thing worth being able to read. Each write
+    // now stands where it was written; the field only answers 「is there still
+    // something left RIGHT NOW」, which is what decides the section.
+    //
+    // ⚠️Clearing (`rest: ""`) writes no stage, deliberately: nothing was said,
+    // and the correction that goes with it belongs in a note of its own.
+    final leftover = '${json['rest'] ?? ''}'.trim();
+    if (leftover.isNotEmpty && !e.log.any((l) => l.text == leftover)) {
+      e.log.add(_Log(ts, '남은 것', leftover));
+    }
     // A bare `{"id":…, "pr":N}` with nothing written still happened, and a 구현
     // with no story is better than a 구현 that vanishes.
     if (prLeft != null) {
@@ -671,6 +687,20 @@ List<_Entry> _readRecords(File file) {
     }
   }
   _badLines = bad;
+  // ⚠️Drop the bare 「PR #N」 placeholder once a real 구현 for that same PR has
+  // arrived. A line that claims a PR and says nothing still deserves a stage —
+  // it happened — but the moment someone writes what it DID, keeping both
+  // shows one merge as two, and the empty one is the copy to lose.
+  for (final e in byId.values) {
+    if (e.log.length < 2) continue;
+    final told = {
+      for (final l in e.log)
+        if (l.pr != null && l.text != 'PR #${l.pr}') l.pr!,
+    };
+    if (told.isEmpty) continue;
+    e.log.removeWhere((l) => l.pr != null && told.contains(l.pr) &&
+        l.text == 'PR #${l.pr}');
+  }
   return [for (final id in order) byId[id]!];
 }
 
@@ -951,30 +981,75 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
     buriedPrs.addAll(e.prs);
   }
 
+  // 🚨★★★THE ROWS COME FROM CARDS, NOT FROM `gh pr list`.
+  //
+  // Building them from the PR list looked natural and was wrong twice over,
+  // both found by a card that simply was not on screen:
+  //
+  //  1. **`--limit 40` is a WINDOW, and a window slides.** Nineteen cards had
+  //     already fallen out the bottom — F-2, F-3, F-5, F-6 … — merged, alive,
+  //     never checked, and invisible. ⛔A check list whose rows disappear on
+  //     their own is worse than no check list, because it looks finished.
+  //  2. **One PR can close several cards.** #1214 closed three; one PR, one
+  //     row meant two of them were unreachable no matter what the limit was.
+  //
+  // A card is the SUBJECT of a check; the PR is a detail on it. So the card is
+  // the row, and `gh` is consulted for what only it knows — whether a PR is
+  // still open, and when it merged.
+  final openPrs = {
+    for (final pr in gh.prs)
+      if (pr.state == 'OPEN') pr.number,
+  };
+  final byNumber = {for (final pr in gh.prs) pr.number: pr};
   final now = <String>[];
-  final fresh = <_Pr>[];
   for (final pr in gh.prs) {
+    if (pr.state != 'OPEN') continue;
     if (buriedPrs.contains(pr.number)) continue;
     final e = claimed[pr.number];
     if (e == null && buriedIds.contains('pr-${pr.number}')) continue;
-    // 🚨A MERGE IS NOT A FINISH. If the card still lists something left, it
-    // stays where the work is and never reaches 확인할 것 — a tick there
-    // deletes the card, and the leftovers would go with it.
-    if (e != null && e.rest.isNotEmpty && pr.state == 'MERGED') continue;
-    // ⚠️A landing that was ticked is finished (its card carries `deleted` and
-    // never reached `alive`); one that got a memo went back to 분류 전. Either
-    // way it must not return to 확인할 것 every time the page opens.
     if (e?.answer != null) continue;
-    if (pr.state == 'OPEN') {
-      now.add(_prPanel(pr, e));
-    } else if (pr.state == 'MERGED' && _isNews(pr)) {
-      fresh.add(pr);
+    now.add(_prPanel(pr, e));
+  }
+
+  // What a card is waiting to be looked at with, newest first. A card whose PR
+  // gh no longer lists still sorts — by when the card itself last moved.
+  DateTime? landedAt(_Entry e) {
+    DateTime? best;
+    for (final n in e.prs) {
+      final at = byNumber[n]?.mergedAt;
+      if (at != null && (best == null || at.isAfter(best))) best = at;
     }
+    return best ?? DateTime.tryParse(e.updated);
+  }
+
+  final fresh = <_Entry>[];
+  for (final e in alive) {
+    if (e.prs.isEmpty || e.answer != null) continue;
+    // 🚨A MERGE IS NOT A FINISH — a card with leftovers stays where the work
+    // is, because a tick here deletes it and the leftovers go with it.
+    if (e.rest.isNotEmpty) continue;
+    // Still building: it belongs in 지금, not in a list of things to look at.
+    if (e.prs.any(openPrs.contains)) continue;
+    // ⚠️The 최근 착지 mark only applies to PRs gh still knows about. For one
+    // outside the window there is no merge time to compare, and dropping it
+    // would be the disappearing-row bug wearing a different hat.
+    final known = e.prs.map((n) => byNumber[n]).whereType<_Pr>();
+    if (known.isNotEmpty && !known.any(_isNews)) continue;
+    fresh.add(e);
+  }
+  // Landings nobody claimed still need a row — that is the whole point of the
+  // placeholder — but only while gh can see them.
+  for (final pr in gh.prs) {
+    if (pr.state != 'MERGED' || !_isNews(pr)) continue;
+    if (claimed.containsKey(pr.number)) continue;
+    if (buriedPrs.contains(pr.number)) continue;
+    if (buriedIds.contains('pr-${pr.number}')) continue;
+    fresh.add(_prEntry(pr)..prs.add(pr.number));
   }
   fresh.sort((a, b) {
-    final x = a.mergedAt, y = b.mergedAt;
-    if (x == null) return y == null ? 0 : -1;
-    if (y == null) return 1;
+    final x = landedAt(a), y = landedAt(b);
+    if (x == null) return y == null ? 0 : 1;
+    if (y == null) return -1;
     return y.compareTo(x);
   });
   final pages = fresh.isEmpty ? 1 : (fresh.length + _landedPerPage - 1) ~/ _landedPerPage;
@@ -998,7 +1073,7 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   // deliberately: it then shows exactly once on every page instead of
   // vanishing whenever its parent pages away. Never hide a check.
   final onPage = fresh.skip((page - 1) * _landedPerPage).take(_landedPerPage);
-  final here = {for (final pr in onPage) pr.number};
+  final here = {for (final e in onPage) ...e.prs};
   final subs = <int, List<_Entry>>{};
   for (final c in checks) {
     final u = c.under;
@@ -1006,16 +1081,23 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   }
   final shown = <String>{};
   final toCheck = <String>[];
-  for (final pr in onPage) {
-    final e = claimed[pr.number] ?? _prEntry(pr);
-    // 🚨A card that shipped in several passes has several merged PRs on this
-    // page, and one row each would be the same subject three times. `fresh` is
-    // newest-first, so the first one wins and the rest fold into its story.
-    if (shown.contains(e.id)) continue;
+  for (final e in onPage) {
     shown.add(e.id);
-    final mine = subs[pr.number] ?? const <_Entry>[];
+    // The row badges the NEWEST of this card's PRs that gh can still see —
+    // the rest are in its story as 구현 stages. A card whose PRs have all
+    // aged out of the window gets no badge and loses nothing: the stages
+    // carry the numbers and the links.
+    _Pr? badge;
+    for (final n in e.prs) {
+      final pr = byNumber[n];
+      if (pr == null) continue;
+      if (badge == null || n > badge.number) badge = pr;
+    }
+    final mine = [
+      for (final n in e.prs) ...?subs[n],
+    ];
     shown.addAll(mine.map((s) => s.id));
-    toCheck.add(_checkRow(e, pr: pr, subs: mine));
+    toCheck.add(_checkRow(e, pr: badge, subs: mine));
   }
   for (final c in checks) {
     if (shown.contains(c.id)) continue;
@@ -1153,7 +1235,13 @@ String _pager(int total, int page) {
   final b = StringBuffer('<div class="pager"><span class="pgn">$page / $pages</span>');
   for (var i = 1; i <= pages; i++) {
     final cls = i == page ? 'ghost sm on' : 'ghost sm';
-    b.write('<a class="$cls" href="?landed=$i">$i</a>');
+    // ⛔Not a plain href. A page change here is a change to ONE section, and a
+    // navigation throws away every panel on the board you had open to read
+    // (유저 2026-08-26: 「페이지 바뀔때마다 페이지 바뀌는데 그게아니라 새로고침
+    // 안하고 그냥 내부 위젯만 바꾼다거나 가능한가?」). The href stays for
+    // middle-click and for a browser with no JS.
+    b.write('<a class="$cls" href="?landed=$i" '
+        'onclick="return goPage($i)">$i</a>');
   }
   b.write('</div>');
   return b.toString();
@@ -1353,6 +1441,7 @@ String _askPanel(_Entry d) {
   // 필요없어질테니」).
   b.writeln(_head(d.id, d.title, d.tags, '', '', date: d.updated));
   b.writeln('<div class="body">');
+  b.writeln(_care(d));
   b.writeln(_origin(d));
   if (d.where.isNotEmpty) {
     b.writeln('<p class="d"><b>화면에서</b> — ${_esc(d.where)}</p>');
@@ -1360,10 +1449,6 @@ String _askPanel(_Entry d) {
   if (d.why.isNotEmpty) {
     b.writeln('<p class="d"><b>왜 막혔나</b> — ${_esc(d.why)}</p>');
   }
-  // A decision about an area is bound by that area's laws too -- an option
-  // that a law already forbids is not an option, and finding that out after
-  // the answer is submitted wastes the round.
-  b.writeln(_care(d));
   for (final o in d.options) {
     final key = '${o['key']}';
     final rec = d.recommend == key;
@@ -1446,6 +1531,7 @@ String _checkRow(_Entry c, {_Pr? pr, List<_Entry> subs = const []}) {
     date: c.updated,
   ));
   b.writeln('<div class="body">');
+  b.writeln(_care(c));
   if (c.how.isNotEmpty) {
     b.writeln('<p class="d"><b>이렇게 본다</b> — ${_esc(c.how)}</p>');
   }
@@ -1460,11 +1546,6 @@ String _checkRow(_Entry c, {_Pr? pr, List<_Entry> subs = const []}) {
   // Its questions come with it to 확인할 것 — 「무엇을 물었고 무엇으로 정했나」
   // is half of knowing whether the thing in front of you is right.
   b.writeln(_questions(c));
-  b.writeln(_care(c));
-  if (landed) {
-    b.writeln('<p class="d"><a href="https://github.com/$_repo/pull/'
-        '${pr.number}" target="_blank">PR #${pr.number} 열기 →</a></p>');
-  }
   b.writeln('<textarea rows="2" placeholder="문제가 있으면 적어 주세요 — 비워 두면 OK '
       '(스크린샷은 Ctrl+V)"></textarea>');
   b.writeln(_shotStrip(c.id));
@@ -1552,14 +1633,9 @@ String _itemPanel(_Entry e) {
         '<button class="ghost" onclick="purge(\'${_esc(e.id)}\')">삭제</button>'
         '<span class="state"></span></div>');
   } else {
-    // First thing in the panel, above the history: what is still owed. It is
-    // why this card is here and not in 확인할 것.
-    if (e.rest.isNotEmpty) {
-      b.writeln('<p class="d rest"><b>남은 것</b> — ${_esc(e.rest)}</p>');
-    }
+    b.writeln(_care(e));
     b.writeln(_story(e));
     b.writeln(_questions(e));
-    b.writeln(_care(e));
     b.writeln(_shotStrip(e.id));
     // 🚨EVERY CARD TAKES FEEDBACK, not just the ones in 확인할 것 (유저
     // 2026-08-26, looking at a card that had just moved OUT of that section:
@@ -1595,10 +1671,29 @@ String _care(_Entry e) {
   final hits = _laws.where((l) => e.tags.contains(l.tag) && l.care.isNotEmpty);
   if (hits.isEmpty) return '';
   final b = StringBuffer();
-  for (final l in hits) {
-    b.write('<div class="care"><span class="carelabel">손대기 전에</span>'
-        '<span>${_esc(l.care)}</span></div>');
+  // 🚨ONE item, folded, first (유저 2026-08-26: 「항목이름 작업전 확인 으로
+  // 바꾸고 분야별로 항목 만드는게아니라 옛날처럼 그대로하는데 그걸 작업전확인에
+  // 몰아넣는거야」).
+  //
+  // ⛔An item per area was me letting the DATA's shape (one law record per
+  // tag) pick the UI's shape. To a reader they are one thing — what to know
+  // before starting — and splitting them made a card with two laws look like
+  // it had two different warnings to weigh.
+  //
+  // It leads because it is the one thing to read BEFORE the work rather than
+  // during it, and it folds because it is long enough to push the card's own
+  // story off the screen.
+  final laws = hits.toList();
+  final areas = laws
+      .map((l) => l.id.startsWith('law-') ? l.id.substring(4) : l.id)
+      .join(' · ');
+  b.write('<details class="lg care">'
+      '<summary><span class="lgk">작업전 확인</span>'
+      '<span class="lgp">${_esc(areas)}</span></summary>');
+  for (final l in laws) {
+    b.write('<p class="d">${_esc(l.care)}</p>');
   }
+  b.write('</details>');
   return b.toString();
 }
 
@@ -1695,7 +1790,7 @@ String _stageName(_Entry e, int i) {
 }
 
 String _story(_Entry e) {
-  if (e.log.isEmpty) return '<p class="d">메모 없음.</p>';
+  if (e.log.isEmpty && e.rest.isEmpty) return '<p class="d">메모 없음.</p>';
   final b = StringBuffer();
   for (var i = 0; i < e.log.length; i++) {
     final entry = e.log[i];
@@ -1703,9 +1798,19 @@ String _story(_Entry e) {
     final flat = entry.text.replaceAll('\n', ' ');
     final peek = flat.length > 44 ? '${flat.substring(0, 44)}…' : flat;
     final mine = _stageName(e, i);
+    // 🚨Only the LIVE 남은 것 is loud. Earlier ones are history — a list that
+    // has since got shorter — and shouting every one of them would drown the
+    // one that is actually still owed. Live means: the card still has
+    // leftovers, and these are them.
+    final leftover = mine == '남은 것';
+    final live = leftover && e.rest == entry.text;
+    // ⚠️`open` is an ATTRIBUTE, not a class. Written inside the class string
+    // it renders as `class="lg open"` — valid HTML, silently folded, and 68
+    // stages that were meant to stand open did not.
     b.writeln('<details class="lg'
         '${entry.byUser || mine.startsWith('유저') ? ' says' : ''}'
-        '${newest ? ' open' : ''}">');
+        '${live ? ' todo' : ''}${leftover && !live ? ' done' : ''}"'
+        '${newest || live ? ' open' : ''}>');
     b.writeln('<summary><span class="lgk">${_esc(mine)}</span>'
         '<span class="lgp">${_esc(peek)}</span>'
         '${entry.pr == null ? '' : '<span class="chip ok">#${entry.pr}</span>'}'
@@ -1824,7 +1929,10 @@ function redraw(skipId, done){
     });
   });
   const y = window.scrollY;
-  return fetch('/', {cache:'no-store'})
+  // ⚠️Re-fetch the page you are ON. Asking for `/` returns page 1, so
+  // submitting anything from page 2 used to teleport you back to the top of a
+  // list you had scrolled past.
+  return fetch('/?landed=' + curPage(), {cache:'no-store'})
     .then(r=>r.text())
     .then(html=>{
       const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -1860,11 +1968,64 @@ function redraw(skipId, done){
       if(done) done();
     });
 }
+// Turns a page of 확인할 것 by swapping that one section's DOM.
+//
+// The rows change; nothing else on the board does. So nothing else should move
+// — not the scroll position, not the panels you had open elsewhere, not a memo
+// you were halfway through typing. A navigation loses all three.
+//
+// ⚠️Open state is restored for the panels that survive the swap. A row that
+// was on the old page and is not on the new one is simply gone, which is what
+// turning a page means.
+// Which page of 확인할 것 is on screen — read from the pager the server drew,
+// so there is no second copy of this fact to drift.
+function curPage(){
+  const on = document.querySelector('.pager a.on');
+  return on ? (parseInt(on.textContent, 10) || 1) : 1;
+}
+function goPage(n){
+  const id = 'g-확인할 것';
+  const live = document.getElementById(id);
+  if(!live) return true;   // no section to swap: let the link navigate
+  const opened = [], typed = {};
+  document.querySelectorAll('details').forEach(function(d){
+    if(d.id && d.open) opened.push(d.id);
+  });
+  document.querySelectorAll('details.p').forEach(function(d){
+    if(!d.id) return;
+    d.querySelectorAll('textarea, input[type=text]').forEach(function(f, i){
+      if(f.value) typed[d.id + '#' + i] = f.value;
+    });
+  });
+  const y = window.scrollY;
+  fetch('/?landed=' + n, {cache:'no-store'})
+    .then(r=>r.text())
+    .then(html=>{
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const fresh = doc.getElementById(id);
+      const now = document.getElementById(id);
+      if(fresh && now) now.replaceWith(fresh);
+      opened.forEach(function(k){
+        const d = document.getElementById(k);
+        if(d) d.open = true;
+      });
+      document.querySelectorAll('details.p').forEach(function(d){
+        if(!d.id) return;
+        d.querySelectorAll('textarea, input[type=text]').forEach(function(f, i){
+          const v = typed[d.id + '#' + i];
+          if(v) f.value = v;
+        });
+      });
+      window.scrollTo(0, y);
+    })
+    .catch(function(){ location.href = '?landed=' + n; });
+  return false;
+}
 // Swaps just the 지금 section rather than reloading: everything else on the
 // page is unaffected by a PR lookup, and a full reload throws away every panel
 // you had open to read.
 function swapSection(id, done){
-  return fetch('/', {cache:'no-store'})
+  return fetch('/?landed=' + curPage(), {cache:'no-store'})
     .then(r=>r.text())
     .then(html=>{
       const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -2051,9 +2212,16 @@ white-space:nowrap;flex:1;min-width:0}
    and darker text so the eye can drop down an open card and find their words
    without reading the labels. ⛔The stage name already says who; this only
    makes it scannable. */
-/* 남은 것 leads the panel and is the reason the card is not in 확인할 것, so
-   it reads as a claim on attention rather than as another note. */
-.rest{color:var(--run)}
+/* 남은 것 is the last stage and the loud one — it is the reason the card is
+   not in 확인할 것. 손대기 전에 is the first and the quiet one: it has to be
+   READ before the work, not shouted during it. */
+.lg.todo{border-left-color:var(--run)}
+.lg.todo>summary>.lgk{color:var(--run);font-weight:700}
+/* A 남은 것 that has since been superseded: still in the timeline, because
+   the list getting shorter is the story, but no longer shouting. */
+.lg.done>summary>.lgk{color:var(--ink3);text-decoration:line-through}
+.lg.care{border-left-color:var(--line2)}
+.lg.care>summary>.lgk{color:var(--ink3)}
 .lg.says{border-left-color:var(--run)}
 .lg.says>summary>.lgk{color:var(--run)}
 .lg.says>.d{color:var(--ink)}
@@ -2067,10 +2235,6 @@ a.chip.link{text-decoration:none;color:var(--ink2)}
 a.chip.link:hover{background:var(--bg)}
 /* The flash a jump leaves behind, so the eye finds where it landed. */
 .p.lit{outline:2px solid var(--run);outline-offset:1px}
-.care{display:flex;gap:8px;align-items:flex-start;background:var(--runbg);
-border-left:3px solid var(--run);border-radius:0 5px 5px 0;padding:8px 10px;
-font-size:12.5px;color:var(--ink2);white-space:pre-wrap}
-.carelabel{flex:none;font-weight:600;color:var(--run)}
 .opt{display:flex;gap:9px;align-items:flex-start;padding:8px 10px;
 border:1px solid var(--line);border-radius:4px;cursor:pointer}
 .opt.rec{border-color:var(--ok)}
