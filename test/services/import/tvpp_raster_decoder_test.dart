@@ -188,5 +188,51 @@ void main() {
       expect(rgba, hasLength(w * h * 4));
       expect(rgba.every((b) => b == 0), isTrue);
     });
+
+    test('the tile path is the RGBA path cut into sparse 256px tiles',
+        () {
+      // 300px wide = two tile columns; ink only in the right half, so
+      // tile (0,0) must be omitted, (1,0) must carry the pixels at the
+      // right offsets, and the region past the 300×70 canvas must stay
+      // zero-padded. This is the parity that lets the import skip the
+      // full-canvas ui.Image detour.
+      const tw = 300, th = 70;
+      final px = List<int>.filled(tw * th, 0);
+      for (var y = 10; y < 20; y++) {
+        for (var x = 280; x < 295; x++) {
+          px[y * tw + x] = 0xff2080ff; // premultiplied BGRA word
+        }
+      }
+      final file = fileWith(srawRecord(px, tw, th));
+      final slot = slotFor(file, compressed: true);
+      final rgba = decodeTvppSlotRgba(
+        fileBytes: file,
+        slot: slot,
+        width: tw,
+        height: th,
+      )!;
+      final tiles = decodeTvppSlotTiles(
+        fileBytes: file,
+        slot: slot,
+        width: tw,
+        height: th,
+      )!;
+      expect(tiles, hasLength(1));
+      final tile = tiles.single;
+      expect((tile.x, tile.y), (1, 0));
+      for (var y = 0; y < th; y++) {
+        for (var x = 256; x < tw; x++) {
+          final src = (y * tw + x) * 4;
+          final dst = (y * 256 + (x - 256)) * 4;
+          for (var c = 0; c < 4; c++) {
+            expect(tile.pixels[dst + c], rgba[src + c],
+                reason: 'pixel ($x, $y) channel $c');
+          }
+        }
+      }
+      // Padding beyond the canvas stays transparent.
+      expect(tile.pixels[(69 * 256 + 200) * 4 + 3], 0);
+      expect(tile.pixels[(0 * 256 + 45) * 4 + 3], 0);
+    });
   });
 }
