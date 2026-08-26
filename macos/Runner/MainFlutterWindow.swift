@@ -381,6 +381,13 @@ final class PathGrantHandler {
     DispatchQueue.global(qos: .userInitiated).async {
       let source = URL(fileURLWithPath: sourcePath)
       let destination = URL(fileURLWithPath: destinationPath)
+      // Say out loud what the coordinated read below only implies: BRING
+      // THE BYTES DOWN. Best-effort by design — this is the documented
+      // request for iCloud and File Provider items, and it throws for a
+      // plain local file, where the read that follows needs nothing. It
+      // does not make the fetch instant, which is why the Dart caller
+      // waits rather than treating one refusal as the answer.
+      try? FileManager.default.startDownloadingUbiquitousItem(at: source)
       let coordinator = NSFileCoordinator(filePresenter: nil)
       var coordinationError: NSError?
       var readError: Error?
