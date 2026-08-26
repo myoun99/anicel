@@ -7828,18 +7828,51 @@ class EditorSessionManager extends ChangeNotifier {
       final wave = work.sublist(at, math.min(at + pool, work.length));
       final decoded = await Future.wait([
         for (final (plan, _, _, slot) in wave)
-          Isolate.run(() {
-            try {
-              return decodeTvppSlotTiles(
-                fileBytes: bytes,
-                slot: slot,
-                width: plan.cut.canvasSize.width,
-                height: plan.cut.canvasSize.height,
-              );
-            } on TvppRasterDecodeException catch (error) {
-              return error;
-            }
-          }),
+          () {
+            // 🚨ONE SLOT'S BYTES CROSS, NOT THE WHOLE FILE.
+            //
+            // `Isolate.run` COPIES what its closure captures, so capturing
+            // `bytes` handed every worker its own copy of the entire
+            // .tvpp — a pool of eight meant eight whole files resident at
+            // once, on top of the original and everything the import had
+            // already built. On a phone that is the allocation that gets
+            // the app killed, and it grows with the file rather than with
+            // the work.
+            //
+            // The decoder only ever reads `chunkOffset ..+chunkLength`
+            // (see [decodeTvppSlotRgba]), so a window with its offset
+            // rebased to zero is the same input by a different name — and
+            // a copy of that window is kilobytes where the file is
+            // megabytes.
+            final window = Uint8List.fromList(
+              Uint8List.sublistView(
+                bytes,
+                slot.chunkOffset,
+                slot.chunkOffset + slot.chunkLength,
+              ),
+            );
+            final windowSlot = TvppSlot(
+              kind: slot.kind,
+              chunkOffset: 0,
+              chunkLength: slot.chunkLength,
+              compressed: slot.compressed,
+              v10WholeCanvas: slot.v10WholeCanvas,
+            );
+            final width = plan.cut.canvasSize.width;
+            final height = plan.cut.canvasSize.height;
+            return Isolate.run(() {
+              try {
+                return decodeTvppSlotTiles(
+                  fileBytes: window,
+                  slot: windowSlot,
+                  width: width,
+                  height: height,
+                );
+              } on TvppRasterDecodeException catch (error) {
+                return error;
+              }
+            });
+          }(),
       ]);
       for (var i = 0; i < wave.length; i++) {
         final (_, bakedCut, bake, _) = wave[i];
