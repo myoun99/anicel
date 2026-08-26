@@ -39,6 +39,7 @@ import '../services/persistence/app_accent_settings_store.dart';
 import '../services/persistence/app_ui_scale_store.dart';
 import '../services/persistence/app_workspace_colors_store.dart';
 import '../services/persistence/app_input_settings_store.dart';
+import '../services/diagnostics/memory_black_box.dart';
 import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_save_settings_store.dart';
 import '../services/persistence/audio_sync_settings_store.dart';
@@ -7705,6 +7706,9 @@ class EditorSessionManager extends ChangeNotifier {
     } on TvppParseException {
       return null;
     }
+    // The other candidate for last-thing-the-app-ever-did: decoding a
+    // whole TVPaint project holds every cel it builds.
+    MemoryBlackBox.begin('tvpp-import');
 
     playback.stop();
     // The .tvpp becomes the WHOLE project, so its shooting frame does
@@ -7896,6 +7900,7 @@ class EditorSessionManager extends ChangeNotifier {
     frameSeekCommitted.value += 1;
     _refreshAfterCutCommand();
     notifyListeners();
+    MemoryBlackBox.end('tvpp-import');
     return warnings;
   }
 
@@ -17347,10 +17352,18 @@ class EditorSessionManager extends ChangeNotifier {
     // synchronous did not close this: sync ordering settles delete-versus-
     // write, and this is write-versus-delete, which is an isolate wide.
     _saveInFlight = true;
+    // The breadcrumb a silent kill cannot erase. A save is the work this
+    // app is most likely to die inside — and when iOS kills for memory
+    // there is no exception, no crash report, and nothing in App Store
+    // Connect (실기 08-27: three kills, an iPad that survived the same
+    // press, and not one line of evidence anywhere). An entry with no END
+    // at the next launch is the only thing that says otherwise.
+    MemoryBlackBox.begin('save');
     try {
       await _writeProjectToFile(filePath, onProgress: onProgress);
     } finally {
       _saveInFlight = false;
+      MemoryBlackBox.end('save');
     }
   }
 

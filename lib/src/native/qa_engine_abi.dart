@@ -99,7 +99,19 @@ import 'dart:io';
 ///   (유저 확정 2026-08-16: RAM 비례 기본값 + 메모리 압박 반응). Zero when
 ///   the platform refuses to answer; callers treat that as "unknown" and
 ///   keep the desktop default.
-const int kQaEngineAbiVersion = 28;
+///
+/// - v29: `qa_process_footprint_bytes` and `qa_available_memory_bytes` —
+///   what this PROCESS is holding, and what the OS will still let it
+///   take. v28 answers neither: on iOS an app's allowance is neither the
+///   device's free RAM nor a fraction of its total, so a budget scaled
+///   from the machine can be double what the process is permitted, and
+///   the app that dies has no way to say how big it had grown. The
+///   footprint is the number a jetsam report calls `rpages × pageSize`.
+///   Apple answers both (`task_info`/`os_proc_available_memory`);
+///   Windows and Linux answer the availability half and report 0 —
+///   "not measured here" — for the footprint, which would otherwise
+///   cost this deliberately dependency-free file a link against psapi.
+const int kQaEngineAbiVersion = 29;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

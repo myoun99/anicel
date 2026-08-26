@@ -39,6 +39,8 @@ class QaNativeEngine {
     this._tileFreePointer,
     this._tilePoolCachedBytes,
     this._physicalMemoryBytes,
+    this._processFootprintBytes,
+    this._availableMemoryBytes,
     this._fillGapCloseRun,
     this._floodFillWave,
     this._fillComposeBatch,
@@ -190,6 +192,31 @@ class QaNativeEngine {
   /// lets the hot cel budget scale to the machine (v28).
   int? get physicalMemoryBytes {
     final bytes = _physicalMemoryBytes();
+    return bytes <= 0 ? null : bytes;
+  }
+
+  final int Function() _processFootprintBytes;
+  final int Function() _availableMemoryBytes;
+
+  /// What THIS PROCESS is holding, or null where the platform will not
+  /// say (v29).
+  ///
+  /// The number a jetsam report calls `rpages × pageSize` — the one that
+  /// decides whether the app is about to be killed. [physicalMemoryBytes]
+  /// answers a different question and has been standing in for it.
+  int? get processFootprintBytes {
+    final bytes = _processFootprintBytes();
+    return bytes <= 0 ? null : bytes;
+  }
+
+  /// How much more this process may take before the OS stops it, or null
+  /// where the platform will not say (v29).
+  ///
+  /// 🚨On iOS this is the REAL ceiling — an app's allowance is neither the
+  /// device's free RAM nor a fraction of its total, so a budget scaled
+  /// from the machine can be double what the process is allowed to have.
+  int? get availableMemoryBytes {
+    final bytes = _availableMemoryBytes();
     return bytes <= 0 ? null : bytes;
   }
 
@@ -972,6 +999,14 @@ class QaNativeEngine {
           .lookupFunction<Int64 Function(), int Function()>(
             'qa_physical_memory_bytes',
           );
+      final processFootprintBytes = library
+          .lookupFunction<Int64 Function(), int Function()>(
+            'qa_process_footprint_bytes',
+          );
+      final availableMemoryBytes = library
+          .lookupFunction<Int64 Function(), int Function()>(
+            'qa_available_memory_bytes',
+          );
       final fillGapCloseRun = library
           .lookupFunction<
             Int32 Function(
@@ -1160,6 +1195,8 @@ class QaNativeEngine {
         tileFreePointer,
         tilePoolCachedBytes,
         physicalMemoryBytes,
+        processFootprintBytes,
+        availableMemoryBytes,
         fillGapCloseRun,
         floodFillWave,
         fillComposeBatch,
