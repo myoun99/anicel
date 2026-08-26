@@ -1282,17 +1282,22 @@ Future<ProjectPick?> pickProjectToOpen(BuildContext context) async {
 /// Scoped platforms (iOS/Android — no save panel exists): a staged file is
 /// handed to the export picker, which MOVES it and reports where it
 /// landed. 🚨The staged file is a COPY OF THE LIVE ARCHIVE when one
-/// exists, and the minimal valid archive only for a never-saved project.
-/// The picker moves its source over whatever the user points it at, so a
-/// decoy placeholder made "replace an existing project" destroy that
-/// project the moment the picker confirmed — with the real bytes staged,
-/// the destination holds a complete archive until the save lands on top.
+/// exists, and [stageArchive]'s freshly written archive for a never-saved
+/// project. The picker moves its source over whatever the user points it
+/// at, so a decoy placeholder made "replace an existing project" destroy
+/// that project the moment the picker confirmed — and a 22-byte
+/// placeholder for the never-saved case stranded an unopenable husk
+/// whenever the provider refused the in-place save meant to fill it
+/// (실측 iPhone+Drive, 08-26). Whatever the picker places is a COMPLETE
+/// project now, both branches, and the save landing on top is an
+/// improvement rather than a rescue.
 @visibleForTesting
 Future<ProjectPick?> pickProjectSaveTarget(
   BuildContext context,
   String suggestedName,
   String initialDirectory, {
   String? currentProjectPath,
+  required Future<void> Function(String stagingPath) stageArchive,
 }) async {
   var name = suggestedName;
   if (!name.toLowerCase().endsWith(anicelProjectSuffix)) {
@@ -1301,7 +1306,7 @@ Future<ProjectPick?> pickProjectSaveTarget(
   if (!FolderPicker.grantsAreScoped) {
     return _pickDesktopSaveTarget(context, name, initialDirectory);
   }
-  return _pickScopedSaveTarget(context, name, currentProjectPath);
+  return _pickScopedSaveTarget(context, name, currentProjectPath, stageArchive);
 }
 
 Future<ProjectPick?> _pickDesktopSaveTarget(
@@ -1367,6 +1372,7 @@ Future<ProjectPick?> _pickScopedSaveTarget(
   BuildContext context,
   String name,
   String? currentProjectPath,
+  Future<void> Function(String stagingPath) stageArchive,
 ) async {
   // Its own directory so the cleanup below cannot reach anything else.
   final Directory stagingDirectory;
@@ -1380,13 +1386,13 @@ Future<ProjectPick?> _pickScopedSaveTarget(
       // `tester.runAsync` (the fake clock never completes real dart:io).
       await File(currentProjectPath).copy(staged.path);
     } else {
-      // A never-saved project has nothing to copy; a minimal valid archive
-      // claims the spot so anything opening it before the save lands reads
-      // an empty project rather than a corrupt file.
-      //
-      // SYNC on purpose: async `dart:io` never completes under the
-      // widget-test clock, and this sits before the picker.
-      staged.writeAsBytesSync(_emptyAnicelArchive, flush: true);
+      // A never-saved project has no archive to copy, so one is WRITTEN —
+      // whole, from the live session. It used to be a 22-byte empty-zip
+      // placeholder here, on the theory that the save landing after the
+      // move would fill it; a provider that refuses in-place writes
+      // (실측 iPhone+Drive, 08-26) turned that theory into an unopenable
+      // husk sitting exactly where the user meant to put their work.
+      await stageArchive(staged.path);
     }
   } on Object catch (error) {
     // A staging failure used to return null silently — the Save As button
@@ -1438,22 +1444,6 @@ void _discardStaging(Directory directory) {
   }
 }
 
-/// An empty but VALID zip: the 22-byte end-of-central-directory record and
-/// nothing else.
-///
-/// Enough for a picker to place, and enough that anything opening it in the
-/// moment before the real save lands reads an empty archive rather than a
-/// corrupt file.
-const List<int> _emptyAnicelArchive = [
-  0x50, 0x4B, 0x05, 0x06, // signature
-  0, 0, // number of this disk
-  0, 0, // disk where the central directory starts
-  0, 0, // central directory records on this disk
-  0, 0, // central directory records total
-  0, 0, 0, 0, // size of the central directory
-  0, 0, 0, 0, // offset of the central directory
-  0, 0, // comment length
-];
 
 /// What a dirty session's user chose at the gate.
 enum UnsavedWorkChoice { cancel, saveAs, save, discard }
@@ -1616,6 +1606,20 @@ Future<void> promptSaveProjectAs(
       // What a scoped platform stages: the live archive, so the export
       // picker never moves a decoy over a real project.
       currentProjectPath: session.projectFilePath,
+      // …and for a NEVER-saved project, a full archive written on the
+      // spot — behind the same progress window a save wears, because a
+      // long-drawn session serializing whole is a save-sized wait and a
+      // frozen screen before a picker reads as a hang.
+      stageArchive: (stagingPath) => runWithAppProgress<void>(
+        context: context,
+        title: AppText.strings.commonSave,
+        titleIcon: Icons.save_outlined,
+        runningLabel: AppText.strings.saveProgressRunning,
+        doneLabel: AppText.strings.saveProgressDone,
+        windowKey: const ValueKey<String>('save-progress-dialog'),
+        task: (report) =>
+            session.writeArchiveCopy(stagingPath, onProgress: report),
+      ),
     );
   }
   if (pick == null || !context.mounted) {

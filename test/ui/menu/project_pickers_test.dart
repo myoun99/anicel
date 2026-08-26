@@ -140,7 +140,13 @@ void main() {
     Future<ProjectPick?> runSave(WidgetTester tester, String suggested) =>
         runFlow(
           tester,
-          (context) => pickProjectSaveTarget(context, suggested, folder.path),
+          (context) => pickProjectSaveTarget(
+            context,
+            suggested,
+            folder.path,
+            // Desktop stages nothing — the dialog answers with a path.
+            stageArchive: (_) async => fail('desktop must not stage'),
+          ),
         );
 
     testWidgets('the dialog decides name and place; nothing is staged and '
@@ -211,6 +217,7 @@ void main() {
                       context,
                       'Typed Name',
                       folder.path,
+                      stageArchive: (_) async => fail('desktop must not stage'),
                     ),
                 child: const Text('go'),
               ),
@@ -275,6 +282,13 @@ void main() {
           };
     }
 
+    /// The fake staging writer: what a never-saved project hands the
+    /// picker. Marker bytes, so a test can tell "the writer's archive was
+    /// offered" apart from any placeholder.
+    const stagedMarker = [7, 7, 7, 7, 7, 7, 7, 7];
+    Future<void> fakeStage(String path) async =>
+        File(path).writeAsBytesSync(stagedMarker, flush: true);
+
     Future<ProjectPick?> runSave(
       WidgetTester tester,
       String suggested, {
@@ -286,29 +300,30 @@ void main() {
         suggested,
         folder.path,
         currentProjectPath: currentProjectPath,
+        stageArchive: fakeStage,
       ),
     );
 
-    testWidgets('a never-saved project offers the minimal valid archive', (
-      tester,
-    ) async {
-      // Nothing exists to copy yet, and a valid empty zip means anything
-      // opening the spot before the save lands reads an empty project
-      // rather than a corrupt file.
-      late int offeredLength;
+    testWidgets('a never-saved project offers a WRITTEN archive, not a '
+        'placeholder', (tester) async {
+      // 🚨실측 iPhone+Drive (08-26): the 22-byte placeholder relied on the
+      // save landing after the move, and a provider that refuses in-place
+      // writes left the husk sitting where the user meant their project.
+      // What the picker places must already BE the project.
       late List<int> offeredBytes;
       installExporter((sourcePath) {
-        final file = File(sourcePath);
-        offeredLength = file.lengthSync();
-        offeredBytes = file.readAsBytesSync();
+        offeredBytes = File(sourcePath).readAsBytesSync();
         return const FolderGrant.granted(
           path: '/drive/x.anicel',
           kind: GrantKind.file,
         );
       });
       await runSave(tester, 'x');
-      expect(offeredLength, 22);
-      expect(offeredBytes.take(4), [0x50, 0x4B, 0x05, 0x06]);
+      expect(
+        offeredBytes,
+        stagedMarker,
+        reason: 'the staging writer\'s archive is what the picker moves',
+      );
     });
 
     testWidgets('a SAVED project offers the live archive, whole — never a '
@@ -349,6 +364,10 @@ void main() {
           'live',
           folder.path,
           currentProjectPath: current.path,
+          // A SAVED project copies its archive; re-serializing here would
+          // cost a full write for bytes that already exist on disk.
+          stageArchive: (_) async =>
+              fail('a saved project copies, it does not re-stage'),
         ),
       );
 

@@ -448,6 +448,13 @@ class AnicelFileService {
     /// Called on the UI isolate with 0..1 as the write proceeds. Null costs
     /// nothing — no port is opened and the writer reports into no one.
     void Function(double)? onProgress,
+
+    /// False writes a COPY: the stores do not adopt refs into [filePath]
+    /// and nothing about the session's idea of "where the project lives"
+    /// may change. The Save As staging writer is the consumer — its file
+    /// is about to be MOVED by a document picker, and refs adopted into a
+    /// path that is about to stop existing are every cel dying at once.
+    bool adoptRefs = true,
   }) async {
     // Aux stores (the conte sheet ink, R5) ride the same archive: their
     // keys live in their own namespace, so the snapshots merge without
@@ -464,6 +471,9 @@ class AnicelFileService {
     final saveDirectory = _parentDirectory(filePath);
 
     void adoptEach(Map<BrushFrameKey, AnicelCelFileRef> adopted) {
+      if (!adoptRefs) {
+        return;
+      }
       for (var index = 0; index < stores.length; index += 1) {
         final ownKeys = <BrushFrameKey>{
           ...snapshots[index].hot.keys,
