@@ -89,7 +89,12 @@ void main() {
     expect(source.path, path);
   });
 
-  test('a wait the user stops is CANCELLED, not failed', () async {
+  test('a wait the user stops is CANCELLED, not failed — and with a cancel '
+      'in hand there is NO deadline at all', () async {
+    // 유저 2026-08-27: 「상한을 두는 게 아니라 … 유저가 보고 판단해서
+    // 취소 버튼을 누르게」. A clock cannot tell a slow line from a dead
+    // one; the person watching can. So `within: null` waits as long as
+    // the file takes, and the only thing that ends it is the person.
     final path = placeholder('slow.tvpp');
     FolderPicker.debugDownloadRequester = (_) async {};
     var polls = 0;
@@ -97,11 +102,25 @@ void main() {
     await expectLater(
       FolderPicker.materializeOpenedFile(
         path,
-        within: const Duration(seconds: 10),
+        within: null,
         step: const Duration(milliseconds: 1),
         isCancelled: () => ++polls > 3,
       ),
       throwsA(isA<MaterializeCancelled>()),
+    );
+    expect(polls, greaterThan(3), reason: 'it waited until it was stopped');
+  });
+
+  test('🚨 no deadline is REFUSED without a way to be stopped', () async {
+    // Otherwise 「no deadline」 would mean 「no way out」 — a hang with a
+    // nice name. Loud at the call site beats a silent substitution that
+    // makes the caller think it got the wait it asked for.
+    expect(
+      () => FolderPicker.materializeOpenedFile(
+        placeholder('nobody-watching.tvpp'),
+        within: null,
+      ),
+      throwsArgumentError,
     );
   });
 

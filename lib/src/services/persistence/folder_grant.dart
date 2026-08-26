@@ -729,27 +729,45 @@ abstract final class FolderPicker {
   /// placeholder and a wrong answer there must cost an attempt rather
   /// than the whole road.
   ///
-  /// [within] and [step] are the waiting POLICY, named so tests can
-  /// compress it. The default ceiling is deliberately generous: a big
-  /// file on a slow line is not a failure, and the caller's own cancel
-  /// (not a stopwatch) is what a waiting user reaches for.
+  /// 🚨THE WAIT HAS NO DEADLINE WHEN SOMEONE CAN STOP IT (유저
+  /// 2026-08-27: 「상한을 두는 게 아니라 … 유저가 보고 판단해서 취소
+  /// 버튼을 누르게 하는 게 자연스럽고 공개적이지 않을까」). A clock cannot
+  /// tell a slow line from a dead one — it only guesses, and every guess
+  /// either kills a download that would have finished or keeps a dead one
+  /// on screen. The person watching can tell, so [onWaiting] keeps them
+  /// informed and [isCancelled] is the escape.
+  ///
+  /// [within] is therefore a BACKSTOP, not the mechanism: null means no
+  /// deadline, and it is REFUSED without [isCancelled], because a wait
+  /// nobody can stop and no clock ends is a hang with a nice name. A door
+  /// with a window passes null; a door without one keeps the default.
+  ///
+  /// [step] is the poll spacing, named so tests can compress it.
   static Future<({String path, bool staged})> materializeOpenedFile(
     String path, {
-    Duration within = const Duration(minutes: 10),
+    Duration? within = const Duration(minutes: 10),
     Duration step = const Duration(milliseconds: 250),
     void Function(Duration waited)? onWaiting,
     bool Function()? isCancelled,
   }) async {
+    if (within == null && isCancelled == null) {
+      throw ArgumentError.value(
+        within,
+        'within',
+        'a wait with no deadline needs a way to be cancelled',
+      );
+    }
     if (await _plainlyReadable(path)) {
       return (path: path, staged: false);
     }
+    final deadline = within;
     if (await File(path).exists()) {
       // Ask the platform to fetch it, then wait for the PICK to read —
       // no copy anywhere in this loop.
       await requestFileDownload(path);
       var waited = Duration.zero;
       var pause = step;
-      while (waited < within) {
+      while (deadline == null || waited < deadline) {
         if (isCancelled?.call() ?? false) {
           throw const MaterializeCancelled();
         }
@@ -786,6 +804,7 @@ abstract final class FolderPicker {
   }
 
   static const Duration _materializeMaxStep = Duration(seconds: 2);
+
 
   /// Test seam for [requestFileDownload]. ⚠️Reset in
   /// `test/flutter_test_config.dart`.
