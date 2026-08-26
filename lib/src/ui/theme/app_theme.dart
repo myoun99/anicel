@@ -75,6 +75,26 @@ abstract final class AppColors {
   static Color deleteGlyph({required bool enabled}) =>
       enabled ? danger : glyphDisabled;
 
+  /// The colour of a SELECTION SESSION's chrome — everything the canvas
+  /// draws around a lifted selection while it is still unconfirmed: the
+  /// marching ants, the transform box and its handles, the confirm button.
+  ///
+  /// RED means the session holds changes that have not landed; GREEN means
+  /// it is confirmed or untouched (R16-①, TVP grammar).
+  ///
+  /// 유저 2026-08-27 실기: 「변경사항이 있으면 변형툴 ui? 실루엣을 다른색으로.
+  /// 예를들어 빨간색? 그러고 변형된 상황. 변경된게 없으면 초록색으로」 — the
+  /// ants and the button already answered that way and the transform box did
+  /// not, because each of the three carried its own copy of the pair. One
+  /// question gets one answer, in one place.
+  ///
+  /// ⛔NOT [danger]. That red is chrome talking about chrome; these two are
+  /// drawn ON THE ARTWORK and have to stay readable over whatever the user
+  /// painted, which is why they are the saturated pair rather than the muted
+  /// one.
+  static Color selectionSession({required bool changed}) =>
+      changed ? const Color(0xFFFF4444) : const Color(0xFF2ECC71);
+
   /// FILL 1 — below every chrome surface: the scaffold, a well cut into a
   /// panel, the ring that separates a floating panel from the artwork.
   static const Color backdrop = Color(0xFF141517);

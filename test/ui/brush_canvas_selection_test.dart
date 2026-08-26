@@ -379,9 +379,9 @@ void main() {
     await tester.pump();
   }
 
-  /// The chrome the ants painter is ACTUALLY drawing — read off the
-  /// mounted painter, so a fix that only reaches the model cannot pass.
-  SelectionTransformChrome? chromeOnScreen(WidgetTester tester) {
+  /// The ants painter as MOUNTED — so a fix that only reaches the model
+  /// cannot pass.
+  SelectionAntsPainter? antsOnScreen(WidgetTester tester) {
     final paints = tester.widgetList<CustomPaint>(
       find.descendant(
         of: find.byKey(layerKey),
@@ -391,11 +391,14 @@ void main() {
     for (final paint in paints) {
       final painter = paint.painter;
       if (painter is SelectionAntsPainter) {
-        return painter.transformChrome;
+        return painter;
       }
     }
     return null;
   }
+
+  SelectionTransformChrome? chromeOnScreen(WidgetTester tester) =>
+      antsOnScreen(tester)?.transformChrome;
 
   /// Horizontal extent in VIEWPORT space, so the assertions never have to
   /// know the zoom the panel settled on.
@@ -990,6 +993,35 @@ void main() {
     );
     expect(inkAt(env.coordinator, 28, 28), 0, reason: 'nothing stayed behind');
   });
+
+  testWidgets(
+    'H28: an OPEN box that has moved already reads as changed — 유저: '
+    '「변형중일땐 … 변경사항이 있으면 … 빨간색」',
+    (tester) async {
+      final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+
+      env.commands.beginTransform();
+      await tester.pump();
+      expect(chromeOnScreen(tester), isNotNull, reason: 'the box is open');
+      expect(
+        antsOnScreen(tester)?.sessionHasChanges,
+        isFalse,
+        reason: 'an untouched box has changed nothing — green',
+      );
+
+      // Still OPEN: no confirm, no commit. 🚨Every place that sets the
+      // move-session dirty flag is a COMMIT point, so this is exactly the
+      // window that used to stay green however far the user dragged.
+      await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 45));
+      expect(env.commands.transformActive, isTrue, reason: 'still open');
+      expect(
+        antsOnScreen(tester)?.sessionHasChanges,
+        isTrue,
+        reason: 'the box would change pixels, and the user has not confirmed '
+            'it — that is what red means',
+      );
+    },
+  );
 
   testWidgets('R28 #10: a SECOND transform on the same tool works — the '
       'first one\'s confirm must not leave the layer unable to lift', (
