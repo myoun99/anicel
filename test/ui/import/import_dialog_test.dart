@@ -12,6 +12,7 @@ import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/psd_fixture.dart';
@@ -1092,6 +1093,87 @@ void main() {
       s.mediaAssets,
       hasLength(1),
       reason: 'the pool already knew this file',
+    );
+  });
+
+  testWidgets('🚨 a placement WAITS for a file that has not arrived, says '
+      'whose work the wait is, and can be stopped', (tester) async {
+    // The same law the two open doors go through, applied where an
+    // import actually READS. A cloud pick arrives as a placeholder and
+    // used to fail here as if the file were corrupt.
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final path = await tester.runAsync(() => writePng('cloudy.png'));
+    final layersBefore = s.requireActiveCut.layers.length;
+    // Built from the string itself, and only the part before the count:
+    // the suite runs in whatever locale the app defaults to, so a literal
+    // Korean line here would pass or fail on the language rather than on
+    // the behaviour.
+    final cloudLine = AppText.strings.openWaitingCloudTemplate
+        .split('{sec}')
+        .first;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [path!]),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(
+      find.text('Layer'),
+      findsOneWidget,
+      reason: 'the placement branch is the one under test',
+    );
+    // ⚠️Emptied only NOW, after the window has read it to fill its
+    // defaults. A file that is a placeholder from the start never gets a
+    // placement destination at all, and the test would be measuring the
+    // setup rather than the import: what a cloud pick actually does is
+    // answer the window and then not read at the moment of import.
+    await tester.runAsync(() => File(path).writeAsBytes(const <int>[]));
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+
+    // It waits rather than failing, and the line names the cloud.
+    var waited = false;
+    for (var tries = 0; tries < 40 && !waited; tries += 1) {
+      // Real time for the file probes, and the FAKE clock moved forward
+      // for the wait's own pacing — a bare pump leaves it where it was,
+      // the 250ms step never elapses, and the test measures nothing.
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      waited = find.textContaining(cloudLine).evaluate().isNotEmpty;
+    }
+    expect(
+      waited,
+      isTrue,
+      reason: 'the import said it was waiting on the cloud, not failing',
+    );
+    expect(s.requireActiveCut.layers.length, layersBefore);
+
+    // And the wait can be let go of — Cancel is live again while the
+    // import is waiting on bytes that are not its own.
+    await tester.tap(find.byKey(const ValueKey<String>('import-cancel-button')));
+    for (var tries = 0; tries < 40; tries += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      if (find.textContaining(cloudLine).evaluate().isEmpty) {
+        break;
+      }
+    }
+    expect(
+      find.textContaining(cloudLine),
+      findsNothing,
+      reason: 'stopping the wait ends it',
+    );
+    expect(
+      s.requireActiveCut.layers.length,
+      layersBefore,
+      reason: 'nothing was placed from a file that never arrived',
     );
   });
 }
