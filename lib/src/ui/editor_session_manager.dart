@@ -1,8 +1,9 @@
-import 'dart:async' show Completer, Timer;
+import 'dart:async' show Timer;
 import 'dart:collection' show SplayTreeMap;
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math' as math;
-import 'dart:ui' as ui show Image, ImageByteFormat;
+import 'dart:ui' as ui show ImageByteFormat;
 
 import 'package:flutter/foundation.dart';
 
@@ -22,7 +23,6 @@ import '../services/media/media_byte_source.dart';
 import '../services/media/project_media_sources.dart';
 import '../services/import/media_import_planner.dart';
 import '../services/import/psd_expand_import.dart';
-import '../core/straight_rgba_image.dart';
 import '../services/import/raster_cel_import.dart';
 import '../services/import/tvp_import_planner.dart';
 import '../services/import/tvpp_raster_decoder.dart';
@@ -63,6 +63,8 @@ import '../models/attached_layer_resolve.dart';
 import '../models/attached_mode.dart';
 import '../models/attached_placement.dart';
 import '../models/bitmap_surface.dart';
+import '../models/bitmap_tile.dart';
+import '../models/tile_coord.dart';
 import '../models/audio_clip.dart';
 import '../models/brush_frame_key.dart';
 import '../models/conte/conte_ink_keys.dart';
@@ -7659,65 +7661,75 @@ class EditorSessionManager extends ChangeNotifier {
     _recoveredFromSidecar = null;
     _discardedUnsavedWork = false;
 
-    final totalBakes =
-        plans.fold<int>(0, (sum, entry) => sum + entry.$1.bakes.length);
-    var bakedSoFar = 0;
+    // Decoding is the import's whole cost (zlib + PackBits per cel, on
+    // 288: ~30s of it, single-threaded) and it is pure — so it fans out
+    // over worker isolates, in WAVES the size of the pool so at most
+    // that many full-canvas RGBA buffers are ever alive at once. The
+    // GPU bake stays here: it needs the UI thread and is cheap next to
+    // the decode. Isolate.run moves its result out (no copy back).
+    final work = <(TvpImportPlan, Cut, PlannedCelBake, TvppSlot)>[];
     for (final (plan, slotsByFile) in plans) {
       final bakedCut = _cutById(plan.cut.id);
       if (bakedCut == null) {
         continue;
       }
       for (final bake in plan.bakes) {
-        bakedSoFar += 1;
-        if (totalBakes > 0) {
-          onProgress?.call(bakedSoFar / totalBakes);
-        }
         final slot = slotsByFile[bake.sourceFile];
-        if (slot == null) {
+        if (slot != null) {
+          work.add((plan, bakedCut, bake, slot));
+        }
+      }
+    }
+    final pool = math.max(1, math.min(Platform.numberOfProcessors - 1, 8));
+    var bakedSoFar = 0;
+    for (var at = 0; at < work.length; at += pool) {
+      final wave = work.sublist(at, math.min(at + pool, work.length));
+      final decoded = await Future.wait([
+        for (final (plan, _, _, slot) in wave)
+          Isolate.run(() {
+            try {
+              return decodeTvppSlotTiles(
+                fileBytes: bytes,
+                slot: slot,
+                width: plan.cut.canvasSize.width,
+                height: plan.cut.canvasSize.height,
+              );
+            } on TvppRasterDecodeException catch (error) {
+              return error;
+            }
+          }),
+      ]);
+      for (var i = 0; i < wave.length; i++) {
+        final (_, bakedCut, bake, _) = wave[i];
+        bakedSoFar += 1;
+        onProgress?.call(bakedSoFar / work.length);
+        final result = decoded[i];
+        if (result is TvppRasterDecodeException) {
+          warnings.add('${bake.sourceFile}: $result');
           continue;
         }
-        final Uint8List? rgba;
-        try {
-          rgba = decodeTvppSlotRgba(
-            fileBytes: bytes,
-            slot: slot,
-            width: plan.cut.canvasSize.width,
-            height: plan.cut.canvasSize.height,
-          );
-        } on TvppRasterDecodeException catch (error) {
-          warnings.add('${bake.sourceFile}: $error');
+        final tiles = result as List<TvppCelTile>?;
+        // A blank instance (빈 셀) decodes to zero tiles: the cel stays,
+        // its pixels stay absent — same shape the drawing store gives an
+        // empty cel.
+        if (tiles == null || tiles.isEmpty) {
           continue;
         }
-        if (rgba == null) {
-          continue;
-        }
-        final completer = Completer<ui.Image>();
-        decodeStraightRgbaImage(
-          rgba: rgba,
-          width: plan.cut.canvasSize.width,
-          height: plan.cut.canvasSize.height,
-          onDecoded: completer.complete,
+        final surface = BitmapSurface(
+          canvasSize: bakedCut.canvasSize,
+        ).putTiles([
+          for (final tile in tiles)
+            BitmapTile(
+              coord: TileCoord(x: tile.x, y: tile.y),
+              size: 256,
+              pixels: tile.pixels,
+            ),
+        ]);
+        bakeCelSurface(
+          brushFrameStore,
+          brushFrameKeyForCut(bakedCut, bake.layerId, bake.frameId),
+          surface,
         );
-        final image = await completer.future;
-        try {
-          final surface = await rasterizeImageToSurface(
-            image: image,
-            canvas: bakedCut.canvasSize,
-            fit: MediaFitMode.none,
-          );
-          // A blank instance (빈 셀) decodes to zero tiles: the cel stays,
-          // its pixels stay absent — same shape as the JSON path's fully
-          // transparent PNGs.
-          if (surface.tiles.isNotEmpty) {
-            bakeCelSurface(
-              brushFrameStore,
-              brushFrameKeyForCut(bakedCut, bake.layerId, bake.frameId),
-              surface,
-            );
-          }
-        } finally {
-          image.dispose();
-        }
       }
     }
 

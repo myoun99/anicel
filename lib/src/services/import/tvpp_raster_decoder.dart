@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../../models/import/tvpp_parse.dart';
@@ -33,6 +34,79 @@ class TvppRasterDecodeException implements Exception {
 
   @override
   String toString() => 'TvppRasterDecodeException: $message';
+}
+
+/// One non-empty 256×256 tile of a decoded cel, in straight RGBA — the
+/// byte shape `BitmapTile` wants, without naming that type here (this
+/// service stays importable from a worker isolate with nothing but the
+/// parser).
+typedef TvppCelTile = ({int x, int y, Uint8List pixels});
+
+/// Decodes [slot] straight into sparse surface tiles.
+///
+/// The import's cels are placed 1:1 at the canvas origin, so the
+/// full-canvas `ui.Image` → `PictureRecorder` → `toImage` → readback
+/// detour the generic media path takes is pure overhead here — on 288
+/// it was 4× the decode itself, all of it on the UI thread. Slicing the
+/// decoded buffer is plain CPU work, so the whole thing can run on a
+/// worker isolate; only tiles with any opaque pixel come back (a cel
+/// covers a handful of the canvas grid). Null for a hold slot.
+List<TvppCelTile>? decodeTvppSlotTiles({
+  required Uint8List fileBytes,
+  required TvppSlot slot,
+  required int width,
+  required int height,
+  int tileSize = 256,
+}) {
+  final rgba = decodeTvppSlotRgba(
+    fileBytes: fileBytes,
+    slot: slot,
+    width: width,
+    height: height,
+  );
+  if (rgba == null) {
+    return null;
+  }
+  final cols = (width + tileSize - 1) ~/ tileSize;
+  final rows = (height + tileSize - 1) ~/ tileSize;
+  final tiles = <TvppCelTile>[];
+  final rowStride = width * 4;
+  for (var ty = 0; ty < rows; ty++) {
+    final y0 = ty * tileSize;
+    final copyRows = math.min(tileSize, height - y0);
+    for (var tx = 0; tx < cols; tx++) {
+      final x0 = tx * tileSize;
+      final copyCols = math.min(tileSize, width - x0);
+      var any = false;
+      scan:
+      for (var row = 0; row < copyRows; row++) {
+        final src = (y0 + row) * rowStride + x0 * 4;
+        for (var i = src + 3; i < src + copyCols * 4; i += 4) {
+          if (rgba[i] != 0) {
+            any = true;
+            break scan;
+          }
+        }
+      }
+      if (!any) {
+        continue;
+      }
+      // Edge tiles zero-pad past the canvas — the fresh buffer already
+      // is zeros.
+      final pixels = Uint8List(tileSize * tileSize * 4);
+      for (var row = 0; row < copyRows; row++) {
+        final src = (y0 + row) * rowStride + x0 * 4;
+        pixels.setRange(
+          row * tileSize * 4,
+          row * tileSize * 4 + copyCols * 4,
+          rgba,
+          src,
+        );
+      }
+      tiles.add((x: tx, y: ty, pixels: pixels));
+    }
+  }
+  return tiles;
 }
 
 /// Straight RGBA bytes (width × height × 4) for [slot], or null for a

@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -257,11 +258,17 @@ void main() {
     });
   });
 
-  group('a camera the animator resized', () {
+  group('the camera zoom, in the FILE pose shape', () {
+    // A .tvpp pose: sizeX/sizeY is the camera RECTANGLE in clip
+    // coordinates (288 stores the whole canvas there) and scale is
+    // TVPaint's zoom display — the viewed width is sizeX / scale. The
+    // deleted JSON door's poses carried the PROJECT camera in sizeX,
+    // and its formula framed 288 6.8× too wide.
     CutCamera cameraFrom({
       required double sizeX,
       required double sizeY,
       required double scale,
+      required CanvasSize frame,
     }) {
       final pose = TvpCameraPose(
         frame: 1,
@@ -272,10 +279,10 @@ void main() {
         sizeX: sizeX,
         sizeY: sizeY,
       );
-      return plan(
-        clip(
-          width: 2340,
-          height: 1654,
+      return planTvpImport(
+        parsed: clip(
+          width: 2339,
+          height: 1653,
           frameCount: 2,
           camera: TvpCamera(
             width: sizeX.round(),
@@ -284,30 +291,44 @@ void main() {
             positions: [pose],
           ),
         ),
+        resolveFile: (relative) => relative,
+        mint: mint(),
+        cameraFrameSize: frame,
       ).cut.camera;
     }
 
-    /// How much of the CLIP the camera sees, in clip pixels — the number
-    /// the animator can check against the frame they drew.
-    double framedWidth(CutCamera camera) =>
-        defaultProjectCameraSize.width / camera.keyframeAt(0)!.zoom;
-
-    test('a stretched camera frames what it was stretched to', () {
-      final camera = cameraFrom(sizeX: 960, sizeY: 540, scale: 2.158795);
-      expect(framedWidth(camera), closeTo(2072.4, 0.5));
+    test("288's own numbers: zoom 207.1% on the whole canvas frames "
+        'half the paper', () {
+      // Hands-on truth: the blue rectangle in TVPaint spans
+      // 2339 / 2.070968 ≈ 1129 clip pixels.
+      const frame = CanvasSize(width: 960, height: 430);
+      final camera = cameraFrom(
+        sizeX: 2339,
+        sizeY: 1653,
+        scale: 2.070968,
+        frame: frame,
+      );
+      final framedWidth = frame.width / camera.keyframeAt(0)!.zoom;
+      expect(framedWidth, closeTo(2339 / 2.070968, 0.01));
     });
 
-    test('scale moves the zoom the OTHER way', () {
-      final wide = cameraFrom(sizeX: 1920, sizeY: 1080, scale: 2.0);
-      final narrow = cameraFrom(sizeX: 1920, sizeY: 1080, scale: 1.0);
+    test('more scale = more magnified: zoom follows scale', () {
+      const frame = CanvasSize(width: 960, height: 430);
+      final zoomed = cameraFrom(
+          sizeX: 2339, sizeY: 1653, scale: 2.0, frame: frame);
+      final wide = cameraFrom(
+          sizeX: 2339, sizeY: 1653, scale: 1.0, frame: frame);
       expect(
-        wide.keyframeAt(0)!.zoom,
-        closeTo(narrow.keyframeAt(0)!.zoom / 2, 1e-9),
+        zoomed.keyframeAt(0)!.zoom,
+        closeTo(wide.keyframeAt(0)!.zoom * 2, 1e-9),
       );
     });
 
-    test('an untouched camera is unaffected — scale 1 is the identity', () {
-      final camera = cameraFrom(sizeX: 1920, sizeY: 1080, scale: 1.0);
+    test('a rectangle the size of the shooting frame at scale 1 is the '
+        'identity', () {
+      const frame = CanvasSize(width: 1920, height: 1080);
+      final camera = cameraFrom(
+          sizeX: 1920, sizeY: 1080, scale: 1.0, frame: frame);
       expect(camera.keyframeAt(0)!.zoom, closeTo(1.0, 1e-9));
     });
 

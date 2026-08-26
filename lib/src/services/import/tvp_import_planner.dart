@@ -54,11 +54,11 @@ class TvpImportPlan {
   final List<String> warnings;
 }
 
-/// Builds the cut for [parsed]. [resolveFile] turns a JSON-relative image
-/// path into something the session can read (the export writes
-/// `[003] D/[0004] D.png`, relative to the JSON's own folder).
+/// Builds the cut for [parsed]. [resolveFile] turns a block's file key
+/// into something the session can read — for the .tvpp reader that is a
+/// synthetic slot key resolved against the file bytes at bake time.
 ///
-/// [fit] defaults to [MediaFitMode.none]: the export's PNGs are already
+/// [fit] defaults to [MediaFitMode.none]: a clip's cels are already
 /// the clip's exact size and the cut is created at that size, so 1:1 is
 /// both correct and the only mode that copies bytes instead of resampling
 /// them.
@@ -87,8 +87,8 @@ TvpImportPlan planTvpImport({
   for (final source in parsed.layers) {
     final layerId = mint.nextLayerId();
     if (source.isFolder) {
-      // Only the .tvpp reader produces these (the JSON export flattens
-      // the stack). Members link up in the fix-up pass below — the
+      // Folder rows come straight from the file's layer tree. Members
+      // link up in the fix-up pass below — the
       // folder row sits after them in this bottom-first list, so its id
       // does not exist yet while they are built.
       layers.add(
@@ -234,7 +234,7 @@ TvpImportPlan planTvpImport({
     camera: parsed.camera,
     cameraFrameSize: cameraFrameSize,
     frameCount: duration,
-    warnings: warnings,
+
   );
 
   final defaultCut = createDefaultCut(
@@ -261,8 +261,8 @@ TvpImportPlan planTvpImport({
 /// What to call the cel a drawing becomes: the instance name the animator
 /// typed, or nothing. Trustworthy now that the source is the project
 /// file — its name table only lists NAMED instances (measured live:
-/// an unnamed instance simply has no entry), unlike the JSON export,
-/// which mixed typed names with TVPaint's own counting in one field.
+/// an unnamed instance simply has no entry) — the deleted JSON door
+/// mixed typed names with TVPaint's own counting in one field.
 ///
 /// [taken] disambiguates a real name used twice for DIFFERENT drawings:
 /// the second becomes `3-1`, so the sheet still shows what the animator
@@ -370,44 +370,29 @@ CutCamera planTvpCamera({
   required TvpCamera camera,
   required CanvasSize cameraFrameSize,
   required int frameCount,
-  required List<String> warnings,
+
 }) {
-  // 🚨 `points` is the gate, NOT `positions`. A clip whose camera was never
-  // touched still exports a full `positions` array — and every pose in it
-  // reads `x: 0, y: 0`, which is a placeholder and not a centre. The
-  // `held_instances` fixture is exactly that shape; taking it literally
-  // parks the camera on the canvas corner and shows one quadrant.
-  if (camera.keyframes.isEmpty) {
+  // `keyframes` is the gate: the .tvpp reader only fills either list
+  // when the clip's `[cameradata]` carries authored keys.
+  if (camera.keyframes.isEmpty || camera.positions.isEmpty) {
     return CutCamera.empty();
   }
-  final baked = camera.positions.isNotEmpty;
-  final source = baked ? camera.positions : camera.keyframes;
-  if (source.isEmpty) {
-    return CutCamera.empty();
-  }
+  final source = camera.positions;
   // A STILL camera stays one key. The baked curve holds one pose per
   // frame either way, and the simplifier keeps both endpoints of any
   // track it walks — which turned TVPaint's single frame-1 key into a
   // key on the last frame too (288, hands-on).
-  if (baked && !camera.isAnimated) {
+  if (!camera.isAnimated) {
     final first = source.first;
     final index = (first.frame - 1).clamp(0, frameCount - 1);
-    _warnOnShootingFrameMismatch(first, cameraFrameSize, warnings);
     return CutCamera(
       keyframes: {index: _cameraPoseFor(first, cameraFrameSize)},
-    );
-  }
-  if (!baked) {
-    warnings.add(
-      'The export carries camera keys but no baked curve — the move is read '
-      'as straight lines between them, which is not always what TVPaint '
-      'showed.',
     );
   }
 
   final byFrame = SplayTreeMap<int, CameraPose>();
   for (final pose in source) {
-    // The export numbers frames from 1.
+    // Poses number frames from 1, TVPaint-style.
     final index = pose.frame - 1;
     if (index < 0 || index >= frameCount) {
       continue;
@@ -417,7 +402,6 @@ CutCamera planTvpCamera({
   if (byFrame.isEmpty) {
     return CutCamera.empty();
   }
-  _warnOnShootingFrameMismatch(source.first, cameraFrameSize, warnings);
 
   final frames = byFrame.keys.toList();
   final poses = byFrame.values.toList();
@@ -451,13 +435,19 @@ CutCamera planTvpCamera({
 /// and divide agree, and the fourth only wanders between 0.80 and 1.05.
 /// The axis had never been pressed.
 CameraPose _cameraPoseFor(TvpCameraPose pose, CanvasSize frame) {
+  // The .tvpp pose: [TvpCameraPose.sizeX] is the camera RECTANGLE in
+  // clip coordinates (288 stores the whole 2339-wide canvas there) and
+  // [TvpCameraPose.scale] is TVPaint's zoom display — the VIEWED width
+  // is sizeX / scale. 288 is the truth anchor: zoom 207.1% on that
+  // canvas shows 2339/2.071 ≈ 1129px, the blue rectangle at about half
+  // the paper. The earlier reading (viewed = sizeX × scale, fitted to
+  // the tighter axis) was the JSON export's pose shape, whose sizeX was
+  // the PROJECT camera; with the file's own poses it framed 288 6.8×
+  // too wide. The viewed height follows the project frame's aspect, so
+  // one isotropic zoom carries both axes.
   final scale = pose.scale.isFinite && pose.scale > 0 ? pose.scale : 1.0;
-  final spanX = (pose.sizeX > 0 ? pose.sizeX : frame.width.toDouble()) * scale;
-  final spanY = (pose.sizeY > 0 ? pose.sizeY : frame.height.toDouble()) * scale;
-  // Fit on the tighter axis when the two shooting frames disagree on
-  // aspect: framing a little wider than TVPaint did is recoverable, a crop
-  // through the drawing is not.
-  final zoom = math.min(frame.width / spanX, frame.height / spanY);
+  final sizeX = pose.sizeX > 0 ? pose.sizeX : frame.width.toDouble();
+  final zoom = frame.width * scale / sizeX;
   return CameraPose(
     center: CanvasPoint(x: pose.x, y: pose.y),
     zoom: zoom.isFinite && zoom > 0 ? zoom : 1.0,
@@ -468,26 +458,6 @@ CameraPose _cameraPoseFor(TvpCameraPose pose, CanvasSize frame) {
     // [CameraPose.rotationDegrees] turns the view clockwise on POSITIVE.
     // Copying the sign through would mirror every rotating move.
     rotationDegrees: pose.angleDegrees.isFinite ? -pose.angleDegrees : 0,
-  );
-}
-
-void _warnOnShootingFrameMismatch(
-  TvpCameraPose pose,
-  CanvasSize frame,
-  List<String> warnings,
-) {
-  if (pose.sizeX <= 0 || pose.sizeY <= 0) {
-    return;
-  }
-  final theirs = pose.sizeX / pose.sizeY;
-  final ours = frame.width / frame.height;
-  if ((theirs - ours).abs() <= 0.001) {
-    return;
-  }
-  warnings.add(
-    'The clip shoots ${pose.sizeX.round()}×${pose.sizeY.round()} but this '
-    'project shoots ${frame.width}×${frame.height} — the camera is fitted to '
-    'the tighter axis, so it frames a little wider than TVPaint did.',
   );
 }
 
@@ -547,7 +517,7 @@ bool _lineReproduces(
 /// TVPaint's blending-mode NAME to Anicel's enum.
 ///
 /// `Color` is TVPaint's NORMAL — not a hue/luminosity blend — and it is
-/// what every layer of every measured export carries. Modes with no
+/// what every layer of every measured file carries. Modes with no
 /// Anicel formula fall back to normal and say so rather than picking a
 /// lookalike.
 LayerBlendMode _blendModeFor(TvpLayer source, List<String> warnings) {
