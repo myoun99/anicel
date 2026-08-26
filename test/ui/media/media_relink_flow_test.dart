@@ -89,5 +89,16 @@ void main() {
       reason: 'and the grant that makes it readable after a relaunch was '
           'kept — dropping it healed the reference for one session only',
     );
+    expect(
+      debugIdentityReadsOnThisIsolate,
+      0,
+      reason:
+          '🚨the candidates were read in a WORKER. Every file a tie reaches '
+          'is exactly as big as the asset being hunted — a video, a plate — '
+          'and over a cloud folder reading them here also fetches each one, '
+          'which is minutes of a screen that cannot repaint. A static does '
+          'not cross an isolate, so this counter is only non-zero if the '
+          'reads came home.',
+    );
   });
 }

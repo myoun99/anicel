@@ -700,6 +700,11 @@ class AppStrings {
   /// applied, because a folder that matches almost nothing is the signal
   /// that the wrong folder was picked.
   String get mediaRelinkFound => _s('mediaRelinkFound');
+
+  /// While the candidate folder is being read — which on a cloud folder
+  /// means every same-size candidate is being fetched.
+  String get mediaRelinkScanning => _s('mediaRelinkScanning');
+  String get mediaRelinkScanned => _s('mediaRelinkScanned');
   String get mediaRemove => _s('mediaRemove');
   String get mediaRegisterInProject => _s('mediaRegisterInProject');
   String get mediaAlreadyInProject => _s('mediaAlreadyInProject');
@@ -1376,6 +1381,8 @@ class AppStrings {
     'mediaMissingCount': '{n} media files not found',
     'mediaFindInFolder': 'Find in folder…',
     'mediaRelinkFound': 'Found {m} of {n}. Relink them?',
+    'mediaRelinkScanning': 'Reading that folder…',
+    'mediaRelinkScanned': 'Folder read',
     'mediaRemove': 'Remove',
     'mediaRegisterInProject': 'Keep inside the project file',
     'mediaAlreadyInProject':
@@ -2175,6 +2182,8 @@ class AppStrings {
     'mediaMissingCount': '見つからないファイル {n} 個',
     'mediaFindInFolder': 'フォルダーから探す…',
     'mediaRelinkFound': '{n} 件中 {m} 件が見つかりました。再リンクしますか？',
+    'mediaRelinkScanning': 'フォルダーを読み込み中…',
+    'mediaRelinkScanned': '読み込みました',
     'mediaRemove': '削除',
     'mediaRegisterInProject': 'プロジェクトファイルに取り込む',
     'mediaAlreadyInProject':
@@ -2970,6 +2979,8 @@ class AppStrings {
     'mediaMissingCount': '못 찾은 파일 {n}개',
     'mediaFindInFolder': '폴더에서 찾기…',
     'mediaRelinkFound': '{n}개 중 {m}개를 찾았습니다. 다시 연결할까요?',
+    'mediaRelinkScanning': '폴더를 읽는 중…',
+    'mediaRelinkScanned': '폴더를 읽었습니다',
     'mediaRemove': '제거',
     'mediaRegisterInProject': '프로젝트 파일에 품기',
     'mediaAlreadyInProject': '품을 것이 없습니다 — 이미 파일 안에 있거나, 항상 참조로 남는 종류(동영상)입니다.',

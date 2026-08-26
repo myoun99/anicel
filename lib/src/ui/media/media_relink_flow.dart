@@ -1,3 +1,4 @@
+import 'dart:isolate';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -9,6 +10,7 @@ import '../../services/media/media_relink_matcher.dart';
 import '../../services/persistence/anicel_incremental_writer.dart'
     show anicelCrc32Finish, anicelCrc32Start, anicelCrc32Update;
 import '../dialogs/app_confirm_dialog.dart';
+import '../dialogs/app_progress_dialog.dart';
 import '../dialogs/folder_pick_flow.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
@@ -52,13 +54,38 @@ Future<void> runMediaRelinkFlow(
   if (!context.mounted) {
     return;
   }
-  final read = <String, MediaIdentity?>{};
+  // 🚨READ OFF THE UI ISOLATE, and behind a window that says so.
+  //
+  // Every candidate a tie survives to gets hashed, and a tie is decided by
+  // SIZE — so each file opened here is exactly as big as the asset being
+  // hunted, which on this app's material means a video or a
+  // multi-hundred-megabyte plate. Doing that synchronously on the UI
+  // isolate froze the app for as long as the disk took; over a cloud
+  // folder it also HYDRATES every one of them, which is minutes of a
+  // screen that does not repaint. The reads are the same reads — they
+  // just happen where a frozen thread costs nothing.
+  final wanted = [
+    for (final path in missing) ?session.recordedMediaIdentity(path),
+  ];
+  final read = await runWithAppProgress<Map<String, MediaIdentity?>>(
+    context: context,
+    title: AppText.strings.mediaRelink,
+    titleIcon: Icons.link_outlined,
+    runningLabel: AppText.strings.mediaRelinkScanning,
+    doneLabel: AppText.strings.mediaRelinkScanned,
+    windowKey: const ValueKey<String>('relink-scan-progress'),
+    task: (_) => Isolate.run(() => _identitiesOf(candidates, wanted)),
+  );
+  if (!context.mounted) {
+    return;
+  }
   final plan = planMediaRelink(
     missingPaths: missing,
     candidatePaths: candidates,
     recordedIdentity: session.recordedMediaIdentity,
-    candidateIdentity: (candidate, wanted) =>
-        readCandidateIdentity(candidate, wanted, memo: read),
+    // Already read, and read once: the matcher gets a lookup rather than
+    // a file handle.
+    candidateIdentity: (candidate, _) => read[candidate],
   );
   final apply = await _confirm(
     context,
@@ -75,50 +102,65 @@ Future<void> runMediaRelinkFlow(
   session.relinkMediaAssets(plan.matched);
 }
 
-/// What the file at [candidate] is, doing the least work that can still
-/// change the answer about [wanted].
+/// How many candidates this ISOLATE has read.
 ///
-/// The IO half of the content check, kept out here because the matcher is
-/// pure. Two early exits carry the whole cost story:
+/// A static does not cross an isolate, which is exactly what makes it an
+/// instrument: after a relink the UI isolate's copy is still zero, and it
+/// stops being zero the moment somebody calls [_identitiesOf] here
+/// instead of inside the worker. That is the whole property this file
+/// exists to hold — the reads are the same reads, done where a frozen
+/// thread costs nothing — and it is otherwise invisible to a test.
+@visibleForTesting
+int debugIdentityReadsOnThisIsolate = 0;
+
+/// Every candidate's identity, read in one pass inside a worker.
 ///
-/// - a **length** that already differs is a decisive no from `stat` alone,
-///   so the file is never opened;
-/// - a [wanted] with **no recorded CRC** means reading these bytes could
-///   only ever produce `unknown`, so reading them buys nothing.
+/// The IO half of the content check, kept out of the matcher because the
+/// matcher is pure. Two exits carry the whole cost story, and they are
+/// the ones the lazy per-lookup version had — stated up front now
+/// instead of discovered one candidate at a time:
+///
+/// - a **length** that differs from everything being hunted is a decisive
+///   no from `stat` alone, so the file is never opened;
+/// - a wanted asset with **no recorded CRC** has nothing a hash could
+///   answer, so its size does not make anything worth reading.
 ///
 /// What is left is the case that earns its read: same size, and something
-/// to compare a hash against.
-MediaIdentity? readCandidateIdentity(
-  String candidate,
-  MediaIdentity wanted, {
-  Map<String, MediaIdentity?>? memo,
-}) {
-  final onDisk = readMediaIdentity(candidate);
-  if (onDisk == null ||
-      onDisk.lengthBytes != wanted.lengthBytes ||
-      wanted.crc32 == null) {
-    return onDisk;
+/// to compare a hash against. Reading them all in one pass also drops the
+/// memo the old shape needed — a folder of N ambiguous `A1.png`s used to
+/// be read N times over, once per asking asset.
+///
+/// Top-level and taking only plain data, because it has to cross into an
+/// isolate — which is also why the matcher is handed a finished map
+/// rather than the closure it used to call.
+Map<String, MediaIdentity?> _identitiesOf(
+  List<String> candidates,
+  List<MediaIdentity> wanted,
+) {
+  debugIdentityReadsOnThisIsolate += candidates.length;
+  final hashableLengths = <int>{
+    for (final identity in wanted)
+      if (identity.crc32 != null) identity.lengthBytes,
+  };
+  final read = <String, MediaIdentity?>{};
+  for (final candidate in candidates) {
+    final onDisk = readMediaIdentity(candidate);
+    if (onDisk == null || !hashableLengths.contains(onDisk.lengthBytes)) {
+      read[candidate] = onDisk;
+      continue;
+    }
+    try {
+      read[candidate] = MediaIdentity(
+        lengthBytes: onDisk.lengthBytes,
+        crc32: _crc32OfFile(candidate),
+      );
+    } on Object {
+      // Unreadable is not "different" — a permission error must not make
+      // the matcher rule out a file that may be exactly the one.
+      read[candidate] = onDisk;
+    }
   }
-  // Every missing asset with the same file name reaches the same
-  // candidates, so without this a folder holding N ambiguous `A1.png`s
-  // reads each of them N times. Keyed by path alone because a file's hash
-  // does not depend on who is asking.
-  final cached = memo?[candidate];
-  if (cached != null) {
-    return cached;
-  }
-  try {
-    final found = MediaIdentity(
-      lengthBytes: onDisk.lengthBytes,
-      crc32: _crc32OfFile(candidate),
-    );
-    memo?[candidate] = found;
-    return found;
-  } on Object {
-    // Unreadable is not "different" — a permission error must not make the
-    // matcher rule a file out that may be exactly the one.
-    return onDisk;
-  }
+  return read;
 }
 
 /// CRC-32 of the file at [path], a chunk at a time.
