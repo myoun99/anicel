@@ -52,6 +52,21 @@ class MediaViewerSlot {
 
   final ValueNotifier<CanvasViewport?> viewport = ValueNotifier(null);
 
+  /// WHICH DOCUMENT the [viewport] above was framed for.
+  ///
+  /// 🚨★★★It lives up here for the same reason the viewport does. The
+  /// reframe used to be keyed on the host State's own load counter, so
+  ///「문서 하나당 한 번」 was really 「로드 하나당 한 번」 — and closing the
+  /// panel destroys the State, so REOPENING was a new load and the fit ran
+  /// again over a view the user had set (유저 2026-08-27: 「확대해두고 패널
+  /// 닫고 다시열면 초기화되있음 … 다시 열었을때 이전 배율 그대로 있었다가,
+  /// fit으로 초기화되」).
+  ///
+  /// ⛔A panel-local memory cannot answer 「have I already framed this
+  /// document?」, because the panel is exactly what goes away. The slot is
+  /// what survives, so the slot is what remembers.
+  final ValueNotifier<Object?> framedFor = ValueNotifier(null);
+
   /// Points this viewer at a document. The position goes back to the
   /// start, because "page 37" of the file you just left means nothing in
   /// the one you just opened.
@@ -93,6 +108,7 @@ class MediaViewerSlot {
     request.dispose();
     position.dispose();
     viewport.dispose();
+    framedFor.dispose();
   }
 }
 
@@ -120,6 +136,7 @@ class MediaViewerTabHost extends StatefulWidget {
     this.viewport,
     this.viewportController,
     this.onViewportChanged,
+    this.framedFor,
     this.filePicker,
   });
 
@@ -183,6 +200,11 @@ class MediaViewerTabHost extends StatefulWidget {
   /// The view, OWNED by the caller — forwarded to
   /// [BrushCanvasPanel.viewportController].
   final ValueNotifier<CanvasViewport?>? viewportController;
+
+  /// [MediaViewerSlot.framedFor] — the document this viewer's stored view was
+  /// framed for. Null in hosts that own no slot; then every load frames, which
+  /// is the old behaviour and correct when there is nothing to preserve.
+  final ValueNotifier<Object?>? framedFor;
   final ValueChanged<CanvasViewport>? onViewportChanged;
 
   /// Injectable loose-file picker (tests).
@@ -231,6 +253,40 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   /// the panel's auto-reframe so a preserved deep zoom/pan from the
   /// previous asset can never leave the new one entirely off-screen.
   Object? _loadedToken;
+
+  /// What identifies the DOCUMENT this viewer is showing — the file it came
+  /// from, since that is what「이 문서를 이미 맞춰 놓았나」 has to be asked
+  /// about. ⛔Not the page: turning a page inside one document must not
+  /// throw away the zoom the user set to read it.
+  String? get _documentIdentity => widget.request.value?.path;
+
+  /// Whether the stored view still belongs to some OTHER document — the one
+  /// case a fit is right, and the case the original comment was written for
+  /// (a deep zoom from a large scan leaving a small next document entirely
+  /// off-screen).
+  bool get _needsFraming {
+    final remembered = widget.framedFor;
+    if (remembered == null) {
+      return true;
+    }
+    return remembered.value != _documentIdentity;
+  }
+
+  /// Records that this document has been framed, so the next open of the
+  /// SAME one leaves the user's view alone. Runs after the frame the
+  /// request went out on, because the request is read during build.
+  void _rememberFramed() {
+    final remembered = widget.framedFor;
+    final identity = _documentIdentity;
+    if (remembered == null || remembered.value == identity) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        remembered.value = identity;
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -321,6 +377,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
           _frames = frames;
           _loadedToken = generation;
         });
+        // The frame request goes out on the build this setState causes; the
+        // record lands after it, so the NEXT open of this document sees it.
+        _rememberFramed();
       case MediaAssetKind.pdf:
         final PdfDocumentHandle? document;
         try {
@@ -347,6 +406,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
             _loadedToken = generation;
           }
         });
+        _rememberFramed();
     }
   }
 
@@ -600,7 +660,12 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       // survives asset switches, and a deep zoom/pan from a large scan
       // would otherwise leave a small next document entirely off-screen
       // — a blank panel this viewer promises never to show.
-      autoFrame: message == null && _loadedToken != null
+      // 🚨THE TOKEN IS THE DOCUMENT, NOT THE LOAD. It used to be this
+      // State's own load counter, and a State dies with the panel — so
+      // reopening minted a fresh one and the fit ran again over a view the
+      // user had set. What the slot remembers is what makes 「once per
+      // document」 true across a close.
+      autoFrame: message == null && _loadedToken != null && _needsFraming
           ? CanvasAutoFrameRequest(
               token: _loadedToken!,
               rect: Rect.fromLTWH(0, 0, docSize.width, docSize.height),
