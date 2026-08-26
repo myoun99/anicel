@@ -335,6 +335,11 @@ class TimelineActionToolbar extends StatelessWidget {
     final effects = session.activeLayer?.effects ?? const <LayerEffect>[];
     return [
       PanelFlyoutHeader(AppText.strings.tlEffects),
+      // ⛔EVERY KIND IS LISTED, ALWAYS; the ones this row cannot take are
+      // DIMMED. Same rule the two pixel verbs on the shared pill follow
+      // ("Dimmed with nothing to act on, never hidden") — a menu that grew
+      // and shrank under the pointer would make the artist look for an
+      // entry that is simply not there today.
       for (final kind in EffectKind.values)
         PanelFlyoutItem(
           keyValue: 'add-effect-${kind.jsonValue}',
@@ -343,7 +348,7 @@ class TimelineActionToolbar extends StatelessWidget {
             kind.labelFor(AppText.language),
           ),
           icon: Icons.auto_fix_high_outlined,
-          enabled: serves && session.canAddEffectToActiveLayer,
+          enabled: serves && session.canAddEffectKindToActiveLayer(kind),
           onSelected: () => session.addEffectToActiveLayer(kind),
         ),
       if (effects.isNotEmpty) const PanelFlyoutDivider(),

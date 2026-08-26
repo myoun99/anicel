@@ -63,7 +63,10 @@ class Layer {
        instructions = immutableInstructionMap(instructions ?? const {}),
        audioClips = List.unmodifiable(audioClips),
        transformTrack = transformTrack ?? TransformTrack.empty(),
-       effects = List.unmodifiable(effects),
+       // NORMALIZED, for the reason [normalizedEffectChain] states: the
+       // CPU half of the chain runs before anything is drawn, so a row is
+       // not allowed to hold an order the composite could not honour.
+       effects = List.unmodifiable(normalizedEffectChain(effects)),
        baseFrameLinks = Map.unmodifiable(baseFrameLinks),
        runBehaviors = List.unmodifiable(runBehaviors);
 

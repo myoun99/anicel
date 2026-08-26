@@ -21,7 +21,11 @@ class Track {
     this.fxEnabled = true,
   }) : cuts = List.unmodifiable(cuts),
        seLayers = List.unmodifiable(seLayers),
-       effects = List.unmodifiable(effects),
+       // Same normalization a row gets — see [normalizedEffectChain]. A
+       // track's input is the composed stage, so the source-pixel kinds are
+       // never OFFERED here ([effectKindsFor]); normalizing anyway keeps one
+       // rule instead of one rule and one exception.
+       effects = List.unmodifiable(normalizedEffectChain(effects)),
        transitionLayer = transitionLayer ?? createTrackTransitionLayer(id);
 
   final TrackId id;

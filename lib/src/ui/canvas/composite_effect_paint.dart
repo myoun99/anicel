@@ -131,6 +131,12 @@ List<double>? resolveColorMatrixIgnoringSpatial(
         lightness: effect.parameter('lightness'),
       ),
       EffectKind.blur => null,
+      // A color key changes ALPHA by a threshold test — there is no color
+      // matrix for it, the same way there is none for a blur. The reader
+      // this serves samples one pixel, so it applies the keys itself
+      // (`CelColorKey.alphaFor`) rather than asking for a matrix that
+      // cannot exist.
+      EffectKind.colorKeyErase || EffectKind.colorKeyKeep => null,
     };
     if (next == null) {
       continue;
@@ -176,6 +182,19 @@ CompositeEffectPaint resolveCompositeEffectPaint(
 
   for (final effect in effects) {
     switch (effect.kind) {
+      // ⛔THE CPU HALF MUST BE GONE BY NOW. `splitSourceEffects` takes the
+      // color keys out in the shared visit and `celSurfaceWithSourceEffects`
+      // has already applied them to the surface this paint will draw.
+      // Reaching here means a route resolved a chain without splitting it —
+      // an assert rather than a silent skip, because the silent version
+      // looks exactly like "the artist set Amount to 0".
+      case EffectKind.colorKeyErase:
+      case EffectKind.colorKeyKeep:
+        assert(
+          false,
+          'Source-pixel effects must be split off before a paint is '
+          'resolved — see splitSourceEffects.',
+        );
       case EffectKind.brightnessContrast:
         final matrix = brightnessContrastMatrix(
           brightness: effect.parameter('brightness'),
@@ -213,8 +232,11 @@ CompositeEffectPaint resolveCompositeEffectPaint(
   }
 
   if (chain == null) {
-    final matrix = pendingColor!;
-    if (colorMatrixIsIdentity(matrix)) {
+    // Null when the chain held nothing this function paints — a release
+    // build reaching the assert above lands here, and "no paint state" is
+    // the honest answer for it.
+    final matrix = pendingColor;
+    if (matrix == null || colorMatrixIsIdentity(matrix)) {
       return CompositeEffectPaint.none;
     }
     return CompositeEffectPaint(colorFilter: ui.ColorFilter.matrix(matrix));
