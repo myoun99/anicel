@@ -5,7 +5,6 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/import/tvp_import_model.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/project.dart' show defaultProjectCameraSize;
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/import/tvp_import_planner.dart';
@@ -101,7 +100,6 @@ void main() {
         parsed: parsed,
         resolveFile: (relative) => relative,
         mint: mint(),
-        cameraFrameSize: defaultProjectCameraSize,
       );
 
   group('cels and names', () {
@@ -259,11 +257,11 @@ void main() {
   });
 
   group('the camera zoom, in the FILE pose shape', () {
-    // A .tvpp pose: sizeX/sizeY is the camera RECTANGLE in clip
-    // coordinates (288 stores the whole canvas there) and scale is
-    // TVPaint's zoom display — the viewed width is sizeX / scale. The
-    // deleted JSON door's poses carried the PROJECT camera in sizeX,
-    // and its formula framed 288 6.8× too wide.
+    // The LAW (#965, re-measured 2026-08-27): viewed width =
+    // Camera.Width × scale, so Anicel zoom = 1 / scale. The pose's own
+    // sizeX/sizeY is the CLIP CANVAS in file poses (288 stores
+    // 2339×1653) and does not participate — #1270 read it as the
+    // framing and imported 288 at half its true width.
     CutCamera cameraFrom({
       required double sizeX,
       required double sizeY,
@@ -293,14 +291,15 @@ void main() {
         ),
         resolveFile: (relative) => relative,
         mint: mint(),
-        cameraFrameSize: frame,
       ).cut.camera;
     }
 
-    test("288's own numbers: zoom 207.1% on the whole canvas frames "
-        'half the paper', () {
-      // Hands-on truth: the blue rectangle in TVPaint spans
-      // 2339 / 2.070968 ≈ 1129 clip pixels.
+    test("288's own numbers: zoom 207.1% on the 960 camera frames the "
+        'layout paper box', () {
+      // Hands-on truth (user screenshots, 08-27): TVPaint's blue
+      // rectangle coincides with the 撮影フレーム box on the layout
+      // paper — 960 × 2.070968 ≈ 1988 clip pixels, NOT the
+      // 2339 / 2.070968 ≈ 1129 the #1270 reading framed.
       const frame = CanvasSize(width: 960, height: 430);
       final camera = cameraFrom(
         sizeX: 2339,
@@ -309,18 +308,19 @@ void main() {
         frame: frame,
       );
       final framedWidth = frame.width / camera.keyframeAt(0)!.zoom;
-      expect(framedWidth, closeTo(2339 / 2.070968, 0.01));
+      expect(framedWidth, closeTo(960 * 2.070968, 0.01));
     });
 
-    test('more scale = more magnified: zoom follows scale', () {
+    test('more scale = a bigger rectangle = a wider view: zoom is the '
+        'reciprocal', () {
       const frame = CanvasSize(width: 960, height: 430);
-      final zoomed = cameraFrom(
+      final resized = cameraFrom(
           sizeX: 2339, sizeY: 1653, scale: 2.0, frame: frame);
-      final wide = cameraFrom(
+      final base = cameraFrom(
           sizeX: 2339, sizeY: 1653, scale: 1.0, frame: frame);
       expect(
-        zoomed.keyframeAt(0)!.zoom,
-        closeTo(wide.keyframeAt(0)!.zoom * 2, 1e-9),
+        resized.keyframeAt(0)!.zoom,
+        closeTo(base.keyframeAt(0)!.zoom / 2, 1e-9),
       );
     });
 

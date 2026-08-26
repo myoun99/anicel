@@ -62,14 +62,10 @@ class TvpImportPlan {
 /// the clip's exact size and the cut is created at that size, so 1:1 is
 /// both correct and the only mode that copies bytes instead of resampling
 /// them.
-/// [cameraFrameSize] is the PROJECT's shooting frame
-/// (`Project.cameraSize`). A cut import must never change it, so the
-/// clip's own camera size is expressed through [CameraPose.zoom] instead.
 TvpImportPlan planTvpImport({
   required TvpImportClip parsed,
   required String Function(String relativePath) resolveFile,
   required ImportIdMint mint,
-  required CanvasSize cameraFrameSize,
   MediaFitMode fit = MediaFitMode.none,
   String? cutName,
 }) {
@@ -232,9 +228,7 @@ TvpImportPlan planTvpImport({
 
   final camera = planTvpCamera(
     camera: parsed.camera,
-    cameraFrameSize: cameraFrameSize,
     frameCount: duration,
-
   );
 
   final defaultCut = createDefaultCut(
@@ -368,9 +362,7 @@ const int _cameraMaxRunFrames = 512;
 /// See [_cameraPoseFor] for the measurement that settled it.
 CutCamera planTvpCamera({
   required TvpCamera camera,
-  required CanvasSize cameraFrameSize,
   required int frameCount,
-
 }) {
   // `keyframes` is the gate: the .tvpp reader only fills either list
   // when the clip's `[cameradata]` carries authored keys.
@@ -386,7 +378,7 @@ CutCamera planTvpCamera({
     final first = source.first;
     final index = (first.frame - 1).clamp(0, frameCount - 1);
     return CutCamera(
-      keyframes: {index: _cameraPoseFor(first, cameraFrameSize)},
+      keyframes: {index: _cameraPoseFor(first)},
     );
   }
 
@@ -397,7 +389,7 @@ CutCamera planTvpCamera({
     if (index < 0 || index >= frameCount) {
       continue;
     }
-    byFrame.putIfAbsent(index, () => _cameraPoseFor(pose, cameraFrameSize));
+    byFrame.putIfAbsent(index, () => _cameraPoseFor(pose));
   }
   if (byFrame.isEmpty) {
     return CutCamera.empty();
@@ -415,39 +407,29 @@ CutCamera planTvpCamera({
 
 /// One TVPaint pose in Anicel's terms. [CameraPose.center] is the view
 /// centre in canvas coordinates and TVPaint's `x`/`y` is the same thing, so
-/// that half is a straight copy; the zoom is not, because TVPaint states
-/// its framing as the camera's SIZE in clip pixels while Anicel states it
-/// as canvas pixels per camera pixel against a PROJECT-wide frame.
+/// that half is a straight copy; the zoom is not.
 ///
-/// 🚨`scale` DIVIDES. It is how much the camera RECTANGLE was resized on
-/// the clip, so a bigger rectangle sees more and magnifies less. Multiplying
-/// by it — which this did — inverts every zoom move and, on a camera the
-/// animator resized, misses the framing by `scale` squared.
+/// 🚨The LAW (#965, re-measured 2026-08-27): the width the camera VIEWS
+/// is `Camera.Width × scale` — the PROJECT camera rectangle resized by
+/// TVPaint's zoom display. A bigger rectangle sees more and magnifies
+/// less, so `scale` DIVIDES: [CameraPose.zoom] views `frameW / zoom`
+/// canvas pixels and the import frame IS `Camera.Width`, hence
+/// `zoom = 1 / scale` and the pose's own size drops out entirely.
 ///
-/// The workflow that exposed it is ordinary: build the camera at a low
-/// resolution with the right aspect (960×540 for 16:9) and stretch it out
-/// to the layout paper. That writes `sizeX: 960, scale: 2.158795`, meaning
-/// a rectangle 2072px wide on a 2340px sheet — 89% of it. The old formula
-/// read the same numbers as a view zoomed in 4.3×, framing 19%, and the
-/// import put a thumbnail-sized camera in the middle of the drawing.
-///
-/// Three of this repo's four fixtures carry `scale: 1.0`, where multiply
-/// and divide agree, and the fourth only wanders between 0.80 and 1.05.
-/// The axis had never been pressed.
-CameraPose _cameraPoseFor(TvpCameraPose pose, CanvasSize frame) {
-  // The .tvpp pose: [TvpCameraPose.sizeX] is the camera RECTANGLE in
-  // clip coordinates (288 stores the whole 2339-wide canvas there) and
-  // [TvpCameraPose.scale] is TVPaint's zoom display — the VIEWED width
-  // is sizeX / scale. 288 is the truth anchor: zoom 207.1% on that
-  // canvas shows 2339/2.071 ≈ 1129px, the blue rectangle at about half
-  // the paper. The earlier reading (viewed = sizeX × scale, fitted to
-  // the tighter axis) was the JSON export's pose shape, whose sizeX was
-  // the PROJECT camera; with the file's own poses it framed 288 6.8×
-  // too wide. The viewed height follows the project frame's aspect, so
-  // one isotropic zoom carries both axes.
+/// The pose's `sizeX`/`sizeY` do NOT participate. The JSON-era poses
+/// (#965) carried the PROJECT camera there, which made `viewed =
+/// sizeX × scale` read like the law; the FILE's `camerasizex` is the
+/// CLIP CANVAS instead (288 stores 2339×1653 — dumped 2026-08-27), a
+/// coordinate-space record, not the framing. #1270 read that field as
+/// the framing and flipped the law to `viewed = sizeX / scale`,
+/// "confirmed" against 2339 / 2.071 ≈ 1129px — a number derived from
+/// the same wrong reading, never measured. The hands-on truth (user
+/// screenshots, 08-27): TVPaint's blue rectangle on 288 coincides with
+/// the layout paper's 撮影フレーム box, 960 × 2.071 ≈ 1988px wide, while
+/// the import framed 1129px — half the paper, visibly too tight.
+CameraPose _cameraPoseFor(TvpCameraPose pose) {
   final scale = pose.scale.isFinite && pose.scale > 0 ? pose.scale : 1.0;
-  final sizeX = pose.sizeX > 0 ? pose.sizeX : frame.width.toDouble();
-  final zoom = frame.width * scale / sizeX;
+  final zoom = 1 / scale;
   return CameraPose(
     center: CanvasPoint(x: pose.x, y: pose.y),
     zoom: zoom.isFinite && zoom > 0 ? zoom : 1.0,
