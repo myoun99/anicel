@@ -57,7 +57,7 @@ void main() {
   group('CelColorKey', () {
     test('tolerance is the largest single-channel gap, not the distance', () {
       final erase = CelColorKey.fromResolved(
-        key(EffectKind.colorKeyErase, red: 100, green: 100, blue: 100,
+        key(EffectKind.deleteColor, red: 100, green: 100, blue: 100,
             tolerance: 10),
       )!;
       // Every channel 10 away: Chebyshev says 10, inside. A Euclidean
@@ -71,10 +71,10 @@ void main() {
 
     test('keep is the same comparison with the answer inverted', () {
       final erase = CelColorKey.fromResolved(
-        key(EffectKind.colorKeyErase, red: 255),
+        key(EffectKind.deleteColor, red: 255),
       )!;
       final keep = CelColorKey.fromResolved(
-        key(EffectKind.colorKeyKeep, red: 255),
+        key(EffectKind.keepColor, red: 255),
       )!;
       expect(erase.alphaFor(255, 0, 0, 200), 0);
       expect(erase.alphaFor(0, 0, 0, 200), 200);
@@ -84,7 +84,7 @@ void main() {
 
     test('Amount folds into the one pass instead of a second draw', () {
       final half = CelColorKey.fromResolved(
-        key(EffectKind.colorKeyErase, amount: 50),
+        key(EffectKind.deleteColor, amount: 50),
       )!;
       // 🚨A two-pass mix would ACCUMULATE alpha here (the rule 6 bug):
       // 200 over 200 at half strength comes back ABOVE 200, not below it.
@@ -94,7 +94,7 @@ void main() {
 
     test('an already-empty pixel is never woken up', () {
       final keep = CelColorKey.fromResolved(
-        key(EffectKind.colorKeyKeep, red: 255),
+        key(EffectKind.keepColor, red: 255),
       )!;
       // Color bytes under a zero alpha are arbitrary; a keep must not read
       // them as ink and hand back an alpha.
@@ -104,7 +104,7 @@ void main() {
     test('Amount 0 is the no-op an added effect must be', () {
       final fresh = LayerEffect.defaults(
         id: const EffectId('fx'),
-        kind: EffectKind.colorKeyErase,
+        kind: EffectKind.deleteColor,
       );
       final resolved = resolveLayerEffectsAt(effects: [fresh], frameIndex: 0);
       expect(
@@ -124,7 +124,7 @@ void main() {
         }),
       ]);
       final keyed = celSurfaceWithSourceEffects(surface, [
-        key(EffectKind.colorKeyErase, red: 255, green: 255, blue: 255),
+        key(EffectKind.deleteColor, red: 255, green: 255, blue: 255),
       ]);
       expect(pixelAt(keyed, origin, 0, 0)[3], 0);
       expect(pixelAt(keyed, origin, 1, 0), [10, 20, 30, 255]);
@@ -137,7 +137,7 @@ void main() {
         }),
       ]);
       final keyed = celSurfaceWithSourceEffects(surface, [
-        key(EffectKind.colorKeyErase, red: 255, green: 255, blue: 255),
+        key(EffectKind.deleteColor, red: 255, green: 255, blue: 255),
       ]);
       // ★The destructive verb's undo recipe depends on this: an RGB
       // comparison re-selects exactly the same pixels after the pass.
@@ -156,7 +156,7 @@ void main() {
         untouched,
       ]);
       final keyed = celSurfaceWithSourceEffects(surface, [
-        key(EffectKind.colorKeyErase, red: 255, green: 255, blue: 255),
+        key(EffectKind.deleteColor, red: 255, green: 255, blue: 255),
       ]);
       expect(identical(keyed.tileAt(neighbour), untouched), isTrue);
       expect(identical(keyed.tileAt(origin), surface.tileAt(origin)), isFalse);
@@ -173,7 +173,7 @@ void main() {
       expect(
         identical(
           celSurfaceWithSourceEffects(surface, [
-            key(EffectKind.colorKeyErase, amount: 0),
+            key(EffectKind.deleteColor, amount: 0),
           ]),
           surface,
         ),
@@ -189,7 +189,7 @@ void main() {
         }),
       ]);
       final effects = [
-        key(EffectKind.colorKeyErase, red: 255, green: 255, blue: 255),
+        key(EffectKind.deleteColor, red: 255, green: 255, blue: 255),
       ];
       final first = celSurfaceWithSourceEffects(surface, effects);
       final second = celSurfaceWithSourceEffects(surface, effects);
@@ -205,8 +205,8 @@ void main() {
         }),
       ]);
       final keyed = celSurfaceWithSourceEffects(surface, [
-        key(EffectKind.colorKeyErase, red: 255, green: 255, blue: 255),
-        key(EffectKind.colorKeyErase, red: 255),
+        key(EffectKind.deleteColor, red: 255, green: 255, blue: 255),
+        key(EffectKind.deleteColor, red: 255),
       ]);
       expect(pixelAt(keyed, origin, 0, 0)[3], 0);
       expect(pixelAt(keyed, origin, 1, 0)[3], 0);
@@ -217,11 +217,11 @@ void main() {
   group('the chain the composite can honour', () {
     test('splitSourceEffects keeps each half in its own order', () {
       final effects = [
-        key(EffectKind.colorKeyErase),
+        key(EffectKind.deleteColor),
         ResolvedLayerEffect(kind: EffectKind.blur, values: const [4, 4]),
       ];
       final split = splitSourceEffects(effects);
-      expect(split.source.single.kind, EffectKind.colorKeyErase);
+      expect(split.source.single.kind, EffectKind.deleteColor);
       expect(split.paint.single.kind, EffectKind.blur);
     });
 
@@ -235,12 +235,12 @@ void main() {
     test('effectKindsFor hides the keys where there are no cel bytes', () {
       expect(
         effectKindsFor(inputIsCelPixels: true),
-        containsAll([EffectKind.colorKeyErase, EffectKind.colorKeyKeep]),
+        containsAll([EffectKind.deleteColor, EffectKind.keepColor]),
       );
       final onBuffer = effectKindsFor(inputIsCelPixels: false);
       expect(onBuffer, contains(EffectKind.blur));
-      expect(onBuffer, isNot(contains(EffectKind.colorKeyErase)));
-      expect(onBuffer, isNot(contains(EffectKind.colorKeyKeep)));
+      expect(onBuffer, isNot(contains(EffectKind.deleteColor)));
+      expect(onBuffer, isNot(contains(EffectKind.keepColor)));
     });
 
     test('a row cannot HOLD a key below a paint effect', () {
@@ -250,13 +250,13 @@ void main() {
       );
       final colorKey = LayerEffect.defaults(
         id: const EffectId('key'),
-        kind: EffectKind.colorKeyErase,
+        kind: EffectKind.deleteColor,
       );
       // Written blur-then-key; the chain normalizes so the lane list and
       // the pixels cannot disagree about what the order means.
       expect(
         normalizedEffectChain([blur, colorKey]).map((e) => e.kind).toList(),
-        [EffectKind.colorKeyErase, EffectKind.blur],
+        [EffectKind.deleteColor, EffectKind.blur],
       );
     });
 
@@ -264,7 +264,7 @@ void main() {
       final effects = [
         LayerEffect.defaults(
           id: const EffectId('key'),
-          kind: EffectKind.colorKeyErase,
+          kind: EffectKind.deleteColor,
         ),
         LayerEffect.defaults(id: const EffectId('blur'), kind: EffectKind.blur),
       ];

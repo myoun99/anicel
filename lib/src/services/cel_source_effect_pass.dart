@@ -58,7 +58,7 @@ class CelColorKey {
       blue: _byte(effect.parameter('keyBlue')),
       tolerance: _byte(effect.parameter('tolerance')),
       amount: (effect.parameter('amount') / 100).clamp(0.0, 1.0),
-      keepsMatches: effect.kind == EffectKind.colorKeyKeep,
+      keepsMatches: effect.kind == EffectKind.keepColor,
     );
   }
 
@@ -81,7 +81,7 @@ class CelColorKey {
   /// effect do nothing.
   final double amount;
 
-  /// True for [EffectKind.colorKeyKeep] — the same comparison, opposite
+  /// True for [EffectKind.keepColor] — the same comparison, opposite
   /// answer.
   final bool keepsMatches;
 
@@ -161,6 +161,64 @@ splitSourceEffects(List<ResolvedLayerEffect> effects) {
     return (source: const [], paint: effects);
   }
   return (source: source, paint: paint ?? const []);
+}
+
+/// The values every color key in [effects] was resolved to — what a cache
+/// over keyed pixels has to carry in its validity check.
+///
+/// ★A CACHE KEYED ON THE CEL'S REVISION IS NOT ENOUGH. A revision moves
+/// when the DRAWING changes; dragging Tolerance changes no drawing, so a
+/// cache that does not hold these values serves the pixels of the old
+/// tolerance for ever. Empty for a chain with no keys, which is the common
+/// case and compares in one length check.
+List<double> celSourceEffectSignature(List<ResolvedLayerEffect> effects) {
+  if (effects.isEmpty) {
+    return const [];
+  }
+  List<double>? signature;
+  for (final effect in effects) {
+    final key = CelColorKey.fromResolved(effect);
+    if (key != null && !key.isNoOp) {
+      (signature ??= []).addAll(key.signature);
+    }
+  }
+  return signature ?? const [];
+}
+
+/// Whether two [celSourceEffectSignature] results say the same thing.
+bool sameCelSourceEffectSignature(List<double> a, List<double> b) =>
+    _sameSignature(a, b);
+
+/// The alpha ONE pixel keeps after every color key in [effects].
+///
+/// ★The one-pixel door into the same kernel the tile pass walks. The
+/// eyedropper reads a single byte quad and must see the row's FINISHED
+/// pixels (유저 2026-08-27: *「레이어의 완성본 픽셀을 스포이드 찍도록 하고싶어.
+/// 그러니 fx가 싫으면 fx끄고 스포이드 찍도록」*) — routing it through
+/// [CelColorKey.alphaFor] rather than a second implementation is what keeps
+/// "is this pixel keyed out" from having two answers.
+int celSourceEffectAlphaFor(
+  List<ResolvedLayerEffect> effects, {
+  required int red,
+  required int green,
+  required int blue,
+  required int alpha,
+}) {
+  if (effects.isEmpty || alpha == 0) {
+    return alpha;
+  }
+  var next = alpha;
+  for (final effect in effects) {
+    final key = CelColorKey.fromResolved(effect);
+    if (key == null || key.isNoOp) {
+      continue;
+    }
+    next = key.alphaFor(red, green, blue, next);
+    if (next == 0) {
+      return 0;
+    }
+  }
+  return next;
 }
 
 /// [surface] with every color key in [effects] applied, or [surface] itself

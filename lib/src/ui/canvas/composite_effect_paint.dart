@@ -136,7 +136,7 @@ List<double>? resolveColorMatrixIgnoringSpatial(
       // this serves samples one pixel, so it applies the keys itself
       // (`CelColorKey.alphaFor`) rather than asking for a matrix that
       // cannot exist.
-      EffectKind.colorKeyErase || EffectKind.colorKeyKeep => null,
+      EffectKind.deleteColor || EffectKind.keepColor => null,
     };
     if (next == null) {
       continue;
@@ -188,8 +188,8 @@ CompositeEffectPaint resolveCompositeEffectPaint(
       // Reaching here means a route resolved a chain without splitting it —
       // an assert rather than a silent skip, because the silent version
       // looks exactly like "the artist set Amount to 0".
-      case EffectKind.colorKeyErase:
-      case EffectKind.colorKeyKeep:
+      case EffectKind.deleteColor:
+      case EffectKind.keepColor:
         assert(
           false,
           'Source-pixel effects must be split off before a paint is '

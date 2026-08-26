@@ -39,12 +39,12 @@ enum EffectKind {
   blur('blur'),
 
   /// Erase every pixel whose color is within [tolerance] of the key color.
-  colorKeyErase('colorKeyErase'),
+  deleteColor('deleteColor'),
 
   /// Erase every pixel whose color is NOT within [tolerance] of the key
   /// color — the same comparison with the answer inverted, which is why
   /// the two share [colorKeyParameterSpecs] rather than repeating it.
-  colorKeyKeep('colorKeyKeep');
+  keepColor('keepColor');
 
   const EffectKind(this.jsonValue);
 
@@ -56,8 +56,8 @@ enum EffectKind {
     EffectKind.brightnessContrast => 'Brightness & Contrast',
     EffectKind.hueSaturation => 'Hue/Saturation',
     EffectKind.blur => 'Blur',
-    EffectKind.colorKeyErase => 'Color Key (Erase)',
-    EffectKind.colorKeyKeep => 'Color Key (Keep)',
+    EffectKind.deleteColor => 'Delete Color',
+    EffectKind.keepColor => 'Keep Color',
   };
 
   /// The label in the program language. Japanese follows Clip Studio's
@@ -69,8 +69,8 @@ enum EffectKind {
       EffectKind.brightnessContrast => '明るさ・コントラスト',
       EffectKind.hueSaturation => '色相・彩度',
       EffectKind.blur => 'ぼかし',
-      EffectKind.colorKeyErase => 'カラーキー（消す）',
-      EffectKind.colorKeyKeep => 'カラーキー（残す）',
+      EffectKind.deleteColor => '色削除',
+      EffectKind.keepColor => '色残し',
     },
     _ => label,
   };
@@ -94,7 +94,7 @@ enum EffectKind {
   /// rule 7: a `=> true` predicate is how a new kind walks in through a
   /// door nobody meant to open).
   bool get runsOnSourcePixels =>
-      this == EffectKind.colorKeyErase || this == EffectKind.colorKeyKeep;
+      this == EffectKind.deleteColor || this == EffectKind.keepColor;
 
   String toJson() => jsonValue;
 
@@ -212,8 +212,8 @@ const Map<EffectKind, List<EffectParameterSpec>> effectParameterSpecs = {
       unit: EffectParameterUnit.pixels,
     ),
   ],
-  EffectKind.colorKeyErase: colorKeyParameterSpecs,
-  EffectKind.colorKeyKeep: colorKeyParameterSpecs,
+  EffectKind.deleteColor: colorKeyParameterSpecs,
+  EffectKind.keepColor: colorKeyParameterSpecs,
 };
 
 /// The color keys' parameters — ONE list for both kinds, because erase and
