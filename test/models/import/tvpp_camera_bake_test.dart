@@ -67,7 +67,8 @@ void main() {
   });
 
   group('bakeTvppCamera', () {
-    test('holds before the first key and after the last', () {
+    test('holds before the first key; a key is REACHED one frame past '
+        'its instant (SKK oracle: 99.7% on the key frame itself)', () {
       final poses = bakeTvppCamera(
         [_point(x: 10, instant: 5), _point(x: 20, instant: 8)],
         const [],
@@ -75,39 +76,81 @@ void main() {
       );
       expect(poses, hasLength(12));
       expect(poses[0].x, 10);
-      expect(poses[4].x, 10);
-      expect(poses[8].x, 20);
+      expect(poses[5].x, 10);
+      // Span is (8 - 5) + 1 = 4: the pan runs through the key's own
+      // frame and lands on the next one.
+      expect(poses[6].x, closeTo(12.5, 1e-6));
+      expect(poses[8].x, closeTo(17.5, 1e-6));
+      expect(poses[9].x, 20);
       expect(poses[11].x, 20);
     });
 
-    test('a segment eased by its profile lags the linear midpoint', () {
+    test("a segment's easing comes from its DESTINATION key's profile",
+        () {
       const easeIn = TvppCameraProfile(points: [
         TvppCameraProfilePoint(
             x: 0, y: 0, bezierBeforeX: 0, bezierBeforeY: 0, bezierAfterX: 0.6, bezierAfterY: 0),
         TvppCameraProfilePoint(
             x: 1, y: 1, bezierBeforeX: 0, bezierBeforeY: 0, bezierAfterX: 0, bezierAfterY: 0),
       ]);
-      final poses = bakeTvppCamera(
-        [_point(x: 0), _point(x: 100, instant: 8)],
-        const [easeIn],
-        frameCount: 9,
+      final points = [_point(x: 0), _point(x: 100, instant: 9)];
+
+      // The authored curve on the destination key: slow start.
+      final eased = bakeTvppCamera(
+        points,
+        const [TvppCameraProfile(points: []), easeIn],
+        frameCount: 11,
       );
-      // A pure slow-start: frame 2 sits well short of the linear 25.
-      expect(poses[2].x, lessThan(15));
-      expect(poses[8].x, closeTo(100, 1e-6));
+      expect(eased[2].x, lessThan(12), reason: 'well short of the linear 20');
+      expect(eased[10].x, closeTo(100, 1e-6));
+
+      // The same curve on the SOURCE key is the editor default there —
+      // it must not ease the segment (SKK: reading it was 601px wrong).
+      final ignored = bakeTvppCamera(
+        points,
+        const [easeIn, TvppCameraProfile(points: [])],
+        frameCount: 11,
+      );
+      expect(ignored[5].x, closeTo(50, 1e-6), reason: 'linear');
+    });
+
+    test('a profile handle is a FRACTION of its segment, not a raw '
+        'offset', () {
+      // Two segments; the second is 0.8 wide in x. A -0.5 before-handle
+      // means half of THAT segment. Under the raw reading the control
+      // would sit at x = 0.6 - 0.5·0.8... the two disagree at t = 0.5.
+      const profile = TvppCameraProfile(points: [
+        TvppCameraProfilePoint(
+            x: 0, y: 0, bezierBeforeX: 0, bezierBeforeY: 0, bezierAfterX: 0, bezierAfterY: 0),
+        TvppCameraProfilePoint(
+            x: 0.2, y: 0.5, bezierBeforeX: 0, bezierBeforeY: 0, bezierAfterX: 0, bezierAfterY: 0),
+        TvppCameraProfilePoint(
+            x: 1,
+            y: 1,
+            bezierBeforeX: -0.5,
+            bezierBeforeY: 0,
+            bezierAfterX: 0,
+            bezierAfterY: 0),
+      ]);
+      // Δ-scaled: C2 = (1 - 0.5·0.8, 1) = (0.6, 1). Solving x(u) = 0.5
+      // on P0=(0.2,0.5), C1=P0, C2=(0.6,1), P3=(1,1) gives y ≈ 0.790121
+      // (solved independently); the raw reading, C2=(0.5,1), gives
+      // 0.822217 — the pin tells them apart.
+      expect(profile.progressAt(0.5), closeTo(0.790121, 5e-4));
     });
 
     test('zoom and rotation interpolate along the same easing', () {
       final poses = bakeTvppCamera(
         [
           _point(zoom: 1, rotation: 0),
-          _point(zoom: 2, rotation: -10, instant: 10),
+          _point(zoom: 2, rotation: -10, instant: 9),
         ],
         const [],
         frameCount: 11,
       );
       expect(poses[5].scale, closeTo(1.5, 1e-6));
       expect(poses[5].angleDegrees, closeTo(-5, 1e-6));
+      expect(poses[10].scale, closeTo(2, 1e-6));
     });
   });
 }
