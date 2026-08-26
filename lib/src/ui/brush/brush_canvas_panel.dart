@@ -3137,7 +3137,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// Pre-lift surfaces by session token (R19 P3b): the immutable surface
   /// captured BEFORE a lift's erase — the confirm command's undo target
   /// and the revert's restore point. Reference-cheap.
-  final Map<int, BitmapSurface> _liftAnchors = {};
+  /// What a lift session found when it began: the pixels AND the selection.
+  ///
+  /// ⛔ONE record, not a second map beside this one. Both are anchored at the
+  /// same instant and released at the same instant, and a parallel map would
+  /// be one more place to forget to clear.
+  final Map<int, ({BitmapSurface pixels, CanvasSelectionRegion? region})>
+  _liftAnchors = {};
   int _liftTokenSeq = 0;
 
   /// R16-① bitmap lift: commits [shape]'s ERASE — RAW, outside app
@@ -3534,7 +3540,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return null;
     }
     final token = ++_liftTokenSeq;
-    _liftAnchors[token] = preLift;
+    _liftAnchors[token] = (
+      pixels: preLift,
+      // The selection as the session finds it — captured at the same instant
+      // as the pixels, so undo can put both back exactly as they were.
+      region: widget.selectionCommands?.region,
+    );
     setState(() {});
     final after = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
     final whole = <TileCoord, BitmapTile>{};
@@ -3631,9 +3642,17 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         BrushLiftMoveHistoryCommand(
           coordinator: coordinator,
           frameKey: coordinator.activeFrameKey,
-          preLiftSurface: preLift,
+          preLiftSurface: preLift.pixels,
           stampDab: stampDab,
           cacheInvalidationSink: widget.cacheInvalidationSink,
+          // 🚨THE SELECTION TRAVELS WITH THE PIXELS. 유저 2026-08-27: 「언두
+          // 하면 그림만 돌리는게아니라 선택도 이전 선택으로 되돌리기」 — a
+          // transform moves the outline as much as the drawing, and one
+          // confirm has to come back as one undo.
+          regionBefore: preLift.region,
+          readRegion: () => widget.selectionCommands?.region,
+          restoreRegion: (region) =>
+              widget.selectionCommands?.setRegion(region),
         ),
       );
     }
@@ -3656,7 +3675,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     void run() {
       coordinator.restoreSurfaceSnapshot(
         coordinator.activeFrameKey,
-        preLift,
+        preLift.pixels,
         cacheInvalidationSink: widget.cacheInvalidationSink,
       );
     }

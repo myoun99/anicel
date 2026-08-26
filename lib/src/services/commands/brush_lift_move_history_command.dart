@@ -2,6 +2,7 @@ import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
 import '../brush_frame_editing_coordinator.dart';
+import '../canvas_selection_region.dart';
 import '../cache_invalidation_executor.dart';
 import '../command.dart';
 
@@ -23,6 +24,9 @@ class BrushLiftMoveHistoryCommand implements Command, RetainedBytesCommand {
     required BitmapSurface preLiftSurface,
     required BrushDab stampDab,
     this.cacheInvalidationSink,
+    this.regionBefore,
+    this.restoreRegion,
+    this.readRegion,
   }) : _preSurface = preLiftSurface,
        _stampDab = stampDab,
        _retainedBytes =
@@ -31,6 +35,33 @@ class BrushLiftMoveHistoryCommand implements Command, RetainedBytesCommand {
   final BrushFrameEditingCoordinator coordinator;
   final BrushFrameKey frameKey;
   final CacheInvalidationSink? cacheInvalidationSink;
+
+  /// The selection as the SESSION FOUND IT, and the way back to it.
+  ///
+  /// 🚨★★★UNDO PUTS THE SELECTION BACK TOO. 유저 2026-08-27: 「선택 후
+  /// 변형툴 확정하고, 언두하면 그림만 돌리는게아니라 **선택도 이전 선택으로
+  /// 되돌리기**. 그에 따라 결과적으로 변형툴ui도 바뀌는게 정상적인 구조겠지」.
+  ///
+  /// A transform moves two things — the pixels and the outline around them —
+  /// and this entry only ever carried the pixels back. So an undo left the
+  /// drawing where it started with the selection still wearing the shape the
+  /// transform had given it, and the box on screen followed the selection.
+  ///
+  /// ⛔ONE entry, not two. A separate selection command would mean two
+  /// undos for one confirm, and the user asked for one.
+  ///
+  /// ⚠️A CALLBACK rather than the selection channel itself: that channel
+  /// lives in `ui/`, and a command in `services/` may not reach up there
+  /// (`layer_dependency_direction_test`). The region type is a service type,
+  /// so it travels fine.
+  final CanvasSelectionRegion? regionBefore;
+  final void Function(CanvasSelectionRegion? region)? restoreRegion;
+
+  /// Reads the live selection — used ONCE, right after the landing.
+  final CanvasSelectionRegion? Function()? readRegion;
+
+  /// The shape the confirm left behind — what a REDO has to put back.
+  CanvasSelectionRegion? _regionAfter;
 
   final BitmapSurface _preSurface;
 
@@ -56,6 +87,7 @@ class BrushLiftMoveHistoryCommand implements Command, RetainedBytesCommand {
         _postSurface!,
         cacheInvalidationSink: cacheInvalidationSink,
       );
+      restoreRegion?.call(_regionAfter);
       return;
     }
     // First execute = the confirm itself: land the floating stamp (the
@@ -67,6 +99,9 @@ class BrushLiftMoveHistoryCommand implements Command, RetainedBytesCommand {
     _postSurface = coordinator.currentSurfaceOf(frameKey);
     _stampDab = null;
     _landed = true;
+    // Read AFTER the landing, so a redo restores the shape the confirm
+    // actually produced rather than the one it started from.
+    _regionAfter = readRegion?.call();
   }
 
   @override
@@ -76,5 +111,6 @@ class BrushLiftMoveHistoryCommand implements Command, RetainedBytesCommand {
       _preSurface,
       cacheInvalidationSink: cacheInvalidationSink,
     );
+    restoreRegion?.call(regionBefore);
   }
 }
