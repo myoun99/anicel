@@ -193,17 +193,19 @@ void main() {
       expect(still.camera.keyframes, hasLength(1));
 
       // A linear two-key pan (no easing profile): halfway in time is
-      // halfway in space, and frames past the last key hold it.
+      // halfway in space. The key is REACHED one frame past its instant
+      // (span = 9 - 0 + 1), and later frames hold it.
       final moving = convertTvppClip(
         _clip(
           layers: layers,
-          camera: [_point(x: 0), _point(x: 100, instant: 10)],
+          camera: [_point(x: 0), _point(x: 100, instant: 9)],
         ),
         clipIndex: 0,
       ).result;
       expect(moving.camera.positions, hasLength(12));
       expect(moving.camera.positions[0].x, 0);
       expect(moving.camera.positions[5].x, closeTo(50, 1e-6));
+      expect(moving.camera.positions[9].x, closeTo(90, 1e-6));
       expect(moving.camera.positions[10].x, 100);
       expect(moving.camera.positions[11].x, 100);
       expect(moving.warnings, isEmpty);
