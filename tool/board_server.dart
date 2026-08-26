@@ -389,8 +389,21 @@ List<String> _shotsFor(String id) {
 /// more than one entry, always in that order — what was said, then what I made
 /// of it, then what I worked out.
 class _Log {
-  _Log(this.ts, this.at, this.text, {this.byUser = false});
+  _Log(this.ts, this.at, this.text, {this.byUser = false, this.pr});
   final String ts;
+
+  /// 🚨The PR this stage shipped, when it is a 구현 stage (유저 2026-08-26:
+  /// 「한 패널이 결국 여러PR을 가질수있게된다고 생각하거든? 그러니 pr태그를
+  /// 내용으로 옮기자. 그러고 구현이라는 항목만들고 거기에 태그 넣도록. 그럼
+  /// 구현도 결국 공정이니까 깔끔하게 타임라인흐르잖아」).
+  ///
+  /// 🎯Exactly right, and it dissolves the awkward chip this replaced. A PR is
+  /// something that HAPPENED to the card at a moment — which is what every
+  /// other entry here already is. As a head badge it could only ever hold one,
+  /// so a card that shipped in three passes had to lie about two of them or
+  /// be split into three cards (I-1 and I-1-rest are that split, made because
+  /// the shape had no room for the truth).
+  final int? pr;
 
   /// The 공정 this entry belongs to — 유저 피드백 · 대기중 · AI 판단 · 실기확인.
   final String at;
@@ -493,6 +506,12 @@ class _Entry {
   String why = '';
   String how = '';
   int? pr;
+
+  /// Every PR this card has ever claimed, in the order it claimed them. [pr]
+  /// is just the newest — kept because the 확인할 것 row badges one landing,
+  /// but the LIST is what stops an older PR of the same card reappearing as
+  /// an orphan placeholder.
+  final List<int> prs = [];
   List<Map<String, dynamic>> options = const [];
   String? recommend;
   String? answer;
@@ -582,18 +601,37 @@ List<_Entry> _readRecords(File file) {
     // ⚠️`at` names the FIRST stage this record opens. A record normally
     // carries one of the three; when it carries several they are several
     // stages and the later ones take their own names.
+    int? linePr;
+    if (json['pr'] != null) {
+      linePr = (json['pr'] as num).toInt();
+      e.pr = linePr;
+      if (!e.prs.contains(linePr)) e.prs.add(linePr);
+    }
     var at = '${json['at'] ?? ''}'.trim();
+    // A line that names a PR is a 구현 unless it says otherwise — that is what
+    // claiming a PR MEANS, and defaulting it here is what makes the stage name
+    // something I cannot forget to write.
+    if (at.isEmpty && linePr != null) at = '구현';
+    var prLeft = linePr;
     void stage(String text, String fallback, {bool byUser = false}) {
       if (text.isEmpty) return;
       final label = at.isEmpty ? fallback : at;
       at = '';
       if (e.log.any((l) => l.text == text)) return;
-      e.log.add(_Log(ts, label, text, byUser: byUser));
+      // ⚠️The PR rides the FIRST stage this line opens, not all of them: it
+      // shipped once, however many things the line had to say about it.
+      e.log.add(_Log(ts, label, text, byUser: byUser, pr: prLeft));
+      prLeft = null;
     }
 
     stage('${json['said'] ?? ''}'.trim(), '유저 메모', byUser: true);
     stage('${json['note'] ?? ''}'.trim(), '작업 기록');
     stage('${json['think'] ?? ''}'.trim(), 'AI 판단');
+    // A bare `{"id":…, "pr":N}` with nothing written still happened, and a 구현
+    // with no story is better than a 구현 that vanishes.
+    if (prLeft != null) {
+      e.log.add(_Log(ts, '구현', 'PR #$prLeft', pr: prLeft));
+    }
     // An answer is the user's own words and belongs in the same story — it is
     // the one kind of entry the board itself writes on their behalf.
     final ansNote = '${json['answerNote'] ?? ''}'.trim();
@@ -620,7 +658,6 @@ List<_Entry> _readRecords(File file) {
     if (json['recommend'] != null) e.recommend = json['recommend'] as String;
     if (json['answer'] != null) e.answer = json['answer'] as String;
     if (json['answerNote'] != null) e.answerNote = json['answerNote'] as String;
-    if (json['pr'] != null) e.pr = (json['pr'] as num).toInt();
     if (json['under'] != null) e.under = (json['under'] as num).toInt();
     if (json['of'] != null) e.of = '${json['of']}';
     if (json['rest'] != null) e.rest = '${json['rest']}';
@@ -889,7 +926,13 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
       .toList();
   final checks = alive.where((e) => e.kind == 'check' && e.answer == null).toList();
 
-  final claimed = {for (final e in alive) if (e.pr != null) e.pr!: e};
+  // Every PR a live card ever claimed, not just its newest. An older one left
+  // out here comes back as an orphan `pr-N` placeholder beside the card that
+  // actually owns it.
+  final claimed = <int, _Entry>{
+    for (final e in alive)
+      for (final n in e.prs) n: e,
+  };
   // 🚨A PR WHOSE CARD IS DEAD MUST NOT COME BACK AS A PLACEHOLDER.
   //
   // ⚠️Read from `entries`, not `alive` — the dead cards are precisely the ones
@@ -905,7 +948,7 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   for (final e in entries) {
     if (e.state != 'archived' && e.state != 'deleted') continue;
     buriedIds.add(e.id);
-    if (e.pr != null) buriedPrs.add(e.pr!);
+    buriedPrs.addAll(e.prs);
   }
 
   final now = <String>[];
@@ -965,6 +1008,10 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   final toCheck = <String>[];
   for (final pr in onPage) {
     final e = claimed[pr.number] ?? _prEntry(pr);
+    // 🚨A card that shipped in several passes has several merged PRs on this
+    // page, and one row each would be the same subject three times. `fresh` is
+    // newest-first, so the first one wins and the rest fold into its story.
+    if (shown.contains(e.id)) continue;
     shown.add(e.id);
     final mine = subs[pr.number] ?? const <_Entry>[];
     shown.addAll(mine.map((s) => s.id));
@@ -1484,9 +1531,9 @@ String _itemPanel(_Entry e) {
       e.title,
       [
         if (arrival.isNotEmpty) arrival,
-        // ⚠️Says the PR landed AND that the card did not finish with it —
-        // without this the row looks unstarted while its branch is merged.
-        if (e.rest.isNotEmpty && e.pr != null) '#${e.pr} 일부',
+        // ⛔No PR chip here. A card can ship in several passes, and a head
+        // badge holds one — so it lives in the story as a 구현 stage, where
+        // there is room for all of them and for what each one did.
         ...e.tags,
       ],
       badge,
@@ -1661,8 +1708,14 @@ String _story(_Entry e) {
         '${newest ? ' open' : ''}">');
     b.writeln('<summary><span class="lgk">${_esc(mine)}</span>'
         '<span class="lgp">${_esc(peek)}</span>'
+        '${entry.pr == null ? '' : '<span class="chip ok">#${entry.pr}</span>'}'
         '<span class="when">${_esc(_day(entry.ts))}</span></summary>');
     b.writeln('<p class="d">${_esc(entry.text)}</p>');
+    if (entry.pr != null) {
+      b.writeln('<p class="d"><a class="chip link" target="_blank" '
+          'href="https://github.com/$_repo/pull/${entry.pr}">'
+          'PR #${entry.pr} 열기 →</a></p>');
+    }
     b.writeln('</details>');
   }
   return b.toString();
