@@ -179,6 +179,7 @@ class TvppCameraPoint {
     required this.sizeX,
     required this.sizeY,
     required this.instant,
+    this.flags = 15,
     required this.bezierBeforeX,
     required this.bezierBeforeY,
     required this.bezierAfterX,
@@ -194,6 +195,11 @@ class TvppCameraPoint {
 
   /// The key's time position (frames; 0-based).
   final int instant;
+
+  /// Which channels this key authors (bits: 1=position, 2=rotation,
+  /// 4=zoom, 8=size; observed values 1 and 15). Absent = 15 — a fully
+  /// authored key, which is what every first key is.
+  final int flags;
 
   final double bezierBeforeX;
   final double bezierBeforeY;
@@ -260,12 +266,14 @@ class TvppClip {
   /// live on KLM, where every cut references its rushes as an .mp4.
   final List<TvppAudioTrack> audioTracks;
 
+  /// The clip's length: the furthest layer extent, the CAMERA layer
+  /// included — its span is how a clip longer than its drawings records
+  /// that length (PROFILE_CAL: a 49-frame clip whose one drawing spans a
+  /// single frame carries end=48 on the camera layer; KLM's cameras sit
+  /// at end=0 and its rasters carry the length instead).
   int get frameCount {
     var end = -1;
     for (final layer in layers) {
-      if (layer.kind == TvppLayerKind.camera) {
-        continue;
-      }
       if (layer.end > end) {
         end = layer.end;
       }
@@ -737,6 +745,7 @@ List<TvppCameraPoint> _cameraPoints(String cameraDataText) {
         sizeX: num(i, 'camerasizex'),
         sizeY: num(i, 'camerasizey'),
         instant: num(i, 'instant').round(),
+        flags: num(i, 'flags', 15).round(),
         bezierBeforeX: num(i, 'bezierbeforex'),
         bezierBeforeY: num(i, 'bezierbeforey'),
         bezierAfterX: num(i, 'bezierafterx'),
