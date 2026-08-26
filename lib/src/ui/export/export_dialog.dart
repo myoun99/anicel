@@ -940,7 +940,8 @@ class ExportDialogState extends State<ExportDialog> {
         final entry = entries[_celPosition];
         final format = spec.format;
         final renderer = _previewRendererFor(
-          applyLayerFx: false,
+          // The preview shows what the export writes — same switch.
+          applyLayerFx: spec.applyLayerFx,
           format: format,
         );
         final bgKey = format.wantsAlpha ? -1 : format.backgroundArgb;
@@ -1966,7 +1967,15 @@ class ExportDialogState extends State<ExportDialog> {
     // Cels stay raw artwork (no FX) — the renderer carries the paper
     // color for the RGB channel choice; the group render composites the
     // label's members at their static opacities.
-    final renderer = _runRenderer(applyLayerFx: false, format: spec.format);
+    // ✅유저 2026-08-27: 「셀 출력 강제도 래스터라이즈시키고 출력하면
+    // 되는거니까 멋대로 판단하지말고」. It is the tab's switch now, the same
+    // one every other tab has carried since R4-new1 — the hardcoded false
+    // was the asymmetry, and its stated reason (blur in delivery line art)
+    // is a position an artist can choose rather than a law.
+    final renderer = _runRenderer(
+      applyLayerFx: spec.applyLayerFx,
+      format: spec.format,
+    );
     final summary = await _exportService.exportImages(
       count: entries.length,
       renderImage: (index) {
@@ -3251,6 +3260,28 @@ class ExportDialogState extends State<ExportDialog> {
           // The v10 grid (Timesheet와 공용 부품): checks save with the
           // project.
           child: spec.scope == ExportScopeKind.project ? _scopeCutGrid() : null,
+        ),
+      ),
+      // ✅THE SWITCH THE OTHER TABS ALREADY HAD. This tab used to force FX
+      // off with no way to say otherwise (see [CelsExportSpec.applyLayerFx]);
+      // 유저 2026-08-27 made it a choice. Same accordion, same toggle row,
+      // same key prefix as the Sequence and Image tabs — one control, three
+      // places, rather than a fourth idea of what this question looks like.
+      ExportAccordion(
+        title: AppText.strings.exOptions,
+        summary: spec.applyLayerFx ? 'FX on' : 'FX off',
+        expanded: _expandedFor('options'),
+        onToggle: () => _toggleExpanded('options'),
+        child: ExportToggleRow(
+          widgetKey: const ValueKey<String>('export-cels-apply-fx-toggle'),
+          label: AppText.strings.exApplyLayerFxHelp,
+          value: spec.applyLayerFx,
+          onChanged: _isExporting
+              ? null
+              : (value) {
+                  _preview.clear();
+                  _updateSpec(spec.copyWith(applyLayerFx: value));
+                },
         ),
       ),
     ];
