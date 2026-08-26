@@ -73,6 +73,28 @@ void main() {
       expect(profile.progressAt(0.5), closeTo(0.822217, 5e-4));
     });
 
+    test('a mode=1 profile reads its handles as segment fractions — the '
+        'known approximation for the older curves', () {
+      // Same geometry as above but mode 1: C2 = (1 - 0.5·0.8, 1) =
+      // (0.6, 1), giving y ≈ 0.790121 (solved independently). SKK's
+      // production curve follows this within ~1% where the raw reading
+      // is 14% out.
+      const profile = TvppCameraProfile(mode: 1, points: [
+        TvppCameraProfilePoint(
+            x: 0, y: 0, bezierBeforeX: 0, bezierBeforeY: 0, bezierAfterX: 0, bezierAfterY: 0),
+        TvppCameraProfilePoint(
+            x: 0.2, y: 0.5, bezierBeforeX: 0, bezierBeforeY: 0, bezierAfterX: 0, bezierAfterY: 0),
+        TvppCameraProfilePoint(
+            x: 1,
+            y: 1,
+            bezierBeforeX: -0.5,
+            bezierBeforeY: 0,
+            bezierAfterX: 0,
+            bezierAfterY: 0),
+      ]);
+      expect(profile.progressAt(0.5), closeTo(0.790121, 5e-4));
+    });
+
     test('progress clamps to [0, 1] when the curve overshoots', () {
       // The calibration curve: a handle pushes the bezier above 1
       // mid-segment; TVPaint's own bake flatlines at the key value.

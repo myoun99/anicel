@@ -97,7 +97,7 @@ mpoints-1-bezieraftery=0.000000
       // A second clip proves the DLOC split and per-clip naming.
       b.clipProperties('cut13');
       b.clipHeader(width: 320, height: 180);
-      b.layerHead('카메라레이어', headerChunk: 'LRCA');
+      b.layerHead('카메라레이어', headerChunk: 'LRCA', end: 9);
       b.layerExt(const {});
       b.layerHead('solo', end: 0, count: 1);
       b.layerExt(const {});
@@ -175,6 +175,10 @@ mpoints-1-bezieraftery=0.000000
       expect(clip13.name, 'cut13');
       expect(clip13.cameraPoints, isEmpty);
       expect(clip13.layers, hasLength(2));
+      // The one drawing spans a single frame; the clip's ten come from
+      // the CAMERA layer's extent (how a clip longer than its drawings
+      // records its length — measured on PROFILE_CAL).
+      expect(clip13.frameCount, 10);
       expect(clip13.audioTracks, isEmpty);
     });
 
