@@ -47,6 +47,25 @@ void main(List<String> args) {
   // three of the lines missing `ts` were written the same day this was found.
   final noTs = <int>[];
   var tsRequired = false;
+  // 🚨★★★A CHECK WRITTEN INTO `rest` (유저 2026-08-27: 「이런거 잘 규칙으로
+  // 정리하자. 재발안하도록」).
+  //
+  // `rest` means CODE remains, and a card that has any drops out of 확인할 것.
+  // So a verification instruction put there does the exact opposite of what
+  // it intends: the card that just shipped and most needs looking at is the
+  // one that vanishes from the list of things to look at.
+  //
+  // ⛔A written law was not enough — I wrote that law on 08-27 and broke it
+  // the same day, on the very next card. This is a lint on my own prose,
+  // which is the honest shape: the gate is telling me I have described a
+  // CHECK in the field for WORK. The check belongs on the 구현 stage's `how`.
+  //
+  // ⚠️Judged on the MERGED card, never line by line. The file is append-only,
+  // so a `rest` I wrote badly and then cleared is still sitting in it — and a
+  // gate that read every line would complain about corrected history forever,
+  // which is the fastest way to teach someone to ignore a gate.
+  final restIsACheck = <String>[];
+  final checkWords = RegExp('실기|재확인|확인한다|확인해|검증|눌러 ?본|봐야');
   // Merged the way the server merges: later records overwrite only the
   // fields they name, so a card is judged as it will RENDER, not as any one
   // line spells it. Without that, an amendment line touching `state` alone
@@ -84,9 +103,26 @@ void main(List<String> args) {
     }
   }
 
+  for (final id in order) {
+    final card = merged[id]!;
+    if (card['state'] == 'archived' || card['state'] == 'deleted') continue;
+    final rest = '${card['rest'] ?? ''}'.trim();
+    if (rest.isNotEmpty && checkWords.hasMatch(rest)) restIsACheck.add(id);
+  }
+
   final complaints = <String>[];
   if (bad.isNotEmpty) {
     complaints.add('${bad.length}개 줄이 깨졌습니다 (줄 ${bad.join(', ')})');
+  }
+  if (restIsACheck.isNotEmpty) {
+    complaints.add(
+      '「남은 것」에 확인 방법이 들어 있는 카드: ${restIsACheck.join(', ')}\n'
+      '`rest` 는 **코드가 남았다**는 뜻입니다 — rest 가 있으면 그 카드는 '
+      '확인할 것에서 빠집니다. 방금 착지해서 확인이 필요한 카드가 확인 목록에서 '
+      '사라지는 것이 정확히 반대 결과입니다.\n'
+      '⇒ 확인 방법은 그 착지의 **구현 공정**에 씁니다: '
+      '{"id":…, "at":"구현", "pr":N, "note":…, "how":"이렇게 확인한다 …"}',
+    );
   }
   if (noTs.isNotEmpty) {
     complaints.add(
