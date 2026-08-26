@@ -671,6 +671,20 @@ List<_Entry> _readRecords(File file) {
     }
   }
   _badLines = bad;
+  // ⚠️Drop the bare 「PR #N」 placeholder once a real 구현 for that same PR has
+  // arrived. A line that claims a PR and says nothing still deserves a stage —
+  // it happened — but the moment someone writes what it DID, keeping both
+  // shows one merge as two, and the empty one is the copy to lose.
+  for (final e in byId.values) {
+    if (e.log.length < 2) continue;
+    final told = {
+      for (final l in e.log)
+        if (l.pr != null && l.text != 'PR #${l.pr}') l.pr!,
+    };
+    if (told.isEmpty) continue;
+    e.log.removeWhere((l) => l.pr != null && told.contains(l.pr) &&
+        l.text == 'PR #${l.pr}');
+  }
   return [for (final id in order) byId[id]!];
 }
 
@@ -951,30 +965,75 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
     buriedPrs.addAll(e.prs);
   }
 
+  // 🚨★★★THE ROWS COME FROM CARDS, NOT FROM `gh pr list`.
+  //
+  // Building them from the PR list looked natural and was wrong twice over,
+  // both found by a card that simply was not on screen:
+  //
+  //  1. **`--limit 40` is a WINDOW, and a window slides.** Nineteen cards had
+  //     already fallen out the bottom — F-2, F-3, F-5, F-6 … — merged, alive,
+  //     never checked, and invisible. ⛔A check list whose rows disappear on
+  //     their own is worse than no check list, because it looks finished.
+  //  2. **One PR can close several cards.** #1214 closed three; one PR, one
+  //     row meant two of them were unreachable no matter what the limit was.
+  //
+  // A card is the SUBJECT of a check; the PR is a detail on it. So the card is
+  // the row, and `gh` is consulted for what only it knows — whether a PR is
+  // still open, and when it merged.
+  final openPrs = {
+    for (final pr in gh.prs)
+      if (pr.state == 'OPEN') pr.number,
+  };
+  final byNumber = {for (final pr in gh.prs) pr.number: pr};
   final now = <String>[];
-  final fresh = <_Pr>[];
   for (final pr in gh.prs) {
+    if (pr.state != 'OPEN') continue;
     if (buriedPrs.contains(pr.number)) continue;
     final e = claimed[pr.number];
     if (e == null && buriedIds.contains('pr-${pr.number}')) continue;
-    // 🚨A MERGE IS NOT A FINISH. If the card still lists something left, it
-    // stays where the work is and never reaches 확인할 것 — a tick there
-    // deletes the card, and the leftovers would go with it.
-    if (e != null && e.rest.isNotEmpty && pr.state == 'MERGED') continue;
-    // ⚠️A landing that was ticked is finished (its card carries `deleted` and
-    // never reached `alive`); one that got a memo went back to 분류 전. Either
-    // way it must not return to 확인할 것 every time the page opens.
     if (e?.answer != null) continue;
-    if (pr.state == 'OPEN') {
-      now.add(_prPanel(pr, e));
-    } else if (pr.state == 'MERGED' && _isNews(pr)) {
-      fresh.add(pr);
+    now.add(_prPanel(pr, e));
+  }
+
+  // What a card is waiting to be looked at with, newest first. A card whose PR
+  // gh no longer lists still sorts — by when the card itself last moved.
+  DateTime? landedAt(_Entry e) {
+    DateTime? best;
+    for (final n in e.prs) {
+      final at = byNumber[n]?.mergedAt;
+      if (at != null && (best == null || at.isAfter(best))) best = at;
     }
+    return best ?? DateTime.tryParse(e.updated);
+  }
+
+  final fresh = <_Entry>[];
+  for (final e in alive) {
+    if (e.prs.isEmpty || e.answer != null) continue;
+    // 🚨A MERGE IS NOT A FINISH — a card with leftovers stays where the work
+    // is, because a tick here deletes it and the leftovers go with it.
+    if (e.rest.isNotEmpty) continue;
+    // Still building: it belongs in 지금, not in a list of things to look at.
+    if (e.prs.any(openPrs.contains)) continue;
+    // ⚠️The 최근 착지 mark only applies to PRs gh still knows about. For one
+    // outside the window there is no merge time to compare, and dropping it
+    // would be the disappearing-row bug wearing a different hat.
+    final known = e.prs.map((n) => byNumber[n]).whereType<_Pr>();
+    if (known.isNotEmpty && !known.any(_isNews)) continue;
+    fresh.add(e);
+  }
+  // Landings nobody claimed still need a row — that is the whole point of the
+  // placeholder — but only while gh can see them.
+  for (final pr in gh.prs) {
+    if (pr.state != 'MERGED' || !_isNews(pr)) continue;
+    if (claimed.containsKey(pr.number)) continue;
+    if (buriedPrs.contains(pr.number)) continue;
+    if (buriedIds.contains('pr-${pr.number}')) continue;
+    fresh.add(_prEntry(pr)..prs.add(pr.number));
   }
   fresh.sort((a, b) {
-    final x = a.mergedAt, y = b.mergedAt;
-    if (x == null) return y == null ? 0 : -1;
-    if (y == null) return 1;
+    final x = landedAt(a), y = landedAt(b);
+    if (x == null) return y == null ? 0 : 1;
+    if (y == null) return -1;
     return y.compareTo(x);
   });
   final pages = fresh.isEmpty ? 1 : (fresh.length + _landedPerPage - 1) ~/ _landedPerPage;
@@ -998,7 +1057,7 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   // deliberately: it then shows exactly once on every page instead of
   // vanishing whenever its parent pages away. Never hide a check.
   final onPage = fresh.skip((page - 1) * _landedPerPage).take(_landedPerPage);
-  final here = {for (final pr in onPage) pr.number};
+  final here = {for (final e in onPage) ...e.prs};
   final subs = <int, List<_Entry>>{};
   for (final c in checks) {
     final u = c.under;
@@ -1006,16 +1065,23 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   }
   final shown = <String>{};
   final toCheck = <String>[];
-  for (final pr in onPage) {
-    final e = claimed[pr.number] ?? _prEntry(pr);
-    // 🚨A card that shipped in several passes has several merged PRs on this
-    // page, and one row each would be the same subject three times. `fresh` is
-    // newest-first, so the first one wins and the rest fold into its story.
-    if (shown.contains(e.id)) continue;
+  for (final e in onPage) {
     shown.add(e.id);
-    final mine = subs[pr.number] ?? const <_Entry>[];
+    // The row badges the NEWEST of this card's PRs that gh can still see —
+    // the rest are in its story as 구현 stages. A card whose PRs have all
+    // aged out of the window gets no badge and loses nothing: the stages
+    // carry the numbers and the links.
+    _Pr? badge;
+    for (final n in e.prs) {
+      final pr = byNumber[n];
+      if (pr == null) continue;
+      if (badge == null || n > badge.number) badge = pr;
+    }
+    final mine = [
+      for (final n in e.prs) ...?subs[n],
+    ];
     shown.addAll(mine.map((s) => s.id));
-    toCheck.add(_checkRow(e, pr: pr, subs: mine));
+    toCheck.add(_checkRow(e, pr: badge, subs: mine));
   }
   for (final c in checks) {
     if (shown.contains(c.id)) continue;
