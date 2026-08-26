@@ -1192,7 +1192,11 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final byId = {for (final layer in layers) layer.id: layer};
     final keys = <BrushFrameKey>[];
-    final seen = <String>{};
+    // ⛔NO DEDUPE HERE. `CelPixelOverwriteCommand.execute` already skips a cel
+    // it has done, keyed by `frameStore.canonicalKeyOf` — which is the RIGHT
+    // key, because it resolves links, and mine could only compare
+    // (layer, frame) ids. Two mechanisms for one invariant is the shape the
+    // F-20 bug came in; the one that owns the surfaces owns this.
     void take(Layer layer, int? frameIndex) {
       if (!layerAcceptsBrushInput(layer)) {
         return;
@@ -1202,15 +1206,6 @@ class EditorSessionManager extends ChangeNotifier {
         frameIndex: frameIndex,
       );
       if (frame == null) {
-        return;
-      }
-      // 🚨Dedupe by the CEL, not by the (row, index) pair. A held exposure
-      // shows the same cel at many indices and a linked cel is shared by
-      // several rows, so a range over either would name one surface twice —
-      // the pass is idempotent, but the undo recipe would be retained twice
-      // (정본 §5).
-      final id = '${layer.id.value}/${frame.id.value}';
-      if (!seen.add(id)) {
         return;
       }
       keys.add(brushFrameKeyForCut(cut, layer.id, frame.id));
