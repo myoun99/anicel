@@ -922,6 +922,7 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   // Laws are not work: they never appear as a card of their own, they attach
   // to the cards whose tag they name. Set before anything renders.
   _laws = alive.where((e) => e.kind == 'law').toList();
+  _records = alive.where((e) => e.kind == 'record').toList();
   // The question index, before anything renders — see [_byOrigin] for why it
   // reads `entries` and not `alive`.
   final byOrigin = <String, List<_Entry>>{};
@@ -1442,6 +1443,7 @@ String _askPanel(_Entry d) {
   b.writeln(_head(d.id, d.title, d.tags, '', '', date: d.updated));
   b.writeln('<div class="body">');
   b.writeln(_care(d));
+  b.writeln(_recordPanels(d));
   b.writeln(_origin(d));
   if (d.where.isNotEmpty) {
     b.writeln('<p class="d"><b>화면에서</b> — ${_esc(d.where)}</p>');
@@ -1532,6 +1534,7 @@ String _checkRow(_Entry c, {_Pr? pr, List<_Entry> subs = const []}) {
   ));
   b.writeln('<div class="body">');
   b.writeln(_care(c));
+  b.writeln(_recordPanels(c));
   if (c.how.isNotEmpty) {
     b.writeln('<p class="d"><b>이렇게 본다</b> — ${_esc(c.how)}</p>');
   }
@@ -1634,6 +1637,7 @@ String _itemPanel(_Entry e) {
         '<span class="state"></span></div>');
   } else {
     b.writeln(_care(e));
+    b.writeln(_recordPanels(e));
     b.writeln(_story(e));
     b.writeln(_questions(e));
     b.writeln(_shotStrip(e.id));
@@ -1699,6 +1703,38 @@ String _care(_Entry e) {
 
 /// Area laws, refreshed on every render from the records file.
 List<_Entry> _laws = const [];
+
+/// Area REFERENCE records (`kind: record`) — living tables a card's area
+/// keeps current (the first one: which TVPaint versions the .tvpp import
+/// is verified against). Same attach-by-tag scheme as laws, same folded
+/// styling, different verb: a law says what breaks if you start without
+/// knowing; a record says what is currently true.
+List<_Entry> _records = const [];
+
+/// The area's records, folded under the card the same way its law is.
+String _recordPanels(_Entry e) {
+  final hits =
+      _records.where((r) => e.tags.contains(r.tag) && r.care.isNotEmpty);
+  if (hits.isEmpty) return '';
+  final b = StringBuffer();
+  final records = hits.toList();
+  final titles =
+      records.map((r) => r.title.isEmpty ? r.id : r.title).join(' · ');
+  b.write('<details class="lg">'
+      '<summary><span class="lgk">기록</span>'
+      '<span class="lgp">${_esc(titles)}</span></summary>');
+  for (final r in records) {
+    if (records.length > 1 && r.title.isNotEmpty) {
+      b.write('<p class="d"><b>${_esc(r.title)}</b></p>');
+    }
+    for (final line in r.care.split('\n')) {
+      if (line.trim().isEmpty) continue;
+      b.write('<p class="d">${_esc(line)}</p>');
+    }
+  }
+  b.write('</details>');
+  return b.toString();
+}
 
 String _prPanel(_Pr pr, _Entry? e) {
   final id = e?.id ?? 'pr-${pr.number}';

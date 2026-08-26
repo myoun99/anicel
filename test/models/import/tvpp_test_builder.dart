@@ -57,7 +57,7 @@ class TvppBuilder {
   }
 
   /// DLOC..TLNT — the fixed chain that runs straight into the first
-  /// layer, byte-identical between v11 and v12 (measured on EMS/KLM/SKK).
+  /// layer, byte-identical across every measured version (EMS=10, KLM=12.1).
   void clipHeader({
     required int width,
     required int height,
@@ -160,7 +160,7 @@ class TvppBuilder {
   /// 20 is what the parser classifies on).
   void zchkHold() => zchkSlot(holdRecord());
 
-  /// A v11 image slot: the record body as a bare top-level chunk.
+  /// A v10 image slot: the record body as a bare top-level chunk.
   void rawSlot(Uint8List record) {
     final magic = String.fromCharCodes(record, 0, 4);
     chunk(magic, record.sublist(8));

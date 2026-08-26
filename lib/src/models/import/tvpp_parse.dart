@@ -27,9 +27,10 @@ import 'tvp_import_model.dart';
 /// Everything was verified against TVPaint's own JSON/PNG export of the
 /// same clip (376/376 images pixel-perfect, 30/30 layer behaviours).
 ///
-/// ## v11 vs v12 (both verified: KLM/SKH/SKK = 12.1, EMS 2017 = 11)
+/// ## v10 vs v11+ (verified: EMS 2017 = 10.0.16, KG = 11.0.9, 288 = 12.0.6,
+/// KLM/SKH/SKK = 12.1.0)
 ///
-/// v12 wraps every image in a zlib'd `ZCHK`; v11 stores the same `SRAW` /
+/// v11 and later wrap every image in a zlib'd `ZCHK`; v10 stores the same `SRAW` /
 /// `DBOD` records uncompressed as top-level chunks. Structure chunks are
 /// identical, so this parser only branches on which image chunk it meets.
 class TvppParseException implements Exception {
@@ -63,25 +64,25 @@ class TvppSlot {
     required this.chunkOffset,
     required this.chunkLength,
     required this.compressed,
-    this.v11WholeCanvas = false,
+    this.v10WholeCanvas = false,
   });
 
   final TvppSlotKind kind;
 
   /// Offset of the image chunk's PAYLOAD (past FourCC + length) in the
   /// file, and that payload's length. For v12 this is the ZCHK payload
-  /// (zlib chain inside); for v11 the raw SRAW/DBOD record body.
+  /// (zlib chain inside); for v10 the raw SRAW/DBOD record body.
   final int chunkOffset;
   final int chunkLength;
 
-  /// True for v12's ZCHK wrapping (zlib chain), false for v11's raw
+  /// True for v12's ZCHK wrapping (zlib chain), false for v10's raw
   /// records.
   final bool compressed;
 
-  /// v11 only: whether the bare record came from a `DBOD` chunk (whole
+  /// v10 only: whether the bare record came from a `DBOD` chunk (whole
   /// canvas) rather than `SRAW`. v12 records carry their own magic, so
   /// the decoder ignores this when [compressed].
-  final bool v11WholeCanvas;
+  final bool v10WholeCanvas;
 }
 
 /// The layer kinds the format distinguishes (by header chunk name).
@@ -128,7 +129,7 @@ class TvppLayer {
   final String name;
 
   /// LRHD[18] / LRHD[17]: this layer's id and its folder's id (0 = root).
-  /// v11 files carry 0/0 — no folders there.
+  /// v10 files carry 0/0 — no folders there.
   final int layerId;
   final int parentId;
 
@@ -377,7 +378,7 @@ TvppParseResult parseTvppStructure(Uint8List bytes) {
 
   // Clip regions begin at their DLOC chunk (the fixed header chain
   // DLOC..TLNT runs straight into the first LNAM — byte-identical layout
-  // in v11 and v12). Everything between the previous clip's end and DLOC
+  // across every measured version). Everything between the previous clip's end and DLOC
   // is project/preview data plus the clip's UTF-16 property block.
   final clipStarts = <int>[];
   var scan = 0;
@@ -648,7 +649,7 @@ TvppClip _parseClip(
           ),
         );
       case 'SRAW':
-        // v11: the bare record body — the chunk header IS the record's
+        // v10: the bare record body — the chunk header IS the record's
         // magic+length, so the body starts at the type word: 6 = hold.
         final type = length >= 4 ? _u32(bytes, payload) : 0;
         addSlot(
@@ -660,14 +661,14 @@ TvppClip _parseClip(
           ),
         );
       case 'DBOD':
-        // v11 keyframe (whole-canvas record), uncompressed.
+        // v10 keyframe (whole-canvas record), uncompressed.
         addSlot(
           TvppSlot(
             kind: TvppSlotKind.image,
             chunkOffset: payload,
             chunkLength: length,
             compressed: false,
-            v11WholeCanvas: true,
+            v10WholeCanvas: true,
           ),
         );
       case 'FCFG':

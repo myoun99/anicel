@@ -24,7 +24,7 @@ import '../../models/import/tvpp_parse.dart';
 ///      X == 0: every tile is a 12-byte record `(a, anchor, c)`; `c == 0`
 ///        is empty, `c > 0` starts a chain — the c bytes belong to the
 ///        NEXT tile, then `u32 size` continues tile-by-tile until a zero.
-///  * v12 wraps records in a zlib chain (64KB blocks); v11 stores them
+///  * v11 and later wrap records in a zlib chain (64KB blocks); v10 stores them
 ///    raw. [decodeTvppSlotRgba] handles both via [TvppSlot.compressed].
 class TvppRasterDecodeException implements Exception {
   const TvppRasterDecodeException(this.message);
@@ -50,7 +50,7 @@ Uint8List? decodeTvppSlotRgba({
   if (slot.compressed) {
     record = _reassembleZchk(fileBytes, slot.chunkOffset, slot.chunkLength);
   } else {
-    // v11 stores the record body as a bare chunk payload — its magic and
+    // v10 stores the record body as a bare chunk payload — its magic and
     // length live in the CHUNK header the parser already consumed.
     // Re-synthesize them so both wrappers hand the decoder the same
     // record shape (offsets in the tiled reader count from the magic).
@@ -60,7 +60,7 @@ Uint8List? decodeTvppSlotRgba({
       slot.chunkOffset + slot.chunkLength,
     );
     record = Uint8List(8 + body.length);
-    record.setAll(0, (slot.v11WholeCanvas ? 'DBOD' : 'SRAW').codeUnits);
+    record.setAll(0, (slot.v10WholeCanvas ? 'DBOD' : 'SRAW').codeUnits);
     ByteData.sublistView(record, 4, 8).setUint32(0, body.length);
     record.setAll(8, body);
   }
