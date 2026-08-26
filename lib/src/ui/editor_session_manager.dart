@@ -1,8 +1,8 @@
-import 'dart:async' show Timer;
+import 'dart:async' show Completer, Timer;
 import 'dart:collection' show SplayTreeMap;
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:ui' as ui show ImageByteFormat;
+import 'dart:ui' as ui show Image, ImageByteFormat;
 
 import 'package:flutter/foundation.dart';
 
@@ -12,6 +12,8 @@ import '../controllers/default_layer_helpers.dart';
 import '../models/import/cut_folder_parse.dart';
 import '../models/import/tvp_csv_parse.dart';
 import '../models/import/tvp_json_parse.dart';
+import '../models/import/tvpp_convert.dart';
+import '../models/import/tvpp_parse.dart';
 import '../services/commands/import_media_command.dart';
 import '../services/commands/reorder_track_command.dart';
 import '../services/import/media_identity_reader.dart';
@@ -22,8 +24,10 @@ import '../services/media/media_byte_source.dart';
 import '../services/media/project_media_sources.dart';
 import '../services/import/media_import_planner.dart';
 import '../services/import/psd_expand_import.dart';
+import '../core/straight_rgba_image.dart';
 import '../services/import/raster_cel_import.dart';
 import '../services/import/tvp_json_import_planner.dart';
+import '../services/import/tvpp_raster_decoder.dart';
 import '../services/pdf/pdf_render_service.dart';
 import '../services/project_lookup.dart'
     show cutIdOfLayer, projectAudioSourcePaths, requireLayerAnywhere;
@@ -7398,6 +7402,112 @@ class EditorSessionManager extends ChangeNotifier {
       // Unreadable or not a TVPaint CSV: the import proceeds without it.
       return null;
     }
+  }
+
+  /// Imports every clip of a TVPaint project file as its own new cut —
+  /// no export dance: the pixels, timeline, folders, inbetween marks and
+  /// (still) camera come straight out of the .tvpp. Returns the
+  /// accumulated warnings, or null when the file is not readable as one.
+  Future<List<String>?> importTvpp({required String tvppPath}) async {
+    final Uint8List bytes;
+    final TvppParseResult parsed;
+    try {
+      bytes = await File(tvppPath).readAsBytes();
+      parsed = parseTvppStructure(bytes);
+    } on TvppParseException {
+      return null;
+    } on FileSystemException {
+      return null;
+    }
+
+    final mint = _importIdMint();
+    final warnings = [...parsed.warnings];
+    final plans = <(TvpJsonImportPlan, Map<String, TvppSlot>)>[];
+    for (var c = 0; c < parsed.clips.length; c++) {
+      final conversion = convertTvppClip(parsed.clips[c], clipIndex: c);
+      final plan = planTvpJsonImport(
+        parsed: conversion.result,
+        // Block files are synthetic slot keys, resolved against
+        // [conversion.slotsByFile] at bake time — not paths.
+        resolveFile: (key) => key,
+        mint: mint,
+        cameraFrameSize: cameraFrameSize,
+        names: null,
+      );
+      warnings.addAll(plan.warnings);
+      plans.add((plan, conversion.slotsByFile));
+    }
+
+    _historyManager.execute(
+      ImportMediaCommand(
+        repository: _repository,
+        editingSession: _editingSession,
+        trackId: selectedTrackId,
+        newCuts: [for (final (plan, _) in plans) plan.cut],
+        // The project file's images ARE the cels; nothing registers.
+        assetAdditions: const [],
+        description: 'Import TVPaint project',
+      ),
+    );
+
+    for (final (plan, slotsByFile) in plans) {
+      final bakedCut = _cutById(plan.cut.id);
+      if (bakedCut == null) {
+        continue;
+      }
+      for (final bake in plan.bakes) {
+        final slot = slotsByFile[bake.sourceFile];
+        if (slot == null) {
+          continue;
+        }
+        final Uint8List? rgba;
+        try {
+          rgba = decodeTvppSlotRgba(
+            fileBytes: bytes,
+            slot: slot,
+            width: plan.cut.canvasSize.width,
+            height: plan.cut.canvasSize.height,
+          );
+        } on TvppRasterDecodeException catch (error) {
+          warnings.add('${bake.sourceFile}: $error');
+          continue;
+        }
+        if (rgba == null) {
+          continue;
+        }
+        final completer = Completer<ui.Image>();
+        decodeStraightRgbaImage(
+          rgba: rgba,
+          width: plan.cut.canvasSize.width,
+          height: plan.cut.canvasSize.height,
+          onDecoded: completer.complete,
+        );
+        final image = await completer.future;
+        try {
+          final surface = await rasterizeImageToSurface(
+            image: image,
+            canvas: bakedCut.canvasSize,
+            fit: MediaFitMode.none,
+          );
+          // A blank instance (빈 셀) decodes to zero tiles: the cel stays,
+          // its pixels stay absent — same shape as the JSON path's fully
+          // transparent PNGs.
+          if (surface.tiles.isNotEmpty) {
+            bakeCelSurface(
+              brushFrameStore,
+              brushFrameKeyForCut(bakedCut, bake.layerId, bake.frameId),
+              surface,
+            );
+          }
+        } finally {
+          image.dispose();
+        }
+      }
+    }
+
+    _refreshAfterCutCommand();
+    notifyListeners();
+    return warnings;
   }
 
   Future<List<String>?> importTvpJson({

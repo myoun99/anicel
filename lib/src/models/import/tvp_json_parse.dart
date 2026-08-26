@@ -130,6 +130,7 @@ class TvpExposureBlock {
     required this.file,
     required this.sourceIndex,
     required this.isReexposure,
+    this.breakdownOffsets = const [],
   });
 
   /// 0-based frame this block starts on.
@@ -153,6 +154,12 @@ class TvpExposureBlock {
 
   /// Whether an earlier block already showed this drawing.
   final bool isReexposure;
+
+  /// Inbetween dots (중간나누기 ●) inside this block, as offsets from
+  /// [start] in `1..length-1`. The JSON export carries none; the .tvpp
+  /// reader fills them from `IMRK` marks — a mark ON the block head is
+  /// dropped there, per the workflow rule, so offset 0 never appears.
+  final List<int> breakdownOffsets;
 
   int get endExclusive => start + length;
 }
@@ -237,6 +244,8 @@ class TvpLayer {
     required this.instances,
     required this.repeats,
     required this.blocks,
+    this.isFolder = false,
+    this.parentIndex = -1,
   });
 
   final String name;
@@ -272,6 +281,15 @@ class TvpLayer {
   /// The resolved timeline, in frame order and gapless within the frames
   /// it covers.
   final List<TvpExposureBlock> blocks;
+
+  /// TVPaint folders, which only the .tvpp reader can see (the JSON
+  /// export flattens the stack): a folder row carries no blocks, and its
+  /// members point back at it through [parentIndex] — the index of the
+  /// folder INSIDE the same bottom-first layer list, -1 for root. A
+  /// folder always sits AFTER its members in that list (= directly above
+  /// them in the stack), which is the shape [Layer.folderId] wants.
+  final bool isFolder;
+  final int parentIndex;
 
   /// Whether the layer has anything to show at all.
   bool get isEmpty => blocks.isEmpty;

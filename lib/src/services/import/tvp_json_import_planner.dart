@@ -89,6 +89,23 @@ TvpJsonImportPlan planTvpJsonImport({
   // stack as it stood in TVPaint.
   for (final source in parsed.layers) {
     final layerId = mint.nextLayerId();
+    if (source.isFolder) {
+      // Only the .tvpp reader produces these (the JSON export flattens
+      // the stack). Members link up in the fix-up pass below — the
+      // folder row sits after them in this bottom-first list, so its id
+      // does not exist yet while they are built.
+      layers.add(
+        Layer(
+          id: layerId,
+          name: source.name,
+          frames: const [],
+          timeline: SplayTreeMap<int, TimelineExposure>(),
+          opacity: source.opacity,
+          kind: LayerKind.folder,
+        ),
+      );
+      continue;
+    }
     final frames = <Frame>[];
     final timeline = SplayTreeMap<int, TimelineExposure>();
     // The drawing a block shows, keyed by the instance that owns it —
@@ -136,6 +153,7 @@ TvpJsonImportPlan planTvpJsonImport({
       timeline[block.start] = TimelineExposure.drawing(
         frameId,
         length: block.length,
+        breakdownOffsets: block.breakdownOffsets,
       );
     }
 
@@ -163,6 +181,15 @@ TvpJsonImportPlan planTvpJsonImport({
         runBehaviors: _runBehaviorsFor(source, timeline),
       ),
     );
+  }
+
+  // Folder membership fix-up: parents sit AFTER their members in the
+  // bottom-first list, so their ids only exist now.
+  for (var i = 0; i < parsed.layers.length; i++) {
+    final parentIndex = parsed.layers[i].parentIndex;
+    if (parentIndex >= 0 && parentIndex < layers.length) {
+      layers[i] = layers[i].copyWith(folderId: layers[parentIndex].id);
+    }
   }
 
   final camera = planTvpCamera(
