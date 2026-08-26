@@ -214,6 +214,7 @@ void main() {
     'sortAscending': (s) => s.sortAscending,
     'sortDescending': (s) => s.sortDescending,
     'canvasSizeTitle': (s) => s.canvasSizeTitle,
+    'cameraSizeTitle': (s) => s.cameraSizeTitle,
     'canvasWidthLabel': (s) => s.canvasWidthLabel,
     'canvasHeightLabel': (s) => s.canvasHeightLabel,
     'canvasAnchorHelpTemplate': (s) => s.canvasAnchorHelpTemplate,
