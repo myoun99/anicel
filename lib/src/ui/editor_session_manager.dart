@@ -1165,14 +1165,26 @@ class EditorSessionManager extends ChangeNotifier {
   /// a TAP somewhere, which also moves the playhead or the standing row. This
   /// is the one that only lets go.
   ///
-  /// ⚠️It asks all four kinds because the ONE-SELECTION LAW means at most one
-  /// of them is live — so "is anything selected" is one question wherever it
-  /// is asked from.
+  /// ⚠️It asks all four TIMELINE kinds because the ONE-SELECTION LAW means at
+  /// most one of them is live — so "is anything selected" is one question
+  /// wherever it is asked from.
+  ///
+  /// 🚨AND THE FIFTH KIND: the marquee on the artwork. It is deliberately NOT
+  /// in [claimSelection]'s switch — space and time are different axes and the
+  /// pixel verbs need both at once — but 「지금 뭔가 선택됐나」 has to count it,
+  /// or a button saying 선택 해제 leaves a selection sitting on screen.
   bool get hasAnySelection =>
       frameRangeSelection.value != null ||
       laneRangeSelection.value != null ||
       trackFrameRangeSelection.value != null ||
-      rowSelection.value.isNotEmpty;
+      rowSelection.value.isNotEmpty ||
+      (canvasHasSelection?.call() ?? false);
+
+  /// Whether the artwork carries a marquee, published by whoever owns it.
+  bool Function()? canvasHasSelection;
+
+  /// Lets go of the marquee, published by whoever owns it.
+  void Function()? clearCanvasSelection;
 
   /// The live editing coordinator, published by the canvas host.
   ///
@@ -1321,6 +1333,14 @@ class EditorSessionManager extends ChangeNotifier {
         ? CelPixelOverwriteCommand.replaceColour(
             coordinator: coordinator,
             targets: targets,
+            // 🚨WITHOUT THIS THE CANVAS DOES NOT REDRAW. The sink is optional
+            // on `restoreSurfaceSnapshot`, and omitting it silently falls to
+            // a no-op — the pixels change, every cache keeps serving the old
+            // composite, and the edit appears only after leaving the frame
+            // and coming back. 유저 2026-08-27: 「버튼 누르면 작동은하는데
+            // 캔버스쪽에서 라이브로 갱신안되서 다른 프레임 갔다가 와야
+            // 반영되있어. 이런 캔버스 조작은 바로바로 반영되야지」.
+            cacheInvalidationSink: cacheInvalidationHub,
             // ⛔The fallback is the brush's own default, not white or
             // transparent: a press with no publisher wired must still do the
             // thing the user asked for, in the colour they would have got.
@@ -1329,6 +1349,7 @@ class EditorSessionManager extends ChangeNotifier {
         : CelPixelOverwriteCommand.clearPixels(
             coordinator: coordinator,
             targets: targets,
+            cacheInvalidationSink: cacheInvalidationHub,
           );
     _historyManager.execute(command);
   }
@@ -1338,6 +1359,12 @@ class EditorSessionManager extends ChangeNotifier {
     clearLaneRangeSelection();
     clearStoryboardCutSelection();
     clearRowSelection();
+    // ⛔ALL of them, the marquee included. 유저 2026-08-27 found two buttons
+    // both called 선택 해제, both wearing `Icons.deselect`, each letting go of
+    // a different half — the rail's cleared the marquee, the timeline's
+    // cleared the timeline, and nothing on screen said which was which.
+    // 「Let go」 means let go.
+    clearCanvasSelection?.call();
   }
 
   /// 🚨T4 — STANDING ON A ROW, as one verb.
