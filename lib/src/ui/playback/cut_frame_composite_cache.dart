@@ -8,6 +8,7 @@ import '../../models/layer_id.dart';
 import '../../models/playback_quality.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/playback/cut_frame_composite_signature.dart';
+import '../../services/cel_source_effect_pass.dart';
 import '../canvas/composite_effect_paint.dart';
 import '../canvas/deferred_image_disposal.dart';
 import '../canvas/layer_image_draw.dart';
@@ -330,10 +331,17 @@ class CutFrameCompositeCache {
               canvas.restore();
             }
           case CompositeLeafSignature(:final layer):
+            // ⛔THE SIGNATURE KEEPS THE WHOLE CHAIN; only the DRAW is split.
+            // `layer.effects` is part of this cache's key, so taking the
+            // color keys out of it would drop their values from the key and
+            // merge two different pictures under one entry. The halves are
+            // taken here, at use.
+            final halves = splitSourceEffects(layer.effects);
             final layerImage = await layerImages.prepare(
               key: frameKeyOf(cut, layer.layerId, layer.frameId),
               canvasSize: cut.canvasSize,
               quality: signature.quality,
+              sourceEffects: halves.source,
               shouldAbort: shouldAbort,
             );
             if (layerImage == null) {
@@ -367,7 +375,7 @@ class CutFrameCompositeCache {
               anchorPoint: layer.anchorPoint,
               opacity: layer.opacity,
               blendMode: layer.blendMode,
-              effects: layer.effects,
+              effects: halves.paint,
               rasterScale: scale,
               // A4: today's value, now in writing — bilinear, as this
               // route has always sampled.

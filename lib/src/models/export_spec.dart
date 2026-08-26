@@ -304,6 +304,7 @@ class CelsExportSpec extends ExportTabSpec {
   const CelsExportSpec({
     this.format = const ExportFormatSelection(kind: ExportMediaKind.still),
     this.sizeMode = ExportSizeMode.canvas,
+    this.applyLayerFx = true,
     this.naming = const ExportCelNaming(),
     this.onTimesheetOnly = false,
     this.includeInstructionLayers = true,
@@ -317,6 +318,22 @@ class CelsExportSpec extends ExportTabSpec {
 
   final ExportFormatSelection format;
   final ExportSizeMode sizeMode;
+
+  /// Whether the delivery cel is rendered THROUGH the rows' effect chains.
+  ///
+  /// 🚨THIS WAS A HARDCODED false, and that was the asymmetry. The other
+  /// tabs have carried this switch since R4-new1; the cel tab alone forced
+  /// it off, under a rule I wrote in R6a (#794) whose stated reason was
+  /// BLUR — 「a blur can never be baked into line art the compositing
+  /// department has to work with」.
+  ///
+  /// ✅유저 2026-08-27 made it a switch: 「셀 출력 강제도 래스터라이즈시키고
+  /// 출력하면 되는거니까 멋대로 판단하지말고」. Default ON, because a color
+  /// key exists to clean the artwork BEING delivered; an artist who wants the
+  /// raw line back turns it off here, which is what every other tab already
+  /// let them do.
+  final bool applyLayerFx;
+
   final ExportCelNaming naming;
   final bool onTimesheetOnly;
 
@@ -345,6 +362,7 @@ class CelsExportSpec extends ExportTabSpec {
   CelsExportSpec copyWith({
     ExportFormatSelection? format,
     ExportSizeMode? sizeMode,
+    bool? applyLayerFx,
     ExportCelNaming? naming,
     bool? onTimesheetOnly,
     bool? includeInstructionLayers,
@@ -357,6 +375,7 @@ class CelsExportSpec extends ExportTabSpec {
   }) => CelsExportSpec(
     format: format ?? this.format,
     sizeMode: sizeMode ?? this.sizeMode,
+    applyLayerFx: applyLayerFx ?? this.applyLayerFx,
     naming: naming ?? this.naming,
     onTimesheetOnly: onTimesheetOnly ?? this.onTimesheetOnly,
     includeInstructionLayers:
@@ -377,6 +396,7 @@ class CelsExportSpec extends ExportTabSpec {
   Map<String, dynamic> toJson() => {
     'format': format.toJson(),
     if (sizeMode != ExportSizeMode.canvas) 'sizeMode': sizeMode.jsonValue,
+    if (!applyLayerFx) 'applyLayerFx': false,
     'naming': naming.toJson(),
     if (onTimesheetOnly) 'onTimesheetOnly': true,
     if (!includeInstructionLayers) 'includeInstructionLayers': false,
@@ -397,6 +417,7 @@ class CelsExportSpec extends ExportTabSpec {
     sizeMode: json['sizeMode'] == null
         ? ExportSizeMode.canvas
         : ExportSizeMode.fromJson(json['sizeMode']),
+    applyLayerFx: json['applyLayerFx'] as bool? ?? true,
     naming: json['naming'] == null
         ? const ExportCelNaming()
         : ExportCelNaming.fromJson(json['naming'] as Map<String, dynamic>),
@@ -416,6 +437,7 @@ class CelsExportSpec extends ExportTabSpec {
       other is CelsExportSpec &&
           other.format == format &&
           other.sizeMode == sizeMode &&
+          other.applyLayerFx == applyLayerFx &&
           other.naming == naming &&
           other.onTimesheetOnly == onTimesheetOnly &&
           other.includeInstructionLayers == includeInstructionLayers &&
@@ -430,6 +452,7 @@ class CelsExportSpec extends ExportTabSpec {
   int get hashCode => Object.hash(
     format,
     sizeMode,
+    applyLayerFx,
     naming,
     onTimesheetOnly,
     includeInstructionLayers,

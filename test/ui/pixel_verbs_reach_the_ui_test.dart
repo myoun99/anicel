@@ -116,8 +116,8 @@ void main() {
       null;
 
   testWidgets(
-    'the two pixel buttons answer DURING a scrub — the bar\'s own law, '
-    'named for them',
+    'the 색 편집 head answers DURING a scrub — the bar\'s own law, '
+    'named for the verbs behind it',
     (tester) async {
       final session = await pump(tester);
       final row = session.layers.firstWhere(
@@ -127,7 +127,7 @@ void main() {
       session.selectFrameIndex(0);
       await tester.pumpAndSettle();
       expect(
-        buttonEnabled(tester, 'shared-replace-colour-button'),
+        buttonEnabled(tester, 'shared-colour-edit-button'),
         isTrue,
         reason: 'standing on a cel, so there is something to recolour',
       );
@@ -138,21 +138,16 @@ void main() {
       session.scrubFrameIndex(8);
       await tester.pumpAndSettle();
       expect(
-        buttonEnabled(tester, 'shared-replace-colour-button'),
+        buttonEnabled(tester, 'shared-colour-edit-button'),
         isFalse,
         reason: 'no drawing on this block — dim without anyone touching a '
             'selection',
-      );
-      expect(
-        buttonEnabled(tester, 'shared-clear-pixels-button'),
-        isFalse,
-        reason: 'its twin reads the same gate',
       );
 
       // And back, so this cannot pass by simply never enabling.
       session.selectFrameIndex(0);
       await tester.pumpAndSettle();
-      expect(buttonEnabled(tester, 'shared-replace-colour-button'), isTrue);
+      expect(buttonEnabled(tester, 'shared-colour-edit-button'), isTrue);
     },
   );
 
@@ -178,6 +173,42 @@ void main() {
         reason: 'the block cannot re-ask 「이 칸에 그림이 있나」 if its own '
             'revision never moves',
       );
+    },
+  );
+
+  testWidgets(
+    'the 색 편집 head opens a popover holding all four colour verbs',
+    (tester) async {
+      final session = await pump(tester);
+      final row = session.layers.firstWhere(
+        (l) => layerAcceptsBrushInput(l) && l.frames.isNotEmpty,
+      );
+      session.selectLayer(row.id);
+      session.selectFrameIndex(0);
+      await tester.pumpAndSettle();
+
+      // ⛔The head itself runs nothing — 색 편집 is a category, so a press
+      // that also did one of the four would be one button answering two
+      // questions. It opens, and the four are inside.
+      await tester.tap(find.byKey(const ValueKey<String>(
+        'shared-colour-edit-button',
+      )));
+      await tester.pumpAndSettle();
+
+      for (final key in [
+        // The retired buttons' own key strings, kept — so a test aimed at
+        // them only gains a menu-open tap.
+        'shared-replace-colour-button',
+        'shared-clear-pixels-button',
+        'shared-delete-colour-button',
+        'shared-keep-colour-button',
+      ]) {
+        expect(
+          find.byKey(ValueKey<String>(key)),
+          findsOneWidget,
+          reason: '$key must live in the 색 편집 popover',
+        );
+      }
     },
   );
 }

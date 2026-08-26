@@ -14,6 +14,7 @@ import '../models/tile_coord.dart';
 import '../ui/canvas/composite_effect_paint.dart'
     show resolveColorMatrixIgnoringSpatial;
 import '../ui/canvas/layer_pose_paint.dart' show layerPoseMatrix;
+import 'cel_source_effect_pass.dart';
 import 'cut_frame_composite_plan.dart';
 
 /// The default blend base when the caller does not thread the project
@@ -109,8 +110,9 @@ enum CanvasColorSampleSource {
   /// you SEE". The user's default.
   display,
 
-  /// The ACTIVE layer's own pixels only. Transparent artwork reads as the
-  /// paper beneath it, which is what Photoshop's "current layer" does once
+  /// The ACTIVE layer's FINISHED pixels only — its own chain applied, no
+  /// other row's. Transparent artwork reads as the paper beneath it, which
+  /// is what Photoshop's "current layer" does once
   /// there is nothing to pick.
   layer,
 }
@@ -261,33 +263,49 @@ int sampleCompositeColor({
     if (rgba == null || rgba == 0) {
       continue;
     }
-    final alpha = (rgba & 0xFF) / 255.0 * entry.opacity;
-    if (alpha <= 0) {
-      continue;
-    }
     var sourceR = ((rgba >> 24) & 0xFF).toDouble();
     var sourceG = ((rgba >> 16) & 0xFF).toDouble();
     var sourceB = ((rgba >> 8) & 0xFF).toDouble();
+    // ★THE ROW'S OWN CHAIN APPLIES IN BOTH MODES — 유저 2026-08-27:
+    // 「레이어의 완성본 픽셀을 스포이드 찍도록 하고싶어. 그러니 fx가 싫으면
+    // fx끄고 스포이드 찍도록」. The layer mode used to read the ink AS DRAWN,
+    // which meant the dropper could hand back a colour that is nowhere on
+    // screen. What separates the two modes is WHOSE pixels are read, not
+    // whether they are finished: an ADJUSTMENT row is a different row and
+    // still stays out of the layer mode (above).
+    //
+    // The color keys go first, for the same reason they do in the composite
+    // — they are a source-pixel pass, and a pixel they erased contributes
+    // nothing at all rather than contributing a filtered colour.
+    final keyedAlphaByte = celSourceEffectAlphaFor(
+      entry.effects,
+      red: sourceR.round(),
+      green: sourceG.round(),
+      blue: sourceB.round(),
+      alpha: rgba & 0xFF,
+    );
+    final alpha = keyedAlphaByte / 255.0 * entry.opacity;
+    if (alpha <= 0) {
+      continue;
+    }
     // The row's own chain filters its pixel BEFORE its opacity meets the
-    // stack — the same order the paint routes use. `display` only: the
-    // layer mode reads the ink as drawn.
-    if (source == CanvasColorSampleSource.display) {
-      // The LENIENT resolver: a chain of [brightness, blur] still reports
-      // the brightness. The strict one exists so a PAINT route can never
-      // mistake a colour matrix for the whole chain.
-      final matrix = resolveColorMatrixIgnoringSpatial(entry.effects);
-      if (matrix != null) {
-        final filtered = applyColorMatrixToStraightColor(
-          matrix,
-          sourceR,
-          sourceG,
-          sourceB,
-          (rgba & 0xFF).toDouble(),
-        );
-        sourceR = filtered.r;
-        sourceG = filtered.g;
-        sourceB = filtered.b;
-      }
+    // stack — the same order the paint routes use.
+    //
+    // The LENIENT resolver: a chain of [brightness, blur] still reports
+    // the brightness. The strict one exists so a PAINT route can never
+    // mistake a colour matrix for the whole chain.
+    final matrix = resolveColorMatrixIgnoringSpatial(entry.effects);
+    if (matrix != null) {
+      final filtered = applyColorMatrixToStraightColor(
+        matrix,
+        sourceR,
+        sourceG,
+        sourceB,
+        keyedAlphaByte.toDouble(),
+      );
+      sourceR = filtered.r;
+      sourceG = filtered.g;
+      sourceB = filtered.b;
     }
     // Premultiplied src-over, coverage tracked alongside.
     r = sourceR * alpha + r * (1 - alpha);

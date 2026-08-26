@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../models/layer_effect.dart';
 import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart' show Cut;
@@ -566,7 +567,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final cameraOverlayVisible =
         showCameraOverlay && session.activeCutOrNull != null;
     final layerStack = inGap
-        ? (nodes: const <CanvasLayerStackNode>[], activeLayerOpacity: 1.0)
+        ? (
+            nodes: const <CanvasLayerStackNode>[],
+            activeLayerOpacity: 1.0,
+            activeSourceEffects: const <ResolvedLayerEffect>[],
+          )
         : session.editingCanvasStack;
     // T12 field probe (no-op while the Input Inspector is hidden, and it
     // prints only when one of the four answers CHANGES — a line per build
@@ -972,6 +977,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                       return below;
                     },
               interactiveContentOpacity: layerStack.activeLayerOpacity,
+              // The CPU half of the row you are drawing on — see
+              // [EditorSessionManager.editingCanvasStack].
+              activeSourceEffects: layerStack.activeSourceEffects,
               interactiveContentPose: interactivePose,
               // The playback view renders the camera framing itself; the editing
               // overlay would show a stale playhead pose on top of it. A scrub

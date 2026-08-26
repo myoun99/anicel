@@ -33,6 +33,7 @@ import 'layer_image_draw.dart';
 import 'paper_background.dart';
 import 'viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../../services/cel_source_effect_pass.dart';
 
 /// One node of the editing canvas's composite tree.
 ///
@@ -176,7 +177,26 @@ class CanvasLayerImageRequest {
   /// The row's effect chain (R6). Onion GHOSTS deliberately carry none:
   /// they are editing scaffolding, and the Colors-mode tint already owns
   /// this paint's colorFilter slot.
+  ///
+  /// ⛔THE WHOLE CHAIN, both halves. The two `shouldRepaint` comparisons
+  /// diff this field, so splitting it here would let a color-key edit slip
+  /// past them. The halves are taken at USE instead, below.
   final List<ResolvedLayerEffect> effects;
+
+  /// The CPU half — the color keys, which the image cache bakes into the
+  /// image it hands back rather than the paint applying them.
+  ///
+  /// ★This request names a cel by [frameKey] and has no surface of its own,
+  /// which is why the split lives here as a getter while
+  /// `CutFrameCompositeLayer` (which DOES carry a surface) applies the pass
+  /// in its constructor. Same function underneath, two shapes because the
+  /// two routes hold different things.
+  List<ResolvedLayerEffect> get sourceEffects =>
+      splitSourceEffects(effects).source;
+
+  /// The paint half — everything that folds into a color filter or an image
+  /// filter.
+  List<ResolvedLayerEffect> get paintEffects => splitSourceEffects(effects).paint;
 }
 
 /// Paints the editing canvas's whole composite tree from the layer-frame
@@ -608,6 +628,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           key: layer.frameKey,
           canvasSize: widget.canvasSize,
           quality: PlaybackQuality.full,
+          sourceEffects: layer.sourceEffects,
         );
       } catch (error, stack) {
         _noteFailure(layer.frameKey, error, stack, 'sync sweep');
@@ -696,6 +717,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
               key: layer.frameKey,
               canvasSize: widget.canvasSize,
               quality: PlaybackQuality.full,
+              sourceEffects: layer.sourceEffects,
             );
           } catch (error, stack) {
             if (!mounted) {
@@ -776,7 +798,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
               pose: request.pose,
               anchorPoint: request.anchorPoint,
               tint: request.tint,
-              effects: request.effects,
+              // The PAINT half only — the keys are already in the image the
+              // cache handed back.
+              effects: request.paintEffects,
             ),
           );
         case CanvasActiveLayerNode(

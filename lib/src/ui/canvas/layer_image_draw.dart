@@ -122,19 +122,17 @@ void drawPosedLayerImage(
       // Onion-skin Colors mode: the ghost converts fully to the tint —
       // every drawn pixel takes the tint's RGB and only alpha survives.
       //
-      // This MUST come before the effect chain. `applyTo` asserts the
-      // paint carries no colorFilter yet, because the two would fight for
-      // the same slot; ghosts resolve to no effects at all, so the assert
-      // is a guard on that invariant rather than an ordering accident.
-      if (tint != null) {
-        paint.colorFilter = ui.ColorFilter.mode(
-          ui.Color(tint),
-          ui.BlendMode.srcIn,
-        );
-      }
+      // ★IT GOES THROUGH THE RESOLVER NOW, not onto the paint here. Written
+      // straight to `Paint.colorFilter` it OWNED that slot, so a ghost could
+      // wear the tint or the row's chain and never both — which is why
+      // ghosts used to carry no effects at all. Folded into the resolver's
+      // matrix it composes with the colour effects, and 유저 2026-08-27
+      // (I-8-Q5) asked for exactly that: the ghost shows what the screen
+      // shows.
       resolveCompositeEffectPaint(
         effects,
         rasterScale: rasterScale,
+        tint: tint,
       ).applyTo(paint);
       if (drawAtOrigin) {
         canvas.drawImage(image, ui.Offset.zero, paint);

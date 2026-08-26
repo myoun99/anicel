@@ -3,6 +3,63 @@ import 'dart:typed_data';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/tile_coord.dart';
+import 'cel_source_effect_pass.dart';
+
+/// The four PIXEL VERBS the timeline's 색 편집 popover runs.
+///
+/// 🚨THE VERB IS ITS OWN FIELD, not the channel. It used to be:
+/// `runPixelVerb(CelPixelChannel)`, where `.colour` meant 색 변환 and
+/// `.alpha` meant 픽셀 삭제. That worked while there were two verbs and
+/// broke the moment there were four — 색 삭제 and 픽셀 삭제 are both alpha
+/// writes and differ only in WHICH pixels they take. One flag answering two
+/// questions is the shape this project keeps finding bugs in.
+enum CelPixelVerb {
+  /// Replace RGB with the current colour, keep alpha.
+  replaceColour(CelPixelChannel.colour),
+
+  /// Empty the drawing: alpha to 0 everywhere the region covers.
+  clearPixels(CelPixelChannel.alpha),
+
+  /// Empty only the pixels that ARE the current colour.
+  deleteColour(CelPixelChannel.alpha),
+
+  /// Empty every pixel that is NOT the current colour.
+  keepColour(CelPixelChannel.alpha);
+
+  const CelPixelVerb(this.channel);
+
+  final CelPixelChannel channel;
+
+  /// Whether this verb picks its pixels by colour.
+  bool get selectsByColour =>
+      this == CelPixelVerb.deleteColour || this == CelPixelVerb.keepColour;
+
+  /// The selector for [argb], or null for the verbs that take everything.
+  ///
+  /// ★THE SAME [CelColorKey] THE FX USES, on purpose. 유저 I-8 asked for one
+  /// operation in two places — a button and an effect — and this is the
+  /// single definition of "which pixels does that colour name", so the two
+  /// cannot drift into two answers.
+  ///
+  /// ⛔TOLERANCE 0, and that is the button's whole design. 유저 2026-08-27
+  /// (I-8-Q2): 「허용차 같은 고급설정은 fx의 색 제거 이펙트에서 하라하고
+  /// 여기서는 간편하게만 하고싶음. 그러니 허용차 설정 없애고 색이 같을때만
+  /// 삭제하면 필요없을거같은데」. A tolerance knob beside the button would be
+  /// the same number in two places.
+  CelColorKey? selectorFor(int argb) {
+    if (!selectsByColour) {
+      return null;
+    }
+    return CelColorKey(
+      red: (argb >> 16) & 0xFF,
+      green: (argb >> 8) & 0xFF,
+      blue: argb & 0xFF,
+      tolerance: 0,
+      amount: 1,
+      keepsMatches: this == CelPixelVerb.keepColour,
+    );
+  }
+}
 
 /// The kernel behind the two PIXEL verbs — 색 변환 (replace the drawing's
 /// colour, keeping its alpha) and 픽셀 비우기 (empty the drawing, keeping
@@ -67,9 +124,32 @@ bool celPixelParticipates({
   required CelPixelChannel channel,
   required int alpha,
   required int maskValue,
+  CelColorKey? selector,
+  int red = 0,
+  int green = 0,
+  int blue = 0,
 }) {
   if (maskValue == 0) {
     return false;
+  }
+  if (selector != null) {
+    // 🚨A SELECTOR NARROWS THE ALPHA VERB, AND UNDO SURVIVES IT — which is
+    // the only reason it is allowed to.
+    //
+    // The paragraph above says a plain alpha pass must take EVERY masked
+    // pixel, because writing alpha destroys the question "was there ink
+    // here" and undo could not tell an already-empty pixel from one this
+    // pass emptied. A colour selector reads R, G and B — and an alpha write
+    // leaves those exactly as they were — so the undo pass re-asks the same
+    // question of the same bytes and gets the same answer. The recipe's
+    // positional walk therefore lines up pixel for pixel.
+    //
+    // ⛔THE SELECTOR MUST NOT READ ALPHA — [CelColorKey.erases] takes none,
+    // and that is enforced by its signature rather than by remembering.
+    // Even an "already empty, skip it" shortcut would make the undo walk
+    // shorter than the forward one, and a positional recipe would then land
+    // on the wrong pixels. A test caught exactly that.
+    return selector.erases(red, green, blue);
   }
   return channel == CelPixelChannel.alpha || alpha > 0;
 }
@@ -327,6 +407,7 @@ typedef CelPixelWalk =
   required CelPixelWalk walk,
   Uint8List? value,
   CelPixelRestore? restore,
+  CelColorKey? selector,
 }) {
   assert(
     (value == null) != (restore == null),
@@ -373,6 +454,10 @@ typedef CelPixelWalk =
           channel: channel,
           alpha: view[offset + 3],
           maskValue: maskValue,
+          selector: selector,
+          red: view[offset],
+          green: view[offset + 1],
+          blue: view[offset + 2],
         )) {
           continue;
         }

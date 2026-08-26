@@ -13,6 +13,7 @@ import '../controllers/default_layer_helpers.dart';
 import '../models/import/cut_folder_parse.dart';
 import '../models/import/tvpp_convert.dart';
 import '../models/import/tvpp_parse.dart';
+import '../services/cel_source_effect_pass.dart';
 import '../services/commands/import_media_command.dart';
 import '../services/commands/reorder_track_command.dart';
 import '../services/import/media_identity_reader.dart';
@@ -1337,7 +1338,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// TVPaint for years.
   ///
   /// One undo step across every cel, however many the ladder named.
-  void runPixelVerb(CelPixelChannel channel) {
+  void runPixelVerb(CelPixelVerb verb) {
     final coordinator = pixelEditingCoordinator;
     if (coordinator == null) {
       return;
@@ -1373,29 +1374,27 @@ class EditorSessionManager extends ChangeNotifier {
         ),
       );
     }
-    final command = channel == CelPixelChannel.colour
-        ? CelPixelOverwriteCommand.replaceColour(
-            coordinator: coordinator,
-            targets: targets,
-            // 🚨WITHOUT THIS THE CANVAS DOES NOT REDRAW. The sink is optional
-            // on `restoreSurfaceSnapshot`, and omitting it silently falls to
-            // a no-op — the pixels change, every cache keeps serving the old
-            // composite, and the edit appears only after leaving the frame
-            // and coming back. 유저 2026-08-27: 「버튼 누르면 작동은하는데
-            // 캔버스쪽에서 라이브로 갱신안되서 다른 프레임 갔다가 와야
-            // 반영되있어. 이런 캔버스 조작은 바로바로 반영되야지」.
-            cacheInvalidationSink: cacheInvalidationHub,
-            // ⛔The fallback is the brush's own default, not white or
-            // transparent: a press with no publisher wired must still do the
-            // thing the user asked for, in the colour they would have got.
-            argb: pixelBrushColour?.call() ?? 0xFF000000,
-          )
-        : CelPixelOverwriteCommand.clearPixels(
-            coordinator: coordinator,
-            targets: targets,
-            cacheInvalidationSink: cacheInvalidationHub,
-          );
-    _historyManager.execute(command);
+    _historyManager.execute(
+      CelPixelOverwriteCommand.forVerb(
+        coordinator: coordinator,
+        targets: targets,
+        verb: verb,
+        // 🚨WITHOUT THIS THE CANVAS DOES NOT REDRAW. The sink is optional on
+        // `restoreSurfaceSnapshot`, and omitting it silently falls to a
+        // no-op — the pixels change, every cache keeps serving the old
+        // composite, and the edit appears only after leaving the frame and
+        // coming back. 유저 2026-08-27: 「버튼 누르면 작동은하는데 캔버스쪽에서
+        // 라이브로 갱신안되서 다른 프레임 갔다가 와야 반영되있어. 이런 캔버스
+        // 조작은 바로바로 반영되야지」.
+        cacheInvalidationSink: cacheInvalidationHub,
+        // Read at the MOMENT OF THE PRESS — the bar does not hold the brush
+        // colour, it asks for it. ⛔The fallback is the brush's own default,
+        // not white or transparent: a press with no publisher wired must
+        // still do the thing the user asked for, in the colour they would
+        // have got.
+        argb: pixelBrushColour?.call() ?? 0xFF000000,
+      ),
+    );
   }
 
   void clearAllSelections() {
@@ -3084,16 +3083,37 @@ class EditorSessionManager extends ChangeNotifier {
   /// hidden; includes its animated Opacity); its pose rides separately
   /// through [layerCanvasPoseSample] into the interactive draw-through
   /// wrap, so it is repeated on the node for the merged painter.
-  ({List<CanvasLayerStackNode> nodes, double activeLayerOpacity})
+  ({
+    List<CanvasLayerStackNode> nodes,
+    double activeLayerOpacity,
+    List<ResolvedLayerEffect> activeSourceEffects,
+  })
   get editingCanvasStack {
     final cut = activeCutOrNull;
     final activeLayerId = this.activeLayerId;
     if (cut == null) {
-      return (nodes: const <CanvasLayerStackNode>[], activeLayerOpacity: 1.0);
+      return (
+        nodes: const <CanvasLayerStackNode>[],
+        activeLayerOpacity: 1.0,
+        activeSourceEffects: const <ResolvedLayerEffect>[],
+      );
     }
 
     final frameIndex = _timelineController.currentFrameIndex;
     var activeLayerOpacity = 1.0;
+    // 🚨THE ACTIVE ROW'S CPU HALF, CARRIED OUT WITH THE OPACITY.
+    //
+    // The row you are DRAWING on is painted tile by tile by the brush
+    // panel's own painter, which never sees a CutFrameCompositeLayer and
+    // never asks the image cache — the two places the colour keys are
+    // applied. Without this the keyed colour comes back the moment you
+    // stand on the row, and goes again when you step off: exactly the
+    // "발신자에 따라 길이 갈렸다" shape #1280 was about.
+    //
+    // It is resolved HERE because this is where the active node's chain is
+    // already resolved — asking a second time somewhere else is how the
+    // panel and the stack would come to disagree.
+    var activeSourceEffects = const <ResolvedLayerEffect>[];
     // Opacity drag preview (R4 #4/#6, DISPLAY only): the dragged rows'
     // static opacity substitutes in before the shared visit, so the canvas
     // follows the drag without any repo write per move.
@@ -3160,6 +3180,7 @@ class EditorSessionManager extends ChangeNotifier {
             activeLayerOpacity = !entry.layer.isVisible
                 ? 0.0
                 : _stackLayerOpacity(entry.layer, stackCut.layers, frameIndex);
+            activeSourceEffects = splitSourceEffects(entry.effects).source;
             return CanvasActiveLayerNode(
               opacity: entry.opacity,
               // The active row's CEL key — the SAME key the image branch
@@ -3240,6 +3261,12 @@ class EditorSessionManager extends ChangeNotifier {
           ? attachedBaseOf(activeStackLayer, stackCut.layers)
           : null;
       final activeFxCarrier = activeFxBase ?? activeStackLayer;
+      activeSourceEffects = splitSourceEffects(
+        resolveLayerEffectsAt(
+          effects: activeFxCarrier.effects,
+          frameIndex: frameIndex,
+        ),
+      ).source;
       nodes.add(
         CanvasActiveLayerNode(
           opacity: activeLayerOpacity,
@@ -3292,6 +3319,7 @@ class EditorSessionManager extends ChangeNotifier {
     return (
       nodes: List.unmodifiable(nodes),
       activeLayerOpacity: activeLayerOpacity,
+      activeSourceEffects: activeSourceEffects,
     );
   }
 
@@ -3742,11 +3770,31 @@ class EditorSessionManager extends ChangeNotifier {
         layer.attachedToLayerId == null;
   }
 
+  /// Whether the active row may be given an effect of [kind] specifically.
+  ///
+  /// [canAddEffectToActiveLayer] answers "does this row have a chain at
+  /// all"; this one adds the per-kind question, because the color keys are
+  /// a CPU pass over cel bytes and a folder or adjustment row hands the
+  /// chain a composited buffer instead ([effectKindsFor] holds that rule).
+  ///
+  /// ⛔The two questions stay separate. Folding them into one flag would be
+  /// one flag answering two questions, which is how the row gate and the
+  /// kind gate drift apart.
+  bool canAddEffectKindToActiveLayer(EffectKind kind) {
+    final layer = activeLayer;
+    if (layer == null || !canAddEffectToActiveLayer) {
+      return false;
+    }
+    return effectKindsFor(
+      inputIsCelPixels: layerKindAcceptsBrushInput(layer.kind),
+    ).contains(kind);
+  }
+
   /// Appends a fresh effect of [kind] (every parameter at its default, so
   /// adding one changes nothing until a value moves) to the active row.
   void addEffectToActiveLayer(EffectKind kind) {
     final layer = activeLayer;
-    if (layer == null || !canAddEffectToActiveLayer) {
+    if (layer == null || !canAddEffectKindToActiveLayer(kind)) {
       return;
     }
     _effectSequence += 1;
@@ -17083,6 +17131,18 @@ class EditorSessionManager extends ChangeNotifier {
     toggleLayerOnionSkin(layer.id);
   }
 
+  /// Whose effect chain a ghost of [layer] wears: an ATTACH row wears its
+  /// BASE's (W5), everyone else their own.
+  ///
+  /// The same carrier rule the active-row node applies — named once so the
+  /// two cannot answer differently for the same row.
+  static Layer _onionFxCarrier(Layer layer, List<Layer> layers) {
+    if (!isAttachedLayer(layer)) {
+      return layer;
+    }
+    return attachedBaseOf(layer, layers) ?? layer;
+  }
+
   /// The ghost frames to composite at the playhead: every onion-enabled
   /// VISIBLE drawing layer contributes its plan (unique drawings, peg
   /// opacities, side tints) in layer-stack order.
@@ -17110,6 +17170,19 @@ class EditorSessionManager extends ChangeNotifier {
               frameKey: brushFrameKeyForCut(cut, layer.id, plan.frameId),
               opacity: plan.opacity,
               tint: plan.tint,
+              // ✅유저 2026-08-27 (I-8-Q5): a ghost shows the pixels the
+              // screen shows. It used to carry NO chain, which read as a
+              // design ("editing scaffolding") but was really the Colors
+              // tint owning the paint's one color-filter slot — the fold in
+              // `resolveCompositeEffectPaint` retired that constraint.
+              //
+              // Sampled at the GHOST's own frame, and read off the attach
+              // BASE where there is one — an attach row wears its base's fx
+              // (W5), the same carrier rule the active-row node uses.
+              effects: resolveLayerEffectsAt(
+                effects: _onionFxCarrier(layer, cut.layers).effects,
+                frameIndex: plan.frameIndex,
+              ),
             ),
     ];
   }

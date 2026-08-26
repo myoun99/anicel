@@ -283,6 +283,7 @@ void main() {
         key: key,
         canvasSize: canvasSize,
         quality: PlaybackQuality.full,
+        sourceEffects: const [],
       ),
     );
     expect(prepared, isNotNull);
@@ -427,6 +428,7 @@ void main() {
         key: key,
         canvasSize: canvasSize,
         quality: PlaybackQuality.full,
+        sourceEffects: const [],
       ),
     );
     expect(prepared, isNotNull);
@@ -569,6 +571,7 @@ void main() {
         key: key,
         canvasSize: canvasSize,
         quality: PlaybackQuality.full,
+        sourceEffects: const [],
       ),
     );
     expect(prepared, isNotNull, reason: 'the held image is all-blue');
@@ -670,6 +673,7 @@ void main() {
         key: key,
         canvasSize: canvasSize,
         quality: PlaybackQuality.full,
+        sourceEffects: const [],
       ),
     );
     expect(prepared, isNotNull);

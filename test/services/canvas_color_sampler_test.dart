@@ -10,6 +10,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -302,6 +303,77 @@ void main() {
         point: CanvasPoint(x: -2, y: 11),
       );
       expect(color, canvasPaperColor);
+    });
+  });
+
+  group('the dropper reads FINISHED pixels', () {
+    // 유저 2026-08-27: 「레이어의 완성본 픽셀을 스포이드 찍도록 하고싶어.
+    // 그러니 fx가 싫으면 fx끄고 스포이드 찍도록」. The layer mode used to read
+    // the ink AS DRAWN, so the dropper could hand back a color that is
+    // nowhere on screen.
+    LayerEffect deleteBlack() => LayerEffect(
+      id: const EffectId('key'),
+      kind: EffectKind.deleteColor,
+      parameters: {'amount': EffectParameter(value: 100)},
+    );
+
+    LayerEffect brighten() => LayerEffect(
+      id: const EffectId('bc'),
+      kind: EffectKind.brightnessContrast,
+      parameters: {'brightness': EffectParameter(value: 100)},
+    );
+
+    test('layer mode applies the row\'s own color chain', () {
+      final surface = surfaceWithPixels({
+        (0, 0): [0x40, 0x40, 0x40, 0xFF],
+      });
+      final row = Layer(
+        id: const LayerId('a'),
+        name: 'a',
+        frames: [frame('a-frame')],
+        timeline: {0: TimelineExposure.drawing(const FrameId('a-frame'), length: 1)},
+        effects: [brighten()],
+      );
+      final sampled = sampleCompositeColor(
+        cut: cut([row]),
+        frameIndex: 0,
+        surfaceResolver: (_, _) => surface,
+        point: CanvasPoint(x: 0, y: 0),
+        source: CanvasColorSampleSource.layer,
+        activeLayerId: const LayerId('a'),
+      );
+      expect(
+        sampled,
+        isNot(0xFF404040),
+        reason: 'reading the ink as drawn would report the unbrightened gray',
+      );
+    });
+
+    test('a pixel the color key erased is not pickable in either mode', () {
+      final surface = surfaceWithPixels({
+        (0, 0): [0x00, 0x00, 0x00, 0xFF],
+      });
+      final row = Layer(
+        id: const LayerId('a'),
+        name: 'a',
+        frames: [frame('a-frame')],
+        timeline: {0: TimelineExposure.drawing(const FrameId('a-frame'), length: 1)},
+        effects: [deleteBlack()],
+      );
+      for (final source in CanvasColorSampleSource.values) {
+        expect(
+          sampleCompositeColor(
+            cut: cut([row]),
+            frameIndex: 0,
+            surfaceResolver: (_, _) => surface,
+            point: CanvasPoint(x: 0, y: 0),
+            source: source,
+            activeLayerId: const LayerId('a'),
+          ),
+          canvasPaperColor,
+          reason: 'the black was keyed out, so the paper is what is there',
+        );
+      }
     });
   });
 }

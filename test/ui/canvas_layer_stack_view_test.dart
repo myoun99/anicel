@@ -119,6 +119,7 @@ void main() {
         key: key('layer-below'),
         canvasSize: canvasSize,
         quality: quality,
+        sourceEffects: const [],
       ),
     );
 
@@ -207,6 +208,7 @@ void main() {
           key: key('layer-below'),
           canvasSize: canvasSize,
           quality: quality,
+          sourceEffects: const [],
         ),
       );
       final float = SelectionFloatOverlay(null);

@@ -106,6 +106,12 @@ class AppStrings {
   /// 픽셀 비우기 — empty the drawing, keeping the cel and its exposure.
   String get tlSharedClearPixels => _s('tlSharedClearPixels');
 
+  String get tlSharedColourEdit => _s('tlSharedColourEdit');
+
+  String get tlSharedDeleteColour => _s('tlSharedDeleteColour');
+
+  String get tlSharedKeepColour => _s('tlSharedKeepColour');
+
   /// R27 #31: the export window's empty state — the project has no cuts
   /// at all (standing in a GAP is not this; that anchors on the first cut).
   String get exportNoCuts => _s('exportNoCuts');
@@ -1009,6 +1015,9 @@ class AppStrings {
     'tlSharedDeselect': 'Deselect',
     'tlSharedReplaceColour': 'Replace Color',
     'tlSharedClearPixels': 'Clear Pixels',
+    'tlSharedColourEdit': 'Color Edit',
+    'tlSharedDeleteColour': 'Delete Color',
+    'tlSharedKeepColour': 'Keep Color',
     'exportNoCuts': 'This project has no cuts to export yet.',
     'audioOffsetTitle': 'A/V offset',
     'audioOffsetHelp':
@@ -1731,6 +1740,9 @@ class AppStrings {
     'tlSharedDeselect': '選択解除',
     'tlSharedReplaceColour': '色変換',
     'tlSharedClearPixels': 'ピクセル消去',
+    'tlSharedColourEdit': '色編集',
+    'tlSharedDeleteColour': '色削除',
+    'tlSharedKeepColour': '色残し',
     'exportNoCuts': 'このプロジェクトには書き出せるカットがありません。',
     'audioOffsetTitle': 'A/Vオフセット',
     'audioOffsetHelp':
@@ -2524,6 +2536,9 @@ class AppStrings {
     'tlSharedDeselect': '선택 해제',
     'tlSharedReplaceColour': '색 변환',
     'tlSharedClearPixels': '픽셀 비우기',
+    'tlSharedColourEdit': '색 편집',
+    'tlSharedDeleteColour': '색 삭제',
+    'tlSharedKeepColour': '색 남기기',
     'exportNoCuts': '이 프로젝트에는 출력할 컷이 없습니다.',
     'audioOffsetTitle': 'A/V 오프셋',
     'audioOffsetHelp':
@@ -3310,6 +3325,9 @@ class AppStrings {
     'tlSharedDeselect': 'Désélectionner',
     'tlSharedReplaceColour': 'Remplacer la couleur',
     'tlSharedClearPixels': 'Effacer les pixels',
+    'tlSharedColourEdit': 'Édition couleur',
+    'tlSharedDeleteColour': 'Supprimer la couleur',
+    'tlSharedKeepColour': 'Conserver la couleur',
     'exportNoCuts': 'Ce projet ne contient aucun plan à exporter.',
     'audioOffsetTitle': 'Décalage A/V',
     'audioOffsetHelp':
@@ -4132,6 +4150,9 @@ class AppStrings {
     'tlSharedDeselect': '取消选择',
     'tlSharedReplaceColour': '替换颜色',
     'tlSharedClearPixels': '清空像素',
+    'tlSharedColourEdit': '颜色编辑',
+    'tlSharedDeleteColour': '删除颜色',
+    'tlSharedKeepColour': '保留颜色',
     'exportNoCuts': '此项目暂无可导出的镜头。',
     'audioOffsetTitle': 'A/V 偏移',
     'audioOffsetHelp':

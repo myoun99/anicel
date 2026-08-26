@@ -70,11 +70,13 @@ void main() {
         key: key('frame-a'),
         canvasSize: canvasSize,
         quality: PlaybackQuality.full,
+        sourceEffects: const [],
       );
       final quarter = await cache.prepare(
         key: key('frame-a'),
         canvasSize: canvasSize,
         quality: PlaybackQuality.quarter,
+        sourceEffects: const [],
       );
 
       expect(full!.image.width, 8);
@@ -104,6 +106,7 @@ void main() {
         key: key('frame-a'),
         canvasSize: canvasSize,
         quality: PlaybackQuality.full,
+        sourceEffects: const [],
       );
 
       expect(positioned!.worldRect, const ui.Rect.fromLTRB(-4, -4, 8, 8));
@@ -124,11 +127,13 @@ void main() {
         key: key('frame-a'),
         canvasSize: canvasSize,
         quality: PlaybackQuality.half,
+        sourceEffects: const [],
       );
       final second = await cache.prepare(
         key: key('frame-a'),
         canvasSize: canvasSize,
         quality: PlaybackQuality.half,
+        sourceEffects: const [],
       );
 
       expect(identical(first, second), isTrue);
@@ -138,6 +143,7 @@ void main() {
             key('frame-a'),
             PlaybackQuality.half,
             canvasSize: canvasSize,
+            sourceEffects: const [],
           ),
           first,
         ),
@@ -158,6 +164,7 @@ void main() {
         key: key('frame-a'),
         canvasSize: canvasSize,
         quality: PlaybackQuality.full,
+        sourceEffects: const [],
       );
 
       coordinator.commitSourceStroke(sourceDabs: [dab(x: 5, y: 5)]);
@@ -167,6 +174,7 @@ void main() {
           key('frame-a'),
           PlaybackQuality.full,
           canvasSize: canvasSize,
+          sourceEffects: const [],
         ),
         isNull,
       );
@@ -174,6 +182,7 @@ void main() {
         key: key('frame-a'),
         canvasSize: canvasSize,
         quality: PlaybackQuality.full,
+        sourceEffects: const [],
       );
       expect(identical(first, rebuilt), isFalse);
       cache.dispose();
@@ -190,6 +199,7 @@ void main() {
           key: key('frame-undrawn'),
           canvasSize: canvasSize,
           quality: PlaybackQuality.full,
+          sourceEffects: const [],
         ),
         isNull,
       );
@@ -205,11 +215,13 @@ void main() {
         key: key('frame-a'),
         canvasSize: canvasSize,
         quality: PlaybackQuality.full,
+        sourceEffects: const [],
       );
       await cache.prepare(
         key: key('frame-a'),
         canvasSize: canvasSize,
         quality: PlaybackQuality.half,
+        sourceEffects: const [],
       );
       expect(cache.estimatedBytes, greaterThan(0));
 
@@ -234,6 +246,7 @@ void main() {
           key: key('frame-a'),
           canvasSize: canvasSize,
           quality: PlaybackQuality.full,
+          sourceEffects: const [],
         ),
         isNull,
       );
@@ -257,6 +270,7 @@ void main() {
         key: key('frame-a'),
         canvasSize: canvasSize,
         quality: PlaybackQuality.full,
+        sourceEffects: const [],
       );
       expect(synced, isNotNull);
       expect(synced!.image.width, 8);
@@ -266,6 +280,7 @@ void main() {
             key('frame-a'),
             PlaybackQuality.full,
             canvasSize: canvasSize,
+            sourceEffects: const [],
           ),
           synced,
         ),
@@ -289,11 +304,13 @@ void main() {
         key: key('frame-a'),
         canvasSize: canvasSize,
         quality: PlaybackQuality.full,
+        sourceEffects: const [],
       );
       final recent = await cache.prepare(
         key: key('frame-b'),
         canvasSize: canvasSize,
         quality: PlaybackQuality.full,
+        sourceEffects: const [],
       );
 
       // 8×8 RGBA = 256 bytes per image; keep room for exactly one.
@@ -304,6 +321,7 @@ void main() {
           key('frame-a'),
           PlaybackQuality.full,
           canvasSize: canvasSize,
+          sourceEffects: const [],
         ),
         isNull,
       );
@@ -313,6 +331,7 @@ void main() {
             key('frame-b'),
             PlaybackQuality.full,
             canvasSize: canvasSize,
+            sourceEffects: const [],
           ),
           recent,
         ),

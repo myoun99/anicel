@@ -6,6 +6,7 @@ import '../cache_invalidation_executor.dart';
 import '../canvas_selection.dart' show SelectionMaskOptions;
 import '../canvas_selection_region.dart';
 import '../cel_pixel_overwrite.dart';
+import '../cel_source_effect_pass.dart';
 import '../cel_pixel_region.dart';
 import '../command.dart';
 
@@ -48,6 +49,7 @@ class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
     required this.channel,
     required Uint8List value,
     required this.description,
+    this.selector,
     this.options = SelectionMaskOptions.none,
     this.cacheInvalidationSink,
   }) : _value = Uint8List.fromList(value) {
@@ -57,25 +59,57 @@ class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
     );
   }
 
-  /// 색 변환: the ARGB colour's RGB, alpha deliberately dropped — the
-  /// drawing keeps its own shape, so a half-transparent swatch would have
-  /// nothing to mean here (유저 확정: "RGB만 쓰는거 ok").
-  factory CelPixelOverwriteCommand.replaceColour({
+  /// The ONE place a verb becomes a channel, a value and a selector.
+  ///
+  /// ⛔Four verbs, one translation. 색 삭제 and 픽셀 삭제 are both alpha
+  /// writes of zero and differ only in which pixels they take, so anything
+  /// deciding that per call site would be deciding it four times.
+  ///
+  /// [argb]'s alpha is deliberately dropped throughout — 색 변환 keeps the
+  /// drawing's own shape (유저 확정: "RGB만 쓰는거 ok"), and the colour verbs
+  /// COMPARE against RGB, where a swatch's own transparency means nothing.
+  factory CelPixelOverwriteCommand.forVerb({
     required BrushFrameEditingCoordinator coordinator,
     required List<CelPixelTarget> targets,
+    required CelPixelVerb verb,
     required int argb,
     SelectionMaskOptions options = SelectionMaskOptions.none,
     CacheInvalidationSink? cacheInvalidationSink,
   }) => CelPixelOverwriteCommand(
     coordinator: coordinator,
     targets: targets,
-    channel: CelPixelChannel.colour,
-    value: Uint8List.fromList([
-      (argb >> 16) & 0xFF,
-      (argb >> 8) & 0xFF,
-      argb & 0xFF,
-    ]),
-    description: 'Replace colour',
+    channel: verb.channel,
+    value: verb.channel == CelPixelChannel.colour
+        ? Uint8List.fromList([
+            (argb >> 16) & 0xFF,
+            (argb >> 8) & 0xFF,
+            argb & 0xFF,
+          ])
+        : Uint8List.fromList([0]),
+    selector: verb.selectorFor(argb),
+    description: switch (verb) {
+      CelPixelVerb.replaceColour => 'Replace colour',
+      CelPixelVerb.clearPixels => 'Clear pixels',
+      CelPixelVerb.deleteColour => 'Delete colour',
+      CelPixelVerb.keepColour => 'Keep colour',
+    },
+    options: options,
+    cacheInvalidationSink: cacheInvalidationSink,
+  );
+
+  /// 색 변환 — [forVerb] with the verb spelled out, kept because the call
+  /// sites read better and the tests aim at it.
+  factory CelPixelOverwriteCommand.replaceColour({
+    required BrushFrameEditingCoordinator coordinator,
+    required List<CelPixelTarget> targets,
+    required int argb,
+    SelectionMaskOptions options = SelectionMaskOptions.none,
+    CacheInvalidationSink? cacheInvalidationSink,
+  }) => CelPixelOverwriteCommand.forVerb(
+    coordinator: coordinator,
+    targets: targets,
+    verb: CelPixelVerb.replaceColour,
+    argb: argb,
     options: options,
     cacheInvalidationSink: cacheInvalidationSink,
   );
@@ -87,12 +121,11 @@ class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
     required List<CelPixelTarget> targets,
     SelectionMaskOptions options = SelectionMaskOptions.none,
     CacheInvalidationSink? cacheInvalidationSink,
-  }) => CelPixelOverwriteCommand(
+  }) => CelPixelOverwriteCommand.forVerb(
     coordinator: coordinator,
     targets: targets,
-    channel: CelPixelChannel.alpha,
-    value: Uint8List.fromList([0]),
-    description: 'Clear pixels',
+    verb: CelPixelVerb.clearPixels,
+    argb: 0,
     options: options,
     cacheInvalidationSink: cacheInvalidationSink,
   );
@@ -100,6 +133,11 @@ class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
   final BrushFrameEditingCoordinator coordinator;
   final List<CelPixelTarget> targets;
   final CelPixelChannel channel;
+
+  /// Which pixels the pass takes, beyond coverage — null takes them all.
+  /// See [celPixelParticipates] for why a colour selector is safe on an
+  /// alpha write and an alpha-reading one would not be.
+  final CelColorKey? selector;
   final SelectionMaskOptions options;
   final CacheInvalidationSink? cacheInvalidationSink;
   final Uint8List _value;
@@ -153,6 +191,7 @@ class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
           options: options,
         ),
         value: _value,
+        selector: selector,
       );
       final restore = result.restore;
       if (restore == null) {
@@ -183,6 +222,10 @@ class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
           options: options,
         ),
         restore: entry.restore,
+        // The SAME selector: an alpha write preserves RGB, so it picks
+        // exactly the pixels the forward pass picked and the recipe's
+        // positional walk lines up.
+        selector: selector,
       );
       coordinator.restoreSurfaceSnapshot(
         target.key,
