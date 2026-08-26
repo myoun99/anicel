@@ -796,6 +796,23 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   // Laws are not work: they never appear as a card of their own, they attach
   // to the cards whose tag they name. Set before anything renders.
   _laws = alive.where((e) => e.kind == 'law').toList();
+  // The question index, before anything renders — see [_byOrigin] for why it
+  // reads `entries` and not `alive`.
+  final byOrigin = <String, List<_Entry>>{};
+  for (final e in entries) {
+    if (e.kind != 'decision') continue;
+    final (of, _) = _asks(e);
+    if (of.isEmpty) continue;
+    (byOrigin[of] ??= []).add(e);
+  }
+  for (final list in byOrigin.values) {
+    list.sort((a, b) {
+      final (_, x) = _asks(a);
+      final (_, y) = _asks(b);
+      return x.compareTo(y);
+    });
+  }
+  _byOrigin = byOrigin;
   final inbox = alive.where((e) => e.state == 'inbox').toList();
   // 답할 것 holds only what is still unanswered. An answered question leaves
   // for 분류 전 — see `/submit` for why that is the same section and not a
@@ -1095,19 +1112,97 @@ String _shotStrip(String id) {
   return b.toString();
 }
 
+/// A decision id shaped `<원본>-Q<번호>` — the naming the user asked for
+/// (2026-08-26: 「Q-layer-name이 아니라 패널이름-질문넘버. 예를들어 T14-Q1」).
+///
+/// 🎯Parsing it is what makes the link impossible to forget. A question named
+/// `T14-Q1` IS bound to T14; there is no second field to fill in and no way
+/// for the name and the binding to disagree. [_Entry.of] stays as the
+/// override for the cards named before this convention existed.
+final _qName = RegExp(r'^(.+)-Q(\d+)$');
+
+/// Which card a question belongs to, and where it sits in that card's list.
+(String, int) _asks(_Entry e) {
+  final m = _qName.firstMatch(e.id);
+  if (m != null) return (e.of.isEmpty ? m.group(1)! : e.of, int.parse(m.group(2)!));
+  return (e.of, 0);
+}
+
+/// Every question, filed under the card that raised it.
+///
+/// ⚠️Built from ALL entries, archived ones included. A question I have already
+/// acted on and put away is still part of its card's story, and dropping it
+/// would take the ANSWER out of the panel the moment the answer got used —
+/// which is the one moment it starts mattering. (Same shape as the bug where
+/// a ticked landing came back: `alive` filters out precisely what you need.)
+Map<String, List<_Entry>> _byOrigin = const {};
+
 /// 🚨THE WAY BACK TO THE CARD THAT ASKED (유저 2026-08-26: 「그 답할것패널에
-/// 포인터? 내부에 태그같은거로서 질문이 생성된 패널을 표시해줌. 그거 누르면
-/// 해당패널로 이동하게」).
+/// 포인터? 내부에 태그같은거로서 질문이 생성된 패널을 표시해줌」).
 ///
 /// A question torn out of its card is a question with no subject — that is
 /// the same disease as a 확인할 것 row saying only 「T14」, one section over.
 /// The link jumps to the origin AND opens it, because an anchor that lands on
 /// a folded `<details>` looks like it did nothing.
 String _origin(_Entry e) {
-  final of = e.of;
+  final (of, _) = _asks(e);
   if (of.isEmpty) return '';
   return '<p class="d"><a class="chip link" href="#c-${_esc(of)}" '
       'onclick="jump(\'${_esc(of)}\');return false;">↑ ${_esc(of)} 에서 나온 질문</a></p>';
+}
+
+/// 🚨★★★THE OTHER HALF OF THE LINK — the card's own list of its questions
+/// (유저 2026-08-26: 「답할것 발생할때마다 대기중 패널에 Q1 Q2 이렇게 항목
+/// 만들어서 그거누르면 해당패널로 이동하게. 대답하면 그 항목에 대답 이식되고」).
+///
+/// ⛔NOT transplanted, and that is the improvement on the ask. Copying the
+/// answer into the origin would put one fact in two records, and the day one
+/// of them is edited they disagree — the failure this whole board keeps being
+/// redesigned around. Rendered by reference, the card cannot show a stale
+/// answer, because it is not holding one.
+String _questions(_Entry e) {
+  final mine = _byOrigin[e.id];
+  if (mine == null || mine.isEmpty) return '';
+  final b = StringBuffer();
+  for (var i = 0; i < mine.length; i++) {
+    final q = mine[i];
+    final (_, n) = _asks(q);
+    final label = 'Q${n == 0 ? i + 1 : n}';
+    final answered = q.answer != null;
+    final picked = answered
+        ? q.options.firstWhere((o) => o['key'] == q.answer,
+            orElse: () => <String, dynamic>{'label': q.answer})
+        : const <String, dynamic>{};
+    b.writeln('<details class="lg q">');
+    b.writeln('<summary><span class="lgk">$label</span>'
+        '<span class="lgp">${_esc(q.title)}</span>'
+        '<span class="chip ${answered ? 'ok' : 'run'}">'
+        '${answered ? '답함' : '대기'}</span></summary>');
+    if (answered) {
+      final said = '${picked['label'] ?? q.answer}';
+      if (said.isNotEmpty && said != 'ok') {
+        b.writeln('<p class="d"><b>→ ${_esc(said)}</b></p>');
+      }
+      if (q.answerNote.isNotEmpty) {
+        b.writeln('<p class="d">${_esc(q.answerNote)}</p>');
+      }
+    } else if (q.why.isNotEmpty) {
+      b.writeln('<p class="d">${_esc(q.why)}</p>');
+    }
+    // ⛔No link once the question is put away: its panel is no longer drawn,
+    // and a link to a row that is not on the page does nothing when clicked,
+    // which reads as broken rather than as finished. The row above already
+    // carries the whole question and its answer, so nothing is lost by
+    // dropping the link — that is the point of rendering by reference.
+    final reachable = q.state != 'archived' && q.state != 'deleted';
+    b.writeln(reachable
+        ? '<p class="d"><a class="chip link" href="#c-${_esc(q.id)}" '
+            'onclick="jump(\'${_esc(q.id)}\');return false;">'
+            '${_esc(q.id)} 로 이동 →</a></p>'
+        : '<p class="d mono">${_esc(q.id)} · 처리 완료</p>');
+    b.writeln('</details>');
+  }
+  return b.toString();
 }
 
 String _askPanel(_Entry d) {
@@ -1217,6 +1312,9 @@ String _checkRow(_Entry c, {_Pr? pr, List<_Entry> subs = const []}) {
   // started it, the answers along the way, what the fix turned out to be. All
   // of that is what the card carried on its way here, so all of it comes with.
   b.writeln(_story(c));
+  // Its questions come with it to 확인할 것 — 「무엇을 물었고 무엇으로 정했나」
+  // is half of knowing whether the thing in front of you is right.
+  b.writeln(_questions(c));
   b.writeln(_care(c));
   if (landed) {
     b.writeln('<p class="d"><a href="https://github.com/$_repo/pull/'
@@ -1293,6 +1391,7 @@ String _itemPanel(_Entry e) {
         '<span class="state"></span></div>');
   } else {
     b.writeln(_story(e));
+    b.writeln(_questions(e));
     b.writeln(_care(e));
     b.writeln(_shotStrip(e.id));
   }
@@ -1448,7 +1547,9 @@ function send(id){
 // dead link. Open it first, then scroll, then flash it so the eye lands.
 function jump(id){
   const c = document.getElementById('c-'+id);
-  if(!c){ return; }
+  // ⚠️Silence here reads as a broken link. Say so instead — the row is not on
+  // the page, which is information, not a failure.
+  if(!c){ alert(id + ' 는 지금 화면에 없습니다 (보관됐거나 다른 페이지).'); return; }
   c.open = true;
   c.scrollIntoView({behavior:'smooth', block:'center'});
   c.classList.add('lit');
@@ -1735,6 +1836,10 @@ min-width:74px}
 white-space:nowrap;flex:1;min-width:0}
 .lg[open]>summary .lgp{visibility:hidden}
 .lg>.d{margin:3px 0 7px}
+/* A question row: same rail as a story entry because it IS part of the
+   story, tinted so the two kinds of entry do not read as one list. */
+.lg.q{border-left-color:var(--run)}
+.lg.q>summary .chip{flex:none;margin-left:auto}
 a.chip.link{text-decoration:none;color:var(--ink2)}
 a.chip.link:hover{background:var(--bg)}
 /* The flash a jump leaves behind, so the eye finds where it landed. */
