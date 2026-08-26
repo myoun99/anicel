@@ -120,9 +120,13 @@ class TvppLayer {
     this.visible = true,
   });
 
-  /// LRHD[14] hi16 bit 0. Pinned against the JSON export's `visible` on
-  /// KLM: TAP/F_n carry 1 (F_n's word is 5 — higher bits exist and are
-  /// not this), the hidden CON carries 0.
+  /// LRHD[7] bit 0 says HIDDEN (bit 4 is the layer lock). Pinned 19/19
+  /// against 288's own timeline screenshot and KLM's JSON (TAP·CON
+  /// hidden, F_n visible). ⚠️The first reading — LRHD[14] hi16 bit 0 —
+  /// was the COLOUR-GROUP index's parity: KLM's three probes matched by
+  /// luck (TAP=1, F_n=5, CON=0), and 288 imported half its stack wrong.
+  /// [14] hi16 is the guigroup index; the import does not read it (the
+  /// user's call: 색라벨 안 읽어도 된다).
   final bool visible;
 
   final TvppLayerKind kind;
@@ -540,7 +544,7 @@ TvppClip _parseClip(
         opacity: header != null ? field(4) : 255,
         preBehavior: _edgeBehavior(field(13) >> 16),
         postBehavior: _edgeBehavior(field(11) >> 16),
-        visible: header == null || (field(14) >> 16) & 1 != 0,
+        visible: header == null || field(7) & 1 == 0,
         slots: List.unmodifiable(slots),
         ctgSecondStream: List.unmodifiable(secondStream),
         instanceNames: Map.unmodifiable(instanceNames),

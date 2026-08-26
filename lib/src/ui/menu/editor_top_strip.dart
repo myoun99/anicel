@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io' show Directory, File;
+import 'dart:io' show Directory, File, FileSystemException;
 
 import 'package:flutter/material.dart';
 
@@ -173,16 +173,31 @@ class EditorTopStrip extends StatelessWidget {
       // Decoding and baking a whole project is a save-sized wait; a
       // frozen screen before the cuts appear reads as a hang (hands-on,
       // 288's 96 frames × 19 layers).
-      final warnings = await runWithAppProgress<List<String>?>(
-        context: context,
-        title: AppText.strings.fileOpenTitle,
-        titleIcon: Icons.folder_open_outlined,
-        runningLabel: AppText.strings.openProgressRunning,
-        doneLabel: AppText.strings.openProgressDone,
-        windowKey: const ValueKey<String>('open-progress-dialog'),
-        task: (report) =>
-            session.openTvppAsProject(tvppPath: path, onProgress: report),
-      );
+      final List<String>? warnings;
+      try {
+        warnings = await runWithAppProgress<List<String>?>(
+          context: context,
+          title: AppText.strings.fileOpenTitle,
+          titleIcon: Icons.folder_open_outlined,
+          runningLabel: AppText.strings.openProgressRunning,
+          doneLabel: AppText.strings.openProgressDone,
+          windowKey: const ValueKey<String>('open-progress-dialog'),
+          task: (report) =>
+              session.openTvppAsProject(tvppPath: path, onProgress: report),
+        );
+      } on FileSystemException {
+        // Access, not format — the same file opens once it is readable
+        // (a cloud placeholder mid-download, a provider signed out).
+        if (context.mounted) {
+          _showFileError(
+            context,
+            const FormatException(
+              '파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요',
+            ),
+          );
+        }
+        return;
+      }
       if (!context.mounted) {
         return;
       }
@@ -287,6 +302,33 @@ class EditorTopStrip extends StatelessWidget {
       } else {
         declinedSidecar = true;
       }
+    }
+    // The same materializer every open uses: a File Provider pick can be
+    // a placeholder a plain read refuses, and the archive reader needs
+    // random access — so an unreadable pick opens from a staged local
+    // copy, with `recoverAs` pointing saves back at the real file,
+    // exactly the sidecar-open mechanism.
+    if (openPath == path) {
+      try {
+        final source = await FolderPicker.materializeOpenedFile(path);
+        if (source.staged) {
+          openPath = source.path;
+          recoverAs = path;
+        }
+      } on FileSystemException {
+        if (context.mounted) {
+          _showFileError(
+            context,
+            const FormatException(
+              '파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요',
+            ),
+          );
+        }
+        return;
+      }
+    }
+    if (!context.mounted) {
+      return;
     }
     try {
       await session.openProjectFromFile(

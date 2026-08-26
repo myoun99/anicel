@@ -37,9 +37,10 @@ jobs:
   apple:
     name: macOS app + iOS simulator + native C
     runs-on: macos-latest
-    # apple.yml runs the whole suite on a Mac and legitimately takes
-    # 20-32 minutes; 60 bounds a hang without ever touching a real run.
-    timeout-minutes: 60
+    # Compile verification only — the suite lives in apple-suite below,
+    # on the cadence where nobody waits on it. ~8 minutes warm; 20 bounds
+    # a hang without ever touching a real run.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
 
@@ -87,30 +88,7 @@ jobs:
       - name: Build iOS for the simulator (no codesign)
         run: flutter build ios --debug --simulator --no-codesign
 
-      # The suite runs here too: platform-conditional code (Platform.isMacOS
-      # branches in the input/sidecar layers) only executes on this runner.
-      #
-      # ⛔Do not narrow this to the parity subset because testflight.yml now
-      # runs that subset on every build. The two are deliberately different
-      # shapes: that one is NARROW and unskippable, this one is BROAD and
-      # nightly. Narrowing here would leave macOS-only Dart defects — path
-      # separators, file locking, Platform.isMacOS branches — with nothing
-      # looking for them at all, and nobody is waiting on this job at 03:00
-      # UTC. Slow is the correct trade here; it is only ever wrong on the
-      # release path, which is precisely where the narrow check went.
-      #
-      # QA_ENGINE_PATH points at the dylib built in the first step so the
-      # PARITY tests actually RUN here instead of skipping. That is the
-      # real prize of a Mac runner: it tells us whether Apple clang on
-      # arm64 produces the same bytes as the Dart reference — fp
-      # contraction and NEON vectorization are exactly the kind of thing
-      # that could diverge silently on a platform nobody here owns.
-      - name: Run tests (engine loaded, parity tests live)
-        env:
-          QA_ENGINE_PATH: ${{ github.workspace }}/build/ci-apple/libqa_engine.dylib
-          # And QA_REQUIRE_NATIVE turns a MISSING engine into a failure
-          # instead of a quiet skip. A skipped parity suite and a passing
-          # one look identical in a CI summary, which is precisely how #614
-          # hid for five rounds.
-          QA_REQUIRE_NATIVE: '1'
-        run: flutter test
+  # The full suite half lives in apple-nightly.yml (schedule/dispatch
+  # only) — as its own workflow, not an if-gated job here, because a
+  # skipped job still registers a check on every push and merge_check
+  # reads anything that is not SUCCESS or PENDING as a failure.

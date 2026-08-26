@@ -1,4 +1,4 @@
-import 'dart:async' show Timer;
+import 'dart:async' show Timer, unawaited;
 import 'dart:collection' show SplayTreeMap;
 import 'dart:io';
 import 'dart:isolate';
@@ -7569,14 +7569,27 @@ class EditorSessionManager extends ChangeNotifier {
     required String tvppPath,
     void Function(double fraction)? onProgress,
   }) async {
+    // A read failure THROWS (FileSystemException, out of the
+    // materializer) and only a parse failure answers null — the door
+    // used to show 「읽을 수 없는 파일」 for both, which sent the user
+    // chasing a format problem when the real one was access (실측
+    // 08-26: Drive on iPhone). Same materializer as the .anicel open;
+    // the staged copy is read-and-discard here.
+    final source = await FolderPicker.materializeOpenedFile(tvppPath);
     final Uint8List bytes;
+    try {
+      bytes = await File(source.path).readAsBytes();
+    } finally {
+      if (source.staged) {
+        unawaited(
+          File(source.path).delete().then<void>((_) {}, onError: (_) {}),
+        );
+      }
+    }
     final TvppParseResult parsed;
     try {
-      bytes = await File(tvppPath).readAsBytes();
       parsed = parseTvppStructure(bytes);
     } on TvppParseException {
-      return null;
-    } on FileSystemException {
       return null;
     }
 

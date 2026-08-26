@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/services/persistence/folder_grant.dart'
+    show FolderPicker;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -113,5 +115,52 @@ void main() {
       reason: 'one drawing held across the clip stays one cel',
     );
     expect(tap.timeline[0]!.length, 10);
+  });
+
+  test('an unreadable pick goes through the COORDINATED read; only a '
+      'parse failure answers null', () async {
+    // A File Provider placeholder exists-but-refuses; the coordinated
+    // fallback is what makes the provider materialise it (iPhone +
+    // Drive, hands-on). Direct read of this path fails outright.
+    final real = writeTvpp();
+    final ghost = '${temp.path}${Platform.pathSeparator}ghost.tvpp';
+    var staged = 0;
+    FolderPicker.debugCoordinatedReader = ({
+      required String sourcePath,
+      required String destinationPath,
+    }) async {
+      staged++;
+      expect(sourcePath, ghost);
+      File(real).copySync(destinationPath);
+      return true;
+    };
+    addTearDown(() => FolderPicker.debugCoordinatedReader = null);
+
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+
+    final warnings = await session.openTvppAsProject(tvppPath: ghost);
+    expect(staged, 1);
+    expect(warnings, isNotNull,
+        reason: 'the staged copy parses like the local file');
+
+    // A file that READS but does not parse is the only null.
+    final junk = '${temp.path}${Platform.pathSeparator}junk.tvpp';
+    File(junk).writeAsBytesSync(List<int>.filled(64, 7));
+    expect(await session.openTvppAsProject(tvppPath: junk), isNull);
+
+    // Unreadable AND unstageable throws — access, not format.
+    FolderPicker.debugCoordinatedReader = ({
+      required String sourcePath,
+      required String destinationPath,
+    }) async => false;
+    expect(
+      () => session.openTvppAsProject(
+        tvppPath: '${temp.path}${Platform.pathSeparator}nowhere.tvpp',
+      ),
+      throwsA(isA<FileSystemException>()),
+    );
   });
 }
