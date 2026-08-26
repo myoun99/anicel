@@ -10,8 +10,6 @@ import '../controllers/default_cut_helpers.dart'
     show createDefaultCut, defaultCutCanvasSize;
 import '../controllers/default_layer_helpers.dart';
 import '../models/import/cut_folder_parse.dart';
-import '../models/import/tvp_csv_parse.dart';
-import '../models/import/tvp_json_parse.dart';
 import '../models/import/tvpp_convert.dart';
 import '../models/import/tvpp_parse.dart';
 import '../services/commands/import_media_command.dart';
@@ -26,7 +24,7 @@ import '../services/import/media_import_planner.dart';
 import '../services/import/psd_expand_import.dart';
 import '../core/straight_rgba_image.dart';
 import '../services/import/raster_cel_import.dart';
-import '../services/import/tvp_json_import_planner.dart';
+import '../services/import/tvp_import_planner.dart';
 import '../services/import/tvpp_raster_decoder.dart';
 import '../services/pdf/pdf_render_service.dart';
 import '../services/project_lookup.dart'
@@ -7360,51 +7358,6 @@ class EditorSessionManager extends ChangeNotifier {
     return plan.warnings;
   }
 
-  /// Imports a TVPaint JSON export: one cut carrying the clip's whole
-  /// layer stack, exposure, hold/repeat edges and cel numbers, in one
-  /// undo. [jsonPath] is the `.json` TVPaint wrote; its image folders sit
-  /// beside it, which is what [planTvpJsonImport] resolves against.
-  ///
-  /// Returns the read-and-plan warnings, or null when the file is gone or
-  /// is not a TVPaint export.
-  /// The CSV that names this export's cels, when one was exported beside
-  /// it — `343.json` is answered by `343.csv`.
-  ///
-  /// Asked for rather than picked: the TVPaint import already takes the
-  /// FOLDER (iOS grants exactly the item chosen, and the images are
-  /// siblings), so a CSV in that folder is already readable and asking
-  /// for it a second time would be a window with nothing to decide. The
-  /// same-stem file wins; failing that, a folder holding exactly one CSV
-  /// is unambiguous. Anything else, and the cels arrive unnamed — the
-  /// planner says so in its warnings, and a wrong name is worse than none.
-  TvpCsvNames? _tvpNamesBeside(String jsonPath) {
-    final normalized = jsonPath.replaceAll('\\', '/');
-    final slash = normalized.lastIndexOf('/');
-    final directory = slash <= 0 ? '.' : normalized.substring(0, slash);
-    final stem = normalized.substring(
-      slash + 1,
-      normalized.length - '.json'.length,
-    );
-    try {
-      final beside = File('$directory/$stem.csv');
-      final candidates = beside.existsSync()
-          ? [beside]
-          : [
-              for (final entity in Directory(directory).listSync())
-                if (entity is File &&
-                    entity.path.toLowerCase().endsWith('.csv'))
-                  entity,
-            ];
-      if (candidates.length != 1) {
-        return null;
-      }
-      return parseTvpCsv(candidates.single.readAsStringSync());
-    } on Object {
-      // Unreadable or not a TVPaint CSV: the import proceeds without it.
-      return null;
-    }
-  }
-
   /// Opens a TVPaint project file AS A PROJECT — a .tvpp holds several
   /// cuts, so it replaces the session's project the way an .anicel open
   /// does: every clip a cut, pixels/timeline/folders/marks/camera/audio
@@ -7429,17 +7382,16 @@ class EditorSessionManager extends ChangeNotifier {
     playback.stop();
     final mint = _importIdMint();
     final warnings = [...parsed.warnings];
-    final plans = <(TvpJsonImportPlan, Map<String, TvppSlot>)>[];
+    final plans = <(TvpImportPlan, Map<String, TvppSlot>)>[];
     for (var c = 0; c < parsed.clips.length; c++) {
       final conversion = convertTvppClip(parsed.clips[c], clipIndex: c);
-      final plan = planTvpJsonImport(
+      final plan = planTvpImport(
         parsed: conversion.result,
         // Block files are synthetic slot keys, resolved against
         // [conversion.slotsByFile] at bake time — not paths.
         resolveFile: (key) => key,
         mint: mint,
         cameraFrameSize: defaultProjectCameraSize,
-        names: null,
       );
       warnings.addAll(plan.warnings);
       plans.add((plan, conversion.slotsByFile));
@@ -7572,91 +7524,6 @@ class EditorSessionManager extends ChangeNotifier {
     return warnings;
   }
 
-  Future<List<String>?> importTvpJson({
-    required String jsonPath,
-    MediaFitMode fit = MediaFitMode.none,
-  }) async {
-    final file = File(jsonPath);
-    final TvpJsonParseResult parsed;
-    try {
-      parsed = parseTvpJson(await file.readAsString());
-    } on TvpJsonParseException {
-      return null;
-    } on FileSystemException {
-      return null;
-    }
-
-    final directory = file.parent.path.replaceAll('\\', '/');
-    final mint = _importIdMint();
-    final plan = planTvpJsonImport(
-      parsed: parsed,
-      // The export writes POSIX-ish relative paths (`[003] D/[0004] D.png`)
-      // whichever platform wrote it.
-      resolveFile: (relative) => '$directory/${relative.replaceAll('\\', '/')}',
-      mint: mint,
-      // The clip's own shooting frame becomes a zoom against THIS project's
-      // frame — a cut import must not repoint the project's camera.
-      cameraFrameSize: cameraFrameSize,
-      names: _tvpNamesBeside(jsonPath),
-      fit: fit,
-    );
-
-    _historyManager.execute(
-      ImportMediaCommand(
-        repository: _repository,
-        editingSession: _editingSession,
-        trackId: selectedTrackId,
-        newCuts: [plan.cut],
-        // Nothing registers: a TVPaint export's images ARE the cels.
-        assetAdditions: const [],
-        description: 'Import TVPaint ${parsed.clipName}',
-      ),
-    );
-
-    final bakedCut = _cutById(plan.cut.id);
-    if (bakedCut != null) {
-      for (final bake in plan.bakes) {
-        final List<DecodedImageFrame> frames;
-        try {
-          frames = await decodeImageFrames(
-            await MediaFileBytes(bake.sourceFile).read(),
-          );
-        } on Object {
-          continue; // Unreadable file — the cel keeps its name, no pixels.
-        }
-        if (frames.isEmpty) {
-          continue;
-        }
-        try {
-          final surface = await rasterizeImageToSurface(
-            image: frames.first.image,
-            canvas: bakedCut.canvasSize,
-            fit: bake.fit,
-          );
-          // 「빈 사진 포함」 exports a fully transparent PNG for every
-          // instance with no pixels — a quarter of a real clip's files.
-          // Those rasterize to zero tiles; donating one would mark an
-          // empty cel edited and carry it into every save for nothing.
-          // The cel still exists, still holds its label.
-          if (surface.tiles.isNotEmpty) {
-            bakeCelSurface(
-              brushFrameStore,
-              brushFrameKeyForCut(bakedCut, bake.layerId, bake.frameId),
-              surface,
-            );
-          }
-        } finally {
-          for (final frame in frames) {
-            frame.image.dispose();
-          }
-        }
-      }
-    }
-
-    _refreshAfterCutCommand();
-    notifyListeners();
-    return plan.warnings;
-  }
 
   /// Rasterize (§6-f): the ONE verb for every derived-content layer.
   /// Reference layers null [Layer.mediaReference] (the pixels are already

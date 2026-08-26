@@ -1,9 +1,9 @@
-import 'tvp_json_parse.dart';
+import 'tvp_import_model.dart';
 import 'tvpp_camera_bake.dart';
 import 'tvpp_parse.dart';
 
 /// One clip of a .tvpp, translated into the SAME parse-result model the
-/// JSON export produces — so `planTvpJsonImport` builds the cut for both
+/// JSON export produces — so `planTvpImport` builds the cut for both
 /// paths with one set of rules (one cel per drawing, run behaviours,
 /// camera fitting). What only the project file knows arrives as the
 /// model's optional edges: folders, inbetween marks, blank instances.
@@ -13,7 +13,7 @@ class TvppClipConversion {
     required this.slotsByFile,
   });
 
-  final TvpJsonParseResult result;
+  final TvpImportClip result;
 
   /// [TvpExposureBlock.file] keys → the slot to decode. The keys are
   /// synthetic (`tvpp:layer:stream:slot`) and only meaningful together
@@ -70,8 +70,6 @@ TvppClipConversion convertTvppClip(
           postBehavior: layer.postBehavior,
           blendingMode: 'Color',
           groupColor: null,
-          instances: const [],
-          repeats: const [],
           blocks: const [],
           isFolder: true,
         ),
@@ -99,8 +97,6 @@ TvppClipConversion convertTvppClip(
           postBehavior: layer.postBehavior,
           blendingMode: 'Color',
           groupColor: null,
-          instances: const [],
-          repeats: const [],
           blocks: const [],
           isFolder: true,
         ),
@@ -181,8 +177,6 @@ TvppClipConversion convertTvppClip(
               postBehavior: layer.postBehavior,
               blendingMode: layer.blendingMode,
               groupColor: layer.groupColor,
-              instances: layer.instances,
-              repeats: layer.repeats,
               blocks: layer.blocks,
               isFolder: layer.isFolder,
               parentIndex: parentBottom,
@@ -212,7 +206,7 @@ TvppClipConversion convertTvppClip(
   ];
 
   return TvppClipConversion(
-    result: TvpJsonParseResult(
+    result: TvpImportClip(
       versionMajor: 0,
       versionMinor: 0,
       clipName: clip.name,
@@ -336,8 +330,6 @@ TvpLayer _rasterLayer(
     postBehavior: layer.postBehavior,
     blendingMode: 'Color',
     groupColor: null,
-    instances: const [],
-    repeats: const [],
     blocks: blocks,
   );
 }

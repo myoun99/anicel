@@ -44,7 +44,6 @@ const String _utiImage = 'public.image';
 const String _utiAudio = 'public.audio';
 const String _utiMovie = 'public.movie';
 const String _utiPdf = 'com.adobe.pdf';
-const String _utiJson = 'public.json';
 
 /// Everything. Used where a filter would do more harm than good — see
 /// [FileTypeGroups.brushes].
@@ -102,7 +101,6 @@ const Map<String, String> mimeForUti = {
   _utiAudio: 'audio/*',
   _utiMovie: 'video/*',
   _utiPdf: 'application/pdf',
-  _utiJson: 'application/json',
   _utiData: '*/*',
   anicelProjectUti: '*/*',
 };
@@ -115,7 +113,6 @@ const List<String> allPickerUtis = [
   _utiAudio,
   _utiMovie,
   _utiPdf,
-  _utiJson,
   _utiData,
   anicelProjectUti,
 ];
@@ -223,14 +220,6 @@ abstract final class FileTypeGroups {
     label: 'Media',
     extensions: [...imageFileExtensions, 'pdf', ...audioFileExtensions],
     uniformTypeIdentifiers: [_utiImage, _utiPdf, _utiAudio],
-  );
-
-  /// A TVPaint JSON export — the `.json` sitting beside the per-instance
-  /// image folders it describes.
-  static const XTypeGroup tvpaintJson = XTypeGroup(
-    label: 'TVPaint JSON export',
-    extensions: ['json'],
-    uniformTypeIdentifiers: [_utiJson],
   );
 
   /// Everything the media pool will register, movies included. Wider than
