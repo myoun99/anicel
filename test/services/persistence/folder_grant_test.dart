@@ -396,6 +396,26 @@ void main() {
       );
     });
 
+    test('🚨 ANDROID takes scoped grants and has NO coordinator — two '
+        'questions, two answers', () {
+      // One flag answering both cost a real wait: the coordinated
+      // helpers reach `notImplemented` on Android and answer false, and
+      // the cloud open reads a false as 「still downloading」 and retries
+      // for a minute against a method that will never exist.
+      expect(FolderPicker.scopedForPlatform('android'), isTrue);
+      expect(FolderPicker.coordinatorForPlatform('android'), isFalse);
+      for (final apple in const ['ios', 'macos']) {
+        expect(FolderPicker.coordinatorForPlatform(apple), isTrue);
+      }
+      for (final desktop in const ['windows', 'linux', 'fuchsia']) {
+        expect(FolderPicker.coordinatorForPlatform(desktop), isFalse);
+      }
+      expect(
+        FolderPicker.hasFileCoordinator,
+        FolderPicker.coordinatorForPlatform(Platform.operatingSystem),
+      );
+    });
+
     test('resolving a bookmark is unsupported where none are minted', () async {
       // On desktop a stored bookmark cannot exist, so asking must answer
       // unavailable rather than reaching a channel that is not there.

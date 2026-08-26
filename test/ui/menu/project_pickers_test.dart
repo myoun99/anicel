@@ -291,15 +291,13 @@ void main() {
 
     Future<ProjectPick?> runSave(
       WidgetTester tester,
-      String suggested, {
-      String? currentProjectPath,
-    }) => runFlow(
+      String suggested,
+    ) => runFlow(
       tester,
       (context) => pickProjectSaveTarget(
         context,
         suggested,
         folder.path,
-        currentProjectPath: currentProjectPath,
         stageArchive: fakeStage,
       ),
     );
@@ -326,14 +324,15 @@ void main() {
       );
     });
 
-    testWidgets('a SAVED project offers the live archive, whole — never a '
-        'decoy', (tester) async {
-      // 🚨The picker MOVES its source over whatever the user points it at.
-      // With a placeholder staged, pointing Save As at the CURRENT project
-      // file replaced the only copy of every clean cel with 22 bytes before
-      // the save could read them, and pointing it at any other project left
-      // a 22-byte husk if the save then failed. With the real bytes staged,
-      // the destination holds a complete archive until the save lands.
+    testWidgets('a SAVED project stages a FRESH archive too, and the file '
+        'it leaves behind is untouched', (tester) async {
+      // 🚨Copying the live archive was correct only while a second write
+      // followed the move and corrected it. Save As ADOPTS what the picker
+      // places now (`placed: true`), so what gets placed has to be the
+      // CURRENT session — and the archive on disk is the state at the last
+      // save, which a dirty session has already moved past. Staging the
+      // stale copy and then adopting it would publish an old project under
+      // the new name and call the session clean.
       final current = File('${folder.path}/live.anicel')
         ..writeAsBytesSync(List<int>.generate(64, (i) => i), flush: true);
       List<int>? offeredBytes;
@@ -345,39 +344,20 @@ void main() {
         );
       });
 
-      late BuildContext flowContext;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Builder(
-            builder: (context) {
-              flowContext = context;
-              return const SizedBox();
-            },
-          ),
-        ),
-      );
-      // runAsync: staging COPIES the archive with real async dart:io, which
-      // the fake test clock would otherwise never complete.
-      final pick = await tester.runAsync(
-        () => pickProjectSaveTarget(
-          flowContext,
-          'live',
-          folder.path,
-          currentProjectPath: current.path,
-          // A SAVED project copies its archive; re-serializing here would
-          // cost a full write for bytes that already exist on disk.
-          stageArchive: (_) async =>
-              fail('a saved project copies, it does not re-stage'),
-        ),
-      );
+      final pick = await runSave(tester, 'live');
 
-      expect(offeredBytes, List<int>.generate(64, (i) => i));
       expect(
-        current.existsSync(),
-        isTrue,
-        reason: 'a COPY was staged — the live file never moves',
+        offeredBytes,
+        stagedMarker,
+        reason: 'the staging writer ran even though a project file exists',
+      );
+      expect(
+        current.readAsBytesSync(),
+        List<int>.generate(64, (i) => i),
+        reason: 'the file being left behind is neither moved nor rewritten',
       );
       expect(pick?.path, '/drive/elsewhere.anicel');
+      expect(pick?.placed, isTrue, reason: 'the caller adopts, not re-saves');
     });
 
     testWidgets('the suffix rides the suggested name', (tester) async {

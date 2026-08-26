@@ -154,4 +154,52 @@ void main() {
     File(copy).deleteSync();
     expect(s.brushFrameStore.bakedSurfaceOrNull(drawnKey)?.tiles, isNotEmpty);
   });
+
+  test('🚨 adopting what the picker PLACED costs no write — that second '
+      'write is the one the provider refuses', () async {
+    // 실기 08-27, iPhone: Save As placed the archive and then died with
+    // 「the location refused both a direct write and a coordinated
+    // replace」 — on the path it had just successfully filled. A
+    // destination the picker moved a file INTO is not one the app may
+    // keep writing to, and it never needed to: the picker is modal, so
+    // the bytes it moved ARE the current session.
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    drawOnCurrentFrame(s);
+    expect(s.hasUnsavedChanges, isTrue);
+
+    final staged = '${folder.path.replaceAll('\\', '/')}/staged.anicel';
+    final names = await s.writeArchiveCopy(staged);
+
+    // What the export picker does, and all it does: MOVE.
+    final placed = '${folder.path.replaceAll('\\', '/')}/placed.anicel';
+    File(staged).renameSync(placed);
+    final bytesAsPlaced = File(placed).readAsBytesSync();
+
+    s.adoptPlacedArchive(placed, mediaEntryNames: names);
+
+    expect(s.projectFilePath, placed);
+    expect(
+      s.hasUnsavedChanges,
+      isFalse,
+      reason: 'the placed archive IS the saved state',
+    );
+    expect(
+      File(placed).readAsBytesSync(),
+      bytesAsPlaced,
+      reason: 'adoption writes nothing, so nothing can refuse it',
+    );
+    // And the pixels stay where a never-saved session had them: adoption
+    // must not repoint refs into a file the app may not be able to read
+    // back on demand.
+    expect(File(placed).deleteSync, returnsNormally);
+    expect(
+      s.brushFrameStore
+          .bakedSnapshotForSave()
+          .fileRefs
+          .values
+          .map((ref) => ref.filePath.replaceAll('\\', '/')),
+      isNot(contains(placed)),
+    );
+  });
 }
