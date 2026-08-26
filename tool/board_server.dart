@@ -173,11 +173,14 @@ Future<void> _handle(HttpRequest req) async {
       case '/edit':
         final text = '${body['text'] ?? ''}'.trim();
         final first = text.split('\n').first;
+        // The user fixing their own filing — still their words, so still
+        // `said`. ⚠️This overwrites rather than appending a second entry: a
+        // typo corrected a minute later is not a new stage in the story.
         _append({
           'kind': 'item',
           'id': body['id'],
           'title': first.length > 70 ? '${first.substring(0, 70)}…' : first,
-          'note': text,
+          'said': text,
           'ts': _now(),
         });
       case '/purge':
@@ -267,10 +270,10 @@ String _intake(Map<String, dynamic> body) {
   final tag = '${body['tag'] ?? ''}'.trim();
   // 임시 is its own filing, not a lesser feedback: it says the thought is not
   // finished yet, so whoever reads it should expect to ask rather than act.
-  final (prefix, label) = switch (kind) {
-    'idea' => ('I', '아이디어'),
-    'draft' => ('M', '임시'),
-    _ => ('F', '피드백'),
+  final (prefix, label, stage) = switch (kind) {
+    'idea' => ('I', '아이디어', '유저 아이디어'),
+    'draft' => ('M', '임시', '임시 메모'),
+    _ => ('F', '피드백', '유저 피드백'),
   };
   final id = _nextId(prefix);
   final firstLine = text.split('\n').first;
@@ -280,7 +283,12 @@ String _intake(Map<String, dynamic> body) {
     'title': firstLine.isEmpty
         ? '(스크린샷만)'
         : (firstLine.length > 70 ? '${firstLine.substring(0, 70)}…' : firstLine),
-    'note': text,
+    // 🚨`said`, and NOT also `note`. This is the user's own writing; the panel
+    // labels it as theirs. The whole redesign turns on never letting my words
+    // and theirs share a field — and writing both would print the same
+    // paragraph twice, once under each name.
+    'said': text,
+    'at': stage,
     'tags': [label, if (tag.isNotEmpty) tag],
     'state': 'inbox',
     'ts': _now(),
@@ -367,11 +375,30 @@ List<String> _shotsFor(String id) {
 /// that goes 접수 → 대기중 → 답변 → 착수 → 실기확인 and one that goes 접수 →
 /// 삭제 are both legitimate, and a fixed list would only invite a lie on the
 /// day some card does neither.
+/// ONE STAGE, ONE VOICE (유저 2026-08-26: 「그냥 한 항목에 원문/판단 넣는게
+/// 아니라 제대로 공정마다나누자. 공정적으로는 원문이 있고, 그 다음이
+/// 판단이잖아」).
+///
+/// 🎯The stages ARE the sequence, so an entry never has to say who is talking
+/// twice: 「유저 피드백」 is the user, 「AI 판단」 is me, and they are separate
+/// rows because they happened at separate times. Cramming both into one entry
+/// was me modelling the RECORD (which happens to carry several fields) instead
+/// of the PROCESS (which is one thing after another).
+///
+/// A record carrying more than one of `said`/`note`/`think` therefore becomes
+/// more than one entry, always in that order — what was said, then what I made
+/// of it, then what I worked out.
 class _Log {
-  _Log(this.ts, this.at, this.text);
+  _Log(this.ts, this.at, this.text, {this.byUser = false});
   final String ts;
+
+  /// The 공정 this entry belongs to — 유저 피드백 · 대기중 · AI 판단 · 실기확인.
   final String at;
   final String text;
+
+  /// Whose words these are. Drives nothing but the tint: the stage name
+  /// already says it, and saying it twice is the 「설명 문구」 habit.
+  final bool byUser;
 }
 
 class _Entry {
@@ -383,6 +410,11 @@ class _Entry {
   List<String> tags = const [];
   String state = 'open';
   String note = '';
+
+  /// The user's own current words on this card — what the inbox editor edits.
+  /// Kept apart from [note] (mine) so a status line can never overwrite a
+  /// filing, which is the bug this whole board grew out of.
+  String said = '';
 
   /// 🚨When this card last moved — the date the head row shows, at the far
   /// right after the tags (유저 2026-08-26).
@@ -532,11 +564,21 @@ List<_Entry> _readRecords(File file) {
     // said rather than what the card ended up saying. A line that repeats the
     // note verbatim adds nothing and is skipped — amendments that touch only
     // `state` or `pr` often carry the old note along for readability.
-    final written = '${json['note'] ?? ''}'.trim();
-    if (written.isNotEmpty &&
-        (e.log.isEmpty || e.log.last.text != written)) {
-      e.log.add(_Log(ts, '${json['at'] ?? ''}'.trim(), written));
+    // ⚠️`at` names the FIRST stage this record opens. A record normally
+    // carries one of the three; when it carries several they are several
+    // stages and the later ones take their own names.
+    var at = '${json['at'] ?? ''}'.trim();
+    void stage(String text, String fallback, {bool byUser = false}) {
+      if (text.isEmpty) return;
+      final label = at.isEmpty ? fallback : at;
+      at = '';
+      if (e.log.any((l) => l.text == text)) return;
+      e.log.add(_Log(ts, label, text, byUser: byUser));
     }
+
+    stage('${json['said'] ?? ''}'.trim(), '유저 메모', byUser: true);
+    stage('${json['note'] ?? ''}'.trim(), '작업 기록');
+    stage('${json['think'] ?? ''}'.trim(), 'AI 판단');
     // An answer is the user's own words and belongs in the same story — it is
     // the one kind of entry the board itself writes on their behalf.
     final ansNote = '${json['answerNote'] ?? ''}'.trim();
@@ -547,13 +589,14 @@ List<_Entry> _readRecords(File file) {
         if (ansNote.isNotEmpty) ansNote,
         if (ans == 'ok' && ansNote.isEmpty) '확인 — 문제 없음',
       ].join('\n');
-      if (e.log.isEmpty || e.log.last.text != said) {
-        e.log.add(_Log(ts, '답변', said));
+      if (!e.log.any((l) => l.text == said)) {
+        e.log.add(_Log(ts, '유저 대답', said, byUser: true));
       }
     }
     if (json['title'] != null) e.title = json['title'] as String;
     if (json['state'] != null) e.state = json['state'] as String;
     if (json['note'] != null) e.note = json['note'] as String;
+    if (json['said'] != null) e.said = json['said'] as String;
     if (json['care'] != null) e.care = json['care'] as String;
     if (json['tag'] != null) e.tag = json['tag'] as String;
     if (json['where'] != null) e.where = json['where'] as String;
@@ -1077,15 +1120,18 @@ const _chipTint = <String, String>{
 
 String _head(String id, String title, List<String> tags, String badge, String cls,
     {String lead = '', String date = ''}) {
-  final chips = tags
-      .map((t) => '<span class="chip ${_chipTint[t] ?? ''}">${_esc(t)}</span>')
-      .join();
+  final chips = tags.map((t) {
+    final tint = _chipTint[t];
+    return '<span class="chip${tint == null ? '' : ' $tint'}">'
+        '${_esc(t)}</span>';
+  }).join();
   final when = _day(date);
   // An empty badge renders nothing: a ready item is already labelled by the
   // section it sits in, and repeating that on every row is noise, not news.
   final mark = badge.isEmpty
       ? ''
-      : '<span class="chip $cls badge">${_esc(badge)}</span>';
+      : '<span class="chip${cls.isEmpty ? '' : ' $cls'} badge">'
+          '${_esc(badge)}</span>';
   return '<summary>$lead<span class="k">${_esc(id)}</span>'
       '<span class="t">${_esc(title)}</span>'
       '<span class="right">$chips$mark'
@@ -1261,28 +1307,34 @@ String _askPanel(_Entry d) {
 /// item note and again as a check card. 유저: 「둘다 뭐가 작업됬는지 하나하나
 /// 확인하는용이라서. 그래서 너가 두군데 써넣는것도 힘들거고」.
 ///
-/// ⇒ One panel, both affordances, and the DIFFERENCE says itself in a tag:
-/// [_kMerged] for a row that came from a PR, [_kHandsOn] for one that did not.
+/// ⇒ One panel, both affordances, and the DIFFERENCE says itself without a
+/// word for it: a landing carries its `#1236` badge, a hand-written one
+/// carries [_kHandsOn] and no badge.
 ///
 /// The two answers stay distinct because they mean different things and cost
 /// different amounts (유저 확정): the TICK is "봤고 문제 없음" and sweeps many
 /// rows at once through 확인; the MEMO is "문제가 있다" and is written per row.
 String _checkRow(_Entry c, {_Pr? pr, List<_Entry> subs = const []}) {
   final landed = pr != null;
-  // The TAG says what kind of row this is; the badge says WHICH PR. Saying
-  // 「머지」 in both was the same word twice on one line. A hands-on row needs
-  // no badge at all — every row in this section is unchecked by definition,
+  // The badge says WHICH PR; nothing needs to say THAT it is a PR. A
+  // hands-on row needs no badge at all — every row in this section is
+  // unchecked by definition,
   // so 「미확인」 was labelling the section, not the row.
   final badge = landed ? '#${pr.number}' : '';
   final b = StringBuffer();
   // The sub-count goes in the HEAD because a nested check is invisible until
   // the row is opened, and a check nobody can see is a check nobody does.
+  // ⛔No 머지 chip on a landed row: the `#1236` badge beside it already says
+  // it came from a PR, and the number says WHICH (유저 2026-08-26: 「머지태그도
+  // 솔직히 #1236 이런 pr태그있으니까 필요없을듯」). Only the hand-written half
+  // needs naming, because it is the half with no badge.
+  //
+  // ⛔And no 공정 N count. It was a number nobody acts on — the story is right
+  // there when the row opens, and a chip that only says 「there is some」 is
+  // the same noise as a badge repeating its section.
   final tags = [
-    landed ? _kMerged : _kHandsOn,
+    if (!landed) _kHandsOn,
     if (subs.isNotEmpty) '실기 ${subs.length}',
-    // How much story is folded up in here. Without it a card with eight
-    // entries and one with none look identical until you open them.
-    if (c.log.length > 1) '공정 ${c.log.length}',
     ...c.tags,
   ];
   // data-kind is what `send` writes back, and it is `check` on BOTH shapes:
@@ -1335,9 +1387,9 @@ String _checkRow(_Entry c, {_Pr? pr, List<_Entry> subs = const []}) {
   return b.toString();
 }
 
-/// The tag that says where a 확인할 것 row came from. Two values, and the
-/// board never invents a third: either a PR landed or it did not.
-const String _kMerged = '머지';
+/// The tag for a 확인할 것 row that no PR produced. Its opposite needs no tag:
+/// a landing already wears the PR number, and 「머지」 beside 「#1236」 was the
+/// same fact twice on one line.
 const String _kHandsOn = '실기';
 
 /// A stand-in for a PR that no board item ever claimed — a landing the records
@@ -1370,11 +1422,7 @@ String _itemPanel(_Entry e) {
   b.writeln(_head(
       e.id,
       e.title,
-      [
-        if (arrival.isNotEmpty) arrival,
-        if (e.log.length > 1) '공정 ${e.log.length}',
-        ...e.tags,
-      ],
+      [if (arrival.isNotEmpty) arrival, ...e.tags],
       badge,
       '',
       date: e.updated));
@@ -1383,7 +1431,8 @@ String _itemPanel(_Entry e) {
   if (editable) {
     // Still editable, because a filing made mid-thought is usually wrong in
     // some small way and the moment to fix it is when you notice.
-    b.writeln('<textarea rows="4">${_esc(e.note)}</textarea>');
+    b.writeln('<textarea rows="4">'
+        '${_esc(e.said.isEmpty ? e.note : e.said)}</textarea>');
     b.writeln(_shotStrip(e.id));
     b.writeln('<div class="foot">'
         '<button onclick="save(\'${_esc(e.id)}\')">저장</button>'
@@ -1494,22 +1543,40 @@ String _checkoutPanel(_Checkout c) {
 /// row of eight 「08-24」 buttons is a filing cabinet with no labels; you would
 /// have to open all of them to find the one you wanted, which is the same
 /// problem as having none.
+/// What to call an entry that never named its own 공정.
+///
+/// ⛔A row labelled 「·」 is worse than an unlabelled one — it looks like a
+/// rendering fault (유저 2026-08-26: 「접기펼치기행이 . 으로 표시될떄가 많아서」).
+/// Two honest fallbacks and no dot: the FIRST entry of a card that came in
+/// through the intake form is the user filing it, and its intake tag already
+/// says which kind of filing it was. Everything else with no stage is my own
+/// working note.
+String _stageName(_Entry e, int i) {
+  final at = e.log[i].at;
+  if (at.isNotEmpty) return at;
+  if (i == 0) {
+    if (e.tags.contains('피드백')) return '유저 피드백';
+    if (e.tags.contains('아이디어')) return '유저 아이디어';
+    if (e.tags.contains('임시')) return '임시 메모';
+  }
+  return '작업 기록';
+}
+
 String _story(_Entry e) {
   if (e.log.isEmpty) return '<p class="d">메모 없음.</p>';
   final b = StringBuffer();
   for (var i = 0; i < e.log.length; i++) {
     final entry = e.log[i];
     final newest = i == e.log.length - 1;
-    final day = _day(entry.ts);
-    final head = [
-      if (entry.at.isNotEmpty) entry.at,
-      if (day.isNotEmpty) day,
-    ].join(' · ');
     final flat = entry.text.replaceAll('\n', ' ');
-    final peek = flat.length > 46 ? '${flat.substring(0, 46)}…' : flat;
-    b.writeln('<details class="lg"${newest ? ' open' : ''}>');
-    b.writeln('<summary><span class="lgk">${_esc(head.isEmpty ? '·' : head)}'
-        '</span><span class="lgp">${_esc(peek)}</span></summary>');
+    final peek = flat.length > 44 ? '${flat.substring(0, 44)}…' : flat;
+    final mine = _stageName(e, i);
+    b.writeln('<details class="lg'
+        '${entry.byUser || mine.startsWith('유저') ? ' says' : ''}'
+        '${newest ? ' open' : ''}">');
+    b.writeln('<summary><span class="lgk">${_esc(mine)}</span>'
+        '<span class="lgp">${_esc(peek)}</span>'
+        '<span class="when">${_esc(_day(entry.ts))}</span></summary>');
     b.writeln('<p class="d">${_esc(entry.text)}</p>');
     b.writeln('</details>');
   }
@@ -1830,10 +1897,20 @@ white-space:nowrap;flex:none;min-width:38px;text-align:right}
 cursor:pointer;list-style:none}
 .lg>summary::-webkit-details-marker{display:none}
 .lg>summary:hover{background:var(--bg)}
-.lgk{font-family:var(--mono);font-size:10.5px;color:var(--ink3);flex:none;
-min-width:74px}
+/* The stage name leads and is wide enough for 「유저 아이디어」 without
+   wrapping; the date sits hard right so the dates line up down an open card
+   whatever the stage names are (유저 2026-08-26: 「날짜는 ... 오른쪽정렬로」). */
+.lgk{font-size:11px;color:var(--ink2);font-weight:600;flex:none;min-width:82px}
 .lgp{font-size:12px;color:var(--ink3);overflow:hidden;text-overflow:ellipsis;
 white-space:nowrap;flex:1;min-width:0}
+.lg>summary>.when{margin-left:auto}
+/* 「누가 말한거고 어떤 문장인지」 — the user's own stages carry a warmer rail
+   and darker text so the eye can drop down an open card and find their words
+   without reading the labels. ⛔The stage name already says who; this only
+   makes it scannable. */
+.lg.says{border-left-color:var(--run)}
+.lg.says>summary>.lgk{color:var(--run)}
+.lg.says>.d{color:var(--ink)}
 .lg[open]>summary .lgp{visibility:hidden}
 .lg>.d{margin:3px 0 7px}
 /* A question row: same rail as a story entry because it IS part of the
