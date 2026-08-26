@@ -84,6 +84,7 @@ import '../models/layer_folder.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
+import '../models/pixel_verb_subject.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
@@ -1166,6 +1167,103 @@ class EditorSessionManager extends ChangeNotifier {
       laneRangeSelection.value != null ||
       trackFrameRangeSelection.value != null ||
       rowSelection.value.isNotEmpty;
+
+  /// WHICH cels the two PIXEL verbs would act on — see [PixelVerbSubject] for
+  /// why the order is DELETE's minus the cuts rung.
+  PixelVerbSubject get pixelVerbSubject {
+    if (pixelVerbLayerIds().isNotEmpty) {
+      return PixelVerbSubject.layers;
+    }
+    return pixelVerbCellKeys().isEmpty
+        ? PixelVerbSubject.nothing
+        : PixelVerbSubject.cells;
+  }
+
+  /// The rows rung, gated.
+  ///
+  /// ⚠️`owningLayerId`, not `row is LayerRowAddress` — standing on a property
+  /// lane must not cost you the layer you draw on (F-5, #1212). A lane row
+  /// names its layer and that layer's cel is what a pixel verb wants.
+  List<LayerId> pixelVerbLayerIds() {
+    final selection = rowSelection.value;
+    if (selection.isEmpty) {
+      return const [];
+    }
+    final byId = {for (final layer in layers) layer.id: layer};
+    final ids = <LayerId>[];
+    for (final row in selection) {
+      final layerId = row.owningLayerId;
+      if (layerId == null || ids.contains(layerId)) {
+        continue;
+      }
+      final layer = byId[layerId];
+      // ⛔The one gate, never a new predicate: `layerAcceptsBrushInput`
+      // already refuses text rows (their pixels are a projection and would
+      // come back on the next rederive) and reference media (rasterise it
+      // and it passes on its own).
+      if (layer != null && layerAcceptsBrushInput(layer)) {
+        ids.add(layerId);
+      }
+    }
+    return ids;
+  }
+
+  /// The frame-axis rung: a live range's (frame × row) block, else the cel
+  /// under the playhead.
+  List<BrushFrameKey> pixelVerbCellKeys() {
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return const [];
+    }
+    final byId = {for (final layer in layers) layer.id: layer};
+    final keys = <BrushFrameKey>[];
+    final seen = <String>{};
+    void take(Layer layer, int? frameIndex) {
+      if (!layerAcceptsBrushInput(layer)) {
+        return;
+      }
+      final frame = _timelineController.resolveFrameForLayer(
+        layer: layer,
+        frameIndex: frameIndex,
+      );
+      if (frame == null) {
+        return;
+      }
+      // 🚨Dedupe by the CEL, not by the (row, index) pair. A held exposure
+      // shows the same cel at many indices and a linked cel is shared by
+      // several rows, so a range over either would name one surface twice —
+      // the pass is idempotent, but the undo recipe would be retained twice
+      // (정본 §5).
+      final id = '${layer.id.value}/${frame.id.value}';
+      if (!seen.add(id)) {
+        return;
+      }
+      keys.add(brushFrameKeyForCut(cut, layer.id, frame.id));
+    }
+
+    final range = frameRangeSelection.value;
+    if (range != null) {
+      final rows = range.layerIds.isEmpty ? [range.layerId] : range.layerIds;
+      for (final layerId in rows) {
+        final layer = byId[layerId];
+        if (layer == null) {
+          continue;
+        }
+        for (var i = range.startIndex; i < range.endIndexExclusive; i++) {
+          take(layer, i);
+        }
+      }
+      return keys;
+    }
+    // The playhead rung reads the ACTIVE layer, which F-20 (#1216) made the
+    // one answer — a stored verb row naming a different layer is stale.
+    final activeId = activeLayerId;
+    final active = activeId == null ? null : byId[activeId];
+    if (active != null) {
+      take(active, null);
+    }
+    return keys;
+  }
 
   void clearAllSelections() {
     clearFrameRangeSelection();
