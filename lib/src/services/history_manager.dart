@@ -24,7 +24,28 @@ class HistoryManager extends ChangeNotifier {
   /// PS-style, and the newest entry always survives.
   static const int retainedByteBudget = 512 * 1024 * 1024;
 
+  /// 🚨WHERE PRESSURE PUTS IT. [respondToMemoryPressure] halves the live
+  /// budget down to this and sweeps at once — the same shape
+  /// `BrushFrameStore` already uses, and for the same reason: pressure only
+  /// ever LOWERS.
+  ///
+  /// ⚠️This number is MY judgement, not a measurement (2026-08-27). What is
+  /// measured is that the old behaviour was wrong: the stack held its full
+  /// 512 MB through a memory warning while the store beside it halved, and
+  /// a MOVE retains a PRE and a POST full-canvas surface per confirm — on a
+  /// 4000×4000 cel that is 128 MB a transform, so the third or fourth one
+  /// crosses half a gigabyte. That is exactly where the user's iPhone died
+  /// (「세번째, 네번째 변형쯤에서 말없이 앱 종료됨」).
+  ///
+  /// ⛔It is not a device-class check. 유저 방침: 구형 기기에서도 돌아야 하고
+  /// 「최소 사양을 올려 해결」은 내가 고를 안이 아니다 — so the answer is to
+  /// hold less when the OS says to, on every device.
+  static const int retainedByteBudgetUnderPressure = 64 * 1024 * 1024;
+
   final int maxEntries;
+
+  /// The cap in force. Lowered by [respondToMemoryPressure], never raised.
+  int _byteBudget = retainedByteBudget;
 
   final List<Command> _undoStack = <Command>[];
   final List<Command> _redoStack = <Command>[];
@@ -107,10 +128,31 @@ class HistoryManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 🚨THE OS SAID MEMORY IS TIGHT — and this stack used to be deaf to it.
+  ///
+  /// `didHaveMemoryPressure` already reached `BrushFrameStore`, which halves
+  /// its cel budget and cools at once. The undo stack, holding up to half a
+  /// gigabyte of full-canvas surface snapshots beside it, heard nothing and
+  /// kept every byte. On iOS the warning is the last thing before the kill.
+  ///
+  /// ⛔The newest entry always survives, exactly as the budget sweep
+  /// guarantees: pressure must not cost you the undo you are about to press.
+  void respondToMemoryPressure() {
+    if (retainedByteBudgetUnderPressure >= _byteBudget) {
+      return; // Pressure only ever lowers.
+    }
+    _byteBudget = retainedByteBudgetUnderPressure;
+    final before = _undoStack.length;
+    _trimRetainedBytes();
+    if (_undoStack.length != before) {
+      notifyListeners();
+    }
+  }
+
   void _trimRetainedBytes() {
     var total = retainedBytes;
     var dropCount = 0;
-    while (total > retainedByteBudget && _undoStack.length - dropCount > 1) {
+    while (total > _byteBudget && _undoStack.length - dropCount > 1) {
       final command = _undoStack[dropCount];
       if (command is RetainedBytesCommand) {
         total -= (command as RetainedBytesCommand).estimatedRetainedBytes;
