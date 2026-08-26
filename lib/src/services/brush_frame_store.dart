@@ -94,9 +94,10 @@ class BrushFrameStore {
   final Set<BrushFrameKey> _celsWithContent = {};
 
   void _noteCelContent(BrushFrameKey canonicalKey) {
-    final has = _bakedSurfaces.containsKey(canonicalKey) ||
-        _coldCels.containsKey(canonicalKey) ||
-        _fileCels.containsKey(canonicalKey);
+    // ⛔The SAME question the block draws, not a second copy of it — a
+    // detector that crossed on one rule while the paint read another is how
+    // the block came to disagree with the drawing in the first place.
+    final has = celHasRenderableContent(canonicalKey);
     final had = _celsWithContent.contains(canonicalKey);
     if (has == had) {
       return;
@@ -465,9 +466,28 @@ class BrushFrameStore {
   /// is not existence.
   bool celHasRenderableContent(BrushFrameKey key) {
     key = _canonicalize(key);
-    return _bakedSurfaces.containsKey(key) ||
-        _coldCels.containsKey(key) ||
-        _fileCels.containsKey(key);
+    final baked = _bakedSurfaces[key];
+    if (baked != null) {
+      // 🚨A CLEARED CEL STILL HAS A SURFACE. 픽셀 비우기 writes alpha 0 across
+      // the tiles and puts them straight back — it cannot drop them, because
+      // undo computes its walk from the tiles that EXIST (see
+      // `celPixelWalkFor`, and the round carded as `undo-weight`). So map
+      // membership alone answered 「그려짐」 about a cel with nothing left in
+      // it: the block stayed white and the pixel buttons stayed lit (유저
+      // 2026-08-27: 「삭제눌렀으면 그림이 사라진거니 블록이 회색되고 버튼도
+      // 비활성화되야하는데 둘다 아님」).
+      //
+      // ⛔It does NOT count ink (유저: 「잉크를 세는건 무거운거아니야?」).
+      // [BitmapTile.hasInk] caches per tile and `any` stops at the first one
+      // that has some — a drawn cel answers on its first tile, and only a
+      // cel that is entirely clear reads to the end, once.
+      return baked.tiles.values.any((tile) => tile.hasInk);
+    }
+    // ⛔Cold and file-backed cels answer by membership, deliberately: asking
+    // them would MATERIALIZE every cel of the project, and this is called
+    // per visible block. They were written from a surface that had ink, and
+    // the moment one is edited it becomes baked and takes the branch above.
+    return _coldCels.containsKey(key) || _fileCels.containsKey(key);
   }
 
   /// The cel's current pixels: a VALID display cache at [canvasSize]
