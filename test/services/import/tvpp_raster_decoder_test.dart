@@ -173,5 +173,20 @@ void main() {
       )!;
       expect(rgba.every((b) => b == 0), isTrue);
     });
+
+    test("12.0.6's type-5 blank record is the same blank cel, not a "
+        'decode error', () {
+      // 288 runs blank cels on 2s this way; reading it as a tiled image
+      // walked off the record ("리터럴 레코드가 잘렸다" ×13 layers).
+      final file = fileWith(blankInstanceRecord());
+      final rgba = decodeTvppSlotRgba(
+        fileBytes: file,
+        slot: slotFor(file, compressed: true),
+        width: w,
+        height: h,
+      )!;
+      expect(rgba, hasLength(w * h * 4));
+      expect(rgba.every((b) => b == 0), isTrue);
+    });
   });
 }

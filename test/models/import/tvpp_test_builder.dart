@@ -25,24 +25,35 @@ class TvppBuilder {
     }
   }
 
+  void _prop(String key, String value) {
+    _out.add(_u16(key.length));
+    for (final c in key.codeUnits) {
+      _out.add(_u16(c));
+    }
+    _out.add(_u16(value.length));
+    for (final c in value.codeUnits) {
+      _out.add(_u16(c));
+    }
+  }
+
+  /// The file-head property block: the PROJECT's shooting frame lives
+  /// here as `Camera.Width` / `Camera.Height`.
+  void projectProperties({
+    required int cameraWidth,
+    required int cameraHeight,
+  }) {
+    _prop('Author', 'test');
+    _prop('Camera.Height', '$cameraHeight');
+    _prop('Camera.Width', '$cameraWidth');
+  }
+
   /// The UTF-16BE property block that precedes a clip's chunk chain; the
   /// parser only reads `Name`, but a sibling key proves it picks the
   /// right pair.
   void clipProperties(String name) {
-    void prop(String key, String value) {
-      _out.add(_u16(key.length));
-      for (final c in key.codeUnits) {
-        _out.add(_u16(c));
-      }
-      _out.add(_u16(value.length));
-      for (final c in value.codeUnits) {
-        _out.add(_u16(c));
-      }
-    }
-
-    prop('Position', '0');
-    prop('Name', name);
-    prop('Note', '');
+    _prop('Position', '0');
+    _prop('Name', name);
+    _prop('Note', '');
   }
 
   /// DLOC..TLNT — the fixed chain that runs straight into the first
@@ -89,9 +100,13 @@ class TvppBuilder {
     int post = 0,
     int layerId = 0,
     int parentId = 0,
+    bool visible = true,
+    List<int>? ansiNameBytes,
   }) {
     final utf = [...utf8.encode(name), 0];
-    chunk('LNAM', utf);
+    // 12.0.6 writes the ANSI codepage into LNAM and the unicode name
+    // into LNAW; [ansiNameBytes] simulates that split.
+    chunk('LNAM', ansiNameBytes ?? utf);
     chunk('LNAW', utf);
     final header = Uint8List(104);
     final v = ByteData.sublistView(header);
@@ -102,6 +117,7 @@ class TvppBuilder {
     v.setUint32(4 * 4, opacity);
     v.setUint32(11 * 4, (post << 16) | 1);
     v.setUint32(13 * 4, (pre << 16) | 1);
+    v.setUint32(14 * 4, (visible ? 1 : 0) << 16);
     v.setUint32(17 * 4, parentId);
     v.setUint32(18 * 4, layerId);
     chunk(headerChunk, header);
@@ -191,6 +207,17 @@ Uint8List holdRecord() {
   v.setUint32(4, 12);
   v.setUint32(8, 6);
   v.setUint32(12, 1);
+  return record;
+}
+
+/// The 28-byte type-5 record 12.0.6 writes for a BLANK instance (zero
+/// payload); 12.1 writes a contentless type-64 for the same thing.
+Uint8List blankInstanceRecord() {
+  final record = Uint8List(28);
+  record.setAll(0, ascii.encode('SRAW'));
+  final v = ByteData.sublistView(record);
+  v.setUint32(4, 20);
+  v.setUint32(8, 5);
   return record;
 }
 

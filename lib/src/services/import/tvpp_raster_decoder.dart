@@ -188,6 +188,14 @@ Uint32List _decodeRecord(Uint8List record, int width, int height) {
     throw const TvppRasterDecodeException('레코드가 너무 짧다.');
   }
   final magic = String.fromCharCodes(record, 0, 4);
+  if (magic == 'SRAW' &&
+      record.length >= 12 &&
+      ByteData.sublistView(record).getUint32(8) == 5) {
+    // Type 5 (28 bytes, zero payload): a BLANK instance — 12.0.6 writes
+    // these where 12.1 writes a contentless type-64 (288's A_KAKI runs
+    // blank cels on 2s this way). An instance boundary with no pixels.
+    return Uint32List(width * height);
+  }
   if (magic == 'DBOD') {
     return _decodeWholeCanvas(record, width, height);
   }

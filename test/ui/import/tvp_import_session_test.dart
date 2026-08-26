@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -25,6 +26,7 @@ void main() {
 
   String writeTvpp() {
     final b = TvppBuilder();
+    b.projectProperties(cameraWidth: 960, cameraHeight: 540);
     b.clipProperties('番号');
     b.clipHeader(width: 64, height: 48);
     b.layerHead('카메라레이어', headerChunk: 'LRCA');
@@ -43,6 +45,7 @@ void main() {
     for (var i = 0; i < 9; i++) {
       b.zchkHold();
     }
+    b.clipConfig(audio: const [('G:/rushes/12.mp4', 0.5, 1.0, false)]);
     final path = '${temp.path}${Platform.pathSeparator}番号.tvpp';
     File(path).writeAsBytesSync(b.bytes);
     return path;
@@ -58,13 +61,31 @@ void main() {
     final warnings = await session.openTvppAsProject(tvppPath: writeTvpp());
     expect(warnings, isNotNull, reason: 'the file parses');
 
-    // The open REPLACES the project — the default cut is gone and the
-    // file's name is the project's.
+    // The open REPLACES the project — the default cut is gone, the
+    // file's name is the project's, and so is its SHOOTING FRAME (288:
+    // fitting a layout camera into our 16:9 default framed wider than
+    // TVPaint did).
     final project = session.repository.requireProject();
     expect(project.name, '番号');
+    expect(project.cameraSize.width, 960);
+    expect(project.cameraSize.height, 540);
     final cuts = project.tracks.expand((track) => track.cuts).toList();
     expect(cuts, hasLength(1));
     expect(cuts.single.name, '番号');
+
+    // The clip's sound lands on the TRACK's global SE rows — per-cut SE
+    // layers are the legacy shape the timeline no longer renders (288:
+    // the SE section vanished entirely).
+    final track = project.tracks.single;
+    // The lift pads to the timesheet's standard two rows (S1·S2); the
+    // clip's sound rides the first.
+    expect(track.seLayers, hasLength(2));
+    expect(track.seLayers.first.audioClips, hasLength(1));
+    expect(
+      cuts.single.layers.where((l) => l.kind == LayerKind.se),
+      isEmpty,
+      reason: 'lifted onto the track, not left on the cut',
+    );
 
     final ids = <FrameId>[];
     for (final layer in cuts.single.layers) {

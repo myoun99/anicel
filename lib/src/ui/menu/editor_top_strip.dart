@@ -170,7 +170,19 @@ class EditorTopStrip extends StatelessWidget {
           !context.mounted) {
         return;
       }
-      final warnings = await session.openTvppAsProject(tvppPath: path);
+      // Decoding and baking a whole project is a save-sized wait; a
+      // frozen screen before the cuts appear reads as a hang (hands-on,
+      // 288's 96 frames × 19 layers).
+      final warnings = await runWithAppProgress<List<String>?>(
+        context: context,
+        title: AppText.strings.fileOpenTitle,
+        titleIcon: Icons.folder_open_outlined,
+        runningLabel: AppText.strings.openProgressRunning,
+        doneLabel: AppText.strings.openProgressDone,
+        windowKey: const ValueKey<String>('open-progress-dialog'),
+        task: (report) =>
+            session.openTvppAsProject(tvppPath: path, onProgress: report),
+      );
       if (!context.mounted) {
         return;
       }
