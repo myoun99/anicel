@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/ui/camera/camera_view_toggle_button.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
@@ -128,14 +129,103 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // 유저 2026-08-27: the menu is VALUE ROWS, one per setting — the
+    // choices themselves moved into each row's change window.
+    expect(
+      find.byKey(const ValueKey<String>('project-settings-fps')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('project-settings-audio-rate')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('project-settings-camera-size')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('project-settings-quality')),
+      findsOneWidget,
+    );
+
+    // One level deeper: the FPS row opens the window that still carries
+    // the preset keys the toolbar era minted.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('project-settings-fps')),
+    );
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey<String>('timeline-fps-24')), findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('timeline-samplerate-48000')),
+      find.byKey(const ValueKey<String>('project-fps-field')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('the camera row opens the size window, and applying writes '
+      'one undoable project frame', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1400, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    // Disposed at the BODY's end, not in a tearDown: the edit below arms
+    // the session's debounce timers, and the pending-timer invariant runs
+    // before tearDowns do.
+    final manager = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    final before = manager.cameraFrameSize;
+
+    final cameraView = ValueNotifier<bool>(false);
+    addTearDown(cameraView.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topRight,
+            child: FramePanelSillControls(
+              session: manager,
+              scope: PlaybackScope.activeCut,
+              cameraViewKeyValue: 'timeline-camera-view-button',
+              cameraViewEnabled: cameraView,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('project-settings-button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('project-settings-camera-size')),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('camera-size-width-field')),
+      '960',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('camera-size-height-field')),
+      '430',
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('camera-size-apply-button')),
+    );
+    await tester.pumpAndSettle();
+
     expect(
-      find.byKey(const ValueKey<String>('playback-quality-full')),
-      findsOneWidget,
+      manager.cameraFrameSize,
+      const CanvasSize(width: 960, height: 430),
     );
+
+    manager.undo();
+    expect(manager.cameraFrameSize, before);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    manager.dispose();
   });
 }

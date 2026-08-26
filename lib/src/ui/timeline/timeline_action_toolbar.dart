@@ -58,33 +58,6 @@ Future<void> showTimelineCommaCountDialog(
   }
 }
 
-/// R26 #32: the custom frame-rate input — the presets cover the standard
-/// rates, this covers everything else (a project axis, so one undo step).
-Future<void> showTimelineFpsDialog(
-  BuildContext context,
-  EditorSessionManager session,
-) async {
-  final strings = AppText.strings;
-  final entered = await showDialog<String>(
-    context: context,
-    builder: (context) => AppPromptDialog(
-      windowKey: const ValueKey<String>('project-fps-dialog'),
-      title: strings.projectFpsTitle,
-      titleIcon: Icons.speed_outlined,
-      fieldLabel: strings.projectFpsField,
-      initialValue: '${session.projectFps}',
-      confirmLabel: strings.commonApply,
-      numeric: true,
-      fieldKey: const ValueKey<String>('project-fps-field'),
-      confirmKey: const ValueKey<String>('project-fps-apply'),
-    ),
-  );
-  final fps = int.tryParse(entered ?? '');
-  if (fps != null && fps >= 1) {
-    session.setProjectFps(fps);
-  }
-}
-
 /// The command bar above the timeline grid (CSP-style, R-toolbar round):
 /// only the high-frequency commands stay as direct icons — everything else
 /// lives in the shared flyouts.

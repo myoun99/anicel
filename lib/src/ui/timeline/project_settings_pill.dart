@@ -4,18 +4,21 @@ import 'package:flutter/material.dart';
 
 import '../../models/playback_quality.dart';
 import '../../models/project_frame_rate.dart';
+import '../dialogs/camera_size_dialog.dart';
 import '../dialogs/fps_audio_choice_dialog.dart';
 import '../editor_session_manager.dart';
 import '../playback/playback_transport_controls.dart'
     show PlaybackTransportControls;
 import '../text/app_strings.dart';
+import '../text/full_width_numerals.dart';
+import '../theme/app_theme.dart';
 import '../widgets/app_icon_button.dart';
+import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
-import 'timeline_action_toolbar.dart' show showTimelineFpsDialog;
 
 /// The ⚙ pill: everything the frame panels' bar carried that is a SETTING
 /// rather than a command — project frame rate, project audio sample rate,
-/// playback quality.
+/// the project camera frame, playback quality.
 ///
 /// ⚠️It is NOT a pill any more (⑪, 유저 2026-08-12: 「설정버튼은 알약 테두리
 /// 없애고 그냥 일반버튼으로」). It was one — the grammar's other end, a noun
@@ -24,10 +27,12 @@ import 'timeline_action_toolbar.dart' show showTimelineFpsDialog;
 /// A border around a single button on that strip said the opposite of what
 /// every control beside it says.
 ///
-/// The three used to be scattered: two dropdowns wedged between the frame
-/// verbs (where they printed project values a rough pass never touches) and
-/// a quality menu inside the transport. 유저 확정: 자주 안 쓰는 건 설정으로
-/// 접어버린다.
+/// 유저 2026-08-27: the menu is VALUE ROWS now — 「FPS 24」, the sample
+/// rate, the camera frame, the quality — and each row opens its own small
+/// change window. The presets used to be inlined here, which made the one
+/// menu as tall as all of its settings put together; a row that states its
+/// current value is the compact form, and the window it opens is where the
+/// choices live.
 class ProjectSettingsPill extends StatefulWidget {
   const ProjectSettingsPill({super.key, required this.session});
 
@@ -58,8 +63,8 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
   /// EXPORT-AUDIO ④: a pulldown-pair change (23.976↔24 — 0.1% of real speed)
   /// asks what happens to SOUND, because audio exists in real seconds and
   /// cannot stay both frame-exact and time-exact. Any other change, or a
-  /// project with no sound, just changes the rate. (The custom-rate dialog
-  /// keeps the plain path — pulldown pairs live in the presets.)
+  /// project with no sound, just changes the rate. (The custom rate keeps
+  /// the plain path — pulldown pairs live in the presets.)
   Future<void> _selectFrameRate(
     BuildContext context,
     ProjectFrameRate rate,
@@ -85,48 +90,103 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
     }
   }
 
+  Future<void> _editFrameRate(BuildContext context) async {
+    final rate = await showDialog<ProjectFrameRate>(
+      context: context,
+      builder: (context) => _FpsWindow(current: session.projectFrameRate),
+    );
+    if (rate == null || !context.mounted) {
+      return;
+    }
+    await _selectFrameRate(context, rate);
+  }
+
+  Future<void> _editSampleRate(BuildContext context) async {
+    final rate = await _showChoiceWindow<int>(
+      context,
+      windowKey: 'project-audio-rate-dialog',
+      title: AppText.strings.tlProjectAudioRate,
+      titleIcon: Icons.graphic_eq,
+      current: session.projectAudioSampleRate,
+      choices: [
+        for (final preset in ProjectSettingsPill.audioSampleRatePresets)
+          (
+            keyValue: 'timeline-samplerate-$preset',
+            label: ProjectSettingsPill.audioSampleRateLabel(preset),
+            value: preset,
+          ),
+      ],
+    );
+    if (rate != null) {
+      session.setProjectAudioSampleRate(rate);
+    }
+  }
+
+  Future<void> _editCameraSize(BuildContext context) async {
+    final size = await showCameraSizeDialog(
+      context,
+      initialSize: session.cameraFrameSize,
+    );
+    if (size != null) {
+      session.setProjectCameraSize(size);
+    }
+  }
+
+  Future<void> _editQuality(BuildContext context) async {
+    final quality = await _showChoiceWindow<PlaybackQuality>(
+      context,
+      windowKey: 'playback-quality-dialog',
+      title: AppText.strings.playbackQuality,
+      titleIcon: Icons.high_quality_outlined,
+      current: session.playbackQuality,
+      choices: [
+        for (final preset in PlaybackQuality.values)
+          (
+            keyValue: 'playback-quality-${preset.name}',
+            label: PlaybackTransportControls.qualityLabel(preset),
+            value: preset,
+          ),
+      ],
+    );
+    if (quality != null) {
+      session.setPlaybackQuality(quality);
+    }
+  }
+
   List<PanelFlyoutEntry> _entries(BuildContext context) {
-    final rate = session.projectFrameRate;
-    final sampleRate = session.projectAudioSampleRate;
-    final quality = session.playbackQuality;
+    final strings = AppText.strings;
+    final cameraSize = session.cameraFrameSize;
     return [
-      PanelFlyoutHeader(AppText.strings.projectFpsTitle),
-      for (final preset in ProjectSettingsPill.fpsPresets)
-        PanelFlyoutItem(
-          // Integer rates keep their original key (`timeline-fps-24`); the
-          // pulldown rates key off the fraction, since `23.976` in a key
-          // string would be the same rounding we just removed.
-          keyValue: preset.isInteger
-              ? 'timeline-fps-${preset.numerator}'
-              : 'timeline-fps-${preset.numerator}-${preset.denominator}',
-          label: preset.label,
-          checked: preset == rate,
-          onSelected: () => unawaited(_selectFrameRate(context, preset)),
-        ),
       PanelFlyoutItem(
-        keyValue: 'timeline-fps-custom',
-        label: AppText.strings.tlCustom,
-        icon: Icons.edit_outlined,
-        onSelected: () => unawaited(showTimelineFpsDialog(context, session)),
+        keyValue: 'project-settings-fps',
+        label: 'FPS ${session.projectFrameRate.label}',
+        icon: Icons.speed_outlined,
+        onSelected: () => unawaited(_editFrameRate(context)),
       ),
-      const PanelFlyoutDivider(),
-      PanelFlyoutHeader(AppText.strings.tlProjectAudioRate),
-      for (final preset in ProjectSettingsPill.audioSampleRatePresets)
-        PanelFlyoutItem(
-          keyValue: 'timeline-samplerate-$preset',
-          label: ProjectSettingsPill.audioSampleRateLabel(preset),
-          checked: preset == sampleRate,
-          onSelected: () => session.setProjectAudioSampleRate(preset),
+      PanelFlyoutItem(
+        keyValue: 'project-settings-audio-rate',
+        label: ProjectSettingsPill.audioSampleRateLabel(
+          session.projectAudioSampleRate,
         ),
-      const PanelFlyoutDivider(),
-      PanelFlyoutHeader(AppText.strings.playbackQuality),
-      for (final preset in PlaybackQuality.values)
-        PanelFlyoutItem(
-          keyValue: 'playback-quality-${preset.name}',
-          label: PlaybackTransportControls.qualityLabel(preset),
-          checked: preset == quality,
-          onSelected: () => session.setPlaybackQuality(preset),
-        ),
+        icon: Icons.graphic_eq,
+        onSelected: () => unawaited(_editSampleRate(context)),
+      ),
+      PanelFlyoutItem(
+        keyValue: 'project-settings-camera-size',
+        label: strings.exCameraTemplate
+            .replaceAll('{w}', '${cameraSize.width}')
+            .replaceAll('{h}', '${cameraSize.height}'),
+        icon: Icons.videocam_outlined,
+        onSelected: () => unawaited(_editCameraSize(context)),
+      ),
+      PanelFlyoutItem(
+        keyValue: 'project-settings-quality',
+        label:
+            '${strings.playbackQuality} · '
+            '${PlaybackTransportControls.qualityLabel(session.playbackQuality)}',
+        icon: Icons.high_quality_outlined,
+        onSelected: () => unawaited(_editQuality(context)),
+      ),
     ];
   }
 
@@ -145,4 +205,161 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
     icon: const Icon(Icons.settings_outlined),
     onPressed: () => showPanelFlyout(context, entries: _entries(context)),
   );
+}
+
+/// One change window: the choices as rows, the CURRENT one said in colour
+/// alone (selection is colour and never a glyph — the flyout's own law).
+/// Tapping a row pops its value; closing pops nothing.
+Future<T?> _showChoiceWindow<T>(
+  BuildContext context, {
+  required String windowKey,
+  required String title,
+  required IconData titleIcon,
+  required T current,
+  required List<({String keyValue, String label, T value})> choices,
+}) {
+  return showDialog<T>(
+    context: context,
+    builder: (context) => AppWindow(
+      windowKey: ValueKey<String>(windowKey),
+      title: title,
+      titleIcon: titleIcon,
+      onClose: () => Navigator.of(context).pop(),
+      width: 260,
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final choice in choices)
+            _ChoiceRow(
+              key: ValueKey<String>(choice.keyValue),
+              label: choice.label,
+              current: choice.value == current,
+              onTap: () => Navigator.of(context).pop(choice.value),
+            ),
+        ],
+      ),
+      actions: const [],
+    ),
+  );
+}
+
+class _ChoiceRow extends StatelessWidget {
+  const _ChoiceRow({
+    super.key,
+    required this.label,
+    required this.current,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool current;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      customBorder: AppShapes.control(AppShapes.controlSmall),
+      child: SizedBox(
+        height: AppShapes.controlSmall,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: current ? AppColors.accent : AppColors.text,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The frame-rate window: the presets as rows plus the custom rate the old
+/// prompt dialog carried (R26 #32) — its field and key strings live on
+/// here, so tests only gained the row that opens this window.
+class _FpsWindow extends StatefulWidget {
+  const _FpsWindow({required this.current});
+
+  final ProjectFrameRate current;
+
+  @override
+  State<_FpsWindow> createState() => _FpsWindowState();
+}
+
+class _FpsWindowState extends State<_FpsWindow> {
+  final TextEditingController _customController = TextEditingController();
+
+  @override
+  void dispose() {
+    _customController.dispose();
+    super.dispose();
+  }
+
+  int? get _customFps {
+    final fps = int.tryParse(_customController.text.trim());
+    return fps != null && fps >= 1 ? fps : null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = AppText.strings;
+    final customFps = _customFps;
+    return AppWindow(
+      windowKey: const ValueKey<String>('project-fps-dialog'),
+      title: strings.projectFpsTitle,
+      titleIcon: Icons.speed_outlined,
+      onClose: () => Navigator.of(context).pop(),
+      width: 260,
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final preset in ProjectSettingsPill.fpsPresets)
+            _ChoiceRow(
+              // Integer rates keep their original key (`timeline-fps-24`);
+              // the pulldown rates key off the fraction, since `23.976` in
+              // a key string would be the same rounding we just removed.
+              key: ValueKey<String>(
+                preset.isInteger
+                    ? 'timeline-fps-${preset.numerator}'
+                    : 'timeline-fps-${preset.numerator}-${preset.denominator}',
+              ),
+              label: preset.label,
+              current: preset == widget.current,
+              onTap: () => Navigator.of(context).pop(preset),
+            ),
+          const SizedBox(height: 12),
+          AppWindowField(
+            label: strings.projectFpsField,
+            child: TextField(
+              key: const ValueKey<String>('project-fps-field'),
+              controller: _customController,
+              keyboardType: TextInputType.number,
+              inputFormatters: halfWidthDigitsOnly,
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        AppWindowAction(
+          label: strings.commonApply,
+          actionKey: const ValueKey<String>('project-fps-apply'),
+          emphasis: AppWindowActionEmphasis.primary,
+          onPressed: customFps == null
+              ? null
+              : () => Navigator.of(
+                  context,
+                ).pop(ProjectFrameRate.integer(customFps)),
+        ),
+      ],
+    );
+  }
 }

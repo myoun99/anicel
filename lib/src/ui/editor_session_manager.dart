@@ -178,6 +178,7 @@ import '../services/commands/update_layer_mark_command.dart';
 import '../services/commands/update_layer_timeline_command.dart';
 import '../services/commands/update_layer_timesheet_command.dart';
 import '../services/commands/update_project_audio_sample_rate_command.dart';
+import '../services/commands/update_project_camera_size_command.dart';
 import '../services/commands/update_project_frame_rate_command.dart';
 import '../services/commands/update_project_trailing_frames_command.dart';
 import '../services/onion_skin_plan.dart';
@@ -2991,6 +2992,22 @@ class EditorSessionManager extends ChangeNotifier {
       ),
     );
     _warmAudioConforms();
+    notifyListeners();
+  }
+
+  /// Sets the project's camera (shooting) frame — one undo step, no-op
+  /// when unchanged. Poses are untouched: `CameraPose.zoom` is stated
+  /// against this frame's width, so every cut re-frames by itself.
+  void setProjectCameraSize(CanvasSize size) {
+    if (size.width < 1 || size.height < 1 || size == cameraFrameSize) {
+      return;
+    }
+    _historyManager.execute(
+      UpdateProjectCameraSizeCommand(
+        repository: _repository,
+        cameraSize: size,
+      ),
+    );
     notifyListeners();
   }
 

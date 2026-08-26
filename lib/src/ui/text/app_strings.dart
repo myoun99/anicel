@@ -388,6 +388,7 @@ class AppStrings {
 
   // --- Canvas size ---
   String get canvasSizeTitle => _s('canvasSizeTitle');
+  String get cameraSizeTitle => _s('cameraSizeTitle');
   String get canvasWidthLabel => _s('canvasWidthLabel');
   String get canvasHeightLabel => _s('canvasHeightLabel');
 
@@ -1208,6 +1209,7 @@ class AppStrings {
     'sortAscending': 'Ascending',
     'sortDescending': 'Descending',
     'canvasSizeTitle': 'Canvas size',
+    'cameraSizeTitle': 'Camera size',
     'canvasWidthLabel': 'Width (px)',
     'canvasHeightLabel': 'Height (px)',
     'canvasAnchorHelpTemplate':
@@ -1963,6 +1965,7 @@ class AppStrings {
     'sortAscending': '昇順',
     'sortDescending': '降順',
     'canvasSizeTitle': 'カンバスサイズ',
+    'cameraSizeTitle': 'カメラサイズ',
     'canvasWidthLabel': '幅（px）',
     'canvasHeightLabel': '高さ（px）',
     'canvasAnchorHelpTemplate':
@@ -2754,6 +2757,7 @@ class AppStrings {
     'sortAscending': '오름차순',
     'sortDescending': '내림차순',
     'canvasSizeTitle': '캔버스 크기',
+    'cameraSizeTitle': '카메라 크기',
     'canvasWidthLabel': '너비 (px)',
     'canvasHeightLabel': '높이 (px)',
     'canvasAnchorHelpTemplate':
@@ -3550,6 +3554,7 @@ class AppStrings {
     'sortAscending': 'Croissant',
     'sortDescending': 'Décroissant',
     'canvasSizeTitle': 'Taille du canevas',
+    'cameraSizeTitle': 'Taille de la caméra',
     'canvasWidthLabel': 'Largeur (px)',
     'canvasHeightLabel': 'Hauteur (px)',
     'canvasAnchorHelpTemplate':
@@ -4342,6 +4347,7 @@ class AppStrings {
     'sortAscending': '升序',
     'sortDescending': '降序',
     'canvasSizeTitle': '画布尺寸',
+    'cameraSizeTitle': '摄影机尺寸',
     'canvasWidthLabel': '宽度（px）',
     'canvasHeightLabel': '高度（px）',
     'canvasAnchorHelpTemplate':

@@ -172,6 +172,12 @@ class ProjectRepository {
     );
   }
 
+  /// The project's CAMERA frame (shooting frame) — the lens every cut is
+  /// framed through; `CameraPose.zoom` is stated against its width.
+  void updateProjectCameraSize(CanvasSize cameraSize) {
+    updateProject((project) => project.copyWith(cameraSize: cameraSize));
+  }
+
   /// EXPORT-AUDIO ④: the project's audio speed (the NTSC pull).
   void updateProjectAudioSpeed(int numerator, int denominator) {
     updateProject(
