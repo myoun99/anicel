@@ -322,6 +322,19 @@ class EditorSessionManager extends ChangeNotifier {
     // store's empty↔drawn crossing, and the pen going down on a cel.
     brushFrameStore.celContentRevision.addListener(_bumpCelTintRevision);
     brushInputActive.addListener(_bumpCelTintRevision);
+    // 🚨And the THIRD: any pixel edit at all. The crossing detector above
+    // asks whether the store HOLDS a surface for the cel, not whether that
+    // surface has ink in it — so 픽셀 비우기 leaves an all-transparent
+    // surface, `has == had`, and it never bumps. The block went on showing
+    // 「그려짐」 for a cel with nothing in it (유저 2026-08-27: 「블록도
+    // 반영안되는데」), because the tint's own revision never moved and the
+    // painter's repaint gating had no reason to re-ask.
+    //
+    // ⚠️This fires as often as the user draws — but the timeline host ALSO
+    // merges `celPixelRevision` into its frame-ready signal, so the rebuild
+    // it costs is one that was already happening; what changes is that the
+    // tint re-reads inside it instead of serving a stale answer.
+    brushFrameStore.celPixelRevision.addListener(_bumpCelTintRevision);
     // Text cel projections follow the model through EVERY mutation path
     // (edit/undo/redo/paste/duplicate/link) — one history listener, the
     // sweep re-renders whatever went stale (R5).
@@ -2289,6 +2302,7 @@ class EditorSessionManager extends ChangeNotifier {
     _disposed = true;
     _textCelSweepDirty = false;
     brushFrameStore.celContentRevision.removeListener(_bumpCelTintRevision);
+    brushFrameStore.celPixelRevision.removeListener(_bumpCelTintRevision);
     brushInputActive.removeListener(_bumpCelTintRevision);
     celTintRevision.dispose();
     currentRowListenable.dispose();
