@@ -139,6 +139,37 @@ void main() {
     );
   });
 
+  test('the ack silences EVERY complaint, not only the newest ones', () async {
+    // 🚨It used to exempt a card from the age checks and nothing else, so
+    // acking a card the gate had named changed nothing and the same line
+    // came back every turn. An ack that does not silence is worse than
+    // none: the next reader learns to scroll past the gate.
+    final out = await complaintFor([
+      {
+        'kind': 'item',
+        'id': 'I-8',
+        'state': 'open',
+        'ts': stamp(const Duration(hours: 1)),
+        // The older complaint: a check written where remaining CODE goes.
+        'rest': '실기로 확인한다',
+      },
+    ], acked: ['I-8']);
+    expect(out, isEmpty);
+  });
+
+  test('and without the ack that same card IS named', () async {
+    final out = await complaintFor([
+      {
+        'kind': 'item',
+        'id': 'I-8',
+        'state': 'open',
+        'ts': stamp(const Duration(hours: 1)),
+        'rest': '실기로 확인한다',
+      },
+    ]);
+    expect(out, contains('I-8'));
+  });
+
   test('an id in .gate-ack goes quiet — a question that is genuinely still '
       'open must not nag for ever', () async {
     final out = await complaintFor([

@@ -1853,6 +1853,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
           onPositionChanged: (position) => slot.position.value = position,
           onRequestPicked: slot.open,
           viewportController: slot.viewport,
+          framedFor: slot.framedFor,
           onSwapViewers: () => _swapViewers(fromTabId: tabId),
           // 유저 확정 ⑱: the promote button calls the SAME import every
           // other entrance calls, and takes the SAME copy-or-reference

@@ -64,6 +64,12 @@ CutPiece? buildCutPiece({
     top: top,
     width: width,
     height: height,
+    // ⚠️Nothing changes here either way: this mask comes from `maskFor` with
+    // no soft options, so every byte is 0 or 255 and there is no partial
+    // pixel to decide about. Set to match the move's law rather than left to
+    // a default, because a default is where the next soft mask would land
+    // silently.
+    takeWholePixels: true,
   );
   // Scraping an empty stretch of cel must NOT hand back a blank piece: the
   // slot is a long-term holder that survives frames, cuts and projects, and

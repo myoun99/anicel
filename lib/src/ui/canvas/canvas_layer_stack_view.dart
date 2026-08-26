@@ -505,6 +505,15 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   @visibleForTesting
   StaticCompositeBake get debugBake => _bake;
 
+  /// The bake key's own input, opened for the guard on [_holdImage].
+  ///
+  /// ⚠️A hatch rather than a bake assertion: the kept composite only records
+  /// slots under a real paint pipeline, so a test that reached for
+  /// `slotCount` would be measuring whether its own synthetic paint recorded
+  /// anything — which is the instrument, not the law.
+  @visibleForTesting
+  int get debugImagesRevision => _imagesRevision;
+
   /// 🚨★★★ Bumped at EVERY `_images` mutation, and read into the bake's key.
   ///
   /// ⛔This is not belt-and-braces on top of the tree comparison. A recorded
@@ -524,6 +533,28 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     // pixels, and the declaration ends exactly when the hold does.
     widget.imageCache.releasePin(key, PlaybackQuality.full);
     held.clone.dispose();
+    _imagesRevision += 1;
+  }
+
+  /// The ONLY way an image enters [_images] — [_dropImage]'s twin.
+  ///
+  /// 🚨★★★The note on [_imagesRevision] says it moves at EVERY mutation, and
+  /// it did not: a COLD adopt (nothing held yet) assigned straight into the
+  /// map, so the bake's key was unchanged and the kept composite replayed
+  /// without the layer that had just arrived. A drop bumped it and an adopt
+  /// did not, which is the asymmetry that let a stale picture survive around
+  /// a live one — 유저 2026-08-27, iPhone: 「**변형툴의 외곽에만** 그림이
+  /// 남음 … 보기에만 그[렇다]」. The active layer paints live and the rest
+  /// comes from the bake, so a stale bake shows up exactly as a ring of old
+  /// drawing around a correct one.
+  ///
+  /// ⛔Assigning to `_images` anywhere else puts the hole back. Both are
+  /// methods so that the map and its revision cannot be moved apart.
+  void _holdImage(
+    BrushFrameKey key,
+    ({ui.Image source, ui.Image clone, Rect worldRect, int? revision}) held,
+  ) {
+    _images[key] = held;
     _imagesRevision += 1;
   }
 
@@ -637,12 +668,12 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       if (held == null || !identical(held.source, image.image)) {
         if (held != null) _dropImage(layer.frameKey, held);
         widget.imageCache.retainPin(layer.frameKey, PlaybackQuality.full);
-        _images[layer.frameKey] = (
+        _holdImage(layer.frameKey, (
           source: image.image,
           clone: image.image.clone(),
           worldRect: image.worldRect,
           revision: revision,
-        );
+        ));
       }
     }
   }
@@ -715,12 +746,12 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
               layer.frameKey,
               PlaybackQuality.full,
             );
-            _images[layer.frameKey] = (
+            _holdImage(layer.frameKey, (
               source: image.image,
               clone: image.image.clone(),
               worldRect: image.worldRect,
               revision: revision,
-            );
+            ));
             changed = true;
           }
         }

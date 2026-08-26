@@ -98,6 +98,7 @@ void main() {
       required int top,
       required int width,
       required int height,
+      required bool takeWholePixels,
     }) {
       final out = Uint8List(width * height * 4);
       final tileSize = surface.tileSize;
@@ -126,7 +127,7 @@ void main() {
           out[target] = pixels[source];
           out[target + 1] = pixels[source + 1];
           out[target + 2] = pixels[source + 2];
-          if (maskValue == 255) {
+          if (takeWholePixels || maskValue == 255) {
             out[target + 3] = alpha;
           } else {
             final product = alpha * maskValue + 128;
@@ -187,6 +188,10 @@ void main() {
           final v = (i * 37) % 256;
           mask[i] = v < 24 ? 0 : (soft ? v : 255);
         }
+        // ⚠️Both settings of the whole-pixel rule, because the tile-major
+        // walk has to equal the reference under either — it is the WALK
+        // this parity test is about, not the rule.
+        for (final whole in [false, true]) {
         final expected = referenceGather(
           surface: surface,
           mask: mask,
@@ -194,6 +199,7 @@ void main() {
           top: box.top,
           width: box.width,
           height: box.height,
+          takeWholePixels: whole,
         );
         final actual = gatherMaskedSurfacePixels(
           surface: surface,
@@ -202,6 +208,7 @@ void main() {
           top: box.top,
           width: box.width,
           height: box.height,
+          takeWholePixels: whole,
         );
         expect(
           actual.rgba,
@@ -216,6 +223,7 @@ void main() {
           expected.any((byte) => byte != 0),
           reason: 'liftedAnything disagrees at ${box.left},${box.top}',
         );
+        }
       }
     }
   });
@@ -429,7 +437,18 @@ void main() {
     expect(eraseAlphaAt(feathered, 7, 4), 0, reason: 'outside stays out');
   });
 
-  test('anti-alias softens only the boundary', () {
+  test('an ANTI-ALIASED selection takes whole pixels — nothing is left at '
+      'the rim (유저 2026-08-27)', () {
+    // 🚨THIS TEST USED TO ASSERT THE OPPOSITE, and the opposite was the bug.
+    // The rim's erase was partial, matching a stamp whose alpha had been
+    // scaled by the same coverage — arithmetically exact, and it left a
+    // ghost of the drawing along the selection edge on every move
+    // (유저: 「aa적용 변형시, 선택의 외부에도 aa의 영향으로 픽셀이 남는데,
+    // 그러지 않도록」).
+    //
+    // ⛔The three cannot all hold: leave nothing behind, lose no ink, keep a
+    // soft edge on the moved copy. The user gave up the third — the softness
+    // comes back on the placing side instead.
     final surface = paintedSurface();
     final softened = buildSelectionLiftDabs(
       region: rect2to5(),
@@ -437,9 +456,33 @@ void main() {
       liftId: 'aa',
       options: const SelectionMaskOptions(antiAlias: true),
     )!;
-    final rim = eraseAlphaAt(softened, 2, 4);
-    expect(rim, greaterThan(0));
-    expect(rim, lessThan(255));
+    expect(
+      eraseAlphaAt(softened, 2, 4),
+      255,
+      reason: 'a pixel the mask touched at all goes entirely',
+    );
     expect(eraseAlphaAt(softened, 4, 4), 255, reason: 'interior untouched');
+    expect(eraseAlphaAt(softened, 7, 4), 0, reason: 'outside stays out');
+  });
+
+  test('a FEATHERED selection still fades — that softness was asked for',
+      () {
+    // ⚠️The exception, and not an invented one: nobody feathers a selection
+    // by switching anti-aliasing on. A feather IS the request for a soft
+    // edge, so the split stays where the user asked for it.
+    final surface = paintedSurface();
+    final feathered = buildSelectionLiftDabs(
+      region: rect2to5(),
+      surface: surface,
+      liftId: 'feather-keeps-its-ramp',
+      options: const SelectionMaskOptions(featherPx: 3),
+    )!;
+    final rim = eraseAlphaAt(feathered, 2, 4);
+    expect(rim, greaterThan(0));
+    expect(
+      rim,
+      lessThan(255),
+      reason: 'a feathered rim is partial on purpose',
+    );
   });
 }

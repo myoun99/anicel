@@ -142,10 +142,24 @@ void main(List<String> args) {
   final orphanQuestions = <String>[];
   final qName = RegExp(r'^(.+)-Q\d+$');
 
+  // 🚨ONE ack file, EVERY complaint. It used to exempt only the checks added
+  // last, so acking a card the gate named did nothing and the same line came
+  // back every turn — an ack that does not silence is worse than none,
+  // because the next reader learns to scroll past the gate.
+  //
+  // ⚠️What it means is 「I have decided to leave this card alone」, and that
+  // decision is the same decision whichever complaint prompted it. Deciding
+  // is the point; the file is where the decision is written down.
+  final ackFile = File('${file.parent.path}/.gate-ack');
+  final acked = ackFile.existsSync()
+      ? ackFile.readAsLinesSync().map((l) => l.trim()).toSet()
+      : <String>{};
+
   for (final id in order) {
     final card = merged[id]!;
     final state = '${card['state'] ?? 'open'}';
     if (state == 'archived' || state == 'deleted') continue;
+    if (acked.contains(id)) continue;
     final rest = '${card['rest'] ?? ''}'.trim();
     if (rest.isNotEmpty && checkWords.hasMatch(rest)) restIsACheck.add(id);
 
@@ -289,10 +303,6 @@ void main(List<String> args) {
   // The board cannot know about those, so they sit for ever
   // (`Q-remaining-14` did, while the work its answer named was merged).
   final stale = <String>[];
-  final ackFile = File('${file.parent.path}/.gate-ack');
-  final acked = ackFile.existsSync()
-      ? ackFile.readAsLinesSync().map((l) => l.trim()).toSet()
-      : <String>{};
   final now = DateTime.now();
   bool old(Map<String, dynamic> card) {
     final ts = DateTime.tryParse('${card['ts'] ?? ''}');

@@ -177,6 +177,8 @@ void main() {
     'saveProgressDone': (s) => s.saveProgressDone,
     'openProgressRunning': (s) => s.openProgressRunning,
     'openProgressDone': (s) => s.openProgressDone,
+    'openWaitingCloudTemplate': (s) => s.openWaitingCloudTemplate,
+    'openWaitingStalledTemplate': (s) => s.openWaitingStalledTemplate,
     'resizeProgressRunning': (s) => s.resizeProgressRunning,
     'resizeProgressDone': (s) => s.resizeProgressDone,
     'unsavedAutosaveTitle': (s) => s.unsavedAutosaveTitle,
