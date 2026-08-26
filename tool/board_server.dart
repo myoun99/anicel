@@ -467,6 +467,21 @@ class _Entry {
   /// my answer goes back into it」.
   String of = '';
 
+  /// 🚨★★★WHAT IS STILL LEFT — and the reason this card is not in 확인할 것
+  /// (유저 2026-08-26: 「애초에 남은게 존재하면 확인할것에 있으면 안되는거
+  /// 아니냐? 다 끝난줄알았는데」).
+  ///
+  /// A card that claimed a PR used to land in 확인할 것 the moment that PR
+  /// merged, whether or not the CARD was finished. F-17 was five items; one
+  /// merged as #1242 and two were already true, so it appeared as a landing
+  /// with two items still unwritten — and a tick there DELETES the card, which
+  /// would have buried them.
+  ///
+  /// ⛔Deliberately not a bool and not a state. It has to say WHAT is left,
+  /// because 「this is unfinished」 with no list is the same dead end as a row
+  /// that says only 「T14」.
+  String rest = '';
+
   /// On a `law` record: what to read first in this area, and what must not be
   /// done. Separate from `note` because a caution outlives the status line it
   /// would otherwise be buried in.
@@ -608,6 +623,7 @@ List<_Entry> _readRecords(File file) {
     if (json['pr'] != null) e.pr = (json['pr'] as num).toInt();
     if (json['under'] != null) e.under = (json['under'] as num).toInt();
     if (json['of'] != null) e.of = '${json['of']}';
+    if (json['rest'] != null) e.rest = '${json['rest']}';
     if (json['tags'] != null) {
       e.tags = (json['tags'] as List).map((t) => '$t').toList();
     }
@@ -890,6 +906,10 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
     if (buriedPrs.contains(pr.number)) continue;
     final e = claimed[pr.number];
     if (e == null && buriedIds.contains('pr-${pr.number}')) continue;
+    // 🚨A MERGE IS NOT A FINISH. If the card still lists something left, it
+    // stays where the work is and never reaches 확인할 것 — a tick there
+    // deletes the card, and the leftovers would go with it.
+    if (e != null && e.rest.isNotEmpty && pr.state == 'MERGED') continue;
     // ⚠️A landing that was ticked is finished (its card carries `deleted` and
     // never reached `alive`); one that got a memo went back to 분류 전. Either
     // way it must not return to 확인할 것 every time the page opens.
@@ -954,7 +974,10 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
           // An answered item has been looked at and reported on; it belongs in
           // its own story now, not back in 착수 가능 claiming to be unstarted.
           e.answer == null &&
-          (e.pr == null || !claimed.containsKey(e.pr)))
+          // A claimed PR normally means the card is being CHECKED, not
+          // started. Unless it still has leftovers — then this is exactly
+          // where it belongs, with the merged part already in its story.
+          (e.pr == null || !claimed.containsKey(e.pr) || e.rest.isNotEmpty))
       .toList();
   // Work can be underway before there is a PR to point at -- an investigation,
   // a round mid-flight. Without this those items sat in 착수 가능 claiming to
@@ -1114,6 +1137,7 @@ String _intakeForm() {
 /// the section header cannot tell you.
 const _chipTint = <String, String>{
   '실기 피드백': 'bad',
+  '유저 피드백': 'bad',
   '피드백': 'run',
   '대답': 'ok',
 };
@@ -1411,18 +1435,34 @@ String _itemPanel(_Entry e) {
   final arrival = switch (e.kind) {
     'decision' => '대답',
     'check' => '실기 피드백',
-    _ => '',
+    // An item only 「arrives」 if the user wrote on it — a plain working card
+    // has nothing new to announce.
+    _ => e.answer != null ? '유저 피드백' : '',
   };
   // The user's own writing is not editable once it is an ANSWER — editing it
   // would rewrite what they said, which is the one thing this whole redesign
   // exists to stop.
-  final editable = inbox && e.kind == 'item';
+  // ⚠️`answer == null` too: an item that came BACK carrying feedback is not a
+  // half-finished filing to correct, it is something to read. Showing it in an
+  // edit box would offer to rewrite what the user just said.
+  final editable = inbox && e.kind == 'item' && e.answer == null;
   final b = StringBuffer();
-  b.writeln('<details class="p${inbox ? ' box' : ''}" id="c-${_esc(e.id)}">');
+  // data-kind drives what `send` writes back. `item` so a memo on a working
+  // card is filed as feedback and lands in 분류 전, exactly like one left on
+  // a 확인할 것 row — ⛔and NOT as `check`, which would delete the card if the
+  // box were submitted empty.
+  b.writeln('<details class="p${inbox ? ' box' : ''}" id="c-${_esc(e.id)}"'
+      ' data-kind="item">');
   b.writeln(_head(
       e.id,
       e.title,
-      [if (arrival.isNotEmpty) arrival, ...e.tags],
+      [
+        if (arrival.isNotEmpty) arrival,
+        // ⚠️Says the PR landed AND that the card did not finish with it —
+        // without this the row looks unstarted while its branch is merged.
+        if (e.rest.isNotEmpty && e.pr != null) '#${e.pr} 일부',
+        ...e.tags,
+      ],
       badge,
       '',
       date: e.updated));
@@ -1439,10 +1479,29 @@ String _itemPanel(_Entry e) {
         '<button class="ghost" onclick="purge(\'${_esc(e.id)}\')">삭제</button>'
         '<span class="state"></span></div>');
   } else {
+    // First thing in the panel, above the history: what is still owed. It is
+    // why this card is here and not in 확인할 것.
+    if (e.rest.isNotEmpty) {
+      b.writeln('<p class="d rest"><b>남은 것</b> — ${_esc(e.rest)}</p>');
+    }
     b.writeln(_story(e));
     b.writeln(_questions(e));
     b.writeln(_care(e));
     b.writeln(_shotStrip(e.id));
+    // 🚨EVERY CARD TAKES FEEDBACK, not just the ones in 확인할 것 (유저
+    // 2026-08-26, looking at a card that had just moved OUT of that section:
+    // 「이거 해당칸에 피드백첨부하면되겟지?」).
+    //
+    // The memo box used to live only where the board happened to be asking a
+    // question. But a card is an organism the whole way down — noticing
+    // something about work that has not shipped yet is the CHEAPEST moment to
+    // say so, and making that depend on which list the card is in is the same
+    // 「write it in two places」 problem in a different coat.
+    b.writeln('<textarea rows="2" placeholder="여기에 피드백 — 원문 그대로 '
+        '남습니다 (스크린샷은 Ctrl+V)"></textarea>');
+    b.writeln('<div class="foot">'
+        '<button onclick="send(\'${_esc(e.id)}\')">피드백 제출</button>'
+        '<span class="state"></span></div>');
   }
   b.writeln('</div></details>');
   return b.toString();
@@ -1605,6 +1664,11 @@ function send(id){
   const memo = t ? (t.value||'').trim() : '';
   if(c.dataset.kind === 'decision' && !answer && !memo){
     stateOf(c).textContent = '고르거나 메모를 적어 주세요'; return;
+  }
+  // ⛔An empty memo on a working card is not a tick — there is nothing here to
+  // tick. Only 확인할 것 rows carry that meaning.
+  if(c.dataset.kind === 'item' && !memo){
+    stateOf(c).textContent = '적을 내용이 있어야 제출됩니다'; return;
   }
   post('/submit', {id:id, kind:c.dataset.kind, answer:answer||'ok', memo:memo}, c)
     .then(()=>redraw(c.id))
@@ -1908,6 +1972,9 @@ white-space:nowrap;flex:1;min-width:0}
    and darker text so the eye can drop down an open card and find their words
    without reading the labels. ⛔The stage name already says who; this only
    makes it scannable. */
+/* 남은 것 leads the panel and is the reason the card is not in 확인할 것, so
+   it reads as a claim on attention rather than as another note. */
+.rest{color:var(--run)}
 .lg.says{border-left-color:var(--run)}
 .lg.says>summary>.lgk{color:var(--run)}
 .lg.says>.d{color:var(--ink)}
