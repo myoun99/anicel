@@ -78,14 +78,18 @@ void main() {
     );
 
     run.task.complete('opened');
-    await tester.pump(const Duration(milliseconds: 300));
+    // Frame by frame across the delay: a window that flashes for even one
+    // of them is a window the user saw. Checking only at the END would
+    // pass against code that shows one and closes it again.
+    for (var frame = 0; frame < 8; frame += 1) {
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(
+        find.byKey(const ValueKey<String>('open-progress-dialog')),
+        findsNothing,
+        reason: 'it beat the delay, so no window may exist on any frame',
+      );
+    }
     await tester.pumpAndSettle();
-
-    expect(
-      find.byKey(const ValueKey<String>('open-progress-dialog')),
-      findsNothing,
-      reason: 'it beat the delay, so no window ever existed',
-    );
     await run.closed.future;
   });
 
