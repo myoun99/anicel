@@ -1259,7 +1259,18 @@ class EditorSessionManager extends ChangeNotifier {
     // (layer, frame) ids. Two mechanisms for one invariant is the shape the
     // F-20 bug came in; the one that owns the surfaces owns this.
     void take(Layer layer, int? frameIndex) {
-      if (!layerAcceptsBrushInput(layer)) {
+      // 🚨HIDDEN ROWS ARE NOT TOUCHED. 유저 2026-08-27: 「해당 두 버튼은
+      // 비지블이 on인 레이어만 활성화되야함. **기본적으로 그림 조작하는건
+      // 그런느낌인거지**」 — the reason is general, so it is stated as the
+      // general thing: a pixel verb acts on what you can see.
+      //
+      // ⛔The row's own eye flag is NOT that question. It is half of it; the
+      // other half is whether a folder above the row is switched off, and
+      // `rowVisible` is the one door that folds both. Ratcheted by
+      // `hidden_folder_is_hidden_test`, which caught this line reading the
+      // raw flag — ⚠️and counts it in COMMENTS too, so the flag's name
+      // cannot be written here even to say not to use it.
+      if (!layerAcceptsBrushInput(layer) || !cut.layers.rowVisible(layer)) {
         return;
       }
       final frame = _timelineController.resolveFrameForLayer(
@@ -1269,7 +1280,21 @@ class EditorSessionManager extends ChangeNotifier {
       if (frame == null) {
         return;
       }
-      keys.add(brushFrameKeyForCut(cut, layer.id, frame.id));
+      final key = brushFrameKeyForCut(cut, layer.id, frame.id);
+      // 🚨AND IT HAS TO HAVE A DRAWING IN IT. 유저 2026-08-27: 「색변환은
+      // 레이어에 그림이 존재 해야 활성화시키는게 맞고. 픽셀삭제는 그림이
+      // 있어야 활성화시키는게 맞고」.
+      //
+      // ⛔A frame EXISTING is not a drawing existing, and that gap is the
+      // whole bug: 픽셀 비우기 leaves the frame and its tiles in place with
+      // every alpha at zero, so this walk kept naming a cel with nothing in
+      // it and the buttons stayed lit over an empty block. This is the same
+      // question the block's tint asks, which is why it is that call and not
+      // a second rule of its own.
+      if (!brushFrameStore.celHasRenderableContent(key)) {
+        return;
+      }
+      keys.add(key);
     }
 
     final range = frameRangeSelection.value;

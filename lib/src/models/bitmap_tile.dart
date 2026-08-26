@@ -126,6 +126,29 @@ class BitmapTile implements Finalizable {
     return body(_pixels, _view);
   }
 
+  bool? _hasInk;
+
+  /// Whether ANY pixel of this tile is not fully transparent.
+  ///
+  /// 🚨Cached, and cheap for the reason that matters: a tile a person drew
+  /// on answers on its first opaque byte, which is almost always near the
+  /// start. Only a tile that is ENTIRELY clear pays a full read, and it pays
+  /// it once — tiles are immutable, so the answer cannot go stale, and the
+  /// tiles a clear rebuilds are new objects that compute it fresh.
+  ///
+  /// ⛔This is not 「count the ink」. 유저 2026-08-27: 「잉크를 세는건
+  /// 무거운거아니야?」 — it is, which is why nothing here counts anything.
+  bool get hasInk => _hasInk ??= _scanForInk();
+
+  bool _scanForInk() {
+    for (var i = bytesPerPixel - 1; i < _view.length; i += bytesPerPixel) {
+      if (_view[i] != 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// Copies the pixel bytes into [target] without the intermediate copy
   /// the [pixels] getter makes.
   void copyPixelsInto(Uint8List target) {

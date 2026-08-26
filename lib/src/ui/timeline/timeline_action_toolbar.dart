@@ -756,6 +756,23 @@ class TimelineActionToolbar extends StatelessWidget {
       session.frameRangeSelection,
       session.laneRangeSelection,
       session.trackFrameRangeSelection,
+      // 🚨★★★AND THE THING A SELECTION IS NOT: WHETHER THE CEL HAS A DRAWING.
+      //
+      // 「지금 무엇이 선택됐나」 is what this pill is for, but the gates in the
+      // key below do not only ask which rows and ranges are marked — they ask
+      // whether the cel you are standing on has anything in it, and that
+      // changes without any selection moving. 픽셀 비우기 empties the cel you
+      // are already standing on; nothing above fires, so the buttons stayed
+      // lit over a block the user had just cleared (유저 2026-08-27: 「인덱스
+      // 이동해서 그림 사라진거 확인하더라도 버튼 여전히 활성화되있고」).
+      //
+      // ⛔The PLAYHEAD is deliberately not here. It looked like the same
+      // hole, and it is not: removing this line reddens the test below,
+      // removing a playhead line does not — the pill already re-reads on a
+      // scrub through the rebuild the session's own notify carries. An
+      // addition whose necessity cannot be shown is the shape that put
+      // 「갱신된다」 into #1269 with no guard at all.
+      session.celTintRevision,
     ]),
     builder: (context, _) => _sharedPillBody(),
   );

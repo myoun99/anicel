@@ -1,5 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -66,7 +71,38 @@ void main() {
       MaterialApp(home: HomePage(initialProject: projectWithEarlyCels())),
     );
     await tester.pumpAndSettle();
-    return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    // 🚨REAL INK, not just a declared frame. A pixel verb is gated on the cel
+    // having a drawing in it — a frame existing was never the same question —
+    // so a fixture that only declared frames measures the empty answer and
+    // calls it the ladder.
+    final cut = session.requireActiveCut;
+    final pixels = Uint8List(16 * 16 * 4);
+    for (var i = 3; i < pixels.length; i += 4) {
+      pixels[i] = 0xFF;
+    }
+    for (final layer in session.layers) {
+      for (final frame in layer.frames) {
+        session.brushFrameStore.storeBakedSurface(
+          session.brushFrameKeyForCut(cut, layer.id, frame.id),
+          BitmapSurface(
+            canvasSize: cut.canvasSize,
+            tileSize: 16,
+            tiles: {
+              TileCoord(x: 0, y: 0): BitmapTile(
+                coord: TileCoord(x: 0, y: 0),
+                size: 16,
+                pixels: pixels,
+              ),
+            },
+          ),
+        );
+      }
+    }
+    await tester.pump();
+    return session;
   }
 
   /// Whether the button as MOUNTED is pressable. ⛔Not `canRunPixelVerb` —

@@ -1,5 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -72,6 +77,39 @@ void main() {
     );
   }
 
+  /// Bakes real INK into every drawable cel of the open cut.
+  ///
+  /// 🚨A frame existing is not a drawing existing — 유저 2026-08-27: 「색변환은
+  /// 레이어에 그림이 존재 해야 활성화시키는게 맞고」. A fixture that only
+  /// declared frames would now be measuring the empty answer and calling it
+  /// the ladder, which is exactly the mistake the cel note above warns about
+  /// one level up.
+  void inkEveryCel(EditorSessionManager session) {
+    final cut = session.requireActiveCut;
+    final pixels = Uint8List(16 * 16 * 4);
+    for (var i = 3; i < pixels.length; i += 4) {
+      pixels[i] = 0xFF;
+    }
+    for (final layer in session.layers) {
+      for (final frame in layer.frames) {
+        session.brushFrameStore.storeBakedSurface(
+          session.brushFrameKeyForCut(cut, layer.id, frame.id),
+          BitmapSurface(
+            canvasSize: cut.canvasSize,
+            tileSize: 16,
+            tiles: {
+              TileCoord(x: 0, y: 0): BitmapTile(
+                coord: TileCoord(x: 0, y: 0),
+                size: 16,
+                pixels: pixels,
+              ),
+            },
+          ),
+        );
+      }
+    }
+  }
+
   Future<EditorSessionManager> pump(
     WidgetTester tester, {
     Project? project,
@@ -84,7 +122,14 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    if (project == null) {
+      inkEveryCel(session);
+      await tester.pump();
+    }
+    return session;
   }
 
   /// A default project has NO cels — every layer arrives with
@@ -177,6 +222,55 @@ void main() {
       reason: 'a range is drawn ACROSS the cels, which is why it is the one '
           'rung allowed to name more than one',
     );
+  });
+
+  testWidgets('a HIDDEN row is not touched — 유저: 「비지블이 on인 레이어만 '
+      '활성화되야함」', (tester) async {
+    final session = await pump(tester);
+    final row = await drawableRow(tester, session);
+    expect(session.pixelVerbSubject, PixelVerbSubject.standing);
+
+    session.toggleLayerVisibility(row.id);
+    await tester.pump();
+    expect(
+      session.pixelVerbSubject,
+      PixelVerbSubject.nothing,
+      reason: '「기본적으로 그림 조작하는건 그런느낌인거지」 — a pixel verb '
+          'acts on what you can see',
+    );
+  });
+
+  testWidgets('a CLEARED cel is not a drawing — 유저: 「삭제눌렀으면 그림이 '
+      '사라진거니 … 버튼도 비활성화되야하는데」', (tester) async {
+    final session = await pump(tester);
+    await drawableRow(tester, session);
+    expect(session.pixelVerbSubject, PixelVerbSubject.standing);
+    final key = session.pixelVerbCellKeys().single;
+
+    // 🚨What 픽셀 비우기 leaves behind: the tiles are still there, every
+    // alpha at zero. It cannot drop them — undo walks the tiles that EXIST
+    // (see the `undo-weight` card) — so 「프레임이 있다」 went on meaning
+    // 「그림이 있다」 and the buttons stayed lit over an empty block.
+    final before = session.brushFrameStore.bakedSurfaceOrNull(key)!;
+    session.brushFrameStore.storeBakedSurface(
+      key,
+      before.putTiles([
+        for (final tile in before.tiles.values)
+          BitmapTile(
+            coord: tile.coord,
+            size: tile.size,
+            pixels: Uint8List(tile.size * tile.size * 4),
+          ),
+      ]),
+    );
+    await tester.pump();
+
+    expect(
+      session.brushFrameStore.celHasRenderableContent(key),
+      isFalse,
+      reason: 'the same question the block\'s tint asks',
+    );
+    expect(session.pixelVerbSubject, PixelVerbSubject.nothing);
   });
 
   testWidgets('the gate is the existing predicate — a camera row has no pixels',
