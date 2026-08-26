@@ -176,6 +176,7 @@ class EditorTopStrip extends StatelessWidget {
       // frozen screen before the cuts appear reads as a hang (hands-on,
       // 288's 96 frames × 19 layers).
       final List<String>? warnings;
+      final wait = _CloudWait();
       try {
         warnings = await runWithAppProgress<List<String>?>(
           context: context,
@@ -184,8 +185,19 @@ class EditorTopStrip extends StatelessWidget {
           runningLabel: AppText.strings.openProgressRunning,
           doneLabel: AppText.strings.openProgressDone,
           windowKey: const ValueKey<String>('open-progress-dialog'),
-          task: (report) =>
-              session.openTvppAsProject(tvppPath: path, onProgress: report),
+          runningStatus: wait.status,
+          onCancel: wait.cancel,
+          task: (report) => session.openTvppAsProject(
+            tvppPath: path,
+            onProgress: (fraction) {
+              // Reading has started, so the waiting line has nothing
+              // left to say.
+              wait.arrived();
+              report(fraction);
+            },
+            onWaiting: wait.report,
+            isCancelled: wait.isCancelled,
+          ),
         );
       } on MaterializeCancelled {
         // Not a failure: the user stopped waiting for the file to arrive
@@ -203,6 +215,8 @@ class EditorTopStrip extends StatelessWidget {
           );
         }
         return;
+      } finally {
+        wait.dispose();
       }
       if (!context.mounted) {
         return;
@@ -315,8 +329,30 @@ class EditorTopStrip extends StatelessWidget {
     // copy, with `recoverAs` pointing saves back at the real file,
     // exactly the sidecar-open mechanism.
     if (openPath == path) {
+      final wait = _CloudWait();
       try {
-        final source = await FolderPicker.materializeOpenedFile(path);
+        // Behind the SAME window the .tvpp door uses, and behind a short
+        // delay: a local pick is instant and must stay silent, while a
+        // file still coming down says so — 「여는 중」 over a download
+        // blames the app for the provider's work.
+        final source = await runWithAppProgress<({String path, bool staged})>(
+          context: context,
+          title: AppText.strings.fileOpenTitle,
+          titleIcon: Icons.folder_open_outlined,
+          runningLabel: AppText.strings.openProgressRunning,
+          doneLabel: AppText.strings.openProgressDone,
+          windowKey: const ValueKey<String>('open-progress-dialog'),
+          showAfter: openWaitWindowDelay,
+          doneLinger: Duration.zero,
+          runningStatus: wait.status,
+          onCancel: wait.cancel,
+          task: (_) => FolderPicker.materializeOpenedFile(
+            path,
+            within: null,
+            onWaiting: wait.report,
+            isCancelled: wait.isCancelled,
+          ),
+        );
         if (source.staged) {
           openPath = source.path;
           recoverAs = path;
@@ -353,6 +389,8 @@ class EditorTopStrip extends StatelessWidget {
           );
         }
         return;
+      } finally {
+        wait.dispose();
       }
     }
     if (!context.mounted) {
@@ -1257,6 +1295,53 @@ class _FloorSwitch extends StatelessWidget {
       },
     );
   }
+}
+
+/// How long an open may take before it draws anything.
+///
+/// A local pick lands far inside this, so the ordinary open stays exactly
+/// as silent as it was; anything slower is a file still coming down, and
+/// then the window is the only thing that separates 「waiting」 from
+/// 「broken」. Short enough that the first slow frame already has it.
+const Duration openWaitWindowDelay = Duration(milliseconds: 200);
+
+/// What a door says while a file it did not write is on its way.
+///
+/// One object for the three things a wait needs — a line that changes, a
+/// stop, and the question 「were we stopped?」 — so both doors say the
+/// same thing with the same words rather than each inventing its own.
+///
+/// The line NAMES THE CLOUD (유저 2026-08-27: 「프로바이더가 로컬로
+/// 다운로드하는 걸 기다리고 있다고 명확히 표기하는 게 좋겠다」). 「여는 중」
+/// across a download makes the app look slow for work the provider is
+/// doing, and the person waiting cannot tell the two apart without being
+/// told which one it is.
+class _CloudWait {
+  final ValueNotifier<String> status = ValueNotifier<String>('');
+  bool _cancelled = false;
+
+  /// After this, the line stops counting up quietly and says that
+  /// nothing has come — which is when a person starts deciding.
+  static const Duration _sayNothingArrivedAfter = Duration(seconds: 10);
+
+  void report(Duration waited) {
+    final seconds = waited.inSeconds;
+    final strings = AppText.strings;
+    status.value =
+        (waited >= _sayNothingArrivedAfter
+                ? strings.openWaitingStalledTemplate
+                : strings.openWaitingCloudTemplate)
+            .replaceAll('{sec}', '$seconds');
+  }
+
+  /// The bytes are here; whatever comes next is the app's own work.
+  void arrived() => status.value = '';
+
+  void cancel() => _cancelled = true;
+
+  bool isCancelled() => _cancelled;
+
+  void dispose() => status.dispose();
 }
 
 class _StripPopoverButton extends StatelessWidget {

@@ -7624,6 +7624,8 @@ class EditorSessionManager extends ChangeNotifier {
   Future<List<String>?> openTvppAsProject({
     required String tvppPath,
     void Function(double fraction)? onProgress,
+    void Function(Duration waited)? onWaiting,
+    bool Function()? isCancelled,
   }) async {
     // A read failure THROWS (FileSystemException, out of the
     // materializer) and only a parse failure answers null — the door
@@ -7631,7 +7633,14 @@ class EditorSessionManager extends ChangeNotifier {
     // chasing a format problem when the real one was access (실측
     // 08-26: Drive on iPhone). Same materializer as the .anicel open;
     // the staged copy is read-and-discard here.
-    final source = await FolderPicker.materializeOpenedFile(tvppPath);
+    final source = await FolderPicker.materializeOpenedFile(
+      tvppPath,
+      // A door that can be cancelled waits as long as the file takes;
+      // one that cannot keeps the default backstop.
+      within: isCancelled == null ? const Duration(minutes: 10) : null,
+      onWaiting: onWaiting,
+      isCancelled: isCancelled,
+    );
     final Uint8List bytes;
     try {
       bytes = await File(source.path).readAsBytes();
