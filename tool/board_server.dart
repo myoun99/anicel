@@ -872,6 +872,14 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
     });
   }
   _byOrigin = byOrigin;
+  // ⚠️An ARCHIVED question no longer blocks — I put it away because it was
+  // dealt with. Only a live, unanswered one holds the card.
+  _asking = {
+    for (final entry in byOrigin.entries)
+      if (entry.value.any((q) =>
+          q.answer == null && q.state != 'archived' && q.state != 'deleted'))
+        entry.key,
+  };
   final inbox = alive.where((e) => e.state == 'inbox').toList();
   // 답할 것 holds only what is still unanswered. An answered question leaves
   // for 분류 전 — see `/submit` for why that is the same section and not a
@@ -984,8 +992,12 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   // be unstarted, which is the one thing they are not.
   final underway = loose.where((e) => e.state == 'wip').toList();
   final rest = loose.where((e) => e.state != 'wip').toList();
-  final ready = rest.where((e) => !_waiting.contains(e.state)).toList();
-  final waiting = rest.where((e) => _waiting.contains(e.state)).toList();
+  final ready = rest
+      .where((e) => !_waiting.contains(e.state) && !_asking.contains(e.id))
+      .toList();
+  final waiting = rest
+      .where((e) => _waiting.contains(e.state) || _asking.contains(e.id))
+      .toList();
   now.addAll(underway.map(_itemPanel));
 
   final b = StringBuffer();
@@ -1207,6 +1219,16 @@ final _qName = RegExp(r'^(.+)-Q(\d+)$');
 /// a ticked landing came back: `alive` filters out precisely what you need.)
 Map<String, List<_Entry>> _byOrigin = const {};
 
+/// 🚨★★★Cards with a question still unanswered — they are NOT 착수 가능
+/// (유저 2026-08-26: 「결정대기가 남아있으면 대기중항목인게 맞지않냐?」).
+///
+/// The law was already written — CLAUDE.md: 「⛔미결이 남은 칸은 착수 가능이
+/// 아니다」 — and F-17 broke it the moment I raised F-17-Q1, because nothing
+/// moved the card. **A law nobody can forget is one the code applies**, so
+/// this is derived from the questions themselves rather than kept as a state
+/// I would have to remember to set and, worse, remember to unset.
+Set<String> _asking = const {};
+
 /// 🚨THE WAY BACK TO THE CARD THAT ASKED (유저 2026-08-26: 「그 답할것패널에
 /// 포인터? 내부에 태그같은거로서 질문이 생성된 패널을 표시해줌」).
 ///
@@ -1426,8 +1448,12 @@ String _itemPanel(_Entry e) {
   // named by the section they sit in. The tag (피드백 / 아이디어 / 임시) is the
   // part that actually differs between rows.
   final inbox = e.state == 'inbox';
-  final badge =
-      (e.state == 'open' || inbox) ? '' : (_stateLabels[e.state] ?? e.state);
+  // 대기 중 promises that 「배지가 무엇을 기다리는지 말한다」, and an unanswered
+  // question outranks whatever the state says: it is the thing actually
+  // holding the card, and it is the one the user can clear.
+  final badge = _asking.contains(e.id)
+      ? '답 대기'
+      : (e.state == 'open' || inbox) ? '' : (_stateLabels[e.state] ?? e.state);
   // 분류 전 now receives three different arrivals, and which one a row is
   // decides what I do with it. The chip says so on the row (유저 2026-08-26:
   // 「분류전으로 옮기고 대답 태그 붙이면」). ⚠️Plain feedback and ideas already
