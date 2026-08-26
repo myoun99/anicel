@@ -13,6 +13,7 @@ import '../controllers/default_layer_helpers.dart';
 import '../models/import/cut_folder_parse.dart';
 import '../models/import/tvpp_convert.dart';
 import '../models/import/tvpp_parse.dart';
+import '../services/cel_source_effect_pass.dart';
 import '../services/commands/import_media_command.dart';
 import '../services/commands/reorder_track_command.dart';
 import '../services/import/media_identity_reader.dart';
@@ -3082,16 +3083,37 @@ class EditorSessionManager extends ChangeNotifier {
   /// hidden; includes its animated Opacity); its pose rides separately
   /// through [layerCanvasPoseSample] into the interactive draw-through
   /// wrap, so it is repeated on the node for the merged painter.
-  ({List<CanvasLayerStackNode> nodes, double activeLayerOpacity})
+  ({
+    List<CanvasLayerStackNode> nodes,
+    double activeLayerOpacity,
+    List<ResolvedLayerEffect> activeSourceEffects,
+  })
   get editingCanvasStack {
     final cut = activeCutOrNull;
     final activeLayerId = this.activeLayerId;
     if (cut == null) {
-      return (nodes: const <CanvasLayerStackNode>[], activeLayerOpacity: 1.0);
+      return (
+        nodes: const <CanvasLayerStackNode>[],
+        activeLayerOpacity: 1.0,
+        activeSourceEffects: const <ResolvedLayerEffect>[],
+      );
     }
 
     final frameIndex = _timelineController.currentFrameIndex;
     var activeLayerOpacity = 1.0;
+    // 🚨THE ACTIVE ROW'S CPU HALF, CARRIED OUT WITH THE OPACITY.
+    //
+    // The row you are DRAWING on is painted tile by tile by the brush
+    // panel's own painter, which never sees a CutFrameCompositeLayer and
+    // never asks the image cache — the two places the colour keys are
+    // applied. Without this the keyed colour comes back the moment you
+    // stand on the row, and goes again when you step off: exactly the
+    // "발신자에 따라 길이 갈렸다" shape #1280 was about.
+    //
+    // It is resolved HERE because this is where the active node's chain is
+    // already resolved — asking a second time somewhere else is how the
+    // panel and the stack would come to disagree.
+    var activeSourceEffects = const <ResolvedLayerEffect>[];
     // Opacity drag preview (R4 #4/#6, DISPLAY only): the dragged rows'
     // static opacity substitutes in before the shared visit, so the canvas
     // follows the drag without any repo write per move.
@@ -3158,6 +3180,7 @@ class EditorSessionManager extends ChangeNotifier {
             activeLayerOpacity = !entry.layer.isVisible
                 ? 0.0
                 : _stackLayerOpacity(entry.layer, stackCut.layers, frameIndex);
+            activeSourceEffects = splitSourceEffects(entry.effects).source;
             return CanvasActiveLayerNode(
               opacity: entry.opacity,
               // The active row's CEL key — the SAME key the image branch
@@ -3238,6 +3261,12 @@ class EditorSessionManager extends ChangeNotifier {
           ? attachedBaseOf(activeStackLayer, stackCut.layers)
           : null;
       final activeFxCarrier = activeFxBase ?? activeStackLayer;
+      activeSourceEffects = splitSourceEffects(
+        resolveLayerEffectsAt(
+          effects: activeFxCarrier.effects,
+          frameIndex: frameIndex,
+        ),
+      ).source;
       nodes.add(
         CanvasActiveLayerNode(
           opacity: activeLayerOpacity,
@@ -3290,6 +3319,7 @@ class EditorSessionManager extends ChangeNotifier {
     return (
       nodes: List.unmodifiable(nodes),
       activeLayerOpacity: activeLayerOpacity,
+      activeSourceEffects: activeSourceEffects,
     );
   }
 
