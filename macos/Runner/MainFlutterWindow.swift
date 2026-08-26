@@ -360,7 +360,11 @@ final class PathGrantHandler {
             "status": "unavailable", "message": failure.localizedDescription,
           ])
         } else {
-          result(["status": "granted", "path": destinationPath])
+          // The ONE payload dialect: `items`, for one and for many alike.
+          // Speaking `path` here made every coordinated call decode as
+          // UNAVAILABLE in Dart — the replace ran, the file landed, and
+          // the app told the user the location had refused it.
+          result(["status": "granted", "items": [["path": destinationPath]]])
         }
       }
     }
@@ -409,7 +413,11 @@ final class PathGrantHandler {
             "status": "unavailable", "message": failure.localizedDescription,
           ])
         } else {
-          result(["status": "granted", "path": destinationPath])
+          // The ONE payload dialect: `items`, for one and for many alike.
+          // Speaking `path` here made every coordinated call decode as
+          // UNAVAILABLE in Dart — the replace ran, the file landed, and
+          // the app told the user the location had refused it.
+          result(["status": "granted", "items": [["path": destinationPath]]])
         }
       }
     }
