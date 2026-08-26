@@ -979,6 +979,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
         // mutates inside builds and gesture handlers, so its notify is
         // microtask-deferred rather than riding a session notify.
         ?selection,
+        // 🚨…and the timeline's four kinds, each on its own notifier. The
+        // button lets go of ALL FIVE now, so it has to hear all five — it
+        // used to answer `hasRegion` alone and could afford to listen to the
+        // marquee alone. ⛔A `session` notify does not carry these: they are
+        // ValueNotifiers of their own.
+        session.frameRangeSelection,
+        session.laneRangeSelection,
+        session.trackFrameRangeSelection,
+        session.rowSelection,
       ]),
       builder: (context, _) {
         final strings = AppText.strings;
@@ -1050,7 +1059,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                 // `hasSelection` keeps its own job: arrow keys nudge instead
                 // of flipping frames, and that one really does need a live
                 // layer to nudge.
-                onPressed: selection.hasRegion ? selection.deselect : null,
+                // 🚨ONE question, and it is the SESSION's — the marquee is
+                // one of five selection kinds, and this button is now the
+                // only door out of any of them (유저 2026-08-27: 「선택해제
+                // 타임라인에 중복으로 존재하는거」 — the pill's copy is gone).
+                //
+                // ⚠️`hasRegion` alone was right while this cleared only the
+                // marquee. It would now light for half of what it does.
+                onPressed: session.hasAnySelection
+                    ? session.clearAllSelections
+                    : null,
               ),
             ],
           ],
@@ -1349,6 +1367,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     widget.session.pixelSelectionRegion =
         () => widget.canvasSelectionCommands?.region;
     widget.session.pixelBrushColour = () => _brushTool.value.color;
+    // The marquee, as the fifth selection kind — so one 선택 해제 can let go
+    // of everything rather than half of it.
+    widget.session.canvasHasSelection =
+        () => widget.canvasSelectionCommands?.hasRegion ?? false;
+    widget.session.clearCanvasSelection =
+        () => widget.canvasSelectionCommands?.deselect();
     // H25: what the hand last set on each brush, from the last session.
     _brushTool.addListener(_rememberBrushHandSettings);
     unawaited(

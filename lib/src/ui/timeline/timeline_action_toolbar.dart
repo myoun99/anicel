@@ -805,37 +805,23 @@ class TimelineActionToolbar extends StatelessWidget {
       // reason the delete reads `deleteSubject` — the button's enablement
       // and what the press DOES have to come from one answer.
       onEditInstance != null && panelContext.canEditInstance,
-      // The deselect button reads the same one-question gate its press runs.
-      session.hasAnySelection,
-      // …and so do the two pixel verbs.
+      // The two pixel verbs read the same one-question gate their press runs.
       session.canRunPixelVerb,
     ),
     builder: (context) => CommandPill(
       key: const ValueKey<String>('timeline-toolbar-shared-group'),
       children: [
-        // 🚨deselect-button (유저): 「선택해제 버튼 — 태블릿엔 키보드가 없다」.
+        // ⛔THE DESELECT IS NOT HERE. It was, for one round, and that made
+        // TWO buttons called 선택 해제 wearing the same `Icons.deselect` —
+        // this one letting go of the timeline's selections, `rail-deselect-
+        // button` letting go of the marquee, and nothing on screen saying
+        // which was which (유저 2026-08-27: 「선택해제 타임라인에 중복으로
+        // 존재하는거」).
         //
-        // On THIS pill because this pill's subject is 「지금 무엇이 선택됐나」,
-        // and letting go is that subject's own verb — not a place chosen for
-        // it. It leads the row for the same reason: the selection comes
-        // first, then what to do with it.
-        //
-        // ⚠️Its NEIGHBOUR slot is deliberately left open. The 취소 button, if
-        // it is built, sits beside this one and the two have to be laid out
-        // together (정본) — so nothing else moves in here without looking at
-        // that first.
-        //
-        // ⛔Dimmed with nothing selected, never hidden: 「없다가 생기는 UI
-        // 금지」.
-        _iconButton(
-          key: const ValueKey<String>('shared-deselect-button'),
-          tooltip: AppText.strings.tlSharedDeselect,
-          icon: Icons.deselect,
-          onPressed: session.hasAnySelection
-              ? session.clearAllSelections
-              : null,
-        ),
-        const PillDivider(),
+        // The rail's is the one that stayed, and it lets go of ALL FIVE kinds
+        // now — see `hasAnySelection`. ⚠️The 취소 button, if it is built, goes
+        // beside THAT one; the note about holding its neighbour slot moved
+        // with the button it was about.
         // 🚨T25 — Edit Instance, on the SHARED pill because its subject is
         // 「지금 무엇이 선택됐나」 and that is what this pill is for.
         //

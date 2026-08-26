@@ -11,10 +11,19 @@ import 'package:anicel/src/ui/home_page.dart';
 /// selection is a TAP somewhere, and a tap also moves the playhead or the
 /// standing row. This is the one that only lets go.
 ///
-/// It lives on the SHARED pill because that pill's subject is 「지금 무엇이
-/// 선택됐나」 — letting go is that subject's own verb, not a place picked for it.
+/// 🚨THERE IS ONE OF IT (유저 2026-08-27: 「선택해제 타임라인에 중복으로
+/// 존재하는거」). For one round there were two — this rail button letting go of
+/// the marquee, a `shared-deselect-button` on the timeline pill letting go of
+/// the timeline's selections — both called 선택 해제, both wearing
+/// `Icons.deselect`, and nothing on screen saying which was which.
+///
+/// The rail's is the one that stayed, and it lets go of ALL FIVE kinds. The
+/// marquee is the fifth: deliberately outside `claimSelection`'s switch,
+/// because space and time are different axes and the pixel verbs need both at
+/// once — but 「지금 뭔가 선택됐나」 has to count it, or the button leaves a
+/// selection sitting on screen.
 void main() {
-  const button = ValueKey<String>('shared-deselect-button');
+  const button = ValueKey<String>('rail-deselect-button');
 
   Future<EditorSessionManager> pump(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(1500, 950));
@@ -96,5 +105,43 @@ void main() {
     await tester.tap(find.byKey(button));
     await tester.pumpAndSettle();
     expect(session.rowSelection.value, isEmpty);
+  });
+
+  testWidgets('the MARQUEE is the fifth kind — it lights the button and the '
+      'press lets go of it too', (tester) async {
+    final session = await pump(tester);
+    expect(
+      session.canvasHasSelection,
+      isNotNull,
+      reason: 'the workspace publishes it; without that the button is blind '
+          'to half of what it clears',
+    );
+
+    var marquee = true;
+    var cleared = false;
+    session.canvasHasSelection = () => marquee;
+    session.clearCanvasSelection = () {
+      marquee = false;
+      cleared = true;
+    };
+    // The rail rebuilds on the selection object's own channel; a stand-in
+    // has none, so nudge the session the way any selection change would.
+    session.notifyListeners();
+    await tester.pumpAndSettle();
+
+    expect(
+      session.hasAnySelection,
+      isTrue,
+      reason: 'a marquee alone counts — 「지금 뭔가 선택됐나」',
+    );
+    expect(tester.widget<IconButton>(find.byKey(button)).onPressed, isNotNull);
+
+    await tester.tap(find.byKey(button));
+    await tester.pumpAndSettle();
+    expect(
+      cleared,
+      isTrue,
+      reason: '⛔the one button lets go of EVERYTHING, not the timeline half',
+    );
   });
 }
