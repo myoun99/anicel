@@ -268,6 +268,73 @@ void main(List<String> args) {
     );
   }
 
+  // 🚨★★★AN ANSWER NOBODY READ IS THE SAME AS NO ANSWER.
+  //
+  // 유저 2026-08-27: 「세션에서 대답 완료해서 작업끝났것이 답할것에 아직
+  // 올라와있고 그런데 확인해줄래? **그런일 발생안하도록 작업흐름 개선하고
+  // 싶고**」 — measured that day: TEN cards sat in 분류 전 with an answer on
+  // them, and EIGHT more sat there unclassified. Two of those memos were the
+  // work the user had just asked for out loud, written days earlier in a card
+  // I had never opened.
+  //
+  // 분류 전 means 「내가 읽고 분류한다」. A card that stays there is not
+  // waiting for the user, it is waiting for ME — and nothing made that
+  // visible at the end of a turn.
+  //
+  // ⚠️AGE, not presence: feedback arriving this turn belongs in 분류 전 and
+  // blocking on it would make the section useless. A day later it is not
+  // triage any more, it is a card nobody read.
+  final untriaged = <String>[];
+  // The other half — a question still asking whose answer arrived in CHAT.
+  // The board cannot know about those, so they sit for ever
+  // (`Q-remaining-14` did, while the work its answer named was merged).
+  final stale = <String>[];
+  final ackFile = File('${file.parent.path}/.gate-ack');
+  final acked = ackFile.existsSync()
+      ? ackFile.readAsLinesSync().map((l) => l.trim()).toSet()
+      : <String>{};
+  final now = DateTime.now();
+  bool old(Map<String, dynamic> card) {
+    final ts = DateTime.tryParse('${card['ts'] ?? ''}');
+    // No stamp at all means it predates the `ts` rule — old by construction.
+    return ts == null || now.difference(ts).inHours >= 24;
+  }
+
+  for (final id in order) {
+    final card = merged[id]!;
+    final state = '${card['state'] ?? ''}';
+    if (acked.contains(id)) continue;
+    final answer = card['answer'];
+    final answered =
+        answer != null && '$answer'.trim().isNotEmpty && '$answer' != 'null';
+    if (state == 'inbox' && (answered || old(card))) {
+      untriaged.add(id);
+      continue;
+    }
+    if (state == 'ask' && !answered && old(card)) {
+      stale.add(id);
+    }
+  }
+
+  if (untriaged.isNotEmpty) {
+    complaints.add(
+      '분류 전에 하루 넘게 남은 카드: ${untriaged.join(', ')}\n'
+      '분류 전은 「내가 읽고 분류한다」는 뜻입니다 — 그대로 두면 유저가 준 '
+      '피드백을 아무도 안 읽은 것이 됩니다. 08-27에 열여덟 건이 그렇게 쌓였고 '
+      '그중 둘이 유저가 그날 말로 요청한 바로 그 작업이었습니다.\n'
+      '⇒ 카드마다 한 줄: 태그와 state 를 붙이고(할 일이 없으면 archived), '
+      '유저 메모가 있으면 그 원문을 "said" 로 남기고 "answer":null 로 지웁니다.',
+    );
+  }
+  if (stale.isNotEmpty) {
+    complaints.add(
+      '하루 넘게 답을 기다리는 질문: ${stale.join(', ')}\n'
+      '이 대화에서 이미 답이 나오지 않았는지 확인하세요 — 채팅으로 온 답은 '
+      '보드가 모릅니다. 답이 나왔으면 카드에 옮겨 적고 닫으세요.\n'
+      '아직 진짜로 열려 있는 질문이면 그 id 를 .gate-ack 에 한 줄로 적으세요.',
+    );
+  }
+
   if (complaints.isNotEmpty) {
     stdout.write(complaints.join('\\n'));
   }
