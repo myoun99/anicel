@@ -5,6 +5,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_viewport.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
+import '../theme/app_theme.dart';
 
 /// The Ctrl+T box chrome in viewport space: the transformed box outline,
 /// the scale handles and the rotate knob (null in QUAD mode — a free
@@ -33,7 +34,7 @@ class SelectionAntsPainter extends CustomPainter {
     this.closeTargetArmed = true,
     this.cursor,
     this.transformChrome,
-    this.movePendingDirty = false,
+    this.sessionHasChanges = false,
   }) : _phase = repaint,
        super(
          repaint: cursor == null
@@ -91,11 +92,14 @@ class SelectionAntsPainter extends CustomPainter {
 
   /// R16-① TVP grammar: RED silhouette while the move session holds
   /// unconfirmed changes, GREEN when confirmed/untouched.
-  final bool movePendingDirty;
+  final bool sessionHasChanges;
 
-  static const Color _chromeColor = Color(0xFF40C4FF);
-  static const Color _confirmedAntsColor = Color(0xFF2ECC71);
-  static const Color _pendingAntsColor = Color(0xFFFF4444);
+  /// The one colour every part of this painter draws the session in — ants,
+  /// transform box, handles, rotate lever. ⛔Three separate constants lived
+  /// here, and the box's was a fixed blue that never answered the question
+  /// the other two did.
+  Color get _sessionColor =>
+      AppColors.selectionSession(changed: sessionHasChanges);
 
   static const double _dashOn = 5;
   static const double _dashOff = 4;
@@ -178,7 +182,7 @@ class SelectionAntsPainter extends CustomPainter {
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = closeTargetArmed ? 1.5 : 1.0
-          ..color = _chromeColor,
+          ..color = _sessionColor,
       );
     }
 
@@ -192,8 +196,8 @@ class SelectionAntsPainter extends CustomPainter {
     final stroke = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5
-      ..color = _chromeColor;
-    final fill = Paint()..color = _chromeColor;
+      ..color = _sessionColor;
+    final fill = Paint()..color = _sessionColor;
 
     canvas.drawPath(Path()..addPolygon(chrome.box, true), stroke);
     for (final handle in chrome.handles) {
@@ -219,9 +223,9 @@ class SelectionAntsPainter extends CustomPainter {
     }
   }
 
-  /// White under-stroke + phase-offset colored dashes: GREEN for a
-  /// confirmed/untouched selection, RED while a move session holds
-  /// unconfirmed changes (R16-①, TVP grammar) — readable on any artwork.
+  /// White under-stroke + phase-offset dashes in [_sessionColor] — see
+  /// `AppColors.selectionSession` for what the two colours mean. The white
+  /// underneath is what keeps either of them readable on any artwork.
   void _paintAnts(Canvas canvas, Path path, double phase) {
     final white = Paint()
       ..style = PaintingStyle.stroke
@@ -230,7 +234,7 @@ class SelectionAntsPainter extends CustomPainter {
     final dashes = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1
-      ..color = movePendingDirty ? _pendingAntsColor : _confirmedAntsColor;
+      ..color = _sessionColor;
     canvas.drawPath(path, white);
     canvas.drawPath(_dashPath(path, phase), dashes);
   }
@@ -262,5 +266,5 @@ class SelectionAntsPainter extends CustomPainter {
       oldDelegate.closeTargetArmed != closeTargetArmed ||
       !identical(oldDelegate.cursor, cursor) ||
       oldDelegate.transformChrome != transformChrome ||
-      oldDelegate.movePendingDirty != movePendingDirty;
+      oldDelegate.sessionHasChanges != sessionHasChanges;
 }

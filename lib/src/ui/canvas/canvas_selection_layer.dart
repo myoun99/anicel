@@ -31,6 +31,7 @@ import '../../services/resample/resample_kernel.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../brush/canvas_selection_commands.dart';
 import '../brush/transform_tool_options.dart';
+import '../theme/app_theme.dart';
 import 'selection_ants_painter.dart';
 import 'selection_float_overlay.dart';
 import 'bitmap_surface_painter.dart';
@@ -1094,6 +1095,20 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         !_offsetsAreZero(_cornerOffsets) ||
         !_offsetsAreZero(_meshOffsets);
   }
+
+  /// Whether the session is holding changes that have not landed — the ONE
+  /// question the ants, the transform box and the confirm button all draw
+  /// (see `AppColors.selectionSession`).
+  ///
+  /// Two terms because a session has two ways to hold a change and the four
+  /// places that set [_moveSessionDirty] are all COMMIT points: closing a
+  /// box, a drag, a nudge. While a box is still OPEN nothing has been
+  /// committed yet, so that flag is false however far the user has dragged a
+  /// handle — 유저 2026-08-27: 「**변형중일땐**. 그니까 변경사항이 있으면 …
+  /// 빨간색」. [_boxIsTransformed] is the answer for exactly that window and
+  /// already existed; ⛔a second dirty flag would have been a second place to
+  /// forget to clear.
+  bool get _sessionHasChanges => _moveSessionDirty || _boxIsTransformed;
 
   /// Records what a commit just applied, for the next 재현.
   void _recordTransformRecall(SelectionAffine affine) {
@@ -3889,7 +3904,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                   // ants painter is already repainting for its dashes.
                   cursor: _tapsVertices ? _cursor : null,
                   transformChrome: chrome,
-                  movePendingDirty: _movePending && _moveSessionDirty,
+                  sessionHasChanges: _movePending && _sessionHasChanges,
                 ),
                 child: const SizedBox.expand(),
               ),
@@ -3903,9 +3918,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               top: _confirmButtonOffset(displayShape).dy,
               child: Material(
                 key: const ValueKey<String>('selection-move-confirm'),
-                color: _moveSessionDirty
-                    ? const Color(0xFFFF4444)
-                    : const Color(0xFF2ECC71),
+                color: AppColors.selectionSession(
+                  changed: _sessionHasChanges,
+                ),
                 shape: const CircleBorder(),
                 elevation: 2,
                 child: InkWell(
