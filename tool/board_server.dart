@@ -389,8 +389,21 @@ List<String> _shotsFor(String id) {
 /// more than one entry, always in that order — what was said, then what I made
 /// of it, then what I worked out.
 class _Log {
-  _Log(this.ts, this.at, this.text, {this.byUser = false});
+  _Log(this.ts, this.at, this.text, {this.byUser = false, this.pr});
   final String ts;
+
+  /// 🚨The PR this stage shipped, when it is a 구현 stage (유저 2026-08-26:
+  /// 「한 패널이 결국 여러PR을 가질수있게된다고 생각하거든? 그러니 pr태그를
+  /// 내용으로 옮기자. 그러고 구현이라는 항목만들고 거기에 태그 넣도록. 그럼
+  /// 구현도 결국 공정이니까 깔끔하게 타임라인흐르잖아」).
+  ///
+  /// 🎯Exactly right, and it dissolves the awkward chip this replaced. A PR is
+  /// something that HAPPENED to the card at a moment — which is what every
+  /// other entry here already is. As a head badge it could only ever hold one,
+  /// so a card that shipped in three passes had to lie about two of them or
+  /// be split into three cards (I-1 and I-1-rest are that split, made because
+  /// the shape had no room for the truth).
+  final int? pr;
 
   /// The 공정 this entry belongs to — 유저 피드백 · 대기중 · AI 판단 · 실기확인.
   final String at;
@@ -467,6 +480,21 @@ class _Entry {
   /// my answer goes back into it」.
   String of = '';
 
+  /// 🚨★★★WHAT IS STILL LEFT — and the reason this card is not in 확인할 것
+  /// (유저 2026-08-26: 「애초에 남은게 존재하면 확인할것에 있으면 안되는거
+  /// 아니냐? 다 끝난줄알았는데」).
+  ///
+  /// A card that claimed a PR used to land in 확인할 것 the moment that PR
+  /// merged, whether or not the CARD was finished. F-17 was five items; one
+  /// merged as #1242 and two were already true, so it appeared as a landing
+  /// with two items still unwritten — and a tick there DELETES the card, which
+  /// would have buried them.
+  ///
+  /// ⛔Deliberately not a bool and not a state. It has to say WHAT is left,
+  /// because 「this is unfinished」 with no list is the same dead end as a row
+  /// that says only 「T14」.
+  String rest = '';
+
   /// On a `law` record: what to read first in this area, and what must not be
   /// done. Separate from `note` because a caution outlives the status line it
   /// would otherwise be buried in.
@@ -478,6 +506,12 @@ class _Entry {
   String why = '';
   String how = '';
   int? pr;
+
+  /// Every PR this card has ever claimed, in the order it claimed them. [pr]
+  /// is just the newest — kept because the 확인할 것 row badges one landing,
+  /// but the LIST is what stops an older PR of the same card reappearing as
+  /// an orphan placeholder.
+  final List<int> prs = [];
   List<Map<String, dynamic>> options = const [];
   String? recommend;
   String? answer;
@@ -567,18 +601,37 @@ List<_Entry> _readRecords(File file) {
     // ⚠️`at` names the FIRST stage this record opens. A record normally
     // carries one of the three; when it carries several they are several
     // stages and the later ones take their own names.
+    int? linePr;
+    if (json['pr'] != null) {
+      linePr = (json['pr'] as num).toInt();
+      e.pr = linePr;
+      if (!e.prs.contains(linePr)) e.prs.add(linePr);
+    }
     var at = '${json['at'] ?? ''}'.trim();
+    // A line that names a PR is a 구현 unless it says otherwise — that is what
+    // claiming a PR MEANS, and defaulting it here is what makes the stage name
+    // something I cannot forget to write.
+    if (at.isEmpty && linePr != null) at = '구현';
+    var prLeft = linePr;
     void stage(String text, String fallback, {bool byUser = false}) {
       if (text.isEmpty) return;
       final label = at.isEmpty ? fallback : at;
       at = '';
       if (e.log.any((l) => l.text == text)) return;
-      e.log.add(_Log(ts, label, text, byUser: byUser));
+      // ⚠️The PR rides the FIRST stage this line opens, not all of them: it
+      // shipped once, however many things the line had to say about it.
+      e.log.add(_Log(ts, label, text, byUser: byUser, pr: prLeft));
+      prLeft = null;
     }
 
     stage('${json['said'] ?? ''}'.trim(), '유저 메모', byUser: true);
     stage('${json['note'] ?? ''}'.trim(), '작업 기록');
     stage('${json['think'] ?? ''}'.trim(), 'AI 판단');
+    // A bare `{"id":…, "pr":N}` with nothing written still happened, and a 구현
+    // with no story is better than a 구현 that vanishes.
+    if (prLeft != null) {
+      e.log.add(_Log(ts, '구현', 'PR #$prLeft', pr: prLeft));
+    }
     // An answer is the user's own words and belongs in the same story — it is
     // the one kind of entry the board itself writes on their behalf.
     final ansNote = '${json['answerNote'] ?? ''}'.trim();
@@ -605,9 +658,9 @@ List<_Entry> _readRecords(File file) {
     if (json['recommend'] != null) e.recommend = json['recommend'] as String;
     if (json['answer'] != null) e.answer = json['answer'] as String;
     if (json['answerNote'] != null) e.answerNote = json['answerNote'] as String;
-    if (json['pr'] != null) e.pr = (json['pr'] as num).toInt();
     if (json['under'] != null) e.under = (json['under'] as num).toInt();
     if (json['of'] != null) e.of = '${json['of']}';
+    if (json['rest'] != null) e.rest = '${json['rest']}';
     if (json['tags'] != null) {
       e.tags = (json['tags'] as List).map((t) => '$t').toList();
     }
@@ -856,6 +909,14 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
     });
   }
   _byOrigin = byOrigin;
+  // ⚠️An ARCHIVED question no longer blocks — I put it away because it was
+  // dealt with. Only a live, unanswered one holds the card.
+  _asking = {
+    for (final entry in byOrigin.entries)
+      if (entry.value.any((q) =>
+          q.answer == null && q.state != 'archived' && q.state != 'deleted'))
+        entry.key,
+  };
   final inbox = alive.where((e) => e.state == 'inbox').toList();
   // 답할 것 holds only what is still unanswered. An answered question leaves
   // for 분류 전 — see `/submit` for why that is the same section and not a
@@ -865,7 +926,13 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
       .toList();
   final checks = alive.where((e) => e.kind == 'check' && e.answer == null).toList();
 
-  final claimed = {for (final e in alive) if (e.pr != null) e.pr!: e};
+  // Every PR a live card ever claimed, not just its newest. An older one left
+  // out here comes back as an orphan `pr-N` placeholder beside the card that
+  // actually owns it.
+  final claimed = <int, _Entry>{
+    for (final e in alive)
+      for (final n in e.prs) n: e,
+  };
   // 🚨A PR WHOSE CARD IS DEAD MUST NOT COME BACK AS A PLACEHOLDER.
   //
   // ⚠️Read from `entries`, not `alive` — the dead cards are precisely the ones
@@ -881,7 +948,7 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   for (final e in entries) {
     if (e.state != 'archived' && e.state != 'deleted') continue;
     buriedIds.add(e.id);
-    if (e.pr != null) buriedPrs.add(e.pr!);
+    buriedPrs.addAll(e.prs);
   }
 
   final now = <String>[];
@@ -890,6 +957,10 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
     if (buriedPrs.contains(pr.number)) continue;
     final e = claimed[pr.number];
     if (e == null && buriedIds.contains('pr-${pr.number}')) continue;
+    // 🚨A MERGE IS NOT A FINISH. If the card still lists something left, it
+    // stays where the work is and never reaches 확인할 것 — a tick there
+    // deletes the card, and the leftovers would go with it.
+    if (e != null && e.rest.isNotEmpty && pr.state == 'MERGED') continue;
     // ⚠️A landing that was ticked is finished (its card carries `deleted` and
     // never reached `alive`); one that got a memo went back to 분류 전. Either
     // way it must not return to 확인할 것 every time the page opens.
@@ -937,6 +1008,10 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   final toCheck = <String>[];
   for (final pr in onPage) {
     final e = claimed[pr.number] ?? _prEntry(pr);
+    // 🚨A card that shipped in several passes has several merged PRs on this
+    // page, and one row each would be the same subject three times. `fresh` is
+    // newest-first, so the first one wins and the rest fold into its story.
+    if (shown.contains(e.id)) continue;
     shown.add(e.id);
     final mine = subs[pr.number] ?? const <_Entry>[];
     shown.addAll(mine.map((s) => s.id));
@@ -954,15 +1029,22 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
           // An answered item has been looked at and reported on; it belongs in
           // its own story now, not back in 착수 가능 claiming to be unstarted.
           e.answer == null &&
-          (e.pr == null || !claimed.containsKey(e.pr)))
+          // A claimed PR normally means the card is being CHECKED, not
+          // started. Unless it still has leftovers — then this is exactly
+          // where it belongs, with the merged part already in its story.
+          (e.pr == null || !claimed.containsKey(e.pr) || e.rest.isNotEmpty))
       .toList();
   // Work can be underway before there is a PR to point at -- an investigation,
   // a round mid-flight. Without this those items sat in 착수 가능 claiming to
   // be unstarted, which is the one thing they are not.
   final underway = loose.where((e) => e.state == 'wip').toList();
   final rest = loose.where((e) => e.state != 'wip').toList();
-  final ready = rest.where((e) => !_waiting.contains(e.state)).toList();
-  final waiting = rest.where((e) => _waiting.contains(e.state)).toList();
+  final ready = rest
+      .where((e) => !_waiting.contains(e.state) && !_asking.contains(e.id))
+      .toList();
+  final waiting = rest
+      .where((e) => _waiting.contains(e.state) || _asking.contains(e.id))
+      .toList();
   now.addAll(underway.map(_itemPanel));
 
   final b = StringBuffer();
@@ -1114,6 +1196,7 @@ String _intakeForm() {
 /// the section header cannot tell you.
 const _chipTint = <String, String>{
   '실기 피드백': 'bad',
+  '유저 피드백': 'bad',
   '피드백': 'run',
   '대답': 'ok',
 };
@@ -1182,6 +1265,16 @@ final _qName = RegExp(r'^(.+)-Q(\d+)$');
 /// which is the one moment it starts mattering. (Same shape as the bug where
 /// a ticked landing came back: `alive` filters out precisely what you need.)
 Map<String, List<_Entry>> _byOrigin = const {};
+
+/// 🚨★★★Cards with a question still unanswered — they are NOT 착수 가능
+/// (유저 2026-08-26: 「결정대기가 남아있으면 대기중항목인게 맞지않냐?」).
+///
+/// The law was already written — CLAUDE.md: 「⛔미결이 남은 칸은 착수 가능이
+/// 아니다」 — and F-17 broke it the moment I raised F-17-Q1, because nothing
+/// moved the card. **A law nobody can forget is one the code applies**, so
+/// this is derived from the questions themselves rather than kept as a state
+/// I would have to remember to set and, worse, remember to unset.
+Set<String> _asking = const {};
 
 /// 🚨THE WAY BACK TO THE CARD THAT ASKED (유저 2026-08-26: 「그 답할것패널에
 /// 포인터? 내부에 태그같은거로서 질문이 생성된 패널을 표시해줌」).
@@ -1402,8 +1495,12 @@ String _itemPanel(_Entry e) {
   // named by the section they sit in. The tag (피드백 / 아이디어 / 임시) is the
   // part that actually differs between rows.
   final inbox = e.state == 'inbox';
-  final badge =
-      (e.state == 'open' || inbox) ? '' : (_stateLabels[e.state] ?? e.state);
+  // 대기 중 promises that 「배지가 무엇을 기다리는지 말한다」, and an unanswered
+  // question outranks whatever the state says: it is the thing actually
+  // holding the card, and it is the one the user can clear.
+  final badge = _asking.contains(e.id)
+      ? '답 대기'
+      : (e.state == 'open' || inbox) ? '' : (_stateLabels[e.state] ?? e.state);
   // 분류 전 now receives three different arrivals, and which one a row is
   // decides what I do with it. The chip says so on the row (유저 2026-08-26:
   // 「분류전으로 옮기고 대답 태그 붙이면」). ⚠️Plain feedback and ideas already
@@ -1411,18 +1508,34 @@ String _itemPanel(_Entry e) {
   final arrival = switch (e.kind) {
     'decision' => '대답',
     'check' => '실기 피드백',
-    _ => '',
+    // An item only 「arrives」 if the user wrote on it — a plain working card
+    // has nothing new to announce.
+    _ => e.answer != null ? '유저 피드백' : '',
   };
   // The user's own writing is not editable once it is an ANSWER — editing it
   // would rewrite what they said, which is the one thing this whole redesign
   // exists to stop.
-  final editable = inbox && e.kind == 'item';
+  // ⚠️`answer == null` too: an item that came BACK carrying feedback is not a
+  // half-finished filing to correct, it is something to read. Showing it in an
+  // edit box would offer to rewrite what the user just said.
+  final editable = inbox && e.kind == 'item' && e.answer == null;
   final b = StringBuffer();
-  b.writeln('<details class="p${inbox ? ' box' : ''}" id="c-${_esc(e.id)}">');
+  // data-kind drives what `send` writes back. `item` so a memo on a working
+  // card is filed as feedback and lands in 분류 전, exactly like one left on
+  // a 확인할 것 row — ⛔and NOT as `check`, which would delete the card if the
+  // box were submitted empty.
+  b.writeln('<details class="p${inbox ? ' box' : ''}" id="c-${_esc(e.id)}"'
+      ' data-kind="item">');
   b.writeln(_head(
       e.id,
       e.title,
-      [if (arrival.isNotEmpty) arrival, ...e.tags],
+      [
+        if (arrival.isNotEmpty) arrival,
+        // ⛔No PR chip here. A card can ship in several passes, and a head
+        // badge holds one — so it lives in the story as a 구현 stage, where
+        // there is room for all of them and for what each one did.
+        ...e.tags,
+      ],
       badge,
       '',
       date: e.updated));
@@ -1439,10 +1552,29 @@ String _itemPanel(_Entry e) {
         '<button class="ghost" onclick="purge(\'${_esc(e.id)}\')">삭제</button>'
         '<span class="state"></span></div>');
   } else {
+    // First thing in the panel, above the history: what is still owed. It is
+    // why this card is here and not in 확인할 것.
+    if (e.rest.isNotEmpty) {
+      b.writeln('<p class="d rest"><b>남은 것</b> — ${_esc(e.rest)}</p>');
+    }
     b.writeln(_story(e));
     b.writeln(_questions(e));
     b.writeln(_care(e));
     b.writeln(_shotStrip(e.id));
+    // 🚨EVERY CARD TAKES FEEDBACK, not just the ones in 확인할 것 (유저
+    // 2026-08-26, looking at a card that had just moved OUT of that section:
+    // 「이거 해당칸에 피드백첨부하면되겟지?」).
+    //
+    // The memo box used to live only where the board happened to be asking a
+    // question. But a card is an organism the whole way down — noticing
+    // something about work that has not shipped yet is the CHEAPEST moment to
+    // say so, and making that depend on which list the card is in is the same
+    // 「write it in two places」 problem in a different coat.
+    b.writeln('<textarea rows="2" placeholder="여기에 피드백 — 원문 그대로 '
+        '남습니다 (스크린샷은 Ctrl+V)"></textarea>');
+    b.writeln('<div class="foot">'
+        '<button onclick="send(\'${_esc(e.id)}\')">피드백 제출</button>'
+        '<span class="state"></span></div>');
   }
   b.writeln('</div></details>');
   return b.toString();
@@ -1576,8 +1708,14 @@ String _story(_Entry e) {
         '${newest ? ' open' : ''}">');
     b.writeln('<summary><span class="lgk">${_esc(mine)}</span>'
         '<span class="lgp">${_esc(peek)}</span>'
+        '${entry.pr == null ? '' : '<span class="chip ok">#${entry.pr}</span>'}'
         '<span class="when">${_esc(_day(entry.ts))}</span></summary>');
     b.writeln('<p class="d">${_esc(entry.text)}</p>');
+    if (entry.pr != null) {
+      b.writeln('<p class="d"><a class="chip link" target="_blank" '
+          'href="https://github.com/$_repo/pull/${entry.pr}">'
+          'PR #${entry.pr} 열기 →</a></p>');
+    }
     b.writeln('</details>');
   }
   return b.toString();
@@ -1605,6 +1743,11 @@ function send(id){
   const memo = t ? (t.value||'').trim() : '';
   if(c.dataset.kind === 'decision' && !answer && !memo){
     stateOf(c).textContent = '고르거나 메모를 적어 주세요'; return;
+  }
+  // ⛔An empty memo on a working card is not a tick — there is nothing here to
+  // tick. Only 확인할 것 rows carry that meaning.
+  if(c.dataset.kind === 'item' && !memo){
+    stateOf(c).textContent = '적을 내용이 있어야 제출됩니다'; return;
   }
   post('/submit', {id:id, kind:c.dataset.kind, answer:answer||'ok', memo:memo}, c)
     .then(()=>redraw(c.id))
@@ -1908,6 +2051,9 @@ white-space:nowrap;flex:1;min-width:0}
    and darker text so the eye can drop down an open card and find their words
    without reading the labels. ⛔The stage name already says who; this only
    makes it scannable. */
+/* 남은 것 leads the panel and is the reason the card is not in 확인할 것, so
+   it reads as a claim on attention rather than as another note. */
+.rest{color:var(--run)}
 .lg.says{border-left-color:var(--run)}
 .lg.says>summary>.lgk{color:var(--run)}
 .lg.says>.d{color:var(--ink)}
