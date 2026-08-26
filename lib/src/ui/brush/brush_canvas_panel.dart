@@ -850,7 +850,51 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     widget.selectionCommands?.addListener(_handleSelectionChannelChanged);
     _bindSelectionHistoryRecorder();
     _bindCutPasteHandler();
+    _bindCelPixelRevision();
     _syncIdleAnts();
+  }
+
+  /// The cel-edit signal this panel listens on, remembered so it can be
+  /// released from the object it was taken on.
+  ValueListenable<int>? _listenedCelPixels;
+
+  /// 🚨★★★A CEL EDIT HAS TO REACH THE CANVAS THE SAME WAY WHOEVER MADE IT.
+  ///
+  /// A stroke commit worked because THIS panel makes it: `_commitSourceStroke`
+  /// ends in `setState`, the build re-evaluates
+  /// [_activeSurfacePainter], its token no longer matches the surface the
+  /// store now holds, and the memo falls. Nothing about that is the stroke's
+  /// — it is just that the initiator happened to be the widget that draws.
+  ///
+  /// 색 변환 and 픽셀 비우기 are pressed on the TIMELINE. They write the same
+  /// surfaces through the same coordinator and fire the same invalidation,
+  /// and every cache downstream honoured it — but no rebuild ever reached
+  /// here, so the memo kept a painter bound to the PRE-EDIT surface and the
+  /// canvas went on drawing pixels the store had already replaced.
+  ///
+  /// 유저 2026-08-27: 「여전히 해당 프레임에서 픽셀삭제누르면 반영안됨. 캔버스
+  /// 여전히 그림 남아있음. **다만 타임라인 재 굽기 들어가는거보면 역시
+  /// 데이터적으로는 삭제 잘 한거 맞음**」 — the data was right and only this
+  /// widget had not been told. And 「인덱스 이동하거나 액티브레이어 바꾸거나
+  /// 툴 바꾸거나」 cleared it because all three rebuild this panel, which is
+  /// the same repair by accident.
+  ///
+  /// [BrushFrameStore.celPixelRevision] is the ONE thing every surface write
+  /// bumps, `markCelEdited` being the only mutation signal there is. So the
+  /// panel follows the fact rather than the caller.
+  void _bindCelPixelRevision() {
+    final next = widget.coordinator?.frameStore.celPixelRevision;
+    if (identical(next, _listenedCelPixels)) {
+      return;
+    }
+    _listenedCelPixels?.removeListener(_handleCelPixelsChanged);
+    _listenedCelPixels = next?..addListener(_handleCelPixelsChanged);
+  }
+
+  void _handleCelPixelsChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   /// The tool settings panel lives in another subtree, so the slot carries
@@ -949,6 +993,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   @override
   void dispose() {
+    // From the REMEMBERED object, for the reason spelled out below about
+    // the viewport: the widget's may already point somewhere else.
+    _listenedCelPixels?.removeListener(_handleCelPixelsChanged);
+    _listenedCelPixels = null;
     CanvasTouchContacts.removeAppWideTouchListener(_handleAppWideTouch);
     // ⛔ONLY the panel's own. `_viewportNotifier` may BE the owner's — the
     // whole point of the controller — and disposing that would kill the
@@ -1564,6 +1612,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   @override
   void didUpdateWidget(covariant BrushCanvasPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // The coordinator can be swapped under us; the signal travels with it.
+    _bindCelPixelRevision();
     // A host that passes its own colours can change them without the scope
     // moving; `didChangeDependencies` alone would never hear that.
     if (oldWidget.backdropArgb != widget.backdropArgb ||
