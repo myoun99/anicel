@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -185,6 +186,7 @@ void main() {
         key: key,
         canvasSize: canvasSize,
         quality: PlaybackQuality.full,
+        sourceEffects: const [],
       ),
     );
     await pumpStack(tester, cache);
@@ -210,11 +212,13 @@ class _ColdThenWarm extends LayerFrameImageCache {
     required BrushFrameKey key,
     required CanvasSize canvasSize,
     required PlaybackQuality quality,
+    required List<ResolvedLayerEffect> sourceEffects,
   }) => (warm || key.layerId.value == 'settled')
       ? super.prepareSyncOrNull(
           key: key,
           canvasSize: canvasSize,
           quality: quality,
+          sourceEffects: sourceEffects,
         )
       : null;
 
@@ -223,12 +227,14 @@ class _ColdThenWarm extends LayerFrameImageCache {
     required BrushFrameKey key,
     required CanvasSize canvasSize,
     required PlaybackQuality quality,
+    required List<ResolvedLayerEffect> sourceEffects,
     bool Function()? shouldAbort,
   }) => (warm || key.layerId.value == 'settled')
       ? super.prepare(
           key: key,
           canvasSize: canvasSize,
           quality: quality,
+          sourceEffects: sourceEffects,
           shouldAbort: shouldAbort,
         )
       : Future<LayerFrameImage?>.value(null);
