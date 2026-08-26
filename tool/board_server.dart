@@ -1671,22 +1671,29 @@ String _care(_Entry e) {
   final hits = _laws.where((l) => e.tags.contains(l.tag) && l.care.isNotEmpty);
   if (hits.isEmpty) return '';
   final b = StringBuffer();
-  // 🚨Folded, and FIRST (유저 2026-08-26: 「손대기전에도 항목으로 접어. 그건
-  // 제일 위에 오도록」). It is the one thing that has to be read before the
-  // work rather than during it, so it leads — and it is long enough that
-  // leaving it open pushes the card's own story off the screen.
-  for (final l in hits) {
-    final flat = l.care.replaceAll('\n', ' ');
-    final peek = flat.length > 44 ? '${flat.substring(0, 44)}…' : flat;
-    // ⚠️A tag can be governed by more than one law — 타임라인 carries both the
-    // area's and 공정's. Two rows both labelled 「손대기 전에」 read as the same
-    // thing drawn twice, so each says WHICH law it is.
-    final name = l.id.startsWith('law-') ? l.id.substring(4) : l.id;
-    b.write('<details class="lg care">'
-        '<summary><span class="lgk">전에 · ${_esc(name)}</span>'
-        '<span class="lgp">${_esc(peek)}</span></summary>'
-        '<p class="d">${_esc(l.care)}</p></details>');
+  // 🚨ONE item, folded, first (유저 2026-08-26: 「항목이름 작업전 확인 으로
+  // 바꾸고 분야별로 항목 만드는게아니라 옛날처럼 그대로하는데 그걸 작업전확인에
+  // 몰아넣는거야」).
+  //
+  // ⛔An item per area was me letting the DATA's shape (one law record per
+  // tag) pick the UI's shape. To a reader they are one thing — what to know
+  // before starting — and splitting them made a card with two laws look like
+  // it had two different warnings to weigh.
+  //
+  // It leads because it is the one thing to read BEFORE the work rather than
+  // during it, and it folds because it is long enough to push the card's own
+  // story off the screen.
+  final laws = hits.toList();
+  final areas = laws
+      .map((l) => l.id.startsWith('law-') ? l.id.substring(4) : l.id)
+      .join(' · ');
+  b.write('<details class="lg care">'
+      '<summary><span class="lgk">작업전 확인</span>'
+      '<span class="lgp">${_esc(areas)}</span></summary>');
+  for (final l in laws) {
+    b.write('<p class="d">${_esc(l.care)}</p>');
   }
+  b.write('</details>');
   return b.toString();
 }
 
