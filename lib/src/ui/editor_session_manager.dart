@@ -1168,48 +1168,23 @@ class EditorSessionManager extends ChangeNotifier {
       trackFrameRangeSelection.value != null ||
       rowSelection.value.isNotEmpty;
 
-  /// WHICH cels the two PIXEL verbs would act on — see [PixelVerbSubject] for
-  /// why the order is DELETE's minus the cuts rung.
+  /// WHICH cels the two PIXEL verbs would act on — see [PixelVerbSubject].
   PixelVerbSubject get pixelVerbSubject {
-    if (pixelVerbLayerIds().isNotEmpty) {
-      return PixelVerbSubject.layers;
+    if (pixelVerbCellKeys().isEmpty) {
+      return PixelVerbSubject.nothing;
     }
-    return pixelVerbCellKeys().isEmpty
-        ? PixelVerbSubject.nothing
-        : PixelVerbSubject.cells;
+    return frameRangeSelection.value == null
+        ? PixelVerbSubject.standing
+        : PixelVerbSubject.range;
   }
 
-  /// The rows rung, gated.
+  /// The cels a pixel verb would touch: a live frame range's whole block, or
+  /// the one cel you are standing on.
   ///
-  /// ⚠️`owningLayerId`, not `row is LayerRowAddress` — standing on a property
-  /// lane must not cost you the layer you draw on (F-5, #1212). A lane row
-  /// names its layer and that layer's cel is what a pixel verb wants.
-  List<LayerId> pixelVerbLayerIds() {
-    final selection = rowSelection.value;
-    if (selection.isEmpty) {
-      return const [];
-    }
-    final byId = {for (final layer in layers) layer.id: layer};
-    final ids = <LayerId>[];
-    for (final row in selection) {
-      final layerId = row.owningLayerId;
-      if (layerId == null || ids.contains(layerId)) {
-        continue;
-      }
-      final layer = byId[layerId];
-      // ⛔The one gate, never a new predicate: `layerAcceptsBrushInput`
-      // already refuses text rows (their pixels are a projection and would
-      // come back on the next rederive) and reference media (rasterise it
-      // and it passes on its own).
-      if (layer != null && layerAcceptsBrushInput(layer)) {
-        ids.add(layerId);
-      }
-    }
-    return ids;
-  }
-
-  /// The frame-axis rung: a live range's (frame × row) block, else the cel
-  /// under the playhead.
+  /// ⛔No row-selection rung. Selecting rows says which rows are selected, not
+  /// 「recolour all of their drawings」 — 유저 2026-08-26: 「내가 비슷한얘기
+  /// 옛날에 했다가 폐기했어」. A frame range is different in kind: it is drawn
+  /// across the cels themselves.
   List<BrushFrameKey> pixelVerbCellKeys() {
     final cut = activeCutOrNull;
     if (cut == null) {
