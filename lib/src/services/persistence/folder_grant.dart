@@ -596,6 +596,42 @@ abstract final class FolderPicker {
     }, kind)).first;
   }
 
+  /// Test seam for [replaceFileCoordinated] — the channel is unreachable
+  /// from a Dart test the same way every picker above is.
+  /// ⚠️Reset in `test/flutter_test_config.dart`.
+  static Future<bool> Function({
+    required String sourcePath,
+    required String destinationPath,
+  })?
+  debugCoordinatedReplacer;
+
+  /// Overwrites [destinationPath] with [sourcePath]'s bytes through the
+  /// platform's file COORDINATION (NSFileCoordinator) — the access
+  /// discipline File Provider documents actually honour for outside
+  /// writers. The save fallback for providers that refuse plain in-place
+  /// writes (실측 08-26, iPhone + Google Drive). Answers whether the
+  /// replace landed; false on the platforms that have no coordinator.
+  static Future<bool> replaceFileCoordinated({
+    required String sourcePath,
+    required String destinationPath,
+  }) async {
+    final override = debugCoordinatedReplacer;
+    if (override != null) {
+      return override(
+        sourcePath: sourcePath,
+        destinationPath: destinationPath,
+      );
+    }
+    if (!grantsAreScoped) {
+      return false;
+    }
+    final answer = await _invoke('replaceFileCoordinated', {
+      'sourcePath': sourcePath,
+      'destinationPath': destinationPath,
+    }, GrantKind.file);
+    return answer.first.isGranted;
+  }
+
   static Future<List<FolderGrant>> _invoke(
     String method,
     Map<String, Object?> arguments,
