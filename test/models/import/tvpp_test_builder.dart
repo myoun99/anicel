@@ -117,7 +117,7 @@ class TvppBuilder {
     v.setUint32(4 * 4, opacity);
     v.setUint32(11 * 4, (post << 16) | 1);
     v.setUint32(13 * 4, (pre << 16) | 1);
-    v.setUint32(14 * 4, (visible ? 1 : 0) << 16);
+    v.setUint32(7 * 4, visible ? 0 : 1);
     v.setUint32(17 * 4, parentId);
     v.setUint32(18 * 4, layerId);
     chunk(headerChunk, header);

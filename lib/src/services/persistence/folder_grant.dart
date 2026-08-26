@@ -632,6 +632,97 @@ abstract final class FolderPicker {
     return answer.first.isGranted;
   }
 
+  /// Test seam for [readFileCoordinated], for the same reason as the
+  /// replacer's. ⚠️Reset in `test/flutter_test_config.dart`.
+  static Future<bool> Function({
+    required String sourcePath,
+    required String destinationPath,
+  })?
+  debugCoordinatedReader;
+
+  /// Stages [sourcePath]'s bytes into [destinationPath] through the
+  /// platform's file COORDINATION — the read twin of
+  /// [replaceFileCoordinated]. A File Provider document (Drive,
+  /// Dropbox…) can be a non-materialised placeholder that a plain
+  /// `dart:io` read refuses even inside an open security scope (실측
+  /// 08-26, iPhone + Google Drive .tvpp); coordinated reading is what
+  /// makes the provider download it. False on the platforms that have
+  /// no coordinator — callers fall back to nothing, their direct read
+  /// already failed.
+  static Future<bool> readFileCoordinated({
+    required String sourcePath,
+    required String destinationPath,
+  }) async {
+    final override = debugCoordinatedReader;
+    if (override != null) {
+      return override(
+        sourcePath: sourcePath,
+        destinationPath: destinationPath,
+      );
+    }
+    if (!grantsAreScoped) {
+      return false;
+    }
+    final answer = await _invoke('readFileCoordinated', {
+      'sourcePath': sourcePath,
+      'destinationPath': destinationPath,
+    }, GrantKind.file);
+    return answer.first.isGranted;
+  }
+
+  /// ONE law for every user-picked file the app opens, whatever its
+  /// format: hand back a path a plain read will actually serve. A File
+  /// Provider document (Drive, Dropbox…) can be a non-materialised
+  /// placeholder that exists and then refuses the first read even
+  /// inside the picker's open scope (실측 08-26, iPhone + Google
+  /// Drive) — when the probe fails, the bytes are staged locally
+  /// through [readFileCoordinated], which is what makes the provider
+  /// download them.
+  ///
+  /// `staged` tells the caller whose file it is now: a staged copy
+  /// lives in the system temp — read-and-discard callers delete it,
+  /// keep-open callers leave it for the OS sweep and point their saves
+  /// back at the original. Throws [FileSystemException] when neither
+  /// road produces bytes: access, not format.
+  static Future<({String path, bool staged})> materializeOpenedFile(
+    String path,
+  ) async {
+    if (await _plainlyReadable(path)) {
+      return (path: path, staged: false);
+    }
+    final dot = path.lastIndexOf('.');
+    final extension = dot > path.lastIndexOf(Platform.pathSeparator)
+        ? path.substring(dot)
+        : '';
+    final staged =
+        '${Directory.systemTemp.path}${Platform.pathSeparator}'
+        'anicel-open-${DateTime.now().microsecondsSinceEpoch}$extension';
+    if (await readFileCoordinated(
+          sourcePath: path,
+          destinationPath: staged,
+        ) &&
+        await _plainlyReadable(staged)) {
+      return (path: staged, staged: true);
+    }
+    throw FileSystemException('파일을 읽지 못했습니다', path);
+  }
+
+  /// Whether a plain read can actually produce bytes — a cloud
+  /// placeholder often EXISTS and then refuses the first read, so
+  /// existence alone answers the wrong question.
+  static Future<bool> _plainlyReadable(String path) async {
+    try {
+      final file = await File(path).open();
+      try {
+        return (await file.read(1)).isNotEmpty;
+      } finally {
+        await file.close();
+      }
+    } on FileSystemException {
+      return false;
+    }
+  }
+
   static Future<List<FolderGrant>> _invoke(
     String method,
     Map<String, Object?> arguments,

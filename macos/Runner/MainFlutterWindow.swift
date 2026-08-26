@@ -119,6 +119,11 @@ final class PathGrantHandler {
         sourcePath: arguments?["sourcePath"] as? String,
         destinationPath: arguments?["destinationPath"] as? String,
         result: result)
+    case "readFileCoordinated":
+      PathGrantHandler.readFileCoordinated(
+        sourcePath: arguments?["sourcePath"] as? String,
+        destinationPath: arguments?["destinationPath"] as? String,
+        result: result)
     default:
       // Only the two folder-grant methods live here. The channel's other
       // methods are mobile-only on the Dart side — `ensureInitialized` early
@@ -349,6 +354,48 @@ final class PathGrantHandler {
         }
       }
       let failure = coordinationError ?? (writeError as NSError?)
+      DispatchQueue.main.async {
+        if let failure {
+          result([
+            "status": "unavailable", "message": failure.localizedDescription,
+          ])
+        } else {
+          result(["status": "granted", "path": destinationPath])
+        }
+      }
+    }
+  }
+
+  /// The READ twin: a File Provider document can be a non-materialised
+  /// placeholder, and a plain read of one fails even inside an open
+  /// security scope. Coordinated reading tells the provider to download;
+  /// the bytes are staged into [destinationPath] for Dart to read.
+  static func readFileCoordinated(
+    sourcePath: String?, destinationPath: String?,
+    result: @escaping FlutterResult
+  ) {
+    guard let sourcePath, let destinationPath else {
+      result(["status": "unavailable"])
+      return
+    }
+    DispatchQueue.global(qos: .userInitiated).async {
+      let source = URL(fileURLWithPath: sourcePath)
+      let destination = URL(fileURLWithPath: destinationPath)
+      let coordinator = NSFileCoordinator(filePresenter: nil)
+      var coordinationError: NSError?
+      var readError: Error?
+      coordinator.coordinate(
+        readingItemAt: source, options: [],
+        error: &coordinationError
+      ) { url in
+        do {
+          let data = try Data(contentsOf: url, options: .mappedIfSafe)
+          try data.write(to: destination, options: .atomic)
+        } catch {
+          readError = error
+        }
+      }
+      let failure = coordinationError ?? (readError as NSError?)
       DispatchQueue.main.async {
         if let failure {
           result([

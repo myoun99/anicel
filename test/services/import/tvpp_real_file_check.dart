@@ -52,6 +52,21 @@ void main() {
     // Clip 13 carries the real production marks (68, every 3 frames).
     expect(parsed.clips[1].imageMarks, hasLength(68));
 
+    // Visibility = LRHD[7] bit 0, against the JSON export's own
+    // answers. ⚠️That export is the file NAMED 13.json, but its clip
+    // name says "12" and its layer list matches THIS clip — the
+    // filename is the folder's cut number, not the clip's. The first
+    // visibility reading (word 14) was the colour-group index and
+    // matched three probes by parity luck — hence real-file pins,
+    // plural, from the layer family that exposed it.
+    expect(clip.layers.firstWhere((l) => l.name == 'TAP').visible, isFalse);
+    expect(clip.layers.firstWhere((l) => l.name == 'F').visible, isTrue);
+    expect(
+      clip.layers.firstWhere((l) => l.name == 'F_nuri').visible,
+      isTrue,
+    );
+    expect(clip.layers.firstWhere((l) => l.name == 'CON').visible, isFalse);
+
     // Every cut references its rushes as its sound track.
     expect(clip.audioTracks, hasLength(1));
     expect(clip.audioTracks.single.filePath, endsWith('12.mp4'));
