@@ -179,25 +179,34 @@ void main() {
       expect(conversion.slotsByFile.keys, hasLength(2));
     });
 
-    test('one camera key bakes as a constant pose; several warn', () {
+    test('camera keys bake to per-frame poses', () {
+      final layers = [
+        _layer('L', slots: [for (var i = 0; i < 12; i++) _image()]),
+      ];
       final still = convertTvppClip(
-        _clip(layers: const [], camera: [_point(x: 160)]),
+        _clip(layers: layers, camera: [_point(x: 160)]),
         clipIndex: 0,
       ).result;
-      expect(still.camera.positions, hasLength(1));
-      expect(still.camera.positions.single.x, 160);
+      expect(still.camera.positions, hasLength(12));
+      expect(still.camera.positions.first.x, 160);
+      expect(still.camera.positions.last.x, 160);
       expect(still.camera.keyframes, hasLength(1));
 
+      // A linear two-key pan (no easing profile): halfway in time is
+      // halfway in space, and frames past the last key hold it.
       final moving = convertTvppClip(
         _clip(
-          layers: const [],
+          layers: layers,
           camera: [_point(x: 0), _point(x: 100, instant: 10)],
         ),
         clipIndex: 0,
       ).result;
-      expect(moving.camera.positions, isEmpty);
-      expect(moving.camera.keyframes, isEmpty);
-      expect(moving.warnings, hasLength(1));
+      expect(moving.camera.positions, hasLength(12));
+      expect(moving.camera.positions[0].x, 0);
+      expect(moving.camera.positions[5].x, closeTo(50, 1e-6));
+      expect(moving.camera.positions[10].x, 100);
+      expect(moving.camera.positions[11].x, 100);
+      expect(moving.warnings, isEmpty);
     });
   });
 }

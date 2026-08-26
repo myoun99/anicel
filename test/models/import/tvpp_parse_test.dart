@@ -63,6 +63,10 @@ void main() {
       b.zchkHold();
 
       b.clipConfig(
+        audio: [
+          ('G:/sagyou/12.mp4', 0.120833, 0.51, false),
+          ('G:/sagyou/せりふ.wav', 0, 1, true),
+        ],
         cameraData: '''
 mmotionblur=0.000000
 mpoints-0-x=160.000000
@@ -158,10 +162,20 @@ mpoints-1-bezieraftery=0.000000
       expect(clip.cameraPoints[1].zoomFactor, 1.56);
       expect(clip.cameraPoints[1].instant, 24);
 
+      // Sound tracks: references with non-ASCII surviving intact.
+      expect(clip.audioTracks, hasLength(2));
+      expect(clip.audioTracks[0].filePath, 'G:/sagyou/12.mp4');
+      expect(clip.audioTracks[0].offsetSeconds, closeTo(0.120833, 1e-9));
+      expect(clip.audioTracks[0].volume, closeTo(0.51, 1e-9));
+      expect(clip.audioTracks[0].muted, isFalse);
+      expect(clip.audioTracks[1].filePath, 'G:/sagyou/せりふ.wav');
+      expect(clip.audioTracks[1].muted, isTrue);
+
       final clip13 = result.clips[1];
       expect(clip13.name, 'cut13');
       expect(clip13.cameraPoints, isEmpty);
       expect(clip13.layers, hasLength(2));
+      expect(clip13.audioTracks, isEmpty);
     });
 
     test('reads v11 files: bare SRAW/DBOD chunks, no folders', () {

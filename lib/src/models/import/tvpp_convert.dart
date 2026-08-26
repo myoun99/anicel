@@ -1,4 +1,5 @@
 import 'tvp_json_parse.dart';
+import 'tvpp_camera_bake.dart';
 import 'tvpp_parse.dart';
 
 /// One clip of a .tvpp, translated into the SAME parse-result model the
@@ -189,28 +190,14 @@ TvppClipConversion convertTvppClip(
     );
   }
 
-  // Camera: a single authored key bakes trivially (a constant pose —
-  // most cuts). Moving cameras need the path evaluation round.
-  final poses = <TvpCameraPose>[];
-  if (clip.cameraPoints.length == 1) {
-    final p = clip.cameraPoints.single;
-    poses.add(
-      TvpCameraPose(
-        frame: 1,
-        x: p.x,
-        y: p.y,
-        angleDegrees: p.rotationDegrees,
-        scale: p.zoomFactor,
-        sizeX: p.sizeX,
-        sizeY: p.sizeY,
-      ),
-    );
-  } else if (clip.cameraPoints.length > 1) {
-    warnings.add(
-      '${clip.name}: 카메라 키 ${clip.cameraPoints.length}개 — 이동 카메라 평가는 '
-      '아직이라 카메라 없이 들어간다.',
-    );
-  }
+  // Camera: the project file carries only the authored keys — the
+  // per-frame bake the JSON export ships is computed here (spatial
+  // bezier between keys, each segment eased by its position profile).
+  final poses = bakeTvppCamera(
+    clip.cameraPoints,
+    parseTvppCameraProfiles(clip.cameraDataText),
+    frameCount: clip.frameCount,
+  );
   final keyframes = [
     for (final p in clip.cameraPoints)
       TvpCameraPose(
@@ -245,6 +232,15 @@ TvppClipConversion convertTvppClip(
       ),
       layers: layers,
       warnings: warnings,
+      audioTracks: [
+        for (final track in clip.audioTracks)
+          TvpAudioTrack(
+            filePath: track.filePath,
+            offsetSeconds: track.offsetSeconds,
+            volume: track.volume,
+            muted: track.muted,
+          ),
+      ],
     ),
     slotsByFile: slotsByFile,
   );

@@ -155,12 +155,6 @@ class _ImportDialogState extends State<ImportDialog> {
   String? _tvpJsonPath;
   TvpJsonParseResult? _tvpJson;
 
-  /// A picked `.tvpp` — TVPaint's own project file, read directly, every
-  /// clip a new cut. Adopted on extension alone: a project can be
-  /// hundreds of MB, so validation happens inside the async import
-  /// rather than here.
-  String? _tvppPath;
-
   /// Sources the drop carried but this window cannot act on (the folder
   /// path wins when a folder is among them) — listed so nothing exits
   /// silently.
@@ -217,17 +211,6 @@ class _ImportDialogState extends State<ImportDialog> {
   void _adoptTvpJsonFromFiles() {
     _tvpJsonPath = null;
     _tvpJson = null;
-    _tvppPath = null;
-    final project = _files.firstWhere(
-      (path) => path.toLowerCase().endsWith('.tvpp'),
-      orElse: () => '',
-    );
-    if (project.isNotEmpty) {
-      _tvppPath = project;
-      _ignoredSources.addAll(_files.where((path) => path != project));
-      _files.clear();
-      return;
-    }
     final candidate = _files.firstWhere(
       (path) => path.toLowerCase().endsWith('.json'),
       orElse: () => '',
@@ -335,28 +318,20 @@ class _ImportDialogState extends State<ImportDialog> {
     return false;
   }
 
-  /// Picks a `.tvpp` — the project file itself, no export required. The
-  /// old JSON-export FOLDER flow stays reachable by drop until the whole
-  /// JSON path retires with the direct reader proven.
-  Future<void> _pickTvpProject() async {
-    final grants = await pickFileGrantsForUser(
-      context,
-      acceptedTypeGroups: [FileTypeGroups.tvppProject],
-    );
-    final path = grants.isEmpty ? null : grants.first.path;
+  Future<void> _pickTvpExport() async {
+    final path = widget.directoryPicker != null
+        ? await widget.directoryPicker!()
+        : await pickFolderForUser(context);
     if (path == null || !mounted) {
       return;
     }
     setState(() {
-      _pickedGrants.addAll(grants);
       _folder = null;
       _parsed = null;
       _status = '';
       _files.clear();
       _ignoredSources.clear();
-      _tvpJsonPath = null;
-      _tvpJson = null;
-      _tvppPath = path;
+      _adoptTvpExportFolder(path);
     });
   }
 
@@ -429,7 +404,6 @@ class _ImportDialogState extends State<ImportDialog> {
       _files.clear();
       _tvpJsonPath = null;
       _tvpJson = null;
-      _tvppPath = null;
       _folder = path;
       _rasterize = true;
       _reparseFolder();
@@ -493,8 +467,7 @@ class _ImportDialogState extends State<ImportDialog> {
       !_running &&
       (_files.isNotEmpty ||
           (_folder != null && _parsed != null) ||
-          _tvpJson != null ||
-          _tvppPath != null);
+          _tvpJson != null);
 
   /// Kinds not placeable yet (video needs a decode engine): named
   /// honestly instead of failing as a decode. PDF left this set in R4.
@@ -522,20 +495,8 @@ class _ImportDialogState extends State<ImportDialog> {
     try {
       final folder = _folder;
       final tvpJsonPath = _tvpJsonPath;
-      final tvppPath = _tvppPath;
       final destination = _destination;
-      if (tvppPath != null) {
-        // The project file needs no export and registers no pool asset —
-        // its images become cels, every clip its own new cut.
-        final tvppWarnings = await session.importTvpp(tvppPath: tvppPath);
-        if (tvppWarnings == null) {
-          warnings.add('Could not read that TVPaint project.');
-        } else {
-          imported += 1;
-          done.add(tvppPath);
-          warnings.addAll(tvppWarnings);
-        }
-      } else if (tvpJsonPath != null) {
+      if (tvpJsonPath != null) {
         // 1:1 always — see the Fit note in the settings column.
         // A TVPaint export registers no pool asset of its own — its
         // drawings become cels — so it has no copy-or-reference to make.
@@ -686,9 +647,6 @@ class _ImportDialogState extends State<ImportDialog> {
         _tvpJsonPath = null;
         _tvpJson = null;
       }
-      if (_tvppPath != null && done.contains(_tvppPath)) {
-        _tvppPath = null;
-      }
       _status = warnings.isEmpty
           ? 'Nothing imported.'
           : warnings.take(3).join(' · ');
@@ -810,9 +768,7 @@ class _ImportDialogState extends State<ImportDialog> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Expanded(child: _interpretationTable(context)),
-                      if (_folder != null ||
-                          _tvpJson != null ||
-                          _tvppPath != null) ...[
+                      if (_folder != null || _tvpJson != null) ...[
                         const VerticalDivider(width: 1),
                         SizedBox(width: 272, child: _settingsColumn(context)),
                       ],
@@ -1078,9 +1034,7 @@ class _ImportDialogState extends State<ImportDialog> {
 
   Widget _sourceBar(BuildContext context) {
     final theme = Theme.of(context);
-    final label = _tvppPath != null
-        ? _tvppPath!
-        : _tvpJsonPath != null
+    final label = _tvpJsonPath != null
         ? _tvpJsonPath!
         : _folder != null
         ? _folder!
@@ -1115,8 +1069,8 @@ class _ImportDialogState extends State<ImportDialog> {
           const SizedBox(width: 6),
           OutlinedButton(
             key: const ValueKey<String>('import-browse-tvpaint-button'),
-            onPressed: _running ? null : _pickTvpProject,
-            child: const Text('TVPaint…'),
+            onPressed: _running ? null : _pickTvpExport,
+            child: const Text('TVPaint export…'),
           ),
         ],
       ),
@@ -1358,7 +1312,7 @@ class _ImportDialogState extends State<ImportDialog> {
 
   Widget _settingsColumn(BuildContext context) {
     final isFolder = _folder != null;
-    final isTvp = _tvpJson != null || _tvppPath != null;
+    final isTvp = _tvpJson != null;
     // Both of these land a whole CUT rather than placing a file, so the
     // destination and rasterize knobs have nothing to decide.
     final landsWholeCut = isFolder || isTvp;

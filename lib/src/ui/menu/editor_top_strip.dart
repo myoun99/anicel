@@ -161,11 +161,16 @@ class EditorTopStrip extends StatelessWidget {
   /// the path this round promoted.
   Future<void> _openWithRecovery(BuildContext context, ProjectPick pick) async {
     final path = pick.path;
-    // A TVPaint project: its clips land as new cuts in the CURRENT
-    // project — nothing is discarded, so no unsaved-work gate, and no
-    // recovery/recents machinery (there is no .anicel here to track).
+    // A TVPaint project opens AS A PROJECT (the user's rule — a .tvpp
+    // holds several cuts): everything current is replaced, so the same
+    // unsaved-work gate as any open guards it. No recovery/recents —
+    // the result is a NEW unsaved project until its first save.
     if (path.toLowerCase().endsWith('.tvpp')) {
-      final warnings = await session.importTvpp(tvppPath: path);
+      if (!await ensureUnsavedWorkSettled(context, session) ||
+          !context.mounted) {
+        return;
+      }
+      final warnings = await session.openTvppAsProject(tvppPath: path);
       if (!context.mounted) {
         return;
       }

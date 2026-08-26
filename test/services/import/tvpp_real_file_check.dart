@@ -52,6 +52,12 @@ void main() {
     // Clip 13 carries the real production marks (68, every 3 frames).
     expect(parsed.clips[1].imageMarks, hasLength(68));
 
+    // Every cut references its rushes as its sound track.
+    expect(clip.audioTracks, hasLength(1));
+    expect(clip.audioTracks.single.filePath, endsWith('12.mp4'));
+    expect(clip.audioTracks.single.offsetSeconds, closeTo(0.120833, 1e-6));
+    expect(parsed.clips[1].audioTracks.single.filePath, endsWith('13.mp4'));
+
     // F_n's six SRAW drawings: opaque-pixel counts measured from the
     // PNG oracle during the format verification.
     const oracle = [1158, 1141, 1065, 1174, 1186, 994];

@@ -304,6 +304,22 @@ class TvpColor {
 }
 
 /// The whole export, interpreted.
+/// One sound track of the clip — only the .tvpp reader can see these
+/// (the JSON export carries no audio). A REFERENCE, never embedded.
+class TvpAudioTrack {
+  const TvpAudioTrack({
+    required this.filePath,
+    required this.offsetSeconds,
+    required this.volume,
+    required this.muted,
+  });
+
+  final String filePath;
+  final double offsetSeconds;
+  final double volume;
+  final bool muted;
+}
+
 class TvpJsonParseResult {
   const TvpJsonParseResult({
     required this.versionMajor,
@@ -320,6 +336,7 @@ class TvpJsonParseResult {
     required this.camera,
     required this.layers,
     required this.warnings,
+    this.audioTracks = const [],
   });
 
   final int versionMajor;
@@ -347,6 +364,10 @@ class TvpJsonParseResult {
   final List<TvpLayer> layers;
 
   final List<String> warnings;
+
+  /// Sound tracks — filled by the .tvpp reader only; the JSON export
+  /// has no audio to give.
+  final List<TvpAudioTrack> audioTracks;
 }
 
 /// Reads [jsonText] as a TVPaint JSON export.

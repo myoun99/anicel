@@ -99,6 +99,7 @@ import '../models/timesheet_document.dart' show timesheetMemoInstructionLine;
 import '../models/project_background.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
+import '../models/project_id.dart';
 import '../models/project_frame_rate.dart';
 import '../models/row_block_shift.dart';
 import '../models/property_track.dart';
@@ -7404,11 +7405,16 @@ class EditorSessionManager extends ChangeNotifier {
     }
   }
 
-  /// Imports every clip of a TVPaint project file as its own new cut —
-  /// no export dance: the pixels, timeline, folders, inbetween marks and
-  /// (still) camera come straight out of the .tvpp. Returns the
-  /// accumulated warnings, or null when the file is not readable as one.
-  Future<List<String>?> importTvpp({required String tvppPath}) async {
+  /// Opens a TVPaint project file AS A PROJECT — a .tvpp holds several
+  /// cuts, so it replaces the session's project the way an .anicel open
+  /// does: every clip a cut, pixels/timeline/folders/marks/camera/audio
+  /// straight out of the file. The result is a NEW UNSAVED project (no
+  /// [projectFilePath]); the first save asks where the .anicel goes.
+  ///
+  /// Returns the accumulated warnings, or null when the file is not
+  /// readable as a TVPaint project. The CALLER gates unsaved work — this
+  /// replaces everything.
+  Future<List<String>?> openTvppAsProject({required String tvppPath}) async {
     final Uint8List bytes;
     final TvppParseResult parsed;
     try {
@@ -7420,6 +7426,7 @@ class EditorSessionManager extends ChangeNotifier {
       return null;
     }
 
+    playback.stop();
     final mint = _importIdMint();
     final warnings = [...parsed.warnings];
     final plans = <(TvpJsonImportPlan, Map<String, TvppSlot>)>[];
@@ -7431,24 +7438,56 @@ class EditorSessionManager extends ChangeNotifier {
         // [conversion.slotsByFile] at bake time — not paths.
         resolveFile: (key) => key,
         mint: mint,
-        cameraFrameSize: cameraFrameSize,
+        cameraFrameSize: defaultProjectCameraSize,
         names: null,
       );
       warnings.addAll(plan.warnings);
       plans.add((plan, conversion.slotsByFile));
     }
+    if (plans.isEmpty) {
+      return null;
+    }
 
-    _historyManager.execute(
-      ImportMediaCommand(
-        repository: _repository,
-        editingSession: _editingSession,
-        trackId: selectedTrackId,
-        newCuts: [for (final (plan, _) in plans) plan.cut],
-        // The project file's images ARE the cels; nothing registers.
-        assetAdditions: const [],
-        description: 'Import TVPaint project',
+    final name = tvppPath
+        .replaceAll('\\', '/')
+        .split('/')
+        .last
+        .replaceAll(RegExp(r'\.tvpp$', caseSensitive: false), '');
+    _repository.replaceProject(
+      Project(
+        id: ProjectId('tvpp-${DateTime.now().toUtc().millisecondsSinceEpoch}'),
+        name: name,
+        createdAt: DateTime.now().toUtc(),
+        tracks: [
+          Track(
+            id: const TrackId('default-track'),
+            name: 'Track 1',
+            cuts: [for (final (plan, _) in plans) plan.cut],
+          ),
+        ],
+        // The sound tracks reference their files; register them so the
+        // pool knows the paths and RELINK can say when one is missing.
+        mediaAssets: const [],
       ),
     );
+
+    // The whole-state reset an .anicel open performs, minus the parts
+    // that only exist for saved files (recovery, cel restore, healing).
+    brushFrameStore.restoreFromFile(const {});
+    conteInkRowStore.restoreFromFile(const {});
+    conteInkPageStore.restoreFromFile(const {});
+    envelopeInkStore.restoreFromFile(const {});
+    _historyManager.clear();
+    _copiedFrame = null;
+    _layerClipboard = null;
+    clearAllSelections();
+    trackFrameRangeSelection.value = null;
+    _editingSession.setActiveCutId(plans.first.$1.cut.id);
+    _rebuildActiveCutControllers();
+    _voiceRecording.forgetShelfTakes();
+    _projectFilePath = null;
+    _recoveredFromSidecar = null;
+    _discardedUnsavedWork = false;
 
     for (final (plan, slotsByFile) in plans) {
       final bakedCut = _cutById(plan.cut.id);
@@ -7505,6 +7544,29 @@ class EditorSessionManager extends ChangeNotifier {
       }
     }
 
+    // The audio references become pool assets so relink and existence
+    // checks see them; a missing file surfaces as a warning, not a crash.
+    final audioPaths = <String>{
+      for (final clip in parsed.clips)
+        for (final track in clip.audioTracks) track.filePath,
+    };
+    if (audioPaths.isNotEmpty) {
+      addMediaAssets(audioPaths.toList());
+      _historyManager.clear();
+      for (final path in audioPaths) {
+        if (!File(path).existsSync()) {
+          warnings.add('사운드 파일이 이 자리에 없다: $path');
+        }
+      }
+    }
+
+    _settleConformCache();
+    _warmAudioConforms();
+    refreshMediaExistence();
+    // A conversion is unsaved by definition — nothing on disk holds it.
+    _hasUnsavedChanges = true;
+    _warmActiveCut();
+    frameSeekCommitted.value += 1;
     _refreshAfterCutCommand();
     notifyListeners();
     return warnings;

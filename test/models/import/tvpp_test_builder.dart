@@ -150,8 +150,23 @@ class TvppBuilder {
     chunk(magic, record.sublist(8));
   }
 
-  void clipConfig({String cameraData = ''}) {
+  void clipConfig({
+    String cameraData = '',
+    List<(String path, double offset, double volume, bool mute)> audio =
+        const [],
+  }) {
     final sb = StringBuffer('\u{FEFF}[info]\ncreationos=TEST\n');
+    if (audio.isNotEmpty) {
+      sb.write('\n[audio]\ntrackcount=${audio.length}\nvolume=1.000000\n');
+      for (final (i, (path, offset, volume, mute)) in audio.indexed) {
+        sb
+          ..write('\n[audio+$i]\n')
+          ..write('filepath=$path\n')
+          ..write('offset=${offset.toStringAsFixed(6)}\n')
+          ..write('volume=${volume.toStringAsFixed(6)}\n')
+          ..write('mute=${mute ? 1 : 0}\n');
+      }
+    }
     if (cameraData.isNotEmpty) {
       sb.write('\n[cameradata]\n$cameraData');
     }

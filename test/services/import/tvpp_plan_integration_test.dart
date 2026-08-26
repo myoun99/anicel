@@ -130,4 +130,51 @@ void main() {
     expect(conversion.slotsByFile.containsKey(plan.bakes.single.sourceFile),
         isTrue);
   });
+
+  test('a sound track becomes an SE row: reference linked, blockized', () {
+    final parsed = TvpJsonParseResult(
+      versionMajor: 0,
+      versionMinor: 0,
+      clipName: 'cut',
+      width: 320,
+      height: 180,
+      frameRate: 24,
+      pixelAspectRatio: 1,
+      frameCount: 48,
+      background: const TvpColor(255, 255, 255),
+      markIn: null,
+      markOut: null,
+      camera: const TvpCamera(
+        width: 320,
+        height: 180,
+        keyframes: [],
+        positions: [],
+      ),
+      layers: const [],
+      warnings: const [],
+      audioTracks: const [
+        TvpAudioTrack(
+          filePath: 'G:/sagyou/12.mp4',
+          offsetSeconds: 0.5, // = 12 frames at 24fps
+          volume: 0.51,
+          muted: false,
+        ),
+      ],
+    );
+    final plan = planTvpJsonImport(
+      parsed: parsed,
+      resolveFile: (key) => key,
+      mint: mint(),
+      cameraFrameSize: const CanvasSize(width: 960, height: 540),
+      names: null,
+    );
+    final se = plan.cut.layers.singleWhere((l) => l.kind == LayerKind.se);
+    expect(se.name, '12.mp4');
+    final block = se.timeline[12]!;
+    expect(block.length, 36); // runs to the cut's end.
+    expect(se.audioClips, hasLength(1));
+    expect(se.audioClips.single.filePath, 'G:/sagyou/12.mp4');
+    expect(se.audioClips.single.frameId, block.frameId);
+    expect(se.audioClips.single.gain, closeTo(0.51, 1e-9));
+  });
 }
