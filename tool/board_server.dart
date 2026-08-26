@@ -1002,15 +1002,36 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
       if (pr.state == 'OPEN') pr.number,
   };
   final byNumber = {for (final pr in gh.prs) pr.number: pr};
-  final now = <String>[];
+  _prState = {for (final pr in gh.prs) pr.number: pr.state};
+  // 🚨★★★지금 IS BUILT FROM CARDS TOO (유저 2026-08-27: 「이거 답할것이 원본
+  // 카드에서 포인터로서 존재하는거랑 똑같은 규칙이나 로직 적용하면 지금항목에
+  // 새 카드가 추가되는게아니라 카드에 공정으로서 포인터로 기록하면
+  // 확실할거같은데 어때. 규칙 통일화되는거지」).
+  //
+  // Right, and it is the same disease one storey up. A question does not
+  // become a card of its own — it is a pointer on the card that raised it.
+  // A PR should not either: it is something that HAPPENED to a card, which
+  // is what a 구현 stage already says. Building 지금 by walking `gh.prs` gave
+  // every open PR a row with an English commit title and no story, exactly
+  // the rows 확인할 것 stopped drawing one round ago.
+  //
+  // ⚠️An open PR NOBODY claimed still gets a stand-in — see `_isGap`. That is
+  // not a row pretending to be a card; it is the board saying a merge is
+  // coming with nothing written about it.
+  final nowCards = <_Entry>[];
+  for (final e in alive) {
+    if (e.answer != null) continue;
+    if (!e.prs.any(openPrs.contains)) continue;
+    nowCards.add(e);
+  }
   for (final pr in gh.prs) {
     if (pr.state != 'OPEN') continue;
+    if (claimed.containsKey(pr.number)) continue;
     if (buriedPrs.contains(pr.number)) continue;
-    final e = claimed[pr.number];
-    if (e == null && buriedIds.contains('pr-${pr.number}')) continue;
-    if (e?.answer != null) continue;
-    now.add(_prPanel(pr, e));
+    if (buriedIds.contains('pr-${pr.number}')) continue;
+    nowCards.add(_prEntry(pr)..prs.add(pr.number));
   }
+  final now = [for (final e in nowCards) _itemPanel(e)];
 
   // What a card is waiting to be looked at with, newest first. A card whose PR
   // gh no longer lists still sorts — by when the card itself last moved.
@@ -1284,6 +1305,7 @@ String _intakeForm() {
 /// everything is coloured then nothing is, and the subject is the one thing
 /// the section header cannot tell you.
 const _chipTint = <String, String>{
+  '카드 없음': 'bad',
   '실기 피드백': 'bad',
   '유저 피드백': 'bad',
   '피드백': 'run',
@@ -1364,6 +1386,18 @@ Map<String, List<_Entry>> _byOrigin = const {};
 /// this is derived from the questions themselves rather than kept as a state
 /// I would have to remember to set and, worse, remember to unset.
 Set<String> _asking = const {};
+
+/// What `gh` says each PR is doing, so a 구현 stage can say it (유저
+/// 2026-08-27: 「지금을 만드는게 아니라 구현항목을 잘 활용하면 될거같은데」).
+///
+/// 🎯The stage already names the PR. Making it name the STATE too is what
+/// retires the 지금 section's own row shape: a card in flight is a card whose
+/// newest 구현 says 열림, and the section is derived from that rather than
+/// walking `gh.prs` and drawing a row per PR.
+///
+/// ⚠️Empty for a PR outside `gh pr list`'s window, and the stage then says
+/// nothing rather than guessing — the same rule the 확인할 것 badge follows.
+Map<int, String> _prState = const {};
 
 /// 🚨THE WAY BACK TO THE CARD THAT ASKED (유저 2026-08-26: 「그 답할것패널에
 /// 포인터? 내부에 태그같은거로서 질문이 생성된 패널을 표시해줌」).
@@ -1512,7 +1546,9 @@ String _checkRow(_Entry c, {_Pr? pr, List<_Entry> subs = const []}) {
   // ⛔And no 공정 N count. It was a number nobody acts on — the story is right
   // there when the row opens, and a chip that only says 「there is some」 is
   // the same noise as a badge repeating its section.
+  final gap = _isGap(c);
   final tags = [
+    if (gap) '카드 없음',
     if (!landed) _kHandsOn,
     if (subs.isNotEmpty) '실기 ${subs.length}',
     ...c.tags,
@@ -1535,6 +1571,14 @@ String _checkRow(_Entry c, {_Pr? pr, List<_Entry> subs = const []}) {
   b.writeln('<div class="body">');
   b.writeln(_care(c));
   b.writeln(_recordPanels(c));
+  if (gap) {
+    // ⛔Said out loud rather than papered over. The row stays tickable — the
+    // user may well have opened the PR and been satisfied — but it must not
+    // pretend to be a written check, because a tick on one of these buries
+    // work nobody ever described.
+    b.writeln('<p class="d gap"><b>카드 없음</b> — 이 착지에는 '
+        '「무엇을 볼지」를 적은 카드가 없습니다. 제목도 PR 제목 그대로입니다.</p>');
+  }
   if (c.how.isNotEmpty) {
     b.writeln('<p class="d"><b>이렇게 본다</b> — ${_esc(c.how)}</p>');
   }
@@ -1573,6 +1617,18 @@ const String _kHandsOn = '실기';
 /// know nothing about. It has the PR's own title and nothing else, which is
 /// exactly what 최근 착지 showed for those before.
 _Entry _prEntry(_Pr pr) => _Entry('pr-${pr.number}', 'item')..title = pr.title;
+
+/// Whether a 확인할 것 row is a stand-in rather than a card somebody wrote.
+///
+/// 🚨A landing with no card is a GAP, not a check (유저 2026-08-27: 「이거 pr
+/// 제목이랑 이런거 그대로 사용하는 옛날방식 남아있는데 뭐지? 우리 실기확인
+/// 카드 어떻게 만드는지 다 얘기나눳지? 전혀 안지켜져있는데?」).
+///
+/// The row carries an English PR title and nothing else — no 이렇게 본다, no
+/// 왜 중요한가, no story. It cannot tell anyone what to look at, and dressing
+/// it up as a check row hid that: eighteen of them were sitting in the list
+/// looking exactly like the written ones.
+bool _isGap(_Entry e) => e.id.startsWith('pr-');
 
 String _itemPanel(_Entry e) {
   // No badge for a ready item, and none for the inbox either: both are already
@@ -1614,6 +1670,10 @@ String _itemPanel(_Entry e) {
       e.id,
       e.title,
       [
+        // ⚠️Same law in both panels: a stand-in for a PR nobody wrote a card
+        // for says so, wherever it is drawn. It reached 지금 unmarked when
+        // this lived only in `_checkRow`.
+        if (_isGap(e)) '카드 없음',
         if (arrival.isNotEmpty) arrival,
         // ⛔No PR chip here. A card can ship in several passes, and a head
         // badge holds one — so it lives in the story as a 구현 stage, where
@@ -1638,6 +1698,11 @@ String _itemPanel(_Entry e) {
   } else {
     b.writeln(_care(e));
     b.writeln(_recordPanels(e));
+    if (_isGap(e)) {
+      b.writeln('<p class="d gap"><b>카드 없음</b> — 이 PR에는 '
+          '「무엇을 하는 일인지」를 적은 카드가 없습니다. 제목도 PR 제목 '
+          '그대로입니다.</p>');
+    }
     b.writeln(_story(e));
     b.writeln(_questions(e));
     b.writeln(_shotStrip(e.id));
@@ -1736,40 +1801,6 @@ String _recordPanels(_Entry e) {
   return b.toString();
 }
 
-String _prPanel(_Pr pr, _Entry? e) {
-  final id = e?.id ?? 'pr-${pr.number}';
-  final title = e == null || e.title.isEmpty ? pr.title : e.title;
-  final merged = pr.state == 'MERGED';
-  final badge = merged
-      ? '머지 #${pr.number}'
-      : switch (pr.checks) {
-          'pending' => 'CI 중 #${pr.number}',
-          'red' => 'CI 빨강 #${pr.number}',
-          _ => 'CI 초록 #${pr.number}',
-        };
-  final cls = merged || pr.checks == 'green'
-      ? 'ok'
-      : (pr.checks == 'red' ? 'bad' : 'run');
-  final b = StringBuffer();
-  b.writeln('<details class="p" id="c-${_esc(id)}">');
-  // A landed item is confirmed by ticking it, not by opening it: the whole
-  // point of the row is that you already know what it was.
-  final tick = merged
-      ? '<input type="checkbox" class="pick" value="${_esc(id)}" '
-          'onclick="event.stopPropagation()">'
-      : '';
-  b.writeln(_head(id, title, e?.tags ?? const [], badge, cls,
-      lead: tick, date: e?.updated ?? ''));
-  b.writeln('<div class="body">');
-  if (e != null && e.note.isNotEmpty) {
-    b.writeln('<p class="d">${_esc(e.note)}</p>');
-  }
-  b.writeln('<p class="d"><a href="https://github.com/$_repo/pull/${pr.number}" '
-      'target="_blank">PR #${pr.number} 열기 →</a></p>');
-  b.writeln('</div></details>');
-  return b.toString();
-}
-
 /// One checkout, said plainly enough to decide from.
 ///
 /// The badge is the branch, because that is the thing you are choosing between;
@@ -1825,6 +1856,23 @@ String _stageName(_Entry e, int i) {
   return '작업 기록';
 }
 
+/// The 구현 stage's chip: the number, and what that PR is doing right now.
+///
+/// ⛔A PR outside `gh pr list`'s window gets the number alone. Saying 「머지」
+/// because it is old would be a guess, and the disappearing-row round already
+/// paid for guessing about what the window cannot see.
+String _prChip(int number) {
+  final state = _prState[number];
+  final (word, cls) = switch (state) {
+    'OPEN' => ('열림', 'run'),
+    'MERGED' => ('머지', 'ok'),
+    'CLOSED' => ('닫힘', 'bad'),
+    _ => ('', 'ok'),
+  };
+  return '<span class="chip $cls">#$number${word.isEmpty ? '' : ' · $word'}'
+      '</span>';
+}
+
 String _story(_Entry e) {
   if (e.log.isEmpty && e.rest.isEmpty) return '<p class="d">메모 없음.</p>';
   final b = StringBuffer();
@@ -1849,7 +1897,7 @@ String _story(_Entry e) {
         '${newest || live ? ' open' : ''}>');
     b.writeln('<summary><span class="lgk">${_esc(mine)}</span>'
         '<span class="lgp">${_esc(peek)}</span>'
-        '${entry.pr == null ? '' : '<span class="chip ok">#${entry.pr}</span>'}'
+        '${entry.pr == null ? '' : _prChip(entry.pr!)}'
         '<span class="when">${_esc(_day(entry.ts))}</span></summary>');
     b.writeln('<p class="d">${_esc(entry.text)}</p>');
     if (entry.pr != null) {
@@ -2251,6 +2299,9 @@ white-space:nowrap;flex:1;min-width:0}
 /* 남은 것 is the last stage and the loud one — it is the reason the card is
    not in 확인할 것. 손대기 전에 is the first and the quiet one: it has to be
    READ before the work, not shouted during it. */
+/* A landing nobody wrote a card for. Loud on purpose: it is a gap in the
+   record, not a kind of check. */
+.gap{color:var(--bad)}
 .lg.todo{border-left-color:var(--run)}
 .lg.todo>summary>.lgk{color:var(--run);font-weight:700}
 /* A 남은 것 that has since been superseded: still in the timeline, because
