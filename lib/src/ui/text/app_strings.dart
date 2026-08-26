@@ -330,6 +330,8 @@ class AppStrings {
   /// a question the app never used to answer at all.
   String get saveProgressRunning => _s('saveProgressRunning');
   String get saveProgressDone => _s('saveProgressDone');
+  String get openProgressRunning => _s('openProgressRunning');
+  String get openProgressDone => _s('openProgressDone');
   String get resizeProgressRunning => _s('resizeProgressRunning');
   String get resizeProgressDone => _s('resizeProgressDone');
   String get unsavedAutosaveTitle => _s('unsavedAutosaveTitle');
@@ -1156,6 +1158,8 @@ class AppStrings {
     'commonSaveAs': 'Save as…',
     'saveProgressRunning': 'Saving…',
     'saveProgressDone': 'Saved',
+    'openProgressRunning': 'Opening…',
+    'openProgressDone': 'Opened',
     'resizeProgressRunning': 'Resizing…',
     'resizeProgressDone': 'Resized',
     'unsavedAutosaveTitle': 'Save your project',
@@ -1861,6 +1865,8 @@ class AppStrings {
     'commonSaveAs': '名前を付けて保存…',
     'saveProgressRunning': '保存中…',
     'saveProgressDone': '保存しました',
+    'openProgressRunning': '読み込み中…',
+    'openProgressDone': '読み込みました',
     'resizeProgressRunning': 'サイズ変更中…',
     'resizeProgressDone': 'サイズ変更しました',
     'unsavedAutosaveTitle': 'プロジェクトを保存',
@@ -2650,6 +2656,8 @@ class AppStrings {
     'commonSaveAs': '다른 이름으로 저장…',
     'saveProgressRunning': '저장 중…',
     'saveProgressDone': '저장 완료',
+    'openProgressRunning': '여는 중…',
+    'openProgressDone': '열기 완료',
     'resizeProgressRunning': '크기 변경 중…',
     'resizeProgressDone': '크기 변경 완료',
     'unsavedAutosaveTitle': '프로젝트 저장',

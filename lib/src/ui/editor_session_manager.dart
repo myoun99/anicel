@@ -72,6 +72,7 @@ import '../models/camera_pose.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_resize_anchor.dart';
 import '../models/canvas_size.dart';
+import '../models/track_se_migration.dart';
 import '../models/cut.dart';
 import '../models/cut_camera.dart';
 import '../models/drawing_guide.dart';
@@ -7532,7 +7533,10 @@ class EditorSessionManager extends ChangeNotifier {
   /// Returns the accumulated warnings, or null when the file is not
   /// readable as a TVPaint project. The CALLER gates unsaved work — this
   /// replaces everything.
-  Future<List<String>?> openTvppAsProject({required String tvppPath}) async {
+  Future<List<String>?> openTvppAsProject({
+    required String tvppPath,
+    void Function(double fraction)? onProgress,
+  }) async {
     final Uint8List bytes;
     final TvppParseResult parsed;
     try {
@@ -7545,6 +7549,16 @@ class EditorSessionManager extends ChangeNotifier {
     }
 
     playback.stop();
+    // The .tvpp becomes the WHOLE project, so its shooting frame does
+    // too — fitting a 960×430 layout camera into our 16:9 default framed
+    // wider than TVPaint did (288, hands-on).
+    final cameraSize =
+        parsed.projectCameraWidth != null && parsed.projectCameraHeight != null
+            ? CanvasSize(
+                width: parsed.projectCameraWidth!,
+                height: parsed.projectCameraHeight!,
+              )
+            : defaultProjectCameraSize;
     final mint = _importIdMint();
     final warnings = [...parsed.warnings];
     final plans = <(TvpImportPlan, Map<String, TvppSlot>)>[];
@@ -7556,7 +7570,7 @@ class EditorSessionManager extends ChangeNotifier {
         // [conversion.slotsByFile] at bake time — not paths.
         resolveFile: (key) => key,
         mint: mint,
-        cameraFrameSize: defaultProjectCameraSize,
+        cameraFrameSize: cameraSize,
       );
       warnings.addAll(plan.warnings);
       plans.add((plan, conversion.slotsByFile));
@@ -7575,12 +7589,24 @@ class EditorSessionManager extends ChangeNotifier {
         id: ProjectId('tvpp-${DateTime.now().toUtc().millisecondsSinceEpoch}'),
         name: name,
         createdAt: DateTime.now().toUtc(),
+        cameraSize: cameraSize,
         tracks: [
-          Track(
-            id: const TrackId('default-track'),
-            name: 'Track 1',
-            cuts: [for (final (plan, _) in plans) plan.cut],
-          ),
+          // The planner still emits each clip's sound as a per-cut SE
+          // row (the shape TVPaint stores); SE rows LIVE on the track's
+          // global axis now, so the same lift the legacy-file migration
+          // uses promotes them — one law for both doors.
+          () {
+            final lifted = liftCutSeLayersToTrack(
+              const TrackId('default-track'),
+              [for (final (plan, _) in plans) plan.cut],
+            );
+            return Track(
+              id: const TrackId('default-track'),
+              name: 'Track 1',
+              cuts: lifted.cuts,
+              seLayers: lifted.seLayers,
+            );
+          }(),
         ],
         // The sound tracks reference their files; register them so the
         // pool knows the paths and RELINK can say when one is missing.
@@ -7606,12 +7632,19 @@ class EditorSessionManager extends ChangeNotifier {
     _recoveredFromSidecar = null;
     _discardedUnsavedWork = false;
 
+    final totalBakes =
+        plans.fold<int>(0, (sum, entry) => sum + entry.$1.bakes.length);
+    var bakedSoFar = 0;
     for (final (plan, slotsByFile) in plans) {
       final bakedCut = _cutById(plan.cut.id);
       if (bakedCut == null) {
         continue;
       }
       for (final bake in plan.bakes) {
+        bakedSoFar += 1;
+        if (totalBakes > 0) {
+          onProgress?.call(bakedSoFar / totalBakes);
+        }
         final slot = slotsByFile[bake.sourceFile];
         if (slot == null) {
           continue;

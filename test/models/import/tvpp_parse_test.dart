@@ -14,6 +14,7 @@ void main() {
     test('reads clips, layers, slots, names, marks and camera keys', () {
       final b = TvppBuilder();
 
+      b.projectProperties(cameraWidth: 960, cameraHeight: 540);
       b.clipProperties('cut12');
       b.clipHeader(
         width: 320,
@@ -99,7 +100,8 @@ mpoints-1-bezieraftery=0.000000
       b.clipHeader(width: 320, height: 180);
       b.layerHead('카메라레이어', headerChunk: 'LRCA', end: 9);
       b.layerExt(const {});
-      b.layerHead('solo', end: 0, count: 1);
+      b.layerHead('solo', end: 0, count: 1, visible: false,
+          ansiNameBytes: const [0x83, 0x4a, 0x83, 0x81, 0x00]);
       b.layerExt(const {});
       b.zchkSlot(srawRecord(List.filled(320 * 180, 0), 320, 180));
       b.clipConfig();
@@ -171,10 +173,20 @@ mpoints-1-bezieraftery=0.000000
       expect(clip.audioTracks[1].filePath, 'G:/sagyou/せりふ.wav');
       expect(clip.audioTracks[1].muted, isTrue);
 
+      // The project's shooting frame rides the file-head property block.
+      expect(result.projectCameraWidth, 960);
+      expect(result.projectCameraHeight, 540);
+
       final clip13 = result.clips[1];
       expect(clip13.name, 'cut13');
       expect(clip13.cameraPoints, isEmpty);
       expect(clip13.layers, hasLength(2));
+      // The wide name chunk wins over the ANSI one (12.0.6 puts the
+      // codepage into LNAM — 288's 撮影指示 arrived as mojibake), and the
+      // hidden layer's LRHD[14] bit comes through.
+      expect(clip13.layers[1].name, 'solo');
+      expect(clip13.layers[1].visible, isFalse);
+      expect(clip13.layers[0].visible, isTrue);
       // The one drawing spans a single frame; the clip's ten come from
       // the CAMERA layer's extent (how a clip longer than its drawings
       // records its length — measured on PROFILE_CAL).

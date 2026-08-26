@@ -27,6 +27,7 @@ TvppLayer _layer(
   List<TvppSlot> second = const [],
   Map<int, String> names = const {},
   int opacity = 255,
+  bool visible = true,
   TvpEdgeBehavior pre = TvpEdgeBehavior.none,
   TvpEdgeBehavior post = TvpEdgeBehavior.none,
 }) =>
@@ -38,6 +39,7 @@ TvppLayer _layer(
       start: start,
       end: start + (slots.isEmpty ? 0 : slots.length - 1),
       opacity: opacity,
+      visible: visible,
       preBehavior: pre,
       postBehavior: post,
       slots: slots,
@@ -121,6 +123,21 @@ void main() {
       expect(a.blocks[2].name, '');
       // frame 8 = a head again.
       expect(a.blocks[2].breakdownOffsets, isEmpty);
+    });
+
+    test('hidden stays hidden and opacity lands on the artist\'s percent',
+        () {
+      // TVPaint stores 0..255 but its UI deals in whole percent: the
+      // artist's 76 is stored as 195, and 195/255 would surface as
+      // 76.47% (288, hands-on — decimals everywhere, every row visible).
+      final clip = _clip(
+        layers: [
+          _layer('CON', visible: false, opacity: 195, slots: [_image()]),
+        ],
+      );
+      final con = convertTvppClip(clip, clipIndex: 0).result.layers.single;
+      expect(con.visible, isFalse);
+      expect(con.opacity, 0.76);
     });
 
     test('a hold with no preceding image warns and drops', () {

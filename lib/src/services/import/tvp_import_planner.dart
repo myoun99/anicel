@@ -155,17 +155,26 @@ TvpImportPlan planTvpImport({
     // A layer with no blocks is a genuinely empty row in the project
     // file (nothing was hidden by an export option any more) — it keeps
     // its place in the stack and needs no warning.
+    //
+    // The behaviours are LIVE specs; their ghost exposures only exist
+    // after [rederiveRunBehaviors] synthesizes them. An imported cut
+    // never passes through a timeline edit, so the planner must run the
+    // synthesis itself — H2 of the JSON era, resurfaced by 288: every H
+    // layer wore its tag but held nothing.
     layers.add(
-      Layer(
-        id: layerId,
-        name: source.name,
-        frames: frames,
-        timeline: timeline,
-        isVisible: source.visible,
-        opacity: source.opacity,
-        blendMode: _blendModeFor(source, warnings),
-        kind: LayerKind.animation,
-        runBehaviors: _runBehaviorsFor(source, timeline),
+      rederiveRunBehaviors(
+        Layer(
+          id: layerId,
+          name: source.name,
+          frames: frames,
+          timeline: timeline,
+          isVisible: source.visible,
+          opacity: source.opacity,
+          blendMode: _blendModeFor(source, warnings),
+          kind: LayerKind.animation,
+          runBehaviors: _runBehaviorsFor(source, timeline),
+        ),
+        cutFrameCount: duration,
       ),
     );
   }
@@ -375,6 +384,18 @@ CutCamera planTvpCamera({
   final source = baked ? camera.positions : camera.keyframes;
   if (source.isEmpty) {
     return CutCamera.empty();
+  }
+  // A STILL camera stays one key. The baked curve holds one pose per
+  // frame either way, and the simplifier keeps both endpoints of any
+  // track it walks — which turned TVPaint's single frame-1 key into a
+  // key on the last frame too (288, hands-on).
+  if (baked && !camera.isAnimated) {
+    final first = source.first;
+    final index = (first.frame - 1).clamp(0, frameCount - 1);
+    _warnOnShootingFrameMismatch(first, cameraFrameSize, warnings);
+    return CutCamera(
+      keyframes: {index: _cameraPoseFor(first, cameraFrameSize)},
+    );
   }
   if (!baked) {
     warnings.add(

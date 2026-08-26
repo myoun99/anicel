@@ -116,7 +116,13 @@ class TvppLayer {
     required this.slots,
     required this.ctgSecondStream,
     required this.instanceNames,
+    this.visible = true,
   });
+
+  /// LRHD[14] hi16 bit 0. Pinned against the JSON export's `visible` on
+  /// KLM: TAP/F_n carry 1 (F_n's word is 5 — higher bits exist and are
+  /// not this), the hidden CON carries 0.
+  final bool visible;
 
   final TvppLayerKind kind;
   final String name;
@@ -283,10 +289,21 @@ class TvppClip {
 }
 
 class TvppParseResult {
-  const TvppParseResult({required this.clips, required this.warnings});
+  const TvppParseResult({
+    required this.clips,
+    required this.warnings,
+    this.projectCameraWidth,
+    this.projectCameraHeight,
+  });
 
   final List<TvppClip> clips;
   final List<String> warnings;
+
+  /// The PROJECT's shooting frame (`Camera.Width` / `Camera.Height` in
+  /// the file-head property block — 288 shoots 960×430 while its canvas
+  /// is 2339×1653). Null when the block does not carry them.
+  final int? projectCameraWidth;
+  final int? projectCameraHeight;
 }
 
 // ---------------------------------------------------------------------------
@@ -391,7 +408,43 @@ TvppParseResult parseTvppStructure(Uint8List bytes) {
       _parseClip(bytes, start, end, nameFrom, c, warnings),
     );
   }
-  return TvppParseResult(clips: clips, warnings: warnings);
+  return TvppParseResult(
+    clips: clips,
+    warnings: warnings,
+    projectCameraWidth: _projectProperty(bytes, 'Camera.Width'),
+    projectCameraHeight: _projectProperty(bytes, 'Camera.Height'),
+  );
+}
+
+/// Reads an integer project property from the file-head UTF-16BE block:
+/// `[u16 keyLen][key as u16 chars][u16 valLen][value as u16 chars]`.
+/// Scans the region before the first clip only.
+int? _projectProperty(Uint8List bytes, String key) {
+  final needle = Uint8List(2 + key.length * 2);
+  ByteData.sublistView(needle).setUint16(0, key.length);
+  for (var i = 0; i < key.length; i++) {
+    ByteData.sublistView(needle).setUint16(2 + i * 2, key.codeUnitAt(i));
+  }
+  final limit = bytes.length < 1 << 20 ? bytes.length : 1 << 20;
+  outer:
+  for (var i = 0; i + needle.length + 2 < limit; i++) {
+    for (var j = 0; j < needle.length; j++) {
+      if (bytes[i + j] != needle[j]) {
+        continue outer;
+      }
+    }
+    final at = i + needle.length;
+    final valLen = ByteData.sublistView(bytes).getUint16(at);
+    if (valLen == 0 || valLen > 16 || at + 2 + valLen * 2 > bytes.length) {
+      return null;
+    }
+    final chars = <int>[];
+    for (var k = 0; k < valLen; k++) {
+      chars.add(ByteData.sublistView(bytes).getUint16(at + 2 + k * 2));
+    }
+    return int.tryParse(String.fromCharCodes(chars));
+  }
+  return null;
 }
 
 /// The clip name lives in a UTF-16BE property list BEFORE the clip's
@@ -486,6 +539,7 @@ TvppClip _parseClip(
         opacity: header != null ? field(4) : 255,
         preBehavior: _edgeBehavior(field(13) >> 16),
         postBehavior: _edgeBehavior(field(11) >> 16),
+        visible: header == null || (field(14) >> 16) & 1 != 0,
         slots: List.unmodifiable(slots),
         ctgSecondStream: List.unmodifiable(secondStream),
         instanceNames: Map.unmodifiable(instanceNames),
@@ -552,6 +606,15 @@ TvppClip _parseClip(
       case 'LNAM':
         flushLayer();
         name = _nameFrom(bytes, payload, length);
+      case 'LNAW':
+        // The unicode name. 12.1 writes UTF-8 into both chunks, but
+        // 12.0.6 puts the ANSI codepage (Shift-JIS on the user's
+        // machine) into LNAM — 288's カメラレイヤー arrives as mojibake
+        // unless the wide chunk wins.
+        final wide = _nameFrom(bytes, payload, length);
+        if (wide.isNotEmpty) {
+          name = wide;
+        }
       case 'LRHD':
         kind = TvppLayerKind.raster;
         header = Uint8List.sublistView(bytes, payload, payload + length);

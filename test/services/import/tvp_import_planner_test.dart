@@ -206,6 +206,31 @@ void main() {
       expect(behavior.anchorFrameId, a.timeline[4]!.frameId);
     });
 
+    test('a hold edge arrives with its ghosts already synthesized', () {
+      // The behaviours are LIVE specs whose ghost exposures only exist
+      // after rederiveRunBehaviors runs; an imported cut never passes
+      // through a timeline edit, so the planner must synthesize them
+      // itself — H2 of the JSON era, resurfaced by 288 (every H layer
+      // wore its tag but held nothing).
+      final result = plan(
+        clip(
+          frameCount: 6,
+          layers: [
+            layer(
+              'A',
+              end: 3,
+              post: TvpEdgeBehavior.hold,
+              blocks: [block(0, 2, sourceIndex: 0), block(2, 2, sourceIndex: 2)],
+            ),
+          ],
+        ),
+      );
+      final a = result.cut.layers.firstWhere((l) => l.name == 'A');
+      final tail = a.timeline[4];
+      expect(tail, isNotNull, reason: 'the free frames are filled');
+      expect(tail!.ghost, isTrue);
+    });
+
     test('a pre-behavior fills the lead-in from the FIRST block', () {
       final result = plan(
         clip(
@@ -284,6 +309,45 @@ void main() {
     test('an untouched camera is unaffected — scale 1 is the identity', () {
       final camera = cameraFrom(sizeX: 1920, sizeY: 1080, scale: 1.0);
       expect(camera.keyframeAt(0)!.zoom, closeTo(1.0, 1e-9));
+    });
+
+    test('a STILL camera stays one key — the baked curve must not grow '
+        'an end key', () {
+      // 288: one authored key on frame 1 arrived as keys on frames 1
+      // AND 96, because the track simplifier keeps both endpoints of
+      // whatever it walks.
+      final pose = TvpCameraPose(
+        frame: 1,
+        x: 100,
+        y: 80,
+        angleDegrees: 0,
+        scale: 1,
+        sizeX: 1920,
+        sizeY: 1080,
+      );
+      final result = plan(
+        clip(
+          frameCount: 8,
+          camera: TvpCamera(
+            width: 1920,
+            height: 1080,
+            keyframes: [pose],
+            positions: [
+              for (var f = 1; f <= 8; f++)
+                TvpCameraPose(
+                  frame: f,
+                  x: 100,
+                  y: 80,
+                  angleDegrees: 0,
+                  scale: 1,
+                  sizeX: 1920,
+                  sizeY: 1080,
+                ),
+            ],
+          ),
+        ),
+      );
+      expect(result.cut.camera.track.keyframes, hasLength(1));
     });
   });
 }

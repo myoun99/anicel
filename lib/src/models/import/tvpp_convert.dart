@@ -62,8 +62,8 @@ TvppClipConversion convertTvppClip(
         TvpLayer(
           name: layer.name,
           position: position,
-          visible: true,
-          opacity: layer.opacity / 255,
+          visible: layer.visible,
+          opacity: _opacityFrom(layer.opacity),
           start: layer.start,
           end: layer.end,
           preBehavior: layer.preBehavior,
@@ -89,7 +89,7 @@ TvppClipConversion convertTvppClip(
         TvpLayer(
           name: layer.name,
           position: position,
-          visible: true,
+          visible: layer.visible,
           opacity: 1,
           start: layer.start,
           end: layer.end,
@@ -322,8 +322,8 @@ TvpLayer _rasterLayer(
   return TvpLayer(
     name: name,
     position: position,
-    visible: true,
-    opacity: layer.opacity / 255,
+    visible: layer.visible,
+    opacity: _opacityFrom(layer.opacity),
     start: layer.start,
     end: layer.end,
     preBehavior: layer.preBehavior,
@@ -333,3 +333,8 @@ TvpLayer _rasterLayer(
     blocks: blocks,
   );
 }
+
+/// TVPaint stores opacity as 0..255 but its UI deals in whole percent —
+/// the artist typed 76, the file holds 195, and 195/255 would surface as
+/// 76.47%. Round to the percent the artist chose.
+double _opacityFrom(int raw) => (raw / 255 * 100).round() / 100;
