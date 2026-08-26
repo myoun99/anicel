@@ -151,14 +151,45 @@ Future<void> _handle(HttpRequest req) async {
         final kind = '${body['kind'] ?? 'decision'}';
         final memo = '${body['memo'] ?? ''}'.trim();
         final ticked = kind == 'check' && memo.isEmpty;
+        final id = '${body['id']}';
+        // 🚨AN ANSWERED QUESTION STOPS BEING A CARD (유저 2026-08-27: 「답할
+        // 것의 카드는 애초에 원본 카드에서 파생?되서 이어지는 카드아닌가?
+        // 원본카드에 질문항목이 존재하고 답하면 대답 카드 자체는 사라지고
+        // 참조로서 해당 항목에 들어가는거아닌가?」).
+        //
+        // Right, and it is the same law as everything else here: a question
+        // was never a subject of its own. It goes `archived` — which is not
+        // a loss, because `_byOrigin` reads ARCHIVED questions too, so the
+        // origin's Q row keeps showing it with the answer in place.
+        //
+        // ⇒ The NEWS lands on the ORIGIN instead: that card goes to 분류 전,
+        // because an answer is something the user said that I have to read
+        // and act on. One card, one row, and the answer is where the work is.
+        final origin = kind == 'decision' ? _originOfId(id) : '';
         _append({
           'kind': kind,
-          'id': body['id'],
+          'id': id,
           'answer': body['answer'] ?? '',
           'answerNote': memo,
           'ts': _now(),
-          'state': ticked ? 'deleted' : 'inbox',
+          'state': ticked || origin.isNotEmpty ? 'archived' : 'inbox',
         });
+        if (origin.isNotEmpty) {
+          _append({
+            'kind': 'item',
+            'id': origin,
+            'state': 'inbox',
+            'ts': _now(),
+          });
+        }
+        if (ticked) {
+          _append({
+            'kind': kind,
+            'id': id,
+            'state': 'deleted',
+            'ts': _now(),
+          });
+        }
       case '/dismiss':
         for (final id in (body['ids'] as List?) ?? [body['id']]) {
           _append({
@@ -248,6 +279,32 @@ void _markLandedBaseline(_Gh gh) {
         '보드가 생기기 전에 머지된 PR을 다시 확인하라고 물을 이유가 없다.',
   });
   _landedSince = DateTime.parse(at);
+}
+
+/// Which card a question belongs to, asked at SUBMIT time — before a render
+/// has built [_byOrigin].
+///
+/// The name answers it for anything written since the `T14-Q1` convention;
+/// `of` is the override for the questions named before it, so the file is
+/// read for those. ⚠️Returns empty for a question that belongs to nothing —
+/// an old standalone one — and that answer still lands in 분류 전 as itself,
+/// because there is no origin for it to land on.
+String _originOfId(String id) {
+  final m = _qName.firstMatch(id);
+  final byName = m?.group(1) ?? '';
+  for (final line in File(_recordsPath).readAsLinesSync()) {
+    final t = line.trim();
+    if (t.isEmpty) continue;
+    try {
+      final json = jsonDecode(t);
+      if (json is! Map || json['id'] != id) continue;
+      final of = '${json['of'] ?? ''}'.trim();
+      if (of.isNotEmpty) return of;
+    } catch (_) {
+      continue;
+    }
+  }
+  return byName;
 }
 
 String _now() => DateTime.now().toIso8601String();
@@ -1673,6 +1730,13 @@ String _itemPanel(_Entry e) {
   // named by the section they sit in. The tag (피드백 / 아이디어 / 임시) is the
   // part that actually differs between rows.
   final inbox = e.state == 'inbox';
+  // 🚨A card that arrived because a question of its was ANSWERED. The inbox
+  // editor exists to fix a filing made mid-thought; an origin pushed here by
+  // an answer is something to READ, and the editor branch does not draw the
+  // questions — so the answer it came to deliver would be the one thing
+  // hidden.
+  final answeredQuestion =
+      (_byOrigin[e.id] ?? const <_Entry>[]).any((q) => q.answer != null);
   // 대기 중 promises that 「배지가 무엇을 기다리는지 말한다」, and an unanswered
   // question outranks whatever the state says: it is the thing actually
   // holding the card, and it is the one the user can clear.
@@ -1688,7 +1752,9 @@ String _itemPanel(_Entry e) {
     'check' => '실기 피드백',
     // An item only 「arrives」 if the user wrote on it — a plain working card
     // has nothing new to announce.
-    _ => e.answer != null ? '유저 피드백' : '',
+    _ => e.answer != null
+        ? '유저 피드백'
+        : (answeredQuestion && inbox ? '대답' : ''),
   };
   // The user's own writing is not editable once it is an ANSWER — editing it
   // would rewrite what they said, which is the one thing this whole redesign
@@ -1696,7 +1762,8 @@ String _itemPanel(_Entry e) {
   // ⚠️`answer == null` too: an item that came BACK carrying feedback is not a
   // half-finished filing to correct, it is something to read. Showing it in an
   // edit box would offer to rewrite what the user just said.
-  final editable = inbox && e.kind == 'item' && e.answer == null;
+  final editable =
+      inbox && e.kind == 'item' && e.answer == null && !answeredQuestion;
   final b = StringBuffer();
   // data-kind drives what `send` writes back. `item` so a memo on a working
   // card is filed as feedback and lands in 분류 전, exactly like one left on
