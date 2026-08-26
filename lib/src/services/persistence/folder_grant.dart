@@ -315,6 +315,22 @@ abstract final class FolderPicker {
       operatingSystem == 'macos' ||
       operatingSystem == 'android';
 
+  /// Whether this platform has a FILE COORDINATOR to appeal to.
+  ///
+  /// 🚨A DIFFERENT QUESTION from [grantsAreScoped], and letting one flag
+  /// answer both is what this pair is here to stop. Android takes scoped
+  /// grants and has no `NSFileCoordinator`: both coordinated helpers
+  /// reach `notImplemented` there and answer false — which the open's
+  /// wait would read as 「the provider has not finished downloading」 and
+  /// retry against for a full minute, for a method that will never
+  /// exist. The coordinator is Apple's, and only Apple's.
+  static bool get hasFileCoordinator =>
+      coordinatorForPlatform(_operatingSystem);
+
+  @visibleForTesting
+  static bool coordinatorForPlatform(String operatingSystem) =>
+      operatingSystem == 'ios' || operatingSystem == 'macos';
+
   /// Asks the user for a folder.
   ///
   /// [initialDirectory] is a hint only; every platform is free to ignore it,
@@ -622,7 +638,7 @@ abstract final class FolderPicker {
         destinationPath: destinationPath,
       );
     }
-    if (!grantsAreScoped) {
+    if (!hasFileCoordinator) {
       return false;
     }
     final answer = await _invoke('replaceFileCoordinated', {
@@ -660,7 +676,7 @@ abstract final class FolderPicker {
         destinationPath: destinationPath,
       );
     }
-    if (!grantsAreScoped) {
+    if (!hasFileCoordinator) {
       return false;
     }
     final answer = await _invoke('readFileCoordinated', {
