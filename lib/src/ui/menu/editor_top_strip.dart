@@ -161,6 +161,29 @@ class EditorTopStrip extends StatelessWidget {
   /// the path this round promoted.
   Future<void> _openWithRecovery(BuildContext context, ProjectPick pick) async {
     final path = pick.path;
+    // A TVPaint project: its clips land as new cuts in the CURRENT
+    // project — nothing is discarded, so no unsaved-work gate, and no
+    // recovery/recents machinery (there is no .anicel here to track).
+    if (path.toLowerCase().endsWith('.tvpp')) {
+      final warnings = await session.importTvpp(tvppPath: path);
+      if (!context.mounted) {
+        return;
+      }
+      if (warnings == null) {
+        _showFileError(
+          context,
+          const FormatException('TVPaint 프로젝트로 읽을 수 없는 파일'),
+        );
+      } else if (warnings.isNotEmpty) {
+        await showAppNotice(
+          context,
+          windowKey: const ValueKey<String>('tvpp-import-warnings-notice'),
+          title: AppText.strings.commonNotice,
+          message: warnings.take(6).join('\n'),
+        );
+      }
+      return;
+    }
     // Opening ANOTHER project closes this one as surely as the window's X,
     // and this was the one door with no gate: a single Recents tap
     // silently discarded a dirty session (and after F-1 the loss window is
@@ -1211,7 +1234,13 @@ typedef ProjectPick = ({String path, String? folderBookmark});
 Future<ProjectPick?> pickProjectToOpen(BuildContext context) async {
   final grants = await pickFileGrantsForUser(
     context,
-    acceptedTypeGroups: const [FileTypeGroups.anicelProject],
+    // TVPaint projects open through the same door (the user's call: ONE
+    // entry, the Open button — the import pickers retire later). A .tvpp
+    // converts into cuts rather than loading as a project.
+    acceptedTypeGroups: [
+      FileTypeGroups.anicelProject,
+      FileTypeGroups.tvppProject,
+    ],
     // A DESKTOP hint only, and the SYNC twin on purpose: async `dart:io`
     // never completes under the widget-test clock, and this is the first
     // line of the open flow.
