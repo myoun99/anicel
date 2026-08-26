@@ -684,12 +684,36 @@ abstract final class FolderPicker {
   /// keep-open callers leave it for the OS sweep and point their saves
   /// back at the original. Throws [FileSystemException] when neither
   /// road produces bytes: access, not format.
+  ///
+  /// 🚨IT WAITS, because the first refusal is not an answer. Fetching a
+  /// placeholder takes time, and the provider reports that by FAILING
+  /// the read it has only just started (실측 08-27, iPhone + Google
+  /// Drive: the first open said 「잠시 후 다시 시도해 주세요」, the second
+  /// opened the same file). One-shot code turns that into a notice, and
+  /// the notice makes the USER the retry loop — pressing Open twice is
+  /// exactly what the app should have done itself. So the coordinated
+  /// read is re-asked, backing off, until the bytes arrive or [within]
+  /// runs out; only then is it a genuine failure (no network, a
+  /// signed-out provider) and worth telling anyone about.
+  ///
+  /// ⚠️A pick with NO ENTRY at all gets the one ask and not the wait:
+  /// waiting is for bytes on their way, and nothing is on its way to a
+  /// path that does not exist. It still gets that one ask — 「exists」 is
+  /// the platform answering about a placeholder, and the coordinator may
+  /// know things `dart:io` does not, so a wrong answer there must cost
+  /// an attempt rather than the whole road.
+  ///
+  /// [within] and [step] are the waiting POLICY, named so tests can
+  /// compress it; the defaults are what a real open uses.
   static Future<({String path, bool staged})> materializeOpenedFile(
-    String path,
-  ) async {
+    String path, {
+    Duration within = const Duration(seconds: 60),
+    Duration step = const Duration(milliseconds: 250),
+  }) async {
     if (await _plainlyReadable(path)) {
       return (path: path, staged: false);
     }
+    final present = await File(path).exists();
     final dot = path.lastIndexOf('.');
     final extension = dot > path.lastIndexOf(Platform.pathSeparator)
         ? path.substring(dot)
@@ -697,15 +721,36 @@ abstract final class FolderPicker {
     final staged =
         '${Directory.systemTemp.path}${Platform.pathSeparator}'
         'anicel-open-${DateTime.now().microsecondsSinceEpoch}$extension';
-    if (await readFileCoordinated(
-          sourcePath: path,
-          destinationPath: staged,
-        ) &&
-        await _plainlyReadable(staged)) {
-      return (path: staged, staged: true);
+    var waited = Duration.zero;
+    var pause = step;
+    while (true) {
+      if (await readFileCoordinated(
+            sourcePath: path,
+            destinationPath: staged,
+          ) &&
+          await _plainlyReadable(staged)) {
+        return (path: staged, staged: true);
+      }
+      // The download may have completed behind our back, in which case
+      // the pick itself serves and there is nothing to stage.
+      if (await _plainlyReadable(path)) {
+        return (path: path, staged: false);
+      }
+      if (!present || waited >= within) {
+        throw FileSystemException('파일을 읽지 못했습니다', path);
+      }
+      await Future<void>.delayed(pause);
+      waited += pause;
+      // Doubling, capped: the common case lands within a second or two,
+      // and a slow fetch must not be asked a hundred times a minute.
+      pause = pause * 2;
+      if (pause > _materializeMaxStep) {
+        pause = _materializeMaxStep;
+      }
     }
-    throw FileSystemException('파일을 읽지 못했습니다', path);
   }
+
+  static const Duration _materializeMaxStep = Duration(seconds: 2);
 
   /// Whether a plain read can actually produce bytes — a cloud
   /// placeholder often EXISTS and then refuses the first read, so
