@@ -7629,7 +7629,6 @@ class EditorSessionManager extends ChangeNotifier {
         // [conversion.slotsByFile] at bake time — not paths.
         resolveFile: (key) => key,
         mint: mint,
-        cameraFrameSize: cameraSize,
       );
       warnings.addAll(plan.warnings);
       plans.add((plan, conversion.slotsByFile));

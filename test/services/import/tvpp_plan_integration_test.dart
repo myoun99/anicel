@@ -1,4 +1,3 @@
-import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/import/tvp_import_model.dart';
@@ -103,7 +102,6 @@ void main() {
       parsed: conversion.result,
       resolveFile: (key) => key,
       mint: mint(),
-      cameraFrameSize: const CanvasSize(width: 960, height: 540),
     );
 
     expect(plan.cut.name, 'cut12');
@@ -164,7 +162,6 @@ void main() {
       parsed: parsed,
       resolveFile: (key) => key,
       mint: mint(),
-      cameraFrameSize: const CanvasSize(width: 960, height: 540),
     );
     final se = plan.cut.layers.singleWhere((l) => l.kind == LayerKind.se);
     expect(se.name, '12.mp4');
