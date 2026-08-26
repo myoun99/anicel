@@ -111,6 +111,14 @@ final class PathGrantHandler {
         host: host, result: result)
     case "resolveBookmark":
       resolve(base64: arguments?["bookmark"] as? String, result: result)
+    case "replaceFileCoordinated":
+      // The iOS twin's coordinated replace, verbatim: a sandboxed macOS
+      // app writing into a File Provider location meets the same refusal,
+      // and the same coordinator is the sanctioned way through it.
+      PathGrantHandler.replaceFileCoordinated(
+        sourcePath: arguments?["sourcePath"] as? String,
+        destinationPath: arguments?["destinationPath"] as? String,
+        result: result)
     default:
       // Only the two folder-grant methods live here. The channel's other
       // methods are mobile-only on the Dart side — `ensureInitialized` early
@@ -309,6 +317,48 @@ final class PathGrantHandler {
     }
     return items.isEmpty
       ? ["status": "unavailable"] : ["status": "granted", "items": items]
+  }
+
+  /// Overwrites [destinationPath] with [sourcePath]'s bytes through an
+  /// `NSFileCoordinator` — see the iOS twin for the whole story (실측
+  /// 08-26, iPhone + Google Drive: plain writes into a provider file are
+  /// refused; the coordinated replace is the sanctioned way through).
+  static func replaceFileCoordinated(
+    sourcePath: String?, destinationPath: String?,
+    result: @escaping FlutterResult
+  ) {
+    guard let sourcePath, let destinationPath else {
+      result(["status": "unavailable"])
+      return
+    }
+    DispatchQueue.global(qos: .userInitiated).async {
+      let source = URL(fileURLWithPath: sourcePath)
+      let destination = URL(fileURLWithPath: destinationPath)
+      let coordinator = NSFileCoordinator(filePresenter: nil)
+      var coordinationError: NSError?
+      var writeError: Error?
+      coordinator.coordinate(
+        writingItemAt: destination, options: .forReplacing,
+        error: &coordinationError
+      ) { url in
+        do {
+          let data = try Data(contentsOf: source, options: .mappedIfSafe)
+          try data.write(to: url, options: .atomic)
+        } catch {
+          writeError = error
+        }
+      }
+      let failure = coordinationError ?? (writeError as NSError?)
+      DispatchQueue.main.async {
+        if let failure {
+          result([
+            "status": "unavailable", "message": failure.localizedDescription,
+          ])
+        } else {
+          result(["status": "granted", "path": destinationPath])
+        }
+      }
+    }
   }
 }
 

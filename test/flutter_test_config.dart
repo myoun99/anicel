@@ -45,6 +45,7 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   FolderPicker.debugSaveDestinationPicker = null;
   FolderPicker.debugOperatingSystem = null;
   FolderPicker.debugBookmarkResolver = null;
+  FolderPicker.debugCoordinatedReplacer = null;
   // Back to the PRODUCTION default, not to false — a reset that quietly
   // put every test on the other shape would hide the one that ships.
   anicelAlwaysZip64 = true;

@@ -91,8 +91,64 @@ import UniformTypeIdentifiers
         let arguments = call.arguments as? [String: Any]
         self.resolveBookmark(
           base64: arguments?["bookmark"] as? String, result: result)
+      case "replaceFileCoordinated":
+        let arguments = call.arguments as? [String: Any]
+        AppDelegate.replaceFileCoordinated(
+          sourcePath: arguments?["sourcePath"] as? String,
+          destinationPath: arguments?["destinationPath"] as? String,
+          result: result)
       default:
         result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  /// Overwrites [destinationPath] with [sourcePath]'s bytes through an
+  /// `NSFileCoordinator` — the access discipline File Provider documents
+  /// (Drive, Dropbox…) actually honour for writers outside their own app.
+  ///
+  /// 실측 (08-26, iPhone + Google Drive): plain `dart:io` writes into a
+  /// placed file are refused outright, so the Dart save falls back to
+  /// this — a complete archive is written app-locally first and REPLACES
+  /// the provider file whole. `forReplacing` tells the coordinator (and
+  /// through it the provider) that the item's content is being swapped,
+  /// which is also the write shape a syncing provider can upload sanely.
+  ///
+  /// Runs off the main thread: coordination BLOCKS until the provider
+  /// yields the file, and the picker UI (or a sync in flight) may hold it
+  /// for a while.
+  static func replaceFileCoordinated(
+    sourcePath: String?, destinationPath: String?,
+    result: @escaping FlutterResult
+  ) {
+    guard let sourcePath, let destinationPath else {
+      result(["status": "unavailable"])
+      return
+    }
+    DispatchQueue.global(qos: .userInitiated).async {
+      let source = URL(fileURLWithPath: sourcePath)
+      let destination = URL(fileURLWithPath: destinationPath)
+      let coordinator = NSFileCoordinator(filePresenter: nil)
+      var coordinationError: NSError?
+      var writeError: Error?
+      coordinator.coordinate(
+        writingItemAt: destination, options: .forReplacing,
+        error: &coordinationError
+      ) { url in
+        do {
+          let data = try Data(contentsOf: source, options: .mappedIfSafe)
+          try data.write(to: url, options: .atomic)
+        } catch {
+          writeError = error
+        }
+      }
+      let failure = coordinationError ?? (writeError as NSError?)
+      DispatchQueue.main.async {
+        if let failure {
+          result(["status": "unavailable", "message": failure.localizedDescription])
+        } else {
+          result(["status": "granted", "path": destinationPath])
+        }
       }
     }
   }

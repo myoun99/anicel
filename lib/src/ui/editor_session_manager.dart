@@ -17186,6 +17186,79 @@ class EditorSessionManager extends ChangeNotifier {
     );
   }
 
+  /// The provider-refusal fallback: a complete archive written into the
+  /// app's own Recovery folder (so an orphan is swept in ≤30 days), then
+  /// swapped over [filePath] by the platform's file coordinator.
+  ///
+  /// The staging save ADOPTS normally — its refs are valid while the
+  /// staging file exists, and it exists until the sweep. After a
+  /// successful replace the copy at [filePath] is byte-identical, so the
+  /// same offsets hold there and clean keys' refs are simply repointed.
+  /// ⚠️ Keys dirty AGAIN (drawn on while the save ran) keep their staging
+  /// refs and their dirt: repointing them through [adoptSavedFile] would
+  /// CLEAR that dirt, and the next save would quietly skip the stroke —
+  /// the exact loss shape the editTick round closed.
+  ///
+  /// A replace that also fails rethrows the file-system refusal: the
+  /// notice names the real problem, and Q-drive-resave owns what the app
+  /// should offer instead.
+  Future<void> _saveViaCoordinatedReplace(
+    String filePath, {
+    required Map<String, MediaByteSource> mediaToStore,
+    void Function(double)? onProgress,
+  }) async {
+    final stagingDirectory = Directory(AppSave.recoveryDirectory())
+      ..createSync(recursive: true);
+    final staging =
+        '${stagingDirectory.path.replaceAll('\\', '/')}'
+        '/replace.tmp-${DateTime.now().microsecondsSinceEpoch}';
+    await _anicelFileService.save(
+      project: _repository.requireProject(),
+      brushFrameStore: brushFrameStore,
+      auxCelStores: [conteInkRowStore, conteInkPageStore, envelopeInkStore],
+      filePath: staging,
+      mediaToStore: mediaToStore,
+      grants: _grantsToStore(),
+      mediaCrcs: _mediaCrcsToStore(),
+      onProgress: onProgress,
+    );
+    final replaced = await FolderPicker.replaceFileCoordinated(
+      sourcePath: staging,
+      destinationPath: filePath,
+    );
+    if (!replaced) {
+      throw FileSystemException(
+        'the location refused both a direct write and a coordinated '
+        'replace — this provider cannot be saved to in place',
+        filePath,
+      );
+    }
+    for (final store in [
+      brushFrameStore,
+      conteInkRowStore,
+      conteInkPageStore,
+      envelopeInkStore,
+    ]) {
+      final snapshot = store.bakedSnapshotForSave();
+      final dirtyAgain = store.dirtyCelKeysSinceSave;
+      final moved = <BrushFrameKey, AnicelCelFileRef>{
+        for (final entry in snapshot.fileRefs.entries)
+          if (!dirtyAgain.contains(entry.key) &&
+              entry.value.filePath.replaceAll('\\', '/') == staging)
+            entry.key: AnicelCelFileRef(
+              filePath: filePath,
+              dataOffset: entry.value.dataOffset,
+              length: entry.value.length,
+              canvasSize: entry.value.canvasSize,
+              tileSize: entry.value.tileSize,
+            ),
+      };
+      if (moved.isNotEmpty) {
+        store.adoptSavedFile(moved, dirtyTicksAtSnapshot: snapshot.dirtyTicks);
+      }
+    }
+  }
+
   Future<void> _writeProjectToFile(
     String filePath, {
     void Function(double)? onProgress,
@@ -17206,16 +17279,33 @@ class EditorSessionManager extends ChangeNotifier {
       projectFilePath: _projectFilePath,
       mediaEntryNames: _mediaEntryNames,
     );
-    await _anicelFileService.save(
-      project: _repository.requireProject(),
-      brushFrameStore: brushFrameStore,
-      auxCelStores: [conteInkRowStore, conteInkPageStore, envelopeInkStore],
-      filePath: filePath,
-      mediaToStore: mediaToStore,
-      grants: _grantsToStore(),
-      mediaCrcs: _mediaCrcsToStore(),
-      onProgress: onProgress,
-    );
+    try {
+      await _anicelFileService.save(
+        project: _repository.requireProject(),
+        brushFrameStore: brushFrameStore,
+        auxCelStores: [conteInkRowStore, conteInkPageStore, envelopeInkStore],
+        filePath: filePath,
+        mediaToStore: mediaToStore,
+        grants: _grantsToStore(),
+        mediaCrcs: _mediaCrcsToStore(),
+        onProgress: onProgress,
+      );
+    } on FileSystemException {
+      // 실측 (08-26, iPhone + Google Drive): a File Provider can refuse
+      // plain in-place writes outright. The sanctioned way through is a
+      // COORDINATED replace — write the whole archive app-locally, then
+      // hand it to NSFileCoordinator to swap over the provider file.
+      // Scoped platforms only: a desktop refusal (locked file, dead
+      // drive) has no coordinator to appeal to and must stay loud.
+      if (!FolderPicker.grantsAreScoped) {
+        rethrow;
+      }
+      await _saveViaCoordinatedReplace(
+        filePath,
+        mediaToStore: mediaToStore,
+        onProgress: onProgress,
+      );
+    }
     _mediaEntryNames = mediaEntryNamesFor(mediaToStore.keys);
     _projectFilePath = filePath;
     _hasUnsavedChanges = false;
