@@ -16985,6 +16985,42 @@ class EditorSessionManager extends ChangeNotifier {
   bool get autosaveShouldStandDown =>
       _saveInFlight || _discardedUnsavedWork || _recoveredFromSidecar != null;
 
+  /// Writes the CURRENT state to [path] as a complete, standalone archive
+  /// and changes NOTHING about this session — no path adoption, no ref
+  /// adoption, no dirty-flag or sidecar movement. The Save As STAGING
+  /// writer on scoped platforms: the file this produces is about to be
+  /// MOVED by a document picker, so anything the session learned from it
+  /// would name a path that stops existing moments later.
+  ///
+  /// 🚨 Exists because of the 22-byte placeholder this replaces (실측
+  /// iPhone+Drive, 08-26): a provider that refuses in-place writes made
+  /// the post-placement save fail, and what the picker had placed was the
+  /// EMPTY placeholder — an unopenable husk where the user meant to put
+  /// their project. A complete archive staged up front costs the same
+  /// move and can never strand a husk.
+  Future<void> writeArchiveCopy(
+    String path, {
+    void Function(double)? onProgress,
+  }) async {
+    await _flushTextCelBakes();
+    final mediaToStore = projectMediaSources(
+      project: _repository.requireProject(),
+      projectFilePath: _projectFilePath,
+      mediaEntryNames: _mediaEntryNames,
+    );
+    await _anicelFileService.save(
+      project: _repository.requireProject(),
+      brushFrameStore: brushFrameStore,
+      auxCelStores: [conteInkRowStore, conteInkPageStore, envelopeInkStore],
+      filePath: path,
+      mediaToStore: mediaToStore,
+      grants: _grantsToStore(),
+      mediaCrcs: _mediaCrcsToStore(),
+      onProgress: onProgress,
+      adoptRefs: false,
+    );
+  }
+
   Future<void> _writeProjectToFile(
     String filePath, {
     void Function(double)? onProgress,
