@@ -1066,6 +1066,10 @@ void _antiAliasMask(Uint8List mask, int width, int height) {
   required int top,
   required int width,
   required int height,
+  /// Whether a partially-masked pixel travels ENTIRELY. See the branch it
+  /// guards — ⛔required rather than defaulted, because either answer is
+  /// wrong for half the callers and a default would pick one silently.
+  required bool takeWholePixels,
 }) {
   final rgba = Uint8List(width * height * 4);
   final tileSize = surface.tileSize;
@@ -1110,13 +1114,31 @@ void _antiAliasMask(Uint8List mask, int width, int height) {
             rgba[targetOffset] = pixels[sourceOffset];
             rgba[targetOffset + 1] = pixels[sourceOffset + 1];
             rgba[targetOffset + 2] = pixels[sourceOffset + 2];
-            if (maskValue == 255) {
+            // 🚨★★★A MOVE TAKES THE WHOLE PIXEL. The mask says WHICH pixels
+            // travel, not how much of each one does.
+            //
+            // This used to scale alpha by coverage, and the erase removed
+            // the matching fraction — arithmetically exact, and it left a
+            // ghost of the drawing along the selection's edge every time
+            // (유저 2026-08-27: 「aa적용 변형시, 선택의 외부에도 aa의 영향으로
+            // 픽셀이 남는데, 그러지 않도록」).
+            //
+            // ⛔The three cannot all hold at once: leave nothing behind,
+            // lose no ink, keep a soft edge on the moved copy. Scaling both
+            // sides bought the last two and gave up the first. The user
+            // chose to give up the third instead — a move that leaves half
+            // of itself behind is not a move — and the softness comes back
+            // on the PLACING side, which is carded separately.
+            //
+            // ⚠️FEATHER IS THE EXCEPTION, and it is not an invented one: a
+            // feathered selection is softness the user ASKED for, and the
+            // whole point of asking is that the edge fades. Anti-aliasing is
+            // incidental — nobody feathers a selection by switching AA on —
+            // so that is the one this straightens out.
+            if (takeWholePixels) {
               rgba[targetOffset + 3] = sourceAlpha;
             } else {
-              // Soft mask (R26): the stamp carries alpha scaled by
-              // coverage, matching the erase's partial removal at the
-              // same pixel — Skia's mul-div-255 rounding, like the
-              // overlay pipeline.
+              // Skia's mul-div-255 rounding, like the overlay pipeline.
               final product = sourceAlpha * maskValue + 128;
               rgba[targetOffset + 3] = (product + (product >> 8)) >> 8;
             }
@@ -1220,6 +1242,12 @@ SelectionLiftDabs? buildSelectionLiftDabs({
     height: height,
   );
 
+  // 🚨WHOLE PIXELS unless the softness was ASKED for. A feathered selection
+  // is a soft edge on purpose; anti-aliasing is not, and splitting a pixel
+  // between the moved copy and the old spot is what left a ghost along
+  // every AA selection the user moved.
+  final takeWholePixels = options.featherPx <= 0;
+
   // Lift the surface pixels under the mask (straight alpha, byte copies).
   final gathered = gatherMaskedSurfacePixels(
     surface: surface,
@@ -1228,6 +1256,7 @@ SelectionLiftDabs? buildSelectionLiftDabs({
     top: top,
     width: width,
     height: height,
+    takeWholePixels: takeWholePixels,
   );
   final rgba = gathered.rgba;
   final liftedAnything = gathered.liftedAnything;
@@ -1240,7 +1269,12 @@ SelectionLiftDabs? buildSelectionLiftDabs({
   // half-alpha ring at the silhouette (the fringe + origin remnant).
   final eraseAlpha = Uint8List(width * height * 4);
   for (var index = 0; index < mask.length; index += 1) {
-    eraseAlpha[index * 4 + 3] = mask[index];
+    // FULL removal wherever the mask touches at all — the twin of the
+    // gather above. The stamp took the whole pixel, so leaving any part of
+    // it here would be the ink appearing twice.
+    eraseAlpha[index * 4 + 3] = takeWholePixels
+        ? (mask[index] == 0 ? 0 : 255)
+        : mask[index];
   }
   final eraseDab = BrushDab(
     center: CanvasPoint(x: left + width / 2, y: top + height / 2),
