@@ -282,7 +282,26 @@ Uint8List srawRecord(
     body.addAll([...u32(total), ...u32(tile0.length)]);
     body.addAll(tile0);
     for (var t = 1; t < total; t++) {
-      if (tileEmpty(t)) {
+      // TVPaint dedupes identical tiles into copy markers — solid fills
+      // arrive this way, so the encoder must produce them for the
+      // decoder's copy path to be tested at all.
+      var src = -1;
+      final mine = tileRows(t);
+      for (var s = 0; s < t && src < 0; s++) {
+        final other = tileRows(s);
+        if (other.length == mine.length &&
+            List.generate(mine.length, (y) => y).every(
+              (y) =>
+                  other[y].length == mine[y].length &&
+                  List.generate(mine[y].length, (x) => x)
+                      .every((x) => other[y][x] == mine[y][x]),
+            )) {
+          src = s;
+        }
+      }
+      if (src >= 0) {
+        body.addAll([...u32(0), ...u32(0), ...u32(src)]);
+      } else if (tileEmpty(t)) {
         body.addAll([...u32(0), ...u32(0), ...u32((t ~/ cols) * cols)]);
       } else {
         final data = encodeRows(tileRows(t));

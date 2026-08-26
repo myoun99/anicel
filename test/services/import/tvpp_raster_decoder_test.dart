@@ -114,6 +114,20 @@ void main() {
       );
     });
 
+    test('tiled SRAW: a copy marker reproduces a CONTENT tile', () {
+      // The same block at the same intra-tile offset in tiles (0,0) and
+      // (1,0): the builder dedupes the second into a copy marker — the
+      // path TVPaint uses for solid fills (measured on E_F).
+      final px = List<int>.filled(w * h, 0);
+      for (var y = 10; y < 30; y++) {
+        for (var x = 10; x < 30; x++) {
+          px[y * w + x] = premulBgra(20, 40, 200, 255);
+          px[y * w + (x + 64)] = premulBgra(20, 40, 200, 255);
+        }
+      }
+      expectDecodes(fileWith(srawRecord(px, w, h)), px, compressed: true);
+    });
+
     test('tiled SRAW, uniform mode: 12-byte records with data chains', () {
       final px = testPixels();
       expectDecodes(
