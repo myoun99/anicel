@@ -86,9 +86,11 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # The conte PDF's embedded text fonts (OFL, see THIRD_PARTY.md):
-  # M PLUS 1p carries Latin + kana + kanji, IBM Plex Sans KR the Hangul
-  # fallback. Loaded via rootBundle by the PDF writer.
+  # ⚠️This asset entry covers EVERY file in assets/fonts/ — the UI faces
+  # declared under `fonts:` below AND the conte PDF's two, which the PDF
+  # writer loads by name through rootBundle rather than as a family.
+  #
+  # 콘티 PDF: M PLUS 1p 가 라틴+가나+한자, IBM Plex Sans KR 이 한글.
   assets:
     - assets/fonts/
     - assets/licenses/
