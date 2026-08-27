@@ -21,7 +21,9 @@ import '../../services/playback/playback_frame_mapping.dart'
         sourceOverWeights,
         trackGroupSourceOverWeights;
 import '../camera/camera_frame_render_service.dart';
-import '../canvas/composite_effect_paint.dart' show alphaOnly;
+import '../canvas/composite_effect_paint.dart'
+    show alphaOnly, resolveCompositeEffectPlan;
+import '../canvas/subtree_image_composite.dart' show applyEffectSteps;
 import '../editor_session_manager.dart';
 import '../playback/playback_frame_painter.dart';
 import '../track_effect_paint_policy.dart';
@@ -270,7 +272,7 @@ class ExportFrameRenderer {
     // No animated track fade any more; the transition row's ramp lands in
     // [_canvasSpaceTransitionFrame] above, on the frames it actually covers.
     final fade = session.trackStaticOpacityForCut(task.cut.id);
-    final trackEffects = trackEffectPaintAt(
+    final trackEffects = trackEffectsAt(
       session.trackEffectsForCut(task.cut.id),
       trackFrame,
       enabled: trackFxEnabled,
@@ -307,8 +309,25 @@ class ExportFrameRenderer {
     final framePaint = ui.Paint();
     // The chain filters the cut's finished picture, under the fade — the same
     // order the screen draws it in.
-    trackEffects.applyTo(framePaint);
-    canvas.drawImage(image, ui.Offset.zero, framePaint);
+    //
+    // 🚨AND A KEY IN IT NEEDS ITS OWN RASTER. `image` is the cut's finished
+    // picture at its own size and the export draws it 1:1, so the steps run
+    // at scale 1 — the one route where the ratio is not a question.
+    final plan = resolveCompositeEffectPlan(trackEffects);
+    plan.finalPaint.applyTo(framePaint);
+    final stepped = plan.isSingleDraw
+        ? image
+        : applyEffectSteps(
+            source: image,
+            steps: plan.preSteps,
+            pixelWidth: image.width,
+            pixelHeight: image.height,
+            rasterScale: 1,
+          );
+    canvas.drawImage(stepped, ui.Offset.zero, framePaint);
+    if (!identical(stepped, image)) {
+      stepped.dispose();
+    }
     if (fade < 1) {
       canvas.restore();
     }
@@ -406,11 +425,29 @@ class ExportFrameRenderer {
           );
         }
         final framePaint = ui.Paint();
-        trackEffectPaintAt(
-          session.trackEffectsForCut(cut.id),
-          globalFrame,
-          enabled: session.isCutFxEnabled(cut.id),
-        ).applyTo(framePaint);
+        // The V row's chain on this contribution, keys included — the
+        // dissolve weights what the chain made, not what it started from.
+        final dissolvePlan = resolveCompositeEffectPlan(
+          trackEffectsAt(
+            session.trackEffectsForCut(cut.id),
+            globalFrame,
+            enabled: session.isCutFxEnabled(cut.id),
+          ),
+        );
+        dissolvePlan.finalPaint.applyTo(framePaint);
+        final steppedFrame = dissolvePlan.isSingleDraw
+            ? image
+            : applyEffectSteps(
+                source: image,
+                steps: dissolvePlan.preSteps,
+                pixelWidth: image.width,
+                pixelHeight: image.height,
+                rasterScale: 1,
+              );
+        canvas.drawImage(steppedFrame, ui.Offset.zero, framePaint);
+        if (!identical(steppedFrame, image)) {
+          steppedFrame.dispose();
+        }
         canvas.drawImage(image, ui.Offset.zero, framePaint);
         if (weight < 1) {
           canvas.restore();
@@ -534,7 +571,7 @@ class ExportFrameRenderer {
           cameraPose: session.cameraPoseForCut(cut, position.localFrameIndex),
           cameraFrameSize: size,
           // No cutPose/cutAnchorPoint: the V row has no transform.
-          cutEffects: trackEffectPaintAt(
+          cutEffects: trackEffectsAt(
             session.trackEffectsForCut(cut.id),
             position.globalFrameIndex,
             enabled: trackFxEnabled,

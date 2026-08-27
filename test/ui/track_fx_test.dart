@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/editing_session_state.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -17,8 +18,7 @@ import 'package:anicel/src/services/commands/cut_command_coordinator.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/canvas/composite_effect_paint.dart'
-    show blurSigmaPerRadius;
+import 'package:anicel/src/ui/canvas/composite_effect_paint.dart'    show        CompositeEffectPaint,        blurSigmaPerRadius,        resolveCompositeEffectPaint,        resolveCompositeEffectPlan;
 import 'package:anicel/src/ui/track_effect_paint_policy.dart';
 
 /// The V row's EFFECT CHAIN: a layer's fx one level up, filtering the whole
@@ -54,6 +54,19 @@ LayerEffect _blur({double radius = 9}) => LayerEffect(
   parameters: {
     'blurX': EffectParameter(value: radius),
     'blurY': EffectParameter(value: radius),
+  },
+);
+
+/// A colour key on the V row — the shape that used to make the policy throw.
+LayerEffect _deleteWhite() => LayerEffect(
+  id: const EffectId('fx-key'),
+  kind: EffectKind.deleteColor,
+  parameters: {
+    'keyRed': EffectParameter(value: 255),
+    'keyGreen': EffectParameter(value: 255),
+    'keyBlue': EffectParameter(value: 255),
+    'tolerance': EffectParameter(value: 0),
+    'amount': EffectParameter(value: 100),
   },
 );
 
@@ -98,23 +111,35 @@ void main() {
   });
 
   group('the chain as paint', () {
+    // ⛔THE POLICY HANDS BACK A CHAIN NOW, not a paint — a colour key has no
+    // paint form, and resolving one here is what used to throw. These tests
+    // still ask about the PAINT, so they resolve it themselves, one step
+    // further down than they used to.
+    CompositeEffectPaint paintOf(
+      List<LayerEffect> effects,
+      int frame, {
+      bool enabled = true,
+    }) => resolveCompositeEffectPaint(
+      trackEffectsAt(effects, frame, enabled: enabled),
+    );
+
     test('empty is the zero-cost path, and so is a bypassed row', () {
-      expect(trackEffectPaintAt(const [], 0).isEmpty, isTrue);
+      expect(paintOf(const [], 0).isEmpty, isTrue);
       expect(
-        trackEffectPaintAt([_brightness()], 0, enabled: false).isEmpty,
+        paintOf([_brightness()], 0, enabled: false).isEmpty,
         isTrue,
         reason: 'the V row fx master bypasses the chain like the pose',
       );
-      expect(trackEffectPaintAt([_brightness()], 0).isNotEmpty, isTrue);
+      expect(paintOf([_brightness()], 0).isNotEmpty, isTrue);
     });
 
     test('a colour effect resolves INLINE, a blur takes the offscreen', () {
-      final colour = trackEffectPaintAt([_brightness()], 0);
+      final colour = paintOf([_brightness()], 0);
       expect(colour.colorFilter, isNotNull);
       expect(colour.imageFilter, isNull);
       expect(colour.outsetPixels, 0);
 
-      final blurred = trackEffectPaintAt([_blur(radius: 9)], 0);
+      final blurred = paintOf([_blur(radius: 9)], 0);
       expect(blurred.colorFilter, isNull);
       expect(blurred.imageFilter, isNotNull);
       expect(blurred.outsetPixels, 9);
@@ -126,27 +151,70 @@ void main() {
       ];
       // Frame 0 resolves to the no-op value, so there is nothing to paint;
       // frame 10 does.
-      expect(trackEffectPaintAt(animated, 0).isEmpty, isTrue);
-      expect(trackEffectPaintAt(animated, 10).isNotEmpty, isTrue);
+      expect(paintOf(animated, 0).isEmpty, isTrue);
+      expect(paintOf(animated, 10).isNotEmpty, isTrue);
       // And the two ends differ, which is what makes it animated at all.
-      expect(
-        trackEffectPaintAt(animated, 10) == trackEffectPaintAt(animated, 5),
-        isFalse,
-      );
+      expect(paintOf(animated, 10) == paintOf(animated, 5), isFalse);
     });
 
     test('an effect switched OFF drops out while its keys stay', () {
       final off = [_brightness().copyWith(enabled: false)];
-      expect(trackEffectPaintAt(off, 0).isEmpty, isTrue);
+      expect(paintOf(off, 0).isEmpty, isTrue);
       expect(off.single.parameterOf('brightness').value, 0.5);
     });
 
-    test('the paint is a VALUE, so a static grade is not a repaint', () {
+    test('the CHAIN is a value, so a static grade is not a repaint', () {
+      // ⛔ASKED OF THE CHAIN, because the chain is what the painter now
+      // diffs (`listEquals`). Asking the paint would leave the field the
+      // painter actually compares untested.
       final effects = [_brightness()];
-      expect(trackEffectPaintAt(effects, 3), trackEffectPaintAt(effects, 4));
       expect(
-        trackEffectPaintAt(effects, 3).hashCode,
-        trackEffectPaintAt(effects, 4).hashCode,
+        listEquals(trackEffectsAt(effects, 3), trackEffectsAt(effects, 4)),
+        isTrue,
+      );
+      expect(paintOf(effects, 3), paintOf(effects, 4));
+    });
+
+    test('a COLOUR KEY resolves to a plan instead of throwing', () {
+      // 🚨★★★THE BUG THIS SHAPE EXISTS FOR. The policy used to return a
+      // resolved paint, and `resolveCompositeEffectPaint` REFUSES a
+      // source-pixel effect — by assert. So a track chain with a colour key
+      // in it threw, exactly as the live layer's did until #1314. It was
+      // unreachable only because nothing calls `addEffectToTrack`; "no
+      // caller" is not a design, and the next round to add that menu would
+      // have shipped an assert.
+      final chain = trackEffectsAt([_deleteWhite()], 0);
+      expect(chain, hasLength(1), reason: 'fixture: the key survived');
+
+      final plan = resolveCompositeEffectPlan(chain);
+      expect(
+        plan.preSteps, hasLength(1),
+        reason: 'the key rides its own raster, like a group or a layer image',
+      );
+      expect(plan.preSteps.single.key, isNotNull);
+      expect(
+        plan.finalPaint.isEmpty,
+        isTrue,
+        reason: 'nothing follows the key, so the final draw carries nothing',
+      );
+    });
+
+    test('a key UNDER a painted effect keeps both, in that order', () {
+      final plan = resolveCompositeEffectPlan(
+        trackEffectsAt([_brightness(), _deleteWhite()], 0),
+      );
+      expect(plan.preSteps, hasLength(2));
+      expect(
+        plan.preSteps.first.key,
+        isNull,
+        reason: 'the darken runs first, with no key of its own',
+      );
+      expect(plan.preSteps.first.then, hasLength(1));
+      expect(
+        plan.preSteps.last.key,
+        isNotNull,
+        reason: 'and the key sees what the darken made — order is free here '
+            'too, the same law the layer rows got in #1312',
       );
     });
   });
@@ -222,7 +290,10 @@ void main() {
       s.toggleTrackEffectEnabled(_track, id);
       expect(chain(s).single.enabled, isFalse);
       // Bypassed, so the cut's picture is unfiltered — the keys stay.
-      expect(trackEffectPaintAt(chain(s), 0).isEmpty, isTrue);
+      expect(
+        resolveCompositeEffectPaint(trackEffectsAt(chain(s), 0)).isEmpty,
+        isTrue,
+      );
 
       s.toggleTrackEffectEnabled(_track, id);
       expect(chain(s).single.enabled, isTrue);
@@ -247,7 +318,9 @@ void main() {
     // Same translation as a layer's blur (one resolver, one painter): the
     // V row must not invent a second meaning for a radius.
     final paint = ui.Paint();
-    trackEffectPaintAt([_blur(radius: 6)], 0).applyTo(paint);
+    resolveCompositeEffectPaint(
+      trackEffectsAt([_blur(radius: 6)], 0),
+    ).applyTo(paint);
     expect(paint.imageFilter, isNotNull);
     expect(
       paint.imageFilter.toString(),

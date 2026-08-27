@@ -395,7 +395,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
             // The V row's chain, on the cut's picture. rasterScale stays 1:
             // the composite is drawn up to CANVAS space here, whatever
             // quality it was cached at, and a blur radius is canvas pixels.
-            cutEffects: trackEffectPaintAt(
+            cutEffects: trackEffectsAt(
               widget.trackEffectsOf?.call(cut.id) ?? const [],
               globalFrame,
               enabled: cutFxEnabled,

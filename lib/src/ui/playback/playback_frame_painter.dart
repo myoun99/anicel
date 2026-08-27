@@ -1,17 +1,20 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/widgets.dart';
 
 import '../../models/camera_pose.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/layer_effect.dart' show ResolvedLayerEffect;
 import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
 import '../../services/se_name_tag_plan.dart';
 import '../canvas/composite_effect_paint.dart'
-    show CompositeEffectPaint, alphaOnly;
+    show alphaOnly, resolveCompositeEffectPlan;
+import '../canvas/subtree_image_composite.dart' show applyEffectSteps;
 import '../canvas/display_resample.dart';
 import '../canvas/layer_pose_paint.dart';
 import '../canvas/paper_background.dart';
@@ -41,7 +44,7 @@ class PlaybackFramePainter extends CustomPainter {
     this.cameraFrameSize,
     this.cutPose,
     this.cutAnchorPoint,
-    this.cutEffects = CompositeEffectPaint.none,
+    this.cutEffects = const <ResolvedLayerEffect>[],
     this.fadeOpacity = 1,
     this.imageOpacity = 1,
     this.letterboxColor = const Color(0xFF15191C),
@@ -96,7 +99,7 @@ class PlaybackFramePainter extends CustomPainter {
   /// [imageOpacity] does: the paper is the panel's stage, not part of the
   /// cut's picture, so a grade on the V row must not tint the stage. None
   /// costs nothing.
-  final CompositeEffectPaint cutEffects;
+  final List<ResolvedLayerEffect> cutEffects;
 
   /// The fade (the track's opacity lane): the cut's WHOLE contribution —
   /// stage and picture together — thins as one (R3b, "fade is
@@ -294,19 +297,46 @@ class PlaybackFramePainter extends CustomPainter {
             : FilterQuality.low
         ..color = alphaOnly(imageOpacity);
       // The V row's chain filters the picture on its way onto the stage.
-      cutEffects.applyTo(imagePaint);
+      //
+      // 🚨A CHAIN IS NOT ALWAYS ONE DRAW, and this is where a track's stopped
+      // pretending otherwise. A colour key is a fragment shader with no paint
+      // form, so a key that comes after painted state needs its own raster —
+      // the same steps a group and a layer image already take.
+      //
+      // ⚠️rasterScale 1 for the PAINT: the cut is drawn up to canvas space
+      // here, so a blur radius is canvas pixels and Skia maps the sigma
+      // through the CTM. The STEPS are a different question — they raster the
+      // image at its OWN size, which a Half/Quarter cache makes smaller than
+      // the canvas, so they get that ratio instead.
+      final plan = resolveCompositeEffectPlan(cutEffects);
+      plan.finalPaint.applyTo(imagePaint);
+      final stepped = plan.isSingleDraw
+          ? composite
+          : applyEffectSteps(
+              source: composite,
+              steps: plan.preSteps,
+              pixelWidth: composite.width,
+              pixelHeight: composite.height,
+              rasterScale: canvasSize.width == 0
+                  ? 1
+                  : composite.width / canvasSize.width,
+            );
       canvas.drawImageRect(
-        composite,
+        stepped,
         Rect.fromLTWH(
           0,
           0,
-          composite.width.toDouble(),
-          composite.height.toDouble(),
+          stepped.width.toDouble(),
+          stepped.height.toDouble(),
         ),
         // The dst upscale is what shows Half/Quarter caches at canvas size.
         canvasRect,
         imagePaint,
       );
+      // ⛔The steps made a NEW image; `composite` belongs to the cache.
+      if (!identical(stepped, composite)) {
+        stepped.dispose();
+      }
     }
     if (seNameTags.isNotEmpty) {
       // The tags belong to the cut's own contribution, so a stacked UPPER
@@ -347,7 +377,7 @@ class PlaybackFramePainter extends CustomPainter {
       oldDelegate.cameraFrameSize != cameraFrameSize ||
       oldDelegate.cutPose != cutPose ||
       oldDelegate.cutAnchorPoint != cutAnchorPoint ||
-      oldDelegate.cutEffects != cutEffects ||
+      !listEquals(oldDelegate.cutEffects, cutEffects) ||
       oldDelegate.fadeOpacity != fadeOpacity ||
       oldDelegate.imageOpacity != imageOpacity ||
       oldDelegate.letterboxColor != letterboxColor ||
