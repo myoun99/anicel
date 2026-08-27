@@ -2,6 +2,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 
+import 'colour_key_shader.dart';
+import 'composite_effect_paint.dart';
+
 /// The largest side a sub-tree's own raster may have, in device pixels.
 ///
 /// ⛔A THIRD 8192, on purpose — see the decision on `CanvasSizeDialog
@@ -161,12 +164,14 @@ void blitSubtreeRaster({
   );
 }
 
-/// Draws the rasterised sub-tree once, with [paint].
+/// Draws the rasterised sub-tree with [paint].
 ///
-/// An ADJUSTMENT below full strength calls this twice — once unfiltered and
-/// once filtered — over the same raster, because its mix is a crossfade
-/// rather than a fade-out.
-typedef BlitSubtree = void Function(Paint paint);
+/// [stepped] chooses WHICH raster. The default is the chain's steps applied,
+/// which is what a group wants. An ADJUSTMENT needs both: its mix crossfades
+/// between the scope and the scope WITH the chain on it, so the unfiltered
+/// pass must not already be carrying the chain's colour keys — the mix could
+/// then never fade them.
+typedef BlitSubtree = void Function(Paint paint, {bool stepped});
 
 /// 🚨★★★A SUB-TREE IS AN IMAGE — and it is the same pixels `saveLayer` made.
 ///
@@ -192,6 +197,7 @@ void drawSubtreeAsImage({
   required int maxPixelSide,
   required void Function(Canvas into, double rasterScale) paintSubtree,
   required void Function(BlitSubtree blit) compose,
+  List<CompositeEffectStep> steps = const [],
 }) {
   final plan = planSubtreeRaster(
     bounds: bounds,
@@ -210,6 +216,7 @@ void drawSubtreeAsImage({
     recorder: recorder,
     plan: plan,
     compose: compose,
+    steps: steps,
   );
 }
 
@@ -221,6 +228,7 @@ Future<void> drawSubtreeAsImageAsync({
   required int maxPixelSide,
   required Future<void> Function(Canvas into, double rasterScale) paintSubtree,
   required void Function(BlitSubtree blit) compose,
+  List<CompositeEffectStep> steps = const [],
 }) async {
   final plan = planSubtreeRaster(
     bounds: bounds,
@@ -239,25 +247,109 @@ Future<void> drawSubtreeAsImageAsync({
     recorder: recorder,
     plan: plan,
     compose: compose,
+    steps: steps,
   );
 }
 
 /// Turns a finished recording into the image, hands [compose] a blit for it,
 /// and owns its lifetime.
+/// Runs [steps] over [source], returning a NEW image the caller owns, or
+/// [source] itself when there is nothing to do.
+///
+/// 🚨EACH STEP IS ITS OWN RASTER, AT THE IDENTITY. A colour key is a fragment
+/// shader, and a shader reads `FlutterFragCoord()` — the position in the
+/// space it is drawn into. Folding one into a draw that sits under a
+/// transform would make it read through that transform. Rasterising the step
+/// by itself, 1:1 into a rect at the origin, is what makes the shader's own
+/// coordinates mean what it thinks they mean.
+///
+/// A step's key and its painted effects share ONE raster: a `ui.Paint`
+/// applies its shader, then its colour filter, then its image filter, so
+/// "key, then blur" needs no second pass.
+ui.Image applyEffectSteps({
+  required ui.Image source,
+  required List<CompositeEffectStep> steps,
+  required int pixelWidth,
+  required int pixelHeight,
+  required double rasterScale,
+}) {
+  var image = source;
+  for (final step in steps) {
+    final stepRecorder = ui.PictureRecorder();
+    final into = Canvas(stepRecorder);
+    final paint = Paint();
+    final key = step.key;
+    ui.FragmentShader? shader;
+    if (key != null) {
+      shader = ColourKeyShader.shaderFor(
+        source: image,
+        key: key,
+        width: pixelWidth.toDouble(),
+        height: pixelHeight.toDouble(),
+      );
+      paint.shader = shader;
+    }
+    // ⛔Resolved HERE, at the raster's own scale. A blur's radii are canvas
+    // pixels and this raster is device pixels, so the step that owns them is
+    // the only place that knows the ratio.
+    resolveCompositeEffectPaint(
+      step.then,
+      rasterScale: rasterScale,
+    ).applyTo(paint);
+    final rect = Rect.fromLTWH(
+      0,
+      0,
+      pixelWidth.toDouble(),
+      pixelHeight.toDouble(),
+    );
+    if (shader == null) {
+      // 1:1 by construction — src and dst are the same rect, at the
+      // identity. A filter here would resample a blit that is already
+      // aligned.
+      paint.filterQuality = FilterQuality.none;
+      into.drawImageRect(image, rect, rect, paint);
+    } else {
+      // With a shader the image IS the shader's source, so the draw is a
+      // plain rect over it.
+      into.drawRect(rect, paint);
+    }
+    final stepPicture = stepRecorder.endRecording();
+    final next = stepPicture.toImageSync(pixelWidth, pixelHeight);
+    stepPicture.dispose();
+    shader?.dispose();
+    if (!identical(image, source)) {
+      image.dispose();
+    }
+    image = next;
+  }
+  return image;
+}
+
 void finishSubtreeRaster({
   required Canvas canvas,
   required ui.PictureRecorder recorder,
   required SubtreeRasterPlan plan,
   required void Function(BlitSubtree blit) compose,
+  List<CompositeEffectStep> steps = const [],
 }) {
   final picture = recorder.endRecording();
-  final image = picture.toImageSync(plan.pixelWidth, plan.pixelHeight);
+  final raster = picture.toImageSync(plan.pixelWidth, plan.pixelHeight);
   picture.dispose();
+  // ⛔BOTH stay alive until the compose is done. A crossfade blits the raw
+  // scope and the stepped one in the same structure, and disposing the raw
+  // one here would have left the unfiltered pass reading freed pixels.
+  final image = applyEffectSteps(
+    source: raster,
+    steps: steps,
+    pixelWidth: plan.pixelWidth,
+    pixelHeight: plan.pixelHeight,
+    rasterScale: plan.scale,
+  );
   try {
     compose(
-      (paint) => blitSubtreeRaster(
+      (paint, {bool stepped = true}) => blitSubtreeRaster(
         canvas: canvas,
-        image: image,
+        image: stepped ? image : raster,
         plan: plan,
         paint: paint,
       ),
@@ -267,6 +359,9 @@ void finishSubtreeRaster({
     // frame's display list and the engine holds its own claim from that
     // moment. What `dispose` releases is this handle, not the pixels the
     // list is going to replay.
-    image.dispose();
+    if (!identical(image, raster)) {
+      image.dispose();
+    }
+    raster.dispose();
   }
 }

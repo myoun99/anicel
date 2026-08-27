@@ -84,13 +84,16 @@ void main() {
     expect(resolveCompositeEffectPaint([blur(x: 1, y: 9)]).outsetPixels, 9);
     final bounds = const ui.Rect.fromLTWH(0, 0, 10, 10);
     expect(
-      effectBufferBounds(bounds, resolveCompositeEffectPaint([blur(x: 4)])),
+      effectBufferBounds(
+        bounds,
+        resolveCompositeEffectPaint([blur(x: 4)]).outsetPixels,
+      ),
       const ui.Rect.fromLTWH(-4, -4, 18, 18),
     );
     expect(
       effectBufferBounds(
         bounds,
-        resolveCompositeEffectPaint([colour(brightness: 5)]),
+        resolveCompositeEffectPaint([colour(brightness: 5)]).outsetPixels,
       ),
       bounds,
       reason: 'colour spreads nothing — no buffer growth, no wasted offscreen',

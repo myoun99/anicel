@@ -152,7 +152,13 @@ void main() {
 /// LOW only in the one case the buffer cap clamped the scale and the
 /// blit became a magnification. It is a quality-owning leaf in the
 /// strictest sense: it is the composite, not a layer inside one.
-const int _knownRawDraws = 38;
+/// **39** at the order-is-free round: +1 in subtree_image_composite — the
+/// step blit that carries a chain from one raster to the next when a colour
+/// key sits under painted state. Src and dst are the same rect at the
+/// identity, so it is a 1:1 blit and owns `FilterQuality.none` on its own
+/// Paint. (The step's OTHER draw is a `drawRect` under a shader, which is
+/// not an image draw at all.)
+const int _knownRawDraws = 39;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

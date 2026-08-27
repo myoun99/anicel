@@ -285,72 +285,24 @@ const List<EffectParameterSpec> colorKeyParameterSpecs = [
 
 List<EffectParameterSpec> effectParametersOf(EffectKind kind) =>
     effectParameterSpecs[kind]!;
+/// The effect kinds a row of this kind may be given.
+///
+/// ⛔EVERY KIND, EVERYWHERE, and [inputIsCelPixels] is kept only because it
+/// is the question a caller has: does this row's chain start from cel bytes?
+/// It no longer changes the answer.
+///
+/// 🚨THE OLD RULE AND WHY IT WENT. The colour keys used to be hidden where
+/// the input was not cel bytes, because a key was a CPU pass over those
+/// bytes and there was nothing else it could be. The recorded reason was
+/// 유저's own: 「굳이 색 키만 gpu로 가능하다고 그거하면 다른 fx랑 통일성
+/// 깨지잖아」 — two implementations of one effect would drift, exactly the
+/// thing AE is criticised for. That objection was answered rather than
+/// argued away: the shader and `CelColorKey` are proven identical over the
+/// whole decision domain (`one_colour_key_two_processors_test`), and 유저
+/// 2026-08-27 set that proof as the condition for going ahead.
+List<EffectKind> effectKindsFor({required bool inputIsCelPixels}) =>
+    EffectKind.values;
 
-/// The kinds a chain may be OFFERED, given what its input is.
-///
-/// ★THE ONE GATE. [EffectKind.runsOnSourcePixels] kinds are a CPU pass over
-/// a cel's tile bytes, and a folder row, an adjustment row and a track all
-/// hand the chain a COMPOSITED BUFFER instead — pixels that only exist on
-/// the GPU by then. Asking here, once, is what keeps a `=> true` predicate
-/// somewhere else from walking a new kind in through a door nobody meant to
-/// open ([[derived-cel-projection-pattern]] rule 7).
-///
-/// [inputIsCelPixels] is `layerKindAcceptsBrushInput(row.kind)` for a row —
-/// the SAME predicate the destructive pixel verbs gate on, deliberately, so
-/// "which rows have pixels of their own" has one answer. ⛔It is kind-level
-/// on purpose: an imported image row is media-backed and still has real cel
-/// bytes, and keying a scan's paper color is the case this feature was
-/// asked for.
-List<EffectKind> effectKindsFor({required bool inputIsCelPixels}) {
-  if (inputIsCelPixels) {
-    return EffectKind.values;
-  }
-  return [
-    for (final kind in EffectKind.values)
-      if (!kind.runsOnSourcePixels) kind,
-  ];
-}
-
-/// [effects] in the order the composite can actually evaluate them: the
-/// source-pixel kinds first, everything else after, each group keeping its
-/// own relative order.
-///
-/// 🚨THIS IS WHY THE ORDER IS NOT A LIE. The CPU half runs before a single
-/// pixel is drawn, so a color key placed under a blur could never mean
-/// "blur first, then key" no matter how the list was written. Rather than
-/// let the lane list say one thing while the pixels do another, the chain a
-/// row can HOLD is normalized here — every constructor runs it, so the list
-/// on screen IS the evaluation order ([[make-the-invariant-unrepresentable]]:
-/// one field, not a second place that fixes it up later).
-///
-/// Returns the original list when it is already in order, so the common
-/// case allocates nothing and `==` on unchanged chains stays cheap.
-List<LayerEffect> normalizedEffectChain(List<LayerEffect> effects) {
-  if (effects.length < 2) {
-    return effects;
-  }
-  var seenPaint = false;
-  var ordered = true;
-  for (final effect in effects) {
-    if (effect.kind.runsOnSourcePixels) {
-      if (seenPaint) {
-        ordered = false;
-        break;
-      }
-    } else {
-      seenPaint = true;
-    }
-  }
-  if (ordered) {
-    return effects;
-  }
-  return [
-    for (final effect in effects)
-      if (effect.kind.runsOnSourcePixels) effect,
-    for (final effect in effects)
-      if (!effect.kind.runsOnSourcePixels) effect,
-  ];
-}
 
 EffectParameterSpec? effectParameterSpecOf(EffectKind kind, String id) {
   for (final spec in effectParametersOf(kind)) {

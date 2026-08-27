@@ -170,31 +170,42 @@ class CelColorKey {
   static int _byte(double value) => value.round().clamp(0, 255);
 }
 
-/// [effects] split into the CPU half and the paint half, each keeping its
-/// own relative order.
+/// [effects] split at the point where the chain stops being about the cel's
+/// own bytes: the LEADING run of source-pixel kinds, and everything from the
+/// first painted effect onward.
 ///
-/// 🚨THE CPU HALF ALWAYS RUNS FIRST, and that is why [normalizedEffectChain]
-/// exists: the chain a layer can HOLD is already ordered this way, so this
-/// split cannot reorder anything the artist can see. If it ever could, the
-/// lane list and the pixels would disagree about what the chain means.
+/// 🚨THE LEADING RUN, NOT EVERY ONE OF THEM. 유저 2026-08-27: *「누가
+/// 트랜스폼fx처럼 고정 fx가 아닌것에 순서를 고정하라했지? ae몰라? ae는 순서
+/// 자유잖아. 자유롭게 해야지. 순서가 결과에 영향주는거고」* — so a colour key
+/// UNDER a blur means "blur first, then key", and there is no cel byte left
+/// to key by then. Only a key that still sees the cel's own bytes can be one
+/// of these; the rest are shader passes over what the chain has painted so
+/// far (see `resolveCompositeEffectPlan`).
+///
+/// ⛔The old rule pulled EVERY key to the front, and the chain a row could
+/// hold was normalized to match so the lane list never lied. Order is free
+/// now, so the split follows the order instead of the order following the
+/// split.
 ({List<ResolvedLayerEffect> source, List<ResolvedLayerEffect> paint})
 splitSourceEffects(List<ResolvedLayerEffect> effects) {
   if (effects.isEmpty) {
     return (source: const [], paint: const []);
   }
-  List<ResolvedLayerEffect>? source;
-  List<ResolvedLayerEffect>? paint;
-  for (final effect in effects) {
-    if (effect.kind.runsOnSourcePixels) {
-      (source ??= []).add(effect);
-    } else {
-      (paint ??= []).add(effect);
-    }
+  var leading = 0;
+  while (leading < effects.length &&
+      effects[leading].kind.runsOnSourcePixels) {
+    leading += 1;
   }
-  if (source == null) {
+  if (leading == 0) {
     return (source: const [], paint: effects);
   }
-  return (source: source, paint: paint ?? const []);
+  if (leading == effects.length) {
+    return (source: effects, paint: const []);
+  }
+  return (
+    source: effects.sublist(0, leading),
+    paint: effects.sublist(leading),
+  );
 }
 
 /// The values every color key in [effects] was resolved to — what a cache

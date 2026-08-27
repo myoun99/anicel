@@ -106,7 +106,7 @@ void main() {
       final grouped = await rasterize((canvas) {
         final groupPaint = Paint();
         plan.applyTo(groupPaint);
-        canvas.saveLayer(effectBufferBounds(bounds, plan), groupPaint);
+        canvas.saveLayer(effectBufferBounds(bounds, plan.outsetPixels), groupPaint);
         canvas.drawRect(left, Paint()..color = const Color(0xFF808080));
         canvas.drawRect(right, Paint()..color = const Color(0xFF808080));
         canvas.restore();
@@ -148,7 +148,7 @@ void main() {
         final paint = Paint();
         plan.applyTo(paint);
         canvas.saveLayer(
-          grown ? effectBufferBounds(bounds, plan) : bounds,
+          grown ? effectBufferBounds(bounds, plan.outsetPixels) : bounds,
           paint,
         );
         canvas.drawRect(outside, Paint()..color = const Color(0xFF808080));

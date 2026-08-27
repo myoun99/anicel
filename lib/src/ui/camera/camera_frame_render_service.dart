@@ -270,7 +270,8 @@ class CameraFrameRenderService {
             // R6: and one filter chain on it — the group's effects, in
             // CANVAS units (the camera projection is a canvas transform, so
             // Skia maps a blur's sigma through the CTM for us).
-            final groupEffects = resolveCompositeEffectPaint(effects);
+            final groupPlan = resolveCompositeEffectPlan(effects);
+            final groupEffects = groupPlan.finalPaint;
             final groupPaint = Paint()
               ..color = Color.fromRGBO(0, 0, 0, opacity)
               ..blendMode = blendMode.paintBlendMode;
@@ -282,11 +283,12 @@ class CameraFrameRenderService {
             // round exists to close.
             drawSubtreeAsImage(
               canvas: canvas,
-              bounds: effectBufferBounds(groupBounds, groupEffects),
+              bounds: effectBufferBounds(groupBounds, groupPlan.outsetPixels),
               rasterScale: rasterScale,
               maxPixelSide: maxSubtreeRasterSide,
               paintSubtree: (into, scale) => paintNodes(into, children, scale),
               compose: (blit) => blit(groupPaint),
+              steps: groupPlan.preSteps,
             );
           case CutFrameCompositeSurfaceAdjustment(
             :final children,
@@ -311,6 +313,7 @@ class CameraFrameRenderService {
               maxPixelSide: maxSubtreeRasterSide,
               paintSubtree: (into, scale) => paintNodes(into, children, scale),
               compose: composeAdjustmentScope(canvas, pass),
+              steps: pass.preSteps,
             );
           case CutFrameCompositeSurfaceLeaf(:final layer):
             // Layer transforms apply at composite time (never baked);
