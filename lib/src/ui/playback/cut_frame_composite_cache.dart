@@ -351,16 +351,25 @@ class CutFrameCompositeCache {
                 if (aborted) {
                   return;
                 }
+                // 🧪THE LAYERS ARE WHY IT IS EXACT. Blitting with the pass's
+                // own paint instead of restoring a layer into it rounds each
+                // pass separately, and a crossfade ADDS two of them:
+                // measured at 2/255 over 488 pixels. Painting the scope once
+                // was always the win; the saveLayer was never the cost — and
+                // on this route painting it meant awaiting every layer image
+                // in the scope a second time.
                 if (pass.crossfades) {
-                  // An alpha group over two draws of one image — not a
-                  // buffer anything needs to sample, so it stays a layer.
                   canvas.saveLayer(
                     pass.bufferBounds,
                     pass.crossfadeLayerPaint!,
                   );
-                  blit(pass.unfilteredPaint!);
+                  canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
+                  blit(ui.Paint());
+                  canvas.restore();
                 }
-                blit(pass.filteredPaint);
+                canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
+                blit(ui.Paint());
+                canvas.restore();
                 if (pass.crossfades) {
                   canvas.restore();
                 }

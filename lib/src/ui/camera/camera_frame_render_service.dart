@@ -311,14 +311,23 @@ class CameraFrameRenderService {
               maxPixelSide: maxSubtreeRasterSide,
               paintSubtree: (into, scale) => paintNodes(into, children, scale),
               compose: (blit) {
+                // 🧪THE LAYERS ARE WHY IT IS EXACT. Blitting with the pass's
+                // own paint instead of restoring a layer into it rounds each
+                // pass separately, and a crossfade ADDS two of them:
+                // measured at 2/255 over 488 pixels. Painting the scope once
+                // was always the win; the saveLayer was never the cost.
                 if (pass.crossfades) {
                   canvas.saveLayer(
                     pass.bufferBounds,
                     pass.crossfadeLayerPaint!,
                   );
-                  blit(pass.unfilteredPaint!);
+                  canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
+                  blit(Paint());
+                  canvas.restore();
                 }
-                blit(pass.filteredPaint);
+                canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
+                blit(Paint());
+                canvas.restore();
                 if (pass.crossfades) {
                   canvas.restore();
                 }

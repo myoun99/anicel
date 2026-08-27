@@ -56,21 +56,26 @@ void main() {
 
   /// What each walk is still allowed to open a `saveLayer` for, and why.
   ///
-  /// ⛔A RATCHET. Every one of these is an alpha group over draws of an image
-  /// that ALREADY EXISTS — nothing downstream needs to sample it — which is
-  /// the only reason a layer is still the right tool there. A new saveLayer
-  /// that buffers a SUB-TREE has to argue itself into this table in the same
-  /// commit, and the argument has to be that nothing will ever want to read
-  /// its pixels.
+  /// ⛔A RATCHET, and the rule is not "no saveLayers" — it is that a
+  /// saveLayer may not contain a WALK OF THE TREE. Every one of these
+  /// contains a blit of an image that already exists, so there is nothing in
+  /// it a folder effect could have needed to sample. A new one has to argue
+  /// itself into this table in the same commit, and the argument has to be
+  /// that the children are not painted inside it.
+  ///
+  /// 🧪The adjustment's three are load-bearing, not leftovers: restoring a
+  /// layer into the pass's paint and blitting with that paint round
+  /// differently, and a crossfade ADDS two passes — measured at 2/255 over
+  /// 488 pixels. Painting the scope once was always the win.
   const allowedSaveLayers = <String, int>{
-    // 1: the adjustment crossfade's alpha group.
-    // 2: the ACTIVE SURFACE's own buffer — a leaf, not a sub-tree, and its
+    // 3: the adjustment's crossfade group and its two passes.
+    // 4: the ACTIVE SURFACE's own buffer — a leaf, not a sub-tree, and its
     //    bounds are the pasteboard (9x the canvas), so converting it wants
     //    the "content ∩ view" bound applied there first.
-    'lib/src/ui/canvas/canvas_layer_stack_view.dart': 2,
-    // The adjustment crossfade's alpha group.
-    'lib/src/ui/camera/camera_frame_render_service.dart': 1,
-    'lib/src/ui/playback/cut_frame_composite_cache.dart': 1,
+    'lib/src/ui/canvas/canvas_layer_stack_view.dart': 4,
+    // The adjustment's crossfade group and its two passes.
+    'lib/src/ui/camera/camera_frame_render_service.dart': 3,
+    'lib/src/ui/playback/cut_frame_composite_cache.dart': 3,
   };
 
   List<String> codeLines(String path) {

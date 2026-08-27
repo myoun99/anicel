@@ -123,17 +123,15 @@ SubtreeRasterPlan? planSubtreeRaster({
 /// filtered and once not, and owning the lifetime here would have made the
 /// second blit read freed pixels or the children rasterise twice.
 ///
-/// 📐The clip reproduces the saveLayer's bounds clip, which is what keeps "a
-/// group never paints outside its bounds" true — the property the composite
-/// walks' containment assert leans on. It matters because the two things that
-/// can push past the bounds do not know about each other: the outward snap
-/// widens the destination by up to a device pixel, and a filter on [paint]
-/// spreads past the image it is given (`saveLayer` blurred the children INSIDE
-/// the layer and cut the result; a filter on `drawImageRect` blurs the
-/// finished image and spreads again).
-/// ⚠️Today's only filter arrives with the bounds already inflated by its
-/// spread (`effectBufferBounds`), so the clip cuts nothing — it is what makes
-/// the guarantee hold for the next filter that does not.
+/// ⛔NO CLIP TO THE BOUNDS, and that is not an oversight. A `saveLayer`'s
+/// bounds do NOT cut a paint filter's spread — 🧪measured: a blurred layer
+/// hinted at a 40×36 rect put 1150 device pixels outside it. Clipping here
+/// looked like "reproducing the saveLayer" and was an invented rule that
+/// changed pixels: it cost an adjustment crossfade 488 of them.
+///
+/// What bounds the UNfiltered content is the image itself, which is the
+/// bounds snapped out to whole raster pixels — the same rounding-out Skia
+/// does to a layer's offscreen. Same extent, same spread, same pixels.
 void blitSubtreeRaster({
   required Canvas canvas,
   required ui.Image image,
@@ -150,23 +148,17 @@ void blitSubtreeRaster({
     debugLastSubtreeRaster = plan;
     return true;
   }());
-  canvas.save();
-  canvas.clipRect(plan.bounds, doAntiAlias: false);
-  try {
-    canvas.drawImageRect(
-      image,
-      Rect.fromLTWH(
-        0,
-        0,
-        plan.pixelWidth.toDouble(),
-        plan.pixelHeight.toDouble(),
-      ),
-      plan.destination,
-      paint,
-    );
-  } finally {
-    canvas.restore();
-  }
+  canvas.drawImageRect(
+    image,
+    Rect.fromLTWH(
+      0,
+      0,
+      plan.pixelWidth.toDouble(),
+      plan.pixelHeight.toDouble(),
+    ),
+    plan.destination,
+    paint,
+  );
 }
 
 /// Draws the rasterised sub-tree once, with [paint].

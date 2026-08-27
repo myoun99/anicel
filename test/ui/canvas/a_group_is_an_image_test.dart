@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -16,6 +17,7 @@ import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/composite_effect_paint.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
@@ -344,39 +346,61 @@ void main() {
     });
   });
 
-  test('a group never paints outside its bounds', () async {
-    // 🚨THE CLIP'S OWN CONTRACT. Two things push past the bounds and neither
-    // knows about the other: the outward snap, and a paint filter spreading
-    // past the image it is handed. Today's only filter arrives with the
-    // bounds already inflated by its spread, so this hands in bounds that
-    // are NOT — which is what the next filter will look like.
+  test('a filter spreads exactly as far as the saveLayer let it', () async {
+    // 🚨THE RULE I ALMOST INVENTED. A first version clipped the blit to the
+    // bounds, on the theory that it "reproduced the saveLayer's bounds clip".
+    // 🧪MEASURED: a saveLayer hinted at this rect puts 1150 device pixels
+    // OUTSIDE it once its paint carries a blur — the bounds cut the content
+    // going in, never the filter coming out. The clip was an invented rule,
+    // and it cost an adjustment crossfade 488 pixels.
+    //
+    // This is the case that says so: bounds NOT inflated by the spread, which
+    // is what an adjustment hands in today and what any filter that forgets
+    // to inflate will hand in tomorrow.
     const tight = Rect.fromLTWH(8, 6, 40, 36);
+    Paint blurred() => Paint()
+      ..color = const Color(0xFF000000)
+      ..imageFilter = ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6);
+    final layered = await render(
+      groupPaint: blurred(),
+      groupRect: tight,
+      asImage: false,
+    );
     final imaged = await render(
-      groupPaint: Paint()
-        ..color = const Color(0xFF000000)
-        ..imageFilter = ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+      groupPaint: blurred(),
       groupRect: tight,
       asImage: true,
     );
-    var escaped = 0;
+    // ⛔Prove the spread actually leaves the bounds, or this compares two
+    // pictures that were never asked the question.
+    var outside = 0;
     for (var y = 0; y < deviceHeight; y++) {
       for (var x = 0; x < deviceWidth; x++) {
         final at = (y * deviceWidth + x) * 4;
         final isBackdrop =
-            imaged[at] == 0x20 &&
-            imaged[at + 1] == 0x40 &&
-            imaged[at + 2] == 0x60 &&
-            imaged[at + 3] == 0xFF;
-        // A device pixel whose CENTRE is a whole pixel outside the bounds is
-        // past anything the outward snap can explain.
-        final outside = !tight.inflate(1).contains(Offset(x + 0.5, y + 0.5));
-        if (outside && !isBackdrop) {
-          escaped += 1;
+            layered[at] == 0x20 &&
+            layered[at + 1] == 0x40 &&
+            layered[at + 2] == 0x60 &&
+            layered[at + 3] == 0xFF;
+        if (!tight.contains(Offset(x + 0.5, y + 0.5)) && !isBackdrop) {
+          outside += 1;
         }
       }
     }
-    expect(escaped, 0, reason: 'the blur spread past the group bounds');
+    expect(
+      outside,
+      greaterThan(100),
+      reason: 'the saveLayer this compares against must itself spread past '
+          'the bounds, or the comparison proves nothing',
+    );
+    expect(
+      differingPixels(layered, imaged),
+      0,
+      reason: 'the blit must spread exactly as far as the saveLayer did — '
+          'no further, and no less',
+    );
   });
+
 
   test('the cap clamps the raster instead of refusing to draw', () async {
     // ⛔THE ONE ARM THAT IS NOT AN IDENTITY, and it must still be a DRAW. A
@@ -523,6 +547,82 @@ void main() {
             'the export',
       );
     });
+  });
+
+  test('an adjustment crossfade is the pixels the two saveLayers made', () async {
+    // 🚨THE BRANCH WITH NO ROUTE TEST. A mix below 1 with a BLUR is the only
+    // chain that crossfades — a colour-only chain folds the mix into its own
+    // matrix and never draws twice.
+    //
+    // 🧪The passes KEEP their layers and only what is inside them changed:
+    // a blit of one raster instead of a second walk of the scope. A first
+    // version blitted with the passes' own paints instead, which rounds
+    // each pass separately — a crossfade adds two of them and this scene
+    // moved by 2/255 over 488 pixels. Exactness is why the layers stayed.
+    const rect = Rect.fromLTWH(-3, -5, 64, 60);
+    AdjustmentScopePass freshPass() => resolveAdjustmentScopePass(
+      bounds: rect,
+      effects: [
+        ResolvedLayerEffect(kind: EffectKind.blur, values: const [3, 3]),
+      ],
+      mix: 0.5,
+    );
+    // ⛔Prove the scene is the case this test is named for. A chain that did
+    // not crossfade would compare one blit against one saveLayer and pass
+    // while saying nothing.
+    expect(freshPass().crossfades, isTrue);
+
+    Future<Uint8List> render({required bool asImage}) async {
+      final pass = freshPass();
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      drawBackdrop(canvas, 1);
+      if (asImage) {
+        drawSubtreeAsImage(
+          canvas: canvas,
+          bounds: pass.bufferBounds,
+          rasterScale: 1,
+          maxPixelSide: maxSubtreeRasterSide,
+          paintSubtree: (into, _) => drawChildren(into),
+          compose: (blit) {
+            canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
+            canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
+            blit(Paint());
+            canvas.restore();
+            canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
+            blit(Paint());
+            canvas.restore();
+            canvas.restore();
+          },
+        );
+      } else {
+        // The recipe as it stood before this round.
+        canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
+        canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
+        drawChildren(canvas);
+        canvas.restore();
+        canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
+        drawChildren(canvas);
+        canvas.restore();
+        canvas.restore();
+      }
+      final picture = recorder.endRecording();
+      final image = picture.toImageSync(deviceWidth, deviceHeight);
+      picture.dispose();
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      image.dispose();
+      return bytes!.buffer.asUint8List();
+    }
+
+    final layered = await render(asImage: false);
+    final imaged = await render(asImage: true);
+    expect(layered.any((byte) => byte != 0), isTrue);
+    expect(
+      differingPixels(layered, imaged),
+      0,
+      reason: 'one raster blitted twice must be the two saveLayers, pixel '
+          'for pixel',
+    );
   });
 
   test('an adjustment rasterises its scope ONCE and blits it twice', () {
