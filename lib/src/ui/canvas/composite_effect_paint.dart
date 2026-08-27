@@ -40,7 +40,9 @@ ui.Color alphaOnly(double opacity) =>
 ///
 /// ⛔A BEHAVIOUR TEST CANNOT HOLD THIS SHUT — copies that agree today pass
 /// every pixel comparison, and what breaks is the route added next year.
-/// `one_composite_paint_test` scans the source instead.
+/// `one_composite_paint_test` scans the source instead. That the chain
+/// reaches the PICTURE is behaviour, and `camera_frame_render_service_test`
+/// (R6) already holds it — a second pixel test here would be a copy.
 ///
 /// ⚠️IT TAKES A RESOLVED CHAIN, NOT THE EFFECT LIST. `rasterScale` is NOT the
 /// same at every site and must not be folded in here: a route drawing under
