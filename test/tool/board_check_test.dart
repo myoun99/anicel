@@ -15,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// `main()` that the Stop hook runs as an exe; a test that re-implemented the
 /// predicate would go green while the thing the hook runs said something else.
 void main() {
+  _recommendMustNameAnOption();
   late Directory dir;
 
   setUp(() {
@@ -190,5 +191,90 @@ void main() {
       },
     ], acked: ['F-31-rest']);
     expect(out, isEmpty);
+  });
+}
+
+/// 🚨추천이 선택지를 안 가리키면 **화면에 아무것도 안 나온다.**
+///
+/// 2026-08-28 실사고: `I-4-tone` 의 `recommend` 에 추천 이유를 문단으로 적었고,
+/// 유저는 **한 글자도 못 봤다.** `note` 가 안 그려지던 것과 같은 모양이라 같은
+/// 게이트가 막아야 한다.
+void _recommendMustNameAnOption() {
+  late Directory dir;
+  setUp(() {
+    dir = Directory.systemTemp.createTempSync('anicel-board-rec');
+  });
+  tearDown(() {
+    try {
+      dir.deleteSync(recursive: true);
+    } catch (_) {}
+  });
+
+  /// ⚠️Same invocation as the gate's other tests: `dart` is `dart.bat` on
+  /// Windows so it needs a shell, and the argument is the FILE. The reply is
+  /// matched on the ASCII id — Windows decodes the child's Korean in the
+  /// console codepage and it arrives here as mojibake.
+  Future<String> gate(
+    String id, {
+    Object? recommend,
+    required List<Map<String, String>> options,
+  }) async {
+    final file = File('${dir.path}/board.jsonl');
+    file.writeAsStringSync(
+      jsonEncode({
+        'kind': 'decision',
+        'id': id,
+        'state': 'ask',
+        'ts': DateTime.now().toIso8601String(),
+        'where': 'somewhere on screen',
+        'why': 'blocked for this reason',
+        'options': options,
+        'recommend': ?recommend,
+      }),
+    );
+    final run = await Process.run('dart', [
+      'run',
+      'tool/board_check.dart',
+      file.path,
+    ], workingDirectory: Directory.current.path, runInShell: true);
+    return '${run.stdout}';
+  }
+
+  const keyed = [
+    {'key': '1', 'label': 'a'},
+    {'key': '2', 'label': 'b'},
+  ];
+
+  test('문장을 적으면 게이트가 이름을 부른다', () async {
+    final out = await gate(
+      'T99-Q1',
+      recommend: '1번이 낫습니다 — 폭이 넓어지고 대가가 없어서',
+      options: keyed,
+    );
+    expect(out, contains('T99-Q1'));
+  });
+
+  test('키를 적으면 조용하다', () async {
+    final out = await gate('T99-Q2', recommend: '2', options: keyed);
+    expect(
+      out,
+      isNot(contains('T99-Q2')),
+      reason: '⚠️이 카드는 방금 만들어졌고 where·why·label 이 다 있으므로, '
+          '이름이 뜬다면 그건 추천 때문이다',
+    );
+  });
+
+  test('키를 안 쓴 선택지도 번호로 세어 준다 — 서버가 그렇게 채운다', () async {
+    // 서버는 key 가 없으면 순번을 넣는다. 게이트가 다른 규칙으로 세면
+    // 「서버는 받아들이는데 게이트는 막는」 어긋남이 생긴다.
+    final out = await gate(
+      'T99-Q3',
+      recommend: '2',
+      options: const [
+        {'label': 'a'},
+        {'label': 'b'},
+      ],
+    );
+    expect(out, isNot(contains('T99-Q3')));
   });
 }

@@ -776,9 +776,25 @@ List<_Entry> _readRecords(File file) {
       e.tags = (json['tags'] as List).map((t) => '$t').toList();
     }
     if (json['options'] != null) {
-      e.options = (json['options'] as List)
-          .map((o) => Map<String, dynamic>.from(o as Map))
-          .toList();
+      // 🚨★★★EVERY OPTION HAS A KEY, BY CONSTRUCTION.
+      //
+      // The radio's `value` is `o['key']`, so an option written without one
+      // rendered `value="null"` and the user's pick came back as the STRING
+      // 「null」 — **the answer was lost and nobody was told.** It happened to
+      // I-4-tone on 2026-08-28: the user answered 크림 in the program, the
+      // board wrote `answer:"null"`, and only a chat message saved it. Five
+      // cards across three sessions had the same defect.
+      //
+      // ⛔Fixing the cards would be adding one more place that has to be
+      // remembered. The key is an INDEX — that is all anyone ever wrote by
+      // hand — so it is filled in here and cannot be missing.
+      var index = 0;
+      e.options = (json['options'] as List).map((o) {
+        index++;
+        final option = Map<String, dynamic>.from(o as Map);
+        option['key'] ??= '$index';
+        return option;
+      }).toList();
     }
   }
   _badLines = bad;
@@ -1579,6 +1595,22 @@ String _askPanel(_Entry d) {
   }
   if (d.why.isNotEmpty) {
     b.writeln('<p class="d"><b>왜 막혔나</b> — ${_esc(d.why)}</p>');
+  }
+  // 🚨A `recommend` THAT NAMES NO OPTION IS TEXT NOBODY EVER SEES.
+  //
+  // It is only ever compared against an option key, so prose written there
+  // renders as **nothing at all** — I wrote a whole paragraph of reasoning
+  // into it on 2026-08-28 and the user never saw a word. ⛔Silence is the
+  // wrong failure: show the text and say it is misplaced, so the author
+  // finds out and the reader still gets the sentence.
+  final recommendsAnOption =
+      d.options.any((o) => '${o['key']}' == d.recommend);
+  if (d.recommend != null &&
+      d.recommend!.isNotEmpty &&
+      !recommendsAnOption) {
+    b.writeln('<p class="d"><b>⚠️추천</b> — ${_esc(d.recommend!)}'
+        '<br><i>(선택지 키가 아니라 문장이 들어 있어 추천 표시가 안 붙습니다 '
+        '— `recommend` 에는 선택지의 번호를 씁니다)</i></p>');
   }
   for (final o in d.options) {
     final key = '${o['key']}';
