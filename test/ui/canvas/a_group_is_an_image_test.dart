@@ -525,6 +525,51 @@ void main() {
     });
   });
 
+  test('an adjustment rasterises its scope ONCE and blits it twice', () {
+    // 🚨THE WHOLE POINT OF `compose`. An adjustment below full strength used
+    // to paint its scope twice — once into an unfiltered saveLayer and once
+    // into a filtered one — because its mix is a crossfade, not a fade-out.
+    // It is the same picture both times. On the playback route "painting the
+    // scope" means awaiting every layer image in it, so the second pass was
+    // not a rounding error.
+    var rasters = 0;
+    final blitted = <Paint>[];
+    final unfiltered = Paint()..color = const Color(0x80000000);
+    final filtered = Paint()
+      ..color = const Color(0xFF000000)
+      ..colorFilter = const ColorFilter.mode(
+        Color(0xFF00FF00),
+        BlendMode.modulate,
+      );
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    drawSubtreeAsImage(
+      canvas: canvas,
+      bounds: const Rect.fromLTWH(6, 4, 46, 42),
+      rasterScale: 1,
+      maxPixelSide: maxSubtreeRasterSide,
+      paintSubtree: (into, _) {
+        rasters += 1;
+        drawChildren(into);
+      },
+      compose: (blit) {
+        canvas.saveLayer(const Rect.fromLTWH(6, 4, 46, 42), Paint());
+        blit(unfiltered);
+        blitted.add(unfiltered);
+        blit(filtered);
+        blitted.add(filtered);
+        canvas.restore();
+      },
+    );
+    recorder.endRecording().dispose();
+    expect(rasters, 1, reason: 'the scope must be rasterised once');
+    expect(blitted, [unfiltered, filtered]);
+    // Both blits declared their own quality on their own paint — the second
+    // must not inherit whatever the first left behind by accident.
+    expect(unfiltered.filterQuality, FilterQuality.none);
+    expect(filtered.filterQuality, FilterQuality.none);
+  });
+
   test('a fractional DEVICE phase never changes the body of the group', () async {
     // 📐STATED, NOT ASSUMED. Placed at a fractional device offset, an image
     // blit resamples where vector content would have rasterised at the true

@@ -322,17 +322,17 @@ class AdjustmentScopePass {
     this.unfilteredPaint,
   });
 
-  /// The `saveLayer` bounds for every pass.
+  /// The buffer bounds for every pass.
   final ui.Rect bufferBounds;
 
-  /// The filtered pass's `saveLayer` paint. Non-null always.
+  /// The filtered pass's paint. Non-null always.
   final ui.Paint filteredPaint;
 
   /// Non-null ONLY when the scope must crossfade (a blur below full mix):
   /// the outer buffer the two passes add up inside.
   final ui.Paint? crossfadeLayerPaint;
 
-  /// The unfiltered pass's `saveLayer` paint; non-null exactly when
+  /// The unfiltered pass's paint; non-null exactly when
   /// [crossfadeLayerPaint] is.
   final ui.Paint? unfilteredPaint;
 
@@ -344,18 +344,28 @@ class AdjustmentScopePass {
 /// [bounds]. [rasterScale] follows the same rule as
 /// [resolveCompositeEffectPaint].
 ///
-/// A route runs it as:
+/// A route runs it as ONE raster and one or two blits. The scope is the same
+/// picture in both passes, so it is rasterised once — on the playback route
+/// "drawing the scope" means awaiting every layer image in it, and the second
+/// pass was not a rounding error:
 /// ```dart
-/// if (pass.crossfades) {
-///   canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
-///   canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
-///   drawScope();
-///   canvas.restore();
-/// }
-/// canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
-/// drawScope();
-/// canvas.restore();
-/// if (pass.crossfades) canvas.restore();
+/// drawSubtreeAsImage(
+///   canvas: canvas,
+///   bounds: pass.bufferBounds,
+///   rasterScale: rasterScale,
+///   maxPixelSide: maxSubtreeRasterSide,
+///   paintSubtree: drawScope,
+///   compose: (blit) {
+///     if (pass.crossfades) {
+///       // An alpha group over two draws of one image — not a buffer
+///       // anything needs to sample, so it stays a layer.
+///       canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
+///       blit(pass.unfilteredPaint!);
+///     }
+///     blit(pass.filteredPaint);
+///     if (pass.crossfades) canvas.restore();
+///   },
+/// );
 /// ```
 AdjustmentScopePass resolveAdjustmentScopePass({
   required ui.Rect bounds,
