@@ -5,7 +5,10 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
 import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
 import 'package:anicel/src/ui/canvas/composite_effect_paint.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
@@ -28,6 +31,11 @@ void main() {
 
   ResolvedLayerEffect blur(double radius) =>
       ResolvedLayerEffect(kind: EffectKind.blur, values: [radius, radius]);
+
+  ResolvedLayerEffect deleteRed() => ResolvedLayerEffect(
+    kind: EffectKind.deleteColor,
+    values: const [255, 0, 0, 0, 100],
+  );
 
   ResolvedLayerEffect deleteWhite() => ResolvedLayerEffect(
     kind: EffectKind.deleteColor,
@@ -78,6 +86,121 @@ void main() {
     });
   });
 
+
+  test('a step feeds the NEXT one, not the original', () async {
+    // 🚨THE CHAIN'S CHAIN. Two keys in a row: the second has to see what the
+    // first left. A renderer that handed every step the ORIGINAL image would
+    // still key SOMETHING, so a comparison of two orders cannot see it —
+    // this counts what survived instead.
+    const side = 32;
+    final straight = Uint8List(side * side * 4);
+    for (var i = 0; i < side * side; i++) {
+      final white = (i % side) < side ~/ 2;
+      straight[i * 4] = 255;
+      straight[i * 4 + 1] = white ? 255 : 0;
+      straight[i * 4 + 2] = white ? 255 : 0;
+      straight[i * 4 + 3] = 255;
+    }
+    final source = await _imageFrom(straight, side, side);
+    final plan = resolveCompositeEffectPlan([deleteWhite(), deleteRed()]);
+    expect(plan.preSteps.length, 2, reason: 'two keys, two steps');
+    final stepped = applyEffectSteps(
+      source: source,
+      steps: plan.preSteps,
+      pixelWidth: side,
+      pixelHeight: side,
+      rasterScale: 1,
+    );
+    final bytes = await _bytesOf(stepped, side);
+    if (!identical(stepped, source)) {
+      stepped.dispose();
+    }
+    source.dispose();
+    var ink = 0;
+    for (var i = 3; i < bytes.length; i += 4) {
+      if (bytes[i] != 0) {
+        ink += 1;
+      }
+    }
+    expect(
+      ink,
+      0,
+      reason: 'white then red erases everything there is — a step reading '
+          'the original would leave the other half standing',
+    );
+  });
+
+  test('a LAYER image takes its steps too', () async {
+    // The other place a chain is drawn. A key under a blur has to reach a
+    // single layer's cached image exactly as it reaches a folder's raster.
+    const side = 32;
+    final straight = Uint8List(side * side * 4);
+    for (var i = 0; i < side * side; i++) {
+      straight[i * 4] = 255;
+      straight[i * 4 + 1] = 255;
+      straight[i * 4 + 2] = 255;
+      straight[i * 4 + 3] = 255;
+    }
+    final source = await _imageFrom(straight, side, side);
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    drawPosedLayerImage(
+      canvas,
+      image: source,
+      worldRect: const Rect.fromLTWH(0, 0, 32, 32),
+      canvasSize: const CanvasSize(width: 32, height: 32),
+      pose: null,
+      opacity: 1,
+      blendMode: LayerBlendMode.normal,
+      effects: [deleteWhite()],
+      filterQuality: ui.FilterQuality.none,
+    );
+    final picture = recorder.endRecording();
+    final out = picture.toImageSync(side, side);
+    picture.dispose();
+    final bytes = await _bytesOf(out, side);
+    out.dispose();
+    source.dispose();
+    var ink = 0;
+    for (var i = 3; i < bytes.length; i += 4) {
+      if (bytes[i] != 0) {
+        ink += 1;
+      }
+    }
+    expect(
+      ink,
+      0,
+      reason: 'the whole image IS the key colour, so a layer that ran its '
+          'steps draws nothing at all',
+    );
+  });
+
+  test('the crossfade blits the RAW scope for its unfiltered pass', () {
+    // 🚨THE MIX HAS TO BE ABLE TO FADE THE KEY. Both passes blitting the
+    // keyed raster would key at full strength however low the mix went, and
+    // no pixel comparison of the two ORDERS can see that — this reads which
+    // raster each pass asked for.
+    final pass = resolveAdjustmentScopePass(
+      bounds: const Rect.fromLTWH(0, 0, 32, 32),
+      effects: [blur(3), deleteWhite()],
+      mix: 0.5,
+    );
+    expect(pass.crossfades, isTrue, reason: 'fixture: a spatial chain below 1');
+    expect(pass.preSteps, isNotEmpty, reason: 'fixture: the key is a step');
+    final asked = <bool>[];
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    composeAdjustmentScope(canvas, pass)((paint, {bool stepped = true}) {
+      asked.add(stepped);
+    });
+    recorder.endRecording().dispose();
+    expect(
+      asked,
+      [false, true],
+      reason: 'unfiltered takes the scope as composed, filtered takes it '
+          'with the chain on it',
+    );
+  });
   test('blur-then-key keys the BLURRED result, not the source', () async {
     // 🚨THE WHOLE POINT, IN PIXELS. Two blocks that TOUCH: white on the
     // left, red on the right.
@@ -190,4 +313,9 @@ Future<ui.Image> _imageFrom(Uint8List straight, int width, int height) {
     done.complete,
   );
   return done.future;
+}
+
+Future<Uint8List> _bytesOf(ui.Image image, int side) async {
+  final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+  return bytes!.buffer.asUint8List();
 }
