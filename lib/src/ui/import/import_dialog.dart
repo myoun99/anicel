@@ -1,7 +1,9 @@
+import 'dart:async' show unawaited;
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../text/app_strings.dart';
 import '../../models/import/cut_folder_parse.dart';
 import '../../models/media_asset.dart';
 import '../../services/import/media_import_planner.dart';
@@ -9,7 +11,8 @@ import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/project_lookup.dart'
     show largeCarriedAssetBytes;
-import '../../services/persistence/folder_grant.dart' show FolderGrant;
+import '../../services/persistence/folder_grant.dart'
+    show FolderGrant, FolderPicker, MaterializeCancelled;
 import '../dialogs/folder_pick_flow.dart';
 import '../editor_session_manager.dart';
 import '../export/export_settings_modules.dart';
@@ -321,6 +324,71 @@ class _ImportDialogState extends State<ImportDialog> {
     MediaAssetKind.video,
   };
 
+  /// True while the import is WAITING on somebody else's bytes rather
+  /// than doing its own work — which is the only stretch of a run that
+  /// can honestly be cancelled.
+  bool _waitingForFile = false;
+  bool _stopWaiting = false;
+
+  /// The ONE law, applied where a picked file is about to be READ.
+  ///
+  /// ⚠️Registering media is a REFERENCE and stays untouched: forcing a
+  /// download for a movie somebody only registered would be the app
+  /// spending their line for them, for bytes it does not need. A
+  /// placement reads, so a placement waits.
+  ///
+  /// Said in this window's own status line rather than behind the open
+  /// door's progress window — this surface is already the thing telling
+  /// the user what the import is doing, and a second window over it
+  /// would be two answers to one question.
+  ///
+  /// ⛔The staged copy is refused here even though the materialiser can
+  /// still produce one: an import names the asset after its file, so a
+  /// temp name would land in the project as the drawing's name. Waiting
+  /// for the PICK to read is the only outcome this door can use.
+  /// Answers null when the file never arrives or the user stops it.
+  Future<String?> _readableForImport(String path) async {
+    setState(() {
+      _waitingForFile = true;
+      _stopWaiting = false;
+    });
+    try {
+      final source = await FolderPicker.materializeOpenedFile(
+        path,
+        within: null,
+        onWaiting: (waited) {
+          if (!mounted) {
+            return;
+          }
+          final seconds = waited.inSeconds;
+          setState(() {
+            _status =
+                (waited >= const Duration(seconds: 10)
+                        ? AppText.strings.openWaitingStalledTemplate
+                        : AppText.strings.openWaitingCloudTemplate)
+                    .replaceAll('{sec}', '$seconds');
+          });
+        },
+        isCancelled: () => _stopWaiting,
+      );
+      if (source.staged) {
+        unawaited(
+          File(source.path).delete().then<void>((_) {}, onError: (_) {}),
+        );
+        return null;
+      }
+      return source.path;
+    } on MaterializeCancelled {
+      return null;
+    } on FileSystemException {
+      return null;
+    } finally {
+      if (mounted) {
+        setState(() => _waitingForFile = false);
+      }
+    }
+  }
+
   Future<void> _runImport() async {
     if (!_canImport) {
       return;
@@ -382,6 +450,19 @@ class _ImportDialogState extends State<ImportDialog> {
               'is not available yet.',
             );
             continue;
+          }
+          // A PLACEMENT reads the file, so this is where the picked path
+          // has to become a path that reads — the same law the two open
+          // doors go through. A cloud file arrives here as a placeholder
+          // and would otherwise fail as if it were corrupt.
+          if (await _readableForImport(path) == null) {
+            warnings.add(
+              '${mediaAssetDefaultName(path)}: 파일을 읽지 못했습니다.',
+            );
+            continue;
+          }
+          if (!mounted) {
+            return;
           }
           final settings = _settingsFor(path);
           final carry = settings.mode == ImportFileMode.keepInside;
@@ -563,7 +644,14 @@ class _ImportDialogState extends State<ImportDialog> {
           label: 'Cancel',
           actionKey: const ValueKey<String>('import-cancel-button'),
           emphasis: AppWindowActionEmphasis.quiet,
-          onPressed: _running ? null : () => Navigator.of(context).pop(),
+          // Dead while the import is doing its OWN work — stopping a
+          // half-written import would be the lie the progress window
+          // refuses for saves. Alive again while it is WAITING on
+          // somebody else's bytes: nothing has been applied to that file
+          // yet, so letting go costs nothing.
+          onPressed: _waitingForFile
+              ? () => setState(() => _stopWaiting = true)
+              : (_running ? null : () => Navigator.of(context).pop()),
         ),
         AppWindowAction(
           label: 'Import',

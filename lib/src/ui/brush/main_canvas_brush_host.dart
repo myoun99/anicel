@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/layer_effect.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
 import '../playback/playback_frame_painter.dart';
@@ -60,6 +61,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.activeStrokeOverlayModel,
     this.interactiveContentOpacity = 1.0,
     this.interactiveContentPose,
+    this.activeSourceEffects = const <ResolvedLayerEffect>[],
     this.contentOverride,
     this.fitFocusRect,
     this.autoFrame,
@@ -165,6 +167,17 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// Forwarded to [BrushCanvasPanel]: the active layer's pose sample (the
   /// draw-through wrap; null = identity).
   final LayerPoseSample? interactiveContentPose;
+
+  /// The CPU half of the ACTIVE row's effect chain — the colour keys the
+  /// live surface has to be drawn THROUGH.
+  ///
+  /// 🚨The row you are drawing on is the one place the keys cannot arrive
+  /// on their own: it is painted tile by tile from the coordinator's live
+  /// surface, so it sees neither the composite plan nor the layer-frame
+  /// image cache, which are the two places the pass runs. Handed down
+  /// rather than re-resolved here, so the panel and the stack cannot come
+  /// to different answers about the same row.
+  final List<ResolvedLayerEffect> activeSourceEffects;
 
   /// Forwarded to [BrushCanvasPanel]: replaces the interactive canvas inside
   /// the panel shell (playback). Without an editable frame the host supplies
@@ -431,6 +444,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       activeStrokeOverlayModel: widget.activeStrokeOverlayModel,
       interactiveContentOpacity: widget.interactiveContentOpacity,
       interactiveContentPose: widget.interactiveContentPose,
+      activeSourceEffects: widget.activeSourceEffects,
       contentOverride: contentOverride,
       fitFocusRect: widget.fitFocusRect,
       autoFrame: widget.autoFrame,

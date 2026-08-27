@@ -2,9 +2,11 @@ import 'dart:ui' as ui;
 
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
+import '../../models/layer_effect.dart';
 import '../../models/playback_quality.dart';
 import '../../services/brush_frame_display_cache_service.dart';
 import '../../services/brush_frame_store.dart';
+import '../../services/cel_source_effect_pass.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../dev_profile.dart';
 import '../canvas/deferred_image_disposal.dart';
@@ -26,6 +28,7 @@ class _LayerFrameImageEntry {
     required this.positioned,
     required this.sourceRevision,
     required this.canvasSize,
+    required this.sourceEffectSignature,
     required this.lastUsed,
   });
 
@@ -34,6 +37,17 @@ class _LayerFrameImageEntry {
   final LayerFrameImage positioned;
   final int sourceRevision;
   final CanvasSize canvasSize;
+
+  /// The VALUES of the color keys this image was built with.
+  ///
+  /// 🚨PART OF VALIDITY, NOT A HINT. The pixels of a keyed cel are not the
+  /// cel's pixels, and `sourceRevision` cannot see that — it moves when the
+  /// DRAWING changes, and a Tolerance edit changes no drawing at all. Left
+  /// out, dragging Tolerance would serve the image built at the old value
+  /// for ever ([[derived-cel-projection-pattern]]: a content-addressed cache
+  /// that misses a field does not read stale, it MERGES two pictures).
+  final List<double> sourceEffectSignature;
+
   int lastUsed;
 
   ui.Image get image => positioned.image;
@@ -57,15 +71,27 @@ class LayerFrameImageCache {
   int _useCounter = 0;
 
   /// The cached image when it still matches the frame's current source
-  /// revision and [canvasSize]; `null` on miss or staleness.
+  /// revision, [canvasSize] and [sourceEffects]; `null` on miss or staleness.
+  ///
+  /// [sourceEffects] is the row's chain — the CPU half of it is baked into
+  /// the image this returns. ⛔REQUIRED, with no default, deliberately: the
+  /// same reason `drawPosedLayerImage` requires its filter quality. A
+  /// default would let a new caller inherit "no keys" silently and serve
+  /// unkeyed pixels next to keyed ones, which is precisely the split this
+  /// argument exists to close. Pass `const []` where the row has no chain.
   LayerFrameImage? validImageOrNull(
     BrushFrameKey key,
     PlaybackQuality quality, {
     required CanvasSize canvasSize,
+    required List<ResolvedLayerEffect> sourceEffects,
   }) {
     final entry = _entries[(key, quality)];
     if (entry == null ||
         entry.canvasSize != canvasSize ||
+        !sameCelSourceEffectSignature(
+          entry.sourceEffectSignature,
+          celSourceEffectSignature(sourceEffects),
+        ) ||
         entry.sourceRevision != _currentRevision(key)) {
       return null;
     }
@@ -82,9 +108,15 @@ class LayerFrameImageCache {
     required BrushFrameKey key,
     required CanvasSize canvasSize,
     required PlaybackQuality quality,
+    required List<ResolvedLayerEffect> sourceEffects,
     bool Function()? shouldAbort,
   }) async {
-    final cached = validImageOrNull(key, quality, canvasSize: canvasSize);
+    final cached = validImageOrNull(
+      key,
+      quality,
+      canvasSize: canvasSize,
+      sourceEffects: sourceEffects,
+    );
     if (cached != null) {
       return cached;
     }
@@ -117,7 +149,18 @@ class LayerFrameImageCache {
       // No image this pass, nothing remembered, next pass gets to look.
       return null;
     }
-    final preview = previewCache.previewSurface;
+    // ★THE COLOR KEYS RUN HERE, on the CPU, before a single byte is
+    // uploaded. This is the editing canvas's half of the seam: the composite
+    // plan applies them in `CutFrameCompositeLayer`'s constructor, but the
+    // editing stack does not go through that plan at all — it asks this
+    // cache for an image by frame key. Both call the SAME function, so the
+    // two routes cannot mean different things by "keyed"; missing this one
+    // is what would have made a color key visible in playback and invisible
+    // on the canvas you draw on.
+    final preview = celSurfaceWithSourceEffects(
+      previewCache.previewSurface,
+      sourceEffects,
+    );
 
     // Per-tile GPU compose over the CONTENT extent (canvas rect grown by
     // any pasteboard tiles): the editing canvas keeps the on-screen
@@ -158,6 +201,7 @@ class LayerFrameImageCache {
       positioned: result,
       sourceRevision: revision,
       canvasSize: canvasSize,
+      sourceEffectSignature: celSourceEffectSignature(sourceEffects),
       lastUsed: ++_useCounter,
     );
     return result;
@@ -172,8 +216,14 @@ class LayerFrameImageCache {
     required BrushFrameKey key,
     required CanvasSize canvasSize,
     required PlaybackQuality quality,
+    required List<ResolvedLayerEffect> sourceEffects,
   }) {
-    final cached = validImageOrNull(key, quality, canvasSize: canvasSize);
+    final cached = validImageOrNull(
+      key,
+      quality,
+      canvasSize: canvasSize,
+      sourceEffects: sourceEffects,
+    );
     if (cached != null) {
       return cached;
     }
@@ -199,7 +249,13 @@ class LayerFrameImageCache {
       // a revision that a heal never moves is what freezes the row.
       return null;
     }
-    final preview = previewCache.previewSurface;
+    // The sync twin keys too — see the async path. A handoff that skipped
+    // this would flash the unkeyed cel for exactly one layer switch, which
+    // is the hardest kind of wrong to catch.
+    final preview = celSurfaceWithSourceEffects(
+      previewCache.previewSurface,
+      sourceEffects,
+    );
     final positioned = composePositionedSurfaceImageSyncOrNull(
       preview,
       reuse: BitmapTileImageCache.instance,
@@ -217,6 +273,7 @@ class LayerFrameImageCache {
       positioned: result,
       sourceRevision: revision,
       canvasSize: canvasSize,
+      sourceEffectSignature: celSourceEffectSignature(sourceEffects),
       lastUsed: ++_useCounter,
     );
     return result;

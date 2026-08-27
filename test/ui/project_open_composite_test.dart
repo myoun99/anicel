@@ -117,6 +117,7 @@ void main() {
         key: drawnKey,
         canvasSize: s.requireActiveCut.canvasSize,
         quality: PlaybackQuality.full,
+        sourceEffects: const [],
       );
 
       expect(image, isNotNull, reason: 'a loaded cel must render in playback');

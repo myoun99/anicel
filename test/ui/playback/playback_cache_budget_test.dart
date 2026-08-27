@@ -189,6 +189,7 @@ void main() {
         frameKey(cut(), const LayerId('layer'), const FrameId('frame-a')),
         PlaybackQuality.full,
         canvasSize: canvasSize,
+        sourceEffects: const [],
       );
 
       PlaybackCacheBudgetEnforcer(

@@ -299,7 +299,7 @@ void main() {
     // ⛔And the press is a no-op rather than an exception: a gate and a verb
     // that disagree is the bug T25 exists to prevent.
     expect(
-      () => session.runPixelVerb(CelPixelChannel.colour),
+      () => session.runPixelVerb(CelPixelVerb.replaceColour),
       returnsNormally,
     );
   });

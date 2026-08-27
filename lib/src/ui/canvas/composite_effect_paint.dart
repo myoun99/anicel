@@ -51,10 +51,12 @@ class CompositeEffectPaint {
   /// Writes the plan onto [paint] — the ONLY way a route should apply
   /// effects.
   ///
-  /// [paint]'s existing `colorFilter` (the onion-skin tint) is never
-  /// overwritten: onion ghosts are editing scaffolding and deliberately
-  /// carry no effects, so the two can never both be set. The assert makes
-  /// that a test failure rather than a look nobody can explain.
+  /// [paint] must arrive with NO `colorFilter` of its own. It once arrived
+  /// carrying the onion tint, and that is exactly what this class now takes
+  /// over ([resolveCompositeEffectPaint]'s `tint`) — the slot holds one
+  /// filter, so anything writing it beforehand silently decided the ghost
+  /// could not also wear its row's chain. The assert makes a second writer
+  /// a test failure rather than a look nobody can explain.
   void applyTo(ui.Paint paint) {
     if (isEmpty) {
       return;
@@ -131,6 +133,12 @@ List<double>? resolveColorMatrixIgnoringSpatial(
         lightness: effect.parameter('lightness'),
       ),
       EffectKind.blur => null,
+      // A color key changes ALPHA by a threshold test — there is no color
+      // matrix for it, the same way there is none for a blur. The reader
+      // this serves samples one pixel, so it applies the keys itself
+      // (`CelColorKey.alphaFor`) rather than asking for a matrix that
+      // cannot exist.
+      EffectKind.deleteColor || EffectKind.keepColor => null,
     };
     if (next == null) {
       continue;
@@ -149,11 +157,39 @@ List<double>? resolveColorMatrixIgnoringSpatial(
 /// show a double-strength blur. Routes that draw under a scaled CANVAS
 /// TRANSFORM (the editing stack, the camera projection) leave it 1 — Skia
 /// maps the sigma through the CTM for them.
+/// The onion-skin Colors tint as a color matrix: every pixel takes the
+/// tint's RGB and keeps only its own alpha (scaled by the tint's).
+///
+/// 🚨THIS EXISTS SO THE GHOST CAN HAVE BOTH. The tint used to be written
+/// straight onto `Paint.colorFilter`, which is ONE slot — so a ghost could
+/// wear the tint or the row's effects, never both, and the chain was
+/// dropped with a comment calling ghosts "editing scaffolding". That was
+/// the slot talking, not a decision. ✅유저 2026-08-27 (I-8-Q5) chose "the
+/// ghost shows the pixels the screen shows", and a matrix composes with the
+/// color effects for free — only a blur still needs its own buffer.
+///
+/// Rows are `ColorFilter.mode(tint, srcIn)` written out: out.rgb = tint.rgb,
+/// out.a = tint.a × in.a. The translation column is 0…255, per
+/// `ColorFilter.matrix`'s contract.
+List<double> onionTintColorMatrix(int argb) {
+  final alpha = ((argb >> 24) & 0xFF) / 255.0;
+  final red = ((argb >> 16) & 0xFF).toDouble();
+  final green = ((argb >> 8) & 0xFF).toDouble();
+  final blue = (argb & 0xFF).toDouble();
+  return <double>[
+    0, 0, 0, 0, red, //
+    0, 0, 0, 0, green,
+    0, 0, 0, 0, blue,
+    0, 0, 0, alpha, 0,
+  ];
+}
+
 CompositeEffectPaint resolveCompositeEffectPaint(
   List<ResolvedLayerEffect> effects, {
   double rasterScale = 1,
+  int? tint,
 }) {
-  if (effects.isEmpty) {
+  if (effects.isEmpty && tint == null) {
     return CompositeEffectPaint.none;
   }
 
@@ -176,6 +212,19 @@ CompositeEffectPaint resolveCompositeEffectPaint(
 
   for (final effect in effects) {
     switch (effect.kind) {
+      // ⛔THE CPU HALF MUST BE GONE BY NOW. `splitSourceEffects` takes the
+      // color keys out in the shared visit and `celSurfaceWithSourceEffects`
+      // has already applied them to the surface this paint will draw.
+      // Reaching here means a route resolved a chain without splitting it —
+      // an assert rather than a silent skip, because the silent version
+      // looks exactly like "the artist set Amount to 0".
+      case EffectKind.deleteColor:
+      case EffectKind.keepColor:
+        assert(
+          false,
+          'Source-pixel effects must be split off before a paint is '
+          'resolved — see splitSourceEffects.',
+        );
       case EffectKind.brightnessContrast:
         final matrix = brightnessContrastMatrix(
           brightness: effect.parameter('brightness'),
@@ -212,9 +261,21 @@ CompositeEffectPaint resolveCompositeEffectPaint(
     }
   }
 
+  if (tint != null) {
+    // LAST, over the finished pixel: the ghost is a picture of the row as
+    // the screen shows it, converted to the peg's colour.
+    final tintMatrix = onionTintColorMatrix(tint);
+    pendingColor = pendingColor == null
+        ? tintMatrix
+        : composeColorMatrices(tintMatrix, pendingColor!);
+  }
+
   if (chain == null) {
-    final matrix = pendingColor!;
-    if (colorMatrixIsIdentity(matrix)) {
+    // Null when the chain held nothing this function paints — a release
+    // build reaching the assert above lands here, and "no paint state" is
+    // the honest answer for it.
+    final matrix = pendingColor;
+    if (matrix == null || colorMatrixIsIdentity(matrix)) {
       return CompositeEffectPaint.none;
     }
     return CompositeEffectPaint(colorFilter: ui.ColorFilter.matrix(matrix));

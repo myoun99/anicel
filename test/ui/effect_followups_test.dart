@@ -416,20 +416,47 @@ void main() {
       );
     });
 
-    test('the LAYER mode reads the ink as drawn — no effects, no grade', () {
+    // 🚨REWRITTEN 2026-08-27, and the old assertion is the point of the
+    // rewrite. It read `0x80` — the ink as DRAWN, no chain at all — and
+    // 유저 turned that over: 「레이어의 완성본 픽셀을 스포이드 찍도록
+    // 하고싶어. 그러니 fx가 싫으면 fx끄고 스포이드 찍도록」.
+    //
+    // ⛔It also mixed two questions into one number, which is why one
+    // assertion could not say which half broke. What separates the modes is
+    // WHOSE pixels are read, not whether they are finished — so the two axes
+    // are pinned separately now.
+    test('the LAYER mode reads the row\'s OWN chain — finished pixels', () {
+      expect(
+        (sample([
+                  drawing(effects: [brightness(20)]),
+                ], source: CanvasColorSampleSource.layer) >>
+                16) &
+            0xFF,
+        closeTo(0x80 + 51, 1),
+        reason: 'the dropper must not hand back a colour nowhere on screen',
+      );
+    });
+
+    test('the LAYER mode still ignores ANOTHER row\'s adjustment', () {
       final adjustment = createAdjustmentLayer(
         id: const LayerId('fx'),
         name: 'FX1',
       ).copyWith(effects: [brightness(20)]);
+      final own = (sample([
+                drawing(effects: [brightness(20)]),
+              ], source: CanvasColorSampleSource.layer) >>
+              16) &
+          0xFF;
+      final withAdjustment = (sample([
+                drawing(effects: [brightness(20)]),
+                adjustment,
+              ], source: CanvasColorSampleSource.layer) >>
+              16) &
+          0xFF;
       expect(
-        (sample([
-                  drawing(effects: [brightness(20)]),
-                  adjustment,
-                ], source: CanvasColorSampleSource.layer) >>
-                16) &
-            0xFF,
-        0x80,
-        reason: 'the what-ink-is-this mode answers the ink',
+        withAdjustment,
+        own,
+        reason: 'an adjustment is a DIFFERENT row — "이 레이어" is the mode',
       );
     });
   });

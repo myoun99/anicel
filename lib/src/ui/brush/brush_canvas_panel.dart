@@ -6,9 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HardwareKeyboard, KeyEvent;
 
 import '../debug/repaint_cause.dart';
+import '../../services/cel_source_effect_pass.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../../services/brush_stroke_commit_data.dart';
+import '../../models/layer_effect.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
@@ -136,6 +138,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.activeStrokeOverlayModel,
     this.interactiveContentOpacity = 1.0,
     this.interactiveContentPose,
+    this.activeSourceEffects = const <ResolvedLayerEffect>[],
     this.contentOverride,
     this.fitFocusRect,
     this.floorCover = EdgeInsets.zero,
@@ -361,7 +364,8 @@ class BrushCanvasPanel extends StatefulWidget {
   /// compares the field with `!identical(...)`, so the comparison could
   /// never answer false and every rebuild of this panel re-composited the
   /// whole stack.
-  ({BitmapSurface surface, BrushFrameKey key})? _activeSurfaceIdentityFor(
+  ({BitmapSurface surface, BrushFrameKey key, String fx})?
+  _activeSurfaceIdentityFor(
     BrushFrameEditingCoordinator coordinator,
   ) {
     if (activeStrokeOverlayModel == null) {
@@ -370,6 +374,10 @@ class BrushCanvasPanel extends StatefulWidget {
     return (
       surface: coordinator.activeSessionState.canvasState.currentSurface,
       key: coordinator.activeFrameKey,
+      // The colour keys' VALUES join the token: they change no surface and
+      // no cel, so without them dragging Tolerance would keep serving the
+      // painter built at the old value.
+      fx: celSourceEffectSignature(activeSourceEffects).join(','),
     );
   }
 
@@ -384,6 +392,17 @@ class BrushCanvasPanel extends StatefulWidget {
   /// coordinates (draw-through). Brush sizes are artwork-space: the live
   /// stroke and the committed composite stay pixel-identical.
   final LayerPoseSample? interactiveContentPose;
+
+  /// The CPU half of the ACTIVE row's effect chain — the colour keys the
+  /// live surface has to be drawn THROUGH.
+  ///
+  /// 🚨The row you are drawing on is the one place the keys cannot arrive
+  /// on their own: it is painted tile by tile from the coordinator's live
+  /// surface, so it sees neither the composite plan nor the layer-frame
+  /// image cache, which are the two places the pass runs. Handed down
+  /// rather than re-resolved here, so the panel and the stack cannot come
+  /// to different answers about the same row.
+  final List<ResolvedLayerEffect> activeSourceEffects;
 
   /// Replaces the interactive canvas INSIDE the panel shell (title, zoom
   /// toolbar and panbars keep working) — playback and the blank-canvas
@@ -789,7 +808,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// The token is what the painter DRAWS — the surface it reads and the cel
   /// it is scoped to. A commit swaps the surface and the memo falls.
   BitmapSurfacePainter? _memoActiveSurfacePainter;
-  ({BitmapSurface surface, BrushFrameKey key})? _activeSurfacePainterToken;
+  ({BitmapSurface surface, BrushFrameKey key, String fx})?
+  _activeSurfacePainterToken;
 
   BitmapSurfacePainter? _activeSurfacePainter() {
     final coordinator = widget._editableCoordinator;
@@ -811,7 +831,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     }
     _activeSurfacePainterToken = token;
     return _memoActiveSurfacePainter = BitmapSurfacePainter(
-      surface: token.surface,
+      // ★DRAWN THROUGH THE KEYS. Cached per TILE, so a dab re-keys the one
+      // tile it changed and the rest of the cel answers from memory.
+      surface: celSurfaceWithSourceEffects(
+        token.surface,
+        widget.activeSourceEffects,
+      ),
       overlayModel: overlay,
       // The stack painter applies the viewport itself, so the surface
       // painter draws in canvas space.

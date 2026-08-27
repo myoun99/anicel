@@ -608,10 +608,14 @@ class ExportFrameRenderer {
           // R26 #30: the delivery cel is the stack as composited — the
           // members' blends apply. R6: their EFFECTS ride the same fx
           // gates every other route uses — the dialog's master toggle and
-          // the row's own fx switch. The cel export sets the master toggle
-          // FALSE ("cels stay raw artwork"), so a blur can never be baked
-          // into line art the compositing department has to work with;
-          // blend and static opacity are display properties and stay.
+          // the row's own fx switch.
+          //
+          // The cel tab's master toggle used to be a hardcoded false ("cels
+          // stay raw artwork"); 유저 2026-08-27 made it the tab's own switch,
+          // defaulting ON — see [CelsExportSpec.applyLayerFx]. An artist who
+          // wants raw line art back turns it off, which is what the other
+          // tabs always allowed. Blend and static opacity are display
+          // properties and stay either way.
           blendMode: task.members[i].blendMode,
           effects: applyLayerFx
               ? resolveLayerEffectsAt(

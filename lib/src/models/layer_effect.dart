@@ -21,12 +21,30 @@ final class EffectId extends StringId {
 /// produce the same pixels without a shader (which `ImageFilter.shader`
 /// would have made Impeller-only).
 ///
+/// The COLOR KEYS (I-8) keep that premise by running on the CPU over the
+/// cel's own tile bytes instead — see [runsOnSourcePixels]. A threshold
+/// comparison is not linear, so no color matrix can express it; the two
+/// ways out were a fragment shader or a CPU pass, and 유저 2026-08-27 chose
+/// the CPU: *「거기가 아프면 셰이더가 답이 아니고 cpu에서 더 개선하는 방향을
+/// 찾아야지. 정답은 cpu로 보이니까」*. ⛔A later round finding the CPU pass
+/// slow must make the CPU pass faster — reaching for a GPU path would put a
+/// SECOND answer under one effect (AE ships both and documents that their
+/// results differ, which is the thing this list exists to avoid).
+///
 /// Levels/curves and glow are the natural next entries; both need a lookup
 /// table or a second pass, which is a later slice — not a different model.
 enum EffectKind {
   brightnessContrast('brightnessContrast'),
   hueSaturation('hueSaturation'),
-  blur('blur');
+  blur('blur'),
+
+  /// Erase every pixel whose color is within [tolerance] of the key color.
+  deleteColor('deleteColor'),
+
+  /// Erase every pixel whose color is NOT within [tolerance] of the key
+  /// color — the same comparison with the answer inverted, which is why
+  /// the two share [colorKeyParameterSpecs] rather than repeating it.
+  keepColor('keepColor');
 
   const EffectKind(this.jsonValue);
 
@@ -38,6 +56,8 @@ enum EffectKind {
     EffectKind.brightnessContrast => 'Brightness & Contrast',
     EffectKind.hueSaturation => 'Hue/Saturation',
     EffectKind.blur => 'Blur',
+    EffectKind.deleteColor => 'Delete Color',
+    EffectKind.keepColor => 'Keep Color',
   };
 
   /// The label in the program language. Japanese follows Clip Studio's
@@ -49,6 +69,8 @@ enum EffectKind {
       EffectKind.brightnessContrast => '明るさ・コントラスト',
       EffectKind.hueSaturation => '色相・彩度',
       EffectKind.blur => 'ぼかし',
+      EffectKind.deleteColor => '色削除',
+      EffectKind.keepColor => '色残し',
     },
     _ => label,
   };
@@ -57,6 +79,22 @@ enum EffectKind {
   /// question the composite asks before deciding a folder must buffer, and
   /// the reason a blur can never be folded into a member's own draw.
   bool get spreadsPixels => this == EffectKind.blur;
+
+  /// Whether this kind is computed over the SOURCE pixels — the cel's own
+  /// tile bytes, before anything is drawn — rather than over what the
+  /// composite has already painted.
+  ///
+  /// 🚨THIS IS A PLACEMENT RULE, NOT A PERFORMANCE NOTE. A threshold
+  /// comparison has no color-matrix form, so the color keys run as a CPU
+  /// pass over the cel surface (`celSurfaceWithSourceEffects`). CPU bytes
+  /// only exist where a cel does: a FOLDER's or an ADJUSTMENT row's input
+  /// is a composited buffer that lives on the GPU, so these kinds cannot
+  /// be offered there. [effectKindsFor] is the one gate that says so —
+  /// ⛔do not answer it again at a call site ([[derived-cel-projection-pattern]]
+  /// rule 7: a `=> true` predicate is how a new kind walks in through a
+  /// door nobody meant to open).
+  bool get runsOnSourcePixels =>
+      this == EffectKind.deleteColor || this == EffectKind.keepColor;
 
   String toJson() => jsonValue;
 
@@ -174,10 +212,145 @@ const Map<EffectKind, List<EffectParameterSpec>> effectParameterSpecs = {
       unit: EffectParameterUnit.pixels,
     ),
   ],
+  EffectKind.deleteColor: colorKeyParameterSpecs,
+  EffectKind.keepColor: colorKeyParameterSpecs,
 };
+
+/// The color keys' parameters — ONE list for both kinds, because erase and
+/// keep are the same comparison with the answer inverted. Two copies would
+/// be two places to add the next knob to.
+///
+/// 유저 2026-08-27 named the shape: *「블러 3개 있는것처럼 새로운 fx를
+/// 만들잔거야」* — a color is three of the `double` parameters the lane
+/// substrate already animates, not a new parameter TYPE. Keying the color
+/// itself therefore comes out keyframable for free.
+const List<EffectParameterSpec> colorKeyParameterSpecs = [
+  // 0…255, the byte range the eyedropper and the surface both speak. ⛔NOT
+  // 0…100: a key color typed from a picked pixel has to round-trip exactly,
+  // and a percentage cannot say 137.
+  EffectParameterSpec(
+    id: 'keyRed',
+    label: 'Key Red',
+    defaultValue: 0,
+    minimum: 0,
+    maximum: 255,
+  ),
+  EffectParameterSpec(
+    id: 'keyGreen',
+    label: 'Key Green',
+    defaultValue: 0,
+    minimum: 0,
+    maximum: 255,
+  ),
+  EffectParameterSpec(
+    id: 'keyBlue',
+    label: 'Key Blue',
+    defaultValue: 0,
+    minimum: 0,
+    maximum: 255,
+  ),
+  // How far a pixel may sit from the key color and still count as it —
+  // the largest single-channel difference, in bytes. 0 means exact.
+  EffectParameterSpec(
+    id: 'tolerance',
+    label: 'Tolerance',
+    defaultValue: 0,
+    minimum: 0,
+    maximum: 255,
+  ),
+
+  // 🚨AMOUNT EXISTS SO THAT "ADD EFFECT" CHANGES NOTHING, and it defaults
+  // to 0 for that reason alone.
+  //
+  // [LayerEffect.defaults] promises an effect you just added does nothing
+  // until you touch a value, and [ResolvedLayerEffect.isNoOp] keeps that
+  // promise by dropping a chain entry whose every value is its default.
+  // Every OTHER kind gets this free — brightness 0 and blur 0 are already
+  // identities. A color key has no such value: some color is always the
+  // key, so at Amount 100 a freshly added "erase" would delete every black
+  // pixel (i.e. the line art) the moment it appeared.
+  //
+  // It is also the honest mix control. ⛔It must fold into the ONE pixel
+  // pass, never be drawn as a second layer over the first
+  // ([[derived-cel-projection-pattern]] rule 6: a two-pass mix accumulates
+  // alpha, so 128 comes back as 160).
+  EffectParameterSpec(
+    id: 'amount',
+    label: 'Amount',
+    defaultValue: 0,
+    minimum: 0,
+    maximum: 100,
+  ),
+];
 
 List<EffectParameterSpec> effectParametersOf(EffectKind kind) =>
     effectParameterSpecs[kind]!;
+
+/// The kinds a chain may be OFFERED, given what its input is.
+///
+/// ★THE ONE GATE. [EffectKind.runsOnSourcePixels] kinds are a CPU pass over
+/// a cel's tile bytes, and a folder row, an adjustment row and a track all
+/// hand the chain a COMPOSITED BUFFER instead — pixels that only exist on
+/// the GPU by then. Asking here, once, is what keeps a `=> true` predicate
+/// somewhere else from walking a new kind in through a door nobody meant to
+/// open ([[derived-cel-projection-pattern]] rule 7).
+///
+/// [inputIsCelPixels] is `layerKindAcceptsBrushInput(row.kind)` for a row —
+/// the SAME predicate the destructive pixel verbs gate on, deliberately, so
+/// "which rows have pixels of their own" has one answer. ⛔It is kind-level
+/// on purpose: an imported image row is media-backed and still has real cel
+/// bytes, and keying a scan's paper color is the case this feature was
+/// asked for.
+List<EffectKind> effectKindsFor({required bool inputIsCelPixels}) {
+  if (inputIsCelPixels) {
+    return EffectKind.values;
+  }
+  return [
+    for (final kind in EffectKind.values)
+      if (!kind.runsOnSourcePixels) kind,
+  ];
+}
+
+/// [effects] in the order the composite can actually evaluate them: the
+/// source-pixel kinds first, everything else after, each group keeping its
+/// own relative order.
+///
+/// 🚨THIS IS WHY THE ORDER IS NOT A LIE. The CPU half runs before a single
+/// pixel is drawn, so a color key placed under a blur could never mean
+/// "blur first, then key" no matter how the list was written. Rather than
+/// let the lane list say one thing while the pixels do another, the chain a
+/// row can HOLD is normalized here — every constructor runs it, so the list
+/// on screen IS the evaluation order ([[make-the-invariant-unrepresentable]]:
+/// one field, not a second place that fixes it up later).
+///
+/// Returns the original list when it is already in order, so the common
+/// case allocates nothing and `==` on unchanged chains stays cheap.
+List<LayerEffect> normalizedEffectChain(List<LayerEffect> effects) {
+  if (effects.length < 2) {
+    return effects;
+  }
+  var seenPaint = false;
+  var ordered = true;
+  for (final effect in effects) {
+    if (effect.kind.runsOnSourcePixels) {
+      if (seenPaint) {
+        ordered = false;
+        break;
+      }
+    } else {
+      seenPaint = true;
+    }
+  }
+  if (ordered) {
+    return effects;
+  }
+  return [
+    for (final effect in effects)
+      if (effect.kind.runsOnSourcePixels) effect,
+    for (final effect in effects)
+      if (!effect.kind.runsOnSourcePixels) effect,
+  ];
+}
 
 EffectParameterSpec? effectParameterSpecOf(EffectKind kind, String id) {
   for (final spec in effectParametersOf(kind)) {
