@@ -1683,21 +1683,24 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       ),
       fxEnabledOf: session.isLayerFxEnabled,
     );
-    switch (target) {
-      case null:
-        return;
-      case LayerRowAddress(:final layerId):
-        session.selectLayer(layerId);
-      case LaneRowAddress(:final layerId):
-        // Landing on a property makes its OWNER the active layer — "현재
-        // 위치한 레이어를 액티브레이어로" — so moving onto layer B's
-        // Position row moves the drawing target to B, and drawing keeps
-        // working while the property is the verb's subject.
-        session.selectLayer(layerId);
-        session.selectRow(target);
-      case TrackRowAddress():
-        return;
+    if (target == null || target is TrackRowAddress) {
+      return;
     }
+    // 🚨★★★ONE LAW, BOTH ENTRANCES. 유저 2026-08-27: 「플립이랑 화살표랑
+    // **입구는 달라도 통하는건 하나**니까 둘 다 적용해야하는거지」 · 「플립으로
+    // 레이어이동이든 화살표든 레이어이동도 똑같이 해야지」.
+    //
+    // This used to call `selectLayer` (and, for a lane, `selectRow` after
+    // it) — which is exactly what [EditorSessionManager.standOnRow] does,
+    // minus the one thing that matters: standing somewhere OUTSIDE the live
+    // selection releases it. So clicking a row let a range go and walking to
+    // the same row with the arrows kept it, and the frame flip — which does
+    // clear — disagreed with its own sibling.
+    //
+    // ⛔The fix is not another `clearAllSelections()` here. The law has a
+    // house, and the way to obey it is to walk through the door rather than
+    // to copy the sentence written on it.
+    session.standOnRow(target);
   }
 
   /// 워크스페이스 초기화: EVERYTHING the workspace remembers, back to the
@@ -2752,8 +2755,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
               // the window opens on top of that with the file already
               // listed. Nothing imports until the window says so.
               onPlaceMediaAsset: (layerId, frameIndex, path) {
-                widget.session.selectLayer(layerId);
-                widget.session.selectFrameIndex(frameIndex);
+                // 🚨T4 — a drop LANDS somewhere, and landing is standing, so
+                // it goes through the verb like every other door (F-13). The
+                // two calls it replaces were `selectLayer` + `selectFrameIndex`
+                // — the verb's own body, minus the law.
+                widget.session.standOnRow(
+                  LayerRowAddress(layerId),
+                  frameIndex: frameIndex,
+                );
                 _openImportWindow(initialPaths: [path], placeOnly: true);
               },
               orientation: _timelineOrientation.value,

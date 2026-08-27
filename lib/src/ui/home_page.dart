@@ -450,6 +450,39 @@ class _HomePageState extends State<HomePage> {
     return true;
   }
 
+  /// One arrow step through the timeline, resolved by the AXIS it came from.
+  ///
+  /// 🚨★★★THE SAME QUESTION THE FLIP ASKS. 유저 2026-08-27: 「플립이랑
+  /// 화살표랑 **입구는 달라도 통하는건 하나**니까 둘 다 적용해야하는거지」.
+  ///
+  /// The frame axis is sideways on the timeline and downward on the X-sheet
+  /// (F-28), and the flip gesture already follows the sheet the user is
+  /// reading — `CanvasViewportGestureLayer._flipsFrames`. The keyboard did
+  /// not: left/right always walked drawings and up/down always walked rows,
+  /// so on an X-sheet the arrows moved across the grid the flip moved along.
+  ///
+  /// Both entrances land in the one switch below — the flip invokes these
+  /// very action ids — so the disagreement was never two mechanisms. It was
+  /// one mechanism asked the question in only one of its two doorways.
+  ///
+  /// ⛔The canvas NUDGE never reaches here and stays keyed to the arrow's own
+  /// direction: pushing a selection right is +x whatever the sheet is
+  /// reading. Only the timeline walk follows the sheet.
+  void _walkTimeline({required bool horizontal, required bool forward}) {
+    if (_flipHud.framesRunAlong(horizontal: horizontal)) {
+      // Along the frame axis: one DRAWING, which is the plain arrow's step.
+      if (forward) {
+        _session.selectNextDrawing();
+      } else {
+        _session.selectPreviousDrawing();
+      }
+    } else {
+      // Across it: the row stack.
+      _timelineLayerNav.step(forward ? 1 : -1);
+    }
+    _session.revealSelection();
+  }
+
   void _invokeAction(String actionId) {
     // 🚨T28-c — 「재생 중 첫 작동은 정지이고, **정지일 뿐이다**」.
     //
@@ -490,8 +523,7 @@ class _HomePageState extends State<HomePage> {
             _canvasSelectionCommands.nudge(-1, 0);
           }
         } else {
-          _session.selectPreviousDrawing();
-          _session.revealSelection();
+          _walkTimeline(horizontal: true, forward: false);
         }
       case EditorActionIds.drawingNext:
         if (_canvasSelectionCommands.hasSelection) {
@@ -499,8 +531,7 @@ class _HomePageState extends State<HomePage> {
             _canvasSelectionCommands.nudge(1, 0);
           }
         } else {
-          _session.selectNextDrawing();
-          _session.revealSelection();
+          _walkTimeline(horizontal: true, forward: true);
         }
       case EditorActionIds.playbackToggle:
         // 🚨T28: play or stop, and nothing in between. The middle branch
@@ -601,8 +632,7 @@ class _HomePageState extends State<HomePage> {
             _canvasSelectionCommands.nudge(0, -1);
           }
         } else {
-          _timelineLayerNav.step(-1);
-          _session.revealSelection();
+          _walkTimeline(horizontal: false, forward: false);
         }
       case EditorActionIds.selectionNudgeDown:
         if (_canvasSelectionCommands.hasSelection) {
@@ -610,8 +640,7 @@ class _HomePageState extends State<HomePage> {
             _canvasSelectionCommands.nudge(0, 1);
           }
         } else {
-          _timelineLayerNav.step(1);
-          _session.revealSelection();
+          _walkTimeline(horizontal: false, forward: true);
         }
       case EditorActionIds.selectionFreeTransform:
         // R26 #17: Ctrl+T is not its own transform mode — it SWITCHES to
