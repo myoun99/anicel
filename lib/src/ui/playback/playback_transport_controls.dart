@@ -159,11 +159,9 @@ class PlaybackTransportControls extends StatelessWidget {
                     )
                   : null,
             ),
-            IconButton(
-              key: const ValueKey<String>('playback-skip-to-start-button'),
+            AppIconButton(
+              keyValue: 'playback-skip-to-start-button',
               tooltip: AppText.strings.playbackToStart,
-              iconSize: 18,
-              visualDensity: VisualDensity.compact,
               icon: const Icon(Icons.skip_previous),
               onPressed: () {
                 if (controlsThisScope) {
@@ -218,19 +216,26 @@ class PlaybackTransportControls extends StatelessWidget {
                 builder: (context, recording, _) {
                   final strings =
                       resolveStrings?.call() ?? AppStrings.of(AppLanguage.en);
-                  return IconButton(
-                    key: const ValueKey<String>('playback-record-voice-button'),
+                  // 🚨THE LAST EXCEPTION IN THIS ROW. The comment on the play
+                  // button says three buttons stopped hand-rolling
+                  // `IconButton`; this one was still doing it, with its own
+                  // `iconSize: 18` and its own `colorScheme.error` for the on
+                  // state.
+                  //
+                  // ⛔RED LEAVES, AND THAT IS THE POINT. "Recording" is an ON
+                  // state like Loop and Play, and the app's law for an on
+                  // state is the accent foreground ([AppIconButton], and
+                  // [[ui-selection-style]]). Red stays on the clip light
+                  // beside it, where it means the one thing red should mean
+                  // here — a sample hit the ceiling. Two meanings on one
+                  // colour is what made the row hard to read.
+                  return AppIconButton(
+                    keyValue: 'playback-record-voice-button',
                     tooltip: recording
                         ? strings.recordVoiceStopTooltip
                         : strings.recordVoiceTooltip,
-                    iconSize: 18,
-                    visualDensity: VisualDensity.compact,
-                    icon: Icon(
-                      recording ? Icons.stop_circle : Icons.mic,
-                      color: recording
-                          ? Theme.of(context).colorScheme.error
-                          : null,
-                    ),
+                    isSelected: recording,
+                    icon: Icon(recording ? Icons.stop_circle : Icons.mic),
                     onPressed: onToggleVoiceRecording,
                   );
                 },
@@ -238,24 +243,34 @@ class PlaybackTransportControls extends StatelessWidget {
             if (isVoiceRecording != null && voiceRecordClipLit != null)
               ValueListenableBuilder<bool>(
                 valueListenable: isVoiceRecording!,
-                builder: (context, recording, _) => !recording
-                    ? const SizedBox.shrink()
-                    : ValueListenableBuilder<bool>(
-                        valueListenable: voiceRecordClipLit!,
-                        builder: (context, lit, _) => Padding(
-                          padding: const EdgeInsets.only(left: 2, right: 2),
-                          child: Icon(
-                            Icons.circle,
-                            key: const ValueKey<String>(
-                              'playback-record-clip-light',
-                            ),
-                            size: 8,
-                            color: lit
-                                ? Theme.of(context).colorScheme.error
-                                : Theme.of(context).colorScheme.outlineVariant,
+                builder: (context, recording, _) =>
+                    ValueListenableBuilder<bool>(
+                      valueListenable: voiceRecordClipLit!,
+                      builder: (context, lit, _) => Padding(
+                        padding: const EdgeInsets.only(left: 2, right: 2),
+                        child: Icon(
+                          Icons.circle,
+                          key: const ValueKey<String>(
+                            'playback-record-clip-light',
                           ),
+                          size: 8,
+                          // ⛔THE SEAT IS ALWAYS RESERVED; only the colour
+                          // changes. This used to be `!recording ?
+                          // SizedBox.shrink() : …`, so arming a take GREW the
+                          // row, and the gap that appeared beside the mic is
+                          // what the user was looking at — 유저 08-27:
+                          // 「재생하면 생기는 마이크 오른쪽 패딩? 공간? **그게
+                          // 왜 생기는건지 몰랐어서**」. They were reading a
+                          // layout jump as a bug in the mic button, and it
+                          // was: 없다가 생기는 UI 금지.
+                          color: !recording
+                              ? Colors.transparent
+                              : lit
+                              ? Theme.of(context).colorScheme.error
+                              : Theme.of(context).colorScheme.outlineVariant,
                         ),
                       ),
+                    ),
               ),
             // ⛔The QUALITY selector left this row (유저 확정, 2026-08-10:
             // 품질도 설정에 두자). It is a setting, not a transport control —
