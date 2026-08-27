@@ -2347,6 +2347,36 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                         )) {
                                                           return;
                                                         }
+                                                        // 🚨A TOUCH WAITS —
+                                                        // see [_touchTap].
+                                                        // A SECOND finger
+                                                        // arriving while one
+                                                        // waits is the pinch
+                                                        // this exists for.
+                                                        if (event.kind ==
+                                                            PointerDeviceKind
+                                                                .touch) {
+                                                          _tapLayerTouches.add(
+                                                            event.pointer,
+                                                          );
+                                                          if (_tapLayerTouches
+                                                                  .length >
+                                                              1) {
+                                                            _touchTap = null;
+                                                            return;
+                                                          }
+                                                          _touchTap = (
+                                                            pointer:
+                                                                event.pointer,
+                                                            canvas:
+                                                                _canvasPointOf(
+                                                                  event,
+                                                                ),
+                                                            local: event
+                                                                .localPosition,
+                                                          );
+                                                          return;
+                                                        }
                                                         _toolTapHandler()!(
                                                           _canvasPointOf(event),
                                                         );
@@ -2373,16 +2403,63 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                       // "one fill per move
                                                       // event" is structurally
                                                       // impossible.
-                                                      onPointerMove: (event) =>
-                                                          _continuePressVerb(
-                                                            event,
-                                                          ),
-                                                      onPointerUp: (_) =>
-                                                          _lastStampCenter =
-                                                              null,
-                                                      onPointerCancel: (_) =>
-                                                          _lastStampCenter =
-                                                              null,
+                                                      onPointerMove: (event) {
+                                                        // The gesture
+                                                        // declares itself by
+                                                        // MOVING: crossing
+                                                        // the slop resolves
+                                                        // the waiting tap
+                                                        // where it was
+                                                        // pressed, and the
+                                                        // drag carries on
+                                                        // from there — the
+                                                        // stamp trails its
+                                                        // row, the dropper
+                                                        // keeps sampling.
+                                                        if (_touchTapPassedSlop(
+                                                          event,
+                                                        )) {
+                                                          _resolveTouchTap();
+                                                        }
+                                                        if (_touchTap !=
+                                                            null) {
+                                                          // Still undecided —
+                                                          // a sub-slop wobble
+                                                          // is not a drag.
+                                                          return;
+                                                        }
+                                                        _continuePressVerb(
+                                                          event,
+                                                        );
+                                                      },
+                                                      onPointerUp: (event) {
+                                                        // A tap that stayed
+                                                        // put resolves when
+                                                        // the finger leaves.
+                                                        if (_touchTap
+                                                                ?.pointer ==
+                                                            event.pointer) {
+                                                          _resolveTouchTap();
+                                                        }
+                                                        _tapLayerTouches
+                                                            .remove(
+                                                              event.pointer,
+                                                            );
+                                                        _touchTap = null;
+                                                        _lastStampCenter =
+                                                            null;
+                                                      },
+                                                      onPointerCancel:
+                                                          (event) {
+                                                            _tapLayerTouches
+                                                                .remove(
+                                                                  event
+                                                                      .pointer,
+                                                                );
+                                                            _touchTap = null;
+                                                            _lastStampCenter =
+                                                                null;
+                                                          },
                                                     ),
                                                   ),
                                                 // Eyedropper cursor (R11-②): crosshair +
@@ -3236,6 +3313,70 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   /// Where the last stamp of the current drag landed. Null between drags.
   CanvasPoint? _lastStampCenter;
+
+  /// 🚨★★★A TOUCH TAP RESOLVES ON THE LIFT OR ON THE SLOP, NEVER ON THE
+  /// TOUCH — the fill's law (#1277), now the tap layer's too.
+  ///
+  /// 유저 2026-08-27: 「1핑거 드로잉모드일때 다른 툴도 비슷한 문제 있을거
+  /// 같은데 … **손가락이 동시에 착지하는게 불가능하니까** … 그런 비슷한
+  /// 방식으로 통일하는게 **근본통일**같은데」.
+  ///
+  /// Two fingers never land on the same millisecond, so a pinch begins as a
+  /// lone contact. The app's answer to that has never been a timer — a
+  /// gesture DECLARES ITSELF BY MOVING, and a touch stroke owns the screen
+  /// only once it crosses [InteractiveBrushEditCanvasView
+  /// .kTouchStrokeCommitSlop]. The stamp and the eyedropper fired on the
+  /// press instead, so the first finger of every two-finger undo dropped a
+  /// piece or repainted the colour.
+  ///
+  /// ⛔Not 「fire, then take it back when the second finger shows」 —
+  /// [[no-optimistic-commit-then-revert]], 유저: 「한 프레임 보이는 건 무조건
+  /// 걸린다」. Nothing happens until the gesture has said what it is.
+  ///
+  /// ★ONE RULE FOR BOTH TOOLS, which is the 근본통일 asked for: a tap that
+  /// stays put resolves when the finger leaves, and one that moves resolves
+  /// the moment it crosses the slop — so the eyedropper still samples all
+  /// the way along a drag (TS7) and the stamp still trails a row of pieces.
+  /// Pen and mouse never wait: they cannot be half of a pinch.
+  ({int pointer, CanvasPoint canvas, Offset local})? _touchTap;
+
+  /// The fingers this layer is holding right now.
+  ///
+  /// 🚨THE ONE ANSWER to 「is this still the user's own single gesture」, and
+  /// it has to be a COUNT rather than 「is a tap already waiting」. Measured:
+  /// with the waiting-tap flag as the only guard, the second finger cleared
+  /// the pending tap and the THIRD armed a fresh one — a three-finger redo
+  /// stamped a piece on its way past. The view's stroke path words it the
+  /// same way: no new gesture starts until every finger lifts, so a quick
+  /// pinch never leaves marks.
+  ///
+  /// ⛔This layer absorbs its pointers above the canvas, so the ink census
+  /// ([CanvasTouchContacts]) never sees them — asking it here would be a
+  /// second answer that reads zero through the very gesture it is meant to
+  /// catch. Measured too: removing that check changed no behaviour at all.
+  final Set<int> _tapLayerTouches = <int>{};
+
+  /// Runs the waiting tap at the point it was pressed. Harmless when
+  /// nothing is waiting — a tap that turned out to be a pinch was dropped
+  /// when the second finger landed, so there is nothing left to refuse.
+  void _resolveTouchTap() {
+    final pending = _touchTap;
+    if (pending == null) {
+      return;
+    }
+    _touchTap = null;
+    _toolTapHandler()?.call(pending.canvas);
+  }
+
+  /// Whether [event] has carried the waiting tap far enough to have
+  /// declared itself a drag rather than half of a pinch.
+  bool _touchTapPassedSlop(PointerEvent event) {
+    final pending = _touchTap;
+    return pending != null &&
+        pending.pointer == event.pointer &&
+        (event.localPosition - pending.local).distance >=
+            InteractiveBrushEditCanvasView.kTouchStrokeCommitSlop;
+  }
 
   /// Continues a stamp drag up to [point].
   ///

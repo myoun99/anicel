@@ -110,6 +110,17 @@ Map<TileCoord, BitmapTile?> preStrokeHoldTiles({
 }
 
 class InteractiveBrushEditCanvasView extends StatefulWidget {
+  /// The commitment distance (the engine's lock slop — one number keeps
+  /// the engine's navigate-lock and this view's cancel window agreeing).
+  ///
+  /// 🚨★★★HOW FAR A TOUCH MUST TRAVEL TO BE ITS OWN GESTURE, and the tap
+  /// layer asks it too now — 유저 2026-08-27: 「손가락이 동시에 착지하는게
+  /// 불가능하니까 … 그런 비슷한 방식으로 **통일**하는게 근본통일같은데」.
+  /// It sat on the private State, which is why the third surface that
+  /// needed it could not have it; it is the same number for all of them,
+  /// so it lives where it can be asked rather than copied.
+  static const double kTouchStrokeCommitSlop = 18;
+
   InteractiveBrushEditCanvasView({
     super.key,
     required this.sessionState,
@@ -234,10 +245,6 @@ class _InteractiveBrushEditCanvasViewState
   /// committed, extra fingers are ignored (the mid-line vanish fix).
   Offset? _touchStrokeDownPosition;
   bool _touchStrokeCommitted = false;
-
-  /// The commitment distance (the engine's lock slop — one number keeps
-  /// the engine's navigate-lock and this view's cancel window agreeing).
-  static const double kTouchStrokeCommitSlop = 18;
 
   /// Live touch contacts. A second finger switches the interaction to
   /// viewport navigation (handled by the panel's gesture layer): the
@@ -845,7 +852,7 @@ class _InteractiveBrushEditCanvasViewState
     if (!_touchStrokeCommitted &&
         touchStrokeDown != null &&
         (event.localPosition - touchStrokeDown).distance >=
-            kTouchStrokeCommitSlop) {
+            InteractiveBrushEditCanvasView.kTouchStrokeCommitSlop) {
       _touchStrokeCommitted = true;
     }
 
