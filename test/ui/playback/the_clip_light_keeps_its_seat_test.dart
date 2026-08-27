@@ -93,11 +93,22 @@ void main() {
     final handles = await pumpRow(tester, freeWidth: true);
 
     final rowFinder = find.byType(PlaybackTransportControls);
-    final idleWidth = tester.getSize(rowFinder).width;
-    final idleMic = tester.getRect(
-      find.byKey(const ValueKey<String>('playback-record-voice-button')),
+    final lightFinder = find.byKey(
+      const ValueKey<String>('playback-record-clip-light'),
     );
+    final idleWidth = tester.getSize(rowFinder).width;
+    // ⛔THE LIGHT'S OWN RECT, not the mic's. The light sits AFTER the mic, so
+    // in a left-aligned row a growing light never moves the mic — asserting
+    // that it does not move would be true whatever this code did. What the
+    // user saw is the gap that appeared BESIDE the mic, and that gap is this
+    // widget's own box.
+    final idleLight = tester.getRect(lightFinder);
     expect(idleWidth, greaterThan(0), reason: 'fixture: the row laid out');
+    expect(
+      idleLight.width,
+      greaterThan(0),
+      reason: 'fixture: the seat is occupied even while idle',
+    );
 
     handles.recording.value = true;
     await tester.pump();
@@ -109,12 +120,10 @@ void main() {
           '- a row that grows on record is the reported 마이크 오른쪽 공간',
     );
     expect(
-      tester.getRect(
-        find.byKey(const ValueKey<String>('playback-record-voice-button')),
-      ),
-      idleMic,
-      reason: 'and the mic button does not move, which is what the user was '
-          'actually looking at',
+      tester.getRect(lightFinder),
+      idleLight,
+      reason: 'and the seat is the SAME box, not merely the same width - a '
+          'light that moved would push its neighbours just as visibly',
     );
   });
 

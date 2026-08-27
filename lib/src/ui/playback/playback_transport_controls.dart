@@ -257,7 +257,8 @@ class PlaybackTransportControls extends StatelessWidget {
                           // ⛔THE SEAT IS ALWAYS RESERVED; only the colour
                           // changes. This used to be `!recording ?
                           // SizedBox.shrink() : …`, so arming a take GREW the
-                          // row and shoved the mic button left — 유저 08-27:
+                          // row, and the gap that appeared beside the mic is
+                          // what the user was looking at — 유저 08-27:
                           // 「재생하면 생기는 마이크 오른쪽 패딩? 공간? **그게
                           // 왜 생기는건지 몰랐어서**」. They were reading a
                           // layout jump as a bug in the mic button, and it
