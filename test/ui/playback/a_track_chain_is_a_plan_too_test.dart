@@ -126,4 +126,52 @@ void main() {
       reason: 'a darken keeps every pixel — only a key removes any',
     );
   });
+
+  testWidgets('the painter repaints when the chain changes, and only then', (
+    tester,
+  ) async {
+    // 🚨THE FIELD THE PAINTER DIFFS IS A LIST NOW, so the comparison had to
+    // change with it — `!=` on a list is identity, and a chain rebuilt every
+    // frame is a new list every frame. 🧪Caught by mutation: neutering this
+    // line left every other test green, and what it breaks is an ANIMATED
+    // track fx that never reaches the screen.
+    final composite = whiteCut();
+    addTearDown(composite.dispose);
+
+    PlaybackFramePainter withChain(List<LayerEffect> chain) =>
+        PlaybackFramePainter(
+          image: composite,
+          canvasSize: canvasSize,
+          cutEffects: trackEffectsAt(chain, 0),
+          paintPaper: false,
+        );
+
+    final none = withChain(const []);
+    final keyed = withChain([deleteWhite()]);
+    expect(
+      keyed.shouldRepaint(none),
+      isTrue,
+      reason: 'adding a colour key changes the picture',
+    );
+    expect(
+      none.shouldRepaint(keyed),
+      isTrue,
+      reason: 'and removing it changes it back',
+    );
+
+    // ⛔EQUAL BUT NOT IDENTICAL: the chain is resolved fresh on every build,
+    // so a static grade hands over a NEW list with the same values. Comparing
+    // by identity would repaint every frame forever.
+    final again = withChain([deleteWhite()]);
+    expect(
+      identical(again.cutEffects, keyed.cutEffects),
+      isFalse,
+      reason: 'fixture: two separate resolves',
+    );
+    expect(
+      again.shouldRepaint(keyed),
+      isFalse,
+      reason: 'a static chain is not a repaint',
+    );
+  });
 }
