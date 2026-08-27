@@ -740,9 +740,12 @@ Color layerMarkColor(LayerMark mark) => resolveLayerMarkColor(
 );
 
 /// The unabbreviated reading — 「축약어 쓰지 않을때는 축약하지마」. The chip
-/// writes [LayerMark.processText]/[LayerMark.reviseText] instead.
+/// writes the abbreviations through [layerMarkChipText] instead.
+///
+/// 🚨Through [layerMarkLabel], so the reading follows the program language
+/// (유저 2026-08-28). `mark.displayName` would be the English row.
 String layerMarkDisplayName(LayerMark mark) =>
-    mark.isNone ? AppText.strings.tlLayerMarkNone : mark.displayName;
+    mark.isNone ? AppText.strings.tlLayerMarkNone : layerMarkLabel(mark);
 
 class LayerTimesheetToggleButton extends StatelessWidget {
   const LayerTimesheetToggleButton({
@@ -1008,7 +1011,7 @@ class LayerMarkChip extends StatelessWidget {
             keyValue: revisesFor(process).isEmpty
                 ? 'layer-mark-option-${process.jsonValue}'
                 : 'layer-mark-stage-${process.jsonValue}',
-            label: process.displayName,
+            label: layerProcessLabel(process),
             swatch: layerMarkColor(LayerMark(process: process)),
             // 용지 carries no corrections, so it is a plain choice — no
             // chevron, no second level, and picking it labels the row.
@@ -1027,9 +1030,9 @@ class LayerMarkChip extends StatelessWidget {
                     ])
                       PanelFlyoutItem(
                         keyValue: 'layer-mark-option-${option.keySlug}',
-                        label:
-                            option.revise?.displayName ??
-                            AppText.strings.tlLayerMarkSource,
+                        label: option.revise == null
+                            ? AppText.strings.tlLayerMarkSource
+                            : layerReviseLabel(option.revise!),
                         swatch: layerMarkColor(option),
                         onSelected: () => onMarkSelected(layerId, option),
                       ),
@@ -1056,7 +1059,10 @@ class LayerMarkChip extends StatelessWidget {
         // sheet stacks instead, because there the plate is wide and short.
         child: _LabelPlate(
           fill: layerMarkColor(mark),
-          columns: [mark.processText, mark.reviseText],
+          columns: [
+            layerMarkChipText(mark).process,
+            layerMarkChipText(mark).revise,
+          ],
           axis: axis,
         ),
       ),
@@ -1073,6 +1079,36 @@ class LayerMarkChip extends StatelessWidget {
 /// takes the columns to write and the fill to write them on rather than
 /// knowing what a mark is. A second widget that merely looked the same
 /// would be a copy of a face that is deliberately identical.
+/// 한 칸의 글자를 그 레일이 읽는 방향으로 세운다.
+///
+/// 🚨★★★ONE PLACE decides this. The colour plate and the take chip sit side
+/// by side and made the same call separately — 「레일이면 세워 쓰고 x시트면
+/// 가로로 쓴다」 — which is a copy even while the two agree. 유저: 「사본
+/// 남으면 진짜 용서안할게」.
+///
+/// ⚠️The plate is a tall sliver beside a rail row and a wide sliver above an
+/// x-sheet column, so the same two letters have to run the long way on each.
+/// The caller brings its own [style]: the plate takes its ink from the block
+/// colour and the take chip from the layer name, and that is a real
+/// difference — the direction is not.
+Widget layerPlateGlyphs({
+  required String text,
+  required Axis axis,
+  required TextStyle style,
+}) => axis == Axis.horizontal
+    ? VerticalWritingText(
+        text: text,
+        latinForm: VerticalLatinForm.upright,
+        lineHeight: SectionBandZone.lineHeight,
+        // 「길면 글자 축소 허용」 — a long abbreviation packs and shrinks
+        // rather than ellipsising. 시아게 is three glyphs where the rest are
+        // two, and this is what lets it sit in the same plate.
+        overflow: VerticalTextOverflow.pack,
+        minFontSize: 4,
+        style: style,
+      )
+    : Text(text, maxLines: 1, style: style);
+
 class _LabelPlate extends StatelessWidget {
   const _LabelPlate({
     required this.fill,
@@ -1122,70 +1158,46 @@ class _LabelPlate extends StatelessWidget {
     if (shown.isEmpty) {
       return null;
     }
-    // 🚨★★★THE X-SHEET WRITES ACROSS AND STACKS DOWN. 유저 2026-08-27:
-    // 「x시트는 **가로쓰기 가로표기**로 **위에 LO 아래에 작감** 이렇게 오는거
-    // 알지?」 — the sheet's column header is wide and short, so the two read
-    // as two lines rather than two columns.
+    // 🚨★★★ONE LAW, BOTH RAILS. 유저 2026-08-27: 「x시트 **로직적으로 통일**
+    // 하는거 절대잊지말고」 — so the split, the fill and the order are decided
+    // HERE once and the axis is the only thing that differs. The x-sheet used
+    // to run its own `BoxFit.scaleDown` branch, which is exactly how it kept
+    // missing whatever the rail had just learned.
     //
-    // ⚠️It used to draw NOTHING here (「no column to stack glyphs in」), which
-    // was true only while the plate insisted on vertical writing.
-    if (axis == Axis.vertical) {
-      return Center(
-        child: ClipRect(
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final text in shown)
-                  Text(
-                    text,
-                    maxLines: 1,
-                    style: TextStyle(
-                      fontSize: _fontSize,
-                      fontWeight: FontWeight.bold,
-                      height: SectionBandZone.lineHeight,
-                      color: timelineTextOnColor(fill),
-                    ),
-                  ),
-              ],
+    // 🚨★★★EACH COLUMN FILLS ITS OWN AREA, BOTH WAYS. 유저 2026-08-28:
+    // 「2글자로 작감이면 작감 **위 아래에 글자가 남거든**? 이거 그냥 **글자
+    // 늘려서 꽉 채우게** 하면 멋있을거같아 … **옆으로도 자기 영역 내에서 꽉
+    // 채우게** 하고싶어」.
+    //
+    // ⚠️`BoxFit.fill`, not `scaleDown`: the glyphs are STRETCHED to the box
+    // rather than scaled inside it, so two characters and four fill the same
+    // plate. That is also what makes the old 4px overflow impossible —
+    // nothing is sized by its natural extent any more.
+    //
+    // ⛔[Expanded] splits the plate EVENLY, so 공정 and 수정 own half each and
+    // neither pushes the other. With one column it takes the whole plate.
+    return ClipRect(
+      child: Flex(
+        // The rail reads left→right, the sheet top→bottom: 유저 2026-08-27
+        // 「x시트는 가로쓰기 가로표기로 **위에 LO 아래에 작감**」, and on the
+        // rail 「평범하게 **왼쪽에 LO 오른쪽에 작감**」. Same list, laid the
+        // way each surface is read.
+        direction: axis == Axis.horizontal ? Axis.horizontal : Axis.vertical,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final text in shown)
+            Expanded(
+              child: FittedBox(fit: BoxFit.fill, child: _glyphs(text, fill)),
             ),
-          ),
-        ),
-      );
-    }
-    // 🚨THE SLOT DOES NOT GROW, SO THE WRITING SHRINKS. 유저 2026-08-27:
-    // 「지금의 가로가 얇은 상태인 띠 크기 **그대로**에 LO든 LO작감이든 어떻게
-    // **우겨넣는방식**으로」.
-    //
-    // ⚠️`VerticalWritingText`'s own packing shrinks along the COLUMN; two
-    // columns side by side overrun the plate's WIDTH, which it cannot see —
-    // measured, 「A RenderFlex overflowed by 4.0 pixels」 the moment a revise
-    // was picked. Scaling the pair down is what makes both fit without the
-    // slot moving.
-    return Center(
-      child: ClipRect(
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [for (final text in shown) _column(text, fill)],
-          ),
-        ),
+        ],
       ),
     );
   }
 
-  Widget _column(String text, Color fill) => VerticalWritingText(
+  /// One column's characters, through the shared decision.
+  Widget _glyphs(String text, Color fill) => layerPlateGlyphs(
     text: text,
-    latinForm: VerticalLatinForm.upright,
-    lineHeight: SectionBandZone.lineHeight,
-    // 「길면 글자 축소 허용」 — a long abbreviation packs and shrinks rather
-    // than ellipsising. 시아게 is three glyphs where the rest are two, and
-    // this is what lets it sit in the same plate.
-    overflow: VerticalTextOverflow.pack,
-    minFontSize: 4,
+    axis: axis,
     style: TextStyle(
       fontSize: _fontSize,
       fontWeight: FontWeight.bold,
@@ -1308,25 +1320,59 @@ class _TakeText extends StatelessWidget {
       fontWeight: FontWeight.bold,
       height: SectionBandZone.lineHeight,
     );
-    return Center(
-      child: ClipRect(
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          // The sheet writes across like the colour plate beside it —
-          // 「x시트는 가로쓰기 가로표기로」 — while the rail stands the two
-          // glyphs up in its 14px column.
-          child: axis == Axis.vertical
-              ? Text(mark.takeText, maxLines: 1, style: style)
-              : VerticalWritingText(
-                  text: mark.takeText,
-                  latinForm: VerticalLatinForm.upright,
-                  lineHeight: SectionBandZone.lineHeight,
-                  overflow: VerticalTextOverflow.pack,
-                  minFontSize: 4,
-                  style: style,
-                ),
-        ),
+    return ClipRect(
+      // Fills its slot the way the colour plate does — 유저 2026-08-28:
+      // 「글자 늘려서 꽉 채우게 … 옆으로도 자기 영역 내에서 꽉 채우게」.
+      child: FittedBox(
+        fit: BoxFit.fill,
+        // ⛔THE SHARED decision, not its own copy of it. This chip and the
+        // colour plate stand side by side and used to each choose the
+        // writing direction — agreeing, which is exactly how a copy hides.
+        child: layerPlateGlyphs(text: mark.takeText, axis: axis, style: style),
       ),
     );
   }
+}
+
+/// 공정의 이름과 축약어, **번역을 거쳐서**.
+///
+/// 🚨★★★유저 2026-08-28: 「프로그램 언어에따라 **로컬라이즈 안되니까** 해주고」.
+/// The enum in `models/` carries the English wording (it may not import
+/// `ui/`), and everything the user reads goes through here — so a Japanese
+/// UI stops showing 「용지」 beside 「ラベルなし」.
+///
+/// ⛔ONE pair of accessors, called by the plate, the flyout and the tooltip
+/// alike. A surface that read `process.displayName` directly would be the
+/// one place that never translates.
+String layerProcessLabel(LayerProcess process) =>
+    AppText.strings.layerProcessName(process.jsonValue, process.displayName);
+
+String layerProcessAbbrev(LayerProcess process) =>
+    AppText.strings.layerProcessAbbrev(process.jsonValue, process.abbreviation);
+
+String layerReviseLabel(LayerRevise revise) =>
+    AppText.strings.layerReviseName(revise.jsonValue, revise.displayName);
+
+String layerReviseAbbrev(LayerRevise revise) =>
+    AppText.strings.layerReviseAbbrev(revise.jsonValue, revise.abbreviation);
+
+/// What the chip writes, translated — the pair the plate stacks.
+///
+/// ⚠️It lives beside the accessors rather than on [LayerMark] for the same
+/// reason they do: the model cannot see the string tables.
+({String process, String revise}) layerMarkChipText(LayerMark mark) => (
+  process: mark.process == null ? '' : layerProcessAbbrev(mark.process!),
+  revise: mark.revise == null ? '' : layerReviseAbbrev(mark.revise!),
+);
+
+/// The unabbreviated reading — tooltips and the flyout.
+String layerMarkLabel(LayerMark mark) {
+  final stage = mark.process;
+  if (stage == null) {
+    return '';
+  }
+  final correction = mark.revise;
+  return correction == null
+      ? layerProcessLabel(stage)
+      : '${layerProcessLabel(stage)} ${layerReviseLabel(correction)}';
 }

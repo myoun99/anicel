@@ -21,14 +21,14 @@ import 'layer_mark.dart';
 enum LayerProcess {
   /// 用紙 — 그림이 아니라 종이. ⚠️TVPaint 스샷에는 「TAP」으로 되어 있지만
   /// 유저 정정(2026-08-27): 「그게아니라 **용지**로 하자. 이름. 用紙」.
-  paper('paper', '용지', '용지'),
-  conte('conte', '콘티', '콘티'),
-  art('art', '미술', '미술'),
-  layout('layout', '레이아웃', 'LO'),
-  roughKey('rough-key', '러프원화', '러프'),
-  key('key', '원화', '원화'),
-  inbetween('inbetween', '동화', '동화'),
-  finish('finish', '시아게', '시아게');
+  paper('paper', 'Paper', 'PAP'),
+  conte('conte', 'Storyboard', 'SB'),
+  art('art', 'Art', 'ART'),
+  layout('layout', 'Layout', 'LO'),
+  roughKey('rough-key', 'Rough Key', 'RK'),
+  key('key', 'Key', 'KEY'),
+  inbetween('inbetween', 'Inbetween', 'IB'),
+  finish('finish', 'Finish', 'FIN');
 
   const LayerProcess(this.jsonValue, this.displayName, this.abbreviation);
 
@@ -37,8 +37,10 @@ enum LayerProcess {
   /// 갈라진다」.
   final String jsonValue;
 
-  /// The unabbreviated name, shown in the popover. 유저: 「축약어 쓰지 않을때는
-  /// 축약하지마」.
+  /// The unabbreviated name, in ENGLISH — the other languages are tabled in
+  /// `AppStrings.layerProcessName` under [jsonValue]. ⛔The words cannot live
+  /// in `AppStrings` alone: `models` may not import `ui/`, so the enum is
+  /// the English row and the table holds the rest (the `menuLabel` contract).
   final String displayName;
 
   /// What the label chip writes. 유저 설계: 공정 축약 + 수정 축약을 붙여
@@ -61,14 +63,14 @@ enum LayerProcess {
 /// 붙는거 다 없애. 그냥 연출 작화감독 이렇게만 존재하게」). 무엇의 수정인지는
 /// 라벨이 이미 공정을 앞에 달고 있어서 말해 줍니다.
 enum LayerRevise {
-  direction('direction', '연출', '연출'),
-  animationDirector('animation-director', '작화감독', '작감'),
-  chiefAnimationDirector('chief-animation-director', '총작화감독', '총작'),
-  director('director', '감독', '감독'),
-  chiefDirector('chief-director', '총감독', '총감'),
-  actionAnimationDirector('action-animation-director', '액션작화감독', '액션'),
-  inbetweenCheck('inbetween-check', '동화검사', '동검'),
-  cellCheck('cell-check', 'セル検査', '셀검');
+  direction('direction', 'Direction', 'DIR'),
+  animationDirector('animation-director', 'Animation Director', 'AD'),
+  chiefAnimationDirector('chief-animation-director', 'Chief Animation Director', 'CAD'),
+  director('director', 'Director', 'DR'),
+  chiefDirector('chief-director', 'Chief Director', 'CD'),
+  actionAnimationDirector('action-animation-director', 'Action Animation Director', 'AAD'),
+  inbetweenCheck('inbetween-check', 'Inbetween Check', 'IBC'),
+  cellCheck('cell-check', 'Cell Check', 'CC');
 
   const LayerRevise(this.jsonValue, this.displayName, this.abbreviation);
 

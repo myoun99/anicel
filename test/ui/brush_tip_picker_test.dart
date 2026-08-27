@@ -90,7 +90,11 @@ void main() {
     expect(
       surfaces.any(
         (m) =>
-            m.color == AppColors.surfaceHigh &&
+            // 🚨THE TOKEN, not a colour of its own. It named
+            // [AppColors.surfaceHigh] and so broke the day the one summoned
+            // colour moved (유저 2026-08-28: 「공통창 다 변경」) — a test that
+            // spells the value out is a copy exactly like the code would be.
+            m.color == AppPopupSurface.color &&
             m.elevation > 0 &&
             m.shape is RoundedSuperellipseBorder,
       ),

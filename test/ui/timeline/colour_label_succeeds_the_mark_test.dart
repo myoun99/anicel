@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -19,6 +21,9 @@ void main() {
   _takeLabel();
   _oneWidgetBothSurfaces();
   _axisAgreement();
+  _namesFollowTheLanguage();
+  _toneNamesFollowTheLanguage();
+  _oneDecidesTheWritingDirection();
 
   // 🚨A GLOBAL. Saving and restoring rather than assigning a fresh default
   // back: writing `const AppAccentSettings()` in the teardown would not undo
@@ -316,5 +321,135 @@ void _oneWidgetBothSurfaces() {
         reason: '⛔x시트가 자기 라벨 위젯을 만들면 그 순간 두 벌이다',
       );
     }
+  });
+}
+
+/// 🚨공정·수정 이름이 **프로그램 언어를 탄다**. 유저 2026-08-28: 「프로그램
+/// 언어에따라 **로컬라이즈 안되니까** 해주고」 — 일본어 UI 에서 「ラベルなし」
+/// 옆에 「용지」가 나오고 있었다.
+void _namesFollowTheLanguage() {
+  void speak(AppLanguage language) => AppText.settings.value =
+      AppLanguageSettings(programLanguage: language);
+  tearDown(() => AppText.settings.value = const AppLanguageSettings());
+
+  test('네 언어 모두 공정·수정의 이름과 축약어를 갖는다', () {
+    for (final language in AppLanguage.values) {
+      speak(language);
+      for (final process in LayerProcess.values) {
+        expect(
+          layerProcessLabel(process),
+          isNotEmpty,
+          reason: '$language · ${process.jsonValue}',
+        );
+        expect(layerProcessAbbrev(process), isNotEmpty);
+      }
+      for (final revise in LayerRevise.values) {
+        expect(
+          layerReviseLabel(revise),
+          isNotEmpty,
+          reason: '$language · ${revise.jsonValue}',
+        );
+        expect(layerReviseAbbrev(revise), isNotEmpty);
+      }
+    }
+  });
+
+  test('언어를 바꾸면 실제로 글자가 바뀐다 — 표가 비어도 fallback 으로 통과하지 '
+      '않게', () {
+    // ⛔`isNotEmpty` 만으로는 못 잡는다: 표가 통째로 비어 있어도 enum 의 영어가
+    // fallback 으로 나와 전부 통과한다. **다르다**를 재야 한다.
+    speak(AppLanguage.en);
+    final english = layerProcessLabel(LayerProcess.key);
+    speak(AppLanguage.ja);
+    final japanese = layerProcessLabel(LayerProcess.key);
+    speak(AppLanguage.ko);
+    final korean = layerProcessLabel(LayerProcess.key);
+
+    expect(english, 'Key');
+    expect(japanese, isNot(english), reason: '原画');
+    expect(korean, isNot(english), reason: '원화');
+    expect(korean, isNot(japanese));
+  });
+
+  test('칩 글자도 번역을 탄다 — 모델의 영어가 새어나오지 않는다', () {
+    speak(AppLanguage.ko);
+    final text = layerMarkChipText(
+      const LayerMark(
+        process: LayerProcess.layout,
+        revise: LayerRevise.animationDirector,
+      ),
+    );
+    expect(text.process, 'LO');
+    expect(text.revise, '작감', reason: '⛔모델의 \'AD\' 가 그대로 나오면 안 된다');
+  });
+}
+
+/// 톤 이름도 프로그램 언어를 탄다 — 유저가 「설정같은곳에서 색 고를수있게」
+/// 라고 한 그 목록이다. 라벨만 번역하고 고르는 창이 한국어로 남으면 반쪽이다.
+void _toneNamesFollowTheLanguage() {
+  void speak(AppLanguage language) => AppText.settings.value =
+      AppLanguageSettings(programLanguage: language);
+  tearDown(() => AppText.settings.value = const AppLanguageSettings());
+
+  String toneName(LayerMarkPalette palette) => AppText.strings
+      .layerMarkPaletteName(palette.jsonValue, palette.displayName);
+
+  test('네 언어 모두 톤 넷의 이름을 갖는다', () {
+    for (final language in AppLanguage.values) {
+      speak(language);
+      for (final palette in LayerMarkPalette.values) {
+        expect(toneName(palette), isNotEmpty, reason: '$language · $palette');
+      }
+    }
+  });
+
+  test('언어를 바꾸면 톤 이름이 실제로 바뀐다', () {
+    speak(AppLanguage.en);
+    final english = toneName(LayerMarkPalette.pencil);
+    speak(AppLanguage.ko);
+    final korean = toneName(LayerMarkPalette.pencil);
+    speak(AppLanguage.ja);
+    final japanese = toneName(LayerMarkPalette.pencil);
+
+    expect(english, 'Coloured pencil');
+    expect(korean, isNot(english), reason: '색연필');
+    expect(japanese, isNot(korean), reason: '色鉛筆');
+  });
+}
+
+/// ⛔**세로쓰기를 고르는 곳은 하나다** (래칫).
+///
+/// 색 라벨과 테이크 칩은 나란히 앉아 「레일이면 세워 쓰고 x시트면 가로로
+/// 쓴다」를 **각자** 골랐다. 둘이 **일치**했으므로 행동 테스트는 통과했다 —
+/// 유저: 「사본 남으면 진짜 용서안할게」. 사본은 갈라지기 전까지 안 보이므로
+/// **소스를 훑는다.**
+void _oneDecidesTheWritingDirection() {
+  test('축을 보고 쓰기 방향을 고르는 곳은 한 곳뿐이다', () {
+    final source = File(
+      'lib/src/ui/timeline/layer_label_controls.dart',
+    ).readAsLinesSync();
+    final builders = <int>[];
+    for (var i = 0; i < source.length; i++) {
+      if (source[i].trimLeft().startsWith('//')) {
+        continue;
+      }
+      // ⚠️축으로 **갈라지는** 곳만 센다. 섹션 밴드의 ACTION·SE·CAM 은 축과
+      // 무관하게 늘 서 있으므로 같은 결정이 아니다 — 그것까지 세면 래칫이
+      // 남의 기능을 붙잡고 「사본이다」라고 말한다.
+      if (!source[i].contains('axis == Axis.')) {
+        continue;
+      }
+      final window = source.skip(i).take(9).join(' ');
+      if (window.contains('VerticalWritingText(')) {
+        builders.add(i + 1);
+      }
+    }
+    expect(
+      builders,
+      hasLength(1),
+      reason:
+          '⛔세로쓰기를 두 곳에서 만들면 그게 사본이다. 공용 결정은 '
+          '`layerPlateGlyphs` — 줄: $builders',
+    );
   });
 }
