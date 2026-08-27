@@ -23,6 +23,7 @@ library;
 
 import 'dart:ui' as ui;
 
+import '../../core/draw_space.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/layer_blend_mode.dart';
@@ -135,19 +136,25 @@ void drawPosedLayerImage(
       // same steps a group takes, asked of one layer's image.
       final plan = resolveCompositeEffectPlan(
         effects,
-        rasterScale: rasterScale,
+        // The pose above already scaled this canvas, so there is no CTM left
+        // for Skia to map the sigma through — the chain arrives multiplied.
+        space: rasterScale == 1
+            ? DrawSpace.canvas
+            : DrawSpace.preScaled(rasterScale),
         tint: tint,
       );
       plan.finalPaint.applyTo(paint);
-      final stepped = plan.isSingleDraw
-          ? image
-          : applyEffectSteps(
-              source: image,
-              steps: plan.preSteps,
-              pixelWidth: image.width,
-              pixelHeight: image.height,
-              rasterScale: rasterScale,
-            );
+      // ⛔THE STEP SCALE IS NOT `rasterScale`, even though it equals it here.
+      // `rasterScale` answers "what space does the DRAW land in"; the steps
+      // ask "how many image pixels is a canvas pixel". On this route the
+      // image is at the same raster the canvas is, so the two numbers agree
+      // — which is exactly why one parameter was answering both until the
+      // playback painter needed them to differ. Derived, so it cannot drift.
+      final stepped = steppedForChain(
+        image: image,
+        plan: plan,
+        canvasExtent: worldRect.width,
+      );
       try {
         if (drawAtOrigin) {
           canvas.drawImage(stepped, ui.Offset.zero, paint);

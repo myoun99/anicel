@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/draw_space.dart';
 import 'package:anicel/src/core/color_matrix.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/ui/canvas/composite_effect_paint.dart';
@@ -100,9 +101,9 @@ void main() {
     );
   });
 
-  test('rasterScale scales the BLUR and leaves colour alone', () {
+  test('the draw space scales the BLUR and leaves colour alone', () {
     final full = resolveCompositeEffectPaint([blur(x: 12)]);
-    final half = resolveCompositeEffectPaint([blur(x: 12)], rasterScale: 0.5);
+    final half = resolveCompositeEffectPaint([blur(x: 12)], space: DrawSpace.preScaled(0.5));
     expect(half.outsetPixels, 6);
     expect(full.outsetPixels, 12);
     expect(
@@ -118,7 +119,7 @@ void main() {
     expect(
       resolveCompositeEffectPaint([
         colour(brightness: 20),
-      ], rasterScale: 0.25).colorFilter,
+      ], space: DrawSpace.preScaled(0.25)).colorFilter,
       resolveCompositeEffectPaint([colour(brightness: 20)]).colorFilter,
     );
   });

@@ -9,6 +9,7 @@ import '../../models/playback_quality.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/playback/cut_frame_composite_signature.dart';
 import '../../services/cel_source_effect_pass.dart';
+import '../../core/draw_space.dart';
 import '../canvas/composite_effect_paint.dart';
 import '../canvas/deferred_image_disposal.dart';
 import '../canvas/layer_image_draw.dart';
@@ -296,7 +297,10 @@ class CutFrameCompositeCache {
             // node, so a plain 통과 folder costs no buffer at all.
             final groupPlan = resolveCompositeEffectPlan(
               effects,
-              rasterScale: scale,
+              // This canvas IS the raster: the cut composites at the quality
+              // tier's resolution with no CTM carrying that scale, so the
+              // chain arrives pre-multiplied or a Half preview blurs double.
+              space: DrawSpace.preScaled(scale),
             );
             final groupPaint = layerCompositePaint(
               opacity: opacity,
@@ -340,7 +344,10 @@ class CutFrameCompositeCache {
               bounds: rasterBounds,
               effects: effects,
               mix: mix,
-              rasterScale: scale,
+              // This canvas IS the raster: the cut composites at the quality
+              // tier's resolution with no CTM carrying that scale, so the
+              // chain arrives pre-multiplied or a Half preview blurs double.
+              space: DrawSpace.preScaled(scale),
             );
             await drawSubtreeAsImageAsync(
               canvas: canvas,
@@ -396,6 +403,9 @@ class CutFrameCompositeCache {
               opacity: layer.opacity,
               blendMode: layer.blendMode,
               effects: halves.paint,
+              // The pose and the dst rect are GEOMETRY, so this stays a plain
+              // scale; `drawPosedLayerImage` turns it into a [DrawSpace] for
+              // the chain itself.
               rasterScale: scale,
               // A4: today's value, now in writing — bilinear, as this
               // route has always sampled.

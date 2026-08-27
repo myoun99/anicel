@@ -8,13 +8,12 @@ import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
-import '../../models/layer_effect.dart' show LayerEffect;
+import '../../models/layer_effect.dart' show LayerEffect, ResolvedLayerEffect;
 import '../../models/playback_quality.dart';
 import '../../models/project.dart' show defaultProjectPasteboardArgb;
 import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
 import '../../services/se_name_tag_plan.dart';
-import '../canvas/composite_effect_paint.dart' show CompositeEffectPaint;
 import '../track_effect_paint_policy.dart';
 import 'canvas_playback_controller.dart';
 import 'cut_frame_composite_cache.dart';
@@ -297,8 +296,8 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
               // GLOBAL axis its keys live on and bypassed by the row's fx
               // master.
               cutEffects: inGap || cut == null || position == null
-                  ? CompositeEffectPaint.none
-                  : trackEffectPaintAt(
+                  ? const <ResolvedLayerEffect>[]
+                  : trackEffectsAt(
                       widget.trackEffectsOf?.call(cut.id) ?? const [],
                       trackFrame,
                       enabled: cutFxEnabled,

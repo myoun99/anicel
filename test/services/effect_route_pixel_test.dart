@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/draw_space.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/ui/canvas/composite_effect_paint.dart';
 
@@ -292,7 +293,7 @@ void main() {
       Future<int> spread({required double scale}) async {
         final plan = resolveCompositeEffectPaint([
           blur(12),
-        ], rasterScale: scale);
+        ], space: DrawSpace.preScaled(scale));
         final image = await rasterize((canvas) {
           final paint = Paint()..color = const Color(0xFF808080);
           plan.applyTo(paint);
