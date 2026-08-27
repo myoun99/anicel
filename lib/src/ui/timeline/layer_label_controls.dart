@@ -944,27 +944,23 @@ class LayerMarkChip extends StatelessWidget {
         key: ValueKey<String>('$keyPrefix-layer-take-$layerId'),
         tooltip: AppText.strings.tlLayerTake,
         padding: EdgeInsets.zero,
+        // ⛔No 「없음」. 유저 2026-08-27: 「테이크도 … 라벨없음 삭제해. 테이크는
+        // **기본값 T1**」 — a drawing is always some pass, so the first one is
+        // 1 rather than an absence. (색 라벨 keeps its 없음: 「색라벨은
+        // 라벨없음 그대로 두자」.)
         entriesBuilder: () => [
-          PanelFlyoutItem(
-            keyValue: 'layer-take-option-none',
-            label: AppText.strings.tlLayerMarkNone,
-            onSelected: () => onMarkSelected(layerId, mark.withTake(null)),
-          ),
           for (final take in LayerMark.takeChoices)
             PanelFlyoutItem(
               keyValue: 'layer-take-option-$take',
               label: AppText.strings.tlLayerTakeNumber(take),
+              selected: take == mark.take,
               onSelected: () => onMarkSelected(layerId, mark.withTake(take)),
             ),
         ],
         child: Semantics(
           label: AppText.strings.tlLayerTake,
           button: true,
-          child: _LabelPlate(
-            fill: timelineDrawingHeldColor,
-            columns: [mark.takeText],
-            axis: axis,
-          ),
+          child: _TakeText(mark: mark, axis: axis),
         ),
       ),
     );
@@ -1036,16 +1032,24 @@ class LayerMarkChip extends StatelessWidget {
       child: Semantics(
         label: AppText.strings.tlLayerMark,
         button: true,
-        // 🚨★★★THE STAGE ON THE RIGHT. 유저 2026-08-27: 「세로로 LO가
-        // **오른쪽**에 있고 왼쪽에 세로로 작감 이렇게 있는게 맞을거같은데.
-        // **LO가 오른쪽인건 일본 세로쓰기가 오른쪽에서 왼쪽으로 읽으니까**」
-        // — so the revise column is passed FIRST and lands left.
+        // 🚨★★★THE STAGE COMES FIRST — left on the rail, top on the sheet.
         //
-        // ⛔Not stacked as two rows: 「띠가 지금 가로로 얇은거를 살리고싶어서」
-        // — two columns keep the plate as short as one.
+        // 유저 2026-08-27 corrected an earlier call of theirs: 「LO작감시 왼쪽에
+        // 작감 오른쪽에 LO 오는데, 그게아니라 **평범하게 왼쪽에 LO 오른쪽에
+        // 작감** 오도록. 이유는 지금 **레이어영역 자체가 왼쪽부터 오른쪽으로
+        // 읽는걸 기준으로** 설계하고있어」.
+        //
+        // ⚠️The first reading (stage on the right, from Japanese vertical
+        // writing) was right about the writing and wrong about the SURFACE:
+        // the rail is a left-to-right column of names, and one label
+        // reading the other way would be the exception.
+        //
+        // ⛔Not stacked as two rows on the rail: 「띠가 지금 가로로 얇은거를
+        // 살리고싶어서」 — two columns keep the plate as short as one. The
+        // sheet stacks instead, because there the plate is wide and short.
         child: _LabelPlate(
           fill: layerMarkColor(mark),
-          columns: [mark.reviseText, mark.processText],
+          columns: [mark.processText, mark.reviseText],
           axis: axis,
         ),
       ),
@@ -1107,12 +1111,41 @@ class _LabelPlate extends StatelessWidget {
   /// The ink is the frame blocks' own — 유저: 「프레임이름/코마숫자/색라벨은
   /// 다 같은 색상의 바탕 위에 올라가는 텍스트니까 **셋 다 같은 로직**」.
   Widget? _label(Color fill) {
-    if (axis == Axis.vertical) {
-      return null;
-    }
     final shown = columns.where((text) => text.isNotEmpty).toList();
     if (shown.isEmpty) {
       return null;
+    }
+    // 🚨★★★THE X-SHEET WRITES ACROSS AND STACKS DOWN. 유저 2026-08-27:
+    // 「x시트는 **가로쓰기 가로표기**로 **위에 LO 아래에 작감** 이렇게 오는거
+    // 알지?」 — the sheet's column header is wide and short, so the two read
+    // as two lines rather than two columns.
+    //
+    // ⚠️It used to draw NOTHING here (「no column to stack glyphs in」), which
+    // was true only while the plate insisted on vertical writing.
+    if (axis == Axis.vertical) {
+      return Center(
+        child: ClipRect(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final text in shown)
+                  Text(
+                    text,
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontSize: _fontSize,
+                      fontWeight: FontWeight.bold,
+                      height: SectionBandZone.lineHeight,
+                      color: timelineTextOnColor(fill),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
     // 🚨THE SLOT DOES NOT GROW, SO THE WRITING SHRINKS. 유저 2026-08-27:
     // 「지금의 가로가 얇은 상태인 띠 크기 **그대로**에 LO든 LO작감이든 어떻게
@@ -1241,6 +1274,52 @@ class RailControlPointer extends StatelessWidget {
       // every later press handed the same pointer id.
       onPointerCancel: (event) => releaseTapForControl(event.pointer),
       child: child,
+    );
+  }
+}
+
+/// 테이크 라벨의 얼굴 — **바탕 없이 글자만**.
+///
+/// 🚨유저 2026-08-27: 「테이크라벨은 **배경 삭제**해. 그러고 글자만 심플하게
+/// **레이어이름처럼 디자인 통일**해서 흰색계열」.
+///
+/// ⛔So it does NOT reuse [_LabelPlate]: a plate is a filled slot, and this
+/// is writing on the rail. What it reuses instead is the thing it was told
+/// to match — [layerRowNameStyle], the very style the layer's name is set
+/// in, so the two stay one decision. A copied `TextStyle` here would be the
+/// second place to edit the day that style changes.
+class _TakeText extends StatelessWidget {
+  const _TakeText({required this.mark, required this.axis});
+
+  final LayerMark mark;
+  final Axis axis;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = layerRowNameStyle(context).copyWith(
+      fontSize: 9,
+      fontWeight: FontWeight.bold,
+      height: SectionBandZone.lineHeight,
+    );
+    return Center(
+      child: ClipRect(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          // The sheet writes across like the colour plate beside it —
+          // 「x시트는 가로쓰기 가로표기로」 — while the rail stands the two
+          // glyphs up in its 14px column.
+          child: axis == Axis.vertical
+              ? Text(mark.takeText, maxLines: 1, style: style)
+              : VerticalWritingText(
+                  text: mark.takeText,
+                  latinForm: VerticalLatinForm.upright,
+                  lineHeight: SectionBandZone.lineHeight,
+                  overflow: VerticalTextOverflow.pack,
+                  minFontSize: 4,
+                  style: style,
+                ),
+        ),
+      ),
     );
   }
 }

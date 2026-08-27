@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -16,6 +17,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 /// 자리를 **가져갔다** — 프레임 블록의 바탕을 칠하는 그 자리 그대로.
 void main() {
   _takeLabel();
+  _oneWidgetBothSurfaces();
   _axisAgreement();
 
   // 🚨A GLOBAL. Saving and restoring rather than assigning a fresh default
@@ -175,15 +177,15 @@ void _takeLabel() {
     // command, its own link-group mirror and its own JSON site.
     expect(
       mark.take,
-      isNull,
+      LayerMark.firstTake,
       reason: '원본은 안 바뀐다 — withTake 는 새 값을 만든다',
     );
   });
 
-  test('기본은 없음이다 — 리테이크 없는 컷에 T1 이 줄줄이 붙지 않는다', () {
-    expect(const LayerMark(process: LayerProcess.key).take, isNull);
-    expect(const LayerMark(process: LayerProcess.key).takeText, '');
-    expect(LayerMark.none.take, isNull);
+  test('기본은 T1 이다 — 유저: 「테이크는 기본값 T1」', () {
+    expect(const LayerMark(process: LayerProcess.key).take, 1);
+    expect(const LayerMark(process: LayerProcess.key).takeText, 'T1');
+    expect(LayerMark.none.take, 1, reason: '라벨 없는 행도 1판이다');
   });
 
   test('테이크만 있고 공정이 없어도 살아남는다', () {
@@ -198,7 +200,7 @@ void _takeLabel() {
     for (final bad in <Object>[0, 10, -1, 'two']) {
       expect(
         LayerMark.fromJson({'process': 'layout', 'take': bad}).take,
-        isNull,
+        LayerMark.firstTake,
         reason: '저장된 take=$bad',
       );
     }
@@ -272,6 +274,47 @@ void _axisAgreement() {
               '폭 밖으로 나가 x시트가 통째로 무너진다',
         );
       }
+    }
+  });
+}
+
+/// 🚨★★★x시트는 **같은 코드**가 축만 바꿔 그린다. 유저 2026-08-27:
+/// 「x시트 **로직적으로 통일**하는거 절대잊지말고」.
+///
+/// ⛔이 테스트는 「x시트에도 라벨이 보인다」가 아니라 **「두 표면이 같은 위젯을
+/// 쓴다」**를 잰다 — 전자는 x시트가 자기 사본을 그려도 통과한다.
+void _oneWidgetBothSurfaces() {
+  test('레일과 x시트가 같은 칩 위젯을 쓴다 — 사본이 아니다', () {
+    // 소스 스캔이다: 행동 테스트는 「지금은 똑같이 생긴 사본 둘」을 통과시킨다.
+    final grid = File(
+      'lib/src/ui/timeline/xsheet_timeline_grid.dart',
+    ).readAsStringSync();
+    expect(
+      grid,
+      contains('LayerMarkChip('),
+      reason: 'x시트도 레일과 같은 칩을 세운다',
+    );
+
+    // 그리고 그 칩이 축을 인자로 받는지 — 축이 없으면 두 표면은 갈릴 수밖에
+    // 없고, 갈리는 순간 사본이 된다.
+    final controls = File(
+      'lib/src/ui/timeline/layer_label_controls.dart',
+    ).readAsStringSync();
+    expect(
+      controls,
+      contains('final Axis axis;'),
+      reason: '한 위젯이 두 방향을 인자로 답한다',
+    );
+    for (final surfaceOwn in [
+      'class _XSheetMarkChip',
+      'class XSheetLabelPlate',
+      'class _SheetLabelPlate',
+    ]) {
+      expect(
+        grid + controls,
+        isNot(contains(surfaceOwn)),
+        reason: '⛔x시트가 자기 라벨 위젯을 만들면 그 순간 두 벌이다',
+      );
     }
   });
 }
