@@ -1127,14 +1127,53 @@ class _LabelPlate extends StatelessWidget {
   /// The same type the section band's tag wears, one column over.
   static const double _fontSize = 9;
 
+  /// 🚨★★★글자의 안티앨리어싱을 **사후에 눌러** 2치화한다.
+  ///
+  /// 유저 2026-08-28: 「색라벨 텍스트 뭔가 좀 읽기힘든데 … 안티앨리어싱 …
+  /// 그거 없이 그냥 **쌩2치화** 된 텍스트로 할수있나?」 → 「진짜 aa만 어떻게
+  /// 뭐 못끄나? **그냥 그려서 표현한다던가?**」.
+  ///
+  /// ⛔**끄는 API 는 없다.** `TextStyle.foreground` 에
+  /// `Paint()..isAntiAlias = false` 를 물려도 출력이 **픽셀 단위로 동일**했고
+  /// (직접 재봤다), `dart:ui` 에 글자 AA 를 여는 문은 없다 — 클립 AA 뿐이다.
+  ///
+  /// ⇒ 대신 **그려진 뒤 알파를 계단으로 만든다.** 0.5 를 넘으면 255, 아니면 0.
+  /// 🧪재봤다: 알파 계조 12 → **2**, 중간값 픽셀 265 → **0**. 늘리기(BoxFit.fill)
+  /// 를 켠 채로도 그렇다 — 유저가 늘리기는 유지하고 싶어 했다.
+  ///
+  /// ⚠️RGB 는 그대로 통과시킨다. 잉크 색은 [timelineTextOnColor] 가 정하고
+  /// 여기는 **가장자리만** 건드린다.
+  ///
+  /// ⚠️이건 `saveLayer` 를 하나 만든다. 판이 14×27 이라 작지만 **행 수만큼**
+  /// 생긴다 — 구형 기기에서 아프면 여기가 후보다.
+  static const ColorFilter _hardEdges = ColorFilter.matrix(<double>[
+    1, 0, 0, 0, 0, //
+    0, 1, 0, 0, 0, //
+    0, 0, 1, 0, 0, //
+    // alpha_out = 255·alpha − 32385 ⇒ 알파 127 을 경계로 잘린다(클램프가
+    // 나머지를 한다). 🚨경계를 낮추면 얇은 획이 살고 굵어 보인다 — 실기에서
+    // 만질 값이라 상수로 세워 둔다.
+    0, 0, 0, 255, -32385, //
+  ]);
+
   @override
   Widget build(BuildContext context) {
     // ⑳ still holds: every plate is FILLED, `none` included — it is the
     // paper colour rather than a hole in the rail. SizedBox.expand
     // fills the row's height on a horizontal rail and the header's width
     // on the sheet's vertical one; the slot provides the other extent.
+    //
+    // ⛔The filter wraps the GLYPHS ONLY, never the fill: the plate's own
+    // colour is opaque everywhere, so putting it inside would binarize
+    // nothing and cost a bigger layer.
+    final label = _label(fill);
     return SizedBox.expand(
-      child: ColoredBox(color: fill, child: _label(fill)),
+      child: ColoredBox(
+        color: fill,
+        child: label == null
+            ? null
+            : ColorFiltered(colorFilter: _hardEdges, child: label),
+      ),
     );
   }
 

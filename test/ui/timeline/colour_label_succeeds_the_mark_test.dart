@@ -1,3 +1,13 @@
+import 'dart:ui' as ui;
+import 'dart:typed_data';
+import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
+import 'package:anicel/src/ui/timeline/timeline_panel.dart';
+import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/frame.dart';
 import 'dart:io';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/models/app_language.dart';
@@ -25,6 +35,7 @@ void main() {
   _toneNamesFollowTheLanguage();
   _oneDecidesTheWritingDirection();
   _threeGlyphAbbreviations();
+  _labelGlyphsHaveHardEdges();
 
   // 🚨A GLOBAL. Saving and restoring rather than assigning a fresh default
   // back: writing `const AppAccentSettings()` in the teardown would not undo
@@ -506,4 +517,101 @@ void _threeGlyphAbbreviations() {
       }
     }
   });
+}
+
+/// 🚨★★★색 라벨 글자에는 **회색 가장자리가 없다**. 유저 2026-08-28:
+/// 「그거 없이 그냥 **쌩2치화** 된 텍스트로 할수있나?」 → 「진짜 aa만 어떻게
+/// 뭐 못끄나? 그냥 그려서 표현한다던가?」.
+///
+/// ⛔끄는 API 는 없다(직접 확인: `Paint()..isAntiAlias = false` 를 물려도 출력이
+/// 픽셀 단위로 동일). 그래서 **그려진 뒤 알파를 계단으로 만든다.**
+void _labelGlyphsHaveHardEdges() {
+  testWidgets('진짜 패널을 찍어 판의 픽셀을 센다 — 반투명 가장자리가 0이다', (tester) async {
+    // ⛔플레이트를 따로 세워서 재지 않는다. 그건 「내가 세운 것」을 재는 것이지
+    // **화면에 나오는 것**을 재는 게 아니다 — 앱에서 필터가 빠져도 통과한다.
+    // 화면 전체를 찍고 **칩의 사각형만** 읽는다.
+    final key = GlobalKey();
+    await tester.pumpWidget(
+      RepaintBoundary(key: key, child: markPanelForPixelTest()),
+    );
+    await tester.pumpAndSettle();
+
+    final chip = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+    );
+
+    late ByteData pixels;
+    late int rowBytes;
+    await tester.runAsync(() async {
+      final boundary =
+          key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+      final image = await boundary.toImage(pixelRatio: 3);
+      rowBytes = image.width * 4;
+      pixels = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+    });
+
+    // 판은 색 바탕에 잉크 글자다. 두 값 사이의 **중간 회색**이 곧 AA 다.
+    final levels = <int>{};
+    for (var y = (chip.top * 3).round(); y < (chip.bottom * 3).round(); y++) {
+      for (var x = (chip.left * 3).round(); x < (chip.right * 3).round(); x++) {
+        levels.add(pixels.getUint8(y * rowBytes + x * 4 + 1));
+      }
+    }
+    final sorted = levels.toList()..sort();
+    final between = sorted
+        .where((v) => v > sorted.first + 12 && v < sorted.last - 12)
+        .length;
+
+    // 🚨계측기를 먼저 의심한다: 글자가 아예 안 그려졌으면 계조가 하나뿐이고
+    // 「중간값 0」은 자동으로 참이 된다.
+    expect(
+      sorted.length,
+      greaterThan(1),
+      reason: '⛔빈 것을 쟀다 — 판에 글자가 없다',
+    );
+    expect(
+      between,
+      0,
+      reason: '🚨바탕과 잉크 사이에 회색이 남아 있다 — 계조 $sorted',
+    );
+  });
+}
+
+/// 픽셀 테스트가 쓰는 **진짜 패널**. 레일 한 줄에 라벨이 붙은 레이어 하나.
+Widget markPanelForPixelTest() {
+  final layers = [
+    Layer(
+      id: const LayerId('a'),
+      name: 'a',
+      kind: LayerKind.animation,
+      mark: const LayerMark(
+        process: LayerProcess.layout,
+        revise: LayerRevise.animationDirector,
+      ),
+      frames: [
+        Frame(id: const FrameId('af'), duration: 1, strokes: const []),
+      ],
+      timeline: const {},
+    ),
+  ];
+  return MaterialApp(
+    home: Scaffold(
+      body: TimelinePanel(
+        layers: layers,
+        activeLayerId: const LayerId('a'),
+        frameCursor: ValueNotifier<int>(0),
+        playbackFrameCount: 12,
+        exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
+        onSelectLayer: (_) {},
+        onSelectFrame: (_) {},
+        onAddLayer: () {},
+        onToggleLayerVisibility: (_) {},
+        onLayerOpacityChanged: (_, _) {},
+        onToggleLayerTimesheet: (_) {},
+        onLayerMarkSelected: (_, _) {},
+        orientation: TimelineOrientation.horizontal,
+        onOrientationChanged: (_) {},
+      ),
+    ),
+  );
 }
