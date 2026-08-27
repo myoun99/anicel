@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show immutable;
 
 import '../../core/color_matrix.dart';
+import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../services/cel_source_effect_pass.dart';
 
@@ -16,6 +17,49 @@ const double blurSigmaPerRadius = 1 / 3;
 /// How far past its own coverage a blur of [radius] paints. Used to outset
 /// `saveLayer` bounds so a group's blur is not clipped at the buffer edge.
 double blurSpreadForRadius(double radius) => radius;
+
+/// An alpha-only colour: black at [opacity], which a `Paint` reads purely as
+/// a multiplier over whatever it draws.
+///
+/// ⛔CLAMPED HERE, because `ui.Color.fromRGBO` does NOT — its constructor is
+/// `a = opacity`, stored raw, so 1.5 stays 1.5 and −0.2 stays −0.2, and what
+/// a backend makes of an alpha outside the unit range is its own business.
+/// `Layer.opacity` is a bare `double` off the JSON with no model guard.
+ui.Color alphaOnly(double opacity) =>
+    ui.Color.fromRGBO(0, 0, 0, opacity.clamp(0.0, 1.0));
+
+/// The paint one node composites with: its opacity, its blend, and its own
+/// effect chain, in that order.
+///
+/// ⛔ONE FUNCTION, because four places build it — the editing stack twice (a
+/// folder and the live layer), the playback cache, and the camera. #1304
+/// unified the WALK those routes share and left this hand-written in each,
+/// and the copies had already drifted: the editing stack clamped the
+/// opacity, the camera and the playback cache did not. Same document, two
+/// answers, decided by which panel you were looking at.
+///
+/// ⛔A BEHAVIOUR TEST CANNOT HOLD THIS SHUT — copies that agree today pass
+/// every pixel comparison, and what breaks is the route added next year.
+/// `one_composite_paint_test` scans the source instead. That the chain
+/// reaches the PICTURE is behaviour, and `camera_frame_render_service_test`
+/// (R6) already holds it — a second pixel test here would be a copy.
+///
+/// ⚠️IT TAKES A RESOLVED CHAIN, NOT THE EFFECT LIST. `rasterScale` is NOT the
+/// same at every site and must not be folded in here: a route drawing under
+/// a scaled CTM leaves it 1 (Skia maps the sigma through the matrix), while
+/// the playback cache rasters at 1:1 and multiplies the sigma itself — see
+/// [resolveCompositeEffectPaint]'s contract.
+ui.Paint layerCompositePaint({
+  required double opacity,
+  required LayerBlendMode blendMode,
+  required CompositeEffectPaint effects,
+}) {
+  final paint = ui.Paint()
+    ..color = alphaOnly(opacity)
+    ..blendMode = blendMode.paintBlendMode;
+  effects.applyTo(paint);
+  return paint;
+}
 
 /// The Skia form of a resolved effect chain — ONE pure translation from
 /// effect samples to paint state, shared by every composite route (editing
@@ -533,7 +577,6 @@ composeAdjustmentScope(
 ///   canvas: canvas,
 ///   bounds: pass.bufferBounds,
 ///   rasterScale: rasterScale,
-///   maxPixelSide: maxSubtreeRasterSide,
 ///   paintSubtree: drawScope,
 ///   compose: (blit) {
 ///     if (pass.crossfades) {
@@ -583,7 +626,7 @@ AdjustmentScopePass resolveAdjustmentScopePass({
   // buffer. `plus` on premultiplied colour gives (1−m)·U + m·F exactly,
   // and the two alphas sum back to the scope's own.
   final filtered = ui.Paint()
-    ..color = ui.Color.fromRGBO(0, 0, 0, strength)
+    ..color = alphaOnly(strength)
     ..blendMode = ui.BlendMode.plus;
   plan.applyTo(filtered);
   return AdjustmentScopePass(
@@ -591,7 +634,7 @@ AdjustmentScopePass resolveAdjustmentScopePass({
     filteredPaint: filtered,
     crossfadeLayerPaint: ui.Paint(),
     unfilteredPaint: ui.Paint()
-      ..color = ui.Color.fromRGBO(0, 0, 0, 1 - strength),
+      ..color = alphaOnly(1 - strength),
     preSteps: resolved.preSteps,
   );
 }

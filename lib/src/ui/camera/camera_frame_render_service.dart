@@ -271,11 +271,11 @@ class CameraFrameRenderService {
             // CANVAS units (the camera projection is a canvas transform, so
             // Skia maps a blur's sigma through the CTM for us).
             final groupPlan = resolveCompositeEffectPlan(effects);
-            final groupEffects = groupPlan.finalPaint;
-            final groupPaint = Paint()
-              ..color = Color.fromRGBO(0, 0, 0, opacity)
-              ..blendMode = blendMode.paintBlendMode;
-            groupEffects.applyTo(groupPaint);
+            final groupPaint = layerCompositePaint(
+              opacity: opacity,
+              blendMode: blendMode,
+              effects: groupPlan.finalPaint,
+            );
             // 🚨★★★A GROUP IS AN IMAGE HERE TOO. The editing stack, this
             // walk and the playback cache composite the same tree; if one of
             // them kept a `saveLayer` the folder would be samplable on
@@ -285,7 +285,6 @@ class CameraFrameRenderService {
               canvas: canvas,
               bounds: effectBufferBounds(groupBounds, groupPlan.outsetPixels),
               rasterScale: rasterScale,
-              maxPixelSide: maxSubtreeRasterSide,
               paintSubtree: (into, scale) => paintNodes(into, children, scale),
               compose: (blit) => blit(groupPaint),
               steps: groupPlan.preSteps,
@@ -310,7 +309,6 @@ class CameraFrameRenderService {
               canvas: canvas,
               bounds: pass.bufferBounds,
               rasterScale: rasterScale,
-              maxPixelSide: maxSubtreeRasterSide,
               paintSubtree: (into, scale) => paintNodes(into, children, scale),
               compose: composeAdjustmentScope(canvas, pass),
               steps: pass.preSteps,

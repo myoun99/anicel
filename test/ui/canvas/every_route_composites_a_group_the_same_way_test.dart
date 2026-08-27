@@ -117,11 +117,12 @@ void main() {
         reason: '$path composites a tree but does not use the shared raster',
       );
       expect(
-        source.contains('maxSubtreeRasterSide'),
-        isTrue,
-        reason: '$path must not invent its own cap — the three walks '
-            'disagreeing about how big a folder may get is the same bug in '
-            'a different coat',
+        source.contains('maxPixelSide'),
+        isFalse,
+        reason: '$path must not ARGUE about the cap. It is the parameter '
+            'DEFAULT now, which holds tighter than three routes spelling '
+            'one constant correctly: a route that wanted a different cap '
+            'would have to write an argument, and none of them may.',
       );
     }
   });

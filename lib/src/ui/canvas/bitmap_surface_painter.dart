@@ -193,8 +193,9 @@ class BitmapSurfacePainter extends CustomPainter {
   /// viewport-transformed and clipped to [pasteboardRect].
   ///
   /// Split out so the editing canvas's merged stack painter can draw the
-  /// ACTIVE layer inside the composite tree — a folder's group buffer is
-  /// one `saveLayer`, and a saveLayer cannot span three sibling painters.
+  /// ACTIVE layer inside the composite tree — a folder composites into one
+  /// offscreen (a `ui.Image` its own walk rasters), and one offscreen cannot
+  /// span three sibling painters.
   /// [paint] above is this same body with the transform/clip around it, so
   /// the standalone route is byte-identical.
   ///

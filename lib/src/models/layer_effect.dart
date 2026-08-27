@@ -84,15 +84,17 @@ enum EffectKind {
   /// tile bytes, before anything is drawn — rather than over what the
   /// composite has already painted.
   ///
-  /// 🚨THIS IS A PLACEMENT RULE, NOT A PERFORMANCE NOTE. A threshold
-  /// comparison has no color-matrix form, so the color keys run as a CPU
-  /// pass over the cel surface (`celSurfaceWithSourceEffects`). CPU bytes
-  /// only exist where a cel does: a FOLDER's or an ADJUSTMENT row's input
-  /// is a composited buffer that lives on the GPU, so these kinds cannot
-  /// be offered there. [effectKindsFor] is the one gate that says so —
-  /// ⛔do not answer it again at a call site ([[derived-cel-projection-pattern]]
-  /// rule 7: a `=> true` predicate is how a new kind walks in through a
-  /// door nobody meant to open).
+  /// 🚨THIS IS A SPLIT POINT, NOT A GATE. A threshold comparison has no
+  /// colour-matrix form, so a colour key at the HEAD of a chain runs as a
+  /// CPU pass over the cel surface (`celSurfaceWithSourceEffects`) — that is
+  /// what keeps the fx and the destructive button in exact agreement, since
+  /// only the CPU sees the cel's own straight bytes.
+  ///
+  /// ⛔IT NO LONGER DECIDES WHERE A KIND MAY BE OFFERED. A gate called
+  /// `effectKindsFor` used to hide these kinds wherever the input was not
+  /// cel bytes; a folder keys the picture it composed now, through a
+  /// fragment shader proven identical to this pass. `splitSourceEffects`
+  /// reads this to find the leading run and nothing else does.
   bool get runsOnSourcePixels =>
       this == EffectKind.deleteColor || this == EffectKind.keepColor;
 
@@ -285,24 +287,6 @@ const List<EffectParameterSpec> colorKeyParameterSpecs = [
 
 List<EffectParameterSpec> effectParametersOf(EffectKind kind) =>
     effectParameterSpecs[kind]!;
-/// The effect kinds a row of this kind may be given.
-///
-/// ⛔EVERY KIND, EVERYWHERE, and [inputIsCelPixels] is kept only because it
-/// is the question a caller has: does this row's chain start from cel bytes?
-/// It no longer changes the answer.
-///
-/// 🚨THE OLD RULE AND WHY IT WENT. The colour keys used to be hidden where
-/// the input was not cel bytes, because a key was a CPU pass over those
-/// bytes and there was nothing else it could be. The recorded reason was
-/// 유저's own: 「굳이 색 키만 gpu로 가능하다고 그거하면 다른 fx랑 통일성
-/// 깨지잖아」 — two implementations of one effect would drift, exactly the
-/// thing AE is criticised for. That objection was answered rather than
-/// argued away: the shader and `CelColorKey` are proven identical over the
-/// whole decision domain (`one_colour_key_two_processors_test`), and 유저
-/// 2026-08-27 set that proof as the condition for going ahead.
-List<EffectKind> effectKindsFor({required bool inputIsCelPixels}) =>
-    EffectKind.values;
-
 
 EffectParameterSpec? effectParameterSpecOf(EffectKind kind, String id) {
   for (final spec in effectParametersOf(kind)) {

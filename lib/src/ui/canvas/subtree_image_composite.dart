@@ -24,9 +24,9 @@ const int maxSubtreeRasterSide = 8192;
 /// ⛔The arithmetic lives HERE and only here. Three walks composite a group —
 /// the editing stack, the playback cache and the camera (which the export
 /// renders through) — and one of them is async, so they cannot share a single
-/// function body. They share this instead: a plan, and the blit that consumes
-/// it. What differs between them is the six mechanical lines that drive a
-/// `PictureRecorder`, and nothing that decides a pixel.
+/// function body. What they share is `drawSubtreeAsImage` and its async twin,
+/// which differ by one `await` and nothing that decides a pixel; the plan and
+/// the blit are the machinery underneath and belong to this file alone.
 @immutable
 class SubtreeRasterPlan {
   const SubtreeRasterPlan({
@@ -72,16 +72,26 @@ class SubtreeRasterPlan {
 @visibleForTesting
 SubtreeRasterPlan? debugLastSubtreeRaster;
 
+/// How many sub-tree rasters have happened since a test zeroed it.
+///
+/// 🚨THE QUESTION A CACHE HAS TO ANSWER. Whether a group re-rasterised is
+/// invisible in the pixels — a cache that worked and one that did not draw
+/// the same picture — so counting is the only way to say which happened.
+///
+/// ⚠️Written under `assert`, so a release build pays nothing.
+@visibleForTesting
+int debugSubtreeRasterCount = 0;
+
 /// The grid [bounds] rasterises on at [rasterScale], or null when there is
 /// nothing to draw.
 ///
 /// 📐The image grid is the LOCAL space at [rasterScale] snapped OUTWARD, and
 /// [SubtreeRasterPlan.destination] is exactly `pixels / scale`. A src/dst pair
 /// that disagreed by a fraction would resample the sub-tree a second time.
-SubtreeRasterPlan? planSubtreeRaster({
+SubtreeRasterPlan? _planSubtreeRaster({
   required Rect bounds,
   required double rasterScale,
-  required int maxPixelSide,
+  int maxPixelSide = maxSubtreeRasterSide,
 }) {
   var scale = rasterScale;
   final side = bounds.width > bounds.height ? bounds.width : bounds.height;
@@ -135,7 +145,7 @@ SubtreeRasterPlan? planSubtreeRaster({
 /// What bounds the UNfiltered content is the image itself, which is the
 /// bounds snapped out to whole raster pixels — the same rounding-out Skia
 /// does to a layer's offscreen. Same extent, same spread, same pixels.
-void blitSubtreeRaster({
+void _blitSubtreeRaster({
   required Canvas canvas,
   required ui.Image image,
   required SubtreeRasterPlan plan,
@@ -194,12 +204,12 @@ void drawSubtreeAsImage({
   required Canvas canvas,
   required Rect bounds,
   required double rasterScale,
-  required int maxPixelSide,
+  int maxPixelSide = maxSubtreeRasterSide,
   required void Function(Canvas into, double rasterScale) paintSubtree,
   required void Function(BlitSubtree blit) compose,
   List<CompositeEffectStep> steps = const [],
 }) {
-  final plan = planSubtreeRaster(
+  final plan = _planSubtreeRaster(
     bounds: bounds,
     rasterScale: rasterScale,
     maxPixelSide: maxPixelSide,
@@ -211,7 +221,7 @@ void drawSubtreeAsImage({
   final into = Canvas(recorder);
   plan.applyTo(into);
   paintSubtree(into, plan.scale);
-  finishSubtreeRaster(
+  _finishSubtreeRaster(
     canvas: canvas,
     recorder: recorder,
     plan: plan,
@@ -225,12 +235,12 @@ Future<void> drawSubtreeAsImageAsync({
   required Canvas canvas,
   required Rect bounds,
   required double rasterScale,
-  required int maxPixelSide,
+  int maxPixelSide = maxSubtreeRasterSide,
   required Future<void> Function(Canvas into, double rasterScale) paintSubtree,
   required void Function(BlitSubtree blit) compose,
   List<CompositeEffectStep> steps = const [],
 }) async {
-  final plan = planSubtreeRaster(
+  final plan = _planSubtreeRaster(
     bounds: bounds,
     rasterScale: rasterScale,
     maxPixelSide: maxPixelSide,
@@ -242,7 +252,7 @@ Future<void> drawSubtreeAsImageAsync({
   final into = Canvas(recorder);
   plan.applyTo(into);
   await paintSubtree(into, plan.scale);
-  finishSubtreeRaster(
+  _finishSubtreeRaster(
     canvas: canvas,
     recorder: recorder,
     plan: plan,
@@ -325,7 +335,7 @@ ui.Image applyEffectSteps({
   return image;
 }
 
-void finishSubtreeRaster({
+void _finishSubtreeRaster({
   required Canvas canvas,
   required ui.PictureRecorder recorder,
   required SubtreeRasterPlan plan,
@@ -333,6 +343,10 @@ void finishSubtreeRaster({
   List<CompositeEffectStep> steps = const [],
 }) {
   final picture = recorder.endRecording();
+  assert(() {
+    debugSubtreeRasterCount += 1;
+    return true;
+  }());
   final raster = picture.toImageSync(plan.pixelWidth, plan.pixelHeight);
   picture.dispose();
   // ⛔BOTH stay alive until the compose is done. A crossfade blits the raw
@@ -347,7 +361,7 @@ void finishSubtreeRaster({
   );
   try {
     compose(
-      (paint, {bool stepped = true}) => blitSubtreeRaster(
+      (paint, {bool stepped = true}) => _blitSubtreeRaster(
         canvas: canvas,
         image: stepped ? image : raster,
         plan: plan,

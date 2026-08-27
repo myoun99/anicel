@@ -3771,31 +3771,11 @@ class EditorSessionManager extends ChangeNotifier {
         layer.attachedToLayerId == null;
   }
 
-  /// Whether the active row may be given an effect of [kind] specifically.
-  ///
-  /// [canAddEffectToActiveLayer] answers "does this row have a chain at
-  /// all"; this one adds the per-kind question, because the color keys are
-  /// a CPU pass over cel bytes and a folder or adjustment row hands the
-  /// chain a composited buffer instead ([effectKindsFor] holds that rule).
-  ///
-  /// ⛔The two questions stay separate. Folding them into one flag would be
-  /// one flag answering two questions, which is how the row gate and the
-  /// kind gate drift apart.
-  bool canAddEffectKindToActiveLayer(EffectKind kind) {
-    final layer = activeLayer;
-    if (layer == null || !canAddEffectToActiveLayer) {
-      return false;
-    }
-    return effectKindsFor(
-      inputIsCelPixels: layerKindAcceptsBrushInput(layer.kind),
-    ).contains(kind);
-  }
-
   /// Appends a fresh effect of [kind] (every parameter at its default, so
   /// adding one changes nothing until a value moves) to the active row.
   void addEffectToActiveLayer(EffectKind kind) {
     final layer = activeLayer;
-    if (layer == null || !canAddEffectKindToActiveLayer(kind)) {
+    if (layer == null || !canAddEffectToActiveLayer) {
       return;
     }
     _effectSequence += 1;

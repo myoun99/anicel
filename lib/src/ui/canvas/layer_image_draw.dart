@@ -116,7 +116,7 @@ void drawPosedLayerImage(
     body: () {
       final paint = ui.Paint()
         ..filterQuality = filterQuality
-        ..color = ui.Color.fromRGBO(0, 0, 0, opacity.clamp(0.0, 1.0))
+        ..color = alphaOnly(opacity)
         // R26 #30: the layer blend applies at composite time, so every
         // route shows the picture playback composes.
         ..blendMode = blendMode.paintBlendMode;

@@ -10,6 +10,7 @@ import 'src/services/input/pen_sidecars.dart';
 import 'src/services/pdf/pdf_render_service.dart';
 import 'src/services/persistence/app_documents.dart' show AppStorage;
 import 'src/services/persistence/app_ui_scale_store.dart';
+import 'src/ui/canvas/colour_key_shader.dart';
 import 'src/ui/debug/frame_stats.dart';
 import 'src/ui/debug/frame_stats_readout.dart';
 import 'src/ui/debug/repaint_cause.dart';
@@ -52,6 +53,13 @@ Future<void> main() async {
   // the macOS/Linux channel streams start on their platform. Absent
   // drivers/handlers stay permanently idle.
   PenSidecars.bind();
+  // 🚨AWAITED, BEFORE THE FIRST FRAME. The colour key on a folder is a
+  // fragment shader, and a `Paint` is built inside a paint — which cannot
+  // wait for an asset. A composite that reached a key with no program would
+  // have to drop the effect, and a dropped effect is the screen lying about
+  // the file. Loading it here is what lets the paint-time guard stay a
+  // guard rather than a case.
+  await ColourKeyShader.load();
   // The bundled conte-PDF fonts are OFL: their license must SHIP with the
   // binary that redistributes them, not just sit in the repo — the About
   // dialog's license page surfaces these entries (THIRD_PARTY.md).
