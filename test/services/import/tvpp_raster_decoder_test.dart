@@ -230,6 +230,42 @@ void main() {
           }
         }
       }
+      // 🚨A WINDOW decodes to the same pixels as the whole file, which is
+      // what lets the import send one slot's bytes to a worker instead of
+      // the entire .tvpp.
+      //
+      // `Isolate.run` copies what its closure captures, so a decode that
+      // takes `fileBytes` hands every worker its own copy of the file: a
+      // pool of eight meant eight whole projects resident at once, on top
+      // of the original and everything already built. That grows with the
+      // file rather than with the work, and on a phone it is the
+      // allocation that gets the app killed.
+      final window = Uint8List.fromList(
+        Uint8List.sublistView(
+          file,
+          slot.chunkOffset,
+          slot.chunkOffset + slot.chunkLength,
+        ),
+      );
+      final windowed = decodeTvppSlotTiles(
+        fileBytes: window,
+        slot: TvppSlot(
+          kind: slot.kind,
+          chunkOffset: 0,
+          chunkLength: slot.chunkLength,
+          compressed: slot.compressed,
+          v10WholeCanvas: slot.v10WholeCanvas,
+        ),
+        width: tw,
+        height: th,
+      )!;
+      expect(windowed, hasLength(tiles.length));
+      expect(
+        windowed.single.pixels,
+        tile.pixels,
+        reason: 'the slot window is the same input by a different name',
+      );
+
       // Padding beyond the canvas stays transparent.
       expect(tile.pixels[(69 * 256 + 200) * 4 + 3], 0);
       expect(tile.pixels[(0 * 256 + 45) * 4 + 3], 0);
