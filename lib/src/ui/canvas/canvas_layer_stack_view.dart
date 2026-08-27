@@ -893,10 +893,29 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     // The ACTIVE surface is absent on purpose: a stroke step changes its
     // pixels and nothing else, and its pixels are the one thing never
     // recorded. That absence IS the optimisation.
+    // 🚨★★★THE VIEWPORT IS NOT IN HERE, and that is not an oversight.
+    //
+    // It used to be, from the days when the buffer was `pasteboard ∩
+    // visibleRect` — an extent the viewport moved directly. #1301 made the
+    // extent CONTENT ∩ view, and the cache has compared the rect all along
+    // (`imageFor(key, rect)` needs both). So the viewport reached these
+    // pixels through the extent and nothing else, and the extent is already
+    // the guard.
+    //
+    // 🧪Verified by walking every widget the buffer composites: the zoom's
+    // `filterQuality` lands when the buffer is DRAWN, not inside it; group
+    // rasters inside run at `rasterScale: 1`; `BitmapSurfacePainter` reads
+    // its viewport only in the standalone `paint()`, never in
+    // `paintContentInto`; `layerPoseViewportWrapMatrix` belongs to the brush
+    // panel's `Transform`, not to any composite route.
+    //
+    // ⇒ Panning or zooming REPAINTS (shouldRepaint still compares the
+    // viewport, and the CTM did change) but no longer RE-COMPOSITES while
+    // the extent holds — which is exactly the posture where the page fits
+    // the screen and the buffer is at its biggest.
     final compositeKey = Object.hash(
       _imagesRevision,
       widget.canvasSize,
-      widget.viewport,
       widget.paintPaper,
       widget.paperBackground,
       _LayerStackPainter.treeSignature(nodes),
