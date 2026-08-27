@@ -70,9 +70,16 @@ void main() {
   /// holding its own copy is how a mutation that fed the FILTERED paint to
   /// the unfiltered pass survived every test in the repo.
   const allowedSaveLayers = <String, int>{
-    // The ACTIVE SURFACE's own buffer — a leaf, not a sub-tree, and its
-    // bounds are the pasteboard (9x the canvas), so converting it wants the
-    // "content ∩ view" bound applied there first.
+    // The ACTIVE SURFACE's own buffer, and it STAYS a saveLayer. ⛔Not a
+    // to-do: it is a LEAF, so there is no sub-tree in it for an effect to
+    // want to sample, and the live layer's own colour key runs on the CPU
+    // over its source bytes anyway (EffectKind.runsOnSourcePixels). Its
+    // bounds look alarming — the pasteboard, 9x the canvas — but a
+    // saveLayer's bounds are a hint Skia intersects with the current clip,
+    // so nothing that size is ever allocated. Rasterising it instead WOULD
+    // allocate exactly what it asked for, which is why converting the
+    // hottest path in the app (a stroke redraws this every step) would cost
+    // something and buy uniformity alone.
     'lib/src/ui/canvas/canvas_layer_stack_view.dart': 1,
     'lib/src/ui/camera/camera_frame_render_service.dart': 0,
     'lib/src/ui/playback/cut_frame_composite_cache.dart': 0,
