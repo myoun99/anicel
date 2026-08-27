@@ -4,6 +4,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_nav.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
@@ -34,7 +35,7 @@ final _navOwner = Object();
 void main() {
   final stack = [
     _layer('a'),
-    _layer('b', mark: LayerMark.red),
+    _layer('b', mark: const LayerMark(process: LayerProcess.layout)),
     _layer('c'),
     _layer('s1', kind: LayerKind.se),
     _layer('cam', kind: LayerKind.camera),
@@ -72,7 +73,7 @@ void main() {
   });
 
   test('rows the filter hides are skipped', () {
-    const redOnly = TimelineRowFilter(markColors: {LayerMark.red});
+    final redOnly = TimelineRowFilter(markColors: {const LayerMark(process: LayerProcess.layout)});
     // Only b passes; a is active (exempt) → displayed [b, a].
     expect(step('a', -1, filter: redOnly), const LayerId('b'));
     expect(step('a', 1, filter: redOnly), isNull, reason: 'a is bottom');

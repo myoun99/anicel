@@ -7,6 +7,7 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
@@ -36,7 +37,7 @@ void main() {
       'isVisible': (layer) => layer.copyWith(isVisible: !layer.isVisible),
       'muted': (layer) => layer.copyWith(muted: !layer.muted),
       'mark': (layer) => layer.copyWith(
-        mark: layer.mark == LayerMark.none ? LayerMark.red : LayerMark.none,
+        mark: layer.mark == LayerMark.none ? const LayerMark(process: LayerProcess.layout) : LayerMark.none,
       ),
       'onTimesheet': (layer) =>
           layer.copyWith(onTimesheet: !layer.onTimesheet),

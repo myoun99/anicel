@@ -3,6 +3,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
 /// R5 #9 — the legend's chips on the storyboard, judged FACET BY FACET.
@@ -31,19 +32,19 @@ void main() {
 
   group('a row that CARRIES the facet is judged by it', () {
     test('mark', () {
-      const filter = TimelineRowFilter(markColors: {LayerMark.red});
+      final filter = TimelineRowFilter(markColors: {const LayerMark(process: LayerProcess.layout)});
       expect(
-        filter.allows(layer(mark: LayerMark.red), fxEnabled: true),
+        filter.allows(layer(mark: const LayerMark(process: LayerProcess.layout)), fxEnabled: true),
         isTrue,
       );
       expect(
-        filter.allows(layer(mark: LayerMark.blue), fxEnabled: true),
+        filter.allows(layer(mark: const LayerMark(process: LayerProcess.conte)), fxEnabled: true),
         isFalse,
       );
     });
 
     test('fx — the one facet a TRACK also carries', () {
-      const filter = TimelineRowFilter(fxOnly: true);
+      final filter = TimelineRowFilter(fxOnly: true);
       expect(filter.allows(layer(), fxEnabled: true), isTrue);
       expect(filter.allows(layer(), fxEnabled: false), isFalse);
       // Same chip, same answer, on a row with nothing but fx.
@@ -55,25 +56,25 @@ void main() {
   group('a row that LACKS the facet is left alone by that chip', () {
     test('the mark chip does not hide a track — a track has no mark, so '
         'failing it would empty the storyboard for every mark alike', () {
-      const filter = TimelineRowFilter(markColors: {LayerMark.red});
+      final filter = TimelineRowFilter(markColors: {const LayerMark(process: LayerProcess.layout)});
       expect(filter.allowsFacets(fxEnabled: true), isTrue);
     });
 
     test('kind, sheet-only and fill-reference behave the same way', () {
       expect(
-        const TimelineRowFilter(
+        TimelineRowFilter(
           kinds: {LayerKind.animation},
         ).allowsFacets(fxEnabled: true),
         isTrue,
       );
       expect(
-        const TimelineRowFilter(
+        TimelineRowFilter(
           onTimesheetOnly: true,
         ).allowsFacets(fxEnabled: true),
         isTrue,
       );
       expect(
-        const TimelineRowFilter(
+        TimelineRowFilter(
           fillReferenceOnly: true,
         ).allowsFacets(fxEnabled: true),
         isTrue,
@@ -82,7 +83,7 @@ void main() {
 
     test('but a row that carries the facet and FAILS it still hides — the '
         'chip is not disabled, it is inapplicable', () {
-      const filter = TimelineRowFilter(onTimesheetOnly: true);
+      final filter = TimelineRowFilter(onTimesheetOnly: true);
       expect(filter.allowsFacets(fxEnabled: true, onTimesheet: false), isFalse);
       expect(filter.allowsFacets(fxEnabled: true, onTimesheet: true), isTrue);
     });
@@ -90,17 +91,17 @@ void main() {
 
   test('the facets AND together, and an inactive filter allows everything',
       () {
-    const filter = TimelineRowFilter(
-      markColors: {LayerMark.red},
+    final filter = TimelineRowFilter(
+      markColors: {const LayerMark(process: LayerProcess.layout)},
       fxOnly: true,
     );
     expect(
-      filter.allows(layer(mark: LayerMark.red), fxEnabled: false),
+      filter.allows(layer(mark: const LayerMark(process: LayerProcess.layout)), fxEnabled: false),
       isFalse,
       reason: 'the mark passes, the fx does not',
     );
     expect(
-      filter.allows(layer(mark: LayerMark.red), fxEnabled: true),
+      filter.allows(layer(mark: const LayerMark(process: LayerProcess.layout)), fxEnabled: true),
       isTrue,
     );
     expect(TimelineRowFilter.none.isActive, isFalse);
@@ -108,11 +109,11 @@ void main() {
 
   test('`allows` is `allowsFacets` with every field present — one rule, not '
       'two implementations', () {
-    const filter = TimelineRowFilter(
-      markColors: {LayerMark.red},
+    final filter = TimelineRowFilter(
+      markColors: {const LayerMark(process: LayerProcess.layout)},
       onTimesheetOnly: true,
     );
-    final row = layer(mark: LayerMark.red, onTimesheet: false);
+    final row = layer(mark: const LayerMark(process: LayerProcess.layout), onTimesheet: false);
     expect(
       filter.allows(row, fxEnabled: true),
       filter.allowsFacets(

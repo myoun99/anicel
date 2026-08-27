@@ -9,6 +9,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
@@ -214,16 +215,16 @@ void main() {
 
   testWidgets('over the PURPLE block the number is solid DARK — THE device '
       'regression: the difference blend read navy here', (tester) async {
-    // The real purple palette color (layerMarkColor(LayerMark.purple),
+    // The real purple palette color (layerMarkColor(const LayerMark(process: LayerProcess.finish)),
     // 0xFF9B6BD3, luminance ≈0.22): above the crossover, so black wins —
     // 5.4:1 against white's 3.9:1, which is the pale-blue text the user
     // reported.
-    final purple = layerMarkColor(LayerMark.purple);
+    final purple = layerMarkColor(const LayerMark(process: LayerProcess.finish));
     final data = await rasterize(
       tester,
       ground: const Color(0xFF17191C),
       withBlocks: true,
-      mark: LayerMark.purple,
+      mark: const LayerMark(process: LayerProcess.finish),
     );
     final counts = sample(data, channelSum(purple));
     expect(
@@ -261,14 +262,14 @@ void main() {
     // contrast cost is known and taken, and the answer to it is to change
     // the BLOCK, not to give its two writings different inks.
     final blended = Color.alphaBlend(
-      timelineEmptyCelPaperColor(layerMarkColor(LayerMark.purple)),
+      timelineEmptyCelPaperColor(layerMarkColor(const LayerMark(process: LayerProcess.finish))),
       AppColors.surface,
     );
     final data = await rasterize(
       tester,
       ground: AppColors.surface,
       withBlocks: true,
-      mark: LayerMark.purple,
+      mark: const LayerMark(process: LayerProcess.finish),
       celContent: emptyCels(),
     );
     final counts = sample(data, channelSum(blended));
@@ -339,7 +340,7 @@ void main() {
   group('the ground law over the actual palette', () {
     test('every layer-mark paper takes the DARK ink — purple included, '
         'which is the reported regression', () {
-      for (final mark in LayerMark.values) {
+      for (final mark in everyLayerMark()) {
         expect(
           timelineTextOnColor(layerMarkColor(mark)),
           timelineTextOnLightGroundColor,
@@ -366,24 +367,52 @@ void main() {
       }
     });
 
-    test('every COLORED mark\'s 43%-alpha empty-cel blend over the dark '
-        'lane flips to the LIGHT ink; the plain paper\'s blend sits a hair '
-        'above the crossover and stays dark — where both inks tie', () {
-      for (final mark in LayerMark.values) {
+    test('an empty cel\'s 43%-alpha blend is inked by the SAME law, and the '
+        'palette lands on both sides of it', () {
+      // ⛔This used to assert the outcome instead of the law: 「every
+      // COLORED mark flips to the light ink, and only the plain paper stays
+      // dark」. That was true of the eight mid-tone colours it was written
+      // against and stopped being true the moment the palette became the
+      // user's own — LO is WHITE and 총작 is near-white, so their 43%
+      // blends land ABOVE the crossover and correctly keep the dark ink.
+      //
+      // 🚨What must hold is that the blend goes through the one law, so
+      // that is what is measured. The counts below keep it from passing on
+      // a law that collapsed to a single answer.
+      var dark = 0;
+      var light = 0;
+      for (final mark in everyLayerMark()) {
         final blend = Color.alphaBlend(
           timelineEmptyCelPaperColor(layerMarkColor(mark)),
           AppColors.surface,
         );
+        final expected = timelineGroundIsLight(blend)
+            ? timelineTextOnLightGroundColor
+            : timelineTextOnDarkGroundColor;
         expect(
           timelineTextOnColor(blend),
-          mark == LayerMark.none
-              ? timelineTextOnLightGroundColor
-              : timelineTextOnDarkGroundColor,
+          expected,
           reason:
               '$mark empty-cel blend $blend, luminance '
               '${blend.computeLuminance().toStringAsFixed(3)}',
         );
+        if (expected == timelineTextOnLightGroundColor) {
+          dark += 1;
+        } else {
+          light += 1;
+        }
       }
+      expect(
+        dark,
+        greaterThan(0),
+        reason: '🚨the pale end of the palette has to reach ABOVE the '
+            'crossover, or this test is one branch measuring itself',
+      );
+      expect(
+        light,
+        greaterThan(0),
+        reason: '🚨and the saturated end has to fall below it',
+      );
     });
 
     test('the crossover is the WCAG optimum: on every live ground the '
@@ -395,8 +424,8 @@ void main() {
       }
 
       final grounds = <Color>[
-        for (final mark in LayerMark.values) layerMarkColor(mark),
-        for (final mark in LayerMark.values)
+        for (final mark in everyLayerMark()) layerMarkColor(mark),
+        for (final mark in everyLayerMark())
           Color.alphaBlend(
             timelineEmptyCelPaperColor(layerMarkColor(mark)),
             AppColors.surface,
@@ -429,10 +458,10 @@ void main() {
     // block". There is no ground to resolve any more; what has to hold is
     // that the two writings on a block agree, and they agree because they
     // ask the same function.
-    final nameInk = cellsPainter(mark: LayerMark.purple).foregroundInkFor(
-      cellsPainter(mark: LayerMark.purple).cellModelAt(0),
+    final nameInk = cellsPainter(mark: const LayerMark(process: LayerProcess.finish)).foregroundInkFor(
+      cellsPainter(mark: const LayerMark(process: LayerProcess.finish)).cellModelAt(0),
     );
-    final numberInk = labelsPainter(mark: LayerMark.purple).labelStyle.color!;
+    final numberInk = labelsPainter(mark: const LayerMark(process: LayerProcess.finish)).labelStyle.color!;
 
     expect(nameInk, timelineInBlockInk(), reason: 'the name is the block ink');
     expect(
@@ -454,7 +483,7 @@ void main() {
     // The storyboard's cut blocks, the band text, the edge grips: those
     // sit on colours that move, and F-24 said nothing about them.
     expect(
-      timelineTextOnColor(layerMarkColor(LayerMark.purple)),
+      timelineTextOnColor(layerMarkColor(const LayerMark(process: LayerProcess.finish))),
       timelineTextOnLightGroundColor,
     );
     expect(timelineTextOnColor(AppColors.surface), timelineTextOnDarkGroundColor);

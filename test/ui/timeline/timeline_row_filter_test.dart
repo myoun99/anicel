@@ -3,6 +3,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
@@ -34,54 +35,54 @@ void main() {
     });
 
     test('mark set passes only matching marks', () {
-      const filter = TimelineRowFilter(markColors: {LayerMark.red});
+      final filter = TimelineRowFilter(markColors: {const LayerMark(process: LayerProcess.layout)});
       expect(
-        filter.allows(_layer('a', mark: LayerMark.red), fxEnabled: true),
+        filter.allows(_layer('a', mark: const LayerMark(process: LayerProcess.layout)), fxEnabled: true),
         isTrue,
       );
       expect(
-        filter.allows(_layer('b', mark: LayerMark.blue), fxEnabled: true),
+        filter.allows(_layer('b', mark: const LayerMark(process: LayerProcess.conte)), fxEnabled: true),
         isFalse,
       );
       expect(filter.allows(_layer('c'), fxEnabled: true), isFalse);
     });
 
     test('facets combine with AND', () {
-      const filter = TimelineRowFilter(
-        markColors: {LayerMark.red},
+      final filter = TimelineRowFilter(
+        markColors: {const LayerMark(process: LayerProcess.layout)},
         onTimesheetOnly: true,
       );
       // red + sheet-on passes.
       expect(
         filter.allows(
-          _layer('a', mark: LayerMark.red, onTimesheet: true),
+          _layer('a', mark: const LayerMark(process: LayerProcess.layout), onTimesheet: true),
           fxEnabled: true,
         ),
         isTrue,
       );
       // red but sheet-off fails.
       expect(
-        filter.allows(_layer('b', mark: LayerMark.red), fxEnabled: true),
+        filter.allows(_layer('b', mark: const LayerMark(process: LayerProcess.layout)), fxEnabled: true),
         isFalse,
       );
     });
 
     test('fx-only reads the session fxEnabled parameter', () {
-      const filter = TimelineRowFilter(fxOnly: true);
+      final filter = TimelineRowFilter(fxOnly: true);
       expect(filter.allows(_layer('a'), fxEnabled: true), isTrue);
       expect(filter.allows(_layer('a'), fxEnabled: false), isFalse);
     });
 
     test('toggledMark flips membership', () {
-      const filter = TimelineRowFilter();
-      final withRed = filter.toggledMark(LayerMark.red);
-      expect(withRed.markColors, {LayerMark.red});
-      expect(withRed.toggledMark(LayerMark.red).markColors, isEmpty);
+      final filter = TimelineRowFilter();
+      final withRed = filter.toggledMark(const LayerMark(process: LayerProcess.layout));
+      expect(withRed.markColors, {const LayerMark(process: LayerProcess.layout)});
+      expect(withRed.toggledMark(const LayerMark(process: LayerProcess.layout)).markColors, isEmpty);
     });
 
     test('kind set passes only matching kinds and ANDs with the rest '
         '(R4 #8)', () {
-      const filter = TimelineRowFilter(kinds: {LayerKind.se});
+      final filter = TimelineRowFilter(kinds: {LayerKind.se});
       expect(filter.isActive, isTrue);
       expect(
         filter.allows(_layer('s', kind: LayerKind.se), fxEnabled: true),
@@ -89,17 +90,17 @@ void main() {
       );
       expect(filter.allows(_layer('a'), fxEnabled: true), isFalse);
 
-      const combined = TimelineRowFilter(
+      final combined = TimelineRowFilter(
         kinds: {LayerKind.animation},
-        markColors: {LayerMark.red},
+        markColors: {const LayerMark(process: LayerProcess.layout)},
       );
       expect(
-        combined.allows(_layer('a', mark: LayerMark.red), fxEnabled: true),
+        combined.allows(_layer('a', mark: const LayerMark(process: LayerProcess.layout)), fxEnabled: true),
         isTrue,
       );
       expect(
         combined.allows(
-          _layer('s', kind: LayerKind.se, mark: LayerMark.red),
+          _layer('s', kind: LayerKind.se, mark: const LayerMark(process: LayerProcess.layout)),
           fxEnabled: true,
         ),
         isFalse,
@@ -107,7 +108,7 @@ void main() {
     });
 
     test('toggledKind flips membership', () {
-      const filter = TimelineRowFilter();
+      final filter = TimelineRowFilter();
       final withSe = filter.toggledKind(LayerKind.se);
       expect(withSe.kinds, {LayerKind.se});
       expect(withSe.toggledKind(LayerKind.se).kinds, isEmpty);
@@ -116,8 +117,8 @@ void main() {
 
   group('buildTimelineDisplayRows rowFilter', () {
     List<Layer> layers() => [
-      _layer('a', mark: LayerMark.red),
-      _layer('b', mark: LayerMark.blue),
+      _layer('a', mark: const LayerMark(process: LayerProcess.layout)),
+      _layer('b', mark: const LayerMark(process: LayerProcess.conte)),
       _layer('c', onTimesheet: true),
     ];
 
@@ -126,7 +127,7 @@ void main() {
         layers: layers(),
         expandedLayerIds: const {},
         lanesForLayer: (_) => const [],
-        rowFilter: const TimelineRowFilter(markColors: {LayerMark.red}),
+        rowFilter: TimelineRowFilter(markColors: {const LayerMark(process: LayerProcess.layout)}),
       );
       expect(rows.map((r) => r.layer.id.value), ['a']);
     });
@@ -136,7 +137,7 @@ void main() {
         layers: layers(),
         expandedLayerIds: const {},
         lanesForLayer: (_) => const [],
-        rowFilter: const TimelineRowFilter(markColors: {LayerMark.red}),
+        rowFilter: TimelineRowFilter(markColors: {const LayerMark(process: LayerProcess.layout)}),
         activeLayerId: const LayerId('c'),
       );
       // c fails the red filter but is active → kept, alongside the matching a.

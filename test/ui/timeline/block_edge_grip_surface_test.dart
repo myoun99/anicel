@@ -9,6 +9,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -91,7 +92,7 @@ void main() {
         'make, one law for text and edges', () {
       final onPurple = blockEdgeGripBarColor(
         BlockEdgeGripInk.rest,
-        ground: layerMarkColor(LayerMark.purple),
+        ground: layerMarkColor(const LayerMark(process: LayerProcess.finish)),
       );
       expect(onPurple.withValues(alpha: 1), timelineTextOnLightGroundColor);
       expect(

@@ -410,12 +410,22 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                               if (showRowSolos && marksInUse.isNotEmpty) ...[
                                 const PanelFlyoutDivider(),
                                 PanelFlyoutHeader(AppText.strings.tlSoloColor),
-                                for (final mark in LayerMark.values)
-                                  if (mark != LayerMark.none &&
-                                      marksInUse.contains(mark))
+                                // 🚨THE MARKS IN USE, not every mark there
+                                // could be. A mark is a 공정/수정 pair now,
+                                // so «every value» is a product of two lists
+                                // and most of it would never appear in this
+                                // project — the filter was always about what
+                                // is actually on the rows, and this says so.
+                                for (final mark
+                                    in marksInUse.toList()
+                                      ..sort(
+                                        (a, b) =>
+                                            a.sortKey.compareTo(b.sortKey),
+                                      ))
+                                  if (!mark.isNone)
                                     PanelFlyoutItem(
                                       keyValue:
-                                          'legend-filter-mark-${mark.name}',
+                                          'legend-filter-mark-${mark.keySlug}',
                                       label: layerMarkDisplayName(mark),
                                       checked: rowFilter.markColors.contains(
                                         mark,

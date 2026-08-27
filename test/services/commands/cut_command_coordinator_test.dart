@@ -22,6 +22,7 @@ import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -2209,16 +2210,16 @@ void main() {
       fixture.coordinator.setLayerMark(
         cutId: cutA.id,
         layerId: layer.id,
-        mark: LayerMark.orange,
+        mark: const LayerMark(process: LayerProcess.key),
       );
 
-      expect(requireLayerAnywhere(fixture.project, layer.id).mark, LayerMark.orange);
+      expect(requireLayerAnywhere(fixture.project, layer.id).mark, const LayerMark(process: LayerProcess.key));
       expect(fixture.historyManager.undoCount, 1);
 
       fixture.coordinator.setLayerMark(
         cutId: cutA.id,
         layerId: layer.id,
-        mark: LayerMark.orange,
+        mark: const LayerMark(process: LayerProcess.key),
       );
 
       expect(fixture.historyManager.undoCount, 1);
@@ -2230,7 +2231,7 @@ void main() {
 
       fixture.historyManager.redo();
 
-      expect(requireLayerAnywhere(fixture.project, layer.id).mark, LayerMark.orange);
+      expect(requireLayerAnywhere(fixture.project, layer.id).mark, const LayerMark(process: LayerProcess.key));
     });
 
     test(

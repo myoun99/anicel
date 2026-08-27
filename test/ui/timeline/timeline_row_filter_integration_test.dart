@@ -7,6 +7,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
@@ -37,8 +38,8 @@ Project _project() => Project(
           duration: 12,
           canvasSize: const CanvasSize(width: 640, height: 360),
           layers: [
-            _layer('red-a', mark: LayerMark.red),
-            _layer('blue-b', mark: LayerMark.blue),
+            _layer('red-a', mark: const LayerMark(process: LayerProcess.layout)),
+            _layer('blue-b', mark: const LayerMark(process: LayerProcess.conte)),
             _layer('plain-c'),
           ],
         ),
@@ -68,7 +69,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('legend-mark')));
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey<String>('legend-filter-mark-red')),
+      find.byKey(const ValueKey<String>('legend-filter-mark-layout')),
     );
     await tester.pumpAndSettle();
 
@@ -89,7 +90,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('legend-mark')));
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey<String>('legend-filter-mark-red')),
+      find.byKey(const ValueKey<String>('legend-filter-mark-layout')),
     );
     await tester.pumpAndSettle();
     expect(_row('blue-b'), findsOneWidget);

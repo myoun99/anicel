@@ -5,6 +5,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_body_cut_end_boundary.dart';
@@ -118,12 +119,12 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey<String>('layer-mark-option-red')),
+      find.byKey(const ValueKey<String>('layer-mark-option-layout')),
     );
     await tester.pumpAndSettle();
 
     expect(markedLayerId, const LayerId('layer-1'));
-    expect(selectedMark, LayerMark.red);
+    expect(selectedMark, const LayerMark(process: LayerProcess.layout));
   });
 
   testWidgets('frame rail shows the cached-range strip inside playback', (
