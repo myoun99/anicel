@@ -387,11 +387,40 @@ class _HoverReporter extends StatelessWidget {
     if (box == null || overlay == null) {
       return;
     }
+    // 🚨THE MENU'S OUTER EDGE, NOT THIS ROW'S CONTENT EDGE. A row sits
+    // inside the menu's horizontal padding, so anchoring to the row put the
+    // child a dozen pixels INSIDE the parent — measured, and it is exactly
+    // 「기존 팝오버에 딱 붙어서 열리는게아니라 뭔가 겹쳐있음」.
+    //
+    // The nearest [Material] IS the menu surface, so its right edge is what
+    // «beside the parent» means.
+    RenderBox? surface;
+    context.visitAncestorElements((element) {
+      if (element.widget is Material) {
+        surface = element.renderObject as RenderBox?;
+        return false;
+      }
+      return true;
+    });
+    final rowTop = box.localToGlobal(Offset.zero, ancestor: overlay);
+    final rowBottom = box.localToGlobal(
+      box.size.bottomRight(Offset.zero),
+      ancestor: overlay,
+    );
+    final menu = surface;
+    final right = menu == null
+        ? rowBottom.dx
+        : menu
+              .localToGlobal(
+                menu.size.bottomRight(Offset.zero),
+                ancestor: overlay,
+              )
+              .dx;
+    final left = menu == null
+        ? rowTop.dx
+        : menu.localToGlobal(Offset.zero, ancestor: overlay).dx;
     open.value = _OpenSubmenu(
-      anchor: Rect.fromPoints(
-        box.localToGlobal(Offset.zero, ancestor: overlay),
-        box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
-      ),
+      anchor: Rect.fromLTRB(left, rowTop.dy, right, rowBottom.dy),
       entries: builder(),
     );
   }

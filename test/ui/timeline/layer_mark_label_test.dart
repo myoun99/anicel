@@ -66,6 +66,8 @@ Widget _panel() {
 void main() {
   _takeLabelPlate();
   _twoLevelPopover();
+  _submenuFollowsTheHover();
+  _stageComesFirst();
 
   testWidgets('the label is a full-height, half-width plate leading the '
       'layer area (A6 ①②③)', (tester) async {
@@ -272,8 +274,13 @@ void _twoLevelPopover() {
     await tester.pumpAndSettle();
 
     for (final process in LayerProcess.values) {
+      // ⚠️A stage that opens a child is keyed `…-stage-…`; one that IS the
+      // choice (용지, which has no corrections) is keyed `…-option-…`.
+      final key = revisesFor(process).isEmpty
+          ? 'layer-mark-option-${process.jsonValue}'
+          : 'layer-mark-stage-${process.jsonValue}';
       expect(
-        find.byKey(ValueKey<String>('layer-mark-option-${process.jsonValue}')),
+        find.byKey(ValueKey<String>(key)),
         findsOneWidget,
         reason: '${process.displayName} 은 첫 겹에 있다',
       );
@@ -300,7 +307,7 @@ void _twoLevelPopover() {
     await mouse.addPointer(location: Offset.zero);
     await mouse.moveTo(
       tester.getCenter(
-        find.byKey(const ValueKey<String>('layer-mark-option-layout')),
+        find.byKey(const ValueKey<String>('layer-mark-stage-layout')),
       ),
     );
     await tester.pumpAndSettle();
@@ -313,7 +320,7 @@ void _twoLevelPopover() {
       reason: '레이아웃의 작화감독 수정이 두 번째 겹에 뜬다',
     );
     expect(
-      find.byKey(const ValueKey<String>('layer-mark-option-layout')),
+      find.byKey(const ValueKey<String>('layer-mark-stage-layout')),
       findsWidgets,
       reason: '⚠️첫 겹은 닫히지 않는다 — 옆에 나란히 뜬다',
     );
@@ -354,10 +361,25 @@ void _twoLevelPopover() {
 /// ⛔첫 구현은 겹을 `showMenu` 로 또 띄웠다 — 메뉴는 **라우트**라 쌓이기만 하고
 /// 바뀌지 않는다. 이 셋이 그 실패를 각각 잡는다.
 void _submenuFollowsTheHover() {
-  Future<void> hover(WidgetTester tester, String key) async {
+  // 🚨ONE MOUSE, MOVED. ⛔A fresh `createGesture` + `addPointer` per hover
+  // trips `mouse_tracker`'s own assertion — a second pointer is added while
+  // the first was never removed — and the test dies before it measures
+  // anything. Measured: that is what these three did until the analyzer
+  // pointed out they were never even registered in `main`.
+  Future<TestGesture> mouseAt(WidgetTester tester, String key) async {
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
     addTearDown(mouse.removePointer);
     await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(tester.getCenter(find.byKey(ValueKey<String>(key))));
+    await tester.pumpAndSettle();
+    return mouse;
+  }
+
+  Future<void> moveTo(
+    WidgetTester tester,
+    TestGesture mouse,
+    String key,
+  ) async {
     await mouse.moveTo(tester.getCenter(find.byKey(ValueKey<String>(key))));
     await tester.pumpAndSettle();
   }
@@ -369,7 +391,7 @@ void _submenuFollowsTheHover() {
     );
     await tester.pumpAndSettle();
 
-    await hover(tester, 'layer-mark-option-inbetween');
+    final mouse = await mouseAt(tester, 'layer-mark-stage-inbetween');
     expect(
       find.byKey(
         const ValueKey<String>('layer-mark-option-inbetween-inbetween-check'),
@@ -378,7 +400,7 @@ void _submenuFollowsTheHover() {
       reason: '동화의 동화검사',
     );
 
-    await hover(tester, 'layer-mark-option-layout');
+    await moveTo(tester, mouse, 'layer-mark-stage-layout');
     expect(
       find.byKey(
         const ValueKey<String>('layer-mark-option-inbetween-inbetween-check'),
@@ -402,7 +424,7 @@ void _submenuFollowsTheHover() {
     );
     await tester.pumpAndSettle();
 
-    await hover(tester, 'layer-mark-option-layout');
+    final mouse = await mouseAt(tester, 'layer-mark-stage-layout');
     expect(
       find.byKey(
         const ValueKey<String>('layer-mark-option-layout-animation-director'),
@@ -411,7 +433,7 @@ void _submenuFollowsTheHover() {
     );
 
     // 용지는 수정이 없다.
-    await hover(tester, 'layer-mark-option-paper');
+    await moveTo(tester, mouse, 'layer-mark-option-paper');
     expect(
       find.byKey(
         const ValueKey<String>('layer-mark-option-layout-animation-director'),
@@ -427,10 +449,10 @@ void _submenuFollowsTheHover() {
       find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
     );
     await tester.pumpAndSettle();
-    await hover(tester, 'layer-mark-option-layout');
+    await mouseAt(tester, 'layer-mark-stage-layout');
 
     final parent = tester.getRect(
-      find.byKey(const ValueKey<String>('layer-mark-option-layout')),
+      find.byKey(const ValueKey<String>('layer-mark-stage-layout')),
     );
     final childRow = tester.getRect(
       find.byKey(

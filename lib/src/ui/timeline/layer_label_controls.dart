@@ -1000,7 +1000,14 @@ class LayerMarkChip extends StatelessWidget {
         ),
         for (final process in LayerProcess.values)
           PanelFlyoutItem(
-            keyValue: 'layer-mark-option-${process.jsonValue}',
+            // 🚨THE KEY SAYS WHAT THE ROW DOES. A stage that opens a child
+            // is `…-stage-…`; a row that PICKS is `…-option-…`. They used
+            // to share a key and the submenu's 소재 collided with the parent
+            // it hung off — two widgets, one key, and every finder that
+            // touched either one broke.
+            keyValue: revisesFor(process).isEmpty
+                ? 'layer-mark-option-${process.jsonValue}'
+                : 'layer-mark-stage-${process.jsonValue}',
             label: process.displayName,
             swatch: layerMarkColor(LayerMark(process: process)),
             // 용지 carries no corrections, so it is a plain choice — no
