@@ -1,3 +1,4 @@
+import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart';
@@ -20,7 +21,6 @@ import 'transform_tool_options.dart';
 import '../../models/cut_piece.dart';
 import '../../services/cut_piece_slot.dart';
 import 'cut_piece_preview.dart';
-import '../theme/app_theme.dart';
 import '../text/app_strings.dart';
 
 /// The TOOL SETTINGS panel (R11-④, CSP's tool property palette): detailed
@@ -585,29 +585,24 @@ class _SelectionModeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     return Row(
       key: const ValueKey<String>('selection-mode-row'),
       children: [
         for (final candidate in SelectionCombineMode.values)
           Padding(
             padding: const EdgeInsets.only(right: 4),
-            child: IconButton(
-              key: ValueKey<String>('selection-mode-${candidate.name}'),
+            // 🚨THE THIRD FILLED CHIP THE AUDIT FOUND. 「선택 표시는 색상만」
+            // — an accent foreground, never a filled chip and never a check
+            // mark ([[ui-selection-style]]). This row wore
+            // `surfaceContainerHigh` behind the selected mode, the same way
+            // the tool rail did.
+            child: AppIconButton(
+              keyValue: 'selection-mode-${candidate.name}',
               tooltip: candidate.labelFor(language),
-              onPressed: () => onChanged(candidate),
-              icon: Icon(_icons[candidate]),
-              iconSize: 20,
               isSelected: candidate == mode,
-              style: IconButton.styleFrom(
-                foregroundColor: candidate == mode
-                    ? colorScheme.primary
-                    : colorScheme.onSurfaceVariant,
-                backgroundColor: candidate == mode
-                    ? colorScheme.surfaceContainerHigh
-                    : Colors.transparent,
-                shape: AppShapes.control(AppShapes.controlSmall),
-              ),
+              size: AppIconButtonSize.tool,
+              icon: Icon(_icons[candidate]),
+              onPressed: () => onChanged(candidate),
             ),
           ),
       ],

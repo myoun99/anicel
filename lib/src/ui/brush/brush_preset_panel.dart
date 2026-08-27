@@ -1,3 +1,4 @@
+import '../widgets/app_icon_button.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -886,26 +887,25 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (widget.onPresetImportRequested != null)
-            IconButton(
-              key: const ValueKey<String>('brush-preset-import-button'),
-              icon: const Icon(Icons.file_open_outlined, size: 16),
-              visualDensity: VisualDensity.compact,
+            AppIconButton(
+              keyValue: 'brush-preset-import-button',
               tooltip: AppText.strings.brImportBrushes,
+              size: AppIconButtonSize.dense,
+              icon: const Icon(Icons.file_open_outlined),
               onPressed: widget.onPresetImportRequested,
             ),
           if (widget.onPresetSaveRequested != null)
-            IconButton(
-              key: const ValueKey<String>('brush-preset-save-button'),
+            AppIconButton(
+              keyValue: 'brush-preset-save-button',
+              tooltip: AppText.strings.brSaveAsPreset,
+              size: AppIconButtonSize.dense,
               // 「＋가 있는 모든 곳, 공통적으로」 — the glyph, not the button.
               icon: Icon(
                 Icons.add,
-                size: 16,
                 color: AppColors.addGlyph(
                   enabled: widget.onPresetSaveRequested != null,
                 ),
               ),
-              visualDensity: VisualDensity.compact,
-              tooltip: AppText.strings.brSaveAsPreset,
               onPressed: widget.onPresetSaveRequested,
             ),
           PanelFlyoutTrigger(

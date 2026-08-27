@@ -1,3 +1,4 @@
+import '../widgets/app_icon_button.dart';
 import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
@@ -323,13 +324,12 @@ class MediaBrowserPanel extends StatelessWidget {
           child: Row(
             children: [
               const SizedBox(width: 4),
-              IconButton(
-                key: const ValueKey<String>('media-import-button'),
+              AppIconButton(
+                keyValue: 'media-import-button',
                 tooltip: AppText.strings.mediaImportAudio,
                 // 「＋가 있는 모든 곳, 공통적으로」.
                 icon: Icon(
                   Icons.add,
-                  size: 18,
                   color: AppColors.addGlyph(enabled: true),
                 ),
                 onPressed: onImportRequested,

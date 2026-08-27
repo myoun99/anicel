@@ -1,3 +1,4 @@
+import '../widgets/app_icon_button.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
@@ -777,19 +778,12 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                 // and the two never appear on the same row.
                 fillReference: widget.onResetLaneGroup == null
                     ? null
-                    : IconButton(
-                        key: ValueKey<String>(
-                          '$_keyPrefix-lane-group-reset-'
-                          '${layer.id}-${lane.laneId}',
-                        ),
-                        padding: EdgeInsets.zero,
-                        visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints(
-                          minWidth: 22,
-                          minHeight: 22,
-                        ),
-                        iconSize: 14,
+                    : AppIconButton(
+                        keyValue:
+                            '$_keyPrefix-lane-group-reset-'
+                            '${layer.id}-${lane.laneId}',
                         tooltip: AppText.strings.tlResetGroup,
+                        size: AppIconButtonSize.micro,
                         onPressed: () => widget.onResetLaneGroup!(layer, lane),
                         icon: Icon(
                           Icons.settings_backup_restore,
@@ -799,18 +793,10 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                       ),
                 fx: lane.groupEnabled == null
                     ? null
-                    : IconButton(
-                        key: ValueKey<String>(
-                          '$_keyPrefix-lane-group-fx-'
-                          '${layer.id}-${lane.laneId}',
-                        ),
-                        padding: EdgeInsets.zero,
-                        visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints(
-                          minWidth: 22,
-                          minHeight: 22,
-                        ),
-                        iconSize: 16,
+                    : AppIconButton(
+                        keyValue:
+                            '$_keyPrefix-lane-group-fx-'
+                            '${layer.id}-${lane.laneId}',
                         tooltip: lane.groupEnabled!
                             ? 'Bypass ${lane.label}'
                             : 'Apply ${lane.label}',

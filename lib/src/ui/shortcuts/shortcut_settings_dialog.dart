@@ -1,3 +1,4 @@
+import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -313,18 +314,16 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
                         : null,
                   ),
           ),
-          IconButton(
-            key: ValueKey<String>('shortcut-record-${definition.id}'),
+          AppIconButton(
+            keyValue: 'shortcut-record-${definition.id}',
             tooltip: AppText.strings.shortcutRecordNew,
-            icon: const Icon(Icons.keyboard, size: 18),
-            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.keyboard),
             onPressed: () => _startRecording(definition.id),
           ),
-          IconButton(
-            key: ValueKey<String>('shortcut-reset-${definition.id}'),
+          AppIconButton(
+            keyValue: 'shortcut-reset-${definition.id}',
             tooltip: AppText.strings.shortcutResetToDefault,
-            icon: const Icon(Icons.restart_alt, size: 18),
-            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.restart_alt),
             onPressed:
                 bindings.isOverridden(definition.id) ||
                     bindings.isTouchOverridden(definition.id)

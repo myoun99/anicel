@@ -1,8 +1,8 @@
+import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
 
 import 'brush_tool_state.dart';
 import '../text/app_strings.dart';
-import '../theme/app_theme.dart';
 import '../widgets/static_raster.dart';
 import '../layout/device_grid.dart';
 
@@ -255,38 +255,21 @@ class RailButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return IconButton(
-      key: ValueKey<String>(keyValue),
+    // 🚨★★★THE SELECTED CHIP IS GONE, and that is the app's own law arriving
+    // here at last. 「선택 표시는 색상만」 — an accent FOREGROUND, never a
+    // filled chip and never a check mark ([[ui-selection-style]]). This
+    // square wore `surfaceContainerHigh` behind the glyph while the comment
+    // right above it said 「앱에 버튼은 한 종류 (유저 확정)」; it was the one
+    // kind in shape and a second kind in state. 유저 2026-08-28 chose the
+    // tokens over collapsing the sizes, which is what let this join without
+    // the 42px stylus target (R9 #17) changing.
+    return AppIconButton(
+      keyValue: keyValue,
       tooltip: tooltip,
-      onPressed: onPressed,
-      icon: Icon(icon),
-      iconSize: 20,
       isSelected: selected,
-      padding: EdgeInsets.zero,
-      // R9 #17: a tight box, so the slim rail holds the button instead of
-      // the button dictating a 72px rail. Still 42 across — the stylus
-      // target the rail was narrowed AROUND, not below.
-      constraints: const BoxConstraints.tightFor(
-        width: ToolsPanel.buttonExtent,
-        height: ToolsPanel.buttonExtent,
-      ),
-      style: IconButton.styleFrom(
-        foregroundColor: selected
-            ? colorScheme.primary
-            : colorScheme.onSurfaceVariant,
-        backgroundColor: selected
-            ? colorScheme.surfaceContainerHigh
-            : Colors.transparent,
-        // 앱에 버튼은 한 종류 (유저 확정): this square is it, so it wears the
-        // app's one corner rather than a radius of its own.
-        shape: AppShapes.control(ToolsPanel.buttonExtent),
-        // The 42px box IS the tap target (R9 #17) — M3's automatic 48px
-        // inflation is what made the rail need 72.
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        minimumSize: const Size.square(ToolsPanel.buttonExtent),
-        fixedSize: const Size.square(ToolsPanel.buttonExtent),
-      ),
+      size: AppIconButtonSize.tool,
+      icon: Icon(icon),
+      onPressed: onPressed,
     );
   }
 }

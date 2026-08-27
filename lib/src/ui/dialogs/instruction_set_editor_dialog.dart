@@ -1,3 +1,4 @@
+import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
@@ -99,20 +100,16 @@ class _InstructionSetEditorDialogState
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        IconButton(
-                          key: ValueKey<String>(
-                            'instruction-def-edit-${def.id}',
-                          ),
+                        AppIconButton(
+                          keyValue: 'instruction-def-edit-${def.id}',
                           tooltip: strings.instructionEditTooltip,
-                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          icon: const Icon(Icons.edit_outlined),
                           onPressed: () => _editDef(index),
                         ),
-                        IconButton(
-                          key: ValueKey<String>(
-                            'instruction-def-delete-${def.id}',
-                          ),
+                        AppIconButton(
+                          keyValue: 'instruction-def-delete-${def.id}',
                           tooltip: strings.instructionDeleteTooltip,
-                          icon: const Icon(Icons.delete_outline, size: 18),
+                          icon: const Icon(Icons.delete_outline),
                           onPressed: () => setState(
                             () => _defs = [..._defs]..removeAt(index),
                           ),

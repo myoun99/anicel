@@ -15,14 +15,43 @@ import '../theme/app_theme.dart';
 ///
 /// Sizing is a token, not a per-call number: [AppIconButtonSize.bar] is the
 /// canvas bottom bar's, [AppIconButtonSize.strip] the same button squeezed
-/// into a slim status strip (same 18px glyph, tighter box). Callers pick a
-/// token so a future style change lands everywhere at once.
+/// into a slim status strip. Callers pick a token so a future style change
+/// lands everywhere at once.
+///
+/// 🚨★★★THE TOKENS ARE THE ANSWER TO 「앱에 버튼은 한 종류」, not a betrayal of
+/// it. 유저 2026-08-28 chose this over collapsing every button to one size:
+/// lib had **50 hand-rolled `IconButton`s across 22 files** at five different
+/// glyph sizes, and 실측 said not one of them could join without the box
+/// changing. ⇒ 「한 종류」 means ONE PARENT — one shape, one selection rule,
+/// one hit-target policy — with the size named rather than typed.
+///
+/// ⛔A NEW TOKEN IS NOT A FREE MOVE. Adding one because a number is off by
+/// two is how five becomes fifteen; each token below names a PLACE that
+/// argued for its size, and the argument is in its doc.
 enum AppIconButtonSize {
   /// Panel bottom bars — the reference size.
   bar(minWidth: 26, maxWidth: 30, height: 24, iconSize: 18),
 
   /// Slim panel status strips.
-  strip(minWidth: 22, maxWidth: 26, height: 20, iconSize: 15);
+  strip(minWidth: 22, maxWidth: 26, height: 20, iconSize: 15),
+
+  /// The TOOL RAIL's square. 42 is a stylus target the rail was narrowed
+  /// AROUND (R9 #17: a tight box, so the slim rail holds the button instead
+  /// of the button dictating a 72px rail) — shrinking it here would reopen
+  /// that decision from the wrong end.
+  tool(minWidth: 42, maxWidth: 42, height: 42, iconSize: 20),
+
+  /// Timeline lanes and the workspace chrome: a bar button with a smaller
+  /// glyph, because the row it sits in is shorter than a panel's.
+  dense(minWidth: 24, maxWidth: 28, height: 22, iconSize: 16),
+
+  /// Window chrome and the debug inspector — the smallest the app draws,
+  /// where the button is beside text rather than in a row of its own.
+  micro(minWidth: 20, maxWidth: 24, height: 18, iconSize: 14),
+
+  /// Dialogs and menus, where the button sits among Material's own metrics
+  /// and a 18px glyph would read as a different control.
+  standard(minWidth: 36, maxWidth: 40, height: 36, iconSize: 24);
 
   const AppIconButtonSize({
     required this.minWidth,
@@ -36,7 +65,6 @@ enum AppIconButtonSize {
   final double height;
   final double iconSize;
 }
-
 class AppIconButton extends StatelessWidget {
   const AppIconButton({
     super.key,
