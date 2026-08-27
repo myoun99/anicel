@@ -463,6 +463,72 @@ void main() {
     );
     expect(eraseAlphaAt(softened, 4, 4), 255, reason: 'interior untouched');
     expect(eraseAlphaAt(softened, 7, 4), 0, reason: 'outside stays out');
+    // 🚨THE PIXEL THAT WAS LEAKING, and the reason this line is separate
+    // from the one above it: the rect is 2..5, so x=6 is the FIRST pixel
+    // outside and x=7 is the second. The blur only ever reached one pixel
+    // out, so measuring at 7 said "outside stays out" while the skirt sat
+    // at 6 taking the neighbour's artwork with every move.
+    //
+    // 유저 2026-08-27: 「애초 tvp 보니까 선택의 aa가 선택 바깥에 걸리는게
+    // 아니라 **선택 안쪽에 걸고있는거같거든**?」 — they were right, and
+    // one pixel is the whole difference.
+    expect(
+      eraseAlphaAt(softened, 6, 4),
+      0,
+      reason: 'the anti-alias ramp belongs INSIDE the outline — a selection '
+          'that reaches one pixel past itself erases artwork nobody selected',
+    );
+  });
+
+  test('the anti-alias MASK itself never lights a pixel the outline did not',
+      () {
+    // ⛔Asked of the mask rather than of the lift, because the mask is what
+    // every verb reads — 색 변환 and 픽셀 비우기 share it. A fix that only
+    // taught the lift to ignore the skirt would leave those two erasing a
+    // rim the selection never showed.
+    const width = 12;
+    const height = 12;
+    final hard = buildSelectionMask(
+      region: rect2to5(),
+      options: SelectionMaskOptions.none,
+      left: 0,
+      top: 0,
+      width: width,
+      height: height,
+    );
+    final soft = buildSelectionMask(
+      region: rect2to5(),
+      options: const SelectionMaskOptions(antiAlias: true),
+      left: 0,
+      top: 0,
+      width: width,
+      height: height,
+    );
+
+    expect(
+      hard.where((value) => value > 0).length,
+      greaterThan(0),
+      reason: '🚨the fixture has to be selecting something, or every '
+          'comparison below is two empty masks agreeing',
+    );
+    final leaked = <String>[];
+    for (var i = 0; i < soft.length; i += 1) {
+      if (soft[i] > hard[i]) {
+        leaked.add('(${i % width},${i ~/ width}) ${hard[i]} -> ${soft[i]}');
+      }
+    }
+    expect(
+      leaked,
+      isEmpty,
+      reason: 'anti-aliasing may only darken the edge, never widen it: '
+          '${leaked.join(', ')}',
+    );
+    expect(
+      soft.any((value) => value > 0 && value < 255),
+      isTrue,
+      reason: '⚠️and it still HAS a ramp — a clamp that flattened the pass '
+          'into the hard mask would pass the test above and do nothing',
+    );
   });
 
   test('a FEATHERED selection still fades — that softness was asked for',
