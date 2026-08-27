@@ -144,7 +144,15 @@ void main() {
 /// frame earlier at the same rect, and the handoff into the stand-in must
 /// be byte-identical (the same sampling the [_PaintImage] route states
 /// through drawPosedLayerImage).
-const int _knownRawDraws = 37;
+/// **38** at the every-node-is-a-picture round: +1 in
+/// canvas_layer_stack_view — a GROUP no longer composites through
+/// `saveLayer`; it rasterises to a `ui.Image` and blits it. That blit is
+/// 1:1 by construction (the image grid is the local space at the walk's
+/// raster scale, snapped outward) so it owns `FilterQuality.none`, and
+/// LOW only in the one case the buffer cap clamped the scale and the
+/// blit became a magnification. It is a quality-owning leaf in the
+/// strictest sense: it is the composite, not a layer inside one.
+const int _knownRawDraws = 38;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',
