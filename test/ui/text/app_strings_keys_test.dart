@@ -336,6 +336,8 @@ void main() {
     'mediaMissingCount': (s) => s.mediaMissingCount,
     'mediaFindInFolder': (s) => s.mediaFindInFolder,
     'mediaRelinkFound': (s) => s.mediaRelinkFound,
+    'mediaRelinkScanning': (s) => s.mediaRelinkScanning,
+    'mediaRelinkScanned': (s) => s.mediaRelinkScanned,
     'mediaRemove': (s) => s.mediaRemove,
     'mediaRegisterInProject': (s) => s.mediaRegisterInProject,
     'mediaAlreadyInProject': (s) => s.mediaAlreadyInProject,
