@@ -5,6 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
+import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/project_background.dart';
@@ -113,15 +119,28 @@ void main() {
     return bytes!.buffer.asUint8List();
   }
 
-  // ⛔A FRESH CACHE PER RENDER. The painter STARTS decodes as it draws and
-  // rations a per-pixel fallback budget, so a second render through the
-  // same cache sees a different world than the first — the two would be
-  // comparing different content and calling it a difference in the layer.
-  BitmapSurfacePainter freshPainter() => BitmapSurfacePainter(
-    surface: inkedSurface(),
-    showTransparentBackground: false,
-    tileImageCache: BitmapTileImageCache(),
-  );
+  // 🚨DECODED TILES, NOT THE PER-PIXEL FALLBACK. The production path draws
+  // each tile as a decoded IMAGE; the pixel fallback is the first-frame
+  // stand-in. A comparison that only ever took the fallback would leave the
+  // path that actually runs untested — a mutation that dropped the layer
+  // from the tile paint survived exactly that gap.
+  final cache = BitmapTileImageCache();
+
+  Future<void> decodeAll(BitmapSurface surface) async {
+    for (final tile in surface.tiles.values) {
+      cache.ensureDecoded(tile);
+    }
+    while (surface.tiles.values.any((tile) => cache.imageFor(tile) == null)) {
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+    }
+  }
+
+  BitmapSurfacePainter painterOver(BitmapSurface surface) =>
+      BitmapSurfacePainter(
+        surface: surface,
+        showTransparentBackground: false,
+        tileImageCache: cache,
+      );
 
   Future<void> expectSamePixels(
     String what,
@@ -129,20 +148,22 @@ void main() {
     double scale = 1,
     double phase = 0,
   }) async {
-    final painter = freshPainter();
+    final surface = inkedSurface();
+    await decodeAll(surface);
+    final painter = painterOver(surface);
     // ⛔The precondition, not an assumption: the whole equivalence is
     // conditional on it, so a fixture that quietly stopped being disjoint
     // would make every comparison below vacuous.
     expect(painter.drawsDisjointCoverage, isTrue, reason: '$what: fixture');
     final buffered = await render(
-      painter: freshPainter(),
+      painter: painter,
       layerPaint: layerPaint,
       buffered: true,
       scale: scale,
       phase: phase,
     );
     final riding = await render(
-      painter: freshPainter(),
+      painter: painter,
       layerPaint: layerPaint,
       buffered: false,
       scale: scale,
@@ -240,16 +261,76 @@ void main() {
         // The standalone route paints its own paper; the merged stack
         // passes false and paints paper itself.
         showTransparentBackground: true,
+        tileImageCache: cache,
       );
       expect(painter.drawsDisjointCoverage, isFalse);
     });
 
-    test('no overlay at all is disjoint', () {
-      final painter = BitmapSurfacePainter(
-        surface: inkedSurface(),
-        showTransparentBackground: false,
+
+    test('a fill stamp is placed OVER whatever a coordinate holds', () async {
+      final surface = inkedSurface();
+      await decodeAll(surface);
+      final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+      addTearDown(overlay.dispose);
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder).drawRect(
+        const Rect.fromLTWH(0, 0, 8, 8),
+        Paint()..color = const Color(0xFF00FF00),
       );
-      expect(painter.drawsDisjointCoverage, isTrue);
+      final picture = recorder.endRecording();
+      overlay.setStampOverlay(picture.toImageSync(8, 8), Offset.zero);
+      picture.dispose();
+      final painter = BitmapSurfacePainter(
+        surface: surface,
+        showTransparentBackground: false,
+        overlayModel: overlay,
+        tileImageCache: cache,
+      );
+      expect(painter.drawsDisjointCoverage, isFalse);
+    });
+
+    test('an overlay that cannot replace a coordinate composes against it',
+        () async {
+      // Its isolation layer exists precisely because it blends with the
+      // committed pixels — so the layer paint cannot ride the draws.
+      final surface = inkedSurface();
+      await decodeAll(surface);
+      // A MISMATCHED grid is the case the replacement route refuses.
+      final overlay = ActiveStrokeOverlayModel(tileSize: tileSize ~/ 2);
+      addTearDown(overlay.dispose);
+      overlay.preBlendBase = surface;
+      final rasterizer = BrushLiveStrokeRasterizer(canvasSize: canvasSize);
+      rasterizer.blendFrom([
+        BrushDab(
+          center: CanvasPoint(x: 4, y: 4),
+          color: 0xFF000000,
+          size: 3,
+          opacity: 1,
+          flow: 1,
+          hardness: 1,
+          tipShape: BrushTipShape.round,
+          pressure: 1,
+          sequence: 0,
+        ),
+      ], from: 0);
+      overlay.updateRegion(
+        source: rasterizer,
+        region: DirtyRegion.fromXYWH(x: 0, y: 0, width: 8, height: 8),
+      );
+      await overlay.waitForPendingDecodes();
+      final painter = BitmapSurfacePainter(
+        surface: surface,
+        showTransparentBackground: false,
+        overlayModel: overlay,
+        tileImageCache: cache,
+      );
+      // ⛔The fixture has to actually BE the refused case, or this passes
+      // for the wrong reason.
+      expect(overlay.hasStrokeContent, isTrue, reason: 'fixture');
+      expect(painter.drawsDisjointCoverage, isFalse);
+    });
+    test('no overlay at all is disjoint', () {
+      expect(painterOver(inkedSurface()).drawsDisjointCoverage, isTrue);
     });
   });
 
@@ -326,6 +407,60 @@ void main() {
       recorder.endRecording().dispose();
     }
 
+
+    testWidgets('the opacity actually reaches the pixels', (tester) async {
+      // 🚨THE GAP A DECISION SEAM LEAVES. Reading "it rode the draws" says
+      // nothing about whether anything was handed to them — a route that
+      // reported "rode" and passed no paint would drop the layer's opacity
+      // entirely, and every equivalence above still passes because they
+      // call the painter directly.
+      Future<Uint8List> pixelsAt(double opacity) async {
+        await paintActive(tester, effects: const [], opacity: opacity);
+        final painted = tester
+            .widgetList<CustomPaint>(
+              find.descendant(
+                of: find.byType(CanvasLayerStackView),
+                matching: find.byType(CustomPaint),
+              ),
+            )
+            .where((paint) => paint.painter != null)
+            .toList();
+        const size = Size(200, 150);
+        final recorder = ui.PictureRecorder();
+        painted.first.painter!.paint(
+          Canvas(recorder, Offset.zero & size),
+          size,
+        );
+        final picture = recorder.endRecording();
+        final image = picture.toImageSync(200, 150);
+        picture.dispose();
+        // ⚠️`runAsync`: a widget test's fake clock never completes a real
+        // async read, and the first draft of this hung for ten minutes.
+        final bytes = await tester.runAsync(
+          () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
+        );
+        image.dispose();
+        return bytes!.buffer.asUint8List();
+      }
+
+      final half = await pixelsAt(0.5);
+      final full = await pixelsAt(1);
+      var differing = 0;
+      for (var i = 0; i < half.length; i += 4) {
+        if (half[i] != full[i] ||
+            half[i + 1] != full[i + 1] ||
+            half[i + 2] != full[i + 2] ||
+            half[i + 3] != full[i + 3]) {
+          differing += 1;
+        }
+      }
+      expect(
+        differing,
+        greaterThan(0),
+        reason: 'a layer at half opacity must not look like one at full — '
+            'if it does, the paint reached nothing',
+      );
+    });
     testWidgets('opacity alone rides the draws', (tester) async {
       await paintActive(tester, effects: const []);
       expect(
