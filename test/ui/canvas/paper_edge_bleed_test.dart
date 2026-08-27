@@ -208,13 +208,16 @@ void main() {
 
     final bytes = await paintOverBackdrop(tester, rig.painter, screen);
 
-    // Engagement first: 2400/0.28 = 8571 canvas px crosses the 8192 cap,
-    // so this paint MUST have taken the scaled path — without this pin
-    // the zero below could be the s=1 buffer passing by accident.
+    // 🚨THE CROSSOVER MOVED, and that is the point of the change this pins.
+    // 2400/0.28 = 8571 canvas px of VIEW does cross the 8192 cap — but the
+    // buffer is bounded by CONTENT ∩ view now, and the page is 4096 wide, so
+    // this paint stays at canvas resolution instead of dropping to the
+    // screen-resolution fallback. #15 is checked on that path below.
     expect(
       rig.cache.lastBufferScale,
-      moreOrLessEquals(0.28),
-      reason: 'the below-knee scaled buffer really composed this frame',
+      isNull,
+      reason: 'content bounds keep this view at canvas resolution — the '
+          'scaled fallback is no longer reached here',
     );
     expect(
       inkPixels(bytes),

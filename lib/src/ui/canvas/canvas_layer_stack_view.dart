@@ -22,6 +22,8 @@ import '../dev_profile.dart';
 import '../playback/layer_frame_image_cache.dart';
 import 'active_layer_flat_projection.dart';
 import 'bitmap_surface_painter.dart';
+import 'layer_pose_paint.dart';
+import 'tiled_surface_compose.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'composite_effect_paint.dart';
 import 'deferred_image_disposal.dart';
@@ -1204,6 +1206,65 @@ final class _PaintAdjustment extends _PaintNode {
   final double mix;
 }
 
+/// The CANVAS-SPACE rect [node] actually covers, its own pose applied.
+///
+/// 🚨THIS IS WHAT KEEPS THE COMPOSITE AT CANVAS RESOLUTION AT EVERY ZOOM.
+///
+/// The buffers used to be bounded by `pasteboard ∩ visibleRect`. Zoom out
+/// far enough and that rect spans the whole pasteboard — 5×5 canvases,
+/// 11700×8270 on a 2340×1654 page — which blows past [_maxBufferSide] and
+/// drops the paint onto the SCREEN-resolution fallback. That fallback is
+/// how the editing canvas stopped compositing the way playback, the camera
+/// and the export do (유저 2026-08-15 accepted it at the time: 「무릎 아래는
+/// 균일 필터, 겹침 색차 수용」 — accepted because bounding by the view was
+/// the only tool on the table).
+///
+/// ★Content is not the pasteboard. It is [surfaceContentWorldRect]'s answer
+/// — the canvas rect unioned with the tiles that actually exist — so an
+/// ordinary page bounds to 2340×1654 and never reaches the cap. The
+/// fallback stops being reachable, and one resolution serves every zoom.
+///
+/// ⛔RECOMPUTED, NEVER ACCUMULATED. A rect that only ever grew would be the
+/// high-water mark of everything you had done — the "sticky / containment
+/// 매칭 버퍼 rect" the composite plan rejects by name.
+Rect _paintNodeExtent(
+  _PaintNode node, {
+  required CanvasSize canvasSize,
+  required Rect Function() activeSurfaceExtent,
+}) {
+  Rect posed(Rect rect, TransformPose? pose, CanvasPoint? anchorPoint) {
+    if (pose == null) {
+      return rect;
+    }
+    return MatrixUtils.transformRect(
+      layerPoseMatrix(pose, canvasSize, anchorPoint: anchorPoint),
+      rect,
+    );
+  }
+
+  switch (node) {
+    case _PaintImage(:final worldRect, :final pose, :final anchorPoint):
+      return posed(worldRect, pose, anchorPoint);
+    case _PaintActiveSurface(:final pose, :final anchorPoint):
+      return posed(activeSurfaceExtent(), pose, anchorPoint);
+    case _PaintGroup(:final children):
+    case _PaintAdjustment(:final children):
+      var union = Rect.zero;
+      for (final child in children) {
+        final childRect = _paintNodeExtent(
+          child,
+          canvasSize: canvasSize,
+          activeSurfaceExtent: activeSurfaceExtent,
+        );
+        if (childRect.isEmpty) {
+          continue;
+        }
+        union = union.isEmpty ? childRect : union.expandToInclude(childRect);
+      }
+      return union;
+  }
+}
+
 /// One composited canvas-resolution raster and where it belongs.
 ///
 /// [rect] is in canvas space and is whole-pixel aligned, so the src/dst pair
@@ -1373,6 +1434,7 @@ class _LayerStackPainter extends CustomPainter {
   /// only in a view where everything is tiny anyway.
   static const int _maxBufferSide = 8192;
 
+
   /// S7 — the fewest engine ops the backdrop raster must be collapsing
   /// before holding a visible-rect image is worth it. See
   /// `paintBackdropSplit` for the arithmetic; the short version is that
@@ -1469,17 +1531,86 @@ class _LayerStackPainter extends CustomPainter {
     // stack into a clip that discards every op). The intersection is
     // empty in both, nothing intersects the screen, and drawing nothing
     // is pixel-identical on it.
-    final groupBounds = pasteboardRect.intersect(visibleRect);
-    if (groupBounds.isEmpty) {
+    final visibleCanvasRect = pasteboardRect.intersect(visibleRect);
+    if (visibleCanvasRect.isEmpty) {
       canvas.restore();
       return;
     }
+
+    // The live surface's own extent, read ONCE per paint: `surface.tiles`
+    // rebuilds its map on every call and the node walk asks per group.
+    Rect? memoActiveExtent;
+    Rect activeSurfaceExtent() =>
+        memoActiveExtent ??= switch (activeSurfacePainter) {
+          null => Rect.zero,
+          final painter => surfaceContentWorldRect(painter.surface),
+        };
+
+    // What a group's `saveLayer` is sized by, and — unioned below — what the
+    // one display buffer covers. CONTENT, clamped to the storable universe;
+    // the pasteboard clamp is the backstop a pose needs, since a transform
+    // can push a layer anywhere and an unbounded rect is an unbounded
+    // offscreen.
+    Rect bufferBoundsFor(_PaintNode node) => visibleCanvasRect.intersect(
+      _paintNodeExtent(
+        node,
+        canvasSize: canvasSize,
+        activeSurfaceExtent: activeSurfaceExtent,
+      ),
+    );
+
+    // 🚨SEEDED WITH THE PAGE, not with the nodes alone.
+    //
+    // The composite always covers the document: the paper is drawn over the
+    // canvas rect whether or not any row has ink there, and a row's own
+    // extent is measured against the SURFACE's canvas — which is not
+    // necessarily this view's. Starting from the nodes alone shrank the
+    // buffer below the page, and the paper went with it.
+    var contentExtent = Rect.fromLTWH(
+      0,
+      0,
+      canvasSize.width.toDouble(),
+      canvasSize.height.toDouble(),
+    );
+    for (final node in nodes) {
+      final rect = bufferBoundsFor(node);
+      if (rect.isEmpty) {
+        continue;
+      }
+      contentExtent = contentExtent.isEmpty
+          ? rect
+          : contentExtent.expandToInclude(rect);
+    }
+    // 🚨CONTENT **AND** VIEW, and each guards a different cliff.
+    //
+    // Bounded by the VIEW alone (the old `pasteboard ∩ visibleRect`), zooming
+    // out until the pasteboard fits hands the buffer 9× the page — past the
+    // cap, and the paint drops to the SCREEN-resolution fallback, which is
+    // the one place the editing canvas stops matching playback, the camera
+    // and the export.
+    //
+    // Bounded by CONTENT alone, a page wider than the cap (a 12000px sheet)
+    // exceeds it at EVERY zoom, including the close-ups that sit comfortably
+    // inside it today — the same cliff approached from the other side.
+    //
+    // The intersection is under the cap whenever either one is, which is what
+    // keeps a single resolution reachable at every zoom and every page size.
+    contentExtent = contentExtent.isEmpty
+        ? visibleCanvasRect
+        : contentExtent.intersect(visibleCanvasRect);
+    if (contentExtent.isEmpty) {
+      canvas.restore();
+      return;
+    }
+    // A3: the recordings depend on this rect and the build-time key cannot
+    // carry it. Declared before any slot is consulted, so a changed extent
+    // re-records instead of replaying closures that captured the old one.
+    bake?.ensureExtent(contentExtent);
     // A3: the recordings depend on this rect and the build-time key cannot
     // carry it (it is a layout fact). Declared HERE, before any slot is
     // consulted, so a resized panel re-records instead of replaying
     // closures that captured the old bounds — or worse, blitting the old
     // raster with a src rect computed from the new dimensions.
-    bake?.ensureExtent(groupBounds);
 
     // The geometry field probe — the numbers every buffer decision depends
     // on and nobody has ever measured on a device: the logical view, the
@@ -1494,10 +1625,10 @@ class _LayerStackPainter extends CustomPainter {
     // counters stay OUT of the key (they change on every stroke step).
     if (InputInspector.visible.value) {
       final bufWidth =
-          (groupBounds.right.ceilToDouble() - groupBounds.left.floorToDouble())
+          (visibleCanvasRect.right.ceilToDouble() - visibleCanvasRect.left.floorToDouble())
               .round();
       final bufHeight =
-          (groupBounds.bottom.ceilToDouble() - groupBounds.top.floorToDouble())
+          (visibleCanvasRect.bottom.ceilToDouble() - visibleCanvasRect.top.floorToDouble())
               .round();
       final capped = bufWidth > _maxBufferSide || bufHeight > _maxBufferSide;
       final zoomBucket = ((viewport.zoom.abs() * 100) / 10).round() * 10;
@@ -1580,11 +1711,26 @@ class _LayerStackPainter extends CustomPainter {
                   ..color = Color.fromRGBO(0, 0, 0, opacity.clamp(0.0, 1.0))
                   ..blendMode = blendMode.paintBlendMode;
                 groupEffects.applyTo(groupPaint);
+                // 🚨A GROUP'S BUFFER CANNOT EXCEED THE ONE THAT HOLDS IT.
+                // Bounded by the view, a folder asked Skia for the whole
+                // pasteboard (9× the page) at far zoom-out — an offscreen
+                // that the enclosing canvas-resolution buffer then clipped
+                // away. Content bounds keep it inside by construction, and
+                // this says so where it can fail.
+                final groupRect = effectBufferBounds(
+                  bufferBoundsFor(node),
+                  groupEffects,
+                );
+                assert(
+                  contentExtent.expandToInclude(groupRect) == contentExtent,
+                  'a group buffer must sit inside the composite it is part '
+                  'of: $groupRect is not within $contentExtent',
+                );
                 canvas.saveLayer(
                   // The size hint grows by the blur's spread, so artwork just
                   // OUTSIDE the visible rect still bleeds in — without this the
                   // blur at the screen edge would change as you scroll.
-                  effectBufferBounds(groupBounds, groupEffects),
+                  groupRect,
                   groupPaint,
                 );
                 paintChildren(canvas, children);
@@ -1598,7 +1744,7 @@ class _LayerStackPainter extends CustomPainter {
                 // which is what lets a stroke drawn UNDER an adjustment read
                 // through the grade while you draw it.
                 final pass = resolveAdjustmentScopePass(
-                  bounds: groupBounds,
+                  bounds: bufferBoundsFor(node),
                   effects: effects,
                   mix: mix,
                 );
@@ -1973,7 +2119,7 @@ class _LayerStackPainter extends CustomPainter {
     // 25× what is on screen. It is not the canvas rect either: artwork
     // parked on the pasteboard is visible and must composite with the rest
     // (유저 2026-08-15, 「페이스트보드도 룰러할때 보이게」).
-    final buffer = _composeDisplayBuffer(groupBounds, paintContent);
+    final buffer = _composeDisplayBuffer(contentExtent, paintContent);
     if (buffer == null) {
       paintContent(canvas);
     } else {
@@ -2037,6 +2183,13 @@ class _LayerStackPainter extends CustomPainter {
       return null;
     }
     if (width > _maxBufferSide || height > _maxBufferSide) {
+      // 🚨THE ONE PLACE THE EDITING CANVAS STOPS COMPOSITING AT CANVAS
+      // RESOLUTION. Counted so a test can say whether a view still reaches
+      // it: bounding the buffer by CONTENT instead of by the view is what
+      // keeps an ordinary page (2340×1654) under the cap no matter how far
+      // you zoom out, and the count is how that claim is checked rather
+      // than argued.
+      debugCappedFallbacks += 1;
       // ⓔ 5단계 — the region past the old cap is the KNEE'S UNDERSIDE. The
       // direct-walk fallback here was T21 territory: each layer resampled
       // separately, the active one at nearest beside its neighbours at
@@ -2633,3 +2786,13 @@ class _LayerStackPainter extends CustomPainter {
     return hash;
   }
 }
+
+/// How many paints have fallen to the SCREEN-resolution buffer because a
+/// canvas-resolution one would have exceeded the editing stack's buffer cap.
+///
+/// ★A COUNTER AND NOT A COMMENT. "Content bounds keep an ordinary page under
+/// the cap at every zoom" is a claim about a number, and this is the number —
+/// the one place the editing canvas stops compositing the way playback, the
+/// camera and the export do.
+@visibleForTesting
+int debugCappedFallbacks = 0;
