@@ -30,6 +30,7 @@ import 'deferred_image_disposal.dart';
 import 'display_buffer_cache.dart';
 import 'display_resample.dart';
 import 'selection_float_overlay.dart';
+import 'subtree_image_composite.dart';
 import 'static_composite_bake.dart';
 import 'layer_image_draw.dart';
 import 'paper_background.dart';
@@ -1671,7 +1672,15 @@ class _LayerStackPainter extends CustomPainter {
     void paintNodesWith(
       Canvas canvas,
       List<_PaintNode> list,
-      void Function(Canvas canvas, List<_PaintNode> children) paintChildren,
+      // The scale the CTM this walk draws under is at. A group that
+      // rasterises ITSELF needs it, and a `Canvas` will not tell anyone.
+      double rasterScale,
+      void Function(
+        Canvas canvas,
+        List<_PaintNode> children,
+        double rasterScale,
+      )
+      paintChildren,
     ) {
       for (final node in list) {
         // Poses apply at composite time — the stack shows the same picture
@@ -1726,15 +1735,22 @@ class _LayerStackPainter extends CustomPainter {
                   'a group buffer must sit inside the composite it is part '
                   'of: $groupRect is not within $contentExtent',
                 );
-                canvas.saveLayer(
+                // 🚨★★★ONE PICTURE PER NODE — a group IS an image, not a
+                // `saveLayer`. [drawSubtreeAsImage] holds the arithmetic and
+                // the reason, and the test that certifies it against the
+                // saveLayer it replaced calls THAT function, not a copy.
+                drawSubtreeAsImage(
+                  canvas: canvas,
                   // The size hint grows by the blur's spread, so artwork just
                   // OUTSIDE the visible rect still bleeds in — without this the
                   // blur at the screen edge would change as you scroll.
-                  groupRect,
-                  groupPaint,
+                  bounds: groupRect,
+                  paint: groupPaint,
+                  rasterScale: rasterScale,
+                  maxPixelSide: _maxBufferSide,
+                  paintSubtree: (into, scale) =>
+                      paintChildren(into, children, scale),
                 );
-                paintChildren(canvas, children);
-                canvas.restore();
               case _PaintAdjustment(
                 :final children,
                 :final effects,
@@ -1754,11 +1770,11 @@ class _LayerStackPainter extends CustomPainter {
                     pass.crossfadeLayerPaint!,
                   );
                   canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
-                  paintChildren(canvas, children);
+                  paintChildren(canvas, children, rasterScale);
                   canvas.restore();
                 }
                 canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
-                paintChildren(canvas, children);
+                paintChildren(canvas, children, rasterScale);
                 canvas.restore();
                 if (pass.crossfades) {
                   canvas.restore();
@@ -1940,8 +1956,11 @@ class _LayerStackPainter extends CustomPainter {
       }
     }
 
-    void paintNodes(Canvas canvas, List<_PaintNode> list) =>
-        paintNodesWith(canvas, list, paintNodes);
+    void paintNodes(
+      Canvas canvas,
+      List<_PaintNode> list,
+      double rasterScale,
+    ) => paintNodesWith(canvas, list, rasterScale, paintNodes);
 
     /// 🚨★★★ (v) 1단계 — paint the chain that ENCLOSES the active layer live,
     /// and replay a recording for everything else.
@@ -1964,27 +1983,32 @@ class _LayerStackPainter extends CustomPainter {
     ///
     /// ⚠️Depth identifies a level uniquely BECAUSE the chain is unique;
     /// that is what makes a bare depth a sound slot id.
-    void paintSplit(Canvas canvas, List<_PaintNode> list, int depth) {
+    void paintSplit(
+      Canvas canvas,
+      List<_PaintNode> list,
+      int depth,
+      double rasterScale,
+    ) {
       final at = list.indexWhere(_enclosesActiveSurface);
       if (at < 0) {
-        bake!.draw(canvas, 'd$depth:all', (into) => paintNodes(into, list));
+        bake!.draw(canvas, 'd$depth:all', (into) => paintNodes(into, list, rasterScale));
         return;
       }
       if (at > 0) {
         bake!.draw(
           canvas,
           'd$depth:before',
-          (into) => paintNodes(into, list.sublist(0, at)),
+          (into) => paintNodes(into, list.sublist(0, at), rasterScale),
         );
       }
-      paintNodesWith(canvas, [list[at]], (into, children) {
-        paintSplit(into, children, depth + 1);
+      paintNodesWith(canvas, [list[at]], rasterScale, (into, children, scale) {
+        paintSplit(into, children, depth + 1, scale);
       });
       if (at < list.length - 1) {
         bake!.draw(
           canvas,
           'd$depth:after',
-          (into) => paintNodes(into, list.sublist(at + 1)),
+          (into) => paintNodes(into, list.sublist(at + 1), rasterScale),
         );
       }
     }
@@ -2037,7 +2061,7 @@ class _LayerStackPainter extends CustomPainter {
     /// drawn `srcOver` cannot. Below the live surface the destination is
     /// empty, so flattening and replaying are the same picture — which is
     /// exactly what the parity suite pins.
-    void paintBackdropSplit(Canvas into, Rect rect) {
+    void paintBackdropSplit(Canvas into, Rect rect, double rasterScale) {
       final at = nodes.indexWhere(_enclosesActiveSurface);
       final below = at < 0 ? nodes : nodes.sublist(0, at);
       final rasterPays =
@@ -2058,22 +2082,22 @@ class _LayerStackPainter extends CustomPainter {
       if (at < 0) {
         drawBackdrop('d0:backdrop-all', (c) {
           paintPaperInto(c);
-          paintNodes(c, nodes);
+          paintNodes(c, nodes, rasterScale);
         });
         return;
       }
       drawBackdrop('d0:backdrop', (c) {
         paintPaperInto(c);
-        paintNodes(c, nodes.sublist(0, at));
+        paintNodes(c, nodes.sublist(0, at), rasterScale);
       });
-      paintNodesWith(into, [nodes[at]], (c, children) {
-        paintSplit(c, children, 1);
+      paintNodesWith(into, [nodes[at]], rasterScale, (c, children, scale) {
+        paintSplit(c, children, 1, scale);
       });
       if (at < nodes.length - 1) {
         bake!.draw(
           into,
           'd0:after',
-          (c) => paintNodes(c, nodes.sublist(at + 1)),
+          (c) => paintNodes(c, nodes.sublist(at + 1), rasterScale),
         );
       }
     }
@@ -2084,21 +2108,25 @@ class _LayerStackPainter extends CustomPainter {
     /// resampled by the CTM as one image while the rest of the stack was
     /// resampled layer by layer — a third sampling behaviour, in the
     /// fallback path, for no gain.
-    void paintContent(Canvas into, {Rect? rasterRect}) {
+    void paintContent(
+      Canvas into, {
+      Rect? rasterRect,
+      required double rasterScale,
+    }) {
       // ⛔No bake handed down (a host that does not own one, or a tree with
       // no live surface at all) keeps the original walk. The bake is an
       // optimisation, never a second way to be correct.
       if (bake == null || activeSurfacePainter == null) {
         paintPaperInto(into);
-        paintNodes(into, nodes);
+        paintNodes(into, nodes, rasterScale);
         return;
       }
       if (rasterRect != null) {
-        paintBackdropSplit(into, rasterRect);
+        paintBackdropSplit(into, rasterRect, rasterScale);
         return;
       }
       paintPaperInto(into);
-      paintSplit(into, nodes, 0);
+      paintSplit(into, nodes, 0, rasterScale);
     }
 
     // 🚨★★★ (v) 2단계 — ONE BUFFER AT CANVAS RESOLUTION, RESAMPLED ONCE.
@@ -2121,7 +2149,12 @@ class _LayerStackPainter extends CustomPainter {
     // (유저 2026-08-15, 「페이스트보드도 룰러할때 보이게」).
     final buffer = _composeDisplayBuffer(contentExtent, paintContent);
     if (buffer == null) {
-      paintContent(canvas);
+      paintContent(
+        canvas,
+        // The direct walk draws under the viewport transform, so a group
+        // that rasterises itself has to match the CTM it is drawn into.
+        rasterScale: viewport.zoom.abs() * devicePixelRatio,
+      );
     } else {
       try {
         canvas.drawImageRect(
@@ -2163,7 +2196,12 @@ class _LayerStackPainter extends CustomPainter {
   /// where it is measured at 26-38us for a 256px tile.
   _DisplayBuffer? _composeDisplayBuffer(
     Rect bounds,
-    void Function(Canvas into, {Rect? rasterRect}) paintContent,
+    void Function(
+      Canvas into, {
+      Rect? rasterRect,
+      required double rasterScale,
+    })
+    paintContent,
   ) {
     if (debugDisableSingleBuffer || bounds.isEmpty) {
       return null;
@@ -2278,10 +2316,12 @@ class _LayerStackPainter extends CustomPainter {
       // and ink that is not fully opaque would blend with its own previous
       // frame — a stroke would darken as it was redrawn.
       into.drawRect(dirty, Paint()..blendMode = BlendMode.clear);
-      paintContent(into, rasterRect: rect);
+      // The canvas-resolution buffer records with a translate only.
+      paintContent(into, rasterRect: rect, rasterScale: 1);
       into.restore();
     } else {
-      paintContent(into, rasterRect: rect);
+      // The canvas-resolution buffer records with a translate only.
+      paintContent(into, rasterRect: rect, rasterScale: 1);
     }
     final picture = recorder.endRecording();
     final ui.Image image;
@@ -2343,7 +2383,12 @@ class _LayerStackPainter extends CustomPainter {
   /// channel wiring.
   _DisplayBuffer? _composeScaledBuffer(
     Rect rect,
-    void Function(Canvas into, {Rect? rasterRect}) paintContent,
+    void Function(
+      Canvas into, {
+      Rect? rasterRect,
+      required double rasterScale,
+    })
+    paintContent,
   ) {
     if (viewport.rotationDegrees != 0 ||
         viewport.flipHorizontal ||
@@ -2411,7 +2456,7 @@ class _LayerStackPainter extends CustomPainter {
       // The PICTURE route through the very same walk the s=1 buffer
       // records — one body, so folders, adjustments, effects and the
       // float cannot drift between the two resolutions.
-      paintContent(into, rasterRect: null);
+      paintContent(into, rasterRect: null, rasterScale: s);
     } finally {
       _activeFlatForRecording = null;
       _paperInsetForRecording = null;
