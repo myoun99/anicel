@@ -242,6 +242,7 @@ void main(List<String> args) {
   // A LIVE question: a decision still asking, with no answer submitted.
   final unanswerable = <String>[];
   final thin = <String>[];
+  final misdirected = <String>[];
   for (final id in order) {
     final card = merged[id]!;
     if (card['kind'] != 'decision') continue;
@@ -264,6 +265,25 @@ void main(List<String> args) {
     if (where.isEmpty || why.isEmpty || !labelled) {
       thin.add(id);
     }
+    // 🚨A `recommend` THAT NAMES NO OPTION IS TEXT NOBODY EVER SEES.
+    //
+    // The panel only compares it against an option key, so prose written
+    // there renders as **nothing at all**. I put a whole paragraph of
+    // reasoning into `recommend` on I-4-tone (2026-08-28) and the user never
+    // saw a word of it — the same shape as the `note` failure this file was
+    // written for. ⛔The server now shows misplaced text with a warning, but
+    // the card should not get written that way in the first place.
+    final recommend = '${card['recommend'] ?? ''}'.trim();
+    if (recommend.isNotEmpty) {
+      var index = 0;
+      final keys = options.map((o) {
+        index++;
+        return '${(o is Map ? o['key'] : null) ?? index}';
+      }).toSet();
+      if (!keys.contains(recommend)) {
+        misdirected.add(id);
+      }
+    }
   }
 
   if (unanswerable.isNotEmpty) {
@@ -279,6 +299,15 @@ void main(List<String> args) {
       'where(화면에서 뭔지) + why(왜 막혔나) + 각 option 의 label 이 필요합니다. '
       '⛔note 는 이 패널에 렌더링되지 않습니다 — 거기 적은 설명은 유저에게 '
       '보이지 않습니다.',
+    );
+  }
+
+  if (misdirected.isNotEmpty) {
+    complaints.add(
+      '추천이 안 보이는 결정 카드: ${misdirected.join(', ')}\n'
+      '`recommend` 는 **선택지의 키**(보통 1·2·3)를 적는 칸이고, 그 선택지에 '
+      '「추천」 칩을 붙이는 데에만 쓰입니다. 문장을 적으면 화면에 아무것도 '
+      '안 나옵니다 — 추천하는 이유는 why 나 그 선택지의 what/cost 에 쓰세요.',
     );
   }
 
