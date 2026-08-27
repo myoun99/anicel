@@ -5,6 +5,7 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
@@ -157,13 +158,13 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.tap(
-        find.byKey(const ValueKey<String>('layer-mark-option-red')),
+        find.byKey(const ValueKey<String>('layer-mark-option-layout')),
       );
       await tester.pumpAndSettle();
 
       expect(
         session.layers.firstWhere((l) => l.id == other).mark,
-        LayerMark.red,
+        const LayerMark(process: LayerProcess.layout),
         reason: 'the mark pick did not land on its own row',
       );
       expect(

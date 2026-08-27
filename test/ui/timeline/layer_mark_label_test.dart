@@ -6,6 +6,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show LayerSectionBandCell, layerMarkColor, layerMarkSlotWidth;
@@ -34,8 +35,8 @@ Layer _layer(String id, LayerKind kind, {LayerMark mark = LayerMark.none}) {
 
 Widget _panel() {
   final layers = [
-    _layer('a', LayerKind.animation, mark: LayerMark.yellow),
-    _layer('b', LayerKind.animation, mark: LayerMark.purple),
+    _layer('a', LayerKind.animation, mark: const LayerMark(process: LayerProcess.inbetween)),
+    _layer('b', LayerKind.animation, mark: const LayerMark(process: LayerProcess.finish)),
     _layer('plain', LayerKind.animation),
     _layer('cam', LayerKind.camera),
   ];
@@ -126,11 +127,11 @@ void main() {
     // text tests, not re-proven here.)
     expect(
       styleUnder('timeline-layer-mark-a')?.color,
-      timelineTextOnColor(layerMarkColor(LayerMark.yellow)),
+      timelineTextOnColor(layerMarkColor(const LayerMark(process: LayerProcess.inbetween))),
     );
     expect(
       styleUnder('timeline-layer-mark-b')?.color,
-      timelineTextOnColor(layerMarkColor(LayerMark.purple)),
+      timelineTextOnColor(layerMarkColor(const LayerMark(process: LayerProcess.finish))),
     );
   });
 

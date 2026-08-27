@@ -16,6 +16,7 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -55,7 +56,7 @@ void main() {
             0: TimelineExposure.drawing(const FrameId('f1'), length: 2),
           },
           blendMode: LayerBlendMode.multiply,
-          mark: LayerMark.red,
+          mark: const LayerMark(process: LayerProcess.layout),
           onTimesheet: false,
           isFillReference: true,
           transformTrack: TransformTrack.empty().copyWith(
@@ -72,7 +73,7 @@ void main() {
         );
         final payload = copyLayerToPayload(source);
         expect(payload.blendMode, LayerBlendMode.multiply);
-        expect(payload.mark, LayerMark.red);
+        expect(payload.mark, const LayerMark(process: LayerProcess.layout));
         expect(payload.onTimesheet, isFalse);
         expect(payload.isFillReference, isTrue);
         expect(payload.transformTrack.rotation.keyAt(0)!.value, 30);

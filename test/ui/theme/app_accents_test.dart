@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/app_accent_settings_store.dart';
 import 'package:anicel/src/ui/theme/app_accents.dart';
+import 'package:anicel/src/ui/theme/layer_mark_palette.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
 /// UI-R22 #5: the program accent is customizable and persists.
@@ -22,9 +23,27 @@ void main() {
   });
 
   test('json round-trips', () {
-    const settings = AppAccentSettings(accent: Color(0xFF123456));
-    expect(settings.toJson(), {'accent': 0xFF123456});
+    const settings = AppAccentSettings(
+      accent: Color(0xFF123456),
+      layerMarkPalette: LayerMarkPalette.cream,
+    );
+    expect(settings.toJson(), {
+      'accent': 0xFF123456,
+      'layerMarkPalette': 'cream',
+    });
     expect(AppAccentSettings.fromJson(settings.toJson()), settings);
+  });
+
+  test('a file written before the 색 라벨 tone existed keeps the DEFAULT '
+      'tone rather than losing the accent with it', () {
+    // 유저 2026-08-27: 「기본값은 원본그대로로 두고」. A settings file from
+    // before I-4 has no `layerMarkPalette` key, and reading that as a
+    // failure would throw the accent away too.
+    final restored = AppAccentSettings.fromJson(const <String, dynamic>{
+      'accent': 0xFF123456,
+    });
+    expect(restored.accent, const Color(0xFF123456));
+    expect(restored.layerMarkPalette, LayerMarkPalette.original);
   });
 
   test('a stored accent2 from an older build is ignored, not fatal', () {

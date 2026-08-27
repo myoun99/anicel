@@ -7,7 +7,9 @@ import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
+import '../../models/layer_process.dart';
 import '../theme/app_theme.dart';
+import '../theme/layer_mark_palette.dart';
 import '../widgets/panel_flyout.dart';
 import '../text/app_strings.dart';
 // The fit math the band shares with the renderer (㉑): the cells a label
@@ -715,24 +717,24 @@ String layerKindDisplayName(LayerKind kind) {
 /// layer's mark is the colour of its paper. Nothing is lost by dropping the
 /// null — 「is there a mark」 is `mark == LayerMark.none`, which is what the
 /// question was always really asking.
-Color layerMarkColor(LayerMark mark) {
-  return switch (mark) {
-    LayerMark.none => timelineDrawingHeldColor,
-    LayerMark.red => const Color(0xFFE05A4E),
-    LayerMark.orange => const Color(0xFFE08D3C),
-    LayerMark.yellow => const Color(0xFFE3C64B),
-    LayerMark.green => const Color(0xFF7CB65B),
-    LayerMark.teal => const Color(0xFF3FBFC9),
-    LayerMark.blue => const Color(0xFF5B8DD9),
-    LayerMark.purple => const Color(0xFF9B6BD3),
-    LayerMark.pink => const Color(0xFFD972A8),
-  };
-}
+/// 🚨THE EIGHT LITERAL COLOURS ARE GONE, and that is the point of the round:
+/// a mark now names a 공정/수정 and the colour is looked up from the chosen
+/// palette ([LayerMarkPalette]). Switching palettes repaints every block in
+/// the project without touching a layer.
+///
+/// ⚠️`none` still resolves to [timelineDrawingHeldColor] for the reason
+/// written just above — 「none IS the paper」 — so an unlabelled row is
+/// painted by exactly the number it was painted by before.
+Color layerMarkColor(LayerMark mark) => resolveLayerMarkColor(
+  mark,
+  AppColors.accentSettings.value.layerMarkPalette,
+  noneColor: timelineDrawingHeldColor,
+);
 
-String layerMarkDisplayName(LayerMark mark) {
-  final name = mark.jsonValue;
-  return name[0].toUpperCase() + name.substring(1);
-}
+/// The unabbreviated reading — 「축약어 쓰지 않을때는 축약하지마」. The chip
+/// writes [LayerMark.processText]/[LayerMark.reviseText] instead.
+String layerMarkDisplayName(LayerMark mark) =>
+    mark.isNone ? AppText.strings.tlLayerMarkNone : mark.displayName;
 
 class LayerTimesheetToggleButton extends StatelessWidget {
   const LayerTimesheetToggleButton({
@@ -889,14 +891,36 @@ class LayerMarkChip extends StatelessWidget {
       // `layerMarkSlotWidth` rail column, so padding here would not grow a
       // hit area — it would push every slot after it out of the rail.
       padding: EdgeInsets.zero,
+      // 🚨TWO AXES, ONE LIST. 유저 설계(I-4): 공정을 고르고, 그 공정이
+      // 참조하는 수정을 그 아래에서 고른다. 첫 줄은 「수정 없음」이 아니라
+      // **소재**(上がり) — 그 공정의 작업본이다.
+      //
+      // ⛔The revise list is not copied per process: [revisesFor] answers
+      // from the ONE [LayerRevise] set, so renaming a revise renames it
+      // everywhere and 원화 can drop 동화검사 without the others noticing.
       entriesBuilder: () => [
-        for (final option in LayerMark.values)
-          PanelFlyoutItem(
-            keyValue: 'layer-mark-option-${option.jsonValue}',
-            label: layerMarkDisplayName(option),
-            swatch: layerMarkColor(option),
-            onSelected: () => onMarkSelected(layerId, option),
-          ),
+        PanelFlyoutItem(
+          keyValue: 'layer-mark-option-none',
+          label: AppText.strings.tlLayerMarkNone,
+          swatch: layerMarkColor(LayerMark.none),
+          onSelected: () => onMarkSelected(layerId, LayerMark.none),
+        ),
+        for (final process in LayerProcess.values)
+          for (final option in [
+            // 소재 first — 그 공정의 작업본이고, 그 아래가 그 공정이
+            // 참조하는 수정들이다.
+            LayerMark(process: process),
+            for (final revise in revisesFor(process))
+              LayerMark(process: process, revise: revise),
+          ])
+            PanelFlyoutItem(
+              keyValue: 'layer-mark-option-${option.keySlug}',
+              label: option.revise == null
+                  ? '${process.displayName} · ${AppText.strings.tlLayerMarkSource}'
+                  : '${process.displayName} · ${option.revise!.displayName}',
+              swatch: layerMarkColor(option),
+              onSelected: () => onMarkSelected(layerId, option),
+            ),
       ],
       child: Semantics(
         label: AppText.strings.tlLayerMark,
@@ -937,32 +961,51 @@ class _MarkSwatch extends StatelessWidget {
   /// vertical header (the slot is 14px TALL there — no column to stack
   /// glyphs in) and `none` (the paper colour has no name to announce; the
   /// plate itself keeps the tap target discoverable).
+  /// 🚨★★★TWO COLUMNS, THE STAGE ON THE RIGHT. 유저 2026-08-27: 「세로로 LO가
+  /// **오른쪽**에 있고 왼쪽에 세로로 작감 이렇게 있는게 맞을거같은데. **LO가
+  /// 오른쪽인건 일본 세로쓰기가 오른쪽에서 왼쪽으로 읽으니까**」.
+  ///
+  /// ⛔Not stacked as two rows (LO above, 작감 below): 「띠가 지금 가로로
+  /// 얇은거를 살리고싶어서」 — the band is [timelineLayerRowHeight] and stays
+  /// that height. Two columns keep the plate as short as one.
+  ///
+  /// The ink is the frame blocks' own — 유저: 「프레임이름/코마숫자/색라벨은
+  /// 다 같은 색상의 바탕 위에 올라가는 텍스트니까 **셋 다 같은 로직**」.
   Widget? _label(Color fill) {
-    if (axis == Axis.vertical || mark == LayerMark.none) {
+    if (axis == Axis.vertical || mark.isNone) {
       return null;
     }
+    final revise = mark.reviseText;
     return Center(
       child: ClipRect(
-        child: VerticalWritingText(
-          text: layerMarkDisplayName(mark),
-          latinForm: VerticalLatinForm.upright,
-          lineHeight: SectionBandZone.lineHeight,
-          // 「길면 글자 축소 허용」 — the user's explicit word for this
-          // widget: a long name packs and shrinks rather than ellipsising
-          // (the palette is planned to become process names — LO, 作監 —
-          // so the long English enum names are the interim case).
-          overflow: VerticalTextOverflow.pack,
-          minFontSize: 4,
-          style: TextStyle(
-            fontSize: _fontSize,
-            fontWeight: FontWeight.bold,
-            height: SectionBandZone.lineHeight,
-            color: timelineTextOnColor(fill),
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            if (revise.isNotEmpty) _column(revise, fill),
+            _column(mark.processText, fill),
+          ],
         ),
       ),
     );
   }
+
+  Widget _column(String text, Color fill) => VerticalWritingText(
+    text: text,
+    latinForm: VerticalLatinForm.upright,
+    lineHeight: SectionBandZone.lineHeight,
+    // 「길면 글자 축소 허용」 — a long abbreviation packs and shrinks rather
+    // than ellipsising. 시아게 is three glyphs where the rest are two, and
+    // this is what lets it sit in the same plate.
+    overflow: VerticalTextOverflow.pack,
+    minFontSize: 4,
+    style: TextStyle(
+      fontSize: _fontSize,
+      fontWeight: FontWeight.bold,
+      height: SectionBandZone.lineHeight,
+      color: timelineTextOnColor(fill),
+    ),
+  );
 }
 
 /// 🚨★★★ 유저 #1 (2026-08-14): 「액티브 레이어가 아닌 다른 레이어의 버튼

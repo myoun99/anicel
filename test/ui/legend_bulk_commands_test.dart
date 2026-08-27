@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
 
@@ -53,10 +54,10 @@ void main() {
     final seLayer = s.activeTrack.seLayers.first;
     expect(seLayer.mark, LayerMark.none);
 
-    s.setLayerMark(seLayer.id, LayerMark.red);
+    s.setLayerMark(seLayer.id, const LayerMark(process: LayerProcess.layout));
     expect(
       s.layers.firstWhere((layer) => layer.id == seLayer.id).mark,
-      LayerMark.red,
+      const LayerMark(process: LayerProcess.layout),
     );
     s.undo();
     expect(
@@ -72,7 +73,7 @@ void main() {
     );
 
     // The bulk sweeps include the track SE rows now too.
-    s.setLayerMark(seLayer.id, LayerMark.blue);
+    s.setLayerMark(seLayer.id, const LayerMark(process: LayerProcess.conte));
     s.clearAllLayerMarks();
     expect(s.layers.every((layer) => layer.mark == LayerMark.none), isTrue);
   });
@@ -82,7 +83,7 @@ void main() {
     final markedId = s.requireActiveCut.layers
         .firstWhere((layer) => layer.kind == LayerKind.animation)
         .id;
-    s.setLayerMark(markedId, LayerMark.red);
+    s.setLayerMark(markedId, const LayerMark(process: LayerProcess.layout));
     final undosAfterMark = s.canUndo;
     expect(undosAfterMark, isTrue);
 
@@ -91,7 +92,7 @@ void main() {
     s.undo();
     expect(
       s.layers.firstWhere((layer) => layer.id == markedId).mark,
-      LayerMark.red,
+      const LayerMark(process: LayerProcess.layout),
     );
 
     // A markless sweep adds no history: clearing twice then undoing ONCE
@@ -101,7 +102,7 @@ void main() {
     s.undo();
     expect(
       s.layers.firstWhere((layer) => layer.id == markedId).mark,
-      LayerMark.red,
+      const LayerMark(process: LayerProcess.layout),
     );
   });
 

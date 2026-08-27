@@ -974,6 +974,17 @@ class AppStrings {
   String get tlColTimesheet => _s('tlColTimesheet');
   String get tlOpenOnionPanel => _s('tlOpenOnionPanel');
   String get tlLayerMark => _s('tlLayerMark');
+
+  /// 색 라벨이 안 붙은 상태. ⚠️「수정 없음」이 아니라 라벨 자체가 없는 것 —
+  /// 그 공정의 작업본은 「소재」다.
+  String get tlLayerMarkNone => _s('tlLayerMarkNone');
+
+  /// 上がり — 그 공정의 작업본. 유저 2026-08-27: 「제일 위에 수정없음말고
+  /// 上がり 라고 하자 … 한국어로 **소재**로 가자. 영어도 그거 번역한걸로」.
+  String get tlLayerMarkSource => _s('tlLayerMarkSource');
+
+  /// 색 라벨의 톤 고르기(I-4). 네 벌은 **같은 색상**이고 톤만 다르다.
+  String get layerMarkPaletteLabel => _s('layerMarkPaletteLabel');
   String get tlRepeat => _s('tlRepeat');
   String get tlRepeatSelection => _s('tlRepeatSelection');
 
@@ -1622,6 +1633,9 @@ class AppStrings {
     'tlColTimesheet': 'Timesheet column',
     'tlOpenOnionPanel': 'Open onion skin panel',
     'tlLayerMark': 'Layer mark',
+    'tlLayerMarkNone': 'No label',
+    'tlLayerMarkSource': 'Material',
+    'layerMarkPaletteLabel': 'Label tone',
     'tlRepeat': 'Repeat',
     'tlRepeatSelection': 'Repeat selection',
     'tlSeNameTemplate': 'SE name {name}',
@@ -2422,6 +2436,9 @@ class AppStrings {
     'tlColTimesheet': 'タイムシート列',
     'tlOpenOnionPanel': 'オニオンスキンパネルを開く',
     'tlLayerMark': 'レイヤーマーク',
+    'tlLayerMarkNone': 'ラベルなし',
+    'tlLayerMarkSource': '上がり',
+    'layerMarkPaletteLabel': 'ラベルの色調',
     'tlRepeat': 'リピート',
     'tlRepeatSelection': '選択範囲をリピート',
     'tlSeNameTemplate': 'SE名 {name}',
@@ -3213,6 +3230,9 @@ class AppStrings {
     'tlColTimesheet': '타임시트 열',
     'tlOpenOnionPanel': '어니언 스킨 패널 열기',
     'tlLayerMark': '레이어 마크',
+    'tlLayerMarkNone': '라벨 없음',
+    'tlLayerMarkSource': '소재',
+    'layerMarkPaletteLabel': '색 라벨 톤',
     'tlRepeat': '반복',
     'tlRepeatSelection': '선택 영역 반복',
     'tlSeNameTemplate': 'SE 이름 {name}',
@@ -4036,6 +4056,9 @@ class AppStrings {
     'tlColTimesheet': 'Colonne feuille de temps',
     'tlOpenOnionPanel': "Ouvrir le panneau pelure d'oignon",
     'tlLayerMark': 'Repère de calque',
+    'tlLayerMarkNone': 'Aucune étiquette',
+    'tlLayerMarkSource': 'Matériel',
+    'layerMarkPaletteLabel': 'Ton des étiquettes',
     'tlRepeat': 'Répéter',
     'tlRepeatSelection': 'Répéter la sélection',
     'tlSeNameTemplate': 'Nom SE {name}',

@@ -12,6 +12,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -128,14 +129,14 @@ void main() {
 
     test('a marked layer\'s blocks take the mark', () {
       final painter = painterFor(
-        twoBlockLayer().copyWith(mark: LayerMark.red),
+        twoBlockLayer().copyWith(mark: const LayerMark(process: LayerProcess.layout)),
       );
 
       expect(painter.resolvedCellStyleFor(0).background,
-          layerMarkColor(LayerMark.red));
+          layerMarkColor(const LayerMark(process: LayerProcess.layout)));
       expect(
         painter.resolvedCellStyleFor(1).background,
-        layerMarkColor(LayerMark.red),
+        layerMarkColor(const LayerMark(process: LayerProcess.layout)),
         reason: 'a run is one sheet of paper — held cells too',
       );
       expect(
@@ -148,19 +149,19 @@ void main() {
     test('the unworked-cel tint is the MARK at low opacity, not the old '
         'grey', () {
       final painter = painterFor(
-        twoBlockLayer().copyWith(mark: LayerMark.blue),
+        twoBlockLayer().copyWith(mark: const LayerMark(process: LayerProcess.conte)),
         celHasContentForLayer: (layer, frameIndex) => frameIndex >= 2,
       );
 
       final tinted = painter.resolvedCellStyleFor(0).background;
-      expect(tinted, timelineEmptyCelPaperColor(layerMarkColor(LayerMark.blue)));
+      expect(tinted, timelineEmptyCelPaperColor(layerMarkColor(const LayerMark(process: LayerProcess.conte))));
       // Derived from the paper, not a second colour beside it: same hue,
       // the transparency is the only difference.
-      expect(tinted.r, layerMarkColor(LayerMark.blue).r);
+      expect(tinted.r, layerMarkColor(const LayerMark(process: LayerProcess.conte)).r);
       expect(tinted.a, lessThan(1));
       expect(
         painter.resolvedCellStyleFor(2).background,
-        layerMarkColor(LayerMark.blue),
+        layerMarkColor(const LayerMark(process: LayerProcess.conte)),
         reason: 'a worked block keeps the full mark',
       );
     });

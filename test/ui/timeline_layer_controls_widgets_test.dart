@@ -5,6 +5,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
@@ -318,12 +319,12 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(
-        find.byKey(const ValueKey<String>('layer-mark-option-blue')),
+        find.byKey(const ValueKey<String>('layer-mark-option-conte')),
       );
       await tester.pumpAndSettle();
 
       expect(markedLayerId, layer.id);
-      expect(selectedMark, LayerMark.blue);
+      expect(selectedMark, const LayerMark(process: LayerProcess.conte));
     });
 
     testWidgets('the mark picker opens the SHARED flyout — R6 #4, the last '
@@ -351,7 +352,7 @@ void main() {
       expect(
         tester
             .widget<PopupMenuItem<PanelFlyoutItem>>(
-              find.byKey(const ValueKey<String>('layer-mark-option-red')),
+              find.byKey(const ValueKey<String>('layer-mark-option-layout')),
             )
             .height,
         32,

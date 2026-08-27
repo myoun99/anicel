@@ -5,6 +5,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 
 void main() {
   group('Layer.kind', () {
@@ -74,10 +75,10 @@ void main() {
     test('copyWith changes the flags and preserves other fields', () {
       final layer = _layer();
 
-      final updated = layer.copyWith(onTimesheet: false, mark: LayerMark.blue);
+      final updated = layer.copyWith(onTimesheet: false, mark: const LayerMark(process: LayerProcess.conte));
 
       expect(updated.onTimesheet, isFalse);
-      expect(updated.mark, LayerMark.blue);
+      expect(updated.mark, const LayerMark(process: LayerProcess.conte));
       expect(updated.id, layer.id);
       expect(updated.name, layer.name);
       expect(updated.frames, layer.frames);
@@ -89,24 +90,24 @@ void main() {
       final layer = _layer();
 
       expect(layer.copyWith(onTimesheet: false), isNot(layer));
-      expect(layer.copyWith(mark: LayerMark.red), isNot(layer));
+      expect(layer.copyWith(mark: const LayerMark(process: LayerProcess.layout)), isNot(layer));
       expect(
-        layer.copyWith(mark: LayerMark.red).hashCode,
+        layer.copyWith(mark: const LayerMark(process: LayerProcess.layout)).hashCode,
         isNot(layer.hashCode),
       );
-      expect(layer.copyWith(mark: LayerMark.red), _layer(mark: LayerMark.red));
+      expect(layer.copyWith(mark: const LayerMark(process: LayerProcess.layout)), _layer(mark: const LayerMark(process: LayerProcess.layout)));
     });
 
     test('JSON round-trip preserves both flags', () {
-      final layer = _layer(mark: LayerMark.green).copyWith(onTimesheet: false);
+      final layer = _layer(mark: const LayerMark(process: LayerProcess.art)).copyWith(onTimesheet: false);
 
       final restoredLayer = Layer.fromJson(layer.toJson());
 
       expect(restoredLayer, layer);
       expect(restoredLayer.onTimesheet, isFalse);
-      expect(restoredLayer.mark, LayerMark.green);
+      expect(restoredLayer.mark, const LayerMark(process: LayerProcess.art));
       expect(layer.toJson()['onTimesheet'], false);
-      expect(layer.toJson()['mark'], 'green');
+      expect(layer.toJson()['mark'], {'process': 'art'});
     });
 
     test('old JSON without the keys defaults to on-timesheet, no mark', () {
@@ -120,10 +121,38 @@ void main() {
       expect(restoredLayer.mark, LayerMark.none);
     });
 
-    test('fromJson throws for invalid mark JSON', () {
-      final json = _layer().toJson()..['mark'] = 'magenta';
+    test('a mark JSON this build does not know reads as NO label rather '
+        'than refusing the project', () {
+      // ⛔It used to throw, and that was right while a mark was one of eight
+      // colour words: an unknown word meant a corrupt file. A mark is a
+      // 공정/수정 pair now, and the shape a stored 'red' takes is not
+      // corrupt — it is a project written before the colour label existed.
+      //
+      // 🚨Guessing a stage from a colour would INVENT data: a layer marked
+      // "red" could have been any stage, so there is nothing to recover.
+      // Refusing to open the project over a label would be worse than
+      // opening it without one, which is what this does.
+      for (final unknown in <Object>['magenta', 'red', 42]) {
+        final json = _layer().toJson()..['mark'] = unknown;
+        expect(
+          Layer.fromJson(json).mark,
+          LayerMark.none,
+          reason: 'stored mark $unknown',
+        );
+      }
+    });
 
-      expect(() => Layer.fromJson(json), throwsArgumentError);
+    test('a mark whose stage this build knows survives, revise and all', () {
+      final json = _layer().toJson()
+        ..['mark'] = {'process': 'layout', 'revise': 'animation-director'};
+
+      expect(
+        Layer.fromJson(json).mark,
+        const LayerMark(
+          process: LayerProcess.layout,
+          revise: LayerRevise.animationDirector,
+        ),
+      );
     });
   });
 }
