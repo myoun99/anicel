@@ -46,16 +46,23 @@ above).
 
 ### Bundled fonts (`assets/fonts/`)
 
-Embedded ONLY into exported conte PDFs (the app UI keeps the platform
-fonts). All three are licensed under the **SIL Open Font License 1.1**
-(OFL), obtained from the Google Fonts collection
-(`github.com/google/fonts`, `ofl/` tree):
+Four OFL families ship, in two roles. **The app UI's own** (유저 확정
+2026-08-28) — BIZ UDPGothic draws Japanese, Latin, French accents and
+kanji; 나눔고딕 draws Hangul behind it. **The conte PDF's**, embedded into
+exported files only — M PLUS 1p and IBM Plex Sans KR.
 
-| File | Family | Copyright |
-| --- | --- | --- |
-| `MPLUS1p-Regular.ttf` | M PLUS 1p | The M+ FONTS Project Authors |
-| `MPLUS1p-Bold.ttf` | M PLUS 1p | The M+ FONTS Project Authors |
-| `IBMPlexSansKR-Regular.ttf` | IBM Plex Sans KR | IBM Corp. |
+All are licensed under the **SIL Open Font License 1.1** (OFL), obtained
+from the Google Fonts collection (`github.com/google/fonts`, `ofl/` tree):
+
+| File | Family | Copyright | Role |
+| --- | --- | --- | --- |
+| `BIZUDPGothic-Regular.ttf` | BIZ UDPGothic | The BIZ UDGothic Project Authors | 앱 UI |
+| `BIZUDPGothic-Bold.ttf` | BIZ UDPGothic | The BIZ UDGothic Project Authors | 앱 UI |
+| `NanumGothic-Regular.ttf` | Nanum Gothic | NHN Corporation | 앱 UI |
+| `NanumGothic-Bold.ttf` | Nanum Gothic | NHN Corporation | 앱 UI |
+| `MPLUS1p-Regular.ttf` | M PLUS 1p | The M+ FONTS Project Authors | 콘티 PDF |
+| `MPLUS1p-Bold.ttf` | M PLUS 1p | The M+ FONTS Project Authors | 콘티 PDF |
+| `IBMPlexSansKR-Regular.ttf` | IBM Plex Sans KR | IBM Corp. | 콘티 PDF |
 
 The OFL permits bundling and embedding; the fonts remain under their own
 license, and their reserved font names are not used for any derivative.

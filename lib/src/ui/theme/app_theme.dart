@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../models/app_language.dart';
+import '../text/app_strings.dart';
 
 import 'app_accents.dart';
 
@@ -379,12 +381,66 @@ ColorScheme _buildColorScheme() {
 }
 
 /// The single app theme: flat dark surfaces, hairline borders, compact
+
 /// icon-first controls with tooltips.
+/// 🚨★★★앱이 무슨 글씨로 말하는가 — **한 곳에서 정한다.**
+///
+/// 유저 확정 2026-08-28: 일본어 **BIZ UDPGothic**(「작은크기 가독성 목표로해서
+/// 아주 읽기쉬워」) + 한글 **나눔고딕**. 그 전까지 앱은 **자기 폰트가 없어서**
+/// OS 가 주는 것을 입었고, 같은 화면이 Windows·mac·Android 에서 달랐다.
+///
+/// ⛔**진짜 폰트 이름을 여기 말고 어디에도 쓰지 않는다.** `TextStyle` 하나가
+/// 자기 `fontFamily` 를 적는 순간 그 위젯만 다른 글씨가 되고, 그건 값이 같을
+/// 때는 안 보이다가 폰트를 바꾸는 날 갈라진다.
+///
+/// ⚠️예외는 **제네릭 `'monospace'`** 하나다(실측 8곳 · 5파일). 그건 폰트를
+/// 고르는 게 아니라 「고정폭이면 된다」는 말이라 OS 에 맡기는 것이 맞다 —
+/// 진짜 이름은 `the_app_has_one_face_test` 가 소스를 훑어 막는다.
+/// 🔜고정폭까지 통일하려면 모노스페이스 폰트를 한 벌 더 번들해야 한다(미결).
+abstract final class AppTypography {
+  /// 🚨★★★**언어를 받는다 — 한자가 언어마다 다른 글자이기 때문이다.**
+  ///
+  /// 일본과 중국은 한자의 **코드포인트를 공유하지만 자형이 다르다.** 앞에 선
+  /// 폰트가 그 자형을 정하므로, 일본어 폰트를 그대로 중국어에 씌우면 중국
+  /// 사람에게는 틀린 글자로 보인다.
+  ///
+  /// 🚨그리고 **BIZ 는 앱의 중국어 582자 중 174자를 아예 안 갖고 있다**(실측).
+  /// 그대로 두면 한 문장 안에서 408자는 일본 자형, 174자는 OS 폰트로 **섞인다**
+  /// — 폰트를 통일하려다 오히려 갈라 놓는 것이라, 중국어는 **OS 에 맡긴다.**
+  ///
+  /// 🔜중국어 전용 폰트(Noto Sans SC, 17MB)는 유저 결정 대기 중이다.
+  static String? familyFor(AppLanguage language) =>
+      language == AppLanguage.zhHans ? null : _family;
+
+  static List<String>? fallbackFor(AppLanguage language) =>
+      language == AppLanguage.zhHans ? null : _fallback;
+
+  /// ⚠️이름이 아니라 **순서가 각 문자를 어느 폰트로 보낼지 정한다** — Flutter 는
+  /// 글리프가 없는 폰트를 건너뛰므로, 앞의 폰트에 없는 글자만 뒤로 내려간다.
+  ///
+  /// 🚨**일본어가 앞이다.** 이 앱은 일본 애니메이션 제작 도구이므로 한자는 일본
+  /// 자형이어야 한다(유저: 「난 한글이 아니라 **일본어 폰트가 중요해**」).
+  static const String _family = 'BIZ UDPGothic';
+
+  /// 나눔고딕은 **한글만** 그린다 — 앞의 BIZ 가 라틴·프랑스어 악센트·가나·한자를
+  /// 전부 가져가므로. ⚠️순서가 반대였으면 é 가 두부가 됐을 것이다: 나눔고딕에는
+  /// 라틴 확장이 없고 BIZ 에는 프랑스어 32/32 가 다 있다(실측).
+  ///
+  /// 🔬**크기로 골랐다**: BIZ 의 作 은 em 의 95×95%를 쓰는데(흔한 고딕은 88~92 —
+  /// 그게 UD 다), 나눔고딕의 가는 87×92 로 후보 중 가장 가깝다. 작으면 같은
+  /// 12px 에서 **한글만 작아 보이고** 폰트가 둘이라는 사실이 화면에 드러난다.
+  static const List<String> _fallback = <String>['Nanum Gothic'];
+}
+
 ThemeData buildAppTheme() {
   final colorScheme = _buildColorScheme();
   return ThemeData(
     useMaterial3: true,
     colorScheme: colorScheme,
+    // The app speaks in one face — see [AppTypography] for why the ORDER of
+    // the fallback is what routes each script.
+    fontFamily: AppTypography.familyFor(AppText.language),
+    fontFamilyFallback: AppTypography.fallbackFor(AppText.language),
     scaffoldBackgroundColor: AppColors.backdrop,
     canvasColor: AppColors.surface,
     dividerColor: AppColors.hairline,
