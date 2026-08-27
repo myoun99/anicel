@@ -1,7 +1,10 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show immutable;
+
 import '../../core/color_matrix.dart';
 import '../../models/layer_effect.dart';
+import '../../services/cel_source_effect_pass.dart';
 
 /// How much a blur RADIUS parameter spreads, as a Gaussian sigma. A radius
 /// is the visible reach of the blur; three sigma covers it, so a radius of
@@ -287,11 +290,141 @@ CompositeEffectPaint resolveCompositeEffectPaint(
 /// The `saveLayer` bounds for a buffered group whose chain is [plan]:
 /// [bounds] grown by the blur spread, so a group blur is not clipped at the
 /// buffer edge it was meant to bleed past.
-ui.Rect effectBufferBounds(ui.Rect bounds, CompositeEffectPaint plan) {
-  if (plan.outsetPixels <= 0) {
+/// One raster a chain takes before the draw that composites it.
+///
+/// A step is a colour KEY and then the painted effects that follow it, in one
+/// draw: a `ui.Paint` applies its shader, then its colour filter, then its
+/// image filter, so "key, then blur" is one raster and needs no second.
+/// "Blur, then key" is two, and the first of them has no key.
+@immutable
+class CompositeEffectStep {
+  const CompositeEffectStep({this.key, required this.then});
+
+  /// Applied first, by a fragment shader over the image handed in.
+  final CelColorKey? key;
+
+  /// Applied after [key], in the same draw. ⛔UNRESOLVED, because a blur's
+  /// radii belong to the RASTER this step runs in, and only the renderer
+  /// knows that scale.
+  final List<ResolvedLayerEffect> then;
+}
+
+/// A chain that reaches a COMPOSITED picture, in the steps a canvas can take.
+///
+/// 🚨WHY A CHAIN IS NOT ALWAYS ONE DRAW. Everything a chain used to hold
+/// folded into a `ui.Paint`'s colour filter and image filter, so a chain was
+/// one draw. A COLOUR KEY is a fragment shader — it can LEAD a draw but never
+/// follow anything inside one — so a key that comes after painted state is a
+/// second draw, and this is the list of them.
+///
+/// ⛔The split is not the caller's to get right. [preSteps] are the rasters
+/// that happen before the composite draw and [finalPaint] is what that draw
+/// carries — the same thing a route folded into its group paint before passes
+/// existed. Applying a step's paint twice, or forgetting the last one, would
+/// be a rendering bug with no error; there is no way to spell either here.
+@immutable
+class CompositeEffectPlan {
+  const CompositeEffectPlan._({
+    required this.preSteps,
+    required this.finalPaint,
+    required this.outsetPixels,
+  });
+
+  static const CompositeEffectPlan none = CompositeEffectPlan._(
+    preSteps: [],
+    finalPaint: CompositeEffectPaint.none,
+    outsetPixels: 0,
+  );
+
+  final List<CompositeEffectStep> preSteps;
+
+  /// The paint state the composite draw carries.
+  final CompositeEffectPaint finalPaint;
+
+  /// How far the whole chain paints beyond its input's bounds, summed over
+  /// every step — ONE number for ONE buffer. Every step rasterises at the
+  /// same rect, which costs a little more memory than growing it step by step
+  /// and removes every chance of a seam between two of them.
+  final double outsetPixels;
+
+  /// True when the chain is what it always was: one draw, no shader.
+  bool get isSingleDraw => preSteps.isEmpty;
+}
+
+/// [effects] as the steps a composited picture takes.
+///
+/// [rasterScale] is the scale [finalPaint] will be drawn at, exactly as
+/// [resolveCompositeEffectPaint] means it. A step's own effects are left
+/// unresolved for the renderer, which knows the scale of the raster it is
+/// about to make.
+CompositeEffectPlan resolveCompositeEffectPlan(
+  List<ResolvedLayerEffect> effects, {
+  double rasterScale = 1,
+  int? tint,
+}) {
+  // Each run is "the key that opens it, then the painted effects until the
+  // next key". The first run has no key.
+  final keys = <CelColorKey?>[null];
+  final runs = <List<ResolvedLayerEffect>>[<ResolvedLayerEffect>[]];
+  for (final effect in effects) {
+    final key = CelColorKey.fromResolved(effect);
+    if (key == null) {
+      runs.last.add(effect);
+      continue;
+    }
+    // ⛔A key at Amount 0 is dropped, not rasterised. The CPU pass drops it
+    // for the same reason: "add effect" promises to change nothing, and a
+    // raster that changes nothing is still a raster.
+    if (key.isNoOp) {
+      continue;
+    }
+    keys.add(key);
+    runs.add(<ResolvedLayerEffect>[]);
+  }
+  final last = runs.length - 1;
+  final finalPaint = resolveCompositeEffectPaint(
+    runs[last],
+    rasterScale: rasterScale,
+    tint: tint,
+  );
+  if (last == 0) {
+    // No keys survived: the chain is one draw, exactly as it always was.
+    return finalPaint.isEmpty
+        ? CompositeEffectPlan.none
+        : CompositeEffectPlan._(
+            preSteps: const [],
+            finalPaint: finalPaint,
+            outsetPixels: finalPaint.outsetPixels,
+          );
+  }
+  var outset = finalPaint.outsetPixels;
+  final steps = <CompositeEffectStep>[];
+  for (var i = 0; i < last; i += 1) {
+    if (keys[i] == null && runs[i].isEmpty) {
+      // The leading run is empty whenever the chain opens with a key, which
+      // is the ordinary shape.
+      continue;
+    }
+    outset += resolveCompositeEffectPaint(
+      runs[i],
+      rasterScale: rasterScale,
+    ).outsetPixels;
+    steps.add(CompositeEffectStep(key: keys[i], then: runs[i]));
+  }
+  // The last key has to happen before the final draw carries what follows it.
+  steps.add(CompositeEffectStep(key: keys[last], then: const []));
+  return CompositeEffectPlan._(
+    preSteps: steps,
+    finalPaint: finalPaint,
+    outsetPixels: outset,
+  );
+}
+
+ui.Rect effectBufferBounds(ui.Rect bounds, double outsetPixels) {
+  if (outsetPixels <= 0) {
     return bounds;
   }
-  return bounds.inflate(plan.outsetPixels);
+  return bounds.inflate(outsetPixels);
 }
 
 /// How a route paints an ADJUSTMENT scope (R6b) — the semantics in ONE
@@ -320,7 +453,16 @@ class AdjustmentScopePass {
     required this.filteredPaint,
     this.crossfadeLayerPaint,
     this.unfilteredPaint,
+    this.preSteps = const [],
   });
+
+  /// The rasters the chain takes before either pass composites the scope —
+  /// its colour keys, which are shaders and cannot ride a pass's paint.
+  ///
+  /// ⚠️Only the FILTERED pass blits the result. The mix crossfades between
+  /// the scope and the scope with the chain on it, so the unfiltered pass
+  /// blits the raw raster (see [composeAdjustmentScope]).
+  final List<CompositeEffectStep> preSteps;
 
   /// The buffer bounds for every pass.
   final ui.Rect bufferBounds;
@@ -355,14 +497,19 @@ class AdjustmentScopePass {
 /// of restoring a layer into it rounds each pass separately, and a crossfade
 /// ADDS two of them: measured at 2/255 over 488 pixels. Painting the scope
 /// once was always the win; the saveLayer was never the cost.
-void Function(void Function(ui.Paint paint) blit) composeAdjustmentScope(
+void Function(void Function(ui.Paint paint, {bool stepped}) blit)
+composeAdjustmentScope(
   ui.Canvas canvas,
   AdjustmentScopePass pass,
 ) => (blit) {
   if (pass.crossfades) {
     canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
     canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
-    blit(ui.Paint());
+    // ⛔THE RAW SCOPE. The mix crossfades between the scope and the scope
+    // WITH the chain on it, and the chain now includes colour keys — which
+    // ride the raster rather than a paint. An unfiltered pass that blitted
+    // the keyed raster would key at full strength however low the mix went.
+    blit(ui.Paint(), stepped: false);
     canvas.restore();
   }
   canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
@@ -420,14 +567,16 @@ AdjustmentScopePass resolveAdjustmentScopePass({
       );
     }
   }
-  final plan = resolveCompositeEffectPaint(effects, rasterScale: rasterScale);
-  final bufferBounds = effectBufferBounds(bounds, plan);
+  final resolved = resolveCompositeEffectPlan(effects, rasterScale: rasterScale);
+  final plan = resolved.finalPaint;
+  final bufferBounds = effectBufferBounds(bounds, resolved.outsetPixels);
   if (strength >= 1) {
     final paint = ui.Paint();
     plan.applyTo(paint);
     return AdjustmentScopePass(
       bufferBounds: bufferBounds,
       filteredPaint: paint,
+      preSteps: resolved.preSteps,
     );
   }
   // A spatial chain below full strength: two passes ADDED inside one
@@ -443,5 +592,6 @@ AdjustmentScopePass resolveAdjustmentScopePass({
     crossfadeLayerPaint: ui.Paint(),
     unfilteredPaint: ui.Paint()
       ..color = ui.Color.fromRGBO(0, 0, 0, 1 - strength),
+    preSteps: resolved.preSteps,
   );
 }

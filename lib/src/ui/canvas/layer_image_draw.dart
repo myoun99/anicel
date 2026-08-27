@@ -29,6 +29,7 @@ import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../models/transform_track.dart';
 import 'composite_effect_paint.dart';
+import 'subtree_image_composite.dart';
 import 'layer_pose_paint.dart';
 
 /// Runs [body] under [pose].
@@ -129,26 +130,52 @@ void drawPosedLayerImage(
       // matrix it composes with the colour effects, and 유저 2026-08-27
       // (I-8-Q5) asked for exactly that: the ghost shows what the screen
       // shows.
-      resolveCompositeEffectPaint(
+      // 🚨A CHAIN IS NOT ALWAYS ONE DRAW. A colour key is a fragment shader,
+      // so a key that comes after painted state needs its own raster — the
+      // same steps a group takes, asked of one layer's image.
+      final plan = resolveCompositeEffectPlan(
         effects,
         rasterScale: rasterScale,
         tint: tint,
-      ).applyTo(paint);
-      if (drawAtOrigin) {
-        canvas.drawImage(image, ui.Offset.zero, paint);
-        return;
-      }
-      canvas.drawImageRect(
-        image,
-        ui.Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-        ui.Rect.fromLTWH(
-          worldRect.left * rasterScale,
-          worldRect.top * rasterScale,
-          worldRect.width * rasterScale,
-          worldRect.height * rasterScale,
-        ),
-        paint,
       );
+      plan.finalPaint.applyTo(paint);
+      final stepped = plan.isSingleDraw
+          ? image
+          : applyEffectSteps(
+              source: image,
+              steps: plan.preSteps,
+              pixelWidth: image.width,
+              pixelHeight: image.height,
+              rasterScale: rasterScale,
+            );
+      try {
+        if (drawAtOrigin) {
+          canvas.drawImage(stepped, ui.Offset.zero, paint);
+          return;
+        }
+        canvas.drawImageRect(
+          stepped,
+          ui.Rect.fromLTWH(
+            0,
+            0,
+            stepped.width.toDouble(),
+            stepped.height.toDouble(),
+          ),
+          ui.Rect.fromLTWH(
+            worldRect.left * rasterScale,
+            worldRect.top * rasterScale,
+            worldRect.width * rasterScale,
+            worldRect.height * rasterScale,
+          ),
+          paint,
+        );
+      } finally {
+        // ⛔The steps made a NEW image; the one handed in belongs to the
+        // cache. Disposing that would take the layer's pixels with it.
+        if (!identical(stepped, image)) {
+          stepped.dispose();
+        }
+      }
     },
   );
 }

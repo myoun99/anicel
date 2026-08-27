@@ -294,10 +294,11 @@ class CutFrameCompositeCache {
             // members inside a multiply folder stop darkening where they
             // cross. Only a folder that NEEDS this ever becomes a group
             // node, so a plain 통과 folder costs no buffer at all.
-            final groupEffects = resolveCompositeEffectPaint(
+            final groupPlan = resolveCompositeEffectPlan(
               effects,
               rasterScale: scale,
             );
+            final groupEffects = groupPlan.finalPaint;
             final groupPaint = ui.Paint()
               ..color = ui.Color.fromRGBO(0, 0, 0, opacity)
               ..blendMode = blendMode.paintBlendMode;
@@ -311,7 +312,7 @@ class CutFrameCompositeCache {
               canvas: canvas,
               // R6: a group blur must be allowed to bleed in from just
               // outside the raster, so the buffer grows by its spread.
-              bounds: effectBufferBounds(rasterBounds, groupEffects),
+              bounds: effectBufferBounds(rasterBounds, groupPlan.outsetPixels),
               rasterScale: rasterScale,
               maxPixelSide: maxSubtreeRasterSide,
               paintSubtree: (into, _) => paintNodes(into, children),
@@ -321,6 +322,7 @@ class CutFrameCompositeCache {
               // away, and the adjustment beside it cannot do the same
               // without reaching inside the shared recipe.
               compose: (blit) => blit(groupPaint),
+              steps: groupPlan.preSteps,
             );
           case CompositeAdjustmentSignature(
             :final children,
@@ -348,6 +350,7 @@ class CutFrameCompositeCache {
               maxPixelSide: maxSubtreeRasterSide,
               paintSubtree: (into, _) => paintNodes(into, children),
               compose: composeAdjustmentScope(canvas, pass),
+              steps: pass.preSteps,
             );
           case CompositeLeafSignature(:final layer):
             // ⛔THE SIGNATURE KEEPS THE WHOLE CHAIN; only the DRAW is split.

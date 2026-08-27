@@ -63,10 +63,12 @@ class Layer {
        instructions = immutableInstructionMap(instructions ?? const {}),
        audioClips = List.unmodifiable(audioClips),
        transformTrack = transformTrack ?? TransformTrack.empty(),
-       // NORMALIZED, for the reason [normalizedEffectChain] states: the
-       // CPU half of the chain runs before anything is drawn, so a row is
-       // not allowed to hold an order the composite could not honour.
-       effects = List.unmodifiable(normalizedEffectChain(effects)),
+       // ⛔NOT NORMALIZED. 유저 2026-08-27: 「ae는 순서 자유잖아. 자유롭게
+       // 해야지. 순서가 결과에 영향주는거고」 — a chain means what it says,
+       // top to bottom, and a colour key UNDER a blur keys the blurred
+       // result. The composite honours that by taking a raster per key
+       // (`resolveCompositeEffectPlan`) instead of reordering the list.
+       effects = List.unmodifiable(effects),
        baseFrameLinks = Map.unmodifiable(baseFrameLinks),
        runBehaviors = List.unmodifiable(runBehaviors);
 

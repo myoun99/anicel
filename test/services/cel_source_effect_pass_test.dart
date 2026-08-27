@@ -5,7 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/cel_source_effect_pass.dart';
 
@@ -232,18 +234,64 @@ void main() {
       expect(identical(splitSourceEffects(effects).paint, effects), isTrue);
     });
 
-    test('effectKindsFor hides the keys where there are no cel bytes', () {
-      expect(
-        effectKindsFor(inputIsCelPixels: true),
-        containsAll([EffectKind.deleteColor, EffectKind.keepColor]),
+    test('the split takes the LEADING run of keys, not every one of them', () {
+      // 🚨ORDER IS FREE. A key UNDER a blur means "blur first, then key",
+      // and there is no cel byte left to key by then — so only the leading
+      // run can be the CPU pass. The rest are shader steps over what the
+      // chain has painted so far.
+      final blur = ResolvedLayerEffect(
+        kind: EffectKind.blur,
+        values: const [4, 4],
       );
-      final onBuffer = effectKindsFor(inputIsCelPixels: false);
-      expect(onBuffer, contains(EffectKind.blur));
-      expect(onBuffer, isNot(contains(EffectKind.deleteColor)));
-      expect(onBuffer, isNot(contains(EffectKind.keepColor)));
+      final key = ResolvedLayerEffect(
+        kind: EffectKind.deleteColor,
+        values: const [0, 0, 0, 0, 100],
+      );
+      final split = splitSourceEffects([key, blur, key]);
+      expect(split.source.map((e) => e.kind), [EffectKind.deleteColor]);
+      expect(split.paint.map((e) => e.kind), [
+        EffectKind.blur,
+        EffectKind.deleteColor,
+      ]);
     });
 
-    test('a row cannot HOLD a key below a paint effect', () {
+    test('a chain that opens with paint has no CPU half at all', () {
+      final blur = ResolvedLayerEffect(
+        kind: EffectKind.blur,
+        values: const [4, 4],
+      );
+      final key = ResolvedLayerEffect(
+        kind: EffectKind.deleteColor,
+        values: const [0, 0, 0, 0, 100],
+      );
+      final split = splitSourceEffects([blur, key]);
+      expect(split.source, isEmpty);
+      expect(split.paint.map((e) => e.kind), [
+        EffectKind.blur,
+        EffectKind.deleteColor,
+      ]);
+    });
+
+    test('effectKindsFor offers the keys everywhere', () {
+      // ⛔The old rule hid them where the input was not cel bytes, because
+      // the key was a CPU pass over those bytes and nothing else. 유저
+      // 2026-08-27 reversed it once the shader existed and the two
+      // implementations were proven identical: a folder keys the picture it
+      // composed.
+      for (final onCelPixels in const [true, false]) {
+        expect(
+          effectKindsFor(inputIsCelPixels: onCelPixels),
+          containsAll([EffectKind.deleteColor, EffectKind.keepColor]),
+          reason: 'inputIsCelPixels: $onCelPixels',
+        );
+      }
+    });
+
+    test('a row HOLDS the order it was given', () {
+      // ⛔This used to assert the opposite — the chain normalized so a key
+      // could never sit under a blur. 유저 2026-08-27: 「누가 트랜스폼fx처럼
+      // 고정 fx가 아닌것에 순서를 고정하라했지? ae는 순서 자유잖아. …
+      // 순서가 결과에 영향주는거고」.
       final blur = LayerEffect.defaults(
         id: const EffectId('blur'),
         kind: EffectKind.blur,
@@ -252,23 +300,17 @@ void main() {
         id: const EffectId('key'),
         kind: EffectKind.deleteColor,
       );
-      // Written blur-then-key; the chain normalizes so the lane list and
-      // the pixels cannot disagree about what the order means.
-      expect(
-        normalizedEffectChain([blur, colorKey]).map((e) => e.kind).toList(),
-        [EffectKind.deleteColor, EffectKind.blur],
+      final row = Layer(
+        id: const LayerId('row'),
+        name: 'row',
+        frames: const [],
+        timeline: const {},
+        effects: [blur, colorKey],
       );
-    });
-
-    test('an already-ordered chain is returned unchanged, not rebuilt', () {
-      final effects = [
-        LayerEffect.defaults(
-          id: const EffectId('key'),
-          kind: EffectKind.deleteColor,
-        ),
-        LayerEffect.defaults(id: const EffectId('blur'), kind: EffectKind.blur),
-      ];
-      expect(identical(normalizedEffectChain(effects), effects), isTrue);
+      expect(row.effects.map((e) => e.kind).toList(), [
+        EffectKind.blur,
+        EffectKind.deleteColor,
+      ]);
     });
   });
 }

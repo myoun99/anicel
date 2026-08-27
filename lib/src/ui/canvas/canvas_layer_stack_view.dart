@@ -1743,7 +1743,8 @@ class _LayerStackPainter extends CustomPainter {
                 // because the ACTIVE layer is a node in here, a stroke drawn
                 // inside a blended folder finally reads the way it will play
                 // back. R6: the folder's effect chain lands on the same buffer.
-                final groupEffects = resolveCompositeEffectPaint(effects);
+                final groupPlan = resolveCompositeEffectPlan(effects);
+                final groupEffects = groupPlan.finalPaint;
                 final groupPaint = Paint()
                   ..color = Color.fromRGBO(0, 0, 0, opacity.clamp(0.0, 1.0))
                   ..blendMode = blendMode.paintBlendMode;
@@ -1756,7 +1757,7 @@ class _LayerStackPainter extends CustomPainter {
                 // this says so where it can fail.
                 final groupRect = effectBufferBounds(
                   bufferBoundsFor(node),
-                  groupEffects,
+                  groupPlan.outsetPixels,
                 );
                 assert(
                   contentExtent.expandToInclude(groupRect) == contentExtent,
@@ -1778,6 +1779,7 @@ class _LayerStackPainter extends CustomPainter {
                   paintSubtree: (into, scale) =>
                       paintChildren(into, children, scale),
                   compose: (blit) => blit(groupPaint),
+                  steps: groupPlan.preSteps,
                 );
               case _PaintAdjustment(
                 :final children,
@@ -1806,6 +1808,7 @@ class _LayerStackPainter extends CustomPainter {
                   paintSubtree: (into, scale) =>
                       paintChildren(into, children, scale),
                   compose: composeAdjustmentScope(canvas, pass),
+                  steps: pass.preSteps,
                 );
               case _PaintActiveSurface(
                 :final opacity,
@@ -1877,7 +1880,7 @@ class _LayerStackPainter extends CustomPainter {
                   canvas.saveLayer(
                     effectBufferBounds(
                       activeSurfacePainter!.pasteboardRect,
-                      activeEffects,
+                      activeEffects.outsetPixels,
                     ),
                     activePaint,
                   );
