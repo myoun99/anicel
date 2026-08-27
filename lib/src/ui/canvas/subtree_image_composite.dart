@@ -379,3 +379,53 @@ void _finishSubtreeRaster({
     raster.dispose();
   }
 }
+
+/// Runs [plan]'s key steps over [image], which spans [canvasExtent] CANVAS
+/// pixels across. Returns [image] itself when the chain is one draw, so the
+/// caller disposes only what it got back and only when it differs.
+///
+/// 🚨★★★TWO SCALES, TWO QUESTIONS — and one parameter used to answer both.
+///
+/// A chain's blur radii are CANVAS pixels. Turning them into something a draw
+/// can use takes two different numbers, and they are not the same number:
+///
+/// • **The PAINT's** scale is the space the DRAW lands in. A route drawing
+///   under a canvas-space CTM leaves it 1 and lets Skia map the sigma through
+///   the matrix; the playback cache draws into a raster-space canvas and
+///   passes that raster's scale.
+/// • **The STEPS'** scale is the IMAGE's own resolution — image pixels per
+///   canvas pixel — because a step rasters the image at its own size, at the
+///   identity, where there is no matrix to map anything.
+///
+/// They coincide wherever the image and the draw share a space, which is why
+/// one `rasterScale` looked like enough for a long time. ⛔It is not, and the
+/// track chain is where that showed: the playback PAINTER draws a Half or
+/// Quarter cache up to canvas space, so its image is at one scale and its
+/// draw at another. 유저 2026-08-28 read the two-scale note and said it looked
+/// like trouble — it was, and this is the shape of it: **한 플래그가 두
+/// 질문에 답하면 그것도 발명이다**.
+///
+/// ⇒ SO THE STEP SCALE IS DERIVED HERE, from the image and the extent it
+/// covers, and no call site restates it. The paint scale stays a parameter of
+/// the resolve, because only the caller knows what space it draws into.
+///
+/// 🚨THIS ALSO FIXED A WRONG NUMBER. The export's frame path had `1` written
+/// in by hand, which is right at full size and wrong for a storyboard
+/// thumbnail — `outputSize` scales the render down, so a keyed track chain
+/// would have blurred at the wrong strength there.
+ui.Image steppedForChain({
+  required ui.Image image,
+  required CompositeEffectPlan plan,
+  required double canvasExtent,
+}) {
+  if (plan.isSingleDraw) {
+    return image;
+  }
+  return applyEffectSteps(
+    source: image,
+    steps: plan.preSteps,
+    pixelWidth: image.width,
+    pixelHeight: image.height,
+    rasterScale: canvasExtent <= 0 ? 1 : image.width / canvasExtent,
+  );
+}

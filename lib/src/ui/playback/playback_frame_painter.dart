@@ -14,7 +14,7 @@ import '../../models/transform_track.dart';
 import '../../services/se_name_tag_plan.dart';
 import '../canvas/composite_effect_paint.dart'
     show alphaOnly, resolveCompositeEffectPlan;
-import '../canvas/subtree_image_composite.dart' show applyEffectSteps;
+import '../canvas/subtree_image_composite.dart' show steppedForChain;
 import '../canvas/display_resample.dart';
 import '../canvas/layer_pose_paint.dart';
 import '../canvas/paper_background.dart';
@@ -310,17 +310,11 @@ class PlaybackFramePainter extends CustomPainter {
       // the canvas, so they get that ratio instead.
       final plan = resolveCompositeEffectPlan(cutEffects);
       plan.finalPaint.applyTo(imagePaint);
-      final stepped = plan.isSingleDraw
-          ? composite
-          : applyEffectSteps(
-              source: composite,
-              steps: plan.preSteps,
-              pixelWidth: composite.width,
-              pixelHeight: composite.height,
-              rasterScale: canvasSize.width == 0
-                  ? 1
-                  : composite.width / canvasSize.width,
-            );
+      final stepped = steppedForChain(
+        image: composite,
+        plan: plan,
+        canvasExtent: canvasSize.width.toDouble(),
+      );
       canvas.drawImageRect(
         stepped,
         Rect.fromLTWH(

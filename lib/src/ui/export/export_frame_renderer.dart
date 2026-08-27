@@ -23,7 +23,7 @@ import '../../services/playback/playback_frame_mapping.dart'
 import '../camera/camera_frame_render_service.dart';
 import '../canvas/composite_effect_paint.dart'
     show alphaOnly, resolveCompositeEffectPlan;
-import '../canvas/subtree_image_composite.dart' show applyEffectSteps;
+import '../canvas/subtree_image_composite.dart' show steppedForChain;
 import '../editor_session_manager.dart';
 import '../playback/playback_frame_painter.dart';
 import '../track_effect_paint_policy.dart';
@@ -315,15 +315,11 @@ class ExportFrameRenderer {
     // at scale 1 — the one route where the ratio is not a question.
     final plan = resolveCompositeEffectPlan(trackEffects);
     plan.finalPaint.applyTo(framePaint);
-    final stepped = plan.isSingleDraw
-        ? image
-        : applyEffectSteps(
-            source: image,
-            steps: plan.preSteps,
-            pixelWidth: image.width,
-            pixelHeight: image.height,
-            rasterScale: 1,
-          );
+    final stepped = steppedForChain(
+      image: image,
+      plan: plan,
+      canvasExtent: task.cut.canvasSize.width.toDouble(),
+    );
     canvas.drawImage(stepped, ui.Offset.zero, framePaint);
     if (!identical(stepped, image)) {
       stepped.dispose();
@@ -435,20 +431,15 @@ class ExportFrameRenderer {
           ),
         );
         dissolvePlan.finalPaint.applyTo(framePaint);
-        final steppedFrame = dissolvePlan.isSingleDraw
-            ? image
-            : applyEffectSteps(
-                source: image,
-                steps: dissolvePlan.preSteps,
-                pixelWidth: image.width,
-                pixelHeight: image.height,
-                rasterScale: 1,
-              );
+        final steppedFrame = steppedForChain(
+          image: image,
+          plan: dissolvePlan,
+          canvasExtent: cut.canvasSize.width.toDouble(),
+        );
         canvas.drawImage(steppedFrame, ui.Offset.zero, framePaint);
         if (!identical(steppedFrame, image)) {
           steppedFrame.dispose();
         }
-        canvas.drawImage(image, ui.Offset.zero, framePaint);
         if (weight < 1) {
           canvas.restore();
         }
