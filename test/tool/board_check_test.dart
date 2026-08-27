@@ -229,7 +229,7 @@ void _recommendMustNameAnOption() {
         'where': 'somewhere on screen',
         'why': 'blocked for this reason',
         'options': options,
-        ?'recommend': recommend,
+        'recommend': ?recommend,
       }),
     );
     final run = await Process.run('dart', [
