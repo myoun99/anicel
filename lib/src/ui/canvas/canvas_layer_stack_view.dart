@@ -106,7 +106,23 @@ final class CanvasActiveLayerNode extends CanvasLayerStackNode {
   /// shows its own effects, so a stroke lands in the picture you can see.
   /// A blur wraps the live surface in its own buffer for exactly as long as
   /// the effect is there.
+  ///
+  /// ★WHOLE on purpose, like [CanvasLayerImageRequest.effects]: the stack's
+  /// `shouldRepaint` diffs this field, and splitting at construction would
+  /// let a colour-key edit slip past that comparison. The halves are taken
+  /// at USE, below.
   final List<ResolvedLayerEffect> effects;
+
+  /// The PAINT half — everything the composite applies. The CPU half (the
+  /// LEADING colour keys) is already on the surface: the session runs the
+  /// same split and feeds `activeSourceEffects` with the other half.
+  ///
+  /// ⛔THE WHOLE CHAIN CANNOT GO TO THE PAINT, and this row was the last one
+  /// handing it over. A leading key then ran TWICE — once on the cel bytes
+  /// and again as a shader over the assembled picture. 🧪Delete and Keep are
+  /// idempotent at Amount 100, which is exactly why it hid; at any lower
+  /// Amount the two applications compound.
+  List<ResolvedLayerEffect> get paintEffects => splitSourceEffects(effects).paint;
 }
 
 /// A FOLDER's group buffer: [children] compose into one buffer, then the
@@ -811,7 +827,6 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           :final blendMode,
           :final pose,
           :final anchorPoint,
-          :final effects,
         ):
           if (widget.activeSurfacePainter == null) {
             continue;
@@ -822,7 +837,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
               blendMode: blendMode,
               pose: pose,
               anchorPoint: anchorPoint,
-              effects: effects,
+              // The PAINT half only — like the cached row above. A leading
+              // key is already on the surface this node draws.
+              effects: node.paintEffects,
               standIn: _activeStandIn,
             ),
           );
@@ -1958,10 +1975,10 @@ class _LayerStackPainter extends CustomPainter {
                     // ⛔The stand-in can only hand off if the decodes it is
                     // waiting on actually start — the walk's collect pass is
                     // skipped this frame, so its decode starts must not be.
-                    activeSurfacePainter!.startPendingDecodes(canvas);
+                    activeSurfacePainter!.startPendingDecodes(into);
                   } else {
                     activeSurfacePainter!.paintContentInto(
-                      canvas,
+                      into,
                       layerPaint: ridingPaint,
                     );
                   }

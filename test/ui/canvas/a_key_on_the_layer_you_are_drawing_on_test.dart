@@ -128,16 +128,28 @@ void main() {
     return n;
   }
 
-  testWidgets('a key at the HEAD of the chain paints instead of throwing', (
+  ResolvedLayerEffect keepWhite() => ResolvedLayerEffect(
+    kind: EffectKind.keepColor,
+    values: const [255, 255, 255, 0, 100],
+  );
+
+  ResolvedLayerEffect darken() => ResolvedLayerEffect(
+    kind: EffectKind.brightnessContrast,
+    values: const [-0.5, 0],
+  );
+
+  testWidgets('a key at the HEAD of the chain belongs to the SURFACE', (
     tester,
   ) async {
     final plain = await paintWith(tester, const []);
     expect(inkPixels(plain), greaterThan(0), reason: 'fixture: the layer drew');
     final keyed = await paintWith(tester, [deleteWhite()]);
     // ⛔IDENTICAL, and that is the fix. A leading key runs on the cel's own
-    // bytes long before this node exists — the session applies it to the
-    // surface — so the node carries only the PAINT half and this paint has
-    // nothing left to do. Handing it the whole chain is what threw.
+    // bytes — the session applies it through `celSurfaceWithSourceEffects`
+    // before it hands this painter over — so the node takes only the PAINT
+    // half and this paint has nothing left to do. Handing it the whole chain
+    // ran the key a SECOND time: 🧪on this fixture, whose surface the session
+    // never touched, that erased every pixel.
     expect(
       inkPixels(keyed),
       inkPixels(plain),
@@ -145,36 +157,40 @@ void main() {
     );
   });
 
-  testWidgets('a key BELOW a painted effect keys what that effect made', (
+  testWidgets('a key BELOW a painted effect keys what that effect MADE', (
     tester,
   ) async {
     // The configuration free ordering opened, and the one that forces the
-    // live layer to rasterise: the shader needs an image to sample.
-    final keyed = await paintWith(tester, [
-      ResolvedLayerEffect(
-        kind: EffectKind.brightnessContrast,
-        values: const [-0.5, 0],
-      ),
-      deleteWhite(),
-    ]);
-    final darkenedOnly = await paintWith(tester, [
-      ResolvedLayerEffect(
-        kind: EffectKind.brightnessContrast,
-        values: const [-0.5, 0],
-      ),
-    ]);
+    // live layer to rasterise: a shader needs an image to sample.
+    //
+    // ⛔KEEP, not DELETE, and that is the whole design of this fixture. "Keep
+    // white, tolerance 0" over a picture where the darken has left NOTHING
+    // white erases everything — so the assertion fails both when the key
+    // never runs AND when it runs on the cel instead of on the darkened
+    // picture. A delete-white here would have passed on a key that did
+    // nothing at all, which is exactly how the first draft of this test lied.
+    final darkenedOnly = await paintWith(tester, [darken()]);
     expect(
       inkPixels(darkenedOnly),
       greaterThan(0),
       reason: 'fixture: the darkened layer drew',
     );
-    // Darkened first, the white is no longer white — so a key for WHITE at
-    // tolerance 0 finds nothing and the layer survives whole. That is the
-    // point: the key saw the darkened picture, not the cel.
+    final keyed = await paintWith(tester, [darken(), keepWhite()]);
     expect(
       inkPixels(keyed),
+      0,
+      reason: 'the key ran AFTER the darken, where nothing is white any more '
+          '— so KEEP WHITE keeps nothing',
+    );
+    // ⛔And the same key at the HEAD keeps everything: white IS white on the
+    // cel. Same two effects, opposite order, opposite picture — which is the
+    // order-is-free law, on the row you are drawing on.
+    final keptFirst = await paintWith(tester, [keepWhite(), darken()]);
+    expect(
+      inkPixels(keptFirst),
       inkPixels(darkenedOnly),
-      reason: 'the key ran AFTER the darken, where nothing is white any more',
+      reason: 'a leading keep-white is the surface\'s job and keeps the '
+          'white cel whole',
     );
   });
 }
