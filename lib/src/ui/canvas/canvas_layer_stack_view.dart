@@ -1745,11 +1745,11 @@ class _LayerStackPainter extends CustomPainter {
                   // OUTSIDE the visible rect still bleeds in — without this the
                   // blur at the screen edge would change as you scroll.
                   bounds: groupRect,
-                  paint: groupPaint,
                   rasterScale: rasterScale,
-                  maxPixelSide: _maxBufferSide,
+                  maxPixelSide: maxSubtreeRasterSide,
                   paintSubtree: (into, scale) =>
                       paintChildren(into, children, scale),
+                  compose: (blit) => blit(groupPaint),
                 );
               case _PaintAdjustment(
                 :final children,
@@ -1764,21 +1764,34 @@ class _LayerStackPainter extends CustomPainter {
                   effects: effects,
                   mix: mix,
                 );
-                if (pass.crossfades) {
-                  canvas.saveLayer(
-                    pass.bufferBounds,
-                    pass.crossfadeLayerPaint!,
-                  );
-                  canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
-                  paintChildren(canvas, children, rasterScale);
-                  canvas.restore();
-                }
-                canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
-                paintChildren(canvas, children, rasterScale);
-                canvas.restore();
-                if (pass.crossfades) {
-                  canvas.restore();
-                }
+                // 🚨★★★ONE RASTER, TWO BLITS. The scope used to be painted
+                // TWICE below full strength — once into the unfiltered
+                // saveLayer and once into the filtered one — because a mix
+                // is a crossfade, not a fade-out. It is the same picture
+                // both times, so it is rasterised once and blitted twice.
+                // The outer `saveLayer` stays: it is an alpha group over two
+                // draws of one image, not a buffer anything needs to sample.
+                drawSubtreeAsImage(
+                  canvas: canvas,
+                  bounds: pass.bufferBounds,
+                  rasterScale: rasterScale,
+                  maxPixelSide: maxSubtreeRasterSide,
+                  paintSubtree: (into, scale) =>
+                      paintChildren(into, children, scale),
+                  compose: (blit) {
+                    if (pass.crossfades) {
+                      canvas.saveLayer(
+                        pass.bufferBounds,
+                        pass.crossfadeLayerPaint!,
+                      );
+                      blit(pass.unfilteredPaint!);
+                    }
+                    blit(pass.filteredPaint);
+                    if (pass.crossfades) {
+                      canvas.restore();
+                    }
+                  },
+                );
               case _PaintActiveSurface(
                 :final opacity,
                 :final blendMode,

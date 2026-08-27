@@ -82,10 +82,10 @@ void main() {
   ) => drawSubtreeAsImage(
     canvas: canvas,
     bounds: groupRect,
-    paint: paint,
     rasterScale: scale,
     maxPixelSide: maxPixelSide,
     paintSubtree: (into, _) => drawChildren(into),
+    compose: (blit) => blit(paint),
   );
 
   Future<Uint8List> render({
@@ -249,6 +249,11 @@ void main() {
     // actually did.
     setUp(() => debugLastSubtreeRaster = null);
 
+    // The blit declares its quality by writing it onto the paint it was
+    // handed, so the paint IS the observation — deriving the expected value
+    // in the test would just certify a copy of the rule.
+    late Paint blitPaint;
+
     void rasterise({
       required Rect bounds,
       double scale = 1,
@@ -257,16 +262,17 @@ void main() {
     }) {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
+      blitPaint = Paint()..color = const Color(0xFF000000);
       drawSubtreeAsImage(
         canvas: canvas,
         bounds: bounds,
-        paint: Paint()..color = const Color(0xFF000000),
         rasterScale: scale,
         maxPixelSide: maxPixelSide,
         paintSubtree: (into, childScale) {
           onChildScale?.call(childScale);
           drawChildren(into);
         },
+        compose: (blit) => blit(blitPaint),
       );
       recorder.endRecording().dispose();
     }
@@ -280,7 +286,7 @@ void main() {
       expect(raster.scale, 1);
       // 1:1 by construction, and it says so instead of letting the default
       // decide.
-      expect(raster.filterQuality, FilterQuality.none);
+      expect(blitPaint.filterQuality, FilterQuality.none);
     });
 
     test('fractional bounds snap OUTWARD, never to the nearest', () {
@@ -320,7 +326,7 @@ void main() {
       expect(raster.pixelHeight, lessThanOrEqualTo(16));
       expect(raster.scale, lessThan(1));
       // ⛔`none` here would be nearest-neighbour on a ~3x magnification.
-      expect(raster.filterQuality, FilterQuality.low);
+      expect(blitPaint.filterQuality, FilterQuality.low);
     });
 
     test('children rasterise at the scale the parent SETTLED on', () {
