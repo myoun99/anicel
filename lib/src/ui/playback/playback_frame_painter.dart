@@ -10,7 +10,8 @@ import '../../models/canvas_viewport.dart';
 import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
 import '../../services/se_name_tag_plan.dart';
-import '../canvas/composite_effect_paint.dart' show CompositeEffectPaint;
+import '../canvas/composite_effect_paint.dart'
+    show CompositeEffectPaint, alphaOnly;
 import '../canvas/display_resample.dart';
 import '../canvas/layer_pose_paint.dart';
 import '../canvas/paper_background.dart';
@@ -216,7 +217,7 @@ class PlaybackFramePainter extends CustomPainter {
     if (fading) {
       canvas.saveLayer(
         frameRect ?? canvasRect,
-        Paint()..color = Color.fromRGBO(0, 0, 0, fadeOpacity.clamp(0.0, 1.0)),
+        Paint()..color = alphaOnly(fadeOpacity),
       );
     }
     if (pose != null && pasteboardColor != null) {
@@ -291,7 +292,7 @@ class PlaybackFramePainter extends CustomPainter {
                 displayScaleOf(resolvedViewport?.zoom ?? 1),
               )
             : FilterQuality.low
-        ..color = Color.fromRGBO(0, 0, 0, imageOpacity.clamp(0.0, 1.0));
+        ..color = alphaOnly(imageOpacity);
       // The V row's chain filters the picture on its way onto the stage.
       cutEffects.applyTo(imagePaint);
       canvas.drawImageRect(
@@ -317,8 +318,7 @@ class PlaybackFramePainter extends CustomPainter {
       if (thinning) {
         canvas.saveLayer(
           frameRect ?? canvasRect,
-          Paint()
-            ..color = Color.fromRGBO(0, 0, 0, imageOpacity.clamp(0.0, 1.0)),
+          Paint()..color = alphaOnly(imageOpacity),
         );
       }
       paintSeNameTags(canvas, tags: seNameTags, canvasSize: canvasSize);

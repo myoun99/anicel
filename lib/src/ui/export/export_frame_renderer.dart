@@ -21,6 +21,7 @@ import '../../services/playback/playback_frame_mapping.dart'
         sourceOverWeights,
         trackGroupSourceOverWeights;
 import '../camera/camera_frame_render_service.dart';
+import '../canvas/composite_effect_paint.dart' show alphaOnly;
 import '../editor_session_manager.dart';
 import '../playback/playback_frame_painter.dart';
 import '../track_effect_paint_policy.dart';
@@ -300,7 +301,7 @@ class ExportFrameRenderer {
       canvas.saveLayer(
         bounds,
         ui.Paint()
-          ..color = ui.Color.fromRGBO(0, 0, 0, fade.clamp(0.0, 1.0)),
+          ..color = alphaOnly(fade),
       );
     }
     final framePaint = ui.Paint();
@@ -401,7 +402,7 @@ class ExportFrameRenderer {
         if (weight < 1) {
           canvas.saveLayer(
             bounds,
-            ui.Paint()..color = ui.Color.fromRGBO(0, 0, 0, weight),
+            ui.Paint()..color = alphaOnly(weight),
           );
         }
         final framePaint = ui.Paint();

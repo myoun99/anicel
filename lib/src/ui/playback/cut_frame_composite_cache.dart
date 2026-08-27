@@ -298,11 +298,11 @@ class CutFrameCompositeCache {
               effects,
               rasterScale: scale,
             );
-            final groupEffects = groupPlan.finalPaint;
-            final groupPaint = ui.Paint()
-              ..color = ui.Color.fromRGBO(0, 0, 0, opacity)
-              ..blendMode = blendMode.paintBlendMode;
-            groupEffects.applyTo(groupPaint);
+            final groupPaint = layerCompositePaint(
+              opacity: opacity,
+              blendMode: blendMode,
+              effects: groupPlan.finalPaint,
+            );
             // 🚨★★★A GROUP IS AN IMAGE HERE TOO. The editing stack, the
             // camera (which the export renders through) and this cache
             // composite the same tree; if one of them kept a `saveLayer`
@@ -314,7 +314,6 @@ class CutFrameCompositeCache {
               // outside the raster, so the buffer grows by its spread.
               bounds: effectBufferBounds(rasterBounds, groupPlan.outsetPixels),
               rasterScale: rasterScale,
-              maxPixelSide: maxSubtreeRasterSide,
               paintSubtree: (into, _) => paintNodes(into, children),
               // ⛔No abort guard here. The expensive half already returned
               // early inside `paintNodes`; skipping the blit as well would
@@ -347,7 +346,6 @@ class CutFrameCompositeCache {
               canvas: canvas,
               bounds: pass.bufferBounds,
               rasterScale: rasterScale,
-              maxPixelSide: maxSubtreeRasterSide,
               paintSubtree: (into, _) => paintNodes(into, children),
               compose: composeAdjustmentScope(canvas, pass),
               steps: pass.preSteps,

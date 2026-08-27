@@ -91,7 +91,7 @@ int debugSubtreeRasterCount = 0;
 SubtreeRasterPlan? _planSubtreeRaster({
   required Rect bounds,
   required double rasterScale,
-  required int maxPixelSide,
+  int maxPixelSide = maxSubtreeRasterSide,
 }) {
   var scale = rasterScale;
   final side = bounds.width > bounds.height ? bounds.width : bounds.height;
@@ -204,7 +204,7 @@ void drawSubtreeAsImage({
   required Canvas canvas,
   required Rect bounds,
   required double rasterScale,
-  required int maxPixelSide,
+  int maxPixelSide = maxSubtreeRasterSide,
   required void Function(Canvas into, double rasterScale) paintSubtree,
   required void Function(BlitSubtree blit) compose,
   List<CompositeEffectStep> steps = const [],
@@ -235,7 +235,7 @@ Future<void> drawSubtreeAsImageAsync({
   required Canvas canvas,
   required Rect bounds,
   required double rasterScale,
-  required int maxPixelSide,
+  int maxPixelSide = maxSubtreeRasterSide,
   required Future<void> Function(Canvas into, double rasterScale) paintSubtree,
   required void Function(BlitSubtree blit) compose,
   List<CompositeEffectStep> steps = const [],

@@ -3771,7 +3771,6 @@ class EditorSessionManager extends ChangeNotifier {
         layer.attachedToLayerId == null;
   }
 
-
   /// Appends a fresh effect of [kind] (every parameter at its default, so
   /// adding one changes nothing until a value moves) to the active row.
   void addEffectToActiveLayer(EffectKind kind) {

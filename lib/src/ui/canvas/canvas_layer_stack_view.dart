@@ -1744,11 +1744,11 @@ class _LayerStackPainter extends CustomPainter {
                 // inside a blended folder finally reads the way it will play
                 // back. R6: the folder's effect chain lands on the same buffer.
                 final groupPlan = resolveCompositeEffectPlan(effects);
-                final groupEffects = groupPlan.finalPaint;
-                final groupPaint = Paint()
-                  ..color = Color.fromRGBO(0, 0, 0, opacity.clamp(0.0, 1.0))
-                  ..blendMode = blendMode.paintBlendMode;
-                groupEffects.applyTo(groupPaint);
+                final groupPaint = layerCompositePaint(
+                  opacity: opacity,
+                  blendMode: blendMode,
+                  effects: groupPlan.finalPaint,
+                );
                 // 🚨A GROUP'S BUFFER CANNOT EXCEED THE ONE THAT HOLDS IT.
                 // Bounded by the view, a folder asked Skia for the whole
                 // pasteboard (9× the page) at far zoom-out — an offscreen
@@ -1775,7 +1775,6 @@ class _LayerStackPainter extends CustomPainter {
                   // blur at the screen edge would change as you scroll.
                   bounds: groupRect,
                   rasterScale: rasterScale,
-                  maxPixelSide: maxSubtreeRasterSide,
                   paintSubtree: (into, scale) =>
                       paintChildren(into, children, scale),
                   compose: (blit) => blit(groupPaint),
@@ -1804,7 +1803,6 @@ class _LayerStackPainter extends CustomPainter {
                   canvas: canvas,
                   bounds: pass.bufferBounds,
                   rasterScale: rasterScale,
-                  maxPixelSide: maxSubtreeRasterSide,
                   paintSubtree: (into, scale) =>
                       paintChildren(into, children, scale),
                   compose: composeAdjustmentScope(canvas, pass),
@@ -1826,7 +1824,7 @@ class _LayerStackPainter extends CustomPainter {
                 //
                 // ㊱: the OPACITY rides that same buffer — one alpha over the
                 // assembled picture, exactly as a group node applies its own
-                // (`Color.fromRGBO(0, 0, 0, opacity)` is an alpha-only paint).
+                // (`alphaOnly` builds it, and clamps what the model does not).
                 // The panel's content-opacity wrap cannot do this job in
                 // merged mode: there the interactive view is input-only, so
                 // the wrap dims a widget that paints nothing and the layer
@@ -1840,12 +1838,11 @@ class _LayerStackPainter extends CustomPainter {
                 // the same answer [_PaintGroup] already gives for a folder.
                 final activePlan = resolveCompositeEffectPlan(effects);
                 final activeEffects = activePlan.finalPaint;
-                final activeAlpha = opacity.clamp(0.0, 1.0).toDouble();
-                final activeBlend = blendMode.paintBlendMode;
-                final activePaint = Paint()
-                  ..color = Color.fromRGBO(0, 0, 0, activeAlpha)
-                  ..blendMode = activeBlend;
-                activeEffects.applyTo(activePaint);
+                final activePaint = layerCompositePaint(
+                  opacity: opacity,
+                  blendMode: blendMode,
+                  effects: activeEffects,
+                );
                 // 🚨★★★THE LAYER RIDES THE DRAWS, NOT A BUFFER AROUND THEM.
                 //
                 // A layer's opacity and blend have to apply to the LAYER
@@ -1993,7 +1990,6 @@ class _LayerStackPainter extends CustomPainter {
                       activePlan.outsetPixels,
                     ),
                     rasterScale: rasterScale,
-                    maxPixelSide: maxSubtreeRasterSide,
                     paintSubtree: (into, _) => paintLiveBody(into),
                     compose: (blit) => blit(activePaint),
                     steps: activePlan.preSteps,
