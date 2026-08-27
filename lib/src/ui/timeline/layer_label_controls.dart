@@ -982,13 +982,19 @@ class LayerMarkChip extends StatelessWidget {
       // `layerMarkSlotWidth` rail column, so padding here would not grow a
       // hit area — it would push every slot after it out of the rail.
       padding: EdgeInsets.zero,
-      // 🚨TWO AXES, ONE LIST. 유저 설계(I-4): 공정을 고르고, 그 공정이
-      // 참조하는 수정을 그 아래에서 고른다. 첫 줄은 「수정 없음」이 아니라
-      // **소재**(上がり) — 그 공정의 작업본이다.
+      // 🚨★★★TWO AXES, TWO LEVELS. 유저 설계(I-4): 「위에서부터 콘티,레이아웃,
+      // 러프원화,원화,동화,시아게 가 있고, 거기 **호버하면 추가로 앵커팝오버로
+      // 수정라벨이 뜨도록**. 즉 축으로서 2가지가 존재하도록」.
       //
-      // ⛔The revise list is not copied per process: [revisesFor] answers
-      // from the ONE [LayerRevise] set, so renaming a revise renames it
-      // everywhere and 원화 can drop 동화검사 without the others noticing.
+      // ⛔I built this flat once and wrote 「TWO AXES, ONE LIST」 in the
+      // comment. 유저: 「니가 아티팩트로 제시한거랑 이거랑 똑같다고
+      // 생각하냐? … **대체 왜 정한대로 안만드는거야?**」 — the second axis
+      // exists precisely so it is not all on screen at once, and flattening
+      // it turned eight stages into forty-odd rows.
+      //
+      // ⛔The revise list is not copied per process either: [revisesFor]
+      // answers from the ONE [LayerRevise] set, so renaming a revise renames
+      // it everywhere and 원화 can drop 동화검사 without the others noticing.
       entriesBuilder: () => [
         PanelFlyoutItem(
           keyValue: 'layer-mark-option-none',
@@ -997,21 +1003,35 @@ class LayerMarkChip extends StatelessWidget {
           onSelected: () => onMarkSelected(layerId, LayerMark.none),
         ),
         for (final process in LayerProcess.values)
-          for (final option in [
-            // 소재 first — 그 공정의 작업본이고, 그 아래가 그 공정이
-            // 참조하는 수정들이다.
-            LayerMark(process: process),
-            for (final revise in revisesFor(process))
-              LayerMark(process: process, revise: revise),
-          ])
-            PanelFlyoutItem(
-              keyValue: 'layer-mark-option-${option.keySlug}',
-              label: option.revise == null
-                  ? '${process.displayName} · ${AppText.strings.tlLayerMarkSource}'
-                  : '${process.displayName} · ${option.revise!.displayName}',
-              swatch: layerMarkColor(option),
-              onSelected: () => onMarkSelected(layerId, option),
-            ),
+          PanelFlyoutItem(
+            keyValue: 'layer-mark-option-${process.jsonValue}',
+            label: process.displayName,
+            swatch: layerMarkColor(LayerMark(process: process)),
+            // 용지 carries no corrections, so it is a plain choice — no
+            // chevron, no second level, and picking it labels the row.
+            onSelected: revisesFor(process).isEmpty
+                ? () => onMarkSelected(layerId, LayerMark(process: process))
+                : null,
+            submenuBuilder: revisesFor(process).isEmpty
+                ? null
+                : () => [
+                    // 소재(上がり) first — 그 공정의 작업본이다. 이것이
+                    // 「수정 없음」 자리를 대신한다.
+                    for (final option in [
+                      LayerMark(process: process),
+                      for (final revise in revisesFor(process))
+                        LayerMark(process: process, revise: revise),
+                    ])
+                      PanelFlyoutItem(
+                        keyValue: 'layer-mark-option-${option.keySlug}',
+                        label:
+                            option.revise?.displayName ??
+                            AppText.strings.tlLayerMarkSource,
+                        swatch: layerMarkColor(option),
+                        onSelected: () => onMarkSelected(layerId, option),
+                      ),
+                  ],
+          ),
       ],
       child: Semantics(
         label: AppText.strings.tlLayerMark,
@@ -1094,12 +1114,24 @@ class _LabelPlate extends StatelessWidget {
     if (shown.isEmpty) {
       return null;
     }
+    // 🚨THE SLOT DOES NOT GROW, SO THE WRITING SHRINKS. 유저 2026-08-27:
+    // 「지금의 가로가 얇은 상태인 띠 크기 **그대로**에 LO든 LO작감이든 어떻게
+    // **우겨넣는방식**으로」.
+    //
+    // ⚠️`VerticalWritingText`'s own packing shrinks along the COLUMN; two
+    // columns side by side overrun the plate's WIDTH, which it cannot see —
+    // measured, 「A RenderFlex overflowed by 4.0 pixels」 the moment a revise
+    // was picked. Scaling the pair down is what makes both fit without the
+    // slot moving.
     return Center(
       child: ClipRect(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [for (final text in shown) _column(text, fill)],
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [for (final text in shown) _column(text, fill)],
+          ),
         ),
       ),
     );

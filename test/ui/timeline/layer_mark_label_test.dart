@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -64,6 +65,7 @@ Widget _panel() {
 
 void main() {
   _takeLabelPlate();
+  _twoLevelPopover();
 
   testWidgets('the label is a full-height, half-width plate leading the '
       'layer area (A6 ①②③)', (tester) async {
@@ -224,5 +226,95 @@ void _takeLabelPlate() {
         reason: '테이크 $take',
       );
     }
+  });
+}
+
+/// 🚨★★★팝오버는 **두 겹**이다. 유저 설계(I-4): 「거기 **호버하면 추가로
+/// 앵커팝오버로 수정라벨이 뜨도록**. 즉 축으로서 2가지가 존재하도록」.
+///
+/// ⛔한 번 평평하게 만들었다가 유저에게 잡혔다: 「니가 아티팩트로 제시한거랑
+/// 이거랑 똑같다고 생각하냐? … 대체 왜 정한대로 안만드는거야?」. 그래서 이
+/// 테스트는 「수정 항목이 있다」가 아니라 **「처음에는 없다가 호버해야 나온다」**
+/// 를 잰다 — 평평한 목록은 전자를 통과시킨다.
+void _twoLevelPopover() {
+  testWidgets('첫 겹은 공정만 낸다 — 수정은 아직 화면에 없다', (tester) async {
+    await tester.pumpWidget(_panel());
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+    );
+    await tester.pumpAndSettle();
+
+    for (final process in LayerProcess.values) {
+      expect(
+        find.byKey(ValueKey<String>('layer-mark-option-${process.jsonValue}')),
+        findsOneWidget,
+        reason: '${process.displayName} 은 첫 겹에 있다',
+      );
+    }
+    // 🚨THE ASSERTION THAT KILLS THE FLAT LIST.
+    expect(
+      find.byKey(
+        const ValueKey<String>('layer-mark-option-layout-animation-director'),
+      ),
+      findsNothing,
+      reason: '수정은 호버 전에는 없어야 한다 — 평평하게 펼치면 여기서 죽는다',
+    );
+  });
+
+  testWidgets('공정에 호버하면 그 공정의 수정만 옆에 뜬다', (tester) async {
+    await tester.pumpWidget(_panel());
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+    );
+    await tester.pumpAndSettle();
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(
+      tester.getCenter(
+        find.byKey(const ValueKey<String>('layer-mark-option-layout')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(
+        const ValueKey<String>('layer-mark-option-layout-animation-director'),
+      ),
+      findsOneWidget,
+      reason: '레이아웃의 작화감독 수정이 두 번째 겹에 뜬다',
+    );
+    expect(
+      find.byKey(const ValueKey<String>('layer-mark-option-layout')),
+      findsWidgets,
+      reason: '⚠️첫 겹은 닫히지 않는다 — 옆에 나란히 뜬다',
+    );
+    // 그 공정이 참조하지 않는 수정은 안 뜬다.
+    expect(
+      find.byKey(
+        const ValueKey<String>('layer-mark-option-layout-inbetween-check'),
+      ),
+      findsNothing,
+      reason: '레이아웃은 동화검사를 참조하지 않는다',
+    );
+  });
+
+  testWidgets('용지는 수정이 없으므로 두 번째 겹도 없다 — 바로 골라진다', (tester) async {
+    await tester.pumpWidget(_panel());
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+    );
+    await tester.pumpAndSettle();
+
+    final paper = find.byKey(
+      const ValueKey<String>('layer-mark-option-paper'),
+    );
+    expect(paper, findsOneWidget);
+    expect(
+      find.descendant(of: paper, matching: find.byIcon(Icons.chevron_right)),
+      findsNothing,
+      reason: '유저: 「용지는 수정공정 존재 안하도록」 — 겹을 예고하면 안 된다',
+    );
   });
 }
