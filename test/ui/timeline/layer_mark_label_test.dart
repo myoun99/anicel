@@ -36,7 +36,7 @@ Layer _layer(String id, LayerKind kind, {LayerMark mark = LayerMark.none}) {
 
 Widget _panel() {
   final layers = [
-    _layer('a', LayerKind.animation, mark: const LayerMark(process: LayerProcess.inbetween)),
+    _layer('a', LayerKind.animation, mark: const LayerMark(process: LayerProcess.inbetween, revise: LayerRevise.inbetweenCheck)),
     _layer('b', LayerKind.animation, mark: const LayerMark(process: LayerProcess.finish)),
     _layer('plain', LayerKind.animation),
     _layer('cam', LayerKind.camera),
@@ -66,6 +66,8 @@ Widget _panel() {
 void main() {
   _takeLabelPlate();
   _twoLevelPopover();
+  _submenuFollowsTheHover();
+  _stageComesFirst();
 
   testWidgets('the label is a full-height, half-width plate leading the '
       'layer area (A6 ①②③)', (tester) async {
@@ -114,13 +116,16 @@ void main() {
       'luminance law (A6 ④⑥, #1109)', (tester) async {
     await tester.pumpWidget(_panel());
 
+    // ⚠️`.first`: a labelled row draws TWO columns now (공정 + 수정), and
+    // both wear the same ink by construction — the plate hands one colour
+    // to every column it writes.
     TextStyle? styleUnder(String key) {
-      final label = tester.widget<VerticalWritingText>(
+      final label = tester.widgetList<VerticalWritingText>(
         find.descendant(
           of: find.byKey(ValueKey<String>(key)),
           matching: find.byType(VerticalWritingText),
         ),
-      );
+      ).first;
       return label.style;
     }
 
@@ -131,7 +136,7 @@ void main() {
     // text tests, not re-proven here.)
     expect(
       styleUnder('timeline-layer-mark-a')?.color,
-      timelineTextOnColor(layerMarkColor(const LayerMark(process: LayerProcess.inbetween))),
+      timelineTextOnColor(layerMarkColor(const LayerMark(process: LayerProcess.inbetween, revise: LayerRevise.inbetweenCheck))),
     );
     expect(
       styleUnder('timeline-layer-mark-b')?.color,
@@ -206,7 +211,7 @@ void _takeLabelPlate() {
     );
   });
 
-  testWidgets('테이크 팝오버가 없음 + 1–9 를 낸다', (tester) async {
+  testWidgets('테이크 팝오버는 1–9 만 낸다 — 「없음」은 없다', (tester) async {
     await tester.pumpWidget(_panel());
 
     await tester.tap(
@@ -214,11 +219,6 @@ void _takeLabelPlate() {
     );
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const ValueKey<String>('layer-take-option-none')),
-      findsOneWidget,
-      reason: '기본값으로 되돌릴 길이 있어야 한다',
-    );
     for (final take in LayerMark.takeChoices) {
       expect(
         find.byKey(ValueKey<String>('layer-take-option-$take')),
@@ -226,6 +226,35 @@ void _takeLabelPlate() {
         reason: '테이크 $take',
       );
     }
+    expect(
+      find.byKey(const ValueKey<String>('layer-take-option-none')),
+      findsNothing,
+      reason: '유저: 「테이크도 … 라벨없음 삭제해. 테이크는 기본값 T1」 — '
+          '그림은 언제나 어떤 판이라 부재가 없다',
+    );
+  });
+
+  testWidgets('⛔테이크 라벨에는 배경이 없다 — 글자만, 레이어 이름처럼', (tester) async {
+    await tester.pumpWidget(_panel());
+    // 유저 2026-08-27: 「테이크라벨은 **배경 삭제**해. 그러고 글자만 심플하게
+    // **레이어이름처럼 디자인 통일**해서」.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('timeline-layer-take-a')),
+        matching: find.byType(ColoredBox),
+      ),
+      findsNothing,
+      reason: '🚨색 라벨은 채워진 플레이트지만 테이크는 아니다',
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+        matching: find.byType(ColoredBox),
+      ),
+      findsWidgets,
+      reason: '⚠️대조군 — 색 라벨은 여전히 칠해진다. 이 단언이 없으면 위의 '
+          '단언은 「둘 다 안 칠해진다」로도 통과한다',
+    );
   });
 }
 
@@ -245,8 +274,13 @@ void _twoLevelPopover() {
     await tester.pumpAndSettle();
 
     for (final process in LayerProcess.values) {
+      // ⚠️A stage that opens a child is keyed `…-stage-…`; one that IS the
+      // choice (용지, which has no corrections) is keyed `…-option-…`.
+      final key = revisesFor(process).isEmpty
+          ? 'layer-mark-option-${process.jsonValue}'
+          : 'layer-mark-stage-${process.jsonValue}';
       expect(
-        find.byKey(ValueKey<String>('layer-mark-option-${process.jsonValue}')),
+        find.byKey(ValueKey<String>(key)),
         findsOneWidget,
         reason: '${process.displayName} 은 첫 겹에 있다',
       );
@@ -273,7 +307,7 @@ void _twoLevelPopover() {
     await mouse.addPointer(location: Offset.zero);
     await mouse.moveTo(
       tester.getCenter(
-        find.byKey(const ValueKey<String>('layer-mark-option-layout')),
+        find.byKey(const ValueKey<String>('layer-mark-stage-layout')),
       ),
     );
     await tester.pumpAndSettle();
@@ -286,7 +320,7 @@ void _twoLevelPopover() {
       reason: '레이아웃의 작화감독 수정이 두 번째 겹에 뜬다',
     );
     expect(
-      find.byKey(const ValueKey<String>('layer-mark-option-layout')),
+      find.byKey(const ValueKey<String>('layer-mark-stage-layout')),
       findsWidgets,
       reason: '⚠️첫 겹은 닫히지 않는다 — 옆에 나란히 뜬다',
     );
@@ -315,6 +349,161 @@ void _twoLevelPopover() {
       find.descendant(of: paper, matching: find.byIcon(Icons.chevron_right)),
       findsNothing,
       reason: '유저: 「용지는 수정공정 존재 안하도록」 — 겹을 예고하면 안 된다',
+    );
+  });
+}
+
+/// 🚨호버가 겹을 **옮긴다**. 유저 2026-08-27 실기: 「호버한것마다 팝오버
+/// 갱신하고 없으면 팝오버 열게 없는곳에 호버하면 사라지고 해야하는데 **전혀
+/// 갱신안되고있음**. 추가팝오버도 기존 팝오버에 **딱 붙어서** 열리는게아니라
+/// 뭔가 **겹쳐있음**」.
+///
+/// ⛔첫 구현은 겹을 `showMenu` 로 또 띄웠다 — 메뉴는 **라우트**라 쌓이기만 하고
+/// 바뀌지 않는다. 이 셋이 그 실패를 각각 잡는다.
+void _submenuFollowsTheHover() {
+  // 🚨ONE MOUSE, MOVED. ⛔A fresh `createGesture` + `addPointer` per hover
+  // trips `mouse_tracker`'s own assertion — a second pointer is added while
+  // the first was never removed — and the test dies before it measures
+  // anything. Measured: that is what these three did until the analyzer
+  // pointed out they were never even registered in `main`.
+  Future<TestGesture> mouseAt(WidgetTester tester, String key) async {
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(tester.getCenter(find.byKey(ValueKey<String>(key))));
+    await tester.pumpAndSettle();
+    return mouse;
+  }
+
+  Future<void> moveTo(
+    WidgetTester tester,
+    TestGesture mouse,
+    String key,
+  ) async {
+    await mouse.moveTo(tester.getCenter(find.byKey(ValueKey<String>(key))));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('다른 공정에 호버하면 겹이 그 공정 것으로 바뀐다', (tester) async {
+    await tester.pumpWidget(_panel());
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+    );
+    await tester.pumpAndSettle();
+
+    final mouse = await mouseAt(tester, 'layer-mark-stage-inbetween');
+    expect(
+      find.byKey(
+        const ValueKey<String>('layer-mark-option-inbetween-inbetween-check'),
+      ),
+      findsOneWidget,
+      reason: '동화의 동화검사',
+    );
+
+    await moveTo(tester, mouse, 'layer-mark-stage-layout');
+    expect(
+      find.byKey(
+        const ValueKey<String>('layer-mark-option-inbetween-inbetween-check'),
+      ),
+      findsNothing,
+      reason: '🚨앞 공정의 겹이 남아 있으면 안 된다 — 이게 신고된 증상이다',
+    );
+    expect(
+      find.byKey(
+        const ValueKey<String>('layer-mark-option-layout-animation-director'),
+      ),
+      findsOneWidget,
+      reason: '레이아웃 것으로 갈아탔다',
+    );
+  });
+
+  testWidgets('겹이 없는 행에 호버하면 열려 있던 겹이 사라진다', (tester) async {
+    await tester.pumpWidget(_panel());
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+    );
+    await tester.pumpAndSettle();
+
+    final mouse = await mouseAt(tester, 'layer-mark-stage-layout');
+    expect(
+      find.byKey(
+        const ValueKey<String>('layer-mark-option-layout-animation-director'),
+      ),
+      findsOneWidget,
+    );
+
+    // 용지는 수정이 없다.
+    await moveTo(tester, mouse, 'layer-mark-option-paper');
+    expect(
+      find.byKey(
+        const ValueKey<String>('layer-mark-option-layout-animation-director'),
+      ),
+      findsNothing,
+      reason: '유저: 「없는곳에 호버하면 **사라지고** 해야하는데」',
+    );
+  });
+
+  testWidgets('겹은 부모 행의 오른쪽에 딱 붙는다 — 겹치지 않는다', (tester) async {
+    await tester.pumpWidget(_panel());
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+    );
+    await tester.pumpAndSettle();
+    await mouseAt(tester, 'layer-mark-stage-layout');
+
+    final parent = tester.getRect(
+      find.byKey(const ValueKey<String>('layer-mark-stage-layout')),
+    );
+    final childRow = tester.getRect(
+      find.byKey(
+        const ValueKey<String>('layer-mark-option-layout-animation-director'),
+      ),
+    );
+    expect(
+      childRow.left,
+      greaterThanOrEqualTo(parent.right),
+      reason: '🚨유저: 「기존 팝오버에 **딱 붙어서** 열리는게아니라 뭔가 '
+          '겹쳐있음」 — 자식은 부모 오른쪽 밖에서 시작해야 한다',
+    );
+  });
+}
+
+/// 🚨읽는 방향은 **표면**이 정한다. 유저 2026-08-27:
+/// 「LO작감시 왼쪽에 작감 오른쪽에 LO 오는데, 그게아니라 **평범하게 왼쪽에 LO
+/// 오른쪽에 작감** 오도록. 이유는 지금 **레이어영역 자체가 왼쪽부터 오른쪽으로
+/// 읽는걸 기준으로** 설계하고있어」 · 「x시트는 **가로쓰기 가로표기**로 **위에
+/// LO 아래에 작감**」.
+void _stageComesFirst() {
+  testWidgets('레일에서는 공정이 왼쪽, 수정이 오른쪽', (tester) async {
+    await tester.pumpWidget(_panel());
+    final texts = tester
+        .widgetList<VerticalWritingText>(
+          find.descendant(
+            of: find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+            matching: find.byType(VerticalWritingText),
+          ),
+        )
+        .toList();
+    expect(texts, hasLength(2), reason: '동화 + 동검 두 칼럼');
+
+    final first = tester.getRect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+        matching: find.byWidget(texts.first),
+      ),
+    );
+    final second = tester.getRect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+        matching: find.byWidget(texts.last),
+      ),
+    );
+    expect(texts.first.text, '동화', reason: '공정이 먼저 그려진다');
+    expect(texts.last.text, '동검');
+    expect(
+      first.left,
+      lessThan(second.left),
+      reason: '🚨공정이 **왼쪽**에 온다 — 레이어 영역은 좌→우로 읽는다',
     );
   });
 }

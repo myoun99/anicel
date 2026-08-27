@@ -204,7 +204,40 @@ Future<void> showPanelFlyout(
     Offset.zero & overlay.size,
   );
 
-  final selected = await showMenu<PanelFlyoutItem>(
+  // 🚨★★★THE SUBMENU IS AN OVERLAY THE HOVER MOVES, NOT A STACK OF ROUTES.
+  //
+  // ⛔The first attempt opened each child with `showMenu` again. A menu is a
+  // ROUTE: hovering the next stage pushed another one on top instead of
+  // replacing it, hovering a row with no child left the last one standing,
+  // and every route positions itself from scratch so they overlapped rather
+  // than sitting flush. 유저 2026-08-27: 「**전혀 갱신안되고있음.** 추가팝오버도
+  // 기존 팝오버에 딱 붙어서 열리는게아니라 뭔가 **겹쳐있음**」.
+  //
+  // One notifier says which row is pointed at and one entry draws beside it,
+  // so pointing somewhere else REPLACES the child and pointing at a plain
+  // row clears it — which is the behaviour a submenu has everywhere.
+  final open = ValueNotifier<_OpenSubmenu?>(null);
+  final overlayState = Navigator.of(anchorContext).overlay!;
+  PanelFlyoutItem? pickedInSubmenu;
+  final submenuEntry = OverlayEntry(
+    builder: (context) => ValueListenableBuilder<_OpenSubmenu?>(
+      valueListenable: open,
+      builder: (context, request, _) => request == null
+          ? const SizedBox.shrink()
+          : _SubmenuLayer(
+              request: request,
+              onPicked: (item) {
+                pickedInSubmenu = item;
+                open.value = null;
+                // The parent list goes with it: the level you answered is
+                // not a level you want to be left staring at.
+                Navigator.of(anchorContext).maybePop();
+              },
+            ),
+    ),
+  );
+
+  final menuFuture = showMenu<PanelFlyoutItem>(
     context: anchorContext,
     position: position,
     // Instant open/close (R4 #2): the whole list appears in one frame.
@@ -264,79 +297,207 @@ Future<void> showPanelFlyout(
           PanelFlyoutItem() => PopupMenuItem<PanelFlyoutItem>(
             key: ValueKey<String>(entry.keyValue),
             value: entry,
-            // 🚨★★★A ROW WITH A SUBMENU IS NOT A COMMAND. Selecting it would
-            // close the list the submenu is supposed to open beside, so it
-            // stops taking its own tap — the child popover is the choice.
+            // 🚨★★★A ROW WITH A SUBMENU TAKES NO SELECTION — its tap OPENS
+            // the child, exactly as hovering does.
+            //
+            // 유저 2026-08-27 talked themselves through both shapes: first
+            // 「레이아웃 › 버튼 클릭하면 레이아웃 아가리로서 작동하도록」, then
+            // 「**아니다 그러면 호버없는 터치에서 불가능하니까 하지말자.**
+            // 추가팝오버 있는거 클릭하면 **그냥 호버랑 같은기능** 되도록」 —
+            // a finger has no hover, so if the tap picked 소재 the child
+            // would be unreachable on a tablet. 소재 lives inside the child,
+            // where a finger can get to it.
             enabled: entry.enabled && entry.submenuBuilder == null,
             height: 32,
-            child: entry.submenuBuilder == null
-                ? _itemBody(entry)
-                : _SubmenuRow(entry: entry),
+            // EVERY row reports where the pointer is, including the ones
+            // with no child: entering a plain row is what CLOSES an open
+            // submenu, which is the half that was missing.
+            child: _HoverReporter(
+              entry: entry,
+              open: open,
+              child: _itemBody(entry, hasSubmenu: entry.submenuBuilder != null),
+            ),
           ),
         },
     ],
   );
-  selected?.onSelected?.call();
+
+  // ⚠️INSERTED AFTER THE MENU IS UP, and that ordering is the whole reason
+  // this is not one line. An overlay entry goes ABOVE the entries that exist
+  // when it is inserted — insert it before `showMenu` and the menu route
+  // covers the child. One frame is enough for the route to be there.
+  var closed = false;
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!closed) {
+      overlayState.insert(submenuEntry);
+    }
+  });
+  final selected = await menuFuture;
+  closed = true;
+  if (submenuEntry.mounted) {
+    submenuEntry.remove();
+  }
+  open.dispose();
+  // The child's pick wins: it is the more specific answer, and reaching it
+  // popped the parent route with no value of its own.
+  (pickedInSubmenu ?? selected)?.onSelected?.call();
 }
 
-/// 🚨★★★THE SECOND ANCHOR. 유저 설계(I-4): 「위에서부터 콘티,레이아웃,러프원화,
-/// 원화,동화,시아게 가 있고, 거기 **호버하면 추가로 앵커팝오버로 수정라벨이
-/// 뜨도록**」.
+/// What the pointer is currently on, and where that row is on screen.
+class _OpenSubmenu {
+  const _OpenSubmenu({required this.anchor, required this.entries});
+
+  /// The parent ROW's rect in overlay coordinates. The child is drawn flush
+  /// against its right edge — 유저: 「기존 팝오버에 **딱 붙어서** 열리는게
+  /// 아니라 뭔가 겹쳐있음」.
+  final Rect anchor;
+
+  final List<PanelFlyoutEntry> entries;
+}
+
+/// 🚨★★★EVERY ROW REPORTS THE POINTER, INCLUDING THE PLAIN ONES.
 ///
-/// ⛔I shipped one flat list the first time and wrote 「TWO AXES, ONE LIST」
-/// in the comment — the user had approved a drawing of two levels and got a
-/// scroll of forty-odd rows. The nesting is the design, not a flourish: the
-/// point of two axes is that the second one only appears for the stage you
-/// are pointing at.
-class _SubmenuRow extends StatefulWidget {
-  const _SubmenuRow({required this.entry});
+/// 유저 2026-08-27: 「**호버한것마다 팝오버 갱신**하고 없으면 팝오버 열게
+/// 없는곳에 호버하면 **사라지고** 해야하는데 **전혀 갱신안되고있음**」.
+///
+/// ⛔That is why a plain row sets the notifier to null rather than ignoring
+/// the pointer: closing the child is not the child's job, it is the job of
+/// whatever you pointed at next. A row that stayed silent left the last
+/// submenu standing over a stage nobody was looking at.
+class _HoverReporter extends StatelessWidget {
+  const _HoverReporter({
+    required this.entry,
+    required this.open,
+    required this.child,
+  });
 
   final PanelFlyoutItem entry;
+  final ValueNotifier<_OpenSubmenu?> open;
+  final Widget child;
 
-  @override
-  State<_SubmenuRow> createState() => _SubmenuRowState();
-}
-
-class _SubmenuRowState extends State<_SubmenuRow> {
-  bool _open = false;
-
-  Future<void> _openSubmenu() async {
-    if (_open || !mounted) {
+  void _report(BuildContext context) {
+    final builder = entry.submenuBuilder;
+    if (builder == null) {
+      open.value = null;
       return;
     }
-    _open = true;
-    // Anchored to THIS ROW, opening to its right — `anchorRect` past the
-    // row's right edge is what puts the child beside the parent instead of
-    // under it.
     final box = context.findRenderObject() as RenderBox?;
-    if (box == null) {
-      _open = false;
+    final overlay =
+        Navigator.of(context).overlay?.context.findRenderObject() as RenderBox?;
+    if (box == null || overlay == null) {
       return;
     }
-    await showPanelFlyout(
-      context,
-      entries: widget.entry.submenuBuilder!(),
-      anchorRect: Rect.fromLTWH(box.size.width, 0, 0, 0),
+    // 🚨THE MENU'S OUTER EDGE, NOT THIS ROW'S CONTENT EDGE. A row sits
+    // inside the menu's horizontal padding, so anchoring to the row put the
+    // child a dozen pixels INSIDE the parent — measured, and it is exactly
+    // 「기존 팝오버에 딱 붙어서 열리는게아니라 뭔가 겹쳐있음」.
+    //
+    // The nearest [Material] IS the menu surface, so its right edge is what
+    // «beside the parent» means.
+    RenderBox? surface;
+    context.visitAncestorElements((element) {
+      if (element.widget is Material) {
+        surface = element.renderObject as RenderBox?;
+        return false;
+      }
+      return true;
+    });
+    final rowTop = box.localToGlobal(Offset.zero, ancestor: overlay);
+    final rowBottom = box.localToGlobal(
+      box.size.bottomRight(Offset.zero),
+      ancestor: overlay,
     );
-    if (mounted) {
-      _open = false;
-      // The child closed itself when something was picked; the parent list
-      // has to go too, or the user is left staring at the level they
-      // already answered.
-      Navigator.of(context).maybePop();
-    }
+    final menu = surface;
+    final right = menu == null
+        ? rowBottom.dx
+        : menu
+              .localToGlobal(
+                menu.size.bottomRight(Offset.zero),
+                ancestor: overlay,
+              )
+              .dx;
+    final left = menu == null
+        ? rowTop.dx
+        : menu.localToGlobal(Offset.zero, ancestor: overlay).dx;
+    open.value = _OpenSubmenu(
+      anchor: Rect.fromLTRB(left, rowTop.dy, right, rowBottom.dy),
+      entries: builder(),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
-      onEnter: (_) => _openSubmenu(),
-      // Touch has no hover, so a press opens the same child. ⛔Not a second
-      // behaviour: it is the same call, reached the only way a finger can.
+      onEnter: (_) => _report(context),
+      // A finger has no hover, so a tap does the same thing. ⛔Not a second
+      // behaviour — the same call, reached the only way a finger can.
       child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: _openSubmenu,
-        child: _itemBody(widget.entry, hasSubmenu: true),
+        behavior: entry.submenuBuilder == null
+            ? HitTestBehavior.translucent
+            : HitTestBehavior.opaque,
+        onTap: entry.submenuBuilder == null ? null : () => _report(context),
+        child: child,
+      ),
+    );
+  }
+}
+
+/// The child popover — ONE overlay the hover moves, not a route per stage.
+class _SubmenuLayer extends StatelessWidget {
+  const _SubmenuLayer({required this.request, required this.onPicked});
+
+  final _OpenSubmenu request;
+  final ValueChanged<PanelFlyoutItem> onPicked;
+
+  static const double _rowHeight = 32;
+  static const double _width = 200;
+
+  @override
+  Widget build(BuildContext context) {
+    final overlaySize = MediaQuery.sizeOf(context);
+    final items = request.entries.whereType<PanelFlyoutItem>().toList();
+    final height = items.length * _rowHeight + 16;
+    // Flush against the parent's right edge, its first row level with the
+    // row that opened it — and folded back to the parent's LEFT when there
+    // is no room, which is what every submenu does at a screen edge.
+    final left = request.anchor.right + _width <= overlaySize.width
+        ? request.anchor.right
+        : request.anchor.left - _width;
+    final top = (request.anchor.top - 8).clamp(
+      0.0,
+      (overlaySize.height - height).clamp(0.0, double.infinity),
+    );
+    return Positioned(
+      left: left,
+      top: top,
+      width: _width,
+      child: Material(
+        color: AppColors.surface,
+        elevation: 8,
+        borderRadius: const BorderRadius.all(Radius.circular(AppShapes.windowRadius)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final item in items)
+                InkWell(
+                  key: ValueKey<String>(item.keyValue),
+                  onTap: item.enabled ? () => onPicked(item) : null,
+                  child: SizedBox(
+                    height: _rowHeight,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      // ⛔The SAME body the parent list draws — a submenu row
+                      // that rendered itself would drift from the list it
+                      // belongs to.
+                      child: _itemBody(item),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
