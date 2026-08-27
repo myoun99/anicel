@@ -1,16 +1,19 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
-import 'package:flutter/gestures.dart' show kMiddleMouseButton;
+import 'package:flutter/gestures.dart' show kMiddleMouseButton, kPrimaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/device_viewport.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
+import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -369,7 +372,16 @@ void main() {
     await tester.pumpAndSettle();
 
     final centre = tester.getCenter(find.byKey(tapLayerKey));
-    final gesture = await tester.startGesture(centre);
+    // 🚨A MOUSE, said out loud. 「클릭중이면 색 바뀌도록」 is click language
+    // and this test has always been about the held BUTTON; it just took the
+    // harness default, which is a finger. A finger now waits for the gesture
+    // to declare itself (see the touch group below), so leaving the default
+    // here would quietly turn a mouse contract into a touch one.
+    final gesture = await tester.startGesture(
+      centre,
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+    );
     await tester.pump();
     expect(picks, hasLength(1), reason: 'the press still picks');
 
@@ -790,5 +802,308 @@ void main() {
     expect(sampledPoints, hasLength(1));
     expect(sampledPoints.single.x, closeTo(25, 0.001));
     expect(sampledPoints.single.y, closeTo(35, 0.001));
+  });
+
+  /// 유저 2026-08-27: 「1핑거 드로잉모드일때 **다른 툴도 비슷한 문제
+  /// 있을거같은데** 어떻지? … 손가락이 동시에 착지하는게 불가능하니까. …
+  /// 그런 비슷한 방식으로 **통일**하는게 근본통일같은데」.
+  ///
+  /// The user was right and named the cure in the same breath. The fill was
+  /// fixed alone (H29, the group above); the STAMP and the EYEDROPPER sit on
+  /// the tap layer and fired on the press, so the first finger of every
+  /// two-finger undo dropped a piece or repainted the colour.
+  ///
+  /// One rule covers both, and it is the app's own: a gesture declares
+  /// itself by MOVING. Until it has, nothing happens — a tap that stays put
+  /// resolves when the finger leaves, and one that crosses the slop resolves
+  /// there and carries on.
+  group('the tap tools wait for the gesture to say what it is', () {
+    // 🚨SAVE and restore — `AppInput` is a global (see the H29 group).
+    late AppInputSettings savedInput;
+    setUp(() {
+      savedInput = AppInput.settings.value;
+      AppInput.settings.value = savedInput.copyWith(
+        touchDragOneFinger: CanvasTouchDragAction.draw,
+      );
+    });
+    tearDown(() {
+      AppInput.settings.value = savedInput;
+    });
+
+    /// A 2×2 opaque piece, so a landed stamp is readable in the raster
+    /// rather than through a flag.
+    CutPiece piece() {
+      final rgba = Uint8List(2 * 2 * 4);
+      for (var index = 0; index < 4; index += 1) {
+        rgba[index * 4] = 0xFF;
+        rgba[index * 4 + 3] = 0xFF;
+      }
+      return CutPiece(
+        image: BrushStampImage(id: 'piece', width: 2, height: 2, rgba: rgba),
+        originLeft: 0,
+        originTop: 0,
+      );
+    }
+
+    Future<BrushFrameEditingCoordinator> pumpStamp(WidgetTester tester) async {
+      final frameKeys = BrushCanvasFixture.createFrameKeys();
+      final coordinator = BrushCanvasFixture.createCoordinator(
+        frameKeys: frameKeys,
+      );
+      final slot = CutPieceSlot()..hold(piece());
+      addTearDown(slot.dispose);
+      await tester.pumpWidget(
+        app(
+          BrushCanvasPanel(
+            coordinator: coordinator,
+            availableFrameKeys: frameKeys,
+            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+            brushToolState: BrushToolState.defaults.copyWith(
+              tool: CanvasTool.cutStamp,
+            ),
+            cutPieceSlot: slot,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(AppInput.touchDraws, isTrue, reason: '터치 묘화 on — 유저 상태');
+      expect(
+        find.byKey(tapLayerKey),
+        findsOneWidget,
+        reason: '🚨the stamp has to be ON the tap layer, or this group is '
+            'driving a surface that is not the one under test',
+      );
+      return coordinator;
+    }
+
+    /// Whether the cel has ANY ink. The stamp lands where the pointer is,
+    /// which a widget test cannot name in canvas coordinates, so the
+    /// question asked is the one that matters: did a piece land at all.
+    bool stamped(BrushFrameEditingCoordinator coordinator) => coordinator
+        .frameStore
+        .celHasRenderableContent(coordinator.activeFrameKey);
+
+    testWidgets('STAMP — one finger down and up: the piece lands', (
+      tester,
+    ) async {
+      final coordinator = await pumpStamp(tester);
+      final centre = tester.getCenter(find.byKey(tapLayerKey));
+      final finger = await tester.startGesture(
+        centre,
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump();
+      expect(
+        stamped(coordinator),
+        isFalse,
+        reason: '⛔and NOT on the touch — the press cannot yet know whether a '
+            'second finger is on its way',
+      );
+
+      await finger.up();
+      await tester.pumpAndSettle();
+      expect(
+        stamped(coordinator),
+        isTrue,
+        reason: 'a lone tap is the stamp\'s own gesture — 「Click = drop the '
+            'held piece」 still holds, it just resolves on the lift',
+      );
+    });
+
+    testWidgets('STAMP — a SECOND finger joins before the lift: nothing '
+        'lands', (tester) async {
+      final coordinator = await pumpStamp(tester);
+      final centre = tester.getCenter(find.byKey(tapLayerKey));
+      // The shape of a two-finger undo.
+      final first = await tester.startGesture(
+        centre,
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump();
+      final second = await tester.startGesture(
+        centre + const Offset(40, 0),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump();
+      await first.up();
+      await second.up();
+      await tester.pumpAndSettle();
+
+      expect(
+        stamped(coordinator),
+        isFalse,
+        reason: '🚨THE RASTER, not a flag: the bug was a real commit, and a '
+            'stamp the user never asked for is what ate their undo',
+      );
+    });
+
+    testWidgets('STAMP — a THIRD finger does not get a fresh turn', (
+      tester,
+    ) async {
+      final coordinator = await pumpStamp(tester);
+      final centre = tester.getCenter(find.byKey(tapLayerKey));
+      // 🚨THE CASE A MUTATION FOUND. With 「is a tap already waiting」 as the
+      // only guard, the second finger cleared the pending tap and the third
+      // armed a NEW one — so a three-finger redo stamped a piece on its way
+      // past. The guard has to be a count of live fingers, not a flag.
+      final fingers = <TestGesture>[];
+      for (var index = 0; index < 3; index += 1) {
+        fingers.add(
+          await tester.startGesture(
+            centre + Offset(30.0 * index, 0),
+            kind: PointerDeviceKind.touch,
+          ),
+        );
+        await tester.pump();
+      }
+      // ⚠️LAST DOWN, FIRST UP. Order matters and the first version of this
+      // test got it wrong: lifting front-to-back, the third finger's stale
+      // turn is cleared by the FIRST finger's release before it can be
+      // spent, so the bug hides and the mutation survives. Hands do not
+      // promise an order.
+      for (final finger in fingers.reversed) {
+        await finger.up();
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+
+      expect(
+        stamped(coordinator),
+        isFalse,
+        reason: 'three fingers are a shortcut, not three chances to stamp',
+      );
+    });
+
+    testWidgets('STAMP — a finger that DRAGS past the slop stamps, without '
+        'waiting for the lift', (tester) async {
+      final coordinator = await pumpStamp(tester);
+      final centre = tester.getCenter(find.byKey(tapLayerKey));
+      final finger = await tester.startGesture(
+        centre,
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump();
+      // Sub-slop first: a wobble is not yet a drag.
+      await finger.moveTo(centre + const Offset(6, 0));
+      await tester.pump();
+      expect(
+        stamped(coordinator),
+        isFalse,
+        reason: 'six pixels is a wobble, and the slop is '
+            '${InteractiveBrushEditCanvasView.kTouchStrokeCommitSlop}',
+      );
+
+      await finger.moveTo(centre + const Offset(60, 0));
+      await tester.pump();
+      expect(
+        stamped(coordinator),
+        isTrue,
+        reason: 'crossing the slop IS the gesture declaring itself — it does '
+            'not have to wait for the lift as well',
+      );
+      await finger.up();
+      await tester.pumpAndSettle();
+    });
+
+    Future<void> pumpDropper(
+      WidgetTester tester, {
+      required List<int> picks,
+    }) async {
+      final frameKeys = BrushCanvasFixture.createFrameKeys();
+      await tester.pumpWidget(
+        app(
+          BrushCanvasPanel(
+            coordinator: BrushCanvasFixture.createCoordinator(
+              frameKeys: frameKeys,
+            ),
+            availableFrameKeys: frameKeys,
+            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+            brushToolState: BrushToolState.defaults.copyWith(
+              tool: CanvasTool.eyedropper,
+            ),
+            sampleColorAt: (_) => 0xFF123456,
+            onEyedropperPick: picks.add,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('DROPPER — one finger down and up: it picks, on the lift', (
+      tester,
+    ) async {
+      final picks = <int>[];
+      await pumpDropper(tester, picks: picks);
+      final centre = tester.getCenter(find.byKey(tapLayerKey));
+      final finger = await tester.startGesture(
+        centre,
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump();
+      expect(picks, isEmpty, reason: '⛔not on the touch');
+
+      await finger.up();
+      await tester.pumpAndSettle();
+      expect(
+        picks,
+        [0xFF123456],
+        reason: 'tap-to-pick is the dropper\'s commonest verb and it keeps '
+            'working — it just resolves where the answer is known',
+      );
+    });
+
+    testWidgets('DROPPER — a SECOND finger joins before the lift: no pick', (
+      tester,
+    ) async {
+      final picks = <int>[];
+      await pumpDropper(tester, picks: picks);
+      final centre = tester.getCenter(find.byKey(tapLayerKey));
+      final first = await tester.startGesture(
+        centre,
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump();
+      final second = await tester.startGesture(
+        centre + const Offset(40, 0),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump();
+      await first.up();
+      await second.up();
+      await tester.pumpAndSettle();
+
+      expect(
+        picks,
+        isEmpty,
+        reason: '유저: 「선택툴도 선택이 일어나면서 언두 된다거나 그런거 '
+            '있을거아니야」 — the colour is not silently rewritten by a '
+            'gesture that was never about colour',
+      );
+    });
+
+    testWidgets('DROPPER — a DRAG still samples all along it (TS7 survives '
+        'the wait)', (tester) async {
+      final picks = <int>[];
+      await pumpDropper(tester, picks: picks);
+      final centre = tester.getCenter(find.byKey(tapLayerKey));
+      final finger = await tester.startGesture(
+        centre,
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump();
+      await finger.moveTo(centre + const Offset(40, 0));
+      await tester.pump();
+      await finger.moveTo(centre + const Offset(80, 0));
+      await tester.pump();
+      await finger.up();
+      await tester.pumpAndSettle();
+
+      expect(
+        picks.length,
+        greaterThan(1),
+        reason: '유저 확정 TS7: 「클릭중이면 색 바뀌도록 … 드래그중 계속샘플」 '
+            '— deferring the FIRST sample must not cost the rest of them',
+      );
+    });
   });
 }
