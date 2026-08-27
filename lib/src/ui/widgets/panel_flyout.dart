@@ -80,6 +80,7 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
     this.danger = false,
     this.enabled = true,
     this.onSelected,
+    this.submenuBuilder,
   }) : assert(
          icon == null || swatch == null,
          'a row has ONE leading mark: a glyph or a colour, not both',
@@ -108,6 +109,18 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
   /// obeyed that would stop being the colour it is naming. So the leading
   /// slot takes either a glyph the list may tint or a colour it may not.
   final Color? swatch;
+
+  /// A SECOND level, anchored to this row and opened by hovering it.
+  ///
+  /// 🚨★★★유저 설계(I-4): 「위에서부터 콘티,레이아웃,러프원화,원화,동화,시아게
+  /// 가 있고, 거기 **호버하면 추가로 앵커팝오버로 수정라벨이 뜨도록**. 즉 축으로
+  /// 서 2가지가 존재하도록」 — the second axis exists so that it is NOT all on
+  /// screen at once. Flattening the two into one list defeats the reason
+  /// there are two.
+  ///
+  /// ⚠️A row that has one takes no tap of its own: choosing happens in the
+  /// child. Built lazily, like the top-level list.
+  final List<PanelFlyoutEntry> Function()? submenuBuilder;
 
   /// Trailing check when true; null means the item is not a toggle.
   ///
@@ -251,10 +264,86 @@ Future<void> showPanelFlyout(
           PanelFlyoutItem() => PopupMenuItem<PanelFlyoutItem>(
             key: ValueKey<String>(entry.keyValue),
             value: entry,
-            enabled: entry.enabled,
+            // 🚨★★★A ROW WITH A SUBMENU IS NOT A COMMAND. Selecting it would
+            // close the list the submenu is supposed to open beside, so it
+            // stops taking its own tap — the child popover is the choice.
+            enabled: entry.enabled && entry.submenuBuilder == null,
             height: 32,
-            child: Row(
-              children: [
+            child: entry.submenuBuilder == null
+                ? _itemBody(entry)
+                : _SubmenuRow(entry: entry),
+          ),
+        },
+    ],
+  );
+  selected?.onSelected?.call();
+}
+
+/// 🚨★★★THE SECOND ANCHOR. 유저 설계(I-4): 「위에서부터 콘티,레이아웃,러프원화,
+/// 원화,동화,시아게 가 있고, 거기 **호버하면 추가로 앵커팝오버로 수정라벨이
+/// 뜨도록**」.
+///
+/// ⛔I shipped one flat list the first time and wrote 「TWO AXES, ONE LIST」
+/// in the comment — the user had approved a drawing of two levels and got a
+/// scroll of forty-odd rows. The nesting is the design, not a flourish: the
+/// point of two axes is that the second one only appears for the stage you
+/// are pointing at.
+class _SubmenuRow extends StatefulWidget {
+  const _SubmenuRow({required this.entry});
+
+  final PanelFlyoutItem entry;
+
+  @override
+  State<_SubmenuRow> createState() => _SubmenuRowState();
+}
+
+class _SubmenuRowState extends State<_SubmenuRow> {
+  bool _open = false;
+
+  Future<void> _openSubmenu() async {
+    if (_open || !mounted) {
+      return;
+    }
+    _open = true;
+    // Anchored to THIS ROW, opening to its right — `anchorRect` past the
+    // row's right edge is what puts the child beside the parent instead of
+    // under it.
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null) {
+      _open = false;
+      return;
+    }
+    await showPanelFlyout(
+      context,
+      entries: widget.entry.submenuBuilder!(),
+      anchorRect: Rect.fromLTWH(box.size.width, 0, 0, 0),
+    );
+    if (mounted) {
+      _open = false;
+      // The child closed itself when something was picked; the parent list
+      // has to go too, or the user is left staring at the level they
+      // already answered.
+      Navigator.of(context).maybePop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => _openSubmenu(),
+      // Touch has no hover, so a press opens the same child. ⛔Not a second
+      // behaviour: it is the same call, reached the only way a finger can.
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _openSubmenu,
+        child: _itemBody(widget.entry, hasSubmenu: true),
+      ),
+    );
+  }
+}
+
+Widget _itemBody(PanelFlyoutItem entry, {bool hasSubmenu = false}) => Row(
+  children: [
                 if (entry.swatch case final swatch?) ...[
                   // 14 rather than the glyph's 16: the same circle the rail
                   // draws for the same mark, so the list and the row it was
@@ -281,18 +370,18 @@ Future<void> showPanelFlyout(
                     style: TextStyle(fontSize: 12, color: _inkFor(entry)),
                   ),
                 ),
-                if (entry.checked == true) ...[
-                  const SizedBox(width: 8),
-                  Icon(Icons.check, size: 14, color: AppColors.accent),
-                ],
-              ],
-            ),
-          ),
-        },
+    if (entry.checked == true) ...[
+      const SizedBox(width: 8),
+      Icon(Icons.check, size: 14, color: AppColors.accent),
     ],
-  );
-  selected?.onSelected?.call();
-}
+    // The one glyph a submenu row wears: it says there is another level,
+    // which the row cannot say with colour the way «selected» does.
+    if (hasSubmenu) ...[
+      const SizedBox(width: 4),
+      Icon(Icons.chevron_right, size: 14, color: _inkFor(entry)),
+    ],
+  ],
+);
 
 /// One row's ink. Disabled dims, destructive reddens, CURRENT accents —
 /// and the last of those is the whole way a flyout says "this one", because
