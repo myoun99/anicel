@@ -24,6 +24,7 @@ void main() {
   _namesFollowTheLanguage();
   _toneNamesFollowTheLanguage();
   _oneDecidesTheWritingDirection();
+  _threeGlyphAbbreviations();
 
   // 🚨A GLOBAL. Saving and restoring rather than assigning a fresh default
   // back: writing `const AppAccentSettings()` in the teardown would not undo
@@ -32,8 +33,19 @@ void main() {
   setUp(() => saved = AppColors.accentSettings.value);
   tearDown(() => AppColors.accentSettings.value = saved);
 
-  test('기본 팔레트는 원본 그대로다 — 유저: 「기본값은 원본그대로로 두고」', () {
-    expect(const AppAccentSettings().layerMarkPalette, LayerMarkPalette.original);
+  test('기본 톤은 크림이다 — 유저 실기 확정 2026-08-28: 「답은 크림이고」', () {
+    expect(const AppAccentSettings().layerMarkPalette, LayerMarkPalette.cream);
+  });
+
+  test('⛔기본값을 두 군데서 안 정한다 — 저장값이 깨졌을 때도 같은 톤', () {
+    // 「고른 적이 없으면 무엇인가」에 답하는 곳이 둘이면, 저장값이 깨진
+    // 사람에게만 다른 톤이 나오고 아무도 못 찾는다.
+    expect(LayerMarkPalette.fromJson(null), LayerMarkPalette.fallback);
+    expect(LayerMarkPalette.fromJson('무슨소리'), LayerMarkPalette.fallback);
+    expect(
+      const AppAccentSettings().layerMarkPalette,
+      LayerMarkPalette.fallback,
+    );
   });
 
   test('스샷에서 뽑은 색이 그대로 나온다 — LO는 흰색, 원화는 초록, 미술은 파랑', () {
@@ -451,5 +463,47 @@ void _oneDecidesTheWritingDirection() {
           '⛔세로쓰기를 두 곳에서 만들면 그게 사본이다. 공용 결정은 '
           '`layerPlateGlyphs` — 줄: $builders',
     );
+  });
+}
+
+/// 축약어는 **세 글자까지** 간다. 유저 2026-08-28: 「총작화감독은 총작감,
+/// 총감독은 총감독, 러프원화는 러프원. 즉 **3글자까지 허용**이란느낌」.
+void _threeGlyphAbbreviations() {
+  void speak(AppLanguage language) => AppText.settings.value =
+      AppLanguageSettings(programLanguage: language);
+  tearDown(() => AppText.settings.value = const AppLanguageSettings());
+
+  test('유저가 지정한 셋이 세 글자로 나온다 — 한국어와 일본어 둘 다', () {
+    speak(AppLanguage.ko);
+    expect(layerProcessAbbrev(LayerProcess.roughKey), '러프원');
+    expect(layerReviseAbbrev(LayerRevise.chiefAnimationDirector), '총작감');
+    expect(layerReviseAbbrev(LayerRevise.chiefDirector), '총감독');
+
+    speak(AppLanguage.ja);
+    expect(layerProcessAbbrev(LayerProcess.roughKey), 'ラフ原');
+    expect(layerReviseAbbrev(LayerRevise.chiefAnimationDirector), '総作監');
+    expect(layerReviseAbbrev(LayerRevise.chiefDirector), '総監督');
+  });
+
+  test('세 글자가 상한이다 — 넷째 글자가 들어오면 띠가 감당 못 한다', () {
+    // ⚠️상한을 **재는** 테스트다. 14px 슬롯이 칼럼 둘로 갈리므로 한 글자가
+    // 7px 이고, 넷째 글자가 들어오면 한 줄이 5px 밑으로 떨어진다.
+    for (final language in [AppLanguage.ko, AppLanguage.ja]) {
+      speak(language);
+      for (final process in LayerProcess.values) {
+        expect(
+          layerProcessAbbrev(process).characters.length,
+          lessThanOrEqualTo(3),
+          reason: '$language · ${process.jsonValue}',
+        );
+      }
+      for (final revise in LayerRevise.values) {
+        expect(
+          layerReviseAbbrev(revise).characters.length,
+          lessThanOrEqualTo(3),
+          reason: '$language · ${revise.jsonValue}',
+        );
+      }
+    }
   });
 }

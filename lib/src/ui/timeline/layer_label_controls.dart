@@ -1321,13 +1321,15 @@ class _TakeText extends StatelessWidget {
       height: SectionBandZone.lineHeight,
     );
     return ClipRect(
-      // Fills its slot the way the colour plate does — 유저 2026-08-28:
-      // 「글자 늘려서 꽉 채우게 … 옆으로도 자기 영역 내에서 꽉 채우게」.
-      child: FittedBox(
-        fit: BoxFit.fill,
-        // ⛔THE SHARED decision, not its own copy of it. This chip and the
-        // colour plate stand side by side and used to each choose the
-        // writing direction — agreeing, which is exactly how a copy hides.
+      // ⛔NOT stretched. 유저 2026-08-28: 「테이크 글자는 이전처럼 flex하지말고
+      // **그냥 평범하게** 하자」 — the colour plate fills its slot because the
+      // fill IS the label there; T1 is just a number and reads better at its
+      // own size.
+      //
+      // ⚠️The writing direction still comes from [layerPlateGlyphs]: standing
+      // the glyphs up on the rail and laying them across on the sheet is the
+      // shared decision, and only the FILL was ever this chip's own choice.
+      child: Center(
         child: layerPlateGlyphs(text: mark.takeText, axis: axis, style: style),
       ),
     );
