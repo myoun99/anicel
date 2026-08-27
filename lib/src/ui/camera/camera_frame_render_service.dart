@@ -14,6 +14,7 @@ import '../../services/cut_frame_composite_plan.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../canvas/composite_effect_paint.dart';
 import '../canvas/layer_image_draw.dart';
+import '../canvas/subtree_image_composite.dart';
 import '../canvas/tiled_surface_compose.dart';
 
 /// File name for one exported frame: `frame_0001.png` (1-based).
@@ -248,7 +249,15 @@ class CameraFrameRenderService {
       center: Offset(pose.center.x, pose.center.y),
       radius: visibleRadius,
     );
-    void paintNodes(List<CutFrameCompositeSurfaceNode> list) {
+    // The scale the CTM below is at. A group that rasterises ITSELF needs it,
+    // and a `Canvas` will not tell anyone. Rotation preserves scale, so the
+    // projection's zoom is the whole answer.
+    final cameraRasterScale = (previewScale * pose.zoom).abs();
+    void paintNodes(
+      Canvas canvas,
+      List<CutFrameCompositeSurfaceNode> list,
+      double rasterScale,
+    ) {
       for (final node in list) {
         switch (node) {
           case CutFrameCompositeSurfaceGroup(
@@ -266,37 +275,43 @@ class CameraFrameRenderService {
               ..color = Color.fromRGBO(0, 0, 0, opacity)
               ..blendMode = blendMode.paintBlendMode;
             groupEffects.applyTo(groupPaint);
-            canvas.saveLayer(
-              effectBufferBounds(groupBounds, groupEffects),
-              groupPaint,
+            // 🚨★★★A GROUP IS AN IMAGE HERE TOO. The editing stack, this
+            // walk and the playback cache composite the same tree; if one of
+            // them kept a `saveLayer` the folder would be samplable on
+            // screen and not in the file, which is the asymmetry the whole
+            // round exists to close.
+            drawSubtreeAsImage(
+              canvas: canvas,
+              bounds: effectBufferBounds(groupBounds, groupEffects),
+              rasterScale: rasterScale,
+              maxPixelSide: maxSubtreeRasterSide,
+              paintSubtree: (into, scale) => paintNodes(into, children, scale),
+              compose: (blit) => blit(groupPaint),
             );
-            paintNodes(children);
-            canvas.restore();
           case CutFrameCompositeSurfaceAdjustment(
             :final children,
             :final effects,
             :final mix,
           ):
             // R6b: the scope composes into one buffer and the row's chain
-            // filters it there. Below full strength the scope is drawn
-            // twice — the mix is a crossfade, not a fade-out.
+            // filters it there. Below full strength the scope is COMPOSED
+            // twice — the mix is a crossfade, not a fade-out — but it is the
+            // same picture both times, so it is rasterised once and blitted
+            // twice. The outer `saveLayer` stays: it is an alpha group over
+            // two draws of one image, not a buffer anything needs to sample.
             final pass = resolveAdjustmentScopePass(
               bounds: groupBounds,
               effects: effects,
               mix: mix,
             );
-            if (pass.crossfades) {
-              canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
-              canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
-              paintNodes(children);
-              canvas.restore();
-            }
-            canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
-            paintNodes(children);
-            canvas.restore();
-            if (pass.crossfades) {
-              canvas.restore();
-            }
+            drawSubtreeAsImage(
+              canvas: canvas,
+              bounds: pass.bufferBounds,
+              rasterScale: rasterScale,
+              maxPixelSide: maxSubtreeRasterSide,
+              paintSubtree: (into, scale) => paintNodes(into, children, scale),
+              compose: composeAdjustmentScope(canvas, pass),
+            );
           case CutFrameCompositeSurfaceLeaf(:final layer):
             // Layer transforms apply at composite time (never baked);
             // identity layers skip the save/restore.
@@ -333,7 +348,7 @@ class CameraFrameRenderService {
       }
     }
 
-    paintNodes(tree);
+    paintNodes(canvas, tree, cameraRasterScale);
     overlayPass?.call(canvas);
 
     final picture = recorder.endRecording();

@@ -2,72 +2,83 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 
-/// What [drawSubtreeAsImage] actually rasterised, so a test can read the
-/// GEOMETRY rather than infer it from pixels. The arithmetic there decides
-/// whether a group resamples twice, and a scene where the difference happens
-/// to land on transparent margin would report "same pixels" about a grid that
-/// had already drifted.
-@visibleForTesting
-class SubtreeRaster {
-  const SubtreeRaster({
+/// The largest side a sub-tree's own raster may have, in device pixels.
+///
+/// ⛔A THIRD 8192, on purpose — see the decision on `CanvasSizeDialog
+/// .maxDimension`, which forbids merging constants that answer different
+/// questions. That one says how big a DOCUMENT may be; `_maxBufferSide` in
+/// canvas_layer_stack_view.dart caps the DISPLAY buffer and its remedy is to
+/// fall back to the direct walk. This one caps a GROUP's raster and its
+/// remedy is to clamp the scale — refusing here would be a second code path,
+/// the one where a folder's effect silently does not apply.
+///
+/// It is one constant rather than one per route so the three walks cannot
+/// disagree about how big a folder may get.
+const int maxSubtreeRasterSide = 8192;
+
+/// The grid a sub-tree rasterises on, decided once and then obeyed.
+///
+/// ⛔The arithmetic lives HERE and only here. Three walks composite a group —
+/// the editing stack, the playback cache and the camera (which the export
+/// renders through) — and one of them is async, so they cannot share a single
+/// function body. They share this instead: a plan, and the blit that consumes
+/// it. What differs between them is the six mechanical lines that drive a
+/// `PictureRecorder`, and nothing that decides a pixel.
+@immutable
+class SubtreeRasterPlan {
+  const SubtreeRasterPlan({
+    required this.bounds,
     required this.destination,
     required this.pixelWidth,
     required this.pixelHeight,
     required this.scale,
-    required this.filterQuality,
+    required this.rasterScale,
   });
 
-  /// The rect the image was blitted into — the bounds snapped OUTWARD to the
-  /// raster grid, never the bounds themselves.
+  /// What the caller asked for. The blit clips to this.
+  final Rect bounds;
+
+  /// The rect the image is blitted into — [bounds] snapped OUTWARD to the
+  /// raster grid, never [bounds] itself.
   final Rect destination;
   final int pixelWidth;
   final int pixelHeight;
 
-  /// The raster scale as asked for, unless the cap had to clamp it.
+  /// The scale actually used: [rasterScale], unless the cap had to clamp it.
   final double scale;
-  final FilterQuality filterQuality;
+
+  /// The scale the walk asked for, kept so the blit can tell a 1:1 placement
+  /// from a magnification without being told twice.
+  final double rasterScale;
+
+  /// Put a recorder's canvas into the sub-tree's own space, so whatever paints
+  /// into it does not know it is being rasterised.
+  void applyTo(Canvas into) {
+    into.scale(scale);
+    into.translate(-destination.left, -destination.top);
+  }
 }
 
-/// ⚠️Written under `assert`, so it costs a release build nothing and a test
-/// everything it needs.
+/// What the last blit actually did, so a test can read the GEOMETRY rather
+/// than infer it from pixels. The arithmetic here decides whether a group
+/// resamples twice, and a scene where the difference happens to land on
+/// transparent margin would report "same pixels" about a grid that had
+/// already drifted.
+///
+/// ⚠️Written under `assert`, so it costs a release build nothing.
 @visibleForTesting
-SubtreeRaster? debugLastSubtreeRaster;
+SubtreeRasterPlan? debugLastSubtreeRaster;
 
-/// 🚨★★★A SUB-TREE IS AN IMAGE — and it is the same pixels `saveLayer` made.
+/// The grid [bounds] rasterises on at [rasterScale], or null when there is
+/// nothing to draw.
 ///
-/// A folder used to composite through `canvas.saveLayer(bounds, paint)`. That
-/// offscreen belongs to Skia: nobody can sample it, so a fragment shader on a
-/// FOLDER is impossible and a per-group cache has nothing to keep. Rasterising
-/// the sub-tree here makes a group the same kind of thing every other route
-/// already hands around — an image — so ONE implementation of an effect can
-/// attach at any depth instead of one for cels and another for folders.
-///
-/// 📐WHY THIS IS THE SAME PIXELS, not merely similar:
-///  · the image grid is the LOCAL space at [rasterScale] snapped OUTWARD, and
-///    the destination is exactly `pixels / scale`. A src/dst pair that
-///    disagreed by a fraction would resample the sub-tree a second time.
-///  · the clip reproduces the saveLayer's bounds clip, which is what keeps
-///    "a group never paints outside its bounds" true — the property the
-///    stack's containment assert leans on. It matters because the two things
-///    that can push past [bounds] do not know about each other: the outward
-///    snap widens the destination by up to a device pixel, and a filter on
-///    [paint] spreads past the image it is given (`saveLayer` blurred the
-///    children INSIDE the layer and cut the result; a filter on
-///    `drawImageRect` blurs the finished image and spreads again).
-///    ⚠️Today's only filter arrives with [bounds] already inflated by its
-///    spread (`effectBufferBounds`), so the clip cuts nothing — it is what
-///    makes the guarantee hold for the next filter that does not.
-///
-/// ⛔One function, called by the paint AND by the test that certifies it
-/// against `saveLayer` — a second copy of this arithmetic in a test would
-/// certify the copy and let the original drift.
-void drawSubtreeAsImage({
-  required Canvas canvas,
+/// 📐The image grid is the LOCAL space at [rasterScale] snapped OUTWARD, and
+/// [SubtreeRasterPlan.destination] is exactly `pixels / scale`. A src/dst pair
+/// that disagreed by a fraction would resample the sub-tree a second time.
+SubtreeRasterPlan? planSubtreeRaster({
   required Rect bounds,
-  required Paint paint,
   required double rasterScale,
   required int maxPixelSide,
-  required void Function(Canvas into, double rasterScale) paintSubtree,
 }) {
   var scale = rasterScale;
   final side = bounds.width > bounds.height ? bounds.width : bounds.height;
@@ -84,56 +95,178 @@ void drawSubtreeAsImage({
     // miss.
     scale = headroom / side;
   }
-  final snapped = Rect.fromLTRB(
+  final destination = Rect.fromLTRB(
     (bounds.left * scale).floorToDouble() / scale,
     (bounds.top * scale).floorToDouble() / scale,
     (bounds.right * scale).ceilToDouble() / scale,
     (bounds.bottom * scale).ceilToDouble() / scale,
   );
-  final width = (snapped.width * scale).round();
-  final height = (snapped.height * scale).round();
+  final width = (destination.width * scale).round();
+  final height = (destination.height * scale).round();
   if (width <= 0 || height <= 0) {
+    return null;
+  }
+  return SubtreeRasterPlan(
+    bounds: bounds,
+    destination: destination,
+    pixelWidth: width,
+    pixelHeight: height,
+    scale: scale,
+    rasterScale: rasterScale,
+  );
+}
+
+/// Blits a rasterised sub-tree with [paint] — the paint that used to be a
+/// `saveLayer`'s.
+///
+/// ⛔Does NOT dispose [image]: an adjustment blits the SAME raster twice, once
+/// filtered and once not, and owning the lifetime here would have made the
+/// second blit read freed pixels or the children rasterise twice.
+///
+/// ⛔NO CLIP TO THE BOUNDS, and that is not an oversight. A `saveLayer`'s
+/// bounds do NOT cut a paint filter's spread — 🧪measured: a blurred layer
+/// hinted at a 40×36 rect put 1150 device pixels outside it. Clipping here
+/// looked like "reproducing the saveLayer" and was an invented rule that
+/// changed pixels: it cost an adjustment crossfade 488 of them.
+///
+/// What bounds the UNfiltered content is the image itself, which is the
+/// bounds snapped out to whole raster pixels — the same rounding-out Skia
+/// does to a layer's offscreen. Same extent, same spread, same pixels.
+void blitSubtreeRaster({
+  required Canvas canvas,
+  required ui.Image image,
+  required SubtreeRasterPlan plan,
+  required Paint paint,
+}) {
+  // `none` because the blit is 1:1 by construction. It stops being 1:1 only
+  // when the cap clamped the scale, and that is a magnification — the one
+  // case that wants a filter.
+  paint.filterQuality = plan.scale == plan.rasterScale
+      ? FilterQuality.none
+      : FilterQuality.low;
+  assert(() {
+    debugLastSubtreeRaster = plan;
+    return true;
+  }());
+  canvas.drawImageRect(
+    image,
+    Rect.fromLTWH(
+      0,
+      0,
+      plan.pixelWidth.toDouble(),
+      plan.pixelHeight.toDouble(),
+    ),
+    plan.destination,
+    paint,
+  );
+}
+
+/// Draws the rasterised sub-tree once, with [paint].
+///
+/// An ADJUSTMENT below full strength calls this twice — once unfiltered and
+/// once filtered — over the same raster, because its mix is a crossfade
+/// rather than a fade-out.
+typedef BlitSubtree = void Function(Paint paint);
+
+/// 🚨★★★A SUB-TREE IS AN IMAGE — and it is the same pixels `saveLayer` made.
+///
+/// A folder used to composite through `canvas.saveLayer(bounds, paint)`. That
+/// offscreen belongs to Skia: nobody can sample it, so a fragment shader on a
+/// FOLDER is impossible and a per-group cache has nothing to keep. Rasterising
+/// the sub-tree here makes a group the same kind of thing every other route
+/// already hands around — an image — so ONE implementation of an effect can
+/// attach at any depth instead of one for cels and another for folders.
+///
+/// [compose] receives a blit and decides the STRUCTURE around it: a group
+/// blits once, an adjustment wraps a crossfade `saveLayer` around two. Passing
+/// the structure in rather than a single paint is what lets an adjustment
+/// rasterise its scope ONCE where two `saveLayer`s painted the children twice.
+///
+/// This is the SYNCHRONOUS form. A walk that awaits its children calls
+/// [drawSubtreeAsImageAsync]; the two differ by one `await` and share every
+/// line that decides a pixel.
+void drawSubtreeAsImage({
+  required Canvas canvas,
+  required Rect bounds,
+  required double rasterScale,
+  required int maxPixelSide,
+  required void Function(Canvas into, double rasterScale) paintSubtree,
+  required void Function(BlitSubtree blit) compose,
+}) {
+  final plan = planSubtreeRaster(
+    bounds: bounds,
+    rasterScale: rasterScale,
+    maxPixelSide: maxPixelSide,
+  );
+  if (plan == null) {
     return;
   }
   final recorder = ui.PictureRecorder();
   final into = Canvas(recorder);
-  into.scale(scale);
-  into.translate(-snapped.left, -snapped.top);
-  paintSubtree(into, scale);
+  plan.applyTo(into);
+  paintSubtree(into, plan.scale);
+  finishSubtreeRaster(
+    canvas: canvas,
+    recorder: recorder,
+    plan: plan,
+    compose: compose,
+  );
+}
+
+/// The [drawSubtreeAsImage] a walk that awaits its children can use.
+Future<void> drawSubtreeAsImageAsync({
+  required Canvas canvas,
+  required Rect bounds,
+  required double rasterScale,
+  required int maxPixelSide,
+  required Future<void> Function(Canvas into, double rasterScale) paintSubtree,
+  required void Function(BlitSubtree blit) compose,
+}) async {
+  final plan = planSubtreeRaster(
+    bounds: bounds,
+    rasterScale: rasterScale,
+    maxPixelSide: maxPixelSide,
+  );
+  if (plan == null) {
+    return;
+  }
+  final recorder = ui.PictureRecorder();
+  final into = Canvas(recorder);
+  plan.applyTo(into);
+  await paintSubtree(into, plan.scale);
+  finishSubtreeRaster(
+    canvas: canvas,
+    recorder: recorder,
+    plan: plan,
+    compose: compose,
+  );
+}
+
+/// Turns a finished recording into the image, hands [compose] a blit for it,
+/// and owns its lifetime.
+void finishSubtreeRaster({
+  required Canvas canvas,
+  required ui.PictureRecorder recorder,
+  required SubtreeRasterPlan plan,
+  required void Function(BlitSubtree blit) compose,
+}) {
   final picture = recorder.endRecording();
-  final image = picture.toImageSync(width, height);
+  final image = picture.toImageSync(plan.pixelWidth, plan.pixelHeight);
   picture.dispose();
-  // `none` because the blit below is 1:1 by construction. It stops being 1:1
-  // only when the cap clamped the scale, and that is a magnification — the
-  // one case that wants a filter.
-  paint.filterQuality = scale == rasterScale
-      ? FilterQuality.none
-      : FilterQuality.low;
-  assert(() {
-    debugLastSubtreeRaster = SubtreeRaster(
-      destination: snapped,
-      pixelWidth: width,
-      pixelHeight: height,
-      scale: scale,
-      filterQuality: paint.filterQuality,
-    );
-    return true;
-  }());
-  canvas.save();
-  canvas.clipRect(bounds, doAntiAlias: false);
   try {
-    canvas.drawImageRect(
-      image,
-      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
-      snapped,
-      paint,
+    compose(
+      (paint) => blitSubtreeRaster(
+        canvas: canvas,
+        image: image,
+        plan: plan,
+        paint: paint,
+      ),
     );
   } finally {
-    // ⚠️Safe HERE and nowhere earlier: the draw put the image into this
+    // ⚠️Safe HERE and nowhere earlier: the draws put the image into this
     // frame's display list and the engine holds its own claim from that
     // moment. What `dispose` releases is this handle, not the pixels the
     // list is going to replay.
     image.dispose();
-    canvas.restore();
   }
 }

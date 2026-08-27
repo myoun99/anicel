@@ -1745,11 +1745,11 @@ class _LayerStackPainter extends CustomPainter {
                   // OUTSIDE the visible rect still bleeds in — without this the
                   // blur at the screen edge would change as you scroll.
                   bounds: groupRect,
-                  paint: groupPaint,
                   rasterScale: rasterScale,
-                  maxPixelSide: _maxBufferSide,
+                  maxPixelSide: maxSubtreeRasterSide,
                   paintSubtree: (into, scale) =>
                       paintChildren(into, children, scale),
+                  compose: (blit) => blit(groupPaint),
                 );
               case _PaintAdjustment(
                 :final children,
@@ -1764,21 +1764,21 @@ class _LayerStackPainter extends CustomPainter {
                   effects: effects,
                   mix: mix,
                 );
-                if (pass.crossfades) {
-                  canvas.saveLayer(
-                    pass.bufferBounds,
-                    pass.crossfadeLayerPaint!,
-                  );
-                  canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
-                  paintChildren(canvas, children, rasterScale);
-                  canvas.restore();
-                }
-                canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
-                paintChildren(canvas, children, rasterScale);
-                canvas.restore();
-                if (pass.crossfades) {
-                  canvas.restore();
-                }
+                // 🚨★★★ONE RASTER, TWO BLITS. The scope used to be PAINTED
+                // twice below full strength — a mix is a crossfade, not a
+                // fade-out — and it is the same picture both times. The
+                // passes keep their layers; what changed is that they now
+                // contain a blit of one raster instead of a second walk of
+                // the scope.
+                drawSubtreeAsImage(
+                  canvas: canvas,
+                  bounds: pass.bufferBounds,
+                  rasterScale: rasterScale,
+                  maxPixelSide: maxSubtreeRasterSide,
+                  paintSubtree: (into, scale) =>
+                      paintChildren(into, children, scale),
+                  compose: composeAdjustmentScope(canvas, pass),
+                );
               case _PaintActiveSurface(
                 :final opacity,
                 :final blendMode,

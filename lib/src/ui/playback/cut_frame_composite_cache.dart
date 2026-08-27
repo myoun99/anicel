@@ -12,6 +12,7 @@ import '../../services/cel_source_effect_pass.dart';
 import '../canvas/composite_effect_paint.dart';
 import '../canvas/deferred_image_disposal.dart';
 import '../canvas/layer_image_draw.dart';
+import '../canvas/subtree_image_composite.dart';
 import '../debug/input_inspector.dart';
 import 'layer_frame_image_cache.dart';
 import 'playback_cache_budget.dart';
@@ -263,7 +264,16 @@ class CutFrameCompositeCache {
     );
     var aborted = false;
 
-    Future<void> paintNodes(List<CompositeNodeSignature> nodes) async {
+    // ⛔1, not [scale]. This walk paints in RASTER pixels — there is no CTM
+    // scale here; the quality tier is already baked into `rasterBounds` and
+    // into every layer image. The number a sub-tree rasterises at is the
+    // scale of the canvas it is drawn into, and that canvas is 1:1.
+    const rasterScale = 1.0;
+
+    Future<void> paintNodes(
+      ui.Canvas canvas,
+      List<CompositeNodeSignature> nodes,
+    ) async {
       for (final node in nodes) {
         if (aborted) {
           return;
@@ -283,7 +293,7 @@ class CutFrameCompositeCache {
             // folder's opacity/blend land on it once — overlapping
             // members inside a multiply folder stop darkening where they
             // cross. Only a folder that NEEDS this ever becomes a group
-            // node, so a plain 통과 folder costs no saveLayer at all.
+            // node, so a plain 통과 folder costs no buffer at all.
             final groupEffects = resolveCompositeEffectPaint(
               effects,
               rasterScale: scale,
@@ -292,14 +302,26 @@ class CutFrameCompositeCache {
               ..color = ui.Color.fromRGBO(0, 0, 0, opacity)
               ..blendMode = blendMode.paintBlendMode;
             groupEffects.applyTo(groupPaint);
-            canvas.saveLayer(
+            // 🚨★★★A GROUP IS AN IMAGE HERE TOO. The editing stack, the
+            // camera (which the export renders through) and this cache
+            // composite the same tree; if one of them kept a `saveLayer`
+            // the folder would be samplable on screen and not in the file,
+            // which is the asymmetry this round exists to close.
+            await drawSubtreeAsImageAsync(
+              canvas: canvas,
               // R6: a group blur must be allowed to bleed in from just
               // outside the raster, so the buffer grows by its spread.
-              effectBufferBounds(rasterBounds, groupEffects),
-              groupPaint,
+              bounds: effectBufferBounds(rasterBounds, groupEffects),
+              rasterScale: rasterScale,
+              maxPixelSide: maxSubtreeRasterSide,
+              paintSubtree: (into, _) => paintNodes(into, children),
+              // ⛔No abort guard here. The expensive half already returned
+              // early inside `paintNodes`; skipping the blit as well would
+              // only save a draw of an image that is about to be thrown
+              // away, and the adjustment beside it cannot do the same
+              // without reaching inside the shared recipe.
+              compose: (blit) => blit(groupPaint),
             );
-            await paintNodes(children);
-            canvas.restore();
           case CompositeAdjustmentSignature(
             :final children,
             :final effects,
@@ -308,28 +330,25 @@ class CutFrameCompositeCache {
             // R6b: the scope into one buffer, the row's chain onto it. The
             // radii scale with this quality tier's raster like every other
             // blur here.
+            //
+            // 🚨ONE RASTER, TWO BLITS. Below full strength the scope used to
+            // be COMPOSED twice — the mix is a crossfade, not a fade-out —
+            // and on this route composing means awaiting every layer image
+            // in it again. It is the same picture both times.
             final pass = resolveAdjustmentScopePass(
               bounds: rasterBounds,
               effects: effects,
               mix: mix,
               rasterScale: scale,
             );
-            if (pass.crossfades) {
-              canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
-              canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
-              await paintNodes(children);
-              canvas.restore();
-              if (aborted) {
-                canvas.restore(); // Close the crossfade buffer we opened.
-                return;
-              }
-            }
-            canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
-            await paintNodes(children);
-            canvas.restore();
-            if (pass.crossfades) {
-              canvas.restore();
-            }
+            await drawSubtreeAsImageAsync(
+              canvas: canvas,
+              bounds: pass.bufferBounds,
+              rasterScale: rasterScale,
+              maxPixelSide: maxSubtreeRasterSide,
+              paintSubtree: (into, _) => paintNodes(into, children),
+              compose: composeAdjustmentScope(canvas, pass),
+            );
           case CompositeLeafSignature(:final layer):
             // ⛔THE SIGNATURE KEEPS THE WHOLE CHAIN; only the DRAW is split.
             // `layer.effects` is part of this cache's key, so taking the
@@ -407,7 +426,7 @@ class CutFrameCompositeCache {
     final walkWatch = InputInspector.visible.value
         ? (Stopwatch()..start())
         : null;
-    await paintNodes(signature.nodes);
+    await paintNodes(canvas, signature.nodes);
     if (aborted) {
       recorder.endRecording().dispose();
       return null;
