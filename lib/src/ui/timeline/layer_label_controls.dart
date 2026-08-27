@@ -740,9 +740,12 @@ Color layerMarkColor(LayerMark mark) => resolveLayerMarkColor(
 );
 
 /// The unabbreviated reading — 「축약어 쓰지 않을때는 축약하지마」. The chip
-/// writes [LayerMark.processText]/[LayerMark.reviseText] instead.
+/// writes the abbreviations through [layerMarkChipText] instead.
+///
+/// 🚨Through [layerMarkLabel], so the reading follows the program language
+/// (유저 2026-08-28). `mark.displayName` would be the English row.
 String layerMarkDisplayName(LayerMark mark) =>
-    mark.isNone ? AppText.strings.tlLayerMarkNone : mark.displayName;
+    mark.isNone ? AppText.strings.tlLayerMarkNone : layerMarkLabel(mark);
 
 class LayerTimesheetToggleButton extends StatelessWidget {
   const LayerTimesheetToggleButton({
@@ -1027,9 +1030,9 @@ class LayerMarkChip extends StatelessWidget {
                     ])
                       PanelFlyoutItem(
                         keyValue: 'layer-mark-option-${option.keySlug}',
-                        label:
-                            option.revise?.displayName ??
-                            AppText.strings.tlLayerMarkSource,
+                        label: option.revise == null
+                            ? AppText.strings.tlLayerMarkSource
+                            : layerReviseLabel(option.revise!),
                         swatch: layerMarkColor(option),
                         onSelected: () => onMarkSelected(layerId, option),
                       ),

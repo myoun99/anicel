@@ -22,6 +22,7 @@ void main() {
   _oneWidgetBothSurfaces();
   _axisAgreement();
   _namesFollowTheLanguage();
+  _toneNamesFollowTheLanguage();
 
   // 🚨A GLOBAL. Saving and restoring rather than assigning a fresh default
   // back: writing `const AppAccentSettings()` in the teardown would not undo
@@ -379,5 +380,38 @@ void _namesFollowTheLanguage() {
     );
     expect(text.process, 'LO');
     expect(text.revise, '작감', reason: '⛔모델의 \'AD\' 가 그대로 나오면 안 된다');
+  });
+}
+
+/// 톤 이름도 프로그램 언어를 탄다 — 유저가 「설정같은곳에서 색 고를수있게」
+/// 라고 한 그 목록이다. 라벨만 번역하고 고르는 창이 한국어로 남으면 반쪽이다.
+void _toneNamesFollowTheLanguage() {
+  void speak(AppLanguage language) => AppText.settings.value =
+      AppLanguageSettings(programLanguage: language);
+  tearDown(() => AppText.settings.value = const AppLanguageSettings());
+
+  String toneName(LayerMarkPalette palette) => AppText.strings
+      .layerMarkPaletteName(palette.jsonValue, palette.displayName);
+
+  test('네 언어 모두 톤 넷의 이름을 갖는다', () {
+    for (final language in AppLanguage.values) {
+      speak(language);
+      for (final palette in LayerMarkPalette.values) {
+        expect(toneName(palette), isNotEmpty, reason: '$language · $palette');
+      }
+    }
+  });
+
+  test('언어를 바꾸면 톤 이름이 실제로 바뀐다', () {
+    speak(AppLanguage.en);
+    final english = toneName(LayerMarkPalette.pencil);
+    speak(AppLanguage.ko);
+    final korean = toneName(LayerMarkPalette.pencil);
+    speak(AppLanguage.ja);
+    final japanese = toneName(LayerMarkPalette.pencil);
+
+    expect(english, 'Coloured pencil');
+    expect(korean, isNot(english), reason: '색연필');
+    expect(japanese, isNot(korean), reason: '色鉛筆');
   });
 }

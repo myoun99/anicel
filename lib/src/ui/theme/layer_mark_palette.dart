@@ -21,20 +21,23 @@ import '../../models/layer_process.dart';
 /// which is why all four exist and the user picks by looking at the program.
 enum LayerMarkPalette {
   /// 원본 그대로 — the screenshot's values, untouched. The DEFAULT.
-  original('original', '원본'),
+  original('original', 'Original'),
 
   /// 흰색을 45% 섞은 파스텔.
-  pastel('pastel', '파스텔'),
+  pastel('pastel', 'Pastel'),
 
   /// 따뜻한 아이보리를 42% 섞은 크림.
-  cream('cream', '크림'),
+  cream('cream', 'Cream'),
 
   /// 채도를 32% 죽이고 종이색을 26% 섞은 색연필.
-  pencil('pencil', '색연필');
+  pencil('pencil', 'Coloured pencil');
 
   const LayerMarkPalette(this.jsonValue, this.displayName);
 
   final String jsonValue;
+
+  /// The tone's name in ENGLISH — 다른 언어는 [AppStrings.layerMarkPaletteName]
+  /// 이 [jsonValue] 로 든다. 색 라벨의 공정·수정과 **같은 계약**이다.
   final String displayName;
 
   static LayerMarkPalette fromJson(Object? json) {

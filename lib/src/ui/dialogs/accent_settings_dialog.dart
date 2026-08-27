@@ -235,7 +235,10 @@ class _MarkPaletteRow extends StatelessWidget {
                   SizedBox(
                     width: 56,
                     child: Text(
-                      palette.displayName,
+                      AppText.strings.layerMarkPaletteName(
+                        palette.jsonValue,
+                        palette.displayName,
+                      ),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),

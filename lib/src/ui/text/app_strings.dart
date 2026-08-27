@@ -81,6 +81,10 @@ class AppStrings {
   String layerReviseAbbrev(String key, String fallback) =>
       _values['layerReviseAbbrev.$key'] ?? fallback;
 
+  /// 색 라벨 **톤**의 이름 — 같은 계약(모델은 영어, 표가 나머지).
+  String layerMarkPaletteName(String key, String fallback) =>
+      _values['layerMarkPalette.$key'] ?? fallback;
+
   String get languageSettingsTitle => _s('languageSettingsTitle');
   String get programLanguageLabel => _s('programLanguageLabel');
   String get notationLanguageLabel => _s('notationLanguageLabel');
@@ -2504,6 +2508,10 @@ class AppStrings {
     'layerReviseAbbrev.action-animation-director': 'アク作',
     'layerReviseAbbrev.inbetween-check': '動検',
     'layerReviseAbbrev.cell-check': 'セル検',
+    'layerMarkPalette.original': '原色',
+    'layerMarkPalette.pastel': 'パステル',
+    'layerMarkPalette.cream': 'クリーム',
+    'layerMarkPalette.pencil': '色鉛筆',
     'tlLayerTakeNumber': 'テイク{n}',
     'tlRepeat': 'リピート',
     'tlRepeatSelection': '選択範囲をリピート',
@@ -3332,6 +3340,10 @@ class AppStrings {
     'layerReviseAbbrev.action-animation-director': '액션',
     'layerReviseAbbrev.inbetween-check': '동검',
     'layerReviseAbbrev.cell-check': '셀검',
+    'layerMarkPalette.original': '원본',
+    'layerMarkPalette.pastel': '파스텔',
+    'layerMarkPalette.cream': '크림',
+    'layerMarkPalette.pencil': '색연필',
     'tlLayerTakeNumber': '테이크 {n}',
     'tlRepeat': '반복',
     'tlRepeatSelection': '선택 영역 반복',
@@ -4176,6 +4188,10 @@ class AppStrings {
     'layerRevise.action-animation-director': 'Directeur d\'animation action',
     'layerRevise.inbetween-check': 'Contrôle intervalles',
     'layerRevise.cell-check': 'Contrôle cellulos',
+    'layerMarkPalette.original': 'Original',
+    'layerMarkPalette.pastel': 'Pastel',
+    'layerMarkPalette.cream': 'Crème',
+    'layerMarkPalette.pencil': 'Crayon de couleur',
     'tlLayerTakeNumber': 'Prise {n}',
     'tlRepeat': 'Répéter',
     'tlRepeatSelection': 'Répéter la sélection',

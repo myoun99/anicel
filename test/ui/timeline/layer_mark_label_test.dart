@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -8,6 +9,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show
@@ -75,6 +77,7 @@ void main() {
   _stageComesFirst();
   _glyphsFillTheirArea();
   _submenuRowsLightUpToo();
+  _popoverTextFollowsTheLanguage();
 
   testWidgets('the label is a full-height, half-width plate leading the '
       'layer area (A6 ①②③)', (tester) async {
@@ -665,5 +668,52 @@ void _submenuRowsLightUpToo() {
       findsOneWidget,
       reason: '부모 메뉴는 그대로 열려 있어야 한다',
     );
+  });
+}
+
+/// 🚨팝오버의 **글자**도 프로그램 언어를 탄다. 칩만 번역되고 목록이 영어로
+/// 남으면 「로컬라이즈했다」가 아니다 — 실제로 두 곳이 그렇게 남아 있었다
+/// (`layerMarkDisplayName` 과 겹의 수정 행 라벨).
+void _popoverTextFollowsTheLanguage() {
+  tearDown(() => AppText.settings.value = const AppLanguageSettings());
+
+  Future<void> openStage(WidgetTester tester, AppLanguage language) async {
+    AppText.settings.value = AppLanguageSettings(programLanguage: language);
+    await tester.pumpWidget(_panel());
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+    );
+    await tester.pumpAndSettle();
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(
+      tester.getCenter(
+        find.byKey(const ValueKey<String>('layer-mark-stage-layout')),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('공정 행이 언어를 탄다', (tester) async {
+    await openStage(tester, AppLanguage.ko);
+    expect(find.text('레이아웃'), findsWidgets);
+    expect(find.text('Layout'), findsNothing, reason: '한국어인데 영어가 남았다');
+  });
+
+  testWidgets('겹의 수정 행도 언어를 탄다 — 여기가 마지막으로 새던 곳이다', (tester) async {
+    await openStage(tester, AppLanguage.ko);
+    expect(
+      find.text('작화감독'),
+      findsOneWidget,
+      reason: '⛔`option.revise!.displayName` 을 직접 읽으면 여기만 영어로 남는다',
+    );
+    expect(find.text('Animation Director'), findsNothing);
+  });
+
+  testWidgets('일본어에서는 일본어가 나온다 — 한국어 표를 두 번 세지 않게', (tester) async {
+    await openStage(tester, AppLanguage.ja);
+    expect(find.text('レイアウト'), findsWidgets);
+    expect(find.text('레이아웃'), findsNothing);
   });
 }
