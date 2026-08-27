@@ -474,7 +474,7 @@ class _CanvasViewportGestureLayerState
   /// 패널 x시트일 경우 … 세로가 프레임이동 가로가 레이어이동 되도록. 그게
   /// 직관적임」. One question, asked in both places that need it.
   bool _flipsFrames(bool horizontal) =>
-      horizontal != (widget.flipHud?.framesRunVertically ?? false);
+      widget.flipHud?.framesRunAlong(horizontal: horizontal) ?? horizontal;
 
   void _updateFlip() {
     final horizontal = _flipAxisHorizontal;

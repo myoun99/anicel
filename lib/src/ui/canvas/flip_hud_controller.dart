@@ -85,6 +85,22 @@ class FlipHudController extends ChangeNotifier {
   /// layers to reach the gesture would put the same fact in five places.
   bool framesRunVertically = false;
 
+  /// Whether a step along [horizontal] walks FRAMES rather than the row
+  /// stack, given which way this sheet runs.
+  ///
+  /// 🚨★★★ONE QUESTION, ASKED BY BOTH ENTRANCES. The frame axis is sideways
+  /// on the timeline and downward on the X-sheet (F-28), and every input
+  /// that walks the sheet has to agree about that — 유저 2026-08-27:
+  /// 「플립이랑 화살표랑 **입구는 달라도 통하는건 하나**니까 둘 다
+  /// 적용해야하는거지」.
+  ///
+  /// ⛔It lives here rather than being written once in the gesture layer and
+  /// again in the keyboard handler. That is how the two came to disagree in
+  /// the first place: #1216 taught the flip to read the sheet and the arrows
+  /// were never told.
+  bool framesRunAlong({required bool horizontal}) =>
+      horizontal != framesRunVertically;
+
   (int, int)? _lastPosition;
   DateTime? _lastLandedAt;
   Duration? _lastStepInterval;
