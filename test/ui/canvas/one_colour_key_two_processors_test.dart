@@ -248,6 +248,73 @@ void main() {
     });
   });
 
+  test('a TRANSLUCENT pixel is keyed by its own colour, not a darker one',
+      () async {
+    // 🚨THE PREMULTIPLY, AND WHY THE SWEEPS CANNOT SEE IT. Every sweep above
+    // runs at alpha 255, where premultiplied and straight are the same
+    // bytes — on purpose, so the colour comparison is not measuring a
+    // round trip. That leaves the un-premultiply itself unpinned, and a
+    // shader that skipped it passed all of them: a half-transparent red
+    // reads as a dark red and simply stops matching a red key.
+    //
+    // ⚠️This is a PROPERTY, not an equivalence. What the shader recovers is
+    // `premultiplied / alpha`, which is not the byte that went in — the
+    // multiply threw information away. The CPU key, keying a cel's own
+    // straight bytes, never has that problem, and that asymmetry is exactly
+    // why the colour key on SOURCE pixels stays on the CPU
+    // ([EffectKind.runsOnSourcePixels]) rather than following the fx onto
+    // the GPU.
+    const width = 224;
+    const height = 2;
+    final straight = Uint8List(width * height * 4);
+    for (var row = 0; row < height; row++) {
+      for (var i = 0; i < width; i++) {
+        final at = (row * width + i) * 4;
+        // Row 0 IS the key colour; row 1 sits far outside the tolerance.
+        straight[at] = row == 0 ? 200 : 40;
+        straight[at + 1] = row == 0 ? 120 : 240;
+        straight[at + 2] = row == 0 ? 40 : 200;
+        // 32…255: below that the round trip's own error swamps any
+        // tolerance a user would type.
+        straight[at + 3] = 32 + i;
+      }
+    }
+    final source = await imageFromStraight(straight, width, height);
+    // 8 leaves room for the round trip (at alpha 32 a byte can come back up
+    // to ~4 out) without coming near the 160-wide gap the control row has.
+    final key = keyOf(
+      red: 200,
+      green: 120,
+      blue: 40,
+      tolerance: 8,
+      amount: 1,
+    );
+    final bytes = await keyed(source, key, width, height);
+    source.dispose();
+    var survivedOnTheKey = 0;
+    var erasedOffTheKey = 0;
+    for (var i = 0; i < width; i++) {
+      if (bytes[(0 * width + i) * 4 + 3] != 0) {
+        survivedOnTheKey += 1;
+      }
+      if (bytes[(1 * width + i) * 4 + 3] == 0) {
+        erasedOffTheKey += 1;
+      }
+    }
+    expect(
+      survivedOnTheKey,
+      0,
+      reason: 'a pixel whose own colour IS the key must be erased at every '
+          'alpha — $survivedOnTheKey of $width survived, which is what '
+          'keying premultiplied bytes looks like',
+    );
+    expect(
+      erasedOffTheKey,
+      0,
+      reason: 'a pixel far from the key must survive at every alpha',
+    );
+  });
+
   test('the alpha arithmetic, every alpha against every amount', () async {
     // 🚨THE OTHER HALF, and it is where a float goes wrong if it is going to.
     // Tolerance 255 matches everything, so colour cannot confound the count
