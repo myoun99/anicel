@@ -2084,7 +2084,11 @@ class _LayerStackPainter extends CustomPainter {
     /// resampled by the CTM as one image while the rest of the stack was
     /// resampled layer by layer — a third sampling behaviour, in the
     /// fallback path, for no gain.
-    void paintContent(Canvas into, {Rect? rasterRect}) {
+    void paintContent(
+      Canvas into, {
+      Rect? rasterRect,
+      required double rasterScale,
+    }) {
       // ⛔No bake handed down (a host that does not own one, or a tree with
       // no live surface at all) keeps the original walk. The bake is an
       // optimisation, never a second way to be correct.
@@ -2121,7 +2125,12 @@ class _LayerStackPainter extends CustomPainter {
     // (유저 2026-08-15, 「페이스트보드도 룰러할때 보이게」).
     final buffer = _composeDisplayBuffer(contentExtent, paintContent);
     if (buffer == null) {
-      paintContent(canvas);
+      paintContent(
+        canvas,
+        // The direct walk draws under the viewport transform, so a group
+        // that rasterises itself has to match the CTM it is drawn into.
+        rasterScale: viewport.zoom.abs() * devicePixelRatio,
+      );
     } else {
       try {
         canvas.drawImageRect(
@@ -2163,7 +2172,12 @@ class _LayerStackPainter extends CustomPainter {
   /// where it is measured at 26-38us for a 256px tile.
   _DisplayBuffer? _composeDisplayBuffer(
     Rect bounds,
-    void Function(Canvas into, {Rect? rasterRect}) paintContent,
+    void Function(
+      Canvas into, {
+      Rect? rasterRect,
+      required double rasterScale,
+    })
+    paintContent,
   ) {
     if (debugDisableSingleBuffer || bounds.isEmpty) {
       return null;
@@ -2278,10 +2292,12 @@ class _LayerStackPainter extends CustomPainter {
       // and ink that is not fully opaque would blend with its own previous
       // frame — a stroke would darken as it was redrawn.
       into.drawRect(dirty, Paint()..blendMode = BlendMode.clear);
-      paintContent(into, rasterRect: rect);
+      // The canvas-resolution buffer records with a translate only.
+      paintContent(into, rasterRect: rect, rasterScale: 1);
       into.restore();
     } else {
-      paintContent(into, rasterRect: rect);
+      // The canvas-resolution buffer records with a translate only.
+      paintContent(into, rasterRect: rect, rasterScale: 1);
     }
     final picture = recorder.endRecording();
     final ui.Image image;
@@ -2343,7 +2359,12 @@ class _LayerStackPainter extends CustomPainter {
   /// channel wiring.
   _DisplayBuffer? _composeScaledBuffer(
     Rect rect,
-    void Function(Canvas into, {Rect? rasterRect}) paintContent,
+    void Function(
+      Canvas into, {
+      Rect? rasterRect,
+      required double rasterScale,
+    })
+    paintContent,
   ) {
     if (viewport.rotationDegrees != 0 ||
         viewport.flipHorizontal ||
@@ -2411,7 +2432,7 @@ class _LayerStackPainter extends CustomPainter {
       // The PICTURE route through the very same walk the s=1 buffer
       // records — one body, so folders, adjustments, effects and the
       // float cannot drift between the two resolutions.
-      paintContent(into, rasterRect: null);
+      paintContent(into, rasterRect: null, rasterScale: s);
     } finally {
       _activeFlatForRecording = null;
       _paperInsetForRecording = null;
