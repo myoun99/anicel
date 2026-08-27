@@ -88,11 +88,32 @@ flutter:
 
   # The conte PDF's embedded text fonts (OFL, see THIRD_PARTY.md):
   # M PLUS 1p carries Latin + kana + kanji, IBM Plex Sans KR the Hangul
-  # fallback. Loaded via rootBundle by the PDF writer — the app UI keeps
-  # the platform fonts.
+  # fallback. Loaded via rootBundle by the PDF writer.
   assets:
     - assets/fonts/
     - assets/licenses/
+
+  # 🚨THE APP UI's OWN FACE (유저 확정 2026-08-28). The app used to have no
+  # font of its own and wore whatever the OS handed it, so the same screen
+  # read differently on Windows, macOS and Android.
+  #
+  # BIZ UDPGothic is a UD (Universal Design) face — 유저: 「작은크기 가독성
+  # 목표로해서 아주 읽기쉬워」 — which is the property this app needs most:
+  # a 27px rail row carries 12px names and a 9px label chip.
+  #
+  # ⚠️It has no Hangul (measured: 0/11172), so 나눔고딕 stands behind
+  # it — see `AppTypography` for why the ORDER is what routes each script.
+  fonts:
+    - family: BIZ UDPGothic
+      fonts:
+        - asset: assets/fonts/BIZUDPGothic-Regular.ttf
+        - asset: assets/fonts/BIZUDPGothic-Bold.ttf
+          weight: 700
+    - family: Nanum Gothic
+      fonts:
+        - asset: assets/fonts/NanumGothic-Regular.ttf
+        - asset: assets/fonts/NanumGothic-Bold.ttf
+          weight: 700
 
   # Fragment shaders. `flutter: shaders:` compiles each to the SPIR-V a
   # `FragmentProgram.fromAsset` loads; the path here is the asset key.

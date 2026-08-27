@@ -21,6 +21,7 @@ import 'src/ui/layout/device_grid_audit.dart';
 import 'src/ui/input/app_input_settings.dart' show AppInput;
 import 'src/services/diagnostics/memory_black_box.dart';
 import 'src/ui/theme/app_scroll_behavior.dart';
+import 'src/ui/text/app_strings.dart';
 import 'src/ui/theme/app_theme.dart';
 import 'src/ui/ui_scale.dart';
 import 'src/ui/ui_scale_binding.dart';
@@ -60,10 +61,19 @@ Future<void> main() async {
   // the file. Loading it here is what lets the paint-time guard stay a
   // guard rather than a case.
   await ColourKeyShader.load();
-  // The bundled conte-PDF fonts are OFL: their license must SHIP with the
-  // binary that redistributes them, not just sit in the repo — the About
-  // dialog's license page surfaces these entries (THIRD_PARTY.md).
+  // The bundled fonts are OFL: their license must SHIP with the binary that
+  // redistributes them, not just sit in the repo — the About dialog's license
+  // page surfaces these entries (THIRD_PARTY.md).
+  //
+  // ⚠️Two families are the APP UI's (BIZ UDPGothic · 나눔고딕, 유저 확정
+  // 2026-08-28) and two are the conte PDF's. Both ship, so both are listed.
   LicenseRegistry.addLicense(() async* {
+    yield LicenseEntryWithLineBreaks(const [
+      'BIZ UDPGothic',
+    ], await rootBundle.loadString('assets/fonts/OFL-BIZUDPGothic.txt'));
+    yield LicenseEntryWithLineBreaks(const [
+      'Nanum Gothic',
+    ], await rootBundle.loadString('assets/fonts/OFL-NanumGothic.txt'));
     yield LicenseEntryWithLineBreaks(const [
       'M PLUS 1p',
     ], await rootBundle.loadString('assets/fonts/OFL-MPLUS1p.txt'));
@@ -140,6 +150,12 @@ class AnicelApp extends StatelessWidget {
         // [EffectiveDevicePixelRatioScope]). Both hang off the same
         // notifier so they cannot land a frame apart.
         AppUiScale.value,
+        // 🚨THE PROGRAM LANGUAGE, because the FONT depends on it
+        // ([AppTypography.familyFor]): 한자는 일본과 중국이 코드포인트를
+        // 공유하면서 자형이 다르므로, 언어가 바뀌면 얼굴도 바뀌어야 한다.
+        // ⛔Without this the theme would keep the face it was built with and
+        // the setting would look like it did nothing.
+        AppText.settings,
       ]),
       builder: (context, _) => MaterialApp(
         title: 'Anicel',
