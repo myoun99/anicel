@@ -543,6 +543,32 @@ void _glyphsFillTheirArea() {
             .at(index),
       );
 
+  testWidgets('테이크 글자는 늘리지 않는다 — 유저 2026-08-28: 「그냥 평범하게」', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_panel());
+
+    final slot = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-layer-take-a')),
+    );
+    final glyphs = tester.getRect(
+      find
+          .descendant(
+            of: find.byKey(const ValueKey<String>('timeline-layer-take-a')),
+            matching: find.byType(VerticalWritingText),
+          )
+          .first,
+    );
+
+    // ⛔자리는 그대로 예약하되(없다가 생기는 UI 금지) 글자는 자기 크기다.
+    expect(glyphs.height, lessThan(slot.height - 2));
+    expect(
+      glyphs.width,
+      lessThan(slot.width),
+      reason: '색 라벨과 달리 테이크는 칸을 채우지 않는다',
+    );
+  });
+
   testWidgets('두 칸이 판을 절반씩 나눠 갖고, 글자가 세로로 꽉 찬다', (tester) async {
     await tester.pumpWidget(_panel());
 

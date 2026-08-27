@@ -20,13 +20,13 @@ import '../../models/layer_process.dart';
 /// intended spec. So a tone lands across whole rows, not on a small swatch —
 /// which is why all four exist and the user picks by looking at the program.
 enum LayerMarkPalette {
-  /// 원본 그대로 — the screenshot's values, untouched. The DEFAULT.
+  /// 원본 그대로 — the screenshot's values, untouched. ⚠️08-27 까지의 기본값.
   original('original', 'Original'),
 
   /// 흰색을 45% 섞은 파스텔.
   pastel('pastel', 'Pastel'),
 
-  /// 따뜻한 아이보리를 42% 섞은 크림.
+  /// 따뜻한 아이보리를 42% 섞은 크림. 🔒**유저 확정 기본값**(2026-08-28).
   cream('cream', 'Cream'),
 
   /// 채도를 32% 죽이고 종이색을 26% 섞은 색연필.
@@ -40,13 +40,22 @@ enum LayerMarkPalette {
   /// 이 [jsonValue] 로 든다. 색 라벨의 공정·수정과 **같은 계약**이다.
   final String displayName;
 
+  /// 🚨★★★THE default, named ONCE. 유저 2026-08-28 실기 확정: **크림**
+  /// (「답은 크림이고」) — 08-27 의 「기본값은 원본그대로로 두고」는 넷을 놓고
+  /// 고르는 동안의 임시값이었다.
+  ///
+  /// ⛔[AppAccentSettings] 의 기본 인자와 [fromJson] 의 폴백은 **같은 질문에
+  /// 답한다** — 「고른 적이 없으면 무엇인가」. 두 군데에 적으면 저장값이 깨졌을
+  /// 때만 다른 톤이 나오는, 아무도 못 찾는 어긋남이 생긴다.
+  static const LayerMarkPalette fallback = cream;
+
   static LayerMarkPalette fromJson(Object? json) {
     for (final palette in LayerMarkPalette.values) {
       if (json == palette.jsonValue) {
         return palette;
       }
     }
-    return LayerMarkPalette.original;
+    return fallback;
   }
 }
 

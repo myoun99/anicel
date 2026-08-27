@@ -17,7 +17,7 @@ import 'layer_mark_palette.dart';
 class AppAccentSettings {
   const AppAccentSettings({
     this.accent = defaultAccent,
-    this.layerMarkPalette = LayerMarkPalette.original,
+    this.layerMarkPalette = LayerMarkPalette.fallback,
   });
 
   /// The historical program teal.
@@ -31,8 +31,11 @@ class AppAccentSettings {
   /// one more app-support JSON would be a second answer to «where do the
   /// program's colour choices live».
   ///
-  /// The default is [LayerMarkPalette.original] on the user's instruction
-  /// (2026-08-27): 「기본값은 원본그대로로 두고」.
+  /// 🔒**크림으로 확정**(유저 2026-08-28, 실기에서 넷을 보고 고름). 08-27 의
+  /// 「기본값은 원본그대로로 두고」는 **고르는 동안만**의 임시값이었고, 이것이
+  /// 그 자리를 대신한다 — 두 확정이 있으면 나중 것이 이긴다.
+  ///
+  /// ⚠️저장된 설정이 있으면 그쪽이 이긴다. 이 값은 **처음 켜는 사람이 보는 것**이다.
   final LayerMarkPalette layerMarkPalette;
 
   AppAccentSettings copyWith({

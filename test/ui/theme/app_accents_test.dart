@@ -36,14 +36,19 @@ void main() {
 
   test('a file written before the 색 라벨 tone existed keeps the DEFAULT '
       'tone rather than losing the accent with it', () {
-    // 유저 2026-08-27: 「기본값은 원본그대로로 두고」. A settings file from
-    // before I-4 has no `layerMarkPalette` key, and reading that as a
-    // failure would throw the accent away too.
+    // A settings file from before I-4 has no `layerMarkPalette` key, and
+    // reading that as a failure would throw the accent away too.
+    //
+    // ⛔THE TOKEN, not the tone's name. This spelled out
+    // `LayerMarkPalette.original` and so broke the day the default moved to
+    // 크림 (유저 실기 확정 2026-08-28) — a test that writes the value out is a
+    // copy exactly like the code would be, and it is the third place that
+    // was answering 「고른 적이 없으면 무엇인가」.
     final restored = AppAccentSettings.fromJson(const <String, dynamic>{
       'accent': 0xFF123456,
     });
     expect(restored.accent, const Color(0xFF123456));
-    expect(restored.layerMarkPalette, LayerMarkPalette.original);
+    expect(restored.layerMarkPalette, LayerMarkPalette.fallback);
   });
 
   test('a stored accent2 from an older build is ignored, not fatal', () {
