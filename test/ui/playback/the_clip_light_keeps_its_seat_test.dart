@@ -179,4 +179,41 @@ void main() {
       );
     },
   );
+
+  testWidgets('the reserved seat shows NOTHING until a take is armed', (
+    tester,
+  ) async {
+    // ⛔THE OTHER HALF OF 「자리는 예약하고 내용만 바꾼다」. The seat test above
+    // proves the space is there; without this one the fix could have shipped
+    // a dot that is always visible, which is a different UI than the row had.
+    final handles = await pumpRow(tester);
+
+    Color? lightColour() => tester
+        .widget<Icon>(
+          find.byKey(const ValueKey<String>('playback-record-clip-light')),
+        )
+        .color;
+
+    expect(
+      lightColour(),
+      Colors.transparent,
+      reason: 'idle, the seat is held and the content is absent',
+    );
+
+    handles.recording.value = true;
+    await tester.pump();
+    expect(
+      lightColour(),
+      isNot(Colors.transparent),
+      reason: 'armed, the light is on duty',
+    );
+
+    handles.clipLit.value = true;
+    await tester.pump();
+    expect(
+      lightColour(),
+      isNot(Colors.transparent),
+      reason: 'and it goes red on a clip - the one thing red means here',
+    );
+  });
 }
