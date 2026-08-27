@@ -272,6 +272,11 @@ void main() {
       await decodeAll(surface);
       final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
       addTearDown(overlay.dispose);
+      // ⛔The fixture has to make the stamp the ONLY reason. Without a
+      // pre-blend base on a matching grid the answer falls through to the
+      // replacement question and comes back false anyway — so removing the
+      // stamp check entirely would still pass, and it did.
+      overlay.preBlendBase = surface;
       final recorder = ui.PictureRecorder();
       Canvas(recorder).drawRect(
         const Rect.fromLTWH(0, 0, 8, 8),
@@ -285,6 +290,11 @@ void main() {
         showTransparentBackground: false,
         overlayModel: overlay,
         tileImageCache: cache,
+      );
+      expect(
+        overlay.preBlended && overlay.tileSize == surface.tileSize,
+        isTrue,
+        reason: 'fixture: without this the stamp check is redundant',
       );
       expect(painter.drawsDisjointCoverage, isFalse);
     });
