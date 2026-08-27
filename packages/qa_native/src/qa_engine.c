@@ -24,8 +24,15 @@
 #if defined(_WIN32)
 #include <windows.h>
 #elif defined(__APPLE__)
+#include <TargetConditionals.h>
+#include <mach/mach.h>
 #include <sys/sysctl.h>
 #include <sys/types.h>
+#if TARGET_OS_IPHONE
+// os_proc_available_memory: what is left of THIS APP's allowance, which
+// is the only number that predicts a jetsam kill. iOS/iPadOS only.
+#include <os/proc.h>
+#endif
 #else
 #include <sys/sysinfo.h>
 #endif
@@ -4587,6 +4594,60 @@ QA_EXPORT int64_t qa_physical_memory_bytes(void) {
 #endif
 }
 
+// What THIS PROCESS is holding right now, in bytes; 0 when the platform
+// will not say.
+//
+// The number a jetsam report calls `rpages x pageSize` - which is the
+// number that decides whether the app is about to be killed. Physical
+// RAM (qa_physical_memory_bytes above) answers a different question and
+// has been standing in for this one: on iOS an app may use far less than
+// the device has, so a budget scaled from the machine can be double what
+// the process is allowed.
+QA_EXPORT int64_t qa_process_footprint_bytes(void) {
+#if defined(__APPLE__)
+  task_vm_info_data_t info;
+  mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+  if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&info, &count) ==
+      KERN_SUCCESS) {
+    return (int64_t)info.phys_footprint;
+  }
+  return 0;
+#else
+  // Windows and Linux answer this through per-process APIs that would
+  // add a link dependency to a file that deliberately has none. 0 means
+  // "not measured here" and the caller says so rather than guessing.
+  return 0;
+#endif
+}
+
+// How much more this process may take before the OS stops it; 0 when the
+// platform will not say.
+//
+// On iOS this is the real ceiling - os_proc_available_memory answers what
+// is left of the app's own allowance, which is not the device's free RAM
+// and not a fraction of its total. Elsewhere the closest honest answer is
+// the machine's free memory.
+QA_EXPORT int64_t qa_available_memory_bytes(void) {
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+  return (int64_t)os_proc_available_memory();
+#elif defined(_WIN32)
+  MEMORYSTATUSEX status;
+  status.dwLength = sizeof(status);
+  if (GlobalMemoryStatusEx(&status)) {
+    return (int64_t)status.ullAvailPhys;
+  }
+  return 0;
+#elif defined(__APPLE__)
+  return 0;
+#else
+  struct sysinfo info;
+  if (sysinfo(&info) == 0) {
+    return (int64_t)info.freeram * (int64_t)info.mem_unit;
+  }
+  return 0;
+#endif
+}
+
 // Engine ABI version - ONE number for this whole binary, and the Dart
 // loader refuses a mismatched one.
 //
@@ -4603,4 +4664,6 @@ QA_EXPORT int64_t qa_physical_memory_bytes(void) {
 // v27: qa_video_decode_* - the export path's mirror (qa_video_decode.c).
 // v28: qa_physical_memory_bytes - the device's RAM, for the hot cel
 // budget.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 28; }
+// v29: qa_process_footprint_bytes / qa_available_memory_bytes - what this
+// process is actually holding, and what the OS will still let it take.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 29; }

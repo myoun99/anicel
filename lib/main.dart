@@ -18,6 +18,7 @@ import 'src/ui/effective_device_pixel_ratio.dart';
 import 'src/ui/home_page.dart';
 import 'src/ui/layout/device_grid_audit.dart';
 import 'src/ui/input/app_input_settings.dart' show AppInput;
+import 'src/services/diagnostics/memory_black_box.dart';
 import 'src/ui/theme/app_scroll_behavior.dart';
 import 'src/ui/theme/app_theme.dart';
 import 'src/ui/ui_scale.dart';
@@ -98,6 +99,13 @@ Future<void> main() async {
   if (storedScale != null) {
     AppUiScale.value.value = storedScale;
   }
+  // Read BEFORE this launch starts writing its own: an entry with no END
+  // means the app died in the middle of that work, and a memory kill
+  // leaves nothing else behind — no exception, no crash report, nothing
+  // in App Store Connect. Read once, then the page is turned, so a kill
+  // is reported at the next launch and not at every launch after it.
+  MemoryBlackBox.lastUnfinished = MemoryBlackBox.unfinishedEntry();
+  MemoryBlackBox.reset();
   runApp(const AnicelApp());
 }
 

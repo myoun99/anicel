@@ -39,6 +39,7 @@ import '../services/persistence/app_accent_settings_store.dart';
 import '../services/persistence/app_ui_scale_store.dart';
 import '../services/persistence/app_workspace_colors_store.dart';
 import '../services/persistence/app_input_settings_store.dart';
+import '../services/diagnostics/memory_black_box.dart';
 import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_save_settings_store.dart';
 import '../services/persistence/audio_sync_settings_store.dart';
@@ -7705,6 +7706,9 @@ class EditorSessionManager extends ChangeNotifier {
     } on TvppParseException {
       return null;
     }
+    // The other candidate for last-thing-the-app-ever-did: decoding a
+    // whole TVPaint project holds every cel it builds.
+    MemoryBlackBox.begin('tvpp-import');
 
     playback.stop();
     // The .tvpp becomes the WHOLE project, so its shooting frame does
@@ -7824,18 +7828,51 @@ class EditorSessionManager extends ChangeNotifier {
       final wave = work.sublist(at, math.min(at + pool, work.length));
       final decoded = await Future.wait([
         for (final (plan, _, _, slot) in wave)
-          Isolate.run(() {
-            try {
-              return decodeTvppSlotTiles(
-                fileBytes: bytes,
-                slot: slot,
-                width: plan.cut.canvasSize.width,
-                height: plan.cut.canvasSize.height,
-              );
-            } on TvppRasterDecodeException catch (error) {
-              return error;
-            }
-          }),
+          () {
+            // 🚨ONE SLOT'S BYTES CROSS, NOT THE WHOLE FILE.
+            //
+            // `Isolate.run` COPIES what its closure captures, so capturing
+            // `bytes` handed every worker its own copy of the entire
+            // .tvpp — a pool of eight meant eight whole files resident at
+            // once, on top of the original and everything the import had
+            // already built. On a phone that is the allocation that gets
+            // the app killed, and it grows with the file rather than with
+            // the work.
+            //
+            // The decoder only ever reads `chunkOffset ..+chunkLength`
+            // (see [decodeTvppSlotRgba]), so a window with its offset
+            // rebased to zero is the same input by a different name — and
+            // a copy of that window is kilobytes where the file is
+            // megabytes.
+            final window = Uint8List.fromList(
+              Uint8List.sublistView(
+                bytes,
+                slot.chunkOffset,
+                slot.chunkOffset + slot.chunkLength,
+              ),
+            );
+            final windowSlot = TvppSlot(
+              kind: slot.kind,
+              chunkOffset: 0,
+              chunkLength: slot.chunkLength,
+              compressed: slot.compressed,
+              v10WholeCanvas: slot.v10WholeCanvas,
+            );
+            final width = plan.cut.canvasSize.width;
+            final height = plan.cut.canvasSize.height;
+            return Isolate.run(() {
+              try {
+                return decodeTvppSlotTiles(
+                  fileBytes: window,
+                  slot: windowSlot,
+                  width: width,
+                  height: height,
+                );
+              } on TvppRasterDecodeException catch (error) {
+                return error;
+              }
+            });
+          }(),
       ]);
       for (var i = 0; i < wave.length; i++) {
         final (_, bakedCut, bake, _) = wave[i];
@@ -7896,6 +7933,7 @@ class EditorSessionManager extends ChangeNotifier {
     frameSeekCommitted.value += 1;
     _refreshAfterCutCommand();
     notifyListeners();
+    MemoryBlackBox.end('tvpp-import');
     return warnings;
   }
 
@@ -17347,10 +17385,18 @@ class EditorSessionManager extends ChangeNotifier {
     // synchronous did not close this: sync ordering settles delete-versus-
     // write, and this is write-versus-delete, which is an isolate wide.
     _saveInFlight = true;
+    // The breadcrumb a silent kill cannot erase. A save is the work this
+    // app is most likely to die inside — and when iOS kills for memory
+    // there is no exception, no crash report, and nothing in App Store
+    // Connect (실기 08-27: three kills, an iPad that survived the same
+    // press, and not one line of evidence anywhere). An entry with no END
+    // at the next launch is the only thing that says otherwise.
+    MemoryBlackBox.begin('save');
     try {
       await _writeProjectToFile(filePath, onProgress: onProgress);
     } finally {
       _saveInFlight = false;
+      MemoryBlackBox.end('save');
     }
   }
 
