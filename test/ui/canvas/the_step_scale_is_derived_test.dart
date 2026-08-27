@@ -124,7 +124,7 @@ void main() {
       steps: plan.preSteps,
       pixelWidth: source.width,
       pixelHeight: source.height,
-      rasterScale: 1,
+      imageScale: 1,
     );
     addTearDown(spelled.dispose);
 

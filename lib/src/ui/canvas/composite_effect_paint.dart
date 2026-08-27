@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show immutable;
 
 import '../../core/color_matrix.dart';
+import '../../core/draw_space.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../services/cel_source_effect_pass.dart';
@@ -233,7 +234,7 @@ List<double> onionTintColorMatrix(int argb) {
 
 CompositeEffectPaint resolveCompositeEffectPaint(
   List<ResolvedLayerEffect> effects, {
-  double rasterScale = 1,
+  DrawSpace space = DrawSpace.canvas,
   int? tint,
 }) {
   if (effects.isEmpty && tint == null) {
@@ -291,8 +292,8 @@ CompositeEffectPaint resolveCompositeEffectPaint(
             : composeColorMatrices(matrix, pendingColor!);
       case EffectKind.blur:
         flushPendingColor();
-        final radiusX = effect.parameter('blurX') * rasterScale;
-        final radiusY = effect.parameter('blurY') * rasterScale;
+        final radiusX = effect.parameter('blurX') * space.scale;
+        final radiusY = effect.parameter('blurY') * space.scale;
         final blur = ui.ImageFilter.blur(
           sigmaX: radiusX * blurSigmaPerRadius,
           sigmaY: radiusY * blurSigmaPerRadius,
@@ -403,7 +404,7 @@ class CompositeEffectPlan {
 /// about to make.
 CompositeEffectPlan resolveCompositeEffectPlan(
   List<ResolvedLayerEffect> effects, {
-  double rasterScale = 1,
+  DrawSpace space = DrawSpace.canvas,
   int? tint,
 }) {
   // Each run is "the key that opens it, then the painted effects until the
@@ -428,7 +429,7 @@ CompositeEffectPlan resolveCompositeEffectPlan(
   final last = runs.length - 1;
   final finalPaint = resolveCompositeEffectPaint(
     runs[last],
-    rasterScale: rasterScale,
+    space: space,
     tint: tint,
   );
   if (last == 0) {
@@ -451,7 +452,7 @@ CompositeEffectPlan resolveCompositeEffectPlan(
     }
     outset += resolveCompositeEffectPaint(
       runs[i],
-      rasterScale: rasterScale,
+      space: space,
     ).outsetPixels;
     steps.add(CompositeEffectStep(key: keys[i], then: runs[i]));
   }
@@ -576,7 +577,7 @@ composeAdjustmentScope(
 /// drawSubtreeAsImage(
 ///   canvas: canvas,
 ///   bounds: pass.bufferBounds,
-///   rasterScale: rasterScale,
+///   space: space,
 ///   paintSubtree: drawScope,
 ///   compose: (blit) {
 ///     if (pass.crossfades) {
@@ -594,7 +595,7 @@ AdjustmentScopePass resolveAdjustmentScopePass({
   required ui.Rect bounds,
   required List<ResolvedLayerEffect> effects,
   required double mix,
-  double rasterScale = 1,
+  DrawSpace space = DrawSpace.canvas,
 }) {
   final strength = mix.clamp(0.0, 1.0);
   if (strength < 1) {
@@ -610,7 +611,7 @@ AdjustmentScopePass resolveAdjustmentScopePass({
       );
     }
   }
-  final resolved = resolveCompositeEffectPlan(effects, rasterScale: rasterScale);
+  final resolved = resolveCompositeEffectPlan(effects, space: space);
   final plan = resolved.finalPaint;
   final bufferBounds = effectBufferBounds(bounds, resolved.outsetPixels);
   if (strength >= 1) {

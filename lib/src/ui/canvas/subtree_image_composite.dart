@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 
+import '../../core/draw_space.dart';
 import 'colour_key_shader.dart';
 import 'composite_effect_paint.dart';
 
@@ -281,7 +282,7 @@ ui.Image applyEffectSteps({
   required List<CompositeEffectStep> steps,
   required int pixelWidth,
   required int pixelHeight,
-  required double rasterScale,
+  required double imageScale,
 }) {
   var image = source;
   for (final step in steps) {
@@ -299,12 +300,14 @@ ui.Image applyEffectSteps({
       );
       paint.shader = shader;
     }
-    // ⛔Resolved HERE, at the raster's own scale. A blur's radii are canvas
-    // pixels and this raster is device pixels, so the step that owns them is
-    // the only place that knows the ratio.
+    // ⛔Resolved HERE, in the IMAGE's own space. A step rasters at the
+    // identity — there is no CTM to map a sigma through — so the chain
+    // arrives pre-multiplied by however many image pixels a canvas pixel is.
     resolveCompositeEffectPaint(
       step.then,
-      rasterScale: rasterScale,
+      space: imageScale == 1
+          ? DrawSpace.canvas
+          : DrawSpace.preScaled(imageScale),
     ).applyTo(paint);
     final rect = Rect.fromLTWH(
       0,
@@ -357,7 +360,10 @@ void _finishSubtreeRaster({
     steps: steps,
     pixelWidth: plan.pixelWidth,
     pixelHeight: plan.pixelHeight,
-    rasterScale: plan.scale,
+    // The sub-tree raster IS at plan.scale, so image pixels per canvas pixel
+    // is that number — the one place where the raster's target scale and the
+    // image's own resolution are the same thing by construction.
+    imageScale: plan.scale,
   );
   try {
     compose(
@@ -426,6 +432,6 @@ ui.Image steppedForChain({
     steps: plan.preSteps,
     pixelWidth: image.width,
     pixelHeight: image.height,
-    rasterScale: canvasExtent <= 0 ? 1 : image.width / canvasExtent,
+    imageScale: canvasExtent <= 0 ? 1 : image.width / canvasExtent,
   );
 }

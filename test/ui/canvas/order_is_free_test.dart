@@ -109,7 +109,7 @@ void main() {
       steps: plan.preSteps,
       pixelWidth: side,
       pixelHeight: side,
-      rasterScale: 1,
+      imageScale: 1,
     );
     final bytes = await _bytesOf(stepped, side);
     if (!identical(stepped, source)) {
@@ -230,7 +230,7 @@ void main() {
         steps: plan.preSteps,
         pixelWidth: side,
         pixelHeight: side,
-        rasterScale: 1,
+        imageScale: 1,
       );
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);

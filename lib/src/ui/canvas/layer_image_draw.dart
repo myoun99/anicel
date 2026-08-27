@@ -23,6 +23,7 @@ library;
 
 import 'dart:ui' as ui;
 
+import '../../core/draw_space.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/layer_blend_mode.dart';
@@ -135,7 +136,11 @@ void drawPosedLayerImage(
       // same steps a group takes, asked of one layer's image.
       final plan = resolveCompositeEffectPlan(
         effects,
-        rasterScale: rasterScale,
+        // The pose above already scaled this canvas, so there is no CTM left
+        // for Skia to map the sigma through — the chain arrives multiplied.
+        space: rasterScale == 1
+            ? DrawSpace.canvas
+            : DrawSpace.preScaled(rasterScale),
         tint: tint,
       );
       plan.finalPaint.applyTo(paint);
