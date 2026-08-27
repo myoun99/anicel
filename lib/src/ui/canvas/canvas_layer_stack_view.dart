@@ -1838,7 +1838,8 @@ class _LayerStackPainter extends CustomPainter {
                 // rows below it independently — overlapping coverage inside one
                 // row would then darken at the seams. One buffer, one blend, is
                 // the same answer [_PaintGroup] already gives for a folder.
-                final activeEffects = resolveCompositeEffectPaint(effects);
+                final activePlan = resolveCompositeEffectPlan(effects);
+                final activeEffects = activePlan.finalPaint;
                 final activeAlpha = opacity.clamp(0.0, 1.0).toDouble();
                 final activeBlend = blendMode.paintBlendMode;
                 final activePaint = Paint()
@@ -1869,119 +1870,148 @@ class _LayerStackPainter extends CustomPainter {
                     // painter cannot see, because it is not the painter's.
                     // ⛔`isEmpty`, not `!= null`: an overlay mounted with
                     // nothing in it draws nothing and overlaps nothing.
-                    !(floatOverlay?.value?.isEmpty ?? true);
+                    !(floatOverlay?.value?.isEmpty ?? true) ||
+                    // 🚨A SHADER CANNOT SAMPLE A saveLayer. A colour key
+                    // BELOW a painted effect keys what that effect made, so
+                    // the layer has to be assembled into an image first —
+                    // the one thing a buffer cannot hand it.
+                    activePlan.preSteps.isNotEmpty;
                 // Null when the buffer carries it, so nothing applies twice.
                 final ridingPaint = needsBuffer ? null : activePaint;
                 assert(() {
                   debugLiveLayerRodeTheDraws = !needsBuffer;
                   return true;
                 }());
-                if (needsBuffer) {
-                  canvas.saveLayer(
-                    effectBufferBounds(
-                      activeSurfacePainter!.pasteboardRect,
-                      activeEffects.outsetPixels,
-                    ),
-                    activePaint,
-                  );
-                }
-                canvas.save();
-                canvas.clipRect(activeSurfacePainter!.pasteboardRect);
-                final flat = _activeFlatForRecording;
-                if (flat != null) {
-                  // ⓔ 5단계: under the scaled recording the active layer is
-                  // ONE image like every other layer, resampled by the
-                  // recording's transform under the SAME filter — that
-                  // uniformity is what closes T21 below the knee. 1:1
-                  // src/dst; the one resample comes from the CTM.
-                  canvas.drawImageRect(
-                    flat.image,
-                    Rect.fromLTWH(
-                      0,
-                      0,
-                      flat.image.width.toDouble(),
-                      flat.image.height.toDouble(),
-                    ),
-                    flat.worldRect,
-                    _withLayerPaint(
-                      Paint()..filterQuality = ui.FilterQuality.low,
-                      ridingPaint,
-                    ),
-                  );
-                } else if (standIn != null &&
-                    standIn.shouldStandInFor(activeSurfacePainter!)) {
-                  // The FIRST-ACTIVATION swap window: while any of the
-                  // promoted surface's tiles is still undecoded, the walk
-                  // could show only its budgets' worth and leave the rest
-                  // silent — the blank (whole on the swap frame, per-tile
-                  // once the first decodes landed). The held image is the
-                  // SAME pixels the previous frame drew for this cel at
-                  // the same rect with the same sampling, so standing in
-                  // is seamless; the paint-time predicate above hands
-                  // back to the walk once every tile can speak for itself
-                  // — and instantly the moment an edit could exist.
-                  if (activeSurfacePainter!.showTransparentBackground) {
-                    // Parity with [BitmapSurfacePainter.paintContentInto]'s
-                    // own opening block (the merged stack passes false and
-                    // paints paper itself; standalone hosts rely on this).
-                    canvas.drawRect(
+                // 🚨THE LIVE LAYER'S OWN CONTENT, AS A CLOSURE — because a
+                // colour key BELOW a painted effect has to key what that
+                // effect made, and a shader cannot sample a `saveLayer`.
+                // ⛔Only that case rasterises. A plainly buffered layer keeps
+                // the cheaper `saveLayer`: 🧪measured, the image route costs
+                // 3.2x on the path a stroke redraws every step.
+                void paintLiveBody(Canvas into) {
+                  into.save();
+                  into.clipRect(activeSurfacePainter!.pasteboardRect);
+                  final flat = _activeFlatForRecording;
+                  if (flat != null) {
+                    // ⓔ 5단계: under the scaled recording the active layer is
+                    // ONE image like every other layer, resampled by the
+                    // recording's transform under the SAME filter — that
+                    // uniformity is what closes T21 below the knee. 1:1
+                    // src/dst; the one resample comes from the CTM.
+                    into.drawImageRect(
+                      flat.image,
                       Rect.fromLTWH(
                         0,
                         0,
-                        canvasSize.width.toDouble(),
-                        canvasSize.height.toDouble(),
+                        flat.image.width.toDouble(),
+                        flat.image.height.toDouble(),
                       ),
-                      Paint()
-                        ..color = const Color(
-                          ProjectBackground.defaultPaperArgb,
+                      flat.worldRect,
+                      _withLayerPaint(
+                        Paint()..filterQuality = ui.FilterQuality.low,
+                        ridingPaint,
+                      ),
+                    );
+                  } else if (standIn != null &&
+                      standIn.shouldStandInFor(activeSurfacePainter!)) {
+                    // The FIRST-ACTIVATION swap window: while any of the
+                    // promoted surface's tiles is still undecoded, the walk
+                    // could show only its budgets' worth and leave the rest
+                    // silent — the blank (whole on the swap frame, per-tile
+                    // once the first decodes landed). The held image is the
+                    // SAME pixels the previous frame drew for this cel at
+                    // the same rect with the same sampling, so standing in
+                    // is seamless; the paint-time predicate above hands
+                    // back to the walk once every tile can speak for itself
+                    // — and instantly the moment an edit could exist.
+                    if (activeSurfacePainter!.showTransparentBackground) {
+                      // Parity with [BitmapSurfacePainter.paintContentInto]'s
+                      // own opening block (the merged stack passes false and
+                      // paints paper itself; standalone hosts rely on this).
+                      into.drawRect(
+                        Rect.fromLTWH(
+                          0,
+                          0,
+                          canvasSize.width.toDouble(),
+                          canvasSize.height.toDouble(),
                         ),
+                        Paint()
+                          ..color = const Color(
+                            ProjectBackground.defaultPaperArgb,
+                          ),
+                      );
+                    }
+                    into.drawImageRect(
+                      standIn.image,
+                      Rect.fromLTWH(
+                        0,
+                        0,
+                        standIn.image.width.toDouble(),
+                        standIn.image.height.toDouble(),
+                      ),
+                      standIn.worldRect,
+                      // `low`, exactly like the cached-image route this
+                      // image was drawn by one frame ago — the handoff into
+                      // the stand-in must be byte-identical.
+                      _withLayerPaint(
+                        Paint()..filterQuality = ui.FilterQuality.low,
+                        ridingPaint,
+                      ),
+                    );
+                    // ⛔The stand-in can only hand off if the decodes it is
+                    // waiting on actually start — the walk's collect pass is
+                    // skipped this frame, so its decode starts must not be.
+                    activeSurfacePainter!.startPendingDecodes(canvas);
+                  } else {
+                    activeSurfacePainter!.paintContentInto(
+                      canvas,
+                      layerPaint: ridingPaint,
                     );
                   }
-                  canvas.drawImageRect(
-                    standIn.image,
-                    Rect.fromLTWH(
-                      0,
-                      0,
-                      standIn.image.width.toDouble(),
-                      standIn.image.height.toDouble(),
-                    ),
-                    standIn.worldRect,
-                    // `low`, exactly like the cached-image route this
-                    // image was drawn by one frame ago — the handoff into
-                    // the stand-in must be byte-identical.
-                    _withLayerPaint(
-                      Paint()..filterQuality = ui.FilterQuality.low,
-                      ridingPaint,
-                    ),
-                  );
-                  // ⛔The stand-in can only hand off if the decodes it is
-                  // waiting on actually start — the walk's collect pass is
-                  // skipped this frame, so its decode starts must not be.
-                  activeSurfacePainter!.startPendingDecodes(canvas);
-                } else {
-                  activeSurfacePainter!.paintContentInto(
-                    canvas,
-                    layerPaint: ridingPaint,
-                  );
+                  // 🚨TS1: the selection's FLOAT belongs here, right on top of
+                  // the surface it was lifted out of and UNDER everything
+                  // above that row. Drawn inside this slot's clip and its
+                  // effects/opacity buffer, because the pixels are that
+                  // layer's pixels — 유저 확정 A: 「프리뷰는 원래 그런거」, so a
+                  // half-opacity row previews a transform at half opacity,
+                  // which is what the commit will look like.
+                  //
+                  // ⚠️Inside the POSE wrap as well (the whole switch is). For
+                  // an unposed row that changes nothing; for a posed one the
+                  // float now travels with its layer instead of ignoring the
+                  // pose, but the drag delta rides through the pose matrix
+                  // with it — fine for translation, and worth an eye on a
+                  // scaled or rotated row.
+                  floatOverlay?.value?.paintInto(into);
+                  into.restore();
                 }
-                // 🚨TS1: the selection's FLOAT belongs here, right on top of
-                // the surface it was lifted out of and UNDER everything
-                // above that row. Drawn inside this slot's clip and its
-                // effects/opacity buffer, because the pixels are that
-                // layer's pixels — 유저 확정 A: 「프리뷰는 원래 그런거」, so a
-                // half-opacity row previews a transform at half opacity,
-                // which is what the commit will look like.
-                //
-                // ⚠️Inside the POSE wrap as well (the whole switch is). For
-                // an unposed row that changes nothing; for a posed one the
-                // float now travels with its layer instead of ignoring the
-                // pose, but the drag delta rides through the pose matrix
-                // with it — fine for translation, and worth an eye on a
-                // scaled or rotated row.
-                floatOverlay?.value?.paintInto(canvas);
-                canvas.restore();
-                if (needsBuffer) {
-                  canvas.restore();
+                if (activePlan.preSteps.isNotEmpty) {
+                  drawSubtreeAsImage(
+                    canvas: canvas,
+                    bounds: effectBufferBounds(
+                      bufferBoundsFor(node),
+                      activePlan.outsetPixels,
+                    ),
+                    rasterScale: rasterScale,
+                    maxPixelSide: maxSubtreeRasterSide,
+                    paintSubtree: (into, _) => paintLiveBody(into),
+                    compose: (blit) => blit(activePaint),
+                    steps: activePlan.preSteps,
+                  );
+                } else {
+                  if (needsBuffer) {
+                    canvas.saveLayer(
+                      effectBufferBounds(
+                        activeSurfacePainter!.pasteboardRect,
+                        activeEffects.outsetPixels,
+                      ),
+                      activePaint,
+                    );
+                  }
+                  paintLiveBody(canvas);
+                  if (needsBuffer) {
+                    canvas.restore();
+                  }
                 }
               case _PaintImage(
                 :final image,

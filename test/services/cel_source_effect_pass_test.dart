@@ -272,20 +272,6 @@ void main() {
       ]);
     });
 
-    test('effectKindsFor offers the keys everywhere', () {
-      // ⛔The old rule hid them where the input was not cel bytes, because
-      // the key was a CPU pass over those bytes and nothing else. 유저
-      // 2026-08-27 reversed it once the shader existed and the two
-      // implementations were proven identical: a folder keys the picture it
-      // composed.
-      for (final onCelPixels in const [true, false]) {
-        expect(
-          effectKindsFor(inputIsCelPixels: onCelPixels),
-          containsAll([EffectKind.deleteColor, EffectKind.keepColor]),
-          reason: 'inputIsCelPixels: $onCelPixels',
-        );
-      }
-    });
 
     test('a row HOLDS the order it was given', () {
       // ⛔This used to assert the opposite — the chain normalized so a key

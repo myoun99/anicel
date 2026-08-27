@@ -348,7 +348,7 @@ class TimelineActionToolbar extends StatelessWidget {
             kind.labelFor(AppText.language),
           ),
           icon: Icons.auto_fix_high_outlined,
-          enabled: serves && session.canAddEffectKindToActiveLayer(kind),
+          enabled: serves && session.canAddEffectToActiveLayer,
           onSelected: () => session.addEffectToActiveLayer(kind),
         ),
       if (effects.isNotEmpty) const PanelFlyoutDivider(),
