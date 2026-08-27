@@ -71,15 +71,29 @@ void main() {
   /// the unfiltered pass survived every test in the repo.
   const allowedSaveLayers = <String, int>{
     // The ACTIVE SURFACE's own buffer, and it STAYS a saveLayer. ⛔Not a
-    // to-do: it is a LEAF, so there is no sub-tree in it for an effect to
-    // want to sample, and the live layer's own colour key runs on the CPU
-    // over its source bytes anyway (EffectKind.runsOnSourcePixels). Its
-    // bounds look alarming — the pasteboard, 9x the canvas — but a
-    // saveLayer's bounds are a hint Skia intersects with the current clip,
-    // so nothing that size is ever allocated. Rasterising it instead WOULD
-    // allocate exactly what it asked for, which is why converting the
-    // hottest path in the app (a stroke redraws this every step) would cost
-    // something and buy uniformity alone.
+    // to-do — 🧪the numbers, on a 2340x1654 page whose pasteboard hint is
+    // 7020x4962, output 1200x800, 20 runs after warm-up:
+    //
+    //   saveLayer(pasteboard)                    1245us
+    //   saveLayer(content∩view 1200x800)         1321us   <- same, noise
+    //   toImageSync(content∩view 1200x800)+blit  4268us   <- 3.2x
+    //   toImageSync(pasteboard)+blit            40478us   <- 32.5x
+    //
+    // Two things fall out. A saveLayer's bounds are a HINT Skia takes the
+    // intersection of with the current clip, so the alarming-looking
+    // pasteboard rect costs the same as a tight one — measured, not
+    // reasoned. And `toImageSync` allocates exactly what it is asked for,
+    // so converting costs 3.2x even AFTER fixing the bound.
+    //
+    // A group was worth that; this is not. A group's pixels are what a
+    // folder effect has to sample, and converting it put four routes on one
+    // code path. The live layer is a LEAF: there is no sub-tree inside it,
+    // and its own colour key runs on the CPU over its source bytes anyway
+    // (EffectKind.runsOnSourcePixels), so the conversion would buy
+    // uniformity alone — on the path a stroke redraws every step.
+    //
+    // ⚠️Software rasteriser (flutter_tester). The RATIO is what travels; the
+    // absolute numbers do not.
     'lib/src/ui/canvas/canvas_layer_stack_view.dart': 1,
     'lib/src/ui/camera/camera_frame_render_service.dart': 0,
     'lib/src/ui/playback/cut_frame_composite_cache.dart': 0,
