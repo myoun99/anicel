@@ -10,6 +10,7 @@ import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
 import '../models/tile_coord.dart';
 import 'canvas_selection_region.dart';
+import 'mask_soft_edge.dart';
 import 'resample/resample_kernel.dart';
 import 'resample/selection_resample.dart';
 
@@ -1017,13 +1018,13 @@ void _featherMask(Uint8List mask, int width, int height, double featherPx) {
   }
 }
 
-/// One boundary soft pass — the fill finish's anti-alias math.
+/// One boundary soft pass, CLAMPED INSIDE THE OUTLINE.
 ///
 /// 🚨★★★THE RAMP LIVES INSIDE THE OUTLINE. 유저 2026-08-27, after looking at
 /// TVPaint: 「애초 tvp 보니까 **선택의 aa가 선택 바깥에 걸리는게 아니라 선택
 /// 안쪽에 걸고있는거같거든**? 그렇게 하면 해결인가?」.
 ///
-/// It is, and this clamp is the whole of it. A plain blur spreads both ways,
+/// It is, and the clamp is the whole of it. A plain blur spreads both ways,
 /// so every anti-aliased selection used to carry a one-pixel skirt of mask
 /// OUTSIDE its own outline — and since #1288 a pixel the mask touches at all
 /// travels whole, that skirt is a ring of the neighbour's artwork lifted
@@ -1034,27 +1035,18 @@ void _featherMask(Uint8List mask, int width, int height, double featherPx) {
 /// ⛔Not a wider `bboxPad`, and not a special case at the lift: the mask is
 /// what every verb reads (the pixel verbs share it), so a selection that
 /// means "these pixels" has to say so here or the meanings drift apart.
+///
+/// ⛔THE ARITHMETIC IS NOT OURS TO KEEP A COPY OF. It is the fill finish's,
+/// it is also the C kernel's, and it used to be written out here — where it
+/// promptly diverged, because the clamp above was added to this copy alone.
+/// [softenMaskBoundary] holds the formula; this line holds the meaning.
 void _antiAliasMask(Uint8List mask, int width, int height) {
-  final source = Uint8List.fromList(mask);
-  for (var y = 0; y < height; y += 1) {
-    for (var x = 0; x < width; x += 1) {
-      final index = y * width + x;
-      final center = source[index];
-      final left = x > 0 ? source[index - 1] : 0;
-      final right = x < width - 1 ? source[index + 1] : 0;
-      final up = y > 0 ? source[index - width] : 0;
-      final down = y < height - 1 ? source[index + width] : 0;
-      final sum = center + left + right + up + down;
-      if (sum != center * 5) {
-        final softened = ((center * 3 + (sum - center)) / 7).round();
-        // ⚠️`center` is this pixel BEFORE the pass, which is the hard
-        // outline's own answer — 255 inside, 0 outside. Taking the smaller
-        // of the two lets the ramp only ever darken what was already in,
-        // and never lights up what was out.
-        mask[index] = softened < center ? softened : center;
-      }
-    }
-  }
+  softenMaskBoundary(
+    mask,
+    width: width,
+    height: height,
+    insideOutlineOnly: true,
+  );
 }
 
 /// Copies the surface's pixels under [mask] into a `width x height`

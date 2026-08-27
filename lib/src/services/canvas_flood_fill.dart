@@ -19,6 +19,7 @@ import 'canvas_selection.dart';
 import 'canvas_selection_region.dart';
 import 'cut_frame_composite_plan.dart';
 import 'guide_geometry.dart';
+import 'mask_soft_edge.dart';
 
 /// P6 fill options — the Tool Settings panel's knobs (R11-④).
 class FloodFillOptions {
@@ -812,23 +813,15 @@ FloodFillRegion _cropAndFinishFloodRegion({
   }
 
   if (options.antiAlias) {
-    // One soft edge pass: boundary mask pixels average their 4-neighbors.
-    final smoothed = Uint8List.fromList(mask);
-    for (var y = 0; y < regionHeight; y += 1) {
-      for (var x = 0; x < regionWidth; x += 1) {
-        final index = y * regionWidth + x;
-        final center = mask[index];
-        final leftV = x > 0 ? mask[index - 1] : 0;
-        final rightV = x < regionWidth - 1 ? mask[index + 1] : 0;
-        final upV = y > 0 ? mask[index - regionWidth] : 0;
-        final downV = y < regionHeight - 1 ? mask[index + regionWidth] : 0;
-        final sum = center + leftV + rightV + upV + downV;
-        if (sum != center * 5) {
-          smoothed[index] = ((center * 3 + (sum - center)) / 7).round();
-        }
-      }
-    }
-    mask.setAll(0, smoothed);
+    // ⛔UNCLAMPED, and that is the fill's meaning: paint that stops dead on
+    // the outline reads as a hard edge, so the fill's ramp is allowed one
+    // pixel past its own. The SELECTION's is not — see [softenMaskBoundary].
+    softenMaskBoundary(
+      mask,
+      width: regionWidth,
+      height: regionHeight,
+      insideOutlineOnly: false,
+    );
   }
 
   return FloodFillRegion(
