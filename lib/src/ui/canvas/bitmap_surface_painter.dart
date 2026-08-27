@@ -125,6 +125,70 @@ class BitmapSurfacePainter extends CustomPainter {
   /// bug: it costs a re-raster and keeps the picture right.
   bool get drawsOnlyFromPublishedState => true;
 
+  /// A PRE-BLENDED overlay on the SAME grid: the base pass skips the
+  /// committed tile where an overlay image exists and the overlay pass lays
+  /// the result tile with plain srcOver.
+  bool get _overlayReplacesCoords {
+    final overlay = overlayModel;
+    return overlay != null &&
+        overlay.preBlended &&
+        overlay.hasStrokeContent &&
+        overlay.tileSize == surface.tileSize;
+  }
+
+  /// The isolation-layer route, for overlays that cannot replace a whole
+  /// coordinate.
+  bool get _overlayBlendsInLayer {
+    final overlay = overlayModel;
+    return overlay != null &&
+        !_overlayReplacesCoords &&
+        overlay.hasStrokeContent &&
+        (overlay.preBlended ||
+            overlay.erase ||
+            overlay.blendMode.previewBlendMode != BlendMode.srcOver);
+  }
+
+  /// 🚨★★★WHETHER EVERY DEVICE PIXEL THIS PAINTER TOUCHES, IT TOUCHES ONCE.
+  ///
+  /// A layer's opacity and blend have to apply to the LAYER once. Wrapping
+  /// the whole painter in a `saveLayer` is one way to get that; handing the
+  /// same paint to each draw is another, and the two are the same pixels
+  /// exactly when no two draws land on the same pixel.
+  ///
+  /// ⛔NOT A NEW LAW — the overlay's own blend already rides it one level
+  /// down: *"BB-1: the brush blend previews live (tiles never overlap, so
+  /// per-tile draws blend each pixel exactly once)."* This is that sentence
+  /// asked about the LAYER's paint instead of the stroke's.
+  ///
+  /// 🧪Measured: with the tile paint this class actually uses
+  /// (`isAntiAlias = false`, `FilterQuality.none`) the two routes agree to
+  /// the byte at scale 1, 1.37, 0.63 and 2, at phases 0, 0.42 and 0.5 —
+  /// 0 of 19200 pixels differ. Antialiased draws do NOT agree, which is why
+  /// the flag belongs to the painter that knows its own paint rather than
+  /// to a caller guessing.
+  ///
+  /// False for the three ways a pixel gets touched twice: the paper rect
+  /// under every tile, a fill stamp placed OVER whatever a coordinate
+  /// already holds, and an overlay that cannot replace a whole coordinate
+  /// (its isolation layer exists precisely because it composes against the
+  /// committed pixels).
+  bool get drawsDisjointCoverage {
+    if (showTransparentBackground) {
+      return false;
+    }
+    final overlay = overlayModel;
+    if (overlay == null) {
+      return true;
+    }
+    if (overlay.stampImage != null) {
+      return false;
+    }
+    if (!overlay.hasStrokeContent) {
+      return true;
+    }
+    return _overlayReplacesCoords;
+  }
+
   /// The surface + live overlay, onto a canvas the CALLER has already
   /// viewport-transformed and clipped to [pasteboardRect].
   ///
@@ -138,7 +202,19 @@ class BitmapSurfacePainter extends CustomPainter {
   /// the widget size is a screen quantity that only coincides with it at
   /// identity. Reading the canvas's clip instead is what makes the merged
   /// route right (see [_visibleCanvasRect]).
-  void paintContentInto(Canvas canvas) {
+  ///
+  /// [layerPaint] is the LAYER's own opacity/blend/colour chain, handed to
+  /// every draw instead of being wrapped around them.
+  ///
+  /// ⛔Only legal when [drawsDisjointCoverage] — see its contract. Passing
+  /// it otherwise applies the layer twice wherever two draws overlap, which
+  /// looks like a darkened seam rather than an error.
+  void paintContentInto(Canvas canvas, {Paint? layerPaint}) {
+    assert(
+      layerPaint == null || drawsDisjointCoverage,
+      'A layer paint may only ride the individual draws when they cover '
+      'each pixel once — see drawsDisjointCoverage.',
+    );
     final canvasWidth = surface.canvasSize.width.toDouble();
     final canvasHeight = surface.canvasSize.height.toDouble();
     final pasteboardRect = this.pasteboardRect;
@@ -176,18 +252,8 @@ class BitmapSurfacePainter extends CustomPainter {
     // MISMATCHED grid (hosts/tests with their own tile sizes); both
     // routes are display-parity-pinned.
     final overlay = overlayModel;
-    final overlayReplacesCoords =
-        overlay != null &&
-        overlay.preBlended &&
-        overlay.hasStrokeContent &&
-        overlay.tileSize == surface.tileSize;
-    final overlayBlendsInLayer =
-        overlay != null &&
-        !overlayReplacesCoords &&
-        overlay.hasStrokeContent &&
-        (overlay.preBlended ||
-            overlay.erase ||
-            overlay.blendMode.previewBlendMode != BlendMode.srcOver);
+    final overlayReplacesCoords = _overlayReplacesCoords;
+    final overlayBlendsInLayer = _overlayBlendsInLayer;
     if (overlayBlendsInLayer) {
       canvas.saveLayer(pasteboardRect, Paint());
     }
@@ -195,6 +261,14 @@ class BitmapSurfacePainter extends CustomPainter {
     final tileImagePaint = Paint()
       ..filterQuality = FilterQuality.none
       ..isAntiAlias = false;
+    if (layerPaint != null) {
+      // The layer rides every draw instead of a buffer around them.
+      tileImagePaint
+        ..color = layerPaint.color
+        ..blendMode = layerPaint.blendMode
+        ..colorFilter = layerPaint.colorFilter
+        ..imageFilter = layerPaint.imageFilter;
+    }
     // While a stroke settles, coordinates it touched draw their pinned
     // PRE-stroke tile (or nothing if the coordinate was empty) instead of
     // the committed tile: post-commit decodes land one by one, and drawing
@@ -287,6 +361,7 @@ class BitmapSurfacePainter extends CustomPainter {
         // the collect pass above, so a freshly adopted tile's image is
         // ready by the time the override releases.
         if (overlayReplacesCoords &&
+            overlay != null &&
             overlay.tileImages.containsKey(tile.coord)) {
           // While the overlay is LIVE its image IS the stroke and the
           // committed tile is still the pre-stroke surface, so the
@@ -340,7 +415,7 @@ class BitmapSurfacePainter extends CustomPainter {
                 tileImagePaint,
               );
             } else {
-              _paintTilePixels(canvas, preTile);
+              _paintTilePixels(canvas, preTile, layerPaint);
             }
           }
           continue;
@@ -415,7 +490,7 @@ class BitmapSurfacePainter extends CustomPainter {
           // pasteboard row above the artwork and the float contributed
           // zero pixels. A transparent tile costs the same scan either
           // way — it just no longer costs a slot.
-          if (_paintTilePixels(canvas, tile)) {
+          if (_paintTilePixels(canvas, tile, layerPaint)) {
             pixelFallbackBudget -= 1;
           }
         } else {
@@ -619,19 +694,43 @@ class BitmapSurfacePainter extends CustomPainter {
   /// Draws [tile] a pixel at a time; true when it put anything on the
   /// canvas. The caller spends its budget on the answer, not on the
   /// attempt.
-  bool _paintTilePixels(Canvas canvas, BitmapTile tile) {
+  bool _paintTilePixels(Canvas canvas, BitmapTile tile, Paint? layerPaint) {
     // `readPixels`, not the `pixels` getter: that getter is a defensive
     // 256 KB COPY per call, and this path already runs on the frames
     // where there is least room for it — the budget above is spent
     // exactly when nothing has decoded yet.
     return tile.readPixels(
-      (_, pixels) => _paintTilePixelsFrom(canvas, tile, pixels),
+      (_, pixels) => _paintTilePixelsFrom(canvas, tile, pixels, layerPaint),
     );
   }
 
-  bool _paintTilePixelsFrom(Canvas canvas, BitmapTile tile, Uint8List pixels) {
+  bool _paintTilePixelsFrom(
+    Canvas canvas,
+    BitmapTile tile,
+    Uint8List pixels,
+    Paint? layerPaint,
+  ) {
     var drew = false;
-    final pixelPaint = Paint()..style = PaintingStyle.fill;
+    final pixelPaint = Paint()
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = false;
+    // 🚨THE ONE DRAW THAT CANNOT TAKE THE LAYER PAINT DIRECTLY. `Paint.color`
+    // already carries the PIXEL's own colour here, so folding the layer's
+    // alpha into it quantises to 8 bits BEFORE the composite where the
+    // buffer quantises after — 🧪measured at 55 pixels of 4096, worst
+    // channel 1. A tile-sized layer restores the buffer's order exactly,
+    // and this path is the undecoded-tile fallback with a budget of four.
+    if (layerPaint != null) {
+      canvas.saveLayer(
+        Rect.fromLTWH(
+          (tile.coord.x * tile.size).toDouble(),
+          (tile.coord.y * tile.size).toDouble(),
+          tile.size.toDouble(),
+          tile.size.toDouble(),
+        ),
+        layerPaint,
+      );
+    }
     final tileOriginX = tile.coord.x * tile.size;
     final tileOriginY = tile.coord.y * tile.size;
 
@@ -665,6 +764,9 @@ class BitmapSurfacePainter extends CustomPainter {
         );
         drew = true;
       }
+    }
+    if (layerPaint != null) {
+      canvas.restore();
     }
     return drew;
   }

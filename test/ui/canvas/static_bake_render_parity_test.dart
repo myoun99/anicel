@@ -454,7 +454,7 @@ class _SwappableSurface extends BitmapSurfacePainter {
   bool get drawsOnlyFromPublishedState => false;
 
   @override
-  void paintContentInto(Canvas canvas) {
+  void paintContentInto(Canvas canvas, {Paint? layerPaint}) {
     canvas.drawRect(
       const Rect.fromLTWH(0, 0, 4, 4),
       Paint()..color = ink,

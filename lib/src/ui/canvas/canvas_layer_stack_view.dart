@@ -1228,6 +1228,23 @@ final class _PaintAdjustment extends _PaintNode {
 /// ⛔RECOMPUTED, NEVER ACCUMULATED. A rect that only ever grew would be the
 /// high-water mark of everything you had done — the "sticky / containment
 /// 매칭 버퍼 rect" the composite plan rejects by name.
+/// [draw] with [layer]'s opacity/blend/colour chain folded in, or [draw]
+/// unchanged when a buffer is carrying the layer instead.
+///
+/// ⛔The draw keeps its OWN sampling. A layer paint says how the layer
+/// composites, never how a picture is resampled — writing `filterQuality`
+/// from it would be one paint answering two questions.
+Paint _withLayerPaint(Paint draw, Paint? layer) {
+  if (layer == null) {
+    return draw;
+  }
+  return draw
+    ..color = layer.color
+    ..blendMode = layer.blendMode
+    ..colorFilter = layer.colorFilter
+    ..imageFilter = layer.imageFilter;
+}
+
 Rect _paintNodeExtent(
   _PaintNode node, {
   required CanvasSize canvasSize,
@@ -1810,15 +1827,36 @@ class _LayerStackPainter extends CustomPainter {
                 final activeEffects = resolveCompositeEffectPaint(effects);
                 final activeAlpha = opacity.clamp(0.0, 1.0).toDouble();
                 final activeBlend = blendMode.paintBlendMode;
+                final activePaint = Paint()
+                  ..color = Color.fromRGBO(0, 0, 0, activeAlpha)
+                  ..blendMode = activeBlend;
+                activeEffects.applyTo(activePaint);
+                // 🚨★★★THE LAYER RIDES THE DRAWS, NOT A BUFFER AROUND THEM.
+                //
+                // A layer's opacity and blend have to apply to the LAYER
+                // once. A buffer is one way; handing the same paint to each
+                // draw is another, and they are the same pixels exactly when
+                // no two draws land on the same pixel — which is what
+                // [BitmapSurfacePainter.drawsDisjointCoverage] answers, and
+                // the law the overlay's own blend already rides one level
+                // down ("tiles never overlap, so per-tile draws blend each
+                // pixel exactly once").
+                //
+                // What is left for a buffer is the one thing a per-draw
+                // paint cannot do: a filter that SPREADS has to see across
+                // the tile boundaries, so it needs the layer assembled
+                // first. `outsetPixels` is exactly that question — a colour
+                // matrix is per-pixel and rides along fine.
                 final needsBuffer =
-                    activeEffects.isNotEmpty ||
-                    activeAlpha < 1 ||
-                    activeBlend != BlendMode.srcOver;
+                    activeEffects.outsetPixels > 0 ||
+                    !activeSurfacePainter!.drawsDisjointCoverage ||
+                    // The selection FLOAT is this layer's pixels lifted out
+                    // and drawn back on top of it — the one overlap the
+                    // painter cannot see, because it is not the painter's.
+                    floatOverlay?.value != null;
+                // Null when the buffer carries it, so nothing applies twice.
+                final ridingPaint = needsBuffer ? null : activePaint;
                 if (needsBuffer) {
-                  final activePaint = Paint()
-                    ..color = Color.fromRGBO(0, 0, 0, activeAlpha)
-                    ..blendMode = activeBlend;
-                  activeEffects.applyTo(activePaint);
                   canvas.saveLayer(
                     effectBufferBounds(
                       activeSurfacePainter!.pasteboardRect,
@@ -1845,7 +1883,10 @@ class _LayerStackPainter extends CustomPainter {
                       flat.image.height.toDouble(),
                     ),
                     flat.worldRect,
-                    Paint()..filterQuality = ui.FilterQuality.low,
+                    _withLayerPaint(
+                      Paint()..filterQuality = ui.FilterQuality.low,
+                      ridingPaint,
+                    ),
                   );
                 } else if (standIn != null &&
                     standIn.shouldStandInFor(activeSurfacePainter!)) {
@@ -1888,14 +1929,20 @@ class _LayerStackPainter extends CustomPainter {
                     // `low`, exactly like the cached-image route this
                     // image was drawn by one frame ago — the handoff into
                     // the stand-in must be byte-identical.
-                    Paint()..filterQuality = ui.FilterQuality.low,
+                    _withLayerPaint(
+                      Paint()..filterQuality = ui.FilterQuality.low,
+                      ridingPaint,
+                    ),
                   );
                   // ⛔The stand-in can only hand off if the decodes it is
                   // waiting on actually start — the walk's collect pass is
                   // skipped this frame, so its decode starts must not be.
                   activeSurfacePainter!.startPendingDecodes(canvas);
                 } else {
-                  activeSurfacePainter!.paintContentInto(canvas);
+                  activeSurfacePainter!.paintContentInto(
+                    canvas,
+                    layerPaint: ridingPaint,
+                  );
                 }
                 // 🚨TS1: the selection's FLOAT belongs here, right on top of
                 // the surface it was lifted out of and UNDER everything
