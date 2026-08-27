@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 /// 일본어 **BIZ UDPGothic**(「작은크기 가독성 목표로해서 아주 읽기쉬워」)
 /// + 한글 **나눔고딕**. 그 전까지는 폰트가 없어서 OS 가 주는 것을 입었다.
 void main() {
+  _noWidgetNamesItsOwnFace();
+
   test('테마가 앱 폰트를 들고 있다 — OS 에 맡기지 않는다', () {
     final theme = buildAppTheme();
     expect(theme.textTheme.bodyMedium?.fontFamily, isNotNull);
@@ -67,5 +69,58 @@ void main() {
     for (final path in assets) {
       expect(File(path).existsSync(), isTrue, reason: path);
     }
+  });
+}
+
+/// ⛔**진짜 폰트 이름을 위젯이 자기 손으로 적지 못한다** (소스 스캔 래칫).
+///
+/// 하나가 적으면 그 위젯만 다른 글씨가 되고, 값이 같은 동안에는 안 보이다가
+/// **폰트를 바꾸는 날 갈라진다** — 어제 색 토큰에서 정확히 그 일이 있었다.
+///
+/// ⚠️허용은 **제네릭 `'monospace'`** 뿐이다. 그건 폰트를 고르는 게 아니라
+/// 「고정폭이면 된다」는 말이라 OS 에 맡기는 것이 맞다.
+void _noWidgetNamesItsOwnFace() {
+  test('lib 전체에서 진짜 폰트 이름을 적는 곳이 없다', () {
+    // 폰트가 **자기 일**인 파일 둘은 뺀다: 테마(정의하는 곳)와 콘티 폰트
+    // (PDF 에 임베드하는 파일을 이름으로 부른다).
+    const owners = ['app_theme.dart', 'conte_fonts.dart'];
+    // 제네릭 패밀리 — CSS 의 그것과 같다. 이름이 아니라 종류다.
+    const generic = {'monospace', 'sans-serif', 'serif', 'cursive'};
+
+    // ⚠️RAW 문자열이다. 보통 문자열에 `\s` 를 쓰면 Dart 가 **조용히 백슬래시를
+    // 버려** 정규식이 `fontFamilys*` 가 된다 — 아무것도 안 잡으면서 초록이고,
+    // 실제로 그렇게 통과했다. 뮤테이션이 살아남아서 알았다.
+    final literal = RegExp(r"fontFamily:\s*'([^']+)'");
+    final offenders = <String>[];
+    var scanned = 0;
+    for (final entity in Directory('lib').listSync(recursive: true)) {
+      if (entity is! File || !entity.path.endsWith('.dart')) {
+        continue;
+      }
+      if (owners.any(entity.path.endsWith)) {
+        continue;
+      }
+      scanned++;
+      final lines = entity.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        if (lines[i].trimLeft().startsWith('//')) {
+          continue;
+        }
+        final hit = literal.firstMatch(lines[i]);
+        if (hit != null && !generic.contains(hit.group(1))) {
+          offenders.add('${entity.path}:${i + 1} — ${hit.group(1)}');
+        }
+      }
+    }
+
+    // 🚨계측기를 먼저 의심한다: 파일을 못 찾았으면 「위반 없음」이 공짜다.
+    expect(scanned, greaterThan(100), reason: '⛔빈 것을 쟀다');
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          '폰트 이름은 AppTypography 가 정한다 — 위젯이 직접 적으면 그 위젯만 '
+          '다른 글씨가 된다:\n${offenders.join('\n')}',
+    );
   });
 }
