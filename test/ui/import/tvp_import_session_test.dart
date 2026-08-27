@@ -38,7 +38,19 @@ void main() {
     b.layerHead('A', end: 9, count: 10, layerId: 901);
     b.layerExt(const {});
     for (var i = 0; i < 10; i++) {
-      b.zchkSlot(srawRecord(List.filled(64 * 48, 0), 64, 48));
+      // The FIRST drawing carries ink. Every cel used to be blank here,
+      // and a blank cel decodes to zero tiles whether the bytes were
+      // read from the right place or not — so a decode fed the wrong
+      // offset looked exactly like a correct one.
+      final px = List.filled(64 * 48, 0);
+      if (i == 0) {
+        for (var y = 8; y < 20; y++) {
+          for (var x = 8; x < 24; x++) {
+            px[y * 64 + x] = premulBgra(200, 30, 40, 255);
+          }
+        }
+      }
+      b.zchkSlot(srawRecord(px, 64, 48));
     }
     // One drawing held across the same span.
     b.layerHead('TAP', end: 9, count: 10, layerId: 902);
@@ -62,6 +74,17 @@ void main() {
 
     final warnings = await session.openTvppAsProject(tvppPath: writeTvpp());
     expect(warnings, isNotNull, reason: 'the file parses');
+    expect(
+      // The fixture's rushes path is deliberately absent, and that
+      // warning is the flow's own answer to a missing sound — not a
+      // decode failure.
+      warnings!.where((w) => !w.startsWith('사운드 파일이')),
+      isEmpty,
+      reason: '🚨every cel DECODED. The import reads each record out of '
+          'the file by offset — a seek that lands anywhere else produces '
+          'a decode failure, which arrives as a warning rather than a '
+          'throw, so an import that "worked" can still have read nothing.',
+    );
 
     // The open REPLACES the project — the default cut is gone, the
     // file's name is the project's, and so is its SHOOTING FRAME (288:
