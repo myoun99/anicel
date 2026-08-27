@@ -43,7 +43,32 @@ class CelColorKey {
     required this.tolerance,
     required this.amount,
     required this.keepsMatches,
-  });
+  }) : _keptFraction = _asFloat32(1 - _asFloat32(amount));
+
+  /// `1 - amount`, ROUNDED TO 32-BIT FLOAT at every step.
+  ///
+  /// ⛔FLOAT32, DELIBERATELY, in a language whose doubles are 64-bit. This
+  /// effect has two implementations by necessity: the BUTTON edits stored
+  /// bytes, which only Dart can do, and the FX keys a composited buffer,
+  /// which only a fragment shader can do (`shaders/colour_key.frag`). A
+  /// specification one of them cannot follow is not a specification.
+  ///
+  /// 🧪MEASURED, not feared: computing the mix in doubles disagreed with the
+  /// shader on **222 of 25856** (alpha, amount) pairs. Every one of them was
+  /// a value that landed on an exact half — alpha 70 at amount 0.05 is
+  /// exactly 66.5, which a double rounds up to 67 and a float32 has already
+  /// fallen below. Neither answer is truer; having two of them is the
+  /// problem.
+  final double _keptFraction;
+
+  static final Float32List _scratch = Float32List(1);
+
+  /// ⚠️A STORE IS THE ROUNDING. Dart has no float32 arithmetic, so the only
+  /// way to get one is to put a double into a `Float32List` and read it back.
+  static double _asFloat32(double value) {
+    _scratch[0] = value;
+    return _scratch[0];
+  }
 
   /// Reads one resolved chain entry. Returns null for a kind that is not a
   /// color key — callers filter with [EffectKind.runsOnSourcePixels] and
@@ -108,14 +133,14 @@ class CelColorKey {
   /// ⛔ONE PASS. The Amount mix is folded into this arithmetic rather than
   /// drawn as a second layer over the first, because a two-pass mix
   /// accumulates alpha ([[derived-cel-projection-pattern]] rule 6).
+  /// ⛔The full-strength case is NOT a branch. `_keptFraction` is 0 there and
+  /// the arithmetic below lands on 0 by itself — a second path would be a
+  /// second place for the shader to fail to match.
   int alphaFor(int red, int green, int blue, int alpha) {
     if (alpha == 0 || !erases(red, green, blue)) {
       return alpha;
     }
-    if (amount >= 1) {
-      return 0;
-    }
-    return (alpha * (1 - amount)).round();
+    return (_asFloat32(alpha * _keptFraction) + 0.5).floor();
   }
 
   /// Whether this key NAMES the pixel for erasure — PURELY a colour

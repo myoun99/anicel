@@ -94,6 +94,11 @@ flutter:
     - assets/fonts/
     - assets/licenses/
 
+  # Fragment shaders. `flutter: shaders:` compiles each to the SPIR-V a
+  # `FragmentProgram.fromAsset` loads; the path here is the asset key.
+  shaders:
+    - shaders/colour_key.frag
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg
