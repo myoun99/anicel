@@ -5,6 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/project_background.dart';
+import 'package:anicel/src/models/rgba_color.dart';
+import 'package:anicel/src/services/bitmap_tile_rgba.dart';
+import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
+import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -241,6 +250,139 @@ void main() {
         showTransparentBackground: false,
       );
       expect(painter.drawsDisjointCoverage, isTrue);
+    });
+  });
+
+  group('when the live layer opens a buffer, and when it does not', () {
+    // 🚨THE DECISION, READ AT THE ROUTE. The two routes are the same pixels
+    // — that is the point — so a pixel comparison cannot say WHICH ran.
+    const canvasSize = CanvasSize(width: 64, height: 64);
+
+    BitmapSurfacePainter inkedPainter() {
+      var tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 16);
+      tile = writeRgbaColorToBitmapTile(
+        tile: tile,
+        x: 4,
+        y: 4,
+        color: RgbaColor(r: 0, g: 0, b: 255, a: 255),
+      );
+      return BitmapSurfacePainter(
+        surface: BitmapSurface(
+          canvasSize: canvasSize,
+          tileSize: 16,
+          tiles: {tile.coord: tile},
+        ),
+        showTransparentBackground: false,
+      );
+    }
+
+    Future<void> paintActive(
+      WidgetTester tester, {
+      required List<ResolvedLayerEffect> effects,
+      double opacity = 0.5,
+      SelectionFloatOverlay? floatOverlay,
+    }) async {
+      debugLiveLayerRodeTheDraws = null;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 200,
+                height: 150,
+                child: CanvasLayerStackView(
+                  nodes: [
+                    CanvasActiveLayerNode(opacity: opacity, effects: effects),
+                  ],
+                  imageCache: LayerFrameImageCache(
+                    frameStore: BrushFrameStore(),
+                  ),
+                  canvasSize: canvasSize,
+                  viewport: CanvasViewport(zoom: 1, panX: 0, panY: 0),
+                  activeSurfacePainter: inkedPainter(),
+                  paintPaper: true,
+                  paperBackground: const ProjectBackground.color(0xFFFFFFFF),
+                  floatOverlay: floatOverlay,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final painted = tester
+          .widgetList<CustomPaint>(
+            find.descendant(
+              of: find.byType(CanvasLayerStackView),
+              matching: find.byType(CustomPaint),
+            ),
+          )
+          .where((paint) => paint.painter != null)
+          .toList();
+      expect(painted, isNotEmpty);
+      const size = Size(200, 150);
+      final recorder = ui.PictureRecorder();
+      painted.first.painter!.paint(Canvas(recorder, Offset.zero & size), size);
+      recorder.endRecording().dispose();
+    }
+
+    testWidgets('opacity alone rides the draws', (tester) async {
+      await paintActive(tester, effects: const []);
+      expect(
+        debugLiveLayerRodeTheDraws,
+        isTrue,
+        reason: 'nothing here touches a pixel twice',
+      );
+    });
+
+    testWidgets('a SPREADING filter still needs the buffer', (tester) async {
+      // A blur has to see across the tile boundaries, which a per-draw paint
+      // cannot do however disjoint the draws are.
+      await paintActive(
+        tester,
+        effects: [
+          ResolvedLayerEffect(
+            kind: EffectKind.blur,
+            values: const [4, 4],
+          ),
+        ],
+      );
+      expect(debugLiveLayerRodeTheDraws, isFalse);
+    });
+
+    testWidgets('a colour-only filter does NOT need it', (tester) async {
+      // ⛔The other side of the same question: a matrix is per-pixel, so
+      // "has effects" would have been the wrong test.
+      await paintActive(
+        tester,
+        effects: [
+          ResolvedLayerEffect(
+            kind: EffectKind.brightnessContrast,
+            values: const [0.2, 0],
+          ),
+        ],
+      );
+      expect(debugLiveLayerRodeTheDraws, isTrue);
+    });
+
+    testWidgets('a selection FLOAT still needs the buffer', (tester) async {
+      // The float is this layer's own pixels lifted out and drawn back over
+      // it — an overlap the painter cannot see because it is not the
+      // painter's.
+      final float = SelectionFloatOverlay(
+        SelectionFloatPaint(surface: inkedPainter()),
+      );
+      addTearDown(float.dispose);
+      await paintActive(tester, effects: const [], floatOverlay: float);
+      expect(debugLiveLayerRodeTheDraws, isFalse);
+    });
+
+    testWidgets('an EMPTY float overlay does not', (tester) async {
+      // Mounted with nothing in it: it draws nothing and overlaps nothing.
+      final float = SelectionFloatOverlay(SelectionFloatPaint());
+      addTearDown(float.dispose);
+      await paintActive(tester, effects: const [], floatOverlay: float);
+      expect(debugLiveLayerRodeTheDraws, isTrue);
     });
   });
 }

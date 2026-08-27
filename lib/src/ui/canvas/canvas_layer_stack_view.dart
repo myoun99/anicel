@@ -1234,6 +1234,17 @@ final class _PaintAdjustment extends _PaintNode {
 /// ⛔The draw keeps its OWN sampling. A layer paint says how the layer
 /// composites, never how a picture is resampled — writing `filterQuality`
 /// from it would be one paint answering two questions.
+/// Whether the live layer's last paint handed its opacity/blend to the
+/// individual draws instead of opening a buffer around them.
+///
+/// 🚨THE DECISION, NOT ITS PIXELS. Whether a buffer was opened is invisible
+/// in a comparison — the two routes are the same pixels, which is the whole
+/// point — so the only way to pin WHEN each one runs is to read the answer.
+///
+/// ⚠️Written under `assert`, so a release build pays nothing.
+@visibleForTesting
+bool? debugLiveLayerRodeTheDraws;
+
 Paint _withLayerPaint(Paint draw, Paint? layer) {
   if (layer == null) {
     return draw;
@@ -1853,9 +1864,15 @@ class _LayerStackPainter extends CustomPainter {
                     // The selection FLOAT is this layer's pixels lifted out
                     // and drawn back on top of it — the one overlap the
                     // painter cannot see, because it is not the painter's.
-                    floatOverlay?.value != null;
+                    // ⛔`isEmpty`, not `!= null`: an overlay mounted with
+                    // nothing in it draws nothing and overlaps nothing.
+                    !(floatOverlay?.value?.isEmpty ?? true);
                 // Null when the buffer carries it, so nothing applies twice.
                 final ridingPaint = needsBuffer ? null : activePaint;
+                assert(() {
+                  debugLiveLayerRodeTheDraws = !needsBuffer;
+                  return true;
+                }());
                 if (needsBuffer) {
                   canvas.saveLayer(
                     effectBufferBounds(
