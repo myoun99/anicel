@@ -1079,6 +1079,36 @@ class LayerMarkChip extends StatelessWidget {
 /// takes the columns to write and the fill to write them on rather than
 /// knowing what a mark is. A second widget that merely looked the same
 /// would be a copy of a face that is deliberately identical.
+/// 한 칸의 글자를 그 레일이 읽는 방향으로 세운다.
+///
+/// 🚨★★★ONE PLACE decides this. The colour plate and the take chip sit side
+/// by side and made the same call separately — 「레일이면 세워 쓰고 x시트면
+/// 가로로 쓴다」 — which is a copy even while the two agree. 유저: 「사본
+/// 남으면 진짜 용서안할게」.
+///
+/// ⚠️The plate is a tall sliver beside a rail row and a wide sliver above an
+/// x-sheet column, so the same two letters have to run the long way on each.
+/// The caller brings its own [style]: the plate takes its ink from the block
+/// colour and the take chip from the layer name, and that is a real
+/// difference — the direction is not.
+Widget layerPlateGlyphs({
+  required String text,
+  required Axis axis,
+  required TextStyle style,
+}) => axis == Axis.horizontal
+    ? VerticalWritingText(
+        text: text,
+        latinForm: VerticalLatinForm.upright,
+        lineHeight: SectionBandZone.lineHeight,
+        // 「길면 글자 축소 허용」 — a long abbreviation packs and shrinks
+        // rather than ellipsising. 시아게 is three glyphs where the rest are
+        // two, and this is what lets it sit in the same plate.
+        overflow: VerticalTextOverflow.pack,
+        minFontSize: 4,
+        style: style,
+      )
+    : Text(text, maxLines: 1, style: style);
+
 class _LabelPlate extends StatelessWidget {
   const _LabelPlate({
     required this.fill,
@@ -1164,31 +1194,17 @@ class _LabelPlate extends StatelessWidget {
     );
   }
 
-  /// One column's characters — stood up on the rail, written across on the
-  /// sheet. ⚠️The ONLY axis-dependent thing left: the plate is a tall sliver
-  /// beside a row and a wide sliver above a column, so the same two letters
-  /// have to run the long way on each.
-  Widget _glyphs(String text, Color fill) {
-    final style = TextStyle(
+  /// One column's characters, through the shared decision.
+  Widget _glyphs(String text, Color fill) => layerPlateGlyphs(
+    text: text,
+    axis: axis,
+    style: TextStyle(
       fontSize: _fontSize,
       fontWeight: FontWeight.bold,
       height: SectionBandZone.lineHeight,
       color: timelineTextOnColor(fill),
-    );
-    return axis == Axis.horizontal
-        ? VerticalWritingText(
-            text: text,
-            latinForm: VerticalLatinForm.upright,
-            lineHeight: SectionBandZone.lineHeight,
-            // 「길면 글자 축소 허용」 — a long abbreviation packs and shrinks
-            // rather than ellipsising. 시아게 is three glyphs where the rest
-            // are two, and this is what lets it sit in the same plate.
-            overflow: VerticalTextOverflow.pack,
-            minFontSize: 4,
-            style: style,
-          )
-        : Text(text, maxLines: 1, style: style);
-  }
+    ),
+  );
 }
 
 /// 🚨★★★ 유저 #1 (2026-08-14): 「액티브 레이어가 아닌 다른 레이어의 버튼
@@ -1309,19 +1325,10 @@ class _TakeText extends StatelessWidget {
       // 「글자 늘려서 꽉 채우게 … 옆으로도 자기 영역 내에서 꽉 채우게」.
       child: FittedBox(
         fit: BoxFit.fill,
-        // The sheet writes across like the colour plate beside it —
-        // 「x시트는 가로쓰기 가로표기로」 — while the rail stands the two
-        // glyphs up in its 14px column.
-        child: axis == Axis.vertical
-            ? Text(mark.takeText, maxLines: 1, style: style)
-            : VerticalWritingText(
-                text: mark.takeText,
-                latinForm: VerticalLatinForm.upright,
-                lineHeight: SectionBandZone.lineHeight,
-                overflow: VerticalTextOverflow.pack,
-                minFontSize: 4,
-                style: style,
-              ),
+        // ⛔THE SHARED decision, not its own copy of it. This chip and the
+        // colour plate stand side by side and used to each choose the
+        // writing direction — agreeing, which is exactly how a copy hides.
+        child: layerPlateGlyphs(text: mark.takeText, axis: axis, style: style),
       ),
     );
   }

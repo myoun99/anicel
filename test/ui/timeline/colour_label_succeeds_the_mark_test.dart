@@ -23,6 +23,7 @@ void main() {
   _axisAgreement();
   _namesFollowTheLanguage();
   _toneNamesFollowTheLanguage();
+  _oneDecidesTheWritingDirection();
 
   // 🚨A GLOBAL. Saving and restoring rather than assigning a fresh default
   // back: writing `const AppAccentSettings()` in the teardown would not undo
@@ -413,5 +414,42 @@ void _toneNamesFollowTheLanguage() {
     expect(english, 'Coloured pencil');
     expect(korean, isNot(english), reason: '색연필');
     expect(japanese, isNot(korean), reason: '色鉛筆');
+  });
+}
+
+/// ⛔**세로쓰기를 고르는 곳은 하나다** (래칫).
+///
+/// 색 라벨과 테이크 칩은 나란히 앉아 「레일이면 세워 쓰고 x시트면 가로로
+/// 쓴다」를 **각자** 골랐다. 둘이 **일치**했으므로 행동 테스트는 통과했다 —
+/// 유저: 「사본 남으면 진짜 용서안할게」. 사본은 갈라지기 전까지 안 보이므로
+/// **소스를 훑는다.**
+void _oneDecidesTheWritingDirection() {
+  test('축을 보고 쓰기 방향을 고르는 곳은 한 곳뿐이다', () {
+    final source = File(
+      'lib/src/ui/timeline/layer_label_controls.dart',
+    ).readAsLinesSync();
+    final builders = <int>[];
+    for (var i = 0; i < source.length; i++) {
+      if (source[i].trimLeft().startsWith('//')) {
+        continue;
+      }
+      // ⚠️축으로 **갈라지는** 곳만 센다. 섹션 밴드의 ACTION·SE·CAM 은 축과
+      // 무관하게 늘 서 있으므로 같은 결정이 아니다 — 그것까지 세면 래칫이
+      // 남의 기능을 붙잡고 「사본이다」라고 말한다.
+      if (!source[i].contains('axis == Axis.')) {
+        continue;
+      }
+      final window = source.skip(i).take(9).join(' ');
+      if (window.contains('VerticalWritingText(')) {
+        builders.add(i + 1);
+      }
+    }
+    expect(
+      builders,
+      hasLength(1),
+      reason:
+          '⛔세로쓰기를 두 곳에서 만들면 그게 사본이다. 공용 결정은 '
+          '`layerPlateGlyphs` — 줄: $builders',
+    );
   });
 }
