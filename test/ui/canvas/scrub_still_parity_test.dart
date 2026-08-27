@@ -16,7 +16,9 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_background.dart';
@@ -74,6 +76,7 @@ void main() {
   const trackId = TrackId('track');
   const cutId = CutId('cut');
   const layerId = LayerId('layer');
+  const folderLayerId = LayerId('folder');
   const frameId = FrameId('frame-a');
 
   BrushFrameKey frameKey(Cut cut, LayerId layer, FrameId frame) =>
@@ -85,12 +88,18 @@ void main() {
         frameId: frame,
       );
 
-  Cut cut() => Cut(
+  /// 🚨[inFolder] puts the drawing inside a BLENDED folder, which is the only
+  /// way a folder becomes a group node at all — and therefore the only way
+  /// this law reaches the sub-tree raster the three routes now share.
+  Cut cut({bool inFolder = false}) => Cut(
     id: cutId,
     name: 'Cut',
     duration: 4,
     canvasSize: canvasSize,
     layers: [
+      // ⚠️MEMBERS FIRST, then the folder row. The other order resolves to an
+      // EMPTY tree — measured — and an empty tree would have made this law
+      // pass while composing nothing.
       Layer(
         id: layerId,
         name: 'A',
@@ -98,7 +107,17 @@ void main() {
           Frame(id: frameId, duration: 1, strokes: const []),
         ],
         timeline: {0: TimelineExposure.drawing(frameId, length: 4)},
+        folderId: inFolder ? folderLayerId : null,
       ),
+      if (inFolder)
+        Layer(
+          id: folderLayerId,
+          name: 'F',
+          kind: LayerKind.folder,
+          frames: const [],
+          timeline: const {},
+          blendMode: LayerBlendMode.multiply,
+        ),
     ],
   );
 
@@ -212,6 +231,7 @@ void main() {
     required BrushFrameStore store,
     required CanvasViewport viewport,
     required Size logicalSize,
+    bool inFolder = false,
   }) async {
     final images = LayerFrameImageCache(frameStore: store);
     await tester.runAsync(
@@ -231,12 +251,26 @@ void main() {
               height: logicalSize.height,
               child: CanvasLayerStackView(
                 nodes: [
-                  CanvasLayerImageNode(
-                    CanvasLayerImageRequest(
-                      frameKey: frameKey(cut(), layerId, frameId),
+                  if (inFolder)
+                    CanvasLayerGroupNode(
+                      children: [
+                        CanvasLayerImageNode(
+                          CanvasLayerImageRequest(
+                            frameKey: frameKey(cut(), layerId, frameId),
+                            opacity: 1,
+                          ),
+                        ),
+                      ],
                       opacity: 1,
+                      blendMode: LayerBlendMode.multiply,
+                    )
+                  else
+                    CanvasLayerImageNode(
+                      CanvasLayerImageRequest(
+                        frameKey: frameKey(cut(), layerId, frameId),
+                        opacity: 1,
+                      ),
                     ),
-                  ),
                 ],
                 imageCache: images,
                 canvasSize: canvasSize,
@@ -270,6 +304,7 @@ void main() {
     required double zoom,
     required double dpr,
     required Offset pan,
+    bool inFolder = false,
   }) async {
     tester.view.devicePixelRatio = dpr;
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -286,6 +321,7 @@ void main() {
       store: store,
       viewport: viewport,
       logicalSize: logicalSize,
+      inFolder: inFolder,
     );
     final editingBytes = await rasterize(
       tester,
@@ -314,7 +350,7 @@ void main() {
     addTearDown(composites.dispose);
     final composite = (await tester.runAsync(
       () => composites.prepareComposite(
-        cut: cut(),
+        cut: cut(inFolder: inFolder),
         frameIndex: 0,
         quality: PlaybackQuality.full,
       ),
@@ -366,6 +402,23 @@ void main() {
         zoom: 1.5,
         dpr: 1.5,
         pan: const Offset(1.7, 0.6),
+      );
+    });
+
+    testWidgets('🚨inside a BLENDED FOLDER — the sub-tree raster itself', (
+      tester,
+    ) async {
+      // ⛔The case the flat fixture could never reach. A folder only becomes
+      // a group node when it NEEDS the buffer, and that buffer is the thing
+      // this round replaced with an image in all three routes. Without a
+      // folder here, the editing stack and the playback cache agreed about
+      // a picture that never asked either of them the question.
+      await expectRouteParity(
+        tester,
+        zoom: 1,
+        dpr: 1.25,
+        pan: const Offset(3.3, 2.7),
+        inFolder: true,
       );
     });
   });
