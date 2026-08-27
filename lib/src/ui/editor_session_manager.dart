@@ -7690,20 +7690,23 @@ class EditorSessionManager extends ChangeNotifier {
       onWaiting: onWaiting,
       isCancelled: isCancelled,
     );
-    final Uint8List bytes;
+    final TvppParseResult parsed;
     try {
-      bytes = await File(source.path).readAsBytes();
-    } finally {
+      // SCOPED, so the whole-file bytes are collectable the moment the
+      // structure is out of them. Everything after this reads the file by
+      // OFFSET — a slot knows where its record is, so the long half of an
+      // import (decoding every cel) never needs the file resident. Before
+      // this the bytes stayed reachable for the entire import, which on a
+      // 200MB project is 200MB held for minutes next to everything the
+      // decode is building.
+      final bytes = await File(source.path).readAsBytes();
+      parsed = parseTvppStructure(bytes);
+    } on TvppParseException {
       if (source.staged) {
         unawaited(
           File(source.path).delete().then<void>((_) {}, onError: (_) {}),
         );
       }
-    }
-    final TvppParseResult parsed;
-    try {
-      parsed = parseTvppStructure(bytes);
-    } on TvppParseException {
       return null;
     }
     // The other candidate for last-thing-the-app-ever-did: decoding a
@@ -7824,86 +7827,103 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final pool = math.max(1, math.min(Platform.numberOfProcessors - 1, 8));
     var bakedSoFar = 0;
-    for (var at = 0; at < work.length; at += pool) {
-      final wave = work.sublist(at, math.min(at + pool, work.length));
-      final decoded = await Future.wait([
-        for (final (plan, _, _, slot) in wave)
-          () {
-            // 🚨ONE SLOT'S BYTES CROSS, NOT THE WHOLE FILE.
-            //
-            // `Isolate.run` COPIES what its closure captures, so capturing
-            // `bytes` handed every worker its own copy of the entire
-            // .tvpp — a pool of eight meant eight whole files resident at
-            // once, on top of the original and everything the import had
-            // already built. On a phone that is the allocation that gets
-            // the app killed, and it grows with the file rather than with
-            // the work.
-            //
-            // The decoder only ever reads `chunkOffset ..+chunkLength`
-            // (see [decodeTvppSlotRgba]), so a window with its offset
-            // rebased to zero is the same input by a different name — and
-            // a copy of that window is kilobytes where the file is
-            // megabytes.
-            final window = Uint8List.fromList(
-              Uint8List.sublistView(
-                bytes,
-                slot.chunkOffset,
-                slot.chunkOffset + slot.chunkLength,
-              ),
-            );
-            final windowSlot = TvppSlot(
-              kind: slot.kind,
-              chunkOffset: 0,
-              chunkLength: slot.chunkLength,
-              compressed: slot.compressed,
-              v10WholeCanvas: slot.v10WholeCanvas,
-            );
-            final width = plan.cut.canvasSize.width;
-            final height = plan.cut.canvasSize.height;
-            return Isolate.run(() {
-              try {
-                return decodeTvppSlotTiles(
-                  fileBytes: window,
-                  slot: windowSlot,
-                  width: width,
-                  height: height,
-                );
-              } on TvppRasterDecodeException catch (error) {
-                return error;
-              }
-            });
-          }(),
-      ]);
-      for (var i = 0; i < wave.length; i++) {
-        final (_, bakedCut, bake, _) = wave[i];
-        bakedSoFar += 1;
-        onProgress?.call(bakedSoFar / work.length);
-        final result = decoded[i];
-        if (result is TvppRasterDecodeException) {
-          warnings.add('${bake.sourceFile}: $result');
-          continue;
+    // 🚨READ BY OFFSET, ONE SLOT AT A TIME.
+    //
+    // A slot knows where its record is, so the decode never needs the
+    // file resident — the reader seeks, takes that record, and nothing
+    // else is held. Two costs went with the old shape of handing the
+    // whole `Uint8List` around:
+    //
+    // - `Isolate.run` COPIES what its closure captures, so capturing the
+    //   file gave every worker its own copy: a pool of eight meant eight
+    //   whole projects at once, on top of the original and everything the
+    //   import had already built;
+    // - and the file stayed reachable for the WHOLE import, which on a
+    //   200MB project is 200MB held for minutes beside the cels being
+    //   made.
+    //
+    // Both scale with the FILE rather than with the work, which on a
+    // phone is the allocation that gets the app killed.
+    final reader = await File(source.path).open();
+    try {
+      for (var at = 0; at < work.length; at += pool) {
+        final wave = work.sublist(at, math.min(at + pool, work.length));
+        final windows = <Uint8List>[];
+        for (final (_, _, _, slot) in wave) {
+          await reader.setPosition(slot.chunkOffset);
+          windows.add(await reader.read(slot.chunkLength));
         }
-        final tiles = result as List<TvppCelTile>?;
-        // A blank instance (빈 셀) decodes to zero tiles: the cel stays,
-        // its pixels stay absent — same shape the drawing store gives an
-        // empty cel.
-        if (tiles == null || tiles.isEmpty) {
-          continue;
-        }
-        final surface = BitmapSurface(
-          canvasSize: bakedCut.canvasSize,
-        ).putTiles([
-          for (final tile in tiles)
-            BitmapTile(
-              coord: TileCoord(x: tile.x, y: tile.y),
-              size: 256,
-              pixels: tile.pixels,
-            ),
+        final decoded = await Future.wait([
+          for (var w = 0; w < wave.length; w++)
+            () {
+              final (plan, _, _, slot) = wave[w];
+              final window = windows[w];
+              // The record's offsets count from the record, so a window
+              // rebased to zero is the same input by a different name.
+              final windowSlot = TvppSlot(
+                kind: slot.kind,
+                chunkOffset: 0,
+                chunkLength: slot.chunkLength,
+                compressed: slot.compressed,
+                v10WholeCanvas: slot.v10WholeCanvas,
+              );
+              final width = plan.cut.canvasSize.width;
+              final height = plan.cut.canvasSize.height;
+              return Isolate.run(() {
+                try {
+                  return decodeTvppSlotTiles(
+                    fileBytes: window,
+                    slot: windowSlot,
+                    width: width,
+                    height: height,
+                  );
+                } on TvppRasterDecodeException catch (error) {
+                  return error;
+                }
+              });
+            }(),
         ]);
-        bakeCelSurface(
-          brushFrameStore,
-          brushFrameKeyForCut(bakedCut, bake.layerId, bake.frameId),
-          surface,
+        for (var i = 0; i < wave.length; i++) {
+          final (_, bakedCut, bake, _) = wave[i];
+          bakedSoFar += 1;
+          onProgress?.call(bakedSoFar / work.length);
+          final result = decoded[i];
+          if (result is TvppRasterDecodeException) {
+            warnings.add('${bake.sourceFile}: $result');
+            continue;
+          }
+          final tiles = result as List<TvppCelTile>?;
+          // A blank instance (빈 셀) decodes to zero tiles: the cel stays,
+          // its pixels stay absent — same shape the drawing store gives an
+          // empty cel.
+          if (tiles == null || tiles.isEmpty) {
+            continue;
+          }
+          final surface = BitmapSurface(
+            canvasSize: bakedCut.canvasSize,
+          ).putTiles([
+            for (final tile in tiles)
+              BitmapTile(
+                coord: TileCoord(x: tile.x, y: tile.y),
+                size: 256,
+                pixels: tile.pixels,
+              ),
+          ]);
+          bakeCelSurface(
+            brushFrameStore,
+            brushFrameKeyForCut(bakedCut, bake.layerId, bake.frameId),
+            surface,
+          );
+        }
+      }
+    } finally {
+      await reader.close();
+      // The staged copy outlives the decode now, because the decode
+      // reads FROM it. It was deleted the moment the bytes were in hand
+      // back when the whole file was held in memory.
+      if (source.staged) {
+        unawaited(
+          File(source.path).delete().then<void>((_) {}, onError: (_) {}),
         );
       }
     }
