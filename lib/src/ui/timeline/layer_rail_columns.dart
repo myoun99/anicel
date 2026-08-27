@@ -58,7 +58,10 @@ const double layerRailLeadingWidth =
     // the timesheet and type buttons, framed by two chip gaps; one gap
     // died in the move and the name column absorbs the 4px).
     layerSectionLabelSlotWidth +
-    layerMarkSlotWidth +
+    // I-5: the take label sits immediately right of the colour label and
+    // the pair reserves one slot, so a row with no take does not let the
+    // name slide left (⛔없다가 생기는 UI 금지).
+    layerLabelSlotWidth +
     layerRailSectionGap +
     layerLaneToggleSlotWidth +
     layerTimesheetSlotWidth +
@@ -148,7 +151,7 @@ List<Widget> layerRailLeadingCells({
     // label and the controls, not between the zone and the label. Nesting
     // indents the cells AFTER it, so the label holds the far left on
     // foldered rows too.
-    layerRailSlot(axis, layerMarkSlotWidth, mark),
+    layerRailSlot(axis, layerLabelSlotWidth, mark),
     layerRailSlot(axis, layerRailSectionGap),
     // The nesting run: one blank cell per level, then the ↳ that says this
     // row hangs off the folder above it.
@@ -195,7 +198,7 @@ double layerRailLeadingWidthTo({
   if (to == LayerRailLeadingSlot.mark) {
     return total;
   }
-  total += layerMarkSlotWidth + layerRailSectionGap;
+  total += layerLabelSlotWidth + layerRailSectionGap;
   // The nesting run: one blank cell per level, then the ↳ cell.
   total += depth * layerRailNestingSlotWidth;
   if (depth > 0) {
@@ -218,7 +221,7 @@ double layerRailLeadingWidthTo({
 /// What one leading cell costs. [LayerRailLeadingSlot.name] has no width of
 /// its own — it is the end of the run, not a cell — so it is not a case.
 double layerRailLeadingSlotWidth(LayerRailLeadingSlot slot) => switch (slot) {
-  LayerRailLeadingSlot.mark => layerMarkSlotWidth,
+  LayerRailLeadingSlot.mark => layerLabelSlotWidth,
   LayerRailLeadingSlot.laneToggle => layerLaneToggleSlotWidth,
   LayerRailLeadingSlot.timesheet => layerTimesheetSlotWidth,
   LayerRailLeadingSlot.typeButton => layerTypeSlotWidth,

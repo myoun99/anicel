@@ -246,6 +246,14 @@ const double layerTimesheetSlotWidth = 20;
 /// cross-surface column parity this skeleton exists for outranks an exact
 /// half on a non-canonical row height.
 const double layerMarkSlotWidth = 14;
+
+/// 테이크 라벨의 슬롯 — 색 라벨과 **같은 폭, 바로 오른쪽**(I-5, 유저
+/// 2026-08-27: 「위치는 색 라벨 바로 오른쪽에 색 라벨이랑 **같은 디자인**」).
+const double layerTakeSlotWidth = layerMarkSlotWidth;
+
+/// 두 라벨이 함께 차지하는 자리. ⚠️레일이 예약하는 것은 이 폭이고,
+/// **테이크가 없는 행도 똑같이 예약한다** — ⛔없다가 생기는 UI 금지.
+const double layerLabelSlotWidth = layerMarkSlotWidth + layerTakeSlotWidth;
 const double layerLaneToggleSlotWidth = 16;
 const double layerFillReferenceSlotWidth = 22;
 const double layerFxSlotWidth = 22;
@@ -880,6 +888,89 @@ class LayerMarkChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 🚨★★★TWO PLATES, ONE UNIT. 유저 2026-08-27: 「위치는 색 라벨 **바로
+    // 오른쪽**에 색 라벨이랑 **같은 디자인**으로」. They share this widget
+    // rather than getting one each because they also share the callback —
+    // a take is part of the mark, so setting one is `mark.withTake(n)` and
+    // no second channel had to be opened for it.
+    //
+    // ⚠️ALONG THE RAIL'S OWN AXIS. The x-sheet stands the rail up, so its
+    // column header runs DOWN — laying the pair out sideways there put both
+    // plates outside the header's width and took a hundred x-sheet tests
+    // with it. The slot ([layerLabelSlotWidth]) is measured along the same
+    // axis, so the two have to agree.
+    final horizontal = axis == Axis.horizontal;
+    final plates = [
+      SizedBox(
+        width: horizontal ? layerMarkSlotWidth : null,
+        height: horizontal ? null : layerMarkSlotWidth,
+        child: _markTrigger(context),
+      ),
+      SizedBox(
+        width: horizontal ? layerTakeSlotWidth : null,
+        height: horizontal ? null : layerTakeSlotWidth,
+        child: _takeTrigger(context),
+      ),
+    ];
+    // 🚨STRETCH ON THE CROSS AXIS. The plate is `SizedBox.expand` — it fills
+    // the slot edge to edge (⑳, 「패딩 절대 금지」) — so it needs a BOUNDED
+    // extent both ways. Putting a plain Row between it and the slot left the
+    // cross axis unbounded and the plate could not lay out at all: measured,
+    // 「RenderBox was not laid out」 across a hundred tests that never mention
+    // a label.
+    return horizontal
+        ? Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: plates,
+          )
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: plates,
+          );
+  }
+
+  /// 테이크 라벨 — 1–9, 기본은 없음.
+  ///
+  /// ⚠️The plate is painted whether or not a take is set, so the name beside
+  /// it never slides when one appears (⛔없다가 생기는 UI 금지). Its fill is
+  /// the paper colour, which is also the 「색은 흰색 하나」 the user asked for:
+  /// a take is an ORDER, not a kind, and nine colours would fight the
+  /// stage's.
+  Widget _takeTrigger(BuildContext context) {
+    return RailControlPointer(
+      child: PanelFlyoutTrigger(
+        key: ValueKey<String>('$keyPrefix-layer-take-$layerId'),
+        tooltip: AppText.strings.tlLayerTake,
+        padding: EdgeInsets.zero,
+        entriesBuilder: () => [
+          PanelFlyoutItem(
+            keyValue: 'layer-take-option-none',
+            label: AppText.strings.tlLayerMarkNone,
+            onSelected: () => onMarkSelected(layerId, mark.withTake(null)),
+          ),
+          for (final take in LayerMark.takeChoices)
+            PanelFlyoutItem(
+              keyValue: 'layer-take-option-$take',
+              label: AppText.strings.tlLayerTakeNumber(take),
+              onSelected: () => onMarkSelected(layerId, mark.withTake(take)),
+            ),
+        ],
+        child: Semantics(
+          label: AppText.strings.tlLayerTake,
+          button: true,
+          child: _LabelPlate(
+            fill: timelineDrawingHeldColor,
+            columns: [mark.takeText],
+            axis: axis,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _markTrigger(BuildContext context) {
     // R6 #4, the last of the five raw `PopupMenuButton`s: this one held out
     // because its rows name COLOURS, and the shared list had no way to show
     // one — see [PanelFlyoutItem.swatch]. Its own row height was 36, a sixth
@@ -925,7 +1016,18 @@ class LayerMarkChip extends StatelessWidget {
       child: Semantics(
         label: AppText.strings.tlLayerMark,
         button: true,
-        child: _MarkSwatch(mark: mark, axis: axis),
+        // 🚨★★★THE STAGE ON THE RIGHT. 유저 2026-08-27: 「세로로 LO가
+        // **오른쪽**에 있고 왼쪽에 세로로 작감 이렇게 있는게 맞을거같은데.
+        // **LO가 오른쪽인건 일본 세로쓰기가 오른쪽에서 왼쪽으로 읽으니까**」
+        // — so the revise column is passed FIRST and lands left.
+        //
+        // ⛔Not stacked as two rows: 「띠가 지금 가로로 얇은거를 살리고싶어서」
+        // — two columns keep the plate as short as one.
+        child: _LabelPlate(
+          fill: layerMarkColor(mark),
+          columns: [mark.reviseText, mark.processText],
+          axis: axis,
+        ),
       ),
     ));
   }
@@ -935,10 +1037,24 @@ class LayerMarkChip extends StatelessWidget {
 /// edge to edge (「패딩 절대 금지」), square corners, with the colour NAME
 /// standing upright inside it (「가로쓰기 세로표시」). The click logic above
 /// is untouched; only this face changed.
-class _MarkSwatch extends StatelessWidget {
-  const _MarkSwatch({required this.mark, required this.axis});
+/// 🚨★★★ONE PLATE, TWO LABELS. The colour label and the take label are the
+/// same face — 유저 2026-08-27: 「색 라벨이랑 **같은 디자인**으로」 — so this
+/// takes the columns to write and the fill to write them on rather than
+/// knowing what a mark is. A second widget that merely looked the same
+/// would be a copy of a face that is deliberately identical.
+class _LabelPlate extends StatelessWidget {
+  const _LabelPlate({
+    required this.fill,
+    required this.columns,
+    required this.axis,
+  });
 
-  final LayerMark mark;
+  final Color fill;
+
+  /// What each vertical column writes, LEFT to RIGHT. Empty strings draw
+  /// nothing and still hold the slot.
+  final List<String> columns;
+
   final Axis axis;
 
   /// The same type the section band's tag wears, one column over.
@@ -946,9 +1062,8 @@ class _MarkSwatch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fill = layerMarkColor(mark);
-    // ⑳ still holds: every mark is a filled plate, `none` included — it is
-    // the paper colour rather than a hole in the rail. SizedBox.expand
+    // ⑳ still holds: every plate is FILLED, `none` included — it is the
+    // paper colour rather than a hole in the rail. SizedBox.expand
     // fills the row's height on a horizontal rail and the header's width
     // on the sheet's vertical one; the slot provides the other extent.
     return SizedBox.expand(
@@ -972,19 +1087,19 @@ class _MarkSwatch extends StatelessWidget {
   /// The ink is the frame blocks' own — 유저: 「프레임이름/코마숫자/색라벨은
   /// 다 같은 색상의 바탕 위에 올라가는 텍스트니까 **셋 다 같은 로직**」.
   Widget? _label(Color fill) {
-    if (axis == Axis.vertical || mark.isNone) {
+    if (axis == Axis.vertical) {
       return null;
     }
-    final revise = mark.reviseText;
+    final shown = columns.where((text) => text.isNotEmpty).toList();
+    if (shown.isEmpty) {
+      return null;
+    }
     return Center(
       child: ClipRect(
         child: Row(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            if (revise.isNotEmpty) _column(revise, fill),
-            _column(mark.processText, fill),
-          ],
+          children: [for (final text in shown) _column(text, fill)],
         ),
       ),
     );

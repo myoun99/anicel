@@ -63,6 +63,8 @@ Widget _panel() {
 }
 
 void main() {
+  _takeLabelPlate();
+
   testWidgets('the label is a full-height, half-width plate leading the '
       'layer area (A6 ①②③)', (tester) async {
     await tester.pumpWidget(_panel());
@@ -154,5 +156,73 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-layer-mark-plain')),
       findsOneWidget,
     );
+  });
+}
+
+/// I-5 — 테이크 라벨이 색 라벨 바로 오른쪽에, 같은 크기로, 항상 자리를
+/// 예약한 채 선다.
+void _takeLabelPlate() {
+  testWidgets('테이크 플레이트가 색 라벨 오른쪽에 같은 크기로 선다', (tester) async {
+    await tester.pumpWidget(_panel());
+
+    final mark = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+    );
+    final take = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-layer-take-a')),
+    );
+
+    expect(
+      take.left,
+      closeTo(mark.right, 0.5),
+      reason: '유저: 「위치는 색 라벨 **바로 오른쪽**에」',
+    );
+    expect(
+      take.width,
+      closeTo(mark.width, 0.5),
+      reason: '유저: 「색 라벨이랑 **같은 디자인**으로」',
+    );
+    expect(
+      take.height,
+      closeTo(mark.height, 0.5),
+      reason: '띠 높이는 그대로 — 두 플레이트가 같은 행에 나란히 선다',
+    );
+  });
+
+  testWidgets('⛔테이크가 없어도 자리는 그대로다 — 붙는다고 이름이 밀리지 않는다', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_panel());
+    // 기본 픽스처에는 테이크가 없다. 그래도 플레이트는 그려져 있어야 한다.
+    final take = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-layer-take-a')),
+    );
+    expect(
+      take.width,
+      greaterThan(0),
+      reason: '🚨없다가 생기는 UI 금지 — 자리는 항상 예약하고 내용만 바꾼다',
+    );
+  });
+
+  testWidgets('테이크 팝오버가 없음 + 1–9 를 낸다', (tester) async {
+    await tester.pumpWidget(_panel());
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-layer-take-a')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('layer-take-option-none')),
+      findsOneWidget,
+      reason: '기본값으로 되돌릴 길이 있어야 한다',
+    );
+    for (final take in LayerMark.takeChoices) {
+      expect(
+        find.byKey(ValueKey<String>('layer-take-option-$take')),
+        findsOneWidget,
+        reason: '테이크 $take',
+      );
+    }
   });
 }
