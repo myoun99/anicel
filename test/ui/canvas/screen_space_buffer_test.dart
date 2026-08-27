@@ -211,13 +211,17 @@ void main() {
     final reference = await tester.runAsync(() async {
       const zoom = 0.025;
       final visible = Rect.fromLTWH(0, 0, 300 / zoom, 8 / zoom);
-      final pasteboard = Rect.fromLTRB(
-        -canvasSize.width.toDouble(),
-        -canvasSize.height.toDouble(),
-        canvasSize.width * 2.0,
-        canvasSize.height * 2.0,
+      // 🚨THE REFERENCE CARRIES THE BOUND LAW TOO, so it moves with it. The
+      // buffer is CONTENT ∩ view now, not `pasteboard ∩ view`: the page is
+      // 12000×256 and the view pulls back 12000×320, so the rect is the
+      // page's height, not the view's.
+      final content = Rect.fromLTWH(
+        0,
+        0,
+        canvasSize.width.toDouble(),
+        canvasSize.height.toDouble(),
       );
-      final bounds = pasteboard.intersect(visible);
+      final bounds = content.intersect(visible);
       final rect = Rect.fromLTRB(
         bounds.left.floorToDouble(),
         bounds.top.floorToDouble(),
