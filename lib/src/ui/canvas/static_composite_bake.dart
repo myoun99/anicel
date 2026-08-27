@@ -125,10 +125,18 @@ class StaticCompositeBake {
   /// A picture skips the Dart-side walk, which was stage 1's whole point.
   /// What it does NOT skip is the ENGINE replaying the display list: with
   /// 500 layers below the active one, every stroke step still re-executes
-  /// 500 draws and every folder's `saveLayer`. A raster is one blit however
-  /// many layers went into it — the difference between a heavy document
+  /// 500 draws. A raster is one blit however many layers went into it — the difference between a heavy document
   /// being heavy per STROKE STEP and being heavy once (유저 2026-08-15:
   /// 「1500컷이나 500개레이어같은 무거운상황도 생각하면서 가볍게 하고싶다니까?」).
+  ///
+  /// ⚠️A FOLDER IS NO LONGER PART OF THAT COST. This used to read "and every
+  /// folder's `saveLayer`" — true while a group WAS one, because replaying
+  /// the picture re-executed the offscreen every frame. A group rasterises
+  /// to a `ui.Image` now and a recorded picture holds its own reference to
+  /// what it draws, so the replay redraws a finished image and the folder's
+  /// own raster happens ONCE. 🧪Counted: one folder, four stroke steps, one
+  /// raster (`the_bake_is_the_group_cache_test`). That IS the per-group
+  /// cache, and it is why a second one would be a copy.
   ///
   /// ⛔ONLY SOUND WITH NOTHING BENEATH IT. Replaying a picture applies its
   /// blend modes against whatever is already on the destination; flattening

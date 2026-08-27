@@ -72,6 +72,16 @@ class SubtreeRasterPlan {
 @visibleForTesting
 SubtreeRasterPlan? debugLastSubtreeRaster;
 
+/// How many sub-tree rasters have happened since a test zeroed it.
+///
+/// 🚨THE QUESTION A CACHE HAS TO ANSWER. Whether a group re-rasterised is
+/// invisible in the pixels — a cache that worked and one that did not draw
+/// the same picture — so counting is the only way to say which happened.
+///
+/// ⚠️Written under `assert`, so a release build pays nothing.
+@visibleForTesting
+int debugSubtreeRasterCount = 0;
+
 /// The grid [bounds] rasterises on at [rasterScale], or null when there is
 /// nothing to draw.
 ///
@@ -333,6 +343,10 @@ void finishSubtreeRaster({
   List<CompositeEffectStep> steps = const [],
 }) {
   final picture = recorder.endRecording();
+  assert(() {
+    debugSubtreeRasterCount += 1;
+    return true;
+  }());
   final raster = picture.toImageSync(plan.pixelWidth, plan.pixelHeight);
   picture.dispose();
   // ⛔BOTH stay alive until the compose is done. A crossfade blits the raw
