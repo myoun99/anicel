@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -19,6 +21,7 @@ void main() {
   _takeLabel();
   _oneWidgetBothSurfaces();
   _axisAgreement();
+  _namesFollowTheLanguage();
 
   // 🚨A GLOBAL. Saving and restoring rather than assigning a fresh default
   // back: writing `const AppAccentSettings()` in the teardown would not undo
@@ -316,5 +319,65 @@ void _oneWidgetBothSurfaces() {
         reason: '⛔x시트가 자기 라벨 위젯을 만들면 그 순간 두 벌이다',
       );
     }
+  });
+}
+
+/// 🚨공정·수정 이름이 **프로그램 언어를 탄다**. 유저 2026-08-28: 「프로그램
+/// 언어에따라 **로컬라이즈 안되니까** 해주고」 — 일본어 UI 에서 「ラベルなし」
+/// 옆에 「용지」가 나오고 있었다.
+void _namesFollowTheLanguage() {
+  void speak(AppLanguage language) => AppText.settings.value =
+      AppLanguageSettings(programLanguage: language);
+  tearDown(() => AppText.settings.value = const AppLanguageSettings());
+
+  test('네 언어 모두 공정·수정의 이름과 축약어를 갖는다', () {
+    for (final language in AppLanguage.values) {
+      speak(language);
+      for (final process in LayerProcess.values) {
+        expect(
+          layerProcessLabel(process),
+          isNotEmpty,
+          reason: '$language · ${process.jsonValue}',
+        );
+        expect(layerProcessAbbrev(process), isNotEmpty);
+      }
+      for (final revise in LayerRevise.values) {
+        expect(
+          layerReviseLabel(revise),
+          isNotEmpty,
+          reason: '$language · ${revise.jsonValue}',
+        );
+        expect(layerReviseAbbrev(revise), isNotEmpty);
+      }
+    }
+  });
+
+  test('언어를 바꾸면 실제로 글자가 바뀐다 — 표가 비어도 fallback 으로 통과하지 '
+      '않게', () {
+    // ⛔`isNotEmpty` 만으로는 못 잡는다: 표가 통째로 비어 있어도 enum 의 영어가
+    // fallback 으로 나와 전부 통과한다. **다르다**를 재야 한다.
+    speak(AppLanguage.en);
+    final english = layerProcessLabel(LayerProcess.key);
+    speak(AppLanguage.ja);
+    final japanese = layerProcessLabel(LayerProcess.key);
+    speak(AppLanguage.ko);
+    final korean = layerProcessLabel(LayerProcess.key);
+
+    expect(english, 'Key');
+    expect(japanese, isNot(english), reason: '原画');
+    expect(korean, isNot(english), reason: '원화');
+    expect(korean, isNot(japanese));
+  });
+
+  test('칩 글자도 번역을 탄다 — 모델의 영어가 새어나오지 않는다', () {
+    speak(AppLanguage.ko);
+    final text = layerMarkChipText(
+      const LayerMark(
+        process: LayerProcess.layout,
+        revise: LayerRevise.animationDirector,
+      ),
+    );
+    expect(text.process, 'LO');
+    expect(text.revise, '작감', reason: '⛔모델의 \'AD\' 가 그대로 나오면 안 된다');
   });
 }

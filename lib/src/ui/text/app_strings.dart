@@ -58,6 +58,29 @@ class AppStrings {
   String menuLabel(String id, String fallback) =>
       _values['menuAction.$id'] ?? fallback;
 
+  /// 색 라벨의 공정·수정 이름과 축약어(I-4).
+  ///
+  /// 🚨★★★Same contract as [menuLabel]: the ENGLISH wording lives at the call
+  /// site — here, the enum in `models/` — and the other languages live in
+  /// these tables. It has to work that way round: `models` may not import
+  /// `ui/` (the dependency-direction test enforces it), so the model holds
+  /// the stable key and its own words, and translation is a lookup by key.
+  ///
+  /// 유저 2026-08-28: 「프로그램 언어에따라 **로컬라이즈 안되니까** 해주고」 —
+  /// the names were hardcoded Korean, so a Japanese UI read 「ラベルなし」
+  /// next to 「용지」.
+  String layerProcessName(String key, String fallback) =>
+      _values['layerProcess.$key'] ?? fallback;
+
+  String layerProcessAbbrev(String key, String fallback) =>
+      _values['layerProcessAbbrev.$key'] ?? fallback;
+
+  String layerReviseName(String key, String fallback) =>
+      _values['layerRevise.$key'] ?? fallback;
+
+  String layerReviseAbbrev(String key, String fallback) =>
+      _values['layerReviseAbbrev.$key'] ?? fallback;
+
   String get languageSettingsTitle => _s('languageSettingsTitle');
   String get programLanguageLabel => _s('programLanguageLabel');
   String get notationLanguageLabel => _s('notationLanguageLabel');
@@ -2449,6 +2472,38 @@ class AppStrings {
     'tlLayerMarkSource': '上がり',
     'layerMarkPaletteLabel': 'ラベルの色調',
     'tlLayerTake': 'テイク',
+    'layerProcess.paper': '用紙',
+    'layerProcess.conte': 'コンテ',
+    'layerProcess.art': '美術',
+    'layerProcess.layout': 'レイアウト',
+    'layerProcess.rough-key': 'ラフ原',
+    'layerProcess.key': '原画',
+    'layerProcess.inbetween': '動画',
+    'layerProcess.finish': '仕上げ',
+    'layerProcessAbbrev.paper': '用紙',
+    'layerProcessAbbrev.conte': 'コンテ',
+    'layerProcessAbbrev.art': '美術',
+    'layerProcessAbbrev.layout': 'LO',
+    'layerProcessAbbrev.rough-key': 'ラフ',
+    'layerProcessAbbrev.key': '原画',
+    'layerProcessAbbrev.inbetween': '動画',
+    'layerProcessAbbrev.finish': '仕上',
+    'layerRevise.direction': '演出',
+    'layerRevise.animation-director': '作画監督',
+    'layerRevise.chief-animation-director': '総作画監督',
+    'layerRevise.director': '監督',
+    'layerRevise.chief-director': '総監督',
+    'layerRevise.action-animation-director': 'アクション作画監督',
+    'layerRevise.inbetween-check': '動画検査',
+    'layerRevise.cell-check': 'セル検査',
+    'layerReviseAbbrev.direction': '演出',
+    'layerReviseAbbrev.animation-director': '作監',
+    'layerReviseAbbrev.chief-animation-director': '総作',
+    'layerReviseAbbrev.director': '監督',
+    'layerReviseAbbrev.chief-director': '総監',
+    'layerReviseAbbrev.action-animation-director': 'アク作',
+    'layerReviseAbbrev.inbetween-check': '動検',
+    'layerReviseAbbrev.cell-check': 'セル検',
     'tlLayerTakeNumber': 'テイク{n}',
     'tlRepeat': 'リピート',
     'tlRepeatSelection': '選択範囲をリピート',
@@ -3245,6 +3300,38 @@ class AppStrings {
     'tlLayerMarkSource': '소재',
     'layerMarkPaletteLabel': '색 라벨 톤',
     'tlLayerTake': '테이크',
+    'layerProcess.paper': '용지',
+    'layerProcess.conte': '콘티',
+    'layerProcess.art': '미술',
+    'layerProcess.layout': '레이아웃',
+    'layerProcess.rough-key': '러프원화',
+    'layerProcess.key': '원화',
+    'layerProcess.inbetween': '동화',
+    'layerProcess.finish': '시아게',
+    'layerProcessAbbrev.paper': '용지',
+    'layerProcessAbbrev.conte': '콘티',
+    'layerProcessAbbrev.art': '미술',
+    'layerProcessAbbrev.layout': 'LO',
+    'layerProcessAbbrev.rough-key': '러프',
+    'layerProcessAbbrev.key': '원화',
+    'layerProcessAbbrev.inbetween': '동화',
+    'layerProcessAbbrev.finish': '시아게',
+    'layerRevise.direction': '연출',
+    'layerRevise.animation-director': '작화감독',
+    'layerRevise.chief-animation-director': '총작화감독',
+    'layerRevise.director': '감독',
+    'layerRevise.chief-director': '총감독',
+    'layerRevise.action-animation-director': '액션작화감독',
+    'layerRevise.inbetween-check': '동화검사',
+    'layerRevise.cell-check': '셀검사',
+    'layerReviseAbbrev.direction': '연출',
+    'layerReviseAbbrev.animation-director': '작감',
+    'layerReviseAbbrev.chief-animation-director': '총작',
+    'layerReviseAbbrev.director': '감독',
+    'layerReviseAbbrev.chief-director': '총감',
+    'layerReviseAbbrev.action-animation-director': '액션',
+    'layerReviseAbbrev.inbetween-check': '동검',
+    'layerReviseAbbrev.cell-check': '셀검',
     'tlLayerTakeNumber': '테이크 {n}',
     'tlRepeat': '반복',
     'tlRepeatSelection': '선택 영역 반복',
@@ -4073,6 +4160,22 @@ class AppStrings {
     'tlLayerMarkSource': 'Matériel',
     'layerMarkPaletteLabel': 'Ton des étiquettes',
     'tlLayerTake': 'Prise',
+    'layerProcess.paper': 'Papier',
+    'layerProcess.conte': 'Storyboard',
+    'layerProcess.art': 'Décors',
+    'layerProcess.layout': 'Layout',
+    'layerProcess.rough-key': 'Clé brute',
+    'layerProcess.key': 'Animation clé',
+    'layerProcess.inbetween': 'Intervalles',
+    'layerProcess.finish': 'Finition',
+    'layerRevise.direction': 'Mise en scène',
+    'layerRevise.animation-director': 'Directeur d\'animation',
+    'layerRevise.chief-animation-director': 'Directeur d\'animation en chef',
+    'layerRevise.director': 'Réalisateur',
+    'layerRevise.chief-director': 'Réalisateur en chef',
+    'layerRevise.action-animation-director': 'Directeur d\'animation action',
+    'layerRevise.inbetween-check': 'Contrôle intervalles',
+    'layerRevise.cell-check': 'Contrôle cellulos',
     'tlLayerTakeNumber': 'Prise {n}',
     'tlRepeat': 'Répéter',
     'tlRepeatSelection': 'Répéter la sélection',

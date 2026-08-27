@@ -10,7 +10,12 @@ import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
-    show LayerSectionBandCell, layerMarkColor, layerMarkSlotWidth;
+    show
+        LayerSectionBandCell,
+        layerMarkColor,
+        layerMarkSlotWidth,
+        layerProcessAbbrev,
+        layerReviseAbbrev;
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineTextOnColor;
@@ -34,7 +39,7 @@ Layer _layer(String id, LayerKind kind, {LayerMark mark = LayerMark.none}) {
   );
 }
 
-Widget _panel() {
+Widget _panel({TimelineOrientation orientation = TimelineOrientation.horizontal}) {
   final layers = [
     _layer('a', LayerKind.animation, mark: const LayerMark(process: LayerProcess.inbetween, revise: LayerRevise.inbetweenCheck)),
     _layer('b', LayerKind.animation, mark: const LayerMark(process: LayerProcess.finish)),
@@ -56,7 +61,7 @@ Widget _panel() {
         onLayerOpacityChanged: (_, _) {},
         onToggleLayerTimesheet: (_) {},
         onLayerMarkSelected: (_, _) {},
-        orientation: TimelineOrientation.horizontal,
+        orientation: orientation,
         onOrientationChanged: (_) {},
       ),
     ),
@@ -68,6 +73,8 @@ void main() {
   _twoLevelPopover();
   _submenuFollowsTheHover();
   _stageComesFirst();
+  _glyphsFillTheirArea();
+  _submenuRowsLightUpToo();
 
   testWidgets('the label is a full-height, half-width plate leading the '
       'layer area (A6 ①②③)', (tester) async {
@@ -498,12 +505,165 @@ void _stageComesFirst() {
         matching: find.byWidget(texts.last),
       ),
     );
-    expect(texts.first.text, '동화', reason: '공정이 먼저 그려진다');
-    expect(texts.last.text, '동검');
+    // 🚨언어를 명시한다: 축약어도 번역을 타므로(유저 2026-08-28 「프로그램
+    // 언어에따라 로컬라이즈」) 기본 영어에서는 IB·IBC 가 나온다.
+    expect(texts.first.text, layerProcessAbbrev(LayerProcess.inbetween),
+        reason: '공정이 먼저 그려진다');
+    expect(texts.last.text, layerReviseAbbrev(LayerRevise.inbetweenCheck));
     expect(
       first.left,
       lessThan(second.left),
       reason: '🚨공정이 **왼쪽**에 온다 — 레이어 영역은 좌→우로 읽는다',
+    );
+  });
+}
+
+/// 🚨★★★글자가 자기 칸을 **양쪽으로** 꽉 채운다. 유저 2026-08-28: 「2글자로
+/// 작감이면 작감 **위 아래에 글자가 남거든**? … 글자 늘려서 꽉 채우게 하면
+/// 멋있을거같아」 → 이어서 「**옆으로도 자기 영역 내에서 꽉 채우게** 하고싶어」.
+/// 🚨★★★글자가 자기 칸을 **양쪽으로** 꽉 채운다. 유저 2026-08-28: 「2글자로
+/// 작감이면 작감 **위 아래에 글자가 남거든**? … 글자 늘려서 꽉 채우게 하면
+/// 멋있을거같아」 → 이어서 「**옆으로도 자기 영역 내에서 꽉 채우게** 하고싶어」.
+///
+/// 🚨★★★계측기 주의: [FittedBox] **자체**를 재면 안 된다. 그 상자는 `Expanded`
+/// 가 준 칸을 `fit` 이 무엇이든 늘 채우므로, `BoxFit.fill` 을 `scaleDown` 으로
+/// 바꿔도 초록이었다(실제로 뮤테이션이 살아남았다). **그려진 글자**를 재야
+/// 늘어났는지 알 수 있다 — `getRect` 는 조상의 변환을 반영한다.
+void _glyphsFillTheirArea() {
+  Rect glyphRect(WidgetTester tester, String plateKey, int index) => tester
+      .getRect(
+        find
+            .descendant(
+              of: find.byKey(ValueKey<String>(plateKey)),
+              matching: find.byType(VerticalWritingText),
+            )
+            .at(index),
+      );
+
+  testWidgets('두 칸이 판을 절반씩 나눠 갖고, 글자가 세로로 꽉 찬다', (tester) async {
+    await tester.pumpWidget(_panel());
+
+    final plate = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+    );
+    final stage = glyphRect(tester, 'timeline-layer-mark-a', 0);
+    final revise = glyphRect(tester, 'timeline-layer-mark-a', 1);
+
+    // 세로: 글자가 판의 높이 그대로 늘어난다 — 「위 아래에 글자가 남」지 않는다.
+    expect(stage.height, closeTo(plate.height, 0.5));
+    expect(revise.height, closeTo(plate.height, 0.5));
+
+    // 가로: 절반씩. ⛔한쪽이 자연폭만큼만 먹고 나머지를 남기면 안 된다 —
+    // 「옆으로도 자기 영역 내에서 꽉」.
+    expect(stage.width, closeTo(plate.width / 2, 0.5));
+    expect(revise.width, closeTo(plate.width / 2, 0.5));
+    expect(stage.right, closeTo(revise.left, 0.5));
+  });
+
+  testWidgets('글자 수가 달라도 채우는 크기는 같다 — 늘어나는 것은 글자다', (tester) async {
+    await tester.pumpWidget(_panel());
+
+    // a = 동화(2글자)+동검(2글자), b = 시아게(3글자) 하나.
+    final twoGlyphs = glyphRect(tester, 'timeline-layer-mark-a', 0);
+    final threeGlyphs = glyphRect(tester, 'timeline-layer-mark-b', 0);
+    final plateB = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-layer-mark-b')),
+    );
+
+    expect(twoGlyphs.height, closeTo(threeGlyphs.height, 0.5));
+    // 한 칸뿐이면 판 전체를 갖는다.
+    expect(threeGlyphs.width, closeTo(plateB.width, 0.5));
+  });
+
+  testWidgets('세로 레일(x시트)에서는 위아래로 절반씩, 글자가 가로로 꽉 찬다', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_panel(orientation: TimelineOrientation.vertical));
+
+    final plate = tester.getRect(
+      find.byKey(const ValueKey<String>('xsheet-layer-mark-a')),
+    );
+    // 유저: 「x시트는 **가로쓰기 가로표기**로 위에 LO 아래에 작감」 — so the
+    // sheet draws plain [Text], not the rail's upright column.
+    final glyphs = find.descendant(
+      of: find.byKey(const ValueKey<String>('xsheet-layer-mark-a')),
+      matching: find.byType(Text),
+    );
+    final stage = tester.getRect(glyphs.first);
+    final revise = tester.getRect(glyphs.at(1));
+
+    expect(stage.width, closeTo(plate.width, 0.5));
+    expect(revise.width, closeTo(plate.width, 0.5));
+    expect(stage.height, closeTo(plate.height / 2, 0.5));
+    expect(stage.top, closeTo(plate.top, 0.5));
+    expect(stage.bottom, closeTo(revise.top, 0.5));
+  });
+}
+
+/// 🚨겹이 달린 행도 **다른 행과 똑같이** 호버에 불이 들어온다. 유저 2026-08-28:
+/// 「콘티나 미술 이런 **겹이 있는곳에 호버해도 동일하게 바탕 흰색으로 하는거**
+/// 있잖아. **통일**해서 적용하고」.
+///
+/// ⚠️겹이 달린 행은 `enabled: false` 다 — 누르면 메뉴가 닫히면 안 되니까. 그런데
+/// 비활성은 Material 의 잉크까지 같이 떼어 가서, 그 행들만 포인터 밑에서 죽어
+/// 있었다. 그래서 **행 안쪽에** 잉크를 다시 넣었다.
+void _submenuRowsLightUpToo() {
+  Future<void> openFlyout(WidgetTester tester) async {
+    await tester.pumpWidget(_panel());
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  // ⚠️ANY live ink in the row, not the outermost.
+  // `PopupMenuItem` is `enabled: false` on a submenu row, so ITS InkWell
+  // carries a null callback by design — the live one is the layer inside.
+  bool rowLightsUp(WidgetTester tester, String key) => tester
+      .widgetList<InkWell>(
+        find.descendant(
+          of: find.byKey(ValueKey<String>(key)),
+          matching: find.byType(InkWell),
+        ),
+      )
+      .any((ink) => ink.onTap != null);
+
+  testWidgets('겹이 달린 행에도 잉크가 있고, 살아 있다', (tester) async {
+    await openFlyout(tester);
+
+    // 용지는 수정이 없어 그냥 고르는 행이고, 레이아웃은 겹을 여는 행이다.
+    expect(rowLightsUp(tester, 'layer-mark-option-paper'), isTrue);
+    expect(
+      rowLightsUp(tester, 'layer-mark-stage-layout'),
+      isTrue,
+      reason:
+          '🚨콜백이 null 인 InkWell 은 **호버에 불이 안 들어온다** — 있기만 '
+          '해서는 안 되고 살아 있어야 한다',
+    );
+  });
+
+  testWidgets('겹이 달린 행을 누르면 호버와 같은 일을 한다 — 손가락에는 호버가 없다', (
+    tester,
+  ) async {
+    await openFlyout(tester);
+
+    // ⛔메뉴가 닫히면 안 된다: 닫히면 겹을 고를 기회가 사라진다.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('layer-mark-stage-layout')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(
+        const ValueKey<String>('layer-mark-option-layout-animation-director'),
+      ),
+      findsOneWidget,
+      reason: '유저: 「추가팝오버 있는거 클릭하면 그냥 호버랑 같은기능되도록」',
+    );
+    expect(
+      find.byKey(const ValueKey<String>('layer-mark-stage-layout')),
+      findsOneWidget,
+      reason: '부모 메뉴는 그대로 열려 있어야 한다',
     );
   });
 }

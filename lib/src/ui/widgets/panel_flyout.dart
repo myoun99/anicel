@@ -427,17 +427,30 @@ class _HoverReporter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // A plain row is left alone: Material's own InkWell already lights it,
+    // and this only has to report the pointer.
+    if (entry.submenuBuilder == null) {
+      return MouseRegion(
+        onEnter: (_) => _report(context),
+        child: child,
+      );
+    }
+    // 🚨★★★THE SAME INKWELL THE OTHER ROWS HAVE. 유저 2026-08-28: 「콘티나
+    // 미술 이런 겹이 있는곳에 호버해도 **동일하게 바탕 흰색으로 하는거** 있잖아.
+    // **통일**해서 적용하고」.
+    //
+    // ⛔A submenu row is `enabled: false` — it must not pop the menu, or a
+    // finger tapping a stage would close the list instead of opening the
+    // child. Disabling drops Material's InkWell with it, which is why these
+    // rows sat dead under the pointer. Putting the InkWell back INSIDE the
+    // row restores the highlight without restoring the pop: a disabled
+    // PopupMenuItem still hit-tests its child first (the note further up
+    // this file says so, for the knob rows).
     return MouseRegion(
       onEnter: (_) => _report(context),
       // A finger has no hover, so a tap does the same thing. ⛔Not a second
       // behaviour — the same call, reached the only way a finger can.
-      child: GestureDetector(
-        behavior: entry.submenuBuilder == null
-            ? HitTestBehavior.translucent
-            : HitTestBehavior.opaque,
-        onTap: entry.submenuBuilder == null ? null : () => _report(context),
-        child: child,
-      ),
+      child: InkWell(onTap: () => _report(context), child: child),
     );
   }
 }
@@ -472,9 +485,12 @@ class _SubmenuLayer extends StatelessWidget {
       top: top,
       width: _width,
       child: Material(
-        color: AppColors.surface,
-        elevation: 8,
-        borderRadius: const BorderRadius.all(Radius.circular(AppShapes.windowRadius)),
+        // ⛔THE SHARED popup surface, not a colour of its own. Naming
+        // `AppColors.surface` here is exactly what let the child and its
+        // parent drift apart — 유저: 「겹이랑 팝오버랑 색이 다르거든?」.
+        color: AppPopupSurface.color,
+        elevation: AppPopupSurface.elevation,
+        shape: AppPopupSurface.shape,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Column(

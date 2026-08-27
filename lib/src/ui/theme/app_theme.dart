@@ -292,7 +292,17 @@ abstract final class AppPopupSurface {
   /// The one summoned surface (FILL 3): menus, tooltips and popovers are
   /// the same kind of thing — chrome the pointer called up, sitting over
   /// chrome that was already there.
-  static const Color color = AppColors.surfaceHigh;
+  /// 🚨유저 2026-08-28: 「겹이랑 팝오버랑 색이 다르거든? 겹은 **진한 검정**이고
+  /// 팝오버는 회색인데, 이 **진한검정 아주 마음에들었어.** 이 색을 바탕으로
+  /// **공통창 다 변경**하고싶어」.
+  ///
+  /// The submenu had that black only because it bypassed this token and named
+  /// [AppColors.surface] itself — which is the whole reason the two could
+  /// differ at all. The darker value moves HERE instead, so 「뭐 하나 바꾸면
+  /// 알아서 변경되겟지?」 is true: menus, tooltips, dialogs and popovers all
+  /// read it. ⛔A window that spells the value out is a copy even while the
+  /// two happen to match — `one_summoned_surface_test` scans for that.
+  static const Color color = AppColors.surface;
 
   /// Enough shadow to lift the window off the panel under it. A summoned
   /// window is not docked to anything, so it may not read as flush.
@@ -437,8 +447,8 @@ ThemeData buildAppTheme() {
     // floats off the charcoal), no elevation tint, and a barrier light
     // enough to keep the drawing visible behind it.
     dialogTheme: DialogThemeData(
-      backgroundColor: AppColors.surface,
-      surfaceTintColor: Colors.transparent,
+      backgroundColor: AppPopupSurface.color,
+      surfaceTintColor: AppPopupSurface.surfaceTint,
       elevation: 0,
       barrierColor: Colors.black.withValues(alpha: 0.45),
       shape: AppShapes.container(
@@ -534,7 +544,10 @@ ThemeData buildAppTheme() {
     tooltipTheme: TooltipThemeData(
       waitDuration: const Duration(milliseconds: 400),
       decoration: ShapeDecoration(
-        color: AppColors.surfaceHigh,
+        // ⛔It named [AppColors.surfaceHigh] itself — a grey, while the menu
+        // beside it was charcoal. 유저 2026-08-28: 「이 색을 바탕으로 공통창
+        // 다 변경하고싶어」 — a tooltip is a summoned window too.
+        color: AppPopupSurface.color,
         shape: AppShapes.container(AppShapes.wellRadius),
       ),
       textStyle: const TextStyle(color: AppColors.text, fontSize: 12),
