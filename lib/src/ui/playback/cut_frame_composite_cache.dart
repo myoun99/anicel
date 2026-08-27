@@ -315,12 +315,12 @@ class CutFrameCompositeCache {
               rasterScale: rasterScale,
               maxPixelSide: maxSubtreeRasterSide,
               paintSubtree: (into, _) => paintNodes(into, children),
-              compose: (blit) {
-                if (aborted) {
-                  return;
-                }
-                blit(groupPaint);
-              },
+              // ⛔No abort guard here. The expensive half already returned
+              // early inside `paintNodes`; skipping the blit as well would
+              // only save a draw of an image that is about to be thrown
+              // away, and the adjustment beside it cannot do the same
+              // without reaching inside the shared recipe.
+              compose: (blit) => blit(groupPaint),
             );
           case CompositeAdjustmentSignature(
             :final children,
@@ -347,33 +347,7 @@ class CutFrameCompositeCache {
               rasterScale: rasterScale,
               maxPixelSide: maxSubtreeRasterSide,
               paintSubtree: (into, _) => paintNodes(into, children),
-              compose: (blit) {
-                if (aborted) {
-                  return;
-                }
-                // 🧪THE LAYERS ARE WHY IT IS EXACT. Blitting with the pass's
-                // own paint instead of restoring a layer into it rounds each
-                // pass separately, and a crossfade ADDS two of them:
-                // measured at 2/255 over 488 pixels. Painting the scope once
-                // was always the win; the saveLayer was never the cost — and
-                // on this route painting it meant awaiting every layer image
-                // in the scope a second time.
-                if (pass.crossfades) {
-                  canvas.saveLayer(
-                    pass.bufferBounds,
-                    pass.crossfadeLayerPaint!,
-                  );
-                  canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
-                  blit(ui.Paint());
-                  canvas.restore();
-                }
-                canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
-                blit(ui.Paint());
-                canvas.restore();
-                if (pass.crossfades) {
-                  canvas.restore();
-                }
-              },
+              compose: composeAdjustmentScope(canvas, pass),
             );
           case CompositeLeafSignature(:final layer):
             // ⛔THE SIGNATURE KEEPS THE WHOLE CHAIN; only the DRAW is split.

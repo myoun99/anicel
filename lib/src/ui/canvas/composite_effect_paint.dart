@@ -336,9 +336,42 @@ class AdjustmentScopePass {
   /// [crossfadeLayerPaint] is.
   final ui.Paint? unfilteredPaint;
 
-  /// Whether the route has to draw the scope a second time.
+  /// Whether the route has to COMPOSITE the scope a second time. It does not
+  /// have to PAINT it twice — see [composeAdjustmentScope].
   bool get crossfades => crossfadeLayerPaint != null;
 }
+
+/// How the passes go over a scope that has already been rasterised — the
+/// `compose` a route hands to `drawSubtreeAsImage`.
+///
+/// ⛔ONE COPY. Three routes ran these six lines and the shape is easy to get
+/// subtly wrong (a mutation that fed the FILTERED paint to the unfiltered
+/// pass survived every test in the repo, because each route held its own
+/// copy and no test drove the branch at any of them). Now there is one
+/// implementation, and the proof that it equals the recipe it replaced tests
+/// that implementation.
+///
+/// 🧪THE LAYERS ARE WHY IT IS EXACT. Blitting with a pass's own paint instead
+/// of restoring a layer into it rounds each pass separately, and a crossfade
+/// ADDS two of them: measured at 2/255 over 488 pixels. Painting the scope
+/// once was always the win; the saveLayer was never the cost.
+void Function(void Function(ui.Paint paint) blit) composeAdjustmentScope(
+  ui.Canvas canvas,
+  AdjustmentScopePass pass,
+) => (blit) {
+  if (pass.crossfades) {
+    canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
+    canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
+    blit(ui.Paint());
+    canvas.restore();
+  }
+  canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
+  blit(ui.Paint());
+  canvas.restore();
+  if (pass.crossfades) {
+    canvas.restore();
+  }
+};
 
 /// Resolves the pass for an adjustment scope of [effects] at [mix] over
 /// [bounds]. [rasterScale] follows the same rule as

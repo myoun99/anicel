@@ -584,16 +584,9 @@ void main() {
           rasterScale: 1,
           maxPixelSide: maxSubtreeRasterSide,
           paintSubtree: (into, _) => drawChildren(into),
-          compose: (blit) {
-            canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
-            canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
-            blit(Paint());
-            canvas.restore();
-            canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
-            blit(Paint());
-            canvas.restore();
-            canvas.restore();
-          },
+          // ⛔THE ROUTES. COMPOSE, not a copy of it — the three walks hand
+          // this exact function to `drawSubtreeAsImage`.
+          compose: composeAdjustmentScope(canvas, pass),
         );
       } else {
         // The recipe as it stood before this round.

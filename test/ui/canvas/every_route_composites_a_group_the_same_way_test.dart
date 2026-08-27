@@ -63,19 +63,19 @@ void main() {
   /// itself into this table in the same commit, and the argument has to be
   /// that the children are not painted inside it.
   ///
-  /// 🧪The adjustment's three are load-bearing, not leftovers: restoring a
-  /// layer into the pass's paint and blitting with that paint round
-  /// differently, and a crossfade ADDS two passes — measured at 2/255 over
-  /// 488 pixels. Painting the scope once was always the win.
+  /// 🧪An adjustment's passes still open layers — restoring a layer into the
+  /// pass's paint and blitting with that paint round differently, and a
+  /// crossfade ADDS two passes (measured at 2/255 over 488 pixels) — but
+  /// those layers live in `composeAdjustmentScope`, in ONE copy. A walk
+  /// holding its own copy is how a mutation that fed the FILTERED paint to
+  /// the unfiltered pass survived every test in the repo.
   const allowedSaveLayers = <String, int>{
-    // 3: the adjustment's crossfade group and its two passes.
-    // 4: the ACTIVE SURFACE's own buffer — a leaf, not a sub-tree, and its
-    //    bounds are the pasteboard (9x the canvas), so converting it wants
-    //    the "content ∩ view" bound applied there first.
-    'lib/src/ui/canvas/canvas_layer_stack_view.dart': 4,
-    // The adjustment's crossfade group and its two passes.
-    'lib/src/ui/camera/camera_frame_render_service.dart': 3,
-    'lib/src/ui/playback/cut_frame_composite_cache.dart': 3,
+    // The ACTIVE SURFACE's own buffer — a leaf, not a sub-tree, and its
+    // bounds are the pasteboard (9x the canvas), so converting it wants the
+    // "content ∩ view" bound applied there first.
+    'lib/src/ui/canvas/canvas_layer_stack_view.dart': 1,
+    'lib/src/ui/camera/camera_frame_render_service.dart': 0,
+    'lib/src/ui/playback/cut_frame_composite_cache.dart': 0,
   };
 
   List<String> codeLines(String path) {
