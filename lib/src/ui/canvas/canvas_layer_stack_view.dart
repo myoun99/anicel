@@ -42,9 +42,9 @@ import '../../services/cel_source_effect_pass.dart';
 ///
 /// The stack used to be two FLAT lists — below the active layer and above
 /// it — painted by two sibling widgets with the interactive view between
-/// them. A folder's group buffer is one `saveLayer`, and a saveLayer
-/// cannot span three sibling painters, so drawing inside a blended folder
-/// could never match playback. The tree (with the ACTIVE layer as a node
+/// them. A folder composites into one offscreen — a `ui.Image` its own walk
+/// rasters — and one offscreen cannot span three sibling painters, so
+/// drawing inside a blended folder could never match playback. The tree (with the ACTIVE layer as a node
 /// of its own, [CanvasActiveLayerNode]) is what lets one painter close the
 /// buffer it opened.
 sealed class CanvasLayerStackNode {

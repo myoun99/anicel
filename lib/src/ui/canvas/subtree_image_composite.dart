@@ -24,9 +24,9 @@ const int maxSubtreeRasterSide = 8192;
 /// ⛔The arithmetic lives HERE and only here. Three walks composite a group —
 /// the editing stack, the playback cache and the camera (which the export
 /// renders through) — and one of them is async, so they cannot share a single
-/// function body. They share this instead: a plan, and the blit that consumes
-/// it. What differs between them is the six mechanical lines that drive a
-/// `PictureRecorder`, and nothing that decides a pixel.
+/// function body. What they share is `drawSubtreeAsImage` and its async twin,
+/// which differ by one `await` and nothing that decides a pixel; the plan and
+/// the blit are the machinery underneath and belong to this file alone.
 @immutable
 class SubtreeRasterPlan {
   const SubtreeRasterPlan({
@@ -88,7 +88,7 @@ int debugSubtreeRasterCount = 0;
 /// 📐The image grid is the LOCAL space at [rasterScale] snapped OUTWARD, and
 /// [SubtreeRasterPlan.destination] is exactly `pixels / scale`. A src/dst pair
 /// that disagreed by a fraction would resample the sub-tree a second time.
-SubtreeRasterPlan? planSubtreeRaster({
+SubtreeRasterPlan? _planSubtreeRaster({
   required Rect bounds,
   required double rasterScale,
   required int maxPixelSide,
@@ -145,7 +145,7 @@ SubtreeRasterPlan? planSubtreeRaster({
 /// What bounds the UNfiltered content is the image itself, which is the
 /// bounds snapped out to whole raster pixels — the same rounding-out Skia
 /// does to a layer's offscreen. Same extent, same spread, same pixels.
-void blitSubtreeRaster({
+void _blitSubtreeRaster({
   required Canvas canvas,
   required ui.Image image,
   required SubtreeRasterPlan plan,
@@ -209,7 +209,7 @@ void drawSubtreeAsImage({
   required void Function(BlitSubtree blit) compose,
   List<CompositeEffectStep> steps = const [],
 }) {
-  final plan = planSubtreeRaster(
+  final plan = _planSubtreeRaster(
     bounds: bounds,
     rasterScale: rasterScale,
     maxPixelSide: maxPixelSide,
@@ -221,7 +221,7 @@ void drawSubtreeAsImage({
   final into = Canvas(recorder);
   plan.applyTo(into);
   paintSubtree(into, plan.scale);
-  finishSubtreeRaster(
+  _finishSubtreeRaster(
     canvas: canvas,
     recorder: recorder,
     plan: plan,
@@ -240,7 +240,7 @@ Future<void> drawSubtreeAsImageAsync({
   required void Function(BlitSubtree blit) compose,
   List<CompositeEffectStep> steps = const [],
 }) async {
-  final plan = planSubtreeRaster(
+  final plan = _planSubtreeRaster(
     bounds: bounds,
     rasterScale: rasterScale,
     maxPixelSide: maxPixelSide,
@@ -252,7 +252,7 @@ Future<void> drawSubtreeAsImageAsync({
   final into = Canvas(recorder);
   plan.applyTo(into);
   await paintSubtree(into, plan.scale);
-  finishSubtreeRaster(
+  _finishSubtreeRaster(
     canvas: canvas,
     recorder: recorder,
     plan: plan,
@@ -335,7 +335,7 @@ ui.Image applyEffectSteps({
   return image;
 }
 
-void finishSubtreeRaster({
+void _finishSubtreeRaster({
   required Canvas canvas,
   required ui.PictureRecorder recorder,
   required SubtreeRasterPlan plan,
@@ -361,7 +361,7 @@ void finishSubtreeRaster({
   );
   try {
     compose(
-      (paint, {bool stepped = true}) => blitSubtreeRaster(
+      (paint, {bool stepped = true}) => _blitSubtreeRaster(
         canvas: canvas,
         image: stepped ? image : raster,
         plan: plan,

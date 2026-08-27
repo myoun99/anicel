@@ -216,8 +216,8 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
 
   /// The live-stroke overlay. HOST-OWNED when non-null, which is what lets
   /// the editing canvas draw the active layer inside its composite tree: a
-  /// folder's group buffer is one `saveLayer`, so the layer being drawn on
-  /// has to be paintable by the same painter that opened it. Null keeps
+  /// folder composites into one offscreen, so the layer being drawn on has to
+  /// be paintable by the same painter that opened it. Null keeps
   /// the view's own model (standalone hosts, tests).
   final ActiveStrokeOverlayModel? overlayModel;
 

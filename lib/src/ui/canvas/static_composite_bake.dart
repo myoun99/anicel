@@ -7,7 +7,7 @@ import 'package:flutter/rendering.dart';
 /// recorded once and replayed.
 ///
 /// 실측①: one stroke step re-runs the WHOLE composite tree — the paper,
-/// every cached layer image, every folder's `saveLayer`, every effect chain
+/// every cached layer image, every folder's own offscreen, every effect chain
 /// — because `_LayerStackPainter`'s repaint Listenable is the active
 /// surface. Everything in that tree except the active layer is static for
 /// the duration of the stroke, and this is what stops re-deriving it.
@@ -45,7 +45,7 @@ class StaticCompositeBake {
   /// [keepFor]'s key is built at BUILD time from widget fields, but the
   /// visible rect is a LAYOUT fact: resize the panel at a fixed zoom and
   /// the key is unchanged while every recording is wrong — the record
-  /// closures captured the old `groupBounds` (folder `saveLayer` hints,
+  /// closures captured the old `groupBounds` (folder raster bounds,
   /// adjustment scope bounds), and [drawRaster] would take the OLD image
   /// and blit it with a src rect computed from the NEW dimensions. Same
   /// document, two pictures, decided by resize history — the render must
@@ -125,8 +125,9 @@ class StaticCompositeBake {
   /// A picture skips the Dart-side walk, which was stage 1's whole point.
   /// What it does NOT skip is the ENGINE replaying the display list: with
   /// 500 layers below the active one, every stroke step still re-executes
-  /// 500 draws. A raster is one blit however many layers went into it — the difference between a heavy document
-  /// being heavy per STROKE STEP and being heavy once (유저 2026-08-15:
+  /// 500 draws. A raster is one blit however many layers went into it — the
+  /// difference between a heavy document being heavy per STROKE STEP and
+  /// being heavy once (유저 2026-08-15:
   /// 「1500컷이나 500개레이어같은 무거운상황도 생각하면서 가볍게 하고싶다니까?」).
   ///
   /// ⚠️A FOLDER IS NO LONGER PART OF THAT COST. This used to read "and every
