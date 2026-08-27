@@ -16,9 +16,13 @@ import 'layer_process.dart';
 /// process/revise pair through the chosen palette, so switching palettes
 /// repaints every mark in the project without touching a single layer.
 class LayerMark {
-  const LayerMark({required this.process, this.revise});
+  const LayerMark({required this.process, this.revise, this.take});
 
-  const LayerMark._none() : process = null, revise = null;
+  /// The same label with a different take — the take chip's one writer.
+  LayerMark withTake(int? next) =>
+      LayerMark(process: process, revise: revise, take: next);
+
+  const LayerMark._none() : process = null, revise = null, take = null;
 
   /// No label. ⚠️Kept as a value rather than a null `Layer.mark` because the
   /// plate is painted for it too — it wears the paper colour so the tap
@@ -34,7 +38,35 @@ class LayerMark {
   /// 그 공정의 소재」).
   final LayerRevise? revise;
 
+  /// 리테이크 번호 1–9, null 이면 없음 (I-5).
+  ///
+  /// 🚨★★★IT RIDES HERE RATHER THAN IN A FIELD OF ITS OWN. 유저 2026-08-27:
+  /// 「작업하다보면 **리테이크**가 존재한단말이지? 그때 원화작업자가 레이아웃
+  /// 그리고 리테이크 발생하면 똑같은 색 라벨만으로는 **테이크1인지 2인지 구분
+  /// 안되잖아**」 — it answers「which version of this stage」, which is the
+  /// same identity the process and revise answer.
+  ///
+  /// ⛔A `Layer.take` beside `Layer.mark` would have meant a second command,
+  /// a second link-group mirror, a second JSON site and a second place to
+  /// forget — for a value that travels with the label everywhere it goes.
+  /// The two CHIPS stay separate; only the storage is one.
+  ///
+  /// ⚠️Null is the default and it stays null: 리테이크가 없는 컷에 T1 이
+  /// 줄줄이 붙으면 정보가 아니라 노이즈다.
+  final int? take;
+
+  /// Whether there is no LABEL. ⚠️Asks about the stage alone — a take with
+  /// no stage is representable (you can number a version of a row you have
+  /// not staged yet) and the take chip shows it either way.
   bool get isNone => process == null;
+
+  /// 테이크 칩이 쓰는 글자 — 「T2」. 없으면 빈 문자열이고, 자리는 그대로
+  /// 예약된다(⛔없다가 생기는 UI 금지).
+  String get takeText => take == null ? '' : 'T$take';
+
+  /// The numbers the popover offers. ⛔One list rather than a `1..9` spelled
+  /// at the widget and again at the test.
+  static const List<int> takeChoices = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
   /// What the chip writes: the stage's abbreviation, and the correction's
   /// after it. 유저: 「공정이름+공정수정이름인데 축약어로」.
@@ -71,11 +103,14 @@ class LayerMark {
   int get sortKey =>
       isNone ? -1 : process!.index * 100 + (revise == null ? 0 : revise!.index + 1);
 
-  Object toJson() => isNone
+  /// ⚠️A take with no stage still has to survive, so «no label at all» is
+  /// stage AND take being absent — not [isNone], which asks about the stage.
+  Object toJson() => isNone && take == null
       ? 'none'
       : <String, Object?>{
-          'process': process!.jsonValue,
+          if (process != null) 'process': process!.jsonValue,
           if (revise != null) 'revise': revise!.jsonValue,
+          if (take != null) 'take': take,
         };
 
   /// ⚠️Reads the OLD eight-colour spelling as [none] rather than throwing.
@@ -86,13 +121,17 @@ class LayerMark {
   /// (there is no production data to protect).
   static LayerMark fromJson(Object? json) {
     if (json is Map) {
+      final take = json['take'];
       final process = LayerProcess.fromJson(json['process']);
-      if (process == null) {
+      if (process == null && take is! int) {
         return none;
       }
       return LayerMark(
         process: process,
         revise: LayerRevise.fromJson(json['revise']),
+        // ⚠️Clamped by the choices rather than trusted: a number outside
+        // 1–9 would draw a chip the popover can never unset.
+        take: take is int && takeChoices.contains(take) ? take : null,
       );
     }
     return none;
@@ -100,10 +139,13 @@ class LayerMark {
 
   @override
   bool operator ==(Object other) =>
-      other is LayerMark && other.process == process && other.revise == revise;
+      other is LayerMark &&
+      other.process == process &&
+      other.revise == revise &&
+      other.take == take;
 
   @override
-  int get hashCode => Object.hash(process, revise);
+  int get hashCode => Object.hash(process, revise, take);
 
   @override
   String toString() => isNone ? 'LayerMark.none' : 'LayerMark($displayName)';

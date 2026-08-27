@@ -985,6 +985,13 @@ class AppStrings {
 
   /// 색 라벨의 톤 고르기(I-4). 네 벌은 **같은 색상**이고 톤만 다르다.
   String get layerMarkPaletteLabel => _s('layerMarkPaletteLabel');
+
+  /// 테이크 라벨(I-5) — 리테이크 몇 번째 판인가.
+  String get tlLayerTake => _s('tlLayerTake');
+
+  /// 팝오버에 풀어 쓰는 이름. 라벨에는 T1·T2 로 줄여 보인다.
+  String tlLayerTakeNumber(int take) =>
+      _s('tlLayerTakeNumber').replaceFirst('{n}', '$take');
   String get tlRepeat => _s('tlRepeat');
   String get tlRepeatSelection => _s('tlRepeatSelection');
 
@@ -1636,6 +1643,8 @@ class AppStrings {
     'tlLayerMarkNone': 'No label',
     'tlLayerMarkSource': 'Material',
     'layerMarkPaletteLabel': 'Label tone',
+    'tlLayerTake': 'Take',
+    'tlLayerTakeNumber': 'Take {n}',
     'tlRepeat': 'Repeat',
     'tlRepeatSelection': 'Repeat selection',
     'tlSeNameTemplate': 'SE name {name}',
@@ -2439,6 +2448,8 @@ class AppStrings {
     'tlLayerMarkNone': 'ラベルなし',
     'tlLayerMarkSource': '上がり',
     'layerMarkPaletteLabel': 'ラベルの色調',
+    'tlLayerTake': 'テイク',
+    'tlLayerTakeNumber': 'テイク{n}',
     'tlRepeat': 'リピート',
     'tlRepeatSelection': '選択範囲をリピート',
     'tlSeNameTemplate': 'SE名 {name}',
@@ -3233,6 +3244,8 @@ class AppStrings {
     'tlLayerMarkNone': '라벨 없음',
     'tlLayerMarkSource': '소재',
     'layerMarkPaletteLabel': '색 라벨 톤',
+    'tlLayerTake': '테이크',
+    'tlLayerTakeNumber': '테이크 {n}',
     'tlRepeat': '반복',
     'tlRepeatSelection': '선택 영역 반복',
     'tlSeNameTemplate': 'SE 이름 {name}',
@@ -4059,6 +4072,8 @@ class AppStrings {
     'tlLayerMarkNone': 'Aucune étiquette',
     'tlLayerMarkSource': 'Matériel',
     'layerMarkPaletteLabel': 'Ton des étiquettes',
+    'tlLayerTake': 'Prise',
+    'tlLayerTakeNumber': 'Prise {n}',
     'tlRepeat': 'Répéter',
     'tlRepeatSelection': 'Répéter la sélection',
     'tlSeNameTemplate': 'Nom SE {name}',

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/theme/app_accents.dart';
@@ -14,6 +15,9 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 /// **진짜 용서안할게**」. 색 라벨은 옛 8색 태그 옆에 새로 생긴 것이 아니라 그
 /// 자리를 **가져갔다** — 프레임 블록의 바탕을 칠하는 그 자리 그대로.
 void main() {
+  _takeLabel();
+  _axisAgreement();
+
   // 🚨A GLOBAL. Saving and restoring rather than assigning a fresh default
   // back: writing `const AppAccentSettings()` in the teardown would not undo
   // this file, it would overwrite whatever the suite had set up.
@@ -153,5 +157,121 @@ void main() {
       timelineDrawingHeldColor,
       reason: '「none IS the paper」 — 라벨 안 붙은 행은 칠이 안 바뀐다',
     );
+  });
+}
+
+/// I-5 — 테이크 라벨. 유저 2026-08-27: 「작업하다보면 리테이크가 존재한단말이지?
+/// 그때 원화작업자가 레이아웃 그리고 리테이크 발생하면 **똑같은 색 라벨만으로는
+/// 테이크1인지 2인지 구분 안되잖아**」.
+void _takeLabel() {
+  test('테이크는 마크 안에 산다 — 두 번째 필드도, 두 번째 명령도 아니다', () {
+    const mark = LayerMark(process: LayerProcess.layout);
+    final withTake = mark.withTake(2);
+
+    expect(withTake.process, LayerProcess.layout, reason: '공정은 그대로');
+    expect(withTake.take, 2);
+    expect(withTake.takeText, 'T2', reason: '라벨에는 줄여서 T2');
+    // ⛔A `Layer.take` beside `Layer.mark` would have needed its own
+    // command, its own link-group mirror and its own JSON site.
+    expect(
+      mark.take,
+      isNull,
+      reason: '원본은 안 바뀐다 — withTake 는 새 값을 만든다',
+    );
+  });
+
+  test('기본은 없음이다 — 리테이크 없는 컷에 T1 이 줄줄이 붙지 않는다', () {
+    expect(const LayerMark(process: LayerProcess.key).take, isNull);
+    expect(const LayerMark(process: LayerProcess.key).takeText, '');
+    expect(LayerMark.none.take, isNull);
+  });
+
+  test('테이크만 있고 공정이 없어도 살아남는다', () {
+    // 「없음」 상태에서도 판 번호는 매길 수 있다. isNone 은 공정을 묻는 것이라
+    // 여기서 true 이고, 그래도 JSON 은 테이크를 실어야 한다.
+    final takeOnly = LayerMark.none.withTake(3);
+    expect(takeOnly.isNone, isTrue);
+    expect(LayerMark.fromJson(takeOnly.toJson()).take, 3);
+  });
+
+  test('1–9 밖의 저장값은 버린다 — 팝오버가 못 지우는 칩이 생기면 안 된다', () {
+    for (final bad in <Object>[0, 10, -1, 'two']) {
+      expect(
+        LayerMark.fromJson({'process': 'layout', 'take': bad}).take,
+        isNull,
+        reason: '저장된 take=$bad',
+      );
+    }
+    expect(LayerMark.takeChoices, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  });
+
+  test('테이크가 라벨의 정체성에 들어간다 — 같은 공정이라도 판이 다르면 다르다', () {
+    const one = LayerMark(process: LayerProcess.layout, take: 1);
+    const two = LayerMark(process: LayerProcess.layout, take: 2);
+    expect(one == two, isFalse, reason: '이게 안 되면 리테이크가 구분이 안 된다');
+    expect(one.hashCode == two.hashCode, isFalse);
+  });
+
+  test('마크와 테이크가 나란히 한 슬롯을 예약한다 — 없어도 자리는 그대로', () {
+    // ⛔없다가 생기는 UI 금지: 테이크가 붙을 때 이름이 밀리면 안 된다.
+    expect(layerLabelSlotWidth, layerMarkSlotWidth + layerTakeSlotWidth);
+    expect(
+      layerTakeSlotWidth,
+      layerMarkSlotWidth,
+      reason: '유저: 「색 라벨이랑 같은 디자인으로」',
+    );
+  });
+}
+
+/// 🚨두 플레이트는 **레일의 축을 따라** 놓인다.
+///
+/// x시트는 레일을 세워 두므로 그 열 머리는 아래로 흐른다. 가로로 놓았더니
+/// 두 플레이트가 머리의 폭 밖으로 나가 **x시트 테스트 100건 이상이 무너졌다**
+/// (08-27 실측). 슬롯 폭도 같은 축으로 재므로 둘이 반드시 일치해야 한다.
+void _axisAgreement() {
+  testWidgets('가로 레일에서는 나란히, 세로(x시트) 레일에서는 위아래로', (tester) async {
+    for (final axis in Axis.values) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: axis == Axis.horizontal ? layerLabelSlotWidth : 28,
+                height: axis == Axis.horizontal ? 28 : layerLabelSlotWidth,
+                child: LayerMarkChip(
+                  keyPrefix: 'probe',
+                  layerId: const LayerId('a'),
+                  mark: const LayerMark(process: LayerProcess.layout),
+                  onMarkSelected: (_, _) {},
+                  axis: axis,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final mark = tester.getRect(
+        find.byKey(const ValueKey<String>('probe-layer-mark-a')),
+      );
+      final take = tester.getRect(
+        find.byKey(const ValueKey<String>('probe-layer-take-a')),
+      );
+      if (axis == Axis.horizontal) {
+        expect(
+          take.left,
+          closeTo(mark.right, 0.5),
+          reason: '가로 레일 — 테이크가 색 라벨 오른쪽',
+        );
+      } else {
+        expect(
+          take.top,
+          closeTo(mark.bottom, 0.5),
+          reason: '🚨세로 레일 — 테이크가 색 라벨 아래. 가로로 놓으면 열 머리 '
+              '폭 밖으로 나가 x시트가 통째로 무너진다',
+        );
+      }
+    }
   });
 }
