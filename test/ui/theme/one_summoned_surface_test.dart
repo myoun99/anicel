@@ -22,6 +22,11 @@ void main() {
     expect(theme.popupMenuTheme.color, AppPopupSurface.color);
     expect(theme.dialogTheme.backgroundColor, AppPopupSurface.color);
     expect(
+      theme.dialogTheme.shape,
+      AppPopupSurface.shape,
+      reason: '모서리와 테두리도 같은 창 모양이다',
+    );
+    expect(
       (theme.tooltipTheme.decoration! as ShapeDecoration).color,
       AppPopupSurface.color,
       reason: '툴팁만 회색으로 남아 있었다',

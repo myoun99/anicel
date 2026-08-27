@@ -451,10 +451,10 @@ ThemeData buildAppTheme() {
       surfaceTintColor: AppPopupSurface.surfaceTint,
       elevation: 0,
       barrierColor: Colors.black.withValues(alpha: 0.45),
-      shape: AppShapes.container(
-        AppShapes.windowRadius,
-        side: const BorderSide(color: AppColors.hairline),
-      ),
+      // The same window shape the other summoned surfaces wear — corner and
+      // hairline both. It spelled the border out, which is the smaller
+      // cousin of the colour copy this file just lost.
+      shape: AppPopupSurface.shape,
       insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
       titleTextStyle: const TextStyle(
         color: AppColors.text,
