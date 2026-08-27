@@ -1,3 +1,4 @@
+import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/canvas_point.dart';
@@ -225,10 +226,8 @@ class _GuideGroupHeader extends StatelessWidget {
               ),
             ),
           ),
-          IconButton(
-            key: ValueKey<String>(addKey),
-            iconSize: 18,
-            visualDensity: VisualDensity.compact,
+          AppIconButton(
+            keyValue: addKey,
             tooltip: AppText.strings.guideAdd,
             // The ＋ carries the accent, not the button around it.
             icon: Icon(Icons.add, color: AppColors.addGlyph(enabled: true)),
@@ -273,22 +272,22 @@ class _GuideRow extends StatelessWidget {
         selectedTileColor: colorScheme.surfaceContainerHigh,
         onTap: onSelected,
         title: Text(guide.name),
-        leading: IconButton(
-          iconSize: 18,
-          visualDensity: VisualDensity.compact,
+        leading: AppIconButton(
+          keyValue: 'guide-acting-${guide.id.value}',
           tooltip: acting ? strings.guideActsOn : strings.guideActsOff,
-          icon: Icon(
-            acting ? Icons.check_circle : Icons.circle_outlined,
-            color: acting ? colorScheme.primary : colorScheme.onSurfaceVariant,
-          ),
+          isSelected: acting,
+          // ⛔ONE GLYPH, and the state is the COLOUR. This used to swap
+          // `circle_outlined` for `check_circle` — a check mark, which the
+          // app's selection law names outright: 「선택 표시는 색상만」, never
+          // a check and never a filled chip ([[ui-selection-style]]).
+          icon: const Icon(Icons.circle_outlined),
           onPressed: () => onActingChanged(!acting),
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            IconButton(
-              iconSize: 18,
-              visualDensity: VisualDensity.compact,
+            AppIconButton(
+              keyValue: 'guide-visible-${guide.id.value}',
               tooltip: strings.guideShow,
               icon: Icon(
                 guide.visible ? Icons.visibility : Icons.visibility_off,
@@ -298,10 +297,8 @@ class _GuideRow extends StatelessWidget {
               ),
               onPressed: () => onVisibleChanged(!guide.visible),
             ),
-            IconButton(
-              key: ValueKey<String>('guide-delete-${guide.id.value}'),
-              iconSize: 18,
-              visualDensity: VisualDensity.compact,
+            AppIconButton(
+              keyValue: 'guide-delete-${guide.id.value}',
               tooltip: strings.guideDelete,
               icon: const Icon(Icons.delete_outline),
               onPressed: onDelete,
@@ -524,16 +521,14 @@ class _VanishingPointRow extends StatelessWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            IconButton(
-              iconSize: 18,
-              visualDensity: VisualDensity.compact,
+            AppIconButton(
+              keyValue: 'guide-make-vertical',
               tooltip: strings.guideMakeVertical,
               icon: const Icon(Icons.vertical_align_center),
               onPressed: onMadeVertical,
             ),
-            IconButton(
-              iconSize: 18,
-              visualDensity: VisualDensity.compact,
+            AppIconButton(
+              keyValue: 'guide-remove',
               tooltip: strings.guideDelete,
               icon: const Icon(Icons.delete_outline),
               onPressed: onRemoved,

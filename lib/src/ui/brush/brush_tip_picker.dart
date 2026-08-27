@@ -1,3 +1,4 @@
+import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/brush_tip_entry.dart';
@@ -254,14 +255,11 @@ class _BrushTipPickerBodyState extends State<_BrushTipPickerBody> {
               title: AppText.strings.brBrushTip,
               trailing: onImportRequested == null
                   ? null
-                  : IconButton(
-                      key: const ValueKey<String>('brush-tip-picker-add'),
-                      icon: const Icon(
-                        Icons.add_photo_alternate_outlined,
-                        size: 16,
-                      ),
-                      visualDensity: VisualDensity.compact,
+                  : AppIconButton(
+                      keyValue: 'brush-tip-picker-add',
                       tooltip: AppText.strings.brAddTipImage,
+                      size: AppIconButtonSize.dense,
+                      icon: const Icon(Icons.add_photo_alternate_outlined),
                       onPressed: onImportRequested,
                     ),
             ),
@@ -332,21 +330,21 @@ class _BrushTipPickerBodyState extends State<_BrushTipPickerBody> {
                     ),
                   ),
                   if (onRename != null)
-                    IconButton(
-                      key: const ValueKey<String>('brush-tip-rename'),
-                      icon: const Icon(Icons.drive_file_rename_outline, size: 16),
-                      visualDensity: VisualDensity.compact,
+                    AppIconButton(
+                      keyValue: 'brush-tip-rename',
                       tooltip: AppText.strings.brRenameTip,
+                      size: AppIconButtonSize.dense,
+                      icon: const Icon(Icons.drive_file_rename_outline),
                       onPressed: managed == null
                           ? null
                           : () => onRename(managed),
                     ),
                   if (onDelete != null)
-                    IconButton(
-                      key: const ValueKey<String>('brush-tip-delete'),
-                      icon: const Icon(Icons.delete_outline, size: 16),
-                      visualDensity: VisualDensity.compact,
+                    AppIconButton(
+                      keyValue: 'brush-tip-delete',
                       tooltip: AppText.strings.brDeleteTip,
+                      size: AppIconButtonSize.dense,
+                      icon: const Icon(Icons.delete_outline),
                       onPressed: managed == null
                           ? null
                           : () => onDelete(managed),

@@ -1,3 +1,4 @@
+import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart';
@@ -268,11 +269,11 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                     style: const TextStyle(fontSize: 12),
                   ),
                 ),
-                IconButton(
-                  key: const ValueKey<String>('settings-output-test-button'),
+                AppIconButton(
+                  keyValue: 'settings-output-test-button',
                   tooltip: strings.audioTestSoundLabel,
-                  icon: const Icon(Icons.volume_up, size: 16),
-                  visualDensity: VisualDensity.compact,
+                  size: AppIconButtonSize.dense,
+                  icon: const Icon(Icons.volume_up),
                   onPressed: widget.session.playOutputTestTone,
                 ),
               ],
@@ -477,10 +478,11 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),
-                IconButton(
-                  key: const ValueKey<String>('settings-audio-report-refresh'),
-                  icon: const Icon(Icons.refresh, size: 16),
+                AppIconButton(
+                  keyValue: 'settings-audio-report-refresh',
                   tooltip: strings.commonRefresh,
+                  size: AppIconButtonSize.dense,
+                  icon: const Icon(Icons.refresh),
                   onPressed: () => setState(() {}),
                 ),
               ],

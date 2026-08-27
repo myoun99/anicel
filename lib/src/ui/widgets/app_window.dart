@@ -1,3 +1,4 @@
+import 'app_icon_button.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_scroll_behavior.dart';
@@ -192,15 +193,12 @@ class AppWindow extends StatelessWidget {
             ),
           ),
           if (onClose != null)
-            IconButton(
-              onPressed: onClose,
-              icon: const Icon(Icons.close, size: 14),
-              iconSize: 14,
-              padding: const EdgeInsets.all(4),
-              constraints: const BoxConstraints.tightFor(width: 24, height: 24),
-              visualDensity: VisualDensity.compact,
-              color: colorScheme.onSurfaceVariant,
+            AppIconButton(
+              keyValue: 'app-window-close',
               tooltip: MaterialLocalizations.of(context).closeButtonLabel,
+              size: AppIconButtonSize.micro,
+              icon: const Icon(Icons.close),
+              onPressed: onClose,
             ),
         ],
       ),

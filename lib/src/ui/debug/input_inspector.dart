@@ -1,3 +1,4 @@
+import '../widgets/app_icon_button.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
@@ -469,19 +470,17 @@ class _InspectorCard extends StatelessWidget {
                                 ),
                         ),
                       const SizedBox(width: 4),
-                      IconButton(
-                        key: const ValueKey<String>('input-inspector-clear'),
+                      AppIconButton(
+                        keyValue: 'input-inspector-clear',
                         tooltip: 'Clear',
-                        visualDensity: VisualDensity.compact,
-                        iconSize: 14,
+                        size: AppIconButtonSize.micro,
                         onPressed: InputInspector.clear,
                         icon: const Icon(Icons.refresh),
                       ),
-                      IconButton(
-                        key: const ValueKey<String>('input-inspector-close'),
+                      AppIconButton(
+                        keyValue: 'input-inspector-close',
                         tooltip: 'Close',
-                        visualDensity: VisualDensity.compact,
-                        iconSize: 14,
+                        size: AppIconButtonSize.micro,
                         // 🚨H21 (유저 2026-08-23): 「터치 다운도 **껏다켜도
                         // 리셋안되고**」 — and that was not a bug in the
                         // counter. Closing only flipped [visible]; NOTHING

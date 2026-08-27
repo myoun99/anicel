@@ -1,3 +1,4 @@
+import 'widgets/app_icon_button.dart';
 import 'dart:async';
 import 'dart:io' show File, Platform;
 import 'dart:math' as math;
@@ -4631,18 +4632,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   }
 
   Widget _bottomCollapseButton({bool onTop = false}) {
-    return IconButton(
-      key: const ValueKey<String>('floating-bottom-collapse'),
+    return AppIconButton(
+      keyValue: 'floating-bottom-collapse',
       tooltip: _bottomDockCollapsed
           ? AppText.strings.panelExpandRegion
           : AppText.strings.panelCollapseRegion,
-      iconSize: 16,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(width: 28, height: 28),
-      style: IconButton.styleFrom(
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        shape: AppShapes.control(28),
-      ),
+      size: AppIconButtonSize.dense,
       onPressed: () {
         setState(() => _bottomDockCollapsed = !_bottomDockCollapsed);
         _scheduleLayoutSave();
