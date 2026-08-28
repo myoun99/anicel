@@ -250,4 +250,37 @@ void main() {
       reason: 'the other row stayed where the later undo left it',
     );
   });
+
+  test('the legend onion sweep undoes in ONE press, every row', () {
+    // 🚨유저 2026-08-29 asked exactly this: 「조작끝낸 모든 레이어가
+    // 안돌아간단거야 설마?」 — and at that moment the bulk sweep did not
+    // undo at all. It wrote the set directly, so making the per-row toggle
+    // undoable had left the legend button behind.
+    final session = newSession();
+    addTearDown(session.dispose);
+    for (var i = 0; i < 3; i += 1) {
+      session.addLayer();
+    }
+    final before = {
+      for (final layer in session.layers)
+        layer.id: session.isLayerOnionSkinEnabled(layer.id),
+    };
+    expect(before.length, greaterThan(1), reason: 'fixture: several rows');
+
+    session.toggleOnionSkinForDisplayedLayers();
+    final changed = session.layers.where(
+      (l) => session.isLayerOnionSkinEnabled(l.id) != before[l.id],
+    );
+    expect(changed, isNotEmpty, reason: 'fixture: the sweep changed rows');
+
+    session.historyManager.undo();
+
+    for (final entry in before.entries) {
+      expect(
+        session.isLayerOnionSkinEnabled(entry.key),
+        entry.value,
+        reason: 'ONE undo put every swept row back',
+      );
+    }
+  });
 }

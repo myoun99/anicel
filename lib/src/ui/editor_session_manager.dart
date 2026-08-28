@@ -17179,11 +17179,35 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     final enable = !displayedLayersOnionSkinEnabled;
-    final next = Set<LayerId>.from(onionSkinLayerIds.value);
-    for (final layer in targets) {
-      enable ? next.add(layer.id) : next.remove(layer.id);
+    // 🚨ONE undo step for one legend press. This used to write the set
+    // directly, so the bulk sweep undid NOTHING even after the per-row
+    // toggle became undoable — 유저 caught the gap by asking what
+    // "restores this id's membership" meant: 「조작끝낸 모든 레이어가
+    // 안돌아간단거야 설마?」. It would not have, here.
+    //
+    // ⛔Only the rows this press actually CHANGES go in the batch: a
+    // command for a row already in the target state is a no-op that still
+    // costs an entry to walk back through.
+    final changing = [
+      for (final layer in targets)
+        if (isLayerOnionSkinEnabled(layer.id) != enable) layer.id,
+    ];
+    if (changing.isEmpty) {
+      return;
     }
-    onionSkinLayerIds.value = next;
+    _historyManager.execute(
+      CompositeCommand(
+        description: 'Toggle onion skin (${changing.length} layers)',
+        commands: [
+          for (final layerId in changing)
+            ToggleIdInSetCommand(
+              notifier: onionSkinLayerIds,
+              layerId: layerId,
+              label: 'Toggle onion skin',
+            ),
+        ],
+      ),
+    );
     notifyListeners();
   }
 
