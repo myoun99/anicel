@@ -143,6 +143,13 @@ class TransformToolOptions {
 /// 된다) · 재현은 **지금 선택된 모드에** 적용한다(모드를 되돌리지 않는다) ·
 /// 🚨**어떤 크기의 소재든 같은 값을 준다.**
 ///
+/// ⚠️READ 「전역 하나」 AS "NOT PER LAYER", which is the axis that day was
+/// about and is still true. It is NOT "one slot": 유저 2026-08-29 asked for
+/// one per MODE — 「툴마다 기억하는게 다름」 — so the channel holds a
+/// `Map<TransformMode, TransformRecall>`. A single slot could only answer
+/// for whichever mode committed last, and a 퍼스 warp's affine is often
+/// identity, so 일반's Enter read as a dead key.
+///
 /// That last clause is why this stores PARAMETERS and not a result: a
 /// scale of 120% and a corner pushed 40 px mean the same thing on a
 /// thumbnail and on a whole cel, where "the size it came out last time"
