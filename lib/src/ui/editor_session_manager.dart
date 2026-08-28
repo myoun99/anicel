@@ -3028,10 +3028,7 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     _historyManager.execute(
-      UpdateProjectCameraSizeCommand(
-        repository: _repository,
-        cameraSize: size,
-      ),
+      UpdateProjectCameraSizeCommand(repository: _repository, cameraSize: size),
     );
     notifyListeners();
   }
@@ -4370,11 +4367,23 @@ class EditorSessionManager extends ChangeNotifier {
     };
     for (final layer in stack) {
       _visibilitySoloSnapshot?.putIfAbsent(layer.id, () => layer.isVisible);
-      final shouldShow = keepShown.contains(layer.id);
-      if (layer.isVisible != shouldShow) {
-        _layerController.toggleLayerVisibility(layer.id);
-      }
     }
+    // ⛔TWO batches, not one per row: Solo hides most of the stack and
+    // shows a few, and each side is one undo step rather than a screenful.
+    _layerController.setLayersVisible(
+      layerIds: [
+        for (final layer in stack)
+          if (keepShown.contains(layer.id) && !layer.isVisible) layer.id,
+      ],
+      visible: true,
+    );
+    _layerController.setLayersVisible(
+      layerIds: [
+        for (final layer in stack)
+          if (!keepShown.contains(layer.id) && layer.isVisible) layer.id,
+      ],
+      visible: false,
+    );
   }
 
   void _exitVisibilitySolo() {
@@ -6128,13 +6137,19 @@ class EditorSessionManager extends ChangeNotifier {
     opacityDragPreview.value = null;
     final clamped = opacity.clamp(0.0, 1.0).toDouble();
     lastMasterOpacity = clamped;
-    for (final layer in layers) {
-      if (layerIds.contains(layer.id) &&
-          layerKindHasPictureOpacity(layer.kind) &&
-          layer.opacity != clamped) {
-        _layerController.setLayerOpacity(layerId: layer.id, opacity: clamped);
-      }
-    }
+    // ⛔ONE undo step for one bar drag. The drag itself never reaches here
+    // — `previewLayersOpacity` holds it in a notifier and only the release
+    // commits — so this is one entry per gesture, not per frame.
+    _layerController.setLayersOpacity(
+      layerIds: [
+        for (final layer in layers)
+          if (layerIds.contains(layer.id) &&
+              layerKindHasPictureOpacity(layer.kind) &&
+              layer.opacity != clamped)
+            layer.id,
+      ],
+      opacity: clamped,
+    );
     notifyListeners();
   }
 
@@ -6143,17 +6158,16 @@ class EditorSessionManager extends ChangeNotifier {
   /// the sound/instruction rows have no blend), and only rows that would
   /// change are written, so a no-op pick costs nothing.
   void setBlendModeForLayers(Set<LayerId> layerIds, LayerBlendMode mode) {
-    var changed = false;
-    for (final layer in layers) {
-      if (!layerIds.contains(layer.id) ||
-          !layerKindShowsBlendControl(layer.kind) ||
-          layer.blendMode == mode) {
-        continue;
-      }
-      _layerController.setLayerBlendMode(layerId: layer.id, blendMode: mode);
-      changed = true;
-    }
-    if (changed) {
+    // ⛔ONE undo step for one blend pick, however many rows it lands on.
+    final targets = [
+      for (final layer in layers)
+        if (layerIds.contains(layer.id) &&
+            layerKindShowsBlendControl(layer.kind) &&
+            layer.blendMode != mode)
+          layer.id,
+    ];
+    if (targets.isNotEmpty) {
+      _layerController.setLayersBlendMode(layerIds: targets, blendMode: mode);
       notifyListeners();
     }
   }
@@ -6260,28 +6274,35 @@ class EditorSessionManager extends ChangeNotifier {
   // --- Legend bulk commands (R-toolbar round) -----------------------------
   //
   // One legend-flyout action sweeps every eligible layer of the active cut.
-  // Semantics mirror the per-row toggles: visibility/mute/opacity ride the
-  // layer controller (view-ish state, not undoable — same as their single
-  // buttons), sheet/mark/fill-reference are undoable and land as ONE
-  // CompositeCommand entry.
+  // Semantics mirror the per-row toggles — and since 2026-08-29 that means
+  // UNDOABLE for all of them (유저: 「눈을 껏다키든 뭐든 다 언두」). Every
+  // bulk action lands as ONE entry, the way sheet/mark/fill-reference
+  // already did.
 
   /// Shows or hides every layer of the active cut.
   void setAllLayersVisibility(bool visible) {
-    for (final layer in layers) {
-      if (layer.isVisible != visible) {
-        _layerController.toggleLayerVisibility(layer.id);
-      }
-    }
+    // ⛔ONE undo step for one legend press — the loop used to make one per
+    // row, which is 유저's 「일괄로 버튼 조작하고 언두하면 바꼈던 레이어들
+    // 다 한번에 언두되야하는데 안됨」 in the place it is easiest to hit.
+    _layerController.setLayersVisible(
+      layerIds: [
+        for (final layer in layers)
+          if (layer.isVisible != visible) layer.id,
+      ],
+      visible: visible,
+    );
     notifyListeners();
   }
 
   /// Mutes/unmutes every SE layer of the active cut.
   void setAllSeLayersMuted(bool muted) {
-    for (final layer in layers) {
-      if (layer.kind == LayerKind.se && layer.muted != muted) {
-        _layerController.toggleLayerMuted(layer.id);
-      }
-    }
+    _layerController.setLayersMuted(
+      layerIds: [
+        for (final layer in layers)
+          if (layer.kind == LayerKind.se && layer.muted != muted) layer.id,
+      ],
+      muted: muted,
+    );
     notifyListeners();
   }
 
@@ -6293,12 +6314,16 @@ class EditorSessionManager extends ChangeNotifier {
   /// Sets every picture-opacity layer's opacity to [opacity] (the legend's
   /// numeric bulk set). Camera stays untouched (its slider is the dim).
   void setAllLayersOpacity(double opacity) {
-    final clamped = opacity.clamp(0.0, 1.0);
-    for (final layer in layers) {
-      if (layerKindHasPictureOpacity(layer.kind) && layer.opacity != clamped) {
-        _layerController.setLayerOpacity(layerId: layer.id, opacity: clamped);
-      }
-    }
+    final clamped = opacity.clamp(0.0, 1.0).toDouble();
+    _layerController.setLayersOpacity(
+      layerIds: [
+        for (final layer in layers)
+          if (layerKindHasPictureOpacity(layer.kind) &&
+              layer.opacity != clamped)
+            layer.id,
+      ],
+      opacity: clamped,
+    );
     notifyListeners();
   }
 
@@ -7699,11 +7724,11 @@ class EditorSessionManager extends ChangeNotifier {
     // wider than TVPaint did (288, hands-on).
     final cameraSize =
         parsed.projectCameraWidth != null && parsed.projectCameraHeight != null
-            ? CanvasSize(
-                width: parsed.projectCameraWidth!,
-                height: parsed.projectCameraHeight!,
-              )
-            : defaultProjectCameraSize;
+        ? CanvasSize(
+            width: parsed.projectCameraWidth!,
+            height: parsed.projectCameraHeight!,
+          )
+        : defaultProjectCameraSize;
     final mint = _importIdMint();
     final warnings = [...parsed.warnings];
     if (source.staged) {
@@ -7712,9 +7737,7 @@ class EditorSessionManager extends ChangeNotifier {
       // make this road unreachable, so a build that still takes it should
       // be visible rather than quietly slower — and if it never appears
       // in the field, the road comes out.
-      warnings.add(
-        '제자리에서 읽지 못해 임시 사본으로 열었습니다 — 이 문구가 보이면 알려주세요.',
-      );
+      warnings.add('제자리에서 읽지 못해 임시 사본으로 열었습니다 — 이 문구가 보이면 알려주세요.');
     }
     final plans = <(TvpImportPlan, Map<String, TvppSlot>)>[];
     for (var c = 0; c < parsed.clips.length; c++) {
@@ -7879,16 +7902,15 @@ class EditorSessionManager extends ChangeNotifier {
           if (tiles == null || tiles.isEmpty) {
             continue;
           }
-          final surface = BitmapSurface(
-            canvasSize: bakedCut.canvasSize,
-          ).putTiles([
-            for (final tile in tiles)
-              BitmapTile(
-                coord: TileCoord(x: tile.x, y: tile.y),
-                size: 256,
-                pixels: tile.pixels,
-              ),
-          ]);
+          final surface = BitmapSurface(canvasSize: bakedCut.canvasSize)
+              .putTiles([
+                for (final tile in tiles)
+                  BitmapTile(
+                    coord: TileCoord(x: tile.x, y: tile.y),
+                    size: 256,
+                    pixels: tile.pixels,
+                  ),
+              ]);
           bakeCelSurface(
             brushFrameStore,
             brushFrameKeyForCut(bakedCut, bake.layerId, bake.frameId),
@@ -7936,7 +7958,6 @@ class EditorSessionManager extends ChangeNotifier {
     MemoryBlackBox.end('tvpp-import');
     return warnings;
   }
-
 
   /// Rasterize (§6-f): the ONE verb for every derived-content layer.
   /// Reference layers null [Layer.mediaReference] (the pixels are already
@@ -13794,9 +13815,7 @@ class EditorSessionManager extends ChangeNotifier {
       endIndexExclusive: live.endFrameExclusive,
       // Deduped in display order: a layer row and its own lane rows are
       // several rows of ONE layer, and the move machine plans per layer.
-      layerIds: {
-        for (final row in live.spanRows) ?row.owningLayerId,
-      }.toList(),
+      layerIds: {for (final row in live.spanRows) ?row.owningLayerId}.toList(),
     );
   }
 
@@ -17262,9 +17281,9 @@ class EditorSessionManager extends ChangeNotifier {
     final archivePath = _projectFilePath;
     if (entryName != null && archivePath != null) {
       try {
-        final entry = parseAnicelZipLayoutFile(archivePath).entryNamed(
-          entryName,
-        );
+        final entry = parseAnicelZipLayoutFile(
+          archivePath,
+        ).entryNamed(entryName);
         if (entry != null) {
           return MediaArchiveBytes(
             archivePath: archivePath,
