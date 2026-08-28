@@ -196,7 +196,9 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
                       inkKeyFor: owner == null
                           ? null
                           : (boxId) => envelopeInkBoxKey(owner, boxId),
-                      inkImageFor: inkController?.displayImageFor,
+                      inkImageFor: inkController == null
+                          ? null
+                          : (key) => inkController.displayImageFor(null, key),
                       liveInkKeys: {for (final window in mounted) window.key},
                       repaint: inkController,
                     ),

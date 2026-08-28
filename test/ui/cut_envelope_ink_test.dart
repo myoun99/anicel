@@ -257,7 +257,7 @@ void main() {
       addTearDown(controller.dispose);
 
       expect(
-        () => controller.sessionStateFor(envelopeInkBoxKey(owner, 'cell')),
+        () => controller.sessionStateFor(null, envelopeInkBoxKey(owner, 'cell')),
         throwsStateError,
       );
     });
@@ -286,7 +286,7 @@ void main() {
       addTearDown(controller.dispose);
       controller.syncGeometry(aspectRatio: 1);
 
-      expect(controller.hasInkFor(envelopeInkBoxKey(owner, 'cell')), isFalse);
+      expect(controller.hasInkFor(null, envelopeInkBoxKey(owner, 'cell')), isFalse);
     });
 
     test('a box with no strokes has no display image to draw', () {
@@ -295,7 +295,7 @@ void main() {
       controller.syncGeometry(aspectRatio: 1);
 
       expect(
-        controller.displayImageFor(envelopeInkBoxKey(owner, 'cell')),
+        controller.displayImageFor(null, envelopeInkBoxKey(owner, 'cell')),
         isNull,
       );
     });

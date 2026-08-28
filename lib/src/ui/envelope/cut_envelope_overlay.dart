@@ -58,8 +58,9 @@ class CutEnvelopeInkOverlay extends StatelessWidget {
       strokeActive: strokeActive,
       // ⛔One plane, so the window's plane stays null and this controller
       // never asks. That is the whole shape of the envelope's difference.
-      sessionStateFor: (window) => controller.sessionStateFor(window.key),
+      sessionStateFor: (window) => controller.sessionStateFor(null, window.key),
       onStrokeCommitted: (window, strokeData) => controller.commitStroke(
+        plane: null,
         key: window.key,
         strokeData: strokeData,
         historyManager: historyManager,

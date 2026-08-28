@@ -1,11 +1,5 @@
-import 'dart:async' show unawaited;
-import 'dart:ui' as ui show Image;
 import 'dart:ui' show Rect, Size;
 
-import 'package:flutter/foundation.dart';
-
-import '../../models/bitmap_surface.dart';
-import '../../models/brush_edit_session_state.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/brush_history_policy.dart';
 import '../../models/canvas_size.dart';
@@ -17,13 +11,9 @@ import '../../models/frame_id.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/brush_frame_store.dart';
-import '../../services/brush_stroke_commit_data.dart';
-import '../../services/cache_invalidation_executor.dart';
-import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/history_manager.dart';
-import '../canvas/bitmap_tile_image_cache.dart';
 import '../sheet/sheet_ink_layer.dart';
-import '../canvas/tiled_surface_compose.dart';
+import '../sheet/sheet_ink_controller.dart';
 
 /// Owns the envelope's ink: brush strokes on a cut envelope, kept in a
 /// store fully SEPARATE from the session's cel [BrushFrameStore] so sheet
@@ -36,7 +26,7 @@ import '../canvas/tiled_surface_compose.dart';
 /// belongs to the box it started in. A box that stops existing takes its
 /// ink with it, which is exactly the contract that removes stray
 /// annotations from a form the user re-shapes.
-class CutEnvelopeInkController extends ChangeNotifier {
+class CutEnvelopeInkController extends SheetInkController<Null> {
   CutEnvelopeInkController({BrushFrameStore? store})
     : _store = store ?? BrushFrameStore();
 
@@ -103,7 +93,8 @@ class CutEnvelopeInkController extends ChangeNotifier {
     );
   }
 
-  BrushFrameEditingCoordinator get _required {
+  @override
+  BrushFrameEditingCoordinator coordinatorFor(Null plane) {
     final coordinator = _coordinator;
     if (coordinator == null) {
       throw StateError('syncGeometry must run before ink access.');
@@ -111,107 +102,8 @@ class CutEnvelopeInkController extends ChangeNotifier {
     return coordinator;
   }
 
-  /// The session surface for one box (created blank on first access).
-  BrushEditSessionState sessionStateFor(BrushFrameKey key) {
-    final coordinator = _required;
-    coordinator.selectFrame(key);
-    return coordinator.activeSessionState;
-  }
-
-  /// Commits a finished stroke through the app history — one undo step,
-  /// exactly like a canvas stroke.
-  void commitStroke({
-    required BrushFrameKey key,
-    required BrushStrokeCommitData strokeData,
-    required HistoryManager historyManager,
-    CacheInvalidationSink? cacheInvalidationSink,
-  }) {
-    final coordinator = _required;
-    coordinator.selectFrame(key);
-    historyManager.execute(
-      BrushStrokeHistoryCommand(
-        coordinator: coordinator,
-        strokeData: strokeData,
-        cacheInvalidationSink: cacheInvalidationSink,
-      ),
-    );
-    notifyListeners();
-  }
-
-  /// Whether a box holds any ink (test/debug oracle — the baked raster is
-  /// the content, so "count" collapses to has-content).
-  bool hasInkFor(BrushFrameKey key) => _store.celHasRenderableContent(key);
-
-  /// The painter-side display image for a box, composed lazily from the
-  /// baked surface and invalidated by SURFACE IDENTITY: strokes, undo and
-  /// redo all replace the baked surface object, so staleness is structural
-  /// and needs no invalidation wiring (the conte's rule).
-  ///
-  /// This is what makes saved ink visible at all: only a handful of boxes
-  /// are ever MOUNTED as input windows ([mountedEnvelopeInkWindows]), so
-  /// without the painter drawing the rest, everything written in a cell
-  /// would vanish the moment that cell got small or scrolled away. A key
-  /// whose window IS live is skipped by the caller instead — the
-  /// interactive view already shows that surface.
-  ui.Image? displayImageFor(BrushFrameKey key) {
-    final surface = _store.bakedSurfaceOrNull(key);
-    if (surface == null) {
-      return null;
-    }
-    final cached = _display[key];
-    if (cached != null && identical(cached.$1, surface)) {
-      return cached.$2;
-    }
-    final image = composeTiledSurfaceImageSyncOrNull(
-      surface,
-      reuse: BitmapTileImageCache.instance,
-    );
-    if (image != null) {
-      cached?.$2.dispose();
-      _display[key] = (surface, image);
-      return image;
-    }
-    // Tile images not GPU-resident yet: compose async once and repaint via
-    // notify; the stale image holds meanwhile (the playback policy).
-    if (_composing.add(key)) {
-      unawaited(
-        composeTiledSurfaceImage(
-          surface,
-          reuse: BitmapTileImageCache.instance,
-        ).then((composed) {
-          _composing.remove(key);
-          if (composed == null) {
-            return;
-          }
-          // The panel can close while a compose is in flight — a notify
-          // then would throw, and the image would leak.
-          if (_disposed ||
-              !identical(_store.bakedSurfaceOrNull(key), surface)) {
-            composed.dispose();
-            return;
-          }
-          _display[key]?.$2.dispose();
-          _display[key] = (surface, composed);
-          notifyListeners();
-        }),
-      );
-    }
-    return cached?.$2;
-  }
-
-  final Map<BrushFrameKey, (BitmapSurface, ui.Image)> _display = {};
-  final Set<BrushFrameKey> _composing = {};
-  bool _disposed = false;
-
   @override
-  void dispose() {
-    _disposed = true;
-    for (final entry in _display.values) {
-      entry.$2.dispose();
-    }
-    _display.clear();
-    super.dispose();
-  }
+  BrushFrameStore storeFor(Null plane) => _store;
 }
 
 /// The windows worth MOUNTING right now.
