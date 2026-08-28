@@ -3,7 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/core/sync_image_upload.dart';
 import 'package:anicel/src/services/runtime_path_report.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/dialogs/system_status_section.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// Preferences ▸ System (user rule 07-22): every runtime-selected
 /// implementation path is REPORTED — the report's subsystem roster is a
@@ -69,9 +71,17 @@ void main() {
   });
 
   testWidgets('the section renders one row per subsystem', (tester) async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
     await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(body: SingleChildScrollView(child: SystemStatusSection())),
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: SystemStatusSection(session: session),
+          ),
+        ),
       ),
     );
     expect(

@@ -176,8 +176,7 @@ class AppStrings {
 
   /// D26: the crossing-fade refusal warning (red corner marker's hover
   /// text) — the sanctioned exception to the no-explanatory-UI rule.
-  String get tlTransitionCrossingWarning =>
-      _s('tlTransitionCrossingWarning');
+  String get tlTransitionCrossingWarning => _s('tlTransitionCrossingWarning');
   String get audioMicGainLabel => _s('audioMicGainLabel');
   String get audioInputChannelLabel => _s('audioInputChannelLabel');
   String get audioInputChannelDevice => _s('audioInputChannelDevice');
@@ -305,8 +304,7 @@ class AppStrings {
       _s('convertLinkedCutOriginGainsTemplate');
   String get convertLinkedCutNothing => _s('convertLinkedCutNothing');
   String get convertLinkedCutUndoNote => _s('convertLinkedCutUndoNote');
-  String get convertLinkedCutResizeFirst =>
-      _s('convertLinkedCutResizeFirst');
+  String get convertLinkedCutResizeFirst => _s('convertLinkedCutResizeFirst');
 
   // Drawing guides (symmetry / perspective).
   String get toolGuide => _s('toolGuide');
@@ -327,8 +325,7 @@ class AppStrings {
   String get guideSnapNote => _s('guideSnapNote');
   String get guideEyeLevelShow => _s('guideEyeLevelShow');
   String get guideConstrainToEyeLevel => _s('guideConstrainToEyeLevel');
-  String get guideConstrainToEyeLevelNote =>
-      _s('guideConstrainToEyeLevelNote');
+  String get guideConstrainToEyeLevelNote => _s('guideConstrainToEyeLevelNote');
   String get guideVanishingPoint => _s('guideVanishingPoint');
   String get guideVanishingPointAtInfinity =>
       _s('guideVanishingPointAtInfinity');
@@ -345,6 +342,7 @@ class AppStrings {
   String get recoveryDeleteTitle => _s('recoveryDeleteTitle');
   String get recoveryDeleteMessageTemplate =>
       _s('recoveryDeleteMessageTemplate');
+
   /// The button that does NOT recover — and deletes the snapshot doing it.
   ///
   /// The label carries the verb on its own, because [recoverOpenSavedHint]
@@ -507,6 +505,19 @@ class AppStrings {
   String get prefsAccent => _s('prefsAccent');
   String get prefsDisplay => _s('prefsDisplay');
   String get prefsSystem => _s('prefsSystem');
+  String get prefsMemory => _s('prefsMemory');
+  String get memoryProcessTotal => _s('memoryProcessTotal');
+  String get memoryTracked => _s('memoryTracked');
+  String get memoryUntracked => _s('memoryUntracked');
+  String get memoryAvailable => _s('memoryAvailable');
+  String get memoryPinned => _s('memoryPinned');
+  String get memoryItemDrawings => _s('memoryItemDrawings');
+  String get memoryItemSheetInk => _s('memoryItemSheetInk');
+  String get memoryItemUndo => _s('memoryItemUndo');
+  String get memoryItemPlaybackFrames => _s('memoryItemPlaybackFrames');
+  String get memoryItemLayerImages => _s('memoryItemLayerImages');
+  String get memoryItemBrushTips => _s('memoryItemBrushTips');
+  String get memoryItemPanelRasters => _s('memoryItemPanelRasters');
 
   // --- Display (R11) ---
   String get uiScaleLabel => _s('uiScaleLabel');
@@ -603,6 +614,7 @@ class AppStrings {
   String get seNameTagSampleName => _s('seNameTagSampleName');
   String get seNameTagSampleLine => _s('seNameTagSampleLine');
   String get seNameTagReset => _s('seNameTagReset');
+
   /// The cut-scoped camera row's DISPLAY name: "Direction layer". The code
   /// kind stays [LayerKind.instruction] (save compatibility) — only the word
   /// the user reads changed, so the camera section can name its three types
@@ -710,6 +722,7 @@ class AppStrings {
   String get mediaActions => _s('mediaActions');
   String get mediaImportAudio => _s('mediaImportAudio');
   String get mediaRename => _s('mediaRename');
+
   /// The pool row's way onto the timeline for a hand that would rather
   /// not drag — and the only way at all until the drop targets land.
   String get mediaPlace => _s('mediaPlace');
@@ -755,6 +768,7 @@ class AppStrings {
   String get mediaViewerLoadFailed => _s('mediaViewerLoadFailed');
   String get mediaViewerCannotDisplay => _s('mediaViewerCannotDisplay');
   String get mediaViewerNoPdfRenderer => _s('mediaViewerNoPdfRenderer');
+
   /// The gear on every canvas pill. Not "view settings" — the host puts its
   /// own verbs in the same list (유저 확정 2026-08-13: 등록·맞바꾸기는 ⚙ 안으로).
   String get panelSettings => _s('panelSettings');
@@ -1373,6 +1387,19 @@ class AppStrings {
     'prefsAccent': 'Accent colors',
     'prefsDisplay': 'Display',
     'prefsSystem': 'System',
+    'prefsMemory': 'Memory',
+    'memoryProcessTotal': 'This app, in RAM',
+    'memoryTracked': 'Accounted for',
+    'memoryUntracked': 'Engine, fonts and framework',
+    'memoryAvailable': 'Still available',
+    'memoryPinned': 'held for playback',
+    'memoryItemDrawings': 'Drawings',
+    'memoryItemSheetInk': 'Sheet handwriting',
+    'memoryItemUndo': 'Undo history',
+    'memoryItemPlaybackFrames': 'Playback frames',
+    'memoryItemLayerImages': 'Layer images',
+    'memoryItemBrushTips': 'Brush tips',
+    'memoryItemPanelRasters': 'Panel rasters',
     'uiScaleLabel': 'Interface scale',
     'accentTitle': 'Accent colors',
     'accent1Label': 'Accent 1',
@@ -1923,12 +1950,10 @@ class AppStrings {
     'guideMirrorModeOn': 'コピーが左右反転します（本当の鏡）。',
     'guideMirrorModeOff': 'コピーは回転のみ — 反転しません。',
     'guideSnap': 'スナップ',
-    'guideSnapNote':
-        'パースガイドは複数同時にスナップできます。描かないものはオフに。',
+    'guideSnapNote': 'パースガイドは複数同時にスナップできます。描かないものはオフに。',
     'guideEyeLevelShow': 'アイレベルを表示',
     'guideConstrainToEyeLevel': '消失点をアイレベル上に固定',
-    'guideConstrainToEyeLevelNote':
-        '次のドラッグに効きます。すでに置いたものは動きません。',
+    'guideConstrainToEyeLevelNote': '次のドラッグに効きます。すでに置いたものは動きません。',
     'guideVanishingPoint': '消失点',
     'guideVanishingPointAtInfinity': '平行（無限遠）',
     'guideAddVanishingPoint': '消失点を追加',
@@ -1938,8 +1963,7 @@ class AppStrings {
         'このプロジェクトには、より新しい自動保存があります。それを復元'
         'しますか、それとも最後に保存したファイルを開きますか？',
     'recoverOpenSaved': '破棄して開く',
-    'recoverOpenSavedHint':
-        '自動保存を削除し、最後に保存した状態のファイルを開きます。元に戻せません。',
+    'recoverOpenSavedHint': '自動保存を削除し、最後に保存した状態のファイルを開きます。元に戻せません。',
     'recoverAction': '復元',
     'closeProjectTitle': 'プロジェクトを閉じますか？',
     'closeProjectBody': '変更は保存されていません。閉じますか？',
@@ -2138,6 +2162,19 @@ class AppStrings {
     'prefsAccent': 'アクセントカラー',
     'prefsDisplay': '表示',
     'prefsSystem': 'システム',
+    'prefsMemory': 'メモリ',
+    'memoryProcessTotal': 'このアプリのRAM使用量',
+    'memoryTracked': '内訳がわかる分',
+    'memoryUntracked': 'エンジン・フォント・フレームワーク',
+    'memoryAvailable': 'まだ使える分',
+    'memoryPinned': '再生のため保持中',
+    'memoryItemDrawings': '作画',
+    'memoryItemSheetInk': '用紙の手書き',
+    'memoryItemUndo': '取り消し履歴',
+    'memoryItemPlaybackFrames': '再生フレーム',
+    'memoryItemLayerImages': 'レイヤー画像',
+    'memoryItemBrushTips': 'ブラシ先端',
+    'memoryItemPanelRasters': 'パネルのラスター',
     'uiScaleLabel': 'UIの大きさ',
     'accentTitle': 'アクセントカラー',
     'accent1Label': 'アクセント1',
@@ -2763,12 +2800,10 @@ class AppStrings {
     'guideMirrorMode': '선대칭',
     'guideMirrorModeOff': '사본은 회전일 뿐 — 뒤집히지 않습니다.',
     'guideSnap': '스냅',
-    'guideSnapNote':
-        '퍼스 가이드는 여러 개가 동시에 스냅합니다. 안 그리는 건 꺼두세요.',
+    'guideSnapNote': '퍼스 가이드는 여러 개가 동시에 스냅합니다. 안 그리는 건 꺼두세요.',
     'guideEyeLevelShow': '아이레벨 표시',
     'guideConstrainToEyeLevel': '소실점을 아이레벨에 고정',
-    'guideConstrainToEyeLevelNote':
-        '다음 드래그부터 적용됩니다. 이미 놓인 것은 움직이지 않습니다.',
+    'guideConstrainToEyeLevelNote': '다음 드래그부터 적용됩니다. 이미 놓인 것은 움직이지 않습니다.',
     'guideVanishingPoint': '소실점',
     'guideVanishingPointAtInfinity': '평행(무한대)',
     'guideAddVanishingPoint': '소실점 추가',
@@ -2778,8 +2813,7 @@ class AppStrings {
         '이 프로젝트에 더 최신인 자동 저장이 있습니다. 그것을 복구할까요, '
         '아니면 마지막으로 저장된 파일을 열까요?',
     'recoverOpenSaved': '버리고 열기',
-    'recoverOpenSavedHint':
-        '자동 저장을 삭제하고 마지막으로 저장된 상태의 파일을 엽니다. 되돌릴 수 없습니다.',
+    'recoverOpenSavedHint': '자동 저장을 삭제하고 마지막으로 저장된 상태의 파일을 엽니다. 되돌릴 수 없습니다.',
     'recoverAction': '복구',
     'closeProjectTitle': '프로젝트를 닫을까요?',
     'closeProjectBody': '변경 사항이 저장되지 않았습니다. 그래도 닫을까요?',
@@ -2976,6 +3010,19 @@ class AppStrings {
     'prefsAccent': '강조 색상',
     'prefsDisplay': '화면',
     'prefsSystem': '시스템',
+    'prefsMemory': '메모리',
+    'memoryProcessTotal': '이 앱이 쓰는 RAM',
+    'memoryTracked': '내역을 아는 만큼',
+    'memoryUntracked': '엔진·폰트·프레임워크',
+    'memoryAvailable': '아직 쓸 수 있는 양',
+    'memoryPinned': '재생용으로 붙잡힘',
+    'memoryItemDrawings': '그림',
+    'memoryItemSheetInk': '용지 손글씨',
+    'memoryItemUndo': '실행취소 기록',
+    'memoryItemPlaybackFrames': '재생 프레임',
+    'memoryItemLayerImages': '레이어 이미지',
+    'memoryItemBrushTips': '브러시 팁',
+    'memoryItemPanelRasters': '패널 래스터',
     'uiScaleLabel': 'UI 크기',
     'accentTitle': '강조 색상',
     'accent1Label': '강조색 1',
@@ -3495,8 +3542,7 @@ class AppStrings {
         'L\'enregistrement se place sur la piste SE sélectionnée — sélectionnez-en une d\'abord.',
     'recordTakeClipped': 'La prise a saturé — le coin rouge marque le bloc.',
     'recordClipMarkerTooltip': 'Prise saturée (niveau trop fort)',
-    'tlTransitionCrossingWarning':
-        'Dépasse la limite du plan — non appliqué',
+    'tlTransitionCrossingWarning': 'Dépasse la limite du plan — non appliqué',
     'audioMicGainLabel': 'Gain micro (dB)',
     'audioInputChannelLabel': 'Canaux d\'entrée',
     'audioInputChannelDevice': 'Tel quel',
@@ -3600,7 +3646,8 @@ class AppStrings {
     'guideLineCount': 'Copies',
     'guideMirrorMode': 'Symétrie axiale',
     'guideMirrorModeOn': 'Les copies sont inversées (un vrai miroir).',
-    'guideMirrorModeOff': 'Les copies sont des rotations — rien n\'est inversé.',
+    'guideMirrorModeOff':
+        'Les copies sont des rotations — rien n\'est inversé.',
     'guideSnap': 'Aimanter les traits',
     'guideSnapNote':
         'Plusieurs repères de perspective peuvent aimanter à la fois ; '
@@ -3826,6 +3873,19 @@ class AppStrings {
     'prefsLanguage': 'Langue',
     'prefsAccent': "Couleurs d'accent",
     'prefsSystem': 'Système',
+    'prefsMemory': 'Mémoire',
+    'memoryProcessTotal': 'Cette application, en RAM',
+    'memoryTracked': 'Détail connu',
+    'memoryUntracked': 'Moteur, polices et framework',
+    'memoryAvailable': 'Encore disponible',
+    'memoryPinned': 'retenu pour la lecture',
+    'memoryItemDrawings': 'Dessins',
+    'memoryItemSheetInk': 'Écriture sur feuille',
+    'memoryItemUndo': "Historique d'annulation",
+    'memoryItemPlaybackFrames': 'Images de lecture',
+    'memoryItemLayerImages': 'Images de calque',
+    'memoryItemBrushTips': 'Pointes de brosse',
+    'memoryItemPanelRasters': 'Rasters de panneau',
     'accentTitle': "Couleurs d'accent",
     'accent1Label': 'Accent 1',
     'accent1Help': 'Sélection, tête de lecture, bascules actives.',
@@ -4266,7 +4326,8 @@ class AppStrings {
     'tlDropAttachSyncedTemplate': 'attacher à {name} (synchronisé)',
     'tlDropAttachFreeTemplate': 'attacher à {name} (libre)',
     'tlDropDetachAttach': 'détacher',
-    'tlDropFolderInAttachFolder': 'un dossier ne peut pas contenir de dossier dans un groupe attaché',
+    'tlDropFolderInAttachFolder':
+        'un dossier ne peut pas contenir de dossier dans un groupe attaché',
     'tlDetachLayer': 'Détacher de la base',
     'tlSharedCut': 'Couper',
     'tlSharedCopy': 'Copier',
@@ -4627,6 +4688,19 @@ class AppStrings {
     'prefsLanguage': '语言',
     'prefsAccent': '强调色',
     'prefsSystem': '系统',
+    'prefsMemory': '内存',
+    'memoryProcessTotal': '本应用占用的内存',
+    'memoryTracked': '已知明细',
+    'memoryUntracked': '引擎、字体与框架',
+    'memoryAvailable': '尚可使用',
+    'memoryPinned': '播放占用中',
+    'memoryItemDrawings': '画稿',
+    'memoryItemSheetInk': '纸面手写',
+    'memoryItemUndo': '撤销记录',
+    'memoryItemPlaybackFrames': '播放帧',
+    'memoryItemLayerImages': '图层图像',
+    'memoryItemBrushTips': '笔尖',
+    'memoryItemPanelRasters': '面板栅格',
     'accentTitle': '强调色',
     'accent1Label': '强调色 1',
     'accent1Help': '用于选区、播放头和已启用的开关。',
