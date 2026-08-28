@@ -330,7 +330,7 @@ void main() {
       expect(ink.hasInkFor(window.key), isTrue);
       expect(
         window.key,
-        envelopeInkBoxKey(const CutId('39'), window.boxId),
+        envelopeInkBoxKey(const CutId('39'), window.id),
         reason: 'the owning cut keys the sheet',
       );
       session.historyManager.undo();

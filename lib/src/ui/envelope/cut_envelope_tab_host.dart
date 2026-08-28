@@ -16,6 +16,7 @@ import '../editor_session_manager.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/static_raster.dart';
 import 'cut_envelope_builder.dart';
+import '../sheet/sheet_ink_layer.dart';
 import 'cut_envelope_ink.dart';
 import 'cut_envelope_overlay.dart';
 import 'cut_envelope_painter.dart';
@@ -133,7 +134,7 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
         ? null
         : cutEnvelopeInkOwner(session.repository.requireProject(), cut.id);
     final windows = owner == null || inkController == null
-        ? const <EnvelopeInkWindow>[]
+        ? const <SheetInkWindow>[]
         : envelopeInkWindows(layout, owner);
     final brushToolState = widget.brushToolState;
     final inking =
@@ -168,7 +169,7 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
                   viewport,
                   constraints.biggest,
                 )
-              : const <EnvelopeInkWindow>[];
+              : const <SheetInkWindow>[];
           return Stack(
             children: [
               Positioned.fill(
