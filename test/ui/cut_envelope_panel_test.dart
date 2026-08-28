@@ -316,7 +316,7 @@ void main() {
       final origin = tester.getTopLeft(find.byType(CutEnvelopeInkOverlay));
       final rect = window.screenRect(overlay.viewport);
 
-      expect(ink.hasInkFor(window.key), isFalse);
+      expect(ink.hasInkFor(null, window.key), isFalse);
       final gesture = await tester.startGesture(
         origin + rect.center,
         pointer: 7,
@@ -327,14 +327,14 @@ void main() {
       await gesture.up();
       await tester.pump();
 
-      expect(ink.hasInkFor(window.key), isTrue);
+      expect(ink.hasInkFor(null, window.key), isTrue);
       expect(
         window.key,
         envelopeInkBoxKey(const CutId('39'), window.id),
         reason: 'the owning cut keys the sheet',
       );
       session.historyManager.undo();
-      expect(ink.hasInkFor(window.key), isFalse);
+      expect(ink.hasInkFor(null, window.key), isFalse);
     });
   });
 }

@@ -1,10 +1,5 @@
-import 'dart:async' show unawaited;
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 
-import '../../models/bitmap_surface.dart';
-import '../../models/brush_edit_session_state.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/brush_history_policy.dart';
 import '../../models/canvas_size.dart';
@@ -16,14 +11,12 @@ import '../../models/frame_id.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/brush_frame_store.dart';
-import '../../services/brush_stroke_commit_data.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/history_manager.dart';
 import '../brush/brush_tool_state.dart';
-import '../canvas/bitmap_tile_image_cache.dart';
 import '../sheet/sheet_ink_layer.dart';
-import '../canvas/tiled_surface_compose.dart';
+import '../sheet/sheet_ink_controller.dart';
 
 /// Which conte ink plane a stroke lands on.
 enum ConteInkPlane {
@@ -52,7 +45,7 @@ enum ConteInkPlane {
 /// margins. The row/page stores may be handed in by the session so the
 /// project archive can persist them ([BrushFrameStore] cels, the second
 /// namespace).
-class ConteInkController extends ChangeNotifier {
+class ConteInkController extends SheetInkController<ConteInkPlane> {
   ConteInkController({BrushFrameStore? rowStore, BrushFrameStore? pageStore})
     : _rowStore = rowStore ?? BrushFrameStore(),
       _pageStore = pageStore ?? BrushFrameStore();
@@ -134,7 +127,8 @@ class ConteInkController extends ChangeNotifier {
     );
   }
 
-  BrushFrameEditingCoordinator _coordinatorFor(ConteInkPlane plane) {
+  @override
+  BrushFrameEditingCoordinator coordinatorFor(ConteInkPlane plane) {
     final coordinator = plane == ConteInkPlane.row ? _row : _page;
     if (coordinator == null) {
       throw StateError('syncGeometry must run before ink access.');
@@ -142,105 +136,9 @@ class ConteInkController extends ChangeNotifier {
     return coordinator;
   }
 
-  BrushFrameStore _storeFor(ConteInkPlane plane) =>
-      plane == ConteInkPlane.row ? _rowStore : _pageStore;
-
-  /// The session surface for one window (created blank on first access).
-  BrushEditSessionState sessionStateFor(
-    ConteInkPlane plane,
-    BrushFrameKey key,
-  ) {
-    final coordinator = _coordinatorFor(plane);
-    coordinator.selectFrame(key);
-    return coordinator.activeSessionState;
-  }
-
-  /// Commits a finished sheet stroke through the app history (one undo
-  /// step, exactly like a canvas stroke).
-  void commitStroke({
-    required ConteInkPlane plane,
-    required BrushFrameKey key,
-    required BrushStrokeCommitData strokeData,
-    required HistoryManager historyManager,
-    CacheInvalidationSink? cacheInvalidationSink,
-  }) {
-    final coordinator = _coordinatorFor(plane);
-    coordinator.selectFrame(key);
-    historyManager.execute(
-      BrushStrokeHistoryCommand(
-        coordinator: coordinator,
-        strokeData: strokeData,
-        cacheInvalidationSink: cacheInvalidationSink,
-      ),
-    );
-    notifyListeners();
-  }
-
-  /// Whether the window's cel holds any ink (display gate + test oracle).
-  bool hasInkFor(ConteInkPlane plane, BrushFrameKey key) =>
-      _storeFor(plane).celHasRenderableContent(key);
-
-  /// Painter-side display images, composed lazily from the baked
-  /// surfaces and invalidated by SURFACE IDENTITY: strokes, undo and redo
-  /// all replace the baked surface object, so staleness is structural —
-  /// no invalidation wiring. The page painter draws these so saved ink
-  /// shows with the ink mode OFF (and the PNG export inherits it free);
-  /// a key with a LIVE input window is skipped by the caller instead
-  /// (the interactive view already shows that surface).
-  ui.Image? displayImageFor(ConteInkPlane plane, BrushFrameKey key) {
-    final surface = _storeFor(plane).bakedSurfaceOrNull(key);
-    if (surface == null) {
-      return null;
-    }
-    final cached = _display[key];
-    if (cached != null && identical(cached.$1, surface)) {
-      return cached.$2;
-    }
-    final image = composeTiledSurfaceImageSyncOrNull(
-      surface,
-      reuse: BitmapTileImageCache.instance,
-    );
-    if (image != null) {
-      cached?.$2.dispose();
-      _display[key] = (surface, image);
-      return image;
-    }
-    // Tile images not GPU-resident yet: compose async once, repaint via
-    // notify; the stale image holds meanwhile (the playback policy).
-    if (_composing.add(key)) {
-      unawaited(
-        composeTiledSurfaceImage(
-          surface,
-          reuse: BitmapTileImageCache.instance,
-        ).then((composed) {
-          _composing.remove(key);
-          if (composed == null) {
-            return;
-          }
-          if (!identical(_storeFor(plane).bakedSurfaceOrNull(key), surface)) {
-            composed.dispose();
-            return;
-          }
-          _display[key]?.$2.dispose();
-          _display[key] = (surface, composed);
-          notifyListeners();
-        }),
-      );
-    }
-    return cached?.$2;
-  }
-
-  final Map<BrushFrameKey, (BitmapSurface, ui.Image)> _display = {};
-  final Set<BrushFrameKey> _composing = {};
-
   @override
-  void dispose() {
-    for (final entry in _display.values) {
-      entry.$2.dispose();
-    }
-    _display.clear();
-    super.dispose();
-  }
+  BrushFrameStore storeFor(ConteInkPlane plane) =>
+      plane == ConteInkPlane.row ? _rowStore : _pageStore;
 }
 
 /// The ink windows for one page, bottom-of-stack first: page ink lies
