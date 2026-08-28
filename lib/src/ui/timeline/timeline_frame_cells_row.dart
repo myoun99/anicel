@@ -418,9 +418,16 @@ class TimelineFrameCellsRow extends StatelessWidget {
           // the tiles, so the frames/seconds toggle stays a plain repaint
           // and never joins a tile bake key (the reason it is not inside
           // the cells painter itself).
-          foregroundPainter:
-              layerKindHoldsDrawings(layer.kind) &&
-                  !layerKindUsesSeSheetCells(layer.kind)
+          //
+          // 🚨F-40 (유저 2026-08-28): 「se블록에 코마표시가 없음. **블록이면
+          // 뭐든 반드시 코마블록이 있어야함**」. 여기 `&& !layerKindUsesSeSheetCells`
+          // 가 붙어 있었다 — 그 술어는 **셀 글리프와 X 마크**를 억제하는 것이고
+          // (SE 의 글자는 행 단위 오버레이가 그린다), **블록 길이와는 상관이
+          // 없다.** 한 술어가 두 질문에 답하고 있었다.
+          //
+          // ⇒ 이제 조건은 「블록을 가졌나」 하나다. 그게 `layerKindHoldsDrawings`
+          // 이고 se 는 거기서 true 다.
+          foregroundPainter: layerKindHoldsDrawings(layer.kind)
               ? TimelineRowRunLabelsPainter(
                   layer: layer,
                   geometry: geometry,
