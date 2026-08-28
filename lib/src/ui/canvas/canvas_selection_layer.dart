@@ -1270,7 +1270,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   int _stashedMeshColumns = 0;
   int _stashedMeshRows = 0;
 
-  int? _warpDragCorner;
+  /// WHICH control points this drag carries — one index for a corner or a
+  /// mesh point, TWO for 퍼스's edge handle, which moves the edge's pair
+  /// together (F-42, 유저 2026-08-29).
+  ///
+  /// ⛔A LIST RATHER THAN A SECOND FIELD. An `int? _warpDragCorner` beside
+  /// a `_warpDragEdge` would be two fields answering one question — "what
+  /// moves?" — and the day they disagreed the drag would move a corner AND
+  /// an edge ([[make-the-invariant-unrepresentable]]).
+  List<int>? _warpDragPoints;
   List<CanvasPoint>? _warpDragStartOffsets;
 
   TransformMode get _mode => widget.transformOptions.mode;
@@ -1974,7 +1982,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _stashedMeshOffsets = null;
     _stashedMeshColumns = 0;
     _stashedMeshRows = 0;
-    _warpDragCorner = null;
+    _warpDragPoints = null;
     _warpDragStartOffsets = null;
     if (keepPreview) {
       // The image and the dab it was decoded from stay together and stay
@@ -2757,7 +2765,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _activePointer = event.pointer;
         setState(() {
           _dragMode = _DragMode.transform;
-          _warpDragCorner = pointIndex;
+          // ⚠️NULL IS REACHABLE and means something: the press landed
+          // INSIDE the mesh boundary but not on a point. It carried no
+          // point before this field became a list, and it still carries
+          // none — `[null]` would make the update move offset 0.
+          _warpDragPoints = pointIndex == null ? null : [pointIndex];
           _warpDragStartOffsets = List.of(_meshOffsets ?? const []);
           _transformDragStartPointer = canvasPoint;
         });
@@ -2779,7 +2791,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           _activePointer = event.pointer;
           setState(() {
             _dragMode = _DragMode.transform;
-            _warpDragCorner = cornerIndex;
+            _warpDragPoints = [cornerIndex];
             _warpDragStartOffsets = List.of(_cornerOffsets ?? const []);
             _transformDragStartPointer = canvasPoint;
           });
@@ -2800,6 +2812,34 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         openTransform,
       );
       if (handle == null) {
+        return;
+      }
+      // 🚨F-42 (유저 2026-08-29): 「오른쪽 중앙 조절시 **상하가 안바뀌게
+      // 스냅되있는데 스냅해제. 자유롭게 바뀌게**」.
+      //
+      // ⛔IT WAS NEVER A SNAP — it was geometry. The edge handle drove an
+      // affine one-axis SCALE, and a scale cannot move a point along the
+      // axis it does not scale, so dragging the right handle up did
+      // nothing however far the hand went. 유저 chose (F-42-Q1) to make the
+      // handle carry the edge's two QUAD corners instead: in 퍼스 the box
+      // is a quad and its edge is a pair of points, so this is the handle
+      // finally meaning what the mode does.
+      //
+      // ⚠️The accepted cost: 「stretch one axis」 is no longer this handle's
+      // job in 퍼스. It is two corners dragged together, which is the same
+      // move with the same result and one more gesture.
+      final edgePair = _mode == TransformMode.perspective
+          ? _edgeCornerPair(handle)
+          : null;
+      if (edgePair != null && cornersPlaced != null) {
+        _activePointer = event.pointer;
+        setState(() {
+          _dragMode = _DragMode.transform;
+          _warpDragPoints = edgePair;
+          _warpDragStartOffsets = List.of(_cornerOffsets ?? const []);
+          _transformDragStartPointer = canvasPoint;
+        });
+        _notifyDragActive(true);
         return;
       }
       _activePointer = event.pointer;
@@ -2946,10 +2986,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // The pointer is pulled back through the affine before it becomes a
     // displacement, so a point dragged on a rotated box moves the way the
     // hand did rather than along the box's own axes.
-    final dragIndex = _warpDragCorner;
+    final dragPoints = _warpDragPoints;
     final startOffsets = _warpDragStartOffsets;
     final affine = _transform;
-    if (dragIndex != null && startOffsets != null && affine != null) {
+    if (dragPoints != null && startOffsets != null && affine != null) {
       final startPointer = _transformDragStartPointer;
       if (startPointer == null) {
         return;
@@ -2958,9 +2998,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       final to = affine.applyInverse(pointer);
       final dx = to.x - from.x;
       final dy = to.y - from.y;
+      // ONE displacement, applied to every point the drag carries: an edge
+      // handle moves its two corners by the same vector, so the edge stays
+      // straight and its length is preserved unless a corner is dragged
+      // afterwards.
       final moved = [
         for (var i = 0; i < startOffsets.length; i += 1)
-          i == dragIndex
+          dragPoints.contains(i)
               ? CanvasPoint(
                   x: startOffsets[i].x + dx,
                   y: startOffsets[i].y + dy,
@@ -3026,10 +3070,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// habit on top of it.
   ///
   /// The aspect ratio is locked by the MODE, not by a modifier. 일반변형
-  /// preserves it by definition; non-uniform scaling lives on 퍼스's edge
-  /// handles. Shift used to lock it here and no longer does anything —
-  /// 유저 08-13, once 일반 became the default: "어차피 일반변형이 종횡비
-  /// 유지해서 수정자 기능 필요없을거같은데".
+  /// preserves it by definition. Shift used to lock it here and no longer
+  /// does anything — 유저 08-13, once 일반 became the default: "어차피
+  /// 일반변형이 종횡비 유지해서 수정자 기능 필요없을거같은데".
+  ///
+  /// ⚠️This used to add "non-uniform scaling lives on 퍼스's edge handles".
+  /// It does not any more (F-42): in 퍼스 an edge handle carries the edge's
+  /// two quad corners, so this solver never sees one. The sentence is
+  /// corrected rather than deleted, because a reader who remembers it
+  /// would otherwise look here for a path that has moved.
   SelectionAffine _solveScaleDrag(
     SelectionAffine start,
     _TransformHandle handle,
@@ -3250,7 +3299,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _transformDragHandle = null;
     _transformDragStart = null;
     _transformDragStartPointer = null;
-    _warpDragCorner = null;
+    _warpDragPoints = null;
     _warpDragStartOffsets = null;
     if (_transform == null && !_movePending) {
       _floatSurface = null;
@@ -3520,6 +3569,21 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _TransformHandle.leftEdge,
   ];
 
+  /// The two QUAD corners an edge handle carries in 퍼스 (F-42).
+  ///
+  /// Corner order is the quad's own — TL/TR/BR/BL, as [_stampRectCorners]
+  /// builds it — so an edge is the pair that bounds it. Null for anything
+  /// that is not an edge, which is how the caller falls through to the
+  /// affine path for the rotate knob and the inside grab.
+  static List<int>? _edgeCornerPair(_TransformHandle handle) =>
+      switch (handle) {
+        _TransformHandle.topEdge => const [0, 1],
+        _TransformHandle.rightEdge => const [1, 2],
+        _TransformHandle.bottomEdge => const [2, 3],
+        _TransformHandle.leftEdge => const [3, 0],
+        _ => null,
+      };
+
   /// The scale handles the armed mode offers.
   ///
   /// 일반 shows the four corners and nothing else — TVPaint's rule, and
@@ -3527,9 +3591,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// which is exactly what this mode does not do. Offering it and then
   /// scaling both axes anyway would be a control that lies.
   ///
-  /// 퍼스 keeps the edges (non-uniform scale lives there now that no
-  /// modifier unlocks the aspect) but drops the corners from THIS list —
-  /// in that mode a corner is a quad point, hit-tested before this runs.
+  /// 퍼스 keeps the edges and drops the corners from THIS list — in that
+  /// mode a corner is a quad point, hit-tested before this runs.
+  ///
+  /// 🚨THE EDGES ARE NO LONGER SCALE THERE EITHER (F-42, 유저 2026-08-29).
+  /// They stay in this list because it decides what is DRAWN and grabbable;
+  /// what a grab then means is decided at the press, where 퍼스 routes an
+  /// edge to its two quad corners. Non-uniform scale in 퍼스 is now "drag
+  /// the two corners", which is what the user asked for — the old
+  /// one-axis scale could not move the edge off its own axis at all.
   ///
   /// With NO session open the corners are added back whatever the mode,
   /// because the mode describes what an OPEN box does and something has to
