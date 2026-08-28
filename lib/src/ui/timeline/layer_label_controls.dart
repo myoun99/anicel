@@ -726,16 +726,18 @@ String layerKindDisplayName(LayerKind kind) {
 /// null — 「is there a mark」 is `mark == LayerMark.none`, which is what the
 /// question was always really asking.
 /// 🚨THE EIGHT LITERAL COLOURS ARE GONE, and that is the point of the round:
-/// a mark now names a 공정/수정 and the colour is looked up from the chosen
-/// palette ([LayerMarkPalette]). Switching palettes repaints every block in
-/// the project without touching a layer.
+/// a mark names a 공정/수정 and the colour is looked up from that name, so a
+/// hue fix edits one row and every block in the project moves with it —
+/// without touching a layer.
+///
+/// 🪦고를 수 있는 톤이 넷이었고(I-4), 크림으로 확정된 뒤 나머지와 고르는
+/// 장치를 걷었다. 이력은 [resolveLayerMarkColor] 의 문서에 있다.
 ///
 /// ⚠️`none` still resolves to [timelineDrawingHeldColor] for the reason
 /// written just above — 「none IS the paper」 — so an unlabelled row is
 /// painted by exactly the number it was painted by before.
 Color layerMarkColor(LayerMark mark) => resolveLayerMarkColor(
   mark,
-  AppColors.accentSettings.value.layerMarkPalette,
   noneColor: timelineDrawingHeldColor,
 );
 
@@ -1125,36 +1127,17 @@ class _LabelPlate extends StatelessWidget {
   final Axis axis;
 
   /// The same type the section band's tag wears, one column over.
+  /// The same type the section band's tag wears, one column over.
   static const double _fontSize = 9;
 
-  /// 🚨★★★글자의 안티앨리어싱을 **사후에 눌러** 2치화한다.
+  /// 🔒**w400 으로 확정**(유저 2026-08-28: 「일단 정했어. 얇은거. 400으로
+  /// 가고싶어」). 고르는 동안은 설정이었다.
   ///
-  /// 유저 2026-08-28: 「색라벨 텍스트 뭔가 좀 읽기힘든데 … 안티앨리어싱 …
-  /// 그거 없이 그냥 **쌩2치화** 된 텍스트로 할수있나?」 → 「진짜 aa만 어떻게
-  /// 뭐 못끄나? **그냥 그려서 표현한다던가?**」.
-  ///
-  /// ⛔**끄는 API 는 없다.** `TextStyle.foreground` 에
-  /// `Paint()..isAntiAlias = false` 를 물려도 출력이 **픽셀 단위로 동일**했고
-  /// (직접 재봤다), `dart:ui` 에 글자 AA 를 여는 문은 없다 — 클립 AA 뿐이다.
-  ///
-  /// ⇒ 대신 **그려진 뒤 알파를 계단으로 만든다.** 0.5 를 넘으면 255, 아니면 0.
-  /// 🧪재봤다: 알파 계조 12 → **2**, 중간값 픽셀 265 → **0**. 늘리기(BoxFit.fill)
-  /// 를 켠 채로도 그렇다 — 유저가 늘리기는 유지하고 싶어 했다.
-  ///
-  /// ⚠️RGB 는 그대로 통과시킨다. 잉크 색은 [timelineTextOnColor] 가 정하고
-  /// 여기는 **가장자리만** 건드린다.
-  ///
-  /// ⚠️이건 `saveLayer` 를 하나 만든다. 판이 14×27 이라 작지만 **행 수만큼**
-  /// 생긴다 — 구형 기기에서 아프면 여기가 후보다.
-  static const ColorFilter _hardEdges = ColorFilter.matrix(<double>[
-    1, 0, 0, 0, 0, //
-    0, 1, 0, 0, 0, //
-    0, 0, 1, 0, 0, //
-    // alpha_out = 255·alpha − 32385 ⇒ 알파 127 을 경계로 잘린다(클램프가
-    // 나머지를 한다). 🚨경계를 낮추면 얇은 획이 살고 굵어 보인다 — 실기에서
-    // 만질 값이라 상수로 세워 둔다.
-    0, 0, 0, 255, -32385, //
-  ]);
+  /// 🧪실기 실측(유저): **100~500 은 얇고, 600~800 은 굵고, 900 은 엄청
+  /// 굵다.** ⚠️번들 폰트에 Regular 와 Bold 뿐이니 두 단계일 것이라던 내
+  /// 예측은 **틀렸다** — 900 에서 Skia 가 합성 볼드를 얹는다. 파일 목록만
+  /// 보고 렌더러의 답을 예측한 대가다.
+  static const FontWeight _fontWeight = FontWeight.w400;
 
   @override
   Widget build(BuildContext context) {
@@ -1163,17 +1146,12 @@ class _LabelPlate extends StatelessWidget {
     // fills the row's height on a horizontal rail and the header's width
     // on the sheet's vertical one; the slot provides the other extent.
     //
-    // ⛔The filter wraps the GLYPHS ONLY, never the fill: the plate's own
-    // colour is opaque everywhere, so putting it inside would binarize
-    // nothing and cost a bigger layer.
-    final label = _label(fill);
+    // ⛔The glyphs are drawn STRAIGHT, with whatever anti-aliasing Skia
+    // gives them. A `ColorFiltered` alpha step used to sit here — the
+    // 「쌩2치화」 round — and why it went is written on
+    // [AppAccentSettings], beside the weight that used to be a setting too.
     return SizedBox.expand(
-      child: ColoredBox(
-        color: fill,
-        child: label == null
-            ? null
-            : ColorFiltered(colorFilter: _hardEdges, child: label),
-      ),
+      child: ColoredBox(color: fill, child: _label(fill)),
     );
   }
 
@@ -1234,12 +1212,15 @@ class _LabelPlate extends StatelessWidget {
   }
 
   /// One column's characters, through the shared decision.
-  Widget _glyphs(String text, Color fill) => layerPlateGlyphs(
+  Widget _glyphs(String text, Color fill) =>
+      layerPlateGlyphs(
     text: text,
     axis: axis,
     style: TextStyle(
       fontSize: _fontSize,
-      fontWeight: FontWeight.bold,
+      // ⚠️번들 폰트에는 Regular 와 Bold 만 있다 — 100~900 중 어느 값을 줘도
+      // Flutter 는 그 둘 중 가까운 쪽으로 떨어뜨린다.
+      fontWeight: _fontWeight,
       height: SectionBandZone.lineHeight,
       color: timelineTextOnColor(fill),
     ),

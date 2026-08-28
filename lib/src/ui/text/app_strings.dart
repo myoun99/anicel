@@ -81,10 +81,6 @@ class AppStrings {
   String layerReviseAbbrev(String key, String fallback) =>
       _values['layerReviseAbbrev.$key'] ?? fallback;
 
-  /// 색 라벨 **톤**의 이름 — 같은 계약(모델은 영어, 표가 나머지).
-  String layerMarkPaletteName(String key, String fallback) =>
-      _values['layerMarkPalette.$key'] ?? fallback;
-
   String get languageSettingsTitle => _s('languageSettingsTitle');
   String get programLanguageLabel => _s('programLanguageLabel');
   String get notationLanguageLabel => _s('notationLanguageLabel');
@@ -1024,9 +1020,6 @@ class AppStrings {
   /// 上がり 라고 하자 … 한국어로 **소재**로 가자. 영어도 그거 번역한걸로」.
   String get tlLayerMarkSource => _s('tlLayerMarkSource');
 
-  /// 색 라벨의 톤 고르기(I-4). 네 벌은 **같은 색상**이고 톤만 다르다.
-  String get layerMarkPaletteLabel => _s('layerMarkPaletteLabel');
-
   /// 테이크 라벨(I-5) — 리테이크 몇 번째 판인가.
   String get tlLayerTake => _s('tlLayerTake');
 
@@ -1696,7 +1689,6 @@ class AppStrings {
     'tlLayerMark': 'Layer mark',
     'tlLayerMarkNone': 'No label',
     'tlLayerMarkSource': 'Material',
-    'layerMarkPaletteLabel': 'Label tone',
     'tlLayerTake': 'Take',
     'tlLayerTakeNumber': 'Take {n}',
     'tlRepeat': 'Repeat',
@@ -2511,7 +2503,6 @@ class AppStrings {
     'tlLayerMark': 'レイヤーマーク',
     'tlLayerMarkNone': 'ラベルなし',
     'tlLayerMarkSource': '上がり',
-    'layerMarkPaletteLabel': 'ラベルの色調',
     'tlLayerTake': 'テイク',
     'layerProcess.paper': '用紙',
     'layerProcess.conte': 'コンテ',
@@ -2545,10 +2536,6 @@ class AppStrings {
     'layerReviseAbbrev.action-animation-director': 'アク作',
     'layerReviseAbbrev.inbetween-check': '動検',
     'layerReviseAbbrev.cell-check': 'セル検',
-    'layerMarkPalette.original': '原色',
-    'layerMarkPalette.pastel': 'パステル',
-    'layerMarkPalette.cream': 'クリーム',
-    'layerMarkPalette.pencil': '色鉛筆',
     'tlLayerTakeNumber': 'テイク{n}',
     'tlRepeat': 'リピート',
     'tlRepeatSelection': '選択範囲をリピート',
@@ -3353,7 +3340,6 @@ class AppStrings {
     'tlLayerMark': '레이어 마크',
     'tlLayerMarkNone': '라벨 없음',
     'tlLayerMarkSource': '소재',
-    'layerMarkPaletteLabel': '색 라벨 톤',
     'tlLayerTake': '테이크',
     'layerProcess.paper': '용지',
     'layerProcess.conte': '콘티',
@@ -3387,10 +3373,6 @@ class AppStrings {
     'layerReviseAbbrev.action-animation-director': '액션',
     'layerReviseAbbrev.inbetween-check': '동검',
     'layerReviseAbbrev.cell-check': '셀검',
-    'layerMarkPalette.original': '원본',
-    'layerMarkPalette.pastel': '파스텔',
-    'layerMarkPalette.cream': '크림',
-    'layerMarkPalette.pencil': '색연필',
     'tlLayerTakeNumber': '테이크 {n}',
     'tlRepeat': '반복',
     'tlRepeatSelection': '선택 영역 반복',
@@ -4230,7 +4212,6 @@ class AppStrings {
     'tlLayerMark': 'Repère de calque',
     'tlLayerMarkNone': 'Aucune étiquette',
     'tlLayerMarkSource': 'Matériel',
-    'layerMarkPaletteLabel': 'Ton des étiquettes',
     'tlLayerTake': 'Prise',
     'layerProcess.paper': 'Papier',
     'layerProcess.conte': 'Storyboard',
@@ -4248,10 +4229,6 @@ class AppStrings {
     'layerRevise.action-animation-director': 'Directeur d\'animation action',
     'layerRevise.inbetween-check': 'Contrôle intervalles',
     'layerRevise.cell-check': 'Contrôle cellulos',
-    'layerMarkPalette.original': 'Original',
-    'layerMarkPalette.pastel': 'Pastel',
-    'layerMarkPalette.cream': 'Crème',
-    'layerMarkPalette.pencil': 'Crayon de couleur',
     'tlLayerTakeNumber': 'Prise {n}',
     'tlRepeat': 'Répéter',
     'tlRepeatSelection': 'Répéter la sélection',

@@ -581,7 +581,6 @@ void main() {
     'tlLayerMark': (s) => s.tlLayerMark,
     'tlLayerMarkNone': (s) => s.tlLayerMarkNone,
     'tlLayerMarkSource': (s) => s.tlLayerMarkSource,
-    'layerMarkPaletteLabel': (s) => s.layerMarkPaletteLabel,
     'tlLayerTake': (s) => s.tlLayerTake,
     'tlRepeat': (s) => s.tlRepeat,
     'tlRepeatSelection': (s) => s.tlRepeatSelection,
