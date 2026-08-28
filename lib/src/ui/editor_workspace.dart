@@ -2687,11 +2687,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
         return _mediaViewerTab(
           tabId: tabId,
           label: AppText.strings.panelMediaViewerSub,
-          // A DIFFERENT glyph on purpose: a rail button is an icon and
-          // nothing else, so two viewers sharing `preview_outlined` would
-          // be two buttons a person cannot tell apart. The frame-inside-a
-          // -frame is what this panel is — the small one beside the big.
-          icon: Icons.picture_in_picture_alt_outlined,
+          // 🔄**결정이 뒤집혔다** (유저 2026-08-28, F-46): 「서브뷰어 패널
+          // 아이콘을 일반 뷰어 패널 아이콘을 재사용. 즉 **둘이 똑같은 아이콘**
+          // 사용. **다 감안하고 말하는것임**」.
+          //
+          // ⚠️전에 여기 있던 이유는 이것이었다 — 「레일 버튼은 아이콘이 전부라
+          // 두 뷰어가 `preview_outlined` 를 같이 쓰면 사람이 구분 못 하는 버튼
+          // 둘이 된다」. **틀린 관찰은 아니지만 유저가 그것까지 알고 뒤집었다.**
+          // 지우지 않고 적어 둔다: 안 적으면 다음에 읽는 쪽이 「구분이 안 되네」
+          // 하고 되돌린다.
+          //
+          // ⛔되묻지 말 것.
+          icon: Icons.preview_outlined,
           locked: locked,
         );
       case EditorWorkspace.timelineTabId:
