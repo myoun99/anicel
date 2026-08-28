@@ -28,10 +28,14 @@ enum TransformMode {
   /// non-uniform scale this mode does not do.
   normal,
 
-  /// 퍼스변형: the four corners move freely, no modifier needed. The edge
-  /// handles keep their affine scale, which is where non-uniform scaling
-  /// lives now that Shift no longer unlocks the aspect (유저 08-13: 수정자
-  /// 기각 — "어차피 일반변형이 종횡비 유지해서").
+  /// 퍼스변형: the four corners move freely, no modifier needed.
+  ///
+  /// ⚠️This used to add "the edge handles keep their affine scale, which is
+  /// where non-uniform scaling lives". It does NOT any more (F-42, 유저
+  /// 2026-08-29): an edge handle carries that edge's two quad corners, so
+  /// non-uniform scaling here is "drag the two corners". Corrected rather
+  /// than deleted, because a reader who remembers the sentence would
+  /// otherwise go looking for a path that moved.
   perspective,
 
   /// 메쉬워프: an N×M control grid over the lifted pixels.

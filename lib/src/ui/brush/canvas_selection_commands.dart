@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-
 import '../../models/canvas_point.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
@@ -333,7 +332,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// Ctrl+T: opens the free-transform box on the live selection.
   void beginTransform() => _beginTransform?.call();
 
-
   /// Enter: commits the open transform as one undo entry.
   void commitTransform() => _commitTransform?.call();
 
@@ -403,13 +401,27 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// snackbar per canvas tap on an empty layer is a nag, not an answer).
   bool get canEditTransform => _canEditTransform?.call() ?? false;
 
-  /// The last committed transform, replayed by [applyTransform] when there
-  /// is nothing to commit.
+  /// The last committed transform PER MODE, replayed by [applyTransform]
+  /// when there is nothing to commit.
   ///
   /// It lives HERE rather than in the canvas layer because the layer
   /// unmounts on every tool switch (R28-S) — a recall that forgets itself
-  /// when you pick up the brush is not a recall. One slot for the whole
-  /// session, deliberately not per layer: 유저 확정 08-13 "전역 하나. 즉
-  /// 어떤 크기의 소재든 같은 값을 변형주도록".
-  TransformRecall? transformRecall;
+  /// when you pick up the brush is not a recall.
+  ///
+  /// 🚨★★★KEYED BY MODE, 유저 2026-08-29: 「**툴마다 기억하는게 다름**:
+  /// 일반변형 고른 상태로 엔터하면 직전 일반변형 값을 재현, 자유변형 고른
+  /// 상태로 엔터하면 직전 자유변형을 재현」. One slot could only answer for
+  /// whichever mode committed last, so arming 일반 and pressing Enter
+  /// replayed a 퍼스 warp — or nothing, if the affine happened to be
+  /// identity.
+  ///
+  /// ⛔THIS IS NOT THE AXIS 08-13 SETTLED. That day's 「전역 하나」 was about
+  /// not keying the recall PER LAYER (「어떤 크기의 소재든 같은 값을
+  /// 변형주도록」), and it still holds: no entry here is a layer's. Mode is a
+  /// different question, and the user answered it separately.
+  final Map<TransformMode, TransformRecall> transformRecalls =
+      <TransformMode, TransformRecall>{};
+
+  /// The recall the ARMED mode would replay, or null.
+  TransformRecall? recallFor(TransformMode mode) => transformRecalls[mode];
 }
