@@ -5855,7 +5855,6 @@ class EditorSessionManager extends ChangeNotifier {
       rowSelectionCarriedBy: _rowSelectionCarriedBy,
       trackIdOfTransformLaneCarrier: trackIdOfTransformLaneCarrier,
       mountModeFor: _cutCommandCoordinator.mountModeFor,
-      uiStrings: () => uiStrings,
       commitTrackReorder:
           ({required fromIndex, required toIndex, required trackName}) {
             _historyManager.execute(

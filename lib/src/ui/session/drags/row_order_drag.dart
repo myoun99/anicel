@@ -13,7 +13,6 @@ import '../../timeline/layer_drop_policy.dart'
     show
         LayerDropPlan,
         layerDragRun,
-        layerDropRefusedForNestedFolder,
         modelInsertionForSlot,
         resolveEffectDrop,
         resolveLayerDrop,
@@ -57,7 +56,6 @@ class RowOrderDrag {
       required LayerId baseId,
     })
     mountModeFor,
-    required AppStrings Function() uiStrings,
     required void Function({
       required int fromIndex,
       required int toIndex,
@@ -94,7 +92,6 @@ class RowOrderDrag {
        _rowSelectionCarriedBy = rowSelectionCarriedBy,
        _trackIdOfTransformLaneCarrier = trackIdOfTransformLaneCarrier,
        _mountModeFor = mountModeFor,
-       _uiStrings = uiStrings,
        _commitTrackReorder = commitTrackReorder,
        _commitTrackEffects = commitTrackEffects,
        _commitLayerEffects = commitLayerEffects,
@@ -129,7 +126,6 @@ class RowOrderDrag {
     required LayerId baseId,
   })
   _mountModeFor;
-  final AppStrings Function() _uiStrings;
 
   /// The four commit paths, one per subject kind, each ONE undo step with
   /// its own epilogue behind it on the session.
@@ -375,21 +371,11 @@ class RowOrderDrag {
       // perfectly good landing, so the caret comes back rather than the drag
       // going dead.
       //
-      // ⑦: with ONE exception the user asked to be told about — a folder
-      // that carries a folder. The drag stays useful (the caret is still
-      // the fallback), but it says why the attach did not happen, because
-      // that landing is the only one that looks like it should have worked.
-      updateLayerRow(
-        displayLayers,
-        slot,
-        noticeLabel: layerDropRefusedForNestedFolder(
-              stack: cut.layers,
-              movingId: subject.layerId,
-              targetId: targetId,
-            )
-            ? _uiStrings().tlDropFolderInAttachFolder
-            : null,
-      );
+      // 🪦⑦ had ONE exception with a notice — a folder carrying a folder,
+      // because an organizer was FLAT. 유저 2026-08-29 lifted that ban, so
+      // the notice went with it: an anwer nobody refuses any more is a
+      // sentence that would only confuse whoever reads it next.
+      updateLayerRow(displayLayers, slot);
       return;
     }
     _plan = plan;

@@ -289,36 +289,6 @@ LayerDropPlan? resolveLayerDropOnRow({
   );
 }
 
-/// Whether dropping [movingId] on [targetId] is refused for the ONE reason
-/// ⑦ names — the folder carries a folder, and an organizer folder is flat.
-///
-/// Separate from [resolveLayerDropOnRow] because a refusal is a null there,
-/// and "why" is what the user asked to be told. Everything else that refuses
-/// an on-row drop is a row that was never going to attach (an SE row, a
-/// camera row, a base that already carries riders): those need no notice,
-/// because nothing about them looked like it should have worked.
-bool layerDropRefusedForNestedFolder({
-  required List<Layer> stack,
-  required LayerId movingId,
-  required LayerId targetId,
-}) {
-  final moving = stack.where((layer) => layer.id == movingId).firstOrNull;
-  final target = stack.where((layer) => layer.id == targetId).firstOrNull;
-  final run = layerDragRun(stack, movingId);
-  if (moving == null ||
-      target == null ||
-      run == null ||
-      !layerKindGroupsLayers(moving.kind) ||
-      !canCarryAttachedLayers(target)) {
-    return false;
-  }
-  return stack
-      .sublist(run.start, run.endExclusive)
-      .any(
-        (layer) => layer.id != moving.id && layerKindGroupsLayers(layer.kind),
-      );
-}
-
 LayerDropPlan? resolveLayerDrop({
   required List<Layer> stack,
   required LayerId movingId,
@@ -479,21 +449,24 @@ LayerDropPlan? resolveLayerDrop({
               if (!layerKindGroupsLayers(layer.kind)) layer,
           ]
         : (run.endExclusive - run.start == 1 ? [moving] : const <Layer>[]);
-    // The one shape ⑦ excludes: an organizer folder is FLAT, so a folder
-    // carrying a folder has no legal landing inside a group. Counted off
-    // the run rather than off `riders`, which has already dropped them.
-    final carriesFolder =
-        layerKindGroupsLayers(moving.kind) &&
-        carried.any(
-          (layer) => layer.id != moving.id && layerKindGroupsLayers(layer.kind),
-        );
+    // 🪦⑦ used to exclude one more shape here — a folder carrying a folder,
+    // because «an organizer folder is FLAT». That ban lived in the model
+    // (`attachOrganizerBaseOf` read DIRECT members, so a nested folder made
+    // an organizer impure) and 유저 2026-08-29 lifted it: nothing about
+    // drawing required it, and plain folders already nest. The walk reads
+    // the subtree's leaves now, so a carried folder is just structure and
+    // its leaves are the riders.
+    //
+    // ⛔What did NOT change: every leaf must still be an attach of the SAME
+    // base — 「a레이어 어태치 안에 있는 모든거는 a에 대한 어태치여야해」.
+    // `canMountLayerOnBase` below is where each rider answers for itself.
+    //
     // No chaining: a row that carries attaches of its own is a base, and a
     // base inside another group would make the relation chain.
     final carriesAttaches = stack.any(
       (other) => carriedIds.contains(other.attachedToLayerId),
     );
     if (riders.isEmpty ||
-        carriesFolder ||
         carriesAttaches ||
         riders.any((row) => !canMountLayerOnBase(row: row, base: base))) {
       // The slice cannot join this group, and letting it land there anyway

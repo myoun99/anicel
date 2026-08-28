@@ -653,7 +653,6 @@ class AppStrings {
 
   /// ⑦: the one landing a folder attach has no home for — an organizer
   /// folder is FLAT, so a folder carrying a folder cannot become one.
-  String get tlDropFolderInAttachFolder => _s('tlDropFolderInAttachFolder');
 
   String get tlDetachLayer => _s('tlDetachLayer');
   String get tlSharedCut => _s('tlSharedCut');
@@ -1764,7 +1763,6 @@ class AppStrings {
     'tlDropAttachSyncedTemplate': 'attach to {name} (synced)',
     'tlDropAttachFreeTemplate': 'attach to {name} (free)',
     'tlDropDetachAttach': 'detach',
-    'tlDropFolderInAttachFolder': 'a folder cannot go inside an attach folder',
     'tlDetachLayer': 'Detach from base',
     'tlSharedCut': 'Cut',
     'tlSharedCopy': 'Copy',
@@ -2609,7 +2607,6 @@ class AppStrings {
     'tlDropAttachSyncedTemplate': '{name} に付属（同期）',
     'tlDropAttachFreeTemplate': '{name} に付属（フリー）',
     'tlDropDetachAttach': '付属を解除',
-    'tlDropFolderInAttachFolder': '付属フォルダーの中にフォルダーは入れられません',
     'tlDetachLayer': '付属を解除',
     'tlSharedCut': '切り取り',
     'tlSharedCopy': 'コピー',
@@ -3446,7 +3443,6 @@ class AppStrings {
     'tlDropAttachSyncedTemplate': '{name}에 장착 (동기)',
     'tlDropAttachFreeTemplate': '{name}에 장착 (프리)',
     'tlDropDetachAttach': '어태치 해제',
-    'tlDropFolderInAttachFolder': '어태치 폴더 안에는 폴더를 넣을 수 없습니다',
     'tlDetachLayer': '어태치 해제',
     'tlSharedCut': '잘라내기',
     'tlSharedCopy': '복사',
@@ -4303,8 +4299,6 @@ class AppStrings {
     'tlDropAttachSyncedTemplate': 'attacher à {name} (synchronisé)',
     'tlDropAttachFreeTemplate': 'attacher à {name} (libre)',
     'tlDropDetachAttach': 'détacher',
-    'tlDropFolderInAttachFolder':
-        'un dossier ne peut pas contenir de dossier dans un groupe attaché',
     'tlDetachLayer': 'Détacher de la base',
     'tlSharedCut': 'Couper',
     'tlSharedCopy': 'Copier',
@@ -5075,7 +5069,6 @@ class AppStrings {
     'tlDropAttachSyncedTemplate': '附属到 {name}（同步）',
     'tlDropAttachFreeTemplate': '附属到 {name}（自由）',
     'tlDropDetachAttach': '解除附属',
-    'tlDropFolderInAttachFolder': '附属文件夹内不能再放文件夹',
     'tlDetachLayer': '解除附属',
     'tlSharedCut': '剪切',
     'tlSharedCopy': '复制',
