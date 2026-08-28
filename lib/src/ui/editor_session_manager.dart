@@ -4365,25 +4365,25 @@ class EditorSessionManager extends ChangeNotifier {
       ))
         folder.id,
     };
+    // ⛔ONE pass, and the eye is read ONCE per row. Splitting the two
+    // batches into two comprehensions read the row's own eye twice, and
+    // `hidden_folder_is_hidden_test`'s downward ratchet caught it — that
+    // count only goes down, because every extra place that re-derives
+    // "is this row shown" is a place a hidden folder can be forgotten.
+    final toShow = <LayerId>[];
+    final toHide = <LayerId>[];
     for (final layer in stack) {
       _visibilitySoloSnapshot?.putIfAbsent(layer.id, () => layer.isVisible);
+      final shouldShow = keepShown.contains(layer.id);
+      if (layer.isVisible == shouldShow) {
+        continue;
+      }
+      (shouldShow ? toShow : toHide).add(layer.id);
     }
-    // ⛔TWO batches, not one per row: Solo hides most of the stack and
-    // shows a few, and each side is one undo step rather than a screenful.
-    _layerController.setLayersVisible(
-      layerIds: [
-        for (final layer in stack)
-          if (keepShown.contains(layer.id) && !layer.isVisible) layer.id,
-      ],
-      visible: true,
-    );
-    _layerController.setLayersVisible(
-      layerIds: [
-        for (final layer in stack)
-          if (!keepShown.contains(layer.id) && layer.isVisible) layer.id,
-      ],
-      visible: false,
-    );
+    // Two batches, not one per row: Solo hides most of the stack and shows
+    // a few, and each side is one undo step rather than a screenful.
+    _layerController.setLayersVisible(layerIds: toShow, visible: true);
+    _layerController.setLayersVisible(layerIds: toHide, visible: false);
   }
 
   void _exitVisibilitySolo() {
