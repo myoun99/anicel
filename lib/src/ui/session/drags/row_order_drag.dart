@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../../models/attached_layer_resolve.dart' show layerHasFxToLose;
 import '../../../models/attached_mode.dart';
 import '../../../models/cut.dart';
 import '../../../models/cut_id.dart';
@@ -109,6 +110,32 @@ class RowOrderDrag {
 
   /// What releasing would commit — held beside the drawn state.
   LayerDropPlan? _plan;
+
+  /// The rows this drop would MOUNT that carry fx of their own.
+  ///
+  /// 🚨An attach row authors no fx ([attachRowWearsBaseComposite] gates the
+  /// switch, the Transform group and the Effects groups), so mounting one
+  /// that HAS fx throws it away. 유저 2026-08-29 asked to be told first —
+  /// 「기존 fx가 사라집니다. 실행하겠습니까?」 — and only when there is
+  /// something to lose, because a dialog nobody needed is a dialog people
+  /// learn to dismiss.
+  ///
+  /// ⛔The question is asked through [layerHasFxToLose], never re-derived:
+  /// 「fx」 means everything the fx panel shows, and three call sites
+  /// spelling that out would be three chances to forget the name tag.
+  List<Layer> fxLostByThisDrop() {
+    final plan = _plan;
+    final cut = _activeCutOrNull();
+    if (plan == null || cut == null) {
+      return const [];
+    }
+    final byId = {for (final layer in cut.layers) layer.id: layer};
+    return [
+      for (final mount in plan.attach.mounts)
+        if (byId[mount.layerId] case final layer?)
+          if (layerHasFxToLose(layer)) layer,
+    ];
+  }
   List<LayerId>? _seOrder;
   List<EffectId>? _effectOrder;
   int? _trackSlot;

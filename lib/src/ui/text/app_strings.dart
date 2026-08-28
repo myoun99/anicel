@@ -655,6 +655,12 @@ class AppStrings {
   /// folder is FLAT, so a folder carrying a folder cannot become one.
 
   String get tlDetachLayer => _s('tlDetachLayer');
+
+  /// 폴더가 어태치가 될 때 fx 를 잃는다는 확인창(유저 2026-08-29). ⚠️「fx」는
+  /// **fx 를 펼쳐서 보이는 전부**다 — 네임태그·트랜스폼·추가 fx. 그래서 문장도
+  /// 나눠 쓰지 않고 「fx」 하나로 말한다.
+  String get tlAttachDropsFxTitle => _s('tlAttachDropsFxTitle');
+  String get tlAttachDropsFxBody => _s('tlAttachDropsFxBody');
   String get tlSharedCut => _s('tlSharedCut');
   String get tlSharedCopy => _s('tlSharedCopy');
   String get tlSharedPasteLinked => _s('tlSharedPasteLinked');
@@ -1764,6 +1770,8 @@ class AppStrings {
     'tlDropAttachFreeTemplate': 'attach to {name} (free)',
     'tlDropDetachAttach': 'detach',
     'tlDetachLayer': 'Detach from base',
+    'tlAttachDropsFxTitle': 'Attaching drops its fx',
+    'tlAttachDropsFxBody': 'An attached layer keeps no fx of its own. Continuing discards the existing fx. Continue?',
     'tlSharedCut': 'Cut',
     'tlSharedCopy': 'Copy',
     'tlSharedPasteLinked': 'Paste linked',
@@ -2608,6 +2616,8 @@ class AppStrings {
     'tlDropAttachFreeTemplate': '{name} に付属（フリー）',
     'tlDropDetachAttach': '付属を解除',
     'tlDetachLayer': '付属を解除',
+    'tlAttachDropsFxTitle': '付属すると fx が失われます',
+    'tlAttachDropsFxBody': '付属レイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
     'tlSharedCut': '切り取り',
     'tlSharedCopy': 'コピー',
     'tlSharedPasteLinked': 'リンクして貼り付け',
@@ -3444,6 +3454,8 @@ class AppStrings {
     'tlDropAttachFreeTemplate': '{name}에 장착 (프리)',
     'tlDropDetachAttach': '어태치 해제',
     'tlDetachLayer': '어태치 해제',
+    'tlAttachDropsFxTitle': '어태치하면 fx 가 사라집니다',
+    'tlAttachDropsFxBody': '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
     'tlSharedCut': '잘라내기',
     'tlSharedCopy': '복사',
     'tlSharedPasteLinked': '링크 붙여넣기',
@@ -4300,6 +4312,8 @@ class AppStrings {
     'tlDropAttachFreeTemplate': 'attacher à {name} (libre)',
     'tlDropDetachAttach': 'détacher',
     'tlDetachLayer': 'Détacher de la base',
+    'tlAttachDropsFxTitle': 'Le fx sera perdu',
+    'tlAttachDropsFxBody': 'Une couche attachée ne garde pas son propre fx. Continuer supprimera le fx existant. Continuer ?',
     'tlSharedCut': 'Couper',
     'tlSharedCopy': 'Copier',
     'tlSharedPasteLinked': 'Coller lié',
@@ -5070,6 +5084,8 @@ class AppStrings {
     'tlDropAttachFreeTemplate': '附属到 {name}（自由）',
     'tlDropDetachAttach': '解除附属',
     'tlDetachLayer': '解除附属',
+    'tlAttachDropsFxTitle': '附属后将失去 fx',
+    'tlAttachDropsFxBody': '附属图层不保留自身的 fx。继续将丢弃现有的 fx。要继续吗？',
     'tlSharedCut': '剪切',
     'tlSharedCopy': '复制',
     'tlSharedPasteLinked': '粘贴链接',

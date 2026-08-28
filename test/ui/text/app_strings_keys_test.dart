@@ -645,6 +645,8 @@ void main() {
     'tlDropAttachFreeTemplate': (s) => s.tlDropAttachFreeTemplate,
     'tlDropDetachAttach': (s) => s.tlDropDetachAttach,
     'tlDetachLayer': (s) => s.tlDetachLayer,
+    'tlAttachDropsFxTitle': (s) => s.tlAttachDropsFxTitle,
+    'tlAttachDropsFxBody': (s) => s.tlAttachDropsFxBody,
     'tlSharedCut': (s) => s.tlSharedCut,
     'tlDuplicateFrame': (s) => s.tlDuplicateFrame,
     'tlLinkDuplicateFrame': (s) => s.tlLinkDuplicateFrame,

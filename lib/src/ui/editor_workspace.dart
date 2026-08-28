@@ -64,7 +64,8 @@ import 'media/media_relink_flow.dart';
 import 'media/media_viewer_tab_host.dart';
 import 'layout/device_grid.dart';
 import 'layout/device_grid_scroll_controller.dart';
-import 'dialogs/app_confirm_dialog.dart' show showAppNotice;
+import 'widgets/app_window.dart' show AppWindowAction, AppWindowActionEmphasis;
+import 'dialogs/app_confirm_dialog.dart' show AppConfirmDialog, showAppNotice;
 import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
 import 'panels/editor_panel_layout.dart';
@@ -1370,6 +1371,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // 🚨The session asks, the workspace shows. A row drop that would throw
+    // fx away holds itself until this answers (see [AttachFxConfirmController]).
+    widget.session.attachFxConfirm.pending.addListener(_showAttachFxConfirm);
     _tipLibrary = BrushTipLibrary(service: widget.tipLibraryService);
     // 🚨The two canvas-side facts the PIXEL verbs need, published where both
     // of them are in scope. Getters, not copies: the marquee survives tool
@@ -2009,9 +2013,48 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     });
   }
 
+
+  /// The one place that shows 「fx 가 사라집니다」, for every surface.
+  ///
+  /// ⚠️EVERY exit answers. A dialog dismissed by the barrier or by escape
+  /// returns null, and a drop still held by an unanswered question would
+  /// never commit and never let go — so null is a "no" here rather than a
+  /// path that quietly does nothing.
+  Future<void> _showAttachFxConfirm() async {
+    final request = widget.session.attachFxConfirm.pending.value;
+    if (request == null) {
+      return;
+    }
+    final strings = AppText.strings;
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AppConfirmDialog(
+        windowKey: const ValueKey<String>('attach-drops-fx-dialog'),
+        title: strings.tlAttachDropsFxTitle,
+        message: strings.tlAttachDropsFxBody,
+        actions: [
+          AppWindowAction(
+            label: strings.commonCancel,
+            actionKey: const ValueKey<String>('attach-drops-fx-cancel'),
+            onPressed: () => Navigator.of(context).pop(false),
+          ),
+          AppWindowAction(
+            label: strings.commonApply,
+            actionKey: const ValueKey<String>('attach-drops-fx-confirm'),
+            emphasis: AppWindowActionEmphasis.primary,
+            onPressed: () => Navigator.of(context).pop(true),
+          ),
+        ],
+      ),
+    );
+    request.answer(proceed ?? false);
+  }
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.session.attachFxConfirm.pending.removeListener(
+      _showAttachFxConfirm,
+    );
     _brushTool.removeListener(_rememberBrushHandSettings);
     // A pending debounce would write after the tree is gone; the values are
     // in memory, so writing them NOW is both safe and the last chance.
