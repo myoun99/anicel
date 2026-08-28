@@ -90,8 +90,7 @@ void main() {
       expect(namesOf(session), ['Two', 'One', 'Three']);
     });
 
-    test('a drag UP needs no adjustment — nothing below the caret moved',
-        () {
+    test('a drag UP needs no adjustment — nothing below the caret moved', () {
       final session = threeTracks();
       addTearDown(session.dispose);
 
@@ -141,8 +140,9 @@ void main() {
     });
   });
 
-  testWidgets('dragging the V row on the real rail re-orders the tracks',
-      (tester) async {
+  testWidgets('dragging the V row on the real rail re-orders the tracks', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(1400, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -181,9 +181,22 @@ void main() {
     );
     final pitch = tester.getTopLeft(v2).dy - tester.getTopLeft(v1).dy;
     expect(pitch, greaterThan(20), reason: 'the drag must clear the slop');
+
+    // 🚨TWO DRAGS NOW: the first SELECTS, the second MOVES (유저 2026-08-29
+    // 「v행트랙이든 뭐든 선택범위는 작동하게」, which is ⑨'s law reaching the
+    // V rows at last). This pin used to do one drag, because a track row
+    // answered `null` to "are you in the selection?" and went straight to
+    // the move.
     await tester.drag(v1, Offset(0, pitch));
     await tester.pumpAndSettle();
+    expect(namesOf(session), [
+      'One',
+      'Two',
+      'Three',
+    ], reason: 'the first drag selected and moved nothing');
 
+    await tester.drag(v1, Offset(0, pitch));
+    await tester.pumpAndSettle();
     expect(namesOf(session), ['Two', 'One', 'Three']);
   });
 
@@ -214,14 +227,19 @@ void main() {
     await tester.pumpAndSettle();
 
     double topOf(String id) => tester
-        .getTopLeft(find.byKey(ValueKey<String>('storyboard-track-label-row-$id')))
+        .getTopLeft(
+          find.byKey(ValueKey<String>('storyboard-track-label-row-$id')),
+        )
         .dy;
     final toBottom = topOf('t3') - topOf('t1');
 
-    await tester.drag(
-      find.byKey(const ValueKey<String>('storyboard-track-label-row-t1')),
-      Offset(0, toBottom),
+    final v1 = find.byKey(
+      const ValueKey<String>('storyboard-track-label-row-t1'),
     );
+    // The select drag first — see the pin above.
+    await tester.drag(v1, Offset(0, toBottom));
+    await tester.pumpAndSettle();
+    await tester.drag(v1, Offset(0, toBottom));
     await tester.pumpAndSettle();
 
     // Exactly to the end — not past it, which is what a too-small pitch

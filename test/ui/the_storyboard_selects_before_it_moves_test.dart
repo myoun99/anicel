@@ -98,8 +98,9 @@ void main() {
     return tester.widget<StoryboardPanel>(find.byType(StoryboardPanel));
   }
 
-  testWidgets("the rail's row drag knows about the row selection at all",
-      (tester) async {
+  testWidgets("the rail's row drag knows about the row selection at all", (
+    tester,
+  ) async {
     final panel = await pumpStoryboard(tester);
     final hooks = panel.rowDragHooks;
     expect(hooks, isNotNull, reason: 'presence first');
@@ -111,7 +112,8 @@ void main() {
     expect(
       hooks!.isInRowSelection!(subject),
       isFalse,
-      reason: 'nothing is selected yet, so a press here must START a '
+      reason:
+          'nothing is selected yet, so a press here must START a '
           'selection rather than go straight to the move (A5-3②)',
     );
     expect(hooks.onSelectBegin, isNotNull);
@@ -119,7 +121,8 @@ void main() {
     expect(
       panel.onSeRowSelectionSpan,
       isNotNull,
-      reason: 'arming without the span would select one row and then refuse '
+      reason:
+          'arming without the span would select one row and then refuse '
           'to grow — half a law is not the law',
     );
   });
@@ -135,7 +138,8 @@ void main() {
     expect(
       hooks.isInRowSelection!(subject),
       isTrue,
-      reason: 'the first drag selected it — so the NEXT drag on this row is '
+      reason:
+          'the first drag selected it — so the NEXT drag on this row is '
           'the move, which is the whole of ⑨',
     );
     hooks.onSelectEnd!();
@@ -158,16 +162,25 @@ void main() {
       isFalse,
     );
 
-    // ⛔THE V ROWS ARE OUT, and null is the hook's own word for it. A5-3 is
-    // about the S rows (「se트랙은 트랙끼리 드래그이동」); putting a track
-    // reorder behind a select step is a change to a different gesture that
-    // nobody asked for, and the track-reorder pins caught it the moment
-    // this hook answered unconditionally.
+    // 🚨THE V ROWS ARE IN (유저 2026-08-29). This pin used to demand `null`
+    // — "takes no part in row selection" — on the reasoning that putting a
+    // track reorder behind a select step was "a change nobody asked for".
+    // It was then asked:
+    //
+    // > 「v행트랙이든 뭐든 **선택범위는 작동하게**. 거기서 드래그는 뭐
+    // > 트랜지션은 불가로 남아있잖아? 그런식으로 **행에따라 불가는
+    // > 남아있지만 선택범위는 다 작동해야해**」
+    //
+    // ⇒ CLAUDE.md's second absolute command, applied: 「선택범위는 레이어
+    // 불문 자유롭게. 행의 종류로 막지 않는다」. A row may still refuse to
+    // MOVE; it may not refuse to be SELECTED.
     expect(
       hooks.isInRowSelection!(const TrackRowSubject(TrackId('sb-track'))),
-      isNull,
-      reason: 'null is "takes no part in row selection" — a V row still '
-          'moves on the FIRST drag, which is what it always did',
+      isFalse,
+      reason:
+          'a V row answers the selection question like every other row '
+          '— false means "not in the selection yet", so the first drag '
+          'selects it and the next one moves it',
     );
     // Naming is still universal even where selecting is not: the shared map
     // answers for every subject, which is what let this rail offer the
