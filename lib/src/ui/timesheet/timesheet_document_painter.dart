@@ -12,6 +12,7 @@ import '../../models/timesheet_info.dart';
 import '../text/dialogue_fit_layout.dart';
 import '../text/vertical_writing.dart'
     show verticalTextCells, verticalTextSpanCount;
+import '../canvas/viewport_canvas_transform.dart';
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import '../timeline/timeline_instruction_row_visual.dart'
@@ -561,8 +562,15 @@ class TimesheetDocumentPainter extends CustomPainter {
     canvas.clipRect(Offset.zero & size);
     final resolvedViewport = viewport;
     if (resolvedViewport != null) {
-      canvas.translate(resolvedViewport.panX, resolvedViewport.panY);
-      canvas.scale(resolvedViewport.zoom, resolvedViewport.zoom);
+      // P8's ONE transform. ⛔The snap already happened at the host, so
+      // this, the playhead overlay and the ink windows all share one
+      // value; passing the ratio keeps the helper's own snap idempotent
+      // rather than a second, coarser rounding.
+      applyViewportTransform(
+        canvas,
+        resolvedViewport,
+        devicePixelRatio: effectiveRatio,
+      );
     }
     // The clip above, carried back through the viewport transform into
     // document space. Everything outside it is already invisible; the
@@ -1817,6 +1825,12 @@ class TimesheetDocumentPainter extends CustomPainter {
         // with the active cut, which is a coincidence and not a contract.
         oldDelegate.accent != accent ||
         oldDelegate.cutId != cutId ||
+        // 🐛SAME LAW, AND IT WAS ALREADY BROKEN before this line existed:
+        // `paint` reads this for the text-zoom threshold (and now for the
+        // transform), so a monitor or UI-scale change has to reach the
+        // sheet. It did not — the threshold kept the old value until
+        // something else happened to repaint.
+        oldDelegate.effectiveRatio != effectiveRatio ||
         !identical(oldDelegate.dragPreview, dragPreview);
   }
 }
@@ -1835,6 +1849,7 @@ class TimesheetPlayheadPainter extends CustomPainter {
     required this.layout,
     required this.resolvePlayheadFrame,
     this.viewport,
+    this.effectiveRatio = 1.0,
     super.repaint,
   });
 
@@ -1845,6 +1860,11 @@ class TimesheetPlayheadPainter extends CustomPainter {
   /// listenable drives when that happens).
   final int? Function() resolvePlayheadFrame;
   final CanvasViewport? viewport;
+
+  /// 🚨THE SAME RATIO THE DOCUMENT PAINTER GETS. This overlay sits ON the
+  /// rows that painter drew; a different snap grid puts it a sub-pixel off
+  /// them.
+  final double effectiveRatio;
 
   static const Color _playhead = Color(0x334FA8A0);
 
@@ -1858,8 +1878,14 @@ class TimesheetPlayheadPainter extends CustomPainter {
     canvas.clipRect(Offset.zero & size);
     final resolvedViewport = viewport;
     if (resolvedViewport != null) {
-      canvas.translate(resolvedViewport.panX, resolvedViewport.panY);
-      canvas.scale(resolvedViewport.zoom, resolvedViewport.zoom);
+      // 🚨THE SAME TRANSFORM THE DOCUMENT TOOK, from the same host-snapped
+      // viewport — this overlay highlights the rows that painter drew, so
+      // a different grid would put the playhead a sub-pixel off them.
+      applyViewportTransform(
+        canvas,
+        resolvedViewport,
+        devicePixelRatio: effectiveRatio,
+      );
     }
     final position = layout.positionOfFrame(frame);
     // Page view (R26 #41): the playhead highlights nothing while the user
@@ -1886,6 +1912,7 @@ class TimesheetPlayheadPainter extends CustomPainter {
     return !identical(oldDelegate.document, document) ||
         oldDelegate.layout.continuous != layout.continuous ||
         oldDelegate.layout.resolvedSinglePage != layout.resolvedSinglePage ||
-        oldDelegate.viewport != viewport;
+        oldDelegate.viewport != viewport ||
+        oldDelegate.effectiveRatio != effectiveRatio;
   }
 }

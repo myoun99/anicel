@@ -15,6 +15,7 @@ import 'widgets/app_icon_button.dart';
 import 'widgets/drag_value_label.dart';
 import 'timesheet/timesheet_document_painter.dart';
 import 'timesheet/timesheet_header_edit_layer.dart';
+import 'canvas/viewport_canvas_transform.dart';
 import 'effective_device_pixel_ratio.dart';
 import 'widgets/static_raster.dart';
 import 'timesheet/timesheet_notation.dart';
@@ -445,10 +446,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
             viewportController: widget.viewportController,
             onViewportChanged: widget.onViewportChanged,
             allowViewRotation: false,
-            bottomBarLeading: [
-              ..._panelActions(),
-              ..._bottomBarLeading(null),
-            ],
+            bottomBarLeading: [..._panelActions(), ..._bottomBarLeading(null)],
             pageStrip: _pageStrip(null),
             bottomBarHostToken: (
               widget.continuous,
@@ -556,174 +554,190 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                         inkController == null || !widget.inkEnabled
                         ? null
                         : _inkStrokeActive,
-                    contentOverride: (context, viewport) => Stack(
-                      children: [
-                        // The sheet paints in TWO strata (UI-R10 #9, the
-                        // PSD layering live): the printed FORM (paper,
-                        // grid, labels) below, the CONTENT (cell texts,
-                        // values) above — timeline drags re-print just
-                        // the content stratum through the drag channel.
-                        //
-                        // Each stratum is baked rather than merely
-                        // boundaried. This panel measured 13.1 ms/frame
-                        // of raster — 47% of the whole app's — while
-                        // sitting perfectly still, because a boundary
-                        // stops the UI thread re-RECORDING and does
-                        // nothing about the GPU re-EXECUTING. The form
-                        // alone is ~334 lines and ~111 text paragraphs
-                        // of B4 sheet at every frame the app happens to
-                        // produce.
-                        //
-                        // Two wrappers and not one, deliberately: the
-                        // split above is what keeps a content-only
-                        // change off the form, and merging them would
-                        // hand the drag channel a re-record of the
-                        // whole grid.
-                        Positioned.fill(
-                          child: StaticRaster(
-                            debugLabel: 'timesheet-form',
-                            child: CustomPaint(
-                              key: const ValueKey<String>(
-                                'timesheet-form-paint',
-                              ),
-                              painter: TimesheetDocumentPainter(
-                                document: document,
-                                layout: layout,
-                                viewport: viewport,
-                                // The per-cell text cutoff is a legibility
-                                // question, so it counts DEVICE pixels.
-                                // Raising the interface scale used to erase
-                                // every text while the sheet stayed exactly
-                                // the same size on screen.
-                                effectiveRatio: EffectiveDevicePixelRatio.of(
-                                  context,
-                                ),
-                                layers: const {
-                                  SheetPaintLayer.paper,
-                                  SheetPaintLayer.form,
-                                },
-                                // The sheet prints in the NOTATION
-                                // language (UI-R10 #7).
-                                notation: TimesheetNotation.of(
-                                  session
-                                      .languageSettings
-                                      .value
-                                      .notationLanguage,
-                                ),
-                              ),
-                              child: const SizedBox.expand(),
-                            ),
-                          ),
-                        ),
-                        Positioned.fill(
-                          child: StaticRaster(
-                            debugLabel: 'timesheet-content',
-                            child: CustomPaint(
-                              key: const ValueKey<String>(
-                                'timesheet-document-paint',
-                              ),
-                              painter: TimesheetDocumentPainter(
-                                document: document,
-                                layout: layout,
-                                viewport: viewport,
-                                // The per-cell text cutoff is a legibility
-                                // question, so it counts DEVICE pixels.
-                                // Raising the interface scale used to erase
-                                // every text while the sheet stayed exactly
-                                // the same size on screen.
-                                effectiveRatio: EffectiveDevicePixelRatio.of(
-                                  context,
-                                ),
-                                layers: const {SheetPaintLayer.content},
-                                dragPreview: session.dragPreview,
-                                // Which cut the sheet is printing, so a
-                                // cut-length drag on it can be read off the
-                                // channel: the red cut-end line is DATA, and
-                                // it was the one data line still printing the
-                                // committed length while the cells beside it
-                                // already previewed.
-                                cutId: session.activeCutOrNull?.id,
-                                notation: TimesheetNotation.of(
-                                  session
-                                      .languageSettings
-                                      .value
-                                      .notationLanguage,
-                                ),
-                              ),
-                              child: const SizedBox.expand(),
-                            ),
-                          ),
-                        ),
-                        // The playhead row highlight repaints ALONE (R13-2):
-                        // cursor moves, seeks and playback ticks drive this
-                        // thin layer through its repaint listenable — the
-                        // sheet painter above never rebuilds for them.
-                        Positioned.fill(
-                          child: IgnorePointer(
-                            child: RepaintBoundary(
+                    contentOverride: (context, rawViewport) {
+                      // 🚨★★★SNAPPED ONCE, HERE (P8, 유저 답 `host`
+                      // 2026-08-28). The document, the playhead overlay and
+                      // the ink windows ALL derive from this one value, so
+                      // they cannot land on different device pixels — which
+                      // is exactly what each of them snapping for itself
+                      // would do.
+                      final viewport = renderSnappedViewport(
+                        rawViewport,
+                        EffectiveDevicePixelRatio.of(context),
+                      );
+                      return Stack(
+                        children: [
+                          // The sheet paints in TWO strata (UI-R10 #9, the
+                          // PSD layering live): the printed FORM (paper,
+                          // grid, labels) below, the CONTENT (cell texts,
+                          // values) above — timeline drags re-print just
+                          // the content stratum through the drag channel.
+                          //
+                          // Each stratum is baked rather than merely
+                          // boundaried. This panel measured 13.1 ms/frame
+                          // of raster — 47% of the whole app's — while
+                          // sitting perfectly still, because a boundary
+                          // stops the UI thread re-RECORDING and does
+                          // nothing about the GPU re-EXECUTING. The form
+                          // alone is ~334 lines and ~111 text paragraphs
+                          // of B4 sheet at every frame the app happens to
+                          // produce.
+                          //
+                          // Two wrappers and not one, deliberately: the
+                          // split above is what keeps a content-only
+                          // change off the form, and merging them would
+                          // hand the drag channel a re-record of the
+                          // whole grid.
+                          Positioned.fill(
+                            child: StaticRaster(
+                              debugLabel: 'timesheet-form',
                               child: CustomPaint(
                                 key: const ValueKey<String>(
-                                  'timesheet-playhead-overlay',
+                                  'timesheet-form-paint',
                                 ),
-                                painter: TimesheetPlayheadPainter(
+                                painter: TimesheetDocumentPainter(
                                   document: document,
                                   layout: layout,
                                   viewport: viewport,
-                                  resolvePlayheadFrame: () =>
-                                      _resolvePlayheadFrame(session),
-                                  repaint: Listenable.merge([
-                                    session.editingFrameCursor,
-                                    session.frameSeekCommitted,
-                                    session.playback.globalFrameIndexListenable,
-                                  ]),
+                                  // The per-cell text cutoff is a legibility
+                                  // question, so it counts DEVICE pixels.
+                                  // Raising the interface scale used to erase
+                                  // every text while the sheet stayed exactly
+                                  // the same size on screen.
+                                  effectiveRatio: EffectiveDevicePixelRatio.of(
+                                    context,
+                                  ),
+                                  layers: const {
+                                    SheetPaintLayer.paper,
+                                    SheetPaintLayer.form,
+                                  },
+                                  // The sheet prints in the NOTATION
+                                  // language (UI-R10 #7).
+                                  notation: TimesheetNotation.of(
+                                    session
+                                        .languageSettings
+                                        .value
+                                        .notationLanguage,
+                                  ),
                                 ),
                                 child: const SizedBox.expand(),
                               ),
                             ),
                           ),
-                        ),
-                        // Under the ink windows: reachable exactly when ink is
-                        // blocked (the toggle doubles as the edit-mode switch).
-                        Positioned.fill(
-                          child: TimesheetHeaderEditLayer(
-                            key: const ValueKey<String>(
-                              'timesheet-header-edit-layer',
-                            ),
-                            layout: layout,
-                            viewport: viewport,
-                            onHeaderFieldCommitted: _commitHeaderField,
-                            onMemoCommitted: session.updateActiveCutNote,
-                          ),
-                        ),
-                        if (inkController != null &&
-                            brushToolState != null &&
-                            widget.inkEnabled)
                           Positioned.fill(
-                            // The tool-state boundary (R18 UI-3): only this
-                            // small overlay follows the brush/eraser — the
-                            // sheet document above never rebuilds for it.
-                            child: ValueListenableBuilder<BrushToolState>(
-                              valueListenable: brushToolState,
-                              builder: (context, toolState, _) =>
-                                  TimesheetInkLayer(
-                                    key: const ValueKey<String>(
-                                      'timesheet-ink-layer',
-                                    ),
-                                    controller: inkController,
-                                    layout: layout,
-                                    pagedLayout: pagedLayout,
-                                    cutId: session.requireActiveCut.id,
-                                    brushToolState: toolState,
-                                    historyManager: session.historyManager,
-                                    viewport: viewport,
-                                    strokeActive: _inkStrokeActive,
-                                    cacheInvalidationSink:
-                                        _cacheInvalidationSink,
+                            child: StaticRaster(
+                              debugLabel: 'timesheet-content',
+                              child: CustomPaint(
+                                key: const ValueKey<String>(
+                                  'timesheet-document-paint',
+                                ),
+                                painter: TimesheetDocumentPainter(
+                                  document: document,
+                                  layout: layout,
+                                  viewport: viewport,
+                                  // The per-cell text cutoff is a legibility
+                                  // question, so it counts DEVICE pixels.
+                                  // Raising the interface scale used to erase
+                                  // every text while the sheet stayed exactly
+                                  // the same size on screen.
+                                  effectiveRatio: EffectiveDevicePixelRatio.of(
+                                    context,
                                   ),
+                                  layers: const {SheetPaintLayer.content},
+                                  dragPreview: session.dragPreview,
+                                  // Which cut the sheet is printing, so a
+                                  // cut-length drag on it can be read off the
+                                  // channel: the red cut-end line is DATA, and
+                                  // it was the one data line still printing the
+                                  // committed length while the cells beside it
+                                  // already previewed.
+                                  cutId: session.activeCutOrNull?.id,
+                                  notation: TimesheetNotation.of(
+                                    session
+                                        .languageSettings
+                                        .value
+                                        .notationLanguage,
+                                  ),
+                                ),
+                                child: const SizedBox.expand(),
+                              ),
                             ),
                           ),
-                      ],
-                    ),
+                          // The playhead row highlight repaints ALONE (R13-2):
+                          // cursor moves, seeks and playback ticks drive this
+                          // thin layer through its repaint listenable — the
+                          // sheet painter above never rebuilds for them.
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: RepaintBoundary(
+                                child: CustomPaint(
+                                  key: const ValueKey<String>(
+                                    'timesheet-playhead-overlay',
+                                  ),
+                                  painter: TimesheetPlayheadPainter(
+                                    effectiveRatio:
+                                        EffectiveDevicePixelRatio.of(context),
+                                    document: document,
+                                    layout: layout,
+                                    viewport: viewport,
+                                    resolvePlayheadFrame: () =>
+                                        _resolvePlayheadFrame(session),
+                                    repaint: Listenable.merge([
+                                      session.editingFrameCursor,
+                                      session.frameSeekCommitted,
+                                      session
+                                          .playback
+                                          .globalFrameIndexListenable,
+                                    ]),
+                                  ),
+                                  child: const SizedBox.expand(),
+                                ),
+                              ),
+                            ),
+                          ),
+                          // Under the ink windows: reachable exactly when ink is
+                          // blocked (the toggle doubles as the edit-mode switch).
+                          Positioned.fill(
+                            child: TimesheetHeaderEditLayer(
+                              key: const ValueKey<String>(
+                                'timesheet-header-edit-layer',
+                              ),
+                              layout: layout,
+                              viewport: viewport,
+                              onHeaderFieldCommitted: _commitHeaderField,
+                              onMemoCommitted: session.updateActiveCutNote,
+                            ),
+                          ),
+                          if (inkController != null &&
+                              brushToolState != null &&
+                              widget.inkEnabled)
+                            Positioned.fill(
+                              // The tool-state boundary (R18 UI-3): only this
+                              // small overlay follows the brush/eraser — the
+                              // sheet document above never rebuilds for it.
+                              child: ValueListenableBuilder<BrushToolState>(
+                                valueListenable: brushToolState,
+                                builder: (context, toolState, _) =>
+                                    TimesheetInkLayer(
+                                      key: const ValueKey<String>(
+                                        'timesheet-ink-layer',
+                                      ),
+                                      controller: inkController,
+                                      layout: layout,
+                                      pagedLayout: pagedLayout,
+                                      cutId: session.requireActiveCut.id,
+                                      brushToolState: toolState,
+                                      historyManager: session.historyManager,
+                                      viewport: viewport,
+                                      strokeActive: _inkStrokeActive,
+                                      cacheInvalidationSink:
+                                          _cacheInvalidationSink,
+                                    ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
                   );
                 },
               ),

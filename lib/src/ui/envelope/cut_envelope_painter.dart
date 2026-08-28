@@ -10,6 +10,7 @@ import '../../models/envelope/cut_envelope_form.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/envelope/cut_envelope_source.dart';
 import '../../models/sheet_paint_layer.dart';
+import '../canvas/viewport_canvas_transform.dart';
 
 export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
 
@@ -21,6 +22,7 @@ class CutEnvelopePainter extends CustomPainter {
     required this.source,
     this.layers,
     this.viewport,
+    this.effectiveRatio = 1.0,
     this.imageFor,
     this.inkImageFor,
     this.inkKeyFor,
@@ -43,6 +45,11 @@ class CutEnvelopePainter extends CustomPainter {
   /// fit-to-size behaviour the exports use, where the canvas already IS
   /// the paper.
   final CanvasViewport? viewport;
+
+  /// The view's DPR — the SAME one the host snapped with, so
+  /// [applyViewportTransform]'s own snap is a no-op here rather than a
+  /// second, coarser rounding.
+  final double effectiveRatio;
 
   /// Resolves a media asset path to a decoded image (logo, 도장).
   final ui.Image? Function(String assetPath)? imageFor;
@@ -68,10 +75,19 @@ class CutEnvelopePainter extends CustomPainter {
     canvas.save();
     if (panelViewport != null) {
       // The canvas shell: crisp vector redraw at any zoom, no raster cache
-      // — the timesheet painter's transform.
+      // — and P8's ONE transform, which carries the rotation and flip a
+      // translate/scale pair drops.
+      //
+      // ⛔THE SNAP ALREADY HAPPENED, at the host: this viewport and the
+      // one the ink windows derive from are the same value, which is what
+      // keeps written ink on its box. Passing the ratio here keeps that
+      // snap idempotent rather than re-rounding to a coarser grid.
       canvas.clipRect(Offset.zero & size);
-      canvas.translate(panelViewport.panX, panelViewport.panY);
-      canvas.scale(panelViewport.zoom, panelViewport.zoom);
+      applyViewportTransform(
+        canvas,
+        panelViewport,
+        devicePixelRatio: effectiveRatio,
+      );
     } else {
       // Fit-to-size: the export renders AT paper size (scale 1) and a
       // preview at a fraction of it, both from these same paper units.
@@ -286,6 +302,7 @@ class CutEnvelopePainter extends CustomPainter {
       oldDelegate.source != source ||
       oldDelegate.layers != layers ||
       oldDelegate.viewport != viewport ||
+      oldDelegate.effectiveRatio != effectiveRatio ||
       // Mounting a window HIDES that box's baked ink here; unmounting shows
       // it again. Miss this and a stroke stays doubled (or missing) until
       // something else happens to repaint.

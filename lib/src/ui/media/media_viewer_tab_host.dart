@@ -12,6 +12,8 @@ import '../../services/media/media_byte_source.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../canvas/canvas_zoom_scale.dart';
+import '../canvas/viewport_canvas_transform.dart';
+import '../effective_device_pixel_ratio.dart';
 import '../brush/brush_canvas_panel.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../editor_session_manager.dart';
@@ -517,9 +519,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       return;
     }
     final kind = mediaAssetKindForPath(path) ?? MediaAssetKind.image;
-    widget.onRequestPicked?.call(
-      MediaViewerRequest(path: path, kind: kind),
-    );
+    widget.onRequestPicked?.call(MediaViewerRequest(path: path, kind: kind));
   }
 
   /// Whether the file on screen can still be added to the media pool —
@@ -753,6 +753,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
                     // light table, not a compositor.
                     paperFill: pdf != null || frames != null,
                     viewport: viewport,
+                    effectiveRatio: EffectiveDevicePixelRatio.of(context),
                   ),
                   child: const SizedBox.expand(),
                 ),
@@ -811,6 +812,7 @@ class _MediaPagePainter extends CustomPainter {
     required this.docSize,
     required this.paperFill,
     required this.viewport,
+    required this.effectiveRatio,
   });
 
   /// The page raster; null draws the paper alone (a PDF page still
@@ -824,11 +826,15 @@ class _MediaPagePainter extends CustomPainter {
   final bool paperFill;
   final CanvasViewport viewport;
 
+  /// The view's DPR, for [applyViewportTransform]'s pan-phase snap.
+  final double effectiveRatio;
+
   @override
   void paint(Canvas canvas, Size size) {
     canvas.save();
-    canvas.translate(viewport.panX, viewport.panY);
-    canvas.scale(viewport.zoom, viewport.zoom);
+    // P8's ONE transform. ⛔The snap already happened at the host, so the
+    // ratio here keeps the helper's own snap idempotent.
+    applyViewportTransform(canvas, viewport, devicePixelRatio: effectiveRatio);
     final docRect = Rect.fromLTWH(0, 0, docSize.width, docSize.height);
     if (paperFill) {
       canvas.drawRect(docRect, Paint()..color = const Color(0xFFFFFFFF));
@@ -852,6 +858,7 @@ class _MediaPagePainter extends CustomPainter {
     return oldDelegate.image != image ||
         oldDelegate.docSize != docSize ||
         oldDelegate.paperFill != paperFill ||
-        oldDelegate.viewport != viewport;
+        oldDelegate.viewport != viewport ||
+        oldDelegate.effectiveRatio != effectiveRatio;
   }
 }
