@@ -184,10 +184,35 @@ void main(List<String> args) {
   // ⚠️What it means is 「I have decided to leave this card alone」, and that
   // decision is the same decision whichever complaint prompted it. Deciding
   // is the point; the file is where the decision is written down.
+  // 🚨AN ACK CARRIES ITS REASON. A bare number is indistinguishable from
+  // every other bare number, and by 2026-08-29 thirty-four had piled up —
+  // nobody could say which were 「another session landed this」 and which
+  // were 「I did not get to it」. Seventeen of them turned out to be dead:
+  // the landing HAD a card by then, so the ack was silencing nothing.
+  //
+  // The second token is free text. What it buys is that an ack naming a
+  // number can be CHECKED against the board, and dropped the moment that
+  // number appears in a card's `pr` field.
+  //
+  // ⛔BARE LINES STILL SILENCE. Rejecting them outright would have re-fired
+  // thirty-four complaints in one turn, which is the wall this file's own
+  // doc warns about: a gate nobody reads. The format tightens going
+  // forward, not retroactively.
   final ackFile = File('${file.parent.path}/.gate-ack');
-  final acked = ackFile.existsSync()
-      ? ackFile.readAsLinesSync().map((l) => l.trim()).toSet()
-      : <String>{};
+  final ackReason = <String, String>{};
+  if (ackFile.existsSync()) {
+    for (final raw in ackFile.readAsLinesSync()) {
+      final line = raw.trim();
+      if (line.isEmpty || line.startsWith('#')) {
+        continue;
+      }
+      final gap = line.indexOf(RegExp(r'\s'));
+      ackReason[gap < 0 ? line : line.substring(0, gap)] = gap < 0
+          ? ''
+          : line.substring(gap + 1).trim();
+    }
+  }
+  final acked = ackReason.keys.toSet();
 
   for (final id in order) {
     final card = merged[id]!;
@@ -365,6 +390,44 @@ void main(List<String> args) {
       '「착수 가능」으로 떨어집니다 — 끝난 카드가 「명령만 내리면 착수」 칸에 '
       '앉습니다. ⛔새 이름을 지어내지 말고 있는 것을 쓰세요: 끝났으면 '
       'archived, 유저가 체크했으면 deleted, 나중이면 queue, 상담 대기면 gate.',
+    );
+  }
+
+  // 🚨★★★AN ACK THAT SILENCES NOTHING IS A LINE TO DELETE.
+  //
+  // `.gate-ack` is where 「this landing goes past without a card」 is written
+  // down. The moment a card DOES carry that PR the sentence stops being
+  // true, and the line becomes one more bare number nobody can account for
+  // — which is how seventeen of thirty-four got there by 2026-08-29.
+  //
+  // ⛔It names the line rather than dropping it silently: the file is the
+  // user's record of decisions, and a gate that edits it would be deciding
+  // on their behalf.
+  //
+  // ⚠️Every card, whatever its state. A landing whose card was archived
+  // still HAS a card — that is the whole point of archiving it — so reading
+  // this off the main loop (which skips archived and acked cards) would
+  // have called the healthy ones dead.
+  final cardPrs = <int>{};
+  for (final card in merged.values) {
+    final pr = card['pr'];
+    if (pr is int) {
+      cardPrs.add(pr);
+    }
+  }
+  final settledAcks = <String>[];
+  for (final key in ackReason.keys) {
+    final pr = int.tryParse(key);
+    if (pr != null && cardPrs.contains(pr)) {
+      settledAcks.add(key);
+    }
+  }
+  if (settledAcks.isNotEmpty) {
+    complaints.add(
+      '카드가 생긴 착지의 ack: ${settledAcks.join(', ')}\n'
+      'ack 는 「이 착지는 카드 없이 지나간다」는 뜻인데 그 PR을 든 카드가 '
+      '이제 있습니다 — `.gate-ack` 에서 그 줄을 지우세요. 남겨두면 다음에 '
+      '읽는 쪽이 아직 카드가 없는 줄로 압니다.',
     );
   }
 

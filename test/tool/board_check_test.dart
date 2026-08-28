@@ -299,6 +299,108 @@ void main() {
       expect(out, isNot(contains('Y4')));
     });
   });
+
+  // 🚨★★★AN ACK CARRIES ITS REASON, AND A DEAD ACK GETS NAMED.
+  //
+  // `.gate-ack` was a bare list of numbers. By 2026-08-29 it held 34 and
+  // seventeen of them were dead — the landing had a card by then, so the
+  // line silenced nothing and read to the next person as "still uncarded".
+  group('.gate-ack', () {
+    test('a reason after the key still silences — the key is the first '
+        'token, not the whole line', () async {
+      final out = await complaintFor(
+        [
+          {
+            'kind': 'item',
+            'id': 'I-8',
+            'state': 'open',
+            'ts': stamp(const Duration(hours: 1)),
+            'rest': '실기로 확인한다',
+          },
+        ],
+        acked: ['I-8 another session owns this one'],
+      );
+      expect(out, isEmpty);
+    });
+
+    test('a # line is a comment, not a key', () async {
+      // The file needs somewhere to say what its own format is, and a
+      // header that silenced a card called `#` would be a trap.
+      final out = await complaintFor(
+        [
+          {
+            'kind': 'item',
+            'id': 'I-8',
+            'state': 'open',
+            'ts': stamp(const Duration(hours: 1)),
+            'rest': '실기로 확인한다',
+          },
+        ],
+        acked: ['# key <space> reason', 'I-8 still open'],
+      );
+      expect(out, isEmpty);
+    });
+
+    test('an ack for a landing that NOW has a card is named', () async {
+      final out = await complaintFor(
+        [
+          {
+            'kind': 'item',
+            'id': 'C-1',
+            'state': 'open',
+            'pr': 1302,
+            'note': 'x',
+            'how': 'y',
+            'ts': stamp(const Duration(hours: 1)),
+          },
+        ],
+        acked: ['1302 was another session'],
+      );
+      expect(out, contains('1302'));
+    });
+
+    test('and an ack for a landing with no card stays quiet', () async {
+      // ⛔THE CONTROL. A rule that named every numeric ack would "pass" the
+      // test above while telling the user to delete lines that are still
+      // doing their job.
+      final out = await complaintFor(
+        [
+          {
+            'kind': 'item',
+            'id': 'C-1',
+            'state': 'open',
+            'pr': 1302,
+            'note': 'x',
+            'how': 'y',
+            'ts': stamp(const Duration(hours: 1)),
+          },
+        ],
+        acked: ['1399 nobody carded this'],
+      );
+      expect(out, isEmpty);
+    });
+
+    test('an ARCHIVED card still counts as having the landing', () async {
+      // The gate's main loop skips archived cards. Reading the PR set off
+      // that loop would have called a healthy ack dead — archiving a card
+      // is the opposite of losing it.
+      final out = await complaintFor(
+        [
+          {
+            'kind': 'item',
+            'id': 'C-1',
+            'state': 'archived',
+            'pr': 1302,
+            'note': 'x',
+            'how': 'y',
+            'ts': stamp(const Duration(hours: 1)),
+          },
+        ],
+        acked: ['1302 was another session'],
+      );
+      expect(out, contains('1302'));
+    });
+  });
 }
 
 /// 🚨추천이 선택지를 안 가리키면 **화면에 아무것도 안 나온다.**
