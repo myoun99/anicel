@@ -468,10 +468,30 @@ class _HomePageState extends State<HomePage> {
   /// ⛔The canvas NUDGE never reaches here and stays keyed to the arrow's own
   /// direction: pushing a selection right is +x whatever the sheet is
   /// reading. Only the timeline walk follows the sheet.
-  void _walkTimeline({required bool horizontal, required bool forward}) {
+  /// [byFrame] is the SIZE of the step along the frame axis — one FRAME
+  /// (Ctrl+arrows, F-28) or one DRAWING (the plain arrows). It changes
+  /// nothing about the axis question, which is exactly why it is a
+  /// parameter here rather than a second walker: 유저 2026-08-28 asked for
+  /// Ctrl+arrows to follow the sheet the way the plain ones already do,
+  /// and a copy of this `if` is what `the_frame_axis_is_asked_in_one_place`
+  /// exists to forbid.
+  ///
+  /// ⛔Across the axis both sizes mean the same thing — one ROW. A frame
+  /// has no meaning perpendicular to the frames.
+  void _walkTimeline({
+    required bool horizontal,
+    required bool forward,
+    bool byFrame = false,
+  }) {
     if (_flipHud.framesRunAlong(horizontal: horizontal)) {
       // Along the frame axis: one DRAWING, which is the plain arrow's step.
-      if (forward) {
+      if (byFrame) {
+        if (forward) {
+          _session.selectNextFrame();
+        } else {
+          _session.selectPreviousFrame();
+        }
+      } else if (forward) {
         _session.selectNextDrawing();
       } else {
         _session.selectPreviousDrawing();
@@ -502,8 +522,13 @@ class _HomePageState extends State<HomePage> {
     }
     switch (actionId) {
       case EditorActionIds.framePrevious:
-        // PEN-7c: the one-frame step (Ctrl+arrows / comma) — always a
-        // frame flip, never a nudge.
+        // PEN-7c: the one-frame step — always a frame flip, never a nudge.
+        //
+        // ⛔The COMMA and PERIOD keep this arm and stay axis-blind, which
+        // is the point of F-28's split: they say "previous / next frame",
+        // not a direction, so an X-sheet must not turn them into row
+        // moves. The Ctrl+ARROWS moved to the four cases below, where a
+        // direction is what the key means.
         //
         // R5: and the rails bring it back into view. These are the moves
         // that happen WITHOUT a pointer, so they are the ones that could
@@ -513,6 +538,19 @@ class _HomePageState extends State<HomePage> {
       case EditorActionIds.frameNext:
         _session.selectNextFrame();
         _session.revealSelection();
+      // F-28 (유저 2026-08-28, Q2=2): Ctrl+arrows read the SHEET, exactly
+      // as the plain arrows already do — along the frame axis one frame,
+      // across it one row. On an X-sheet that makes Ctrl+↑↓ the frame step
+      // and Ctrl+←→ the row step; on the horizontal timeline it is the
+      // arrangement it always was.
+      case EditorActionIds.frameWalkLeft:
+        _walkTimeline(horizontal: true, forward: false, byFrame: true);
+      case EditorActionIds.frameWalkRight:
+        _walkTimeline(horizontal: true, forward: true, byFrame: true);
+      case EditorActionIds.frameWalkUp:
+        _walkTimeline(horizontal: false, forward: false, byFrame: true);
+      case EditorActionIds.frameWalkDown:
+        _walkTimeline(horizontal: false, forward: true, byFrame: true);
       case EditorActionIds.drawingPrevious:
         // A live selection claims the PLAIN arrow keys as nudges (PS
         // arbitration — the arbitration follows the KEYS, which walk

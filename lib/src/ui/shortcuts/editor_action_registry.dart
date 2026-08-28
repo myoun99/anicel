@@ -41,6 +41,10 @@ class EditorActionDefinition {
 abstract final class EditorActionIds {
   static const framePrevious = 'frame-previous';
   static const frameNext = 'frame-next';
+  static const frameWalkLeft = 'frame-walk-left';
+  static const frameWalkRight = 'frame-walk-right';
+  static const frameWalkUp = 'frame-walk-up';
+  static const frameWalkDown = 'frame-walk-down';
   static const drawingPrevious = 'drawing-previous';
   static const drawingNext = 'drawing-next';
   static const playbackToggle = 'playback-toggle';
@@ -94,18 +98,48 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     id: EditorActionIds.framePrevious,
     label: 'Previous Frame',
     category: 'Navigation',
-    defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.arrowLeft, control: true),
-      SingleActivator(LogicalKeyboardKey.comma),
-    ],
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.comma)],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.frameNext,
     label: 'Next Frame',
     category: 'Navigation',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.period)],
+  ),
+  // F-28 (유저 2026-08-28): the Ctrl+arrows are DIRECTIONS, so they read
+  // the sheet — along the frame axis one frame, across it one row. That
+  // is why they left the two definitions above: comma and period name a
+  // frame, not a direction, and on an X-sheet they must still step frames.
+  const EditorActionDefinition(
+    id: EditorActionIds.frameWalkLeft,
+    label: 'Step Left',
+    category: 'Navigation',
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.arrowLeft, control: true),
+    ],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.frameWalkRight,
+    label: 'Step Right',
+    category: 'Navigation',
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.arrowRight, control: true),
-      SingleActivator(LogicalKeyboardKey.period),
+    ],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.frameWalkUp,
+    label: 'Step Up',
+    category: 'Navigation',
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.arrowUp, control: true),
+    ],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.frameWalkDown,
+    label: 'Step Down',
+    category: 'Navigation',
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.arrowDown, control: true),
     ],
   ),
   const EditorActionDefinition(
