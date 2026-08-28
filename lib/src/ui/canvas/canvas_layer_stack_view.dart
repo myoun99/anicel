@@ -1713,8 +1713,12 @@ class _LayerStackPainter extends CustomPainter {
         CanvasPaintGeometryProbe.lastLine = key;
         final counts = bufferCache == null
             ? ''
+            // ⛔THE CARRY BELONGS BESIDE THE OTHER TWO. A pan that stopped
+            // carrying looks exactly like one that never could, and this
+            // line is what a hands-on report can show.
             : ' full=${bufferCache!.fullCount}'
-                  ' patched=${bufferCache!.patchedCount}';
+                  ' patched=${bufferCache!.patchedCount}'
+                  ' carried=${bufferCache!.scrolledCount}';
         final top =
             (CanvasPaintGeometryProbe.zoomHistogram.entries.toList()
                   ..sort((a, b) => b.value.compareTo(a.value)))
