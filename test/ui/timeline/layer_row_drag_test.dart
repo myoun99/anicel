@@ -758,4 +758,63 @@ void main() {
       reason: "the folder becomes B's organizer, so its member rides B",
     );
   });
+
+  testWidgets('F-31① on the OTHER axis: the x-sheet\'s caret is a COLUMN '
+      'boundary, and the badge must not push that either', (tester) async {
+    // The same `_caret` draws both rails, so the badge that displaced the
+    // horizontal line displaced this one sideways. One law, both surfaces —
+    // the sheet had no test for its caret at all.
+    final drag = ValueNotifier<LayerRowDragState?>(
+      const LayerRowDragState(
+        subject: LayerRowSubject(LayerId('b')),
+        caretSlot: 1,
+        legal: true,
+        joinLabel: '어태치 해제',
+      ),
+    );
+    addTearDown(drag.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              height: 300,
+              child: LayerRowDragTarget(
+                subject: const LayerRowSubject(LayerId('b')),
+                slotBefore: 1,
+                rowExtent: 28,
+                axis: Axis.vertical,
+                hooks: TimelineRowDragHooks(
+                  drag: drag,
+                  onBegin: (_) {},
+                  onUpdate: (_, _, {pointerInRow}) {},
+                  onRowTarget: (_, _, _) {},
+                  onEffectUpdate: (_, _, _) {},
+                  onEnd: () {},
+                  onCancel: () {},
+                ),
+                onCrossed: (_, _, _) {},
+                child: const SizedBox(width: 28, key: ValueKey('the-column')),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final bar = find.byWidgetPredicate(
+      (w) => w is Container && w.constraints?.maxWidth == layerRowCaretThickness,
+    );
+    expect(bar, findsOneWidget);
+    final columnLeft = tester
+        .getRect(find.byKey(const ValueKey('the-column')))
+        .left;
+    expect(
+      tester.getRect(bar).center.dx,
+      moreOrLessEquals(columnLeft, epsilon: 1.5),
+      reason: 'the bar straddles the column boundary, badge or no badge',
+    );
+    expect(find.text('어태치 해제'), findsOneWidget);
+  });
 }
