@@ -33,8 +33,7 @@ import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import 'theme/app_theme.dart';
 import 'timeline/layer_label_controls.dart';
-import 'timeline/timeline_cut_end_handle.dart'
-    show movieEndPreviewTotalFrames;
+import 'timeline/timeline_cut_end_handle.dart' show movieEndPreviewTotalFrames;
 import 'timeline/layer_rail_columns.dart';
 import 'timeline/layer_rail_window.dart';
 import 'widgets/field_slider.dart';
@@ -1958,7 +1957,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             track: track,
             trackLabel: 'V${index + 1}',
             laneHeight: widget.trackLaneHeight,
-            laneExpanded: widget.expandedTransformTracks.contains(track.id.value),
+            laneExpanded: widget.expandedTransformTracks.contains(
+              track.id.value,
+            ),
             onToggleLane: widget.onToggleTrackLane == null
                 ? null
                 : () => widget.onToggleTrackLane!(track),
@@ -3628,10 +3629,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                                                   .trailingFrames,
                                                         );
                                                     return Positioned(
-                                                      key:
-                                                          const ValueKey<String>(
-                                                            'storyboard-cut-end-line',
-                                                          ),
+                                                      key: const ValueKey<String>(
+                                                        'storyboard-cut-end-line',
+                                                      ),
                                                       left: scale.leftForFrame(
                                                         live,
                                                       ),
@@ -4292,13 +4292,10 @@ class _StoryboardSeLabel extends StatelessWidget {
   /// The row's opacity slider, live-following the session's drag preview
   /// when it targets this layer (the master bar sweep, UI-R6 #2).
   Widget _opacityField(Layer layer) {
-    Widget slider(double value) => FieldSlider(
+    Widget slider(double value) => FieldSlider.opacity(
       key: ValueKey<String>('storyboard-layer-opacity-${layer.id}'),
-      min: 0,
-      max: 1,
       value: value,
       valueText: sliderValueText(value * 100, unit: '%'),
-      valueTextBuilder: (next) => sliderValueText(next * 100, unit: '%'),
       height: 18,
       onChanged: (opacity) => onLayerOpacityChanged!(layer.id, opacity),
       onChangeEnd: onLayerOpacityChangeEnd == null
@@ -5675,15 +5672,15 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                 // opacity multiplies its static one.
                 opacity: onTrackOpacityChanged == null
                     ? null
-                    : FieldSlider(
+                    : FieldSlider.opacity(
                         key: ValueKey<String>(
                           'storyboard-track-opacity-${track.id.value}',
                         ),
-                        min: 0,
-                        max: 1,
                         value: trackOpacity.clamp(0.0, 1.0).toDouble(),
-                        valueText: sliderValueText(trackOpacity * 100, unit: '%'),
-                        valueTextBuilder: (next) => sliderValueText(next * 100, unit: '%'),
+                        valueText: sliderValueText(
+                          trackOpacity * 100,
+                          unit: '%',
+                        ),
                         height: 18,
                         onChanged: onTrackOpacityChanged,
                         onChangeEnd: onTrackOpacityChangeEnd,

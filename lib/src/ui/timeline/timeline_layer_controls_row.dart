@@ -701,13 +701,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// The row's opacity slider, live-following the session's drag preview
   /// when it targets this layer (the master bar sweep, UI-R6 #2).
   Widget _opacityField() {
-    Widget slider(double value) => FieldSlider(
+    Widget slider(double value) => FieldSlider.opacity(
       key: ValueKey<String>('timeline-layer-opacity-${layer.id}'),
-      min: 0,
-      max: 1,
       value: value,
       valueText: sliderValueText(value * 100, unit: '%'),
-      valueTextBuilder: (next) => sliderValueText(next * 100, unit: '%'),
       height: 18,
       onChanged: (opacity) => onLayerOpacityChanged(layer.id, opacity),
       onChangeEnd: onLayerOpacityChangeEnd == null
