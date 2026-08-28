@@ -209,7 +209,7 @@ void main() {
     expect(label.anchor.dx, 52);
   });
 
-  testWidgets('separate blocks label separately; SE rows stay clean', (
+  testWidgets('separate blocks label separately; SE rows label too', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -235,11 +235,19 @@ void main() {
         ),
       ),
     );
+    // 🔄**뒤집힌 결정** (유저 2026-08-28, F-40): 「se블록에 코마표시가 없음.
+    // **블록이면 뭐든 반드시 코마블록이 있어야함**」.
+    //
+    // ⚠️여기 있던 단언은 `isNull` 이었고 이유는 「SE sheet rows carry dialogue
+    // and waveforms, not exposure durations」였다. **그건 유저가 정한 게
+    // 아니라 #649 가 지어낸 예외였고**(커밋 메시지가 근거 없이 「SE sheet rows
+    // stay clean」이라고만 적었다), 그 위에 이 테스트가 얹혀 있었다.
+    // 예외를 만든 술어 `layerKindUsesSeSheetCells` 는 **셀 글리프와 X 마크**를
+    // 억제하는 것이지 블록 길이와는 무관하다 — 한 술어가 두 질문에 답했다.
     expect(
       painterOf(tester, layerId: 'se-1'),
-      isNull,
-      reason:
-          'SE sheet rows carry dialogue and waveforms, not exposure durations',
+      isNotNull,
+      reason: '블록을 가진 행이면 se 도 자기 길이를 쓴다',
     );
   });
 }
