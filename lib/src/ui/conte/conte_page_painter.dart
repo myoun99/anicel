@@ -11,6 +11,7 @@ import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut_id.dart';
 import '../../models/sheet_paint_layer.dart';
+import '../canvas/viewport_canvas_transform.dart';
 import 'conte_fonts.dart';
 
 export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
@@ -33,6 +34,7 @@ class ContePagePainter extends CustomPainter {
     this.selectedCell,
     this.showPaper = true,
     this.viewport,
+    this.effectiveRatio = 1.0,
     this.layers,
     this.inkImageFor,
     this.liveInkKeys = const {},
@@ -49,6 +51,11 @@ class ContePagePainter extends CustomPainter {
   /// page space and this transform places it, exactly like the timesheet
   /// painter. Null keeps the legacy fit-to-size scaling (export paths).
   final CanvasViewport? viewport;
+
+  /// The view's DPR — the SAME one the host snapped with, so
+  /// [applyViewportTransform]'s own snap is a no-op rather than a second,
+  /// coarser rounding.
+  final double effectiveRatio;
 
   /// The finished composite for a cell, or null while it renders (the cell
   /// prints its rules and text either way — a conte with no pictures yet is
@@ -105,10 +112,18 @@ class ContePagePainter extends CustomPainter {
     canvas.save();
     if (resolvedViewport != null) {
       // The canvas shell: crisp vector redraw at any zoom, no raster
-      // cache — the timesheet painter's transform.
+      // cache — and P8's ONE transform, which carries the rotation and
+      // flip a translate/scale pair drops.
+      //
+      // ⛔THE SNAP ALREADY HAPPENED, at the host: this viewport and the
+      // one the ink windows derive from are the same value, which is what
+      // keeps written ink on its cell.
       canvas.clipRect(Offset.zero & size);
-      canvas.translate(resolvedViewport.panX, resolvedViewport.panY);
-      canvas.scale(resolvedViewport.zoom, resolvedViewport.zoom);
+      applyViewportTransform(
+        canvas,
+        resolvedViewport,
+        devicePixelRatio: effectiveRatio,
+      );
     } else {
       final scale = math.min(
         size.width / metrics.pageWidth,
@@ -495,6 +510,7 @@ class ContePagePainter extends CustomPainter {
       oldDelegate.source != source ||
       oldDelegate.selectedCell != selectedCell ||
       oldDelegate.viewport != viewport ||
+      oldDelegate.effectiveRatio != effectiveRatio ||
       !setEquals(oldDelegate.liveInkKeys, liveInkKeys);
 }
 

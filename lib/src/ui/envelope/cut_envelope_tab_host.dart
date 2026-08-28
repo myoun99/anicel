@@ -14,6 +14,8 @@ import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/brush_tool_state.dart';
 import '../editor_session_manager.dart';
 import '../widgets/app_icon_button.dart';
+import '../canvas/viewport_canvas_transform.dart';
+import '../effective_device_pixel_ratio.dart';
 import '../widgets/static_raster.dart';
 import 'cut_envelope_builder.dart';
 import '../sheet/sheet_ink_layer.dart';
@@ -158,8 +160,22 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
         paper.height.toDouble(),
       ),
       contentStrokeActive: inking ? _strokeActive : null,
-      contentOverride: (context, viewport) => LayoutBuilder(
+      contentOverride: (context, rawViewport) => LayoutBuilder(
         builder: (context, constraints) {
+          // 🚨★★★SNAPPED ONCE, HERE (P8, 유저 답 `host` 2026-08-28).
+          //
+          // The paper below and the ink windows above BOTH derive from
+          // this. A painter that snapped for itself and an ink window
+          // that snapped for itself would land on the same device grid
+          // from different starting values — `round(pan) + zoom*left`
+          // versus `round(pan + zoom*left)` — and part company by up to a
+          // whole device pixel at fractional pans, which reads as the ink
+          // jumping off the box the moment the pen lifts. One value
+          // cannot drift from itself.
+          final viewport = renderSnappedViewport(
+            rawViewport,
+            EffectiveDevicePixelRatio.of(context),
+          );
           // ONE gate, read by both the input layer and the painter: a box
           // whose window is mounted draws itself, and every other box's
           // saved ink is baked by the painter.
@@ -192,6 +208,7 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
                       layout: layout,
                       source: source,
                       viewport: viewport,
+                      effectiveRatio: EffectiveDevicePixelRatio.of(context),
                       imageFor: widget.imageFor,
                       inkKeyFor: owner == null
                           ? null
