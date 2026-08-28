@@ -158,7 +158,13 @@ void main() {
 /// identity, so it is a 1:1 blit and owns `FilterQuality.none` on its own
 /// Paint. (The step's OTHER draw is a `drawRect` under a shader, which is
 /// not an image draw at all.)
-const int _knownRawDraws = 39;
+/// **40** at the carry round: +1 in canvas_layer_stack_view — the blit that
+/// moves a display buffer to its new home when a pan slides the extent. The
+/// buffer is canvas resolution, so one buffer pixel is one canvas pixel and
+/// src and dst are the same size: a 1:1 blit that owns `FilterQuality.none`
+/// and `isAntiAlias: false` on its own Paint, exactly like the patch path's
+/// base blit beside it.
+const int _knownRawDraws = 40;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

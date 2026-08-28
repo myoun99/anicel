@@ -137,6 +137,58 @@ class DisplayBufferCache {
     return (image: image, rect: rect);
   }
 
+  /// The kept image and the rect it ALREADY covers, when the extent has
+  /// MOVED but the content behind it has not — a pan, or a zoom that slid
+  /// the window over the same picture.
+  ///
+  /// 🚨★★★A PAN CARRIES WHAT IT ALREADY HAD. [patchBaseFor] refuses a moved
+  /// rect, because for a stroke step a moved rect means the old pixels are
+  /// in the wrong place. They are not WRONG, though — they are OFFSET. The
+  /// buffer is canvas resolution, so one buffer pixel is one canvas pixel at
+  /// every zoom, and the overlap can be blitted to its new home exactly.
+  /// What is left to composite is the band the pan exposed.
+  ///
+  /// ⛔ONE IMAGE STILL. The blit and the band land in the SAME recorder and
+  /// come out as one `toImageSync` — there is no second image at paint time,
+  /// so there is no boundary for a fractional scale to seam (which is what
+  /// the tile grid was rejected for, and what a base-plus-patch draw would
+  /// bring back).
+  ///
+  /// ⚠️THE LIVE SURFACE IS NOT IN [staticKey] ON PURPOSE, so the carried
+  /// pixels can hold a stale live layer. The caller composites the live
+  /// dirty rect along with the exposed band, and must refuse the carry when
+  /// it cannot say where the live surface changed.
+  ({ui.Image image, Rect rect})? scrollBaseFor(Object staticKey, Rect rect) {
+    final image = _image;
+    final was = _rect;
+    if (image == null || was == null || _staticKey != staticKey) {
+      return null;
+    }
+    if (was == rect) {
+      // Not moved: that is [patchBaseFor]'s case, and it knows more.
+      return null;
+    }
+    final overlap = was.intersect(rect);
+    if (overlap.isEmpty || overlap.width <= 0 || overlap.height <= 0) {
+      return null;
+    }
+    return (image: image, rect: was);
+  }
+
+  /// How many stores carried a moved buffer instead of compositing it whole.
+  ///
+  /// 🚨The counters' own law: an optimisation that never runs looks exactly
+  /// like one that works.
+  int scrolledCount = 0;
+
+  /// The canvas-space AREA the last carry actually composited.
+  ///
+  /// 🚨THE COUNTER SAYS THE CARRY RAN; THIS SAYS IT SAVED SOMETHING. A carry
+  /// that blits the overlap and then composites the whole rect anyway is
+  /// correct, costs what it always did, and is invisible in every pixel test
+  /// — 🧪a mutation shipped exactly that and stayed green.
+  double? lastComposedArea;
+
   void invalidate() {
     _image?.dispose();
     _image = null;

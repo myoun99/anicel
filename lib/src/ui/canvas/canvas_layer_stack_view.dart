@@ -2425,11 +2425,35 @@ class _LayerStackPainter extends CustomPainter {
     // already possible left the snapshot empty forever, so the first real
     // stroke step compared against nothing and fell back to a full raster —
     // measured, with the counter reading zero.
-    final dirty = cache == null ? null : _liveDirtyCanvasRect();
+    final change = cache == null
+        ? (located: false, dirty: null)
+        : _liveDirtyCanvasRect();
+    // ⛔TWO ANSWERS, NOT ONE. `located: false` is "cannot say where"; a null
+    // rect with `located: true` is "nothing changed", which is the BEST case
+    // for a carry and used to be indistinguishable from the worst.
+    final dirty = change.dirty;
     cache?.lastDirtyRect = dirty;
     final recorder = ui.PictureRecorder();
     final into = Canvas(recorder);
     into.translate(-rect.left, -rect.top);
+    // 🚨★★★A PAN CARRIES WHAT IT ALREADY HAD. A moved extent is not a wrong
+    // buffer, it is an OFFSET one: the buffer is canvas resolution, so one
+    // buffer pixel is one canvas pixel at every zoom and the overlap belongs
+    // exactly where the new rect says. What is left is the band the pan
+    // exposed — and, because the live surface is deliberately absent from
+    // [compositeKey], whatever the live layer changed since.
+    //
+    // ⛔ONE IMAGE STILL: the blit and the band land in this same recorder and
+    // come out of one `toImageSync`. A base drawn beside a patch at paint
+    // time would seam at fractional scale, which is what the tile grid was
+    // rejected for.
+    final scroll = base != null || cache == null || key == null
+        ? null
+        : cache.scrollBaseFor(compositeKey, rect);
+    // ⚠️REFUSED WHEN THE LIVE SURFACE CANNOT SAY WHERE IT CHANGED. Carrying
+    // the overlap would carry a stale live layer with it, and nothing else
+    // in the key would notice.
+    final canScroll = scroll != null && change.located;
     if (base != null && dirty != null) {
       into.drawImageRect(
         base.image,
@@ -2446,6 +2470,58 @@ class _LayerStackPainter extends CustomPainter {
       // frame — a stroke would darken as it was redrawn.
       into.drawRect(dirty, Paint()..blendMode = BlendMode.clear);
       // The canvas-resolution buffer records with a translate only.
+      paintContent(into, rasterRect: rect, rasterScale: 1);
+      into.restore();
+    } else if (canScroll) {
+      final was = scroll.rect;
+      final overlap = was.intersect(rect);
+      into.drawImageRect(
+        scroll.image,
+        // The overlap in the OLD image's own pixels: 1:1, so this is just
+        // the offset between the two rects.
+        Rect.fromLTWH(
+          overlap.left - was.left,
+          overlap.top - was.top,
+          overlap.width,
+          overlap.height,
+        ),
+        overlap,
+        Paint()
+          ..filterQuality = ui.FilterQuality.none
+          ..isAntiAlias = false,
+      );
+      into.save();
+      // ⛔THE BANDS, LISTED. Up to four of them — the strips of the new rect
+      // the old one did not reach — plus the live dirty rect, because the
+      // carried pixels are as old as the last composite.
+      //
+      // 🚨A LIST RATHER THAN AN EVEN-ODD PATH, and a mutation is why: with
+      // the path form, dropping the subtraction left the clip covering the
+      // whole rect — correct pixels, no saving, and every test green. The
+      // clip and the AREA now come from the same list, so a band that stops
+      // being excluded stops being counted.
+      final bands = <Rect>[
+        if (overlap.top > rect.top)
+          Rect.fromLTRB(rect.left, rect.top, rect.right, overlap.top),
+        if (overlap.bottom < rect.bottom)
+          Rect.fromLTRB(rect.left, overlap.bottom, rect.right, rect.bottom),
+        if (overlap.left > rect.left)
+          Rect.fromLTRB(rect.left, overlap.top, overlap.left, overlap.bottom),
+        if (overlap.right < rect.right)
+          Rect.fromLTRB(overlap.right, overlap.top, rect.right, overlap.bottom),
+        if (dirty != null && !dirty.intersect(overlap).isEmpty)
+          dirty.intersect(overlap),
+      ];
+      final exposed = Path();
+      var area = 0.0;
+      for (final band in bands) {
+        exposed.addRect(band);
+        area += band.width * band.height;
+      }
+      cache!.lastComposedArea = area;
+      // ⛔NO ANTIALIAS on the clip: a soft edge would blend the band into
+      // the carried pixels and leave a seam of its own.
+      into.clipPath(exposed, doAntiAlias: false);
       paintContent(into, rasterRect: rect, rasterScale: 1);
       into.restore();
     } else {
@@ -2467,6 +2543,9 @@ class _LayerStackPainter extends CustomPainter {
         image,
         patched: base != null && dirty != null,
       );
+      if (canScroll) {
+        cache.scrolledCount += 1;
+      }
       return _DisplayBuffer(
         image: image,
         rect: rect,
@@ -2656,20 +2735,20 @@ class _LayerStackPainter extends CustomPainter {
   /// trusted the exact rect would leave a hairline of the previous frame.
   /// One pixel is cheap and the alternative is a class of bug that only
   /// shows on some zoom levels.
-  Rect? _liveDirtyCanvasRect() {
+  ({bool located, Rect? dirty}) _liveDirtyCanvasRect() {
     final surfacePainter = activeSurfacePainter;
     if (surfacePainter == null || !surfacePainter.drawsOnlyFromPublishedState) {
-      return null;
+      return (located: false, dirty: null);
     }
     final overlay = surfacePainter.overlayModel;
     if (overlay != null && (overlay.hasStandIns || overlay.settling)) {
-      return null;
+      return (located: false, dirty: null);
     }
     if (overlay?.stampImage != null) {
-      return null;
+      return (located: false, dirty: null);
     }
     if (!_liveSurfaceIsSpatiallyStable(nodes)) {
-      return null;
+      return (located: false, dirty: null);
     }
     final tileSize = surfacePainter.surface.tileSize.toDouble();
     Rect? dirty;
@@ -2724,9 +2803,9 @@ class _LayerStackPainter extends CustomPainter {
     cacheState.lastTileTokens = seen;
     if (!hadTokens) {
       // Nothing to compare against — the first paint after a cold start.
-      return null;
+      return (located: false, dirty: null);
     }
-    return dirty?.inflate(1);
+    return (located: true, dirty: dirty?.inflate(1));
   }
 
   Object? _bufferKey() {
