@@ -1034,16 +1034,14 @@ class _BrushValueBars extends StatelessWidget {
             SizedBox(
               width: _barWidth,
               height: _barHeight,
-              child: FieldSlider(
+              child: FieldSlider.opacity(
                 key: const ValueKey<String>('top-strip-opacity-bar'),
                 label: AppText.strings.brOpacity,
                 // TP1: the ACTIVE tool's opacity — the fill and the stamp
                 // keep their own, so this bar stops being the brush's alone
-                // (유저: 툴마다 기억하게해서 필 툴도 불투명도 설정하면 그거대로
+                // (유저: 툴마다 기억하게해서 필 툴도 불투명도 설정하면 그걸로
                 // 채워지게).
                 value: BrushToolState.clampOpacity(state.activeOpacity),
-                min: 0,
-                max: 1,
                 valueText: sliderValueText(
                   state.activeOpacity * 100,
                   unit: '%',

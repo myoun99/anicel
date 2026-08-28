@@ -687,16 +687,12 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                             !isVertical
                         ? Tooltip(
                             message: 'All displayed layers opacity',
-                            child: FieldSlider(
+                            child: FieldSlider.opacity(
                               key: const ValueKey<String>('legend-opacity'),
-                              min: 0,
-                              max: 1,
                               value: displayedOpacity
                                   .clamp(0.0, 1.0)
                                   .toDouble(),
                               valueText: 'OPAC',
-                              valueTextBuilder: (value) =>
-                                  sliderValueText(value * 100, unit: '%'),
                               height: 18,
                               restingAccent: colorScheme.onSurfaceVariant
                                   .withValues(alpha: 0.45),

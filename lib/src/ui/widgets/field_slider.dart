@@ -98,6 +98,46 @@ class FieldSlider extends StatefulWidget {
          'divisions only combine with the linear scale',
        );
 
+  /// **An OPACITY bar**: 0..1 in the model, whole per cent on the screen.
+  ///
+  /// 🚨유저 2026-08-29 (F-34): 「슬라이더에서 데이터적으로 소수점이 필요없는
+  /// 것들 정수화. **레이어나 브러시 불투명도가 소수점? 자연수가 아닐 이유가
+  /// 없다고생각. 조절시 자연수이도록.**」
+  ///
+  /// The hundred divisions are what make that true WHILE DRAGGING.
+  /// [sliderValueText] only ever rounded the label, so a bar reading `50%`
+  /// could be holding 0.4963 — and the next thing to read that number (a
+  /// composite, an export) got the 0.4963.
+  ///
+  /// ⛔THE RANGE AND THE FORMAT ARE FIXED HERE, not repeated per call. Six
+  /// bars were each typing `min: 0, max: 1` with the same `value * 100`
+  /// builder — six places to forget the divisions, and all six had. The
+  /// resting [valueText] stays the caller's, because the legend's master bar
+  /// reads `OPAC` at rest and the row's reads its number.
+  ///
+  /// ⚠️Not every slider is integral and this does not claim they are: brush
+  /// SIZE goes down to 0.7, the pressure curve is a gamma, and the transform
+  /// tool's scale is the exception 유저 named in the same sentence.
+  const FieldSlider.opacity({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    required this.valueText,
+    this.onChangeEnd,
+    this.restingAccent,
+    this.label,
+    this.fillOrigin,
+    this.height = 24,
+    this.axis = Axis.horizontal,
+  }) : min = 0,
+       max = 1,
+       divisions = 100,
+       scale = FieldSliderScale.linear,
+       valueTextBuilder = _opacityPercentText;
+
+  static String _opacityPercentText(double value) =>
+      sliderValueText(value * 100, unit: '%');
+
   /// Current value in model units (e.g. 0..1 for opacity).
   final double value;
 
@@ -486,9 +526,8 @@ class _FieldSliderState extends State<FieldSlider> {
                     GestureRecognizerFactoryWithHandlers<
                       OwningVerticalDragGestureRecognizer
                     >(
-                      () => OwningVerticalDragGestureRecognizer(
-                        debugOwner: this,
-                      ),
+                      () =>
+                          OwningVerticalDragGestureRecognizer(debugOwner: this),
                       _configureDrag,
                     ),
               }

@@ -3283,14 +3283,11 @@ class _LayerHeader extends StatelessWidget {
     // Stood up like every other control in this column: the fader fills
     // upward and its readout writes downward. `RotatedBox` was not an
     // option — see [FieldSlider.axis].
-    Widget slider(double value) => FieldSlider(
+    Widget slider(double value) => FieldSlider.opacity(
       key: ValueKey<String>('xsheet-layer-opacity-${layer.id}'),
       axis: Axis.vertical,
-      min: 0,
-      max: 1,
       value: value,
       valueText: sliderValueText(value * 100, unit: '%'),
-      valueTextBuilder: (next) => sliderValueText(next * 100, unit: '%'),
       height: 18,
       onChanged: (opacity) => onLayerOpacityChanged(layer.id, opacity),
       onChangeEnd: onLayerOpacityChangeEnd == null
