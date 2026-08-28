@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../native/qa_native_engine.dart';
+import '../diagnostics/memory_census.dart';
+import '../editor_session_manager.dart';
 import '../../services/diagnostics/memory_black_box.dart';
 import '../../services/runtime_path_report.dart';
 import '../theme/app_theme.dart';
@@ -16,7 +17,9 @@ import '../theme/app_theme.dart';
 /// them up. Fallback rows tint amber — a packaging problem becomes a
 /// visible state instead of a mystery slowdown.
 class SystemStatusSection extends StatelessWidget {
-  const SystemStatusSection({super.key});
+  const SystemStatusSection({super.key, required this.session});
+
+  final EditorSessionManager session;
 
   @override
   Widget build(BuildContext context) {
@@ -33,10 +36,21 @@ class SystemStatusSection extends StatelessWidget {
           style: TextStyle(fontSize: 11, color: AppColors.textDim),
         ),
         const SizedBox(height: 10),
-        // Belongs here rather than in a panel of its own: this section is
-        // already "what is actually going on inside the app right now",
-        // and memory is that question's other half.
-        const _MemoryRow(),
+        // ⚠️REVERSED, and the original reason is kept because it was not
+        // wrong. It said: "Belongs here rather than in a panel of its own:
+        // this section is already 'what is actually going on inside the
+        // app right now', and memory is that question's other half."
+        //
+        // 유저 2026-08-28 asked for a Memory TAB, and for a reason that
+        // outranks the tidiness argument: this line is for a developer
+        // reading a diagnostics report, and the ask was for an END USER to
+        // see what the app is holding — with a live bar and a per-item
+        // breakdown, which is more than a row.
+        //
+        // ⛔The line STAYS, because "which subsystem is running and what is
+        // it costing" is still one question. It just reads the same census
+        // the tab does now, so the two can never disagree.
+        _MemoryRow(session: session),
         const SizedBox(height: 10),
         for (final entry in entries) ...[
           _EntryRow(entry: entry),
@@ -60,13 +74,20 @@ class SystemStatusSection extends StatelessWidget {
 /// say so rather than substituting the device's RAM, which is a
 /// different question and the one that has been standing in for this.
 class _MemoryRow extends StatelessWidget {
-  const _MemoryRow();
+  const _MemoryRow({required this.session});
+
+  final EditorSessionManager session;
 
   @override
   Widget build(BuildContext context) {
-    final engine = QaNativeEngine.instance;
-    final footprint = engine?.processFootprintBytes;
-    final available = engine?.availableMemoryBytes;
+    // 🚨ONE CENSUS, shared with Preferences ▸ Memory. It also fixed what
+    // this row said on Windows: it used to ask the native engine for the
+    // process footprint, and ABI v29 answers that only on Apple platforms
+    // — so the developer machine this is built on printed "not measured
+    // here" for the one number the row exists to show.
+    final census = collectMemoryCensus(session);
+    final footprint = census.rssBytes;
+    final available = census.availableBytes;
     final interrupted = MemoryBlackBox.lastUnfinished;
     return Column(
       key: const ValueKey<String>('system-status-memory'),

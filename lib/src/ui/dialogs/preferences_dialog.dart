@@ -8,6 +8,7 @@ import 'autosave_settings_section.dart';
 import 'display_settings_section.dart';
 import 'input_settings_dialog.dart' show InputSettingsSection;
 import 'language_settings_dialog.dart' show LanguageSettingsSection;
+import 'memory_settings_section.dart';
 import 'system_status_section.dart';
 import '../text/app_strings.dart';
 
@@ -28,6 +29,7 @@ enum PreferencesSection {
   accent,
   display,
   system,
+  memory,
 }
 
 Future<void> showPreferencesDialog(
@@ -68,6 +70,7 @@ class _PreferencesDialogState extends State<_PreferencesDialog> {
       PreferencesSection.accent => strings.prefsAccent,
       PreferencesSection.display => strings.prefsDisplay,
       PreferencesSection.system => strings.prefsSystem,
+      PreferencesSection.memory => strings.prefsMemory,
     };
   }
 
@@ -84,7 +87,8 @@ class _PreferencesDialogState extends State<_PreferencesDialog> {
     PreferencesSection.display => DisplaySettingsSection(
       session: widget.session,
     ),
-    PreferencesSection.system => const SystemStatusSection(),
+    PreferencesSection.system => SystemStatusSection(session: widget.session),
+    PreferencesSection.memory => MemorySettingsSection(session: widget.session),
   };
 
   @override
