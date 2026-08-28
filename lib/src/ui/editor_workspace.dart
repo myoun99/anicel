@@ -2668,8 +2668,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
             ),
           ),
         );
-      // I-2: the tool's sizes as buttons. It reads the SNAP list, which is
-      // already the user's own list of sizes — see [ToolSizePresetPanel].
+      // I-2: the tool's sizes as buttons — its own preset rack now, not the
+      // snap list (유저 2026-08-29 threw out the "one list" premise; a snap
+      // is where a drag catches, a preset is what you point at). See
+      // [ToolSizePresetPanel] for the user's own words.
       case EditorWorkspace.toolSizeTabId:
         return EditorPanelTab(
           id: tabId,
