@@ -311,6 +311,11 @@ LayerDropPlan? resolveLayerDrop({
 
   /// ㊵: the row selection this drag carries, when [movingId] is in it.
   Set<LayerId> alsoMoving = const {},
+
+  /// F-31②: the row the POINTER stands in, which splits the boundary caret
+  /// in half — see [_slotKeepsGroup]. Null from every caller that has no
+  /// pointer (the menu moves, the tests), and the closed interval stands.
+  LayerId? pointerInRow,
 }) {
   final run = layerDragRun(stack, movingId, alsoMoving: alsoMoving);
   if (run == null || insertAt < 0 || insertAt > stack.length) {
@@ -393,14 +398,23 @@ LayerDropPlan? resolveLayerDrop({
   };
 
   // ATTACH (P3): the run's OWN group first — a row already inside one keeps
-  // its base while the landing still touches the group, which is what makes
+  // its base while the landing still KEEPS the group (F-31②: at the
+  // boundary that is the half the pointer is in), which is what makes
   // re-ordering within a group an ordinary move. An ORGANIZER folder answers
   // its base here too, so a 공정 folder can be repositioned inside its group.
+  //
+  // ⚠️Passing the pointer here changes no OUTCOME today, and that is a
+  // proof rather than an oversight: a slot that touches this group cannot
+  // be strictly inside another one (the neighbour that puts it in this
+  // group is not in that one), so [_slotInsideGroup] is null either way
+  // and the run detaches instead of mounting. It is asked with the pointer
+  // anyway because it is the same question as the detach test, and two
+  // spellings of one question is how they drift apart.
   final runGroupBase =
       moving.attachedToLayerId ?? attachOrganizerBaseOf(moving, stack);
   final keepsOwnGroup =
       runGroupBase != null &&
-      _slotTouchesGroup(rest, restInsertAt, runGroupBase);
+      _slotKeepsGroup(rest, restInsertAt, runGroupBase, pointerInRow);
   // Then the group the slot is strictly INSIDE, which can only be another
   // one (a slot touching this run's own group answered above).
   final insideGroup = keepsOwnGroup
@@ -495,7 +509,12 @@ LayerDropPlan? resolveLayerDrop({
       if (layer.attachedToLayerId != null &&
           !carriedIds.contains(layer.attachedToLayerId) &&
           !mountedIds.contains(layer.id) &&
-          !_slotTouchesGroup(rest, restInsertAt, layer.attachedToLayerId!))
+          !_slotKeepsGroup(
+            rest,
+            restInsertAt,
+            layer.attachedToLayerId!,
+            pointerInRow,
+          ))
         layer.id,
   };
 
@@ -657,25 +676,78 @@ AttachedPlacement? _slotSideOfBase(
       : AttachedPlacement.below;
 }
 
-/// Whether the slot at [insertAt] still TOUCHES [baseId]'s group — inside it
-/// or at either edge.
+/// Which of the slot's two neighbours belong to [baseId]'s group.
 ///
-/// The closed interval, where [_slotInsideGroup] is open, and for one
-/// reason: a row that is already in the group keeps its membership at the
-/// edges (dragging the topmost attach row one place up is a re-order, not a
-/// detach), while a row from outside has to be put clearly INSIDE before it
-/// joins.
-bool _slotTouchesGroup(List<Layer> rest, int insertAt, LayerId baseId) {
-  final below = insertAt > 0
-      ? _groupBaseOfRow(rest, rest[insertAt - 1], ownBase: baseId)
-      : null;
-  if (below == baseId) {
+/// One walk, because every question a slot gets asked about a group is some
+/// reading of this pair: TOUCHES is either side, strictly INSIDE is both,
+/// and the boundary that F-31② splits in half is exactly one.
+({bool below, bool above}) _groupSidesOfSlot(
+  List<Layer> rest,
+  int insertAt,
+  LayerId baseId,
+) => (
+  below:
+      insertAt > 0 &&
+      _groupBaseOfRow(rest, rest[insertAt - 1], ownBase: baseId) == baseId,
+  above:
+      insertAt < rest.length &&
+      _groupBaseOfRow(rest, rest[insertAt], ownBase: baseId) == baseId,
+);
+
+/// Whether a run landing at [insertAt] KEEPS its membership of [baseId]'s
+/// group — the touch test, split in half at the boundary by where the
+/// pointer stands.
+///
+/// F-31② (user, 2026-08-29): 「어태치 경계에 커서 가면 가로선 생기는 거,
+/// 그걸 커서 위치에 따라 영역을 반으로 나눠서 어태치 안쪽이면 어태치 유지한
+/// 채로 외곽에 두는 로직, 바깥쪽이면 어태치 해제하는 로직」.
+///
+/// The boundary gap is one caret with two meanings: it is both the group's
+/// outer edge and the first slot outside. The predicate this replaces
+/// (`_slotTouchesGroup`) answered the closed interval — the edge always
+/// kept the row, on the reasoning that a row already in the group keeps
+/// its membership at the edges while a row from outside has to be put
+/// clearly INSIDE before it joins. That made the second meaning
+/// unsayable, and leaving a group meant travelling one row further than
+/// the picture suggested.
+///
+/// 🚨ONE function, asked by BOTH sites. "Does the run keep its own group"
+/// and "does this attach row detach" are the same question, and they were
+/// on their way to answering it differently — a closed interval here and a
+/// split boundary there. `_slotTouchesGroup` was this with a null pointer,
+/// so it is this with a null pointer.
+///
+/// The half is not new geometry: the gap has a row on either side of it,
+/// and the one the pointer is IN is the answer. Inside that group's row —
+/// even its base — keeps the attach; the row past it lets go.
+///
+/// [pointerInRow] is null when the drag has no pointer row to offer (a menu
+/// move, a test, the pointer over a lane), and then the old closed interval
+/// stands: no information is not a reason to detach.
+bool _slotKeepsGroup(
+  List<Layer> rest,
+  int insertAt,
+  LayerId baseId,
+  LayerId? pointerInRow,
+) {
+  final sides = _groupSidesOfSlot(rest, insertAt, baseId);
+  if (!sides.below && !sides.above) {
+    return false;
+  }
+  if (sides.below && sides.above) {
+    return true; // Strictly inside: there is no half to be on.
+  }
+  if (pointerInRow == null) {
     return true;
   }
-  final above = insertAt < rest.length
-      ? _groupBaseOfRow(rest, rest[insertAt], ownBase: baseId)
-      : null;
-  return above == baseId;
+  for (final row in rest) {
+    if (row.id == pointerInRow) {
+      return _groupBaseOfRow(rest, row, ownBase: baseId) == baseId;
+    }
+  }
+  // The pointer is over a row this drag CARRIES: it moved with the run, so
+  // it says nothing about which side of the boundary the run came to rest.
+  return true;
 }
 
 /// The gap [steps] away from the item at [index].

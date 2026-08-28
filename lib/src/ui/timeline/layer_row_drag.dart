@@ -232,7 +232,17 @@ class TimelineRowDragHooks {
   /// The caret moved to a slot of the LAYER row list. [displayLayers] is
   /// the list the SURFACE renders, so the session can map the slot onto the
   /// model without guessing which way this rail runs.
-  final void Function(List<Layer> displayLayers, int slot) onUpdate;
+  ///
+  /// F-31②: [pointerInRow] is the row the pointer stands IN — null over a
+  /// lane, or from a surface with no rail rows to name. The gap alone
+  /// cannot say which side of a group's boundary the drag came to rest on;
+  /// this is the half that can.
+  final void Function(
+    List<Layer> displayLayers,
+    int slot, {
+    LayerId? pointerInRow,
+  })
+  onUpdate;
 
   /// R5 #15: the pointer is ON [targetId] rather than between rows — the
   /// intent a caret has no gap to express (an empty folder's inside).
@@ -353,7 +363,7 @@ class LayerRowDragTarget extends StatelessWidget {
        isLastRow = false,
        onCrossed = _neverCrosses;
 
-  static void _neverCrosses(int steps, int? onRow) {}
+  static void _neverCrosses(int steps, int? onRow, int inRow) {}
 
   /// Whether this row may be MOVED. False rows still select.
   final bool canReorder;
@@ -403,7 +413,7 @@ class LayerRowDragTarget extends StatelessWidget {
   /// boundary. Null means the pointer is near a boundary, which is a gap
   /// and therefore a caret. The two travel together so a surface cannot
   /// draw one answer and commit the other.
-  final void Function(int crossedRows, int? onRow) onCrossed;
+  final void Function(int crossedRows, int? onRow, int inRow) onCrossed;
 
   /// ⑨: the SELECT drag's travel, in whole rows from the pressed row.
   ///
@@ -477,7 +487,7 @@ class _LayerRowDragBody extends StatefulWidget {
   final double grabOffsetWithinRun;
   final Axis axis;
   final TimelineRowDragHooks hooks;
-  final void Function(int crossedRows, int? onRow) onCrossed;
+  final void Function(int crossedRows, int? onRow, int inRow) onCrossed;
 
   /// See [LayerRowDragTarget.canReorder] — false rows always select.
   final bool canReorder;
@@ -552,7 +562,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     }
     _moving = true;
     widget.hooks.onBegin(widget.subject);
-    widget.onCrossed(0, null);
+    widget.onCrossed(0, null, 0);
   }
 
   /// ⑨: true while this drag is growing the row SELECTION rather than
@@ -626,13 +636,25 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
   /// drop answers instead so the gap is never consulted. They used to
   /// disagree — travel said "one place down" while the pointer was still in
   /// the middle band — and which one you got depended on which path ran.
-  int? _rowUnderPointer(double travelled) {
+  /// Which row the pointer is in, and whether it is in that row's MIDDLE.
+  ///
+  /// 🚨★★★TWO ANSWERS, NOT ONE. The middle band is the ON-ROW drop; the
+  /// quarters at each end belong to the boundary, so a caret stays reachable
+  /// everywhere without aiming. But a caret at a boundary still needs to know
+  /// WHICH SIDE the pointer sits on — 유저 2026-08-29 (F-31②): 「어태치 경계
+  /// 에 커서 가면 가로선 생기는 거, 그걸 커서 위치에 따라 영역을 반으로
+  /// 나눠서 **어태치 안쪽이면** 어태치 유지한 채로 외곽에 두는 로직,
+  /// **바깥쪽이면** 어태치 해제하는 로직」.
+  ///
+  /// The row the pointer is IN is that answer: standing in the group's last
+  /// row means the inside half, standing in the row past it means the
+  /// outside half. So [inRow] is reported at every position, and [onRow] is
+  /// the narrower claim.
+  ({int? onRow, int inRow}) _bandUnderPointer(double travelled) {
     final at = _grabFraction + travelled;
     final row = at.floor();
     final within = at - row;
-    // The middle band is the ON-ROW one; the quarters at each end belong to
-    // the boundaries, so a caret stays reachable everywhere without aiming.
-    return within >= 0.3 && within <= 0.7 ? row : null;
+    return (onRow: within >= 0.3 && within <= 0.7 ? row : null, inRow: row);
   }
 
   /// Scrolls the rail when the pointer reaches its edge, and folds what it
@@ -696,7 +718,8 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     final steps = nearestGap > 1
         ? nearestGap - 1
         : (nearestGap < 0 ? nearestGap : 0);
-    widget.onCrossed(steps, _rowUnderPointer(travelled));
+    final band = _bandUnderPointer(travelled);
+    widget.onCrossed(steps, band.onRow, band.inRow);
   }
 
   @override
@@ -868,8 +891,25 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
               bar,
               // The drop does something structural, so it says so BEFORE
               // the release.
-              Padding(
-                padding: const EdgeInsets.only(left: 6),
+              //
+              // 🚨F-31① (유저 2026-08-28): 「가로선이 이상한 위치에 있다는
+              // 거야 … 레이어영역의 중앙 위쪽? 에 그려져서 레이어랑 겹쳐」.
+              //
+              // It has to be POSITIONED, and that is the whole fix: a Stack
+              // takes its size from its non-positioned children, so a badge
+              // laid out beside the bar made the Stack badge-tall and the
+              // 2px bar — aligned to the CENTRE of it — dropped half a
+              // badge into the row it was supposed to sit on top of. The
+              // line moved only when the drop had something to announce,
+              // which is exactly the attach drags the report came from.
+              //
+              // With one axis pinned and the other left null, the stack's
+              // own alignment still places the badge (centred across the
+              // bar), it hangs off the line under `Clip.none`, and it can
+              // no longer vote on where the line is.
+              Positioned(
+                left: horizontal ? 6 : null,
+                top: horizontal ? null : 6,
                 child: DecoratedBox(
                   // The app's own corner, not a circular one: a badge is a
                   // small control, and `app_shapes_coverage_test` is what

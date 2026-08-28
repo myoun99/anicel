@@ -70,6 +70,47 @@ extension LayerFolderQueries on List<Layer> {
       if (layer.folderId == folderId) layer,
   ];
 
+  /// The folders left EMPTY by removing [removed], INNERMOST FIRST.
+  ///
+  /// A nest empties from the inside out: the folder that held the removed
+  /// row goes, and then ITS folder if that was all it held, and so on. It
+  /// is a walk rather than a parent lookup because a parent lookup is a
+  /// one-level answer, and one level was exactly right only while folders
+  /// could not nest (유저 2026-08-29 lifted that — see
+  /// [attachOrganizerBaseOf]).
+  ///
+  /// ⛔A folder that was ALREADY empty before the removal is not swept:
+  /// this answers "what did this delete empty", not "what is empty".
+  ///
+  /// [canRemove] is the caller's veto, and a vetoed folder BLOCKS its
+  /// ancestors — it is still there, so its parent is not empty either.
+  /// The attach path uses it for linked folder rows, whose membership in
+  /// this cut says nothing about a diverged counterpart's.
+  List<Layer> foldersEmptiedByRemoving(
+    Set<LayerId> removed, {
+    bool Function(Layer folder)? canRemove,
+  }) {
+    final gone = {...removed};
+    final emptied = <Layer>[];
+    var found = true;
+    while (found) {
+      found = false;
+      for (final folder in folderLayers) {
+        if (gone.contains(folder.id) || (canRemove?.call(folder) == false)) {
+          continue;
+        }
+        final members = directMembersOf(folder.id);
+        if (members.isEmpty || members.any((m) => !gone.contains(m.id))) {
+          continue;
+        }
+        gone.add(folder.id);
+        emptied.add(folder);
+        found = true;
+      }
+    }
+    return emptied;
+  }
+
   /// Whether every folder in the chain is visible (a hidden ancestor hides
   /// the whole subtree).
   bool subtreeVisible(LayerId? folderId) {
@@ -278,11 +319,11 @@ String? folderStructureProblem(List<Layer> layers) {
   // A folder holding attach rows is either the group's shared OUTER
   // folder (the base lives in it too) or an ATTACH-ORGANIZER
   // ([연출]/[작감]…) holding NOTHING BUT one base's attaches. Anything
-  // else — attaches of two bases, an attach mixed with unrelated rows, a
-  // folder nested inside an organizer — breaks the group-span derivation
-  // and would split the attach group across a folder boundary. (This is
-  // also what keeps organizers FLAT: a nested folder is a non-attach
-  // member.)
+  // else — attaches of two bases, an attach mixed with unrelated rows —
+  // breaks the group-span derivation and would split the attach group
+  // across a folder boundary. 🪦A folder nested inside an organizer used
+  // to be on that list, which is what kept organizers FLAT; 유저
+  // 2026-08-29 lifted it and the walk below descends instead.
   for (final folder in layers.folderLayers) {
     // 🚨THE SUBTREE'S LEAVES. A nested folder is structure, not a member with
     // an opinion about whose attach this is — reading direct members made one

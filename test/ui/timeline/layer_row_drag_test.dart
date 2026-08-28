@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/layer_row_drag.dart';
 
 /// The row-order drag, driven as a real gesture: the rail row IS the
 /// handle, the caret says where the row would land, and the release commits
@@ -174,6 +175,43 @@ Project _emptyFolderProject() {
   );
 }
 
+/// F-50: a folder WITH a member, for the drop the user says went missing —
+/// 「일반폴더를 레이어에 어태치장착시키는거」.
+Project _folderWithMemberProject() {
+  return Project(
+    id: const ProjectId('folder-mount-project'),
+    name: 'Folder Mount',
+    createdAt: DateTime.utc(2026, 8, 29),
+    tracks: [
+      Track(
+        id: const TrackId('drag-track'),
+        name: 'Video Track',
+        cuts: [
+          Cut(
+            id: const CutId('drag-cut'),
+            name: 'Drag Cut',
+            duration: 12,
+            canvasSize: const CanvasSize(width: 1280, height: 720),
+            camera: CutCamera.empty(),
+            layers: [
+              Layer(id: const LayerId('a'), name: 'A', frames: const []),
+              Layer(id: const LayerId('b'), name: 'B', frames: const []),
+              Layer(id: const LayerId('c'), name: 'C', frames: const []),
+              Layer(
+                id: const LayerId('m'),
+                name: 'M',
+                frames: const [],
+                folderId: const LayerId('f'),
+              ),
+              createFolderLayer(id: const LayerId('f'), name: 'F'),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
 void main() {
   testWidgets('dragging a rail row up moves it up the stack', (tester) async {
     await _pump(tester);
@@ -240,6 +278,46 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_order(session), ['a', 'b', 'c']);
+  });
+
+  testWidgets('F-31①: the caret sits ON the row boundary, not inside a row '
+      '— 유저 2026-08-28: 「가로선이 이상한 위치에 있다」', (tester) async {
+    await _pump(tester);
+    final row = _railRow('a');
+    await tester.ensureVisible(row);
+    await _selectRow(tester, row);
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.startGesture(tester.getCenter(row));
+    await tester.pump(const Duration(milliseconds: 16));
+    await gesture.moveBy(const Offset(0, -42));
+    await tester.pump();
+
+    final caret = find.byKey(
+      const ValueKey<String>('timeline-row-caret-before-b'),
+    );
+    expect(caret, findsOneWidget);
+    // The line the user sees is the BAR, not the badge beside it: measuring
+    // the caret widget whole would pass on a bar drawn anywhere as long as
+    // the label reached the edge (R‑lesson: 계측기를 먼저 의심하라).
+    final bar = find.descendant(
+      of: caret,
+      matching: find.byWidgetPredicate(
+        (w) => w is Container && w.constraints?.maxHeight == 2,
+      ),
+    );
+    expect(bar, findsOneWidget);
+    final barRect = tester.getRect(bar);
+    final rowRect = tester.getRect(_railRow('b'));
+    expect(
+      barRect.center.dy,
+      moreOrLessEquals(rowRect.top, epsilon: 1.5),
+      reason:
+          'the bar must straddle the boundary; a bar inside the row would '
+          'overlap the layer, which is what F-31① reported',
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
   });
 
   testWidgets('dragging DOWN moves it down — a row sits between two gaps '
@@ -565,5 +643,178 @@ void main() {
     session.undo();
     await tester.pumpAndSettle();
     expect(_order(session), ['a', 'b', 'c']);
+  });
+
+  testWidgets('F-31①: a caret carrying a NOTICE keeps the line on the '
+      'boundary — the badge hangs off it, it does not move it', (
+    tester,
+  ) async {
+    // 유저 2026-08-28: 「가로선이 이상한 위치에 있다는거야 … 레이어영역의
+    // 중앙 위쪽? 에 그려져서 레이어랑 겹쳐」. The plain caret is right, so
+    // this drives the case they were looking at: an ATTACH drop, whose
+    // caret says what it will do.
+    final drag = ValueNotifier<LayerRowDragState?>(
+      const LayerRowDragState(
+        subject: LayerRowSubject(LayerId('b')),
+        caretSlot: 1,
+        legal: true,
+        joinLabel: '어태치 해제',
+      ),
+    );
+    addTearDown(drag.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 300,
+              child: LayerRowDragTarget(
+                subject: const LayerRowSubject(LayerId('b')),
+                slotBefore: 1,
+                rowExtent: 28,
+                axis: Axis.horizontal,
+                hooks: TimelineRowDragHooks(
+                  drag: drag,
+                  onBegin: (_) {},
+                  onUpdate: (_, _, {pointerInRow}) {},
+                  onRowTarget: (_, _, _) {},
+                  onEffectUpdate: (_, _, _) {},
+                  onEnd: () {},
+                  onCancel: () {},
+                ),
+                onCrossed: (_, _, _) {},
+                child: const SizedBox(height: 28, key: ValueKey('the-row')),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final bar = find.byWidgetPredicate(
+      (w) => w is Container && w.constraints?.maxHeight == layerRowCaretThickness,
+    );
+    expect(bar, findsOneWidget);
+    final rowTop = tester.getRect(find.byKey(const ValueKey('the-row'))).top;
+    expect(
+      tester.getRect(bar).center.dy,
+      moreOrLessEquals(rowTop, epsilon: 1.5),
+      reason:
+          'the badge is taller than the 2px bar, so a Stack sized by the '
+          'badge centres the bar inside the row instead of on its edge',
+    );
+    // …and the notice itself is still THERE and readable: hanging the badge
+    // off the line must not be a way of hiding it.
+    final badge = find.text('어태치 해제');
+    expect(badge, findsOneWidget);
+    final badgeRect = tester.getRect(badge);
+    expect(badgeRect.height, greaterThan(layerRowCaretThickness));
+    expect(
+      badgeRect.center.dy,
+      moreOrLessEquals(rowTop, epsilon: 1.5),
+      reason: 'the badge straddles the line rather than sitting off it',
+    );
+  });
+
+  testWidgets('F-50: a plain FOLDER dropped on a drawing row mounts it — '
+      '유저 2026-08-28: 「일반폴더를 어태치 장착하는 기능이 사라졌어」', (
+    tester,
+  ) async {
+    await _pump(tester, project: _folderWithMemberProject());
+    final session = _sessionOf(tester);
+    expect(_layerOf(session, 'm').attachedToLayerId, isNull);
+
+    final row = find.byKey(const ValueKey<String>('timeline-folder-row-f'));
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    // ⑨'s select first. The folder row's LEFT edge is buttons, so the grab
+    // goes through the middle of the row like the pointer would.
+    final rect = tester.getRect(row);
+    final grab = Offset(rect.left + rect.width * 0.3, rect.center.dy);
+    await tester.dragFrom(grab, const Offset(30, 0));
+    await tester.pumpAndSettle();
+    expect(session.rowSelection.value, isNotEmpty);
+
+    // Rail top-down: F, M, C, B, A. Three rows down from F's centre puts
+    // the pointer in the MIDDLE of B — the on-row band.
+    final gesture = await tester.startGesture(grab);
+    await tester.pump(const Duration(milliseconds: 16));
+    await gesture.moveBy(const Offset(0, 28 * 3));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-row-swallow-b')),
+      findsOneWidget,
+      reason: 'B is what would swallow the folder, so B is what lights up',
+    );
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      _layerOf(session, 'm').attachedToLayerId,
+      const LayerId('b'),
+      reason: "the folder becomes B's organizer, so its member rides B",
+    );
+  });
+
+  testWidgets('F-31① on the OTHER axis: the x-sheet\'s caret is a COLUMN '
+      'boundary, and the badge must not push that either', (tester) async {
+    // The same `_caret` draws both rails, so the badge that displaced the
+    // horizontal line displaced this one sideways. One law, both surfaces —
+    // the sheet had no test for its caret at all.
+    final drag = ValueNotifier<LayerRowDragState?>(
+      const LayerRowDragState(
+        subject: LayerRowSubject(LayerId('b')),
+        caretSlot: 1,
+        legal: true,
+        joinLabel: '어태치 해제',
+      ),
+    );
+    addTearDown(drag.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              height: 300,
+              child: LayerRowDragTarget(
+                subject: const LayerRowSubject(LayerId('b')),
+                slotBefore: 1,
+                rowExtent: 28,
+                axis: Axis.vertical,
+                hooks: TimelineRowDragHooks(
+                  drag: drag,
+                  onBegin: (_) {},
+                  onUpdate: (_, _, {pointerInRow}) {},
+                  onRowTarget: (_, _, _) {},
+                  onEffectUpdate: (_, _, _) {},
+                  onEnd: () {},
+                  onCancel: () {},
+                ),
+                onCrossed: (_, _, _) {},
+                child: const SizedBox(width: 28, key: ValueKey('the-column')),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final bar = find.byWidgetPredicate(
+      (w) => w is Container && w.constraints?.maxWidth == layerRowCaretThickness,
+    );
+    expect(bar, findsOneWidget);
+    final columnLeft = tester
+        .getRect(find.byKey(const ValueKey('the-column')))
+        .left;
+    expect(
+      tester.getRect(bar).center.dx,
+      moreOrLessEquals(columnLeft, epsilon: 1.5),
+      reason: 'the bar straddles the column boundary, badge or no badge',
+    );
+    expect(find.text('어태치 해제'), findsOneWidget);
   });
 }

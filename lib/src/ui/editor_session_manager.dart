@@ -5920,10 +5920,12 @@ class EditorSessionManager extends ChangeNotifier {
     List<Layer> displayLayers,
     int slot, {
     String? noticeLabel,
+    LayerId? pointerInRow,
   }) => _rowOrderDrag?.updateLayerRow(
     displayLayers,
     slot,
     noticeLabel: noticeLabel,
+    pointerInRow: pointerInRow,
   );
 
   void updateLayerRowDropOnRow(
@@ -6002,18 +6004,21 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// Whether the active layer can be wrapped in an ATTACH-ORGANIZER
-  /// folder ([연출]/[작감]… — 공정별 묶음): an attach row not already
-  /// inside one (organizers are deliberately FLAT — one level, the brush
-  /// groups' precedent; constraints are easy to loosen and hard to
-  /// tighten).
+  /// folder ([연출]/[작감]… — 공정별 묶음): an attach row, and that is all.
+  ///
+  /// 🪦The second clause used to be 「and not already inside one」 —
+  /// organizers were deliberately FLAT (#786, the brush groups' precedent).
+  /// 유저 2026-08-29 lifted it: 「어태치 폴더 중첩도 허용하는 방향으로 가자
+  /// … 어태치폴더랑 일반폴더랑 규칙다른것도 많을거같은데 … 싹 다 통일」.
+  ///
+  /// 🚨It had to go from HERE too, not only from the drag. The drop policy
+  /// stopped refusing nested folders in the same round, so this gate was
+  /// the same question answered two ways — the menu said no to what the
+  /// drag said yes to. A plain folder's gate ([canGroupActiveLayerIntoFolder])
+  /// never had the clause, which is the shape both now share.
   bool get canGroupActiveAttachIntoFolder {
     final active = activeLayer;
-    if (active == null || !isAttachedLayer(active)) {
-      return false;
-    }
-    final layers = activeCutOrNull?.layers ?? const <Layer>[];
-    final folder = layers.folderById(active.folderId);
-    return folder == null || attachOrganizerBaseOf(folder, layers) == null;
+    return active != null && isAttachedLayer(active);
   }
 
   /// 공정 폴더 생성: wraps the active ATTACH row in an organizer folder

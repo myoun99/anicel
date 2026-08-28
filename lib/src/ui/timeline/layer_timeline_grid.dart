@@ -1479,8 +1479,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       },
       isLastRow: caret.isLastRow,
       onCrossed: hooks == null
-          ? (_, _) {}
-          : (steps, onRow) {
+          ? (_, _, _) {}
+          : (steps, onRow, inRow) {
               // R5 #15: ON a row wins over the gap beside it — that is the
               // whole point of the middle band. The row it names is read
               // from the DISPLAY list, so which way this rail runs stays
@@ -1491,7 +1491,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                 hooks.onRowTarget(caret.layers, slot, target.id);
                 return;
               }
-              hooks.onUpdate(caret.layers, slot);
+              hooks.onUpdate(
+                caret.layers,
+                slot,
+                pointerInRow: caret.onRowLayer(inRow)?.id,
+              );
             },
       // ⑨: the SELECT half of the same drag. It counts in the rail's own
       // DISPLAY rows (`_dragRows`) rather than in the layer list the caret
@@ -1557,7 +1561,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       // An fx chain has no "inside a row" to drop into — an effect holds
       // nothing — so the on-row band is ignored here and the caret stays
       // the only answer (R5 #15).
-      onCrossed: (steps, _) => hooks.onEffectUpdate(
+      onCrossed: (steps, _, _) => hooks.onEffectUpdate(
         row.layer.id,
         displayEffects,
         slotForSteps(
@@ -1601,7 +1605,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       axis: Axis.horizontal,
       hooks: hooks,
       isLastRow: false,
-      onCrossed: (_, _) {},
+      onCrossed: (_, _, _) {},
       onSelectCrossed: (rowDelta) =>
           widget.onRowSelectionSpan?.call(_dragRows, rowDelta),
       child: child,
