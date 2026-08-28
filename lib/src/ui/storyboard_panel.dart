@@ -68,7 +68,7 @@ import 'timeline/transform_lane_policy.dart'
 import 'input/app_input_settings.dart' show AppInput;
 import 'widgets/instant_tap_region.dart' show InstantTapRegion;
 import 'timeline/timeline_beat_lines.dart'
-    show TimelineBeatLinesPainter, TimelineGridLaw;
+    show TimelineBeatLinesPainter, TimelineGridLaw, timelineGridRowSeamInk;
 import 'timeline/timeline_cell_double_tap.dart'
     show timelineCellDoubleTapActivation, timelineCellDoubleTapRecord;
 import 'timeline/timeline_drag_preview.dart';
@@ -2096,13 +2096,21 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// Per-row hairline under every STRIP row (UI-R5 storyboard unification:
   /// the timeline grid's row lines reach the frame area here too). Drawn
   /// as a foreground so row heights stay untouched (rail lockstep).
+  ///
+  /// ⛔The ink is READ from [timelineGridRowSeamInk], not spelled again
+  /// here. It used to be a bare `BorderSide(outlineVariant)` — the same
+  /// colour and, by `BorderSide`'s default width, the same 1.0, so the two
+  /// rails matched on screen and a pixel test would have passed. That is
+  /// exactly the copy that goes wrong LATER: change the law and only the
+  /// timeline follows it. 유저 F-18: 「스토리보드패널 타임라인이랑 그리드
+  /// 다를거같은데 절대 다르지 않도록 통일」 — "절대" is about the next
+  /// change, not about today's pixels.
   Widget _stripRowLine(Widget row) {
+    final seam = timelineGridRowSeamInk(Theme.of(context).colorScheme);
     return Container(
       foregroundDecoration: BoxDecoration(
         border: Border(
-          bottom: BorderSide(
-            color: Theme.of(context).colorScheme.outlineVariant,
-          ),
+          bottom: BorderSide(color: seam.color, width: seam.strokeWidth),
         ),
       ),
       child: row,
