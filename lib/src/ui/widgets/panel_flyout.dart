@@ -308,14 +308,22 @@ Future<void> showPanelFlyout(
             // would be unreachable on a tablet. 소재 lives inside the child,
             // where a finger can get to it.
             enabled: entry.enabled && entry.submenuBuilder == null,
-            height: 32,
+            height: flyoutRowHeight,
+            // ⛔The row pads itself, from the INSIDE. `PopupMenuItem`'s own
+            // padding would sit outside the ink, so a lit row would stop
+            // short of the menu's edge — and on a submenu row, where the ink
+            // is this widget's rather than Material's, the hit area would
+            // stop there too (유저 2026-08-29: 「버튼이 작은거같은데」).
+            padding: EdgeInsets.zero,
             // EVERY row reports where the pointer is, including the ones
             // with no child: entering a plain row is what CLOSES an open
             // submenu, which is the half that was missing.
             child: _HoverReporter(
               entry: entry,
               open: open,
-              child: _itemBody(entry, hasSubmenu: entry.submenuBuilder != null),
+              child: flyoutRowSurface(
+                _itemBody(entry, hasSubmenu: entry.submenuBuilder != null),
+              ),
             ),
           ),
         },
@@ -343,9 +351,40 @@ Future<void> showPanelFlyout(
   (pickedInSubmenu ?? selected)?.onSelected?.call();
 }
 
+/// 🚨★★★ONE ROW'S METRICS, AND BOTH LEVELS READ THEM.
+///
+/// The parent list and the submenu draw the same row, so a height typed
+/// into one and not the other is a drift waiting to happen — 32 was written
+/// twice already, once as `PopupMenuItem.height` and once as the overlay's
+/// own constant.
+///
+/// ⚠️The padding lives HERE rather than on `PopupMenuItem` because the row's
+/// INK has to reach the menu's edge: a row that pads itself from the outside
+/// lights only the part inside the padding, which is exactly what 유저
+/// 2026-08-29 reported — 「호버색이 다른 용지처럼 전면 흰색되는게 아니라
+/// 작게 글자만큼만 흰 배경 생기고 버튼 취급? 인식도 그 안에서만 되」.
+const double flyoutRowHeight = 32;
+const EdgeInsets flyoutRowPadding = EdgeInsets.symmetric(horizontal: 16);
+
+/// A row laid out so its ink and its hit area are the WHOLE row.
+Widget flyoutRowSurface(Widget body) => SizedBox(
+  height: flyoutRowHeight,
+  child: Padding(padding: flyoutRowPadding, child: body),
+);
+
 /// What the pointer is currently on, and where that row is on screen.
 class _OpenSubmenu {
-  const _OpenSubmenu({required this.anchor, required this.entries});
+  const _OpenSubmenu({
+    required this.owner,
+    required this.anchor,
+    required this.entries,
+  });
+
+  /// WHICH row opened it. The parent stays lit while its child is up (유저
+  /// 2026-08-29: 「겹으로 들어가면 들어간 위치. 즉 **부모 버튼도 흰색인채로
+  /// 유지**하도록」), and hover alone cannot say that — the pointer has left
+  /// the parent by then.
+  final String owner;
 
   /// The parent ROW's rect in overlay coordinates. The child is drawn flush
   /// against its right edge — 유저: 「기존 팝오버에 **딱 붙어서** 열리는게
@@ -420,23 +459,22 @@ class _HoverReporter extends StatelessWidget {
         ? rowTop.dx
         : menu.localToGlobal(Offset.zero, ancestor: overlay).dx;
     open.value = _OpenSubmenu(
+      owner: entry.keyValue,
       anchor: Rect.fromLTRB(left, rowTop.dy, right, rowBottom.dy),
       entries: builder(),
     );
   }
+
 
   @override
   Widget build(BuildContext context) {
     // A plain row is left alone: Material's own InkWell already lights it,
     // and this only has to report the pointer.
     if (entry.submenuBuilder == null) {
-      return MouseRegion(
-        onEnter: (_) => _report(context),
-        child: child,
-      );
+      return MouseRegion(onEnter: (_) => _report(context), child: child);
     }
-    // 🚨★★★THE SAME INKWELL THE OTHER ROWS HAVE. 유저 2026-08-28: 「콘티나
-    // 미술 이런 겹이 있는곳에 호버해도 **동일하게 바탕 흰색으로 하는거** 있잖아.
+    // 🚨★★★THE SAME LIT ROW THE OTHERS GET. 유저 2026-08-28: 「콘티나 미술
+    // 이런 겹이 있는곳에 호버해도 **동일하게 바탕 흰색으로 하는거** 있잖아.
     // **통일**해서 적용하고」.
     //
     // ⛔A submenu row is `enabled: false` — it must not pop the menu, or a
@@ -446,11 +484,33 @@ class _HoverReporter extends StatelessWidget {
     // row restores the highlight without restoring the pop: a disabled
     // PopupMenuItem still hit-tests its child first (the note further up
     // this file says so, for the knob rows).
+    //
+    // ⚠️[child] is already the WHOLE row ([flyoutRowSurface]) — the ink and
+    // the hit area are the row, not the text inside it.
     return MouseRegion(
       onEnter: (_) => _report(context),
       // A finger has no hover, so a tap does the same thing. ⛔Not a second
       // behaviour — the same call, reached the only way a finger can.
-      child: InkWell(onTap: () => _report(context), child: child),
+      child: InkWell(
+        onTap: () => _report(context),
+        // 🚨And it STAYS lit while its child is up. Hover cannot say this:
+        // by the time the submenu is open the pointer has moved off the
+        // parent, so Material's highlight has already faded (유저
+        // 2026-08-29: 「부모 버튼도 흰색인채로 유지하도록」).
+        child: ValueListenableBuilder<_OpenSubmenu?>(
+          valueListenable: open,
+          builder: (context, request, row) => ColoredBox(
+            color: request?.owner == entry.keyValue
+                // The same wash Material's own hover lays down, so the two
+                // states are one appearance rather than two that resemble
+                // each other.
+                ? Theme.of(context).hoverColor
+                : const Color(0x00000000),
+            child: row,
+          ),
+          child: child,
+        ),
+      ),
     );
   }
 }
@@ -462,14 +522,13 @@ class _SubmenuLayer extends StatelessWidget {
   final _OpenSubmenu request;
   final ValueChanged<PanelFlyoutItem> onPicked;
 
-  static const double _rowHeight = 32;
   static const double _width = 200;
 
   @override
   Widget build(BuildContext context) {
     final overlaySize = MediaQuery.sizeOf(context);
     final items = request.entries.whereType<PanelFlyoutItem>().toList();
-    final height = items.length * _rowHeight + 16;
+    final height = items.length * flyoutRowHeight + 16;
     // Flush against the parent's right edge, its first row level with the
     // row that opened it — and folded back to the parent's LEFT when there
     // is no room, which is what every submenu does at a screen edge.
@@ -500,16 +559,10 @@ class _SubmenuLayer extends StatelessWidget {
                 InkWell(
                   key: ValueKey<String>(item.keyValue),
                   onTap: item.enabled ? () => onPicked(item) : null,
-                  child: SizedBox(
-                    height: _rowHeight,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      // ⛔The SAME body the parent list draws — a submenu row
-                      // that rendered itself would drift from the list it
-                      // belongs to.
-                      child: _itemBody(item),
-                    ),
-                  ),
+                  // ⛔The SAME row surface and the SAME body the parent list
+                  // draws — a submenu that laid itself out would drift from
+                  // the list it belongs to.
+                  child: flyoutRowSurface(_itemBody(item)),
                 ),
             ],
           ),
