@@ -7,10 +7,8 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
-    show LayerNestingArrowCell;
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
-    show layerRailNestingSlotWidth;
+    show layerRailNameIndent;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
@@ -245,39 +243,46 @@ void main() {
   });
 
   // R5 #18. Nesting is a COUNT OF COLUMNS now, not an amount of blank.
-  group('folder nesting spends whole cells', () {
+  group('folder nesting is spent on the NAME, not on the buttons', () {
     double nameLeft(WidgetTester tester) => tester
         .getRect(find.byKey(const ValueKey<String>('timeline-layer-name-f')))
         .left;
 
-    testWidgets('one blank cell per level, and exactly one arrow however '
-        'deep', (tester) async {
+    double buttonLeft(WidgetTester tester) => tester
+        .getRect(find.byKey(const ValueKey<String>('timeline-layer-fx-f')))
+        .left;
+
+    testWidgets('🆕the buttons keep one x at every depth', (tester) async {
+      // 🪦This group used to assert the opposite: one blank cell per level
+      // plus an arrow cell, all of it in front of the buttons. 유저
+      // 2026-08-29 — 「계속밀려서 제대로 안보이게된다」 — moved depth into the
+      // name, so the run in front is the same at every depth.
       await tester.pumpWidget(host(folder()));
-      final flat = nameLeft(tester);
-      expect(find.byType(LayerNestingArrowCell), findsNothing);
+      final flatButton = buttonLeft(tester);
+      final flatName = nameLeft(tester);
 
-      await tester.pumpWidget(host(folder(), depth: 1));
-      expect(find.byType(LayerNestingArrowCell), findsOneWidget);
-      expect(
-        nameLeft(tester) - flat,
-        moreOrLessEquals(2 * layerRailNestingSlotWidth, epsilon: 0.5),
-        reason: 'one blank cell plus the arrow cell',
-      );
-
-      await tester.pumpWidget(host(folder(), depth: 2));
-      expect(
-        find.byType(LayerNestingArrowCell),
-        findsOneWidget,
-        reason: 'depth is counted in blanks; the arrow says it once',
-      );
-      expect(
-        nameLeft(tester) - flat,
-        moreOrLessEquals(3 * layerRailNestingSlotWidth, epsilon: 0.5),
-      );
+      for (final depth in [1, 2, 3]) {
+        await tester.pumpWidget(host(folder(), depth: depth));
+        expect(
+          buttonLeft(tester),
+          moreOrLessEquals(flatButton, epsilon: 0.5),
+          reason: 'depth $depth — 버튼은 깊이를 모른다',
+        );
+        expect(
+          nameLeft(tester) - flatName,
+          moreOrLessEquals(layerRailNameIndent(depth), epsilon: 0.5),
+          reason: 'depth $depth — 좁아지는 것은 이름이다',
+        );
+      }
     });
 
-    testWidgets('a row that already carries an ATTACH arrow keeps the cell '
-        'and gives up the glyph', (tester) async {
+    testWidgets('🆕an ATTACH arrow no longer competes with a nesting cell', (
+      tester,
+    ) async {
+      // 🪦A nested row used to keep a reserved nesting CELL and give up its
+      // glyph, so two arrows a column apart could not both answer 「what is
+      // this attached to」. With no cell in front there is one arrow again,
+      // and the attach arrow does not move the name.
       await tester.pumpWidget(host(folder(), depth: 1));
       final nested = nameLeft(tester);
 
@@ -285,14 +290,9 @@ void main() {
         host(folder(), depth: 1, attachArrow: AttachedPlacement.below),
       );
       expect(
-        find.byType(LayerNestingArrowCell),
-        findsNothing,
-        reason: 'two arrows a column apart would answer one question twice',
-      );
-      expect(
         nameLeft(tester),
         moreOrLessEquals(nested, epsilon: 0.5),
-        reason: 'the CELL stays reserved, so the name does not start early',
+        reason: '어태치 화살표는 시트 슬롯에 살지, 이름 앞에 살지 않는다',
       );
     });
   });

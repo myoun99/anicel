@@ -830,72 +830,28 @@ void main() {
       );
     });
 
-    test('a folder carrying a FOLDER is the one landing ⑦ excludes', () {
-      // An organizer folder is FLAT (attached_layer_resolve), so this
-      // structure has no legal home inside a group — the case the user
-      // named, and the only one.
+    test('🆕a folder carrying a FOLDER lands too — nesting is allowed', () {
+      // 🪦⑦ used to exclude exactly this shape, because an organizer folder
+      // was FLAT. 유저 2026-08-29 lifted it: nothing about drawing required
+      // the ban, and plain folders already nest. The model reads the
+      // subtree's leaves now, so a carried folder is structure and its
+      // leaves are the riders.
       final stack = [
         _row('base'),
         _row('deep', folderId: 'inner'),
         folder('inner', parent: 'outer'),
         folder('outer'),
       ];
-      expect(
-        resolveLayerDropOnRow(
-          stack: stack,
-          movingId: const LayerId('outer'),
-          targetId: const LayerId('base'),
-        ),
-        isNull,
+      final plan = resolveLayerDropOnRow(
+        stack: stack,
+        movingId: const LayerId('outer'),
+        targetId: const LayerId('base'),
       );
-    });
-
-    test('and THAT refusal is the one that gets a notice', () {
-      // The predicate the drag reads to say why (⑦). Everything else that
-      // refuses an on-row drop was never going to attach, so it stays
-      // silent — a notice on those would be noise.
-      final stack = [
-        _row('base'),
-        _row('deep', folderId: 'inner'),
-        folder('inner', parent: 'outer'),
-        folder('outer'),
-        _row('plain'),
-        _row('se', kind: LayerKind.se),
-      ];
+      expect(plan, isNotNull, reason: '중첩 폴더를 든 폴더도 base 에 붙는다');
       expect(
-        layerDropRefusedForNestedFolder(
-          stack: stack,
-          movingId: const LayerId('outer'),
-          targetId: const LayerId('base'),
-        ),
-        isTrue,
-      );
-      expect(
-        layerDropRefusedForNestedFolder(
-          stack: stack,
-          movingId: const LayerId('inner'),
-          targetId: const LayerId('base'),
-        ),
-        isFalse,
-        reason: 'the inner folder carries no folder — it simply attaches',
-      );
-      expect(
-        layerDropRefusedForNestedFolder(
-          stack: stack,
-          movingId: const LayerId('plain'),
-          targetId: const LayerId('base'),
-        ),
-        isFalse,
-        reason: 'an ordinary row attaches, so there is nothing to explain',
-      );
-      expect(
-        layerDropRefusedForNestedFolder(
-          stack: stack,
-          movingId: const LayerId('outer'),
-          targetId: const LayerId('se'),
-        ),
-        isFalse,
-        reason: 'an SE row was never a base; that refusal needs no notice',
+        plan!.attach.mounts.map((m) => m.layerId),
+        contains(const LayerId('deep')),
+        reason: '붙는 것은 폴더가 아니라 그 안의 잎이다',
       );
     });
 

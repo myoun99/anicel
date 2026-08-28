@@ -250,13 +250,25 @@ Cut cutWithReconciledAttachedMirrors(Cut cut) {
 /// follows its base ("주인 레이어를 따라가야 하니까", user 2026-07-31), so a
 /// transform or effect chain here would be a second, competing answer to
 /// what the group looks like. See [attachRowWearsBaseComposite].
+///
+/// 🚨★★★THE WHOLE SUBTREE, NOT THE DIRECT MEMBERS. 유저 2026-08-29 asked for
+/// nested attach folders, and this loop was the ban: a folder member has no
+/// `attachedToLayerId`, so one nested folder made the organizer «impure» and
+/// the model rejected it. Nothing about drawing required that — a folder
+/// composites into one offscreen either way, and PLAIN folders already nest.
+///
+/// ⇒ Walk the subtree and read the LEAVES. A nested folder is not an answer
+/// to 「whose attach is this」; the rows inside it are.
 LayerId? attachOrganizerBaseOf(Layer folder, List<Layer> layers) {
   if (!layerKindGroupsLayers(folder.kind)) {
     return null;
   }
   LayerId? baseId;
-  for (final layer in layers) {
-    if (layer.folderId != folder.id) {
+  var sawLeaf = false;
+  for (final layer in layers.subtreeMembersOf(folder.id)) {
+    // The folders on the way down are structure, not members with an
+    // opinion — the leaves under them carry the answer.
+    if (layerKindGroupsLayers(layer.kind)) {
       continue;
     }
     final memberBase = layer.attachedToLayerId;
@@ -264,8 +276,11 @@ LayerId? attachOrganizerBaseOf(Layer folder, List<Layer> layers) {
       return null;
     }
     baseId = memberBase;
+    sawLeaf = true;
   }
-  return baseId;
+  // ⛔An empty folder (or one holding nothing but folders) is not an
+  // organizer: there is no attach in it to name a base.
+  return sawLeaf ? baseId : null;
 }
 
 /// The index of [baseId]'s attach group's FIRST row — the below-placement

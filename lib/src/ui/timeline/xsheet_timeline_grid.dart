@@ -2785,19 +2785,16 @@ class _XSheetSectionBandCell extends StatelessWidget {
     );
   }
 }
-
-/// How many nesting levels a COLUMN spells out before it stops.
+/// 🪦THE NESTING CAP IS GONE (2026-08-29).
 ///
-/// The rail indents along a row's long axis, where the name keeps whatever
-/// width is left. A column indents along its own length — the very run the
-/// name is written down — so every level costs the name directly (#18's
-/// "빈 칸 N개 + 화살표 1개", transposed). The name clips rather than
-/// ellipsing (a vertical `…` costs one of the two or three characters that
-/// identify the row, and dropping a run for it is a regression this repo
-/// has already shipped once), and past this depth the arrow alone says
-/// "nested" so the name never clips to nothing (user, 2026-08-09: 잘리게
-/// 하되 추천 로직대로).
-const int _xsheetMaxNestingLevels = 2;
+/// A column used to spell out at most two levels, because indenting along a
+/// column's own length spends the name directly — 「빈 칸 N개 + 화살표 1개」
+/// transposed — and a third level left the name with nothing.
+///
+/// The leading run no longer holds a nesting cell at all: depth moved into
+/// the NAME on both surfaces, so the buttons keep one position and there is
+/// no run to cap. What a deep row loses is name width, which is the trade
+/// the rail already makes.
 
 class _LayerHeader extends StatelessWidget {
   const _LayerHeader({
@@ -2851,8 +2848,7 @@ class _LayerHeader extends StatelessWidget {
 
   final Layer layer;
 
-  /// The row's folder nesting depth, spelled out up to
-  /// [_xsheetMaxNestingLevels].
+  /// The row's folder nesting depth.
   final int depth;
   final bool active;
 
@@ -3004,8 +3000,6 @@ class _LayerHeader extends StatelessWidget {
             children: [
               ...layerRailLeadingCells(
                 axis: Axis.vertical,
-                // #18 transposed, capped: see [_xsheetMaxNestingLevels].
-                depth: math.min(depth, _xsheetMaxNestingLevels),
                 // The band is the strip above, not a slot in here.
                 includeSectionSlot: false,
                 laneToggle: showLaneToggle
@@ -3058,6 +3052,35 @@ class _LayerHeader extends StatelessWidget {
               // The NAME takes the remainder, exactly as the row's
               // `Expanded` does — written vertically, because a 28px column
               // is a paper timesheet column and that is how one is read.
+              // 🚨★★★THE SAME NESTING THE RAIL DOES, TRANSPOSED. 유저
+              // 2026-08-27: 「x시트 **로직적으로 통일**하는거 절대잊지말고」.
+              //
+              // Depth used to be cells in the LEADING run, which on a column
+              // ran down the very length the name is written in — so it had
+              // a two-level cap or the name clipped to nothing. It is a
+              // guide per level inside the name now, 8px instead of 16, and
+              // the cap is gone with the run.
+              if (depth > 0)
+                SizedBox(
+                  height: layerRailNameIndent(depth),
+                  child: Column(
+                    children: [
+                      for (var level = 0; level < depth; level += 1)
+                        SizedBox(
+                          height: layerRailGuideWidth,
+                          child: Center(
+                            child: SizedBox(
+                              height: 1,
+                              width: double.infinity,
+                              child: ColoredBox(
+                                color: colorScheme.outlineVariant,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               Expanded(
                 child: KeyedSubtree(
                   key: ValueKey<String>('xsheet-layer-name-${layer.id}'),

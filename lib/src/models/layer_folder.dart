@@ -2,6 +2,7 @@ import 'layer.dart';
 import 'layer_blend_mode.dart';
 import 'layer_id.dart';
 import 'layer_kind.dart';
+import 'attached_layer_resolve.dart' show attachOrganizerBaseOf;
 
 /// Folder queries over a cut's flat layer stack.
 ///
@@ -283,21 +284,30 @@ String? folderStructureProblem(List<Layer> layers) {
   // also what keeps organizers FLAT: a nested folder is a non-attach
   // member.)
   for (final folder in layers.folderLayers) {
-    final members = layers.directMembersOf(folder.id);
+    // 🚨THE SUBTREE'S LEAVES. A nested folder is structure, not a member with
+    // an opinion about whose attach this is — reading direct members made one
+    // nested folder turn an organizer «impure», which was the whole ban
+    // (유저 2026-08-29 lifted it: nothing about drawing required it, and
+    // PLAIN folders already nest).
+    final leaves = [
+      for (final layer in layers.subtreeMembersOf(folder.id))
+        if (!layerKindGroupsLayers(layer.kind)) layer,
+    ];
     final attachBases = <LayerId>{
-      for (final member in members)
-        if (member.attachedToLayerId != null) member.attachedToLayerId!,
+      for (final leaf in leaves)
+        if (leaf.attachedToLayerId != null) leaf.attachedToLayerId!,
     };
     if (attachBases.isEmpty) {
       continue;
     }
-    final holdsBase = members.any((member) => attachBases.contains(member.id));
-    final pureOrganizer =
-        attachBases.length == 1 &&
-        members.every((member) => member.attachedToLayerId != null);
-    if (!holdsBase && !pureOrganizer) {
+    final holdsBase = leaves.any((leaf) => attachBases.contains(leaf.id));
+    // ⛔ASKED, not re-derived. `attachOrganizerBaseOf` already answers
+    // 「is this one base's organizer」 and this used to compute it again —
+    // two spellings of one question, which is how they drift apart.
+    final organizer = attachOrganizerBaseOf(folder, layers) != null;
+    if (!holdsBase && !organizer) {
       return 'Folder ${folder.id} mixes attach rows with other rows — it '
-          'must be the group\'s shared folder or a flat attach organizer.';
+          'must be the group\'s shared folder or an attach organizer.';
     }
   }
   return null;

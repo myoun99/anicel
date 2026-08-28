@@ -1,11 +1,9 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 
 /// F-30 — **an attach row is indented with its base.**
@@ -104,40 +102,11 @@ void main() {
     expect(depthOf(rows, attachId), 0);
   });
 
-  testWidgets('the folder arrow and the attach arrow are ONE drawing', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: Row(
-            children: [
-              LayerNestingArrowCell(),
-              LayerAttachArrowCell(
-                keyPrefix: 'probe',
-                idValue: 'x',
-                placement: AttachedPlacement.below,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    final icons = tester
-        .widgetList<Icon>(find.byIcon(Icons.subdirectory_arrow_right))
-        .toList();
-    expect(icons.length, 2, reason: 'fixture: both arms are on screen');
-    expect(
-      icons[0].size,
-      icons[1].size,
-      reason: '「생김새·색이 달라 같은 것을 재사용할 것」 — 14px vs 16px was '
-          'half the difference',
-    );
-    expect(
-      icons[0].color,
-      icons[1].color,
-      reason: 'and 55% alpha vs full strength was the other half',
-    );
-  });
+  // 🪦「the folder arrow and the attach arrow are ONE drawing」 lived here.
+  //
+  // It pinned the two glyphs to one size and one colour — 유저: 「생김새·색이
+  // 달라 같은 것을 재사용할 것」, after 14px vs 16px and 55% alpha vs full
+  // strength. The folder arrow is gone (2026-08-29: nesting moved into the
+  // NAME column and the leading run lost its ↳ cell), so there is no second
+  // arrow left to match. One drawing, by having one.
 }

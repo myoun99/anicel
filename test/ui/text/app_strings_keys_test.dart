@@ -644,7 +644,6 @@ void main() {
     'tlDropAttachSyncedTemplate': (s) => s.tlDropAttachSyncedTemplate,
     'tlDropAttachFreeTemplate': (s) => s.tlDropAttachFreeTemplate,
     'tlDropDetachAttach': (s) => s.tlDropDetachAttach,
-    'tlDropFolderInAttachFolder': (s) => s.tlDropFolderInAttachFolder,
     'tlDetachLayer': (s) => s.tlDetachLayer,
     'tlSharedCut': (s) => s.tlSharedCut,
     'tlDuplicateFrame': (s) => s.tlDuplicateFrame,

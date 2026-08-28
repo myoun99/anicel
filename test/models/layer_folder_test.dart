@@ -156,6 +156,56 @@ void main() {
       );
     });
 
+    test('🆕an attach organizer may NEST — the leaves name the base', () {
+      // 유저 2026-08-29: 「어태치 폴더 중첩도 허용하는 방향으로 가자」.
+      Layer attach(String id, {required String base, String? folderId}) =>
+          cel(id, folderId: folderId).copyWith(
+            attachedToLayerId: LayerId(base),
+          );
+
+      // ⛔이것이 예전에 거부되던 모양이다: 조직자 안의 폴더는
+      // `attachedToLayerId` 가 없어서 「순수 조직자」 판정을 깨뜨렸다.
+      expect(
+        folderStructureProblem([
+          cel('base'),
+          attach('a1', base: 'base', folderId: 'inner'),
+          folder('inner', parent: 'org'),
+          attach('a2', base: 'base', folderId: 'org'),
+          folder('org'),
+        ]),
+        isNull,
+        reason: '중첩 폴더는 구조지, 「누구의 어태치인가」에 대한 답이 아니다',
+      );
+
+      // 🚨중첩을 허용한 것이지 섞임을 허용한 것이 아니다 — 깊은 곳의 잎이
+      // 다른 base 를 타면 그룹이 여전히 폴더 경계로 쪼개진다.
+      expect(
+        folderStructureProblem([
+          cel('base'),
+          cel('other'),
+          attach('a1', base: 'base', folderId: 'inner'),
+          folder('inner', parent: 'org'),
+          attach('a2', base: 'other', folderId: 'org'),
+          folder('org'),
+        ]),
+        contains('mixes attach rows'),
+        reason: '두 base 가 한 조직자 안에 있으면 그룹 범위를 못 만든다',
+      );
+
+      // 🚨어태치가 아닌 행이 깊은 곳에 섞이는 것도 그대로 막힌다.
+      expect(
+        folderStructureProblem([
+          cel('base'),
+          attach('a1', base: 'base', folderId: 'inner'),
+          cel('stray', folderId: 'inner'),
+          folder('inner', parent: 'org'),
+          folder('org'),
+        ]),
+        contains('mixes attach rows'),
+        reason: '깊이가 섞임을 숨겨 주지 않는다',
+      );
+    });
+
     test('a non-contiguous folder run is reported', () {
       expect(
         folderStructureProblem([
