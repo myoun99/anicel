@@ -217,7 +217,7 @@ Future<void> _handle(HttpRequest req) async {
       case '/purge':
         _purge('${body['id']}');
       case '/refresh':
-        _ghAt = DateTime.fromMillisecondsSinceEpoch(0);
+        await _ghStale.force();
       case '/shot':
         _saveShot(body);
       default:
@@ -838,17 +838,70 @@ class _Gh {
   final bool ok;
 }
 
-_Gh? _ghCache;
-DateTime _ghAt = DateTime.fromMillisecondsSinceEpoch(0);
+/// A value that is slow to fetch and cheap to be a few seconds old.
+///
+/// 🚨The window used to be a WALL: once it expired, whoever clicked next paid
+/// the whole cost. Measured 2026-08-28 — 0.5s warm, **3.7s** on the first
+/// request after the window lapsed, for inputs a page turn does not even
+/// change (유저: 「이 보드 자체가 렉이 좀 있는데 어떻게안되나」).
+///
+/// Now an expired value is still served immediately and the refresh runs
+/// behind it. The slow path is paid once, at startup, instead of every twenty
+/// seconds by whoever happens to be clicking when the timer lapses.
+///
+/// ⚠️A failed refresh keeps the last good value rather than blanking it: the
+/// board saying nothing is worse than the board being a minute old, and `gh`
+/// failing outright already has its own banner.
+class _Stale<T> {
+  _Stale(this._fetch);
+
+  final Future<T> Function() _fetch;
+  T? _value;
+  DateTime _at = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _busy = false;
+
+  /// Only the FIRST caller of all ever waits.
+  Future<T> get() async {
+    final held = _value;
+    if (held == null) return _store(await _fetch());
+    if (DateTime.now().difference(_at).inSeconds >= _ghCacheSeconds) _refresh();
+    return held;
+  }
+
+  void _refresh() {
+    if (_busy) return;
+    _busy = true;
+    () async {
+      try {
+        _store(await _fetch());
+      } catch (_) {
+        // Keep what we had. See the class doc.
+      } finally {
+        _busy = false;
+      }
+    }();
+  }
+
+  /// 「↻」 — the ONE caller that wants to wait. Pressing refresh is a person
+  /// saying the stale answer is not good enough, so this is the one path that
+  /// does not hand one back.
+  Future<T> force() async => _store(await _fetch());
+
+  T _store(T v) {
+    _value = v;
+    _at = DateTime.now();
+    return v;
+  }
+}
+
+final _ghStale = _Stale<_Gh>(_fetchPrs);
 
 /// One `gh` call shared by every request inside the cache window. It is the
 /// only input slow enough to be worth caching, and a few seconds of staleness
 /// on a PR list is not a staleness anyone can act on.
-Future<_Gh> _prs() async {
-  if (_ghCache != null &&
-      DateTime.now().difference(_ghAt).inSeconds < _ghCacheSeconds) {
-    return _ghCache!;
-  }
+Future<_Gh> _prs() => _ghStale.get();
+
+Future<_Gh> _fetchPrs() async {
   ProcessResult result;
   try {
     result = await Process.run(
@@ -864,9 +917,9 @@ Future<_Gh> _prs() async {
       stdoutEncoding: utf8,
     );
   } catch (_) {
-    return _cache(_Gh(const [], ok: false));
+    return _Gh(const [], ok: false);
   }
-  if (result.exitCode != 0) return _cache(_Gh(const [], ok: false));
+  if (result.exitCode != 0) return _Gh(const [], ok: false);
 
   final List<dynamic> rows;
   try {
@@ -876,7 +929,7 @@ Future<_Gh> _prs() async {
     // board still has work to show, and saying "gh 를 못 불렀습니다" is both
     // true and better than a 500 that shows nothing at all.
     stderr.writeln('board: could not parse gh output: $e');
-    return _cache(_Gh(const [], ok: false));
+    return _Gh(const [], ok: false);
   }
 
   final prs = <_Pr>[];
@@ -901,7 +954,7 @@ Future<_Gh> _prs() async {
       merged == null ? null : DateTime.tryParse(merged),
     ));
   }
-  return _cache(_Gh(prs, ok: true));
+  return _Gh(prs, ok: true);
 }
 
 /// The Korean line from the PR body if it carries one, else the English title.
@@ -915,14 +968,6 @@ String _koOr(String body, String title) {
   }
   return title;
 }
-
-_Gh _cache(_Gh gh) {
-  _ghCache = gh;
-  _ghAt = DateTime.now();
-  return gh;
-}
-
-// -------------------------------------------------------------------- git
 
 /// One checkout: where it is, what branch it holds, how far it has drifted
 /// from origin/master, and whether anything is uncommitted in it.
@@ -944,17 +989,17 @@ class _Checkout {
       ].join(' · ');
 }
 
-List<_Checkout>? _gitCache;
-DateTime _gitAt = DateTime.fromMillisecondsSinceEpoch(0);
+final _gitStale = _Stale<List<_Checkout>>(_readCheckouts);
 
 /// Reads every worktree of the repository, so "which checkout am I looking at
 /// and is it current" stops being something you find out by being told it is
 /// five commits behind.
-Future<List<_Checkout>> _checkouts() async {
-  if (_gitCache != null &&
-      DateTime.now().difference(_gitAt).inSeconds < _ghCacheSeconds) {
-    return _gitCache!;
-  }
+///
+/// ⚠️Eleven `git` calls on five worktrees, which is the other half of the
+/// 3.7s — hence the same [_Stale] wrapper the PR list wears.
+Future<List<_Checkout>> _checkouts() => _gitStale.get();
+
+Future<List<_Checkout>> _readCheckouts() async {
   String run(String dir, List<String> args) {
     try {
       final r = Process.runSync('git', ['-C', dir, ...args],
@@ -987,8 +1032,6 @@ Future<List<_Checkout>> _checkouts() async {
       path = null;
     }
   }
-  _gitCache = out;
-  _gitAt = DateTime.now();
   return out;
 }
 
@@ -1185,56 +1228,86 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
     if (y == null) return -1;
     return y.compareTo(x);
   });
-  final pages = fresh.isEmpty ? 1 : (fresh.length + _landedPerPage - 1) ~/ _landedPerPage;
-  final page = landedPage.clamp(1, pages);
-  // 확인할 것 = the landings on this page, then the checks that have no PR.
-  // The hand-written ones go LAST and are never paged away: there are few of
-  // them, they are the ones that need a device, and a page-2 that hides them
-  // is how a check waits a month.
+  // 확인할 것 = every landing, plus the checks that stand on their own.
   //
-  // 🚨ONE SUBJECT, ONE ROW. Two different ways a row could double up, and both
-  // are closed here rather than left to luck:
+  // 🚨ONE SUBJECT, ONE ROW, ONE PAGE. Three ways a row could double up, all
+  // closed here rather than left to luck:
   //
   //  1. A record that is BOTH a `check` and the claimer of a PR would render
-  //     once as a landing and again out of `checks` — `shown` stops that.
+  //     once as a landing and again out of `checks` — `freshIds` stops that.
   //  2. A check written as the hands-on half of a landing would sit BESIDE the
   //     landing it belongs to. That one was real: C-tp1..C-tp6 are the device
   //     checks for the tool-preset round, whose PR was on this very list.
-  //     `under` nests them inside it.
+  //     `subs` nests them inside it.
+  //  3. 🆕A check whose landing sits on ANOTHER page used to fall through to
+  //     standalone and get drawn on EVERY page — the old answer to 「never
+  //     hide a check」. 유저 2026-08-28: 「중복된게 두 페이지에 걸쳐있거든?
+  //     … 페이지마다 내용 완전히 달라야지」. It is not a scroll.
   //
-  // ⚠️A check whose landing is on ANOTHER page falls through to standalone,
-  // deliberately: it then shows exactly once on every page instead of
-  // vanishing whenever its parent pages away. Never hide a check.
-  final onPage = fresh.skip((page - 1) * _landedPerPage).take(_landedPerPage);
-  final here = {for (final e in onPage) ...e.prs};
-  final subs = <int, List<_Entry>>{};
-  for (final c in checks) {
-    final u = c.under;
-    if (u != null && here.contains(u)) (subs[u] ??= []).add(c);
-  }
-  final shown = <String>{};
+  //
+  // The new answer keeps the promise without the duplication: a check travels
+  // WITH its landing, and one that has no landing here goes LAST, which is
+  // where it always went.
+  //
+  // ⛔The order is not the lever. Putting the hand-written checks first would
+  // keep them on page 1 — and it pushed every landing onto page 2, which is
+  // the wrong half to hide: a landing is a thing merged minutes ago and the
+  // reason the section is open. The old note worried a page-2 check waits a
+  // month; the answer to that is that turning a page is now free, not that
+  // the newest work gets moved out of sight.
+  final landedPrs = {for (final e in fresh) ...e.prs};
+  final freshIds = {for (final e in fresh) e.id};
+  final orphans = [
+    for (final c in checks)
+      if (!freshIds.contains(c.id) &&
+          (c.under == null || !landedPrs.contains(c.under)))
+        c,
+  ];
+  final orphanIds = {for (final c in orphans) c.id};
+  final units = <_Entry>[...fresh, ...orphans];
+  final pages =
+      units.isEmpty ? 1 : (units.length + _landedPerPage - 1) ~/ _landedPerPage;
+  final page = landedPage.clamp(1, pages);
+
+  // EVERY page is rendered, and the pager only moves a class. Turning a page
+  // used to refetch the whole board — measured at 0.5s on a warm cache and
+  // 3.7s when the `gh` window had expired, for a change that touches nothing
+  // but these rows (유저: 「그냥 누르자마자 전환되게하고싶은데」). Rendering
+  // both pages costs less than sending the other 610KB of board twice.
   final toCheck = <String>[];
-  for (final e in onPage) {
-    shown.add(e.id);
-    // The row badges the NEWEST of this card's PRs that gh can still see —
-    // the rest are in its story as 구현 stages. A card whose PRs have all
-    // aged out of the window gets no badge and loses nothing: the stages
-    // carry the numbers and the links.
-    _Pr? badge;
-    for (final n in e.prs) {
-      final pr = byNumber[n];
-      if (pr == null) continue;
-      if (badge == null || n > badge.number) badge = pr;
+  for (var p = 1; p <= pages; p++) {
+    final onPage = units.skip((p - 1) * _landedPerPage).take(_landedPerPage);
+    final here = {
+      for (final e in onPage)
+        if (!orphanIds.contains(e.id)) ...e.prs,
+    };
+    final subs = <int, List<_Entry>>{};
+    for (final c in checks) {
+      final u = c.under;
+      if (u != null && here.contains(u)) (subs[u] ??= []).add(c);
     }
-    final mine = [
-      for (final n in e.prs) ...?subs[n],
-    ];
-    shown.addAll(mine.map((s) => s.id));
-    toCheck.add(_checkRow(e, pr: badge, subs: mine));
-  }
-  for (final c in checks) {
-    if (shown.contains(c.id)) continue;
-    toCheck.add(_checkRow(c));
+    final rows = StringBuffer();
+    for (final e in onPage) {
+      if (orphanIds.contains(e.id)) {
+        rows.write(_checkRow(e));
+        continue;
+      }
+      // The row badges the NEWEST of this card's PRs that gh can still see —
+      // the rest are in its story as 구현 stages. A card whose PRs have all
+      // aged out of the window gets no badge and loses nothing: the stages
+      // carry the numbers and the links.
+      _Pr? badge;
+      for (final n in e.prs) {
+        final pr = byNumber[n];
+        if (pr == null) continue;
+        if (badge == null || n > badge.number) badge = pr;
+      }
+      rows.write(_checkRow(e, pr: badge, subs: [
+        for (final n in e.prs) ...?subs[n],
+      ]));
+    }
+    toCheck.add('<div class="pg${p == page ? ' on' : ''}" data-pg="$p">'
+        '$rows</div>');
   }
 
   final loose = alive
@@ -1302,7 +1375,7 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   // exactly what made it lie.
   b.write(_group('확인할 것', fresh.length + checks.length,
       '체크 = 문제 없음 · 메모 = 문제', toCheck,
-      footer: _pager(fresh.length, page),
+      footer: _pager(units.length, page),
       control: _ctl('<button class="ghost sm" title="이 페이지의 모든 항목을 체크합니다" '
           'onclick="pickAll(event)">전체선택</button>'
           '<button class="ghost sm" title="체크한 항목을 목록에서 치웁니다" '
@@ -1357,18 +1430,21 @@ String _ctl(String buttons) =>
 /// How many landed rows fit on one page.
 const _landedPerPage = 20;
 
-/// The pager for the LANDED half of 확인할 것.
+/// The pager for 확인할 것.
 ///
-/// It is drawn even when there is only one page, and the count it shows is the
-/// TOTAL rather than the page: a section that hides its own size is the thing
-/// the eight-row cap was, and a control that appears only once the list is long
-/// enough is a control nobody knows exists.
+/// It is drawn even when there is only one page: a control that appears only
+/// once the list is long enough is a control nobody knows exists.
+///
+/// 🆕The 「1 / 2」 caption is gone (유저 2026-08-28: 「페이지텍스트 1/2랑 옆에
+/// 버튼 1 2 이거 하나로 합칠수있잖아」). It said twice what the buttons say
+/// once — the lit button IS the current page, and how many buttons there are
+/// IS how many pages there are. The section header already carries the total.
 String _pager(int total, int page) {
   final pages = total <= _landedPerPage ? 1 : (total + _landedPerPage - 1) ~/ _landedPerPage;
-  final b = StringBuffer('<div class="pager"><span class="pgn">$page / $pages</span>');
+  final b = StringBuffer('<div class="pager">');
   for (var i = 1; i <= pages; i++) {
-    final cls = i == page ? 'ghost sm on' : 'ghost sm';
-    // ⛔Not a plain href. A page change here is a change to ONE section, and a
+    final cls = i == page ? 'pg-btn on' : 'pg-btn';
+    // ⛔Not a plain href. A page change is a change to ONE section, and a
     // navigation throws away every panel on the board you had open to read
     // (유저 2026-08-26: 「페이지 바뀔때마다 페이지 바뀌는데 그게아니라 새로고침
     // 안하고 그냥 내부 위젯만 바꾼다거나 가능한가?」). The href stays for
@@ -2207,42 +2283,23 @@ function curPage(){
   const on = document.querySelector('.pager a.on');
   return on ? (parseInt(on.textContent, 10) || 1) : 1;
 }
+// Every page is already in the document, so turning one is a class swap.
+//
+// It used to refetch the whole board — measured at 0.5s warm and 3.7s once the
+// `gh` window had expired, to change rows that were already decided when the
+// page was drawn (유저 2026-08-28: 「특히 페이지 전환할떄 너무느려. 그냥
+// 누르자마자 전환되게하고싶은데」). Nothing needs saving and restoring either:
+// open panels and half-typed memos are not touched, because nothing is
+// replaced. The scroll does not move for the same reason.
 function goPage(n){
-  const id = 'g-확인할 것';
-  const live = document.getElementById(id);
-  if(!live) return true;   // no section to swap: let the link navigate
-  const opened = [], typed = {};
-  document.querySelectorAll('details').forEach(function(d){
-    if(d.id && d.open) opened.push(d.id);
+  const pgs = document.querySelectorAll('.pg');
+  if(!pgs.length) return true;   // nothing to swap: let the link navigate
+  pgs.forEach(function(d){
+    d.classList.toggle('on', parseInt(d.dataset.pg, 10) === n);
   });
-  document.querySelectorAll('details.p').forEach(function(d){
-    if(!d.id) return;
-    d.querySelectorAll('textarea, input[type=text]').forEach(function(f, i){
-      if(f.value) typed[d.id + '#' + i] = f.value;
-    });
+  document.querySelectorAll('.pager a.pg-btn').forEach(function(a){
+    a.classList.toggle('on', parseInt(a.textContent, 10) === n);
   });
-  const y = window.scrollY;
-  fetch('/?landed=' + n, {cache:'no-store'})
-    .then(r=>r.text())
-    .then(html=>{
-      const doc = new DOMParser().parseFromString(html, 'text/html');
-      const fresh = doc.getElementById(id);
-      const now = document.getElementById(id);
-      if(fresh && now) now.replaceWith(fresh);
-      opened.forEach(function(k){
-        const d = document.getElementById(k);
-        if(d) d.open = true;
-      });
-      document.querySelectorAll('details.p').forEach(function(d){
-        if(!d.id) return;
-        d.querySelectorAll('textarea, input[type=text]').forEach(function(f, i){
-          const v = typed[d.id + '#' + i];
-          if(v) f.value = v;
-        });
-      });
-      window.scrollTo(0, y);
-    })
-    .catch(function(){ location.href = '?landed=' + n; });
   return false;
 }
 // Swaps just the 지금 section rather than reloading: everything else on the
@@ -2382,9 +2439,24 @@ border-radius:5px;padding:9px 12px;font-size:13px;margin:0 0 14px}
 .ctl{margin-left:auto;display:flex;align-items:center;gap:7px;flex:none}
 .pick{flex:none;margin:0}
 .pager{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 2px 2px}
-.pgn{font-size:12px;color:var(--ink3);margin-right:4px}
-.pager a{text-decoration:none;min-width:26px;text-align:center}
-.pager a.on{border-color:var(--live);color:var(--live)}
+/* A page button is a BUTTON: a real box you can aim at, not a bare number.
+   The current one is filled rather than outlined -- 유저 2026-08-28: 「1 2
+   버튼을 제대로 사각형실루엣같은거 그려서 버튼이게하고 현재 페이지면 강조색
+   칠하게」. `--card` for the label so it reads on the accent in both themes;
+   white would go grey-on-pale in dark mode, where --live is the light one. */
+.pager a.pg-btn{display:inline-flex;align-items:center;justify-content:center;
+min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line2);
+border-radius:6px;background:var(--card);color:var(--ink2);
+font-size:13px;font-variant-numeric:tabular-nums;text-decoration:none;
+cursor:pointer;user-select:none}
+.pager a.pg-btn:hover{border-color:var(--live);color:var(--live)}
+.pager a.pg-btn.on{background:var(--live);border-color:var(--live);
+color:var(--card);font-weight:600}
+.pager a.pg-btn.on:hover{color:var(--card)}
+/* Every page is in the document; the pager lights exactly one. Turning a page
+   is a class swap, not a refetch. */
+.pg{display:none}
+.pg.on{display:block}
 .mono{font-family:var(--mono);font-size:11.5px;word-break:break-all}
 .stack{display:flex;flex-direction:column;gap:5px}
 .p{background:var(--card);border:1px solid var(--line);border-radius:5px}
