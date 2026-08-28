@@ -370,6 +370,26 @@ bool attachRowWearsBaseComposite(Layer layer, List<Layer> layers) {
       attachOrganizerBaseOf(layer, layers) != null;
 }
 
+/// Whether [layer] would LOSE fx by becoming part of an attach group.
+///
+/// 🚨★★★「fx」 IS EVERYTHING THE FX PANEL SHOWS. 유저 2026-08-29: 「fx펼쳐서
+/// 있는건 모두 fx취급하고싶어. **통일**이야. 즉 se행의 네임태그든 트랜스폼이든
+/// 추가fx든 싹다」 — so this asks all three in ONE place. Asking them at three
+/// call sites is how they drift, and the notice would then be right about
+/// one of them and silent about the others.
+///
+/// The three match exactly what [attachRowWearsBaseComposite] gates: the fx
+/// switch, the Transform group and the Effects groups. A row that wears its
+/// base's composite authors none of them.
+///
+/// ⚠️Untouched fx is not a loss — a default transform and an empty chain
+/// have nothing to warn about, and a dialog nobody needed is a dialog people
+/// learn to dismiss.
+bool layerHasFxToLose(Layer layer) =>
+    layer.effects.isNotEmpty ||
+    layer.transformTrack.isNotEmpty ||
+    layer.seNameTag != null;
+
 /// The direction the row's ATTACH ARROW points, or null when the row is
 /// not part of an attach group (R10 R3, the arrow's move into the sheet
 /// slot).

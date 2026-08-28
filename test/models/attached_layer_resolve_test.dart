@@ -9,7 +9,11 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_folder.dart';
+import 'package:anicel/src/models/se_name_tag.dart';
+import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -349,6 +353,58 @@ void main() {
         folderId: const LayerId('f'),
       );
       expect(attachArrowPlacement(folder, [loose, folder]), isNull);
+    });
+  });
+
+  group('layerHasFxToLose', () {
+    // 🚨「fx」 is everything the fx panel shows (유저 2026-08-29: 「se행의
+    // 네임태그든 트랜스폼이든 추가fx든 싹다」), so each of the three has to
+    // be enough on its own. A predicate that only noticed `effects` would
+    // let a keyed transform vanish without a word.
+    Layer plain() => Layer(
+      id: const LayerId('x'),
+      name: 'x',
+      kind: LayerKind.animation,
+      frames: const [],
+      timeline: const {},
+    );
+
+    test('an untouched row has nothing to lose', () {
+      expect(layerHasFxToLose(plain()), isFalse);
+    });
+
+    test('an added effect counts', () {
+      final withEffect = plain().copyWith(
+        effects: [
+          LayerEffect.defaults(
+            id: const EffectId('e1'),
+            kind: EffectKind.blur,
+          ),
+        ],
+      );
+      // 전제: 픽스처가 정말로 fx 를 들었다 — 빈 것을 재고 통과하는 일이 없게.
+      expect(withEffect.effects, isNotEmpty, reason: 'fixture premise');
+      expect(layerHasFxToLose(withEffect), isTrue);
+    });
+
+    test('a keyed transform counts, with no effect in the chain', () {
+      final moved = plain().copyWith(
+        transformTrack: TransformTrack.empty().withKeyframe(
+          0,
+          TransformPose(center: CanvasPoint(x: 10, y: 0)),
+        ),
+      );
+      expect(moved.effects, isEmpty, reason: 'fixture premise: 체인은 비었다');
+      expect(
+        layerHasFxToLose(moved),
+        isTrue,
+        reason: '트랜스폼도 fx 다 — 이것만 놓치면 그림이 조용히 어긋난다',
+      );
+    });
+
+    test('an SE name tag counts', () {
+      final tagged = plain().copyWith(seNameTag: const SeNameTag());
+      expect(layerHasFxToLose(tagged), isTrue);
     });
   });
 }
