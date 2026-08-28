@@ -278,4 +278,40 @@ void main() {
       reason: 'nothing overlapped, so nothing was carried',
     );
   });
+
+  testWidgets('the carry composites LESS than the whole rect', (tester) async {
+    // 🚨THE COUNTER SAYS IT RAN; THIS SAYS IT SAVED SOMETHING. 🧪A mutation
+    // that dropped the subtraction left the clip covering the whole rect:
+    // correct pixels, no saving, and every other test green. That is the
+    // shape this file exists to refuse.
+    final cache = await warmCache(tester);
+    final buffers = DisplayBufferCache();
+    addTearDown(buffers.dispose);
+
+    await tester.pumpWidget(
+      stackAt(CanvasViewport(zoom: 2, panX: 0, panY: 0), cache, buffers),
+    );
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      stackAt(CanvasViewport(zoom: 2, panX: 5, panY: 4), cache, buffers),
+    );
+    await tester.pumpAndSettle();
+
+    final area = buffers.lastComposedArea;
+    expect(area, isNotNull, reason: 'fixture: a carry happened');
+    // ⛔ZERO IS THE BEST ANSWER, not a failure: when the new extent is a
+    // SUBSET of the old one the whole rect is carried and nothing is
+    // composited at all. 🧪The first version of this test demanded area > 0
+    // and failed on exactly that case.
+    //
+    // The claim is the ceiling: the window is 40 logical px at zoom 2 = 20
+    // canvas px a side, so a carry that composites near 400 has carried
+    // nothing in practice.
+    expect(
+      area!,
+      lessThan(20 * 20 * 0.75),
+      reason: 'a carry that composites nearly the whole rect is a carry in '
+          'name only',
+    );
+  });
 }

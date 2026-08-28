@@ -2491,16 +2491,34 @@ class _LayerStackPainter extends CustomPainter {
           ..isAntiAlias = false,
       );
       into.save();
-      // ⛔EVEN-ODD over two rects is the exposed band — an L or a U, never a
-      // rectangle — plus the live dirty rect drawn back in, because the
+      // ⛔THE BANDS, LISTED. Up to four of them — the strips of the new rect
+      // the old one did not reach — plus the live dirty rect, because the
       // carried pixels are as old as the last composite.
-      final exposed = Path()
-        ..fillType = PathFillType.evenOdd
-        ..addRect(rect)
-        ..addRect(overlap);
-      if (dirty != null) {
-        exposed.addRect(dirty.intersect(overlap));
+      //
+      // 🚨A LIST RATHER THAN AN EVEN-ODD PATH, and a mutation is why: with
+      // the path form, dropping the subtraction left the clip covering the
+      // whole rect — correct pixels, no saving, and every test green. The
+      // clip and the AREA now come from the same list, so a band that stops
+      // being excluded stops being counted.
+      final bands = <Rect>[
+        if (overlap.top > rect.top)
+          Rect.fromLTRB(rect.left, rect.top, rect.right, overlap.top),
+        if (overlap.bottom < rect.bottom)
+          Rect.fromLTRB(rect.left, overlap.bottom, rect.right, rect.bottom),
+        if (overlap.left > rect.left)
+          Rect.fromLTRB(rect.left, overlap.top, overlap.left, overlap.bottom),
+        if (overlap.right < rect.right)
+          Rect.fromLTRB(overlap.right, overlap.top, rect.right, overlap.bottom),
+        if (dirty != null && !dirty.intersect(overlap).isEmpty)
+          dirty.intersect(overlap),
+      ];
+      final exposed = Path();
+      var area = 0.0;
+      for (final band in bands) {
+        exposed.addRect(band);
+        area += band.width * band.height;
       }
+      cache!.lastComposedArea = area;
       // ⛔NO ANTIALIAS on the clip: a soft edge would blend the band into
       // the carried pixels and leave a seam of its own.
       into.clipPath(exposed, doAntiAlias: false);

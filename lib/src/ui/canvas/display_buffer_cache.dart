@@ -181,6 +181,14 @@ class DisplayBufferCache {
   /// like one that works.
   int scrolledCount = 0;
 
+  /// The canvas-space AREA the last carry actually composited.
+  ///
+  /// 🚨THE COUNTER SAYS THE CARRY RAN; THIS SAYS IT SAVED SOMETHING. A carry
+  /// that blits the overlap and then composites the whole rect anyway is
+  /// correct, costs what it always did, and is invisible in every pixel test
+  /// — 🧪a mutation shipped exactly that and stayed green.
+  double? lastComposedArea;
+
   void invalidate() {
     _image?.dispose();
     _image = null;
