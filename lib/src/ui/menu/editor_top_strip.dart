@@ -3,6 +3,7 @@ import 'dart:io' show Directory, File, FileSystemException;
 
 import 'package:flutter/material.dart';
 
+import '../input/control_press_claim.dart';
 import '../../services/persistence/anicel_file_service.dart'
     show anicelSnapshotIsOverlay;
 import '../../services/audio/audio_conform_pipeline.dart'
@@ -1215,37 +1216,39 @@ class _BlendModeControl extends StatelessWidget {
             ),
             SizedBox(
               width: _lockWidth,
-              child: IconButton(
-                key: const ValueKey<String>('brush-tool-blend-lock-toggle'),
-                icon: Icon(
-                  pinned == null
-                      ? Icons.lock_open_outlined
-                      : Icons.lock_outline,
-                  size: 16,
+              child: ControlPressClaim(
+                child: IconButton(
+                  key: const ValueKey<String>('brush-tool-blend-lock-toggle'),
+                  icon: Icon(
+                    pinned == null
+                        ? Icons.lock_open_outlined
+                        : Icons.lock_outline,
+                    size: 16,
+                  ),
+                  color: pinned == null
+                      ? theme.colorScheme.onSurfaceVariant
+                      : theme.colorScheme.primary,
+                  tooltip: AppText.strings.brBlendLock,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: _lockWidth,
+                    height: _lockWidth,
+                  ),
+                  // The 32px box IS the target: M3 would otherwise inflate to
+                  // 48 and blow the width this group promised to hold.
+                  style: IconButton.styleFrom(
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  // Locking captures whatever is showing, so the stroke does
+                  // not change under you at the moment you pin it. Null while
+                  // the tool composites nothing — pinning a blend it does not
+                  // read would be pinning nothing (TP2).
+                  onPressed: blendOn
+                      ? () => brushTool.value = state.withActiveBlendLock(
+                          pinned == null ? mode : null,
+                        )
+                      : null,
                 ),
-                color: pinned == null
-                    ? theme.colorScheme.onSurfaceVariant
-                    : theme.colorScheme.primary,
-                tooltip: AppText.strings.brBlendLock,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(
-                  width: _lockWidth,
-                  height: _lockWidth,
-                ),
-                // The 32px box IS the target: M3 would otherwise inflate to
-                // 48 and blow the width this group promised to hold.
-                style: IconButton.styleFrom(
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                // Locking captures whatever is showing, so the stroke does
-                // not change under you at the moment you pin it. Null while
-                // the tool composites nothing — pinning a blend it does not
-                // read would be pinning nothing (TP2).
-                onPressed: blendOn
-                    ? () => brushTool.value = state.withActiveBlendLock(
-                        pinned == null ? mode : null,
-                      )
-                    : null,
               ),
             ),
           ],

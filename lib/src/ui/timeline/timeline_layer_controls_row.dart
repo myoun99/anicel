@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../input/control_press_claim.dart';
 import '../../models/app_language.dart' show AppLanguage;
 import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
@@ -497,7 +498,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
                       SizedBox(
                         width: layerLaneToggleSlotWidth,
                         child: hasGroupFold && onToggleGroupFold != null
-                            ? RailControlPointer(
+                            ? ControlPressClaim(
                                 child: InkWell(
                                   key: ValueKey<String>(
                                     layerKindGroupsLayers(layer.kind)
@@ -539,7 +540,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
                         layer.kind == LayerKind.animation
                     ? SizedBox(
                         height: 26,
-                        child: RailControlPointer(child: IconButton(
+                        child: ControlPressClaim(child: IconButton(
                           key: ValueKey<String>(
                             'timeline-layer-fill-reference-${layer.id}',
                           ),

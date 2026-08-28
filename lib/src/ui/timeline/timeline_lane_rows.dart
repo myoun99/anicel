@@ -1,4 +1,5 @@
 import '../widgets/app_icon_button.dart';
+import '../input/control_press_claim.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
@@ -460,21 +461,23 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     if (lane.valueKind == PropertyLaneValueKind.boolean &&
         laneEdit?.onSetValue != null) {
       final on = valueLabel == 'on';
-      return InkWell(
-        key: ValueKey<String>(
-          '$_keyPrefix-lane-toggle-${layer.id}-${lane.laneId}',
-        ),
-        onTap: () => laneEdit!.onSetValue!.call(
-          layer,
-          lane,
-          widget.currentFrameIndex,
-          on ? 'off' : 'on',
-        ),
-        child: Center(
-          child: Icon(
-            on ? Icons.check_box_outlined : Icons.check_box_outline_blank,
-            size: 14,
-            color: on ? colorScheme.primary : colorScheme.onSurfaceVariant,
+      return ControlPressClaim(
+        child: InkWell(
+          key: ValueKey<String>(
+            '$_keyPrefix-lane-toggle-${layer.id}-${lane.laneId}',
+          ),
+          onTap: () => laneEdit!.onSetValue!.call(
+            layer,
+            lane,
+            widget.currentFrameIndex,
+            on ? 'off' : 'on',
+          ),
+          child: Center(
+            child: Icon(
+              on ? Icons.check_box_outlined : Icons.check_box_outline_blank,
+              size: 14,
+              color: on ? colorScheme.primary : colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       );
@@ -724,17 +727,19 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                 const LayerSectionBandCell(),
                 const SizedBox(width: 10),
               ],
-              InkWell(
-                key: ValueKey<String>(
-                  '$_keyPrefix-lane-group-toggle-${layer.id}-${lane.laneId}',
-                ),
-                onTap: onToggleGroup == null
-                    ? null
-                    : () => onToggleGroup(layer, lane),
-                customBorder: const CircleBorder(), // R26 #28
-                child: Icon(
-                  layerRailTwirlIcon(expanded: lane.groupExpanded),
-                  size: 16,
+              ControlPressClaim(
+                child: InkWell(
+                  key: ValueKey<String>(
+                    '$_keyPrefix-lane-group-toggle-${layer.id}-${lane.laneId}',
+                  ),
+                  onTap: onToggleGroup == null
+                      ? null
+                      : () => onToggleGroup(layer, lane),
+                  customBorder: const CircleBorder(), // R26 #28
+                  child: Icon(
+                    layerRailTwirlIcon(expanded: lane.groupExpanded),
+                    size: 16,
+                  ),
                 ),
               ),
               // The name takes the leftover; the controls after it are a
@@ -1046,22 +1051,24 @@ class _NavigatorButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return InkWell(
-      key: buttonKey,
-      onTap: enabled ? onTap : null,
-      child: SizedBox(
-        width: 16,
-        height: 20,
-        child: Center(
-          child:
-              child ??
-              Icon(
-                icon,
-                size: 14,
-                color: enabled
-                    ? colorScheme.onSurfaceVariant
-                    : colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
-              ),
+    return ControlPressClaim(
+      child: InkWell(
+        key: buttonKey,
+        onTap: enabled ? onTap : null,
+        child: SizedBox(
+          width: 16,
+          height: 20,
+          child: Center(
+            child:
+                child ??
+                Icon(
+                  icon,
+                  size: 14,
+                  color: enabled
+                      ? colorScheme.onSurfaceVariant
+                      : colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                ),
+          ),
         ),
       ),
     );
