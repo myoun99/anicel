@@ -315,7 +315,7 @@ void main() {
         drag: drag,
         onBegin: begun.add,
         onRowTarget: (_, _, _) {},
-        onUpdate: (rows, slot) => updates.add((
+        onUpdate: (rows, slot, {pointerInRow}) => updates.add((
           rows: [for (final row in rows) row.id.value],
           slot: slot,
         )),

@@ -232,7 +232,17 @@ class TimelineRowDragHooks {
   /// The caret moved to a slot of the LAYER row list. [displayLayers] is
   /// the list the SURFACE renders, so the session can map the slot onto the
   /// model without guessing which way this rail runs.
-  final void Function(List<Layer> displayLayers, int slot) onUpdate;
+  ///
+  /// F-31②: [pointerInRow] is the row the pointer stands IN — null over a
+  /// lane, or from a surface with no rail rows to name. The gap alone
+  /// cannot say which side of a group's boundary the drag came to rest on;
+  /// this is the half that can.
+  final void Function(
+    List<Layer> displayLayers,
+    int slot, {
+    LayerId? pointerInRow,
+  })
+  onUpdate;
 
   /// R5 #15: the pointer is ON [targetId] rather than between rows — the
   /// intent a caret has no gap to express (an empty folder's inside).
@@ -881,8 +891,25 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
               bar,
               // The drop does something structural, so it says so BEFORE
               // the release.
-              Padding(
-                padding: const EdgeInsets.only(left: 6),
+              //
+              // 🚨F-31① (유저 2026-08-28): 「가로선이 이상한 위치에 있다는
+              // 거야 … 레이어영역의 중앙 위쪽? 에 그려져서 레이어랑 겹쳐」.
+              //
+              // It has to be POSITIONED, and that is the whole fix: a Stack
+              // takes its size from its non-positioned children, so a badge
+              // laid out beside the bar made the Stack badge-tall and the
+              // 2px bar — aligned to the CENTRE of it — dropped half a
+              // badge into the row it was supposed to sit on top of. The
+              // line moved only when the drop had something to announce,
+              // which is exactly the attach drags the report came from.
+              //
+              // With one axis pinned and the other left null, the stack's
+              // own alignment still places the badge (centred across the
+              // bar), it hangs off the line under `Clip.none`, and it can
+              // no longer vote on where the line is.
+              Positioned(
+                left: horizontal ? 6 : null,
+                top: horizontal ? null : 6,
                 child: DecoratedBox(
                   // The app's own corner, not a circular one: a badge is a
                   // small control, and `app_shapes_coverage_test` is what

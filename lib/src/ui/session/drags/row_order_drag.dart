@@ -243,6 +243,7 @@ class RowOrderDrag {
     List<Layer> displayLayers,
     int slot, {
     String? noticeLabel,
+    LayerId? pointerInRow,
   }) {
     final subject = _subject;
     if (subject is! LayerRowSubject) {
@@ -288,6 +289,7 @@ class RowOrderDrag {
               stack: cut.layers,
               movingId: subject.layerId,
               insertAt: insertAt,
+              pointerInRow: pointerInRow,
               alsoMoving: _rowSelectionCarriedBy(subject.layerId),
             );
     });

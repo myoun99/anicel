@@ -1008,7 +1008,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
             hooks.onRowTarget(caret.layers, slot, target.id);
             return;
           }
-          hooks.onUpdate(caret.layers, slot);
+          hooks.onUpdate(
+            caret.layers,
+            slot,
+            pointerInRow: caret.onRowLayer(inRow)?.id,
+          );
         },
         // ⑨: the SELECT half, counted in the sheet's own display columns.
         onSelectCrossed: hooks.onSelectBegin == null

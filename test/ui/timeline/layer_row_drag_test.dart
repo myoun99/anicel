@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/layer_row_drag.dart';
 
 /// The row-order drag, driven as a real gesture: the rail row IS the
 /// handle, the caret says where the row would land, and the release commits
@@ -240,6 +241,46 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_order(session), ['a', 'b', 'c']);
+  });
+
+  testWidgets('F-31①: the caret sits ON the row boundary, not inside a row '
+      '— 유저 2026-08-28: 「가로선이 이상한 위치에 있다」', (tester) async {
+    await _pump(tester);
+    final row = _railRow('a');
+    await tester.ensureVisible(row);
+    await _selectRow(tester, row);
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.startGesture(tester.getCenter(row));
+    await tester.pump(const Duration(milliseconds: 16));
+    await gesture.moveBy(const Offset(0, -42));
+    await tester.pump();
+
+    final caret = find.byKey(
+      const ValueKey<String>('timeline-row-caret-before-b'),
+    );
+    expect(caret, findsOneWidget);
+    // The line the user sees is the BAR, not the badge beside it: measuring
+    // the caret widget whole would pass on a bar drawn anywhere as long as
+    // the label reached the edge (R‑lesson: 계측기를 먼저 의심하라).
+    final bar = find.descendant(
+      of: caret,
+      matching: find.byWidgetPredicate(
+        (w) => w is Container && w.constraints?.maxHeight == 2,
+      ),
+    );
+    expect(bar, findsOneWidget);
+    final barRect = tester.getRect(bar);
+    final rowRect = tester.getRect(_railRow('b'));
+    expect(
+      barRect.center.dy,
+      moreOrLessEquals(rowRect.top, epsilon: 1.5),
+      reason:
+          'the bar must straddle the boundary; a bar inside the row would '
+          'overlap the layer, which is what F-31① reported',
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
   });
 
   testWidgets('dragging DOWN moves it down — a row sits between two gaps '
@@ -565,5 +606,77 @@ void main() {
     session.undo();
     await tester.pumpAndSettle();
     expect(_order(session), ['a', 'b', 'c']);
+  });
+
+  testWidgets('F-31①: a caret carrying a NOTICE keeps the line on the '
+      'boundary — the badge hangs off it, it does not move it', (
+    tester,
+  ) async {
+    // 유저 2026-08-28: 「가로선이 이상한 위치에 있다는거야 … 레이어영역의
+    // 중앙 위쪽? 에 그려져서 레이어랑 겹쳐」. The plain caret is right, so
+    // this drives the case they were looking at: an ATTACH drop, whose
+    // caret says what it will do.
+    final drag = ValueNotifier<LayerRowDragState?>(
+      const LayerRowDragState(
+        subject: LayerRowSubject(LayerId('b')),
+        caretSlot: 1,
+        legal: true,
+        joinLabel: '어태치 해제',
+      ),
+    );
+    addTearDown(drag.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 300,
+              child: LayerRowDragTarget(
+                subject: const LayerRowSubject(LayerId('b')),
+                slotBefore: 1,
+                rowExtent: 28,
+                axis: Axis.horizontal,
+                hooks: TimelineRowDragHooks(
+                  drag: drag,
+                  onBegin: (_) {},
+                  onUpdate: (_, _, {pointerInRow}) {},
+                  onRowTarget: (_, _, _) {},
+                  onEffectUpdate: (_, _, _) {},
+                  onEnd: () {},
+                  onCancel: () {},
+                ),
+                onCrossed: (_, _, _) {},
+                child: const SizedBox(height: 28, key: ValueKey('the-row')),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final bar = find.byWidgetPredicate(
+      (w) => w is Container && w.constraints?.maxHeight == layerRowCaretThickness,
+    );
+    expect(bar, findsOneWidget);
+    final rowTop = tester.getRect(find.byKey(const ValueKey('the-row'))).top;
+    expect(
+      tester.getRect(bar).center.dy,
+      moreOrLessEquals(rowTop, epsilon: 1.5),
+      reason:
+          'the badge is taller than the 2px bar, so a Stack sized by the '
+          'badge centres the bar inside the row instead of on its edge',
+    );
+    // …and the notice itself is still THERE and readable: hanging the badge
+    // off the line must not be a way of hiding it.
+    final badge = find.text('어태치 해제');
+    expect(badge, findsOneWidget);
+    final badgeRect = tester.getRect(badge);
+    expect(badgeRect.height, greaterThan(layerRowCaretThickness));
+    expect(
+      badgeRect.center.dy,
+      moreOrLessEquals(rowTop, epsilon: 1.5),
+      reason: 'the badge straddles the line rather than sitting off it',
+    );
   });
 }

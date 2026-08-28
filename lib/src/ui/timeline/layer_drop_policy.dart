@@ -311,6 +311,11 @@ LayerDropPlan? resolveLayerDrop({
 
   /// ㊵: the row selection this drag carries, when [movingId] is in it.
   Set<LayerId> alsoMoving = const {},
+
+  /// F-31②: the row the POINTER stands in, which splits the boundary caret
+  /// in half — see [_slotKeepsGroup]. Null from every caller that has no
+  /// pointer (the menu moves, the tests), and the closed interval stands.
+  LayerId? pointerInRow,
 }) {
   final run = layerDragRun(stack, movingId, alsoMoving: alsoMoving);
   if (run == null || insertAt < 0 || insertAt > stack.length) {
@@ -495,7 +500,12 @@ LayerDropPlan? resolveLayerDrop({
       if (layer.attachedToLayerId != null &&
           !carriedIds.contains(layer.attachedToLayerId) &&
           !mountedIds.contains(layer.id) &&
-          !_slotTouchesGroup(rest, restInsertAt, layer.attachedToLayerId!))
+          !_slotKeepsGroup(
+            rest,
+            restInsertAt,
+            layer.attachedToLayerId!,
+            pointerInRow,
+          ))
         layer.id,
   };
 
@@ -666,16 +676,73 @@ AttachedPlacement? _slotSideOfBase(
 /// detach), while a row from outside has to be put clearly INSIDE before it
 /// joins.
 bool _slotTouchesGroup(List<Layer> rest, int insertAt, LayerId baseId) {
-  final below = insertAt > 0
-      ? _groupBaseOfRow(rest, rest[insertAt - 1], ownBase: baseId)
-      : null;
-  if (below == baseId) {
+  final sides = _groupSidesOfSlot(rest, insertAt, baseId);
+  return sides.below || sides.above;
+}
+
+/// Which of the slot's two neighbours belong to [baseId]'s group.
+///
+/// One walk, because every question a slot gets asked about a group is some
+/// reading of this pair: TOUCHES is either side, strictly INSIDE is both,
+/// and the boundary that F-31② splits in half is exactly one.
+({bool below, bool above}) _groupSidesOfSlot(
+  List<Layer> rest,
+  int insertAt,
+  LayerId baseId,
+) => (
+  below:
+      insertAt > 0 &&
+      _groupBaseOfRow(rest, rest[insertAt - 1], ownBase: baseId) == baseId,
+  above:
+      insertAt < rest.length &&
+      _groupBaseOfRow(rest, rest[insertAt], ownBase: baseId) == baseId,
+);
+
+/// Whether a run landing at [insertAt] KEEPS its membership of [baseId]'s
+/// group — the touch test, split in half at the boundary by where the
+/// pointer stands.
+///
+/// F-31② (user, 2026-08-29): 「어태치 경계에 커서 가면 가로선 생기는 거,
+/// 그걸 커서 위치에 따라 영역을 반으로 나눠서 어태치 안쪽이면 어태치 유지한
+/// 채로 외곽에 두는 로직, 바깥쪽이면 어태치 해제하는 로직」.
+///
+/// The boundary gap is one caret with two meanings: it is both the group's
+/// outer edge and the first slot outside. [_slotTouchesGroup] answered the
+/// closed interval — the edge always kept the row — so the second meaning
+/// had no way to be said, and leaving a group meant travelling one row
+/// further than the picture suggested.
+///
+/// The half is not new geometry: the gap has a row on either side of it,
+/// and the one the pointer is IN is the answer. Inside that group's row —
+/// even its base — keeps the attach; the row past it lets go.
+///
+/// [pointerInRow] is null when the drag has no pointer row to offer (a menu
+/// move, a test, the pointer over a lane), and then the old closed interval
+/// stands: no information is not a reason to detach.
+bool _slotKeepsGroup(
+  List<Layer> rest,
+  int insertAt,
+  LayerId baseId,
+  LayerId? pointerInRow,
+) {
+  final sides = _groupSidesOfSlot(rest, insertAt, baseId);
+  if (!sides.below && !sides.above) {
+    return false;
+  }
+  if (sides.below && sides.above) {
+    return true; // Strictly inside: there is no half to be on.
+  }
+  if (pointerInRow == null) {
     return true;
   }
-  final above = insertAt < rest.length
-      ? _groupBaseOfRow(rest, rest[insertAt], ownBase: baseId)
-      : null;
-  return above == baseId;
+  for (final row in rest) {
+    if (row.id == pointerInRow) {
+      return _groupBaseOfRow(rest, row, ownBase: baseId) == baseId;
+    }
+  }
+  // The pointer is over a row this drag CARRIES: it moved with the run, so
+  // it says nothing about which side of the boundary the run came to rest.
+  return true;
 }
 
 /// The gap [steps] away from the item at [index].

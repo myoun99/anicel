@@ -399,6 +399,76 @@ void main() {
       expect(down.attach.detachIds, isEmpty);
       expect(_ids(down.order), ['a1', 'base', 'a2', 'top']);
     });
+    test('and at the boundary the POINTER picks the half — inside keeps the '
+        'attach, the row past it lets go', () {
+      // F-31② (user, 2026-08-29): 「영역을 반으로 나눠서 어태치 안쪽이면
+      // 어태치 유지한 채로 외곽에 두는 로직, 바깥쪽이면 어태치 해제하는
+      // 로직」. Both drops land on the SAME gap — only the half differs.
+      final stack = [
+        _row('under'),
+        _row('base'),
+        _row('a1', attachedTo: 'base'),
+        _row('a2', attachedTo: 'base'),
+        _row('top'),
+      ];
+      final inside = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('a1'),
+        insertAt: 4,
+        pointerInRow: const LayerId('a2'),
+      )!;
+      expect(inside.attach.detachIds, isEmpty);
+      expect(_ids(inside.order), ['under', 'base', 'a2', 'a1', 'top']);
+      final outside = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('a1'),
+        insertAt: 4,
+        pointerInRow: const LayerId('top'),
+      )!;
+      expect(outside.attach.detachIds, {const LayerId('a1')});
+      expect(_ids(outside.order), ['under', 'base', 'a2', 'a1', 'top']);
+    });
+
+    test('the pointer only splits the boundary — well inside the group it '
+        'cannot detach, and well outside it cannot hold on', () {
+      final stack = [
+        _row('under'),
+        _row('base'),
+        _row('a1', attachedTo: 'base'),
+        _row('a2', attachedTo: 'base'),
+        _row('a3', attachedTo: 'base'),
+        _row('top'),
+        _row('far'),
+      ];
+      // Between two riders: both neighbours are the group's, so there is no
+      // half to pick and the pointer has nothing to say.
+      final within = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('a1'),
+        insertAt: 4,
+        pointerInRow: const LayerId('far'),
+      )!;
+      expect(within.attach.detachIds, isEmpty);
+      expect(_ids(within.order), [
+        'under',
+        'base',
+        'a2',
+        'a1',
+        'a3',
+        'top',
+        'far',
+      ]);
+      // And a landing clear of the group detaches even with the pointer
+      // pointing back into it — the gap has already left.
+      final beyond = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('a1'),
+        insertAt: 6,
+        pointerInRow: const LayerId('a2'),
+      )!;
+      expect(beyond.attach.detachIds, {const LayerId('a1')});
+    });
+
 
     test('a LONE attach row can cross its base and stay attached — the base '
         'still reads as a base while its only rider is in the air', () {

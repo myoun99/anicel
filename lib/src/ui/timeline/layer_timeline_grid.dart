@@ -1491,7 +1491,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                 hooks.onRowTarget(caret.layers, slot, target.id);
                 return;
               }
-              hooks.onUpdate(caret.layers, slot);
+              hooks.onUpdate(
+                caret.layers,
+                slot,
+                pointerInRow: caret.onRowLayer(inRow)?.id,
+              );
             },
       // ⑨: the SELECT half of the same drag. It counts in the rail's own
       // DISPLAY rows (`_dragRows`) rather than in the layer list the caret

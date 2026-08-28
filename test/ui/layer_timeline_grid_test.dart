@@ -682,7 +682,7 @@ void main() {
     }) => TimelineRowDragHooks(
       drag: ValueNotifier<LayerRowDragState?>(null),
       onBegin: (_) => events.add('begin'),
-      onUpdate: (_, slot) => slots.add(slot),
+      onUpdate: (_, slot, {pointerInRow}) => slots.add(slot),
       onRowTarget: (_, slot, _) => slots.add(slot),
       onEffectUpdate: (_, _, _) {},
       onEnd: () => events.add('end'),
