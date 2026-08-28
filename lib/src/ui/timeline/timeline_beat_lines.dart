@@ -88,9 +88,27 @@ class TimelineFrameAreaEdge extends StatelessWidget {
 );
 
 /// 6f BEAT line — the sheet convention, zoom-independent.
+///
+/// 🚨F-41 (유저 2026-08-28): 「그리드선이 너무 진함 … 포인트는 그리드선이
+/// 진해서 **블록이 한 블록이아니라 나뉜것처럼 보이는 착시현상**이 문제」.
+///
+/// 🔬재보니 **이 파일이 적어 둔 순서가 깨져 있었다.** 블록 종이(L=0.906)
+/// 위에서 어두워지는 정도: 기본 0.176 · **6f 0.649** · SECOND 0.451.
+/// SECOND 를 「the strongest」라고 써 놓고 **6f 가 가장 진했다** — 그리고 6f 는
+/// **여섯 칸마다** 오므로, 한 블록이 여섯 칸마다 가장 진한 선으로 잘렸다.
+/// 유저가 본 착시가 그것이다.
+///
+/// ⛔원인은 `colorScheme.outline`(#45494E)이 어두운 회색이라 종이에 곱해지면
+/// SECOND 의 `beatLine`(#7C8184)보다 훨씬 크게 깎였다는 것 — **어두운 테마의
+/// 크롬 색을 밝은 종이 위의 잉크로 그대로 쓴** 결과다. 이제 SECOND 와 같은
+/// 잉크를 쓰되 **알파로 한 단계 옅게** 둔다: 순서가 값에서 나오지, 두 색의
+/// 우연한 밝기 차에서 나오지 않는다.
 ({Color color, double strokeWidth}) timelineGridSixLineInk(
   ColorScheme colorScheme,
-) => (color: colorScheme.outline, strokeWidth: 1.0);
+) => (
+  color: AppColors.beatLine.withValues(alpha: timelineSixGridAlpha),
+  strokeWidth: 1.0,
+);
 
 /// SECOND (fps) line — the strongest.
 ({Color color, double strokeWidth}) timelineGridSecondLineInk() =>

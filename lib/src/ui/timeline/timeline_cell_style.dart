@@ -152,6 +152,22 @@ Color timelineEmptyCelPaperColor(Color paper) =>
 /// the rhythm.
 const double timelineBaseGridAlpha = 0.25;
 
+/// The 6f beat line's alpha over the SECOND line's ink (F-41).
+///
+/// 🚨The three strengths must READ as base < 6f < second, and before this
+/// they did not: the 6f line took `colorScheme.outline` — a dark chrome
+/// grey — and the grid law multiplies its ink onto the block's pale paper,
+/// so it came out DARKER than the second line it is supposed to sit under.
+/// Measured on the block paper (L=0.906): base 0.176, **6f 0.649**,
+/// second 0.451. A block was cut every six cells by the darkest line on
+/// screen, which is 유저 2026-08-28's 「블록이 한 블록이아니라 나뉜것처럼
+/// 보이는 착시」.
+///
+/// ⛔The order now comes from ONE ink and two alphas rather than from two
+/// colours that happened to differ — a value the next person can move
+/// without re-deriving which chrome grey multiplies darker.
+const double timelineSixGridAlpha = 0.6;
+
 /// The base grid's line CADENCE at [frameCellExtent] (UI-R18 #8/#12, the
 /// storyboard recipe adopted everywhere): instead of alpha-fading away at
 /// small zooms, the per-cell lines THIN to every Nth frame (the label
