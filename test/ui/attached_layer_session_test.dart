@@ -777,6 +777,40 @@ void main() {
       expect(folderStructureProblem(restored), isNull);
     });
 
+    test('and it cleans the whole NEST: deleting the last attach row cannot '
+        'leave an empty organizer inside an empty organizer', () {
+      // The nesting 유저 2026-08-29 allowed makes the one-level cascade a
+      // question: the inner folder empties, and then the outer holds
+      // nothing but a folder that is about to go.
+      final (s, base) = sessionWithBase();
+      s.addAttachedLayer(AttachedPlacement.above);
+      final attachId = s.activeLayer!.id;
+      s.groupActiveAttachIntoFolder();
+      final outerId = cutLayers(
+        s,
+      ).firstWhere((l) => l.id == attachId).folderId!;
+      s.selectLayer(attachId);
+      s.groupActiveAttachIntoFolder();
+      final innerId = cutLayers(
+        s,
+      ).firstWhere((l) => l.id == attachId).folderId!;
+      expect(innerId, isNot(outerId));
+
+      s.selectLayer(attachId);
+      s.deleteActiveLayer();
+
+      final after = cutLayers(s);
+      final ids = after.map((l) => l.id).toSet();
+      expect(ids.contains(attachId), isFalse);
+      expect(ids.contains(innerId), isFalse, reason: 'the inner empties');
+      expect(
+        ids.contains(outerId),
+        isFalse,
+        reason: 'and the outer, which now holds nothing at all',
+      );
+      expect(folderStructureProblem(after), isNull);
+    });
+
     test('deleting the LAST member of an organizer removes the empty '
         'folder row with it, in one undo', () {
       final (s, base) = sessionWithBase();

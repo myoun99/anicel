@@ -70,6 +70,47 @@ extension LayerFolderQueries on List<Layer> {
       if (layer.folderId == folderId) layer,
   ];
 
+  /// The folders left EMPTY by removing [removed], INNERMOST FIRST.
+  ///
+  /// A nest empties from the inside out: the folder that held the removed
+  /// row goes, and then ITS folder if that was all it held, and so on. It
+  /// is a walk rather than a parent lookup because a parent lookup is a
+  /// one-level answer, and one level was exactly right only while folders
+  /// could not nest (유저 2026-08-29 lifted that — see
+  /// [attachOrganizerBaseOf]).
+  ///
+  /// ⛔A folder that was ALREADY empty before the removal is not swept:
+  /// this answers "what did this delete empty", not "what is empty".
+  ///
+  /// [canRemove] is the caller's veto, and a vetoed folder BLOCKS its
+  /// ancestors — it is still there, so its parent is not empty either.
+  /// The attach path uses it for linked folder rows, whose membership in
+  /// this cut says nothing about a diverged counterpart's.
+  List<Layer> foldersEmptiedByRemoving(
+    Set<LayerId> removed, {
+    bool Function(Layer folder)? canRemove,
+  }) {
+    final gone = {...removed};
+    final emptied = <Layer>[];
+    var found = true;
+    while (found) {
+      found = false;
+      for (final folder in folderLayers) {
+        if (gone.contains(folder.id) || (canRemove?.call(folder) == false)) {
+          continue;
+        }
+        final members = directMembersOf(folder.id);
+        if (members.isEmpty || members.any((m) => !gone.contains(m.id))) {
+          continue;
+        }
+        gone.add(folder.id);
+        emptied.add(folder);
+        found = true;
+      }
+    }
+    return emptied;
+  }
+
   /// Whether every folder in the chain is visible (a hidden ancestor hides
   /// the whole subtree).
   bool subtreeVisible(LayerId? folderId) {

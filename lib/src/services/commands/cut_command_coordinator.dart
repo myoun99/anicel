@@ -867,30 +867,46 @@ class CutCommandCoordinator {
     // UNLINKED folder rows (organizers are created per-cut and unlinked;
     // a linked folder's delete fans out group-wide, and this cut's member
     // count says nothing about a diverged counterpart's).
+    //
+    // 🚨It WALKS. Nesting (유저 2026-08-29) made "the folder it was in" a
+    // one-level answer to a question that now has depth: the inner folder
+    // empties, and then the outer one holds nothing but the folder that is
+    // already going. Measured before it was written — the outer stranded.
+    //
+    // ⛔An empty PLAIN folder is not swept along with them, and that is not
+    // an oversight: an empty folder is a thing you can make on purpose,
+    // while an empty ORGANIZER is a folder that belongs to no group and
+    // sits outside every span. The sweep follows the invalidity, not the
+    // emptiness.
     if (isAttachedLayer(layer)) {
-      final organizer = cut.layers.folderById(layer.folderId);
-      if (organizer != null &&
-          attachOrganizerBaseOf(organizer, cut.layers) != null &&
-          cut.layers.directMembersOf(organizer.id).length == 1 &&
-          repository.requireProject().linkRegistry.groupOf(
-                cutId: cutId,
-                layerId: organizer.id,
-              ) ==
-              null) {
+      final emptied = cut.layers.foldersEmptiedByRemoving(
+        {layerId},
+        canRemove: (folder) =>
+            attachOrganizerBaseOf(folder, cut.layers) != null &&
+            repository.requireProject().linkRegistry.groupOf(
+                  cutId: cutId,
+                  layerId: folder.id,
+                ) ==
+                null,
+      );
+      if (emptied.isNotEmpty) {
         historyManager.execute(
           CompositeCommand(
-            description: 'Delete layer ${layer.name} and its empty folder',
+            description:
+                'Delete layer ${layer.name} and its empty '
+                '${emptied.length == 1 ? 'folder' : 'folders'}',
             commands: [
               DeleteLayerCommand(
                 repository: repository,
                 cutId: cutId,
                 layerId: layerId,
               ),
-              DeleteLayerCommand(
-                repository: repository,
-                cutId: cutId,
-                layerId: organizer.id,
-              ),
+              for (final folder in emptied)
+                DeleteLayerCommand(
+                  repository: repository,
+                  cutId: cutId,
+                  layerId: folder.id,
+                ),
             ],
           ),
         );

@@ -254,4 +254,55 @@ void main() {
       );
     });
   });
+
+  group('what a removal empties', () {
+    test('a nest empties from the inside out, however the list is ordered', () {
+      // ⚠️Written OUTER FIRST on purpose. Stack order happens to put an
+      // inner folder before its parent, so a single pass over the list
+      // would pass this test's other half by luck — this is the ordering
+      // that makes the walk earn its loop.
+      final layers = [
+        folder('outer'),
+        folder('inner', parent: 'outer'),
+        cel('leaf', folderId: 'inner'),
+      ];
+      expect(
+        layers
+            .foldersEmptiedByRemoving({const LayerId('leaf')})
+            .map((f) => f.id.value),
+        ['inner', 'outer'],
+      );
+    });
+
+    test('a folder that was already empty is not swept — this answers what '
+        'the removal emptied, not what is empty', () {
+      final layers = [
+        folder('empty'),
+        folder('holder'),
+        cel('leaf', folderId: 'holder'),
+      ];
+      expect(
+        layers
+            .foldersEmptiedByRemoving({const LayerId('leaf')})
+            .map((f) => f.id.value),
+        ['holder'],
+      );
+    });
+
+    test('a VETOED folder blocks its ancestors — it is still there, so its '
+        'parent is not empty either', () {
+      final layers = [
+        folder('outer'),
+        folder('inner', parent: 'outer'),
+        cel('leaf', folderId: 'inner'),
+      ];
+      expect(
+        layers.foldersEmptiedByRemoving(
+          {const LayerId('leaf')},
+          canRemove: (f) => f.id != const LayerId('inner'),
+        ),
+        isEmpty,
+      );
+    });
+  });
 }
