@@ -14,6 +14,7 @@ library;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
+import '../../models/layer_kind.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart' show EffectId;
@@ -319,7 +320,43 @@ class LayerRowDragTarget extends StatelessWidget {
     this.grabOffsetWithinRun = 0,
     this.onGripTaken,
     this.onGripReleased,
-  });
+  }) : canReorder = true;
+
+  /// 🚨★★★A row that CANNOT BE REORDERED can still be SELECTED.
+  ///
+  /// 유저 F-16: 「다른 레이어에서 선택범위 시작해서 카메라나 트랜지션레이어로
+  /// 선택범위 작동가능한데 **카메라나 트랜지션레이어에서 선택범위 시작하려하면
+  /// 작동안함**」 — and the law they pinned when the ban was made: 「막으라고
+  /// 한 것은 **드래그 이동뿐**」.
+  ///
+  /// ⛔Both rails used to answer this by mounting **no target at all**
+  /// (`if (!layerKindReordersInCut(kind)) return child;`), and the target
+  /// carries BOTH halves of the drag — so 「이동 불가」 silently answered
+  /// 「선택 불가」 too. **한 플래그가 두 질문에 답한 것이다.**
+  ///
+  /// This constructor takes only what SELECTING needs: no caret, no slot,
+  /// no `onCrossed`. A select-only row therefore cannot be handed a move
+  /// destination by accident — the invariant is in the shape.
+  const LayerRowDragTarget.selectOnly({
+    super.key,
+    required this.subject,
+    required this.rowExtent,
+    required this.axis,
+    required this.hooks,
+    required this.onSelectCrossed,
+    required this.child,
+    this.grabOffsetWithinRun = 0,
+    this.onGripTaken,
+    this.onGripReleased,
+  }) : canReorder = false,
+       slotBefore = 0,
+       isLastRow = false,
+       onCrossed = _neverCrosses;
+
+  static void _neverCrosses(int steps, int? onRow) {}
+
+  /// Whether this row may be MOVED. False rows still select.
+  final bool canReorder;
 
   /// What this row would move if it were grabbed.
   final LayerRowDragSubject subject;
@@ -401,6 +438,7 @@ class LayerRowDragTarget extends StatelessWidget {
     }
     return _LayerRowDragBody(
       subject: subject,
+      canReorder: canReorder,
       slotBefore: slotBefore,
       rowExtent: rowExtent,
       axis: axis,
@@ -425,6 +463,7 @@ class _LayerRowDragBody extends StatefulWidget {
     required this.axis,
     required this.hooks,
     required this.onCrossed,
+    required this.canReorder,
     required this.isLastRow,
     this.onSelectCrossed,
     this.onGripTaken,
@@ -439,6 +478,9 @@ class _LayerRowDragBody extends StatefulWidget {
   final Axis axis;
   final TimelineRowDragHooks hooks;
   final void Function(int crossedRows, int? onRow) onCrossed;
+
+  /// See [LayerRowDragTarget.canReorder] — false rows always select.
+  final bool canReorder;
   final void Function(int rowDelta)? onSelectCrossed;
   final VoidCallback? onGripTaken;
   final VoidCallback? onGripReleased;
@@ -500,7 +542,10 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     // (their range gesture's `isInSelection`). A drag that changed its mind halfway
     // would be a row moving because the selection happened to grow under it.
     final inSelection = widget.hooks.isInRowSelection?.call(widget.subject);
-    _selecting = inSelection == false;
+    // 🚨A row that cannot be reordered ALWAYS takes the select half — the
+    // ban is on moving, not on selecting (F-16). ⛔Without this the two
+    // questions ride one flag again, just one layer down.
+    _selecting = !widget.canReorder || inSelection == false;
     if (_selecting) {
       widget.hooks.onSelectBegin?.call(widget.subject);
       return;
@@ -872,4 +917,44 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
       child: content,
     );
   }
+}
+
+/// 🚨★★★재배치 불가 행의 답 — **두 레일이 같은 코드를 부른다.**
+///
+/// 유저 A5-4: 「카메라·트랜지션 = **드래그 불가**」. 유저 F-16: 「그런데
+/// **카메라나 트랜지션레이어에서 선택범위 시작하려하면 작동안함** … 막으라고
+/// 한 것은 **드래그 이동뿐**」.
+///
+/// ⛔두 레일이 각자 `if (!layerKindReordersInCut(kind)) return child;` 를
+/// 적고 있었고, 그 한 줄이 **이동 불가로 선택 불가까지** 답했다. x시트는
+/// 가로 레일의 그 모양을 **베껴서** 같은 버그를 갖고 있었다 — 사본이라
+/// 한쪽만 고치면 갈라진다.
+///
+/// 반환값 셋의 뜻:
+/// • `null` — 이 행은 **움직일 수 있다**. 호출자가 평소의 이동 타깃을 만든다
+/// • `child` — 선택 훅이 없는 표면이라 붙일 것이 없다
+/// • 그 외 — **선택 전용** 타깃
+Widget? unmovableRowSelectTarget({
+  required LayerKind kind,
+  required LayerId layerId,
+  required double rowExtent,
+  required Axis axis,
+  required TimelineRowDragHooks? hooks,
+  required void Function(int rowDelta) onSelectCrossed,
+  required Widget child,
+}) {
+  if (layerKindReordersInCut(kind)) {
+    return null;
+  }
+  if (hooks == null || hooks.onSelectBegin == null) {
+    return child;
+  }
+  return LayerRowDragTarget.selectOnly(
+    subject: LayerRowSubject(layerId),
+    rowExtent: rowExtent,
+    axis: axis,
+    hooks: hooks,
+    onSelectCrossed: onSelectCrossed,
+    child: child,
+  );
 }
