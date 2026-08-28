@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
+import '../widgets/app_icon_button.dart';
 import '../../models/app_language.dart' show AppLanguage;
 import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
@@ -15,7 +16,6 @@ import '../widgets/instant_tap_region.dart';
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
 import 'timeline_grid_metrics.dart';
-
 
 /// Whether two [Layer] snapshots would make [TimelineLayerControlsRow] look
 /// EXACTLY the same — the rail memo's gate.
@@ -266,412 +266,412 @@ class TimelineLayerControlsRow extends StatelessWidget {
         // No hover glow on the ROW surface (UI-R24 #6): selection speaks
         // through the background alone; only the buttons may brighten.
         hoverColor: Colors.transparent,
-      child: Container(
-        // The section bracket occupies the leading gutter beside the rail.
-        width: metrics.layerControlsWidth - metrics.sectionLabelGutterWidth,
-        height: metrics.layerRowHeight,
-        // The section band hugs the row's LEFT edge (UI-R6 #5); the 8px
-        // breathing room moves between the band and the lane chevron.
-        padding: const EdgeInsets.only(right: 8),
-        // CHROMELESS drops the ground and keeps the contents — the row over
-        // the artwork when the panel is folded (유저 확정: 바탕 없이 내용만).
-        // A flag on the real row rather than a second row that lists the
-        // same slots: the collapsed overlay then follows this widget by
-        // construction, including whatever column it grows next.
-        decoration: chromeless
-            ? null
-            : BoxDecoration(
-                // ㊴: the wash is the ACTIVE row's alone. `selected` used to
-                // share it, and on screen that made the two states one —
-                // the selection now speaks through the ring below, the way
-                // a selected frame run always has.
-                color: active ? activeColor : colorScheme.surface,
-                border: Border(
-                  left: BorderSide(
-                    color: borderColor,
-                    width: timelineLayerRowLeadingBorder,
+        child: Container(
+          // The section bracket occupies the leading gutter beside the rail.
+          width: metrics.layerControlsWidth - metrics.sectionLabelGutterWidth,
+          height: metrics.layerRowHeight,
+          // The section band hugs the row's LEFT edge (UI-R6 #5); the 8px
+          // breathing room moves between the band and the lane chevron.
+          padding: const EdgeInsets.only(right: 8),
+          // CHROMELESS drops the ground and keeps the contents — the row over
+          // the artwork when the panel is folded (유저 확정: 바탕 없이 내용만).
+          // A flag on the real row rather than a second row that lists the
+          // same slots: the collapsed overlay then follows this widget by
+          // construction, including whatever column it grows next.
+          decoration: chromeless
+              ? null
+              : BoxDecoration(
+                  // ㊴: the wash is the ACTIVE row's alone. `selected` used to
+                  // share it, and on screen that made the two states one —
+                  // the selection now speaks through the ring below, the way
+                  // a selected frame run always has.
+                  color: active ? activeColor : colorScheme.surface,
+                  border: Border(
+                    left: BorderSide(
+                      color: borderColor,
+                      width: timelineLayerRowLeadingBorder,
+                    ),
+                    right: BorderSide(color: borderColor),
+                    bottom: BorderSide(color: borderColor),
                   ),
-                  right: BorderSide(color: borderColor),
-                  bottom: BorderSide(color: borderColor),
                 ),
-              ),
-        child: Semantics(
-          key: active
-              ? const ValueKey<String>('timeline-selected-layer')
-              : null,
-          label: active ? 'selected layer' : 'layer',
-          container: true,
-          explicitChildNodes: true,
-          child: Row(
-            children: [
-              // The rail's shared column skeleton (R9 #22): slot order and
-              // widths come from ONE place, so the storyboard's rows and
-              // the legend header cannot drift from these again.
-              // ⛔`depth` no longer belongs here: nesting moved into the
-              // NAME column so the buttons keep one x at every depth.
-              ...layerRailLeadingCells(
-                laneToggle: hasLanes && onToggleLanes != null
-                    // I-1: a leading toggle COLUMN owns drags that start on
-                    // it, exactly as the trailing three do — the strong
-                    // claim, kept in step with the grid's swipe column list
-                    // (see [RailSwipeColumnPointer]).
-                    ? RailSwipeColumnPointer(child: IconButton(
-                        key: ValueKey<String>(
-                          'timeline-lane-toggle-${layer.id}',
-                        ),
-                        tooltip: lanesExpanded
-                            ? 'Collapse lanes'
-                            : 'Expand lanes',
-                        // The rail's law, read off the onion column ten
-                        // slots along rather than invented here: zero
-                        // padding and a box tight to the slot, because
-                        // `layerLaneToggleSlotWidth` is 16 and an
-                        // IconButton left alone asks for 48.
-                        //
-                        // R26 #28 (icon buttons hover ROUND) survives the
-                        // swap for free — an IconButton's ink is already a
-                        // circle, which is the whole reason the hand-rolled
-                        // `customBorder: CircleBorder()` could go with it.
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints.tightFor(
-                          width: layerLaneToggleSlotWidth,
-                          height: 24,
-                        ),
-                        icon: Icon(
-                          lanesExpanded
-                              ? Icons.arrow_drop_down
-                              : Icons.arrow_right,
-                          size: 16,
-                        ),
-                        onPressed: () => onToggleLanes!(layer.id),
-                      ))
-                    : null,
-                // Timesheet + mark chips lead the label. Attach rows (W5)
-                // hide the sheet toggle — they are display accessories of
-                // their base, never sheet columns — and R10 R3 put their
-                // ARROW in the slot the toggle vacates, so the column
-                // reads "sheet, or what this row is attached to".
-                timesheet: attachArrowPlacement != null
-                    ? LayerAttachArrowCell(
-                        keyPrefix: 'timeline',
-                        idValue: '${layer.id}',
-                        placement: attachArrowPlacement!,
-                      )
-                    : layerKindEligibleForTimesheetToggle(layer.kind) &&
-                          layer.attachedToLayerId == null
-                    // I-1: the column the report named 「타임시트버튼이든 뭐
-                    // 그런것들」. The claim goes on at the RAIL, not inside
-                    // the button — the x-sheet's header shares that widget
-                    // and has no swipe.
-                    ? RailSwipeColumnPointer(
-                        child: LayerTimesheetToggleButton(
+          child: Semantics(
+            key: active
+                ? const ValueKey<String>('timeline-selected-layer')
+                : null,
+            label: active ? 'selected layer' : 'layer',
+            container: true,
+            explicitChildNodes: true,
+            child: Row(
+              children: [
+                // The rail's shared column skeleton (R9 #22): slot order and
+                // widths come from ONE place, so the storyboard's rows and
+                // the legend header cannot drift from these again.
+                // ⛔`depth` no longer belongs here: nesting moved into the
+                // NAME column so the buttons keep one x at every depth.
+                ...layerRailLeadingCells(
+                  laneToggle: hasLanes && onToggleLanes != null
+                      // I-1: a leading toggle COLUMN owns drags that start on
+                      // it, exactly as the trailing three do — the strong
+                      // claim, kept in step with the grid's swipe column list
+                      // (see [RailSwipeColumnPointer]).
+                      ? RailSwipeColumnPointer(
+                          child: AppIconButton(
+                            keyValue: 'timeline-lane-toggle-${layer.id}',
+                            tooltip: lanesExpanded
+                                ? 'Collapse lanes'
+                                : 'Expand lanes',
+                            // The rail's law, read off the onion column ten
+                            // slots along rather than invented here: a box tight
+                            // to the slot, because `layerLaneToggleSlotWidth` is
+                            // 16 and an IconButton left alone asks for 48. The
+                            // slot is the PARENT's number, so it travels as an
+                            // [AppIconButtonBox] rather than a token.
+                            //
+                            // R26 #28 (icon buttons hover ROUND) survives the
+                            // swap for free — an IconButton's ink is already a
+                            // circle, which is the whole reason the hand-rolled
+                            // `customBorder: CircleBorder()` could go with it.
+                            size: const AppIconButtonBox(
+                              width: layerLaneToggleSlotWidth,
+                              height: 24,
+                              iconSize: 16,
+                            ),
+                            icon: Icon(
+                              lanesExpanded
+                                  ? Icons.arrow_drop_down
+                                  : Icons.arrow_right,
+                            ),
+                            onPressed: () => onToggleLanes!(layer.id),
+                          ),
+                        )
+                      : null,
+                  // Timesheet + mark chips lead the label. Attach rows (W5)
+                  // hide the sheet toggle — they are display accessories of
+                  // their base, never sheet columns — and R10 R3 put their
+                  // ARROW in the slot the toggle vacates, so the column
+                  // reads "sheet, or what this row is attached to".
+                  timesheet: attachArrowPlacement != null
+                      ? LayerAttachArrowCell(
                           keyPrefix: 'timeline',
-                          layerId: layer.id,
-                          onTimesheet: layer.onTimesheet,
-                          onToggle: onToggleLayerTimesheet,
-                        ),
-                      )
-                    : null,
-                mark: LayerMarkChip(
-                  keyPrefix: 'timeline',
-                  layerId: layer.id,
-                  mark: layer.mark,
-                  onMarkSelected: onLayerMarkSelected,
+                          idValue: '${layer.id}',
+                          placement: attachArrowPlacement!,
+                        )
+                      : layerKindEligibleForTimesheetToggle(layer.kind) &&
+                            layer.attachedToLayerId == null
+                      // I-1: the column the report named 「타임시트버튼이든 뭐
+                      // 그런것들」. The claim goes on at the RAIL, not inside
+                      // the button — the x-sheet's header shares that widget
+                      // and has no swipe.
+                      ? RailSwipeColumnPointer(
+                          child: LayerTimesheetToggleButton(
+                            keyPrefix: 'timeline',
+                            layerId: layer.id,
+                            onTimesheet: layer.onTimesheet,
+                            onToggle: onToggleLayerTimesheet,
+                          ),
+                        )
+                      : null,
+                  mark: LayerMarkChip(
+                    keyPrefix: 'timeline',
+                    layerId: layer.id,
+                    mark: layer.mark,
+                    onMarkSelected: onLayerMarkSelected,
+                  ),
+                  // The TYPE BUTTON (UI-R24 #7): the kind icon in its OWN
+                  // fixed slot, a control separate from the name (function
+                  // TBD again — R26 #30-1 moved the blend flyout to the
+                  // toolbar's PS-style dropdown, user rule 07-22; tap
+                  // selects for now). One slot for every row kind, ALWAYS
+                  // the kind (R10 R3): the arrow that used to take this
+                  // slot on attach rows now rides the sheet column.
+                  typeButton: LayerTypeButton(
+                    keyPrefix: 'timeline',
+                    idValue: '${layer.id}',
+                    kind: layer.kind,
+                    folderCollapsed: layer.collapsed,
+                    onTap: () => onSelectLayer(layer.id),
+                  ),
                 ),
-                // The TYPE BUTTON (UI-R24 #7): the kind icon in its OWN
-                // fixed slot, a control separate from the name (function
-                // TBD again — R26 #30-1 moved the blend flyout to the
-                // toolbar's PS-style dropdown, user rule 07-22; tap
-                // selects for now). One slot for every row kind, ALWAYS
-                // the kind (R10 R3): the arrow that used to take this
-                // slot on attach rows now rides the sheet column.
-                typeButton: LayerTypeButton(
-                  keyPrefix: 'timeline',
-                  idValue: '${layer.id}',
-                  kind: layer.kind,
-                  folderCollapsed: layer.collapsed,
-                  onTap: () => onSelectLayer(layer.id),
-                ),
-              ),
-              // 🚨★★★NESTING LIVES HERE NOW, AND ONLY HERE.
-              //
-              // 유저 2026-08-29: the leading run used to spend a 16px cell
-              // per level plus a ↳ cell, which pushed every button right and
-              // 「계속밀려서 제대로 안보이게」 되었다. The buttons keep one x
-              // at every depth now; the NAME is what gives ground, and a
-              // clipped name still reads while a clipped button cannot be
-              // pressed.
-              //
-              // The guides say the depth — one hairline per level, drawn
-              // inside the name's own box.
-              if (depth > 0)
-                SizedBox(
-                  width: layerRailNameIndent(depth),
-                  child: Row(
-                    children: [
-                      for (var level = 0; level < depth; level += 1)
-                        SizedBox(
-                          width: layerRailGuideWidth,
-                          child: Center(
-                            child: SizedBox(
-                              width: 1,
-                              height: double.infinity,
-                              child: ColoredBox(
-                                color: colorScheme.outlineVariant,
+                // 🚨★★★NESTING LIVES HERE NOW, AND ONLY HERE.
+                //
+                // 유저 2026-08-29: the leading run used to spend a 16px cell
+                // per level plus a ↳ cell, which pushed every button right and
+                // 「계속밀려서 제대로 안보이게」 되었다. The buttons keep one x
+                // at every depth now; the NAME is what gives ground, and a
+                // clipped name still reads while a clipped button cannot be
+                // pressed.
+                //
+                // The guides say the depth — one hairline per level, drawn
+                // inside the name's own box.
+                if (depth > 0)
+                  SizedBox(
+                    width: layerRailNameIndent(depth),
+                    child: Row(
+                      children: [
+                        for (var level = 0; level < depth; level += 1)
+                          SizedBox(
+                            width: layerRailGuideWidth,
+                            child: Center(
+                              child: SizedBox(
+                                width: 1,
+                                height: double.infinity,
+                                child: ColoredBox(
+                                  color: colorScheme.outlineVariant,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              Expanded(
-                child: KeyedSubtree(
-                  key: ValueKey<String>('timeline-layer-name-${layer.id}'),
-                  // 🚨F-26 (유저 2026-08-24): 「레이어 클릭하고 이름영역
-                  // 클릭시 **선택되는 애니메이션같은거 발동**하는데, 없애고
-                  // 해당영역 클릭시 레이어라벨 빈공간 클릭이랑 마찬가지로
-                  // 레이어 자체가 밝아지는 애니메이션 적용되도록.
-                  // **규칙단순화**」.
-                  //
-                  // ⛔The name used to be an InkWell of its own, selecting
-                  // the layer a SECOND time on top of the row's press-seek.
-                  // Two consequences, both the report: it rippled where the
-                  // rest of the row does not, and it picked on the RELEASE
-                  // where the row picks on the DOWN (T10) — so the same
-                  // click meant two different moments depending on which
-                  // pixel it landed on.
-                  //
-                  // ★The row's own [InstantTapRegion] already covers every
-                  // pixel of this area. Taking the InkWell away is not
-                  // removing a behaviour; it is removing a SECOND one.
-                  // 🚨F-29 (유저 2026-08-24): 「접기 펼치기 아이콘 위치 조정.
-                  // 지금 레이어이름 옆에 붙어있는데, 그게아니라 위치는 항상
-                  // 고정으로 두고싶기때문에 레이어 이름영역의 오른쪽정렬로
-                  // 고정」.
-                  //
-                  // ⛔The twirl used to be the last child of a MIN-width Row
-                  // inside a left Align, so it sat wherever the name ended —
-                  // a different x on every row, and a moving x on a rename.
-                  // The NAME takes the space now and the twirl trails it at
-                  // the region's right edge, which is the one place it can
-                  // be that does not depend on what the row is called.
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Row(
-                          children: [
-                            // Selection reads by COLOR only (user rule): no
-                            // bold flip, so the text never reflows on select.
-                            Flexible(
-                              child: Text(
-                                layer.name,
-                                style: layerRowNameStyle(context),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            if (isLinked)
-                              Padding(
-                                padding: const EdgeInsets.only(left: 4),
-                                child: Tooltip(
-                                  message:
-                                      'Linked layer — pictures are shared',
-                                  child: Icon(
-                                    Icons.link,
-                                    key: ValueKey<String>(
-                                      'timeline-layer-link-badge-${layer.id}',
-                                    ),
-                                    size: 14,
-                                    color: colorScheme.primary,
-                                  ),
+                Expanded(
+                  child: KeyedSubtree(
+                    key: ValueKey<String>('timeline-layer-name-${layer.id}'),
+                    // 🚨F-26 (유저 2026-08-24): 「레이어 클릭하고 이름영역
+                    // 클릭시 **선택되는 애니메이션같은거 발동**하는데, 없애고
+                    // 해당영역 클릭시 레이어라벨 빈공간 클릭이랑 마찬가지로
+                    // 레이어 자체가 밝아지는 애니메이션 적용되도록.
+                    // **규칙단순화**」.
+                    //
+                    // ⛔The name used to be an InkWell of its own, selecting
+                    // the layer a SECOND time on top of the row's press-seek.
+                    // Two consequences, both the report: it rippled where the
+                    // rest of the row does not, and it picked on the RELEASE
+                    // where the row picks on the DOWN (T10) — so the same
+                    // click meant two different moments depending on which
+                    // pixel it landed on.
+                    //
+                    // ★The row's own [InstantTapRegion] already covers every
+                    // pixel of this area. Taking the InkWell away is not
+                    // removing a behaviour; it is removing a SECOND one.
+                    // 🚨F-29 (유저 2026-08-24): 「접기 펼치기 아이콘 위치 조정.
+                    // 지금 레이어이름 옆에 붙어있는데, 그게아니라 위치는 항상
+                    // 고정으로 두고싶기때문에 레이어 이름영역의 오른쪽정렬로
+                    // 고정」.
+                    //
+                    // ⛔The twirl used to be the last child of a MIN-width Row
+                    // inside a left Align, so it sat wherever the name ended —
+                    // a different x on every row, and a moving x on a rename.
+                    // The NAME takes the space now and the twirl trails it at
+                    // the region's right edge, which is the one place it can
+                    // be that does not depend on what the row is called.
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Row(
+                            children: [
+                              // Selection reads by COLOR only (user rule): no
+                              // bold flip, so the text never reflows on select.
+                              Flexible(
+                                child: Text(
+                                  layer.name,
+                                  style: layerRowNameStyle(context),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                          ],
-                        ),
-                      ),
-                      // The attach-group twirl (UI-R20 #9), shown only when
-                      // the group exists — same chevron pair as the lane
-                      // twirl. Its SLOT is always here (F-29): a row that
-                      // folds nothing reserves the width rather than letting
-                      // the name run into it, so the icons on the rows that
-                      // do fold all sit on one line.
-                      SizedBox(
-                        width: layerLaneToggleSlotWidth,
-                        child: hasGroupFold && onToggleGroupFold != null
-                            ? ControlPressClaim(
-                                child: InkWell(
-                                  key: ValueKey<String>(
-                                    layerKindGroupsLayers(layer.kind)
-                                        ? 'timeline-folder-twirl-${layer.id}'
-                                        : 'timeline-attach-twirl-${layer.id}',
-                                  ),
-                                  onTap: () => onToggleGroupFold!(layer.id),
-                                  // R26 #28
-                                  customBorder: const CircleBorder(),
-                                  child: SizedBox(
-                                    width: layerLaneToggleSlotWidth,
-                                    height: 24,
-                                    // The rail's ONE twirl glyph — this
-                                    // arm used to spell the pair out by
-                                    // hand while the x-sheet read the
-                                    // helper.
+                              if (isLinked)
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 4),
+                                  child: Tooltip(
+                                    message:
+                                        'Linked layer — pictures are shared',
                                     child: Icon(
-                                      layerRailTwirlIcon(
-                                        expanded: groupFoldExpanded,
+                                      Icons.link,
+                                      key: ValueKey<String>(
+                                        'timeline-layer-link-badge-${layer.id}',
                                       ),
-                                      size: 16,
+                                      size: 14,
+                                      color: colorScheme.primary,
                                     ),
                                   ),
                                 ),
-                              )
-                            : null,
-                      ),
-                    ],
+                            ],
+                          ),
+                        ),
+                        // The attach-group twirl (UI-R20 #9), shown only when
+                        // the group exists — same chevron pair as the lane
+                        // twirl. Its SLOT is always here (F-29): a row that
+                        // folds nothing reserves the width rather than letting
+                        // the name run into it, so the icons on the rows that
+                        // do fold all sit on one line.
+                        SizedBox(
+                          width: layerLaneToggleSlotWidth,
+                          child: hasGroupFold && onToggleGroupFold != null
+                              ? ControlPressClaim(
+                                  child: InkWell(
+                                    key: ValueKey<String>(
+                                      layerKindGroupsLayers(layer.kind)
+                                          ? 'timeline-folder-twirl-${layer.id}'
+                                          : 'timeline-attach-twirl-${layer.id}',
+                                    ),
+                                    onTap: () => onToggleGroupFold!(layer.id),
+                                    // R26 #28
+                                    customBorder: const CircleBorder(),
+                                    child: SizedBox(
+                                      width: layerLaneToggleSlotWidth,
+                                      height: 24,
+                                      // The rail's ONE twirl glyph — this
+                                      // arm used to spell the pair out by
+                                      // hand while the x-sheet read the
+                                      // helper.
+                                      child: Icon(
+                                        layerRailTwirlIcon(
+                                          expanded: groupFoldExpanded,
+                                        ),
+                                        size: 16,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : null,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              ...layerRailTrailingCells(
-                // Fill-reference toggle (R20-C2): drawing rows only —
-                // every OTHER kind reserves the slot so the legend
-                // header's column icons line up over one Excel-style grid
-                // (R-toolbar round).
-                fillReference:
-                    onToggleLayerFillReference != null &&
-                        layer.kind == LayerKind.animation
-                    ? SizedBox(
-                        height: 26,
-                        child: ControlPressClaim(child: IconButton(
-                          key: ValueKey<String>(
-                            'timeline-layer-fill-reference-${layer.id}',
+                ...layerRailTrailingCells(
+                  // Fill-reference toggle (R20-C2): drawing rows only —
+                  // every OTHER kind reserves the slot so the legend
+                  // header's column icons line up over one Excel-style grid
+                  // (R-toolbar round).
+                  fillReference:
+                      onToggleLayerFillReference != null &&
+                          layer.kind == LayerKind.animation
+                      ? SizedBox(
+                          height: 26,
+                          child: AppIconButton(
+                            keyValue:
+                                'timeline-layer-fill-reference-${layer.id}',
+                            tooltip: layer.isFillReference
+                                ? 'Fill reference layer (on)'
+                                : 'Fill reference layer',
+                            size: const AppIconButtonBox(
+                              width: layerFillReferenceSlotWidth,
+                              height: 26,
+                              iconSize: 16,
+                            ),
+                            icon: Icon(
+                              Icons.format_color_fill,
+                              color: layer.isFillReference
+                                  ? colorScheme.primary
+                                  : colorScheme.outline.withValues(alpha: 0.45),
+                            ),
+                            onPressed: () =>
+                                onToggleLayerFillReference!(layer.id),
                           ),
-                          tooltip: layer.isFillReference
-                              ? 'Fill reference layer (on)'
-                              : 'Fill reference layer',
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints.tightFor(
-                            width: layerFillReferenceSlotWidth,
-                            height: 26,
+                        )
+                      : null,
+                  // Attach rows and their 공정 organizer folder hide the fx
+                  // switch — the BASE's switch governs what they show.
+                  fx:
+                      onToggleLayerFx != null &&
+                          layerKindShowsFxToggle(layer.kind) &&
+                          !wearsBaseComposite
+                      // I-1: the three toggle COLUMNS own drags that start on
+                      // them, so a press-and-drag paints the column down the
+                      // rows instead of moving the row. Kept in step with the
+                      // grid's swipe column list — see [RailSwipeColumnPointer].
+                      ? RailSwipeColumnPointer(
+                          child: FxToggleButton(
+                            keyValue: 'timeline-layer-fx-${layer.id}',
+                            state: fxState,
+                            onToggle: () => onToggleLayerFx!(layer.id),
                           ),
-                          icon: Icon(
-                            Icons.format_color_fill,
-                            size: 16,
-                            color: layer.isFillReference
-                                ? colorScheme.primary
-                                : colorScheme.outline.withValues(alpha: 0.45),
+                        )
+                      : null,
+                  // Per-layer onion toggle (UI-R17 #5) beside the eye — only
+                  // brush-holding rows get the button; rows keep the slot so
+                  // the control columns stay aligned; hosts without the
+                  // callback (no header cell either) skip the column whole.
+                  hasOnionColumn: onToggleLayerOnionSkin != null,
+                  onion:
+                      onToggleLayerOnionSkin != null &&
+                          layerKindAcceptsBrushInput(layer.kind)
+                      ? SizedBox(
+                          height: 26,
+                          child: RailSwipeColumnPointer(
+                            child: AppIconButton(
+                              keyValue: 'timeline-layer-onion-${layer.id}',
+                              tooltip: onionSkinEnabled
+                                  ? 'Onion skin (on)'
+                                  : 'Onion skin',
+                              size: const AppIconButtonBox(
+                                width: layerOnionSlotWidth,
+                                height: 26,
+                                iconSize: 15,
+                              ),
+                              icon: Icon(
+                                Icons.filter_none,
+                                color: onionSkinEnabled
+                                    ? colorScheme.primary
+                                    : colorScheme.outline.withValues(
+                                        alpha: 0.45,
+                                      ),
+                              ),
+                              onPressed: () =>
+                                  onToggleLayerOnionSkin!(layer.id),
+                            ),
                           ),
-                          onPressed: () =>
-                              onToggleLayerFillReference!(layer.id),
-                        )),
-                      )
-                    : null,
-                // Attach rows and their 공정 organizer folder hide the fx
-                // switch — the BASE's switch governs what they show.
-                fx:
-                    onToggleLayerFx != null &&
-                        layerKindShowsFxToggle(layer.kind) &&
-                        !wearsBaseComposite
-                    // I-1: the three toggle COLUMNS own drags that start on
-                    // them, so a press-and-drag paints the column down the
-                    // rows instead of moving the row. Kept in step with the
-                    // grid's swipe column list — see [RailSwipeColumnPointer].
-                    ? RailSwipeColumnPointer(
-                        child: FxToggleButton(
-                          keyValue: 'timeline-layer-fx-${layer.id}',
-                          state: fxState,
-                          onToggle: () => onToggleLayerFx!(layer.id),
-                        ),
-                      )
-                    : null,
-                // Per-layer onion toggle (UI-R17 #5) beside the eye — only
-                // brush-holding rows get the button; rows keep the slot so
-                // the control columns stay aligned; hosts without the
-                // callback (no header cell either) skip the column whole.
-                hasOnionColumn: onToggleLayerOnionSkin != null,
-                onion:
-                    onToggleLayerOnionSkin != null &&
-                        layerKindAcceptsBrushInput(layer.kind)
-                    ? SizedBox(
-                        height: 26,
-                        child: RailSwipeColumnPointer(child: IconButton(
-                          key: ValueKey<String>(
-                            'timeline-layer-onion-${layer.id}',
-                          ),
-                          tooltip: onionSkinEnabled
-                              ? 'Onion skin (on)'
-                              : 'Onion skin',
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints.tightFor(
-                            width: layerOnionSlotWidth,
-                            height: 26,
-                          ),
-                          icon: Icon(
-                            Icons.filter_none,
-                            size: 15,
-                            color: onionSkinEnabled
-                                ? colorScheme.primary
-                                : colorScheme.outline.withValues(alpha: 0.45),
-                          ),
-                          onPressed: () => onToggleLayerOnionSkin!(layer.id),
-                        )),
-                      )
-                    : null,
-                visibility: RailSwipeColumnPointer(
-                  child: LayerVisibilityToggleButton(
-                    keyValue: 'timeline-layer-visibility-${layer.id}',
-                    isVisible: layer.isVisible,
-                    onToggle: () => onToggleLayerVisibility(layer.id),
+                        )
+                      : null,
+                  visibility: RailSwipeColumnPointer(
+                    child: LayerVisibilityToggleButton(
+                      keyValue: 'timeline-layer-visibility-${layer.id}',
+                      isVisible: layer.isVisible,
+                      onToggle: () => onToggleLayerVisibility(layer.id),
+                    ),
                   ),
+                  // SE rows carry the mute speaker beside the eye (sounds
+                  // silence, waveforms keep displaying). Tight SizedBox: the
+                  // M3 IconButton otherwise inflates its layout box to the
+                  // 48px minimum tap target, overflowing the rail row.
+                  mute: layer.kind == LayerKind.se && onOpenLayerMixer != null
+                      ? SizedBox(
+                          height: 26,
+                          child: LayerMuteToggleButton(
+                            keyValue: 'timeline-layer-mute-${layer.id}',
+                            muted: layer.muted,
+                            soloed: isLayerSoloed,
+                            onOpenMixer: (anchorContext) =>
+                                onOpenLayerMixer!(anchorContext, layer.id),
+                          ),
+                        )
+                      : null,
+                  // The camera row's slider drives the camera-view DIM
+                  // opacity (unified layer controls); every row shrinks
+                  // alike so the control columns stay aligned.
+                  opacity: layerKindShowsOpacityControl(layer.kind)
+                      ? _opacityField()
+                      : null,
+                  // R27 #6: the blend mode, RIGHTMOST — the user's
+                  // placement. Within a host that HAS the column,
+                  // non-compositing kinds keep the slot so rows and the
+                  // legend header stay aligned; hosts without it (the
+                  // storyboard's track rail) skip the column outright,
+                  // exactly like the onion cell.
+                  hasBlendColumn: onLayerBlendModeSelected != null,
+                  blend:
+                      onLayerBlendModeSelected != null &&
+                          layerKindShowsBlendControl(layer.kind)
+                      ? LayerBlendModeChip(
+                          keyValue: 'timeline-layer-blend-${layer.id}',
+                          optionKeyPrefix: 'timeline-layer-blend-option-',
+                          blendMode: layer.blendMode,
+                          language: blendLanguage,
+                          isGroup: layerKindGroupsLayers(layer.kind),
+                          subject: layerKindGroupsLayers(layer.kind)
+                              ? 'Folder'
+                              : 'Layer',
+                          onBlendModeSelected: (mode) =>
+                              onLayerBlendModeSelected!(layer.id, mode),
+                        )
+                      : null,
                 ),
-                // SE rows carry the mute speaker beside the eye (sounds
-                // silence, waveforms keep displaying). Tight SizedBox: the
-                // M3 IconButton otherwise inflates its layout box to the
-                // 48px minimum tap target, overflowing the rail row.
-                mute: layer.kind == LayerKind.se && onOpenLayerMixer != null
-                    ? SizedBox(
-                        height: 26,
-                        child: LayerMuteToggleButton(
-                          keyValue: 'timeline-layer-mute-${layer.id}',
-                          muted: layer.muted,
-                          soloed: isLayerSoloed,
-                          onOpenMixer: (anchorContext) =>
-                              onOpenLayerMixer!(anchorContext, layer.id),
-                        ),
-                      )
-                    : null,
-                // The camera row's slider drives the camera-view DIM
-                // opacity (unified layer controls); every row shrinks
-                // alike so the control columns stay aligned.
-                opacity: layerKindShowsOpacityControl(layer.kind)
-                    ? _opacityField()
-                    : null,
-                // R27 #6: the blend mode, RIGHTMOST — the user's
-                // placement. Within a host that HAS the column,
-                // non-compositing kinds keep the slot so rows and the
-                // legend header stay aligned; hosts without it (the
-                // storyboard's track rail) skip the column outright,
-                // exactly like the onion cell.
-                hasBlendColumn: onLayerBlendModeSelected != null,
-                blend:
-                    onLayerBlendModeSelected != null &&
-                        layerKindShowsBlendControl(layer.kind)
-                    ? LayerBlendModeChip(
-                        keyValue: 'timeline-layer-blend-${layer.id}',
-                        optionKeyPrefix: 'timeline-layer-blend-option-',
-                        blendMode: layer.blendMode,
-                        language: blendLanguage,
-                        isGroup: layerKindGroupsLayers(layer.kind),
-                        subject: layerKindGroupsLayers(layer.kind)
-                            ? 'Folder'
-                            : 'Layer',
-                        onBlendModeSelected: (mode) =>
-                            onLayerBlendModeSelected!(layer.id, mode),
-                      )
-                    : null,
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
       ),
     );
 

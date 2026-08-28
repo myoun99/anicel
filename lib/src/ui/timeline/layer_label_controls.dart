@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart' show AppLanguage;
 import '../input/control_press_claim.dart';
+import '../widgets/app_icon_button.dart';
 import '../input/value_control_pointers.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer_blend_mode.dart';
@@ -219,10 +220,7 @@ String sectionBandLabelWithin(
   if (label.isEmpty || !extent.isFinite || cellExtent <= 0) {
     return label;
   }
-  final cells = verticalTextCells(
-    label,
-    latinForm: VerticalLatinForm.upright,
-  );
+  final cells = verticalTextCells(label, latinForm: VerticalLatinForm.upright);
   final needed = verticalTextSpanCount(cells);
   final capacity = verticalTextCapacityCells(
     mainExtent: extent,
@@ -351,31 +349,33 @@ class LayerBlendModeChip extends StatelessWidget {
       // Centered in the slot so the button lines up under the legend's
       // BLND column header (R28 #2).
       child: Center(
-        child: ControlPressClaim(child: PanelFlyoutButton(
-          key: ValueKey<String>(keyValue),
-          axis: axis,
-          label: blendMode.labelFor(language),
-          tooltip: '$subject blend mode',
-          showCaret: false,
-          expand: true,
-          fontSize: 9.5,
-          fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
-          labelColor: nonNormal
-              ? AppColors.accent
-              : colorScheme.onSurfaceVariant,
-          padding: vertical
-              ? const EdgeInsets.symmetric(horizontal: 2, vertical: 3)
-              : const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
-          entriesBuilder: () => [
-            for (final mode in LayerBlendMode.optionsFor(isGroup: isGroup))
-              PanelFlyoutItem(
-                keyValue: '$optionKeyPrefix${mode.name}',
-                label: mode.labelFor(language),
-                checked: mode == blendMode,
-                onSelected: () => onBlendModeSelected(mode),
-              ),
-          ],
-        )),
+        child: ControlPressClaim(
+          child: PanelFlyoutButton(
+            key: ValueKey<String>(keyValue),
+            axis: axis,
+            label: blendMode.labelFor(language),
+            tooltip: '$subject blend mode',
+            showCaret: false,
+            expand: true,
+            fontSize: 9.5,
+            fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
+            labelColor: nonNormal
+                ? AppColors.accent
+                : colorScheme.onSurfaceVariant,
+            padding: vertical
+                ? const EdgeInsets.symmetric(horizontal: 2, vertical: 3)
+                : const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+            entriesBuilder: () => [
+              for (final mode in LayerBlendMode.optionsFor(isGroup: isGroup))
+                PanelFlyoutItem(
+                  keyValue: '$optionKeyPrefix${mode.name}',
+                  label: mode.labelFor(language),
+                  checked: mode == blendMode,
+                  onSelected: () => onBlendModeSelected(mode),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -512,17 +512,15 @@ class LayerVisibilityToggleButton extends StatelessWidget {
     return SizedBox(
       width: size,
       height: 26,
-      child: ControlPressClaim(child: IconButton(
-        key: ValueKey<String>(keyValue),
+      child: AppIconButton(
+        keyValue: keyValue,
         tooltip: isVisible ? 'Hide $subject' : 'Show $subject',
-        padding: EdgeInsets.zero,
-        constraints: BoxConstraints.tightFor(width: size, height: 26),
-        icon: Icon(
-          isVisible ? Icons.visibility : Icons.visibility_off,
-          size: iconSize,
-        ),
+        // The rail's slot, promised by the column skeleton — see
+        // [AppIconButtonBox].
+        size: AppIconButtonBox(width: size, height: 26, iconSize: iconSize),
+        icon: Icon(isVisible ? Icons.visibility : Icons.visibility_off),
         onPressed: onToggle,
-      )),
+      ),
     );
   }
 }
@@ -566,22 +564,20 @@ class LayerMuteToggleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ControlPressClaim(child: IconButton(
-      key: ValueKey<String>(keyValue),
+    return AppIconButton(
+      keyValue: keyValue,
       // One meaning on all three rails, so the label is the control's, not
       // the host's. It also carries the button's semantics name — the
       // hardcoded English 'Mute layer'/'Unmute layer' went out with the
       // toggle, and a door needs to say where it goes.
       tooltip: AppText.strings.layerAudioTitle,
-      padding: EdgeInsets.zero,
-      constraints: BoxConstraints.tightFor(width: width, height: height),
+      size: AppIconButtonBox(width: width, height: height, iconSize: 16),
       icon: Icon(
         muted ? Icons.volume_off : Icons.volume_up,
-        size: 16,
         color: soloed ? Theme.of(context).colorScheme.primary : null,
       ),
       onPressed: () => onOpenMixer(context),
-    ));
+    );
   }
 }
 
@@ -627,22 +623,24 @@ class FxToggleButton extends StatelessWidget {
     return SizedBox(
       width: size,
       height: 26,
-      child: ControlPressClaim(child: IconButton(
-        key: ValueKey<String>(keyValue),
+      child: AppIconButton(
+        keyValue: keyValue,
         tooltip: switch (state) {
           LayerFxState.mixed => 'Bypass all $subject FX (some are off)',
           LayerFxState.on => 'Bypass $subject FX',
           LayerFxState.off => 'Apply $subject FX',
         },
-        padding: EdgeInsets.zero,
-        constraints: BoxConstraints.tightFor(width: size, height: 26),
+        // ⚠️`fxGlyph` sizes its own text, so the box's iconSize reaches
+        // nothing here — it is passed for the ONE reader that does use it,
+        // the button's own `IconTheme`, and left honest rather than zero.
+        size: AppIconButtonBox(width: size, height: 26, iconSize: 16),
         icon: fxGlyph(
           context: context,
           active: state != LayerFxState.off,
           mixed: mixed,
         ),
         onPressed: onToggle,
-      )),
+      ),
     );
   }
 }
@@ -737,10 +735,8 @@ String layerKindDisplayName(LayerKind kind) {
 /// ⚠️`none` still resolves to [timelineDrawingHeldColor] for the reason
 /// written just above — 「none IS the paper」 — so an unlabelled row is
 /// painted by exactly the number it was painted by before.
-Color layerMarkColor(LayerMark mark) => resolveLayerMarkColor(
-  mark,
-  noneColor: timelineDrawingHeldColor,
-);
+Color layerMarkColor(LayerMark mark) =>
+    resolveLayerMarkColor(mark, noneColor: timelineDrawingHeldColor);
 
 /// The unabbreviated reading — 「축약어 쓰지 않을때는 축약하지마」. The chip
 /// writes the abbreviations through [layerMarkChipText] instead.
@@ -772,23 +768,22 @@ class LayerTimesheetToggleButton extends StatelessWidget {
     return SizedBox(
       width: layerTimesheetSlotWidth,
       height: layerTimesheetSlotWidth,
-      child: ControlPressClaim(child: IconButton(
-        key: ValueKey<String>('$keyPrefix-layer-timesheet-$layerId'),
+      child: AppIconButton(
+        keyValue: '$keyPrefix-layer-timesheet-$layerId',
         tooltip: onTimesheet ? 'Remove from timesheet' : 'Add to timesheet',
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(
+        size: const AppIconButtonBox(
           width: layerTimesheetSlotWidth,
           height: layerTimesheetSlotWidth,
+          iconSize: 16,
         ),
         icon: Icon(
           onTimesheet ? Icons.table_chart : Icons.table_chart_outlined,
-          size: 16,
           color: onTimesheet
               ? AppColors.accent
               : colorScheme.onSurface.withValues(alpha: 0.35),
         ),
         onPressed: () => onToggle(layerId),
-      )),
+      ),
     );
   }
 }
@@ -840,7 +835,6 @@ class LayerAttachArrowCell extends StatelessWidget {
     );
   }
 }
-
 
 // 🪦THE FOLDER-NESTING ARROW LIVED HERE (R5 #18).
 //
@@ -969,99 +963,101 @@ class LayerMarkChip extends StatelessWidget {
     // because its rows name COLOURS, and the shared list had no way to show
     // one — see [PanelFlyoutItem.swatch]. Its own row height was 36, a sixth
     // number in a menu system that was supposed to have one.
-    return ControlPressClaim(child: PanelFlyoutTrigger(
-      key: ValueKey<String>('$keyPrefix-layer-mark-$layerId'),
-      tooltip: AppText.strings.tlLayerMark,
-      // ZERO, not the trigger's usual 8: the mark sits in a fixed
-      // `layerMarkSlotWidth` rail column, so padding here would not grow a
-      // hit area — it would push every slot after it out of the rail.
-      padding: EdgeInsets.zero,
-      // 🚨★★★TWO AXES, TWO LEVELS. 유저 설계(I-4): 「위에서부터 콘티,레이아웃,
-      // 러프원화,원화,동화,시아게 가 있고, 거기 **호버하면 추가로 앵커팝오버로
-      // 수정라벨이 뜨도록**. 즉 축으로서 2가지가 존재하도록」.
-      //
-      // ⛔I built this flat once and wrote 「TWO AXES, ONE LIST」 in the
-      // comment. 유저: 「니가 아티팩트로 제시한거랑 이거랑 똑같다고
-      // 생각하냐? … **대체 왜 정한대로 안만드는거야?**」 — the second axis
-      // exists precisely so it is not all on screen at once, and flattening
-      // it turned eight stages into forty-odd rows.
-      //
-      // ⛔The revise list is not copied per process either: [revisesFor]
-      // answers from the ONE [LayerRevise] set, so renaming a revise renames
-      // it everywhere and 원화 can drop 동화검사 without the others noticing.
-      entriesBuilder: () => [
-        PanelFlyoutItem(
-          keyValue: 'layer-mark-option-none',
-          label: AppText.strings.tlLayerMarkNone,
-          swatch: layerMarkColor(LayerMark.none),
-          onSelected: () => onMarkSelected(layerId, LayerMark.none),
-        ),
-        for (final process in LayerProcess.values)
+    return ControlPressClaim(
+      child: PanelFlyoutTrigger(
+        key: ValueKey<String>('$keyPrefix-layer-mark-$layerId'),
+        tooltip: AppText.strings.tlLayerMark,
+        // ZERO, not the trigger's usual 8: the mark sits in a fixed
+        // `layerMarkSlotWidth` rail column, so padding here would not grow a
+        // hit area — it would push every slot after it out of the rail.
+        padding: EdgeInsets.zero,
+        // 🚨★★★TWO AXES, TWO LEVELS. 유저 설계(I-4): 「위에서부터 콘티,레이아웃,
+        // 러프원화,원화,동화,시아게 가 있고, 거기 **호버하면 추가로 앵커팝오버로
+        // 수정라벨이 뜨도록**. 즉 축으로서 2가지가 존재하도록」.
+        //
+        // ⛔I built this flat once and wrote 「TWO AXES, ONE LIST」 in the
+        // comment. 유저: 「니가 아티팩트로 제시한거랑 이거랑 똑같다고
+        // 생각하냐? … **대체 왜 정한대로 안만드는거야?**」 — the second axis
+        // exists precisely so it is not all on screen at once, and flattening
+        // it turned eight stages into forty-odd rows.
+        //
+        // ⛔The revise list is not copied per process either: [revisesFor]
+        // answers from the ONE [LayerRevise] set, so renaming a revise renames
+        // it everywhere and 원화 can drop 동화검사 without the others noticing.
+        entriesBuilder: () => [
           PanelFlyoutItem(
-            // 🚨THE KEY SAYS WHAT THE ROW DOES. A stage that opens a child
-            // is `…-stage-…`; a row that PICKS is `…-option-…`. They used
-            // to share a key and the submenu's 소재 collided with the parent
-            // it hung off — two widgets, one key, and every finder that
-            // touched either one broke.
-            keyValue: revisesFor(process).isEmpty
-                ? 'layer-mark-option-${process.jsonValue}'
-                : 'layer-mark-stage-${process.jsonValue}',
-            label: layerProcessLabel(process),
-            swatch: layerMarkColor(LayerMark(process: process)),
-            // 용지 carries no corrections, so it is a plain choice — no
-            // chevron, no second level, and picking it labels the row.
-            onSelected: revisesFor(process).isEmpty
-                ? () => onMarkSelected(layerId, LayerMark(process: process))
-                : null,
-            submenuBuilder: revisesFor(process).isEmpty
-                ? null
-                : () => [
-                    // 소재(上がり) first — 그 공정의 작업본이다. 이것이
-                    // 「수정 없음」 자리를 대신한다.
-                    for (final option in [
-                      LayerMark(process: process),
-                      for (final revise in revisesFor(process))
-                        LayerMark(process: process, revise: revise),
-                    ])
-                      PanelFlyoutItem(
-                        keyValue: 'layer-mark-option-${option.keySlug}',
-                        label: option.revise == null
-                            ? AppText.strings.tlLayerMarkSource
-                            : layerReviseLabel(option.revise!),
-                        swatch: layerMarkColor(option),
-                        onSelected: () => onMarkSelected(layerId, option),
-                      ),
-                  ],
+            keyValue: 'layer-mark-option-none',
+            label: AppText.strings.tlLayerMarkNone,
+            swatch: layerMarkColor(LayerMark.none),
+            onSelected: () => onMarkSelected(layerId, LayerMark.none),
           ),
-      ],
-      child: Semantics(
-        label: AppText.strings.tlLayerMark,
-        button: true,
-        // 🚨★★★THE STAGE COMES FIRST — left on the rail, top on the sheet.
-        //
-        // 유저 2026-08-27 corrected an earlier call of theirs: 「LO작감시 왼쪽에
-        // 작감 오른쪽에 LO 오는데, 그게아니라 **평범하게 왼쪽에 LO 오른쪽에
-        // 작감** 오도록. 이유는 지금 **레이어영역 자체가 왼쪽부터 오른쪽으로
-        // 읽는걸 기준으로** 설계하고있어」.
-        //
-        // ⚠️The first reading (stage on the right, from Japanese vertical
-        // writing) was right about the writing and wrong about the SURFACE:
-        // the rail is a left-to-right column of names, and one label
-        // reading the other way would be the exception.
-        //
-        // ⛔Not stacked as two rows on the rail: 「띠가 지금 가로로 얇은거를
-        // 살리고싶어서」 — two columns keep the plate as short as one. The
-        // sheet stacks instead, because there the plate is wide and short.
-        child: _LabelPlate(
-          fill: layerMarkColor(mark),
-          columns: [
-            layerMarkChipText(mark).process,
-            layerMarkChipText(mark).revise,
-          ],
-          axis: axis,
+          for (final process in LayerProcess.values)
+            PanelFlyoutItem(
+              // 🚨THE KEY SAYS WHAT THE ROW DOES. A stage that opens a child
+              // is `…-stage-…`; a row that PICKS is `…-option-…`. They used
+              // to share a key and the submenu's 소재 collided with the parent
+              // it hung off — two widgets, one key, and every finder that
+              // touched either one broke.
+              keyValue: revisesFor(process).isEmpty
+                  ? 'layer-mark-option-${process.jsonValue}'
+                  : 'layer-mark-stage-${process.jsonValue}',
+              label: layerProcessLabel(process),
+              swatch: layerMarkColor(LayerMark(process: process)),
+              // 용지 carries no corrections, so it is a plain choice — no
+              // chevron, no second level, and picking it labels the row.
+              onSelected: revisesFor(process).isEmpty
+                  ? () => onMarkSelected(layerId, LayerMark(process: process))
+                  : null,
+              submenuBuilder: revisesFor(process).isEmpty
+                  ? null
+                  : () => [
+                      // 소재(上がり) first — 그 공정의 작업본이다. 이것이
+                      // 「수정 없음」 자리를 대신한다.
+                      for (final option in [
+                        LayerMark(process: process),
+                        for (final revise in revisesFor(process))
+                          LayerMark(process: process, revise: revise),
+                      ])
+                        PanelFlyoutItem(
+                          keyValue: 'layer-mark-option-${option.keySlug}',
+                          label: option.revise == null
+                              ? AppText.strings.tlLayerMarkSource
+                              : layerReviseLabel(option.revise!),
+                          swatch: layerMarkColor(option),
+                          onSelected: () => onMarkSelected(layerId, option),
+                        ),
+                    ],
+            ),
+        ],
+        child: Semantics(
+          label: AppText.strings.tlLayerMark,
+          button: true,
+          // 🚨★★★THE STAGE COMES FIRST — left on the rail, top on the sheet.
+          //
+          // 유저 2026-08-27 corrected an earlier call of theirs: 「LO작감시 왼쪽에
+          // 작감 오른쪽에 LO 오는데, 그게아니라 **평범하게 왼쪽에 LO 오른쪽에
+          // 작감** 오도록. 이유는 지금 **레이어영역 자체가 왼쪽부터 오른쪽으로
+          // 읽는걸 기준으로** 설계하고있어」.
+          //
+          // ⚠️The first reading (stage on the right, from Japanese vertical
+          // writing) was right about the writing and wrong about the SURFACE:
+          // the rail is a left-to-right column of names, and one label
+          // reading the other way would be the exception.
+          //
+          // ⛔Not stacked as two rows on the rail: 「띠가 지금 가로로 얇은거를
+          // 살리고싶어서」 — two columns keep the plate as short as one. The
+          // sheet stacks instead, because there the plate is wide and short.
+          child: _LabelPlate(
+            fill: layerMarkColor(mark),
+            columns: [
+              layerMarkChipText(mark).process,
+              layerMarkChipText(mark).revise,
+            ],
+            axis: axis,
+          ),
         ),
       ),
-    ));
+    );
   }
 }
 
@@ -1205,8 +1201,7 @@ class _LabelPlate extends StatelessWidget {
   }
 
   /// One column's characters, through the shared decision.
-  Widget _glyphs(String text, Color fill) =>
-      layerPlateGlyphs(
+  Widget _glyphs(String text, Color fill) => layerPlateGlyphs(
     text: text,
     axis: axis,
     style: TextStyle(
