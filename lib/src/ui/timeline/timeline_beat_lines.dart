@@ -111,8 +111,10 @@ class TimelineFrameAreaEdge extends StatelessWidget {
 );
 
 /// SECOND (fps) line — the strongest.
-({Color color, double strokeWidth}) timelineGridSecondLineInk() =>
-    (color: AppColors.beatLine, strokeWidth: 1.5);
+({Color color, double strokeWidth}) timelineGridSecondLineInk() => (
+  color: AppColors.beatLine.withValues(alpha: timelineSecondGridAlpha),
+  strokeWidth: 1.5,
+);
 
 /// ROW SEAM — the grid's CROSS-axis line, between one row and the next.
 /// Full strength and zoom-independent (UI-R18 #10/#12: the rows' hairline

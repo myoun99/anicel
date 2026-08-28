@@ -150,7 +150,7 @@ Color timelineEmptyCelPaperColor(Color paper) =>
 /// sparse widget rows (SE/camera/instruction), the frame ruler cells and
 /// the storyboard's frame lines — so the 6f/24f beat lines alone carry
 /// the rhythm.
-const double timelineBaseGridAlpha = 0.25;
+const double timelineBaseGridAlpha = 0.20;
 
 /// The 6f beat line's alpha over the SECOND line's ink (F-41).
 ///
@@ -166,7 +166,27 @@ const double timelineBaseGridAlpha = 0.25;
 /// ⛔The order now comes from ONE ink and two alphas rather than from two
 /// colours that happened to differ — a value the next person can move
 /// without re-deriving which chrome grey multiplies darker.
-const double timelineSixGridAlpha = 0.6;
+const double timelineSixGridAlpha = 0.5;
+
+/// The SECOND line's alpha (F-41, second half).
+///
+/// 🚨유저 2026-08-28: 「전체적으로 좀 더 한단계 밝은색쪽으로 변경. **포인트는
+/// 그리드선이 진해서 블록이 한 블록이아니라 나뉜것처럼 보이는 착시현상이
+/// 문제**」. The first half fixed the ORDER (the 6f line was coming out
+/// darker than the second); this is the "한 단계" itself, applied to all
+/// three at once so the order survives it.
+///
+/// Measured darkening on the block's paper (L=0.906), before → after:
+/// base 0.176 → 0.141, 6f 0.270 → 0.225, second 0.451 → 0.383. Still
+/// base < 6f < second, and the second line keeps its 1.5 stroke, which is
+/// what carries the beat once the ink is this light.
+///
+/// ⛔This is one number per strength, not a per-surface tweak: all five
+/// surfaces mount the same painter, so a value moved here moves the
+/// timeline, the X-sheet, the storyboard, the folded row and the lane
+/// rows together. Anything that made only one of them lighter would be
+/// the copy F-18 just finished removing.
+const double timelineSecondGridAlpha = 0.85;
 
 /// The base grid's line CADENCE at [frameCellExtent] (UI-R18 #8/#12, the
 /// storyboard recipe adopted everywhere): instead of alpha-fading away at
