@@ -398,14 +398,23 @@ LayerDropPlan? resolveLayerDrop({
   };
 
   // ATTACH (P3): the run's OWN group first — a row already inside one keeps
-  // its base while the landing still touches the group, which is what makes
+  // its base while the landing still KEEPS the group (F-31②: at the
+  // boundary that is the half the pointer is in), which is what makes
   // re-ordering within a group an ordinary move. An ORGANIZER folder answers
   // its base here too, so a 공정 folder can be repositioned inside its group.
+  //
+  // ⚠️Passing the pointer here changes no OUTCOME today, and that is a
+  // proof rather than an oversight: a slot that touches this group cannot
+  // be strictly inside another one (the neighbour that puts it in this
+  // group is not in that one), so [_slotInsideGroup] is null either way
+  // and the run detaches instead of mounting. It is asked with the pointer
+  // anyway because it is the same question as the detach test, and two
+  // spellings of one question is how they drift apart.
   final runGroupBase =
       moving.attachedToLayerId ?? attachOrganizerBaseOf(moving, stack);
   final keepsOwnGroup =
       runGroupBase != null &&
-      _slotTouchesGroup(rest, restInsertAt, runGroupBase);
+      _slotKeepsGroup(rest, restInsertAt, runGroupBase, pointerInRow);
   // Then the group the slot is strictly INSIDE, which can only be another
   // one (a slot touching this run's own group answered above).
   final insideGroup = keepsOwnGroup
@@ -667,19 +676,6 @@ AttachedPlacement? _slotSideOfBase(
       : AttachedPlacement.below;
 }
 
-/// Whether the slot at [insertAt] still TOUCHES [baseId]'s group — inside it
-/// or at either edge.
-///
-/// The closed interval, where [_slotInsideGroup] is open, and for one
-/// reason: a row that is already in the group keeps its membership at the
-/// edges (dragging the topmost attach row one place up is a re-order, not a
-/// detach), while a row from outside has to be put clearly INSIDE before it
-/// joins.
-bool _slotTouchesGroup(List<Layer> rest, int insertAt, LayerId baseId) {
-  final sides = _groupSidesOfSlot(rest, insertAt, baseId);
-  return sides.below || sides.above;
-}
-
 /// Which of the slot's two neighbours belong to [baseId]'s group.
 ///
 /// One walk, because every question a slot gets asked about a group is some
@@ -707,10 +703,19 @@ bool _slotTouchesGroup(List<Layer> rest, int insertAt, LayerId baseId) {
 /// 채로 외곽에 두는 로직, 바깥쪽이면 어태치 해제하는 로직」.
 ///
 /// The boundary gap is one caret with two meanings: it is both the group's
-/// outer edge and the first slot outside. [_slotTouchesGroup] answered the
-/// closed interval — the edge always kept the row — so the second meaning
-/// had no way to be said, and leaving a group meant travelling one row
-/// further than the picture suggested.
+/// outer edge and the first slot outside. The predicate this replaces
+/// (`_slotTouchesGroup`) answered the closed interval — the edge always
+/// kept the row, on the reasoning that a row already in the group keeps
+/// its membership at the edges while a row from outside has to be put
+/// clearly INSIDE before it joins. That made the second meaning
+/// unsayable, and leaving a group meant travelling one row further than
+/// the picture suggested.
+///
+/// 🚨ONE function, asked by BOTH sites. "Does the run keep its own group"
+/// and "does this attach row detach" are the same question, and they were
+/// on their way to answering it differently — a closed interval here and a
+/// split boundary there. `_slotTouchesGroup` was this with a null pointer,
+/// so it is this with a null pointer.
 ///
 /// The half is not new geometry: the gap has a row on either side of it,
 /// and the one the pointer is IN is the answer. Inside that group's row —
