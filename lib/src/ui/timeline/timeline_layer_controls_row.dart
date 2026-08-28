@@ -318,24 +318,35 @@ class TimelineLayerControlsRow extends StatelessWidget {
                     // it, exactly as the trailing three do — the strong
                     // claim, kept in step with the grid's swipe column list
                     // (see [RailSwipeColumnPointer]).
-                    ? RailSwipeColumnPointer(child: InkWell(
+                    ? RailSwipeColumnPointer(child: IconButton(
                         key: ValueKey<String>(
                           'timeline-lane-toggle-${layer.id}',
                         ),
-                        onTap: () => onToggleLanes!(layer.id),
-                        // R26 #28: icon buttons hover ROUND, like every
-                        // other icon control — the square ink silhouette
-                        // is retired.
-                        customBorder: const CircleBorder(),
-                        child: SizedBox(
+                        tooltip: lanesExpanded
+                            ? 'Collapse lanes'
+                            : 'Expand lanes',
+                        // The rail's law, read off the onion column ten
+                        // slots along rather than invented here: zero
+                        // padding and a box tight to the slot, because
+                        // `layerLaneToggleSlotWidth` is 16 and an
+                        // IconButton left alone asks for 48.
+                        //
+                        // R26 #28 (icon buttons hover ROUND) survives the
+                        // swap for free — an IconButton's ink is already a
+                        // circle, which is the whole reason the hand-rolled
+                        // `customBorder: CircleBorder()` could go with it.
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints.tightFor(
+                          width: layerLaneToggleSlotWidth,
                           height: 24,
-                          child: Icon(
-                            lanesExpanded
-                                ? Icons.arrow_drop_down
-                                : Icons.arrow_right,
-                            size: 16,
-                          ),
                         ),
+                        icon: Icon(
+                          lanesExpanded
+                              ? Icons.arrow_drop_down
+                              : Icons.arrow_right,
+                          size: 16,
+                        ),
+                        onPressed: () => onToggleLanes!(layer.id),
                       ))
                     : null,
                 // Timesheet + mark chips lead the label. Attach rows (W5)

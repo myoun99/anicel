@@ -16,6 +16,8 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart'
     show timelineLayerRowLeadingBorder;
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerLaneToggleSlotWidth;
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show LayerRailLeadingSlot, layerRailLeadingWidthTo;
 
@@ -390,4 +392,44 @@ void main() {
       },
     );
   });
+
+  testWidgets(
+    'I-1 ① the lane twirl is the same control as the columns beside it',
+    (tester) async {
+      await pump(tester);
+
+      // 유저 I-1 ①: 「fx 펼치기 호버 배경」 — the twirl hovered differently
+      // from every other rail control because it was the one hand-rolled
+      // `InkWell` in the row, with its own `customBorder`. Hover ink is
+      // decided by the WIDGET, so the fix is that it stops being a
+      // different widget; comparing painted pixels would be measuring the
+      // shadow of that.
+      for (final key in const <String>[
+        'timeline-lane-toggle-l4',
+        'timeline-layer-onion-l4',
+      ]) {
+        final finder = find.byKey(ValueKey<String>(key));
+        expect(finder, findsOneWidget, reason: 'fixture premise: $key exists');
+        expect(
+          tester.widget(finder),
+          isA<IconButton>(),
+          reason:
+              '$key must be the rail\'s IconButton. A bare InkWell hovers '
+              'as a different shape from its neighbours — that is the '
+              'report.',
+        );
+      }
+
+      // …and it still fits. The slot is 16px and an IconButton left alone
+      // asks for 48, so the tight box is load-bearing, not decoration.
+      final box = tester.getRect(
+        find.byKey(const ValueKey<String>('timeline-lane-toggle-l4')),
+      );
+      expect(
+        box.width,
+        lessThanOrEqualTo(layerLaneToggleSlotWidth),
+        reason: 'the twirl must not push its column wider than the slot',
+      );
+    },
+  );
 }
