@@ -4,31 +4,61 @@ import '../layout/device_grid.dart';
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart';
 
-/// R26 #42 — THE app's icon button.
+/// What a button's box measures — a named token, or a box its PARENT
+/// already promised.
 ///
-/// The canvas panel's bottom bar (fit / 1:1 / zoom / rotate / flip) is the
-/// style the user adopted as the default icon UI, so it lives here now and
-/// every other surface mounts THIS widget instead of hand-rolling its own
-/// `InkWell` + `Icon` pair: a compact square hit target, an 18px glyph, no
-/// padding, and — the selection rule ([[ui-selection-style]]) — an accent
-/// FOREGROUND for the on state, never a check mark or a filled chip.
+/// 🚨★★★ONE FIELD, TWO KINDS. [AppIconButton] holds a single [size], so
+/// "which of the two decides the box?" is not a question the widget can be
+/// asked — a `size` token beside a nullable `box` would have let a caller
+/// pass both, and the day they disagreed the button would have had two
+/// owners for one number ([[make-the-invariant-unrepresentable]]).
+abstract interface class AppIconButtonMetrics {
+  double get minWidth;
+  double get maxWidth;
+  double get height;
+  double get iconSize;
+
+  /// True when a PARENT sized this box, so the numbers are used verbatim.
+  /// A token's are quantized onto the device grid first; a promised box is
+  /// not ours to round.
+  bool get parentOwnsBox;
+}
+
+/// A box the parent already promised — the rails' 20–22px slots and the
+/// top strip's 32px group, where the surrounding layout was built around a
+/// number before the button existed.
 ///
-/// Sizing is a token, not a per-call number: [AppIconButtonSize.bar] is the
-/// canvas bottom bar's, [AppIconButtonSize.strip] the same button squeezed
-/// into a slim status strip. Callers pick a token so a future style change
-/// lands everywhere at once.
-///
-/// 🚨★★★THE TOKENS ARE THE ANSWER TO 「앱에 버튼은 한 종류」, not a betrayal of
-/// it. 유저 2026-08-28 chose this over collapsing every button to one size:
-/// lib had **50 hand-rolled `IconButton`s across 22 files** at five different
-/// glyph sizes, and 실측 said not one of them could join without the box
-/// changing. ⇒ 「한 종류」 means ONE PARENT — one shape, one selection rule,
-/// one hit-target policy — with the size named rather than typed.
-///
+/// ⛔THIS IS NOT A SIXTH TOKEN. A token names a PLACE and is reused; this
+/// says "the caller owns this one" and is passed at the call site, so it
+/// cannot quietly become a new default for anyone else. It exists because
+/// 실측 on 2026-08-28 found 36 hand-rolled `IconButton`s that could not join
+/// a token without their box changing, and a box that changes is exactly
+/// what the rail cannot survive ([[widget-between-slot-and-plate]]).
+class AppIconButtonBox implements AppIconButtonMetrics {
+  const AppIconButtonBox({
+    required double width,
+    required this.height,
+    required this.iconSize,
+  }) : minWidth = width,
+       maxWidth = width;
+
+  @override
+  final double minWidth;
+  @override
+  final double maxWidth;
+  @override
+  final double height;
+  @override
+  final double iconSize;
+
+  @override
+  bool get parentOwnsBox => true;
+}
+
 /// ⛔A NEW TOKEN IS NOT A FREE MOVE. Adding one because a number is off by
 /// two is how five becomes fifteen; each token below names a PLACE that
 /// argued for its size, and the argument is in its doc.
-enum AppIconButtonSize {
+enum AppIconButtonSize implements AppIconButtonMetrics {
   /// Panel bottom bars — the reference size.
   bar(minWidth: 26, maxWidth: 30, height: 24, iconSize: 18),
 
@@ -60,12 +90,39 @@ enum AppIconButtonSize {
     required this.iconSize,
   });
 
+  @override
   final double minWidth;
+  @override
   final double maxWidth;
+  @override
   final double height;
+  @override
   final double iconSize;
+
+  @override
+  bool get parentOwnsBox => false;
 }
 
+/// R26 #42 — THE app's icon button.
+///
+/// The canvas panel's bottom bar (fit / 1:1 / zoom / rotate / flip) is the
+/// style the user adopted as the default icon UI, so it lives here now and
+/// every other surface mounts THIS widget instead of hand-rolling its own
+/// `InkWell` + `Icon` pair: a compact square hit target, an 18px glyph, no
+/// padding, and — the selection rule ([[ui-selection-style]]) — an accent
+/// FOREGROUND for the on state, never a check mark or a filled chip.
+///
+/// Sizing is a token, not a per-call number: [AppIconButtonSize.bar] is the
+/// canvas bottom bar's, [AppIconButtonSize.strip] the same button squeezed
+/// into a slim status strip. Callers pick a token so a future style change
+/// lands everywhere at once.
+///
+/// 🚨★★★THE TOKENS ARE THE ANSWER TO 「앱에 버튼은 한 종류」, not a betrayal of
+/// it. 유저 2026-08-28 chose this over collapsing every button to one size:
+/// lib had **50 hand-rolled `IconButton`s across 22 files** at five different
+/// glyph sizes, and 실측 said not one of them could join without the box
+/// changing. ⇒ 「한 종류」 means ONE PARENT — one shape, one selection rule,
+/// one hit-target policy — with the size named rather than typed.
 class AppIconButton extends StatelessWidget {
   const AppIconButton({
     super.key,
@@ -90,11 +147,13 @@ class AppIconButton extends StatelessWidget {
   /// default was invisible in this theme, so the accent is explicit).
   final bool isSelected;
 
-  final AppIconButtonSize size;
+  /// The box: a named token, or an [AppIconButtonBox] the parent promised.
+  final AppIconButtonMetrics size;
 
   @override
   Widget build(BuildContext context) {
     final grid = DeviceGrid.of(context);
+    double onGrid(double v) => size.parentOwnsBox ? v : grid.position(v);
     // 🚨★★★ 유저 #1 (2026-08-14): 「액티브 레이어가 아닌 다른 레이어의 버튼
     // 누르면 작동안함 … 레이어에 있는 **모든 버튼이나 편집이** 그럼」.
     //
@@ -134,14 +193,14 @@ class AppIconButton extends StatelessWidget {
           // ⛔So do not read this as the pattern to copy across the other
           // wrappers: the same edit on five more of them would cost five
           // diffs for the same ~3%. The origins are the lever.
-          minimumSize: Size(
-            grid.position(size.minWidth),
-            grid.position(size.height),
-          ),
-          maximumSize: Size(
-            grid.position(size.maxWidth),
-            grid.position(size.height),
-          ),
+          // ⛔A PROMISED BOX IS NOT OURS TO ROUND. The rails' slots are
+          // 20–22px numbers the surrounding layout was built around, and
+          // [[widget-between-slot-and-plate]] is the record of what a
+          // changed slot costs — a hundred tests that never mention it.
+          // Quantizing a token is a style choice; quantizing a promise is
+          // breaking it.
+          minimumSize: Size(onGrid(size.minWidth), onGrid(size.height)),
+          maximumSize: Size(onGrid(size.maxWidth), onGrid(size.height)),
           padding: EdgeInsets.zero,
           iconSize: size.iconSize,
           // Its own height, not the theme's default box: a bar button and a

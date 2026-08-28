@@ -3,7 +3,7 @@ import 'dart:io' show Directory, File, FileSystemException;
 
 import 'package:flutter/material.dart';
 
-import '../input/control_press_claim.dart';
+import '../widgets/app_icon_button.dart';
 import '../../services/persistence/anicel_file_service.dart'
     show anicelSnapshotIsOverlay;
 import '../../services/audio/audio_conform_pipeline.dart'
@@ -127,7 +127,6 @@ class EditorTopStrip extends StatelessWidget {
 
   // --- File -----------------------------------------------------------------
 
-
   void _showFileError(BuildContext context, Object error) {
     unawaited(
       showAppNotice(
@@ -210,9 +209,7 @@ class EditorTopStrip extends StatelessWidget {
         if (context.mounted) {
           _showFileError(
             context,
-            const FormatException(
-              '파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요',
-            ),
+            const FormatException('파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요'),
           );
         }
         return;
@@ -387,9 +384,7 @@ class EditorTopStrip extends StatelessWidget {
         if (context.mounted) {
           _showFileError(
             context,
-            const FormatException(
-              '파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요',
-            ),
+            const FormatException('파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요'),
           );
         }
         return;
@@ -570,10 +565,11 @@ class EditorTopStrip extends StatelessWidget {
     if (!context.mounted) {
       return;
     }
-    await _openWithRecovery(
-      context,
-      (path: path, folderBookmark: bookmark, placed: false),
-    );
+    await _openWithRecovery(context, (
+      path: path,
+      folderBookmark: bookmark,
+      placed: false,
+    ));
   }
 
   /// Asks for the project a remembered row has lost track of — with the
@@ -1026,10 +1022,9 @@ class _BrushValueBars extends StatelessWidget {
                 valueText: sliderValueText(state.size, unit: ' px'),
                 height: _barHeight,
                 onChanged: sizeOn
-                    ? (value) =>
-                          brushTool.value = brushTool.value.copyWith(
-                            size: value,
-                          )
+                    ? (value) => brushTool.value = brushTool.value.copyWith(
+                        size: value,
+                      )
                     : null,
               ),
             ),
@@ -1049,7 +1044,10 @@ class _BrushValueBars extends StatelessWidget {
                 value: BrushToolState.clampOpacity(state.activeOpacity),
                 min: 0,
                 max: 1,
-                valueText: sliderValueText(state.activeOpacity * 100, unit: '%'),
+                valueText: sliderValueText(
+                  state.activeOpacity * 100,
+                  unit: '%',
+                ),
                 height: _barHeight,
                 onChanged: opacityOn
                     ? (value) => brushTool.value = brushTool.value
@@ -1206,49 +1204,44 @@ class _BlendModeControl extends StatelessWidget {
                       // Writes to whichever tool is armed — the button
                       // never names one (유저 확정: 블렌드모드 선택도 툴에
                       // 산다).
-                      onSelected: () =>
-                          brushTool.value = state.withActiveBlendMode(
-                            candidate,
-                          ),
+                      onSelected: () => brushTool.value = state
+                          .withActiveBlendMode(candidate),
                     ),
                 ],
               ),
             ),
             SizedBox(
               width: _lockWidth,
-              child: ControlPressClaim(
-                child: IconButton(
-                  key: const ValueKey<String>('brush-tool-blend-lock-toggle'),
-                  icon: Icon(
-                    pinned == null
-                        ? Icons.lock_open_outlined
-                        : Icons.lock_outline,
-                    size: 16,
-                  ),
+              // The 32px box IS the target: M3 would otherwise inflate to 48
+              // and blow the width this group promised to hold. It is passed
+              // as an [AppIconButtonBox] rather than hand-rolled now — the
+              // group still owns the number, and the app owns everything
+              // else about the button.
+              child: AppIconButton(
+                keyValue: 'brush-tool-blend-lock-toggle',
+                tooltip: AppText.strings.brBlendLock,
+                size: const AppIconButtonBox(
+                  width: _lockWidth,
+                  height: _lockWidth,
+                  iconSize: 16,
+                ),
+                icon: Icon(
+                  pinned == null
+                      ? Icons.lock_open_outlined
+                      : Icons.lock_outline,
                   color: pinned == null
                       ? theme.colorScheme.onSurfaceVariant
                       : theme.colorScheme.primary,
-                  tooltip: AppText.strings.brBlendLock,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(
-                    width: _lockWidth,
-                    height: _lockWidth,
-                  ),
-                  // The 32px box IS the target: M3 would otherwise inflate to
-                  // 48 and blow the width this group promised to hold.
-                  style: IconButton.styleFrom(
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  // Locking captures whatever is showing, so the stroke does
-                  // not change under you at the moment you pin it. Null while
-                  // the tool composites nothing — pinning a blend it does not
-                  // read would be pinning nothing (TP2).
-                  onPressed: blendOn
-                      ? () => brushTool.value = state.withActiveBlendLock(
-                          pinned == null ? mode : null,
-                        )
-                      : null,
                 ),
+                // Locking captures whatever is showing, so the stroke does
+                // not change under you at the moment you pin it. Null while
+                // the tool composites nothing — pinning a blend it does not
+                // read would be pinning nothing (TP2).
+                onPressed: blendOn
+                    ? () => brushTool.value = state.withActiveBlendLock(
+                        pinned == null ? mode : null,
+                      )
+                    : null,
               ),
             ),
           ],
@@ -1625,7 +1618,6 @@ void _discardStaging(Directory directory) {
   }
 }
 
-
 /// What a dirty session's user chose at the gate.
 enum UnsavedWorkChoice { cancel, saveAs, save, discard }
 
@@ -1837,4 +1829,3 @@ Future<void> promptSaveProjectAs(
     );
   }
 }
-

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/app_icon_button.dart';
 import '../input/control_press_claim.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
@@ -34,8 +35,7 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_row_address.dart';
 import 'timeline_row_cross_offset.dart';
-import 'timeline_selected_exposure_outline.dart'
-    show TimelineRowSelectionBands;
+import 'timeline_selected_exposure_outline.dart' show TimelineRowSelectionBands;
 import '../input/app_input_settings.dart' show AppInput;
 import '../widgets/instant_tap_region.dart';
 import 'effect_lane_policy.dart' show parseEffectLaneId;
@@ -1915,140 +1915,137 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                         // widget, turned on its side.
                                                         Stack(
                                                           children: [
-                                                          Row(
-                                                            children: [
-                                                              for (
-                                                                var index = 0;
-                                                                index <
-                                                                    entries
-                                                                        .length;
-                                                                index += 1
-                                                              )
-                                                                _draggableHeader(
-                                                                  entries[index],
-                                                                  entries[index]
-                                                                          .isLane
-                                                                      ? _laneHeader(
-                                                                          entries[index],
-                                                                        )
-                                                                      : _LayerHeader(
-                                                                          depth: entries[index]
-                                                                              .depth,
-                                                                          headerExtent:
-                                                                              _naturalHeaderExtent,
-                                                                          onToggleLayerOnionSkin:
-                                                                              widget.onToggleLayerOnionSkin,
-                                                                          onionSkinEnabled:
-                                                                              widget.layerOnionSkinEnabledOf?.call(
+                                                            Row(
+                                                              children: [
+                                                                for (
+                                                                  var index = 0;
+                                                                  index <
+                                                                      entries
+                                                                          .length;
+                                                                  index += 1
+                                                                )
+                                                                  _draggableHeader(
+                                                                    entries[index],
+                                                                    entries[index]
+                                                                            .isLane
+                                                                        ? _laneHeader(
+                                                                            entries[index],
+                                                                          )
+                                                                        : _LayerHeader(
+                                                                            depth:
+                                                                                entries[index].depth,
+                                                                            headerExtent:
+                                                                                _naturalHeaderExtent,
+                                                                            onToggleLayerOnionSkin:
+                                                                                widget.onToggleLayerOnionSkin,
+                                                                            onionSkinEnabled:
+                                                                                widget.layerOnionSkinEnabledOf?.call(
+                                                                                  entries[index].layer.id,
+                                                                                ) ??
+                                                                                false,
+                                                                            onLayerBlendModeSelected:
+                                                                                widget.onLayerBlendModeSelected,
+                                                                            blendLanguage:
+                                                                                widget.blendLanguage,
+                                                                            wearsBaseComposite: attachRowWearsBaseComposite(
+                                                                              entries[index].layer,
+                                                                              widget.layers,
+                                                                            ),
+                                                                            layer:
+                                                                                entries[index].layer,
+                                                                            active:
+                                                                                entries[index].layer.id ==
+                                                                                widget.activeLayerId,
+                                                                            // ⑨ · T1
+                                                                            selected: widget.selectedRows.contains(
+                                                                              LayerRowAddress(
                                                                                 entries[index].layer.id,
-                                                                              ) ??
-                                                                              false,
-                                                                          onLayerBlendModeSelected:
-                                                                              widget.onLayerBlendModeSelected,
-                                                                          blendLanguage:
-                                                                              widget.blendLanguage,
-                                                                          wearsBaseComposite: attachRowWearsBaseComposite(
-                                                                            entries[index]
-                                                                                .layer,
-                                                                            widget
-                                                                                .layers,
-                                                                          ),
-                                                                          layer: entries[index]
-                                                                              .layer,
-                                                                          active:
-                                                                              entries[index].layer.id ==
-                                                                              widget.activeLayerId,
-                                                                          // ⑨ · T1
-                                                                          selected: widget.selectedRows.contains(
-                                                                            LayerRowAddress(
+                                                                              ),
+                                                                            ),
+                                                                            metrics:
+                                                                                _metrics,
+                                                                            onSelectLayer:
+                                                                                widget.onSelectLayer,
+                                                                            onToggleLayerVisibility:
+                                                                                widget.onToggleLayerVisibility,
+                                                                            onLayerOpacityChanged:
+                                                                                widget.onLayerOpacityChanged,
+                                                                            onLayerOpacityChangeEnd:
+                                                                                widget.onLayerOpacityChangeEnd,
+                                                                            opacityDragPreview:
+                                                                                widget.opacityDragPreview,
+                                                                            onToggleLayerTimesheet:
+                                                                                widget.onToggleLayerTimesheet,
+                                                                            fxState:
+                                                                                widget.layerFxStateOf?.call(
+                                                                                  entries[index].layer.id,
+                                                                                ) ??
+                                                                                LayerFxState.on,
+                                                                            onToggleLayerFx:
+                                                                                widget.onToggleLayerFx,
+                                                                            onLayerMarkSelected:
+                                                                                widget.onLayerMarkSelected,
+                                                                            onToggleLayerFillReference:
+                                                                                widget.onToggleLayerFillReference,
+                                                                            onOpenLayerMixer:
+                                                                                widget.onOpenLayerMixer,
+                                                                            attachArrowPlacement: widget.attachArrowPlacementOf?.call(
                                                                               entries[index].layer.id,
                                                                             ),
-                                                                          ),
-                                                                          metrics:
-                                                                              _metrics,
-                                                                          onSelectLayer:
-                                                                              widget.onSelectLayer,
-                                                                          onToggleLayerVisibility:
-                                                                              widget.onToggleLayerVisibility,
-                                                                          onLayerOpacityChanged:
-                                                                              widget.onLayerOpacityChanged,
-                                                                          onLayerOpacityChangeEnd:
-                                                                              widget.onLayerOpacityChangeEnd,
-                                                                          opacityDragPreview:
-                                                                              widget.opacityDragPreview,
-                                                                          onToggleLayerTimesheet:
-                                                                              widget.onToggleLayerTimesheet,
-                                                                          fxState:
-                                                                              widget.layerFxStateOf?.call(
-                                                                                entries[index].layer.id,
-                                                                              ) ??
-                                                                              LayerFxState.on,
-                                                                          onToggleLayerFx:
-                                                                              widget.onToggleLayerFx,
-                                                                          onLayerMarkSelected:
-                                                                              widget.onLayerMarkSelected,
-                                                                          onToggleLayerFillReference:
-                                                                              widget.onToggleLayerFillReference,
-                                                                          onOpenLayerMixer:
-                                                                              widget.onOpenLayerMixer,
-                                                                          attachArrowPlacement: widget
-                                                                              .attachArrowPlacementOf
-                                                                              ?.call(
-                                                                                entries[index].layer.id,
-                                                                              ),
-                                                                          isLayerSoloed:
-                                                                              widget.isLayerSoloed?.call(
-                                                                                entries[index].layer.id,
-                                                                              ) ??
-                                                                              false,
-                                                                          hasLanes: _lanesFor(
-                                                                            entries[index]
-                                                                                .layer,
-                                                                          ).isNotEmpty,
-                                                                          lanesExpanded: widget
-                                                                              .expandedLaneLayerIds
-                                                                              .contains(
-                                                                                entries[index].layer.id,
-                                                                              ),
-                                                                          onToggleLanes:
-                                                                              widget.onToggleLayerLanes,
-                                                                          // One fold
-                                                                          // twirl, the
-                                                                          // rail's rule
-                                                                          // verbatim.
-                                                                          hasGroupFold:
-                                                                              entries[index].isFolder ||
-                                                                              _hasAttachGroup(
-                                                                                entries[index].layer,
-                                                                              ),
-                                                                          groupFoldExpanded:
-                                                                              entries[index].isFolder
-                                                                              ? !entries[index].layer.collapsed
-                                                                              : !widget.collapsedAttachBaseIds.contains(
+                                                                            isLayerSoloed:
+                                                                                widget.isLayerSoloed?.call(
                                                                                   entries[index].layer.id,
+                                                                                ) ??
+                                                                                false,
+                                                                            hasLanes: _lanesFor(
+                                                                              entries[index].layer,
+                                                                            ).isNotEmpty,
+                                                                            lanesExpanded: widget.expandedLaneLayerIds.contains(
+                                                                              entries[index].layer.id,
+                                                                            ),
+                                                                            onToggleLanes:
+                                                                                widget.onToggleLayerLanes,
+                                                                            // One fold
+                                                                            // twirl, the
+                                                                            // rail's rule
+                                                                            // verbatim.
+                                                                            hasGroupFold:
+                                                                                entries[index].isFolder ||
+                                                                                _hasAttachGroup(
+                                                                                  entries[index].layer,
                                                                                 ),
-                                                                          onToggleGroupFold:
-                                                                              entries[index].isFolder
-                                                                              ? widget.onToggleLayerCollapsed
-                                                                              : widget.onToggleAttachGroup,
-                                                                        ),
-                                                                ),
-                                                            ],
-                                                          ),
+                                                                            groupFoldExpanded:
+                                                                                entries[index].isFolder
+                                                                                ? !entries[index].layer.collapsed
+                                                                                : !widget.collapsedAttachBaseIds.contains(
+                                                                                    entries[index].layer.id,
+                                                                                  ),
+                                                                            onToggleGroupFold:
+                                                                                entries[index].isFolder
+                                                                                ? widget.onToggleLayerCollapsed
+                                                                                : widget.onToggleAttachGroup,
+                                                                          ),
+                                                                  ),
+                                                              ],
+                                                            ),
                                                             Positioned.fill(
                                                               child: TimelineRowSelectionBands(
-                                                                axis: Axis.vertical,
+                                                                axis: Axis
+                                                                    .vertical,
                                                                 selectedFlags: [
                                                                   for (final entry
                                                                       in entries)
-                                                                    widget.selectedRows
+                                                                    widget
+                                                                        .selectedRows
                                                                         .contains(
-                                                                          entry.address,
+                                                                          entry
+                                                                              .address,
                                                                         ),
                                                                 ],
                                                                 rowExtent: _metrics
                                                                     .layerRowHeight,
-                                                                leadingSpacer: 0,
+                                                                leadingSpacer:
+                                                                    0,
                                                                 crossExtent:
                                                                     _naturalHeaderExtent,
                                                               ),
@@ -2786,6 +2783,7 @@ class _XSheetSectionBandCell extends StatelessWidget {
     );
   }
 }
+
 /// 🪦THE NESTING CAP IS GONE (2026-08-29).
 ///
 /// A column used to spell out at most two levels, because indenting along a
@@ -2934,337 +2932,331 @@ class _LayerHeader extends StatelessWidget {
         // way it always has (the rail's rows keep one for the same reason).
         onTap: () {},
         child: Container(
-        width: metrics.layerRowHeight,
-        height: headerExtent,
-        // No padding: a 28px column has none to give, and the shared slot
-        // skeleton already carries the row's gaps.
-        decoration: BoxDecoration(
-          // R5 #17: the SAME wash the rail rows wear, resolved against this
-          // surface's own resting colour so the column stays opaque (the
-          // rail lays its translucent wash over `surface`; the sheet's
-          // headers sit on `surfaceContainerHighest`). One value, one
-          // saturation — the sheet used to paint `secondaryContainer` at
-          // full strength and read a shade louder than the rail for the
-          // same state.
-          //
-          // ㊴: the wash belongs to the ACTIVE column alone. A SELECTED one
-          // takes the ring instead (below) — the sheet is the rail turned on
-          // its side, so it splits the two states the same way.
-          color: active
-              ? Color.alphaBlend(
-                  railSelectedRowColor(colorScheme),
-                  colorScheme.surfaceContainerHighest,
-                )
-              : colorScheme.surfaceContainerHighest,
-          // CONSTANT 1px borders, right/top/bottom only (UI-R10 #20):
-          // side-by-side headers kept doubling their shared seam. The left
-          // line is the neighbor's right (the frame rail closes the first
-          // column).
-          //
-          // R5 #17: and they are constant in COLOUR too now. The accent
-          // outline the active column drew was retired from the timeline
-          // rows long ago (UI-R18 #5 — selection speaks through the
-          // background alone) and survived here alone, which is the whole
-          // shape of this round: one statement, said twice, in two ways.
-          border: Border(
-            right: BorderSide(color: colorScheme.outlineVariant),
-            top: BorderSide(color: colorScheme.outlineVariant),
-            bottom: BorderSide(color: colorScheme.outlineVariant),
+          width: metrics.layerRowHeight,
+          height: headerExtent,
+          // No padding: a 28px column has none to give, and the shared slot
+          // skeleton already carries the row's gaps.
+          decoration: BoxDecoration(
+            // R5 #17: the SAME wash the rail rows wear, resolved against this
+            // surface's own resting colour so the column stays opaque (the
+            // rail lays its translucent wash over `surface`; the sheet's
+            // headers sit on `surfaceContainerHighest`). One value, one
+            // saturation — the sheet used to paint `secondaryContainer` at
+            // full strength and read a shade louder than the rail for the
+            // same state.
+            //
+            // ㊴: the wash belongs to the ACTIVE column alone. A SELECTED one
+            // takes the ring instead (below) — the sheet is the rail turned on
+            // its side, so it splits the two states the same way.
+            color: active
+                ? Color.alphaBlend(
+                    railSelectedRowColor(colorScheme),
+                    colorScheme.surfaceContainerHighest,
+                  )
+                : colorScheme.surfaceContainerHighest,
+            // CONSTANT 1px borders, right/top/bottom only (UI-R10 #20):
+            // side-by-side headers kept doubling their shared seam. The left
+            // line is the neighbor's right (the frame rail closes the first
+            // column).
+            //
+            // R5 #17: and they are constant in COLOUR too now. The accent
+            // outline the active column drew was retired from the timeline
+            // rows long ago (UI-R18 #5 — selection speaks through the
+            // background alone) and survived here alone, which is the whole
+            // shape of this round: one statement, said twice, in two ways.
+            border: Border(
+              right: BorderSide(color: colorScheme.outlineVariant),
+              top: BorderSide(color: colorScheme.outlineVariant),
+              bottom: BorderSide(color: colorScheme.outlineVariant),
+            ),
           ),
-        ),
-        child: Semantics(
-          key: active ? const ValueKey<String>('xsheet-selected-layer') : null,
-          label: active ? 'selected layer' : 'layer',
-          container: true,
-          // R10 R6 — THE RAIL ROW, STOOD UP. This used to be a hand-rolled
-          // two-row box 164px wide, which is why it had no fill-reference
-          // slot (the toggle was Positioned over the name's balance), no
-          // onion, no blend, and a "balance" SizedBox doing arithmetic to
-          // keep the name centred. It is the shared skeleton now, in the
-          // shared order, at the shared extents — the same list the
-          // timeline's rows and the legend above read, running downward.
-          //
-          // `stretch`: a reserved (childless) slot keeps its extent either
-          // way, but a POPULATED one would take its intrinsic width under
-          // the default `center` and could out-grow a 28px column. Stretch
-          // makes every slot exactly one column wide, which is what the
-          // horizontal rail gets from its row height.
-          //
-          // The column is ALWAYS laid out whole. A panel too short for it
-          // used to drop controls (R10 R6), then to scale the whole column
-          // (R6a); it shows a shorter WINDOW now, and the difference is a
-          // cut. Which means the legend beside it and the headers agree by
-          // construction rather than by two mechanisms staying in step —
-          // they did not, and 400px was where they visibly parted.
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ...layerRailLeadingCells(
-                axis: Axis.vertical,
-                // The band is the strip above, not a slot in here.
-                includeSectionSlot: false,
-                laneToggle: showLaneToggle
-                    ? ControlPressClaim(
-                        child: InkWell(
-                          key: ValueKey<String>(
-                            'xsheet-lane-toggle-${layer.id}',
-                          ),
-                          onTap: () => onToggleLanes!(layer.id),
-                          customBorder: const CircleBorder(), // R26 #28
-                          child: Icon(
-                            layerRailTwirlIcon(expanded: lanesExpanded),
-                            size: 16,
-                          ),
-                        ),
-                      )
-                    : null,
-                // R10 R3: the attach ARROW takes the SHEET slot on attach
-                // columns, and the gate matches the rail's — the x-sheet
-                // had no `attachedToLayerId` check, so an attach column
-                // showed a live sheet toggle the rail hides.
-                timesheet: attachArrowPlacement != null
-                    ? LayerAttachArrowCell(
-                        keyPrefix: 'xsheet',
-                        idValue: '${layer.id}',
-                        placement: attachArrowPlacement!,
-                      )
-                    : (layerKindEligibleForTimesheetToggle(layer.kind) &&
-                          layer.attachedToLayerId == null)
-                    ? LayerTimesheetToggleButton(
-                        keyPrefix: 'xsheet',
-                        layerId: layer.id,
-                        onTimesheet: layer.onTimesheet,
-                        onToggle: onToggleLayerTimesheet,
-                      )
-                    : null,
-                mark: LayerMarkChip(
-                  keyPrefix: 'xsheet',
-                  layerId: layer.id,
-                  mark: layer.mark,
-                  onMarkSelected: onLayerMarkSelected,
-                  // The stood-up header: the slot is 14px TALL here, so
-                  // the plate wears no upright text (A6).
+          child: Semantics(
+            key: active
+                ? const ValueKey<String>('xsheet-selected-layer')
+                : null,
+            label: active ? 'selected layer' : 'layer',
+            container: true,
+            // R10 R6 — THE RAIL ROW, STOOD UP. This used to be a hand-rolled
+            // two-row box 164px wide, which is why it had no fill-reference
+            // slot (the toggle was Positioned over the name's balance), no
+            // onion, no blend, and a "balance" SizedBox doing arithmetic to
+            // keep the name centred. It is the shared skeleton now, in the
+            // shared order, at the shared extents — the same list the
+            // timeline's rows and the legend above read, running downward.
+            //
+            // `stretch`: a reserved (childless) slot keeps its extent either
+            // way, but a POPULATED one would take its intrinsic width under
+            // the default `center` and could out-grow a 28px column. Stretch
+            // makes every slot exactly one column wide, which is what the
+            // horizontal rail gets from its row height.
+            //
+            // The column is ALWAYS laid out whole. A panel too short for it
+            // used to drop controls (R10 R6), then to scale the whole column
+            // (R6a); it shows a shorter WINDOW now, and the difference is a
+            // cut. Which means the legend beside it and the headers agree by
+            // construction rather than by two mechanisms staying in step —
+            // they did not, and 400px was where they visibly parted.
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ...layerRailLeadingCells(
                   axis: Axis.vertical,
+                  // The band is the strip above, not a slot in here.
+                  includeSectionSlot: false,
+                  laneToggle: showLaneToggle
+                      ? ControlPressClaim(
+                          child: InkWell(
+                            key: ValueKey<String>(
+                              'xsheet-lane-toggle-${layer.id}',
+                            ),
+                            onTap: () => onToggleLanes!(layer.id),
+                            customBorder: const CircleBorder(), // R26 #28
+                            child: Icon(
+                              layerRailTwirlIcon(expanded: lanesExpanded),
+                              size: 16,
+                            ),
+                          ),
+                        )
+                      : null,
+                  // R10 R3: the attach ARROW takes the SHEET slot on attach
+                  // columns, and the gate matches the rail's — the x-sheet
+                  // had no `attachedToLayerId` check, so an attach column
+                  // showed a live sheet toggle the rail hides.
+                  timesheet: attachArrowPlacement != null
+                      ? LayerAttachArrowCell(
+                          keyPrefix: 'xsheet',
+                          idValue: '${layer.id}',
+                          placement: attachArrowPlacement!,
+                        )
+                      : (layerKindEligibleForTimesheetToggle(layer.kind) &&
+                            layer.attachedToLayerId == null)
+                      ? LayerTimesheetToggleButton(
+                          keyPrefix: 'xsheet',
+                          layerId: layer.id,
+                          onTimesheet: layer.onTimesheet,
+                          onToggle: onToggleLayerTimesheet,
+                        )
+                      : null,
+                  mark: LayerMarkChip(
+                    keyPrefix: 'xsheet',
+                    layerId: layer.id,
+                    mark: layer.mark,
+                    onMarkSelected: onLayerMarkSelected,
+                    // The stood-up header: the slot is 14px TALL here, so
+                    // the plate wears no upright text (A6).
+                    axis: Axis.vertical,
+                  ),
+                  typeButton: LayerTypeButton(
+                    keyPrefix: 'xsheet',
+                    idValue: '${layer.id}',
+                    kind: layer.kind,
+                    folderCollapsed: layer.collapsed,
+                    onTap: () => onSelectLayer(layer.id),
+                  ),
                 ),
-                typeButton: LayerTypeButton(
-                  keyPrefix: 'xsheet',
-                  idValue: '${layer.id}',
-                  kind: layer.kind,
-                  folderCollapsed: layer.collapsed,
-                  onTap: () => onSelectLayer(layer.id),
-                ),
-              ),
-              // The NAME takes the remainder, exactly as the row's
-              // `Expanded` does — written vertically, because a 28px column
-              // is a paper timesheet column and that is how one is read.
-              // 🚨★★★THE SAME NESTING THE RAIL DOES, TRANSPOSED. 유저
-              // 2026-08-27: 「x시트 **로직적으로 통일**하는거 절대잊지말고」.
-              //
-              // Depth used to be cells in the LEADING run, which on a column
-              // ran down the very length the name is written in — so it had
-              // a two-level cap or the name clipped to nothing. It is a
-              // guide per level inside the name now, 8px instead of 16, and
-              // the cap is gone with the run.
-              if (depth > 0)
-                SizedBox(
-                  height: layerRailNameIndent(depth),
-                  child: Column(
-                    children: [
-                      for (var level = 0; level < depth; level += 1)
-                        SizedBox(
-                          height: layerRailGuideWidth,
-                          child: Center(
-                            child: SizedBox(
-                              height: 1,
-                              width: double.infinity,
-                              child: ColoredBox(
-                                color: colorScheme.outlineVariant,
+                // The NAME takes the remainder, exactly as the row's
+                // `Expanded` does — written vertically, because a 28px column
+                // is a paper timesheet column and that is how one is read.
+                // 🚨★★★THE SAME NESTING THE RAIL DOES, TRANSPOSED. 유저
+                // 2026-08-27: 「x시트 **로직적으로 통일**하는거 절대잊지말고」.
+                //
+                // Depth used to be cells in the LEADING run, which on a column
+                // ran down the very length the name is written in — so it had
+                // a two-level cap or the name clipped to nothing. It is a
+                // guide per level inside the name now, 8px instead of 16, and
+                // the cap is gone with the run.
+                if (depth > 0)
+                  SizedBox(
+                    height: layerRailNameIndent(depth),
+                    child: Column(
+                      children: [
+                        for (var level = 0; level < depth; level += 1)
+                          SizedBox(
+                            height: layerRailGuideWidth,
+                            child: Center(
+                              child: SizedBox(
+                                height: 1,
+                                width: double.infinity,
+                                child: ColoredBox(
+                                  color: colorScheme.outlineVariant,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              Expanded(
-                child: KeyedSubtree(
-                  key: ValueKey<String>('xsheet-layer-name-${layer.id}'),
-                  // F-26: the name is not a second place to select from —
-                  // see the rail's own name area for the whole reason. The
-                  // header's press-seek above already covers this pixel.
-                  //
-                  // Selection reads by COLOR only (user rule): no bold flip
-                  // on the active column's name.
-                  child: ClipRect(
-                    child: VerticalWritingText(
-                      text: layer.name,
-                      // A name you READ, so the letters stand up and the
-                      // column begins at the top — the rail's left-aligned
-                      // name, transposed (user, 2026-08-08). It used to lie
-                      // down AND float in the middle of its own column.
-                      latinForm: VerticalLatinForm.upright,
-                      mainAlignment: 0,
-                      style: layerRowNameStyle(
-                        context,
-                      ).copyWith(color: colorScheme.onSurface),
+                Expanded(
+                  child: KeyedSubtree(
+                    key: ValueKey<String>('xsheet-layer-name-${layer.id}'),
+                    // F-26: the name is not a second place to select from —
+                    // see the rail's own name area for the whole reason. The
+                    // header's press-seek above already covers this pixel.
+                    //
+                    // Selection reads by COLOR only (user rule): no bold flip
+                    // on the active column's name.
+                    child: ClipRect(
+                      child: VerticalWritingText(
+                        text: layer.name,
+                        // A name you READ, so the letters stand up and the
+                        // column begins at the top — the rail's left-aligned
+                        // name, transposed (user, 2026-08-08). It used to lie
+                        // down AND float in the middle of its own column.
+                        latinForm: VerticalLatinForm.upright,
+                        mainAlignment: 0,
+                        style: layerRowNameStyle(
+                          context,
+                        ).copyWith(color: colorScheme.onSurface),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              // The fold twirl, transposed: the rail's "right of the name"
-              // is the column's "below the name" (R5 #2). Same key grammar
-              // as the rail so a folder and an attach base read alike here
-              // too.
-              //
-              // F-29: the SLOT is always here. A column that folds nothing
-              // used to drop it, which pulled every cell below up by 20px —
-              // the same fixed-position complaint the rail's twirl got, one
-              // axis over.
-              SizedBox(
-                height: layerLaneToggleSlotWidth,
-                child: hasGroupFold && onToggleGroupFold != null
-                    ? ControlPressClaim(
-                        child: InkWell(
-                          key: ValueKey<String>(
-                            layerKindGroupsLayers(layer.kind)
-                                ? 'xsheet-folder-twirl-${layer.id}'
-                                : 'xsheet-attach-twirl-${layer.id}',
+                // The fold twirl, transposed: the rail's "right of the name"
+                // is the column's "below the name" (R5 #2). Same key grammar
+                // as the rail so a folder and an attach base read alike here
+                // too.
+                //
+                // F-29: the SLOT is always here. A column that folds nothing
+                // used to drop it, which pulled every cell below up by 20px —
+                // the same fixed-position complaint the rail's twirl got, one
+                // axis over.
+                SizedBox(
+                  height: layerLaneToggleSlotWidth,
+                  child: hasGroupFold && onToggleGroupFold != null
+                      ? ControlPressClaim(
+                          child: InkWell(
+                            key: ValueKey<String>(
+                              layerKindGroupsLayers(layer.kind)
+                                  ? 'xsheet-folder-twirl-${layer.id}'
+                                  : 'xsheet-attach-twirl-${layer.id}',
+                            ),
+                            onTap: () => onToggleGroupFold!(layer.id),
+                            customBorder: const CircleBorder(), // R26 #28
+                            child: Icon(
+                              layerRailTwirlIcon(expanded: groupFoldExpanded),
+                              size: 16,
+                            ),
                           ),
-                          onTap: () => onToggleGroupFold!(layer.id),
-                          customBorder: const CircleBorder(), // R26 #28
-                          child: Icon(
-                            layerRailTwirlIcon(expanded: groupFoldExpanded),
-                            size: 16,
-                          ),
-                        ),
-                      )
-                    : null,
-              ),
-              ...layerRailTrailingCells(
-                axis: Axis.vertical,
-                hasOnionColumn: onToggleLayerOnionSkin != null,
-                hasBlendColumn: onLayerBlendModeSelected != null,
-                // R20-C2: the fill-reference toggle finally has a SLOT
-                // instead of an overlay. Drawing columns only.
-                fillReference:
-                    onToggleLayerFillReference != null &&
-                        layer.kind == LayerKind.animation
-                    ? ControlPressClaim(
-                        child: IconButton(
-                          key: ValueKey<String>(
-                            'xsheet-layer-fill-reference-${layer.id}',
-                          ),
+                        )
+                      : null,
+                ),
+                ...layerRailTrailingCells(
+                  axis: Axis.vertical,
+                  hasOnionColumn: onToggleLayerOnionSkin != null,
+                  hasBlendColumn: onLayerBlendModeSelected != null,
+                  // R20-C2: the fill-reference toggle finally has a SLOT
+                  // instead of an overlay. Drawing columns only.
+                  fillReference:
+                      onToggleLayerFillReference != null &&
+                          layer.kind == LayerKind.animation
+                      ? AppIconButton(
+                          keyValue: 'xsheet-layer-fill-reference-${layer.id}',
                           tooltip: layer.isFillReference
                               ? 'Fill reference layer (on)'
                               : 'Fill reference layer',
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints.tightFor(
+                          // The x-sheet header's slot, promised by the column
+                          // skeleton before the button existed.
+                          size: const AppIconButtonBox(
                             width: 20,
                             height: 20,
+                            iconSize: 13,
                           ),
                           icon: Icon(
                             Icons.format_color_fill,
-                            size: 13,
                             color: layer.isFillReference
                                 ? colorScheme.primary
                                 : colorScheme.outline.withValues(alpha: 0.45),
                           ),
                           onPressed: () =>
                               onToggleLayerFillReference!(layer.id),
-                        ),
-                      )
-                    : null,
-                // Attach rows and their 공정 organizer folder hide the
-                // switch in BOTH orientations: they wear their base's fx,
-                // so a flip here would burn an undo step writing a flag
-                // nothing reads.
-                fx:
-                    onToggleLayerFx != null &&
-                        layerKindShowsFxToggle(layer.kind) &&
-                        !wearsBaseComposite
-                    ? FxToggleButton(
-                        keyValue: 'xsheet-layer-fx-${layer.id}',
-                        state: fxState,
-                        onToggle: () => onToggleLayerFx!(layer.id),
-                      )
-                    : null,
-                // Onion (UI-R17 #5) — the sheet went without it until
-                // R10 R6's "싹다 넣어".
-                onion:
-                    onToggleLayerOnionSkin != null &&
-                        layerKindAcceptsBrushInput(layer.kind)
-                    ? ControlPressClaim(
-                        child: IconButton(
-                          key: ValueKey<String>(
-                            'xsheet-layer-onion-${layer.id}',
-                          ),
+                        )
+                      : null,
+                  // Attach rows and their 공정 organizer folder hide the
+                  // switch in BOTH orientations: they wear their base's fx,
+                  // so a flip here would burn an undo step writing a flag
+                  // nothing reads.
+                  fx:
+                      onToggleLayerFx != null &&
+                          layerKindShowsFxToggle(layer.kind) &&
+                          !wearsBaseComposite
+                      ? FxToggleButton(
+                          keyValue: 'xsheet-layer-fx-${layer.id}',
+                          state: fxState,
+                          onToggle: () => onToggleLayerFx!(layer.id),
+                        )
+                      : null,
+                  // Onion (UI-R17 #5) — the sheet went without it until
+                  // R10 R6's "싹다 넣어".
+                  onion:
+                      onToggleLayerOnionSkin != null &&
+                          layerKindAcceptsBrushInput(layer.kind)
+                      ? AppIconButton(
+                          keyValue: 'xsheet-layer-onion-${layer.id}',
                           tooltip: onionSkinEnabled
                               ? 'Onion skin (on)'
                               : 'Onion skin',
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints.tightFor(
+                          size: const AppIconButtonBox(
                             width: layerOnionSlotWidth,
                             height: layerOnionSlotWidth,
+                            iconSize: 15,
                           ),
                           icon: Icon(
                             Icons.filter_none,
-                            size: 15,
                             color: onionSkinEnabled
                                 ? colorScheme.primary
                                 : colorScheme.outline.withValues(alpha: 0.45),
                           ),
                           onPressed: () => onToggleLayerOnionSkin!(layer.id),
-                        ),
-                      )
-                    : null,
-                visibility: LayerVisibilityToggleButton(
-                  keyValue: 'xsheet-layer-visibility-${layer.id}',
-                  isVisible: layer.isVisible,
-                  onToggle: () => onToggleLayerVisibility(layer.id),
-                  size: layerVisibilitySlotWidth,
-                  iconSize: 16,
+                        )
+                      : null,
+                  visibility: LayerVisibilityToggleButton(
+                    keyValue: 'xsheet-layer-visibility-${layer.id}',
+                    isVisible: layer.isVisible,
+                    onToggle: () => onToggleLayerVisibility(layer.id),
+                    size: layerVisibilitySlotWidth,
+                    iconSize: 16,
+                  ),
+                  // SE columns carry the mute speaker — the mixer's door.
+                  mute: layer.kind == LayerKind.se && onOpenLayerMixer != null
+                      ? LayerMuteToggleButton(
+                          keyValue: 'xsheet-layer-mute-${layer.id}',
+                          muted: layer.muted,
+                          soloed: isLayerSoloed,
+                          width: metrics.layerRowHeight,
+                          height: layerMuteSlotWidth,
+                          onOpenMixer: (anchorContext) =>
+                              onOpenLayerMixer!(anchorContext, layer.id),
+                        )
+                      : null,
+                  // The camera column's slider drives the camera-view DIM
+                  // opacity (unified layer controls). Wrapped in the
+                  // session's opacity-drag preview (UI-R6 #2) so a
+                  // master-bar sweep updates it live.
+                  opacity: layerKindShowsOpacityControl(layer.kind)
+                      ? Center(child: _opacityField(layer))
+                      : null,
+                  // R27 #6: the BLEND chip, the sheet's copy of the rail's.
+                  blend:
+                      onLayerBlendModeSelected != null &&
+                          layerKindShowsBlendControl(layer.kind)
+                      ? LayerBlendModeChip(
+                          axis: Axis.vertical,
+                          keyValue: 'xsheet-layer-blend-${layer.id}',
+                          optionKeyPrefix: 'xsheet-layer-blend-option-',
+                          blendMode: layer.blendMode,
+                          language: blendLanguage,
+                          isGroup: layerKindGroupsLayers(layer.kind),
+                          subject: layerKindGroupsLayers(layer.kind)
+                              ? 'Folder'
+                              : 'Layer',
+                          onBlendModeSelected: (mode) =>
+                              onLayerBlendModeSelected!(layer.id, mode),
+                        )
+                      : null,
                 ),
-                // SE columns carry the mute speaker — the mixer's door.
-                mute: layer.kind == LayerKind.se && onOpenLayerMixer != null
-                    ? LayerMuteToggleButton(
-                        keyValue: 'xsheet-layer-mute-${layer.id}',
-                        muted: layer.muted,
-                        soloed: isLayerSoloed,
-                        width: metrics.layerRowHeight,
-                        height: layerMuteSlotWidth,
-                        onOpenMixer: (anchorContext) =>
-                            onOpenLayerMixer!(anchorContext, layer.id),
-                      )
-                    : null,
-                // The camera column's slider drives the camera-view DIM
-                // opacity (unified layer controls). Wrapped in the
-                // session's opacity-drag preview (UI-R6 #2) so a
-                // master-bar sweep updates it live.
-                opacity: layerKindShowsOpacityControl(layer.kind)
-                    ? Center(child: _opacityField(layer))
-                    : null,
-                // R27 #6: the BLEND chip, the sheet's copy of the rail's.
-                blend:
-                    onLayerBlendModeSelected != null &&
-                        layerKindShowsBlendControl(layer.kind)
-                    ? LayerBlendModeChip(
-                        axis: Axis.vertical,
-                        keyValue: 'xsheet-layer-blend-${layer.id}',
-                        optionKeyPrefix: 'xsheet-layer-blend-option-',
-                        blendMode: layer.blendMode,
-                        language: blendLanguage,
-                        isGroup: layerKindGroupsLayers(layer.kind),
-                        subject: layerKindGroupsLayers(layer.kind)
-                            ? 'Folder'
-                            : 'Layer',
-                        onBlendModeSelected: (mode) =>
-                            onLayerBlendModeSelected!(layer.id, mode),
-                      )
-                    : null,
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
         ),
       ),
     );

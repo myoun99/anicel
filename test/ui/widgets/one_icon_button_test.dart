@@ -34,23 +34,25 @@ void main() {
   ///
   /// ⛔ADDING A LINE HERE IS A DECISION, not a formality: it says the parent
   /// owns the box. If the box is yours to pick, use a token.
-  const ledger = <String, String>{
-    // The timeline rail's slots are 20–22px wide and 26 tall
-    // (`layerVisibilitySlotWidth`, `layerOnionSlotWidth`), and the smallest
-    // token box is 22×20 with a 15px glyph — nothing fits without either
-    // changing the rail or shrinking the glyph. ⚠️These are already SHARED
-    // widgets used in 3–5 places each, so the law's goal (one place decides)
-    // is met; what is left is the wrapper, and the rail is why.
-    // 🚨And the rail is fragile: [[widget-between-slot-and-plate]] is the
-    // record of a slot change collapsing 100+ tests that never mention it.
-    'lib/src/ui/timeline/layer_label_controls.dart': 'rail slot 22x26',
-    'lib/src/ui/timeline/timeline_layer_controls_row.dart': 'rail slot',
-    'lib/src/ui/timeline/xsheet_timeline_grid.dart': 'x-sheet header slot 20',
-    // The blend-lock's group promised 32px and says so: "The 32px box IS the
-    // target: M3 would otherwise inflate to 48 and blow the width this group
-    // promised to hold."
-    'lib/src/ui/menu/editor_top_strip.dart': 'strip promised 32',
-  };
+  /// 🏁**IT IS EMPTY, and that is the round's result** (2026-08-29).
+  ///
+  /// It held four files whose only reason to hand-roll was the BOX: the
+  /// rail's 20–22px slots and the top strip's promised 32. `AppIconButton`
+  /// takes an [AppIconButtonBox] now, so the parent still owns the number
+  /// and the app owns everything else — the shape, the selection rule, the
+  /// hit-target policy and the press claim.
+  ///
+  /// 🧪The box was the whole risk, so the box is what was measured: **44
+  /// buttons across both rails and both orientations, byte-identical
+  /// rectangles before and after.** [[widget-between-slot-and-plate]] is the
+  /// record of what a moved slot costs, and nothing moved.
+  ///
+  /// ⛔A NEW LINE HERE IS NOW A BIGGER DECISION THAN IT WAS. While four
+  /// files sat in this map, adding a fifth was joining a crowd; with the map
+  /// empty, it is the first exception again — and there is no box argument
+  /// left to make, because a caller-owned box is no longer a reason to
+  /// hand-roll.
+  const ledger = <String, String>{};
 
   test('a hand-rolled IconButton argues for itself in the ledger', () {
     final offenders = <String>[];
