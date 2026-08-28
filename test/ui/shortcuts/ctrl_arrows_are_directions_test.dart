@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart' show SingleActivator;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 
@@ -30,7 +29,7 @@ void main() {
 
   Set<LogicalKeyboardKey> triggersOf(String id) => {
     for (final a in definitionFor(id).defaultActivators)
-      if (a is SingleActivator) a.trigger,
+      a.trigger,
   };
 
   test('each Ctrl+arrow has its own action, and no other key rides along', () {
@@ -48,7 +47,7 @@ void main() {
         reason: '$id is one key; a second one here would be a unit sharing '
             'a direction\'s action, which is the bug F-28 split apart',
       );
-      final only = activators.single as SingleActivator;
+      final only = activators.single;
       expect(only.trigger, key);
       expect(only.control, isTrue, reason: 'the plain arrow is a nudge');
     });
