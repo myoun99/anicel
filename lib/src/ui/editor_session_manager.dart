@@ -18138,6 +18138,27 @@ class EditorSessionManager extends ChangeNotifier {
   /// [selectPreviousDrawing] for the rule.
   void selectNextDrawing() => _flipRow(forward: true);
 
+  /// 🚨★★★플립이 **어디에 내리는가** — 한 곳에서 정한다.
+  ///
+  /// **프레임 축은 끝이 없다.** 타임라인은 스크롤된 만큼 종이를 깔고, 컷 끝은
+  /// 경계선으로 표시하며 그 너머 칸은 흐리게 그린다 — 그러니 오른쪽으로는
+  /// 바닥나지 않는다. 왼쪽은 **프레임 0 이 바닥**이고, 그래서 「다음 컷의 어느
+  /// 행에 내리나」를 아무도 안 묻는다.
+  ///
+  /// ⛔F-44: 레이어 행은 이 법을 갖고 있었는데 **레인(fx) 행만
+  /// [selectNextFrame] 을 불렀고**, 그건 `cut.duration - 1` 에서 멈춘다.
+  /// 유저: 「fx 헤더, 멤버 행에 서있을때 화살표 플립으로 **컷 길이 넘어가는게
+  /// 불가능** … 또 몇번째인지 모를 지긋지긋한 **통일미스**」. 맞았다.
+  ///
+  /// ⚠️[selectNextFrame]·[selectPreviousFrame] 은 **컷 안에 갇힌 한 프레임
+  /// 이동**이고 그건 그것대로 옳다(플립이 아닌 호출자가 쓴다). 플립은 이쪽이다.
+  void _flipToFrame(int landing) {
+    final floored = landing < 0 ? 0 : landing;
+    if (floored != _timelineController.currentFrameIndex) {
+      selectFrameIndex(floored);
+    }
+  }
+
   void _flipRow({required bool forward}) {
     // 🚨F-13 (유저 2026-08-24): 「선택범위로 선택하고 취소되는 행동
     // 늘리고싶음. 지금 선택하고 플립등으로 프레임 이동하면 취소안되고 레이어
@@ -18173,11 +18194,12 @@ class EditorSessionManager extends ChangeNotifier {
         // where there are no blocks") rather than an exception written for
         // it. Attaching the key jump later changes this arm and nothing
         // else.
-        if (forward) {
-          selectNextFrame();
-        } else {
-          selectPreviousFrame();
-        }
+        // F-44: **같은 착지 규칙**을 쓴다 — 여기가 [selectNextFrame] 을 불러
+        // 컷 끝에 갇혀 있던 자리다. 한 프레임 걷는 것은 그대로고, 그 한
+        // 프레임이 어디에 내리는지를 이제 두 행이 같이 답한다.
+        _flipToFrame(
+          _timelineController.currentFrameIndex + (forward ? 1 : -1),
+        );
     }
   }
 
@@ -18228,10 +18250,7 @@ class EditorSessionManager extends ChangeNotifier {
     // ⛔The clamp is HERE and not in [flipColumnStep], which is unbounded on
     // purpose — "callers clamp, because only they know which axis they were
     // counting on" is that function's own rule.
-    final landing = next < 0 ? 0 : next;
-    if (landing != current) {
-      selectFrameIndex(landing);
-    }
+    _flipToFrame(next);
   }
 
   /// The V-row half: the track's CUTS are its columns, on the global axis.
