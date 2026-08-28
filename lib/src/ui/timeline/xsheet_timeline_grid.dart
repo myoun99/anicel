@@ -3052,6 +3052,35 @@ class _LayerHeader extends StatelessWidget {
               // The NAME takes the remainder, exactly as the row's
               // `Expanded` does — written vertically, because a 28px column
               // is a paper timesheet column and that is how one is read.
+              // 🚨★★★THE SAME NESTING THE RAIL DOES, TRANSPOSED. 유저
+              // 2026-08-27: 「x시트 **로직적으로 통일**하는거 절대잊지말고」.
+              //
+              // Depth used to be cells in the LEADING run, which on a column
+              // ran down the very length the name is written in — so it had
+              // a two-level cap or the name clipped to nothing. It is a
+              // guide per level inside the name now, 8px instead of 16, and
+              // the cap is gone with the run.
+              if (depth > 0)
+                SizedBox(
+                  height: layerRailNameIndent(depth),
+                  child: Column(
+                    children: [
+                      for (var level = 0; level < depth; level += 1)
+                        SizedBox(
+                          height: layerRailGuideWidth,
+                          child: Center(
+                            child: SizedBox(
+                              height: 1,
+                              width: double.infinity,
+                              child: ColoredBox(
+                                color: colorScheme.outlineVariant,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               Expanded(
                 child: KeyedSubtree(
                   key: ValueKey<String>('xsheet-layer-name-${layer.id}'),

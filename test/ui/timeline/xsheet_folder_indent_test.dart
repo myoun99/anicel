@@ -73,10 +73,13 @@ void main() {
   double nameRun(WidgetTester tester, String id) => tester
       .getSize(find.byKey(ValueKey<String>('xsheet-layer-name-$id')))
       .height;
-
-  testWidgets('nesting eats the name\'s own run, and stops eating at the cap', (
-    tester,
-  ) async {
+  testWidgets('🆕nesting costs the name a GUIDE per level, and there is no '
+      'cap because there is no run to cap', (tester) async {
+    // 🪦This used to assert a two-level cap: depth was cells in the leading
+    // run, which on a column runs down the very length the name is written
+    // in, so a third level left nothing. 2026-08-29 moved depth into the
+    // name as an 8px guide per level — the same move the rail made — and
+    // the cap went with the run.
     await pumpXSheet(tester);
 
     final flat = nameRun(tester, 'top');
@@ -84,23 +87,22 @@ void main() {
     final two = nameRun(tester, 'inner2');
     final three = nameRun(tester, 'inner3');
 
-    expect(
-      one,
-      lessThan(flat),
-      reason: 'one level of nesting costs the name one slot',
-    );
-    expect(two, lessThan(one), reason: 'and the second costs another');
+    expect(one, lessThan(flat), reason: '한 겹이 가이드 하나만큼 먹는다');
+    expect(two, lessThan(one), reason: '두 겹째도 같은 만큼');
     expect(
       three,
-      moreOrLessEquals(two),
-      reason:
-          'past the cap the arrow alone says "nested" — the name must not '
-          'clip to nothing on a deep tree',
+      lessThan(two),
+      reason: '🚨cap 이 없다 — 세 겹째도 계속 먹는다',
+    );
+    expect(
+      flat - one,
+      moreOrLessEquals(two - three, epsilon: 0.5),
+      reason: '한 겹의 값은 어느 깊이에서나 같다',
     );
     expect(
       three,
       greaterThan(0),
-      reason: 'a column that cannot show its name cannot be identified',
+      reason: '이름을 못 보이는 열은 식별할 수 없다',
     );
   });
 }
