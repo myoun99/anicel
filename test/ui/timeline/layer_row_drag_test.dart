@@ -175,6 +175,43 @@ Project _emptyFolderProject() {
   );
 }
 
+/// F-50: a folder WITH a member, for the drop the user says went missing —
+/// 「일반폴더를 레이어에 어태치장착시키는거」.
+Project _folderWithMemberProject() {
+  return Project(
+    id: const ProjectId('folder-mount-project'),
+    name: 'Folder Mount',
+    createdAt: DateTime.utc(2026, 8, 29),
+    tracks: [
+      Track(
+        id: const TrackId('drag-track'),
+        name: 'Video Track',
+        cuts: [
+          Cut(
+            id: const CutId('drag-cut'),
+            name: 'Drag Cut',
+            duration: 12,
+            canvasSize: const CanvasSize(width: 1280, height: 720),
+            camera: CutCamera.empty(),
+            layers: [
+              Layer(id: const LayerId('a'), name: 'A', frames: const []),
+              Layer(id: const LayerId('b'), name: 'B', frames: const []),
+              Layer(id: const LayerId('c'), name: 'C', frames: const []),
+              Layer(
+                id: const LayerId('m'),
+                name: 'M',
+                frames: const [],
+                folderId: const LayerId('f'),
+              ),
+              createFolderLayer(id: const LayerId('f'), name: 'F'),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
 void main() {
   testWidgets('dragging a rail row up moves it up the stack', (tester) async {
     await _pump(tester);
@@ -677,6 +714,48 @@ void main() {
       badgeRect.center.dy,
       moreOrLessEquals(rowTop, epsilon: 1.5),
       reason: 'the badge straddles the line rather than sitting off it',
+    );
+  });
+
+  testWidgets('F-50: a plain FOLDER dropped on a drawing row mounts it — '
+      '유저 2026-08-28: 「일반폴더를 어태치 장착하는 기능이 사라졌어」', (
+    tester,
+  ) async {
+    await _pump(tester, project: _folderWithMemberProject());
+    final session = _sessionOf(tester);
+    expect(_layerOf(session, 'm').attachedToLayerId, isNull);
+
+    final row = find.byKey(const ValueKey<String>('timeline-folder-row-f'));
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    // ⑨'s select first. The folder row's LEFT edge is buttons, so the grab
+    // goes through the middle of the row like the pointer would.
+    final rect = tester.getRect(row);
+    final grab = Offset(rect.left + rect.width * 0.3, rect.center.dy);
+    await tester.dragFrom(grab, const Offset(30, 0));
+    await tester.pumpAndSettle();
+    expect(session.rowSelection.value, isNotEmpty);
+
+    // Rail top-down: F, M, C, B, A. Three rows down from F's centre puts
+    // the pointer in the MIDDLE of B — the on-row band.
+    final gesture = await tester.startGesture(grab);
+    await tester.pump(const Duration(milliseconds: 16));
+    await gesture.moveBy(const Offset(0, 28 * 3));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-row-swallow-b')),
+      findsOneWidget,
+      reason: 'B is what would swallow the folder, so B is what lights up',
+    );
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      _layerOf(session, 'm').attachedToLayerId,
+      const LayerId('b'),
+      reason: "the folder becomes B's organizer, so its member rides B",
     );
   });
 }
