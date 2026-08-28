@@ -29,6 +29,10 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 /// 보고싶다는게 래스터랑 다른점」. That is the assertion that matters most
 /// here — a change that improved the tiny case by blurring the ordinary
 /// one would have traded away the thing being protected.
+/// Source with every run of whitespace removed, so an assertion about
+/// WHAT the code says cannot fail over HOW it is wrapped.
+String _squash(String s) => s.replaceAll(RegExp(r'\s+'), '');
+
 void main() {
   /// Mean coverage across a bitmap — the number that decides whether a
   /// tinted glyph reads as a mark or as nothing.
@@ -109,20 +113,24 @@ void main() {
     // private, so this asserts the property that makes it safe: the
     // oversample only turns on BELOW the legible size, and the ordinary
     // path multiplies by exactly 1.
-    final source = File(
-      'lib/src/ui/timeline/timeline_grid_tile_store.dart',
-    ).readAsStringSync();
+    //
+    // ⚠️WHITESPACE-FREE. The first version matched a multi-line literal and
+    // answered differently on Windows (CRLF) and CI (LF) — a test that
+    // depends on line endings measures the checkout, not the code.
+    final source = _squash(
+      File(
+        'lib/src/ui/timeline/timeline_grid_tile_store.dart',
+      ).readAsStringSync(),
+    );
     expect(
-      source.contains(
-        'if (size >= _legibleBakeSize) {\n      return 1;\n    }',
-      ),
+      source.contains('if(size>=_legibleBakeSize){return1;}'),
       isTrue,
       reason:
           'a glyph the rasteriser already draws well is baked as it '
           'always was — zoom-in keeps its pixels',
     );
     expect(
-      source.contains('bakeScale == 1\n          ? big'),
+      source.contains('bakeScale==1?big'),
       isTrue,
       reason:
           'and at scale 1 the alpha is the bake itself, not a filtered '
