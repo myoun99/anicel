@@ -51,6 +51,7 @@ import 'session/drags/cut_move_drag.dart';
 import 'session/drags/drawing_block_move_drag.dart';
 import 'session/drags/lane_range_move_drag.dart';
 import 'session/drags/movie_end_drag.dart';
+import 'session/attach_fx_confirm.dart';
 import 'session/drags/row_order_drag.dart';
 import 'session/drags/run_frames_add_drag.dart';
 import 'session/drags/transition_edge_drag.dart';
@@ -5931,9 +5932,40 @@ class EditorSessionManager extends ChangeNotifier {
     LayerId targetId,
   ) => _rowOrderDrag?.updateLayerRowDropOnRow(displayLayers, slot, targetId);
 
+  /// The channel the workspace listens on when a drop wants a yes/no.
+  ///
+  /// 🚨Owned here rather than by a surface: TWO of them end a row drag, and
+  /// a dialog raised by whichever happened to be on screen is a second copy
+  /// of the sentence waiting to drift ([AttachFxConfirmController]).
+  final AttachFxConfirmController attachFxConfirm = AttachFxConfirmController();
+
   void endLayerRowDrag() {
-    _rowOrderDrag?.commit();
-    _rowOrderDrag = null;
+    final drag = _rowOrderDrag;
+    if (drag == null) {
+      return;
+    }
+    // ⚠️Asked BEFORE the commit, because committing is what destroys the fx
+    // — and asked off the PLAN, so a drop that mounts nothing never opens a
+    // dialog no matter what the dragged rows carry.
+    final losing = drag.fxLostByThisDrop();
+    if (losing.isEmpty) {
+      _rowOrderDrag = null;
+      drag.commit();
+      return;
+    }
+    // The drag stays held until the answer arrives: nothing is committed and
+    // nothing is discarded while the question is on screen.
+    attachFxConfirm.ask(
+      rowNames: [for (final layer in losing) layer.name],
+      answer: (proceed) {
+        _rowOrderDrag = null;
+        if (proceed) {
+          drag.commit();
+        } else {
+          drag.cancel();
+        }
+      },
+    );
   }
 
   /// The effect chain a lane/fx-header address names: a real layer's, or the
