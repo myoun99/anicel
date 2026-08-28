@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart' show AppLanguage;
+import '../input/control_press_claim.dart';
 import '../input/value_control_pointers.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer_blend_mode.dart';
@@ -350,7 +351,7 @@ class LayerBlendModeChip extends StatelessWidget {
       // Centered in the slot so the button lines up under the legend's
       // BLND column header (R28 #2).
       child: Center(
-        child: RailControlPointer(child: PanelFlyoutButton(
+        child: ControlPressClaim(child: PanelFlyoutButton(
           key: ValueKey<String>(keyValue),
           axis: axis,
           label: blendMode.labelFor(language),
@@ -511,7 +512,7 @@ class LayerVisibilityToggleButton extends StatelessWidget {
     return SizedBox(
       width: size,
       height: 26,
-      child: RailControlPointer(child: IconButton(
+      child: ControlPressClaim(child: IconButton(
         key: ValueKey<String>(keyValue),
         tooltip: isVisible ? 'Hide $subject' : 'Show $subject',
         padding: EdgeInsets.zero,
@@ -565,7 +566,7 @@ class LayerMuteToggleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return RailControlPointer(child: IconButton(
+    return ControlPressClaim(child: IconButton(
       key: ValueKey<String>(keyValue),
       // One meaning on all three rails, so the label is the control's, not
       // the host's. It also carries the button's semantics name — the
@@ -626,7 +627,7 @@ class FxToggleButton extends StatelessWidget {
     return SizedBox(
       width: size,
       height: 26,
-      child: RailControlPointer(child: IconButton(
+      child: ControlPressClaim(child: IconButton(
         key: ValueKey<String>(keyValue),
         tooltip: switch (state) {
           LayerFxState.mixed => 'Bypass all $subject FX (some are off)',
@@ -771,7 +772,7 @@ class LayerTimesheetToggleButton extends StatelessWidget {
     return SizedBox(
       width: layerTimesheetSlotWidth,
       height: layerTimesheetSlotWidth,
-      child: RailControlPointer(child: IconButton(
+      child: ControlPressClaim(child: IconButton(
         key: ValueKey<String>('$keyPrefix-layer-timesheet-$layerId'),
         tooltip: onTimesheet ? 'Remove from timesheet' : 'Add to timesheet',
         padding: EdgeInsets.zero,
@@ -936,7 +937,7 @@ class LayerMarkChip extends StatelessWidget {
   /// a take is an ORDER, not a kind, and nine colours would fight the
   /// stage's.
   Widget _takeTrigger(BuildContext context) {
-    return RailControlPointer(
+    return ControlPressClaim(
       child: PanelFlyoutTrigger(
         key: ValueKey<String>('$keyPrefix-layer-take-$layerId'),
         tooltip: AppText.strings.tlLayerTake,
@@ -968,7 +969,7 @@ class LayerMarkChip extends StatelessWidget {
     // because its rows name COLOURS, and the shared list had no way to show
     // one — see [PanelFlyoutItem.swatch]. Its own row height was 36, a sixth
     // number in a menu system that was supposed to have one.
-    return RailControlPointer(child: PanelFlyoutTrigger(
+    return ControlPressClaim(child: PanelFlyoutTrigger(
       key: ValueKey<String>('$keyPrefix-layer-mark-$layerId'),
       tooltip: AppText.strings.tlLayerMark,
       // ZERO, not the trigger's usual 8: the mark sits in a fixed
@@ -1245,7 +1246,7 @@ class _LabelPlate extends StatelessWidget {
 /// 🚨I-1 (유저 2026-08-24): 「레이어의 버튼 조작하는거 **일괄조작**하는 기능
 /// … 탭 다운 한 채로 아래로 드래그하면 **해당 다른 레이어도 버튼조작**되도록」.
 ///
-/// ⛔[RailControlPointer]'s claim is the WEAK one on purpose, and the reason
+/// ⛔[ControlPressClaim]'s claim is the WEAK one on purpose, and the reason
 /// is written where it lives: 「a button owns its TAP; it does not own drags
 /// — claiming the pointer outright broke a real one, because the
 /// storyboard's row-order drag deliberately starts ON the visibility
@@ -1273,38 +1274,17 @@ class RailSwipeColumnPointer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Listener(
-      onPointerDown: (event) {
-        claimTapForControl(event.pointer);
-        claimPointerForValueControl(event.pointer);
-      },
-      onPointerUp: (event) {
-        releaseTapForControl(event.pointer);
-        releasePointerForValueControl(event.pointer);
-      },
-      onPointerCancel: (event) {
-        releaseTapForControl(event.pointer);
-        releasePointerForValueControl(event.pointer);
-      },
-      child: child,
-    );
-  }
-}
-
-class RailControlPointer extends StatelessWidget {
-  const RailControlPointer({super.key, required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Listener(
-      onPointerDown: (event) => claimTapForControl(event.pointer),
-      onPointerUp: (event) => releaseTapForControl(event.pointer),
-      // ⛔Cancel too: a claim that outlives its gesture silently deafens
-      // every later press handed the same pointer id.
-      onPointerCancel: (event) => releaseTapForControl(event.pointer),
-      child: child,
+    // ⛔The WEAK half is NOT written again here. It is [ControlPressClaim],
+    // the one widget every button in the app wears; what a swipe column
+    // adds is the STRONG claim, and that is all it should have to say.
+    return ControlPressClaim(
+      child: Listener(
+        onPointerDown: (event) => claimPointerForValueControl(event.pointer),
+        onPointerUp: (event) => releasePointerForValueControl(event.pointer),
+        onPointerCancel: (event) =>
+            releasePointerForValueControl(event.pointer),
+        child: child,
+      ),
     );
   }
 }

@@ -75,8 +75,14 @@ bool valueControlOwnsPointer(int pointer) => _held.contains(pointer);
 /// decline outright.
 ///
 /// ⇒ Two sets, and the question that decides which a control joins is
-/// 「is a drag that starts here mine?」. [InstantTapRegion] asks both; the
-/// pan recogniser asks only the strong one.
+/// 「is a drag that starts here mine?」.
+///
+/// 🚨BOTH READERS ASK BOTH SETS NOW (#1349, 유저 2026-08-29: 「**터치 좌표가
+/// 버튼인데 거기서 움직였다고 스크롤이 발생하는게 심각한 버그야**」). The pan
+/// recogniser used to ask only the strong one, which is why a drag begun on
+/// a button still scrolled. The two sets have NOT collapsed — the strong one
+/// is still what a swipe column takes so its own drag verb survives — but
+/// nothing reads the weak set alone any more.
 final Set<int> _tapHeld = <int>{};
 
 void claimTapForControl(int pointer) {

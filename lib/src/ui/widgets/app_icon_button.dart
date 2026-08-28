@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../layout/device_grid.dart';
-import '../input/value_control_pointers.dart';
+import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart';
 
 /// R26 #42 — THE app's icon button.
@@ -65,6 +65,7 @@ enum AppIconButtonSize {
   final double height;
   final double iconSize;
 }
+
 class AppIconButton extends StatelessWidget {
   const AppIconButton({
     super.key,
@@ -105,12 +106,11 @@ class AppIconButton extends StatelessWidget {
     // which moved the drawing target and rebuilt the row out from under the
     // press that was still running.
     //
-    // ⛔Released on CANCEL as well as UP: a claim that outlives its gesture
-    // silently deafens every later press handed the same pointer id.
-    return Listener(
-      onPointerDown: (event) => claimTapForControl(event.pointer),
-      onPointerUp: (event) => releaseTapForControl(event.pointer),
-      onPointerCancel: (event) => releaseTapForControl(event.pointer),
+    // ⛔The claim is MOUNTED, not written here. It used to be three inline
+    // `Listener` lines that [ControlPressClaim] also had — and while the
+    // law lived in two places the buttons that mounted neither (the
+    // x-sheet's toggles, the toolbar's 1·2·3·4·N) went unnoticed.
+    return ControlPressClaim(
       child: IconButton(
         key: ValueKey<String>(keyValue),
         tooltip: tooltip,

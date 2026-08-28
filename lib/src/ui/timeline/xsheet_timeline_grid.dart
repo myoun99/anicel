@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../input/control_press_claim.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -3003,13 +3004,17 @@ class _LayerHeader extends StatelessWidget {
                 // The band is the strip above, not a slot in here.
                 includeSectionSlot: false,
                 laneToggle: showLaneToggle
-                    ? InkWell(
-                        key: ValueKey<String>('xsheet-lane-toggle-${layer.id}'),
-                        onTap: () => onToggleLanes!(layer.id),
-                        customBorder: const CircleBorder(), // R26 #28
-                        child: Icon(
-                          layerRailTwirlIcon(expanded: lanesExpanded),
-                          size: 16,
+                    ? ControlPressClaim(
+                        child: InkWell(
+                          key: ValueKey<String>(
+                            'xsheet-lane-toggle-${layer.id}',
+                          ),
+                          onTap: () => onToggleLanes!(layer.id),
+                          customBorder: const CircleBorder(), // R26 #28
+                          child: Icon(
+                            layerRailTwirlIcon(expanded: lanesExpanded),
+                            size: 16,
+                          ),
                         ),
                       )
                     : null,
@@ -3118,17 +3123,19 @@ class _LayerHeader extends StatelessWidget {
               SizedBox(
                 height: layerLaneToggleSlotWidth,
                 child: hasGroupFold && onToggleGroupFold != null
-                    ? InkWell(
-                        key: ValueKey<String>(
-                          layerKindGroupsLayers(layer.kind)
-                              ? 'xsheet-folder-twirl-${layer.id}'
-                              : 'xsheet-attach-twirl-${layer.id}',
-                        ),
-                        onTap: () => onToggleGroupFold!(layer.id),
-                        customBorder: const CircleBorder(), // R26 #28
-                        child: Icon(
-                          layerRailTwirlIcon(expanded: groupFoldExpanded),
-                          size: 16,
+                    ? ControlPressClaim(
+                        child: InkWell(
+                          key: ValueKey<String>(
+                            layerKindGroupsLayers(layer.kind)
+                                ? 'xsheet-folder-twirl-${layer.id}'
+                                : 'xsheet-attach-twirl-${layer.id}',
+                          ),
+                          onTap: () => onToggleGroupFold!(layer.id),
+                          customBorder: const CircleBorder(), // R26 #28
+                          child: Icon(
+                            layerRailTwirlIcon(expanded: groupFoldExpanded),
+                            size: 16,
+                          ),
                         ),
                       )
                     : null,
@@ -3142,26 +3149,29 @@ class _LayerHeader extends StatelessWidget {
                 fillReference:
                     onToggleLayerFillReference != null &&
                         layer.kind == LayerKind.animation
-                    ? IconButton(
-                        key: ValueKey<String>(
-                          'xsheet-layer-fill-reference-${layer.id}',
+                    ? ControlPressClaim(
+                        child: IconButton(
+                          key: ValueKey<String>(
+                            'xsheet-layer-fill-reference-${layer.id}',
+                          ),
+                          tooltip: layer.isFillReference
+                              ? 'Fill reference layer (on)'
+                              : 'Fill reference layer',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints.tightFor(
+                            width: 20,
+                            height: 20,
+                          ),
+                          icon: Icon(
+                            Icons.format_color_fill,
+                            size: 13,
+                            color: layer.isFillReference
+                                ? colorScheme.primary
+                                : colorScheme.outline.withValues(alpha: 0.45),
+                          ),
+                          onPressed: () =>
+                              onToggleLayerFillReference!(layer.id),
                         ),
-                        tooltip: layer.isFillReference
-                            ? 'Fill reference layer (on)'
-                            : 'Fill reference layer',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints.tightFor(
-                          width: 20,
-                          height: 20,
-                        ),
-                        icon: Icon(
-                          Icons.format_color_fill,
-                          size: 13,
-                          color: layer.isFillReference
-                              ? colorScheme.primary
-                              : colorScheme.outline.withValues(alpha: 0.45),
-                        ),
-                        onPressed: () => onToggleLayerFillReference!(layer.id),
                       )
                     : null,
                 // Attach rows and their 공정 organizer folder hide the
@@ -3183,24 +3193,28 @@ class _LayerHeader extends StatelessWidget {
                 onion:
                     onToggleLayerOnionSkin != null &&
                         layerKindAcceptsBrushInput(layer.kind)
-                    ? IconButton(
-                        key: ValueKey<String>('xsheet-layer-onion-${layer.id}'),
-                        tooltip: onionSkinEnabled
-                            ? 'Onion skin (on)'
-                            : 'Onion skin',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints.tightFor(
-                          width: layerOnionSlotWidth,
-                          height: layerOnionSlotWidth,
+                    ? ControlPressClaim(
+                        child: IconButton(
+                          key: ValueKey<String>(
+                            'xsheet-layer-onion-${layer.id}',
+                          ),
+                          tooltip: onionSkinEnabled
+                              ? 'Onion skin (on)'
+                              : 'Onion skin',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints.tightFor(
+                            width: layerOnionSlotWidth,
+                            height: layerOnionSlotWidth,
+                          ),
+                          icon: Icon(
+                            Icons.filter_none,
+                            size: 15,
+                            color: onionSkinEnabled
+                                ? colorScheme.primary
+                                : colorScheme.outline.withValues(alpha: 0.45),
+                          ),
+                          onPressed: () => onToggleLayerOnionSkin!(layer.id),
                         ),
-                        icon: Icon(
-                          Icons.filter_none,
-                          size: 15,
-                          color: onionSkinEnabled
-                              ? colorScheme.primary
-                              : colorScheme.outline.withValues(alpha: 0.45),
-                        ),
-                        onPressed: () => onToggleLayerOnionSkin!(layer.id),
                       )
                     : null,
                 visibility: LayerVisibilityToggleButton(

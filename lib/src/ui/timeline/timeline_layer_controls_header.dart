@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../input/control_press_claim.dart';
 import '../../models/app_language.dart' show AppLanguage;
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
@@ -245,11 +246,13 @@ class TimelineLayerControlsHeader extends StatelessWidget {
       return Builder(
         builder: (anchorContext) => Tooltip(
           message: tooltip,
-          child: InkWell(
-            key: ValueKey<String>(keyValue),
-            onTap: () =>
-                showPanelFlyout(anchorContext, entries: entriesBuilder()),
-            child: content,
+          child: ControlPressClaim(
+            child: InkWell(
+              key: ValueKey<String>(keyValue),
+              onTap: () =>
+                  showPanelFlyout(anchorContext, entries: entriesBuilder()),
+              child: content,
+            ),
           ),
         ),
       );
@@ -342,20 +345,22 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                             message: anyLanesExpanded
                                 ? 'Collapse all layers'
                                 : 'Expand all layers',
-                            child: InkWell(
-                              key: const ValueKey<String>(
-                                'legend-lanes-toggle',
-                              ),
-                              onTap: anyLanesExpanded
-                                  ? onCollapseAllLanes
-                                  : onExpandAllLanes,
-                              child: Center(
-                                child: Icon(
-                                  anyLanesExpanded
-                                      ? Icons.unfold_less
-                                      : Icons.unfold_more,
-                                  size: 13,
-                                  color: restColor,
+                            child: ControlPressClaim(
+                              child: InkWell(
+                                key: const ValueKey<String>(
+                                  'legend-lanes-toggle',
+                                ),
+                                onTap: anyLanesExpanded
+                                    ? onCollapseAllLanes
+                                    : onExpandAllLanes,
+                                child: Center(
+                                  child: Icon(
+                                    anyLanesExpanded
+                                        ? Icons.unfold_less
+                                        : Icons.unfold_more,
+                                    size: 13,
+                                    color: restColor,
+                                  ),
                                 ),
                               ),
                             ),
@@ -648,19 +653,21 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     // the muted state — no flyout.
                     mute: Tooltip(
                       message: allSeMuted ? 'Unmute all SE' : 'Mute all SE',
-                      child: InkWell(
-                        key: const ValueKey<String>('legend-mute'),
-                        onTap: legend == null
-                            ? null
-                            : (allSeMuted
-                                  ? legend.onUnmuteAllSe
-                                  : legend.onMuteAllSe),
-                        child: Center(
-                          child: legendIcon(
-                            allSeMuted
-                                ? Icons.volume_off
-                                : Icons.volume_up_outlined,
-                            engaged: allSeMuted,
+                      child: ControlPressClaim(
+                        child: InkWell(
+                          key: const ValueKey<String>('legend-mute'),
+                          onTap: legend == null
+                              ? null
+                              : (allSeMuted
+                                    ? legend.onUnmuteAllSe
+                                    : legend.onMuteAllSe),
+                          child: Center(
+                            child: legendIcon(
+                              allSeMuted
+                                  ? Icons.volume_off
+                                  : Icons.volume_up_outlined,
+                              engaged: allSeMuted,
+                            ),
                           ),
                         ),
                       ),

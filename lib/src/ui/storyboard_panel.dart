@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show Listenable, ValueListenable;
 import 'package:flutter/gestures.dart'
     show DragStartBehavior, PointerHoverEvent, kPrimaryButton;
+import 'input/control_press_claim.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show BoxHitTestResult, RenderProxyBox;
 
@@ -4170,20 +4171,22 @@ class _StoryboardSeLabel extends StatelessWidget {
                 // The timeline rows' lane chevron, storyboard-prefixed.
                 laneToggle: onToggleLane == null
                     ? null
-                    : InkWell(
-                        key: ValueKey<String>(
-                          'storyboard-se-lane-toggle-'
-                          '${track.id.value}-${slot + 1}',
-                        ),
-                        onTap: onToggleLane,
-                        child: SizedBox(
-                          height: _seRowHeight,
-                          child: Icon(
-                            laneExpanded
-                                ? Icons.arrow_drop_down
-                                : Icons.arrow_right,
-                            size: 16,
-                            color: colorScheme.onSurfaceVariant,
+                    : ControlPressClaim(
+                        child: InkWell(
+                          key: ValueKey<String>(
+                            'storyboard-se-lane-toggle-'
+                            '${track.id.value}-${slot + 1}',
+                          ),
+                          onTap: onToggleLane,
+                          child: SizedBox(
+                            height: _seRowHeight,
+                            child: Icon(
+                              laneExpanded
+                                  ? Icons.arrow_drop_down
+                                  : Icons.arrow_right,
+                              size: 16,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ),
                       ),
@@ -5557,19 +5560,21 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                 // strip).
                 laneToggle: onToggleLane == null
                     ? null
-                    : InkWell(
-                        key: ValueKey<String>(
-                          'storyboard-track-lane-toggle-${track.id.value}',
-                        ),
-                        onTap: onToggleLane,
-                        child: SizedBox(
-                          height: 24,
-                          child: Icon(
-                            laneExpanded
-                                ? Icons.arrow_drop_down
-                                : Icons.arrow_right,
-                            size: 16,
-                            color: colorScheme.onSurfaceVariant,
+                    : ControlPressClaim(
+                        child: InkWell(
+                          key: ValueKey<String>(
+                            'storyboard-track-lane-toggle-${track.id.value}',
+                          ),
+                          onTap: onToggleLane,
+                          child: SizedBox(
+                            height: 24,
+                            child: Icon(
+                              laneExpanded
+                                  ? Icons.arrow_drop_down
+                                  : Icons.arrow_right,
+                              size: 16,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ),
                       ),

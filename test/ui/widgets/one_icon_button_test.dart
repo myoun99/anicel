@@ -15,6 +15,16 @@ import 'package:flutter_test/flutter_test.dart';
 /// audit's real catch was three buttons breaking the selection rule —
 /// 「선택 표시는 색상만」 — with a filled chip or a check mark.
 ///
+/// 🚨THIS SCAN READS `IconButton(` ONLY, AND THAT IS A REAL LIMIT. On
+/// 2026-08-29 the bar's 1·2·3·4·N turned out to be hand-rolled TEXT buttons,
+/// so they walked straight past the thing that exists to notice them. The
+/// scan is deliberately not widened — a dialog's text action is not an icon
+/// button and dragging twenty of them in here would say nothing — but the
+/// LAW those buttons were missing has its own scan, over text buttons and
+/// ink wells too: `every_chrome_button_claims_its_press_test`. Two lists,
+/// because they answer two questions (this one licenses a BOX; that one
+/// holds every chrome button to the press claim).
+///
 /// ⚠️THE LEDGER BELOW IS THE POINT OF THIS TEST. A hand-rolled button is
 /// allowed only where a PARENT has already promised the box, because
 /// `AppIconButton` decides its own from a token and two owners of one box is
