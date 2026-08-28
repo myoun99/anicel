@@ -1137,22 +1137,98 @@ void main() {
     await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
     await env.setTool(CanvasTool.move);
 
-    // Scale by an EDGE handle: in 퍼스 that is an affine drag, and with no
-    // corner touched the commit must take the affine path rather than a
-    // homography that only happens to agree with it.
-    await dragOnLayer(tester, const Offset(45, 20), const Offset(45, 12));
+    // 🚨THE VEHICLE CHANGED, THE LAW DID NOT (F-42, 유저 2026-08-29). This
+    // used to drag an EDGE handle, on the reasoning that an edge was an
+    // affine scale in 퍼스 and so left every corner offset at zero. An edge
+    // handle now carries its two quad corners, so it is no longer a way to
+    // leave the quad untouched. An opened box that is only TRANSLATED is.
+    env.commands.beginTransform();
+    await tester.pump();
     expect(env.commands.transformActive, isTrue);
+    await dragOnLayer(tester, const Offset(45, 45), const Offset(53, 45));
     final values = env.commands.transformValues;
     expect(values, isNotNull);
     expect(
       values!.rotationDegrees,
       0,
-      reason: 'an edge drag scales, it does not rotate',
+      reason: 'a translate does not rotate',
     );
 
     env.commands.commitTransform();
     await tester.pump();
     expect(env.commands.movePending, isFalse);
+    // ⛔THE ASSERTION THE OLD TEST WAS MISSING. Its title said "resamples
+    // through the AFFINE path" and it checked neither the path nor the
+    // quad — it would have passed with every corner warped. The quad is
+    // what "untouched" means, so the quad is what gets asserted.
+    expect(
+      env.commands.transformRecall!.cornerOffsets.every(
+        (offset) => offset.x == 0 && offset.y == 0,
+      ),
+      isTrue,
+      reason:
+          'nothing touched a corner, so the quad is identity and the '
+          'commit had no homography to run',
+    );
+  });
+
+  testWidgets('퍼스 mode: an EDGE handle carries that edge\'s two corners, '
+      'so the side moves off its own axis (F-42)', (tester) async {
+    // 🚨유저 2026-08-29: 「오른쪽 중앙 조절시 **상하가 안바뀌게 스냅되있는데
+    // 스냅해제. 자유롭게 바뀌게**」 — and it was never a snap. The handle
+    // drove a one-axis affine SCALE, and a scale cannot move a point along
+    // the axis it does not scale, so dragging the right handle UP did
+    // nothing however far the hand went. 유저 chose (F-42-Q1) to make the
+    // handle carry the edge's two QUAD corners instead.
+    final env = await pumpSelectionPanel(
+      tester,
+      transformMode: TransformMode.perspective,
+    );
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+
+    // The RIGHT edge's midpoint, dragged straight UP — the exact gesture
+    // that used to do nothing.
+    await dragOnLayer(tester, const Offset(70, 45), const Offset(70, 31));
+    expect(env.commands.transformActive, isTrue);
+
+    env.commands.commitTransform();
+    await tester.pump();
+    final recall = env.commands.transformRecall;
+    // 🚨THE FIRST THING THE OLD BEHAVIOUR FAILED. Routed to the affine
+    // scale, this exact drag changed NOTHING — a one-axis scale cannot move
+    // a point along the axis it does not scale — so the box was never
+    // dirty and the commit recorded no transform at all. That is precisely
+    // 「상하가 안바뀌게」 as the user saw it.
+    expect(
+      recall,
+      isNotNull,
+      reason: 'dragging the right edge upward must BE a transform',
+    );
+    final offsets = recall!.cornerOffsets;
+    expect(offsets, hasLength(4), reason: 'TL/TR/BR/BL');
+
+    // ⛔THE PAIR, AND ONLY THE PAIR. Asserting "something moved" would pass
+    // just as well if every corner had moved, which is a translation and
+    // not what an edge handle means.
+    expect(
+      offsets[1].y,
+      lessThan(0),
+      reason: 'TR followed the hand upward — the whole point of F-42',
+    );
+    expect(
+      offsets[2].y,
+      moreOrLessEquals(offsets[1].y, epsilon: 0.01),
+      reason:
+          'BR moved by the SAME vector, so the right edge stayed straight '
+          'instead of shearing',
+    );
+    expect(
+      offsets[0].y,
+      0,
+      reason: 'TL is on the other edge and must not have moved',
+    );
+    expect(offsets[3].y, 0, reason: 'BL likewise');
   });
 
   testWidgets('mode switches carry the box: a 퍼스 warp survives a trip '
