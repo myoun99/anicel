@@ -9,6 +9,7 @@ import '../../services/media/media_byte_source.dart';
 import '../../core/straight_rgba_image.dart';
 import '../../models/media_asset.dart';
 import '../../native/qa_video_decoder.dart';
+import '../../services/media/viewer_document.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/transport_bar.dart';
@@ -60,7 +61,7 @@ class _ImportPreviewState extends State<ImportPreview> {
   /// A PDF is not decoded up front. A hundred-page conte rendered to look
   /// at ONE page is the thing §6-m says not to do, so the document stays
   /// open and the page under the playhead is drawn on demand.
-  PdfDocumentHandle? _pdf;
+  ViewerDocument? _pdf;
   int _pdfPages = 0;
   ui.Image? _pdfPage;
   int _pdfPageShown = -1;

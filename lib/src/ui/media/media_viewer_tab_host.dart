@@ -7,8 +7,8 @@ import 'package:flutter/material.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/media_asset.dart';
-import '../../services/import/raster_cel_import.dart';
-import '../../services/media/media_byte_source.dart';
+import '../../services/media/image_viewer_document.dart';
+import '../../services/media/viewer_document.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../canvas/canvas_zoom_scale.dart';
@@ -216,11 +216,11 @@ class MediaViewerTabHost extends StatefulWidget {
   State<MediaViewerTabHost> createState() => _MediaViewerTabHostState();
 }
 
-/// One lazily rendered PDF page: the raster and the scale it was
-/// rendered at (stale-while-revalidate — a wrong-scale image still draws
-/// while the right one renders).
-class _RenderedPdfPage {
-  const _RenderedPdfPage({required this.scale, required this.image});
+/// One lazily rendered page: the raster and the scale it was rendered at
+/// (stale-while-revalidate — a wrong-scale image still draws while the
+/// right one renders).
+class _RenderedPage {
+  const _RenderedPage({required this.scale, required this.image});
 
   final double scale;
   final ui.Image image;
@@ -234,10 +234,11 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
 
   MediaViewerRequest? get _currentRequest => widget.request.value;
 
-  // Loaded content: exactly one of these families is live.
-  List<DecodedImageFrame>? _frames;
-  PdfDocumentHandle? _pdf;
-  final Map<int, _RenderedPdfPage> _pdfPageCache = {};
+  /// The open document, whatever medium it came from — 🪦there used to be
+  /// a `_frames` list AND a `_pdf` handle here, and five places downstream
+  /// had to ask which was live. See [ViewerDocument].
+  ViewerDocument? _document;
+  final Map<int, _RenderedPage> _pageCache = {};
   String? _message;
 
   /// Read-only here — the workspace holds it (see
@@ -249,7 +250,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
 
   /// Renders in flight, one marker per (page, scale) — landings remove
   /// their own marker, so a stale landing can never wipe a newer one.
-  final Set<(int, double)> _pdfRendersInFlight = {};
+  final Set<(int, double)> _rendersInFlight = {};
 
   /// Token that changes once per successfully LOADED document — drives
   /// the panel's auto-reframe so a preserved deep zoom/pan from the
@@ -318,21 +319,14 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   void _onRequestChanged() => _load(widget.request.value);
 
   void _disposeContent() {
-    final frames = _frames;
-    _frames = null;
-    if (frames != null) {
-      for (final frame in frames) {
-        frame.image.dispose();
-      }
-    }
-    for (final page in _pdfPageCache.values) {
+    for (final page in _pageCache.values) {
       page.image.dispose();
     }
-    _pdfPageCache.clear();
-    _pdfRendersInFlight.clear();
-    final pdf = _pdf;
-    _pdf = null;
-    pdf?.dispose();
+    _pageCache.clear();
+    _rendersInFlight.clear();
+    final document = _document;
+    _document = null;
+    document?.dispose();
     _message = null;
   }
 
@@ -350,73 +344,62 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       return; // The empty state reads from _currentRequest == null.
     }
     final strings = AppText.strings;
+    // ONE landing for every medium: open a document, or say why not. The
+    // three arms this replaces differed only in HOW they opened and in
+    // which field they parked the result — the guards against a stale
+    // generation, the failure message and the reframe were written three
+    // times and had already drifted (the image arm disposed its frames on a
+    // stale landing, the PDF arm its handle, and audio had neither).
+    final ViewerDocument? document;
+    try {
+      document = await _openDocument(request);
+    } on Object {
+      if (mounted && generation == _generation) {
+        setState(() => _message = strings.mediaViewerLoadFailed);
+      }
+      return;
+    }
+    if (!mounted || generation != _generation) {
+      await document?.dispose();
+      return;
+    }
+    setState(() {
+      if (document == null) {
+        // The honest-absence states: audio has no picture to show, and
+        // there is no Dart fallback for a PDF rasterizer, so the panel
+        // SAYS so rather than showing an empty frame.
+        _message = request.kind == MediaAssetKind.pdf
+            ? strings.mediaViewerNoPdfRenderer
+            : strings.mediaViewerCannotDisplay;
+      } else {
+        _document = document;
+        _loadedToken = generation;
+      }
+    });
+    // The page request goes out on the build this setState causes; the
+    // record lands after it, so the NEXT open of this document sees it.
+    _rememberFramed();
+  }
+
+  /// Opens whatever [request] names, or null when this medium has nothing
+  /// to show — the one place that knows which document a kind makes.
+  Future<ViewerDocument?> _openDocument(MediaViewerRequest request) async {
     switch (request.kind) {
+      case MediaAssetKind.image:
+        return ImageViewerDocument.open(request.path);
+      case MediaAssetKind.pdf:
+        return PdfRenderService.open(request.path);
       case MediaAssetKind.audio:
       case MediaAssetKind.video:
-        setState(() {
-          _message = strings.mediaViewerCannotDisplay;
-        });
-      case MediaAssetKind.image:
-        final List<DecodedImageFrame> frames;
-        try {
-          final bytes = await MediaFileBytes(request.path).read();
-          frames = await decodeImageFrames(bytes);
-        } on Object {
-          if (mounted && generation == _generation) {
-            setState(() {
-              _message = strings.mediaViewerLoadFailed;
-            });
-          }
-          return;
-        }
-        if (!mounted || generation != _generation) {
-          for (final frame in frames) {
-            frame.image.dispose();
-          }
-          return;
-        }
-        setState(() {
-          _frames = frames;
-          _loadedToken = generation;
-        });
-        // The frame request goes out on the build this setState causes; the
-        // record lands after it, so the NEXT open of this document sees it.
-        _rememberFramed();
-      case MediaAssetKind.pdf:
-        final PdfDocumentHandle? document;
-        try {
-          document = await PdfRenderService.open(request.path);
-        } on Object {
-          if (mounted && generation == _generation) {
-            setState(() {
-              _message = strings.mediaViewerLoadFailed;
-            });
-          }
-          return;
-        }
-        if (!mounted || generation != _generation) {
-          await document?.dispose();
-          return;
-        }
-        setState(() {
-          if (document == null) {
-            // The honest-absence state: there is no Dart fallback for a
-            // PDF rasterizer, so the panel SAYS so.
-            _message = strings.mediaViewerNoPdfRenderer;
-          } else {
-            _pdf = document;
-            _loadedToken = generation;
-          }
-        });
-        _rememberFramed();
+        return null;
     }
   }
 
-  // --- PDF lazy rendering (§6-m: the visible page at the current zoom) --
+  // --- Lazy rendering (§6-m: the visible page at the current zoom) ------
 
   /// The render scale for [zoom]: powers of two so a settled zoom reuses
   /// its raster, capped so one page never exceeds ~16M pixels.
-  double _pdfRenderScaleFor(double zoom, ui.Size pageSize) {
+  double _renderScaleFor(double zoom, ui.Size pageSize) {
     var scale = 1.0;
     while (scale < zoom && scale < 8) {
       scale *= 2;
@@ -429,34 +412,34 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     return scale;
   }
 
-  void _ensurePdfPageRendered(int pageIndex, double scale) {
-    final pdf = _pdf;
-    if (pdf == null) {
+  void _ensurePageRendered(int pageIndex, double scale) {
+    final document = _document;
+    if (document == null) {
       return;
     }
-    final cached = _pdfPageCache[pageIndex];
+    final cached = _pageCache[pageIndex];
     if (cached != null && cached.scale == scale) {
       return;
     }
     // One marker PER (page, scale): a shared single slot got wiped by
     // whichever render landed first, and the wipe re-issued duplicates
     // of work already queued on PDFium's serial worker.
-    if (!_pdfRendersInFlight.add((pageIndex, scale))) {
+    if (!_rendersInFlight.add((pageIndex, scale))) {
       return;
     }
     final generation = _generation;
-    final pageSize = pdf.pageSize(pageIndex);
+    final pageSize = document.pageSize(pageIndex);
     () async {
       final ui.Image image;
       try {
-        image = await pdf.renderPage(
+        image = await document.renderPage(
           pageIndex,
           width: (pageSize.width * scale).round().clamp(1, 1 << 13).toInt(),
           height: (pageSize.height * scale).round().clamp(1, 1 << 13).toInt(),
         );
       } on Object {
         if (mounted && generation == _generation) {
-          setState(() => _pdfRendersInFlight.remove((pageIndex, scale)));
+          setState(() => _rendersInFlight.remove((pageIndex, scale)));
         }
         return;
       }
@@ -465,19 +448,19 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
         return;
       }
       setState(() {
-        _pdfRendersInFlight.remove((pageIndex, scale));
-        _pdfPageCache[pageIndex]?.image.dispose();
-        _pdfPageCache[pageIndex] = _RenderedPdfPage(scale: scale, image: image);
+        _rendersInFlight.remove((pageIndex, scale));
+        _pageCache[pageIndex]?.image.dispose();
+        _pageCache[pageIndex] = _RenderedPage(scale: scale, image: image);
         // Keep the pages nearest the one on screen, drop the rest (a
         // 100-page conte must not accumulate). Drain in a LOOP excluding
         // the just-landed page: a landing for a page already paged away
         // from is itself the farthest entry, and a single-shot eviction
         // that skipped it ratcheted the cache up scrub after scrub.
-        while (_pdfPageCache.length > 4) {
-          final farthest = _pdfPageCache.keys
+        while (_pageCache.length > 4) {
+          final farthest = _pageCache.keys
               .where((page) => page != pageIndex)
               .reduce((a, b) => (a - _page).abs() >= (b - _page).abs() ? a : b);
-          _pdfPageCache.remove(farthest)?.image.dispose();
+          _pageCache.remove(farthest)?.image.dispose();
         }
       });
     }();
@@ -485,17 +468,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
 
   // --- Paging ------------------------------------------------------------
 
-  int get _pageCount {
-    final pdf = _pdf;
-    if (pdf != null) {
-      return pdf.pageCount;
-    }
-    final frames = _frames;
-    if (frames != null) {
-      return frames.length;
-    }
-    return 0;
-  }
+  int get _pageCount => _document?.pageCount ?? 0;
 
   void _turnToPage(int page) {
     final count = _pageCount;
@@ -604,22 +577,22 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     final pageCount = _pageCount;
     final pageIndex = pageCount == 0 ? 0 : _page.clamp(0, pageCount - 1);
 
-    // Document space: the page/frame being shown.
-    final pdf = _pdf;
-    final frames = _frames;
-    ui.Size docSize;
-    if (pdf != null && pageCount > 0) {
-      docSize = pdf.pageSize(pageIndex);
-    } else if (frames != null && frames.isNotEmpty) {
-      final image = frames[pageIndex].image;
-      docSize = ui.Size(image.width.toDouble(), image.height.toDouble());
-    } else {
-      docSize = const ui.Size(640, 480);
-    }
+    // Document space: the page/frame being shown. ONE answer now — the
+    // document knows its own page size, whether that is PDF points, image
+    // pixels or a video frame.
+    final document = _document;
+    final docSize = document != null && pageCount > 0
+        ? document.pageSize(pageIndex)
+        : const ui.Size(640, 480);
 
     // The lazy render for the visible page, at the current zoom's tier.
+    //
+    // 🚨★★★**IMAGES COME THROUGH HERE NOW.** They used to skip the tier
+    // entirely and draw a decode of the ORIGINAL file, which is the 17×
+    // the card measured. Nothing about the tier was image-specific — it
+    // was only ever written inside an `if (pdf)`.
     ui.Image? pageImage;
-    if (pdf != null && pageCount > 0) {
+    if (document != null && pageCount > 0) {
       // 🚨The tier is chosen from DEVICE coverage, not from the render
       // zoom. The viewer is a document view, so R11 excludes it from the
       // UI scale by DIVIDING its render zoom when the scale goes up — so
@@ -628,14 +601,12 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       // dimensions, visibly softer, and the only thing the user changed was
       // how big the chrome is.
       final zoom = widget.viewport?.zoom ?? 1.0;
-      final scale = _pdfRenderScaleFor(
+      final scale = _renderScaleFor(
         CanvasZoomScale.of(context).display(zoom),
         docSize,
       );
-      _ensurePdfPageRendered(pageIndex, scale);
-      pageImage = _pdfPageCache[pageIndex]?.image;
-    } else if (frames != null && frames.isNotEmpty) {
-      pageImage = frames[pageIndex].image;
+      _ensurePageRendered(pageIndex, scale);
+      pageImage = _pageCache[pageIndex]?.image;
     }
 
     final message = request == null ? strings.mediaViewerEmpty : _message;
@@ -751,7 +722,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
                     // PDF paper is opaque white; a transparent image
                     // shows the checker-free paper too — the viewer is a
                     // light table, not a compositor.
-                    paperFill: pdf != null || frames != null,
+                    paperFill: document != null,
                     viewport: viewport,
                     effectiveRatio: EffectiveDevicePixelRatio.of(context),
                   ),

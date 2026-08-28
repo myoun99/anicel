@@ -1,12 +1,12 @@
 import 'dart:ui' as ui;
 
-import 'package:anicel/src/services/pdf/pdf_render_service.dart';
+import 'package:anicel/src/services/media/viewer_document.dart';
 
-/// A [PdfDocumentHandle] fake driven through
+/// A [ViewerDocument] fake driven through
 /// [PdfRenderService.debugOpenerOverride]: pages render as solid colored
 /// rects via [ui.Picture.toImageSync], so no FFI, no file IO, and no
 /// fake-async deadlock (the image exists synchronously).
-class FakePdfDocument implements PdfDocumentHandle {
+class FakePdfDocument implements ViewerDocument {
   FakePdfDocument({required this.pageSizes});
 
   /// One entry per page, in PDF points.
