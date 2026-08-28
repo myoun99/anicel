@@ -133,6 +133,14 @@ SplayTreeMap<int, TimelineExposure> attachedDisplayTimeline({
       length: length,
       ghost: entry.value.ghost,
       ghostOwnerId: entry.value.ghostOwnerId,
+      // 🚨F-48 (유저 2026-08-28): 「싱크 어태치레이어에 **동화 중간나누기 점이
+      // 반영이안됨. 싱크되도록**」. 이 목록에서 점만 빠져 있었다 — 블록 경계와
+      // 길이는 따라오는데 그 안의 나누기만 베이스에 남았다.
+      //
+      // ⛔싱크가 세우는 것은 **타이밍 편집**이지 표시가 아니다(이 파일 위쪽의
+      // 계약: 「What stands down is TIMING」). 점은 블록이 자기 안을 어떻게
+      // 나누는지에 대한 **표시**이고, 미러 행은 그 블록을 그대로 보여 준다.
+      breakdownOffsets: entry.value.breakdownOffsets,
     );
   }
   return timeline;
