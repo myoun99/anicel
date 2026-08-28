@@ -78,7 +78,10 @@ class AutosaveSettingsSection extends StatelessWidget {
               padding: const EdgeInsets.only(left: 16, right: 8, bottom: 4),
               child: Row(
                 children: [
-                  const Text('Every', style: TextStyle(fontSize: 12)),
+                  Text(
+                    AppText.strings.autosaveEvery,
+                    style: const TextStyle(fontSize: 12),
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: FieldSlider(
@@ -101,15 +104,17 @@ class AutosaveSettingsSection extends StatelessWidget {
                       valueText: sliderValueText(
                         settings.periodicSnapshotMinutes ??
                             AppSaveSettings.defaultPeriodicSnapshotMinutes,
-                        unit: ' min',
+                        unit: AppText.strings.commonMinutesShort,
                       ),
                       // ⛔No rounding here: the track has one stop per
                       // minute, so `next` IS whole, and `sliderValueText`
                       // renders a whole number whole. (`onChanged` below
                       // still rounds — that is the MODEL's int, not the
                       // label's text.)
-                      valueTextBuilder: (next) =>
-                          sliderValueText(next, unit: ' min'),
+                      valueTextBuilder: (next) => sliderValueText(
+                        next,
+                        unit: AppText.strings.commonMinutesShort,
+                      ),
                       onChanged: settings.periodicSnapshotMinutes == null
                           ? null
                           : (next) => session.setSaveSettings(
@@ -168,7 +173,7 @@ class AutosaveSettingsSection extends StatelessWidget {
                       onPressed: () => session.setSaveSettings(
                         settings.copyWith(recordingsDirectory: null),
                       ),
-                      child: const Text('Default'),
+                      child: Text(AppText.strings.autosaveDefault),
                     ),
                   TextButton(
                     key: const ValueKey<String>('settings-recordings-browse'),
@@ -229,7 +234,7 @@ class AutosaveSettingsSection extends StatelessWidget {
                       onPressed: () => session.setSaveSettings(
                         settings.copyWith(conformDirectory: null),
                       ),
-                      child: const Text('Default'),
+                      child: Text(AppText.strings.autosaveDefault),
                     ),
                   TextButton(
                     key: const ValueKey<String>('settings-conform-browse'),
@@ -519,7 +524,7 @@ class _ConformCacheSizeRowState extends State<_ConformCacheSizeRow> {
               clearConformCache();
               setState(() => _bytes = conformCacheBytes());
             },
-            child: const Text('Empty now'),
+            child: Text(AppText.strings.autosaveEmptyNow),
           ),
       ],
     );
