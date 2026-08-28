@@ -921,6 +921,26 @@ class TimelineRowCellsPainter extends CustomPainter {
               model.exposureState != TimelineCellExposureState.held
           ? FontWeight.bold
           : baseTextStyle.fontWeight,
+      // 🚨F-48 ② (유저 2026-08-28): 「점·프레임 이름이 칸 중앙보다 미묘하게
+      // 아래」. The centring below is exact — `rect.center - glyph.size/2`,
+      // snapped to physical pixels — so the drift is not in the geometry.
+      // It is in the BOX: with no height set, a glyph's box is the font's
+      // ascent + descent, and a Japanese face carries a tall ascent for
+      // full-width forms. Latin digits and letters ink only above the
+      // baseline, so centring that lopsided box puts the ink LOW. The
+      // report arrived right after the app took BIZ UDPGothic, which is
+      // the same event from the other side.
+      //
+      // `height: 1` with an EVEN leading distribution makes the box
+      // symmetric about the glyph instead of about the font's metrics, so
+      // the exact centring above lands where the eye reads centre.
+      //
+      // ⚠️A test cannot see this: `flutter test` never loads the bundled
+      // font and draws the test face, whose metrics are symmetric — the
+      // difference measures 0 there. What the test below CAN pin is that
+      // the box is the size we asked for.
+      height: 1,
+      leadingDistribution: TextLeadingDistribution.even,
     );
   }
 
