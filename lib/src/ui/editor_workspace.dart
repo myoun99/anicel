@@ -26,6 +26,7 @@ import '../models/media_asset.dart' show MediaAsset;
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
 import '../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
+import '../services/commands/toggle_id_in_set_command.dart';
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../models/brush_tip_entry.dart';
@@ -917,9 +918,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     _brushHandSettingsSave?.cancel();
     _brushHandSettingsSave = Timer(const Duration(milliseconds: 400), () {
       unawaited(
-        _brushHandSettingsStore.save(Map<String, BrushHandSettings>.of(
-          _brushHandSettings,
-        )),
+        _brushHandSettingsStore.save(
+          Map<String, BrushHandSettings>.of(_brushHandSettings),
+        ),
       );
     });
   }
@@ -1121,16 +1122,25 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   );
 
   void _toggleLayerLanes(LayerId layerId) {
-    final next = Set<LayerId>.of(_expandedLaneLayerIds.value);
-    // `remove` answering true is the CLOSING half: every lane of this row
-    // is about to leave the screen, so the fold law hands the standing row
-    // to the layer itself (R5 #11).
-    if (next.remove(layerId)) {
+    // 🚨UNDOABLE (유저 2026-08-29: 「아무튼 레이어에 있는 버튼 싹다」). The
+    // property-lane twirl — the one the fx lanes live under — is a button
+    // on a layer row like any other.
+    //
+    // ⛔The closing half still runs here and NOT inside the command: the
+    // fold law hands the standing row to the layer when its lanes leave
+    // the screen (R5 #11), and that is a selection move, not part of the
+    // membership this undoes.
+    final closing = _expandedLaneLayerIds.value.contains(layerId);
+    widget.session.historyManager.execute(
+      ToggleIdInSetCommand(
+        notifier: _expandedLaneLayerIds,
+        layerId: layerId,
+        label: 'Toggle layer lanes',
+      ),
+    );
+    if (closing) {
       widget.session.handOffCurrentRowOnFold(layerId);
-    } else {
-      next.add(layerId);
     }
-    _expandedLaneLayerIds.value = next;
   }
 
   /// LANE GROUPS twirled open inside a layer's twirl-down (AE group
@@ -1365,15 +1375,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     // of them are in scope. Getters, not copies: the marquee survives tool
     // switches and the colour changes under the pointer, so a value captured
     // here would be the one that was true when the editor opened.
-    widget.session.pixelSelectionRegion =
-        () => widget.canvasSelectionCommands?.region;
+    widget.session.pixelSelectionRegion = () =>
+        widget.canvasSelectionCommands?.region;
     widget.session.pixelBrushColour = () => _brushTool.value.color;
     // The marquee, as the fifth selection kind — so one 선택 해제 can let go
     // of everything rather than half of it.
-    widget.session.canvasHasSelection =
-        () => widget.canvasSelectionCommands?.hasRegion ?? false;
-    widget.session.clearCanvasSelection =
-        () => widget.canvasSelectionCommands?.deselect();
+    widget.session.canvasHasSelection = () =>
+        widget.canvasSelectionCommands?.hasRegion ?? false;
+    widget.session.clearCanvasSelection = () =>
+        widget.canvasSelectionCommands?.deselect();
     // H25: what the hand last set on each brush, from the last session.
     _brushTool.addListener(_rememberBrushHandSettings);
     unawaited(

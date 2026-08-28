@@ -319,15 +319,26 @@ class LayerController {
     );
   }
 
-  /// The layer-list twirl: PER-USE view state, persisted like CSP. Folder
-  /// rows use it to swallow their members; the eye, static opacity and blend
-  /// a folder carries need no method of their own, because a folder IS a
-  /// layer and rides [toggleLayerVisibility] / [setLayerOpacity] /
+  /// The layer-list twirl: PER-USE, persisted like CSP. Folder rows use it
+  /// to swallow their members; the eye, static opacity and blend a folder
+  /// carries need no method of their own, because a folder IS a layer and
+  /// rides [toggleLayerVisibility] / [setLayerOpacity] /
   /// [setLayerBlendMode] — all four per-use since T9.
+  ///
+  /// 🚨UNDOABLE too (유저 2026-08-29: 「접기도 마찬가지야. 폴더든
+  /// 어태치든」). ⛔I had argued the twirl was the one to leave out —
+  /// it changes no output, so it looked like paging a reference. 유저 said
+  /// no: the rule is 「무언가를 바꾸는 동작은 기본 이럼」, and a fold is
+  /// something you did and may want back. Attach rows need no separate
+  /// answer: they fold through this same `collapsed` field.
   void toggleLayerCollapsed(LayerId layerId) {
-    _repository.updateLayer(
-      layerId: layerId,
-      update: (layer) => layer.copyWith(collapsed: !layer.collapsed),
+    _historyManager.execute(
+      UpdateLayerDisplayCommand(
+        repository: _repository,
+        layerId: layerId,
+        label: 'Toggle layer collapsed',
+        apply: (layer) => layer.copyWith(collapsed: !layer.collapsed),
+      ),
     );
   }
 

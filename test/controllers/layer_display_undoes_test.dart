@@ -190,4 +190,64 @@ void main() {
       reason: 'two presses reached two actions — the batch was ONE of them',
     );
   });
+
+  test('the twirl undoes — folder fold AND attach fold are one control', () {
+    // 유저 2026-08-29: 「접기도 마찬가지야. 폴더든 어태치든」. ⛔I had argued
+    // the twirl was the one to leave out because it changes no output;
+    // 유저 said no. Attach needed no separate work: the row comment says
+    // "They are one control: a row that holds other rows, folding them" —
+    // both fold through `Layer.collapsed`.
+    final session = newSession();
+    addTearDown(session.dispose);
+    final layerId = session.layers.first.id;
+    final before = requireLayerAnywhere(
+      session.repository.requireProject(),
+      layerId,
+    ).collapsed;
+
+    session.toggleLayerCollapsed(layerId);
+    session.historyManager.undo();
+
+    expect(
+      requireLayerAnywhere(
+        session.repository.requireProject(),
+        layerId,
+      ).collapsed,
+      before,
+    );
+  });
+
+  test('onion skin undoes, and undo does not disturb another row', () {
+    // 유저: 「아무튼 어니언 적용 미적용만 되면 되는건데」.
+    //
+    // ⛔THE SECOND HALF IS THE POINT. Onion lives in a Set, so the lazy
+    // undo is "put the whole set back" — which would also un-toggle a row
+    // the user touched afterwards. The command restores THIS id's
+    // membership and nothing else.
+    final session = newSession();
+    addTearDown(session.dispose);
+    session.addLayer();
+    final first = session.layers.first.id;
+    final second = session.layers.last.id;
+    expect(first, isNot(second), reason: 'fixture: two distinct rows');
+
+    session.toggleLayerOnionSkin(first);
+    session.toggleLayerOnionSkin(second);
+    // Undo only the FIRST row's toggle.
+    session.historyManager.undo();
+    session.historyManager.undo();
+
+    expect(session.isLayerOnionSkinEnabled(first), isFalse);
+    session.historyManager.redo();
+    expect(
+      session.isLayerOnionSkinEnabled(first),
+      isTrue,
+      reason: 'redo restores what this command did, not the whole set',
+    );
+    expect(
+      session.isLayerOnionSkinEnabled(second),
+      isFalse,
+      reason: 'the other row stayed where the later undo left it',
+    );
+  });
 }

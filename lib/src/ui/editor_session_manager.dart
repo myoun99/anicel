@@ -16,6 +16,7 @@ import '../models/import/tvpp_parse.dart';
 import '../services/cel_source_effect_pass.dart';
 import '../services/commands/import_media_command.dart';
 import '../services/commands/reorder_track_command.dart';
+import '../services/commands/toggle_id_in_set_command.dart';
 import '../services/import/media_identity_reader.dart';
 import '../services/media/media_fingerprints.dart';
 import '../services/persistence/anicel_incremental_writer.dart'
@@ -17130,11 +17131,19 @@ class EditorSessionManager extends ChangeNotifier {
       onionSkinLayerIds.value.contains(layerId);
 
   void toggleLayerOnionSkin(LayerId layerId) {
-    final next = Set<LayerId>.from(onionSkinLayerIds.value);
-    if (!next.remove(layerId)) {
-      next.add(layerId);
-    }
-    onionSkinLayerIds.value = next;
+    // 🚨UNDOABLE (유저 2026-08-29: 「아무튼 레이어에 있는 버튼 싹다」). ⛔I
+    // began to explain that undoing this "only moves session state, not
+    // the project", and 유저 stopped me: 「프로젝트 파일이 바뀌란건
+    // 무슨소리지? 아무튼 어니언 적용 미적용만 되면 되는건데」. Press the
+    // button, press Ctrl+Z, the ghosts come back. Where the bit lives is
+    // plumbing.
+    _historyManager.execute(
+      ToggleIdInSetCommand(
+        notifier: onionSkinLayerIds,
+        layerId: layerId,
+        label: 'Toggle onion skin',
+      ),
+    );
     // Row/legend toggle glyphs read through the session listenable.
     notifyListeners();
   }

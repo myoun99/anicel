@@ -96,6 +96,7 @@ class _DisplayState {
     required this.opacity,
     required this.blendMode,
     required this.muted,
+    required this.collapsed,
   });
 
   factory _DisplayState.of(Layer layer) => _DisplayState(
@@ -103,17 +104,20 @@ class _DisplayState {
     opacity: layer.opacity,
     blendMode: layer.blendMode,
     muted: layer.muted,
+    collapsed: layer.collapsed,
   );
 
   final bool isVisible;
   final double opacity;
   final LayerBlendMode blendMode;
   final bool muted;
+  final bool collapsed;
 
   Layer restoreOnto(Layer layer) => layer.copyWith(
     isVisible: isVisible,
     opacity: opacity,
     blendMode: blendMode,
     muted: muted,
+    collapsed: collapsed,
   );
 }
