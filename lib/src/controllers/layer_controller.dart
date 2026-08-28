@@ -7,9 +7,11 @@ import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
+import '../services/command.dart';
 import 'default_layer_helpers.dart';
 import '../services/commands/add_layer_command.dart';
 import '../services/commands/cut_command_input_planner.dart';
+import '../services/commands/update_layer_display_command.dart';
 import '../services/history_manager.dart';
 import '../services/project_lookup.dart';
 import '../services/project_repository.dart';
@@ -208,43 +210,158 @@ class LayerController {
   /// edits — and the mirror helper died with it, since these three were its
   /// only callers ([[duplication-program]]: the last step is removing the
   /// predecessor).
-  void toggleLayerVisibility(LayerId layerId) {
-    final project = _repository.requireProject();
-    final nextVisible = !requireLayerAnywhere(project, layerId).isVisible;
-    _repository.updateLayer(
-      layerId: layerId,
-      update: (layer) => layer.copyWith(isVisible: nextVisible),
+  /// Sets visibility on MANY layers as ONE undo step.
+  ///
+  /// 🚨THE REPORT THAT STARTED THIS: 유저 「일괄로 버튼 조작하고 언두하면
+  /// 바꼈던 레이어들 **다 한번에 언두되야하는데 안됨**」. A sweep down the
+  /// eye column and Solo both change a screenful of rows; looping a
+  /// single-layer call would make the undo one press per row, which is
+  /// the same complaint in a new place.
+  ///
+  /// ⛔[CompositeCommand] is how this repo already collapses many edits
+  /// into one entry (the legend's sheet/mark actions land that way), so
+  /// the batch is a wrapper and not a second mechanism.
+  void setLayersVisible({
+    required List<LayerId> layerIds,
+    required bool visible,
+  }) => _executeDisplayBatch(
+    layerIds: layerIds,
+    label: 'Set layer visibility',
+    apply: (layer) =>
+        layer.isVisible == visible ? layer : layer.copyWith(isVisible: visible),
+  );
+
+  /// Sets static opacity on MANY layers as ONE undo step — the master bar.
+  void setLayersOpacity({
+    required List<LayerId> layerIds,
+    required double opacity,
+  }) {
+    final clamped = opacity.clamp(0.0, 1.0).toDouble();
+    _executeDisplayBatch(
+      layerIds: layerIds,
+      label: 'Set layer opacity',
+      apply: (layer) =>
+          layer.opacity == clamped ? layer : layer.copyWith(opacity: clamped),
     );
   }
 
-  /// The layer-list twirl: PER-USE view state, persisted like CSP. Folder
-  /// rows use it to swallow their members; the eye, static opacity and blend
-  /// a folder carries need no method of their own, because a folder IS a
-  /// layer and rides [toggleLayerVisibility] / [setLayerOpacity] /
+  /// Mutes/unmutes MANY layers as ONE undo step — the legend's SE action.
+  void setLayersMuted({required List<LayerId> layerIds, required bool muted}) =>
+      _executeDisplayBatch(
+        layerIds: layerIds,
+        label: 'Set layer mute',
+        apply: (layer) =>
+            layer.muted == muted ? layer : layer.copyWith(muted: muted),
+      );
+
+  /// Sets the composite blend on MANY layers as ONE undo step.
+  void setLayersBlendMode({
+    required List<LayerId> layerIds,
+    required LayerBlendMode blendMode,
+  }) => _executeDisplayBatch(
+    layerIds: layerIds,
+    label: 'Set layer blend mode',
+    apply: (layer) => layer.blendMode == blendMode
+        ? layer
+        : layer.copyWith(blendMode: blendMode),
+  );
+
+  void _executeDisplayBatch({
+    required List<LayerId> layerIds,
+    required String label,
+    required Layer Function(Layer layer) apply,
+  }) {
+    if (layerIds.isEmpty) {
+      return;
+    }
+    if (layerIds.length == 1) {
+      _historyManager.execute(
+        UpdateLayerDisplayCommand(
+          repository: _repository,
+          layerId: layerIds.single,
+          label: label,
+          apply: apply,
+        ),
+      );
+      return;
+    }
+    _historyManager.execute(
+      CompositeCommand(
+        description: '$label (${layerIds.length} layers)',
+        commands: [
+          for (final layerId in layerIds)
+            UpdateLayerDisplayCommand(
+              repository: _repository,
+              layerId: layerId,
+              label: label,
+              apply: apply,
+            ),
+        ],
+      ),
+    );
+  }
+
+  void toggleLayerVisibility(LayerId layerId) {
+    final project = _repository.requireProject();
+    final nextVisible = !requireLayerAnywhere(project, layerId).isVisible;
+    // 🚨THROUGH HISTORY since 2026-08-29 (유저: 「눈을 껏다키든 뭐든 다
+    // 언두」). It used to write straight to the repository under a rule
+    // called "the visibility-toggle precedent" — but this repo already
+    // undid eighteen other layer edits, including the layer's NAME, so
+    // the eye was the outlier and not the rule.
+    _historyManager.execute(
+      UpdateLayerDisplayCommand(
+        repository: _repository,
+        layerId: layerId,
+        label: 'Toggle layer visibility',
+        apply: (layer) => layer.copyWith(isVisible: nextVisible),
+      ),
+    );
+  }
+
+  /// The layer-list twirl: PER-USE, persisted like CSP. Folder rows use it
+  /// to swallow their members; the eye, static opacity and blend a folder
+  /// carries need no method of their own, because a folder IS a layer and
+  /// rides [toggleLayerVisibility] / [setLayerOpacity] /
   /// [setLayerBlendMode] — all four per-use since T9.
+  ///
+  /// 🚨UNDOABLE too (유저 2026-08-29: 「접기도 마찬가지야. 폴더든
+  /// 어태치든」). ⛔I had argued the twirl was the one to leave out —
+  /// it changes no output, so it looked like paging a reference. 유저 said
+  /// no: the rule is 「무언가를 바꾸는 동작은 기본 이럼」, and a fold is
+  /// something you did and may want back. Attach rows need no separate
+  /// answer: they fold through this same `collapsed` field.
   void toggleLayerCollapsed(LayerId layerId) {
-    _repository.updateLayer(
-      layerId: layerId,
-      update: (layer) => layer.copyWith(collapsed: !layer.collapsed),
+    _historyManager.execute(
+      UpdateLayerDisplayCommand(
+        repository: _repository,
+        layerId: layerId,
+        label: 'Toggle layer collapsed',
+        apply: (layer) => layer.copyWith(collapsed: !layer.collapsed),
+      ),
     );
   }
 
   /// The audio counterpart of [toggleLayerVisibility]: silences the SE
   /// row's sounds without touching them (view state, not undoable).
   void toggleLayerMuted(LayerId layerId) {
-    _repository.updateLayer(
-      layerId: layerId,
-      update: (layer) => layer.copyWith(muted: !layer.muted),
+    // Mute changes what the film SOUNDS like, so it is an edit for the
+    // same reason the eye is one — the old comment here called it "view
+    // state, not undoable", which was the eye's rule and inherited its
+    // mistake.
+    _historyManager.execute(
+      UpdateLayerDisplayCommand(
+        repository: _repository,
+        layerId: layerId,
+        label: 'Toggle layer mute',
+        apply: (layer) => layer.copyWith(muted: !layer.muted),
+      ),
     );
   }
 
   /// The SE row's track fader + pan (AUDIO-PRO R1) — mix state alongside
   /// [toggleLayerMuted], written the same repo-direct way.
-  void setLayerAudio({
-    required LayerId layerId,
-    double? gain,
-    double? pan,
-  }) {
+  void setLayerAudio({required LayerId layerId, double? gain, double? pan}) {
     _repository.updateLayer(
       layerId: layerId,
       update: (layer) => layer.copyWith(
@@ -260,10 +377,15 @@ class LayerController {
     required LayerId layerId,
     required LayerBlendMode blendMode,
   }) {
-    _repository.updateLayer(
-      layerId: layerId,
-      update: (layer) =>
-          layer.blendMode == blendMode ? layer : layer.copyWith(blendMode: blendMode),
+    _historyManager.execute(
+      UpdateLayerDisplayCommand(
+        repository: _repository,
+        layerId: layerId,
+        label: 'Set layer blend mode',
+        apply: (layer) => layer.blendMode == blendMode
+            ? layer
+            : layer.copyWith(blendMode: blendMode),
+      ),
     );
   }
 
@@ -272,10 +394,14 @@ class LayerController {
   /// what changed is that this one stopped reaching across the link.
   void setLayerOpacity({required LayerId layerId, required double opacity}) {
     final clamped = opacity.clamp(0.0, 1.0).toDouble();
-    _repository.updateLayer(
-      layerId: layerId,
-      update: (layer) =>
-          layer.opacity == clamped ? layer : layer.copyWith(opacity: clamped),
+    _historyManager.execute(
+      UpdateLayerDisplayCommand(
+        repository: _repository,
+        layerId: layerId,
+        label: 'Set layer opacity',
+        apply: (layer) =>
+            layer.opacity == clamped ? layer : layer.copyWith(opacity: clamped),
+      ),
     );
   }
 

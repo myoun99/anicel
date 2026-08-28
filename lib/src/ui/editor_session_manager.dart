@@ -16,6 +16,7 @@ import '../models/import/tvpp_parse.dart';
 import '../services/cel_source_effect_pass.dart';
 import '../services/commands/import_media_command.dart';
 import '../services/commands/reorder_track_command.dart';
+import '../services/commands/toggle_id_in_set_command.dart';
 import '../services/import/media_identity_reader.dart';
 import '../services/media/media_fingerprints.dart';
 import '../services/persistence/anicel_incremental_writer.dart'
@@ -3028,10 +3029,7 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     _historyManager.execute(
-      UpdateProjectCameraSizeCommand(
-        repository: _repository,
-        cameraSize: size,
-      ),
+      UpdateProjectCameraSizeCommand(repository: _repository, cameraSize: size),
     );
     notifyListeners();
   }
@@ -4368,13 +4366,25 @@ class EditorSessionManager extends ChangeNotifier {
       ))
         folder.id,
     };
+    // ⛔ONE pass, and the eye is read ONCE per row. Splitting the two
+    // batches into two comprehensions read the row's own eye twice, and
+    // `hidden_folder_is_hidden_test`'s downward ratchet caught it — that
+    // count only goes down, because every extra place that re-derives
+    // "is this row shown" is a place a hidden folder can be forgotten.
+    final toShow = <LayerId>[];
+    final toHide = <LayerId>[];
     for (final layer in stack) {
       _visibilitySoloSnapshot?.putIfAbsent(layer.id, () => layer.isVisible);
       final shouldShow = keepShown.contains(layer.id);
-      if (layer.isVisible != shouldShow) {
-        _layerController.toggleLayerVisibility(layer.id);
+      if (layer.isVisible == shouldShow) {
+        continue;
       }
+      (shouldShow ? toShow : toHide).add(layer.id);
     }
+    // Two batches, not one per row: Solo hides most of the stack and shows
+    // a few, and each side is one undo step rather than a screenful.
+    _layerController.setLayersVisible(layerIds: toShow, visible: true);
+    _layerController.setLayersVisible(layerIds: toHide, visible: false);
   }
 
   void _exitVisibilitySolo() {
@@ -6128,13 +6138,19 @@ class EditorSessionManager extends ChangeNotifier {
     opacityDragPreview.value = null;
     final clamped = opacity.clamp(0.0, 1.0).toDouble();
     lastMasterOpacity = clamped;
-    for (final layer in layers) {
-      if (layerIds.contains(layer.id) &&
-          layerKindHasPictureOpacity(layer.kind) &&
-          layer.opacity != clamped) {
-        _layerController.setLayerOpacity(layerId: layer.id, opacity: clamped);
-      }
-    }
+    // ⛔ONE undo step for one bar drag. The drag itself never reaches here
+    // — `previewLayersOpacity` holds it in a notifier and only the release
+    // commits — so this is one entry per gesture, not per frame.
+    _layerController.setLayersOpacity(
+      layerIds: [
+        for (final layer in layers)
+          if (layerIds.contains(layer.id) &&
+              layerKindHasPictureOpacity(layer.kind) &&
+              layer.opacity != clamped)
+            layer.id,
+      ],
+      opacity: clamped,
+    );
     notifyListeners();
   }
 
@@ -6143,17 +6159,16 @@ class EditorSessionManager extends ChangeNotifier {
   /// the sound/instruction rows have no blend), and only rows that would
   /// change are written, so a no-op pick costs nothing.
   void setBlendModeForLayers(Set<LayerId> layerIds, LayerBlendMode mode) {
-    var changed = false;
-    for (final layer in layers) {
-      if (!layerIds.contains(layer.id) ||
-          !layerKindShowsBlendControl(layer.kind) ||
-          layer.blendMode == mode) {
-        continue;
-      }
-      _layerController.setLayerBlendMode(layerId: layer.id, blendMode: mode);
-      changed = true;
-    }
-    if (changed) {
+    // ⛔ONE undo step for one blend pick, however many rows it lands on.
+    final targets = [
+      for (final layer in layers)
+        if (layerIds.contains(layer.id) &&
+            layerKindShowsBlendControl(layer.kind) &&
+            layer.blendMode != mode)
+          layer.id,
+    ];
+    if (targets.isNotEmpty) {
+      _layerController.setLayersBlendMode(layerIds: targets, blendMode: mode);
       notifyListeners();
     }
   }
@@ -6260,28 +6275,35 @@ class EditorSessionManager extends ChangeNotifier {
   // --- Legend bulk commands (R-toolbar round) -----------------------------
   //
   // One legend-flyout action sweeps every eligible layer of the active cut.
-  // Semantics mirror the per-row toggles: visibility/mute/opacity ride the
-  // layer controller (view-ish state, not undoable — same as their single
-  // buttons), sheet/mark/fill-reference are undoable and land as ONE
-  // CompositeCommand entry.
+  // Semantics mirror the per-row toggles — and since 2026-08-29 that means
+  // UNDOABLE for all of them (유저: 「눈을 껏다키든 뭐든 다 언두」). Every
+  // bulk action lands as ONE entry, the way sheet/mark/fill-reference
+  // already did.
 
   /// Shows or hides every layer of the active cut.
   void setAllLayersVisibility(bool visible) {
-    for (final layer in layers) {
-      if (layer.isVisible != visible) {
-        _layerController.toggleLayerVisibility(layer.id);
-      }
-    }
+    // ⛔ONE undo step for one legend press — the loop used to make one per
+    // row, which is 유저's 「일괄로 버튼 조작하고 언두하면 바꼈던 레이어들
+    // 다 한번에 언두되야하는데 안됨」 in the place it is easiest to hit.
+    _layerController.setLayersVisible(
+      layerIds: [
+        for (final layer in layers)
+          if (layer.isVisible != visible) layer.id,
+      ],
+      visible: visible,
+    );
     notifyListeners();
   }
 
   /// Mutes/unmutes every SE layer of the active cut.
   void setAllSeLayersMuted(bool muted) {
-    for (final layer in layers) {
-      if (layer.kind == LayerKind.se && layer.muted != muted) {
-        _layerController.toggleLayerMuted(layer.id);
-      }
-    }
+    _layerController.setLayersMuted(
+      layerIds: [
+        for (final layer in layers)
+          if (layer.kind == LayerKind.se && layer.muted != muted) layer.id,
+      ],
+      muted: muted,
+    );
     notifyListeners();
   }
 
@@ -6293,12 +6315,16 @@ class EditorSessionManager extends ChangeNotifier {
   /// Sets every picture-opacity layer's opacity to [opacity] (the legend's
   /// numeric bulk set). Camera stays untouched (its slider is the dim).
   void setAllLayersOpacity(double opacity) {
-    final clamped = opacity.clamp(0.0, 1.0);
-    for (final layer in layers) {
-      if (layerKindHasPictureOpacity(layer.kind) && layer.opacity != clamped) {
-        _layerController.setLayerOpacity(layerId: layer.id, opacity: clamped);
-      }
-    }
+    final clamped = opacity.clamp(0.0, 1.0).toDouble();
+    _layerController.setLayersOpacity(
+      layerIds: [
+        for (final layer in layers)
+          if (layerKindHasPictureOpacity(layer.kind) &&
+              layer.opacity != clamped)
+            layer.id,
+      ],
+      opacity: clamped,
+    );
     notifyListeners();
   }
 
@@ -7699,11 +7725,11 @@ class EditorSessionManager extends ChangeNotifier {
     // wider than TVPaint did (288, hands-on).
     final cameraSize =
         parsed.projectCameraWidth != null && parsed.projectCameraHeight != null
-            ? CanvasSize(
-                width: parsed.projectCameraWidth!,
-                height: parsed.projectCameraHeight!,
-              )
-            : defaultProjectCameraSize;
+        ? CanvasSize(
+            width: parsed.projectCameraWidth!,
+            height: parsed.projectCameraHeight!,
+          )
+        : defaultProjectCameraSize;
     final mint = _importIdMint();
     final warnings = [...parsed.warnings];
     if (source.staged) {
@@ -7712,9 +7738,7 @@ class EditorSessionManager extends ChangeNotifier {
       // make this road unreachable, so a build that still takes it should
       // be visible rather than quietly slower — and if it never appears
       // in the field, the road comes out.
-      warnings.add(
-        '제자리에서 읽지 못해 임시 사본으로 열었습니다 — 이 문구가 보이면 알려주세요.',
-      );
+      warnings.add('제자리에서 읽지 못해 임시 사본으로 열었습니다 — 이 문구가 보이면 알려주세요.');
     }
     final plans = <(TvpImportPlan, Map<String, TvppSlot>)>[];
     for (var c = 0; c < parsed.clips.length; c++) {
@@ -7879,16 +7903,15 @@ class EditorSessionManager extends ChangeNotifier {
           if (tiles == null || tiles.isEmpty) {
             continue;
           }
-          final surface = BitmapSurface(
-            canvasSize: bakedCut.canvasSize,
-          ).putTiles([
-            for (final tile in tiles)
-              BitmapTile(
-                coord: TileCoord(x: tile.x, y: tile.y),
-                size: 256,
-                pixels: tile.pixels,
-              ),
-          ]);
+          final surface = BitmapSurface(canvasSize: bakedCut.canvasSize)
+              .putTiles([
+                for (final tile in tiles)
+                  BitmapTile(
+                    coord: TileCoord(x: tile.x, y: tile.y),
+                    size: 256,
+                    pixels: tile.pixels,
+                  ),
+              ]);
           bakeCelSurface(
             brushFrameStore,
             brushFrameKeyForCut(bakedCut, bake.layerId, bake.frameId),
@@ -7936,7 +7959,6 @@ class EditorSessionManager extends ChangeNotifier {
     MemoryBlackBox.end('tvpp-import');
     return warnings;
   }
-
 
   /// Rasterize (§6-f): the ONE verb for every derived-content layer.
   /// Reference layers null [Layer.mediaReference] (the pixels are already
@@ -13794,9 +13816,7 @@ class EditorSessionManager extends ChangeNotifier {
       endIndexExclusive: live.endFrameExclusive,
       // Deduped in display order: a layer row and its own lane rows are
       // several rows of ONE layer, and the move machine plans per layer.
-      layerIds: {
-        for (final row in live.spanRows) ?row.owningLayerId,
-      }.toList(),
+      layerIds: {for (final row in live.spanRows) ?row.owningLayerId}.toList(),
     );
   }
 
@@ -17111,11 +17131,19 @@ class EditorSessionManager extends ChangeNotifier {
       onionSkinLayerIds.value.contains(layerId);
 
   void toggleLayerOnionSkin(LayerId layerId) {
-    final next = Set<LayerId>.from(onionSkinLayerIds.value);
-    if (!next.remove(layerId)) {
-      next.add(layerId);
-    }
-    onionSkinLayerIds.value = next;
+    // 🚨UNDOABLE (유저 2026-08-29: 「아무튼 레이어에 있는 버튼 싹다」). ⛔I
+    // began to explain that undoing this "only moves session state, not
+    // the project", and 유저 stopped me: 「프로젝트 파일이 바뀌란건
+    // 무슨소리지? 아무튼 어니언 적용 미적용만 되면 되는건데」. Press the
+    // button, press Ctrl+Z, the ghosts come back. Where the bit lives is
+    // plumbing.
+    _historyManager.execute(
+      ToggleIdInSetCommand(
+        notifier: onionSkinLayerIds,
+        layerId: layerId,
+        label: 'Toggle onion skin',
+      ),
+    );
     // Row/legend toggle glyphs read through the session listenable.
     notifyListeners();
   }
@@ -17151,11 +17179,35 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     final enable = !displayedLayersOnionSkinEnabled;
-    final next = Set<LayerId>.from(onionSkinLayerIds.value);
-    for (final layer in targets) {
-      enable ? next.add(layer.id) : next.remove(layer.id);
+    // 🚨ONE undo step for one legend press. This used to write the set
+    // directly, so the bulk sweep undid NOTHING even after the per-row
+    // toggle became undoable — 유저 caught the gap by asking what
+    // "restores this id's membership" meant: 「조작끝낸 모든 레이어가
+    // 안돌아간단거야 설마?」. It would not have, here.
+    //
+    // ⛔Only the rows this press actually CHANGES go in the batch: a
+    // command for a row already in the target state is a no-op that still
+    // costs an entry to walk back through.
+    final changing = [
+      for (final layer in targets)
+        if (isLayerOnionSkinEnabled(layer.id) != enable) layer.id,
+    ];
+    if (changing.isEmpty) {
+      return;
     }
-    onionSkinLayerIds.value = next;
+    _historyManager.execute(
+      CompositeCommand(
+        description: 'Toggle onion skin (${changing.length} layers)',
+        commands: [
+          for (final layerId in changing)
+            ToggleIdInSetCommand(
+              notifier: onionSkinLayerIds,
+              layerId: layerId,
+              label: 'Toggle onion skin',
+            ),
+        ],
+      ),
+    );
     notifyListeners();
   }
 
@@ -17262,9 +17314,9 @@ class EditorSessionManager extends ChangeNotifier {
     final archivePath = _projectFilePath;
     if (entryName != null && archivePath != null) {
       try {
-        final entry = parseAnicelZipLayoutFile(archivePath).entryNamed(
-          entryName,
-        );
+        final entry = parseAnicelZipLayoutFile(
+          archivePath,
+        ).entryNamed(entryName);
         if (entry != null) {
           return MediaArchiveBytes(
             archivePath: archivePath,
