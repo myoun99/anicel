@@ -310,30 +310,101 @@ class TimelineGridTileStore {
     }
     final width = (textPainter.width * dpr).ceil() + 2;
     final height = (textPainter.height * dpr).ceil() + 2;
+    // 🚨★★★TINY TEXT IS RASTERISED BIG AND SHRUNK, not rasterised tiny.
+    //
+    // `timelineFittedGlyphFontSize` floors the size at 4.0 so names 「절대
+    // 안 사라지도록」 (R26 #38/#4) — and at deep zoom-out they went anyway.
+    // 🧪Measured 2026-08-29: rasterising "12" at 4px leaves mean alpha 136
+    // over its box; rasterising at 12px and box-filtering to the same box
+    // leaves 212. Both peak at 255, so the ink was never missing — it was
+    // BLOTCHY, dark only where a stroke happened to land on the grid, and
+    // a blotch tinted with cell ink reads as nothing.
+    //
+    // ⛔ABOVE THE FLOOR NOTHING CHANGES. `_bakeAtScale` is 1 for any glyph
+    // the rasteriser can already draw well, so zoom-in keeps the pixels it
+    // has always had — 유저: 「줌인하면 텍스트는 선명하게 보고싶다」.
+    //
+    // ⛔AND THE ATLAS STAYS 1:1. The GLYPH op blits without a scale
+    // parameter, so the shrink happens HERE, before upload; the native ABI
+    // is untouched.
+    final bakeScale = _bakeAtScale(style.fontSize);
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder)
       ..translate(1, 1)
-      ..scale(dpr, dpr);
+      ..scale(dpr * bakeScale, dpr * bakeScale);
     textPainter.paint(canvas, Offset.zero);
     final picture = recorder.endRecording();
-    final image = picture.toImageSync(width, height);
+    final bigWidth = (width * bakeScale).ceil();
+    final bigHeight = (height * bakeScale).ceil();
+    final image = picture.toImageSync(bigWidth, bigHeight);
     picture.dispose();
     final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     image.dispose();
     if (data == null) {
       return null;
     }
-    final alpha = Uint8List(width * height);
-    for (var i = 0; i < alpha.length; i += 1) {
-      alpha[i] = data.getUint8(i * 4 + 3);
+    final big = Uint8List(bigWidth * bigHeight);
+    for (var i = 0; i < big.length; i += 1) {
+      big[i] = data.getUint8(i * 4 + 3);
     }
     return _BakedGlyph(
       width: width,
       height: height,
       logicalWidth: textPainter.width,
       logicalHeight: textPainter.height,
-      alpha: alpha,
+      alpha: bakeScale == 1
+          ? big
+          : boxFilterA8(big, bigWidth, bigHeight, width, height),
     );
+  }
+
+  /// How much bigger than its final box to rasterise a glyph of
+  /// [fontSize].
+  ///
+  /// ⛔1 for anything the rasteriser draws well already, which is what
+  /// keeps zoom-in byte-identical. Below that, enough to land the bake
+  /// near [_legibleBakeSize] — past which more oversampling buys nothing,
+  /// because the box it is being averaged into is the limit.
+  static double _bakeAtScale(double? fontSize) {
+    final size = fontSize ?? _legibleBakeSize;
+    if (size >= _legibleBakeSize) {
+      return 1;
+    }
+    return _legibleBakeSize / size;
+  }
+
+  /// The size at which a digit's strokes land on enough pixels for the
+  /// average to carry its shape. Measured, not chosen: 12px was the probe's
+  /// comparison point and it recovers most of the ink (mean 136 → 212).
+  static const double _legibleBakeSize = 12;
+
+  /// Box-filters an A8 bitmap down to [tw]×[th].
+  ///
+  /// ⛔AVERAGE, not sample. Point-sampling a big raster back down would
+  /// reproduce the blotchiness this exists to remove — the whole gain is
+  /// that every source pixel under a destination pixel contributes.
+  @visibleForTesting
+  static Uint8List boxFilterA8(Uint8List src, int sw, int sh, int tw, int th) {
+    final out = Uint8List(tw * th);
+    for (var y = 0; y < th; y += 1) {
+      final y0 = y * sh ~/ th;
+      final y1 = ((y + 1) * sh / th).ceil().clamp(y0 + 1, sh);
+      for (var x = 0; x < tw; x += 1) {
+        final x0 = x * sw ~/ tw;
+        final x1 = ((x + 1) * sw / tw).ceil().clamp(x0 + 1, sw);
+        var acc = 0;
+        var n = 0;
+        for (var sy = y0; sy < y1; sy += 1) {
+          final row = sy * sw;
+          for (var sx = x0; sx < x1; sx += 1) {
+            acc += src[row + sx];
+            n += 1;
+          }
+        }
+        out[y * tw + x] = n == 0 ? 0 : acc ~/ n;
+      }
+    }
+    return out;
   }
 
   /// Rasters the request and returns the image TOGETHER WITH the content
