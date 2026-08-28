@@ -28,6 +28,11 @@
 import 'dart:convert';
 import 'dart:io';
 
+/// Matches a PR named in prose — 「#1302」, 「PR #1302」 — which the board
+/// cannot file by. Four digits only: three-digit issue numbers and 「#1」
+/// style round tags are not PRs.
+final RegExp _prInProse = RegExp(r'#\d{4}\b');
+
 /// When `<원본id>-Q<번호>` became the way to name a question (the round that
 /// made the name the binding). Questions raised before it are not defects.
 const String _questionNamingSince = '2026-08-27';
@@ -38,6 +43,7 @@ void main(List<String> args) {
   if (!file.existsSync()) return;
 
   final bad = <int>[];
+
   /// Ids that said SOMETHING on at least one line — see [emptyCards].
   final hasWords = <String>{};
   // 🚨Lines appended after the watermark must carry `ts`, and the watermark is
@@ -136,6 +142,34 @@ void main(List<String> args) {
   // `카드 없음` row wearing a card's clothes — and it passes the 「is there a
   // card」 check precisely because someone typed the two fields that make one.
   final emptyCards = <String>[];
+  final prosePrs = <String>[];
+  // 🚨★★★A STATE THE BOARD HAS NEVER HEARD OF FILES AS 「착수 가능」.
+  //
+  // The renderer drops `archived`/`deleted`, labels `wip`/`ask`/`gate`/
+  // `queue`/`mine`/`inbox`, and treats everything else as ready to start.
+  // So inventing a state name does not create a new column — it silently
+  // files the card under 「명령만 내리면 착수」.
+  //
+  // 유저 2026-08-29 saw the result: 「색 키를 GPU로 보니까 작업완료고 남은건
+  // 실기뿐인거같은데 이런건 착수가능이 아니라 실기확인에 있는게 맞는거아니야?
+  // … 이거 게이트에 문제있는거같은데 분류못해내는거보니」. Twenty finished
+  // cards were sitting there under `done`, a word nothing in the server
+  // defines — along with `later`, `blocked`, `answered` and `idea`.
+  //
+  // ⛔The fix is NOT to teach the renderer these words. A state that means
+  // 「finished」 already exists; a second name for it is the invention.
+  final unknownStates = <String>[];
+  const knownStates = <String>{
+    'open',
+    'inbox',
+    'wip',
+    'ask',
+    'gate',
+    'queue',
+    'mine',
+    'archived',
+    'deleted',
+  };
   // 🚨A question that belongs to nothing. `T14-Q1` binds by NAME; anything
   // else needs `of`. Without either, the answer has nowhere to be carried
   // back to and the card's own Q row will never mention it.
@@ -188,6 +222,28 @@ void main(List<String> args) {
       invisible.add(id);
     }
     if (hasPr && !hasWords.contains(id)) emptyCards.add(id);
+
+    // 🚨★★★A PR NAMED IN PROSE IS A PR THE BOARD CANNOT SEE.
+    //
+    // The board files a card by its `pr` FIELD: a card whose PRs are all
+    // merged leaves 착수 가능 and becomes something to check. Writing
+    // 「#1302」 in the note tells the reader and nobody else, so the card
+    // sits in 착수 가능 claiming to be unstarted work.
+    //
+    // 유저 2026-08-29 found four of them at once: 「색 키를 GPU로 보니까
+    // 작업완료고 남은건 실기뿐인거같은데 이런건 착수가능이 아니라
+    // 실기확인에 있는게 맞는거아니야? … 이거 게이트에 문제있는거같은데
+    // 분류못해내는거보니」. The rule existed; nothing checked the input.
+    if (kind == 'item' &&
+        !hasPr &&
+        state != 'archived' &&
+        state != 'deleted' &&
+        _prInProse.hasMatch('${card['note'] ?? ''}')) {
+      prosePrs.add(id);
+    }
+    if (!knownStates.contains(state)) {
+      unknownStates.add('$id($state)');
+    }
   }
 
   final complaints = <String>[];
@@ -299,6 +355,26 @@ void main(List<String> args) {
       'where(화면에서 뭔지) + why(왜 막혔나) + 각 option 의 label 이 필요합니다. '
       '⛔note 는 이 패널에 렌더링되지 않습니다 — 거기 적은 설명은 유저에게 '
       '보이지 않습니다.',
+    );
+  }
+
+  if (unknownStates.isNotEmpty) {
+    complaints.add(
+      '보드가 모르는 state: ${unknownStates.join(', ')}\n'
+      '아는 것은 ${knownStates.join(' · ')} 뿐이고, 나머지는 전부 '
+      '「착수 가능」으로 떨어집니다 — 끝난 카드가 「명령만 내리면 착수」 칸에 '
+      '앉습니다. ⛔새 이름을 지어내지 말고 있는 것을 쓰세요: 끝났으면 '
+      'archived, 유저가 체크했으면 deleted, 나중이면 queue, 상담 대기면 gate.',
+    );
+  }
+
+  if (prosePrs.isNotEmpty) {
+    complaints.add(
+      'PR을 본문에만 적은 카드: ${prosePrs.join(', ')}\n'
+      '보드는 `pr` **필드**로 카드를 분류합니다 — PR이 전부 머지된 카드는 '
+      '착수 가능에서 빠지고 확인할 것으로 갑니다. note 본문의 「#1302」는 '
+      '사람만 읽습니다. ⚠️여러 장이면 **줄마다 pr 하나**로 나눠 적으세요 '
+      '(`e.prs` 는 줄의 `pr` 로만 채워집니다).',
     );
   }
 
