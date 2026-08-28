@@ -828,6 +828,9 @@ class AppStrings {
   String get autosaveChoose => _s('autosaveChoose');
   String get autosaveDefault => _s('autosaveDefault');
   String get autosaveSidecarFolder => _s('autosaveSidecarFolder');
+  String get autosaveEvery => _s('autosaveEvery');
+  String get autosaveEmptyNow => _s('autosaveEmptyNow');
+  String get commonMinutesShort => _s('commonMinutesShort');
 
   // --- The export window ---
   String get exExport => _s('exExport');
@@ -1518,6 +1521,9 @@ class AppStrings {
     'autosaveTitle': 'Autosave',
     'autosaveChoose': 'Choose…',
     'autosaveDefault': 'Default',
+    'autosaveEvery': 'Every',
+    'autosaveEmptyNow': 'Empty now',
+    'commonMinutesShort': ' min',
     'autosaveSidecarFolder': 'Keep sidecars in a separate folder',
     'exExport': 'Export',
     'exAddToQueue': 'Add to queue',
@@ -1771,7 +1777,8 @@ class AppStrings {
     'tlDropDetachAttach': 'detach',
     'tlDetachLayer': 'Detach from base',
     'tlAttachDropsFxTitle': 'Attaching drops its fx',
-    'tlAttachDropsFxBody': 'An attached layer keeps no fx of its own. Continuing discards the existing fx. Continue?',
+    'tlAttachDropsFxBody':
+        'An attached layer keeps no fx of its own. Continuing discards the existing fx. Continue?',
     'tlSharedCut': 'Cut',
     'tlSharedCopy': 'Copy',
     'tlSharedPasteLinked': 'Paste linked',
@@ -2334,6 +2341,9 @@ class AppStrings {
     'autosaveTitle': '自動保存',
     'autosaveChoose': '選択…',
     'autosaveDefault': '既定',
+    'autosaveEvery': '間隔',
+    'autosaveEmptyNow': '今すぐ空にする',
+    'commonMinutesShort': ' 分',
     'autosaveSidecarFolder': 'サイドカーを別フォルダに置く',
     'exExport': '書き出し',
     'exAddToQueue': 'キューに追加',
@@ -3173,6 +3183,9 @@ class AppStrings {
     'autosaveTitle': '자동 저장',
     'autosaveChoose': '선택…',
     'autosaveDefault': '기본',
+    'autosaveEvery': '주기',
+    'autosaveEmptyNow': '지금 비우기',
+    'commonMinutesShort': '분',
     'autosaveSidecarFolder': '사이드카를 별도 폴더에 보관',
     'exExport': '내보내기',
     'exAddToQueue': '큐에 추가',
@@ -3455,7 +3468,8 @@ class AppStrings {
     'tlDropDetachAttach': '어태치 해제',
     'tlDetachLayer': '어태치 해제',
     'tlAttachDropsFxTitle': '어태치하면 fx 가 사라집니다',
-    'tlAttachDropsFxBody': '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
+    'tlAttachDropsFxBody':
+        '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
     'tlSharedCut': '잘라내기',
     'tlSharedCopy': '복사',
     'tlSharedPasteLinked': '링크 붙여넣기',
@@ -4042,6 +4056,9 @@ class AppStrings {
     'autosaveTitle': 'Sauvegarde automatique',
     'autosaveChoose': 'Choisir…',
     'autosaveDefault': 'Par défaut',
+    'autosaveEvery': 'Toutes les',
+    'autosaveEmptyNow': 'Vider maintenant',
+    'commonMinutesShort': ' min',
     'autosaveSidecarFolder':
         'Garder les fichiers annexes dans un dossier séparé',
     'exExport': 'Exporter',
@@ -4313,7 +4330,8 @@ class AppStrings {
     'tlDropDetachAttach': 'détacher',
     'tlDetachLayer': 'Détacher de la base',
     'tlAttachDropsFxTitle': 'Le fx sera perdu',
-    'tlAttachDropsFxBody': 'Une couche attachée ne garde pas son propre fx. Continuer supprimera le fx existant. Continuer ?',
+    'tlAttachDropsFxBody':
+        'Une couche attachée ne garde pas son propre fx. Continuer supprimera le fx existant. Continuer ?',
     'tlSharedCut': 'Couper',
     'tlSharedCopy': 'Copier',
     'tlSharedPasteLinked': 'Coller lié',
@@ -4837,6 +4855,9 @@ class AppStrings {
     'autosaveTitle': '自动保存',
     'autosaveChoose': '选择…',
     'autosaveDefault': '默认',
+    'autosaveEvery': '间隔',
+    'autosaveEmptyNow': '立即清空',
+    'commonMinutesShort': ' 分钟',
     'autosaveSidecarFolder': '将附属文件放在单独文件夹',
     'exExport': '导出',
     'exAddToQueue': '加入队列',
