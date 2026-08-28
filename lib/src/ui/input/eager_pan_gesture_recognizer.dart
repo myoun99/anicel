@@ -47,7 +47,21 @@ class EagerPanGestureRecognizer extends PanGestureRecognizer {
   /// does not flip").
   @override
   bool isPointerAllowed(PointerEvent event) {
-    if (valueControlOwnsPointer(event.pointer)) {
+    // 🚨★★★EITHER CLAIM, not just the strong one (유저 2026-08-29: 「**터치
+    // 좌표가 버튼인데 거기서 움직였다고 스크롤이 발생하는게 심각한
+    // 버그야**」).
+    //
+    // This used to ask `valueControlOwnsPointer` — the strong claim, which
+    // only sliders and splitters take. A button takes the WEAK one, so a
+    // drag that began on a button was allowed through and became a pan:
+    // the row list scrolls under the finger that pressed the eye.
+    //
+    // ⛔The weak claim exists because a button must NOT own drags outright
+    // — the rail's eye-column swipe starts on a button and is a real verb.
+    // That still works: `RailSwipeColumnPointer` takes the strong claim as
+    // well, so a swipe column is untouched here and only the buttons with
+    // no drag verb of their own stop leaking.
+    if (controlOwnsTap(event.pointer)) {
       return false;
     }
     return super.isPointerAllowed(event);

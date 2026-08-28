@@ -24,7 +24,7 @@ import 'timeline/effect_lane_editing.dart'
 import 'timeline/effect_lane_policy.dart' show laneIsEffectLane;
 import 'timeline/property_lane_model.dart' show PropertyLaneEditCallbacks;
 import 'timeline/layer_row_drag.dart'
-    show TimelineRowDragHooks, TrackRowSubject, timelineRowAddressOfDragSubject;
+    show TimelineRowDragHooks, timelineRowAddressOfDragSubject;
 import 'timeline/se_layer_mixer.dart';
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_layer_controls_header.dart' show LayerLegendCallbacks;
@@ -810,20 +810,27 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       // "this surface takes no part in row selection", so
                       // every press here went straight to the move.
                       //
-                      // ⛔The V rows are OUT, and null is how the hook says
-                      // so — "this subject takes no part in row selection",
-                      // which leaves a track drag moving on the first press
-                      // exactly as it always has. A5-3 is about the S rows
-                      // (「se트랙은 트랙끼리 드래그이동」); putting tracks
-                      // behind a select step is a real change to a different
-                      // gesture, and it is not mine to make unasked. Their
-                      // reorder pins caught this the moment the hook was
-                      // unconditional, which is the pins doing their job.
-                      isInRowSelection: (subject) => subject is TrackRowSubject
-                          ? null
-                          : _session.rowIsSelected(
-                              timelineRowAddressOfDragSubject(subject),
-                            ),
+                      // 🚨THE V ROWS ARE IN NOW (유저 2026-08-29). They used
+                      // to answer null — "this subject takes no part in row
+                      // selection" — which left a track drag moving on the
+                      // first press. The comment here said putting tracks
+                      // behind a select step was "not mine to make unasked".
+                      // It was then asked:
+                      //
+                      // > 「v행트랙이든 뭐든 **선택범위는 작동하게**. 거기서
+                      // > 드래그는 뭐 트랜지션은 불가로 남아있잖아? 그런식으로
+                      // > **행에따라 불가는 남아있지만 선택범위는 다
+                      // > 작동해야해**」
+                      //
+                      // ⇒ And it is CLAUDE.md's second absolute command
+                      // spelled out: 「선택범위는 레이어 불문 자유롭게. 행의
+                      // 종류로 막지 않는다」. A row type may still refuse to
+                      // MOVE — that rule lives with the drop policy, where it
+                      // can say which rows accept what — but it may not
+                      // refuse to be SELECTED.
+                      isInRowSelection: (subject) => _session.rowIsSelected(
+                        timelineRowAddressOfDragSubject(subject),
+                      ),
                       onSelectBegin: (subject) => _session.beginRowSelection(
                         timelineRowAddressOfDragSubject(subject),
                       ),
