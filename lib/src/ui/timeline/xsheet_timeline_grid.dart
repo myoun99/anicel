@@ -969,10 +969,20 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     }
     final lane = entry.lane;
     if (lane == null) {
-      // A5-4: the same refusal the horizontal rail makes — the camera and
-      // transition columns hold their place, so they offer no grip.
-      if (!layerKindReordersInCut(entry.layer.kind)) {
-        return child;
+      // A5-4 / F-16: **같은 함수**가 답한다 — x시트가 가로 레일의 모양을
+      // 베껴서 같은 버그를 갖고 있던 자리다.
+      final unmovable = unmovableRowSelectTarget(
+        kind: entry.layer.kind,
+        layerId: entry.layer.id,
+        rowExtent: _metrics.layerRowHeight,
+        axis: Axis.vertical,
+        hooks: hooks,
+        onSelectCrossed: (rowDelta) =>
+            widget.onRowSelectionSpan?.call(_dragRows, rowDelta),
+        child: child,
+      );
+      if (unmovable != null) {
+        return unmovable;
       }
       // F-31, transposed: the sheet counts the COLUMNS on screen, through
       // the same object the rail counts its rows with.

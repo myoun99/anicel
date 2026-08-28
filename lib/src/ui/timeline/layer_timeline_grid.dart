@@ -1445,16 +1445,21 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// `widget.layers` (F-31).
   Widget _draggable(TimelineDisplayRow row, Widget child) {
     final hooks = widget.rowDragHooks;
-    // 🚨A5-4 (유저 2026-08-22): 「카메라·트랜지션 = **드래그 불가**」. Their
-    // place is a rule, so the row offers no grip at all — a drag that can
-    // only ever be refused still lifts the row and still leaves the user to
-    // work out why nothing happened.
-    //
-    // ⚠️The transition row could never commit anyway (a track-owned clone
-    // has no run in `cut.layers`, so the plan came back null), but it DID
-    // lift and fade. That is the shape this removes.
-    if (!layerKindReordersInCut(row.layer.kind)) {
-      return child;
+    // 🚨A5-4 (유저 2026-08-22): 「카메라·트랜지션 = **드래그 불가**」 —
+    // 그런데 F-16: **선택은 된다.** 두 레일이 각자 적던 그 판단은 이제
+    // [unmovableRowSelectTarget] 하나가 답한다.
+    final unmovable = unmovableRowSelectTarget(
+      kind: row.layer.kind,
+      layerId: row.layer.id,
+      rowExtent: _metrics.layerRowHeight,
+      axis: Axis.horizontal,
+      hooks: hooks,
+      onSelectCrossed: (rowDelta) =>
+          widget.onRowSelectionSpan?.call(_dragRows, rowDelta),
+      child: child,
+    );
+    if (unmovable != null) {
+      return unmovable;
     }
     final caret = LayerRowCaret.of(_dragRows, row.layer.id);
     if (caret == null) {
