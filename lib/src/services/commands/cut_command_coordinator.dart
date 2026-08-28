@@ -735,13 +735,19 @@ class CutCommandCoordinator {
   /// direct to the base — the folder organizes and display-controls only.
   /// Siblings join through [EditorSessionManager.addAttachedLayer]'s
   /// sibling rule (adding from a row inside an organizer lands next to
-  /// it). Organizers are FLAT: a row already inside one refuses (null).
+  /// it).
   ///
-  /// Deliberately PER-CUT — no 겸용 mirror, no link-group membership. The
-  /// flat rule can only be checked against THIS cut, and a mirrored
-  /// organizer nesting under a diverged counterpart's folder would break
-  /// that cut's group span; an unlinked folder row also keeps deletes and
-  /// dissolves from fanning out into other cuts' structures.
+  /// 🪦It used to add 「Organizers are FLAT: a row already inside one
+  /// refuses (null)」 — #786's own rule, lifted by 유저 2026-08-29
+  /// (「어태치 폴더 중첩도 허용하는 방향으로 가자 … 싹 다 통일」). The
+  /// refusal is gone from the verb as well as from the gate: a menu that
+  /// greys out is a different bug from a verb that silently returns null,
+  /// and leaving one of the two behind is how the rule comes back.
+  ///
+  /// Still deliberately PER-CUT — no 겸용 mirror, no link-group membership.
+  /// ⚠️The flat rule was one of two reasons given for that and is no longer
+  /// available; the standing one is that an unlinked folder row keeps
+  /// deletes and dissolves from fanning out into other cuts' structures.
   LayerId? createAttachOrganizerFolder({
     required CutId cutId,
     required LayerId layerId,
@@ -751,11 +757,6 @@ class CutCommandCoordinator {
     final cut = requireCut(project, cutId);
     final source = requireLayer(project, cutId: cutId, layerId: layerId);
     if (!isAttachedLayer(source)) {
-      return null;
-    }
-    final currentFolder = cut.layers.folderById(source.folderId);
-    if (currentFolder != null &&
-        attachOrganizerBaseOf(currentFolder, cut.layers) != null) {
       return null;
     }
     final memberIds = [source.id];

@@ -629,12 +629,53 @@ void main() {
       );
       expect(folderStructureProblem(layers), isNull);
 
-      // FLAT one-level rule: a row already inside an organizer refuses.
+      // 🪦The FLAT one-level rule used to refuse here. 유저 2026-08-29
+      // lifted it, and the same round removed the drop policy's refusal —
+      // so the gate has to agree with the drag.
       s.selectLayer(attachId);
-      expect(s.canGroupActiveAttachIntoFolder, isFalse);
-      // The whole-group fold is not fooled either: a base cannot wrap.
+      expect(s.canGroupActiveAttachIntoFolder, isTrue);
+      // The whole-group fold is still not fooled: a base cannot wrap.
       s.selectLayer(base.id);
       expect(s.canGroupActiveAttachIntoFolder, isFalse);
+    });
+
+    test('an organizer NESTS: wrapping a row that is already inside one '
+        'makes a folder in a folder, and every derivation still holds', () {
+      // 유저 2026-08-29: 「어태치 폴더 중첩도 허용하는 방향으로 가자」.
+      final (s, base) = sessionWithBase();
+      s.addAttachedLayer(AttachedPlacement.above);
+      final attachId = s.activeLayer!.id;
+      s.groupActiveAttachIntoFolder();
+      final outerId = cutLayers(
+        s,
+      ).firstWhere((l) => l.id == attachId).folderId!;
+
+      s.selectLayer(attachId);
+      s.groupActiveAttachIntoFolder();
+
+      final layers = cutLayers(s);
+      final attach = layers.firstWhere((l) => l.id == attachId);
+      final inner = layers.folderById(attach.folderId)!;
+      expect(inner.id, isNot(outerId), reason: 'a NEW folder, not the old one');
+      expect(inner.folderId, outerId, reason: 'and it sits inside the outer');
+      expect(
+        attach.attachedToLayerId,
+        base.id,
+        reason: 'the relation stays direct to the base through both folders',
+      );
+      // BOTH folders read as the base's organizer — the subtree walk is
+      // what makes a nested one resolve at all.
+      expect(attachOrganizerBaseOf(inner, layers), base.id);
+      expect(
+        attachOrganizerBaseOf(layers.folderById(outerId)!, layers),
+        base.id,
+      );
+      // The span still swallows the whole nest, and the structure validates.
+      expect(
+        attachedGroupEndIndex(base.id, layers),
+        layers.indexWhere((l) => l.id == outerId) + 1,
+      );
+      expect(folderStructureProblem(layers), isNull);
     });
 
     test('the SIBLING rule: adding an attach from a row inside an '

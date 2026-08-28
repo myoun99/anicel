@@ -278,11 +278,11 @@ String? folderStructureProblem(List<Layer> layers) {
   // A folder holding attach rows is either the group's shared OUTER
   // folder (the base lives in it too) or an ATTACH-ORGANIZER
   // ([연출]/[작감]…) holding NOTHING BUT one base's attaches. Anything
-  // else — attaches of two bases, an attach mixed with unrelated rows, a
-  // folder nested inside an organizer — breaks the group-span derivation
-  // and would split the attach group across a folder boundary. (This is
-  // also what keeps organizers FLAT: a nested folder is a non-attach
-  // member.)
+  // else — attaches of two bases, an attach mixed with unrelated rows —
+  // breaks the group-span derivation and would split the attach group
+  // across a folder boundary. 🪦A folder nested inside an organizer used
+  // to be on that list, which is what kept organizers FLAT; 유저
+  // 2026-08-29 lifted it and the walk below descends instead.
   for (final folder in layers.folderLayers) {
     // 🚨THE SUBTREE'S LEAVES. A nested folder is structure, not a member with
     // an opinion about whose attach this is — reading direct members made one

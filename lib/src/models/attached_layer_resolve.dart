@@ -237,12 +237,16 @@ Cut cutWithReconciledAttachedMirrors(Cut cut) {
 /// not an attach-organizer folder.
 ///
 /// An attach-organizer folder is the 공정 folder inside an attach group
-/// ([연출]/[작감]…): a folder row whose direct members are all attach rows
+/// ([연출]/[작감]…): a folder row whose SUBTREE leaves are all attach rows
 /// of ONE base. The attach relation stays direct to the base — the folder
 /// only organizes and display-controls — so the group's resolution never
-/// chains. Organizer folders are deliberately FLAT (no folder inside one;
-/// the brush groups' precedent): the commands refuse to create nesting
-/// there.
+/// chains.
+///
+/// 🪦It used to read DIRECT members and organizers were deliberately FLAT
+/// (no folder inside one; the brush groups' precedent), with the commands
+/// refusing to create nesting there. 유저 2026-08-29 lifted the ban —
+/// 「어태치 폴더 중첩도 허용하는 방향으로 가자」 — so the walk descends and
+/// the commands create what it can now read.
 ///
 /// R9: what "display-controls" covers narrowed to the EYE, the static
 /// opacity, the BLEND and the fold. It used to include FX, which was wrong
