@@ -22,7 +22,7 @@ import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/history_manager.dart';
 import '../brush/brush_tool_state.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
-import '../canvas/interactive_brush_edit_canvas_view.dart';
+import '../sheet/sheet_ink_layer.dart';
 import '../canvas/tiled_surface_compose.dart';
 
 /// Which conte ink plane a stroke lands on.
@@ -146,7 +146,10 @@ class ConteInkController extends ChangeNotifier {
       plane == ConteInkPlane.row ? _rowStore : _pageStore;
 
   /// The session surface for one window (created blank on first access).
-  BrushEditSessionState sessionStateFor(ConteInkPlane plane, BrushFrameKey key) {
+  BrushEditSessionState sessionStateFor(
+    ConteInkPlane plane,
+    BrushFrameKey key,
+  ) {
     final coordinator = _coordinatorFor(plane);
     coordinator.selectFrame(key);
     return coordinator.activeSessionState;
@@ -240,48 +243,6 @@ class ConteInkController extends ChangeNotifier {
   }
 }
 
-/// One conte ink window: a page-local rect that shows (and draws into) a
-/// region of an ink surface — the timesheet window model verbatim.
-class ConteInkWindow {
-  const ConteInkWindow({
-    required this.id,
-    required this.plane,
-    required this.key,
-    required this.documentRect,
-  });
-
-  final String id;
-  final ConteInkPlane plane;
-  final BrushFrameKey key;
-
-  /// The window's rect in PAGE document space (the conte shell shows one
-  /// page at the document origin).
-  final Rect documentRect;
-
-  /// Surface pixel (0,0) maps to [documentRect]'s top-left for every conte
-  /// window (fresh surface per cell/page), so the ink viewport is the
-  /// panel transform composed with the window placement over the scale.
-  CanvasViewport inkViewport(CanvasViewport panelViewport) {
-    final inkZoom = panelViewport.zoom / ConteInkController.inkScale;
-    return CanvasViewport(
-      zoom: inkZoom,
-      panX: panelViewport.panX + panelViewport.zoom * documentRect.left,
-      panY: panelViewport.panY + panelViewport.zoom * documentRect.top,
-    );
-  }
-
-  /// The window's on-screen rect under the panel transform (the input hit
-  /// region and display clip).
-  Rect screenRect(CanvasViewport panelViewport) {
-    return Rect.fromLTWH(
-      panelViewport.panX + panelViewport.zoom * documentRect.left,
-      panelViewport.panY + panelViewport.zoom * documentRect.top,
-      panelViewport.zoom * documentRect.width,
-      panelViewport.zoom * documentRect.height,
-    );
-  }
-}
-
 /// The ink windows for one page, bottom-of-stack first: page ink lies
 /// under the row bands, so a stroke STARTING on a cell's band goes to that
 /// cell and everything else (header, margins, the hole) goes to the paper.
@@ -289,19 +250,21 @@ class ConteInkWindow {
 /// A cell with no drawing block carries no band window — ink belongs to
 /// drawings ("그림 삭제 시 잉크 동반 삭제"), so a block-less cell offers
 /// only the paper behind it.
-List<ConteInkWindow> conteInkWindows(ContePageLayout page) {
+List<SheetInkWindow> conteInkWindows(ContePageLayout page) {
   final metrics = page.metrics;
   return [
-    ConteInkWindow(
+    SheetInkWindow(
       id: 'page-${page.pageIndex}',
+      surfaceScale: ConteInkController.inkScale.toDouble(),
       plane: ConteInkPlane.page,
       key: ConteInkController.pageKey(page.pageIndex),
       documentRect: Rect.fromLTWH(0, 0, metrics.pageWidth, metrics.pageHeight),
     ),
     for (final cell in page.cells)
       if (cell.source.frameId != null)
-        ConteInkWindow(
+        SheetInkWindow(
           id: 'row-${cell.cutId}-${cell.source.frameId!.value}',
+          surfaceScale: ConteInkController.inkScale.toDouble(),
           plane: ConteInkPlane.row,
           key: ConteInkController.rowKey(
             CutId(cell.cutId),
@@ -348,58 +311,24 @@ class ConteInkLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final windows = conteInkWindows(page);
-    final inputSettings = brushToolState.toInputSettings();
-    return Stack(
-      children: [
-        for (final window in windows)
-          Positioned.fill(
-            child: ClipRect(
-              clipper: _WindowRectClipper(window.screenRect(viewport)),
-              child: RepaintBoundary(
-                child: InteractiveBrushEditCanvasView(
-                  key: ValueKey<String>('conte-ink-${window.id}'),
-                  sessionState: controller.sessionStateFor(
-                    window.plane,
-                    window.key,
-                  ),
-                  layerId: window.key.layerId,
-                  frameId: window.key.frameId,
-                  inputSettings: inputSettings,
-                  viewport: window.inkViewport(viewport),
-                  // The conte paper is painted below this stack; an opaque
-                  // background here would cover it.
-                  showTransparentBackground: false,
-                  onActiveStrokeChanged: (active) {
-                    strokeActive.value = active;
-                  },
-                  onSourceStrokeCommitted: (strokeData) {
-                    controller.commitStroke(
-                      plane: window.plane,
-                      key: window.key,
-                      strokeData: strokeData,
-                      historyManager: historyManager,
-                      cacheInvalidationSink: cacheInvalidationSink,
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-      ],
+    return SheetInkLayer(
+      windows: conteInkWindows(page),
+      keyPrefix: 'conte',
+      viewport: viewport,
+      brushToolState: brushToolState,
+      strokeActive: strokeActive,
+      // The plane axis stays HERE, with the controller that has one.
+      sessionStateFor: (window) => controller.sessionStateFor(
+        window.plane! as ConteInkPlane,
+        window.key,
+      ),
+      onStrokeCommitted: (window, strokeData) => controller.commitStroke(
+        plane: window.plane! as ConteInkPlane,
+        key: window.key,
+        strokeData: strokeData,
+        historyManager: historyManager,
+        cacheInvalidationSink: cacheInvalidationSink,
+      ),
     );
   }
-}
-
-class _WindowRectClipper extends CustomClipper<Rect> {
-  const _WindowRectClipper(this.rect);
-
-  final Rect rect;
-
-  @override
-  Rect getClip(Size size) => rect;
-
-  @override
-  bool shouldReclip(covariant _WindowRectClipper oldClipper) =>
-      oldClipper.rect != rect;
 }

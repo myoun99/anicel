@@ -4,7 +4,7 @@ import '../../models/canvas_viewport.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../brush/brush_tool_state.dart';
-import '../canvas/interactive_brush_edit_canvas_view.dart';
+import '../sheet/sheet_ink_layer.dart';
 import 'cut_envelope_ink.dart';
 
 /// The envelope's ink input layer: one brush canvas per MOUNTED box.
@@ -34,7 +34,7 @@ class CutEnvelopeInkOverlay extends StatelessWidget {
   final CutEnvelopeInkController controller;
 
   /// The windows to mount — already gated.
-  final List<EnvelopeInkWindow> windows;
+  final List<SheetInkWindow> windows;
 
   final BrushToolState brushToolState;
   final HistoryManager historyManager;
@@ -50,52 +50,21 @@ class CutEnvelopeInkOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final inputSettings = brushToolState.toInputSettings();
-    return Stack(
-      children: [
-        for (final window in windows)
-          Positioned.fill(
-            child: ClipRect(
-              clipper: _WindowRectClipper(window.screenRect(viewport)),
-              child: RepaintBoundary(
-                child: InteractiveBrushEditCanvasView(
-                  key: ValueKey<String>('envelope-ink-${window.boxId}'),
-                  sessionState: controller.sessionStateFor(window.key),
-                  layerId: window.key.layerId,
-                  frameId: window.key.frameId,
-                  inputSettings: inputSettings,
-                  viewport: window.inkViewport(viewport),
-                  // The paper is painted below this stack; an opaque
-                  // background here would cover it.
-                  showTransparentBackground: false,
-                  onActiveStrokeChanged: (active) {
-                    strokeActive.value = active;
-                  },
-                  onSourceStrokeCommitted: (strokeData) {
-                    controller.commitStroke(
-                      key: window.key,
-                      strokeData: strokeData,
-                      historyManager: historyManager,
-                      cacheInvalidationSink: cacheInvalidationSink,
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-      ],
+    return SheetInkLayer(
+      windows: windows,
+      keyPrefix: 'envelope',
+      viewport: viewport,
+      brushToolState: brushToolState,
+      strokeActive: strokeActive,
+      // ⛔One plane, so the window's plane stays null and this controller
+      // never asks. That is the whole shape of the envelope's difference.
+      sessionStateFor: (window) => controller.sessionStateFor(window.key),
+      onStrokeCommitted: (window, strokeData) => controller.commitStroke(
+        key: window.key,
+        strokeData: strokeData,
+        historyManager: historyManager,
+        cacheInvalidationSink: cacheInvalidationSink,
+      ),
     );
   }
-}
-
-class _WindowRectClipper extends CustomClipper<Rect> {
-  const _WindowRectClipper(this.rect);
-
-  final Rect rect;
-
-  @override
-  Rect getClip(Size size) => rect;
-
-  @override
-  bool shouldReclip(_WindowRectClipper oldClipper) => oldClipper.rect != rect;
 }

@@ -1,69 +1,13 @@
 import 'package:flutter/material.dart';
 
-import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut_id.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../brush/brush_tool_state.dart';
-import '../canvas/interactive_brush_edit_canvas_view.dart';
+import '../sheet/sheet_ink_layer.dart';
 import 'timesheet_document_painter.dart';
 import 'timesheet_ink_controller.dart';
-
-/// One on-sheet ink input/display window: a document-space rect that shows
-/// (and draws into) a region of an ink surface.
-///
-/// The same strip band surface appears through TWO windows on a paged
-/// sheet (the page's left and right halves), so [id] — not the frame key —
-/// identifies a window.
-class TimesheetInkWindow {
-  const TimesheetInkWindow({
-    required this.id,
-    required this.plane,
-    required this.key,
-    required this.documentRect,
-    required this.inkOffset,
-  });
-
-  final String id;
-  final TimesheetInkPlane plane;
-  final BrushFrameKey key;
-
-  /// The window's rect in sheet document space.
-  final Rect documentRect;
-
-  /// Ink-surface pixel coordinate that maps to [documentRect]'s top-left.
-  final Offset inkOffset;
-
-  /// The viewport the interactive brush view needs so ink pixel (x, y)
-  /// lands exactly where the document paints this window: the panel
-  /// transform composed with the window placement and the ink scale.
-  CanvasViewport inkViewport(CanvasViewport panelViewport) {
-    final inkZoom = panelViewport.zoom / TimesheetInkController.inkScale;
-    return CanvasViewport(
-      zoom: inkZoom,
-      panX:
-          panelViewport.panX +
-          panelViewport.zoom * documentRect.left -
-          inkZoom * inkOffset.dx,
-      panY:
-          panelViewport.panY +
-          panelViewport.zoom * documentRect.top -
-          inkZoom * inkOffset.dy,
-    );
-  }
-
-  /// The window's on-screen rect under the panel transform (the input hit
-  /// region and display clip).
-  Rect screenRect(CanvasViewport panelViewport) {
-    return Rect.fromLTWH(
-      panelViewport.panX + panelViewport.zoom * documentRect.left,
-      panelViewport.panY + panelViewport.zoom * documentRect.top,
-      panelViewport.zoom * documentRect.width,
-      panelViewport.zoom * documentRect.height,
-    );
-  }
-}
 
 /// Computes the ink windows for the current view mode, bottom-of-stack
 /// first: page ink lies under the strip windows, so a stroke STARTING on
@@ -71,21 +15,22 @@ class TimesheetInkWindow {
 /// else (header, memo band, margins, gaps) goes to the page plane. A
 /// stroke keeps its start plane for its whole duration (pointer capture) —
 /// simpler than per-segment routing and closer to how a pen behaves.
-List<TimesheetInkWindow> timesheetInkWindows({
+List<SheetInkWindow> timesheetInkWindows({
   required TimesheetDocumentLayout layout,
   required TimesheetDocumentLayout pagedLayout,
   required CutId cutId,
 }) {
   final document = layout.document;
-  final windows = <TimesheetInkWindow>[];
+  final windows = <SheetInkWindow>[];
   const rowHeight = TimesheetDocumentLayout.rowHeight;
 
   if (layout.continuous) {
     // Page ink: page 1's surface over the identical header/memo geometry
     // (later pages' page ink is paged-view only).
     windows.add(
-      TimesheetInkWindow(
+      SheetInkWindow(
         id: 'page-0-continuous',
+        surfaceScale: TimesheetInkController.inkScale.toDouble(),
         plane: TimesheetInkPlane.page,
         key: TimesheetInkController.pageKey(cutId, 0),
         documentRect: Rect.fromLTWH(
@@ -101,8 +46,9 @@ List<TimesheetInkWindow> timesheetInkWindows({
     final bandHeight = document.pageFrameCount * rowHeight;
     for (var band = 0; band < document.pages.length; band += 1) {
       windows.add(
-        TimesheetInkWindow(
+        SheetInkWindow(
           id: 'strip-$band-continuous',
+          surfaceScale: TimesheetInkController.inkScale.toDouble(),
           plane: TimesheetInkPlane.strip,
           key: TimesheetInkController.stripBandKey(cutId, band),
           documentRect: Rect.fromLTWH(
@@ -123,8 +69,9 @@ List<TimesheetInkWindow> timesheetInkWindows({
   final visiblePages = layout.visiblePageIndexes;
   for (final pageIndex in visiblePages) {
     windows.add(
-      TimesheetInkWindow(
+      SheetInkWindow(
         id: 'page-$pageIndex',
+        surfaceScale: TimesheetInkController.inkScale.toDouble(),
         plane: TimesheetInkPlane.page,
         key: TimesheetInkController.pageKey(cutId, pageIndex),
         documentRect: layout.pageRect(pageIndex),
@@ -139,8 +86,9 @@ List<TimesheetInkWindow> timesheetInkWindows({
         continue;
       }
       windows.add(
-        TimesheetInkWindow(
+        SheetInkWindow(
           id: 'strip-$pageIndex-h$half',
+          surfaceScale: TimesheetInkController.inkScale.toDouble(),
           plane: TimesheetInkPlane.strip,
           key: TimesheetInkController.stripBandKey(cutId, pageIndex),
           documentRect: Rect.fromLTWH(
@@ -206,58 +154,25 @@ class TimesheetInkLayer extends StatelessWidget {
       pagedLayout: pagedLayout,
       cutId: cutId,
     );
-    final inputSettings = brushToolState.toInputSettings();
-
-    return Stack(
-      children: [
-        for (final window in windows)
-          Positioned.fill(
-            child: ClipRect(
-              clipper: _WindowRectClipper(window.screenRect(viewport)),
-              child: RepaintBoundary(
-                child: InteractiveBrushEditCanvasView(
-                  key: ValueKey<String>('timesheet-ink-${window.id}'),
-                  sessionState: controller.sessionStateFor(
-                    window.plane,
-                    window.key,
-                  ),
-                  layerId: window.key.layerId,
-                  frameId: window.key.frameId,
-                  inputSettings: inputSettings,
-                  viewport: window.inkViewport(viewport),
-                  // The sheet paper is painted below this stack; an opaque
-                  // background here would cover it.
-                  showTransparentBackground: false,
-                  onActiveStrokeChanged: (active) {
-                    strokeActive.value = active;
-                  },
-                  onSourceStrokeCommitted: (strokeData) {
-                    controller.commitStroke(
-                      plane: window.plane,
-                      key: window.key,
-                      strokeData: strokeData,
-                      historyManager: historyManager,
-                      cacheInvalidationSink: cacheInvalidationSink,
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-      ],
+    return SheetInkLayer(
+      windows: windows,
+      keyPrefix: 'timesheet',
+      viewport: viewport,
+      brushToolState: brushToolState,
+      strokeActive: strokeActive,
+      // The plane axis stays HERE, with the controller that has one. The
+      // shared layer hands the window back and asks nothing about it.
+      sessionStateFor: (window) => controller.sessionStateFor(
+        window.plane! as TimesheetInkPlane,
+        window.key,
+      ),
+      onStrokeCommitted: (window, strokeData) => controller.commitStroke(
+        plane: window.plane! as TimesheetInkPlane,
+        key: window.key,
+        strokeData: strokeData,
+        historyManager: historyManager,
+        cacheInvalidationSink: cacheInvalidationSink,
+      ),
     );
   }
-}
-
-class _WindowRectClipper extends CustomClipper<Rect> {
-  const _WindowRectClipper(this.rect);
-
-  final Rect rect;
-
-  @override
-  Rect getClip(Size size) => rect;
-
-  @override
-  bool shouldReclip(covariant _WindowRectClipper oldClipper) =>
-      oldClipper.rect != rect;
 }

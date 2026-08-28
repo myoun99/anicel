@@ -22,6 +22,7 @@ import '../../services/cache_invalidation_executor.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/history_manager.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
+import '../sheet/sheet_ink_layer.dart';
 import '../canvas/tiled_surface_compose.dart';
 
 /// Owns the envelope's ink: brush strokes on a cut envelope, kept in a
@@ -213,59 +214,6 @@ class CutEnvelopeInkController extends ChangeNotifier {
   }
 }
 
-/// One box's ink window: where its strokes live and where they land.
-class EnvelopeInkWindow {
-  const EnvelopeInkWindow({
-    required this.boxId,
-    required this.key,
-    required this.documentRect,
-    required this.surfaceScale,
-  });
-
-  final String boxId;
-  final BrushFrameKey key;
-
-  /// The box's rect in PAPER space.
-  final Rect documentRect;
-
-  /// Ink surface pixels per paper unit ([CutEnvelopeLayout.inkSurfaceScale])
-  /// — the whole reason a stroke stays put when the paper changes size.
-  final double surfaceScale;
-
-  /// The box's slice of the shared surface, in surface pixels.
-  Rect get surfaceRect => Rect.fromLTWH(
-    0,
-    0,
-    documentRect.width * surfaceScale,
-    documentRect.height * surfaceScale,
-  );
-
-  /// Surface pixel (0,0) maps to the box's TOP-LEFT, not the paper's.
-  ///
-  /// That is what makes ink survive a form change: a box that moves or
-  /// grows carries its strokes with it, the way a conte cell keeps its
-  /// annotation through repagination. Anchoring to the paper instead would
-  /// leave the marks behind whenever a preset shifted a cell.
-  CanvasViewport inkViewport(CanvasViewport panelViewport) {
-    return CanvasViewport(
-      zoom: panelViewport.zoom / surfaceScale,
-      panX: panelViewport.panX + panelViewport.zoom * documentRect.left,
-      panY: panelViewport.panY + panelViewport.zoom * documentRect.top,
-    );
-  }
-
-  /// The window's on-screen rect under the panel transform — the input hit
-  /// region and the display clip.
-  Rect screenRect(CanvasViewport panelViewport) {
-    return Rect.fromLTWH(
-      panelViewport.panX + panelViewport.zoom * documentRect.left,
-      panelViewport.panY + panelViewport.zoom * documentRect.top,
-      panelViewport.zoom * documentRect.width,
-      panelViewport.zoom * documentRect.height,
-    );
-  }
-}
-
 /// The windows worth MOUNTING right now.
 ///
 /// The analog preset has 86 inking boxes — eight times a conte page — and
@@ -277,8 +225,8 @@ class EnvelopeInkWindow {
 /// Zoomed out, that leaves nothing mounted, which is correct: a cell a few
 /// pixels across is not one anybody is writing in. Zoomed in, it leaves
 /// the handful actually in view.
-List<EnvelopeInkWindow> mountedEnvelopeInkWindows(
-  List<EnvelopeInkWindow> windows,
+List<SheetInkWindow> mountedEnvelopeInkWindows(
+  List<SheetInkWindow> windows,
   CanvasViewport viewport,
   Size screenSize, {
   double minScreenExtent = 24,
@@ -291,7 +239,7 @@ List<EnvelopeInkWindow> mountedEnvelopeInkWindows(
 }
 
 bool _mountable(
-  EnvelopeInkWindow window,
+  SheetInkWindow window,
   CanvasViewport viewport,
   Rect screen,
   double minScreenExtent,
@@ -310,7 +258,7 @@ bool _mountable(
 /// [CutEnvelopeLayout.inkBoxAt]. There is no page window: the form has no
 /// margin, its cells meet, and a stroke that starts outside every inking
 /// box simply has nowhere to go.
-List<EnvelopeInkWindow> envelopeInkWindows(
+List<SheetInkWindow> envelopeInkWindows(
   CutEnvelopeLayout layout,
   CutId ownerCutId,
 ) {
@@ -318,8 +266,8 @@ List<EnvelopeInkWindow> envelopeInkWindows(
   return [
     for (final placed in layout.placedBoxes)
       if (placed.box.takesInk)
-        EnvelopeInkWindow(
-          boxId: placed.box.id,
+        SheetInkWindow(
+          id: placed.box.id,
           key: envelopeInkBoxKey(ownerCutId, placed.box.id),
           documentRect: Rect.fromLTWH(
             placed.x,

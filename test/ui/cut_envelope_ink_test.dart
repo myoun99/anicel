@@ -7,6 +7,7 @@ import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_layout.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_presets.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
+import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 
 /// Envelope ink lives in ONE plane: every stroke belongs to the box it
 /// started in, and there is no page window because the form has no margin.
@@ -40,7 +41,7 @@ void main() {
       owner,
     );
 
-    expect(windows.map((window) => window.boxId), ['cell']);
+    expect(windows.map((window) => window.id), ['cell']);
   });
 
   test('there is NO page window — a stroke outside every box has nowhere '
@@ -98,7 +99,7 @@ void main() {
       aspectRatio: 1,
       boxes: [box],
     );
-    EnvelopeInkWindow windowOn(double paper) => envelopeInkWindows(
+    SheetInkWindow windowOn(double paper) => envelopeInkWindows(
       CutEnvelopeLayout.fit(form: form, paperWidth: paper, paperHeight: paper),
       owner,
     ).single;
@@ -156,7 +157,7 @@ void main() {
     );
 
     expect(
-      windows.map((window) => window.boxId),
+      windows.map((window) => window.id),
       ['outer', 'inner'],
       reason:
           'bottom-of-stack first — the last one wins a hit, matching '
@@ -175,7 +176,7 @@ void main() {
 
     expect(windows, hasLength(CutEnvelopePresets.analog.inkBoxes.length));
     expect(
-      windows.map((window) => window.boxId).toSet(),
+      windows.map((window) => window.id).toSet(),
       hasLength(windows.length),
       reason: 'one surface per box, never two boxes sharing a key',
     );
