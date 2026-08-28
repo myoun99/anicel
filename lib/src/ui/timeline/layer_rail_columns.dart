@@ -120,8 +120,6 @@ IconData layerRailTwirlIcon({required bool expanded}) =>
 /// user-approved). Dropping the cell instead would start their name a
 /// column early, which is the drift this file exists to prevent.
 List<Widget> layerRailLeadingCells({
-  int depth = 0,
-  bool nestingArrow = true,
   Axis axis = Axis.horizontal,
   bool includeSectionSlot = true,
   Widget? sectionBand,
@@ -153,16 +151,20 @@ List<Widget> layerRailLeadingCells({
     // foldered rows too.
     layerRailSlot(axis, layerLabelSlotWidth, mark),
     layerRailSlot(axis, layerRailSectionGap),
-    // The nesting run: one blank cell per level, then the ↳ that says this
-    // row hangs off the folder above it.
-    for (var level = 0; level < depth; level += 1)
-      layerRailSlot(axis, layerRailNestingSlotWidth),
-    if (depth > 0)
-      layerRailSlot(
-        axis,
-        layerRailNestingSlotWidth,
-        nestingArrow ? const LayerNestingArrowCell() : null,
-      ),
+    // 🪦THE NESTING RUN IS GONE — one blank cell per level plus a ↳ cell
+    // used to sit here, and it pushed every button right by 32px at depth 1
+    // and 16 more per level after that (유저 2026-08-29: 「무한으로 늘리면
+    // 점점 화살표아이콘등으로 1칸 밀리는데 계속밀려서 제대로 안보이게된다」).
+    //
+    // ⇒ Depth now lives inside the NAME column ([layerRailNameIndent]), so
+    // every button sits at the same x whatever the depth. The name is what
+    // gets narrower, and a clipped name still reads while a clipped button
+    // cannot be pressed.
+    //
+    // ⛔That also retires the exception this run needed: an attach row used
+    // to keep its nesting CELL and give up the glyph, because two arrows a
+    // column apart answered 「what is this attached to」 with different
+    // nouns (R5 #18). With no nesting cell there is one arrow again.
     layerRailSlot(axis, layerLaneToggleSlotWidth, laneToggle),
     layerRailSlot(axis, layerTimesheetSlotWidth, timesheet),
     layerRailSlot(axis, layerControlChipGap),
@@ -170,6 +172,15 @@ List<Widget> layerRailLeadingCells({
     layerRailSlot(axis, layerControlChipGap),
   ];
 }
+
+/// How far a row at [depth] indents its NAME — the whole of nesting now.
+///
+/// 🚨Guides, not cells: a level costs [layerRailGuideWidth] instead of the
+/// 16px slot the leading run used to spend, and it comes out of the name
+/// rather than out of the buttons.
+const double layerRailGuideWidth = 8;
+
+double layerRailNameIndent(int depth) => depth * layerRailGuideWidth;
 
 /// The leading run's slots, in the order [layerRailLeadingCells] emits them
 /// — the twin of [LayerRailTrailingSlot], and for the same reason: a host
@@ -191,7 +202,6 @@ enum LayerRailLeadingSlot { mark, laneToggle, timesheet, typeButton, name }
 /// pins the two together so neither can drift.
 double layerRailLeadingWidthTo({
   required LayerRailLeadingSlot to,
-  int depth = 0,
   bool includeSectionSlot = true,
 }) {
   var total = includeSectionSlot ? layerSectionLabelSlotWidth : 0.0;
@@ -199,11 +209,6 @@ double layerRailLeadingWidthTo({
     return total;
   }
   total += layerLabelSlotWidth + layerRailSectionGap;
-  // The nesting run: one blank cell per level, then the ↳ cell.
-  total += depth * layerRailNestingSlotWidth;
-  if (depth > 0) {
-    total += layerRailNestingSlotWidth;
-  }
   if (to == LayerRailLeadingSlot.laneToggle) {
     return total;
   }

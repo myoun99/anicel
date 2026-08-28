@@ -840,28 +840,20 @@ class LayerAttachArrowCell extends StatelessWidget {
   }
 }
 
-/// The FOLDER-NESTING arrow (R5 #18): the ↳ a row inside a folder draws in
-/// the last of its indent cells, saying it hangs off the folder above it.
-///
-/// The same glyph as [LayerAttachArrowCell]'s down-side, deliberately —
-/// both answer "what is this row attached to", one for a folder and one for
-/// a base, and they never appear on the same row.
-///
-/// 🚨F-30 (유저 2026-08-24): 「폴더 화살표는 어태치 것과 생김새·색이 달라 같은
-/// 것을 재사용할 것」. "The same glyph" was true and not enough — this one was
-/// drawn at 14px and 55% alpha and the attach one at 16px and full strength,
-/// so two rows in the same group wore two different arrows. They share the
-/// DRAWING now ([layerAttachmentArrowIcon]), not just the codepoint.
-class LayerNestingArrowCell extends StatelessWidget {
-  const LayerNestingArrowCell({super.key});
 
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: ExcludeSemantics(child: layerAttachmentArrowIcon(context)),
-    );
-  }
-}
+// 🪦THE FOLDER-NESTING ARROW LIVED HERE (R5 #18).
+//
+// A row inside a folder drew a ↳ in the last of its indent cells, saying it
+// hung off the folder above. 🚨F-30 (유저 2026-08-24) had already made it
+// share the attach arrow's DRAWING rather than just its codepoint — 「폴더
+// 화살표는 어태치 것과 생김새·색이 달라 같은 것을 재사용할 것」, after one
+// was 14px at 55% alpha and the other 16px at full strength.
+//
+// 2026-08-29 removed the indent cells themselves: depth moved into the NAME
+// column so the buttons keep one x at every depth. With no cell to draw in,
+// the arrow went too — and with it the rule that a row carrying an ATTACH
+// arrow had to keep the cell and give up this glyph, because two arrows a
+// column apart answered one question twice. There is one arrow again.
 
 /// THE arrow that says "this row hangs off the one above it" — one size, one
 /// colour, whether the thing above is a folder or an attach base.

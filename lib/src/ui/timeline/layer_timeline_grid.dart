@@ -647,7 +647,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         // the slot skeleton alone says.
         final left =
             timelineLayerRowLeadingBorder +
-            layerRailLeadingWidthTo(to: slot, depth: depth);
+            layerRailLeadingWidthTo(to: slot);
         return (left: left, right: left + layerRailLeadingSlotWidth(slot));
       };
     }

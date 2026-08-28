@@ -306,13 +306,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
               // The rail's shared column skeleton (R9 #22): slot order and
               // widths come from ONE place, so the storyboard's rows and
               // the legend header cannot drift from these again.
+              // ⛔`depth` no longer belongs here: nesting moved into the
+              // NAME column so the buttons keep one x at every depth.
               ...layerRailLeadingCells(
-                depth: depth,
-                // A row that already carries an attach arrow in the sheet
-                // slot keeps its nesting CELL and gives up the glyph: two
-                // arrows a column apart would each answer "what is this
-                // attached to" with a different noun (R5 #18).
-                nestingArrow: attachArrowPlacement == null,
                 laneToggle: hasLanes && onToggleLanes != null
                     // I-1: a leading toggle COLUMN owns drags that start on
                     // it, exactly as the trailing three do — the strong
@@ -396,6 +392,38 @@ class TimelineLayerControlsRow extends StatelessWidget {
                   onTap: () => onSelectLayer(layer.id),
                 ),
               ),
+              // 🚨★★★NESTING LIVES HERE NOW, AND ONLY HERE.
+              //
+              // 유저 2026-08-29: the leading run used to spend a 16px cell
+              // per level plus a ↳ cell, which pushed every button right and
+              // 「계속밀려서 제대로 안보이게」 되었다. The buttons keep one x
+              // at every depth now; the NAME is what gives ground, and a
+              // clipped name still reads while a clipped button cannot be
+              // pressed.
+              //
+              // The guides say the depth — one hairline per level, drawn
+              // inside the name's own box.
+              if (depth > 0)
+                SizedBox(
+                  width: layerRailNameIndent(depth),
+                  child: Row(
+                    children: [
+                      for (var level = 0; level < depth; level += 1)
+                        SizedBox(
+                          width: layerRailGuideWidth,
+                          child: Center(
+                            child: SizedBox(
+                              width: 1,
+                              height: double.infinity,
+                              child: ColoredBox(
+                                color: colorScheme.outlineVariant,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               Expanded(
                 child: KeyedSubtree(
                   key: ValueKey<String>('timeline-layer-name-${layer.id}'),

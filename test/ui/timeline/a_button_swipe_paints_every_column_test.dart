@@ -297,8 +297,8 @@ void main() {
     });
 
     testWidgets(
-      '⛔and the unnested sheet x on a nested row is the NESTING cell, '
-      'which paints nothing',
+      '🆕and the SAME x on a nested row is the same column — depth no longer '
+      'moves it',
       (tester) async {
         final s = await pumpNested(tester);
         final unnested = tester.getCenter(
@@ -320,12 +320,14 @@ void main() {
         await gesture.up();
         await tester.pumpAndSettle();
 
+        // 🪦This used to assert the opposite: that x held the ↳ of the
+        // nesting run, so a press there painted nothing. The run is gone —
+        // depth lives in the NAME now — so one x is one column at every
+        // depth, which is the whole point of the move.
         expect(
           onSheet(s),
-          isEmpty,
-          reason:
-              'that x holds the ↳ on this row — a band that ignored depth '
-              'would paint the sheet column from a press on the indent',
+          isNotEmpty,
+          reason: '깊이가 열을 옮기지 않으므로 같은 x 는 같은 열이다',
         );
       },
     );
@@ -364,6 +366,8 @@ void main() {
 
         // 🚨Measured against the tree, not against the constants it is made
         // of: a band derived from a number nothing renders is a band that
+        // 🚨Measured against the tree, not against the constants it is made
+        // of: a band derived from a number nothing renders is a band that
         // can be wrong in both places at once.
         expect(
           insetOf('l1'),
@@ -371,23 +375,13 @@ void main() {
               layerRailLeadingWidthTo(to: LayerRailLeadingSlot.timesheet),
           reason: 'unnested',
         );
+        // 🆕2026-08-29: depth moved into the NAME column, so a nested row's
+        // buttons sit at exactly the same x. The band no longer has to
+        // follow an indent, because there is no indent in front of it.
         expect(
           insetOf('m1'),
-          timelineLayerRowLeadingBorder +
-              layerRailLeadingWidthTo(
-                to: LayerRailLeadingSlot.timesheet,
-                depth: 1,
-              ),
-          reason:
-              'one level in — the indent moved the column, and the band '
-              'moved with it',
-        );
-        expect(
-          insetOf('m1') - insetOf('l1'),
-          greaterThan(0),
-          reason:
-              'fixture premise: the two rows really do differ, so the test '
-              'above is not comparing a number with itself',
+          insetOf('l1'),
+          reason: '한 겹 들어가도 버튼 자리는 그대로다 — 좁아지는 것은 이름이다',
         );
       },
     );
