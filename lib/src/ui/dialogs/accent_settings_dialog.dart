@@ -2,10 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../editor_session_manager.dart';
 import '../theme/app_accents.dart';
-import '../../models/layer_mark.dart';
-import '../../models/layer_process.dart';
-import '../theme/layer_mark_palette.dart';
-import '../theme/app_theme.dart' show AppColors, AppShapes;
+import '../theme/app_theme.dart' show AppColors;
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
 import '../widgets/settings_rows.dart';
@@ -88,16 +85,6 @@ class AccentSettingsSection extends StatelessWidget {
               onChanged: (color) =>
                   session.setAccentSettings(settings.copyWith(accent: color)),
             ),
-            const SizedBox(height: 12),
-            // 색 라벨의 톤. ⚠️여기 사는 이유는 [AppAccentSettings] 에 사는
-            // 이유와 같다 — 프로젝트가 아니라 에디터의 색 취향이고, 이 창이
-            // 이미 그것이다.
-            _MarkPaletteRow(
-              value: settings.layerMarkPalette,
-              onChanged: (palette) => session.setAccentSettings(
-                settings.copyWith(layerMarkPalette: palette),
-              ),
-            ),
           ],
         );
       },
@@ -176,93 +163,6 @@ class _AccentRow extends StatelessWidget {
               ),
           ],
         ),
-      ],
-    );
-  }
-}
-
-/// The 색 라벨 tone picker — four strips of the SAME hues (I-4).
-///
-/// 🚨★★★EACH ROW IS THE REAL PALETTE, not a name in a dropdown. The user
-/// asked for exactly this: 「ABCD 네개 다 구현해서 **프로그램 내에서 직접
-/// 보면서 확인**하고싶어. 설정같은곳에서 색 고를수있게」 — a tone is chosen by
-/// looking at it, and the mark paints whole frame blocks, so a swatch strip
-/// is the smallest honest preview.
-///
-/// ⛔No caption under the control (F-2) and no checkmark on the selection —
-/// the chosen row is said with colour and weight alone, which is this app's
-/// law for «selected».
-class _MarkPaletteRow extends StatelessWidget {
-  const _MarkPaletteRow({required this.value, required this.onChanged});
-
-  final LayerMarkPalette value;
-  final ValueChanged<LayerMarkPalette> onChanged;
-
-  /// The stages a strip previews. ⚠️Stages rather than corrections: they are
-  /// what a project is mostly made of, and they carry the palette's whole
-  /// range (white through orange).
-  static const List<LayerProcess> _preview = LayerProcess.values;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          AppText.strings.layerMarkPaletteLabel,
-          style: Theme.of(context).textTheme.titleSmall,
-        ),
-        const SizedBox(height: 8),
-        for (final palette in LayerMarkPalette.values) ...[
-          InkWell(
-            key: ValueKey<String>('settings-mark-palette-${palette.jsonValue}'),
-            onTap: () => onChanged(palette),
-            borderRadius: const BorderRadius.all(Radius.circular(AppShapes.wellRadius)),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              decoration: BoxDecoration(
-                borderRadius: const BorderRadius.all(Radius.circular(AppShapes.wellRadius)),
-                border: Border.all(
-                  color: palette == value
-                      ? colorScheme.onSurface
-                      : colorScheme.outlineVariant,
-                  width: palette == value ? 2 : 1,
-                ),
-              ),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 56,
-                    child: Text(
-                      AppText.strings.layerMarkPaletteName(
-                        palette.jsonValue,
-                        palette.displayName,
-                      ),
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ),
-                  for (final process in _preview)
-                    Container(
-                      width: 18,
-                      height: 18,
-                      margin: const EdgeInsets.only(right: 3),
-                      decoration: BoxDecoration(
-                        color: resolveLayerMarkColor(
-                          LayerMark(process: process),
-                          palette,
-                          noneColor: colorScheme.surface,
-                        ),
-                        borderRadius: const BorderRadius.all(Radius.circular(AppShapes.wellRadius)),
-                        border: Border.all(color: colorScheme.outlineVariant),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
-        ],
       ],
     );
   }

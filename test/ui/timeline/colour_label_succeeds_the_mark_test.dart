@@ -18,7 +18,6 @@ import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/theme/app_accents.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
-import 'package:anicel/src/ui/theme/layer_mark_palette.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 
@@ -32,10 +31,9 @@ void main() {
   _oneWidgetBothSurfaces();
   _axisAgreement();
   _namesFollowTheLanguage();
-  _toneNamesFollowTheLanguage();
   _oneDecidesTheWritingDirection();
   _threeGlyphAbbreviations();
-  _labelGlyphsHaveHardEdges();
+  _labelGlyphsKeepTheirAntiAliasing();
 
   // 🚨A GLOBAL. Saving and restoring rather than assigning a fresh default
   // back: writing `const AppAccentSettings()` in the teardown would not undo
@@ -44,41 +42,28 @@ void main() {
   setUp(() => saved = AppColors.accentSettings.value);
   tearDown(() => AppColors.accentSettings.value = saved);
 
-  test('기본 톤은 크림이다 — 유저 실기 확정 2026-08-28: 「답은 크림이고」', () {
-    expect(const AppAccentSettings().layerMarkPalette, LayerMarkPalette.cream);
-  });
-
-  test('⛔기본값을 두 군데서 안 정한다 — 저장값이 깨졌을 때도 같은 톤', () {
-    // 「고른 적이 없으면 무엇인가」에 답하는 곳이 둘이면, 저장값이 깨진
-    // 사람에게만 다른 톤이 나오고 아무도 못 찾는다.
-    expect(LayerMarkPalette.fromJson(null), LayerMarkPalette.fallback);
-    expect(LayerMarkPalette.fromJson('무슨소리'), LayerMarkPalette.fallback);
-    expect(
-      const AppAccentSettings().layerMarkPalette,
-      LayerMarkPalette.fallback,
-    );
-  });
-
-  test('스샷에서 뽑은 색이 그대로 나온다 — LO는 흰색, 원화는 초록, 미술은 파랑', () {
-    AppColors.accentSettings.value = saved.copyWith(
-      layerMarkPalette: LayerMarkPalette.original,
-    );
-    // ⚠️These are the user's own values, measured out of `board-shots/`.
-    // A test that only said 「어떤 색이 나온다」 would have passed on the
-    // palette I invented before opening those files.
+  test('스샷에서 뽑은 색상이 그대로 나온다 — LO는 흰색, 원화는 초록, 미술은 파랑', () {
+    // ⚠️These are the user's own hues, measured out of `board-shots/`. A test
+    // that only said 「어떤 색이 나온다」 would have passed on the palette I
+    // invented before opening those files.
+    //
+    // 🪦값 자체는 **크림 톤**의 것이다. 네 톤을 다 구현해 실기에서 고르게
+    // 했었고(I-4), 크림으로 확정된 뒤 나머지 셋과 고르는 장치를 걷었다
+    // (유저 2026-08-28: 「색도 크림으로 정했으니까 나머지 유물 없애도되」).
+    // 색상은 그대로고 톤만 옮겨 앉았다.
     expect(
       layerMarkColor(const LayerMark(process: LayerProcess.layout)),
-      const Color(0xFFFFFFFF),
+      const Color(0xFFFFFDF7),
       reason: '유저: 「LO는 흰색이야」',
     );
     expect(
       layerMarkColor(const LayerMark(process: LayerProcess.key)),
-      const Color(0xFF80FF85),
+      const Color(0xFFB5FDB0),
       reason: '유저: 「원화는 초록색이었고」',
     );
     expect(
       layerMarkColor(const LayerMark(process: LayerProcess.art)),
-      const Color(0xFF007FFF),
+      const Color(0xFF6BB3F7),
       reason: '유저: 「BG는 파랑색이었고」',
     );
   });
@@ -99,23 +84,7 @@ void main() {
     }
   });
 
-  test('팔레트를 바꾸면 레이어를 하나도 안 건드리고 색이 전부 바뀐다', () {
-    const mark = LayerMark(process: LayerProcess.key);
-    final seen = <Color>{};
-    for (final palette in LayerMarkPalette.values) {
-      AppColors.accentSettings.value = saved.copyWith(
-        layerMarkPalette: palette,
-      );
-      seen.add(layerMarkColor(mark));
-    }
-    expect(
-      seen.length,
-      LayerMarkPalette.values.length,
-      reason: '네 톤이 서로 달라야 「보면서 고르는」 것이 가능하다',
-    );
-  });
-
-  test('네 톤 전부, 모든 라벨이 블록 잉크가 읽히는 밝기다', () {
+  test('모든 라벨이 블록 잉크가 읽히는 밝기다', () {
     // 유저: 「프레임이름/코마숫자/색라벨은 다 같은 색상의 바탕 위에 올라가는
     // 텍스트니까 **셋 다 같은 로직** 통일해서 사용하도록」 + 「그거 감안해서
     // **검정색이 되도록 유도하는 색**으로만 설계해보자」.
@@ -123,21 +92,16 @@ void main() {
     // 🚨So the palette is not free: every colour has to sit ABOVE the block
     // ink's crossover, or the plate would flip to white and that one chip
     // would be the exception the user asked not to have.
-    for (final palette in LayerMarkPalette.values) {
-      AppColors.accentSettings.value = saved.copyWith(
-        layerMarkPalette: palette,
+    for (final mark in everyLayerMark()) {
+      final fill = layerMarkColor(mark);
+      expect(
+        timelineGroundIsLight(fill),
+        isTrue,
+        reason:
+            '$mark = $fill '
+            '(luminance ${fill.computeLuminance().toStringAsFixed(3)}) — '
+            '0.179 아래로 내려가면 그 칩만 흰 글자가 된다',
       );
-      for (final mark in everyLayerMark()) {
-        final fill = layerMarkColor(mark);
-        expect(
-          timelineGroundIsLight(fill),
-          isTrue,
-          reason:
-              '${palette.displayName} · $mark = $fill '
-              '(luminance ${fill.computeLuminance().toStringAsFixed(3)}) — '
-              '0.179 아래로 내려가면 그 칩만 흰 글자가 된다',
-        );
-      }
     }
   });
 
@@ -407,38 +371,6 @@ void _namesFollowTheLanguage() {
   });
 }
 
-/// 톤 이름도 프로그램 언어를 탄다 — 유저가 「설정같은곳에서 색 고를수있게」
-/// 라고 한 그 목록이다. 라벨만 번역하고 고르는 창이 한국어로 남으면 반쪽이다.
-void _toneNamesFollowTheLanguage() {
-  void speak(AppLanguage language) => AppText.settings.value =
-      AppLanguageSettings(programLanguage: language);
-  tearDown(() => AppText.settings.value = const AppLanguageSettings());
-
-  String toneName(LayerMarkPalette palette) => AppText.strings
-      .layerMarkPaletteName(palette.jsonValue, palette.displayName);
-
-  test('네 언어 모두 톤 넷의 이름을 갖는다', () {
-    for (final language in AppLanguage.values) {
-      speak(language);
-      for (final palette in LayerMarkPalette.values) {
-        expect(toneName(palette), isNotEmpty, reason: '$language · $palette');
-      }
-    }
-  });
-
-  test('언어를 바꾸면 톤 이름이 실제로 바뀐다', () {
-    speak(AppLanguage.en);
-    final english = toneName(LayerMarkPalette.pencil);
-    speak(AppLanguage.ko);
-    final korean = toneName(LayerMarkPalette.pencil);
-    speak(AppLanguage.ja);
-    final japanese = toneName(LayerMarkPalette.pencil);
-
-    expect(english, 'Coloured pencil');
-    expect(korean, isNot(english), reason: '색연필');
-    expect(japanese, isNot(korean), reason: '色鉛筆');
-  });
-}
 
 /// ⛔**세로쓰기를 고르는 곳은 하나다** (래칫).
 ///
@@ -519,17 +451,23 @@ void _threeGlyphAbbreviations() {
   });
 }
 
-/// 🚨★★★색 라벨 글자에는 **회색 가장자리가 없다**. 유저 2026-08-28:
-/// 「그거 없이 그냥 **쌩2치화** 된 텍스트로 할수있나?」 → 「진짜 aa만 어떻게
-/// 뭐 못끄나? 그냥 그려서 표현한다던가?」.
+/// 🚨★★★색 라벨 글자는 **평범하게, AA 가 붙은 채로** 그려진다.
 ///
-/// ⛔끄는 API 는 없다(직접 확인: `Paint()..isAntiAlias = false` 를 물려도 출력이
-/// 픽셀 단위로 동일). 그래서 **그려진 뒤 알파를 계단으로 만든다.**
-void _labelGlyphsHaveHardEdges() {
-  testWidgets('진짜 패널을 찍어 판의 픽셀을 센다 — 반투명 가장자리가 0이다', (tester) async {
-    // ⛔플레이트를 따로 세워서 재지 않는다. 그건 「내가 세운 것」을 재는 것이지
-    // **화면에 나오는 것**을 재는 게 아니다 — 앱에서 필터가 빠져도 통과한다.
-    // 화면 전체를 찍고 **칩의 사각형만** 읽는다.
+/// 🪦여기 계단 필터가 있었다. 유저 2026-08-28 의 「색라벨 텍스트 뭔가 좀
+/// 읽기힘든데 … **쌩2치화** 된 텍스트로 할수있나?」로 들어왔고, 폰트를
+/// BIZ UDPGothic 으로 바꾼 뒤 「글자가 1px같은게 사라졌어」로 이어져
+/// 「우선 2치화는 없는걸로 가자」로 끝났다. 왜 있었고 왜 갔는지는
+/// [AppAccentSettings.layerMarkGlyphWeight] 의 문서에 있다.
+///
+/// ⇒ 이 테스트가 지키는 것은 **그 자리가 다시 채워지지 않는 것**이다. 계단이
+/// 돌아오면 가장자리의 중간 회색이 0 이 되므로, 그것을 센다.
+void _labelGlyphsKeepTheirAntiAliasing() {
+  // ⛔플레이트를 따로 세워서 재지 않는다. 그건 「내가 세운 것」을 재는 것이지
+  // **화면에 나오는 것**이 아니다 — 앱에서 무언가 빠져도 통과한다.
+  // 화면 전체를 찍고 **칩의 사각형만** 읽는다.
+  testWidgets('진짜 패널을 찍어 판의 픽셀을 센다 — 가장자리에 회색이 남아 있다', (
+    tester,
+  ) async {
     final key = GlobalKey();
     await tester.pumpWidget(
       RepaintBoundary(key: key, child: markPanelForPixelTest()),
@@ -558,21 +496,14 @@ void _labelGlyphsHaveHardEdges() {
       }
     }
     final sorted = levels.toList()..sort();
-    final between = sorted
-        .where((v) => v > sorted.first + 12 && v < sorted.last - 12)
-        .length;
 
     // 🚨계측기를 먼저 의심한다: 글자가 아예 안 그려졌으면 계조가 하나뿐이고
-    // 「중간값 0」은 자동으로 참이 된다.
+    // 어떤 주장이든 자동으로 참이 된다.
+    expect(sorted.length, greaterThan(1), reason: '⛔빈 것을 쟀다 — 판에 글자가 없다');
     expect(
-      sorted.length,
-      greaterThan(1),
-      reason: '⛔빈 것을 쟀다 — 판에 글자가 없다',
-    );
-    expect(
-      between,
-      0,
-      reason: '🚨바탕과 잉크 사이에 회색이 남아 있다 — 계조 $sorted',
+      sorted.where((v) => v > sorted.first + 12 && v < sorted.last - 12).length,
+      greaterThan(0),
+      reason: '🚨바탕과 잉크 사이가 계단이다 — 걷어낸 2치화가 돌아왔다 · 계조 $sorted',
     );
   });
 }

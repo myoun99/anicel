@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/app_accent_settings_store.dart';
 import 'package:anicel/src/ui/theme/app_accents.dart';
-import 'package:anicel/src/ui/theme/layer_mark_palette.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
 /// UI-R22 #5: the program accent is customizable and persists.
@@ -23,32 +22,28 @@ void main() {
   });
 
   test('json round-trips', () {
-    const settings = AppAccentSettings(
-      accent: Color(0xFF123456),
-      layerMarkPalette: LayerMarkPalette.cream,
-    );
-    expect(settings.toJson(), {
-      'accent': 0xFF123456,
-      'layerMarkPalette': 'cream',
-    });
+    const settings = AppAccentSettings(accent: Color(0xFF123456));
+    // ⚠️Spelled out rather than only round-tripped: `fromJson` hands defaults
+    // back for missing keys, so a `toJson` that silently dropped one would
+    // still round-trip clean.
+    expect(settings.toJson(), {'accent': 0xFF123456});
     expect(AppAccentSettings.fromJson(settings.toJson()), settings);
   });
 
-  test('a file written before the 색 라벨 tone existed keeps the DEFAULT '
-      'tone rather than losing the accent with it', () {
-    // A settings file from before I-4 has no `layerMarkPalette` key, and
-    // reading that as a failure would throw the accent away too.
-    //
-    // ⛔THE TOKEN, not the tone's name. This spelled out
-    // `LayerMarkPalette.original` and so broke the day the default moved to
-    // 크림 (유저 실기 확정 2026-08-28) — a test that writes the value out is a
-    // copy exactly like the code would be, and it is the third place that
-    // was answering 「고른 적이 없으면 무엇인가」.
-    final restored = AppAccentSettings.fromJson(const <String, dynamic>{
+  test('the retired 색 라벨 keys are simply not read, and the accent '
+      'survives them', () {
+    // 🪦Builds in between wrote `layerMarkPalette`, then `layerMarkHardEdges`
+    // with its threshold, then `layerMarkGlyphWeight`. All three rounds ended
+    // in a fixed value, and a file still holding them must not fail to load —
+    // the keys stay on disk until the next save.
+    final read = AppAccentSettings.fromJson(const <String, dynamic>{
       'accent': 0xFF123456,
+      'layerMarkPalette': 'pastel',
+      'layerMarkHardEdges': true,
+      'layerMarkHardEdgeThreshold': 0.35,
+      'layerMarkGlyphWeight': 900,
     });
-    expect(restored.accent, const Color(0xFF123456));
-    expect(restored.layerMarkPalette, LayerMarkPalette.fallback);
+    expect(read.accent, const Color(0xFF123456));
   });
 
   test('a stored accent2 from an older build is ignored, not fatal', () {
