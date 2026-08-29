@@ -368,7 +368,7 @@ void main() {
             ],
             laneRange: TimelineLaneRangeHooks(
               selection: laneSelection,
-              onSelectUpdate: (layerId, laneId, anchor, head, headLaneId) {
+              onSelectUpdate: (layerId, laneId, anchor, head, headLaneId, span) {
                 selectUpdates.add((layerId, laneId, anchor, head));
                 laneSelection.value = TimelineLaneSelection(
                   layerId: layerId,
@@ -1514,7 +1514,7 @@ void main() {
               laneEdit: PropertyLaneEditCallbacks(onToggleKeyAt: (_, _, _) {}),
               laneRange: TimelineLaneRangeHooks(
                 selection: selection,
-                onSelectUpdate: (_, _, anchor, _, _) =>
+                onSelectUpdate: (_, _, anchor, _, _, _) =>
                     selectUpdates.add(anchor),
                 onTapAt: (_, _, _) {},
                 onTapClear: () {},
@@ -1688,7 +1688,7 @@ void main() {
               ],
               laneRange: TimelineLaneRangeHooks(
                 selection: ValueNotifier<TimelineLaneSelection?>(null),
-                onSelectUpdate: (_, _, _, _, _) {},
+                onSelectUpdate: (_, _, _, _, _, _) {},
                 // The production host seeks here; this harness stands in
                 // for it with the same one line.
                 onTapAt: (_, _, frame) => cursor.value = frame,

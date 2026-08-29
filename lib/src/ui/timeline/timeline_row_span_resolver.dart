@@ -176,9 +176,7 @@ String? resolveInGroupHeadLane({
     return null;
   }
   final head = rows[(anchorIndex + rowDelta).clamp(0, rows.length - 1)];
-  return head is LaneRowAddress && head.layerId == layerId
-      ? head.laneId
-      : null;
+  return head is LaneRowAddress && head.layerId == layerId ? head.laneId : null;
 }
 
 /// [resolveLaneSpanEscalation] stated in the ADDRESS vocabulary — the ONE
@@ -221,4 +219,53 @@ resolveLaneSpanEscalationOverAddresses({
     head: head,
     spanRows: [for (var i = low; i <= high; i += 1) ?rows[i]],
   );
+}
+
+/// The lane ids a drag from [laneId] to [headLaneId] covers, sliced out of
+/// the rows the rail ACTUALLY DREW.
+///
+/// 🚨★★★行의 종류로 막지 않는다 — 절대명령 2 (유저, 반복): 「**선택범위는
+/// 레이어 불문 자유롭게**」.
+///
+/// ⛔This replaces three per-family walks (`effectLaneSpan`,
+/// `seNameTagLaneSpan`, `transformLaneSpan`) that a `??` chain tried in
+/// turn. Each one knew only its own order list, so a drag whose endpoints
+/// sat in DIFFERENT groups matched none of them and collapsed to the anchor
+/// alone — the selection stopped at a boundary the user never drew. The
+/// three were also the same code three times: get an order, index both ends,
+/// slice ([[no-copy-to-share]]).
+///
+/// ⚠️THE ROWS ARE THE ORDER, and that is the point: a collapsed group draws
+/// no members, so they cannot be swept, and a group opened between two
+/// others joins the span without anything here learning its name. The rail
+/// already resolves the head lane off these same rows
+/// ([resolveInGroupHeadLane]) — this is the other half of that.
+List<String> laneSpanOverDrawnRows({
+  required List<TimelineRowAddress?> rows,
+  required LayerId layerId,
+  required String laneId,
+  required String headLaneId,
+}) {
+  final anchor = rows.indexOf(LaneRowAddress(layerId, laneId));
+  final head = rows.indexOf(LaneRowAddress(layerId, headLaneId));
+  if (anchor < 0 || head < 0) {
+    // One end is not on screen — a span cannot be honestly named, so the
+    // press keeps only itself. (The same answer the family walks gave when
+    // an id was missing from their order.)
+    return [laneId];
+  }
+  final low = anchor < head ? anchor : head;
+  final high = anchor < head ? head : anchor;
+  return [
+    for (var i = low; i <= high; i += 1)
+      // ⚠️THE OWNER IS CHECKED. A rail can draw two layers at once, and a
+      // lane id is only unique WITHIN a layer — without this, another
+      // layer's `scale` between the two ends joined the span as a second
+      // `scale` and the selection carried a row nobody swept (measured).
+      if (rows[i] case LaneRowAddress(
+        :final laneId,
+        layerId: final owner,
+      ) when owner == layerId)
+        laneId,
+  ];
 }

@@ -47,6 +47,7 @@ import 'timeline_current_row.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_row_span_resolver.dart'
     show
+        laneSpanOverDrawnRows,
         resolveBlockMoveTargetLayer,
         resolveInGroupHeadLane,
         resolveLaneSpanEscalation;
@@ -1547,6 +1548,24 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                     layerId: layerId,
                                     laneId: laneId,
                                     rowDelta: headRowDelta,
+                                  ),
+                                  laneSpanOverDrawnRows(
+                                    rows: [
+                                      for (final row in _dragRows) row.address,
+                                    ],
+                                    layerId: layerId,
+                                    laneId: laneId,
+                                    headLaneId:
+                                        resolveInGroupHeadLane(
+                                          rows: [
+                                            for (final row in _dragRows)
+                                              row.address,
+                                          ],
+                                          layerId: layerId,
+                                          laneId: laneId,
+                                          rowDelta: headRowDelta,
+                                        ) ??
+                                        laneId,
                                   ),
                                 );
                                 return;

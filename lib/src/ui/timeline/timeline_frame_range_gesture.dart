@@ -541,6 +541,10 @@ class TimelineLaneRangeHooks {
     int anchorIndex,
     int headIndex,
     String? headLaneId,
+    // The lane ids the drag covers, sliced out of the rows the rail DREW
+    // — 절대명령 2「선택범위는 레이어 불문 자유롭게」. The rail is the only
+    // thing that knows what is on screen, so it is the thing that answers.
+    List<String> spanLaneIds,
   )
   onSelectUpdate;
 

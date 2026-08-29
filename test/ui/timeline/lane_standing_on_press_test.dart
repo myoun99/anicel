@@ -278,6 +278,7 @@ void main() {
       laneId: seNameTagSizeLaneId,
       anchorIndex: 1,
       headIndex: 3,
+      spanLaneIds: const [],
     );
     final span = s.laneRangeSelection.value!;
     expect(span.startIndex, 11);

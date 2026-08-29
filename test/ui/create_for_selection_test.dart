@@ -153,6 +153,7 @@ void main() {
       laneId: 'position',
       anchorIndex: 2,
       headIndex: 4,
+      spanLaneIds: const [],
     );
     expect(s.createInstancesForSelection(), isTrue);
     expect(

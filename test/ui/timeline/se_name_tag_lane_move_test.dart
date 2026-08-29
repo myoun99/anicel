@@ -133,6 +133,7 @@ void main() {
         laneId: seNameTagSizeLaneId,
         anchorIndex: 2,
         headIndex: 3,
+        spanLaneIds: const [],
         framesAreGlobal: true,
       );
       expect(session.beginLaneRangeMoveDrag(), isTrue,
@@ -173,6 +174,7 @@ void main() {
         laneId: seNameTagGroupLaneId,
         anchorIndex: 2,
         headIndex: 3,
+        spanLaneIds: const [],
         framesAreGlobal: true,
       );
       expect(session.beginLaneRangeMoveDrag(), isTrue);
@@ -196,6 +198,7 @@ void main() {
         laneId: seNameTagSizeLaneId,
         anchorIndex: 2,
         headIndex: 3,
+        spanLaneIds: const [],
         framesAreGlobal: true,
       );
       expect(session.beginLaneRangeMoveDrag(), isFalse);
@@ -227,6 +230,7 @@ void main() {
         laneId: seNameTagSizeLaneId,
         anchorIndex: 2,
         headIndex: 3,
+        spanLaneIds: const [],
         framesAreGlobal: true,
       );
       expect(session.beginLaneRangeMoveDrag(), isTrue);
@@ -286,6 +290,7 @@ void main() {
         laneId: seNameTagSizeLaneId,
         anchorIndex: firstDuration + 2,
         headIndex: firstDuration + 3,
+        spanLaneIds: const [],
         framesAreGlobal: true,
       );
       expect(session.beginLaneRangeMoveDrag(), isTrue);

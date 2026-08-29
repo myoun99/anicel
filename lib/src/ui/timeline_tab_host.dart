@@ -883,13 +883,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               // rows it actually draws — the host's own lane-list walk
               // retired with it.
               onSelectUpdate:
-                  (layerId, laneId, anchorIndex, headIndex, headLaneId) =>
+                  (layerId, laneId, anchorIndex, headIndex, headLaneId, span) =>
                       _session.updateLaneRangeSelectionDrag(
                         layerId: layerId,
                         laneId: laneId,
                         anchorIndex: anchorIndex,
                         headIndex: headIndex,
                         headLaneId: headLaneId,
+                        spanLaneIds: span,
                       ),
               onTapAt: _standOnLane,
               // H18: the cells family's release rule, on lanes too — a press

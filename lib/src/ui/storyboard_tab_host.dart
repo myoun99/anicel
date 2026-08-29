@@ -744,6 +744,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                             anchorIndex,
                             headIndex,
                             headLaneId,
+                            span,
                           ) => _session.updateLaneRangeSelectionDrag(
                             layerId: layerId,
                             laneId: laneId,
@@ -751,6 +752,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                             headIndex: headIndex,
                             framesAreGlobal: true,
                             headLaneId: headLaneId,
+                            spanLaneIds: span,
                           ),
                       // R10: a lane band is a place you can STAND. The
                       // storyboard's strips run on the GLOBAL axis, so the

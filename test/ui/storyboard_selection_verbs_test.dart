@@ -597,6 +597,7 @@ void main() {
         laneId: 'position',
         anchorIndex: 2,
         headIndex: 3,
+        spanLaneIds: const [],
         framesAreGlobal: true,
       );
       expect(session.trackFrameRangeSelection.value, isNull);

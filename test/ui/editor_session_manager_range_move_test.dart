@@ -961,6 +961,7 @@ void main() {
       laneId: 'position',
       anchorIndex: 1,
       headIndex: 3,
+      spanLaneIds: const [],
     );
     final selection = s.laneRangeSelection.value;
     expect(selection, isNotNull);
@@ -981,6 +982,7 @@ void main() {
       laneId: 'position',
       anchorIndex: 1,
       headIndex: 3,
+      spanLaneIds: const [],
     );
     expect(s.frameRangeSelection.value, isNull);
 
@@ -1036,6 +1038,7 @@ void main() {
       laneId: 'position',
       anchorIndex: 1,
       headIndex: 3,
+      spanLaneIds: const [],
     );
     expect(s.beginLaneRangeMoveDrag(), isTrue);
     s.updateLaneRangeMoveDrag(frameDelta: 2);
@@ -1047,6 +1050,7 @@ void main() {
       laneId: 'scale',
       anchorIndex: 1,
       headIndex: 3,
+      spanLaneIds: const [],
     );
     expect(s.beginLaneRangeMoveDrag(), isFalse);
     expect(
@@ -1087,6 +1091,7 @@ void main() {
       laneId: 'position',
       anchorIndex: 1,
       headIndex: 4,
+      spanLaneIds: const ['position', 'scale'],
       headLaneId: 'scale',
     );
     final span = s.laneRangeSelection.value!;
@@ -1117,6 +1122,7 @@ void main() {
       laneId: 'transform-group',
       anchorIndex: 0,
       headIndex: 4,
+      spanLaneIds: const [],
     );
     expect(s.laneRangeSelection.value!.spanLaneIds, ['transform-group']);
     expect(s.beginLaneRangeMoveDrag(), isTrue);
@@ -1143,6 +1149,7 @@ void main() {
       laneId: 'position',
       anchorIndex: 0,
       headIndex: 1,
+      spanLaneIds: const [],
     );
     expect(s.activeLayerId, a.id);
     expect(s.laneRangeSelection.value!.layerId, a.id);
@@ -1155,6 +1162,7 @@ void main() {
       laneId: 'position',
       anchorIndex: 0,
       headIndex: 1,
+      spanLaneIds: const [],
     );
     expect(s.activeLayerId, b.id);
     expect(s.laneRangeSelection.value!.layerId, b.id);
