@@ -29,6 +29,8 @@ add_library(qa_engine SHARED
   "${CMAKE_CURRENT_LIST_DIR}/qa_video_encode.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_video_decode.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_image_encode.c"
+  "${CMAKE_CURRENT_LIST_DIR}/qa_compress.c"
+  "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c"
 )
 if(APPLE)
   target_sources(qa_engine PRIVATE
@@ -71,6 +73,8 @@ if(MSVC)
     "${CMAKE_CURRENT_LIST_DIR}/qa_audio_denoise.c"
     "${CMAKE_CURRENT_LIST_DIR}/qa_audio_device.c"
     "${CMAKE_CURRENT_LIST_DIR}/qa_image_encode.c"
+  "${CMAKE_CURRENT_LIST_DIR}/qa_compress.c"
+  "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c"
     PROPERTIES COMPILE_OPTIONS "/wd4267;/wd4244;/wd4996;/wd4018;/wd4389")
 else()
   set_source_files_properties(
@@ -78,6 +82,8 @@ else()
     "${CMAKE_CURRENT_LIST_DIR}/qa_audio_denoise.c"
     "${CMAKE_CURRENT_LIST_DIR}/qa_audio_device.c"
     "${CMAKE_CURRENT_LIST_DIR}/qa_image_encode.c"
+  "${CMAKE_CURRENT_LIST_DIR}/qa_compress.c"
+  "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c"
     PROPERTIES COMPILE_OPTIONS "-Wno-conversion;-Wno-unused-function")
 endif()
 

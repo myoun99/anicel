@@ -4666,4 +4666,4 @@ QA_EXPORT int64_t qa_available_memory_bytes(void) {
 // budget.
 // v29: qa_process_footprint_bytes / qa_available_memory_bytes - what this
 // process is actually holding, and what the OS will still let it take.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 29; }
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 30; }
