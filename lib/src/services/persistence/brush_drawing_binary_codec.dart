@@ -6,10 +6,9 @@
 library;
 
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
-import '../../native/qa_cel_compressor.dart';
+import 'anicel_payload_codec.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
@@ -131,8 +130,8 @@ AnicelCelEntry decodeCelEntry(Uint8List bytes) {
   );
 }
 
-/// v2 (2026-08-29): the payload carries a CODEC byte — [celCodecDeflate]
-/// or [celCodecZstd].
+/// v2 (2026-08-29): the payload carries a CODEC byte — [anicelCodecDeflate]
+/// or [anicelCodecZstd].
 ///
 /// 🚨**Why a codec at all: the read is on the frame path.** A cel is
 /// compressed once per save on a background isolate and DECOMPRESSED on
@@ -164,19 +163,6 @@ AnicelCelEntry decodeCelEntry(Uint8List bytes) {
 /// the payload, which would be a guess.
 const int _anicelCelBlobVersion = 2;
 
-/// Payload codecs. deflate is the FLOOR — `dart:io` has it, so every build
-/// can read a deflate blob, including a test run and a host run. zstd is
-/// written only when the engine answered.
-const int celCodecDeflate = 0;
-const int celCodecZstd = 1;
-
-/// The normal save's zstd level, and the「smallest file」one.
-///
-/// Both read at the same speed — the level is a SAVE cost only. 19 is a
-/// quarter smaller than what it replaces; it is a choice rather than the
-/// default because compressing takes noticeably longer.
-const int celZstdLevelNormal = 9;
-const int celZstdLevelSmallest = 19;
 
 /// A cel in its COLD form (R20-A1): a tiny plain header (key + canvas
 /// geometry, readable WITHOUT inflating) followed by the deflated
@@ -205,7 +191,7 @@ class AnicelCelBlob {
     // v2 adds a CODEC byte. v1 had no such byte and was always deflate,
     // so the version is what says whether to read one — not a sniff of the
     // stream, which would guess.
-    codec = version >= 2 ? reader.u8() : celCodecDeflate;
+    codec = version >= 2 ? reader.u8() : anicelCodecDeflate;
     _deflatedOffset = reader.offset;
   }
 
@@ -240,18 +226,7 @@ class AnicelCelBlob {
 
   factory AnicelCelBlob.encode(AnicelCelEntry entry, {int? zstdLevel}) {
     final body = encodeCelEntry(entry);
-    // zstd when the engine answered, deflate when it did not. ⛔The
-    // fallback is not a degraded mode to apologise for: a test run and a
-    // host run take it every time, and the file they write must open
-    // anywhere.
-    final compressor = QaCelCompressor.instance;
-    final zstd = compressor != null && compressor.isSupported
-        ? compressor.compress(body, level: zstdLevel ?? celZstdLevelNormal)
-        : null;
-    // Level 9 for the deflate fallback: inflate is the same speed whatever
-    // level wrote the stream, and both encode sites run on a background
-    // isolate, so the level is paid once where nobody is waiting.
-    final payload = zstd ?? ZLibCodec(level: 9).encode(body);
+    final compressed = compressAnicelPayload(body, zstdLevel: zstdLevel);
     final writer = _ByteWriter()
       ..u8(_anicelCelBlobVersion)
       ..string(entry.key.projectId.value)
@@ -262,8 +237,8 @@ class AnicelCelBlob {
       ..u32(entry.canvasSize.width)
       ..u32(entry.canvasSize.height)
       ..u16(entry.tileSize)
-      ..u8(zstd != null ? celCodecZstd : celCodecDeflate)
-      ..bytes(payload);
+      ..u8(compressed.codec)
+      ..bytes(compressed.bytes);
     return AnicelCelBlob(writer.takeBytes());
   }
 
@@ -280,8 +255,8 @@ class AnicelCelBlob {
   /// tell the reader to un-filter bytes that were never filtered.
   late final int version;
 
-  /// Which compressor wrote the payload — [celCodecDeflate] or
-  /// [celCodecZstd]. ⛔Read from the blob, never assumed from the build:
+  /// Which compressor wrote the payload — [anicelCodecDeflate] or
+  /// [anicelCodecZstd]. ⛔Read from the blob, never assumed from the build:
   /// an engine-less run must still open a zstd file it cannot decode with
   /// a clear failure rather than garbage.
   late final int codec;
@@ -290,30 +265,12 @@ class AnicelCelBlob {
 
   int get byteLength => bytes.length;
 
-  AnicelCelEntry decode() {
-    final payload = Uint8List.sublistView(bytes, _deflatedOffset);
-    final Uint8List body;
-    if (codec == celCodecZstd) {
-      final compressor = QaCelCompressor.instance;
-      final out = compressor == null || !compressor.isSupported
-          ? null
-          : compressor.decompress(payload);
-      if (out == null) {
-        // The one case worth a sentence: the file is fine, this BUILD
-        // cannot read it. Saying so beats a FormatException from a zlib
-        // that was handed a zstd frame.
-        throw const FormatException(
-          'This cel was written with zstd and no engine is available to '
-          'read it.',
-        );
-      }
-      body = out;
-    } else {
-      final inflated = ZLibDecoder().convert(payload);
-      body = inflated is Uint8List ? inflated : Uint8List.fromList(inflated);
-    }
-    return decodeCelEntry(body);
-  }
+  AnicelCelEntry decode() => decodeCelEntry(
+    decompressAnicelPayload(
+      codec,
+      Uint8List.sublistView(bytes, _deflatedOffset),
+    ),
+  );
 }
 
 class _ByteWriter {

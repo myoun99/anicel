@@ -31,6 +31,7 @@ import '../../models/audio_clip.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/project.dart';
 import '../media/media_fingerprints.dart';
+import 'anicel_payload_codec.dart';
 import 'brush_drawing_binary_codec.dart';
 
 /// The project file's extension, without the dot — what a picker filter
@@ -230,7 +231,11 @@ const String anicelProjectEntryNameCompressed = 'project.json.z';
 
 /// The entry a save should WRITE: the compressed one, always.
 ///
-/// Old files keep their uncompressed `project.json` and still open — the
+/// The bytes are a codec byte followed by the payload — the same shape a
+/// cel blob's tail has, through the same [compressAnicelPayload], so zstd
+/// and the deflate floor are chosen in ONE place for both.
+///
+/// Old files keep their uncompressed `project.json` and still open. The
 /// reader takes whichever it finds, preferring the compressed name so an
 /// incremental append can shadow the old entry without a compaction.
 ({String name, Uint8List bytes}) buildAnicelProjectEntry({
@@ -239,30 +244,33 @@ const String anicelProjectEntryNameCompressed = 'project.json.z';
   Set<String> mediaInArchive = const {},
   List<Map<String, Object?>> grants = const [],
   Map<String, Object?> mediaCrcs = const {},
-}) => (
-  name: anicelProjectEntryNameCompressed,
-  bytes: Uint8List.fromList(
-    ZLibCodec(level: 9).encode(
-      buildAnicelProjectJsonBytes(
-        project: project,
-        saveDirectory: saveDirectory,
-        mediaInArchive: mediaInArchive,
-        grants: grants,
-        mediaCrcs: mediaCrcs,
-      ),
+}) {
+  final compressed = compressAnicelPayload(
+    buildAnicelProjectJsonBytes(
+      project: project,
+      saveDirectory: saveDirectory,
+      mediaInArchive: mediaInArchive,
+      grants: grants,
+      mediaCrcs: mediaCrcs,
     ),
-  ),
-);
+  );
+  return (
+    name: anicelProjectEntryNameCompressed,
+    bytes: Uint8List.fromList([compressed.codec, ...compressed.bytes]),
+  );
+}
 
-/// The manifest bytes an entry holds — inflated when the entry is the
+/// The manifest bytes an entry holds — decompressed when the entry is the
 /// compressed one, handed back as-is when it is an old `project.json`.
 ///
 /// 🚨ONE function, because every reader asks the same question and the
 /// NAME is the only thing that answers it. A reader that forgot would put
-/// deflate bytes into `jsonDecode` and report a corrupt project.
+/// compressed bytes into `jsonDecode` and report a corrupt project — which
+/// is exactly what happened to the ownership check on the save path, and
+/// it turned every save into a full rewrite without failing anything.
 Uint8List decodeAnicelProjectEntryBytes(String name, Uint8List bytes) =>
     name == anicelProjectEntryNameCompressed
-    ? Uint8List.fromList(ZLibCodec().decode(bytes))
+    ? decompressAnicelPayload(bytes.first, Uint8List.sublistView(bytes, 1))
     : bytes;
 
 /// writes down what it is handed.
@@ -369,9 +377,10 @@ AnicelArchiveContents parseAnicelArchiveBytes(Uint8List bytes) {
   if (projectEntry == null) {
     throw const FormatException('Not an Anicel project (.anicel).');
   }
-  final projectBytes = compressed == null
-      ? projectEntry.readBytes()!
-      : Uint8List.fromList(ZLibCodec().decode(projectEntry.readBytes()!));
+  final projectBytes = decodeAnicelProjectEntryBytes(
+    projectEntry.name,
+    projectEntry.readBytes()!,
+  );
   final decoded = jsonDecode(utf8.decode(projectBytes)) as Map<String, dynamic>;
   if ((decoded['formatVersion'] as int? ?? 0) > anicelFormatVersion) {
     throw const FormatException(
