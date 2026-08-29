@@ -196,10 +196,7 @@ void main() {
         layerImages: c.layers,
         composites: c.composites,
         maxBytes: budget,
-      ).enforce(
-        reservedForDisplayBytes: reserve,
-        protect: protecting(protect),
-      );
+      ).enforce(reservedForDisplayBytes: reserve, protect: protecting(protect));
       final result = (
         layers: c.layers.estimatedBytes,
         total: c.layers.estimatedBytes + c.composites.estimatedBytes,
@@ -253,13 +250,15 @@ void main() {
         expect(
           (await afterEnforce(0, protect: everyTier)).layers,
           0,
-          reason: '512 − 336 leaves 176, which the 256-byte image cannot '
+          reason:
+              '512 − 336 leaves 176, which the 256-byte image cannot '
               'fit in',
         );
         expect(
           (await afterEnforce(fullImageBytes, protect: everyTier)).layers,
           fullImageBytes,
-          reason: 'the remainder is still 176 — the floor is the only thing '
+          reason:
+              'the remainder is still 176 — the floor is the only thing '
               'standing between the canvas and a blank frame',
         );
       });
@@ -318,6 +317,53 @@ void main() {
       );
       c.composites.dispose();
       c.layers.dispose();
+    });
+  });
+
+  /// 🚨★★★**THE LARGEST CACHE IN THE APP USED TO BE THE DEAF ONE.**
+  ///
+  /// `EditorSessionManager.respondToMemoryPressure` always ended by calling
+  /// [PlaybackCacheBudgetEnforcer.enforce], and its comment said the
+  /// playback caches "re-run their budget against the shrunken world" —
+  /// but nothing shrank their world. 600MB went in and 600MB came out,
+  /// beside a cel store that had just halved itself.
+  group('memory pressure', () {
+    PlaybackCacheBudgetEnforcer enforcerAt(int maxBytes) {
+      final c = caches();
+      addTearDown(() {
+        c.composites.dispose();
+        c.layers.dispose();
+      });
+      return PlaybackCacheBudgetEnforcer(
+        layerImages: c.layers,
+        composites: c.composites,
+        maxBytes: maxBytes,
+      );
+    }
+
+    test('the combined budget halves, and keeps halving', () {
+      final enforcer = enforcerAt(playbackCacheBudgetBytes);
+      expect(enforcer.maxBytes, playbackCacheBudgetBytes);
+      expect(enforcer.respondToMemoryPressure(), isTrue);
+      expect(enforcer.maxBytes, playbackCacheBudgetBytes ~/ 2);
+      expect(enforcer.respondToMemoryPressure(), isTrue);
+      expect(enforcer.maxBytes, playbackCacheBudgetBytes ~/ 4);
+    });
+
+    test('it stops at four frames and stays there', () {
+      final enforcer = enforcerAt(playbackCacheBudgetUnderPressureBytes * 2);
+      expect(enforcer.respondToMemoryPressure(), isTrue);
+      expect(enforcer.maxBytes, playbackCacheBudgetUnderPressureBytes);
+      // iOS sends the warning again as things get worse; a budget that
+      // kept halving would walk to zero and rebuild every scrubbed frame.
+      expect(enforcer.respondToMemoryPressure(), isFalse);
+      expect(enforcer.maxBytes, playbackCacheBudgetUnderPressureBytes);
+    });
+
+    test('a caller already tighter than the floor is left alone', () {
+      final enforcer = enforcerAt(1024);
+      expect(enforcer.respondToMemoryPressure(), isFalse);
+      expect(enforcer.maxBytes, 1024);
     });
   });
 }

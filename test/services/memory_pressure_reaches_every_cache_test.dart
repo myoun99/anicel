@@ -16,33 +16,37 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// job the moment it was asked, and NOBODY WAS ASKING. That is why this pin
 /// stands one level up, at the session that owns both.
 void main() {
-  test('session memory pressure reaches the undo stack, not just the store',
-      () {
-    final session = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(session.dispose);
+  test(
+    'session memory pressure reaches the undo stack, not just the store',
+    () {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
 
-    for (var i = 0; i < 6; i++) {
-      session.historyManager.execute(_Heavy(bytes: 40 * 1024 * 1024));
-    }
-    expect(
-      session.historyManager.retainedBytes,
-      greaterThan(HistoryManager.retainedByteBudgetUnderPressure),
-      reason: 'fixture premise: over the pressure cap, under the normal one',
-    );
+      for (var i = 0; i < 6; i++) {
+        session.historyManager.execute(_Heavy(bytes: 40 * 1024 * 1024));
+      }
+      expect(
+        session.historyManager.retainedBytes,
+        greaterThan(HistoryManager.retainedByteBudgetUnderPressure),
+        reason: 'fixture premise: over the pressure cap, under the normal one',
+      );
 
-    session.respondToMemoryPressure();
+      session.respondToMemoryPressure();
 
-    expect(
-      session.historyManager.retainedBytes,
-      lessThanOrEqualTo(HistoryManager.retainedByteBudgetUnderPressure),
-      reason: '⛔the stack heard the warning too',
-    );
-    expect(
-      session.historyManager.canUndo,
-      isTrue,
-      reason: 'pressure must not cost you the undo you are about to press',
-    );
-  });
+      expect(
+        session.historyManager.retainedBytes,
+        lessThanOrEqualTo(HistoryManager.retainedByteBudgetUnderPressure),
+        reason: '⛔the stack heard the warning too',
+      );
+      expect(
+        session.historyManager.canUndo,
+        isTrue,
+        reason: 'pressure must not cost you the undo you are about to press',
+      );
+    },
+  );
 }
 
 class _Heavy implements Command, RetainedBytesCommand {

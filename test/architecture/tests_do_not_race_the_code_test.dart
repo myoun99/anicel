@@ -15,6 +15,26 @@ import 'package:flutter_test/flutter_test.dart';
 /// • `board_check_test` spawned 24 subprocesses that competed with the rest
 ///   of the suite for the machine (#1361).
 ///
+/// 🚨**A THIRD SHAPE, WHICH NOTHING BELOW SCANS FOR — read it, because
+/// only a reader can catch it: DECIDING SOMETHING FINISHED BY OBSERVING
+/// THAT NOTHING HAPPENED.**
+///
+/// `timeline_viewport_resize_test` waited for its raster queue to converge
+/// by breaking out of a poll loop when the store's revision had not moved
+/// in the last 50ms. On the machine it was written on that reads「the
+/// drains are done」. On a machine running the whole suite it reads「the
+/// drains have not STARTED」 just as often — so the loop exited early,
+/// probed a cold store, and the file went red in bulk runs while passing
+/// alone.
+///
+/// ⛔The two mechanical scanners below cannot see this: the delay is
+/// awaited and single-argument, which is the FORM they call safe. What
+/// makes it a race is what the test CONCLUDES from the delay.
+///
+/// ✅Wait for positive evidence — loop WHILE the thing has not happened,
+/// or accept silence only AFTER a landing has been seen. Silence before
+/// the first landing means nothing at all.
+///
 /// ⛔The fix is never a longer delay. A delay tuned on an idle machine is a
 /// bet on how busy the machine will be, and the bulk run is exactly when it
 /// is busiest. Cause the event instead: write the bytes INSIDE the fake the

@@ -462,8 +462,25 @@ class EditorSessionManager extends ChangeNotifier {
     // ⚠️And the undo stack, which was holding the larger share: a MOVE
     // retains a pre AND a post full-canvas surface per confirm.
     _historyManager.respondToMemoryPressure();
+    _playbackCacheBudgetEnforcer.respondToMemoryPressure();
     enforcePlaybackCacheBudget();
+    memoryPressureTicks.value += 1;
   }
+
+  /// 🚨**HOW THE WARNING REACHES A CACHE THE SESSION DOES NOT OWN.**
+  ///
+  /// Every cache above is the session's, so the session stands it down
+  /// directly. The media viewers' page rasters are not: they live in a
+  /// widget's State, they are created and thrown away as tabs open, and
+  /// there can be two of them. Handing the session a registry of live
+  /// viewers to call would mean widgets registering and unregistering
+  /// themselves correctly on every rebuild — a notifier they can simply
+  /// listen to costs neither side a lifecycle rule.
+  ///
+  /// It counts rather than carrying a payload because the SIGNAL is the
+  /// whole message, and consecutive warnings must each be one tick (a
+  /// bool would coalesce the second one into silence).
+  final ValueNotifier<int> memoryPressureTicks = ValueNotifier<int>(0);
 
   /// The conte sheet ink's cel stores (R5) — SESSION-owned so the .anicel
   /// archive can persist them (the second cel namespace), while the ink
@@ -537,6 +554,10 @@ class EditorSessionManager extends ChangeNotifier {
   /// and became a number the cache itself carries. While playing the
   /// editing stack holds no pins, so the old "zero while playing" rule
   /// falls out for free instead of being an `if`.
+  /// The playback caches' combined cap in force (diagnostics/tests) — it
+  /// is [playbackCacheBudgetBytes] until the OS warns.
+  int get playbackCacheByteBudget => _playbackCacheBudgetEnforcer.maxBytes;
+
   void enforcePlaybackCacheBudget() => _playbackCacheBudgetEnforcer.enforce(
     protect: _playbackProtectedRanges(),
     reservedForDisplayBytes: layerFrameImageCache.pinnedBytes,

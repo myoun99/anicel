@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/foundation.dart';
 
 import 'command.dart';
+import 'memory_pressure_budget.dart';
 
 /// The undo/redo stacks. A [ChangeNotifier] so stack-state consumers (the
 /// app bar's undo/redo buttons) can subscribe directly: brush strokes
@@ -24,10 +25,14 @@ class HistoryManager extends ChangeNotifier {
   /// PS-style, and the newest entry always survives.
   static const int retainedByteBudget = 512 * 1024 * 1024;
 
-  /// 🚨WHERE PRESSURE PUTS IT. [respondToMemoryPressure] halves the live
-  /// budget down to this and sweeps at once — the same shape
-  /// `BrushFrameStore` already uses, and for the same reason: pressure only
-  /// ever LOWERS.
+  /// 🚨WHERE PRESSURE PUTS IT. [respondToMemoryPressure] drops the live
+  /// budget straight to this and sweeps at once.
+  ///
+  /// ⚠️A DROP, not the cel store's halving, and deliberately so: an
+  /// over-budget cel COOLS (its bytes survive in the cold tier, and
+  /// promoting it back costs a decode), while an over-budget undo entry is
+  /// DELETED. That asymmetry is why the store can afford a gentle cut and
+  /// this cannot afford to keep the bytes at all.
   ///
   /// ⚠️This number is MY judgement, not a measurement (2026-08-27). What is
   /// measured is that the old behaviour was wrong: the stack held its full
@@ -44,8 +49,14 @@ class HistoryManager extends ChangeNotifier {
 
   final int maxEntries;
 
-  /// The cap in force. Lowered by [respondToMemoryPressure], never raised.
-  int _byteBudget = retainedByteBudget;
+  /// The cap in force. Lowered by [respondToMemoryPressure], never raised —
+  /// and the lowers-only guard is now [MemoryPressureBudget]'s, the same
+  /// object `BrushFrameStore` holds. This class used to describe that
+  /// sharing in a comment while keeping its own copy of the code.
+  final MemoryPressureBudget _budget = MemoryPressureBudget.droppingTo(
+    normal: retainedByteBudget,
+    underPressure: retainedByteBudgetUnderPressure,
+  );
 
   final List<Command> _undoStack = <Command>[];
   final List<Command> _redoStack = <Command>[];
@@ -138,10 +149,9 @@ class HistoryManager extends ChangeNotifier {
   /// ⛔The newest entry always survives, exactly as the budget sweep
   /// guarantees: pressure must not cost you the undo you are about to press.
   void respondToMemoryPressure() {
-    if (retainedByteBudgetUnderPressure >= _byteBudget) {
+    if (!_budget.respondToMemoryPressure()) {
       return; // Pressure only ever lowers.
     }
-    _byteBudget = retainedByteBudgetUnderPressure;
     final before = _undoStack.length;
     _trimRetainedBytes();
     if (_undoStack.length != before) {
@@ -152,7 +162,7 @@ class HistoryManager extends ChangeNotifier {
   void _trimRetainedBytes() {
     var total = retainedBytes;
     var dropCount = 0;
-    while (total > _byteBudget && _undoStack.length - dropCount > 1) {
+    while (total > _budget.bytes && _undoStack.length - dropCount > 1) {
       final command = _undoStack[dropCount];
       if (command is RetainedBytesCommand) {
         total -= (command as RetainedBytesCommand).estimatedRetainedBytes;
