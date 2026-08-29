@@ -24,7 +24,7 @@ import 'viewer_document.dart';
 /// what makes a second, sharper render possible when the user zooms in.
 /// That is the same trade PDF makes by keeping its native handle open.
 final class ImageViewerDocument implements ViewerDocument {
-  ImageViewerDocument._(this._descriptor, this._frameCount);
+  ImageViewerDocument._(this._descriptor, this._frameCount, this._frameGap);
 
   /// Opens [path] without ever holding the file in the Dart heap: the
   /// buffer goes straight to the descriptor and is released here.
@@ -43,12 +43,29 @@ final class ImageViewerDocument implements ViewerDocument {
       targetHeight: 1,
     );
     final frameCount = probe.frameCount;
+    // The probe is already going to decode a 1×1 frame; reading its stated
+    // duration on the way past is what tells an animation from a still.
+    final first = await probe.getNextFrame();
+    final frameGap = first.duration;
+    first.image.dispose();
     probe.dispose();
-    return ImageViewerDocument._(descriptor, frameCount);
+    return ImageViewerDocument._(descriptor, frameCount, frameGap);
   }
 
   final ui.ImageDescriptor _descriptor;
   final int _frameCount;
+
+  /// The first frame's own duration — an animated image states one per
+  /// frame, and this reads frame 0's. ⚠️A GIF whose frames differ will
+  /// play at ITS rate rather than each frame's; the alternative is a
+  /// per-page schedule, which nothing has asked for.
+  final Duration _frameGap;
+
+  @override
+  double? get framesPerSecond =>
+      _frameCount <= 1 || _frameGap <= Duration.zero
+      ? null
+      : 1000000 / _frameGap.inMicroseconds;
 
   @override
   int get pageCount => _frameCount;

@@ -96,6 +96,10 @@ class _PdfrxDocumentHandle implements ViewerDocument {
   @override
   int get pageCount => _document.pages.length;
 
+  /// A PDF never turns its own pages.
+  @override
+  double? get framesPerSecond => null;
+
   @override
   ui.Size pageSize(int pageIndex) {
     final page = _document.pages[pageIndex];

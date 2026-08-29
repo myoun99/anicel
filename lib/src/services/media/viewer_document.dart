@@ -27,6 +27,16 @@ abstract class ViewerDocument {
   /// Number of pages (§6-k: 1 page = 1 frame when placed).
   int get pageCount;
 
+  /// How fast this document's pages advance BY THEMSELVES, or null when
+  /// they do not — a PDF and a still image are turned by a person, a movie
+  /// and an animated GIF are not.
+  ///
+  /// 🚨It belongs here rather than on the video document because「재생」is
+  /// not a video question: an animated GIF plays too, and asking the two
+  /// separately is how one of them ends up with a play button and the
+  /// other does not.
+  double? get framesPerSecond;
+
   /// One page's natural size; pages of one document may differ.
   ui.Size pageSize(int pageIndex);
 

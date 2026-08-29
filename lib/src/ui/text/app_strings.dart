@@ -770,6 +770,7 @@ class AppStrings {
   String get mediaViewerLoadFailed => _s('mediaViewerLoadFailed');
   String get mediaViewerCannotDisplay => _s('mediaViewerCannotDisplay');
   String get mediaViewerNoPdfRenderer => _s('mediaViewerNoPdfRenderer');
+  String get mediaViewerNoVideoDecoder => _s('mediaViewerNoVideoDecoder');
 
   /// The gear on every canvas pill. Not "view settings" — the host puts its
   /// own verbs in the same list (유저 확정 2026-08-13: 등록·맞바꾸기는 ⚙ 안으로).
@@ -1478,6 +1479,8 @@ class AppStrings {
     'mediaViewerCannotDisplay': 'This media kind has no viewer yet.',
     'mediaViewerNoPdfRenderer':
         'No PDF renderer in this build — PDF pages cannot be shown.',
+    'mediaViewerNoVideoDecoder':
+        'No video decoder in this build — movies cannot be shown.',
     'mediaViewerSwap': 'Swap with the other viewer',
     'mediaViewerRegisterAsset': 'Add to Media',
     'panelMediaViewer': 'Viewer',
@@ -2298,6 +2301,7 @@ class AppStrings {
     'mediaViewerLoadFailed': 'このファイルを読み込めませんでした。',
     'mediaViewerCannotDisplay': 'この種類のメディアはまだ表示できません。',
     'mediaViewerNoPdfRenderer': 'このビルドにはPDFレンダラーがありません — PDFページを表示できません。',
+    'mediaViewerNoVideoDecoder': 'このビルドには動画デコーダーがありません — 動画を表示できません。',
     'mediaViewerSwap': 'もう一方のビューアと入れ替え',
     'mediaViewerRegisterAsset': 'メディアに登録',
     'panelMediaViewer': 'ビューア',
@@ -3143,6 +3147,7 @@ class AppStrings {
     'mediaViewerLoadFailed': '이 파일을 읽지 못했습니다.',
     'mediaViewerCannotDisplay': '이 종류의 미디어는 아직 표시할 수 없습니다.',
     'mediaViewerNoPdfRenderer': '이 빌드에는 PDF 렌더러가 없습니다 — PDF 페이지를 표시할 수 없습니다.',
+    'mediaViewerNoVideoDecoder': '이 빌드에는 비디오 디코더가 없습니다 — 동영상을 표시할 수 없습니다.',
     'mediaViewerSwap': '반대쪽 뷰어와 맞바꾸기',
     'mediaViewerRegisterAsset': '미디어에 등록',
     'panelMediaViewer': '뷰어',
@@ -4013,6 +4018,9 @@ class AppStrings {
     'mediaViewerNoPdfRenderer':
         'Pas de moteur PDF dans cette version — les pages PDF ne peuvent '
         'pas être affichées.',
+    'mediaViewerNoVideoDecoder':
+        'Pas de décodeur vidéo dans cette version — les films ne peuvent '
+        'pas être affichés.',
     'mediaViewerSwap': "Échanger avec l'autre visionneuse",
     'mediaViewerRegisterAsset': 'Ajouter aux médias',
     'panelMediaViewer': 'Visionneuse',
@@ -4817,6 +4825,7 @@ class AppStrings {
     'mediaViewerLoadFailed': '无法读取此文件。',
     'mediaViewerCannotDisplay': '此类媒体暂时无法查看。',
     'mediaViewerNoPdfRenderer': '此版本没有 PDF 渲染器 — 无法显示 PDF 页面。',
+    'mediaViewerNoVideoDecoder': '此版本没有视频解码器 — 无法显示影片。',
     'mediaViewerSwap': '与另一个查看器互换',
     'mediaViewerRegisterAsset': '添加到媒体',
     'panelMediaViewer': '查看器',

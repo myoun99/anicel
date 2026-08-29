@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:file_selector/file_selector.dart';
@@ -8,6 +9,7 @@ import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/media_asset.dart';
 import '../../services/media/image_viewer_document.dart';
+import '../../services/media/video_viewer_document.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/file_type_groups.dart';
@@ -248,6 +250,11 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   /// Guards every async landing against a newer load.
   int _generation = 0;
 
+  /// The timer turning pages while playing, and null while stopped —
+  /// 🚨the ONLY thing that says whether this viewer is playing, so a
+  /// second flag cannot disagree with it ([[make-the-invariant-unrepresentable]]).
+  Timer? _playTimer;
+
   /// Renders in flight, one marker per (page, scale) — landings remove
   /// their own marker, so a stale landing can never wipe a newer one.
   final Set<(int, double)> _rendersInFlight = {};
@@ -319,6 +326,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   void _onRequestChanged() => _load(widget.request.value);
 
   void _disposeContent() {
+    // A timer outliving its document would page a viewer that has none.
+    _stopPlaying();
     for (final page in _pageCache.values) {
       page.image.dispose();
     }
@@ -365,12 +374,17 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     }
     setState(() {
       if (document == null) {
-        // The honest-absence states: audio has no picture to show, and
-        // there is no Dart fallback for a PDF rasterizer, so the panel
-        // SAYS so rather than showing an empty frame.
-        _message = request.kind == MediaAssetKind.pdf
-            ? strings.mediaViewerNoPdfRenderer
-            : strings.mediaViewerCannotDisplay;
+        // The honest-absence states, and each says WHICH absence: a build
+        // without a PDF rasterizer or without a video reader is a missing
+        // engine the user can act on (a different build), while audio has
+        // no picture at all and never will. ⛔One message for all three
+        // would send someone hunting for a codec they do not need.
+        _message = switch (request.kind) {
+          MediaAssetKind.pdf => strings.mediaViewerNoPdfRenderer,
+          MediaAssetKind.video => strings.mediaViewerNoVideoDecoder,
+          MediaAssetKind.image ||
+          MediaAssetKind.audio => strings.mediaViewerCannotDisplay,
+        };
       } else {
         _document = document;
         _loadedToken = generation;
@@ -389,8 +403,10 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
         return ImageViewerDocument.open(request.path);
       case MediaAssetKind.pdf:
         return PdfRenderService.open(request.path);
-      case MediaAssetKind.audio:
       case MediaAssetKind.video:
+        return VideoViewerDocument.open(request.path);
+      case MediaAssetKind.audio:
+        // Sound has no picture — the one medium that stays absent.
         return null;
     }
   }
@@ -478,6 +494,58 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     }
   }
 
+  /// Whether this document turns its own pages — 유저 2026-08-29:
+  /// 「비디오 … 불러와서 재생가능하게」. It asks the DOCUMENT, so an
+  /// animated GIF gets the same button a movie does; nothing here knows
+  /// what a movie is.
+  bool get _canPlay =>
+      (_document?.framesPerSecond ?? 0) > 0 && _pageCount > 1;
+
+  bool get _playing => _playTimer != null;
+
+  void _stopPlaying() {
+    _playTimer?.cancel();
+    _playTimer = null;
+  }
+
+  void _togglePlaying() {
+    if (_playing) {
+      setState(_stopPlaying);
+      return;
+    }
+    final fps = _document?.framesPerSecond;
+    if (fps == null || fps <= 0) {
+      return;
+    }
+    setState(() {
+      // From the top when the playhead is already at the end: pressing play
+      // on the last frame has to DO something, and the only sensible
+      // something is to play it again.
+      if (_page >= _pageCount - 1) {
+        _turnToPage(0);
+      }
+      _playTimer = Timer.periodic(
+        Duration(microseconds: (1000000 / fps).round().clamp(1, 1000000)),
+        (_) {
+          // ⚠️Best effort, deliberately. The decode is async and may not
+          // keep up at the movie's rate; the page advances on the clock and
+          // whichever raster has landed is what draws (the cache is
+          // stale-while-revalidate already). ⛔The alternative — waiting for
+          // each frame — makes playback run at the decoder's speed and drift
+          // away from the audio nobody has wired yet.
+          if (!mounted) {
+            return;
+          }
+          if (_page >= _pageCount - 1) {
+            setState(_stopPlaying);
+            return;
+          }
+          _turnToPage(_page + 1);
+        },
+      );
+    });
+  }
+
   Future<void> _pickLooseFile() async {
     final picker =
         widget.filePicker ??
@@ -535,6 +603,19 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     }
     final strings = AppText.strings;
     return [
+      // 🚨PLAY sits with the page controls, not in a strip of its own:
+      // playing IS turning pages, and the user asked for 「최대한 통일」.
+      // ⛔It is present only when the document turns its own pages — the
+      // same rule this whole strip already follows (유저 확정 ⑥: a still
+      // image gets no strip rather than a permanently disabled one).
+      if (_canPlay)
+        AppIconButton(
+          keyValue: _key('play-button'),
+          tooltip: _playing ? strings.menuPause : strings.menuPlay,
+          icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
+          size: AppIconButtonSize.strip,
+          onPressed: _togglePlaying,
+        ),
       AppIconButton(
         keyValue: _key('previous-page-button'),
         tooltip: strings.cnPreviousPage,

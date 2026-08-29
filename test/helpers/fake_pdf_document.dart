@@ -7,7 +7,7 @@ import 'package:anicel/src/services/media/viewer_document.dart';
 /// rects via [ui.Picture.toImageSync], so no FFI, no file IO, and no
 /// fake-async deadlock (the image exists synchronously).
 class FakePdfDocument implements ViewerDocument {
-  FakePdfDocument({required this.pageSizes});
+  FakePdfDocument({required this.pageSizes, this.framesPerSecond});
 
   /// One entry per page, in PDF points.
   final List<ui.Size> pageSizes;
@@ -20,6 +20,11 @@ class FakePdfDocument implements ViewerDocument {
 
   @override
   int get pageCount => pageSizes.length;
+
+  /// The fake stands in for a PDF, which does not play. Tests that need a
+  /// playing document set this.
+  @override
+  final double? framesPerSecond;
 
   @override
   ui.Size pageSize(int pageIndex) => pageSizes[pageIndex];
