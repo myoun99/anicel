@@ -128,29 +128,63 @@ final class QaVideoDecoder {
         ..free(fpsDen);
     }
   }
-
   /// Straight RGBA for [index], or null when that frame cannot be read.
   ///
-  /// The buffer is allocated per call and copied out: a native buffer that
-  /// outlives the call is the tile-lifetime mistake this repo already made
-  /// once ([[native-tile-pixel-lifetime]]).
-  Uint8List? frame(int index, {required int width, required int height}) {
+  /// 🚨★★★**NOTHING IS MINTED PER FRAME.** Playing a 4K movie at 24fps used
+  /// to allocate a 32MB native buffer AND a 32MB Dart list every frame —
+  /// 1.5GB of churn a second, on the device class this app promises to run
+  /// on ([[old-device-support-policy]]). Both are reused now: the decoder
+  /// owns one native scratch for as long as the document is open, and
+  /// [into] lets the caller own one Dart buffer for the same span.
+  ///
+  /// ⛔The native scratch is NEVER handed out. That is the whole of
+  /// [[native-tile-pixel-lifetime]]: the mistake was a pointer whose
+  /// lifetime the receiver could not see, not a buffer the owner keeps and
+  /// frees in [close].
+  ///
+  /// ⚠️Reusing [into] is safe because every consumer copies it
+  /// SYNCHRONOUSLY — `decodeStraightRgbaImage` premultiplies into its own
+  /// scratch (or a fresh list) before the async decode begins. A consumer
+  /// that held this buffer across an await would read the NEXT frame.
+  Uint8List? frame(
+    int index, {
+    required int width,
+    required int height,
+    Uint8List? into,
+  }) {
     final bytes = width * height * 4;
     if (bytes <= 0) {
       return null;
     }
-    final buffer = malloc<Uint8>(bytes);
-    try {
-      if (_frame(index, buffer, bytes) == 0) {
-        return null;
+    if (_scratchBytes < bytes) {
+      if (_scratchBytes > 0) {
+        malloc.free(_scratch);
       }
-      return Uint8List.fromList(buffer.asTypedList(bytes));
-    } finally {
-      malloc.free(buffer);
+      _scratch = malloc<Uint8>(bytes);
+      _scratchBytes = bytes;
     }
+    if (_frame(index, _scratch, bytes) == 0) {
+      return null;
+    }
+    final view = _scratch.asTypedList(bytes);
+    final out = (into != null && into.length == bytes)
+        ? into
+        : Uint8List(bytes);
+    out.setRange(0, bytes, view);
+    return out;
   }
 
-  void close() => _close();
+  Pointer<Uint8> _scratch = nullptr;
+  int _scratchBytes = 0;
+
+  void close() {
+    _close();
+    if (_scratchBytes > 0) {
+      malloc.free(_scratch);
+      _scratch = nullptr;
+      _scratchBytes = 0;
+    }
+  }
 }
 
 /// What a document says about itself.
