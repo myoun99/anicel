@@ -158,9 +158,12 @@ class BrushFrameStore {
   //
   //  - HOT: a BitmapSurface, insertion-ordered as an LRU (access
   //    re-inserts). Byte-budgeted by [hotCelByteBudget].
-  //  - COLD-RAM: a [AnicelCelBlob] — the cel encoded + deflated, the SAME
-  //    bytes the .anicel archive stores. Over-budget hot cels cool here in
-  //    a background isolate; unsaved (dirty) cels never leave RAM.
+  //  - COLD-RAM: a [AnicelCelBlob] — the cel encoded + COMPRESSED, the
+  //    SAME bytes the .anicel archive stores. zstd where the engine
+  //    answered, deflate as the floor, and the blob's codec byte says
+  //    which (see [compressAnicelPayload] — ONE place decides). Over-budget
+  //    hot cels cool here in a background isolate; unsaved (dirty) cels
+  //    never leave RAM.
   //  - COLD-FILE: {the .anicel itself, offset, length} — cels whose bytes
   //    are ALREADY in the saved project file drop their RAM entirely
   //    after a save; opens land every cel here (near-zero RAM).
@@ -200,7 +203,7 @@ class BrushFrameStore {
   Set<BrushFrameKey> get dirtyCelKeysSinceSave =>
       Set.unmodifiable(_dirtySinceSave);
 
-  /// Hot-tier byte budget. Cels beyond it cool (encode + deflate) in LRU
+  /// Hot-tier byte budget. Cels beyond it cool (encode + compress) in LRU
   /// order in a background isolate. Test-settable; the session seeds it
   /// with [deviceScaledHotCelBudget] at construction (유저 확정
   /// 2026-08-16: RAM 비례 + 메모리 압박 반응 — a 3GB tablet was being
@@ -560,9 +563,22 @@ class BrushFrameStore {
   }
 
   /// Cools LRU hot cels until the budget holds, one at a time: snapshot
-  /// bytes on the main isolate, deflate in a background isolate, then
+  /// bytes on the main isolate, COMPRESS in a background isolate, then
   /// commit the swap ONLY if the cel's surface is still the identical
   /// object (a donation in between wins and the stale blob is dropped).
+  ///
+  /// 🚨★★★**THIS IS WHERE A CEL'S CODEC IS DECIDED — not at save time.**
+  /// A save passes a cold blob through byte-for-byte, so whatever this
+  /// wrote is what the .anicel gets. Two consequences worth knowing:
+  ///
+  /// • The isolate re-probes for the engine, because statics do not cross
+  ///   an isolate boundary. If it could not find it there while the main
+  ///   isolate could, every cel would cool to deflate and NOTHING would
+  ///   say so — the floor is silent by design. `the_cooling_path_is_zstd_test`
+  ///   is the only thing standing between that and a silent regression.
+  /// • A「save at maximum compression」cannot be a flag on the save: the
+  ///   cold and file-ref tiers hand over bytes that were compressed here,
+  ///   minutes earlier, at [anicelZstdLevel] — the only level there is.
   /// The most recently used cel never cools — the one being painted or
   /// displayed must not thrash even if it alone exceeds the budget.
   Future<void> _coolLoop() async {

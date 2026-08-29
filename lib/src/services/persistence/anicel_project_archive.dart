@@ -1,6 +1,6 @@
 /// The .anicel container (P3): ONE self-contained ZIP — `project.json`
 /// (timeline + metadata, with a formatVersion), `cels/<n>.bin` (baked tile
-/// rasters; deflate does the rest) and `media/<hash>-<name>` (the assets
+/// rasters, compressed — zstd or the deflate floor) and `media/<hash>-<name>` (the assets
 /// the project carries).
 ///
 /// Drawings AND media live INSIDE the file — user direction, no scattered
@@ -42,7 +42,7 @@ const String anicelProjectExtension = 'anicel';
 /// The same thing with the dot, for `endsWith` and filename building.
 const String anicelProjectSuffix = '.$anicelProjectExtension';
 
-/// v3 (R20-A1 cold-cel tiering): cels persist as PRE-DEFLATED blobs
+/// v3 (R20-A1 cold-cel tiering): cels persist as PRE-COMPRESSED blobs
 /// (`cels/<n>.celz`, STORE'd — the payload is already compressed). The
 /// blob layout is identical to the in-RAM cold-cel form, so untouched
 /// cold cels save with zero re-encode and opens keep every cel cold
@@ -54,7 +54,7 @@ const int anicelFormatVersion = 3;
 
 /// A parsed .anicel archive: the project (media paths NOT yet resolved — see
 /// [remapProjectMediaPaths]), its baked cels in COLD form (headers parsed,
-/// pixels still deflated) and the saved relative-path manifest
+/// pixels still compressed) and the saved relative-path manifest
 /// ({absolute path at save time: save-dir-relative path}).
 class AnicelArchiveContents {
   const AnicelArchiveContents({
@@ -216,15 +216,16 @@ String anicelCelEntryName(BrushFrameKey key) {
 /// The entry the project manifest lives in.
 ///
 /// 🚨★★★**Two names, and the reader prefers the compressed one.** The
-/// JSON deflates ~14× (measured: 53,910 → 3,899 on a small project, and
-/// the file service notes it「can be megabytes」on a large one), but the
-/// archive STOREs every entry on purpose — the incremental appender needs
-/// `bytes == the payload` to hand out file refs. So the compression goes
-/// INSIDE our format, exactly the way a `.celz` carries its own deflate.
+/// JSON compresses ~14× (measured: 53,910 → 3,899 on a small project with
+/// deflate, before zstd; the file service notes it「can be megabytes」on a
+/// large one), but the archive STOREs every entry on purpose — the
+/// incremental appender needs `bytes == the payload` to hand out file
+/// refs. So the compression goes INSIDE our format, exactly the way a
+/// `.celz` carries its own.
 ///
 /// ⛔The suffix is not decoration: a person opening a `.anicel` with an
 /// unzip tool should be able to tell what they are looking at, and
-/// `project.json` holding deflate bytes would lie to them.
+/// `project.json` holding compressed bytes would lie to them.
 const String anicelProjectEntryName = 'project.json';
 const String anicelProjectEntryNameCompressed = 'project.json.z';
 
@@ -278,6 +279,7 @@ Uint8List buildAnicelProjectJsonBytes({
   String? saveDirectory,
   Set<String> mediaInArchive = const {},
   List<Map<String, Object?>> grants = const [],
+
   /// Pool path → CRC-32 hex, for the assets somebody has read the bytes of.
   /// Kept out of `project` on purpose — see [MediaFingerprints].
   Map<String, Object?> mediaCrcs = const {},
@@ -351,9 +353,9 @@ Uint8List buildAnicelArchiveBytes({
       ArchiveFile.bytes(projectEntry.name, projectEntry.bytes)
         ..compression = CompressionType.none,
     );
-  // v3: cel blobs are already deflated — STORE them as-is (an inner
-  // deflate-of-deflate would only burn CPU). Entry names are stable per
-  // key so later incremental appends shadow them.
+  // v3: cel blobs carry their own compression — STORE them as-is (an
+  // inner deflate over a zstd frame would only burn CPU). Entry names are
+  // stable per key so later incremental appends shadow them.
   for (final cel in cels) {
     archive.add(
       ArchiveFile.bytes(anicelCelEntryName(cel.key), cel.bytes)
@@ -382,9 +384,7 @@ AnicelArchiveContents parseAnicelArchiveBytes(Uint8List bytes) {
   );
   final decoded = jsonDecode(utf8.decode(projectBytes)) as Map<String, dynamic>;
   if ((decoded['formatVersion'] as int? ?? 0) > anicelFormatVersion) {
-    throw const FormatException(
-      'This project was saved by a newer Anicel.',
-    );
+    throw const FormatException('This project was saved by a newer Anicel.');
   }
   final project = Project.fromJson(decoded['project'] as Map<String, dynamic>);
   final mediaPathsJson = decoded['mediaPaths'];
@@ -395,7 +395,7 @@ AnicelArchiveContents parseAnicelArchiveBytes(Uint8List bytes) {
           entry.key as String: entry.value as String,
   };
 
-  // v3 truth: cold cel blobs — header parse only, pixels stay deflated
+  // v3 truth: cold cel blobs — header parse only, pixels stay compressed
   // until the store's first access. (v1 drawings/tips and v2 cels/*.bin
   // entries are ignored — readers deleted, no production file exists.)
   final cels = <AnicelCelBlob>[
