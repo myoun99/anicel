@@ -7,6 +7,7 @@ import '../../services/persistence/app_documents.dart';
 import '../../services/persistence/folder_grant.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import 'open_file_flow.dart';
 import 'app_confirm_dialog.dart';
 
 /// PICK-2: the folder request with its failures spoken out loud.
@@ -124,12 +125,12 @@ Future<FolderGrant?> pickFolderGrantForUser(
 /// [pickFileGrantsForUser] instead — see there.
 Future<List<String>> pickFilesForUser(
   BuildContext context, {
-  required List<XTypeGroup> acceptedTypeGroups,
+  required List<String> supportedExtensions,
   bool allowMultiple = false,
 }) async => [
   for (final grant in await pickFileGrantsForUser(
     context,
-    acceptedTypeGroups: acceptedTypeGroups,
+    supportedExtensions: supportedExtensions,
     allowMultiple: allowMultiple,
   ))
     ?grant.path,
@@ -153,7 +154,7 @@ Future<List<String>> pickFilesForUser(
 /// they chose.
 Future<List<FolderGrant>> pickFileGrantsForUser(
   BuildContext context, {
-  required List<XTypeGroup> acceptedTypeGroups,
+  required List<String> supportedExtensions,
   bool allowMultiple = false,
   String? initialDirectory,
 }) async {
@@ -163,8 +164,17 @@ Future<List<FolderGrant>> pickFileGrantsForUser(
   if (!await _storageGrantCleared(context)) {
     return const [];
   }
+  // 🚨★★★**NO TYPE FILTER — the dialog shows everything.** 유저 2026-08-29:
+  // 「픽커는 어떤플랫폼이든 어떤 확장자던 선택할수 있게하고, 대응만
+  // 지원안되는 확장자면 그 때 해당 파일 지원안된다고 안내창 띄우게」.
+  //
+  // ⛔`acceptedTypeGroups` used to come in from every caller, and it
+  // answered TWO questions with one value: what the dialog SHOWS and what
+  // the caller ACCEPTS. Those are different questions and the user has
+  // separated them — a greyed-out file is a wall with no explanation,
+  // while a notice can name the file and the formats.
   final grants = await FolderPicker.pickFiles(
-    acceptedTypeGroups: acceptedTypeGroups,
+    acceptedTypeGroups: const [],
     allowMultiple: allowMultiple,
     initialDirectory: initialDirectory,
   );
@@ -176,7 +186,36 @@ Future<List<FolderGrant>> pickFileGrantsForUser(
   if (await _spokenFor(context, grants.first) == null) {
     return const [];
   }
-  return grants;
+  if (!context.mounted) {
+    return const [];
+  }
+  final accepted = <FolderGrant>[];
+  final refused = <String>[];
+  for (final grant in grants) {
+    final path = grant.path;
+    if (path == null) {
+      continue;
+    }
+    if (fileIsSupported(path, supportedExtensions)) {
+      accepted.add(grant);
+    } else {
+      refused.add(path);
+    }
+  }
+  if (refused.isNotEmpty) {
+    final strings = AppText.strings;
+    await showAppNotice(
+      context,
+      title: strings.unsupportedFileTitle,
+      message: strings.unsupportedFileMessageTemplate.replaceAll(
+        '{kinds}',
+        supportedExtensions.map((extension) => '.$extension').join(', '),
+      ),
+      details: refused,
+      windowKey: const ValueKey<String>('unsupported-file-notice'),
+    );
+  }
+  return accepted;
 }
 
 /// PICK-6: hands a finished file to the location the user picks — the

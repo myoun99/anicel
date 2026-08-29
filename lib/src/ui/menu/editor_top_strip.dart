@@ -588,7 +588,7 @@ class EditorTopStrip extends StatelessWidget {
   ) async {
     final grants = await pickFileGrantsForUser(
       context,
-      acceptedTypeGroups: const [FileTypeGroups.anicelProject],
+      supportedExtensions: FileTypeGroups.anicelProject.extensions ?? const [],
     );
     final grant = grants.isEmpty ? null : grants.first;
     final path = grant?.path;
@@ -1415,10 +1415,12 @@ Future<ProjectPick?> pickProjectToOpen(BuildContext context) async {
     // TVPaint projects open through the same door (the user's call: ONE
     // entry, the Open button — the import pickers retire later). A .tvpp
     // converts into cuts rather than loading as a project.
-    acceptedTypeGroups: [
-      FileTypeGroups.anicelProject,
-      FileTypeGroups.tvppProject,
-    ],
+    //
+    // 🚨These are now what the open ACCEPTS, not what the dialog SHOWS —
+    // 유저 2026-08-29 named this exact dialog: 「특히 윈도우 열기시 anicel
+    // 이랑 tvp만 설정따라서 보이게 되있는데 그게아니라 … 어떤 확장자던
+    // 선택할수 있게」.
+    supportedExtensions: const [anicelProjectExtension, 'tvpp'],
     // A DESKTOP hint only, and the SYNC twin on purpose: async `dart:io`
     // never completes under the widget-test clock, and this is the first
     // line of the open flow.

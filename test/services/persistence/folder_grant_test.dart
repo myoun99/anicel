@@ -294,10 +294,12 @@ void main() {
     });
 
     test('the media group maps to the four broad MIME families', () {
-      expect(
-        FileTypeGroups.mimeTypesFor([FileTypeGroups.poolMedia])..sort(),
-        ['application/pdf', 'audio/*', 'image/*', 'video/*'],
-      );
+      expect(FileTypeGroups.mimeTypesFor([FileTypeGroups.poolMedia])..sort(), [
+        'application/pdf',
+        'audio/*',
+        'image/*',
+        'video/*',
+      ]);
     });
 
     test('an empty filter asks for everything rather than nothing', () {
@@ -305,14 +307,24 @@ void main() {
       // providers — which reads as a broken dialog.
       expect(FileTypeGroups.mimeTypesFor(const []), const ['*/*']);
     });
-
     test('identifiers are de-duplicated across groups', () {
+      // ⚠️The PROPERTY, not a literal list. This used to spell the answer
+      // out, so adding a kind to `viewableMedia` (movies, 2026-08-29) broke
+      // a test about de-duplication for a reason that had nothing to do
+      // with de-duplication.
+      final utis = FileTypeGroups.utisFor([
+        FileTypeGroups.images,
+        FileTypeGroups.viewableMedia,
+      ]);
+      expect(utis.toSet(), hasLength(utis.length), reason: 'no repeats');
       expect(
-        FileTypeGroups.utisFor([
-          FileTypeGroups.images,
-          FileTypeGroups.viewableMedia,
-        ])..sort(),
-        ['com.adobe.pdf', 'public.image'],
+        utis,
+        contains('public.image'),
+        reason: 'both groups carry it, and it survives once',
+      );
+      expect(
+        utis,
+        containsAll(FileTypeGroups.viewableMedia.uniformTypeIdentifiers!),
       );
     });
   });
@@ -335,37 +347,39 @@ void main() {
     });
 
     test('a cancel from the seam reads as cancelled', () async {
-      FolderPicker.debugFolderPicker =
-          ({String? initialDirectory}) async => const FolderGrant.cancelled();
+      FolderPicker.debugFolderPicker = ({String? initialDirectory}) async =>
+          const FolderGrant.cancelled();
       expect((await FolderPicker.pick()).status, FolderPickStatus.cancelled);
     });
 
-    test('the file seam receives the filter and the multi-select flag',
-        () async {
-      // Two separate seams on purpose: a file installed into the folder hook
-      // would hand a folder grant to a caller expecting files.
-      List<XTypeGroup>? askedFor;
-      var askedMultiple = false;
-      FolderPicker.debugFilePicker =
-          ({
-            required List<XTypeGroup> acceptedTypeGroups,
-            required bool allowMultiple,
-          }) async {
-            askedFor = acceptedTypeGroups;
-            askedMultiple = allowMultiple;
-            return const [
-              FolderGrant.granted(path: '/m/a.wav', kind: GrantKind.file),
-            ];
-          };
-      final grants = await FolderPicker.pickFiles(
-        acceptedTypeGroups: [FileTypeGroups.poolMedia],
-        allowMultiple: true,
-      );
-      expect(askedFor, [FileTypeGroups.poolMedia]);
-      expect(askedMultiple, isTrue);
-      expect(grants.single.path, '/m/a.wav');
-      expect(grants.single.kind, GrantKind.file);
-    });
+    test(
+      'the file seam receives the filter and the multi-select flag',
+      () async {
+        // Two separate seams on purpose: a file installed into the folder hook
+        // would hand a folder grant to a caller expecting files.
+        List<XTypeGroup>? askedFor;
+        var askedMultiple = false;
+        FolderPicker.debugFilePicker =
+            ({
+              required List<XTypeGroup> acceptedTypeGroups,
+              required bool allowMultiple,
+            }) async {
+              askedFor = acceptedTypeGroups;
+              askedMultiple = allowMultiple;
+              return const [
+                FolderGrant.granted(path: '/m/a.wav', kind: GrantKind.file),
+              ];
+            };
+        final grants = await FolderPicker.pickFiles(
+          acceptedTypeGroups: [FileTypeGroups.poolMedia],
+          allowMultiple: true,
+        );
+        expect(askedFor, [FileTypeGroups.poolMedia]);
+        expect(askedMultiple, isTrue);
+        expect(grants.single.path, '/m/a.wav');
+        expect(grants.single.kind, GrantKind.file);
+      },
+    );
   });
 
   group('platform shape', () {

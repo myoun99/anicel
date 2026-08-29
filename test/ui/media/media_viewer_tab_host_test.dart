@@ -274,4 +274,84 @@ void main() {
       () => tester.any(find.text(AppText.strings.mediaViewerLoadFailed)),
     );
   });
+
+  testWidgets('a document that turns its OWN pages gets a play button, and '
+      'playing walks the frames at its rate', (tester) async {
+    // 유저 2026-08-29: 「비디오 … 불러와서 재생가능하게」. The viewer asks
+    // the DOCUMENT whether it plays, so this drives it through the same
+    // fake a PDF uses — nothing in the viewer is about movies.
+    final fake = FakePdfDocument(
+      pageSizes: const [
+        ui.Size(320, 240),
+        ui.Size(320, 240),
+        ui.Size(320, 240),
+      ],
+      framesPerSecond: 10,
+    );
+    PdfRenderService.debugOpenerOverride = (path) async => fake;
+    await pumpViewer(tester);
+    slot.request.value = const MediaViewerRequest(
+      path: 'C:/work/clip.mp4',
+      kind: MediaAssetKind.pdf,
+      name: 'clip',
+    );
+    await tester.pumpAndSettle();
+
+    final play = find.byKey(
+      const ValueKey<String>('media-viewer-play-button'),
+    );
+    expect(play, findsOneWidget);
+    expect(find.text('1 / 3'), findsOneWidget);
+
+    await tester.tap(play);
+    await tester.pump();
+    expect(_tooltipOf(tester, play), AppText.strings.menuPause);
+
+    // 100ms a frame at 10fps: each tick turns one page.
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump();
+    expect(find.text('2 / 3'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump();
+    expect(find.text('3 / 3'), findsOneWidget);
+
+    // ⛔It stops ITSELF at the end rather than leaving a timer spinning on
+    // a page that cannot advance.
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump();
+    expect(find.text('3 / 3'), findsOneWidget);
+    expect(
+      _tooltipOf(tester, play),
+      AppText.strings.menuPlay,
+      reason: 'the button says PLAY again once it has stopped itself',
+    );
+  });
+
+  testWidgets('a document that does NOT turn its own pages has no play '
+      'button — 유저 확정 ⑥: no permanently disabled promise', (tester) async {
+    final fake = FakePdfDocument(
+      pageSizes: const [ui.Size(595, 842), ui.Size(595, 842)],
+    );
+    PdfRenderService.debugOpenerOverride = (path) async => fake;
+    await pumpViewer(tester);
+    slot.request.value = const MediaViewerRequest(
+      path: 'C:/work/conte.pdf',
+      kind: MediaAssetKind.pdf,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 / 2'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('media-viewer-play-button')),
+      findsNothing,
+    );
+  });
 }
+
+/// The tooltip an [AppIconButton] is showing — it renders through
+/// `IconButton`, so the message hangs under the button's own key.
+String? _tooltipOf(WidgetTester tester, Finder button) => tester
+    .widget<Tooltip>(
+      find.descendant(of: button, matching: find.byType(Tooltip)),
+    )
+    .message;

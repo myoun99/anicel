@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 
 import 'package:pdfrx/pdfrx.dart' as pdfrx;
 
+import '../media/viewer_document.dart';
+
 /// The PDF rasterizer seam (R4). PDFium arrives through pdfrx's build-time
 /// native assets, and unlike the raster/audio engines there is NO Dart
 /// reference to fall back to (`pdf` the package is writer-only) — so
@@ -15,35 +17,20 @@ import 'package:pdfrx/pdfrx.dart' as pdfrx;
 /// [PdfRenderService.debugOpenerOverride] — the media viewer and import
 /// tests drive a fake document through that seam.
 
-/// One open PDF document: page geometry plus page rendering at whatever
-/// pixel size the caller picks (PDF is vector — resolution is a call-site
-/// decision, canvas-fit for placement bakes, zoom-tier for the viewer).
-abstract class PdfDocumentHandle {
-  /// Number of pages (§6-k: 1 page = 1 frame when placed).
-  int get pageCount;
-
-  /// Page size in PDF points (1/72 inch); pages of one document can
-  /// differ.
-  ui.Size pageSize(int pageIndex);
-
-  /// Renders page [pageIndex] to exactly [width]×[height] pixels.
-  Future<ui.Image> renderPage(
-    int pageIndex, {
-    required int width,
-    required int height,
-  });
-
-  /// Releases the native document.
-  Future<void> dispose();
-}
-
-/// The open seam tests inject fakes through.
-typedef PdfDocumentOpener = Future<PdfDocumentHandle> Function(String path);
+/// 🪦PDF used to declare its own `PdfDocumentHandle` with these four
+/// members. It was [ViewerDocument] under another name — one open
+/// document, page geometry, render-at-a-size, dispose — so the viewer
+/// could not treat an image the way it treats a page without writing the
+/// shape a second time. The shape moved out; PDF is now one implementer
+/// of it, which is what 「최대한 통일」 (유저 2026-08-29) asks for.
+///
+/// PDF is vector, so resolution is a call-site decision: canvas-fit for
+/// placement bakes, zoom-tier for the viewer.
 
 abstract final class PdfRenderService {
   /// Test seam: when set, [open] routes here and [availability] reads
   /// true — widget tests drive fake documents without any FFI.
-  static PdfDocumentOpener? debugOpenerOverride;
+  static ViewerDocumentOpener? debugOpenerOverride;
 
   static bool? _availability;
   static Future<bool>? _probe;
@@ -82,7 +69,7 @@ abstract final class PdfRenderService {
   /// Opens [path]. Null means the RENDERER is absent; a file that fails
   /// to open (corrupt, password-locked) throws instead — the two states
   /// deserve different messages.
-  static Future<PdfDocumentHandle?> open(String path) async {
+  static Future<ViewerDocument?> open(String path) async {
     final override = debugOpenerOverride;
     if (override != null) {
       return override(path);
@@ -101,13 +88,17 @@ abstract final class PdfRenderService {
   }
 }
 
-class _PdfrxDocumentHandle implements PdfDocumentHandle {
+class _PdfrxDocumentHandle implements ViewerDocument {
   _PdfrxDocumentHandle(this._document);
 
   final pdfrx.PdfDocument _document;
 
   @override
   int get pageCount => _document.pages.length;
+
+  /// A PDF never turns its own pages.
+  @override
+  double? get framesPerSecond => null;
 
   @override
   ui.Size pageSize(int pageIndex) {

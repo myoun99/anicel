@@ -31,6 +31,16 @@ void decodeStraightRgbaImage({
   required int width,
   required int height,
   required void Function(ui.Image image) onDecoded,
+
+  /// The pixels to PRODUCE, when that is smaller than the buffer's own
+  /// size. 🚨★★★「보이는 것만, 보이는 해상도로」 — a video frame arrives
+  /// from the OS decoder at the movie's size (there is no smaller ask in
+  /// the native API), but the picture the viewer KEEPS should be the size
+  /// it draws. Passing these makes the big one transient instead of
+  /// resident. Null means "the buffer's own size", which is every caller
+  /// that came before.
+  int? targetWidth,
+  int? targetHeight,
 }) {
   final native = QaNativeEngine.instance;
   final Uint8List premultiplied;
@@ -55,6 +65,8 @@ void decodeStraightRgbaImage({
     width,
     height,
     ui.PixelFormat.rgba8888,
+    targetWidth: targetWidth,
+    targetHeight: targetHeight,
     (image) {
       scratch?.free();
       onDecoded(image);

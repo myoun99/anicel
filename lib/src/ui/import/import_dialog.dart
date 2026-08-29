@@ -223,7 +223,7 @@ class _ImportDialogState extends State<ImportDialog> {
         // destination is selected is refused BY NAME in the table
         // below — which is the honest version of a picker that simply
         // did not list it.
-        acceptedTypeGroups: const [FileTypeGroups.poolMedia],
+        supportedExtensions: FileTypeGroups.poolMedia.extensions ?? const [],
         allowMultiple: true,
       );
       paths = [for (final grant in grants) ?grant.path];

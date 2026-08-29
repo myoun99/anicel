@@ -206,10 +206,16 @@ abstract final class FileTypeGroups {
   );
 
   /// What the media viewer can actually display today.
+  ///
+  /// 🆕Movies joined on 2026-08-29 (유저: 「비디오 지금 불러오는거 못하니까
+  /// 불러와서 재생가능하게」). ⛔This list is a CLAIM about the viewer, so
+  /// it has to move when the viewer does — a picker that cannot offer a
+  /// movie makes「the viewer plays movies」untrue from the user's side, and
+  /// nothing in the viewer would have failed to say so.
   static const XTypeGroup viewableMedia = XTypeGroup(
     label: 'Viewable media',
-    extensions: [...imageFileExtensions, 'pdf'],
-    uniformTypeIdentifiers: [_utiImage, _utiPdf],
+    extensions: [...imageFileExtensions, 'pdf', ...videoFileExtensions],
+    uniformTypeIdentifiers: [_utiImage, _utiPdf, _utiMovie],
   );
 
   /// What the import window can place on the timeline: stills, documents and

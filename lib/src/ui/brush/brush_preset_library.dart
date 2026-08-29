@@ -17,6 +17,7 @@ import '../../services/persistence/file_type_groups.dart';
 import '../../services/sut/sut_decoder.dart';
 import 'brush_import_merge.dart';
 import 'brush_tip_library.dart';
+import '../text/app_strings.dart';
 
 /// A picked brush file: display name plus raw bytes.
 typedef BrushFilePick = ({String name, Uint8List bytes});
@@ -24,12 +25,14 @@ typedef BrushFilePick = ({String name, Uint8List bytes});
 /// Opens a brush file picker; `null` when the user cancels.
 typedef BrushFilePicker = Future<BrushFilePick?> Function();
 
-/// Production picker: the platform open-file dialog filtered to the
-/// supported brush formats.
+/// Production picker: the platform open-file dialog, showing EVERY file.
+///
+/// 🚨유저 2026-08-29: 「픽커는 어떤플랫폼이든 어떤 확장자던 선택할수
+/// 있게하고, 대응만 지원안되는 확장자면 그 때 해당 파일 지원안된다고 안내창
+/// 띄우게」. [BrushPresetLibrary.importFromFile] is the "그 때" — it already
+/// returns a user-facing message, so the refusal has somewhere to go.
 Future<BrushFilePick?> _openBrushFileDialog() async {
-  final file = await openFile(
-    acceptedTypeGroups: [FileTypeGroups.brushes],
-  );
+  final file = await openFile(acceptedTypeGroups: const []);
   if (file == null) {
     return null;
   }
@@ -260,6 +263,20 @@ class BrushPresetLibrary extends ChangeNotifier {
     final baseName = pick.name.contains('.')
         ? pick.name.substring(0, pick.name.lastIndexOf('.'))
         : pick.name;
+    // 🚨The picker shows every file (유저 2026-08-29), so THIS is where a
+    // wrong one is refused — by name, before any decoder sees the bytes.
+    // ⛔It used to fall through to the ABR decoder, which failed with
+    // whatever ABR happened to say about a JPEG's first bytes.
+    if (!FileTypeGroups.brushes.extensions!.any(
+      (extension) => lowerName.endsWith('.$extension'),
+    )) {
+      return AppText.strings.unsupportedFileMessageTemplate.replaceAll(
+        '{kinds}',
+        FileTypeGroups.brushes.extensions!
+            .map((extension) => '.$extension')
+            .join(', '),
+      );
+    }
     final List<BrushPreset> imported;
     final List<String> warnings;
     try {
