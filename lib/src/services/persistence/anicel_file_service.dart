@@ -80,16 +80,43 @@ class _CelWork {
   /// The blob to write, resolved INSIDE the save isolate: hot encodes,
   /// cold passes through, a file ref reads back — and a stale key label
   /// (rekeyed cel) re-splices the header without touching pixels.
-  AnicelCelBlob resolveBlob() {
+  ///
+  /// 🚨★★★**NULL WHEN THE FILE A REF POINTS INTO IS GONE.**
+  ///
+  /// 유저 2026-08-30, on an iPad: open a project, delete the file in the
+  /// Files app, draw a stroke, press Save — `PathNotFoundException:
+  /// Cannot open file`. 「파일 확인해서 없으면 이런게아니라 새로
+  /// 저장시키도록 하는게 좋을거같은데」.
+  ///
+  /// A successful save turns every cel into a file ref and drops its cold
+  /// blob as「redundant with the file」, so once that file is deleted the
+  /// untouched cels have their bytes in exactly one place that no longer
+  /// exists. Opening it threw, and the throw came out of a background
+  /// isolate as a raw exception with a path in it.
+  ///
+  /// ⛔It answers null rather than throwing, and NOT because the loss is
+  /// acceptable — the caller counts these and the save reports them, so a
+  /// person is told which work could not be carried forward instead of
+  /// finding out later. What is not acceptable is refusing to save at all:
+  /// everything still in RAM would go too, and the file the user is trying
+  /// to write is the only place it could land.
+  AnicelCelBlob? resolveBlob() {
     if (hotEntry != null) {
       return AnicelCelBlob.encode(hotEntry!);
     }
     var blob = coldBlob;
     if (blob == null) {
-      final raf = File(refPath!).openSync();
+      final RandomAccessFile raf;
+      try {
+        raf = File(refPath!).openSync();
+      } on FileSystemException {
+        return null;
+      }
       try {
         raf.setPositionSync(refOffset);
         blob = AnicelCelBlob(raf.readSync(refLength));
+      } on FileSystemException {
+        return null;
       } finally {
         raf.closeSync();
       }
@@ -384,7 +411,13 @@ class AnicelFileService {
             );
             yield (name: projectEntry.name, bytes: projectEntry.bytes);
             for (final work in works) {
-              yield (name: work.name, bytes: work.resolveBlob().bytes);
+              // ⛔A cel whose only copy was in a file that has since been
+              // deleted is SKIPPED, not thrown over — see
+              // [_CelSaveWork.resolveBlob]. The save reports the count.
+              final blob = work.resolveBlob();
+              if (blob != null) {
+                yield (name: work.name, bytes: blob.bytes);
+              }
             }
           }(),
         );
@@ -434,7 +467,15 @@ class AnicelFileService {
     }
   }
 
-  Future<void> save({
+  /// Writes the project, answering the cels it could NOT write.
+  ///
+  /// 🚨An empty set is the normal answer and the only one anybody expected
+  /// until 2026-08-30. A non-empty one means the file some cels' bytes
+  /// lived in was deleted while the project was open (유저, on an iPad:
+  /// delete it in the Files app, draw, press Save). Those cels are gone —
+  /// what this returns is WHICH, so the app can say so instead of the
+  /// person finding out later.
+  Future<Set<BrushFrameKey>> save({
     required Project project,
     required BrushFrameStore brushFrameStore,
     List<BrushFrameStore> auxCelStores = const [],
@@ -511,6 +552,21 @@ class AnicelFileService {
         File(filePath).existsSync() &&
         allKeys.every((key) => dirty.contains(key) || refsHere.contains(key));
 
+    /// 🚨★★★**WHAT THE SAVE COULD NOT CARRY FORWARD.**
+    ///
+    /// Every cel that got written comes back with a ref. So the ones that
+    /// did NOT are exactly the ones whose only copy was in a file that has
+    /// since been deleted — see [_CelSaveWork.resolveBlob]. The answer was
+    /// already here; nothing new has to be plumbed out of the isolate.
+    ///
+    /// ⛔Named and returned rather than logged, because the person needs to
+    /// be told. A save that quietly wrote fewer cels than it was given is
+    /// the shape this repo refuses for media, and a cel is the picture.
+    Set<BrushFrameKey> lost(Map<BrushFrameKey, AnicelCelFileRef> adopted) => {
+      for (final key in allKeys)
+        if (!adopted.containsKey(key)) key,
+    };
+
     if (sound) {
       final adopted = await _saveIncremental(
         project: project,
@@ -525,24 +581,24 @@ class AnicelFileService {
       );
       if (adopted != null) {
         adoptEach(adopted);
-        return;
+        return lost(adopted);
       }
       // Torn tail or garbage over threshold → compaction below.
     }
 
-    adoptEach(
-      await _saveFull(
-        project: project,
-        baked: baked,
-        dirty: dirty,
-        filePath: filePath,
-        saveDirectory: saveDirectory,
-        mediaToStore: mediaToStore,
-        grants: grants,
-        mediaCrcs: mediaCrcs,
-        onProgress: onProgress,
-      ),
+    final adopted = await _saveFull(
+      project: project,
+      baked: baked,
+      dirty: dirty,
+      filePath: filePath,
+      saveDirectory: saveDirectory,
+      mediaToStore: mediaToStore,
+      grants: grants,
+      mediaCrcs: mediaCrcs,
+      onProgress: onProgress,
     );
+    adoptEach(adopted);
+    return lost(adopted);
   }
 
   /// Resolves a dirty key's current content to a [_CelWork], or null for
@@ -745,7 +801,10 @@ class AnicelFileService {
         progress.step();
         final blobs = <(BrushFrameKey, String, AnicelCelBlob)>[];
         for (final work in works) {
-          blobs.add((work.key, work.name, work.resolveBlob()));
+          final blob = work.resolveBlob();
+          if (blob != null) {
+            blobs.add((work.key, work.name, blob));
+          }
           progress.step();
         }
         // Media the project no longer carries leaves the central directory
@@ -977,6 +1036,13 @@ class AnicelFileService {
               // Resolved HERE rather than up front: the generator is pulled
               // lazily, so exactly one cel is resident at a time.
               final blob = work.resolveBlob();
+              if (blob == null) {
+                // The file this ref pointed into is gone. Skipping keeps
+                // everything still readable — which is everything the user
+                // can still see — instead of losing that too.
+                progress.step();
+                continue;
+              }
               geometry[work.key] = (
                 name: work.name,
                 canvasSize: blob.canvasSize,
