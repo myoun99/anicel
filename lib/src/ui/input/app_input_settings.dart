@@ -2,27 +2,35 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
-
 /// Pointer-input policy (UI-R22 #6, default flipped in UI-R22F #1).
 ///
-/// What a TOUCH contact means on the timeline grids:
+/// 🚨★★★ONE SWITCH, NOT TWO (유저 2026-08-29): 「터치스크롤 on off 옵션
+/// 필요없다고 생각하는데 … 어차피 터치로 그림 그리려는사람은 1핑거드로잉
+/// on이고 그땐 편집으로 작동하니까. 그 외는 터치는 스크롤이고」.
 ///
-/// - [touchTimelineScroll] ON (the DEFAULT) — the timeline's edit
-///   gestures (range select/move, comma grips, run handles, block
-///   moves) release touch entirely, so a finger pan reaches the scroll
-///   viewports uncontested: touch is the timeline's SCROLL device. The
-///   pen (stylus) edits either way.
-/// - OFF — touch EDITS exactly like the pen (the R17-⑥ contract: some
-///   Windows/tablet drivers report styluses as touch, so touch keeps
-///   full editing power — select, move, drag grips). The safety net for
-///   pens that misreport as touch.
+/// What a TOUCH contact means on the timeline grids is now read off the
+/// mode the user already sets:
 ///
-/// NOTE for tests: `test/flutter_test_config.dart` pins the corpus to
+/// - 1핑거 드로잉 OFF — the timeline's edit gestures (range select/move,
+///   comma grips, run handles, block moves) release touch entirely, so a
+///   finger pan reaches the scroll viewports uncontested: touch is the
+///   timeline's SCROLL device. Picking a cell still works, because a tap
+///   lands on the release.
+/// - 1핑거 드로잉 ON — the finger IS the pointer and edits exactly like the
+///   pen (결정 10). Scrolling is the two-finger gesture then, which the
+///   user named as the cost when they asked for it.
+///
+/// ⛔`touchTimelineScroll` is gone, and its documented reason went with it.
+/// It read 「the safety net for pens that misreport as touch — some
+/// Windows/tablet drivers report styluses as touch, so touch keeps full
+/// editing power」. That net is already held by the mode above: a pen that
+/// arrives as touch cannot DRAW either, so its owner turns 1핑거 드로잉 on,
+/// and touch is in the edit set the moment they do. A second switch for a
+/// case the first one covers is a second place to get it wrong.
 /// OFF (the touch-as-pen contract `tester.drag` was written under);
 /// scroll-behavior suites opt into ON explicitly.
 class AppInputSettings {
   const AppInputSettings({
-    this.touchTimelineScroll = true,
     this.tabletService = TabletService.standard,
     this.pressureCurveGamma = 1.0,
     this.canvasRightClick = const CanvasPointerMapping(
@@ -125,7 +133,6 @@ class AppInputSettings {
   /// [AppInput.settings] must tearDown-reset to THIS, never to
   /// `AppInputSettings()`.
   static const AppInputSettings testCorpusBaseline = AppInputSettings(
-    touchTimelineScroll: false,
     touchDragOneFinger: CanvasTouchDragAction.draw,
   );
 
@@ -148,7 +155,6 @@ class AppInputSettings {
   /// through the Raw Input HID observer ([PenSidecars.freshInverted]).
   final CanvasPointerMapping canvasPenTail;
 
-  final bool touchTimelineScroll;
 
   /// The pen pressure RESPONSE curve (PEN-3, cross-platform): output =
   /// input^gamma. 1.0 = linear (the default, byte-identical to before);
@@ -168,7 +174,6 @@ class AppInputSettings {
   final TabletService tabletService;
 
   AppInputSettings copyWith({
-    bool? touchTimelineScroll,
     TabletService? tabletService,
     double? pressureCurveGamma,
     CanvasPointerMapping? canvasRightClick,
@@ -185,7 +190,6 @@ class AppInputSettings {
     List<double>? zoomSnapPercents,
     List<double>? brushSizeSnaps,
   }) => AppInputSettings(
-    touchTimelineScroll: touchTimelineScroll ?? this.touchTimelineScroll,
     tabletService: tabletService ?? this.tabletService,
     pressureCurveGamma: pressureCurveGamma ?? this.pressureCurveGamma,
     canvasRightClick: canvasRightClick ?? this.canvasRightClick,
@@ -206,7 +210,6 @@ class AppInputSettings {
   );
 
   Map<String, dynamic> toJson() => {
-    'touchTimelineScroll': touchTimelineScroll,
     'tabletService': tabletService.name,
     'pressureCurveGamma': pressureCurveGamma,
     'canvasRightClick': canvasRightClick.toJson(),
@@ -254,7 +257,6 @@ class AppInputSettings {
   static AppInputSettings fromJson(
     Map<String, dynamic> json,
   ) => AppInputSettings(
-    touchTimelineScroll: json['touchTimelineScroll'] as bool? ?? true,
     tabletService:
         TabletService.values.asNameMap()[json['tabletService']] ??
         TabletService.standard,
@@ -306,7 +308,6 @@ class AppInputSettings {
   @override
   bool operator ==(Object other) =>
       other is AppInputSettings &&
-      other.touchTimelineScroll == touchTimelineScroll &&
       other.tabletService == tabletService &&
       other.pressureCurveGamma == pressureCurveGamma &&
       other.canvasRightClick == canvasRightClick &&
@@ -325,7 +326,6 @@ class AppInputSettings {
 
   @override
   int get hashCode => Object.hash(
-    touchTimelineScroll,
     tabletService,
     pressureCurveGamma,
     canvasRightClick,
@@ -450,7 +450,6 @@ abstract final class AppInput {
   static final ValueNotifier<AppInputSettings> settings =
       ValueNotifier<AppInputSettings>(const AppInputSettings());
 
-  static bool get touchTimelineScroll => settings.value.touchTimelineScroll;
 
   /// The drag action assigned to a finger-count slot (3+ fingers share
   /// the three-finger slot) — **the stored setting, and nothing else**.
@@ -602,7 +601,7 @@ abstract final class AppInput {
     PointerDeviceKind.stylus,
     PointerDeviceKind.invertedStylus,
     PointerDeviceKind.unknown,
-    if (!touchTimelineScroll || touchDraws) PointerDeviceKind.touch,
+    if (touchDraws) PointerDeviceKind.touch,
   };
 
   /// Whether a CELL press of [kind] moves the ACTIVE target — **every device

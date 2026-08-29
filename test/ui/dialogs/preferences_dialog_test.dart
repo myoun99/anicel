@@ -70,7 +70,7 @@ void main() {
     );
     // Input is the landing section.
     expect(
-      find.byKey(const ValueKey<String>('settings-touch-timeline-scroll')),
+      find.byKey(const ValueKey<String>('settings-pressure-curve')),
       findsOneWidget,
     );
 

@@ -18,6 +18,12 @@ import 'package:anicel/src/ui/input/app_input_settings.dart';
 /// ⚠️The cost was named by the USER first: 「그러면 1핑거 드로잉에선
 /// **타임라인 스크롤 불가**해지는거지 … **그걸 원해서 한 말이야.** 어차피
 /// 2핑거로 스크롤되니까」.
+///
+/// 🚨THIS MODE IS NOW THE WHOLE ANSWER. There used to be a second switch —
+/// a touch-scroll toggle — and a third case here said the mode "only ADDS
+/// reach" on top of it. 유저 2026-08-29 removed it: 「터치스크롤on off 옵션
+/// 필요없다고 생각하는데 … 터치스크롤on인채로 두고 관련코드 정리하는게
+/// 좋을거같은데」. That case went with the state it measured.
 void main() {
   setUp(() {
     AppInput.settings.value = const AppInputSettings();
@@ -29,10 +35,9 @@ void main() {
   bool touchEdits() =>
       AppInput.timelineEditPanDevices.contains(PointerDeviceKind.touch);
 
-  test('scroll ON + one finger NOT drawing: the finger scrolls, as before',
+  test('one finger NOT drawing: the finger scrolls, as before',
       () {
     AppInput.settings.value = const AppInputSettings(
-      touchTimelineScroll: true,
       touchDragOneFinger: CanvasTouchDragAction.navigate,
     );
     expect(AppInput.touchDraws, isFalse, reason: 'presence first');
@@ -44,9 +49,8 @@ void main() {
     );
   });
 
-  test('scroll ON + one finger DRAWS: the finger edits instead (결정 10)', () {
+  test('one finger DRAWS: the finger edits instead (결정 10)', () {
     AppInput.settings.value = const AppInputSettings(
-      touchTimelineScroll: true,
       touchDragOneFinger: CanvasTouchDragAction.draw,
     );
     expect(AppInput.touchDraws, isTrue, reason: 'presence first');
@@ -57,25 +61,6 @@ void main() {
           '하나로 되어야 한다. 대가(타임라인 스크롤 상실)는 유저가 먼저 '
           '받아들였다',
     );
-  });
-
-  test('scroll OFF: the finger edits either way — the mode only ADDS reach',
-      () {
-    for (final action in [
-      CanvasTouchDragAction.navigate,
-      CanvasTouchDragAction.draw,
-    ]) {
-      AppInput.settings.value = AppInputSettings(
-        touchTimelineScroll: false,
-        touchDragOneFinger: action,
-      );
-      expect(
-        touchEdits(),
-        isTrue,
-        reason: 'with scroll off the finger already edited; 결정 10 must not '
-            'take that away for $action',
-      );
-    }
   });
 
   test('⛔the app never asks WHAT DEVICE it is on — the mode is the whole '
@@ -111,7 +96,6 @@ void main() {
 
   test('⛔the canvas is a different question and keeps its own answer', () {
     AppInput.settings.value = const AppInputSettings(
-      touchTimelineScroll: true,
       touchDragOneFinger: CanvasTouchDragAction.draw,
     );
     expect(
@@ -122,7 +106,6 @@ void main() {
     );
 
     AppInput.settings.value = const AppInputSettings(
-      touchTimelineScroll: false,
       touchDragOneFinger: CanvasTouchDragAction.flip,
     );
     expect(

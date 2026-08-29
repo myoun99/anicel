@@ -76,9 +76,10 @@ void main() {
       find.byKey(const ValueKey<String>('settings-tablet-wintab')),
       findsNothing,
     );
-    // The touch policy switch stays for every platform.
+    // A row that is NOT platform-conditional stays, or this case would
+    // also pass on a dialog that rendered nothing at all.
     expect(
-      find.byKey(const ValueKey<String>('settings-touch-timeline-scroll')),
+      find.byKey(const ValueKey<String>('settings-extra-finger')),
       findsOneWidget,
     );
 

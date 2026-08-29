@@ -453,8 +453,6 @@ class AppStrings {
 
   // --- Input settings ---
   String get inputTitle => _s('inputTitle');
-  String get inputTouchScroll => _s('inputTouchScroll');
-  String get inputTouchScrollHelp => _s('inputTouchScrollHelp');
   String get inputPressureHeading => _s('inputPressureHeading');
   String get inputPressureSoftHard => _s('inputPressureSoftHard');
   String get inputPressureLinear => _s('inputPressureLinear');
@@ -784,7 +782,8 @@ class AppStrings {
 
   /// '{name}' is the picked file's name, '{kinds}' the extensions this
   /// particular opening accepts.
-  String get unsupportedFileMessageTemplate => _s('unsupportedFileMessageTemplate');
+  String get unsupportedFileMessageTemplate =>
+      _s('unsupportedFileMessageTemplate');
 
   /// The gear on every canvas pill. Not "view settings" — the host puts its
   /// own verbs in the same list (유저 확정 2026-08-13: 등록·맞바꾸기는 ⚙ 안으로).
@@ -1337,12 +1336,6 @@ class AppStrings {
     'stageAlphaLabel': 'Alpha',
     'menuAlphaPreview': 'Alpha preview',
     'inputTitle': 'Input settings',
-    'inputTouchScroll': 'Touch scrolls the timeline',
-    'inputTouchScrollHelp':
-        'ON (default): finger pans scroll the grids — the edit gestures '
-        'release touch entirely.\n'
-        'OFF: touch edits exactly like the pen (select, move, drag grips) — '
-        'the safety net for pens that report as touch.',
     'inputPressureHeading': 'Pen pressure response',
     'inputPressureSoftHard': 'Soft ↔ Hard',
     'inputPressureLinear': 'Linear',
@@ -2125,12 +2118,6 @@ class AppStrings {
         'でも透けます。背景は不透明の最終面で、フェードや空きフレーム'
         'が行き着く色です。',
     'inputTitle': '入力設定',
-    'inputTouchScroll': 'タッチでタイムラインをスクロール',
-    'inputTouchScrollHelp':
-        'ON（既定）：指のドラッグでグリッドをスクロールします — 編集'
-        'ジェスチャーはタッチを完全に手放します。\n'
-        'OFF：タッチがペンとまったく同じに編集します（選択・移動・グリップの'
-        'ドラッグ）— タッチとして報告されるペンのための保険です。',
     'inputPressureHeading': '筆圧カーブ',
     'inputPressureSoftHard': '柔らかい ↔ 硬い',
     'inputPressureLinear': 'リニア',
@@ -2979,12 +2966,6 @@ class AppStrings {
         '뒤 층이 비칩니다. 배경은 불투명한 최종 면으로, 페이드와 빈 '
         '프레임이 도달하는 색입니다.',
     'inputTitle': '입력 설정',
-    'inputTouchScroll': '터치로 타임라인 스크롤',
-    'inputTouchScrollHelp':
-        'ON(기본): 손가락 드래그가 그리드를 스크롤합니다 — 편집 제스처는 '
-        '터치를 완전히 놓습니다.\n'
-        'OFF: 터치가 펜과 똑같이 편집합니다(선택·이동·그립 드래그) — '
-        '터치로 보고되는 펜을 위한 안전장치입니다.',
     'inputPressureHeading': '필압 곡선',
     'inputPressureSoftHard': '부드럽게 ↔ 단단하게',
     'inputPressureLinear': '리니어',
@@ -3172,7 +3153,8 @@ class AppStrings {
     'mediaViewerNoVideoDecoder': '이 빌드에는 비디오 디코더가 없습니다 — 동영상을 표시할 수 없습니다.',
     'mediaViewerSwap': '반대쪽 뷰어와 맞바꾸기',
     'unsupportedFileTitle': '지원하지 않는 파일',
-    'unsupportedFileMessageTemplate': '「{name}」은(는) 여기서 열 수 없습니다. 사용 가능한 형식: {kinds}.',
+    'unsupportedFileMessageTemplate':
+        '「{name}」은(는) 여기서 열 수 없습니다. 사용 가능한 형식: {kinds}.',
     'mediaViewerRegisterAsset': '미디어에 등록',
     'panelMediaViewer': '뷰어',
     'panelMediaViewerSub': '서브 뷰어',
@@ -3842,13 +3824,6 @@ class AppStrings {
         "c'est ce que révèlent les fondus et ce qu'impriment les images "
         'vides.',
     'inputTitle': 'Paramètres de saisie',
-    'inputTouchScroll': 'Le toucher fait défiler la timeline',
-    'inputTouchScrollHelp':
-        'ACTIVÉ (par défaut) : le glissement au doigt fait défiler les '
-        'grilles — les gestes d\'édition relâchent entièrement le toucher.\n'
-        'DÉSACTIVÉ : le toucher édite exactement comme le stylet '
-        '(sélection, déplacement, poignées) — le filet de sécurité pour les '
-        'stylets vus comme du toucher.',
     'inputPressureHeading': 'Réponse à la pression',
     'inputPressureSoftHard': 'Doux ↔ Dur',
     'inputPressureLinear': 'Linéaire',
@@ -4682,11 +4657,6 @@ class AppStrings {
         '调低后，屏幕和导出都会透出后面的层。背景是不透明的最终面：'
         '淡出与空帧最终落在这个颜色上。',
     'inputTitle': '输入设置',
-    'inputTouchScroll': '触摸滚动时间轴',
-    'inputTouchScrollHelp':
-        '开启（默认）：手指拖动滚动网格 — 编辑手势完全放开触摸。\n'
-        '关闭：触摸与笔完全一样地编辑（选择、移动、拖动手柄）— '
-        '这是为被识别成触摸的笔准备的保险。',
     'inputPressureHeading': '压感曲线',
     'inputPressureSoftHard': '软 ↔ 硬',
     'inputPressureLinear': '线性',

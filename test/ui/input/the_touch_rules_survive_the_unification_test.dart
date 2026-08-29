@@ -22,18 +22,16 @@ void main() {
     AppInput.settings.value = AppInputSettings.testCorpusBaseline;
   });
 
-  void setInput({required bool touchTimelineScroll, required bool draws}) {
+  void setInput({required bool draws}) {
     AppInput.settings.value = AppInput.settings.value.copyWith(
-      touchTimelineScroll: touchTimelineScroll,
       touchDragOneFinger: draws
           ? CanvasTouchDragAction.draw
           : CanvasTouchDragAction.flip,
     );
   }
 
-  test('터치 스크롤 ON, 드로잉 OFF — the finger SCROLLS, so no edit pan '
-      'takes it', () {
-    setInput(touchTimelineScroll: true, draws: false);
+  test('드로잉 OFF — the finger SCROLLS, so no edit pan takes it', () {
+    setInput(draws: false);
     expect(
       AppInput.timelineEditPanDevices.contains(PointerDeviceKind.touch),
       isFalse,
@@ -44,7 +42,7 @@ void main() {
   });
 
   test('1핑거 드로잉 — the finger is the POINTER, so it edits like a mouse', () {
-    setInput(touchTimelineScroll: true, draws: true);
+    setInput(draws: true);
     expect(
       AppInput.timelineEditPanDevices.contains(PointerDeviceKind.touch),
       isTrue,
@@ -55,32 +53,21 @@ void main() {
     );
   });
 
-  test('터치 스크롤 OFF — the finger edits even without drawing mode', () {
-    setInput(touchTimelineScroll: false, draws: false);
-    expect(
-      AppInput.timelineEditPanDevices.contains(PointerDeviceKind.touch),
-      isTrue,
-      reason: 'the scroll no longer owns the finger, so the edit pans take it',
-    );
-  });
-
-  test('🚨the POINTER devices are in every one of those states', () {
-    // The unification's own claim: mouse and pen are one answer, and it does
-    // not depend on any touch switch.
-    for (final scroll in const [true, false]) {
-      for (final draws in const [true, false]) {
-        setInput(touchTimelineScroll: scroll, draws: draws);
-        for (final kind in const [
-          PointerDeviceKind.mouse,
-          PointerDeviceKind.stylus,
-          PointerDeviceKind.invertedStylus,
-        ]) {
-          expect(
-            AppInput.timelineEditPanDevices.contains(kind),
-            isTrue,
-            reason: '$kind with scroll=$scroll draws=$draws',
-          );
-        }
+  test('🚨the POINTER devices are in BOTH states', () {
+    // The unification's own claim: mouse and pen are one answer, and it
+    // does not depend on the touch mode.
+    for (final draws in const [true, false]) {
+      setInput(draws: draws);
+      for (final kind in const [
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.stylus,
+        PointerDeviceKind.invertedStylus,
+      ]) {
+        expect(
+          AppInput.timelineEditPanDevices.contains(kind),
+          isTrue,
+          reason: '$kind with draws=$draws',
+        );
       }
     }
   });

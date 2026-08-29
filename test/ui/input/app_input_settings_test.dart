@@ -14,23 +14,19 @@ void main() {
     AppInput.settings.value = AppInputSettings.testCorpusBaseline;
   });
 
-  test('the PRODUCT default dedicates touch to the timeline scroll', () {
-    // The class default is the shipped default (UI-R22F #1) — the test
-    // corpus runs under OFF only because flutter_test_config pins it.
-    expect(const AppInputSettings().touchTimelineScroll, isTrue);
-    expect(AppInputSettings.fromJson(const {}).touchTimelineScroll, isTrue);
-  });
-
-  test('the edit device set releases touch exactly when the timeline '
-      'scroll owns it', () {
-    // Corpus baseline OFF: touch EDITS like the pen (the R17-⑥
-    // contract — the misreported-pen safety net).
-    expect(AppInput.touchTimelineScroll, isFalse);
+  test('the edit device set releases touch exactly when the finger is NOT '
+      'the pointer', () {
+    // 🚨ONE SWITCH now (유저 2026-08-29): `touchTimelineScroll` is gone and
+    // 1핑거 드로잉 answers for it. The corpus baseline draws with one
+    // finger, so touch EDITS.
+    expect(AppInput.touchDraws, isTrue);
     expect(AppInput.timelineEditPanDevices, contains(PointerDeviceKind.touch));
 
-    // ON (the product default): the edit gestures ignore touch — finger
-    // pans reach the scroll viewports uncontested.
-    AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+    // Drawing off: the edit gestures ignore touch — finger pans reach the
+    // scroll viewports uncontested.
+    AppInput.settings.value = const AppInputSettings(
+      touchDragOneFinger: CanvasTouchDragAction.flip,
+    );
     expect(
       AppInput.timelineEditPanDevices,
       isNot(contains(PointerDeviceKind.touch)),
@@ -40,7 +36,9 @@ void main() {
   });
 
   test('json + store round-trips', () async {
-    const settings = AppInputSettings(touchTimelineScroll: false);
+    const settings = AppInputSettings(
+      touchDragOneFinger: CanvasTouchDragAction.flip,
+    );
     expect(AppInputSettings.fromJson(settings.toJson()), settings);
 
     final dir = await Directory.systemTemp.createTemp('input');

@@ -236,8 +236,6 @@ void main() {
     'backgroundCustom': (s) => s.backgroundCustom,
     'backgroundHelp': (s) => s.backgroundHelp,
     'inputTitle': (s) => s.inputTitle,
-    'inputTouchScroll': (s) => s.inputTouchScroll,
-    'inputTouchScrollHelp': (s) => s.inputTouchScrollHelp,
     'inputPressureHeading': (s) => s.inputPressureHeading,
     'inputPressureSoftHard': (s) => s.inputPressureSoftHard,
     'inputPressureLinear': (s) => s.inputPressureLinear,

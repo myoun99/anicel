@@ -62,7 +62,6 @@ void main() {
     // Old settings files (no field) stay standard.
     expect(
       AppInputSettings.fromJson(const {
-        'touchTimelineScroll': true,
       }).tabletService,
       TabletService.standard,
     );

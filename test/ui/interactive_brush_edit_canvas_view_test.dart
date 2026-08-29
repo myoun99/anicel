@@ -1221,7 +1221,6 @@ void main() {
       'squares the input)',
       (tester) async {
         AppInput.settings.value = const AppInputSettings(
-          touchTimelineScroll: false,
           pressureCurveGamma: 2.0,
         );
         addTearDown(() {
@@ -1419,7 +1418,6 @@ void main() {
       testWidgets('mapped ERASER erases the whole stroke and "keep" holds '
           'the switched tool', (tester) async {
         AppInput.settings.value = const AppInputSettings(
-          touchTimelineScroll: false,
           // The follow-up stroke below drags with TOUCH — keep the
           // corpus draw contract for it.
           touchDragOneFinger: CanvasTouchDragAction.draw,
@@ -1534,7 +1532,6 @@ void main() {
 
       testWidgets('mapped NONE swallows the press entirely', (tester) async {
         AppInput.settings.value = const AppInputSettings(
-          touchTimelineScroll: false,
           canvasRightClick: CanvasPointerMapping(
             action: CanvasPointerAction.none,
           ),
@@ -1563,7 +1560,6 @@ void main() {
       testWidgets('mapped UNDO fires once at the press — no stroke, no '
           'hold (PEN-11)', (tester) async {
         AppInput.settings.value = const AppInputSettings(
-          touchTimelineScroll: false,
           canvasRightClick: CanvasPointerMapping(
             action: CanvasPointerAction.undo,
           ),
@@ -1594,7 +1590,6 @@ void main() {
         tester,
       ) async {
         AppInput.settings.value = const AppInputSettings(
-          touchTimelineScroll: false,
           canvasRightClick: CanvasPointerMapping(
             action: CanvasPointerAction.undo,
           ),
