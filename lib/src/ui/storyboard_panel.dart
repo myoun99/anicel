@@ -35,6 +35,7 @@ import 'theme/app_theme.dart';
 import 'timeline/layer_label_controls.dart';
 import 'timeline/timeline_cut_end_handle.dart' show movieEndPreviewTotalFrames;
 import 'timeline/layer_rail_columns.dart';
+import 'timeline/rail_column_swipe.dart';
 import 'timeline/layer_rail_window.dart';
 import 'widgets/field_slider.dart';
 import 'timeline/property_lane_model.dart'
@@ -1851,6 +1852,92 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     return extent;
   }
 
+  /// The rail-local y band each V row stands in, walked the same way
+  /// [_trackGroupExtent] and [_trackGroupExtentAboveVRow] already count for
+  /// the row-order drag — so the swipe and the drag can never disagree
+  /// about where a row is.
+  ///
+  /// Only V rows answer: the S rows and the transition row beside them
+  /// carry no column the swipe paints, and a press there must fall through
+  /// to whatever is under it rather than latch a swipe on nothing.
+  RailSwipeRow<Track>? _railRowAtY(double localY) {
+    final tracks = widget.project.tracks;
+    var top = 0.0;
+    for (final track in tracks) {
+      final vTop = top + _trackGroupExtentAboveVRow(track);
+      if (localY >= vTop && localY < vTop + widget.trackLaneHeight) {
+        return (row: track, depth: 0, id: track.id.value);
+      }
+      top += _trackGroupExtent(track);
+    }
+    return null;
+  }
+
+  /// The TOGGLE columns this rail can swipe, in the same construction the
+  /// timeline's grid uses — the bands come off the shared slot skeleton
+  /// [layerRailTrailingCells] lays the cells with, so a slot added to the
+  /// run cannot put them out of date.
+  ///
+  /// ⚠️Depth is not read: this rail does not nest, so every row's band is
+  /// the same. The resolver signature is the shared one all the same.
+  List<RailToggleColumn<Track>> _railSwipeColumns() {
+    const rightPadding = 8.0;
+
+    ({double left, double right}) Function(int depth) band(
+      LayerRailTrailingSlot after,
+      double width,
+    ) {
+      final right =
+          StoryboardPanel._trackLabelWidth -
+          rightPadding -
+          layerRailTrailingWidth(from: after);
+      // The same tolerance the timeline's trailing bands carry, and for the
+      // same reason: a thin column has to be easy to hit with a pen.
+      final at = (left: right - width - 4, right: right + 4);
+      return (_) => at;
+    }
+
+    final toggleVisibility = widget.onToggleCutPictureVisibility;
+    final visibleOf = widget.cutPictureVisibleOf;
+    final toggleFx = widget.onToggleTrackFx;
+    final fxStateOf = widget.trackFxStateOf;
+
+    /// The cut a row's buttons act on — the one under the playhead on that
+    /// track, which is what the row itself draws (UI-R13 #2). A track with
+    /// no cut there has no subject, so its column reads null and the sweep
+    /// steps over it.
+    Cut? subjectOf(Track track) {
+      final index = widget.project.tracks.indexOf(track);
+      return index < 0 ? null : _cutAtPlayheadOn(index);
+    }
+
+    return [
+      if (toggleVisibility != null)
+        (
+          bandAt: band(LayerRailTrailingSlot.mute, layerVisibilitySlotWidth),
+          valueOf: (track) {
+            final cut = subjectOf(track);
+            return cut == null ? null : (visibleOf?.call(cut.id) ?? true);
+          },
+          toggle: (track) {
+            final cut = subjectOf(track);
+            if (cut != null) {
+              toggleVisibility(cut.id);
+            }
+          },
+        ),
+      if (toggleFx != null && fxStateOf != null)
+        (
+          bandAt: band(LayerRailTrailingSlot.onion, layerFxSlotWidth),
+          // Tri-state, and the swipe paints the one thing a tap paints —
+          // on, or not on. [RailColumnSwipe] only touching rows that
+          // DISAGREE is what keeps the third state out of its way.
+          valueOf: (track) => fxStateOf(track) == LayerFxState.on,
+          toggle: toggleFx,
+        ),
+    ];
+  }
+
   /// The V row, made draggable to re-order the project's TRACKS (R5 #9).
   ///
   /// The rail lists tracks in the project's own order (the caller walks
@@ -3437,24 +3524,36 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                         'storyboard-track-label-rail',
                                       ),
                                       width: StoryboardPanel._trackLabelWidth,
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          // Track groups in TIMELINE order (R6 B3): the
-                                          // S rows sit ABOVE their V track, slots
-                                          // bottom-up like the timeline (top-down
-                                          // S2, S1, V — R7-④).
-                                          for (
-                                            var index = 0;
-                                            index < project.tracks.length;
-                                            index++
-                                          )
-                                            ..._railRowsForTrack(
-                                              project.tracks[index],
-                                              index,
-                                            ),
-                                        ],
+                                      // 🚨The rail's Krita-style column
+                                      // swipe, the SAME one the timeline
+                                      // rail wears (유저 2026-08-29: 「타임
+                                      // 라인이랑 왜 통일안한거지?」). It was
+                                      // the timeline's private state until
+                                      // the reason for that was measured and
+                                      // found invented — see
+                                      // [RailSwipeColumnPointer].
+                                      child: RailColumnSwipe<Track>(
+                                        columns: _railSwipeColumns(),
+                                        rowAt: _railRowAtY,
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            // Track groups in TIMELINE order (R6 B3): the
+                                            // S rows sit ABOVE their V track, slots
+                                            // bottom-up like the timeline (top-down
+                                            // S2, S1, V — R7-④).
+                                            for (
+                                              var index = 0;
+                                              index < project.tracks.length;
+                                              index++
+                                            )
+                                              ..._railRowsForTrack(
+                                                project.tracks[index],
+                                                index,
+                                              ),
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -5648,33 +5747,37 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                 // touch, over a state that never left the session.
                 fx: onToggleTrackFx == null
                     ? null
-                    : FxToggleButton(
-                        keyValue: 'storyboard-track-fx-${track.id.value}',
-                        subject: 'track',
-                        state: trackFxState,
-                        onToggle: onToggleTrackFx!,
+                    : RailSwipeColumnPointer(
+                        child: FxToggleButton(
+                          keyValue: 'storyboard-track-fx-${track.id.value}',
+                          subject: 'track',
+                          state: trackFxState,
+                          onToggle: onToggleTrackFx!,
+                        ),
                       ),
                 visibility: onToggleCutPictureVisibility == null
                     ? null
-                    : SizedBox(
-                        height: 26,
-                        // The SAME eye the layer and folder rows mount —
-                        // this was a sixth inline copy (R28 follow-up).
-                        child: LayerVisibilityToggleButton(
-                          keyValue:
-                              'storyboard-cut-visibility-'
-                              '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
-                          subject: 'cut picture',
-                          isVisible:
-                              subjectCut == null ||
-                              (cutPictureVisibleOf?.call(subjectCut!.id) ??
-                                  true),
-                          onToggle: () {
-                            final subject = subjectCut;
-                            if (subject != null) {
-                              onToggleCutPictureVisibility!(subject.id);
-                            }
-                          },
+                    : RailSwipeColumnPointer(
+                        child: SizedBox(
+                          height: 26,
+                          // The SAME eye the layer and folder rows mount —
+                          // this was a sixth inline copy (R28 follow-up).
+                          child: LayerVisibilityToggleButton(
+                            keyValue:
+                                'storyboard-cut-visibility-'
+                                '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
+                            subject: 'cut picture',
+                            isVisible:
+                                subjectCut == null ||
+                                (cutPictureVisibleOf?.call(subjectCut!.id) ??
+                                    true),
+                            onToggle: () {
+                              final subject = subjectCut;
+                              if (subject != null) {
+                                onToggleCutPictureVisibility!(subject.id);
+                              }
+                            },
+                          ),
                         ),
                       ),
                 // R9 #21: the track's STATIC opacity — this slot was empty
