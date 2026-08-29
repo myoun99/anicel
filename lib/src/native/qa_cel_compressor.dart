@@ -29,12 +29,26 @@ final class QaCelCompressor {
   static QaCelCompressor? _instance;
   static bool _tried = false;
 
+  /// Test seam, the same shape [PdfRenderService.debugOpenerOverride] uses:
+  /// when set, [instance] answers this instead of probing.
+  ///
+  /// ⛔`() => null` is the ONLY way a test can say「no engine」on a machine
+  /// that has one — a bogus library path cannot, because
+  /// [openQaEngineLibrary] deliberately falls THROUGH a bad override to the
+  /// default search. CI runs two jobs with the engine on PATH, and a test
+  /// that assumed its own runner went red only there.
+  static QaCelCompressor? Function()? debugInstanceOverride;
+
   static void debugResetForTests() {
     _instance = null;
     _tried = false;
   }
 
   static QaCelCompressor? get instance {
+    final override = debugInstanceOverride;
+    if (override != null) {
+      return override();
+    }
     if (!_tried) {
       _tried = true;
       final library = openQaEngineLibrary();

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -157,19 +158,41 @@ void main() {
     expect(rekeyedV1.decode().tiles.single.pixels, pixels);
   });
 
-  test('🚨with no engine it writes DEFLATE, and that blob reads anywhere', () {
-    // This is the state every test and every host run is in, and it is the
-    // reason deflate stays the floor: a file written here must open in a
-    // build that has the engine AND in one that does not.
+  test('🚨with NO engine it writes deflate, and that blob reads anywhere', () {
+    // ⛔The absence is FORCED, not assumed. The first version of this test
+    // asserted「flutter_tester loads no engine」— which is true of the
+    // ordinary suite and false of the two CI jobs that run WITH the engine
+    // on PATH, so it went red there and nowhere else. A test that asserts a
+    // property of its RUNNER is not testing the code.
+    // The seam, not the path: a bogus path falls THROUGH to the default
+    // search by design, so it cannot say「no engine」on a machine that has
+    // one — which is exactly the two CI jobs this test used to fail in.
+    QaCelCompressor.debugInstanceOverride = () => null;
+
+    addTearDown(() {
+      QaCelCompressor.debugInstanceOverride = null;
+    });
+
     final blob = AnicelCelBlob.encode(
       AnicelCelEntry.fromSurface(key, surfaceWith(patterned(7))),
     );
     expect(
       blob.codec,
       celCodecDeflate,
-      reason: 'flutter_tester loads no engine, so zstd was not available',
+      reason: 'no engine means the floor, and the floor is dart:io zlib',
     );
     expect(blob.decode().tiles.single.pixels, patterned(7));
+  });
+
+  test('and whatever codec the ambient build picked, the blob round-trips '
+      'and says which one it used', () {
+    // The invariant that holds in BOTH worlds — the one the runner cannot
+    // make false.
+    final blob = AnicelCelBlob.encode(
+      AnicelCelEntry.fromSurface(key, surfaceWith(patterned(13))),
+    );
+    expect(blob.codec, anyOf(celCodecDeflate, celCodecZstd));
+    expect(blob.decode().tiles.single.pixels, patterned(13));
   });
 
   test('a v1 blob reports the deflate codec — it had no codec byte at all, '
