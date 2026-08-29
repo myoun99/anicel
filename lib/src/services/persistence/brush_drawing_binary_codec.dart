@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../../native/qa_cel_compressor.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
@@ -130,7 +131,52 @@ AnicelCelEntry decodeCelEntry(Uint8List bytes) {
   );
 }
 
-const int _anicelCelBlobVersion = 1;
+/// v2 (2026-08-29): the payload carries a CODEC byte — [celCodecDeflate]
+/// or [celCodecZstd].
+///
+/// 🚨**Why a codec at all: the read is on the frame path.** A cel is
+/// compressed once per save on a background isolate and DECOMPRESSED on
+/// the main isolate, synchronously, the first time it is scrubbed onto
+/// (`BrushFrameStore` promotion). So the axis that binds is decompression
+/// speed at a good ratio, and that is exactly what zstd is for.
+///
+/// 🧪Measured end to end on a real 22.8MB project (104 cels), promotion =
+/// decompress + parse:
+///
+///     deflate6 (v1)   22,616,728   0.92ms median   66.1ms worst
+///     deflate9        21,829,624   1.07ms          67.3ms
+///     zstd9           20,319,920   0.76ms          29.9ms
+///     zstd19          16,985,138   0.74ms          34.5ms
+///
+/// zstd19 is a QUARTER smaller and reads faster than what it replaces.
+/// The level is paid only on the save, and only on a background isolate.
+///
+/// 🪦A PNG-style「sub」filter shipped in the first draft of v2 and was
+/// REMOVED before merge, by the same measurements. It helped deflate
+/// (−7%) but with zstd it bought 5% for **+1ms on every promotion** —
+/// `sub + deflate9` and `zstd9` land within 3KB of each other on the whole
+/// project and zstd reads 2.3× faster. An entropy coder that models the
+/// data already captures what the filter was hand-rolling. ⛔A planar
+/// de-interleave was measured too: **122% worse**.
+///
+/// v1 blobs still read: they had no codec byte and were always deflate,
+/// and the version is what says whether to look for one — never a sniff of
+/// the payload, which would be a guess.
+const int _anicelCelBlobVersion = 2;
+
+/// Payload codecs. deflate is the FLOOR — `dart:io` has it, so every build
+/// can read a deflate blob, including a test run and a host run. zstd is
+/// written only when the engine answered.
+const int celCodecDeflate = 0;
+const int celCodecZstd = 1;
+
+/// The normal save's zstd level, and the「smallest file」one.
+///
+/// Both read at the same speed — the level is a SAVE cost only. 19 is a
+/// quarter smaller than what it replaces; it is a choice rather than the
+/// default because compressing takes noticeably longer.
+const int celZstdLevelNormal = 9;
+const int celZstdLevelSmallest = 19;
 
 /// A cel in its COLD form (R20-A1): a tiny plain header (key + canvas
 /// geometry, readable WITHOUT inflating) followed by the deflated
@@ -143,7 +189,7 @@ const int _anicelCelBlobVersion = 1;
 class AnicelCelBlob {
   AnicelCelBlob(this.bytes) {
     final reader = _ByteReader(bytes);
-    final version = reader.u8();
+    version = reader.u8();
     if (version > _anicelCelBlobVersion) {
       throw const FormatException('Unsupported cel blob version.');
     }
@@ -156,6 +202,10 @@ class AnicelCelBlob {
     );
     canvasSize = CanvasSize(width: reader.u32(), height: reader.u32());
     tileSize = reader.u16();
+    // v2 adds a CODEC byte. v1 had no such byte and was always deflate,
+    // so the version is what says whether to read one — not a sniff of the
+    // stream, which would guess.
+    codec = version >= 2 ? reader.u8() : celCodecDeflate;
     _deflatedOffset = reader.offset;
   }
 
@@ -164,7 +214,13 @@ class AnicelCelBlob {
   /// identical pixels, so re-encoding them would be pure waste (R22-C).
   factory AnicelCelBlob.reKeyed(AnicelCelBlob source, BrushFrameKey key) {
     final writer = _ByteWriter()
-      ..u8(_anicelCelBlobVersion)
+      // 🚨The SOURCE's version and codec, never the current constants:
+      // this SPLICES that payload through, so the header has to describe
+      // the payload it is wrapping. Stamping a v1 stream as v2 would tell
+      // the reader to un-filter bytes nobody filtered; writing a codec
+      // byte a v1 header does not have would push it into the payload.
+      // Both were caught by the tests here, one in each direction.
+      ..u8(source.version)
       ..string(key.projectId.value)
       ..string(key.trackId.value)
       ..string(key.cutId.value)
@@ -172,14 +228,30 @@ class AnicelCelBlob {
       ..string(key.frameId.value)
       ..u32(source.canvasSize.width)
       ..u32(source.canvasSize.height)
-      ..u16(source.tileSize)
-      ..bytes(Uint8List.sublistView(source.bytes, source._deflatedOffset));
+      ..u16(source.tileSize);
+    if (source.version >= 2) {
+      writer.u8(source.codec);
+    }
+    writer.bytes(
+      Uint8List.sublistView(source.bytes, source._deflatedOffset),
+    );
     return AnicelCelBlob(writer.takeBytes());
   }
 
-  factory AnicelCelBlob.encode(AnicelCelEntry entry) {
+  factory AnicelCelBlob.encode(AnicelCelEntry entry, {int? zstdLevel}) {
     final body = encodeCelEntry(entry);
-    final deflated = ZLibEncoder().convert(body);
+    // zstd when the engine answered, deflate when it did not. ⛔The
+    // fallback is not a degraded mode to apologise for: a test run and a
+    // host run take it every time, and the file they write must open
+    // anywhere.
+    final compressor = QaCelCompressor.instance;
+    final zstd = compressor != null && compressor.isSupported
+        ? compressor.compress(body, level: zstdLevel ?? celZstdLevelNormal)
+        : null;
+    // Level 9 for the deflate fallback: inflate is the same speed whatever
+    // level wrote the stream, and both encode sites run on a background
+    // isolate, so the level is paid once where nobody is waiting.
+    final payload = zstd ?? ZLibCodec(level: 9).encode(body);
     final writer = _ByteWriter()
       ..u8(_anicelCelBlobVersion)
       ..string(entry.key.projectId.value)
@@ -190,7 +262,8 @@ class AnicelCelBlob {
       ..u32(entry.canvasSize.width)
       ..u32(entry.canvasSize.height)
       ..u16(entry.tileSize)
-      ..bytes(deflated);
+      ..u8(zstd != null ? celCodecZstd : celCodecDeflate)
+      ..bytes(payload);
     return AnicelCelBlob(writer.takeBytes());
   }
 
@@ -201,17 +274,45 @@ class AnicelCelBlob {
   late final BrushFrameKey key;
   late final CanvasSize canvasSize;
   late final int tileSize;
+
+  /// The blob's OWN version, kept because [reKeyed] splices this blob's
+  /// deflate stream into a new header — labelling a v1 stream v2 would
+  /// tell the reader to un-filter bytes that were never filtered.
+  late final int version;
+
+  /// Which compressor wrote the payload — [celCodecDeflate] or
+  /// [celCodecZstd]. ⛔Read from the blob, never assumed from the build:
+  /// an engine-less run must still open a zstd file it cannot decode with
+  /// a clear failure rather than garbage.
+  late final int codec;
+
   late final int _deflatedOffset;
 
   int get byteLength => bytes.length;
 
   AnicelCelEntry decode() {
-    final inflated = ZLibDecoder().convert(
-      Uint8List.sublistView(bytes, _deflatedOffset),
-    );
-    return decodeCelEntry(
-      inflated is Uint8List ? inflated : Uint8List.fromList(inflated),
-    );
+    final payload = Uint8List.sublistView(bytes, _deflatedOffset);
+    final Uint8List body;
+    if (codec == celCodecZstd) {
+      final compressor = QaCelCompressor.instance;
+      final out = compressor == null || !compressor.isSupported
+          ? null
+          : compressor.decompress(payload);
+      if (out == null) {
+        // The one case worth a sentence: the file is fine, this BUILD
+        // cannot read it. Saying so beats a FormatException from a zlib
+        // that was handed a zstd frame.
+        throw const FormatException(
+          'This cel was written with zstd and no engine is available to '
+          'read it.',
+        );
+      }
+      body = out;
+    } else {
+      final inflated = ZLibDecoder().convert(payload);
+      body = inflated is Uint8List ? inflated : Uint8List.fromList(inflated);
+    }
+    return decodeCelEntry(body);
   }
 }
 

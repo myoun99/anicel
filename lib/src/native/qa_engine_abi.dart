@@ -111,7 +111,13 @@ import 'dart:io';
 ///   Windows and Linux answer the availability half and report 0 —
 ///   "not measured here" — for the footprint, which would otherwise
 ///   cost this deliberately dependency-free file a link against psapi.
-const int kQaEngineAbiVersion = 29;
+/// - v30: `qa_zstd_*` — the cel compressor (vendored zstd 1.5.6). Cel
+///   blobs are decompressed on the MAIN isolate in frame time whenever a
+///   cold cel is promoted, and deflate was spending 3.35ms of a 16.7ms
+///   frame on the median cel of a real project; zstd takes 0.11ms and is
+///   5% smaller besides. ⛔deflate stays the floor — the blob carries a
+///   codec byte and a build with no engine still writes and reads one.
+const int kQaEngineAbiVersion = 30;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///
