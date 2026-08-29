@@ -9,7 +9,6 @@ import '../../models/brush_tip_mask.dart';
 import '../../services/brush_tip_defaults.dart';
 import '../../services/brush_tip_image_codec.dart';
 import '../../services/brush_tip_library_service.dart';
-import '../../services/persistence/file_type_groups.dart';
 
 /// A picked image file: display name plus raw bytes.
 typedef TipImagePick = ({String name, Uint8List bytes});
@@ -19,7 +18,9 @@ typedef BrushTipImagePicker = Future<TipImagePick?> Function();
 
 Future<TipImagePick?> _openTipImageDialog() async {
   final file = await openFile(
-    acceptedTypeGroups: const [FileTypeGroups.images],
+    // 🚨Every file (유저 2026-08-29); a non-image is refused by the decode
+    // below, which already reports failure.
+    acceptedTypeGroups: const [],
   );
   if (file == null) {
     return null;

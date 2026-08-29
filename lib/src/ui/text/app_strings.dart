@@ -116,6 +116,10 @@ class AppStrings {
   String get commonRefresh => _s('commonRefresh');
   String get commonClose => _s('commonClose');
 
+  /// The disclosure heading over the files a notice is about (유저
+  /// 2026-08-29: 「해당 파일들이라는 항목으로 접기 펼치기 가능하게」).
+  String get commonAffectedFiles => _s('commonAffectedFiles');
+
   /// F-10: the title of the shared notice window that replaced the
   /// bottom-of-screen message strip.
   String get commonNotice => _s('commonNotice');
@@ -772,6 +776,16 @@ class AppStrings {
   String get mediaViewerNoPdfRenderer => _s('mediaViewerNoPdfRenderer');
   String get mediaViewerNoVideoDecoder => _s('mediaViewerNoVideoDecoder');
 
+  /// 🚨★★★EVERY PICKER SHOWS EVERY FILE — 유저 2026-08-29: 「픽커는 어떤
+  /// 플랫폼이든 어떤 확장자던 선택할수 있게하고, 대응만 지원안되는
+  /// 확장자면 그 때 해당 파일 지원안된다고 안내창 띄우게」. This is that
+  /// notice.
+  String get unsupportedFileTitle => _s('unsupportedFileTitle');
+
+  /// '{name}' is the picked file's name, '{kinds}' the extensions this
+  /// particular opening accepts.
+  String get unsupportedFileMessageTemplate => _s('unsupportedFileMessageTemplate');
+
   /// The gear on every canvas pill. Not "view settings" — the host puts its
   /// own verbs in the same list (유저 확정 2026-08-13: 등록·맞바꾸기는 ⚙ 안으로).
   String get panelSettings => _s('panelSettings');
@@ -1078,6 +1092,7 @@ class AppStrings {
     'commonApply': 'Apply',
     'commonRefresh': 'Refresh',
     'commonClose': 'Close',
+    'commonAffectedFiles': 'Affected files',
     'commonNotice': 'Notice',
     'tlSharedDeselect': 'Deselect',
     'tlSharedReplaceColour': 'Replace Color',
@@ -1481,6 +1496,9 @@ class AppStrings {
         'No PDF renderer in this build — PDF pages cannot be shown.',
     'mediaViewerNoVideoDecoder':
         'No video decoder in this build — movies cannot be shown.',
+    'unsupportedFileTitle': 'Unsupported file',
+    'unsupportedFileMessageTemplate':
+        '"{name}" cannot be opened here. Usable formats: {kinds}.',
     'mediaViewerSwap': 'Swap with the other viewer',
     'mediaViewerRegisterAsset': 'Add to Media',
     'panelMediaViewer': 'Viewer',
@@ -1830,6 +1848,7 @@ class AppStrings {
     'commonApply': '適用',
     'commonRefresh': '更新',
     'commonClose': '閉じる',
+    'commonAffectedFiles': '該当ファイル',
     'commonNotice': 'お知らせ',
     'tlSharedDeselect': '選択解除',
     'tlSharedReplaceColour': '色変換',
@@ -2303,6 +2322,8 @@ class AppStrings {
     'mediaViewerNoPdfRenderer': 'このビルドにはPDFレンダラーがありません — PDFページを表示できません。',
     'mediaViewerNoVideoDecoder': 'このビルドには動画デコーダーがありません — 動画を表示できません。',
     'mediaViewerSwap': 'もう一方のビューアと入れ替え',
+    'unsupportedFileTitle': 'サポートされていないファイル',
+    'unsupportedFileMessageTemplate': '「{name}」はここでは開けません。使用できる形式: {kinds}。',
     'mediaViewerRegisterAsset': 'メディアに登録',
     'panelMediaViewer': 'ビューア',
     'panelMediaViewerSub': 'サブビューア',
@@ -2680,6 +2701,7 @@ class AppStrings {
     'commonApply': '적용',
     'commonRefresh': '새로고침',
     'commonClose': '닫기',
+    'commonAffectedFiles': '해당 파일들',
     'commonNotice': '알림',
     'tlSharedDeselect': '선택 해제',
     'tlSharedReplaceColour': '색 변환',
@@ -3149,6 +3171,8 @@ class AppStrings {
     'mediaViewerNoPdfRenderer': '이 빌드에는 PDF 렌더러가 없습니다 — PDF 페이지를 표시할 수 없습니다.',
     'mediaViewerNoVideoDecoder': '이 빌드에는 비디오 디코더가 없습니다 — 동영상을 표시할 수 없습니다.',
     'mediaViewerSwap': '반대쪽 뷰어와 맞바꾸기',
+    'unsupportedFileTitle': '지원하지 않는 파일',
+    'unsupportedFileMessageTemplate': '「{name}」은(는) 여기서 열 수 없습니다. 사용 가능한 형식: {kinds}.',
     'mediaViewerRegisterAsset': '미디어에 등록',
     'panelMediaViewer': '뷰어',
     'panelMediaViewerSub': '서브 뷰어',
@@ -3524,6 +3548,7 @@ class AppStrings {
     'commonApply': 'Appliquer',
     'commonRefresh': 'Actualiser',
     'commonClose': 'Fermer',
+    'commonAffectedFiles': 'Fichiers concernés',
     'commonNotice': 'Avis',
     'tlSharedDeselect': 'Désélectionner',
     'tlSharedReplaceColour': 'Remplacer la couleur',
@@ -4021,6 +4046,10 @@ class AppStrings {
     'mediaViewerNoVideoDecoder':
         'Pas de décodeur vidéo dans cette version — les films ne peuvent '
         'pas être affichés.',
+    'unsupportedFileTitle': 'Fichier non pris en charge',
+    'unsupportedFileMessageTemplate':
+        '« {name} » ne peut pas être ouvert ici. Formats acceptés : '
+        '{kinds}.',
     'mediaViewerSwap': "Échanger avec l'autre visionneuse",
     'mediaViewerRegisterAsset': 'Ajouter aux médias',
     'panelMediaViewer': 'Visionneuse',
@@ -4391,6 +4420,7 @@ class AppStrings {
     'commonApply': '应用',
     'commonRefresh': '刷新',
     'commonClose': '关闭',
+    'commonAffectedFiles': '相关文件',
     'commonNotice': '提示',
     'tlSharedDeselect': '取消选择',
     'tlSharedReplaceColour': '替换颜色',
@@ -4827,6 +4857,8 @@ class AppStrings {
     'mediaViewerNoPdfRenderer': '此版本没有 PDF 渲染器 — 无法显示 PDF 页面。',
     'mediaViewerNoVideoDecoder': '此版本没有视频解码器 — 无法显示影片。',
     'mediaViewerSwap': '与另一个查看器互换',
+    'unsupportedFileTitle': '不支持的文件',
+    'unsupportedFileMessageTemplate': '无法在此处打开「{name}」。可用格式：{kinds}。',
     'mediaViewerRegisterAsset': '添加到媒体',
     'panelMediaViewer': '查看器',
     'panelMediaViewerSub': '副查看器',

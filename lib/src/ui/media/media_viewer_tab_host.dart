@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -19,6 +18,7 @@ import '../effective_device_pixel_ratio.dart';
 import '../brush/brush_canvas_panel.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../editor_session_manager.dart';
+import '../dialogs/open_file_flow.dart';
 import '../text/app_strings.dart';
 import 'media_asset_drag_data.dart';
 import '../widgets/app_icon_button.dart';
@@ -547,22 +547,23 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   }
 
   Future<void> _pickLooseFile() async {
-    final picker =
-        widget.filePicker ??
-        () async {
-          final file = await openFile(
-            acceptedTypeGroups: const [FileTypeGroups.viewableMedia],
+    // 🚨EVERY PICKER SHOWS EVERY FILE (유저 2026-08-29) — the refusal is a
+    // notice after the pick, not a greyed-out file in the dialog. The
+    // widget's own [filePicker] seam still wins, so tests drive a path
+    // straight in.
+    final injected = widget.filePicker;
+    final path = injected != null
+        ? await injected()
+        : await openSupportedFile(
+            context,
+            supportedExtensions: FileTypeGroups.viewableMedia.extensions ?? [],
           );
-          return file?.path;
-        };
-    final path = await picker();
     if (path == null || !mounted) {
       return;
     }
     final kind = mediaAssetKindForPath(path) ?? MediaAssetKind.image;
     widget.onRequestPicked?.call(MediaViewerRequest(path: path, kind: kind));
   }
-
   /// Whether the file on screen can still be added to the media pool —
   /// false for one already in it, and for nothing at all.
   bool get _canRegister {

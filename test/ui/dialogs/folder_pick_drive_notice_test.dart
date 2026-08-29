@@ -119,7 +119,7 @@ void main() {
           body: Builder(
             builder: (context) => TextButton(
               onPressed: () =>
-                  pickFilesForUser(context, acceptedTypeGroups: const []),
+                  pickFilesForUser(context, supportedExtensions: const []),
               child: const Text('go'),
             ),
           ),

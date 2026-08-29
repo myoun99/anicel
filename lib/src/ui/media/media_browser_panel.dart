@@ -134,7 +134,7 @@ class MediaBrowserPanel extends StatelessWidget {
     }
     final grants = await pickFileGrantsForUser(
       context,
-      acceptedTypeGroups: const [FileTypeGroups.poolMedia],
+      supportedExtensions: FileTypeGroups.poolMedia.extensions ?? const [],
     );
     final next = grants.isEmpty ? null : grants.first.path;
     if (next == null) {
