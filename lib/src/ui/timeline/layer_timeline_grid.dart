@@ -579,7 +579,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     final onToggleLanes = widget.onToggleLayerLanes;
 
     return railSwipeColumns<Layer>(
-      rowWidth: _metrics.layerControlsWidth - _metrics.sectionLabelGutterWidth,
+      crossExtent: _metrics.layerControlsWidth - _metrics.sectionLabelGutterWidth,
       leadingOrigin: timelineLayerRowLeadingBorder,
       hasOnionColumn: onToggleOnion != null,
       hasBlendColumn: widget.onLayerBlendModeSelected != null,
@@ -2440,6 +2440,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                               // paints the old gutter bracket
                                                               // over it.
                                                               child: RailColumnSwipe<Layer>(
+                                                                axis: Axis.vertical,
                                                                 columns:
                                                                     swipeColumns,
                                                                 rowAt: (localY) {

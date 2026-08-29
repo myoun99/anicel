@@ -1944,7 +1944,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     }
 
     return railSwipeColumns<StoryboardRailRow>(
-      rowWidth: StoryboardPanel._trackLabelWidth,
+      crossExtent: StoryboardPanel._trackLabelWidth,
       leadingOrigin: 0,
       visibility: (
         valueOf: (row) {
@@ -3659,6 +3659,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                       // found invented — see
                                       // [RailSwipeColumnPointer].
                                       child: RailColumnSwipe<StoryboardRailRow>(
+                                        axis: Axis.vertical,
                                         columns: _railSwipeColumns(),
                                         rowAt: _railRowAtY,
                                         child: Column(
