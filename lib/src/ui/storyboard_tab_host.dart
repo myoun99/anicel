@@ -303,8 +303,24 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// frame. The implementation moved to [editTransitionSpanInstance] so this
   /// gesture and the Edit Instance verb cannot drift apart — a second copy here
   /// is how "delete works from the dialog but not from the pill" starts.
+  ///
+  /// 🚨★★★I-9: an EMPTY cell CREATES, and that fork lives in the shared verb
+  /// too — it has since 2026-08-11. What was broken was the STRIP: it tested
+  /// 「is there a span here」 itself and returned in silence, so the verb's
+  /// own create branch was unreachable from the double tap. The strip asks
+  /// unconditionally now, and there is still exactly one copy of the answer.
   Future<void> _editTransitionSpan(int globalFrame) =>
       editTransitionSpanInstance(context, _session, globalFrame: globalFrame);
+
+  /// The S row's double-tap, the transition row's twin — same shape, same
+  /// reason, and now the same I-9 fork inside [editSeEntryInstance].
+  Future<void> _editSeEntry(LayerId layerId, int globalFrame) =>
+      editSeEntryInstance(
+        context,
+        _session,
+        layerId: layerId,
+        globalFrame: globalFrame,
+      );
 
   /// B8: THIS PANEL's dispatch context for the shared toolbar — the standing
   /// row crossed with the track-global playhead, instead of the session's
@@ -1021,14 +1037,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // instance dialog the timeline's SE cells open, addressed
                     // on the global axis (this rail's standing row never
                     // moves the drawing target).
-                    onEditSeEntry: (layerId, globalFrame) => unawaited(
-                      editSeEntryInstance(
-                        context,
-                        _session,
-                        layerId: layerId,
-                        globalFrame: globalFrame,
-                      ),
-                    ),
+                    // 🚨★★★I-9: and an EMPTY one CREATES — one fork, inside
+                    // that shared verb, exactly like the transition row's.
+                    onEditSeEntry: _editSeEntry,
                   ),
                 ),
               ),

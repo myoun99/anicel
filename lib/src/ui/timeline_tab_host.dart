@@ -468,7 +468,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       : Axis.vertical;
 
   Future<void> _activateCellEditor(LayerId layerId, int frameIndex) =>
-      activateCellEditor(
+      activateCellOnDoubleTap(
         context,
         _session,
         layerId: layerId,

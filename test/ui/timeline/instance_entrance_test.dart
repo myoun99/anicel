@@ -156,11 +156,143 @@ void main() {
     expect(_cut(repository).layers.first.frames.single.name, 'A2');
   });
 
-  testWidgets('camera cell double-tap opens the key dialog; keying a lane '
-      'commits ONE undo step', (tester) async {
+  /// 🚨★★★I-9 (유저 확정 2026-08-29, I-9-Q2 = `all-kinds`): 「빈 칸 더블클릭
+  /// = 만들기」 on EVERY row kind. 유저 원문: 「타임라인의 se행이랑
+  /// 트랜지션행이었는데 통일되서 사라졌을수도? 아무튼 **새로만들자.**」
+  ///
+  /// ONE gesture, two meanings. The pair below is what pins that: a double
+  /// tap on the SAME empty camera cell creates the key, and a double tap on
+  /// it AGAIN — now filled — opens the dialog. If the fork ever collapses
+  /// into one meaning, exactly one of these two dies.
+  testWidgets('an EMPTY camera cell double-tap KEYS it, and a second '
+      'double-tap opens the dialog', (tester) async {
     final repository = await _pumpHome(tester);
+    expect(
+      _cut(repository).camera.track.position.keyAt(2),
+      isNull,
+      reason: 'the fixture camera row starts with no keys at all',
+    );
 
     await _doubleTapCell(tester, 'timeline-cell-cam-2');
+    expect(
+      find.text('Camera keys — frame 3'),
+      findsNothing,
+      reason:
+          'an empty cell has nothing to open — creation is silent, the '
+          'same sentence the toolbar Add already spoke',
+    );
+    expect(
+      _cut(repository).camera.track.position.keyAt(2),
+      isNotNull,
+      reason: 'the row created through ITS OWN verb (a camera key)',
+    );
+
+    // Filled now, so the very same gesture means the other thing.
+    await _doubleTapCell(tester, 'timeline-cell-cam-2');
+    expect(find.text('Camera keys — frame 3'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instance-edit-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+  });
+
+  /// 🚨THE SE ROW ALREADY DID THIS, and that is the point of I-9.
+  ///
+  /// `_editSeLabel` has said 「covered cells edit; EMPTY cells create a
+  /// default one-frame entry DIRECTLY」 since UI-R25 #2. So this row is not
+  /// a mutation target for the new fork — turning the fork off leaves this
+  /// case green, because the SE arm creates either way. It is a REGRESSION
+  /// guard: the row the user remembered by name must not lose what it had
+  /// while the others are catching up to it.
+  ///
+  /// 🧪The fork's own evidence is the camera and drawing pair above, which
+  /// both die when it is off.
+  testWidgets('an EMPTY SE cell double-tap creates the entry, not a dialog', (
+    tester,
+  ) async {
+    final repository = await _pumpHome(tester);
+    Layer se() => _cut(
+      repository,
+    ).layers.firstWhere((layer) => layer.kind == LayerKind.se);
+    expect(se().frames, isEmpty, reason: 'the fixture SE row starts empty');
+
+    await _doubleTapCell(tester, 'timeline-cell-voice-3');
+
+    expect(
+      se().frames,
+      hasLength(1),
+      reason: 'the SE row is one of the two the user remembered by name',
+    );
+    expect(
+      se().timeline[3],
+      isNotNull,
+      reason: 'and the entry lands on the cell that was tapped',
+    );
+    expect(
+      find.byKey(const ValueKey<String>('se-dialogue-field')),
+      findsNothing,
+      reason: 'creation never opens a dialog (UI-R25 #2)',
+    );
+  });
+
+  testWidgets('an EMPTY drawing cell double-tap makes a cel, and does NOT '
+      'rename the one next door', (tester) async {
+    final repository = await _pumpHome(tester);
+    // The fixture's drawing row is exposed over frames 0..3 only.
+    expect(_cut(repository).layers.first.frames, hasLength(1));
+
+    await _doubleTapCell(tester, 'timeline-cell-draw-5');
+
+    expect(
+      find.byKey(const ValueKey<String>('rename-frame-dialog')),
+      findsNothing,
+      reason: 'an empty cell has no name to edit',
+    );
+    expect(
+      _cut(repository).layers.first.frames,
+      hasLength(2),
+      reason: 'it made a cel of its own through createDrawingAtCurrentFrame',
+    );
+  });
+
+  testWidgets('a FILLED cell is untouched by I-9 — it still opens', (
+    tester,
+  ) async {
+    // ⛔The control. A fork that fired on both sides would pass every
+    // creation case above and quietly replace the editor everywhere.
+    final repository = await _pumpHome(tester);
+    final before = _cut(repository).layers.first.frames.length;
+
+    await _doubleTapCell(tester, 'timeline-cell-draw-1');
+
+    expect(
+      find.byKey(const ValueKey<String>('rename-frame-dialog')),
+      findsOneWidget,
+    );
+    expect(_cut(repository).layers.first.frames, hasLength(before));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+  });
+
+  /// 🚨The DIALOG's undo behaviour, reached the way that still reaches it
+  /// on an empty cell.
+  ///
+  /// ⛔This used to double-tap the empty camera cell. I-9 gave that gesture
+  /// the other meaning — an empty cell CREATES — and the pair above pins
+  /// that. What this case is actually about is 「keying a lane commits ONE
+  /// undo step」, so it comes in through the shared pill's Edit Instance,
+  /// which never creates and therefore still opens an empty cell's dialog.
+  testWidgets('the camera key dialog commits ONE undo step', (tester) async {
+    final repository = await _pumpHome(tester);
+
+    await tapTimelineCell(tester, 'cam', 2);
+    await tester.pumpAndSettle();
+    await tapCommandButton(
+      tester,
+      const ValueKey<String>('shared-edit-button'),
+    );
     expect(find.text('Camera keys — frame 3'), findsOneWidget);
 
     await tester.tap(
@@ -223,8 +355,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      _cut(repository)
-          .layers
+      _cut(repository).layers
           .firstWhere((layer) => layer.kind == LayerKind.se)
           .frames
           .single

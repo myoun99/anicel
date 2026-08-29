@@ -183,9 +183,23 @@ void main() {
       expect(find.byType(InstructionEventDialog), findsOneWidget);
     });
 
-    testWidgets('two taps on the same EMPTY cell stay quiet — creation is '
-        'the Edit Instance verb\'s, not a brush-past\'s', (tester) async {
+    /// 🚨★★★I-9 (유저 확정 2026-08-29, I-9-Q2 = `all-kinds`): 「빈 칸
+    /// 더블클릭 = 만들기」. 유저 원문: 「타임라인의 se행이랑 트랜지션행
+    /// 이었는데 통일되서 사라졌을수도? 아무튼 **새로만들자.**」 — this row
+    /// is one of the two the user named.
+    ///
+    /// ⛔It used to 「stay quiet」, and the note defending that said creation
+    /// belonged to the Edit Instance verb. It never did: an empty cell has
+    /// nothing to EDIT, so the gesture spent itself on nothing.
+    ///
+    /// 🧪The other side of the fork is the case directly above (「two taps
+    /// on the SAME cell open the span editor」) — a covered cell still opens,
+    /// and that is what fails if the fork ever fires on both sides.
+    testWidgets('two taps on the same EMPTY cell CREATE a span there', (
+      tester,
+    ) async {
       await _openStoryboard(tester);
+      expect(_track(tester).transitionLayer.instructions.keys, [2]);
 
       await _doubleTapAt(
         tester,
@@ -194,8 +208,16 @@ void main() {
         secondDx: 8.5 * _ppf,
       );
 
-      expect(find.byType(InstructionEventDialog), findsNothing);
-      expect(_track(tester).transitionLayer.instructions.keys, [2]);
+      expect(
+        find.byType(InstructionEventDialog),
+        findsNothing,
+        reason: 'creation never opens a dialog (UI-R25 #2)',
+      );
+      expect(
+        _track(tester).transitionLayer.instructions.keys,
+        containsAll(<int>[2, 8]),
+        reason: 'the row made a span through ITS OWN create verb',
+      );
     });
   });
 
@@ -338,6 +360,38 @@ void main() {
 
       expect(find.byType(SeInstanceDialog), findsOneWidget);
       expect(find.text('Bang!'), findsWidgets);
+    });
+
+    /// 🚨★★★I-9 — the SE row is the OTHER one the user named by name
+    /// (「타임라인의 se행이랑 트랜지션행이었는데 … 아무튼 새로만들자」).
+    /// The transition row's pair one group up says the same sentence; this
+    /// is it said on this row, through this row's own create verb.
+    ///
+    /// 🧪The other side of the fork is the case directly above — a covered
+    /// cell still opens the SE dialog.
+    testWidgets('two taps on the same EMPTY cell CREATE an entry there', (
+      tester,
+    ) async {
+      await _openStoryboard(tester);
+      expect(_track(tester).seLayers.single.timeline.keys, [1]);
+
+      await _doubleTapAt(
+        tester,
+        _seRowKey,
+        firstDx: 8.5 * _ppf,
+        secondDx: 8.5 * _ppf,
+      );
+
+      expect(
+        find.byType(SeInstanceDialog),
+        findsNothing,
+        reason: 'creation never opens a dialog (UI-R25 #2)',
+      );
+      expect(
+        _track(tester).seLayers.single.timeline.keys,
+        containsAll(<int>[1, 8]),
+        reason: 'the row made an entry through ITS OWN create verb',
+      );
     });
 
     testWidgets('two taps on DIFFERENT cells of the block do NOT open it', (
