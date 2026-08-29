@@ -2853,6 +2853,15 @@ class _LayerStackPainter extends CustomPainter {
         live = Object.hash(live, entry.key, identityHashCode(entry.value));
       }
     }
+    // 🚨★★★F-33: the stamp ghost is part of what this buffer would hold, so
+    // it has to be part of the key. Left out, the buffer caches a frame
+    // WITHOUT the ghost and the ghost then stops following the pointer —
+    // the silent failure this whole key exists to prevent, and the reason
+    // the fill stamp above is in it too.
+    //
+    // Its own `==` is identity on the piece and the image plus value on the
+    // rect and the opacity, which is exactly what a hover changes.
+    live = Object.hash(live, surfacePainter.stampPreview?.value);
     return Object.hash(compositeKey, live);
   }
 

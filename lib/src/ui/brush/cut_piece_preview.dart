@@ -4,7 +4,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../../core/straight_rgba_image.dart';
-import '../../models/canvas_viewport.dart';
 import '../../models/cut_piece.dart';
 
 /// Decodes the held piece ONCE and hands the image to [builder], null until
@@ -145,6 +144,15 @@ void paintCutPiece(
   // The paint's ALPHA modulates the image — the same one line every other
   // faded image in this app is drawn with (`drawPosedLayerImage`), so a
   // half-strength stamp previews the way a half-strength layer composites.
+  //
+  // 🚨★★★F-33: the LAYER's opacity and blend are NOT applied here, and that
+  // is not an omission. When [BitmapSurfacePainter] carries a stamp ghost
+  // it reports `drawsDisjointCoverage == false` — the ghost lands over
+  // whatever the coordinate already holds — and the stack answers that by
+  // assembling the layer into a buffer and putting the layer's paint on
+  // the BUFFER (「Null when the buffer carries it, so nothing applies
+  // twice」). So the ghost inherits the layer for free, and applying it
+  // again here would darken it against every other pixel of the same row.
   final paint = Paint()
     ..filterQuality = FilterQuality.none
     ..isAntiAlias = false
@@ -163,7 +171,10 @@ void paintCutPiece(
   // a preview, exactly as truthful.
   canvas.save();
   canvas.translate(destination.center.dx, destination.center.dy);
-  canvas.scale(piece.flipHorizontal ? -1.0 : 1.0, piece.flipVertical ? -1.0 : 1.0);
+  canvas.scale(
+    piece.flipHorizontal ? -1.0 : 1.0,
+    piece.flipVertical ? -1.0 : 1.0,
+  );
   canvas.translate(-destination.center.dx, -destination.center.dy);
   canvas.drawImageRect(
     image,
@@ -240,99 +251,119 @@ class _CutPiecePreviewPainter extends CustomPainter {
       oldDelegate.checkerColor != checkerColor;
 }
 
-/// The held piece under the pointer, at the size and place it would land.
+/// 🚨★★★F-33 — the stamp's ghost, told where it lands in CANVAS space.
 ///
-/// The brush wears its footprint for the reason written beside it — "so a
-/// stroke can be aimed before it starts" — and a stamp needs that more, not
-/// less: it puts down a whole drawing rather than a dot, and without this
-/// the only way to find out where it goes is to drop it and undo.
+/// 유저: 「레이어 블렌드모드나 **합성같은게 다** 반영되는」 프리뷰. The
+/// cursor overlay could never do that: it is a `Positioned` widget ON TOP of
+/// the canvas, so the only thing it can honour is the stamp's own opacity.
 ///
-/// Unlike the panel thumbnail this DOES scale, and it wears the stamp's
-/// [opacity], because both are the footprint — the question being asked.
+/// What honours the rest is [BitmapSurfacePainter], which draws the active
+/// layer INSIDE the composite tree and hands its `layerPaint` — 「the LAYER's
+/// own opacity/blend/colour chain」 — to every draw it makes. So the preview
+/// travels as data to that painter instead of as a widget above it.
 ///
-/// ⛔It still draws the piece and nothing else — no outline, and no fade of
-/// its OWN. A constant ghosting was here briefly and the user removed it:
-/// *"그냥 심플하게 진짜 그냥 아무것도 안 하고 프리뷰만 띄워."* [opacity] is
-/// not that fade coming back: that one was decoration invented here and it
-/// LIED, showing a made-up strength for a stamp that would land at full
-/// force. This one is the number the tool will actually press with, so
-/// honouring it is the same rule that removed the fade — show what would
-/// land, and nothing else. Same note as
-/// [[tool-settings-panel-convention]] — do not decorate this.
-class CutPieceCursorOverlay extends StatelessWidget {
-  const CutPieceCursorOverlay({
-    super.key,
-    required this.position,
-    required this.viewport,
-    required this.piece,
-    this.opacity = 1,
-  });
-
-  /// Pointer position in viewport (panel-local) coordinates.
-  final Offset position;
-  final CanvasViewport viewport;
-  final CutPiece piece;
-
-  /// The stamp tool's opacity — what a click would press with.
-  final double opacity;
-
-  @override
-  Widget build(BuildContext context) {
-    final extent = viewport.canvasDeltaToViewportDelta(
-      dx: piece.stampWidth.toDouble(),
-      dy: piece.stampHeight.toDouble(),
-    );
-    final width = extent.x.abs();
-    final height = extent.y.abs();
-    if (width < 1 || height < 1) {
-      return const SizedBox.shrink();
-    }
-    return Positioned(
-      // Centre-anchored, matching where a click actually drops it.
-      left: position.dx - width / 2,
-      top: position.dy - height / 2,
-      width: width,
-      height: height,
-      child: IgnorePointer(
-        // Its own layer, so following the pointer is a transform rather
-        // than a repaint of the piece.
-        child: RepaintBoundary(
-          child: CutPieceImageHost(
-            piece: piece,
-            builder: (context, image) => CustomPaint(
-              key: const ValueKey<String>('cut-piece-cursor-overlay'),
-              painter: _CutPieceCursorPainter(
-                piece: piece,
-                image: image,
-                opacity: opacity,
-              ),
-              child: const SizedBox.expand(),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CutPieceCursorPainter extends CustomPainter {
-  const _CutPieceCursorPainter({
+/// ⛔THE IMAGE IS BORROWED, NEVER OWNED. It belongs to the held [CutPiece],
+/// and the piece outlives any one hover. The overlay's own stamp slot
+/// ([ActiveStrokeOverlayModel.setStampOverlay]) RETIRES the image it
+/// replaces — handing it a piece's image would dispose the thing the user
+/// is still holding. That is why this is a separate slot with its own rule
+/// rather than a second caller of that one.
+class CutStampPreview {
+  const CutStampPreview({
     required this.piece,
     required this.image,
+    required this.canvasRect,
     required this.opacity,
   });
 
   final CutPiece piece;
+
+  /// ⛔Borrowed — see the class doc. Never disposed or retired from here.
+  /// NULL until the decode lands ([CutPieceImageHost]) — the preview says
+  /// WHERE and HOW STRONG from the first hover frame, and the picture joins
+  /// it when it is ready. That is the same nothing the old overlay drew in
+  /// that window, and it keeps this value independent of an async step.
   final ui.Image? image;
+
+  /// Where the stamp would land, in CANVAS pixels — the same space the
+  /// surface painter draws its tiles in.
+  final Rect canvasRect;
+
+  /// The stamp tool's opacity: what a click would press with.
   final double opacity;
 
   @override
-  void paint(Canvas canvas, Size size) =>
-      paintCutPiece(canvas, Offset.zero & size, piece, image, opacity: opacity);
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CutStampPreview &&
+          identical(other.piece, piece) &&
+          identical(other.image, image) &&
+          other.canvasRect == canvasRect &&
+          other.opacity == opacity;
 
   @override
-  bool shouldRepaint(_CutPieceCursorPainter oldDelegate) =>
-      !identical(oldDelegate.piece, piece) ||
-      !identical(oldDelegate.image, image) ||
-      oldDelegate.opacity != opacity;
+  int get hashCode => Object.hash(
+    identityHashCode(piece),
+    identityHashCode(image),
+    canvasRect,
+    opacity,
+  );
+}
+
+/// Publishes a [CutStampPreview] into [sink] for as long as it is mounted.
+///
+/// A WIDGET, because the thing it publishes is owned by a widget: the
+/// decoded image belongs to [CutPieceImageHost], which disposes it on
+/// unmount. Writing the sink from here means the reference is dropped in
+/// the same `dispose` that frees the image, so the painter can never hold a
+/// disposed one — the whole reason [CutStampPreview] documents its image as
+/// borrowed rather than owned.
+///
+/// Draws nothing. The painter is what draws, and that is the point of F-33:
+/// a ghost drawn by a widget sits ON TOP of the canvas and cannot be told
+/// about the layer it is going onto.
+class CutStampPreviewPublisher extends StatefulWidget {
+  const CutStampPreviewPublisher({
+    super.key,
+    required this.sink,
+    required this.preview,
+  });
+
+  final ValueNotifier<CutStampPreview?> sink;
+
+  /// Null while there is nothing to show (no hover, no decoded image yet) —
+  /// the sink is cleared rather than left holding the last position.
+  final CutStampPreview? preview;
+
+  @override
+  State<CutStampPreviewPublisher> createState() =>
+      _CutStampPreviewPublisherState();
+}
+
+class _CutStampPreviewPublisherState extends State<CutStampPreviewPublisher> {
+  @override
+  void initState() {
+    super.initState();
+    widget.sink.value = widget.preview;
+  }
+
+  @override
+  void didUpdateWidget(CutStampPreviewPublisher oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.sink, widget.sink)) {
+      oldWidget.sink.value = null;
+    }
+    widget.sink.value = widget.preview;
+  }
+
+  @override
+  void dispose() {
+    // ⛔The image goes away with the host above this; the reference must go
+    // with it, and it must go on the way OUT rather than at the next hover.
+    widget.sink.value = null;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }

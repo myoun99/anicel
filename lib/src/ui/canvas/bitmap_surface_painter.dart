@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../core/floor_math.dart';
@@ -11,6 +12,7 @@ import '../../models/tile_coord.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/project_background.dart';
+import '../brush/cut_piece_preview.dart' show CutStampPreview, paintCutPiece;
 import '../debug/measurement_mode.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
@@ -33,6 +35,7 @@ class BitmapSurfacePainter extends CustomPainter {
     required this.surface,
     this.viewport,
     this.overlayModel,
+    this.stampPreview,
     this.showTransparentBackground = true,
     this.staleScope,
     this.devicePixelRatio = 1.0,
@@ -42,6 +45,7 @@ class BitmapSurfacePainter extends CustomPainter {
          repaint: Listenable.merge([
            tileImageCache ?? BitmapTileImageCache.instance,
            ?overlayModel,
+           ?stampPreview,
            // So toggling Settings ▸ Show Unpainted Tiles repaints instead of
            // waiting for the next edit — a diagnosis switch that needs a
            // gesture before it takes effect is one nobody trusts.
@@ -63,6 +67,23 @@ class BitmapSurfacePainter extends CustomPainter {
   /// Live in-progress stroke; drawn above the committed tiles with plain
   /// source-over. Its notifications repaint this painter directly.
   final ActiveStrokeOverlayModel? overlayModel;
+
+  /// 🚨★★★F-33 — the STAMP's ghost, drawn INSIDE the layer's own paint so
+  /// it inherits the layer's opacity, blend and group buffer.
+  ///
+  /// 유저: 「레이어 블렌드모드나 **합성같은게 다** 반영되는」 프리뷰. The
+  /// cursor overlay it replaces was a `Positioned` widget ON TOP of the
+  /// canvas, so the only thing it could honour was the stamp's own opacity.
+  /// Here [paintContentInto] hands it `layerPaint` like every other draw.
+  ///
+  /// A LISTENABLE, not a value: the pointer moves on every frame of a
+  /// hover, and a new painter per position would break the memo that keeps
+  /// the whole stack from recompositing (`_activeSurfacePainterToken`).
+  /// Subscribed through [repaint], so a move repaints and nothing rebuilds.
+  ///
+  /// ⛔The image inside is BORROWED from the held piece — see
+  /// [CutStampPreview]. Nothing here disposes it.
+  final ValueListenable<CutStampPreview?>? stampPreview;
 
   final bool showTransparentBackground;
 
@@ -173,6 +194,19 @@ class BitmapSurfacePainter extends CustomPainter {
   /// (its isolation layer exists precisely because it composes against the
   /// committed pixels).
   bool get drawsDisjointCoverage {
+    // 🚨★★★F-33: a stamp ghost lands OVER whatever the coordinate already
+    // holds, exactly like the fill stamp below — so this must say false.
+    //
+    // ⚠️And saying false is what MAKES the ghost obey the layer, which is
+    // the whole point of moving it here. False means the stack takes the
+    // buffered route, and the buffered route puts the layer's opacity and
+    // blend on the BUFFER — so everything drawn into it, ghost included,
+    // composites as that layer. A ghost that reported disjoint coverage
+    // would ride the per-draw path with no layer paint of its own and be
+    // exactly as wrong as the widget it replaced.
+    if (stampPreview?.value?.image != null) {
+      return false;
+    }
     if (showTransparentBackground) {
       return false;
     }
@@ -573,6 +607,26 @@ class BitmapSurfacePainter extends CustomPainter {
 
     if (overlayBlendsInLayer) {
       canvas.restore();
+    }
+
+    // 🚨★★★F-33: the STAMP's ghost, and it is drawn HERE rather than in a
+    // widget above the canvas so [layerPaint] reaches it — the layer's
+    // opacity, its blend and its group buffer, which is the whole of the
+    // user's ask (「레이어 블렌드모드나 **합성같은게 다** 반영되는」).
+    //
+    // ⚠️AFTER the overlay's restore on purpose. `overlayBlendsInLayer`
+    // opens an isolation layer for the STROKE's own blend; a ghost that
+    // is not part of that stroke must not be inside it, or the stroke's
+    // brush blend would apply to the preview as well.
+    final preview = stampPreview?.value;
+    if (preview != null) {
+      paintCutPiece(
+        canvas,
+        preview.canvasRect,
+        preview.piece,
+        preview.image,
+        opacity: preview.opacity,
+      );
     }
 
     // No pasteboard dim (user decision, Flash-style): off-canvas artwork

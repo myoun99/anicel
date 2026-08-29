@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -11,7 +13,10 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
+import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/cut_piece.dart';
+import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/rgba_color.dart';
@@ -349,7 +354,9 @@ void main() {
     // — that is the point — so a pixel comparison cannot say WHICH ran.
     const canvasSize = CanvasSize(width: 64, height: 64);
 
-    BitmapSurfacePainter inkedPainter() {
+    BitmapSurfacePainter inkedPainter({
+      ValueListenable<CutStampPreview?>? stampPreview,
+    }) {
       var tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 16);
       tile = writeRgbaColorToBitmapTile(
         tile: tile,
@@ -364,6 +371,7 @@ void main() {
           tiles: {tile.coord: tile},
         ),
         showTransparentBackground: false,
+        stampPreview: stampPreview,
       );
     }
 
@@ -372,6 +380,7 @@ void main() {
       required List<ResolvedLayerEffect> effects,
       double opacity = 0.5,
       SelectionFloatOverlay? floatOverlay,
+      ValueListenable<CutStampPreview?>? stampPreview,
     }) async {
       debugLiveLayerRodeTheDraws = null;
       await tester.pumpWidget(
@@ -390,7 +399,9 @@ void main() {
                   ),
                   canvasSize: canvasSize,
                   viewport: CanvasViewport(zoom: 1, panX: 0, panY: 0),
-                  activeSurfacePainter: inkedPainter(),
+                  activeSurfacePainter: inkedPainter(
+                    stampPreview: stampPreview,
+                  ),
                   paintPaper: true,
                   paperBackground: const ProjectBackground.color(0xFFFFFFFF),
                   floatOverlay: floatOverlay,
@@ -495,6 +506,56 @@ void main() {
       expect(debugLiveLayerRodeTheDraws, isFalse);
     });
 
+    testWidgets('🚨F-33: a STAMP GHOST takes the buffer, which is how it '
+        'gets the layer at all', (tester) async {
+      // 유저: 「레이어 블렌드모드나 **합성같은게 다** 반영되는」 프리뷰.
+      //
+      // The ghost used to be a `Positioned` widget ON TOP of the canvas,
+      // where the only thing it could honour was the stamp's own opacity.
+      // It is a painter's draw now — and this is the line that makes that
+      // mean something: a ghost overlaps the committed pixels, so the
+      // painter reports NON-disjoint coverage, so the stack assembles the
+      // layer into a buffer and puts the layer's opacity and blend on the
+      // BUFFER. Everything inside it, ghost included, composites as that
+      // layer.
+      //
+      // ⛔If this ever says true the ghost rides the per-draw path with no
+      // layer paint of its own, and F-33 is silently back.
+      final preview = ValueNotifier<CutStampPreview?>(
+        CutStampPreview(
+          piece: CutPiece(
+            image: BrushStampImage(
+              id: 'ghost',
+              width: 4,
+              height: 4,
+              rgba: Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 200),
+            ),
+            originLeft: 0,
+            originTop: 0,
+          ),
+          // ⚠️:  goes through the engine
+          // and never completes inside the test's fake-async zone.
+          image: (await tester.runAsync(_decodedSquare))!,
+          canvasRect: const Rect.fromLTWH(8, 8, 4, 4),
+          opacity: 1,
+        ),
+      );
+      addTearDown(preview.dispose);
+
+      await paintActive(tester, effects: const [], stampPreview: preview);
+      expect(debugLiveLayerRodeTheDraws, isFalse);
+
+      // The other side: with nothing held there is nothing overlapping, so
+      // the cheap path comes back.
+      preview.value = null;
+      await paintActive(tester, effects: const [], stampPreview: preview);
+      expect(
+        debugLiveLayerRodeTheDraws,
+        isTrue,
+        reason: 'a hover that ended must not leave the layer buffered',
+      );
+    });
+
     testWidgets('a colour-only filter does NOT need it', (tester) async {
       // ⛔The other side of the same question: a matrix is per-pixel, so
       // "has effects" would have been the wrong test.
@@ -530,4 +591,19 @@ void main() {
       expect(debugLiveLayerRodeTheDraws, isTrue);
     });
   });
+}
+/// A tiny decoded image for the stamp-ghost case.
+///
+/// The ghost's own pixels are not what that case measures — the ROUTE is —
+/// so this is the smallest thing that makes `image != null` true.
+Future<ui.Image> _decodedSquare() {
+  final completer = Completer<ui.Image>();
+  ui.decodeImageFromPixels(
+    Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 255),
+    4,
+    4,
+    ui.PixelFormat.rgba8888,
+    completer.complete,
+  );
+  return completer.future;
 }

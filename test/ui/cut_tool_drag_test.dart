@@ -563,11 +563,17 @@ void main() {
     await gesture.addPointer(location: origin + const Offset(120, 160));
     await tester.pump();
     await gesture.moveTo(origin + const Offset(120, 160));
-    await tester.pump();
+    // The piece decodes asynchronously ([CutPieceImageHost]); until it
+    // lands there is nothing to publish, which is the same nothing the old
+    // overlay drew.
+    await tester.pumpAndSettle();
 
     expect(
       tester
-          .widget<CutPieceCursorOverlay>(find.byType(CutPieceCursorOverlay))
+          .widget<CutStampPreviewPublisher>(
+            find.byType(CutStampPreviewPublisher),
+          )
+          .preview!
           .opacity,
       0.4,
     );
@@ -661,16 +667,30 @@ void main() {
     await gesture.addPointer(location: origin + hover);
     await tester.pump();
     await gesture.moveTo(origin + hover);
-    await tester.pump();
+    await tester.pumpAndSettle();
 
-    final overlay = find.byKey(
-      const ValueKey<String>('cut-piece-cursor-overlay'),
-    );
-    expect(overlay, findsOneWidget);
-    // Centre-anchored on the pointer, which is where a click drops it.
-    final box = tester.getRect(overlay);
-    expect(box.center.dx - origin.dx, closeTo(hover.dx, 1));
-    expect(box.center.dy - origin.dy, closeTo(hover.dy, 1));
+    // 🚨★★★F-33: the ghost is a PAINTER's now, and it is addressed in
+    // CANVAS pixels — the space the artwork lives in. It used to be a
+    // `Positioned` widget in viewport pixels, which is why it could not be
+    // told about the layer it was landing on.
+    CutStampPreview published() => tester
+        .widget<CutStampPreviewPublisher>(find.byType(CutStampPreviewPublisher))
+        .preview!;
+
+    final first = published().canvasRect;
+    // The piece's own footprint, in canvas pixels — not a screen box.
+    expect(first.width, closeTo(20, 0.001));
+    expect(first.height, closeTo(12, 0.001));
+
+    // And it FOLLOWS. At this fixture's render zoom of 1 a screen delta is
+    // a canvas delta, so the ghost must move by exactly what the pointer
+    // did — which is also what pins the centre anchoring: a corner-anchored
+    // ghost would move the same way, so the size above is the other half.
+    await gesture.moveTo(origin + hover + const Offset(17, -9));
+    await tester.pump();
+    final second = published().canvasRect;
+    expect(second.center.dx - first.center.dx, closeTo(17, 0.5));
+    expect(second.center.dy - first.center.dy, closeTo(-9, 0.5));
   });
 
   testWidgets('no piece means no cursor preview', (tester) async {
@@ -681,8 +701,12 @@ void main() {
     await gesture.addPointer(location: origin + const Offset(120, 160));
     await tester.pump();
     expect(
-      find.byKey(const ValueKey<String>('cut-piece-cursor-overlay')),
-      findsNothing,
+      tester
+          .widget<CutStampPreviewPublisher>(
+            find.byType(CutStampPreviewPublisher),
+          )
+          .preview,
+      isNull,
     );
   });
 
