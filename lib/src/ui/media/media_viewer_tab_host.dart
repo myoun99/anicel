@@ -247,8 +247,11 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   String? _message;
 
   /// What this device affords the page cache, and where a memory warning
-  /// puts it — see [ViewerRasterBudget]. Not `late final`: a test reaches
-  /// for [ViewerRasterBudget.byteBudget] before the first render.
+  /// puts it — see [ViewerRasterBudget].
+  ///
+  /// ⚠️Built with the State, so a test that wants a tight one sets
+  /// [ViewerRasterBudget.debugPageBytesOverride] BEFORE the panel mounts;
+  /// pumping the same widget again reuses this State and this budget.
   final ViewerRasterBudget _budget = ViewerRasterBudget(
     physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
   );
@@ -271,17 +274,15 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       total += ViewerRasterBudget.costOf(page.image);
     }
     while (total > _budget.byteBudget && _pageCache.length > 1) {
-      final candidates = _pageCache.keys.where((page) => page != keeping);
-      if (candidates.isEmpty) {
-        return;
-      }
-      final farthest = candidates.reduce(
-        (a, b) => (a - _page).abs() >= (b - _page).abs() ? a : b,
-      );
-      final dropped = _pageCache.remove(farthest);
-      if (dropped == null) {
-        return;
-      }
+      // Two or more entries and at most one of them is [keeping], so a
+      // candidate always exists and it is always in the map. Asserted with
+      // `!` rather than guarded: a guard here would answer an impossible
+      // case by silently LEAVING the cache over budget, which is the one
+      // outcome this method exists to prevent.
+      final farthest = _pageCache.keys
+          .where((page) => page != keeping)
+          .reduce((a, b) => (a - _page).abs() >= (b - _page).abs() ? a : b);
+      final dropped = _pageCache.remove(farthest)!;
       total -= ViewerRasterBudget.costOf(dropped.image);
       dropped.image.dispose();
     }
