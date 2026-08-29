@@ -13,18 +13,36 @@ import '../../native/qa_cel_compressor.dart';
 const int anicelCodecDeflate = 0;
 const int anicelCodecZstd = 1;
 
-/// The normal save's zstd level, and the「smallest file」one.
+/// The zstd level, and there is exactly one.
 ///
-/// Both READ at the same speed — the level is a save cost only, and only
-/// on the parts a save actually re-encodes. 19 is a quarter smaller than
-/// deflate on real cel data; it is a choice rather than the default
-/// because compressing takes noticeably longer per hot cel (6ms → 30ms on
-/// a 1MB cel, measured).
+/// 🪦**19 WAS OFFERED AND REJECTED — 유저 확정 2026-08-30: 「9로통일이고
+/// 19의 남은잔재는 깔끔하게 삭제하고싶어」.** The numbers that settled it,
+/// re-measured on cels from a real project, because the「6ms → 30ms on a
+/// 1MB cel」that used to stand here did NOT reproduce:
 ///
-/// ⛔22 is not offered: 0.4% smaller than 19 and **36× slower** on the
-/// same cel. Measured, not assumed.
-const int anicelZstdLevelNormal = 9;
-const int anicelZstdLevelSmallest = 19;
+/// | cel | level 9 | level 19 | | smaller |
+/// |---|---|---|---|---|
+/// | 512KB | 4.1ms | 48ms | 12× | 6–8% |
+/// | 768KB | 4.1ms | 50ms | 12× | 6.9% |
+/// | 17.9MB | 256ms | **5.4s** | 21× | 10.1% |
+///
+/// So 19 bought 6–10% for 12–21× the compression time, and the multiplier
+/// GREW with the cel — one big cel costs five seconds. Reading is
+/// unaffected either way (1,522 MB/s against 1,496, which is noise), so
+/// the whole cost sat on the save.
+///
+/// ⛔And it could never have been a simple flag on「save」: a cel's level
+/// is fixed when it COOLS (see `BrushFrameStore._coolLoop`), and a save
+/// hands cold and file-backed bytes through untouched. Offering it meant
+/// re-inflating and re-compressing every cel a save would otherwise have
+/// copied — which is exactly the incremental-append fast path.
+///
+/// ⛔22 was never offered either: 0.4% smaller than 19 and **36× slower**
+/// on the same cel (measured 2026-08-29).
+///
+/// ⚠️This paragraph is the record, not a proposal. Anyone reaching for a
+/// second level should read the table first.
+const int anicelZstdLevel = 9;
 
 /// Compresses [bytes] with the best codec this build has, saying which.
 ///
@@ -32,13 +50,10 @@ const int anicelZstdLevelSmallest = 19;
 /// for cel blobs and once for the project manifest — and two copies of
 /// "zstd if the engine answered, else deflate" is exactly the kind of
 /// pair that drifts when one of them learns something.
-({int codec, Uint8List bytes}) compressAnicelPayload(
-  Uint8List bytes, {
-  int? zstdLevel,
-}) {
+({int codec, Uint8List bytes}) compressAnicelPayload(Uint8List bytes) {
   final compressor = QaCelCompressor.instance;
   final zstd = compressor != null && compressor.isSupported
-      ? compressor.compress(bytes, level: zstdLevel ?? anicelZstdLevelNormal)
+      ? compressor.compress(bytes, level: anicelZstdLevel)
       : null;
   if (zstd != null) {
     return (codec: anicelCodecZstd, bytes: zstd);
