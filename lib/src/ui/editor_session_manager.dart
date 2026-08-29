@@ -482,6 +482,30 @@ class EditorSessionManager extends ChangeNotifier {
   /// bool would coalesce the second one into silence).
   final ValueNotifier<int> memoryPressureTicks = ValueNotifier<int>(0);
 
+  /// Page-raster bytes each mounted media viewer is holding, by viewer id.
+  ///
+  /// 🚨**PUSHED, where every other census number is PULLED.** The census
+  /// is deliberately addition rather than measurement — it reads counters
+  /// the holder already keeps — and it can do that because the session
+  /// owns those holders. It does not own these: the viewer's pages live in
+  /// a widget State that mounts and unmounts as tabs open and rails fold,
+  /// and there are two of them. So the viewers write here instead, and
+  /// clear their entry when they go.
+  ///
+  /// ⛔Without this the panel that answers「어떤항목이 얼만큼」 was silent
+  /// about a cache that can hold a quarter of a gigabyte per viewer — the
+  /// gap would land in `untrackedBytes` and read as engine overhead.
+  final Map<String, int> viewerRasterBytesByViewer = <String, int>{};
+
+  /// What the media viewers hold between them.
+  int get viewerRasterBytes {
+    var total = 0;
+    for (final bytes in viewerRasterBytesByViewer.values) {
+      total += bytes;
+    }
+    return total;
+  }
+
   /// The conte sheet ink's cel stores (R5) — SESSION-owned so the .anicel
   /// archive can persist them (the second cel namespace), while the ink
   /// controller (workspace UI) keeps the coordinators. The ROW store's

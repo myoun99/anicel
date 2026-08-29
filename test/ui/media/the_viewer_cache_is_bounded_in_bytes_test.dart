@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
+import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/media/viewer_raster_budget.dart';
@@ -214,6 +215,54 @@ void main() {
           'the budget halved to two pages, so the page farthest from the '
           'one on screen was dropped',
     );
+  });
+
+  /// 🚨**A CACHE THIS BIG MUST APPEAR IN THE PANEL THAT SAYS WHERE MEMORY
+  /// GOES** (유저 요청: 「이 앱이 쓰는 메모리의 총합 … 어떤항목이 얼만큼」).
+  ///
+  /// The census counts seven holders the session owns. The viewer's pages
+  /// were not among them, so up to a quarter of a gigabyte PER VIEWER fell
+  /// into `untrackedBytes` and read as engine overhead.
+  group('the census can see the viewer', () {
+    testWidgets('a loaded viewer reports its page bytes', (tester) async {
+      expect(
+        session.viewerRasterBytes,
+        0,
+        reason: 'fixture premise: nothing loaded yet',
+      );
+
+      await openConte(tester, pages: 3);
+      await turnTo(tester, 1);
+
+      final item = collectMemoryCensus(
+        session,
+      ).items.firstWhere((entry) => entry.id == 'viewerPages');
+      expect(
+        item.bytes,
+        greaterThan(0),
+        reason: 'two rendered pages are in the census, not in the gap',
+      );
+      expect(item.bytes, session.viewerRasterBytes);
+    });
+
+    testWidgets('and stops reporting when it goes away', (tester) async {
+      await openConte(tester, pages: 3);
+      await turnTo(tester, 1);
+      expect(session.viewerRasterBytes, greaterThan(0));
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+
+      expect(
+        session.viewerRasterBytesByViewer,
+        isEmpty,
+        reason:
+            '⛔the entry is REMOVED, not zeroed — a closed tab is not a '
+            'viewer holding nothing, and one entry per close would grow '
+            'for the life of the session',
+      );
+      expect(session.viewerRasterBytes, 0);
+    });
   });
 
   testWidgets('the page being LOOKED AT survives every warning', (

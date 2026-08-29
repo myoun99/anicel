@@ -86,6 +86,7 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
       'layerImages' => strings.memoryItemLayerImages,
       'brushTips' => strings.memoryItemBrushTips,
       'panelRasters' => strings.memoryItemPanelRasters,
+      'viewerPages' => strings.memoryItemViewerPages,
       _ => id,
     };
   }

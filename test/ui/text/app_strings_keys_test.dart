@@ -297,6 +297,7 @@ void main() {
     'memoryItemLayerImages': (s) => s.memoryItemLayerImages,
     'memoryItemBrushTips': (s) => s.memoryItemBrushTips,
     'memoryItemPanelRasters': (s) => s.memoryItemPanelRasters,
+    'memoryItemViewerPages': (s) => s.memoryItemViewerPages,
     // R11: the interface scale, in the Display section.
     'uiScaleLabel': (s) => s.uiScaleLabel,
     'accentTitle': (s) => s.accentTitle,
