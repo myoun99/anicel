@@ -652,10 +652,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       dx: _moveScreenDelta.dx,
       dy: _moveScreenDelta.dy,
     );
-    return CanvasPoint(
-      x: raw.x.roundToDouble(),
-      y: raw.y.roundToDouble(),
-    );
+    return CanvasPoint(x: raw.x.roundToDouble(), y: raw.y.roundToDouble());
   }
 
   /// [_moveCanvasDelta] back in screen space — for the chrome that is
@@ -1048,7 +1045,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _commitTransform();
       return;
     }
-    final recall = widget.selectionCommands?.transformRecall;
+    // 🚨THE ARMED MODE'S OWN MEMORY (유저 2026-08-29: 「툴마다 기억하는게
+    // 다름」). One shared slot could only answer for whichever mode
+    // committed last, so arming 일반 and pressing Enter replayed a 퍼스
+    // warp — or did nothing at all, when that warp's affine was identity.
+    final recall = widget.selectionCommands?.recallFor(_mode);
     if (recall == null || recall.isIdentity) {
       return;
     }
@@ -1116,7 +1117,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (channel == null) {
       return;
     }
-    channel.transformRecall = TransformRecall(
+    // ⛔Filed under the mode that MADE it, not into one shared slot. A 퍼스
+    // commit must not become what 일반 replays: the two modes hold different
+    // things (a quad versus an affine), and 유저 asked for them separately.
+    channel.transformRecalls[_mode] = TransformRecall(
       tx: affine.tx,
       ty: affine.ty,
       rotationDegrees: affine.rotationDegrees,
@@ -2688,6 +2692,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     final canvasPoint = _toCanvas(event.localPosition);
     var transform = _transform;
+
     /// TP4: the press landed inside the box the Move tool is DRAWING, even
     /// though no session is open yet — which is a grab, whatever the
     /// selection's own outline says (유저: "변형툴 내부 사각형 안이라면
@@ -3924,8 +3929,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                     viewport: widget.viewport,
                     // The pan-phase snap's device grid — same source the
                     // ink view behind this fallback reads.
-                    devicePixelRatio:
-                        EffectiveDevicePixelRatio.of(context),
+                    devicePixelRatio: EffectiveDevicePixelRatio.of(context),
                   ),
                   child: const SizedBox.expand(),
                 ),
@@ -3988,9 +3992,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               top: _confirmButtonOffset(displayShape).dy,
               child: Material(
                 key: const ValueKey<String>('selection-move-confirm'),
-                color: AppColors.selectionSession(
-                  changed: _sessionHasChanges,
-                ),
+                color: AppColors.selectionSession(changed: _sessionHasChanges),
                 shape: const CircleBorder(),
                 elevation: 2,
                 child: InkWell(

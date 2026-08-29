@@ -994,34 +994,32 @@ void main() {
     expect(inkAt(env.coordinator, 28, 28), 0, reason: 'nothing stayed behind');
   });
 
-  testWidgets(
-    'H28: an OPEN box that has moved already reads as changed — 유저: '
-    '「변형중일땐 … 변경사항이 있으면 … 빨간색」',
-    (tester) async {
-      final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+  testWidgets('H28: an OPEN box that has moved already reads as changed — 유저: '
+      '「변형중일땐 … 변경사항이 있으면 … 빨간색」', (tester) async {
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
 
-      env.commands.beginTransform();
-      await tester.pump();
-      expect(chromeOnScreen(tester), isNotNull, reason: 'the box is open');
-      expect(
-        antsOnScreen(tester)?.sessionHasChanges,
-        isFalse,
-        reason: 'an untouched box has changed nothing — green',
-      );
+    env.commands.beginTransform();
+    await tester.pump();
+    expect(chromeOnScreen(tester), isNotNull, reason: 'the box is open');
+    expect(
+      antsOnScreen(tester)?.sessionHasChanges,
+      isFalse,
+      reason: 'an untouched box has changed nothing — green',
+    );
 
-      // Still OPEN: no confirm, no commit. 🚨Every place that sets the
-      // move-session dirty flag is a COMMIT point, so this is exactly the
-      // window that used to stay green however far the user dragged.
-      await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 45));
-      expect(env.commands.transformActive, isTrue, reason: 'still open');
-      expect(
-        antsOnScreen(tester)?.sessionHasChanges,
-        isTrue,
-        reason: 'the box would change pixels, and the user has not confirmed '
-            'it — that is what red means',
-      );
-    },
-  );
+    // Still OPEN: no confirm, no commit. 🚨Every place that sets the
+    // move-session dirty flag is a COMMIT point, so this is exactly the
+    // window that used to stay green however far the user dragged.
+    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 45));
+    expect(env.commands.transformActive, isTrue, reason: 'still open');
+    expect(
+      antsOnScreen(tester)?.sessionHasChanges,
+      isTrue,
+      reason:
+          'the box would change pixels, and the user has not confirmed '
+          'it — that is what red means',
+    );
+  });
 
   testWidgets('R28 #10: a SECOND transform on the same tool works — the '
       'first one\'s confirm must not leave the layer unable to lift', (
@@ -1148,11 +1146,7 @@ void main() {
     await dragOnLayer(tester, const Offset(45, 45), const Offset(53, 45));
     final values = env.commands.transformValues;
     expect(values, isNotNull);
-    expect(
-      values!.rotationDegrees,
-      0,
-      reason: 'a translate does not rotate',
-    );
+    expect(values!.rotationDegrees, 0, reason: 'a translate does not rotate');
 
     env.commands.commitTransform();
     await tester.pump();
@@ -1162,9 +1156,10 @@ void main() {
     // quad — it would have passed with every corner warped. The quad is
     // what "untouched" means, so the quad is what gets asserted.
     expect(
-      env.commands.transformRecall!.cornerOffsets.every(
-        (offset) => offset.x == 0 && offset.y == 0,
-      ),
+      env.commands
+          .recallFor(TransformMode.perspective)!
+          .cornerOffsets
+          .every((offset) => offset.x == 0 && offset.y == 0),
       isTrue,
       reason:
           'nothing touched a corner, so the quad is identity and the '
@@ -1194,7 +1189,7 @@ void main() {
 
     env.commands.commitTransform();
     await tester.pump();
-    final recall = env.commands.transformRecall;
+    final recall = env.commands.recallFor(TransformMode.perspective);
     // 🚨THE FIRST THING THE OLD BEHAVIOUR FAILED. Routed to the affine
     // scale, this exact drag changed NOTHING — a one-axis scale cannot move
     // a point along the axis it does not scale — so the box was never

@@ -28,10 +28,14 @@ enum TransformMode {
   /// non-uniform scale this mode does not do.
   normal,
 
-  /// 퍼스변형: the four corners move freely, no modifier needed. The edge
-  /// handles keep their affine scale, which is where non-uniform scaling
-  /// lives now that Shift no longer unlocks the aspect (유저 08-13: 수정자
-  /// 기각 — "어차피 일반변형이 종횡비 유지해서").
+  /// 퍼스변형: the four corners move freely, no modifier needed.
+  ///
+  /// ⚠️This used to add "the edge handles keep their affine scale, which is
+  /// where non-uniform scaling lives". It does NOT any more (F-42, 유저
+  /// 2026-08-29): an edge handle carries that edge's two quad corners, so
+  /// non-uniform scaling here is "drag the two corners". Corrected rather
+  /// than deleted, because a reader who remembers the sentence would
+  /// otherwise go looking for a path that moved.
   perspective,
 
   /// 메쉬워프: an N×M control grid over the lifted pixels.
@@ -138,6 +142,13 @@ class TransformToolOptions {
 /// 유저 확정 08-13: **전역 하나** · 수명은 세션(프로젝트를 닫으면 사라져도
 /// 된다) · 재현은 **지금 선택된 모드에** 적용한다(모드를 되돌리지 않는다) ·
 /// 🚨**어떤 크기의 소재든 같은 값을 준다.**
+///
+/// ⚠️READ 「전역 하나」 AS "NOT PER LAYER", which is the axis that day was
+/// about and is still true. It is NOT "one slot": 유저 2026-08-29 asked for
+/// one per MODE — 「툴마다 기억하는게 다름」 — so the channel holds a
+/// `Map<TransformMode, TransformRecall>`. A single slot could only answer
+/// for whichever mode committed last, and a 퍼스 warp's affine is often
+/// identity, so 일반's Enter read as a dead key.
 ///
 /// That last clause is why this stores PARAMETERS and not a result: a
 /// scale of 120% and a corner pushed 40 px mean the same thing on a
