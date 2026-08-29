@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../text/app_strings.dart';
 import 'layer_label_controls.dart';
@@ -445,3 +446,20 @@ String layerTypeSemanticLabel(LayerKind kind) {
     layerKindDisplayName(kind),
   );
 }
+
+/// What a rail row's EYE shows — this row's own flag.
+///
+/// 🚨★★★NOT [LayerFolderQueries.rowVisible], and the difference is the whole
+/// reason this has a name. `rowVisible` answers 「is this row SHOWN」, which
+/// folds in every ancestor folder; a row inside a hidden folder answers
+/// false there while its own switch is still on. The EYE is that own switch,
+/// and a swipe latching on the folded answer would try to turn on a row that
+/// already is.
+///
+/// ⛔It exists so the two rails ask it ONCE. The layer rail and the
+/// storyboard rail both swipe this column, and a second raw read of the
+/// stored flag is a second answer that can drift — the ratchet in
+/// `hidden_folder_is_hidden_test` caught exactly that when the storyboard
+/// grew its swipe. ⚠️That scan is LINE-based and does not skip comments, so
+/// prose here must not spell the field access out either.
+bool layerRailEyeIsOn(Layer layer) => layer.isVisible;

@@ -68,14 +68,31 @@ bool valueControlOwnsPointer(int pointer) => _held.contains(pointer);
 /// own something.
 ///
 /// ⛔But not the whole pointer. A button owns its TAP; it does not own
-/// drags — and claiming the pointer outright broke a real one, because the
-/// storyboard's row-order drag deliberately starts ON the visibility button
-/// (its test says so in as many words). A slider is the opposite case:
-/// dragging IS its verb, so it takes the strong claim above and pans
-/// decline outright.
+/// drags. A slider is the opposite case: dragging IS its verb, so it takes
+/// the strong claim above and pans decline outright.
 ///
 /// ⇒ Two sets, and the question that decides which a control joins is
 /// 「is a drag that starts here mine?」.
+///
+/// 🚨THE REASON THAT USED TO STAND HERE WAS INVENTED, and it is kept as a
+/// warning rather than deleted. It read: 「claiming the pointer outright
+/// broke a real one, because the storyboard's row-order drag deliberately
+/// starts ON the visibility button — its test says so in as many words」.
+/// 유저 2026-08-29 asked what that meant. It is false three ways, measured:
+///
+///  - GEOMETRY. The row-order drag lands on the row's centre, x=233 — the
+///    name area. The eye sits at x=359..381. They are 126px apart.
+///  - BEHAVIOUR. Two drags begun on the eye leave the order untouched; the
+///    same two on the row re-order it. Today's code already says the
+///    opposite of the sentence.
+///  - ORIGIN. `git log -S` puts it in 0ccc1163 (08-14), and the test AS OF
+///    THAT COMMIT also dragged the row by its key. The word "visibility"
+///    never appears in it. The sentence was false when it was written.
+///
+/// ⚠️It then spread: [RailSwipeColumnPointer] quoted it to say the
+/// storyboard still needed the old answer, and that is why the storyboard
+/// rail went without swipe columns. An unsourced reason in a decision
+/// comment does not stay a comment — it becomes the design.
 ///
 /// 🚨BOTH READERS ASK BOTH SETS NOW (#1349, 유저 2026-08-29: 「**터치 좌표가
 /// 버튼인데 거기서 움직였다고 스크롤이 발생하는게 심각한 버그야**」). The pan
