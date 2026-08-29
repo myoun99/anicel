@@ -320,6 +320,76 @@ void main() {
       ),
     );
   });
+
+  testWidgets('🚨★★★F-32 here too: the RULER and the cells it numbers stay '
+      'on one line at fractional scroll offsets', (tester) async {
+    // The third grid in the same family. The x-sheet's frame rail and the
+    // horizontal timeline's frame ruler both kept the scroll offset's
+    // sub-device-pixel fraction while their cells had it cancelled by
+    // `DeviceGridScrollBody`; this panel has the identical shape — cells
+    // inside the corrected body, ruler on a raw `Transform.translate`.
+    //
+    // ⛔Found by SWEEPING, and only after 「읽어서 괜찮다」 had already been
+    // wrong once in this same family. Where a sweep says 「fine by
+    // construction」, that sentence is the test.
+    tester.view.devicePixelRatio = 1.5;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.binding.setSurfaceSize(const Size(700, 400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await _pumpPanel(tester, _project(storyboardLayer: null));
+    await tester.pumpAndSettle();
+
+    final controller = tester
+        .widget<SingleChildScrollView>(
+          find.byKey(
+            const ValueKey<String>('storyboard-timeline-horizontal-viewport'),
+          ),
+        )
+        .controller!;
+    expect(
+      controller.position.maxScrollExtent,
+      greaterThan(0),
+      reason: 'the frame axis must overflow, or nothing can scroll at all',
+    );
+
+    var compared = 0;
+    // ⚠️Fractions on purpose: a whole-pixel offset is on the grid already
+    // and cannot show a quantisation seam.
+    for (final offset in <double>[
+      0,
+      1.5,
+      7.25,
+      controller.position.maxScrollExtent / 3,
+      controller.position.maxScrollExtent,
+    ]) {
+      controller.jumpTo(offset.clamp(0, controller.position.maxScrollExtent));
+      await tester.pumpAndSettle();
+
+      final ruler = find.byKey(const ValueKey<String>('storyboard-ruler'));
+      final area = find.byKey(
+        const ValueKey<String>('storyboard-track-timeline-area-track-a'),
+      );
+      if (ruler.evaluate().isEmpty || area.evaluate().isEmpty) {
+        continue;
+      }
+      compared += 1;
+      expect(
+        tester.getRect(area).left,
+        moreOrLessEquals(tester.getRect(ruler).left, epsilon: 0.01),
+        reason:
+            'at offset $offset the ruler and the cells it numbers must start '
+            'on one line (F-32, the storyboard\'s half)',
+      );
+    }
+
+    expect(
+      compared,
+      greaterThanOrEqualTo(3),
+      reason:
+          'a green that compared nothing looks exactly like a green that '
+          'compared everything',
+    );
+  });
 }
 
 Future<void> _pumpPanel(
