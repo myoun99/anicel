@@ -104,6 +104,20 @@ void main() {
       session.isCutPictureVisible(CutId(id)),
   ];
 
+  /// The transition rows, the THIRD kind the rail stacks — one more eye on
+  /// the same column, this one on the track's transition layer.
+  List<bool> transitionVisibility(EditorSessionManager session) => [
+    for (final track in session.repository.requireProject().tracks)
+      track.transitionLayer.isVisible,
+  ];
+
+  /// The S rows the sweep CROSSES on its way down. They carry the SAME eye
+  /// column, acting on the SE layer rather than a cut.
+  List<bool> seVisibility(EditorSessionManager session) => [
+    for (final track in session.repository.requireProject().tracks)
+      track.seLayers.single.isVisible,
+  ];
+
   testWidgets('🚨the swipe band COVERS the eye it is meant to paint', (
     tester,
   ) async {
@@ -170,6 +184,23 @@ void main() {
           '다른 레이어들도 같은 버튼조작되도록」 — the storyboard rail is '
           'not a different rail',
     );
+    expect(
+      seVisibility(session),
+      [true, false, false],
+      reason:
+          '⛔the sweep CROSSED t2 and t3, and their S rows carry the SAME '
+          'eye — acting on the SE layer instead of a cut. t1 stays visible '
+          'because its S row sits ABOVE its V row, where the drag began. A '
+          'resolver naming only V rows painted NONE of them, and the cut '
+          'assertion above still passed: 「초록이 빈 것을 쟀다」',
+    );
+    expect(
+      transitionVisibility(session),
+      [true, false, false],
+      reason:
+          'the third row kind, on the same column and the same sweep — a '
+          'rail that stacks three kinds has to name all three',
+    );
   });
 
   testWidgets('⛔a drag that starts OFF the column paints nothing', (
@@ -198,10 +229,10 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
 
-    expect(
-      pictureVisibility(session),
-      [true, true, true],
-      reason: 'a swipe only runs from a column it has',
-    );
+    expect(pictureVisibility(session), [
+      true,
+      true,
+      true,
+    ], reason: 'a swipe only runs from a column it has');
   });
 }

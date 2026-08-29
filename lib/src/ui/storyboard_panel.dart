@@ -1852,25 +1852,58 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     return extent;
   }
 
-  /// The rail-local y band each V row stands in, walked the same way
-  /// [_trackGroupExtent] and [_trackGroupExtentAboveVRow] already count for
-  /// the row-order drag — so the swipe and the drag can never disagree
-  /// about where a row is.
+  /// Which rail row a swipe is over. The rail stacks three kinds and they
+  /// do NOT share a subject: a V row's eye is its CUT's picture, while an S
+  /// row's and the transition row's are that LAYER's own. One column, two
+  /// verbs — so the row carries which it is rather than the column guessing.
   ///
-  /// Only V rows answer: the S rows and the transition row beside them
-  /// carry no column the swipe paints, and a press there must fall through
-  /// to whatever is under it rather than latch a swipe on nothing.
-  RailSwipeRow<Track>? _railRowAtY(double localY) {
-    final tracks = widget.project.tracks;
+  /// 🚨[layer] null means the V row. It is not "no subject": the V row's
+  /// subject is a cut and is looked up per press, because the cut under the
+  /// playhead is what its buttons act on (UI-R13 #2).
+  ///
+  /// ⛔Naming only V rows was WRONG and the first version did it — a swipe
+  /// down the eye column then stepped over every S row it crossed, and the
+  /// test did not notice because it only asked about the three cuts. Every
+  /// row that HAS the column has to answer; the column decides what it can
+  /// paint, by returning null.
+  ({Track track, Layer? layer})? _railSubjectAtY(double localY) {
     var top = 0.0;
-    for (final track in tracks) {
+    for (final track in widget.project.tracks) {
+      // The rail draws the transition row, then the S rows, then the V row
+      // (④) — the same order [_trackGroupExtentAboveVRow] sums.
+      if (localY >= top && localY < top + _transitionRowHeight) {
+        return (track: track, layer: track.transitionLayer);
+      }
+      var slotTop = top + _transitionRowHeight;
+      for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
+        // The S ROW itself stands at the top of its group; the lanes that
+        // follow it are the rest of [_seRowGroupExtent] and carry no
+        // column of their own.
+        if (localY >= slotTop && localY < slotTop + _seRowHeight) {
+          return (track: track, layer: _trackSeAt(track, slot));
+        }
+        slotTop += _seRowGroupExtent(track, slot);
+      }
       final vTop = top + _trackGroupExtentAboveVRow(track);
       if (localY >= vTop && localY < vTop + widget.trackLaneHeight) {
-        return (row: track, depth: 0, id: track.id.value);
+        return (track: track, layer: null);
       }
       top += _trackGroupExtent(track);
     }
     return null;
+  }
+
+  /// The same, as the shared swipe wants it. The identity is what the sweep
+  /// dedupes by, so it has to separate a track's V row from its S rows.
+  RailSwipeRow<({Track track, Layer? layer})>? _railRowAtY(double localY) {
+    final subject = _railSubjectAtY(localY);
+    return subject == null
+        ? null
+        : (
+            row: subject,
+            depth: 0,
+            id: subject.layer?.id.value ?? 'v-${subject.track.id.value}',
+          );
   }
 
   /// The TOGGLE columns this rail can swipe, in the same construction the
@@ -1880,7 +1913,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   ///
   /// ⚠️Depth is not read: this rail does not nest, so every row's band is
   /// the same. The resolver signature is the shared one all the same.
-  List<RailToggleColumn<Track>> _railSwipeColumns() {
+  List<RailToggleColumn<({Track track, Layer? layer})>> _railSwipeColumns() {
     const rightPadding = 8.0;
 
     ({double left, double right}) Function(int depth) band(
@@ -1897,44 +1930,81 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       return (_) => at;
     }
 
-    final toggleVisibility = widget.onToggleCutPictureVisibility;
-    final visibleOf = widget.cutPictureVisibleOf;
-    final toggleFx = widget.onToggleTrackFx;
-    final fxStateOf = widget.trackFxStateOf;
+    final toggleCutVisibility = widget.onToggleCutPictureVisibility;
+    final cutVisibleOf = widget.cutPictureVisibleOf;
+    final toggleLayerVisibility = widget.onToggleLayerVisibility;
+    final toggleTrackFx = widget.onToggleTrackFx;
+    final trackFxStateOf = widget.trackFxStateOf;
+    final toggleLayerFx = widget.onToggleLayerFx;
+    final layerFxStateOf = widget.layerFxStateOf;
 
-    /// The cut a row's buttons act on — the one under the playhead on that
-    /// track, which is what the row itself draws (UI-R13 #2). A track with
-    /// no cut there has no subject, so its column reads null and the sweep
-    /// steps over it.
-    Cut? subjectOf(Track track) {
+    /// The cut a V row's buttons act on — the one under the playhead on
+    /// that track, which is what the row itself draws (UI-R13 #2). A track
+    /// with no cut there has no subject, so the column reads null and the
+    /// sweep steps over it.
+    Cut? cutOf(Track track) {
       final index = widget.project.tracks.indexOf(track);
       return index < 0 ? null : _cutAtPlayheadOn(index);
     }
 
     return [
-      if (toggleVisibility != null)
-        (
-          bandAt: band(LayerRailTrailingSlot.mute, layerVisibilitySlotWidth),
-          valueOf: (track) {
-            final cut = subjectOf(track);
-            return cut == null ? null : (visibleOf?.call(cut.id) ?? true);
-          },
-          toggle: (track) {
-            final cut = subjectOf(track);
-            if (cut != null) {
-              toggleVisibility(cut.id);
-            }
-          },
-        ),
-      if (toggleFx != null && fxStateOf != null)
-        (
-          bandAt: band(LayerRailTrailingSlot.onion, layerFxSlotWidth),
-          // Tri-state, and the swipe paints the one thing a tap paints —
-          // on, or not on. [RailColumnSwipe] only touching rows that
-          // DISAGREE is what keeps the third state out of its way.
-          valueOf: (track) => fxStateOf(track) == LayerFxState.on,
-          toggle: toggleFx,
-        ),
+      (
+        bandAt: band(LayerRailTrailingSlot.mute, layerVisibilitySlotWidth),
+        valueOf: (row) {
+          final layer = row.layer;
+          if (layer != null) {
+            return toggleLayerVisibility == null
+                ? null
+                : layerRailEyeIsOn(layer);
+          }
+          if (toggleCutVisibility == null) {
+            return null;
+          }
+          final cut = cutOf(row.track);
+          return cut == null ? null : (cutVisibleOf?.call(cut.id) ?? true);
+        },
+        toggle: (row) {
+          final layer = row.layer;
+          if (layer != null) {
+            toggleLayerVisibility?.call(layer.id);
+            return;
+          }
+          final cut = cutOf(row.track);
+          if (cut != null) {
+            toggleCutVisibility?.call(cut.id);
+          }
+        },
+      ),
+      (
+        bandAt: band(LayerRailTrailingSlot.onion, layerFxSlotWidth),
+        // Tri-state, and the swipe paints the one thing a tap paints — on,
+        // or not on. [RailColumnSwipe] only touching rows that DISAGREE is
+        // what keeps the third state out of its way.
+        //
+        // The transition row draws no fx switch, and a kind that shows none
+        // draws none either — both read null here, which is the same answer
+        // the row builder gives by mounting nothing.
+        valueOf: (row) {
+          final layer = row.layer;
+          if (layer != null) {
+            return toggleLayerFx == null || !layerKindShowsFxToggle(layer.kind)
+                ? null
+                : (layerFxStateOf?.call(layer.id) ?? LayerFxState.on) ==
+                      LayerFxState.on;
+          }
+          return toggleTrackFx == null || trackFxStateOf == null
+              ? null
+              : trackFxStateOf(row.track) == LayerFxState.on;
+        },
+        toggle: (row) {
+          final layer = row.layer;
+          if (layer != null) {
+            toggleLayerFx?.call(layer.id);
+            return;
+          }
+          toggleTrackFx?.call(row.track);
+        },
+      ),
     ];
   }
 
@@ -3532,7 +3602,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                       // the reason for that was measured and
                                       // found invented — see
                                       // [RailSwipeColumnPointer].
-                                      child: RailColumnSwipe<Track>(
+                                      child:
+                                          RailColumnSwipe<
+                                            ({Track track, Layer? layer})
+                                          >(
                                         columns: _railSwipeColumns(),
                                         rowAt: _railRowAtY,
                                         child: Column(

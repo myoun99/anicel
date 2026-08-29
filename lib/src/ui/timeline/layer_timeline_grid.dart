@@ -61,6 +61,7 @@ import 'layer_rail_columns.dart'
         LayerRailLeadingSlot,
         LayerRailTrailingSlot,
         layerRailLeadingSlotWidth,
+        layerRailEyeIsOn,
         layerRailLeadingWidthTo,
         layerRailTrailingWidth;
 import 'timeline_grid_metrics.dart';
@@ -659,7 +660,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         bandAt: fixedBand(
           band(LayerRailTrailingSlot.mute, layerVisibilitySlotWidth),
         ),
-        valueOf: (layer) => layer.isVisible,
+        valueOf: layerRailEyeIsOn,
         toggle: (layer) => widget.onToggleLayerVisibility(layer.id),
       ),
       if (hasOnion && onionOf != null)
