@@ -100,7 +100,7 @@ void main() {
     final ourCelName = anicelCelEntryName(key('ours', 'f1'));
     expect(
       {for (final entry in replaced.entries) entry.name},
-      {'project.json', ourCelName},
+      {anicelProjectEntryNameCompressed, ourCelName},
       reason: 'replace means REPLACE — an append here would have kept every '
           'foreign cel alive under the new project.json, quietly retaining '
           'the other project\'s content (and its bytes for anyone with an '
@@ -224,5 +224,48 @@ void main() {
             'append would have written only the dirty one',
       );
     }
+  });
+
+  test('🚨an ordinary re-save APPENDS — it does not rewrite the file whole',
+      () async {
+    // The regression this pins: compressing the manifest made the
+    // ownership check (which reads the target's project id) parse deflate
+    // bytes as UTF-8, throw, and fall back to「replace, don't append」. Every
+    // save became a full rewrite — on a project carrying media that means
+    // re-streaming every megabyte on every Ctrl+S, silently.
+    //
+    // ⛔A size assertion is what catches it, because nothing else does: the
+    // file is still correct after a full rewrite, just written the
+    // expensive way.
+    const service = AnicelFileService();
+    final store = BrushFrameStore();
+    final path = '${directory.path}/append.anicel';
+    final project = createDefaultProject();
+
+    store.storeBakedSurface(key('a', 'f1'), inked(1));
+    await service.save(
+      project: project,
+      brushFrameStore: store,
+      filePath: path,
+    );
+    final first = File(path).lengthSync();
+
+    // ⚠️The SAME cel, re-inked: that kills its file ref, so there are ZERO
+    // clean refs and the save takes the ownership-check branch — which is
+    // the one that reads the manifest, and the one the regression broke.
+    store.storeBakedSurface(key('a', 'f1'), inked(2));
+    await service.save(
+      project: project,
+      brushFrameStore: store,
+      filePath: path,
+    );
+
+    expect(
+      File(path).lengthSync(),
+      greaterThan(first),
+      reason:
+          'an append leaves the superseded bytes behind, so the file GROWS. '
+          'A full rewrite would land at roughly the same size and look fine.',
+    );
   });
 }

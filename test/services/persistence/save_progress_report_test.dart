@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
@@ -328,7 +329,8 @@ void main() {
     final archive = ZipDecoder().decodeBytes(File(projectPath).readAsBytesSync());
     final stored = [
       for (final entry in archive.files)
-        if (entry.name != 'project.json' && !entry.name.endsWith('.celz'))
+        if (entry.name != anicelProjectEntryNameCompressed &&
+            !entry.name.endsWith('.celz'))
           entry,
     ];
     expect(stored, hasLength(1), reason: 'the one imported asset');

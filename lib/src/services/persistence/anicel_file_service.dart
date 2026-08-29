@@ -372,16 +372,14 @@ class AnicelFileService {
                 ),
               ),
             );
-            yield (
-              name: 'project.json',
-              bytes: buildAnicelProjectJsonBytes(
-                project: project,
-                saveDirectory: saveDirectory,
-                grants: grants,
-                mediaInArchive: mediaInArchive,
-                mediaCrcs: mediaCrcs,
-              ),
+            final projectEntry = buildAnicelProjectEntry(
+              project: project,
+              saveDirectory: saveDirectory,
+              grants: grants,
+              mediaInArchive: mediaInArchive,
+              mediaCrcs: mediaCrcs,
             );
+            yield (name: projectEntry.name, bytes: projectEntry.bytes);
             for (final work in works) {
               yield (name: work.name, bytes: work.resolveBlob().bytes);
             }
@@ -656,7 +654,7 @@ class AnicelFileService {
       // the verified refs already prove ownership, and project.json can be
       // megabytes this path must not decode every Ctrl+S.
       if (cleanRefsToVerify.isEmpty) {
-        final targetProjectEntry = layout.entryNamed('project.json');
+        final targetProjectEntry = layout.projectEntry();
         if (targetProjectEntry == null) {
           return null; // Not an archive of ours — replace, don't append.
         }
@@ -666,7 +664,12 @@ class AnicelFileService {
           try {
             raf.setPositionSync(targetProjectEntry.dataOffset);
             final decoded = jsonDecode(
-              utf8.decode(raf.readSync(targetProjectEntry.length)),
+              utf8.decode(
+                decodeAnicelProjectEntryBytes(
+                  targetProjectEntry.name,
+                  raf.readSync(targetProjectEntry.length),
+                ),
+              ),
             );
             final targetProject = decoded is Map ? decoded['project'] : null;
             targetId = targetProject is Map ? targetProject['id'] : null;
@@ -717,7 +720,7 @@ class AnicelFileService {
         port,
         1 + works.length + newMedia.length * anicelAppendStreamPasses,
       );
-      final projectJson = buildAnicelProjectJsonBytes(
+      final projectEntry = buildAnicelProjectEntry(
         project: project,
         saveDirectory: saveDirectory,
         mediaInArchive: mediaToStore.keys.toSet(),
@@ -750,7 +753,7 @@ class AnicelFileService {
       final appended = appendAnicelEntries(
         path: filePath,
         newEntries: {
-          'project.json': projectJson,
+          projectEntry.name: projectEntry.bytes,
           for (final (_, name, blob) in blobs) name: blob.bytes,
         },
         removeNames: {...removeNames, ...staleMediaNames},
@@ -939,16 +942,14 @@ class AnicelFileService {
       final layout = writeAnicelArchiveFile(
         path: tempPath,
         entries: () sync* {
-          yield (
-            name: 'project.json',
-            bytes: buildAnicelProjectJsonBytes(
-              project: project,
-              saveDirectory: saveDirectory,
-              mediaInArchive: mediaToStore.keys.toSet(),
-              grants: grants,
-              mediaCrcs: mediaCrcs,
-            ),
+          final projectEntry = buildAnicelProjectEntry(
+            project: project,
+            saveDirectory: saveDirectory,
+            mediaInArchive: mediaToStore.keys.toSet(),
+            grants: grants,
+            mediaCrcs: mediaCrcs,
           );
+          yield (name: projectEntry.name, bytes: projectEntry.bytes);
           progress.step();
           for (final work in works) {
             // Resolved HERE rather than up front: the generator is pulled
@@ -1027,14 +1028,17 @@ class AnicelFileService {
         // tail and fails) — so opening is enough to heal on save.
         layout = recoverAnicelZipLayoutFile(filePath);
       }
-      final projectEntry = layout.entryNamed('project.json');
+      final projectEntry = layout.projectEntry();
       if (projectEntry == null) {
         throw const FormatException('Not an Anicel project (.anicel).');
       }
       final raf = File(filePath).openSync();
       try {
         raf.setPositionSync(projectEntry.dataOffset);
-        final projectJsonBytes = raf.readSync(projectEntry.length);
+        final projectJsonBytes = decodeAnicelProjectEntryBytes(
+          projectEntry.name,
+          raf.readSync(projectEntry.length),
+        );
         final cels = <BrushFrameKey, AnicelCelFileRef>{};
         for (final entry in layout.entries) {
           if (!entry.name.endsWith('.celz')) {
@@ -1202,9 +1206,13 @@ class AnicelFileService {
 
       Uint8List? overlayProjectJson;
       for (final entry in layout.entries) {
-        if (entry.name == 'project.json') {
+        if (entry.name == anicelProjectEntryNameCompressed ||
+            entry.name == anicelProjectEntryName) {
           raf.setPositionSync(entry.dataOffset);
-          overlayProjectJson = raf.readSync(entry.length);
+          overlayProjectJson = decodeAnicelProjectEntryBytes(
+            entry.name,
+            raf.readSync(entry.length),
+          );
           continue;
         }
         if (!entry.name.endsWith('.celz')) {

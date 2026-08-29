@@ -126,7 +126,7 @@ void main() {
 
     expect(replaces, 1);
     final layout = parseAnicelZipLayoutFile(path);
-    expect(layout.entryNamed('project.json'), isNotNull);
+    expect(layout.projectEntry(), isNotNull);
     expect(
       layout.entries.where((e) => e.name.endsWith('.celz')),
       isNotEmpty,

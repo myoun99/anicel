@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
     show anicelCrc32;
@@ -42,7 +43,12 @@ void main() {
       File(archivePath).readAsBytesSync(),
     );
     return jsonDecode(
-          utf8.decode(archive.findFile('project.json')!.readBytes()!),
+          utf8.decode(
+            decodeAnicelProjectEntryBytes(
+              anicelProjectEntryNameCompressed,
+              archive.findFile(anicelProjectEntryNameCompressed)!.readBytes()!,
+            ),
+          ),
         )
         as Map<String, dynamic>;
   }

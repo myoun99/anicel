@@ -14,6 +14,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/persistence/anicel_payload_codec.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 
 /// v2 cel blobs: a CODEC byte, so zstd can be written where the engine
@@ -178,7 +179,7 @@ void main() {
     );
     expect(
       blob.codec,
-      celCodecDeflate,
+      anicelCodecDeflate,
       reason: 'no engine means the floor, and the floor is dart:io zlib',
     );
     expect(blob.decode().tiles.single.pixels, patterned(7));
@@ -191,7 +192,7 @@ void main() {
     final blob = AnicelCelBlob.encode(
       AnicelCelEntry.fromSurface(key, surfaceWith(patterned(13))),
     );
-    expect(blob.codec, anyOf(celCodecDeflate, celCodecZstd));
+    expect(blob.codec, anyOf(anicelCodecDeflate, anicelCodecZstd));
     expect(blob.decode().tiles.single.pixels, patterned(13));
   });
 
@@ -223,7 +224,7 @@ void main() {
       ..add(ZLibEncoder().convert(body));
 
     final v1 = AnicelCelBlob(out.takeBytes());
-    expect(v1.codec, celCodecDeflate);
+    expect(v1.codec, anicelCodecDeflate);
     expect(v1.decode().tiles.single.pixels, pixels);
   });
 }
