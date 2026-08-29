@@ -4,7 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../debug/input_inspector.dart';
-import 'pen_friendly_scroll_controller.dart';
+import '../input/pen_friendly_scroll_controller.dart';
 
 /// PEN-9: a stylus approaching the timeline stops any COASTING scroll.
 ///

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import '../input/pen_friendly_scroll_controller.dart';
 import 'package:flutter/material.dart';
 
 import '../layout/device_grid.dart';
@@ -233,6 +234,24 @@ class EditorPanelTabs extends StatefulWidget {
 
 class _EditorPanelTabsState extends State<EditorPanelTabs> {
   /// Keep-alive tabs that have been activated at least once: they stay
+  /// 🚨★★★THE OVERFLOW SCROLLERS ARE PEN-FRIENDLY, for the dock's reason.
+  ///
+  /// A `ScrollPosition` ignore-pointers its viewport's CHILDREN for the life
+  /// of any scroll activity, and the children here are the panel itself. So
+  /// while one of these coasts, a pen or finger landing on the panel reaches
+  /// nothing and the press falls through to the canvas behind.
+  ///
+  /// ⚠️It is not the timesheet's problem, and that is the point: 유저
+  /// 2026-08-29 「어차피 같은상황에서 **타임라인을 옆 패널로 둬도 문제
+  /// 발생**했단얘기니까」. Whatever panel is squeezed gets it, so the fix
+  /// belongs to the thing that squeezes them.
+  ///
+  /// One per axis, kept for the state's life: they exist only while the
+  /// branch that mounts them does, and a controller with no clients is
+  /// inert.
+  final ScrollController _verticalOverflow = PenFriendlyScrollController();
+  final ScrollController _horizontalOverflow = PenFriendlyScrollController();
+
   /// mounted offstage so switching back is instant (R10-②).
   final Set<String> _builtTabIds = <String>{};
 
@@ -265,6 +284,8 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
 
   @override
   void dispose() {
+    _verticalOverflow.dispose();
+    _horizontalOverflow.dispose();
     _panelHovered.dispose();
     super.dispose();
   }
@@ -672,10 +693,14 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
           child: _bake(tab, Builder(builder: tab.builder)),
         );
         if (height > constraints.maxHeight) {
-          content = SingleChildScrollView(child: content);
+          content = SingleChildScrollView(
+            controller: _verticalOverflow,
+            child: content,
+          );
         }
         if (width > constraints.maxWidth) {
           content = SingleChildScrollView(
+            controller: _horizontalOverflow,
             scrollDirection: Axis.horizontal,
             child: content,
           );
@@ -940,9 +965,8 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
 
   /// Thick when there is something to grab, thin when it is only offering
   /// itself.
-  double get _bandExtent => _armed && (_dragging || _gripHovered)
-      ? GripBand.reach
-      : GripBand.rest;
+  double get _bandExtent =>
+      _armed && (_dragging || _gripHovered) ? GripBand.reach : GripBand.rest;
 
   /// The app's one grip ladder ([GripBand.ink]), and NOTHING ELSE (유저,
   /// R3 #9).

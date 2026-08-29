@@ -4,7 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../input/value_control_pointers.dart';
+import '../input/control_press_claim.dart';
 import '../input/wheel_law.dart';
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
@@ -549,24 +549,20 @@ class _FieldSliderState extends State<FieldSlider> {
       slider: true,
       label: widget.label,
       value: widget.valueText,
-      child: Listener(
-        // What is left here is the CLAIM and the wheel. The raw travel this
-        // used to track went with the workaround that read it.
-        //
-        // T11: this press is the slider's. Claimed HERE because hit-test
-        // dispatch runs deepest-first, so the claim is already standing by
-        // the time the row above is offered the same event and asks.
-        onPointerDown: (event) => claimPointerForValueControl(event.pointer),
-        onPointerUp: (event) => releasePointerForValueControl(event.pointer),
-        // Cancel too: a claim that outlives its gesture would silently
-        // deafen whichever later pan is handed the same id.
-        onPointerCancel: (event) =>
-            releasePointerForValueControl(event.pointer),
-        // H23: registered rather than handled, so the notch this bar takes
-        // is not also taken by the canvas layer above it.
-        onPointerSignal: (event) =>
-            handleWheelUnlessScrolling(event, context, _handleWheel),
-        child: bar,
+      // T11: this press is the slider's. The claim is [DragVerbClaim] now —
+      // the same four lines used to sit here, in the splitter and in the
+      // rail's swipe column, three copies of one law.
+      child: DragVerbClaim(
+        child: Listener(
+          // What is left here is the WHEEL. The raw travel this used to
+          // track went with the workaround that read it.
+          //
+          // H23: registered rather than handled, so the notch this bar takes
+          // is not also taken by the canvas layer above it.
+          onPointerSignal: (event) =>
+              handleWheelUnlessScrolling(event, context, _handleWheel),
+          child: bar,
+        ),
       ),
     );
   }

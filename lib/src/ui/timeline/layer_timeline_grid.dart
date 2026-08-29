@@ -72,7 +72,7 @@ import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_lane_rows.dart';
 import 'timeline_layer_controls_header.dart';
 import 'timeline_layer_frame_body_layout.dart';
-import 'pen_friendly_scroll_controller.dart';
+import '../input/pen_friendly_scroll_controller.dart';
 import 'stylus_glide_stop.dart';
 import 'timeline_zoom_anchor_policy.dart';
 import 'timeline_layer_controls_row.dart';
