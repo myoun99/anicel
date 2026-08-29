@@ -555,7 +555,6 @@ void main() {
           'some save must have compacted (shrunk) the file: $lengths — '
           'appends alone only ever grow it',
     );
-
     final result = await service.open(filePath: path);
     final store2 = BrushFrameStore()..restoreFromFile(result.cels);
     expect(

@@ -664,7 +664,12 @@ class AnicelFileService {
           try {
             raf.setPositionSync(targetProjectEntry.dataOffset);
             final decoded = jsonDecode(
-              utf8.decode(raf.readSync(targetProjectEntry.length)),
+              utf8.decode(
+                decodeAnicelProjectEntryBytes(
+                  targetProjectEntry.name,
+                  raf.readSync(targetProjectEntry.length),
+                ),
+              ),
             );
             final targetProject = decoded is Map ? decoded['project'] : null;
             targetId = targetProject is Map ? targetProject['id'] : null;
