@@ -569,46 +569,68 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
   /// What this rail can toggle, handed to the ONE construction every rail
   /// shares ([railSwipeColumns]). Which columns exist and where their bands
-  /// fall is not decided here any more — 유저 2026-08-29: 「버튼이면 다
-  /// 가능하도록」 · 「로직적으로 다른규칙 두지말고 통일」.
-  List<RailToggleColumn<Layer>> _swipeColumns() {
+  /// fall is not decided here — 유저 2026-08-29: 「버튼이면 다 가능하도록」·
+  /// 「로직적으로 다른규칙 두지말고 통일」.
+  ///
+  /// 🚨THE SUBJECT IS THE ROW, NOT ITS LAYER, because this rail stacks two
+  /// kinds and they do not share one. A layer row's fx switch is the
+  /// LAYER's; a lane row's is that LANE GROUP's. Every other column belongs
+  /// to layer rows only and answers null on a lane, which is already what
+  /// [RailToggleColumn.valueOf]'s null means.
+  List<RailToggleColumn<TimelineDisplayRow>> _swipeColumns() {
     final onToggleFx = widget.onToggleLayerFx;
     final fxStateOf = widget.layerFxStateOf;
     final onToggleOnion = widget.onToggleLayerOnionSkin;
     final onionOf = widget.layerOnionSkinEnabledOf;
     final onToggleLanes = widget.onToggleLayerLanes;
+    final onToggleLaneGroup = widget.onToggleLaneGroupEnabled;
 
-    return railSwipeColumns<Layer>(
-      crossExtent: _metrics.layerControlsWidth - _metrics.sectionLabelGutterWidth,
+    return railSwipeColumns<TimelineDisplayRow>(
+      crossExtent:
+          _metrics.layerControlsWidth - _metrics.sectionLabelGutterWidth,
       leadingOrigin: timelineLayerRowLeadingBorder,
       hasOnionColumn: onToggleOnion != null,
       hasBlendColumn: widget.onLayerBlendModeSelected != null,
       visibility: (
-        valueOf: layerRailEyeIsOn,
-        toggle: (layer) => widget.onToggleLayerVisibility(layer.id),
+        valueOf: (row) => row.isLane ? null : layerRailEyeIsOn(row.layer),
+        toggle: (row) => widget.onToggleLayerVisibility(row.layer.id),
       ),
       onion: onToggleOnion == null || onionOf == null
           ? null
           : (
               // Only brush-holding rows carry the button (the row builder's
               // rule), and a swipe paints what a tap could.
-              valueOf: (layer) => layerKindAcceptsBrushInput(layer.kind)
-                  ? onionOf(layer.id)
+              valueOf: (row) =>
+                  !row.isLane && layerKindAcceptsBrushInput(row.layer.kind)
+                  ? onionOf(row.layer.id)
                   : null,
-              toggle: (layer) => onToggleOnion(layer.id),
+              toggle: (row) => onToggleOnion(row.layer.id),
             ),
-      fx: onToggleFx == null || fxStateOf == null
-          ? null
-          : (
-              // The fx column is TRI-state; a swipe paints the one thing a
-              // tap paints — on, or not on — and the "only rows that
-              // disagree" rule in [RailColumnSwipe] is what keeps the third
-              // state out of its way.
-              valueOf: (layer) => layerKindShowsFxToggle(layer.kind)
-                  ? fxStateOf(layer.id) == LayerFxState.on
-                  : null,
-              toggle: (layer) => onToggleFx(layer.id),
-            ),
+      fx: (
+        // 🚨THE COLUMN WITH TWO VERBS. A layer row's fx is tri-state and the
+        // swipe paints the one thing a tap paints — on, or not on. A LANE
+        // row's is its group's own bypass switch, in the same column and
+        // painted by the same sweep (유저: 「버튼이면 다 가능하도록」).
+        valueOf: (row) {
+          final lane = row.lane;
+          if (lane != null) {
+            return onToggleLaneGroup == null ? null : lane.groupEnabled;
+          }
+          return onToggleFx == null ||
+                  fxStateOf == null ||
+                  !layerKindShowsFxToggle(row.layer.kind)
+              ? null
+              : fxStateOf(row.layer.id) == LayerFxState.on;
+        },
+        toggle: (row) {
+          final lane = row.lane;
+          if (lane != null) {
+            onToggleLaneGroup?.call(row.layer, lane);
+            return;
+          }
+          onToggleFx?.call(row.layer.id);
+        },
+      ),
       // 🚨I-1 (유저 2026-08-24): 「**타임시트버튼이든 뭐 그런것들**」 — the
       // report named this column, and it is the one the geometry was first
       // written for.
@@ -616,12 +638,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       // An ATTACH row is null rather than false: its sheet slot holds the
       // placement arrow (R10 R3), so there is no toggle under the swipe.
       timesheet: (
-        valueOf: (layer) =>
-            layerKindEligibleForTimesheetToggle(layer.kind) &&
-                layer.attachedToLayerId == null
-            ? layer.onTimesheet
+        valueOf: (row) =>
+            !row.isLane &&
+                layerKindEligibleForTimesheetToggle(row.layer.kind) &&
+                row.layer.attachedToLayerId == null
+            ? row.layer.onTimesheet
             : null,
-        toggle: (layer) => widget.onToggleLayerTimesheet(layer.id),
+        toggle: (row) => widget.onToggleLayerTimesheet(row.layer.id),
       ),
       laneToggle: onToggleLanes == null
           ? null
@@ -629,20 +652,32 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
               // A row with no lanes draws no twirl — and its cell is what
               // the nesting indent pushes, so this is also the column most
               // likely to be crossed at two different depths in one drag.
-              valueOf: (layer) => _lanesFor(layer).isEmpty
+              valueOf: (row) => row.isLane || _lanesFor(row.layer).isEmpty
                   ? null
-                  : widget.expandedLaneLayerIds.contains(layer.id),
-              toggle: (layer) => onToggleLanes(layer.id),
+                  : widget.expandedLaneLayerIds.contains(row.layer.id),
+              toggle: (row) => onToggleLanes(row.layer.id),
             ),
     );
   }
 
-  /// Resolves a rail-local vertical position to a LAYER row (lane rows and
-  /// spacer gaps return null), given the window slice currently built.
+  /// Resolves a rail-local vertical position to the row there — LANE ROWS
+  /// INCLUDED. Spacer gaps and positions past the window return null.
   ///
   /// The ROW rather than its layer, because a swipe needs its DEPTH: the
   /// leading columns sit after the folder indent, so their x is a function
   /// of the row (I-1).
+  ///
+  /// 🚨IT USED TO EXCLUDE LANE ROWS, and that rule had a source and an
+  /// expiry. `git log -S` puts it in c07cfa40 (#509), when the sweep was
+  /// THE EYE AND NOTHING ELSE — lane rows carry no eye, so skipping them
+  /// was right. The sweep later widened to columns (I-1) and lane rows grew
+  /// an fx toggle of their own, and the exclusion outlived its reason: a
+  /// sweep down the fx column stepped over every lane row it crossed while
+  /// the code's own rule said only rows with NO control in a column are
+  /// skipped. 유저 2026-08-29: 「버튼이면 다 가능하도록」.
+  ///
+  /// ⚠️The uniform division holds for lane rows too — measured, both are
+  /// 28.0 tall and meet with no gap.
   TimelineDisplayRow? _rowAtRailY(
     double localY,
     List<TimelineDisplayRow> windowRows,
@@ -653,8 +688,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     if (indexInWindow < 0 || indexInWindow >= windowRows.length) {
       return null;
     }
-    final row = windowRows[indexInWindow];
-    return row.isLane ? null : row;
+    return windowRows[indexInWindow];
   }
 
   @override
@@ -2439,212 +2473,215 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                               // leading slot, the zone overlay
                                                               // paints the old gutter bracket
                                                               // over it.
-                                                              child: RailColumnSwipe<Layer>(
-                                                                axis: Axis.vertical,
-                                                                columns:
-                                                                    swipeColumns,
-                                                                rowAt: (localY) {
-                                                                  final row =
-                                                                      _rowAtRailY(
+                                                              child:
+                                                                  RailColumnSwipe<
+                                                                    TimelineDisplayRow
+                                                                  >(
+                                                                    axis: Axis
+                                                                        .vertical,
+                                                                    columns:
+                                                                        swipeColumns,
+                                                                    rowAt: (localY) {
+                                                                      final row = _rowAtRailY(
                                                                         localY,
                                                                         windowRows,
                                                                         leadingRowSpacerHeight,
                                                                       );
-                                                                  return row ==
-                                                                          null
-                                                                      ? null
-                                                                      : (
-                                                                          row: row
-                                                                              .layer,
-                                                                          depth:
-                                                                              row.depth,
-                                                                          id: row
-                                                                              .layer
-                                                                              .id,
-                                                                        );
-                                                                },
-                                                                child: Stack(
-                                                                  children: [
-                                                                    Column(
-                                                                      crossAxisAlignment:
-                                                                          CrossAxisAlignment
-                                                                              .start,
+                                                                      return row ==
+                                                                              null
+                                                                          ? null
+                                                                          : (
+                                                                              row: row,
+                                                                              depth: row.depth,
+                                                                              // A lane row and its
+                                                                              // owner share a layer,
+                                                                              // so the sweep dedupes
+                                                                              // by BOTH.
+                                                                              id:
+                                                                                  '${row.layer.id.value}'
+                                                                                  '/${row.lane?.laneId ?? ''}',
+                                                                            );
+                                                                    },
+                                                                    child: Stack(
                                                                       children: [
-                                                                        // The rail is windowed
-                                                                        // with the same
-                                                                        // layer-axis slice as the
-                                                                        // frame rows; keys keep
-                                                                        // row state glued to its
-                                                                        // layer through window
-                                                                        // shifts.
-                                                                        // A5: a
-                                                                        // pinned
-                                                                        // (held)
-                                                                        // row is
-                                                                        // carved
-                                                                        // out of
-                                                                        // its
-                                                                        // spacer —
-                                                                        // total
-                                                                        // extent is
-                                                                        // unchanged.
-                                                                        if (pinnedBefore) ...[
-                                                                          if (pinnedIndex >
-                                                                              0)
-                                                                            SizedBox(
-                                                                              height:
-                                                                                  pinnedIndex *
-                                                                                  _metrics.layerRowHeight,
-                                                                            ),
-                                                                          KeyedSubtree(
-                                                                            key: _railRowKey(
-                                                                              rows[pinnedIndex],
-                                                                            ),
-                                                                            child: _railRowMemoized(
-                                                                              rows[pinnedIndex],
-                                                                            ),
-                                                                          ),
-                                                                          if (rowWindow.startIndex -
-                                                                                  pinnedIndex -
-                                                                                  1 >
-                                                                              0)
-                                                                            SizedBox(
-                                                                              height:
-                                                                                  (rowWindow.startIndex -
-                                                                                      pinnedIndex -
-                                                                                      1) *
-                                                                                  _metrics.layerRowHeight,
-                                                                            ),
-                                                                        ] else if (leadingRowSpacerHeight >
-                                                                            0)
-                                                                          SizedBox(
-                                                                            height:
-                                                                                leadingRowSpacerHeight,
-                                                                          ),
-                                                                        for (final row
-                                                                            in windowRows)
-                                                                          KeyedSubtree(
-                                                                            key: _railRowKey(
-                                                                              row,
-                                                                            ),
-                                                                            child: _railRowMemoized(
-                                                                              row,
-                                                                            ),
-                                                                          ),
-                                                                        if (pinnedAfter) ...[
-                                                                          if (pinnedIndex -
-                                                                                  rowWindow.endIndexExclusive >
-                                                                              0)
-                                                                            SizedBox(
-                                                                              height:
-                                                                                  (pinnedIndex -
-                                                                                      rowWindow.endIndexExclusive) *
-                                                                                  _metrics.layerRowHeight,
-                                                                            ),
-                                                                          KeyedSubtree(
-                                                                            key: _railRowKey(
-                                                                              rows[pinnedIndex],
-                                                                            ),
-                                                                            child: _railRowMemoized(
-                                                                              rows[pinnedIndex],
-                                                                            ),
-                                                                          ),
-                                                                          if (rows.length -
-                                                                                  pinnedIndex -
-                                                                                  1 >
-                                                                              0)
-                                                                            SizedBox(
-                                                                              height:
-                                                                                  (rows.length -
-                                                                                      pinnedIndex -
-                                                                                      1) *
-                                                                                  _metrics.layerRowHeight,
-                                                                            ),
-                                                                        ] else if (trailingRowSpacerHeight >
-                                                                            0)
-                                                                          SizedBox(
-                                                                            height:
-                                                                                trailingRowSpacerHeight,
-                                                                          ),
-                                                                        if (widget
-                                                                            .layers
-                                                                            .isEmpty)
-                                                                          SizedBox(
-                                                                            width:
-                                                                                _metrics.layerControlsWidth -
-                                                                                _metrics.sectionLabelGutterWidth,
-                                                                            height:
-                                                                                _metrics.layerRowHeight,
-                                                                            child: Padding(
-                                                                              padding: const EdgeInsets.all(
-                                                                                8,
-                                                                              ),
-                                                                              child: Text(
-                                                                                'No layers',
-                                                                                style: TextStyle(
-                                                                                  color: colorScheme.onSurfaceVariant,
+                                                                        Column(
+                                                                          crossAxisAlignment:
+                                                                              CrossAxisAlignment.start,
+                                                                          children: [
+                                                                            // The rail is windowed
+                                                                            // with the same
+                                                                            // layer-axis slice as the
+                                                                            // frame rows; keys keep
+                                                                            // row state glued to its
+                                                                            // layer through window
+                                                                            // shifts.
+                                                                            // A5: a
+                                                                            // pinned
+                                                                            // (held)
+                                                                            // row is
+                                                                            // carved
+                                                                            // out of
+                                                                            // its
+                                                                            // spacer —
+                                                                            // total
+                                                                            // extent is
+                                                                            // unchanged.
+                                                                            if (pinnedBefore) ...[
+                                                                              if (pinnedIndex >
+                                                                                  0)
+                                                                                SizedBox(
+                                                                                  height:
+                                                                                      pinnedIndex *
+                                                                                      _metrics.layerRowHeight,
+                                                                                ),
+                                                                              KeyedSubtree(
+                                                                                key: _railRowKey(
+                                                                                  rows[pinnedIndex],
+                                                                                ),
+                                                                                child: _railRowMemoized(
+                                                                                  rows[pinnedIndex],
                                                                                 ),
                                                                               ),
-                                                                            ),
-                                                                          ),
-                                                                      ],
-                                                                    ),
-                                                                    // The section ZONES over the
-                                                                    // rows' reserved band slots
-                                                                    // (UI-R7 #2): the old gutter
-                                                                    // bracket inside the rows.
-                                                                    // Full rows, not the window
-                                                                    // (A3) — labels anchor to the
-                                                                    // section's true extent.
-                                                                    Positioned(
-                                                                      left: 0,
-                                                                      top: 0,
-                                                                      child:
-                                                                          _sectionBandOverlay(
+                                                                              if (rowWindow.startIndex -
+                                                                                      pinnedIndex -
+                                                                                      1 >
+                                                                                  0)
+                                                                                SizedBox(
+                                                                                  height:
+                                                                                      (rowWindow.startIndex -
+                                                                                          pinnedIndex -
+                                                                                          1) *
+                                                                                      _metrics.layerRowHeight,
+                                                                                ),
+                                                                            ] else if (leadingRowSpacerHeight >
+                                                                                0)
+                                                                              SizedBox(
+                                                                                height: leadingRowSpacerHeight,
+                                                                              ),
+                                                                            for (final row
+                                                                                in windowRows)
+                                                                              KeyedSubtree(
+                                                                                key: _railRowKey(
+                                                                                  row,
+                                                                                ),
+                                                                                child: _railRowMemoized(
+                                                                                  row,
+                                                                                ),
+                                                                              ),
+                                                                            if (pinnedAfter) ...[
+                                                                              if (pinnedIndex -
+                                                                                      rowWindow.endIndexExclusive >
+                                                                                  0)
+                                                                                SizedBox(
+                                                                                  height:
+                                                                                      (pinnedIndex -
+                                                                                          rowWindow.endIndexExclusive) *
+                                                                                      _metrics.layerRowHeight,
+                                                                                ),
+                                                                              KeyedSubtree(
+                                                                                key: _railRowKey(
+                                                                                  rows[pinnedIndex],
+                                                                                ),
+                                                                                child: _railRowMemoized(
+                                                                                  rows[pinnedIndex],
+                                                                                ),
+                                                                              ),
+                                                                              if (rows.length -
+                                                                                      pinnedIndex -
+                                                                                      1 >
+                                                                                  0)
+                                                                                SizedBox(
+                                                                                  height:
+                                                                                      (rows.length -
+                                                                                          pinnedIndex -
+                                                                                          1) *
+                                                                                      _metrics.layerRowHeight,
+                                                                                ),
+                                                                            ] else if (trailingRowSpacerHeight >
+                                                                                0)
+                                                                              SizedBox(
+                                                                                height: trailingRowSpacerHeight,
+                                                                              ),
+                                                                            if (widget.layers.isEmpty)
+                                                                              SizedBox(
+                                                                                width:
+                                                                                    _metrics.layerControlsWidth -
+                                                                                    _metrics.sectionLabelGutterWidth,
+                                                                                height: _metrics.layerRowHeight,
+                                                                                child: Padding(
+                                                                                  padding: const EdgeInsets.all(
+                                                                                    8,
+                                                                                  ),
+                                                                                  child: Text(
+                                                                                    'No layers',
+                                                                                    style: TextStyle(
+                                                                                      color: colorScheme.onSurfaceVariant,
+                                                                                    ),
+                                                                                  ),
+                                                                                ),
+                                                                              ),
+                                                                          ],
+                                                                        ),
+                                                                        // The section ZONES over the
+                                                                        // rows' reserved band slots
+                                                                        // (UI-R7 #2): the old gutter
+                                                                        // bracket inside the rows.
+                                                                        // Full rows, not the window
+                                                                        // (A3) — labels anchor to the
+                                                                        // section's true extent.
+                                                                        Positioned(
+                                                                          left:
+                                                                              0,
+                                                                          top:
+                                                                              0,
+                                                                          child: _sectionBandOverlay(
                                                                             rows,
                                                                           ),
+                                                                        ),
+                                                                        // T1's one band
+                                                                        // per contiguous
+                                                                        // run — but only
+                                                                        // over the LAYER
+                                                                        // area (A2
+                                                                        // 2026-08-17
+                                                                        // reversed T1's
+                                                                        // full-width
+                                                                        // call): the
+                                                                        // section zone
+                                                                        // is the
+                                                                        // sections' own
+                                                                        // plate, not
+                                                                        // part of the
+                                                                        // selection.
+                                                                        Positioned(
+                                                                          left:
+                                                                              layerSectionLabelSlotWidth,
+                                                                          top:
+                                                                              0,
+                                                                          right:
+                                                                              0,
+                                                                          bottom:
+                                                                              0,
+                                                                          child: TimelineRowSelectionBands(
+                                                                            selectedFlags: [
+                                                                              for (final row
+                                                                                  in windowRows)
+                                                                                widget.selectedRows.contains(
+                                                                                  row.address,
+                                                                                ),
+                                                                            ],
+                                                                            rowExtent:
+                                                                                _metrics.layerRowHeight,
+                                                                            leadingSpacer:
+                                                                                leadingRowSpacerHeight,
+                                                                            crossExtent:
+                                                                                _metrics.layerControlsWidth -
+                                                                                layerSectionLabelSlotWidth,
+                                                                          ),
+                                                                        ),
+                                                                      ],
                                                                     ),
-                                                                    // T1's one band
-                                                                    // per contiguous
-                                                                    // run — but only
-                                                                    // over the LAYER
-                                                                    // area (A2
-                                                                    // 2026-08-17
-                                                                    // reversed T1's
-                                                                    // full-width
-                                                                    // call): the
-                                                                    // section zone
-                                                                    // is the
-                                                                    // sections' own
-                                                                    // plate, not
-                                                                    // part of the
-                                                                    // selection.
-                                                                    Positioned(
-                                                                      left:
-                                                                          layerSectionLabelSlotWidth,
-                                                                      top: 0,
-                                                                      right: 0,
-                                                                      bottom: 0,
-                                                                      child: TimelineRowSelectionBands(
-                                                                        selectedFlags: [
-                                                                          for (final row
-                                                                              in windowRows)
-                                                                            widget.selectedRows.contains(
-                                                                              row.address,
-                                                                            ),
-                                                                        ],
-                                                                        rowExtent:
-                                                                            _metrics.layerRowHeight,
-                                                                        leadingSpacer:
-                                                                            leadingRowSpacerHeight,
-                                                                        crossExtent:
-                                                                            _metrics.layerControlsWidth -
-                                                                            layerSectionLabelSlotWidth,
-                                                                      ),
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                              ),
+                                                                  ),
                                                             ),
                                                           ),
                                                         ),
