@@ -85,6 +85,7 @@ import 'conte/conte_tab_host.dart';
 import '../models/envelope/cut_envelope_presets.dart';
 import 'envelope/cut_envelope_ink.dart';
 import 'envelope/cut_envelope_tab_host.dart';
+import 'envelope/envelope_image_cache.dart';
 import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_cut_blocks_painter.dart' show storyboardCutBlocksPainterFor;
 import 'storyboard_panel.dart' show StoryboardPanel, StoryboardTrackLabelRow;
@@ -1250,6 +1251,19 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   final ValueNotifier<CanvasViewport?> _envelopeViewport = ValueNotifier(null);
   final ValueNotifier<bool> _envelopeInkEnabled = ValueNotifier(false);
 
+  /// The logo and 도장 the envelope prints, decoded once each.
+  ///
+  /// A repaint is all a landed decode needs, and the envelope tab is the
+  /// only thing that reads it — but the cache lives HERE because that tab is
+  /// rebuilt on every panel switch and would drop its images each time.
+  late final EnvelopeImageCache _envelopeImages = EnvelopeImageCache(
+    onLoaded: () {
+      if (mounted) {
+        setState(() {});
+      }
+    },
+  );
+
   /// Which bundled 봉투 form the panel prints. Session-scoped for now: the
   /// project-level choice arrives with the form editor, and until there is
   /// a place to store one, remembering it here beats hard-coding it.
@@ -2105,6 +2119,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     _conteInk.dispose();
     _envelopeViewport.dispose();
     _envelopeInkEnabled.dispose();
+    _envelopeImages.dispose();
     _envelopeFormId.dispose();
     _envelopeInk.dispose();
     widget.session.removeListener(_syncViewersWithProject);
@@ -3012,9 +3027,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
               onInkEnabledChanged: (enabled) {
                 _envelopeInkEnabled.value = enabled;
               },
-              // imageFor stays unwired until the 작품 정보 round: nothing
-              // sets a logo or a 도장 path yet, so there is no image to
-              // resolve — and a resolver with no source is dead code.
+              // 🚨WIRED NOW. The comment that stood here said this waited on
+              // the 작품 정보 round because nothing set a logo or a 도장 path
+              // yet, so a resolver had no source. The stamp picker in the
+              // sheet-info window is that source.
+              imageFor: _envelopeImages.imageFor,
             ),
           ),
         );

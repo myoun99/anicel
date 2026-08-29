@@ -58,7 +58,9 @@ void main() {
     TimesheetInfo? after;
     await _openDialog(tester, before, (r) => after = r);
 
-    final save = find.byKey(const ValueKey<String>('timesheet-info-save-button'));
+    final save = find.byKey(
+      const ValueKey<String>('timesheet-info-save-button'),
+    );
     await tester.ensureVisible(save);
     await tester.pumpAndSettle();
     await tester.tap(save);
@@ -103,7 +105,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(keyRow, '김원화');
 
-    final save = find.byKey(const ValueKey<String>('timesheet-info-save-button'));
+    final save = find.byKey(
+      const ValueKey<String>('timesheet-info-save-button'),
+    );
     await tester.ensureVisible(save);
     await tester.pumpAndSettle();
     await tester.tap(save);
@@ -190,6 +194,90 @@ void main() {
     expect(
       second!.exposureBarThreshold,
       TimesheetInfo.defaultExposureBarThreshold,
+    );
+  });
+
+  testWidgets('🚨every process row reserves a STAMP slot, set or not', (
+    tester,
+  ) async {
+    // 「담당자 = 이름 + 도장 이미지 한 세트」 (cut-envelope 정본 §7). The
+    // model and the envelope binding were both already there; the app had
+    // nowhere to CHOOSE one.
+    //
+    // ⛔The slot is reserved on every row, including the empty ones — a cell
+    // that appeared only once a file was chosen would be UI popping into
+    // existence and the row would jump the first time anyone used it.
+    await _openDialog(tester, const TimesheetInfo(), (_) {});
+    for (final process in LayerProcess.values) {
+      final cell = find.byKey(
+        ValueKey<String>('timesheet-stamp-${process.jsonValue}'),
+      );
+      await tester.ensureVisible(cell);
+      expect(
+        cell,
+        findsOneWidget,
+        reason: '${process.jsonValue} has nowhere to put its stamp',
+      );
+    }
+  });
+
+  testWidgets('the stamp menu can REMOVE one, and the name survives it', (
+    tester,
+  ) async {
+    // Picking opens the OS file picker, which a widget test cannot drive.
+    // Removing is the half that is entirely ours, and it is also the half a
+    // "cancelled picker clears the stamp" bug would show up in.
+    const role = 'key';
+    TimesheetInfo? saved;
+    await _openDialog(
+      tester,
+      const TimesheetInfo(
+        staff: {
+          role: ProductionStaff(name: '아무개', stampAssetPath: 'C:/a/seal.png'),
+        },
+      ),
+      (result) => saved = result,
+    );
+
+    await _tapSetting(tester, 'timesheet-stamp-$role');
+    await _tapSetting(tester, 'timesheet-stamp-clear-$role');
+    await _tapSetting(tester, 'timesheet-info-save-button');
+
+    expect(saved, isNotNull, reason: 'the window has to have saved');
+    expect(
+      saved!.staffFor(role).stampAssetPath,
+      isNull,
+      reason: 'Remove has to actually remove it',
+    );
+    expect(
+      saved!.staffFor(role).name,
+      '아무개',
+      reason:
+          'and take only the stamp with it — the two halves of a staff row '
+          'are edited independently',
+    );
+  });
+
+  testWidgets('⛔a role with ONLY a stamp is still a role', (tester) async {
+    // The submit used to keep a role when its NAME was non-empty, with the
+    // stamp riding along from the old value. Once the stamp is editable
+    // here, a stamp with no name is an answer the user typed and dropping
+    // it would lose it silently.
+    const role = 'inbetween';
+    TimesheetInfo? saved;
+    await _openDialog(
+      tester,
+      const TimesheetInfo(
+        staff: {role: ProductionStaff(stampAssetPath: 'C:/a/seal.png')},
+      ),
+      (result) => saved = result,
+    );
+    await _tapSetting(tester, 'timesheet-info-save-button');
+
+    expect(
+      saved!.staffFor(role).stampAssetPath,
+      'C:/a/seal.png',
+      reason: 'a nameless stamp is not an empty row',
     );
   });
 }
