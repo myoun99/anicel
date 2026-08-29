@@ -9385,6 +9385,44 @@ class EditorSessionManager extends ChangeNotifier {
     };
   }
 
+  /// 🚨★★★I-9: whether the ACTIVE CELL already holds something.
+  ///
+  /// 유저 확정 2026-08-29 (I-9-Q2 = `all-kinds`): 「빈 칸 더블클릭 = 만들기」
+  /// on EVERY row kind, each through the create verb it already has. So one
+  /// gesture carries two meanings, and this is the fork: an empty cell
+  /// CREATES ([createActiveInstance]), a filled one OPENS its editor.
+  ///
+  /// ⚠️Deliberately NOT [canCreateInstance] and not `!canCreate…`. Those
+  /// ask 「is there room to make one」, which on a drawing row is true on a
+  /// FILLED cell too (an exposure can always be cut). This asks the only
+  /// question the fork needs: 「is something here」.
+  ///
+  /// The switch is exhaustive on purpose — a new [LayerKind] stops the
+  /// compiler here rather than silently landing in a default arm, which is
+  /// the guard that keeps this and [createActiveInstance] from drifting.
+  bool get activeCellHoldsAnInstance {
+    final layer = activeLayer;
+    if (layer == null || !hasActiveNonNegativeCell) {
+      // No cell at all is not an empty cell: there is nowhere to create.
+      return true;
+    }
+    final frameIndex = _timelineController.currentFrameIndex;
+    return switch (layer.kind) {
+      LayerKind.camera =>
+        activeCutOrNull?.camera.keyframeAt(frameIndex) != null,
+      LayerKind.instruction => instructionSpanAt(layer.id, frameIndex) != null,
+      // ⛔Read-only inside a cut and nothing to author on a row that holds
+      // no cel of its own: reporting FULL keeps the fork from offering a
+      // creation their own verbs already refuse.
+      LayerKind.transition || LayerKind.folder || LayerKind.adjustment => true,
+      LayerKind.se ||
+      LayerKind.animation ||
+      LayerKind.storyboard ||
+      LayerKind.image ||
+      LayerKind.text => selectedFrame != null,
+    };
+  }
+
   /// The SELECTION rungs of [canCreateInstance], alone — the panel-shared
   /// half (B8). [createInstancesForSelection] is their dispatch, rung for
   /// rung; the storyboard's toolbar context reads THIS and then asks its
