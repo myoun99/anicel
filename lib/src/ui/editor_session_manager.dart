@@ -7009,7 +7009,7 @@ class EditorSessionManager extends ChangeNotifier {
     return effectivePath;
   }
 
-  /// The media browser's import: same carry-or-reference choice as a
+  /// The media pool's import: same carry-or-reference choice as a
   /// timeline import, pool only (no clip link). Non-audio kinds register
   /// with their detected kind (R3b) — the batch stays one undo through
   /// [addMediaAssets].
@@ -8769,7 +8769,7 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// RELINK-2: the batch form — the media browser's "find them all under
+  /// RELINK-2: the batch form — the media pool's "find them all under
   /// this folder" pass, in one undo step.
   ///
   /// Conforms are invalidated for every destination for the same reason the
@@ -8795,7 +8795,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// RELINK-2: pool paths that were not on disk as of the last refresh.
   ///
-  /// CACHED rather than probed per row. The media browser used to call
+  /// CACHED rather than probed per row. The media pool used to call
   /// `File.existsSync()` while building every row, and the loss banner
   /// would have multiplied that — a banner has to count the WHOLE pool, so
   /// one repaint became one disk hit per asset.
@@ -8867,7 +8867,7 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// Marks the [path] asset as one the project CARRIES — the per-asset
-  /// promotion out of the media browser, and the answer to what a
+  /// promotion out of the media pool, and the answer to what a
   /// REFERENCE does when the user decides they want the project to own it
   /// after all.
   ///
@@ -17469,7 +17469,7 @@ class EditorSessionManager extends ChangeNotifier {
   ///
   /// 🚨★★★**THE SIZE SHOWN IS THE SIZE TAKEN** (유저 2026-08-30: 「파일이
   /// 보여주는 크기는 압축된 크기를 보여주는게 맞겟지? … 아무튼 실제크기」).
-  /// The media browser used to read `identity.lengthBytes` — the length
+  /// The media pool used to read `identity.lengthBytes` — the length
   /// the file had when it was REGISTERED — which after compression is a
   /// number matching nothing: not the disk, not the project file, not the
   /// staged copy.
@@ -18059,7 +18059,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// read them anyway.
   ///
   /// 🔑 Deliberately NOT an edit: no command, no undo entry, no dirty
-  /// flag, no notify. Flipping through the media browser must not make the
+  /// flag, no notify. Flipping through the media pool must not make the
   /// project look unsaved. The price is that a fingerprint learned in a
   /// session that never saves is forgotten, which is the right way round —
   /// it is a cache of something re-derivable, and the file it describes is

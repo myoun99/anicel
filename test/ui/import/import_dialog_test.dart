@@ -201,7 +201,7 @@ void main() {
     );
   });
 
-  /// The media browser's ＋ became a destination in this window rather
+  /// The media pool's ＋ became a destination in this window rather
   /// than a picker of its own, which is what makes the two import
   /// entrances one. The browser accepted movies and the window refused
   /// them; now the window does both, and which one it does is the

@@ -113,7 +113,7 @@ void main() {
       // hand-placed PanelScrollbars from being doubled by switching
       // scrollbars off for their child — but the child is the whole scroll
       // CONTENT and a ScrollConfiguration is inherited, so every scrollable
-      // NESTED inside went silent too. The media browser's asset list lost
+      // NESTED inside went silent too. The media pool's asset list lost
       // its bar the moment the panel was narrow enough to need the
       // horizontal escape valve above it.
       await tester.pumpWidget(

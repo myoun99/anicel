@@ -47,7 +47,7 @@ class ImportDialog extends StatefulWidget {
   /// Sources handed in by drag-and-drop (files or one folder).
   final List<String> initialPaths;
 
-  /// Opened from the media browser, whose job is to REGISTER a file for
+  /// Opened from the media pool, whose job is to REGISTER a file for
   /// later rather than place it now — so the destination starts on the
   /// pool. Only the starting point differs: the other destinations are
   /// still there, which is what makes this one window instead of two.
@@ -221,7 +221,7 @@ class _ImportDialogState extends State<ImportDialog> {
       grants = await pickFileGrantsForUser(
         context,
         // The POOL group, not the placeable one: this window is the
-        // media browser's entrance now, and the browser registers
+        // media pool's entrance now, and the browser registers
         // movies it cannot yet place. A movie picked while a placing
         // destination is selected is refused BY NAME in the table
         // below — which is the honest version of a picker that simply
@@ -692,7 +692,7 @@ class _ImportDialogState extends State<ImportDialog> {
   /// The one batch-wide answer, and the only one that changes what the
   /// other questions mean — so it sits above them rather than among them.
   ///
-  /// Opened from the media browser it is pinned to the pool: registering
+  /// Opened from the media pool it is pinned to the pool: registering
   /// for later is what that panel is for, and a disabled chip says the
   /// other door exists rather than hiding it.
   Widget _placeStrip(BuildContext context) {
@@ -718,7 +718,7 @@ class _ImportDialogState extends State<ImportDialog> {
           const SizedBox(width: 4),
           Tooltip(
             message: widget.poolOnly
-                ? 'The media browser registers; place from the timeline.'
+                ? 'The media pool registers; place from the timeline.'
                 : '',
             child: ExportChip(
               key: const ValueKey<String>('import-place-timeline'),
@@ -1058,7 +1058,7 @@ class _ImportDialogState extends State<ImportDialog> {
       for (final path in _files) {
         final kind = mediaAssetKindForPath(path);
         // Only a PLACEMENT can be refused for its kind. Registering a
-        // movie in the pool is exactly what the media browser has always
+        // movie in the pool is exactly what the media pool has always
         // done, so pool-bound rows read as ordinary ones.
         final unplaceable =
             kind != null &&
@@ -1220,7 +1220,7 @@ class _ImportDialogState extends State<ImportDialog> {
           // that describes what Keep inside DOES is where it belongs.
           //
           // 🚨It also answers a question the size column would otherwise
-          // raise: the media browser shows what an asset OCCUPIES, which
+          // raise: the media pool shows what an asset OCCUPIES, which
           // after carrying is smaller than the file that was imported.
           Text(
             _copyIntoProject
@@ -1240,7 +1240,7 @@ class _ImportDialogState extends State<ImportDialog> {
               child: Wrap(
                 spacing: 4,
                 children: [
-                  // The media browser's own entrance, promoted into the
+                  // The media pool's own entrance, promoted into the
                   // window that every other import already came through.
                   // It is a destination like the others because from here
                   // the user can change their mind — which is the whole
@@ -1294,7 +1294,7 @@ class _ImportDialogState extends State<ImportDialog> {
                     // Files row's question now, and this one answers its
                     // own.
                     : 'Places a layer that reads the file, and registers it '
-                          'in the media browser.',
+                          'in the media pool.',
                 style: Theme.of(context).textTheme.labelSmall!.copyWith(
                   color: Theme.of(context).colorScheme.outline,
                 ),

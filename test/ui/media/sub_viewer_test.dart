@@ -79,11 +79,10 @@ Future<void> _openRail(WidgetTester tester, int slot) async {
   await tester.pumpAndSettle();
 }
 
-/// The media browser lives on right rail 3, the sub viewer on right rail
+/// The media pool lives on right rail 3, the sub viewer on right rail
 /// 5 — both ship closed (유저 확정 ⑥).
-Future<void> _openMediaBrowser(WidgetTester tester) => _openRail(tester, 3);
+Future<void> _openMediaPool(WidgetTester tester) => _openRail(tester, 3);
 Future<void> _openSubViewer(WidgetTester tester) => _openRail(tester, 5);
-
 
 /// Presses a control in a viewer's PILL.
 ///
@@ -134,7 +133,7 @@ void main() {
   testWidgets('the row menu opens each viewer, and the two never share a '
       'document', (tester) async {
     await _pumpEditor(tester);
-    await _openMediaBrowser(tester);
+    await _openMediaPool(tester);
     await _openSubViewer(tester);
 
     // 유저 확정 ①: the plain "open in viewer" is still the MAIN one, which
@@ -166,9 +165,7 @@ void main() {
     );
   });
 
-  testWidgets('a viewer takes a dropped browser row (유저 확정 ⑬)', (
-    tester,
-  ) async {
+  testWidgets('a viewer takes a dropped browser row (유저 확정 ⑬)', (tester) async {
     // The panel and ONE draggable row, so the drop is the only thing
     // under test. Driving the same drag through the real rail is a
     // hands-on check, not this one: the row lifts and the target is
@@ -234,7 +231,7 @@ void main() {
   testWidgets('swapping trades the files AND their pages, and reveals where '
       'the file went', (tester) async {
     await _pumpEditor(tester);
-    await _openMediaBrowser(tester);
+    await _openMediaPool(tester);
     await _openSubViewer(tester);
 
     await _openRowMenu(tester, _conte);
@@ -277,7 +274,7 @@ void main() {
     // it, so a page kept in the panel's own State would come back as page
     // 1 of a hundred-page conte.
     await _pumpEditor(tester);
-    await _openMediaBrowser(tester);
+    await _openMediaPool(tester);
     await _openSubViewer(tester);
 
     await _openRowMenu(tester, _layout);
@@ -514,4 +511,3 @@ void main() {
     expect(_projectWithAssets().mediaAssetByPath(data.path), _conte);
   });
 }
-

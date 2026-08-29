@@ -731,7 +731,7 @@ class AppStrings {
   String get cutMoveRight => _s('cutMoveRight');
   String get cutDelete => _s('cutDelete');
 
-  // --- The media browser ---
+  // --- The media pool ---
   String get mediaActions => _s('mediaActions');
   String get mediaImportAudio => _s('mediaImportAudio');
   String get mediaRename => _s('mediaRename');
@@ -1498,7 +1498,7 @@ class AppStrings {
     'mediaOpenInViewer': 'Open in Viewer',
     'mediaOpenInSubViewer': 'Open in Sub Viewer',
     'mediaViewerEmpty':
-        'Nothing to view yet.\nDouble-click a file in the media browser, '
+        'Nothing to view yet.\nDouble-click a file in the media pool, '
         'or open one with the folder button above.',
     'mediaViewerOpenFile': 'Open File…',
     'mediaViewerLoadFailed': 'Could not read this file.',
@@ -2328,7 +2328,7 @@ class AppStrings {
     'mediaOpenInViewer': 'ビューアで開く',
     'mediaOpenInSubViewer': 'サブビューアで開く',
     'mediaViewerEmpty':
-        '表示するものがありません。\nメディアブラウザのファイルをダブルクリックするか、'
+        '表示するものがありません。\nメディアプールのファイルをダブルクリックするか、'
         '上のボタンからファイルを開いてください。',
     'mediaViewerOpenFile': 'ファイルを開く…',
     'mediaViewerLoadFailed': 'このファイルを読み込めませんでした。',
@@ -3180,7 +3180,7 @@ class AppStrings {
     'mediaOpenInViewer': '뷰어에서 열기',
     'mediaOpenInSubViewer': '서브 뷰어에서 열기',
     'mediaViewerEmpty':
-        '표시할 것이 없습니다.\n미디어 브라우저의 파일을 더블클릭하거나 '
+        '표시할 것이 없습니다.\n미디어 풀의 파일을 더블클릭하거나 '
         '위 버튼으로 파일을 여세요.',
     'mediaViewerOpenFile': '파일 열기…',
     'mediaViewerLoadFailed': '이 파일을 읽지 못했습니다.',
@@ -4054,7 +4054,7 @@ class AppStrings {
     'mediaOpenInViewer': 'Ouvrir dans la visionneuse',
     'mediaOpenInSubViewer': 'Ouvrir dans la visionneuse secondaire',
     'mediaViewerEmpty':
-        'Rien à afficher.\nDouble-cliquez un fichier du navigateur de '
+        'Rien à afficher.\nDouble-cliquez un fichier du pool de '
         'médias, ou ouvrez-en un avec le bouton ci-dessus.',
     'mediaViewerOpenFile': 'Ouvrir un fichier…',
     'mediaViewerLoadFailed': 'Impossible de lire ce fichier.',
@@ -4874,7 +4874,7 @@ class AppStrings {
     'mediaStillLinked': 'SE 行仍在使用 — 请先移除它的声音。',
     'mediaOpenInViewer': '在查看器中打开',
     'mediaOpenInSubViewer': '在副查看器中打开',
-    'mediaViewerEmpty': '暂无可查看的内容。\n双击媒体浏览器中的文件，或用上方按钮打开文件。',
+    'mediaViewerEmpty': '暂无可查看的内容。\n双击媒体池中的文件，或用上方按钮打开文件。',
     'mediaViewerOpenFile': '打开文件…',
     'mediaViewerLoadFailed': '无法读取此文件。',
     'mediaViewerCannotDisplay': '此类媒体暂时无法查看。',

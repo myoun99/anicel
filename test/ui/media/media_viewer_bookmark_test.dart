@@ -232,7 +232,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // The media browser, then its row menu's "open in sub viewer".
+    // The media pool, then its row menu's "open in sub viewer".
     await tester.tap(
       find.byKey(
         ValueKey<String>(
