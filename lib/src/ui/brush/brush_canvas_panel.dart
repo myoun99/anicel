@@ -1,3 +1,4 @@
+import 'dart:ui' as ui show Image;
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -12,6 +13,7 @@ import '../../services/bitmap_surface_geometry.dart'
 import '../../services/brush_stroke_commit_data.dart';
 import '../../models/layer_effect.dart';
 import '../../models/bitmap_surface.dart';
+import '../../models/cut_piece.dart' show CutPiece;
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
@@ -757,6 +759,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// sample nothing (the fill bucket).
   final ValueNotifier<Offset?> _toolCursorHover = ValueNotifier<Offset?>(null);
 
+  /// 🚨★★★F-33: what the surface painter draws as the stamp's ghost.
+  ///
+  /// A notifier rather than a build-time value so a hover REPAINTS the
+  /// painter without rebuilding it — a fresh painter per pointer position
+  /// would break the memo that keeps the whole stack from recompositing
+  /// ([_activeSurfacePainter]'s token).
+  ///
+  /// ⛔Holds a BORROWED image: [CutStampPreviewPublisher] clears this in
+  /// the same dispose that frees it.
+  final ValueNotifier<CutStampPreview?> _stampPreview =
+      ValueNotifier<CutStampPreview?>(null);
+
   /// TS1: the channel the selection layer publishes its FLOAT on, and the
   /// composite underlay reads. Owned here because it outlives both — the
   /// selection layer is mounted and unmounted by tool changes, and the
@@ -811,6 +825,41 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   ({BitmapSurface surface, BrushFrameKey key, String fx})?
   _activeSurfacePainterToken;
 
+  /// Where the stamp would land, in CANVAS pixels.
+  ///
+  /// ⚠️CANVAS space, not viewport space, and that is the point: the painter
+  /// draws its tiles in canvas coordinates, so a ghost stated in screen
+  /// pixels would slide against the artwork at every zoom. The cursor
+  /// overlay this replaced could state screen pixels because it lived on
+  /// top of the canvas; nothing on that side of the transform can honour a
+  /// layer.
+  ///
+  /// Centre-anchored, matching where a click actually drops it —
+  /// [buildCutPasteDab] centres on `origin + size / 2` and the commit
+  /// rounds from there.
+  CutStampPreview _stampPreviewAt(
+    Offset position,
+    CutPiece piece,
+    ui.Image? image,
+  ) {
+    final centre = _viewport.viewportToCanvas(
+      ViewportPoint(x: position.dx, y: position.dy),
+    );
+    final width = piece.stampWidth.toDouble();
+    final height = piece.stampHeight.toDouble();
+    return CutStampPreview(
+      piece: piece,
+      image: image,
+      canvasRect: Rect.fromLTWH(
+        centre.x - width / 2,
+        centre.y - height / 2,
+        width,
+        height,
+      ),
+      opacity: widget.brushToolState.cutStampOpacity,
+    );
+  }
+
   BitmapSurfacePainter? _activeSurfacePainter() {
     final coordinator = widget._editableCoordinator;
     final overlay = widget.activeStrokeOverlayModel;
@@ -842,6 +891,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // painter draws in canvas space.
       showTransparentBackground: false,
       staleScope: (token.key.layerId, token.key.frameId),
+      stampPreview: _stampPreview,
     );
   }
 
@@ -1059,6 +1109,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _selectionFloat.dispose();
     _eyedropperHover.dispose();
     _toolCursorHover.dispose();
+    _stampPreview.dispose();
     widget.viewCommands?.unbind(this);
     super.dispose();
   }
@@ -1540,6 +1591,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // footprint: without it the only way to learn where a stamp lands is
       // to drop it and undo. It matters more here — a stamp puts down a
       // whole drawing, not a dot.
+      // 🚨★★★F-33 (유저): the stamp's ghost now rides the SURFACE PAINTER,
+      // not a widget above the canvas — 「레이어 블렌드모드나 **합성같은게
+      // 다** 반영되는」. This branch publishes it and draws nothing; the
+      // painter's `layerPaint` is what makes the layer's opacity, blend and
+      // group buffer reach it.
+      //
+      // ⛔It still MOUNTS here, because the decoded image belongs to
+      // [CutPieceImageHost] and the publisher drops the reference in the
+      // same dispose that frees it.
       if (canvasToolStamps(widget.brushToolState.tool) &&
           widget.cutPieceSlot != null)
         ListenableBuilder(
@@ -1547,24 +1607,22 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           builder: (context, _) {
             final piece = widget.cutPieceSlot!.piece;
             if (piece == null) {
-              return const SizedBox.shrink();
+              return CutStampPreviewPublisher(
+                sink: _stampPreview,
+                preview: null,
+              );
             }
             return ValueListenableBuilder<Offset?>(
               valueListenable: _toolCursorHover,
-              builder: (context, position, _) {
-                if (position == null) {
-                  return const SizedBox.shrink();
-                }
-                return CutPieceCursorOverlay(
-                  position: position,
-                  viewport: _viewport,
-                  piece: piece,
-                  // The same field the three commit routes read, so the
-                  // ghost under the pointer is the strength the click
-                  // will land at rather than a full-force stand-in.
-                  opacity: widget.brushToolState.cutStampOpacity,
-                );
-              },
+              builder: (context, position, _) => CutPieceImageHost(
+                piece: piece,
+                builder: (context, image) => CutStampPreviewPublisher(
+                  sink: _stampPreview,
+                  preview: position == null
+                      ? null
+                      : _stampPreviewAt(position, piece, image),
+                ),
+              ),
             );
           },
         ),
@@ -2421,8 +2479,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                         )) {
                                                           _resolveTouchTap();
                                                         }
-                                                        if (_touchTap !=
-                                                            null) {
+                                                        if (_touchTap != null) {
                                                           // Still undecided —
                                                           // a sub-slop wobble
                                                           // is not a drag.
@@ -2441,25 +2498,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                             event.pointer) {
                                                           _resolveTouchTap();
                                                         }
-                                                        _tapLayerTouches
-                                                            .remove(
-                                                              event.pointer,
-                                                            );
+                                                        _tapLayerTouches.remove(
+                                                          event.pointer,
+                                                        );
                                                         _touchTap = null;
-                                                        _lastStampCenter =
-                                                            null;
+                                                        _lastStampCenter = null;
                                                       },
-                                                      onPointerCancel:
-                                                          (event) {
-                                                            _tapLayerTouches
-                                                                .remove(
-                                                                  event
-                                                                      .pointer,
-                                                                );
-                                                            _touchTap = null;
-                                                            _lastStampCenter =
-                                                                null;
-                                                          },
+                                                      onPointerCancel: (event) {
+                                                        _tapLayerTouches.remove(
+                                                          event.pointer,
+                                                        );
+                                                        _touchTap = null;
+                                                        _lastStampCenter = null;
+                                                      },
                                                     ),
                                                   ),
                                                 // Eyedropper cursor (R11-②): crosshair +
@@ -2649,10 +2700,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                             // guides ride
                                                             // into artwork
                                                             // coordinates.
-                                                            symmetry:
-                                                                widget
-                                                                    .guides
-                                                                    ?.actingSymmetry,
+                                                            symmetry: widget
+                                                                .guides
+                                                                ?.actingSymmetry,
                                                             viewport: _viewport,
                                                             canvasSize: widget
                                                                 .canvasSize,
