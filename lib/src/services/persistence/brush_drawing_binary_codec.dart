@@ -163,7 +163,6 @@ AnicelCelEntry decodeCelEntry(Uint8List bytes) {
 /// the payload, which would be a guess.
 const int _anicelCelBlobVersion = 2;
 
-
 /// A cel in its COLD form (R20-A1): a tiny plain header (key + canvas
 /// geometry, readable WITHOUT inflating) followed by the deflated
 /// [encodeCelEntry] stream.
@@ -218,15 +217,13 @@ class AnicelCelBlob {
     if (source.version >= 2) {
       writer.u8(source.codec);
     }
-    writer.bytes(
-      Uint8List.sublistView(source.bytes, source._deflatedOffset),
-    );
+    writer.bytes(Uint8List.sublistView(source.bytes, source._deflatedOffset));
     return AnicelCelBlob(writer.takeBytes());
   }
 
-  factory AnicelCelBlob.encode(AnicelCelEntry entry, {int? zstdLevel}) {
+  factory AnicelCelBlob.encode(AnicelCelEntry entry) {
     final body = encodeCelEntry(entry);
-    final compressed = compressAnicelPayload(body, zstdLevel: zstdLevel);
+    final compressed = compressAnicelPayload(body);
     final writer = _ByteWriter()
       ..u8(_anicelCelBlobVersion)
       ..string(entry.key.projectId.value)

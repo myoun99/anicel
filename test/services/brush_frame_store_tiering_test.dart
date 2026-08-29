@@ -17,7 +17,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 
-/// R20-A1 two-tier baked truth: cold cels are encoded+deflated blobs
+/// R20-A1 two-tier baked truth: cold cels are encoded+compressed blobs
 /// (the same bytes the archive stores), materialize byte-exactly on
 /// first access, and over-budget hot cels cool back down in LRU order.
 /// Representation must never change existence or bytes.
