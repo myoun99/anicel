@@ -3365,10 +3365,24 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                   framesPerSecond: _countingFps,
                                   showSeconds: widget.showSeconds,
                                 ),
+                                // 🚨★★★F-32, the THIRD grid with this exact
+                                // shape: the cells below sit inside
+                                // `DeviceGridScrollBody` (which cancels the
+                                // scroll offset's sub-device-pixel fraction)
+                                // and this ruler translated raw, so it kept
+                                // the fraction they had cancelled.
+                                //
+                                // 🧪Measured at ratio 1.5, offset 1.5: ruler
+                                // 453.5 vs cells 453.667 — the same numbers
+                                // the horizontal timeline gave.
                                 builder: (context, offset, child) =>
-                                    Transform.translate(
-                                      offset: Offset(-offset, 0),
-                                      child: child,
+                                    DeviceGridScrollBody(
+                                      controller: _horizontalController,
+                                      axisDirection: AxisDirection.right,
+                                      child: Transform.translate(
+                                        offset: Offset(-offset, 0),
+                                        child: child,
+                                      ),
                                     ),
                               ),
                             ),

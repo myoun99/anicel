@@ -102,4 +102,71 @@ void main() {
           'rotation and the flip that a translate/scale pair drops',
     );
   });
+
+  test('🚨★★★F-32: every scroll-offset translate sits inside the '
+      'device-grid body', () {
+    // 🚨SCANNED, and for the same reason as the case above: a raw
+    // `Transform.translate(-offset)` looks right at whole-pixel offsets
+    // and only parts company from its siblings at fractional ones. Three
+    // of these survived until someone measured at ratio 1.5.
+    //
+    // The halves that move with a scroll offset must take the SAME
+    // correction. `DeviceGridScrollBody` cancels the offset's
+    // sub-device-pixel fraction; a translate outside it keeps that
+    // fraction, and the ruler comes off the cells it numbers:
+    //
+    //   x-sheet             rail 360.0   vs cells 359.667
+    //   horizontal timeline ruler 453.5  vs cells 453.667
+    //   storyboard          ruler 453.5  vs cells 453.667
+    //
+    // ⛔A behavioural test per grid cannot close this — it passes the day
+    // a FOURTH surface is written without the correction. This is the
+    // ratchet ([[no-copy-to-share]]: 「소스 스캔 래칫으로 닫는다」).
+    // ⛔LINE-LOCAL, not file-local. A file-wide 「does it mention
+    // DeviceGridScrollBody」 check was written first and it PASSED while
+    // the bug was reinstated: these files mount several of them, so the
+    // other two covered for the one that had been taken away. The guard
+    // has to look at the translate's own neighbourhood.
+    const lookBack = 24;
+    final offenders = <String>[];
+    for (final entity in Directory('lib/src').listSync(recursive: true)) {
+      if (entity is! File || !entity.path.endsWith('.dart')) {
+        continue;
+      }
+      final path = entity.path.replaceAll(r'\', '/');
+      final rel = path.substring(path.indexOf('lib/'));
+      // The widget that DOES the correcting is where the raw translate
+      // belongs — it is the one place allowed to write one.
+      if (rel.endsWith('layout/device_grid_scroll_controller.dart')) {
+        continue;
+      }
+      final lines = entity.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        if (!lines[i].contains('Transform.translate(')) {
+          continue;
+        }
+        // Is this one driven by a scroll offset? Its `Offset(...)` is on
+        // this line or the next few.
+        final head = lines.sublist(i, (i + 4).clamp(0, lines.length)).join(' ');
+        if (!RegExp(
+          r'Offset\(\s*-?offset\b|Offset\(\s*0,\s*-offset\b',
+        ).hasMatch(head)) {
+          continue;
+        }
+        final from = (i - lookBack).clamp(0, lines.length);
+        final before = lines.sublist(from, i).join(' ');
+        if (!before.contains('DeviceGridScrollBody(')) {
+          offenders.add('$rel:${i + 1}');
+        }
+      }
+    }
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          'wrap it in DeviceGridScrollBody — the cells it lines up with '
+          'are already inside one, and a raw translate keeps the fraction '
+          'they cancelled (F-32)',
+    );
+  });
 }

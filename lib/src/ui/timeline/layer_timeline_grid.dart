@@ -646,8 +646,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         // column measured from the row's edge is that much further in than
         // the slot skeleton alone says.
         final left =
-            timelineLayerRowLeadingBorder +
-            layerRailLeadingWidthTo(to: slot);
+            timelineLayerRowLeadingBorder + layerRailLeadingWidthTo(to: slot);
         return (left: left, right: left + layerRailLeadingSlotWidth(slot));
       };
     }
@@ -673,7 +672,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
     ({double left, double right}) Function(int depth) fixedBand(
       ({double left, double right}) at,
-    ) => (_) => at;
+    ) =>
+        (_) => at;
 
     final onToggleFx = widget.onToggleLayerFx;
     final fxStateOf = widget.layerFxStateOf;
@@ -701,7 +701,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         ),
       if (onToggleFx != null && fxStateOf != null)
         (
-          bandAt: fixedBand(band(LayerRailTrailingSlot.onion, layerFxSlotWidth)),
+          bandAt: fixedBand(
+            band(LayerRailTrailingSlot.onion, layerFxSlotWidth),
+          ),
           // The fx column is TRI-state; a swipe paints the one thing a tap
           // paints — on, or not on — and the "only rows that disagree" rule
           // in [_paintSwipeAt] is what keeps the third state out of its way.
@@ -2503,13 +2505,46 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                       ) {
                                                                         _lastEffectiveHorizontalScrollOffset =
                                                                             offset;
-                                                                        return Transform.translate(
-                                                                          offset: Offset(
-                                                                            -offset,
-                                                                            0,
+                                                                        // 🚨★★★F-32's
+                                                                        // OTHER HALF, and
+                                                                        // it is the SAME
+                                                                        // asymmetry with
+                                                                        // the halves
+                                                                        // swapped: here
+                                                                        // the CELLS land
+                                                                        // on the device
+                                                                        // grid and the
+                                                                        // RULER kept the
+                                                                        // raw fraction.
+                                                                        //
+                                                                        // 🧪Measured at
+                                                                        // ratio 1.5,
+                                                                        // offset 1.5:
+                                                                        // ruler 453.5 vs
+                                                                        // cells 453.667.
+                                                                        // ⛔I had read
+                                                                        // this file and
+                                                                        // written 「both
+                                                                        // halves carry the
+                                                                        // raw offset, so
+                                                                        // they agree」 —
+                                                                        // reading was
+                                                                        // wrong and the
+                                                                        // measurement is
+                                                                        // what caught it.
+                                                                        return DeviceGridScrollBody(
+                                                                          controller:
+                                                                              _horizontalScrollController,
+                                                                          axisDirection:
+                                                                              AxisDirection.right,
+                                                                          child: Transform.translate(
+                                                                            offset: Offset(
+                                                                              -offset,
+                                                                              0,
+                                                                            ),
+                                                                            child:
+                                                                                child,
                                                                           ),
-                                                                          child:
-                                                                              child,
                                                                         );
                                                                       },
                                                                 ),
@@ -3232,7 +3267,6 @@ class _RowButtonSwipeDetector extends StatefulWidget {
 class _RowButtonSwipeDetectorState extends State<_RowButtonSwipeDetector> {
   bool _engaged = false;
   int _pressedColumn = -1;
-
 
   @override
   Widget build(BuildContext context) {
