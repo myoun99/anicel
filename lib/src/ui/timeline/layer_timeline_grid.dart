@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart' show AppLanguage;
@@ -23,7 +22,6 @@ import 'timeline_row_span_resolver.dart'
         resolveLaneSpanEscalation,
         resolveSelectionSpanHead,
         resolveSelectionSpanRows;
-import '../input/app_input_settings.dart' show AppInput;
 import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'layer_drop_policy.dart'
     show LayerRowCaret, effectHeaderRowsOf, rowStepsBetween, slotForSteps;
@@ -48,6 +46,7 @@ import 'timeline_frame_ruler.dart';
 import 'timeline_frame_rows_scroll_body.dart';
 import 'timeline_frame_window.dart';
 import 'layer_rail_window.dart';
+import 'rail_column_swipe.dart';
 import 'layer_label_controls.dart'
     show
         SectionBandZone,
@@ -506,24 +505,6 @@ typedef _LegendMemoInputs = ({
   bool hasBlendBulk,
 });
 
-/// One TOGGLE column a rail swipe can paint down: where it is, what a row's
-/// value there is, and how to flip one (I-1).
-///
-/// [bandAt] takes the pressed row's folder DEPTH, because a leading column's
-/// x does: the nesting indent falls between the mark and the twirl, so the
-/// twirl and the sheet toggle move one whole slot per level. Only the press
-/// asks — from then on the swipe paints by column identity, which is what
-/// lets one drag cross rows at different depths without leaving its column.
-///
-/// [valueOf] returns null for a row that HAS NO control in this column (an
-/// attach row's sheet slot holds an arrow, a laneless row has no twirl).
-/// Null is skipped: a swipe cannot paint what a tap could not.
-typedef _RowToggleColumn = ({
-  ({double left, double right}) Function(int depth) bandAt,
-  bool? Function(Layer layer) valueOf,
-  void Function(LayerId layerId) toggle,
-});
-
 class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// The integer rate the grid COUNTS with — the ruler's second marks
   /// and row labels are frame arithmetic, never real time (see
@@ -595,13 +576,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   final GlobalKey _rulerScrubViewportKey = GlobalKey();
   int? _lastRulerScrubbedFrameIndex;
 
-  // Krita-style column swipe (R2, widened by I-1): a vertical drag over ANY
-  // toggle column sets every crossed row to the value LATCHED from the first
-  // row (paint-swipe). Null column/target = no swipe in progress.
-  _RowToggleColumn? _swipeColumn;
-  bool? _swipeTargetValue;
-  final Set<LayerId> _swipePainted = {};
-
   /// The TOGGLE columns a swipe may paint down, right to left in rail order.
   ///
   /// 🚨I-1 (유저 2026-08-24): 「레이어의 버튼 조작하는거 **일괄조작**하는 기능
@@ -620,7 +594,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// because they open flyouts: there is no value for a swipe to latch and
   /// nothing for it to paint. A column whose host gave no callback is
   /// likewise simply absent — a swipe cannot paint what a tap could not.
-  List<_RowToggleColumn> _swipeColumns() {
+  List<RailToggleColumn<Layer>> _swipeColumns() {
     final rowWidth =
         _metrics.layerControlsWidth - _metrics.sectionLabelGutterWidth;
     const rightPadding = 8.0;
@@ -686,7 +660,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
           band(LayerRailTrailingSlot.mute, layerVisibilitySlotWidth),
         ),
         valueOf: (layer) => layer.isVisible,
-        toggle: widget.onToggleLayerVisibility,
+        toggle: (layer) => widget.onToggleLayerVisibility(layer.id),
       ),
       if (hasOnion && onionOf != null)
         (
@@ -697,7 +671,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
           // rule), and a swipe paints what a tap could.
           valueOf: (layer) =>
               layerKindAcceptsBrushInput(layer.kind) ? onionOf(layer.id) : null,
-          toggle: onToggleOnion!,
+          toggle: (layer) => onToggleOnion!(layer.id),
         ),
       if (onToggleFx != null && fxStateOf != null)
         (
@@ -706,11 +680,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
           ),
           // The fx column is TRI-state; a swipe paints the one thing a tap
           // paints — on, or not on — and the "only rows that disagree" rule
-          // in [_paintSwipeAt] is what keeps the third state out of its way.
+          // in [RailColumnSwipe] is what keeps the third state out of its way.
           valueOf: (layer) => layerKindShowsFxToggle(layer.kind)
               ? fxStateOf(layer.id) == LayerFxState.on
               : null,
-          toggle: onToggleFx,
+          toggle: (layer) => onToggleFx(layer.id),
         ),
       // 🚨I-1 (유저 2026-08-24): 「**타임시트버튼이든 뭐 그런것들**」 — the
       // report named this column, and it is the one the geometry above was
@@ -725,7 +699,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                 layer.attachedToLayerId == null
             ? layer.onTimesheet
             : null,
-        toggle: widget.onToggleLayerTimesheet,
+        toggle: (layer) => widget.onToggleLayerTimesheet(layer.id),
       ),
       if (onToggleLanes != null)
         (
@@ -736,7 +710,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
           valueOf: (layer) => _lanesFor(layer).isEmpty
               ? null
               : widget.expandedLaneLayerIds.contains(layer.id),
-          toggle: onToggleLanes,
+          toggle: (layer) => onToggleLanes(layer.id),
         ),
     ];
   }
@@ -759,86 +733,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     }
     final row = windowRows[indexInWindow];
     return row.isLane ? null : row;
-  }
-
-  void _paintSwipeAt(Layer? layer) {
-    final column = _swipeColumn;
-    final target = _swipeTargetValue;
-    if (layer == null || column == null || target == null) {
-      return;
-    }
-    if (!_swipePainted.add(layer.id)) {
-      return;
-    }
-    // Only rows that DISAGREE are touched: a swipe sets a value, it does not
-    // flip each row it passes (drag back over one and it must not come
-    // undone), and on the tri-state fx column it is what keeps the third
-    // state out of the sweep's way.
-    //
-    // A row with NO control in this column reads null and is skipped for a
-    // different reason: not that it agrees, but that there is nothing there
-    // to disagree — a sheet swipe crossing an attach row must leave the
-    // arrow it finds alone.
-    final value = column.valueOf(layer);
-    if (value != null && value != target) {
-      column.toggle(layer.id);
-    }
-  }
-
-  /// The rail's column swipe, wrapped around the rows it paints.
-  ///
-  /// Lifted out of [build] because the press has to consult the ROW it
-  /// landed on before it can name a column, and that reads as a paragraph
-  /// rather than as an argument (I-1).
-  Widget _railColumnSwipe({
-    required List<_RowToggleColumn> columns,
-    required List<TimelineDisplayRow> windowRows,
-    required double leadingSpacerHeight,
-    required Widget child,
-  }) {
-    return _RowButtonSwipeDetector(
-      columnAt: (local) {
-        final row = _rowAtRailY(local.dy, windowRows, leadingSpacerHeight);
-        if (row == null) {
-          return -1;
-        }
-        for (var index = 0; index < columns.length; index += 1) {
-          final band = columns[index].bandAt(row.depth);
-          if (local.dx >= band.left && local.dx <= band.right) {
-            return index;
-          }
-        }
-        return -1;
-      },
-      onStart: (columnIndex, localY) {
-        final row = _rowAtRailY(localY, windowRows, leadingSpacerHeight);
-        if (row == null) {
-          return false;
-        }
-        final column = columns[columnIndex];
-        // A row carrying no control in this column has no value to latch,
-        // so there is no swipe to start — pressing an attach row's arrow
-        // must not begin painting the sheet column it stands in.
-        final value = column.valueOf(row.layer);
-        if (value == null) {
-          return false;
-        }
-        _swipeColumn = column;
-        _swipeTargetValue = !value;
-        _swipePainted.clear();
-        _paintSwipeAt(row.layer);
-        return true;
-      },
-      onUpdate: (localY) => _paintSwipeAt(
-        _rowAtRailY(localY, windowRows, leadingSpacerHeight)?.layer,
-      ),
-      onEnd: () {
-        _swipeColumn = null;
-        _swipeTargetValue = null;
-        _swipePainted.clear();
-      },
-      child: child,
-    );
   }
 
   @override
@@ -2623,13 +2517,29 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                               // leading slot, the zone overlay
                                                               // paints the old gutter bracket
                                                               // over it.
-                                                              child: _railColumnSwipe(
+                                                              child: RailColumnSwipe<Layer>(
                                                                 columns:
                                                                     swipeColumns,
-                                                                windowRows:
-                                                                    windowRows,
-                                                                leadingSpacerHeight:
-                                                                    leadingRowSpacerHeight,
+                                                                rowAt: (localY) {
+                                                                  final row =
+                                                                      _rowAtRailY(
+                                                                        localY,
+                                                                        windowRows,
+                                                                        leadingRowSpacerHeight,
+                                                                      );
+                                                                  return row ==
+                                                                          null
+                                                                      ? null
+                                                                      : (
+                                                                          row: row
+                                                                              .layer,
+                                                                          depth: row
+                                                                              .depth,
+                                                                          id: row
+                                                                              .layer
+                                                                              .id,
+                                                                        );
+                                                                },
                                                                 child: Stack(
                                                                   children: [
                                                                     Column(
@@ -3213,125 +3123,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Wraps the rail rows' Column and turns a vertical drag that STARTS on a
-/// row button into a Krita-style paint-swipe down the rows.
-///
-/// 🚨I-1 (유저 2026-08-24): 「레이어의 버튼 조작하는거 **일괄조작**하는 기능
-/// 넣고싶음 … 탭 다운 한 채로 아래로 드래그하면 **해당 다른 레이어도
-/// 버튼조작**되도록. 즉 여러 레이어 드래그하면서 **비지블버튼 off**한다거나」.
-///
-/// ⛔It used to be the EYE and nothing else, with the eye's band typed in
-/// as a constructor argument. The swipe was never about the eye — it is
-/// about a COLUMN — so the column is the argument now and the host lists
-/// the ones it has.
-///
-/// [onStart] latches (returns false to decline, e.g. the down landed on a
-/// spacer, or between columns); [onUpdate] paints each crossed row; [onEnd]
-/// clears. A vertical-drag recognizer, so single taps still reach the
-/// buttons and the outer scroll keeps working — see [supportedDevices] for
-/// the other half of that (F-8).
-class _RowButtonSwipeDetector extends StatefulWidget {
-  const _RowButtonSwipeDetector({
-    required this.columnAt,
-    required this.onStart,
-    required this.onUpdate,
-    required this.onEnd,
-    required this.child,
-  });
-
-  /// Which COLUMN a press at this rail-local point is in, or -1 for none.
-  ///
-  /// 🚨A resolver rather than a list of x-ranges (I-1): a leading column
-  /// sits after the folder indent, so its band depends on the row under the
-  /// press. Geometry that depends on the row cannot live in a widget that
-  /// cannot see the rows, and the host answering both halves at once is
-  /// what keeps this detector free of rail knowledge entirely.
-  final int Function(Offset local) columnAt;
-
-  /// The press: which COLUMN it landed in, and where down the rail. Returns
-  /// false to decline.
-  final bool Function(int columnIndex, double localY) onStart;
-  final ValueChanged<double> onUpdate;
-  final VoidCallback onEnd;
-  final Widget child;
-
-  @override
-  State<_RowButtonSwipeDetector> createState() =>
-      _RowButtonSwipeDetectorState();
-}
-
-class _RowButtonSwipeDetectorState extends State<_RowButtonSwipeDetector> {
-  bool _engaged = false;
-  int _pressedColumn = -1;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      // 🚨F-8 (유저 2026-08-24: 「레이어영역도 … **터치로 스크롤할수있게**
-      // 사양 통일」). The doc above claims the outer vertical scroll keeps
-      // working outside the band; it did not, and a finger on the rail
-      // scrolled nothing at all (measured — the frame area beside it moved
-      // 90px on the same drag).
-      //
-      // ⛔A recognizer that has already WON cannot hand the gesture back:
-      // declining inside `onVerticalDragStart` leaves the swipe undone and
-      // the scroll dead, which is the shape this file's own neighbours are
-      // warned about ([AppInput.toolPointerDevices]). The band check runs
-      // after the arena is over, so it can only ever be the second half of
-      // the answer.
-      //
-      // 결정 10 is the first half, already written and already read by every
-      // other edit pan on this surface: a finger scrolls the timeline, and
-      // becomes the pointer the moment one finger is the drawing hand.
-      supportedDevices: AppInput.timelineEditPanDevices,
-      // 🚨I-1, measured: with the default `DragStartBehavior.start` a swipe
-      // MISSES A ROW, and which row depends on what you compare against.
-      // The recognizer reports its start at the position where it WON the
-      // arena — one slop-length, ~18px, past the press on a 28px row — and
-      // it deliberately drops the movement that won as a delta, so no update
-      // ever names the row in between. Press the top row's toggle and drag:
-      // either the row you pressed or the row under the slop went unpainted.
-      //
-      // `down` is the answer rather than a remembered press position,
-      // because it fixes BOTH halves: the start reports the press, and the
-      // slop movement arrives as an update. The reason the default exists —
-      // content must not jump by the slop when the drag begins — does not
-      // apply to a gesture that moves nothing and only paints the rows it
-      // passes.
-      dragStartBehavior: DragStartBehavior.down,
-      onVerticalDragDown: (details) {
-        _pressedColumn = widget.columnAt(details.localPosition);
-        _engaged = _pressedColumn >= 0;
-      },
-      onVerticalDragStart: (details) {
-        if (!_engaged) {
-          return;
-        }
-        _engaged = widget.onStart(_pressedColumn, details.localPosition.dy);
-      },
-      onVerticalDragUpdate: (details) {
-        if (_engaged) {
-          widget.onUpdate(details.localPosition.dy);
-        }
-      },
-      onVerticalDragEnd: (_) {
-        if (_engaged) {
-          widget.onEnd();
-        }
-        _engaged = false;
-      },
-      onVerticalDragCancel: () {
-        if (_engaged) {
-          widget.onEnd();
-        }
-        _engaged = false;
-      },
-      child: widget.child,
     );
   }
 }

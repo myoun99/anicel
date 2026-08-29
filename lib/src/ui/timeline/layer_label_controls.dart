@@ -1240,17 +1240,27 @@ class _LabelPlate extends StatelessWidget {
 /// 🚨I-1 (유저 2026-08-24): 「레이어의 버튼 조작하는거 **일괄조작**하는 기능
 /// … 탭 다운 한 채로 아래로 드래그하면 **해당 다른 레이어도 버튼조작**되도록」.
 ///
-/// ⛔[ControlPressClaim]'s claim is the WEAK one on purpose, and the reason
-/// is written where it lives: 「a button owns its TAP; it does not own drags
-/// — claiming the pointer outright broke a real one, because the
-/// storyboard's row-order drag deliberately starts ON the visibility
-/// button」. That is still true of the storyboard. It stopped being true of
-/// the RAIL the moment a drag from a rail button became a verb of its own,
-/// and until then the rail's Krita-style eye swipe could never run at all:
-/// the row's eager pan won every gesture that started on the eye.
+/// ⛔[ControlPressClaim]'s claim is the WEAK one on purpose: a button owns
+/// its TAP, not drags. What makes the RAIL different is that a drag from a
+/// rail button became a verb of its own — until then the rail's Krita-style
+/// eye swipe could never run at all, because the row's eager pan won every
+/// gesture that started on the eye.
+///
+/// 🚨THE SENTENCE THAT USED TO CARRY THIS said the weak claim was owed to
+/// the storyboard, whose row-order drag "deliberately starts ON the
+/// visibility button" — and concluded 「That is still true of the
+/// storyboard」. It is not, and it never was: see the measurement kept at
+/// [claimTapForControl]. The storyboard's row-order drag starts 126px from
+/// the eye, a drag begun on the eye re-orders nothing, and the test the
+/// sentence cited never mentioned visibility.
+///
+/// ⚠️So the storyboard's lack of swipe columns is not a constraint this
+/// widget is honouring — it is an unfinished job. 유저 2026-08-29: 「타임
+/// 라인이랑 왜 통일안한거지?」
 ///
 /// ⇒ The strong claim, applied by the RAIL to the columns it can swipe —
-/// never by the widget, which the storyboard shares.
+/// never by the button widget itself, which rails other than this one also
+/// mount. A rail that has no swipe for a column must not wear this.
 ///
 /// ⚠️Keep this in step with the grid's swipe column list. A column that
 /// claims but is not listed swallows drags for nothing; one that is listed
