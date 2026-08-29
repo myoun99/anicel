@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import '../../core/straight_rgba_image.dart';
@@ -44,6 +45,11 @@ final class VideoViewerDocument implements ViewerDocument {
 
   final QaVideoInfo _info;
 
+  /// ONE buffer for the movie, not one per frame — see [QaVideoDecoder.frame].
+  /// ⚠️Safe only because every consumer copies it synchronously; holding it
+  /// across an await would read the next frame.
+  Uint8List? _frameBytes;
+
   /// The movie's own frame rate. Null when the file does not state one —
   /// then it is a stack of frames a person turns, which is still useful
   /// and is what the paging strip already does.
@@ -68,12 +74,14 @@ final class VideoViewerDocument implements ViewerDocument {
   }) async {
     final decoder = QaVideoDecoder.instance;
     // ⚠️The native reader has no smaller ask: a frame comes out at the
-    // movie's size. So the big buffer is TRANSIENT and the decode is what
-    // shrinks it — the picture the cache keeps is the one on screen.
+    // movie's size, so the shrink happens in the DECODE — the picture the
+    // cache keeps is the one on screen. The full-size buffer it arrives in
+    // is allocated ONCE for the document, not once per frame.
     final rgba = decoder?.frame(
       pageIndex,
       width: _info.width,
       height: _info.height,
+      into: _frameBytes ??= Uint8List(_info.width * _info.height * 4),
     );
     if (rgba == null) {
       throw StateError('frame $pageIndex could not be read');

@@ -21,6 +21,7 @@ import '../editor_session_manager.dart';
 import '../dialogs/open_file_flow.dart';
 import '../text/app_strings.dart';
 import 'media_asset_drag_data.dart';
+import 'viewer_render_tier.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/panel_flyout.dart';
@@ -413,20 +414,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
 
   // --- Lazy rendering (§6-m: the visible page at the current zoom) ------
 
-  /// The render scale for [zoom]: powers of two so a settled zoom reuses
-  /// its raster, capped so one page never exceeds ~16M pixels.
-  double _renderScaleFor(double zoom, ui.Size pageSize) {
-    var scale = 1.0;
-    while (scale < zoom && scale < 8) {
-      scale *= 2;
-    }
-    const maxPixels = 16 * 1024 * 1024;
-    while (scale > 1 &&
-        pageSize.width * scale * pageSize.height * scale > maxPixels) {
-      scale /= 2;
-    }
-    return scale;
-  }
 
   void _ensurePageRendered(int pageIndex, double scale) {
     final document = _document;
@@ -683,7 +670,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       // dimensions, visibly softer, and the only thing the user changed was
       // how big the chrome is.
       final zoom = widget.viewport?.zoom ?? 1.0;
-      final scale = _renderScaleFor(
+      final scale = viewerRenderScaleFor(
         CanvasZoomScale.of(context).display(zoom),
         docSize,
       );
