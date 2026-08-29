@@ -124,9 +124,10 @@ void main() {
       markTestSkipped('no engine on this run');
       return;
     }
-    // ⚠️Named  deliberately: measured, a PNG is the one common
-    // format zstd cannot improve (0.0%), while JPEG, PDF and MP4 all
-    // shrink and are framed.
+    // ⚠️Named `.png` deliberately: measured, PNG is the one common format
+    // zstd cannot improve (0.0%), while JPEG (15–21%), PDF (up to 40%)
+    // and MP4 (6.7%) all shrink and are framed. The bytes are noise
+    // because that is what「will not shrink」actually looks like.
     final path = noiseFile('flat.png');
     final staged = store.stage(path)!;
     expect(staged.framed, isFalse);
@@ -156,26 +157,53 @@ void main() {
       expect(store.list(), isEmpty);
     });
 
-    test('a sweep takes what no live asset claims, and only that', () {
-      final kept = sourceFile('kept.wav');
-      final orphan = sourceFile('orphan.wav');
-      store.stage(kept);
-      store.stage(orphan);
+    test('a launch sweep takes what is old enough to be unreachable', () {
+      final old = sourceFile('abandoned.wav');
+      final fresh = sourceFile('just-imported.wav');
+      store.stage(old);
+      store.stage(fresh);
       expect(store.list(), hasLength(2));
+      // The old one was staged 40 days ago, as far as the clock is
+      // concerned.
+      File(
+        store.find(old)!.path,
+      ).setLastModifiedSync(DateTime.now().subtract(const Duration(days: 40)));
 
-      final removed = store.sweepOrphans(keep: {kept});
+      final removed = store.sweepAbandoned();
 
       expect(removed, 1);
-      expect(store.find(kept), isNotNull, reason: 'the live one survives');
-      expect(store.find(orphan), isNull);
+      expect(store.find(old), isNull);
+      expect(
+        store.find(fresh),
+        isNotNull,
+        reason: 'today\'s import is not abandoned',
+      );
     });
 
-    test('🚨an EMPTY live set takes everything, which is why the caller '
-        'must pass the whole one', () {
+    test('🚨and nothing at all when everything is recent — the sweep cannot '
+        'be the thing that empties a live session', () {
       store.stage(sourceFile('a.wav'));
       store.stage(sourceFile('b.wav'));
-      expect(store.sweepOrphans(keep: const {}), 2);
-      expect(store.list(), isEmpty);
+      // ⛔The liveness-based sweep this replaced would have taken both:
+      // at launch no project is open yet, so "claimed by an open project"
+      // is empty and means nothing. Age is the question that can be asked
+      // at the only moment it is safe to ask it.
+      expect(store.sweepAbandoned(), 0);
+      expect(store.list(), hasLength(2));
+    });
+
+    test('the window is the recovery snapshots\' 30 days, not a second '
+        'number to keep in step', () {
+      final path = sourceFile('take.wav');
+      store.stage(path);
+      File(
+        store.find(path)!.path,
+      ).setLastModifiedSync(DateTime.now().subtract(const Duration(days: 29)));
+      expect(store.sweepAbandoned(), 0, reason: '29 days is inside it');
+      File(
+        store.find(path)!.path,
+      ).setLastModifiedSync(DateTime.now().subtract(const Duration(days: 31)));
+      expect(store.sweepAbandoned(), 1);
     });
 
     test('a half-written file is never mistaken for a staged one', () {

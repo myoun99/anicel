@@ -123,29 +123,44 @@ class MediaStagingStore {
     }
   }
 
-  /// Drops staged files that no live pool path claims.
+  /// Drops staged files old enough that nothing can still absorb them.
   ///
-  /// 🚨Called with the paths of every asset the OPEN projects still hold.
-  /// A staged file whose import was undone, or whose project was closed
-  /// without ever being saved, has nothing left to absorb it — and unlike
-  /// a recovery snapshot it is not offered back to anyone, so there is
-  /// nothing to wait for.
+  /// 🚨★★★**AGE, NOT LIVENESS, AND ONLY AT LAUNCH.** The obvious sweep —
+  /// "delete anything no open project claims" — cannot be written safely:
+  /// at launch nothing is open yet, so the live set is empty and the sweep
+  /// would take everything, including the import a person made a minute
+  /// before the app crashed. Being handed a PARTIAL live set is the one
+  /// mistake this class cannot make, so it is not asked for one.
   ///
-  /// ⚠️[keep] must be the whole live set. Sweeping against a partial one
-  /// would delete bytes a project is still counting on, which is the one
-  /// mistake this class cannot make.
-  int sweepOrphans({required Set<String> keep}) {
+  /// What makes age sound here: a staged file is written once, at import,
+  /// and never touched again, and the save that absorbs it retires it on
+  /// the spot. So one that is still here after [olderThan] belongs to a
+  /// project that was never saved — and an unsaved project is not
+  /// reachable again, because the import it holds was never written down
+  /// anywhere. There is nothing to offer back.
+  ///
+  /// ⚠️Called ONCE PER LAUNCH, beside the recovery sweep, and for the same
+  /// reason: a session that has been open for longer than the window must
+  /// not have its own staged bytes taken out from under it. The default is
+  /// the recovery snapshots' 30 days (유저 확정 2026-08-26: 「30일좋고」)
+  /// rather than a second number to keep in step.
+  int sweepAbandoned({
+    Duration olderThan = const Duration(days: 30),
+    DateTime? now,
+  }) {
     final directory = Directory(directoryPath);
     if (!directory.existsSync()) {
       return 0;
     }
-    final live = {
-      for (final path in keep)
-        for (final framed in [true, false]) pathFor(path, framed: framed),
-    };
+    final cutoff = (now ?? DateTime.now()).subtract(olderThan);
     var removed = 0;
     for (final entity in directory.listSync()) {
-      if (entity is! File || live.contains(entity.path.replaceAll(r'\', '/'))) {
+      if (entity is! File) {
+        continue;
+      }
+      final stat = FileStat.statSync(entity.path);
+      if (stat.type == FileSystemEntityType.notFound ||
+          !stat.modified.isBefore(cutoff)) {
         continue;
       }
       entity.deleteSync();
