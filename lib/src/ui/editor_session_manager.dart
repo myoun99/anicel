@@ -2385,6 +2385,7 @@ class EditorSessionManager extends ChangeNotifier {
     laneRangeSelection.removeListener(_publishCutLocalLaneRange);
     cutLocalLaneRangeSelection.dispose();
     revealSelectionTick.dispose();
+    memoryPressureTicks.dispose();
     _warmDebounce?.cancel();
     cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
     playback.globalFrameIndexListenable.removeListener(_followPlaybackCut);

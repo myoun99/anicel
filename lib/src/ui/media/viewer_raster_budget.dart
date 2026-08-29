@@ -27,6 +27,13 @@ const int viewerPageBytesAtCap =
 /// already exist rather than restating them: [deviceScaledHotCelBudget]
 /// decides what this DEVICE affords, and [MemoryPressureBudget] owns the
 /// lowers-only rule.
+///
+/// ⚠️**ONE PER VIEWER, and the app mounts two** (the floor's viewer and
+/// the sub viewer beside the drawing), so the viewers together can hold
+/// twice the number below. That is deliberate: it is exactly what the old
+/// count of four allowed per viewer, and two references open side by side
+/// is the workflow this panel exists for. What bounds the pair is the
+/// warning — both halve when it arrives, because both are listening.
 class ViewerRasterBudget {
   /// Test seam, the same shape as `PdfRenderService.debugOpenerOverride`:
   /// what to pretend ONE page costs. Both the budget and its floor are
