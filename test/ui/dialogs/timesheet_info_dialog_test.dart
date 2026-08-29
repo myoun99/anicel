@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/ui/dialogs/timesheet_info_dialog.dart';
 
@@ -42,6 +43,82 @@ Future<void> _tapSetting(WidgetTester tester, String key) async {
 }
 
 void main() {
+  testWidgets('🚨saving does not WIPE what this window does not edit', (
+    tester,
+  ) async {
+    // The submit built a fresh `TimesheetInfo` from the fields on screen,
+    // so every field the window does not show — `staff`, `logoAssetPath` —
+    // came back at its default. Opening this window and pressing save
+    // deleted the production staff and the logo, and nothing said so.
+    const before = TimesheetInfo(
+      title: 'T',
+      staff: {'key': ProductionStaff(name: '원화 담당')},
+      logoAssetPath: 'logo.png',
+    );
+    TimesheetInfo? after;
+    await _openDialog(tester, before, (r) => after = r);
+
+    final save = find.byKey(const ValueKey<String>('timesheet-info-save-button'));
+    await tester.ensureVisible(save);
+    await tester.pumpAndSettle();
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    expect(
+      after!.logoAssetPath,
+      'logo.png',
+      reason: 'the logo is not this window\'s to delete',
+    );
+    expect(
+      after!.staffFor('key').name,
+      '원화 담당',
+      reason: 'nor the staff — the window never showed this role at all',
+    );
+  });
+
+  testWidgets('every 공정 has a name row, and typing one keeps it', (
+    tester,
+  ) async {
+    TimesheetInfo? saved;
+    await _openDialog(tester, TimesheetInfo.empty, (r) => saved = r);
+
+    // ⛔EVERY process, including 用紙. Leaving one out would be a rule
+    // nobody asked for, and the cut envelope binds `{staff.<role>.name}`
+    // by this same key — so what the form can fill and what a form can
+    // print have to be one list.
+    for (final process in LayerProcess.values) {
+      expect(
+        find.byKey(
+          ValueKey<String>('timesheet-info-staff-${process.jsonValue}'),
+        ),
+        findsOneWidget,
+        reason: '${process.jsonValue} has no row',
+      );
+    }
+
+    final keyRow = find.byKey(
+      ValueKey<String>('timesheet-info-staff-${LayerProcess.key.jsonValue}'),
+    );
+    await tester.ensureVisible(keyRow);
+    await tester.pumpAndSettle();
+    await tester.enterText(keyRow, '김원화');
+
+    final save = find.byKey(const ValueKey<String>('timesheet-info-save-button'));
+    await tester.ensureVisible(save);
+    await tester.pumpAndSettle();
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    expect(saved!.staffFor(LayerProcess.key.jsonValue).name, '김원화');
+    expect(
+      saved!.staff.containsKey(LayerProcess.paper.jsonValue),
+      isFalse,
+      reason:
+          'a row left blank writes nothing — the map holds the roles that '
+          'were filled, not one entry per row',
+    );
+  });
+
   testWidgets('the notation settings commit through the dialog: exposure '
       'bar on with N, SE empty fill off', (tester) async {
     TimesheetInfo? result;

@@ -534,6 +534,7 @@ class AppStrings {
   String get sheetFieldSheet => _s('sheetFieldSheet');
   String get sheetTitleHint => _s('sheetTitleHint');
   String get sheetArtist => _s('sheetArtist');
+  String get sheetStaffByProcess => _s('sheetStaffByProcess');
   String get sheetVisibleBoxes => _s('sheetVisibleBoxes');
   String get sheetNotation => _s('sheetNotation');
   String get sheetExposureBar => _s('sheetExposureBar');
@@ -1415,6 +1416,7 @@ class AppStrings {
     'sheetFieldSheet': 'Sheet',
     'sheetTitleHint': 'Project name when empty',
     'sheetArtist': 'Artist',
+    'sheetStaffByProcess': 'Staff by process',
     'sheetVisibleBoxes': 'Visible boxes',
     'sheetNotation': 'Notation',
     'sheetExposureBar': 'Exposure hold bar',
@@ -2194,6 +2196,7 @@ class AppStrings {
     'sheetFieldSheet': 'シート',
     'sheetTitleHint': '空欄ならプロジェクト名',
     'sheetArtist': '作画者',
+    'sheetStaffByProcess': '工程ごとの担当',
     'sheetVisibleBoxes': '表示する枠',
     'sheetNotation': '表記',
     'sheetExposureBar': '止めの引き伸ばし線',
@@ -3041,6 +3044,7 @@ class AppStrings {
     'sheetFieldSheet': '시트',
     'sheetTitleHint': '비우면 프로젝트 이름',
     'sheetArtist': '작화자',
+    'sheetStaffByProcess': '공정별 담당자',
     'sheetVisibleBoxes': '표시할 칸',
     'sheetNotation': '표기',
     'sheetExposureBar': '止め 늘림 선',
@@ -3903,6 +3907,7 @@ class AppStrings {
     'sheetFieldSheet': 'Feuille',
     'sheetTitleHint': 'Nom du projet si vide',
     'sheetArtist': 'Animateur',
+    'sheetStaffByProcess': 'Équipe par étape',
     'sheetVisibleBoxes': 'Cases visibles',
     'sheetNotation': 'Notation',
     'sheetExposureBar': 'Trait de maintien',
@@ -4717,6 +4722,7 @@ class AppStrings {
     'sheetFieldSheet': '表号',
     'sheetTitleHint': '留空则用项目名',
     'sheetArtist': '作画',
+    'sheetStaffByProcess': '各工序负责人',
     'sheetVisibleBoxes': '显示的栏位',
     'sheetNotation': '标注',
     'sheetExposureBar': '保持延长线',
