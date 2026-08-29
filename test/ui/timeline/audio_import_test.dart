@@ -93,7 +93,7 @@ Future<void> _pumpHost(
   await tester.pumpAndSettle();
 }
 
-// R5 #5: the Layer ▾ entry is gone — the media browser is the entrance the
+// R5 #5: the Layer ▾ entry is gone — the media pool is the entrance the
 // user kept, and it drops an asset onto a frame block. What the import
 // itself does is unchanged, so these drive the SESSION verb the removed
 // menu item called; the assertions below are the same ones it made.
@@ -322,7 +322,7 @@ void main() {
         home: Scaffold(
           body: Column(
             children: [
-              // Stand-in for the media browser's draggable row (the browser
+              // Stand-in for the media pool's draggable row (the browser
               // panel lives in the workspace; the payload contract is what
               // this test pins).
               SizedBox(
@@ -622,10 +622,10 @@ void main() {
                 height: 40,
                 child: Draggable<MediaAssetDragData>(
                   data: const MediaAssetDragData(path: png, name: 'BG.png'),
-                  // Anchored the way the media browser's row anchors — the
+                  // Anchored the way the media pool's row anchors — the
                   // frame the drop names is read off `details.offset`, and
                   // that only equals the pointer under this strategy. The
-                  // pool row's own use of it is pinned in the media browser
+                  // pool row's own use of it is pinned in the media pool
                   // suite; here it is what makes the frame below exact.
                   dragAnchorStrategy: pointerDragAnchorStrategy,
                   feedback: const SizedBox(width: 8, height: 8),

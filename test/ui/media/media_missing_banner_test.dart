@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/media_asset.dart';
-import 'package:anicel/src/ui/media/media_browser_panel.dart';
+import 'package:anicel/src/ui/media/media_pool_panel.dart';
 
 /// RELINK-2: the loss banner.
 ///
@@ -25,7 +25,7 @@ void main() {
         body: SizedBox(
           width: 320,
           height: 400,
-          child: MediaBrowserPanel(
+          child: MediaPoolPanel(
             assets: assets,
             isAssetReferenced: (_) => false,
             onImportRequested: () {},

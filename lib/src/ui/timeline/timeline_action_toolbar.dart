@@ -436,7 +436,7 @@ class TimelineActionToolbar extends StatelessWidget {
         enabled: serves && session.canDetachActiveLayer,
         onSelected: session.detachActiveLayer,
       ),
-      // R5 #5: IMPORT AUDIO left. The media browser is the one entrance —
+      // R5 #5: IMPORT AUDIO left. The media pool is the one entrance —
       // it links an audio asset onto a frame block, which is the shape the
       // work actually has; this entry offered a second, thinner door.
       const PanelFlyoutDivider(),

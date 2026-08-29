@@ -1,4 +1,4 @@
-import 'dart:io' show File, Platform;
+import 'dart:io' show Directory, File, Platform;
 
 import 'package:flutter/material.dart';
 
@@ -7,6 +7,8 @@ import '../../services/persistence/app_documents.dart'
 import '../../services/audio/conform_cache_maintenance.dart'
     show clearConformCache, conformCacheBytes;
 import '../../services/persistence/app_save_settings.dart';
+import '../../services/persistence/app_support_path.dart';
+import '../../services/persistence/media_staging_store.dart';
 import '../../services/persistence/project_autosave_service.dart';
 import '../../services/persistence/recent_projects.dart' show AppRecent;
 import '../editor_session_manager.dart';
@@ -141,6 +143,20 @@ class AutosaveSettingsSection extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             const _RecoverySnapshotsBlock(),
+            const Divider(height: 16),
+            // 유저 2026-08-30 thought this was already here — 「설정에서
+            // 어차피 앱 컨테이너 파일 볼수있게 되있으니까 안되있으면
+            // 되있도록하고 그거 유념」. Half of it was: the snapshots above
+            // had a list and the other four tenants had none.
+            const SettingsSectionHeading(
+              label: 'App container',
+              help:
+                  'What the app keeps outside your project files: settings '
+                  'and brush tips, recovery snapshots, conformed audio, and '
+                  'media an import copied in that no save has absorbed yet.',
+            ),
+            const SizedBox(height: 4),
+            const _AppContainerBlock(),
             const Divider(height: 16),
             // REC1-B2: the take shelf. Mobile shows where takes land but
             // cannot move it (the app documents home is the only sane
@@ -529,4 +545,194 @@ class _ConformCacheSizeRowState extends State<_ConformCacheSizeRow> {
       ],
     );
   }
+}
+
+/// 🚨★★★**WHAT THE APP KEEPS OUTSIDE YOUR PROJECT FILE.**
+///
+/// 유저 2026-08-30 believed this was already here — 「설정에서 어차피 앱
+/// 컨테이너 파일 볼수있게 되있으니까 **안되있으면 되있도록**하고 그거
+/// 유념」 — and it was half true. Recovery snapshots had a list above;
+/// the settings files, the brush tips, the conformed audio and the media
+/// an import copied in had none, so a person deciding whether to let
+/// imports live there could not see what was there already.
+///
+/// ⛔**Read-only, deliberately.** Recovery has a delete because a snapshot
+/// is a copy of something that also exists. These are not all like that:
+/// `Staged/` holds the ONLY copy of media a carried import has not yet
+/// been saved into a project, and a delete button beside it would be a way
+/// to lose exactly what the staging exists to keep. Seeing is what was
+/// asked for.
+///
+/// ⛔The rows are FIXED, so the block never grows or shrinks as folders
+/// come and go — 없다가 생기는 UI 금지. A folder the app has never written
+/// to shows「—」rather than 0, because those are different facts.
+class _AppContainerBlock extends StatefulWidget {
+  const _AppContainerBlock();
+
+  @override
+  State<_AppContainerBlock> createState() => _AppContainerBlockState();
+}
+
+class _AppContainerBlockState extends State<_AppContainerBlock> {
+  /// ⚠️The recovery row repeats the heading above it on purpose: this
+  /// block accounts for the WHOLE container, and a total that quietly left
+  /// one tenant out would be the least useful number on the screen.
+  late final List<_ContainerArea> _rows = _measure();
+
+  static List<_ContainerArea> _measure() {
+    final strings = AppText.strings;
+    return [
+      _ContainerArea.settingsFiles('settings', strings.containerAreaSettings),
+      _ContainerArea.folder(
+        'brush-tips',
+        strings.containerAreaBrushTips,
+        appSupportFilePath('brush_tips'),
+      ),
+      _ContainerArea.folder(
+        'recovery',
+        strings.containerAreaRecovery,
+        AppSave.recoveryDirectory(),
+      ),
+      _ContainerArea.folder(
+        'conformed',
+        strings.containerAreaConformed,
+        appSupportFilePath('Conformed'),
+      ),
+      _ContainerArea.folder(
+        'staged',
+        strings.containerAreaStaged,
+        MediaStagingStore.defaultDirectory(),
+      ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var total = 0;
+    for (final row in _rows) {
+      total += row.bytes;
+    }
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final row in _rows)
+          Padding(
+            key: ValueKey<String>('settings-container-${row.id}'),
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(row.label, style: const TextStyle(fontSize: 12)),
+                ),
+                Text(
+                  row.exists ? '${row.count}' : '—',
+                  style: TextStyle(fontSize: 12, color: muted),
+                ),
+                const SizedBox(width: 16),
+                SizedBox(
+                  width: 76,
+                  child: Text(
+                    row.exists ? byteSizeLabel(row.bytes) : '—',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(fontSize: 12, color: muted),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const Divider(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                AppText.strings.containerTotal,
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+            SizedBox(
+              width: 76,
+              child: Text(
+                byteSizeLabel(total),
+                key: const ValueKey<String>('settings-container-total'),
+                textAlign: TextAlign.right,
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// One area of the container, measured.
+class _ContainerArea {
+  const _ContainerArea({
+    required this.id,
+    required this.label,
+    required this.count,
+    required this.bytes,
+    required this.exists,
+  });
+
+  /// The loose settings files, which share the container's root with the
+  /// folders rather than having one of their own.
+  factory _ContainerArea.settingsFiles(String id, String label) {
+    final root = appSupportFilePath('');
+    return _measureDirectory(
+      id: id,
+      label: label,
+      path: root.endsWith('/') ? root.substring(0, root.length - 1) : root,
+      recursive: false,
+    );
+  }
+
+  factory _ContainerArea.folder(String id, String label, String path) =>
+      _measureDirectory(id: id, label: label, path: path, recursive: true);
+
+  static _ContainerArea _measureDirectory({
+    required String id,
+    required String label,
+    required String path,
+    required bool recursive,
+  }) {
+    final directory = Directory(path);
+    if (!directory.existsSync()) {
+      return _ContainerArea(
+        id: id,
+        label: label,
+        count: 0,
+        bytes: 0,
+        exists: false,
+      );
+    }
+    var count = 0;
+    var bytes = 0;
+    for (final entity in directory.listSync(recursive: recursive)) {
+      if (entity is File) {
+        count += 1;
+        bytes += entity.lengthSync();
+      }
+    }
+    return _ContainerArea(
+      id: id,
+      label: label,
+      count: count,
+      bytes: bytes,
+      exists: true,
+    );
+  }
+
+  /// Keys the row so a test can name it — the recovery row repeats the
+  /// heading above it, and text alone cannot tell them apart.
+  final String id;
+
+  final String label;
+  final int count;
+  final int bytes;
+
+  /// ⚠️A folder that does not exist yet is not a folder holding nothing —
+  /// the app has simply never written there.
+  final bool exists;
 }

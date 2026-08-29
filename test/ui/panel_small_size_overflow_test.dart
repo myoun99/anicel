@@ -6,7 +6,7 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/color_palette_file_service.dart';
 import 'package:anicel/src/ui/color/color_palette_strip.dart';
 import 'package:anicel/src/ui/color/color_wheel_panel.dart';
-import 'package:anicel/src/ui/media/media_browser_panel.dart';
+import 'package:anicel/src/ui/media/media_pool_panel.dart';
 
 /// R10-①: the Color and Media panels must lay out WITHOUT overflow at any
 /// squeezed dock size — a docked panel can be dragged very small.
@@ -65,7 +65,7 @@ void main() {
     },
   );
 
-  Widget mediaPanel() => MediaBrowserPanel(
+  Widget mediaPanel() => MediaPoolPanel(
     assets: const [
       MediaAsset(
         path: 'C:/very/long/path/to/some/audio/file/kick.wav',

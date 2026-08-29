@@ -9,8 +9,7 @@ import '../../models/media_asset.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/file_type_groups.dart';
-import '../../services/project_lookup.dart'
-    show largeCarriedAssetBytes;
+import '../../services/project_lookup.dart' show largeCarriedAssetBytes;
 import '../../services/persistence/folder_grant.dart'
     show FolderGrant, FolderPicker, MaterializeCancelled;
 import '../dialogs/folder_pick_flow.dart';
@@ -48,7 +47,7 @@ class ImportDialog extends StatefulWidget {
   /// Sources handed in by drag-and-drop (files or one folder).
   final List<String> initialPaths;
 
-  /// Opened from the media browser, whose job is to REGISTER a file for
+  /// Opened from the media pool, whose job is to REGISTER a file for
   /// later rather than place it now — so the destination starts on the
   /// pool. Only the starting point differs: the other destinations are
   /// still there, which is what makes this one window instead of two.
@@ -71,6 +70,7 @@ class ImportDialog extends StatefulWidget {
 class _ImportDialogState extends State<ImportDialog> {
   final List<String> _files = [];
   String? _folder;
+
   /// Where the import lands, or null for the MEDIA POOL — registered and
   /// nothing else.
   ///
@@ -115,9 +115,7 @@ class _ImportDialogState extends State<ImportDialog> {
   ) {
     setState(() {
       for (final path in paths) {
-        _settings[path] = change(
-          _settings[path] ?? const ImportFileSettings(),
-        );
+        _settings[path] = change(_settings[path] ?? const ImportFileSettings());
       }
     });
   }
@@ -129,9 +127,14 @@ class _ImportDialogState extends State<ImportDialog> {
   ///
   /// It was Reference, for a reason that has since been answered: the pool
   /// copied whatever it was handed, so dropping a 3GB 참고영상 meant a 3GB
-  /// copy the user never asked for and could not decline. The KIND rule
-  /// settles that case on its own — video is never carried, whatever this
-  /// says — so the default no longer has to protect against it.
+  /// copy the user never asked for and could not decline.
+  ///
+  /// 🚨This paragraph used to end「the KIND rule settles that case on its
+  /// own — video is never carried, whatever this says」. That ceiling died
+  /// 2026-08-14 and video carries like anything else; the kind only picks
+  /// this toggle's STARTING position ([defaultImportMode]). What protects
+  /// against the 3GB surprise now is the size note below and the toggle
+  /// itself, both of which the person can see before pressing Import.
   ///
   /// What is left is which failure a person meets by not choosing. A
   /// reference dies when the original moves, and a project that has to be
@@ -218,7 +221,7 @@ class _ImportDialogState extends State<ImportDialog> {
       grants = await pickFileGrantsForUser(
         context,
         // The POOL group, not the placeable one: this window is the
-        // media browser's entrance now, and the browser registers
+        // media pool's entrance now, and the browser registers
         // movies it cannot yet place. A movie picked while a placing
         // destination is selected is refused BY NAME in the table
         // below — which is the honest version of a picker that simply
@@ -320,9 +323,7 @@ class _ImportDialogState extends State<ImportDialog> {
 
   /// Kinds not placeable yet (video needs a decode engine): named
   /// honestly instead of failing as a decode. PDF left this set in R4.
-  static const Set<MediaAssetKind> _unplaceableKinds = {
-    MediaAssetKind.video,
-  };
+  static const Set<MediaAssetKind> _unplaceableKinds = {MediaAssetKind.video};
 
   /// True while the import is WAITING on somebody else's bytes rather
   /// than doing its own work — which is the only stretch of a run that
@@ -456,9 +457,7 @@ class _ImportDialogState extends State<ImportDialog> {
           // doors go through. A cloud file arrives here as a placeholder
           // and would otherwise fail as if it were corrupt.
           if (await _readableForImport(path) == null) {
-            warnings.add(
-              '${mediaAssetDefaultName(path)}: 파일을 읽지 못했습니다.',
-            );
+            warnings.add('${mediaAssetDefaultName(path)}: 파일을 읽지 못했습니다.');
             continue;
           }
           if (!mounted) {
@@ -693,7 +692,7 @@ class _ImportDialogState extends State<ImportDialog> {
   /// The one batch-wide answer, and the only one that changes what the
   /// other questions mean — so it sits above them rather than among them.
   ///
-  /// Opened from the media browser it is pinned to the pool: registering
+  /// Opened from the media pool it is pinned to the pool: registering
   /// for later is what that panel is for, and a disabled chip says the
   /// other door exists rather than hiding it.
   Widget _placeStrip(BuildContext context) {
@@ -714,14 +713,12 @@ class _ImportDialogState extends State<ImportDialog> {
             key: const ValueKey<String>('import-place-pool'),
             label: 'Pool',
             selected: !_placing,
-            onTap: _running
-                ? null
-                : () => setState(() => _destination = null),
+            onTap: _running ? null : () => setState(() => _destination = null),
           ),
           const SizedBox(width: 4),
           Tooltip(
             message: widget.poolOnly
-                ? 'The media browser registers; place from the timeline.'
+                ? 'The media pool registers; place from the timeline.'
                 : '',
             child: ExportChip(
               key: const ValueKey<String>('import-place-timeline'),
@@ -834,7 +831,8 @@ class _ImportDialogState extends State<ImportDialog> {
           enabledFor: (path, value) => importModeAllowed(
             kind: mediaAssetKindForPath(path),
             mode: value! as ImportFileMode,
-            psdExpanding: importPathIsPsd(path) &&
+            psdExpanding:
+                importPathIsPsd(path) &&
                 placing &&
                 _settingsFor(path).psd == PsdPlaceMode.expand,
             placing: placing,
@@ -862,8 +860,7 @@ class _ImportDialogState extends State<ImportDialog> {
               widget.session.activeCutOrNull != null,
           onPick: (paths, value) => _setSettings(
             paths,
-            (settings) =>
-                settings.copyWith(into: value! as ImportDestination),
+            (settings) => settings.copyWith(into: value! as ImportDestination),
           ),
         ),
         ImportColumn<Object?>(
@@ -884,8 +881,7 @@ class _ImportDialogState extends State<ImportDialog> {
           label: 'PSD',
           width: 66,
           values: PsdPlaceMode.values,
-          labelOf: (value) =>
-              (value! as PsdPlaceMode) == PsdPlaceMode.merge
+          labelOf: (value) => (value! as PsdPlaceMode) == PsdPlaceMode.merge
               ? 'Merge'
               : 'Expand',
           valueOf: (path) => _settingsFor(path).psd,
@@ -1049,8 +1045,11 @@ class _ImportDialogState extends State<ImportDialog> {
         addRow('Reference', reference.file, dim: true);
       }
       for (final exclusion in parsed.excluded) {
-        addRow('Excluded', '${exclusion.path} — ${exclusion.reason}',
-            dim: true);
+        addRow(
+          'Excluded',
+          '${exclusion.path} — ${exclusion.reason}',
+          dim: true,
+        );
       }
       for (final warning in parsed.warnings) {
         addRow('⚠', warning);
@@ -1059,7 +1058,7 @@ class _ImportDialogState extends State<ImportDialog> {
       for (final path in _files) {
         final kind = mediaAssetKindForPath(path);
         // Only a PLACEMENT can be refused for its kind. Registering a
-        // movie in the pool is exactly what the media browser has always
+        // movie in the pool is exactly what the media pool has always
         // done, so pool-bound rows read as ordinary ones.
         final unplaceable =
             kind != null &&
@@ -1141,8 +1140,7 @@ class _ImportDialogState extends State<ImportDialog> {
     }
     return [
       for (final path in _registeredPaths())
-        if (_sizeOf(path) > largeCarriedAssetBytes)
-          path,
+        if (_sizeOf(path) > largeCarriedAssetBytes) path,
     ];
   }
 
@@ -1168,7 +1166,8 @@ class _ImportDialogState extends State<ImportDialog> {
       padding: const EdgeInsets.only(top: 4),
       child: Text(
         '${byteSizeLabel(total)} goes inside the project file — $named$more. '
-        'Reference leaves the originals where they are.',
+        'Carrying compresses each file as it comes in, so the project grows '
+        'by less than that. Reference leaves the originals where they are.',
         key: const ValueKey<String>('import-large-carry-note'),
         style: Theme.of(context).textTheme.labelSmall!.copyWith(
           color: Theme.of(context).colorScheme.error,
@@ -1214,10 +1213,19 @@ class _ImportDialogState extends State<ImportDialog> {
               ],
             ),
           ),
+          // ⛔Not a new caption — this line already existed and already
+          // switched with the choice. 유저 2026-08-30 asked for the
+          // compression to be said out loud (「품기는 압축된 파일
+          // 저장시키는거라고 문장 넣는게 좋을거같아」), and the sentence
+          // that describes what Keep inside DOES is where it belongs.
+          //
+          // 🚨It also answers a question the size column would otherwise
+          // raise: the media pool shows what an asset OCCUPIES, which
+          // after carrying is smaller than the file that was imported.
           Text(
             _copyIntoProject
-                ? 'The project file holds these; the originals are left '
-                      'alone.'
+                ? 'The project file holds these, compressed; the originals '
+                      'are left alone.'
                 : 'The files stay where they are and the project points '
                       'at them.',
             style: Theme.of(context).textTheme.labelSmall!.copyWith(
@@ -1232,7 +1240,7 @@ class _ImportDialogState extends State<ImportDialog> {
               child: Wrap(
                 spacing: 4,
                 children: [
-                  // The media browser's own entrance, promoted into the
+                  // The media pool's own entrance, promoted into the
                   // window that every other import already came through.
                   // It is a destination like the others because from here
                   // the user can change their mind — which is the whole
@@ -1252,17 +1260,15 @@ class _ImportDialogState extends State<ImportDialog> {
                         ? null
                         : () => setState(
                             () =>
-                                _destination =
-                                    ImportDestination.activeCutLayer,
+                                _destination = ImportDestination.activeCutLayer,
                           ),
                   ),
                   ExportChip(
                     key: const ValueKey<String>('import-destination-cut'),
                     label: 'New cut',
                     selected: _destination == ImportDestination.newCut,
-                    onTap: () => setState(
-                      () => _destination = ImportDestination.newCut,
-                    ),
+                    onTap: () =>
+                        setState(() => _destination = ImportDestination.newCut),
                   ),
                 ],
               ),
@@ -1288,7 +1294,7 @@ class _ImportDialogState extends State<ImportDialog> {
                     // Files row's question now, and this one answers its
                     // own.
                     : 'Places a layer that reads the file, and registers it '
-                          'in the media browser.',
+                          'in the media pool.',
                 style: Theme.of(context).textTheme.labelSmall!.copyWith(
                   color: Theme.of(context).colorScheme.outline,
                 ),

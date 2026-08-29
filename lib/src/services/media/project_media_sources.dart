@@ -4,6 +4,8 @@ import '../../models/project.dart';
 import '../persistence/anicel_incremental_writer.dart';
 import '../persistence/anicel_project_archive.dart';
 import '../project_lookup.dart';
+import '../persistence/media_blob_codec.dart';
+import '../persistence/media_staging_store.dart';
 import 'media_byte_source.dart';
 
 /// Where each piece of media the project should CARRY can be read from
@@ -29,6 +31,7 @@ Map<String, MediaByteSource> projectMediaSources({
   required Project project,
   required String? projectFilePath,
   required Map<String, String> mediaEntryNames,
+  MediaStagingStore? staging,
 }) {
   final wanted = projectArchivedMediaPaths(project);
   if (wanted.isEmpty) {
@@ -71,12 +74,23 @@ Map<String, MediaByteSource> projectMediaSources({
           dataOffset: entry.dataOffset,
           length: entry.length,
           entryCrc32: entry.crc32,
+          framed: mediaEntryIsFramed(entryName),
         );
         continue;
       }
     }
     // Not inside yet — the file it was imported from is the source, and
     // this save is what brings it in.
+    // Staged at 품기: the bytes the project already controls, already compressed
+    // when that was worth it. They go in AS THEY ARE.
+    final staged = staging?.find(path);
+    if (staged != null) {
+      sources[path] = MediaStagedBytes(
+        path: staged.path,
+        framed: staged.framed,
+      );
+      continue;
+    }
     final file = MediaFileBytes(path);
     if (file.existsSync()) {
       sources[path] = file;
@@ -102,6 +116,11 @@ Map<String, MediaByteSource> projectMediaSources({
 
 /// What the project should record as living inside it, after a save that
 /// stored [sources].
-Map<String, String> mediaEntryNamesFor(Iterable<String> sources) => {
-  for (final path in sources) path: anicelMediaEntryName(path),
-};
+Map<String, String> mediaEntryNamesFor(Map<String, MediaByteSource> sources) =>
+    {
+      for (final entry in sources.entries)
+        entry.key: anicelMediaEntryName(
+          entry.key,
+          framed: entry.value.storedIsFramed,
+        ),
+    };

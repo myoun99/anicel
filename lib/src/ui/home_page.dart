@@ -23,6 +23,7 @@ import '../services/persistence/recent_projects.dart';
 import '../services/persistence/recent_projects_store.dart';
 import '../services/persistence/audio_sync_settings_store.dart';
 import '../services/persistence/autosave_clock.dart';
+import '../services/persistence/media_staging_store.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/color_palette_file_service.dart';
 import '../services/project_repository.dart';
@@ -296,6 +297,11 @@ class _HomePageState extends State<HomePage> {
     // and would otherwise pile up in the app container for ever. Once per
     // launch, here, because this page is what makes snapshots exist at all.
     ProjectAutosaveService.sweepAbandonedRecovery();
+    // The same moment and the same window for media a 품기'd import staged
+    // and no save ever absorbed. ⛔At launch ONLY: a session open longer
+    // than the window must not have its own staged bytes taken out from
+    // under it, and at launch there is no session to take them from.
+    MediaStagingStore().sweepAbandoned();
     // Q-scoped-folder-settings: reopen the folder settings' scopes for
     // this run (macOS forgets them at relaunch); stored only when a
     // folder actually moved, through the one settings write path.
@@ -771,111 +777,111 @@ class _HomePageState extends State<HomePage> {
                     // action funnel as key bindings; the layer only observes raw
                     // touches, so drawing and pinch navigation are untouched.
                     child: TouchShortcutLayer(
-                    onGesture: (gesture) {
-                      final actionId = _shortcuts.actionIdForTouchGesture(
-                        gesture,
-                      );
-                      if (actionId != null) {
-                        _invokeAction(actionId);
-                      }
-                    },
-                    // The pen program's diagnosis overlay (Settings ▸ Input
-                    // Inspector) — inert until toggled, observes raw events
-                    // only (never a gesture-arena participant).
-                    // R26 #35/#13: the shared cursor-notice surface wraps
-                    // the whole editor, so any refusal anywhere prints
-                    // next to the pointer.
-                    child: CursorNoticeOverlay(
-                      child: InputInspectorHost(
-                        child: Column(
-                          children: [
-                            // The top strip: two popover buttons and the
-                            // work's name. The seven-menu bar it replaced
-                            // is gone — every command it carried now lives
-                            // on the surface that shows its result, and
-                            // undo/redo/export went with them. 48px so the
-                            // buttons sit on the same grid as the rail's.
-                            //
-                            // The SAME fill as the tool rail, because they are
-                            // the same thing: inert chrome. It used to sit two
-                            // steps up the container ladder, which is why the
-                            // strip and the rail never looked like one app.
-                            Material(
-                              color: colorScheme.surface,
-                              child: Container(
-                                // The strip is the SECOND link in the
-                                // window-origin chain: everything below it,
-                                // including the canvas, starts at this
-                                // height. 48 is on the grid at every Windows
-                                // scaling step (48 = 16x3) and OFF it the
-                                // moment a UI scale makes the ratio a
-                                // product — 48 x 1.35 is 64.8.
-                                height: DeviceGrid.of(context).position(48),
-                                // The seam the tool rail already had and this
-                                // strip did not (유저, R4 #1: 상단띠랑 캔버스
-                                // 사이엔 없거든? 상단띠에도 아래에 추가).
-                                // Same `outlineVariant` and the same idiom as
-                                // `EditorPanelDock` — the border is drawn
-                                // INSIDE the strip's own height, so the
-                                // canvas below does not move to make room
-                                // for it. ⚠️Its own HEIGHT, not 48: the
-                                // line above quantizes it, so at an
-                                // effective 1.35 the strip is 47.41. The
-                                // seam the user sees — this border's bottom
-                                // edge against the canvas — is what lands
-                                // on the grid; the border's own 1.0-logical
-                                // width is 1.35 device px and can never be
-                                // crisp, which is a hairline problem and
-                                // not this link's.
-                                decoration: BoxDecoration(
-                                  border: Border(
-                                    bottom: BorderSide(
-                                      color: colorScheme.outlineVariant,
+                      onGesture: (gesture) {
+                        final actionId = _shortcuts.actionIdForTouchGesture(
+                          gesture,
+                        );
+                        if (actionId != null) {
+                          _invokeAction(actionId);
+                        }
+                      },
+                      // The pen program's diagnosis overlay (Settings ▸ Input
+                      // Inspector) — inert until toggled, observes raw events
+                      // only (never a gesture-arena participant).
+                      // R26 #35/#13: the shared cursor-notice surface wraps
+                      // the whole editor, so any refusal anywhere prints
+                      // next to the pointer.
+                      child: CursorNoticeOverlay(
+                        child: InputInspectorHost(
+                          child: Column(
+                            children: [
+                              // The top strip: two popover buttons and the
+                              // work's name. The seven-menu bar it replaced
+                              // is gone — every command it carried now lives
+                              // on the surface that shows its result, and
+                              // undo/redo/export went with them. 48px so the
+                              // buttons sit on the same grid as the rail's.
+                              //
+                              // The SAME fill as the tool rail, because they are
+                              // the same thing: inert chrome. It used to sit two
+                              // steps up the container ladder, which is why the
+                              // strip and the rail never looked like one app.
+                              Material(
+                                color: colorScheme.surface,
+                                child: Container(
+                                  // The strip is the SECOND link in the
+                                  // window-origin chain: everything below it,
+                                  // including the canvas, starts at this
+                                  // height. 48 is on the grid at every Windows
+                                  // scaling step (48 = 16x3) and OFF it the
+                                  // moment a UI scale makes the ratio a
+                                  // product — 48 x 1.35 is 64.8.
+                                  height: DeviceGrid.of(context).position(48),
+                                  // The seam the tool rail already had and this
+                                  // strip did not (유저, R4 #1: 상단띠랑 캔버스
+                                  // 사이엔 없거든? 상단띠에도 아래에 추가).
+                                  // Same `outlineVariant` and the same idiom as
+                                  // `EditorPanelDock` — the border is drawn
+                                  // INSIDE the strip's own height, so the
+                                  // canvas below does not move to make room
+                                  // for it. ⚠️Its own HEIGHT, not 48: the
+                                  // line above quantizes it, so at an
+                                  // effective 1.35 the strip is 47.41. The
+                                  // seam the user sees — this border's bottom
+                                  // edge against the canvas — is what lands
+                                  // on the grid; the border's own 1.0-logical
+                                  // width is 1.35 device px and can never be
+                                  // crisp, which is a hairline problem and
+                                  // not this link's.
+                                  decoration: BoxDecoration(
+                                    border: Border(
+                                      bottom: BorderSide(
+                                        color: colorScheme.outlineVariant,
+                                      ),
+                                    ),
+                                  ),
+                                  // Re-reads per notify: the panels bridge
+                                  // drives the visibility checks, the session
+                                  // the project name and the export gate.
+                                  child: ListenableBuilder(
+                                    listenable: Listenable.merge([
+                                      _session,
+                                      _panelsMenu,
+                                    ]),
+                                    builder: (context, _) => EditorTopStrip(
+                                      session: _session,
+                                      panelsMenu: _panelsMenu,
+                                      brushTool: _brushTool,
+                                      colorBackground: _colorWheelBackground,
+                                      colorPalette: _colorPalette,
+                                      onColorPaletteChanged: _setColorPalette,
+                                      shortcuts: _shortcuts,
                                     ),
                                   ),
                                 ),
-                                // Re-reads per notify: the panels bridge
-                                // drives the visibility checks, the session
-                                // the project name and the export gate.
-                                child: ListenableBuilder(
-                                  listenable: Listenable.merge([
-                                    _session,
-                                    _panelsMenu,
-                                  ]),
-                                  builder: (context, _) => EditorTopStrip(
-                                    session: _session,
-                                    panelsMenu: _panelsMenu,
-                                    brushTool: _brushTool,
-                                    colorBackground: _colorWheelBackground,
-                                    colorPalette: _colorPalette,
-                                    onColorPaletteChanged: _setColorPalette,
-                                    shortcuts: _shortcuts,
-                                  ),
+                              ),
+                              Expanded(
+                                child: EditorWorkspace(
+                                  session: _session,
+                                  panelsMenu: _panelsMenu,
+                                  brushTool: _brushTool,
+                                  colorBackground: _colorWheelBackground,
+                                  colorPalette: _colorPalette,
+                                  onColorPaletteChanged: _setColorPalette,
+                                  canvasViewCommands: _canvasViewCommands,
+                                  canvasNavigationRegionKey:
+                                      _canvasNavigationRegionKey,
+                                  canvasSelectionCommands:
+                                      _canvasSelectionCommands,
+                                  layerNav: _timelineLayerNav,
+                                  flipHud: _flipHud,
+                                  onInvokeAction: _invokeAction,
                                 ),
                               ),
-                            ),
-                            Expanded(
-                              child: EditorWorkspace(
-                                session: _session,
-                                panelsMenu: _panelsMenu,
-                                brushTool: _brushTool,
-                                colorBackground: _colorWheelBackground,
-                                colorPalette: _colorPalette,
-                                onColorPaletteChanged: _setColorPalette,
-                                canvasViewCommands: _canvasViewCommands,
-                                canvasNavigationRegionKey:
-                                    _canvasNavigationRegionKey,
-                                canvasSelectionCommands:
-                                    _canvasSelectionCommands,
-                                layerNav: _timelineLayerNav,
-                                flipHud: _flipHud,
-                                onInvokeAction: _invokeAction,
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
                     ),
                   ),
                 ),

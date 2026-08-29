@@ -7,7 +7,7 @@ import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
-import 'package:anicel/src/ui/media/media_browser_panel.dart';
+import 'package:anicel/src/ui/media/media_pool_panel.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -31,7 +31,7 @@ const _toolRightRailKey = ValueKey<String>('editor-dock-drop-rail-tool-right');
 Future<void> _pumpHome(WidgetTester tester) async {
   // R26 #31: the left dock ships with TWO stacked sections and the right
   // dock with the timesheet, so the 800×600 default test surface leaves
-  // each section too short to lay out its panel (the media browser's
+  // each section too short to lay out its panel (the media pool's
   // header + list overflowed by a few pixels). Use a window size a person
   // would actually work in.
   await tester.binding.setSurfaceSize(const Size(1600, 1000));
@@ -487,7 +487,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.byType(BrushSettingsPanel), findsNothing);
-      // …and the media browser is not on this rail at all any more.
+      // …and the media pool is not on this rail at all any more.
       expect(find.byKey(_mediaTabKey), findsNothing);
 
       await tester.tap(
@@ -510,7 +510,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(_mediaTabKey));
       await tester.pumpAndSettle();
-      expect(find.byType(MediaBrowserPanel), findsOneWidget);
+      expect(find.byType(MediaPoolPanel), findsOneWidget);
 
       // Drag the library's tab into the media group and the strip switches
       // between them the way one group's strip always has.
@@ -525,7 +525,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(_mediaTabKey));
       await tester.pumpAndSettle();
-      expect(find.byType(MediaBrowserPanel), findsOneWidget);
+      expect(find.byType(MediaPoolPanel), findsOneWidget);
       expect(find.byType(BrushPresetPanel), findsNothing);
     });
   });
@@ -681,7 +681,7 @@ void main() {
 
       // The media panel now renders in the bottom region as its active
       // tab; the left dock keeps Brushes active.
-      expect(find.byType(MediaBrowserPanel), findsOneWidget);
+      expect(find.byType(MediaPoolPanel), findsOneWidget);
       expect(find.byType(TimelinePanel), findsNothing);
       expect(find.byType(BrushPresetPanel), findsOneWidget);
 
@@ -689,7 +689,7 @@ void main() {
       await tester.tap(find.byKey(_timelineTabKey));
       await tester.pumpAndSettle();
       expect(find.byType(TimelinePanel), findsOneWidget);
-      expect(find.byType(MediaBrowserPanel), findsNothing);
+      expect(find.byType(MediaPoolPanel), findsNothing);
 
       // Drag the media tab back to the left strip (tail after the library).
       await _dragTab(
@@ -699,7 +699,7 @@ void main() {
             tester.getCenter(find.byKey(_brushesTabKey)) + const Offset(60, 0),
       );
 
-      expect(find.byType(MediaBrowserPanel), findsOneWidget);
+      expect(find.byType(MediaPoolPanel), findsOneWidget);
       expect(find.byType(TimelinePanel), findsOneWidget);
     });
 
@@ -816,9 +816,9 @@ void main() {
         tester.getCenter(find.byKey(_brushesTabKey)).dx,
         greaterThan(tester.getCenter(find.byKey(_mediaTabKey)).dx),
       );
-      // Selection is untouched by reordering — the media browser was the
+      // Selection is untouched by reordering — the media pool was the
       // group's open panel before the drag and still is.
-      expect(find.byType(MediaBrowserPanel), findsOneWidget);
+      expect(find.byType(MediaPoolPanel), findsOneWidget);
       expect(find.byType(BrushPresetPanel), findsNothing);
     });
   });

@@ -517,6 +517,12 @@ class AppStrings {
   String get memoryItemBrushTips => _s('memoryItemBrushTips');
   String get memoryItemPanelRasters => _s('memoryItemPanelRasters');
   String get memoryItemViewerPages => _s('memoryItemViewerPages');
+  String get containerAreaSettings => _s('containerAreaSettings');
+  String get containerAreaBrushTips => _s('containerAreaBrushTips');
+  String get containerAreaRecovery => _s('containerAreaRecovery');
+  String get containerAreaConformed => _s('containerAreaConformed');
+  String get containerAreaStaged => _s('containerAreaStaged');
+  String get containerTotal => _s('containerTotal');
 
   // --- Display (R11) ---
   String get uiScaleLabel => _s('uiScaleLabel');
@@ -725,7 +731,7 @@ class AppStrings {
   String get cutMoveRight => _s('cutMoveRight');
   String get cutDelete => _s('cutDelete');
 
-  // --- The media browser ---
+  // --- The media pool ---
   String get mediaActions => _s('mediaActions');
   String get mediaImportAudio => _s('mediaImportAudio');
   String get mediaRename => _s('mediaRename');
@@ -1415,6 +1421,12 @@ class AppStrings {
     'memoryItemBrushTips': 'Brush tips',
     'memoryItemPanelRasters': 'Panel rasters',
     'memoryItemViewerPages': 'Viewer pages',
+    'containerAreaSettings': 'Settings',
+    'containerAreaBrushTips': 'Brush tips',
+    'containerAreaRecovery': 'Recovery snapshots',
+    'containerAreaConformed': 'Conformed audio',
+    'containerAreaStaged': 'Staged media',
+    'containerTotal': 'Total',
     'uiScaleLabel': 'Interface scale',
     'accentTitle': 'Accent colors',
     'accent1Label': 'Accent 1',
@@ -1486,7 +1498,7 @@ class AppStrings {
     'mediaOpenInViewer': 'Open in Viewer',
     'mediaOpenInSubViewer': 'Open in Sub Viewer',
     'mediaViewerEmpty':
-        'Nothing to view yet.\nDouble-click a file in the media browser, '
+        'Nothing to view yet.\nDouble-click a file in the media pool, '
         'or open one with the folder button above.',
     'mediaViewerOpenFile': 'Open File…',
     'mediaViewerLoadFailed': 'Could not read this file.',
@@ -2198,6 +2210,12 @@ class AppStrings {
     'memoryItemBrushTips': 'ブラシ先端',
     'memoryItemPanelRasters': 'パネルのラスター',
     'memoryItemViewerPages': 'ビューアのページ',
+    'containerAreaSettings': '設定',
+    'containerAreaBrushTips': 'ブラシ先端',
+    'containerAreaRecovery': '復旧スナップショット',
+    'containerAreaConformed': 'コンフォーム済み音声',
+    'containerAreaStaged': '取り込み待ちメディア',
+    'containerTotal': '合計',
     'uiScaleLabel': 'UIの大きさ',
     'accentTitle': 'アクセントカラー',
     'accent1Label': 'アクセント1',
@@ -2310,7 +2328,7 @@ class AppStrings {
     'mediaOpenInViewer': 'ビューアで開く',
     'mediaOpenInSubViewer': 'サブビューアで開く',
     'mediaViewerEmpty':
-        '表示するものがありません。\nメディアブラウザのファイルをダブルクリックするか、'
+        '表示するものがありません。\nメディアプールのファイルをダブルクリックするか、'
         '上のボタンからファイルを開いてください。',
     'mediaViewerOpenFile': 'ファイルを開く…',
     'mediaViewerLoadFailed': 'このファイルを読み込めませんでした。',
@@ -3047,6 +3065,12 @@ class AppStrings {
     'memoryItemBrushTips': '브러시 팁',
     'memoryItemPanelRasters': '패널 래스터',
     'memoryItemViewerPages': '뷰어 페이지',
+    'containerAreaSettings': '설정',
+    'containerAreaBrushTips': '브러시 팁',
+    'containerAreaRecovery': '복구 스냅샷',
+    'containerAreaConformed': '컨폼된 오디오',
+    'containerAreaStaged': '품은 미디어',
+    'containerTotal': '합계',
     'uiScaleLabel': 'UI 크기',
     'accentTitle': '강조 색상',
     'accent1Label': '강조색 1',
@@ -3156,7 +3180,7 @@ class AppStrings {
     'mediaOpenInViewer': '뷰어에서 열기',
     'mediaOpenInSubViewer': '서브 뷰어에서 열기',
     'mediaViewerEmpty':
-        '표시할 것이 없습니다.\n미디어 브라우저의 파일을 더블클릭하거나 '
+        '표시할 것이 없습니다.\n미디어 풀의 파일을 더블클릭하거나 '
         '위 버튼으로 파일을 여세요.',
     'mediaViewerOpenFile': '파일 열기…',
     'mediaViewerLoadFailed': '이 파일을 읽지 못했습니다.',
@@ -3912,6 +3936,12 @@ class AppStrings {
     'memoryItemBrushTips': 'Pointes de brosse',
     'memoryItemPanelRasters': 'Rasters de panneau',
     'memoryItemViewerPages': 'Pages de la visionneuse',
+    'containerAreaSettings': 'Réglages',
+    'containerAreaBrushTips': 'Pointes de brosse',
+    'containerAreaRecovery': 'Instantanés de récupération',
+    'containerAreaConformed': 'Audio conformé',
+    'containerAreaStaged': 'Médias en attente',
+    'containerTotal': 'Total',
     'accentTitle': "Couleurs d'accent",
     'accent1Label': 'Accent 1',
     'accent1Help': 'Sélection, tête de lecture, bascules actives.',
@@ -4024,7 +4054,7 @@ class AppStrings {
     'mediaOpenInViewer': 'Ouvrir dans la visionneuse',
     'mediaOpenInSubViewer': 'Ouvrir dans la visionneuse secondaire',
     'mediaViewerEmpty':
-        'Rien à afficher.\nDouble-cliquez un fichier du navigateur de '
+        'Rien à afficher.\nDouble-cliquez un fichier du pool de '
         'médias, ou ouvrez-en un avec le bouton ci-dessus.',
     'mediaViewerOpenFile': 'Ouvrir un fichier…',
     'mediaViewerLoadFailed': 'Impossible de lire ce fichier.',
@@ -4733,6 +4763,12 @@ class AppStrings {
     'memoryItemBrushTips': '笔尖',
     'memoryItemPanelRasters': '面板栅格',
     'memoryItemViewerPages': '查看器页面',
+    'containerAreaSettings': '设置',
+    'containerAreaBrushTips': '笔尖',
+    'containerAreaRecovery': '恢复快照',
+    'containerAreaConformed': '已转换音频',
+    'containerAreaStaged': '暂存媒体',
+    'containerTotal': '合计',
     'accentTitle': '强调色',
     'accent1Label': '强调色 1',
     'accent1Help': '用于选区、播放头和已启用的开关。',
@@ -4838,7 +4874,7 @@ class AppStrings {
     'mediaStillLinked': 'SE 行仍在使用 — 请先移除它的声音。',
     'mediaOpenInViewer': '在查看器中打开',
     'mediaOpenInSubViewer': '在副查看器中打开',
-    'mediaViewerEmpty': '暂无可查看的内容。\n双击媒体浏览器中的文件，或用上方按钮打开文件。',
+    'mediaViewerEmpty': '暂无可查看的内容。\n双击媒体池中的文件，或用上方按钮打开文件。',
     'mediaViewerOpenFile': '打开文件…',
     'mediaViewerLoadFailed': '无法读取此文件。',
     'mediaViewerCannotDisplay': '此类媒体暂时无法查看。',

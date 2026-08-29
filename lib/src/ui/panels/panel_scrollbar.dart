@@ -131,7 +131,7 @@ class _PanelScrollbarState extends State<PanelScrollbar> {
           // `AppScrollBehavior` is to switch bars off for the child — and
           // it is wrong, because the child is the whole scroll CONTENT and
           // the config is inherited: every scrollable NESTED inside would
-          // lose its bar too. The media browser's asset list went silent
+          // lose its bar too. The media pool's asset list went silent
           // the moment its panel was narrow enough to need the horizontal
           // escape valve above it. Nothing is doubled because nothing calls
           // this by hand any more — the behaviour is the only caller.

@@ -19,6 +19,8 @@ import '../services/commands/reorder_track_command.dart';
 import '../services/commands/toggle_id_in_set_command.dart';
 import '../services/import/media_identity_reader.dart';
 import '../services/media/media_fingerprints.dart';
+import '../services/persistence/media_blob_codec.dart';
+import '../services/persistence/media_staging_store.dart';
 import '../services/persistence/anicel_incremental_writer.dart'
     show anicelCrc32, parseAnicelZipLayoutFile;
 import '../services/media/media_byte_source.dart';
@@ -245,9 +247,7 @@ import 'timeline/transform_lane_editing.dart'
         transformTrackWithLaneKeyToggled,
         transformTrackWithGroupReset;
 import 'timeline/se_name_tag_lane_policy.dart'
-    show
-        seNameTagGroupLaneId,
-        seNameTagLaneDisplayOrder;
+    show seNameTagGroupLaneId, seNameTagLaneDisplayOrder;
 import 'timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder, transformLaneSpan;
 
@@ -274,6 +274,7 @@ class EditorSessionManager extends ChangeNotifier {
   EditorSessionManager({
     required Project initialProject,
     AudioConformStore? audioConformStore,
+    MediaStagingStore? mediaStagingStore,
     AppLanguageSettingsStore? languageSettingsStore,
     AppAccentSettingsStore? accentSettingsStore,
     AppInputSettingsStore? inputSettingsStore,
@@ -283,6 +284,7 @@ class EditorSessionManager extends ChangeNotifier {
     AppUiScaleStore? uiScaleStore,
   }) : _editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioConformStore = audioConformStore,
+       _injectedMediaStagingStore = mediaStagingStore,
        _appSettings = EditorAppSettings(
          languageSettingsStore: languageSettingsStore,
          accentSettingsStore: accentSettingsStore,
@@ -2446,6 +2448,14 @@ class EditorSessionManager extends ChangeNotifier {
   /// Test seam: widget tests inject a store with a fake runner so SE rows
   /// never decode real files.
   final AudioConformStore? _injectedAudioConformStore;
+  final MediaStagingStore? _injectedMediaStagingStore;
+
+  /// Where 품기 puts the bytes until a save absorbs them.
+  ///
+  /// 🚨Injectable for the same reason every other store here is: a test
+  /// must not write into the real app container.
+  late final MediaStagingStore mediaStagingStore =
+      _injectedMediaStagingStore ?? MediaStagingStore();
 
   /// Conformed audio per source path (audio program wiring): waveform
   /// peaks, exact clip lengths and the device transport's PCM, decoded
@@ -6999,7 +7009,7 @@ class EditorSessionManager extends ChangeNotifier {
     return effectivePath;
   }
 
-  /// The media browser's import: same carry-or-reference choice as a
+  /// The media pool's import: same carry-or-reference choice as a
   /// timeline import, pool only (no clip link). Non-audio kinds register
   /// with their detected kind (R3b) — the batch stays one undo through
   /// [addMediaAssets].
@@ -8684,6 +8694,15 @@ class EditorSessionManager extends ChangeNotifier {
   /// import and so have no answer to give: linking a file that was already
   /// on disk registers it as what it is, and only a picker the user
   /// answered can say the project should own the bytes.
+  /// Registers [paths] in the pool. When [carried], the bytes are COPIED
+  /// into the app container on the spot.
+  ///
+  /// 🚨★★★**That copy is what「품기」means now.** It used to be a promise
+  /// kept only at SAVE time — the flag said the file travels with the
+  /// project while the bytes were still the ones on disk, so editing or
+  /// deleting the original before the first save changed or emptied what
+  /// got saved. 유저 2026-08-30: 「품은 순간 데이터를 가지고있고 **불변**
+  /// 이었으면좋겠어서」.
   void addMediaAssets(List<String> paths, {bool carried = false}) {
     final pool = mediaAssets;
     final known = {for (final asset in pool) asset.path};
@@ -8699,6 +8718,14 @@ class EditorSessionManager extends ChangeNotifier {
     ];
     if (added.isEmpty) {
       return;
+    }
+    if (carried) {
+      // ⛔BEFORE the pool records them. A staged copy with no asset is an
+      // orphan the sweep takes; an asset the pool holds whose bytes were
+      // never staged is the old behaviour back, silently.
+      for (final asset in added) {
+        mediaStagingStore.stage(asset.path);
+      }
     }
     _cutCommandCoordinator.updateMediaAssets([
       ...pool,
@@ -8742,7 +8769,7 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// RELINK-2: the batch form — the media browser's "find them all under
+  /// RELINK-2: the batch form — the media pool's "find them all under
   /// this folder" pass, in one undo step.
   ///
   /// Conforms are invalidated for every destination for the same reason the
@@ -8768,7 +8795,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// RELINK-2: pool paths that were not on disk as of the last refresh.
   ///
-  /// CACHED rather than probed per row. The media browser used to call
+  /// CACHED rather than probed per row. The media pool used to call
   /// `File.existsSync()` while building every row, and the loss banner
   /// would have multiplied that — a banner has to count the WHOLE pool, so
   /// one repaint became one disk hit per asset.
@@ -8840,7 +8867,7 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// Marks the [path] asset as one the project CARRIES — the per-asset
-  /// promotion out of the media browser, and the answer to what a
+  /// promotion out of the media pool, and the answer to what a
   /// REFERENCE does when the user decides they want the project to own it
   /// after all.
   ///
@@ -17437,6 +17464,79 @@ class EditorSessionManager extends ChangeNotifier {
   /// the layout is already being parsed then.
   Map<String, String> _mediaEntryNames = const {};
 
+  /// What [poolPath]'s bytes ACTUALLY occupy right now, or null when only
+  /// the file on disk knows.
+  ///
+  /// 🚨★★★**THE SIZE SHOWN IS THE SIZE TAKEN** (유저 2026-08-30: 「파일이
+  /// 보여주는 크기는 압축된 크기를 보여주는게 맞겟지? … 아무튼 실제크기」).
+  /// The media pool used to read `identity.lengthBytes` — the length
+  /// the file had when it was REGISTERED — which after compression is a
+  /// number matching nothing: not the disk, not the project file, not the
+  /// staged copy.
+  ///
+  /// ⛔[MediaAsset.identity] is left alone. That field answers「is this the
+  /// same file?」for relink, and a compressed length would make every
+  /// carried asset fail to match itself.
+  ///
+  /// ⚠️Cheap by construction — a stat on the staged file, or a length the
+  /// archive layout already handed over. The browser draws a row per asset
+  /// and must not parse a ZIP to do it, which is why the archive half is
+  /// remembered at save/open rather than asked for here.
+  int? mediaStoredBytesFor(String poolPath) {
+    final staged = mediaStagingStore.find(poolPath);
+    if (staged != null) {
+      return staged.storedLength;
+    }
+    return _archivedMediaBytes()[poolPath];
+  }
+
+  /// Stored lengths for the media inside the project file, parsed ONCE per
+  /// completed save and kept until the next one.
+  ///
+  /// ⚠️Keyed on [_completedSaveGeneration] rather than time: a compaction
+  /// moves every byte, so a length from before one describes nothing. The
+  /// generation is the thing that already changes exactly when that
+  /// happens.
+  Map<String, int> _archivedMediaBytes() {
+    final path = _projectFilePath;
+    if (path == null || _mediaEntryNames.isEmpty) {
+      return const {};
+    }
+    if (_mediaStoredBytesGeneration == _completedSaveGeneration) {
+      return _mediaStoredBytes;
+    }
+    var sizes = const <String, int>{};
+    try {
+      final layout = parseAnicelZipLayoutFile(path);
+      sizes = {
+        for (final entry in _mediaEntryNames.entries)
+          if (layout.entryNamed(entry.value) case final found?)
+            entry.key: found.length,
+      };
+    } on Object {
+      // A torn or momentarily unreadable archive answers nothing rather
+      // than a wrong number; the row falls back to what it always showed.
+    }
+    _mediaStoredBytes = sizes;
+    _mediaStoredBytesGeneration = _completedSaveGeneration;
+    return sizes;
+  }
+
+  Map<String, int> _mediaStoredBytes = const {};
+  int _mediaStoredBytesGeneration = -1;
+
+  /// Every carried asset's actual size, for a list that shows sizes.
+  Map<String, int> get mediaStoredBytes {
+    final sizes = <String, int>{};
+    for (final asset in mediaAssets) {
+      final bytes = mediaStoredBytesFor(asset.path);
+      if (bytes != null) {
+        sizes[asset.path] = bytes;
+      }
+    }
+    return sizes;
+  }
+
   /// What the project carries, for tests and for anything that needs to
   /// resolve an asset's bytes without going through a save.
   Map<String, String> get mediaEntryNames =>
@@ -17463,18 +17563,31 @@ class EditorSessionManager extends ChangeNotifier {
           archivePath,
         ).entryNamed(entryName);
         if (entry != null) {
-          return MediaArchiveBytes(
+          final range = MediaArchiveBytes(
             archivePath: archivePath,
             dataOffset: entry.dataOffset,
             length: entry.length,
             entryCrc32: entry.crc32,
+            framed: mediaEntryIsFramed(entryName),
           );
+          // 🚨A framed entry is decoded HERE and nowhere downstream. Every
+          // consumer asked for「the bytes of this asset」and must keep
+          // getting them — the block index is this layer's business, and
+          // the reader still serves a window rather than the whole file.
+          return range.framed ? MediaFramedBytes(range) : range;
         }
       } on Object {
         // A torn or momentarily unreadable archive: the file fallback
         // below still answers for assets whose original survives, and the
         // conform store's transient handling covers the rest.
       }
+    }
+    // ⚠️Not in the archive yet — but 품기 may have staged it, and after an
+    // import that is the only place its bytes are.
+    final staged = mediaStagingStore.find(poolPath);
+    if (staged != null) {
+      final stored = MediaStagedBytes(path: staged.path, framed: staged.framed);
+      return staged.framed ? MediaFramedBytes(stored) : stored;
     }
     return MediaFileBytes(poolPath);
   }
@@ -17652,6 +17765,7 @@ class EditorSessionManager extends ChangeNotifier {
       project: _repository.requireProject(),
       projectFilePath: _projectFilePath,
       mediaEntryNames: _mediaEntryNames,
+      staging: mediaStagingStore,
     );
     await _anicelFileService.save(
       project: _repository.requireProject(),
@@ -17664,7 +17778,7 @@ class EditorSessionManager extends ChangeNotifier {
       onProgress: onProgress,
       adoptRefs: false,
     );
-    return mediaEntryNamesFor(mediaToStore.keys);
+    return mediaEntryNamesFor(mediaToStore);
   }
 
   /// The archive at [placedPath] IS this project now — no second write.
@@ -17796,6 +17910,7 @@ class EditorSessionManager extends ChangeNotifier {
       project: _repository.requireProject(),
       projectFilePath: _projectFilePath,
       mediaEntryNames: _mediaEntryNames,
+      staging: mediaStagingStore,
     );
     try {
       await _anicelFileService.save(
@@ -17824,7 +17939,14 @@ class EditorSessionManager extends ChangeNotifier {
         onProgress: onProgress,
       );
     }
-    _mediaEntryNames = mediaEntryNamesFor(mediaToStore.keys);
+    _mediaEntryNames = mediaEntryNamesFor(mediaToStore);
+    // 🚨The save ABSORBED the staged bytes, so the staged copy stops being
+    // anything — 유저 08-27: 「사본 남으면 진짜 용서안할게」. Retired HERE
+    // rather than on close or on import-undo, because this is the one
+    // moment the bytes provably live somewhere else.
+    for (final path in mediaToStore.keys) {
+      mediaStagingStore.retire(path);
+    }
     _projectFilePath = filePath;
     _hasUnsavedChanges = false;
     _completedSaveGeneration += 1;
@@ -17937,7 +18059,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// read them anyway.
   ///
   /// 🔑 Deliberately NOT an edit: no command, no undo entry, no dirty
-  /// flag, no notify. Flipping through the media browser must not make the
+  /// flag, no notify. Flipping through the media pool must not make the
   /// project look unsaved. The price is that a fingerprint learned in a
   /// session that never saves is forgotten, which is the right way round —
   /// it is a cache of something re-derivable, and the file it describes is

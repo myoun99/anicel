@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
-import 'package:anicel/src/ui/media/media_browser_panel.dart';
+import 'package:anicel/src/ui/media/media_pool_panel.dart';
 
 class _Callbacks {
   var importRequests = 0;
@@ -37,7 +37,7 @@ Future<void> _pump(
       home: Scaffold(
         body: SizedBox(
           width: 260,
-          child: MediaBrowserPanel(
+          child: MediaPoolPanel(
             assets: assets,
             isAssetReferenced: callbacks.referencedPaths.contains,
             onImportRequested: () => callbacks.importRequests += 1,

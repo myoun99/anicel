@@ -31,7 +31,7 @@ Future<void> _pump(
                     path: 'C:/art/BG_a12.png',
                     name: 'BG_a12.png',
                   ),
-                  // What the media browser's row does, and what makes the
+                  // What the media pool's row does, and what makes the
                   // reported point the pointer rather than the pointer minus
                   // wherever inside the row the grab happened.
                   dragAnchorStrategy: pointerDragAnchorStrategy,

@@ -16,15 +16,27 @@ import '../theme/app_theme.dart' show AppColors;
 import '../widgets/panel_flyout.dart';
 import 'media_asset_drag_data.dart';
 
-/// The dockable media browser (the Resolve Media Pool counterpart): every
-/// sound the project knows, importable ahead of use, draggable onto SE
-/// blocks to link (footsteps reuse), renamable, and relinkable when the
-/// file moved (missing files get a badge instead of silently breaking).
+/// The dockable MEDIA POOL: every file the project knows, importable
+/// ahead of use, draggable onto SE blocks to link (footsteps reuse),
+/// renamable, and relinkable when the file moved (missing files get a
+/// badge instead of silently breaking).
+///
+/// 🚨★★★**IT WAS CALLED A BROWSER, AND THAT MEANT THE OPPOSITE THING.**
+/// 유저 확정 2026-08-30: 「그럼 미디어풀패널로 가자」.
+///
+/// A browser is where you go looking through the DISK for something not
+/// yet imported — that is exactly what Premiere's Media Browser is, and
+/// it is the panel beside this one, not this one. This holds what the
+/// project ALREADY has, and does things to it: import, rename, relink,
+/// remove, promote to carried, place on the timeline. Premiere calls that
+/// the Project panel and Resolve calls it the Media Pool; this file's own
+/// doc had said「the Resolve Media Pool counterpart」while the class said
+/// browser, and the session API has always called it the pool.
 ///
 /// Pure widget: the workspace wires it to the session's pool API; pickers
 /// and the file-existence probe are injectable for tests.
-class MediaBrowserPanel extends StatelessWidget {
-  const MediaBrowserPanel({
+class MediaPoolPanel extends StatelessWidget {
+  const MediaPoolPanel({
     super.key,
     required this.assets,
     required this.isAssetReferenced,
@@ -39,6 +51,7 @@ class MediaBrowserPanel extends StatelessWidget {
     this.audioFilePicker,
     this.missingPaths = const <String>{},
     this.modifiedTimes = const <String, DateTime>{},
+    this.storedBytes = const <String, int>{},
     this.onRelinkMissing,
   });
 
@@ -55,15 +68,12 @@ class MediaBrowserPanel extends StatelessWidget {
   /// say otherwise. It now goes where every other import already went.
   final VoidCallback onImportRequested;
   final void Function(String path, String name) onRenameAsset;
+
   /// The grants come along because relinking is a PICK: the token minted
   /// for the file the user just chose is the only thing that makes the new
   /// path outlive the session on Apple, and this is the flow a broken
   /// reference lands in.
-  final void Function(
-    String oldPath,
-    String newPath,
-    List<FolderGrant> grants,
-  )
+  final void Function(String oldPath, String newPath, List<FolderGrant> grants)
   onRelinkAsset;
 
   /// Returns false when the asset is still referenced (kept in the pool).
@@ -114,6 +124,11 @@ class MediaBrowserPanel extends StatelessWidget {
   /// so a row never stats the disk to draw itself.
   final Map<String, DateTime> modifiedTimes;
 
+  /// What each carried asset ACTUALLY occupies — compressed, in the
+  /// project file or in staging. Empty for assets the project only
+  /// references, whose own file length is the honest answer.
+  final Map<String, int> storedBytes;
+
   /// PICK-5: through the grant flow rather than `file_selector`, which
   /// copies the chosen file into a temporary directory on both mobile
   /// platforms — relinking to a copy that the next cache sweep deletes is
@@ -145,13 +160,23 @@ class MediaBrowserPanel extends StatelessWidget {
 
   /// `2.1 MB · 08-12 19:41` — as much of it as is known.
   ///
-  /// The size comes from the asset's IDENTITY, which the pool already
-  /// holds: it is the length the file had when it was registered, so no
-  /// row has to touch the disk to draw itself. The date comes from the
-  /// session's sweep for the same reason.
+  /// 🚨★★★**THE SIZE SHOWN IS THE SIZE TAKEN** (유저 2026-08-30: 「파일이
+  /// 보여주는 크기는 압축된 크기를 보여주는게 맞겟지? … 아무튼 실제크기」).
+  /// For a carried asset that is what it occupies compressed — in the
+  /// project file, or in the staging area before the first save. The
+  /// import dialog still shows the file's own length, and correctly:
+  /// nothing has been compressed yet at that point.
+  ///
+  /// ⛔[MediaAsset.identity] is the FALLBACK, not the answer. It is the
+  /// length the file had when it was registered — which for a compressed
+  /// asset matches nothing on any disk — and it stays untouched because
+  /// relink uses it to tell one `A1.png` from another.
+  ///
+  /// The date comes from the session's sweep, and neither number makes a
+  /// row touch the disk to draw itself.
   String _subtitleFor(MediaAsset asset) {
     final parts = <String>[];
-    final bytes = asset.identity?.lengthBytes;
+    final bytes = storedBytes[asset.path] ?? asset.identity?.lengthBytes;
     if (bytes != null && bytes > 0) {
       parts.add(byteSizeLabel(bytes));
     }
@@ -256,8 +281,8 @@ class MediaBrowserPanel extends StatelessWidget {
   }
 
   /// RELINK-2: the loss banner — one line, above the list, INSIDE this
-  /// panel. The user chose that over an app-wide strip: 「미디어 브라우저
-  /// 관련된거니까 미디어 브라우저에」.
+  /// panel. The user chose that over an app-wide strip: 「미디어 풀
+  /// 관련된거니까 미디어 풀에」.
   ///
   /// ONE kind, not two. An earlier draft counted "the reference broke" and
   /// "the copy inside the project vanished" separately; the single-file
@@ -328,10 +353,7 @@ class MediaBrowserPanel extends StatelessWidget {
                 keyValue: 'media-import-button',
                 tooltip: AppText.strings.mediaImportAudio,
                 // 「＋가 있는 모든 곳, 공통적으로」.
-                icon: Icon(
-                  Icons.add,
-                  color: AppColors.addGlyph(enabled: true),
-                ),
+                icon: Icon(Icons.add, color: AppColors.addGlyph(enabled: true)),
                 onPressed: onImportRequested,
               ),
               const Spacer(),

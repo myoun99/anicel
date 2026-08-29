@@ -59,7 +59,7 @@ import 'export/export_plan.dart';
 import 'import/import_dialog.dart';
 import 'media/media_asset_drag_data.dart';
 import 'media/media_asset_drop_target.dart';
-import 'media/media_browser_panel.dart';
+import 'media/media_pool_panel.dart';
 import 'media/media_relink_flow.dart';
 import 'media/media_viewer_tab_host.dart';
 import 'layout/device_grid.dart';
@@ -476,7 +476,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   /// LIBRARY and, under it, the tool SETTINGS: two buttons, both open, the
   /// two panels a stroke alternates between. The sub-strip carries the
   /// colour swatch, then the three PAPER surfaces of one cut (타임시트 ·
-  /// 콘티 · 컷봉투) as one button, then the media browser, then the onion
+  /// 콘티 · 컷봉투) as one button, then the media pool, then the onion
   /// settings. The floating region keeps the two TIME axes — the timeline
   /// and the storyboard — because those are what a wide bottom strip is
   /// shaped for.
@@ -540,7 +540,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     EditorWorkspace.railGroupId(right: true, slot: 4): DockGroup(
       tabs: [EditorWorkspace.onionSkinTabId, EditorWorkspace.toolSizeTabId],
     ),
-    // 서브 뷰어 (유저 확정 ⑥): right under the media browser it is opened
+    // 서브 뷰어 (유저 확정 ⑥): right under the media pool it is opened
     // from, and its group ships CLOSED — a reference panel earns its
     // height only once there is a reference in it.
     EditorWorkspace.railGroupId(right: true, slot: 5): DockGroup(
@@ -2027,7 +2027,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     });
   }
 
-
   /// The one place that shows 「fx 가 사라집니다」, for every surface.
   ///
   /// ⚠️EVERY exit answers. A dialog dismissed by the barrier or by escape
@@ -2063,12 +2062,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     );
     request.answer(proceed ?? false);
   }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    widget.session.attachFxConfirm.pending.removeListener(
-      _showAttachFxConfirm,
-    );
+    widget.session.attachFxConfirm.pending.removeListener(_showAttachFxConfirm);
     _brushTool.removeListener(_rememberBrushHandSettings);
     // A pending debounce would write after the tree is gone; the values are
     // in memory, so writing them NOW is both safe and the last chance.
@@ -2710,7 +2708,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
           locked: locked,
           builder: (context) => ListenableBuilder(
             listenable: widget.session,
-            builder: (context, _) => MediaBrowserPanel(
+            builder: (context, _) => MediaPoolPanel(
               assets: widget.session.mediaAssets,
               isAssetReferenced: widget.session.isMediaAssetReferenced,
               onImportRequested: () => _openImportWindow(poolOnly: true),
@@ -2727,6 +2725,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
               // answer rather than probing the disk per row.
               missingPaths: widget.session.missingMediaPaths,
               modifiedTimes: widget.session.mediaModifiedTimes,
+              // 유저 2026-08-30: 「아무튼 실제크기」 — what a carried asset
+              // occupies compressed, rather than the length its file had
+              // when it was registered.
+              storedBytes: widget.session.mediaStoredBytes,
               onRelinkMissing: () =>
                   runMediaRelinkFlow(context, widget.session),
               onRemoveAsset: widget.session.removeMediaAsset,
@@ -4811,7 +4813,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
 
   /// The one import window, from whichever entrance asked for it.
   ///
-  /// [poolOnly] is the media browser's ＋: it starts on the pool because
+  /// [poolOnly] is the media pool's ＋: it starts on the pool because
   /// registering for later is what that panel is for, and the other
   /// destinations stay on offer because it is the same window.
   void _openImportWindow({
