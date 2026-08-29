@@ -45,23 +45,31 @@ void main() {
     final path = placeholder('arrives.tvpp');
     var asked = 0;
     var staged = 0;
+    // 🚨★★★THE ARRIVAL IS CAUSED BY THE ASK, not scheduled beside it.
+    //
+    // This used to land the bytes on an 8 ms timer. Under the full suite
+    // that timer could fire BEFORE `materializeOpenedFile` ran its first
+    // probe — and a file that is already readable returns immediately
+    // WITHOUT asking, which is correct product behaviour and exactly what
+    // the next test pins. So the assertion below read `asked == 0` and the
+    // gate went red for a reason that had nothing to do with the code
+    // (실측 2026-08-28: green alone, intermittently red in a bulk run).
+    //
+    // ⛔The fix is the test's, not the product's. Writing from inside the
+    // requester is also the truer story: the platform lands the bytes
+    // BECAUSE it was asked to fetch them.
     FolderPicker.debugDownloadRequester = (requested) async {
       asked += 1;
       expect(requested, path);
-    };
-    FolderPicker.debugCoordinatedReader = ({
-      required String sourcePath,
-      required String destinationPath,
-    }) async {
-      staged += 1;
-      return false;
-    };
-
-    // The provider lands the bytes in the PICK, which is what
-    // materialisation actually means.
-    Future<void>.delayed(const Duration(milliseconds: 8), () {
+      // The provider lands the bytes in the PICK, which is what
+      // materialisation actually means.
       File(path).writeAsBytesSync(const [1, 2, 3]);
-    });
+    };
+    FolderPicker.debugCoordinatedReader =
+        ({required String sourcePath, required String destinationPath}) async {
+          staged += 1;
+          return false;
+        };
 
     final source = await FolderPicker.materializeOpenedFile(
       path,
@@ -150,13 +158,11 @@ void main() {
       'announce', () async {
     final path = placeholder('never.tvpp');
     FolderPicker.debugDownloadRequester = (_) async {};
-    FolderPicker.debugCoordinatedReader = ({
-      required String sourcePath,
-      required String destinationPath,
-    }) async {
-      File(destinationPath).writeAsBytesSync(const [4, 5]);
-      return true;
-    };
+    FolderPicker.debugCoordinatedReader =
+        ({required String sourcePath, required String destinationPath}) async {
+          File(destinationPath).writeAsBytesSync(const [4, 5]);
+          return true;
+        };
 
     final source = await FolderPicker.materializeOpenedFile(
       path,
@@ -178,13 +184,11 @@ void main() {
     var asked = 0;
     var staged = 0;
     FolderPicker.debugDownloadRequester = (_) async => asked += 1;
-    FolderPicker.debugCoordinatedReader = ({
-      required String sourcePath,
-      required String destinationPath,
-    }) async {
-      staged += 1;
-      return false;
-    };
+    FolderPicker.debugCoordinatedReader =
+        ({required String sourcePath, required String destinationPath}) async {
+          staged += 1;
+          return false;
+        };
 
     await expectLater(
       FolderPicker.materializeOpenedFile(
