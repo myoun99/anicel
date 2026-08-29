@@ -115,13 +115,32 @@ void main() {
     ) async {
       // ⛔The control. Without this a claim that swallowed everything would
       // pass the case above — including the day it swallows the whole list.
+      //
+      // 🚨THE MOUSE IS EXEMPT, and the reason is measured rather than
+      // chosen: Flutter hardcodes a mouse to a ONE PIXEL drag threshold, so
+      // a scrollable that takes mouse drags eats every click that wobbles.
+      // 유저 2026-08-30 reported exactly that, and the mouse came back out
+      // of `dragDevices` — see [AppScrollBehavior] for the whole reasoning
+      // and the board card that asks what to do about it.
       final list = await pumpList(tester, wrap: (child) => child);
+      final moved = await dragFromControl(tester, list, kind);
+      if (kind == PointerDeviceKind.mouse) {
+        expect(
+          moved,
+          0,
+          reason:
+              'a mouse does not drag-scroll at all right now — and this is '
+              'the case that fails the day it is put back without giving '
+              'the scroller a real threshold first',
+        );
+        return;
+      }
       expect(
-        await dragFromControl(tester, list, kind),
+        moved,
         greaterThan(0),
         reason:
-            'every device drags to scroll now — the mouse joined the set '
-            'because the answer is no longer a device rule',
+            'pen and touch drag to scroll, and the claim above is what '
+            'keeps that from starting on a control',
       );
     });
   }

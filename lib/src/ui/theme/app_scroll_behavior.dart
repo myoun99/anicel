@@ -1,4 +1,3 @@
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 
 import '../panels/panel_scrollbar.dart';
@@ -51,20 +50,32 @@ class AppScrollBehavior extends MaterialScrollBehavior {
   ///
   /// The framework leaves the mouse out because on a text-selecting page a
   /// mouse drag means selection. This app is not that page: a mouse drag
-  /// means an EDIT everywhere it means anything, and where it means nothing,
-  /// dragging to scroll is the obvious thing to want.
+  /// ⛔THE MOUSE IS NOT HERE, AND IT IS NOT AN OVERSIGHT.
   ///
-  /// ⛔This is only safe because the answer stopped being about devices.
-  /// `ControlPressClaim` takes the arena on the FIRST MOVEMENT, so a press
-  /// that lands on a control is that control's whatever pressed it, and no
-  /// scroller starts there. Adding the mouse to a set that still decided by
-  /// device would have copied the pen's rival onto the mouse instead of
-  /// removing it — 유저: 「그게 싫다니까?」
-  @override
-  Set<PointerDeviceKind> get dragDevices => {
-    ...super.dragDevices,
-    PointerDeviceKind.mouse,
-  };
+  /// It was added on 2026-08-29 because 유저 asked for it — 「마우스로도
+  /// 드래그로 스크롤하면 편하니까 넣고싶은거고」 — and it broke every mouse
+  /// click in the app: 유저 2026-08-30 「지금 버튼이 펜이랑 마우스 조작이
+  /// 바꼈어 … **펜마우스만 그자리에서 손떼야 작동함**」.
+  ///
+  /// 🚨THE REASON IS A FLUTTER CONSTANT, not a bug here. `computeHitSlop`
+  /// hardcodes a MOUSE to `kPrecisePointerHitSlop` — ONE pixel — and ignores
+  /// the gesture settings for that kind alone. So a `Scrollable` that takes
+  /// mouse drags wins the arena a pixel into any click, and the tap dies.
+  /// Measured with no claim in the tree at all: a 2px mouse wobble scrolled
+  /// 1.0 and fired zero taps.
+  ///
+  /// ⚠️A threshold cannot separate the two: raising the CLAIM's slop (which
+  /// this round did, and which is what fixed the pen) only means the
+  /// scroller wins the pixel first. Giving the mouse a real drag threshold
+  /// needs the scrollable's own recogniser, which `ScrollBehavior` does not
+  /// expose. Boarded as its own question rather than guessed at.
+  ///
+  /// 펜·터치는 그대로 드래그로 스크롤한다 — 둘 다 18px 슬롭이라 클릭을
+  /// 먹지 않는다.
+  ///
+  /// ⇒ No `dragDevices` override at all: the framework default is pen,
+  /// touch, trackpad and inverted stylus, which is exactly the set that can
+  /// carry a drag without eating a click.
 
   @override
   Widget buildScrollbar(

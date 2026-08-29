@@ -539,6 +539,8 @@ class AppStrings {
   String get sheetArtist => _s('sheetArtist');
   String get sheetStaffByProcess => _s('sheetStaffByProcess');
   String get sheetVisibleBoxes => _s('sheetVisibleBoxes');
+  String get sheetStampPick => _s('sheetStampPick');
+  String get sheetStampClear => _s('sheetStampClear');
   String get sheetNotation => _s('sheetNotation');
   String get sheetExposureBar => _s('sheetExposureBar');
   String get sheetExposureBarHelp => _s('sheetExposureBarHelp');
@@ -1429,6 +1431,8 @@ class AppStrings {
     'sheetArtist': 'Artist',
     'sheetStaffByProcess': 'Staff by process',
     'sheetVisibleBoxes': 'Visible boxes',
+    'sheetStampPick': 'Choose stamp',
+    'sheetStampClear': 'Remove stamp',
     'sheetNotation': 'Notation',
     'sheetExposureBar': 'Exposure hold bar',
     'sheetExposureBarHelp':
@@ -2210,6 +2214,8 @@ class AppStrings {
     'sheetArtist': '作画者',
     'sheetStaffByProcess': '工程ごとの担当',
     'sheetVisibleBoxes': '表示する枠',
+    'sheetStampPick': 'ハンコを選ぶ',
+    'sheetStampClear': 'ハンコを外す',
     'sheetNotation': '表記',
     'sheetExposureBar': '止めの引き伸ばし線',
     'sheetExposureBarHelp': 'N コマ以上の止めで (N+1) コマ目から線を引く',
@@ -3057,6 +3063,8 @@ class AppStrings {
     'sheetArtist': '작화자',
     'sheetStaffByProcess': '공정별 담당자',
     'sheetVisibleBoxes': '표시할 칸',
+    'sheetStampPick': '도장 고르기',
+    'sheetStampClear': '도장 지우기',
     'sheetNotation': '표기',
     'sheetExposureBar': '止め 늘림 선',
     'sheetExposureBarHelp': 'N코마 이상 止め에서 (N+1)번째 코마부터 선을 긋기',
@@ -3919,6 +3927,8 @@ class AppStrings {
     'sheetArtist': 'Animateur',
     'sheetStaffByProcess': 'Équipe par étape',
     'sheetVisibleBoxes': 'Cases visibles',
+    'sheetStampPick': 'Choisir le tampon',
+    'sheetStampClear': 'Retirer le tampon',
     'sheetNotation': 'Notation',
     'sheetExposureBar': 'Trait de maintien',
     'sheetExposureBarHelp':
@@ -4738,6 +4748,8 @@ class AppStrings {
     'sheetArtist': '作画',
     'sheetStaffByProcess': '各工序负责人',
     'sheetVisibleBoxes': '显示的栏位',
+    'sheetStampPick': '选择印章',
+    'sheetStampClear': '移除印章',
     'sheetNotation': '标注',
     'sheetExposureBar': '保持延长线',
     'sheetExposureBarHelp': '在 N 格以上的保持中，从第 (N+1) 格开始画线',
