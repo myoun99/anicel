@@ -97,6 +97,7 @@ void main() {
       laneId: 'position',
       anchorIndex: 0,
       headIndex: 19,
+      spanLaneIds: const [],
       framesAreGlobal: true,
     );
     expect(manager.laneRangeSelection.value!.startIndex, 0);
@@ -129,6 +130,7 @@ void main() {
       laneId: 'position',
       anchorIndex: 13,
       headIndex: 15,
+      spanLaneIds: const [],
       framesAreGlobal: true,
     );
     expect(
@@ -151,6 +153,7 @@ void main() {
       laneId: 'position',
       anchorIndex: 3,
       headIndex: 5,
+      spanLaneIds: const [],
     );
 
     final span = manager.laneRangeSelection.value!;
@@ -178,6 +181,7 @@ void main() {
       laneId: 'position',
       anchorIndex: 6,
       headIndex: 15,
+      spanLaneIds: const [],
       framesAreGlobal: true,
     );
 
@@ -208,6 +212,7 @@ void main() {
         laneId: 'position',
         anchorIndex: 12,
         headIndex: 15,
+        spanLaneIds: const [],
         framesAreGlobal: true,
       );
       // Cut 1 (0..10) cannot see 12..16 at all.

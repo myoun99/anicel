@@ -18,6 +18,7 @@ import 'timeline_row_cross_offset.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import 'timeline_row_span_resolver.dart'
     show
+        laneSpanOverDrawnRows,
         resolveInGroupHeadLane,
         resolveLaneSpanEscalation,
         resolveSelectionSpanHead,
@@ -1850,16 +1851,27 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                   if (escalation == null) {
                     // In-group: the head LANE resolves off the SAME drawn
                     // rows (C② — the hosts' hand-kept lane lists retired).
+                    final drawn = [for (final row in _dragRows) row.address];
+                    final headLane = resolveInGroupHeadLane(
+                      rows: drawn,
+                      layerId: layerId,
+                      laneId: laneId,
+                      rowDelta: headRowDelta,
+                    );
                     hostLaneRange.onSelectUpdate(
                       layerId,
                       laneId,
                       anchorIndex,
                       headIndex,
-                      resolveInGroupHeadLane(
-                        rows: [for (final row in _dragRows) row.address],
+                      headLane,
+                      // The span comes off the SAME drawn rows the head
+                      // did — 절대명령 2「선택범위는 레이어 불문 자유롭게」,
+                      // and the reason three per-family walks could go.
+                      laneSpanOverDrawnRows(
+                        rows: drawn,
                         layerId: layerId,
                         laneId: laneId,
-                        rowDelta: headRowDelta,
+                        headLaneId: headLane ?? laneId,
                       ),
                     );
                     return;

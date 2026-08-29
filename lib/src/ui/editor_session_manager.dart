@@ -236,7 +236,7 @@ import 'timeline/effect_lane_editing.dart'
         effectsWithLaneKeyToggled,
         effectsWithGroupReset;
 import 'timeline/effect_lane_policy.dart'
-    show effectLaneDisplayOrder, effectLaneSpan, parseEffectLaneId;
+    show effectLaneDisplayOrder, parseEffectLaneId;
 import 'timeline/transform_lane_editing.dart'
     show
         transformLaneKeyFrames,
@@ -246,10 +246,8 @@ import 'timeline/transform_lane_editing.dart'
         transformTrackWithGroupReset;
 import 'timeline/se_name_tag_lane_policy.dart'
     show
-        laneIsSeNameTag,
         seNameTagGroupLaneId,
-        seNameTagLaneDisplayOrder,
-        seNameTagLaneSpan;
+        seNameTagLaneDisplayOrder;
 import 'timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder, transformLaneSpan;
 
@@ -13163,6 +13161,7 @@ class EditorSessionManager extends ChangeNotifier {
     required int anchorIndex,
     required int headIndex,
     String? headLaneId,
+    required List<String> spanLaneIds,
     bool framesAreGlobal = false,
   }) {
     final carrierTrackId = trackIdOfTransformLaneCarrier(layerId);
@@ -13203,23 +13202,23 @@ class EditorSessionManager extends ChangeNotifier {
     if (endExclusive <= start) {
       return;
     }
-    // R6: effect lanes span within their own effect; the NAME-TAG group
-    // spans within its own order (C3 2026-08-17 — [seNameTagLaneSpan] was
-    // "a complete twin of transformLaneSpan" that this switch never
-    // consulted, so a drag across the tag's members folded to the one row
-    // it started on: the T13 imprisonment, back on one more family);
-    // every other lane id resolves against the transform order. The chain
-    // may be a layer's or the V TRACK's — the carrier id says which.
-    final span =
-        effectLaneSpan(
-          _effectChainOf(layerId) ?? const [],
-          laneId,
-          headLaneId ?? laneId,
-        ) ??
-        (laneIsSeNameTag(laneId)
-            ? seNameTagLaneSpan(laneId, headLaneId ?? laneId)
-            : null) ??
-        transformLaneSpan(laneId, headLaneId ?? laneId);
+    // 🚨★★★THE SPAN COMES FROM THE RAIL, NOT FROM A FAMILY.
+    //
+    // 절대명령 2 (유저, 반복): 「**선택범위는 레이어 불문 자유롭게**. 행의
+    // 종류로 막지 않는다」.
+    //
+    // ⛔This used to try three per-family walks in a `??` chain —
+    // `effectLaneSpan`, then `seNameTagLaneSpan`, then `transformLaneSpan`.
+    // Each knew only its own order list, so a drag whose ends sat in
+    // DIFFERENT groups matched none and collapsed to the anchor alone: the
+    // selection stopped at a boundary the user never drew. They were also
+    // the same code three times (get an order, index both ends, slice).
+    //
+    // ⇒ The rail slices the span out of the rows it ACTUALLY DREW
+    // ([laneSpanOverDrawnRows]) and hands it here. A collapsed group draws
+    // no members so they cannot be swept, and a group opened between two
+    // others joins without this method learning its name.
+    final span = spanLaneIds;
     laneRangeSelection.value = TimelineLaneSelection(
       layerId: layerId,
       laneId: laneId,

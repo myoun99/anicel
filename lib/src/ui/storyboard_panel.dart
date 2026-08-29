@@ -42,6 +42,7 @@ import 'timeline/property_lane_model.dart'
 import 'timeline/timeline_row_span_resolver.dart'
     show
         resolveBlockMoveTargetLayer,
+        laneSpanOverDrawnRows,
         resolveInGroupHeadLane,
         resolveLaneSpanEscalationOverAddresses;
 import 'timeline/se_audio_lane.dart' show SeAudioLaneFrameRow, seAudioLanesFor;
@@ -2884,6 +2885,20 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                   layerId: layerId,
                   laneId: laneId,
                   rowDelta: rowDelta,
+                ),
+                // The span off the SAME drawn rows — 절대명령 2.
+                laneSpanOverDrawnRows(
+                  rows: addresses,
+                  layerId: layerId,
+                  laneId: laneId,
+                  headLaneId:
+                      resolveInGroupHeadLane(
+                        rows: addresses,
+                        layerId: layerId,
+                        laneId: laneId,
+                        rowDelta: rowDelta,
+                      ) ??
+                      laneId,
                 ),
               );
               return;

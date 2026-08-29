@@ -131,6 +131,11 @@ void main() {
         laneId: seNameTagSizeLaneId,
         anchorIndex: 2,
         headIndex: 4,
+        spanLaneIds: const [
+          seNameTagSizeLaneId,
+          seNameTagTrackingLaneId,
+          seNameTagBoldLaneId,
+        ],
         headLaneId: seNameTagBoldLaneId,
       );
 
@@ -153,6 +158,7 @@ void main() {
         laneId: seNameTagGroupLaneId,
         anchorIndex: 2,
         headIndex: 2,
+        spanLaneIds: seNameTagLaneSelectionOrder,
         headLaneId: seNameTagShowLineLaneId,
       );
 

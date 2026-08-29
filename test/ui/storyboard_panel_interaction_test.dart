@@ -1429,7 +1429,7 @@ void main() {
         },
         laneRange: TimelineLaneRangeHooks(
           selection: laneSelection,
-          onSelectUpdate: (layerId, laneId, anchor, head, headLaneId) =>
+          onSelectUpdate: (layerId, laneId, anchor, head, headLaneId, span) =>
               inGroup.add((laneId, headLaneId)),
           onTapAt: (_, _, _) {},
           onTapClear: () {},

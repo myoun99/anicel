@@ -396,6 +396,7 @@ void main() {
       laneId: laneId,
       anchorIndex: 2,
       headIndex: 3,
+      spanLaneIds: const [],
     );
     expect(session.beginLaneRangeMoveDrag(), isTrue);
     session.updateLaneRangeMoveDrag(frameDelta: 5);

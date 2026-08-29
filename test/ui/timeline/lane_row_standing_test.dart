@@ -415,6 +415,7 @@ void main() {
         laneId: 'position',
         anchorIndex: 1,
         headIndex: 4,
+        spanLaneIds: const [],
       );
       await tester.pumpAndSettle();
       expect(session.laneRangeSelection.value, isNotNull);
