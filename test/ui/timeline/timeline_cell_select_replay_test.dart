@@ -1,8 +1,9 @@
-﻿import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/ui/input/app_input_settings.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_block_visual.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cell.dart';
@@ -115,11 +116,12 @@ void main() {
   /// it landed OUTSIDE the selection, and the release clears when nothing
   /// travelled. These cases asserted the ㉟ half and are rewritten.
   ///
-  /// ⚠️A FINGER is still carved out, and that is not T10's doing — the
-  /// carve-out predates ㉟ and came from its own user report (UI-R23 #2:
-  /// 「the first scroll touch kept moving the playhead」). A finger has no
-  /// hover, so its press is genuinely ambiguous with the start of a scroll;
-  /// its case is the one below this loop.
+  /// ⚠️A FINGER is carved out ONLY WHILE IT IS NAVIGATING, and that is not
+  /// T10's doing — the carve-out predates ㉟ and came from its own user
+  /// report (UI-R23 #2: 「the first scroll touch kept moving the playhead」).
+  /// 🚨With 터치 묘화 ON the finger is not navigating, so it presses like a
+  /// mouse (유저 2026-08-29: 「터치 묘화 on이면 터치가 마우스랑 완전 똑같이
+  /// 작용하길 원하는데 … 손떼야 바껴」). Both halves are below this loop.
   for (final kind in const [
     PointerDeviceKind.stylus,
     PointerDeviceKind.mouse,
@@ -159,7 +161,8 @@ void main() {
       expect(
         selections,
         [2],
-        reason: 'the press IS the pick (T10) — and it does not wait out the '
+        reason:
+            'the press IS the pick (T10) — and it does not wait out the '
             'double-tap window to be one',
       );
 
@@ -173,42 +176,78 @@ void main() {
     });
   }
 
-  testWidgets('T10 a TOUCH press still waits for the release', (tester) async {
-    // The carve-out, pinned so it cannot be extended by accident: a finger
-    // has no hover, so its press is ambiguous with the start of a scroll
-    // (UI-R23 #2). T10 says nothing about touch.
-    final selections = <int>[];
-    final layer = Layer(id: const LayerId('layer'), name: 'L', frames: const []);
+  /// 🚨The finger, BOTH ways — one body, driven twice.
+  ///
+  /// Written as a loop on purpose: the carve-out and its lift are the same
+  /// press through the same widget, and only the setting differs. Two
+  /// hand-written copies would let one drift while the other kept passing.
+  for (final (draws, expectOnPress) in const [(true, true), (false, false)]) {
+    testWidgets(
+      'a finger presses like a mouse when 터치 묘화 is ${draws ? "on" : "off"}',
+      (tester) async {
+        AppInput.settings.value = AppInput.settings.value.copyWith(
+          touchDragOneFinger: draws
+              ? CanvasTouchDragAction.draw
+              : CanvasTouchDragAction.flip,
+        );
+        addTearDown(() {
+          AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+        });
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: TimelineFrameCell(
-            layer: layer,
-            frameIndex: 2,
-            active: true,
-            outsidePlaybackRange: false,
-            exposureState: TimelineCellExposureState.uncovered,
-            exposureBlockSegment: TimelineExposureBlockVisualSegment.none,
-            onSelectLayer: (_) {},
-            onSelectFrame: selections.add,
-            onActivateCell: (_, _) {},
+        final selections = <int>[];
+        final layer = Layer(
+          id: const LayerId('layer'),
+          name: 'L',
+          frames: const [],
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: TimelineFrameCell(
+                layer: layer,
+                frameIndex: 2,
+                active: true,
+                outsidePlaybackRange: false,
+                exposureState: TimelineCellExposureState.uncovered,
+                exposureBlockSegment: TimelineExposureBlockVisualSegment.none,
+                onSelectLayer: (_) {},
+                onSelectFrame: selections.add,
+                onActivateCell: (_, _) {},
+              ),
+            ),
           ),
-        ),
-      ),
-    );
+        );
 
-    final gesture = await tester.startGesture(
-      tester.getCenter(find.byKey(const ValueKey<String>('timeline-cell-layer-2'))),
-      kind: PointerDeviceKind.touch,
-    );
-    await tester.pump(const Duration(milliseconds: 200));
-    expect(selections, isEmpty, reason: 'a finger withholds on the press');
+        final gesture = await tester.startGesture(
+          tester.getCenter(
+            find.byKey(const ValueKey<String>('timeline-cell-layer-2')),
+          ),
+          kind: PointerDeviceKind.touch,
+        );
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(
+          selections,
+          expectOnPress ? [2] : isEmpty,
+          reason: draws
+              // 유저 2026-08-29: 「터치 묘화 on이면 터치가 마우스랑 완전
+              // 똑같이 작용하길 원하는데 … 손떼야 바껴」.
+              ? '터치 묘화 on — the finger IS the pointer, press and all'
+              // ⛔THE CONTROL, and it is UI-R23 #2 itself: in flip mode the
+              // finger is navigating, and a press that seeks is the bug.
+              : 'in flip mode a finger still withholds on the press',
+        );
 
-    await gesture.up();
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(selections, [2], reason: 'and pays on the release');
-  });
+        await gesture.up();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(
+          selections,
+          [2],
+          reason: 'either way the cell is picked once the finger is done',
+        );
+      },
+    );
+  }
 
   testWidgets('T10 a press that TRAVELS has already picked, and that is the '
       'cost the user named', (tester) async {

@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -311,29 +312,57 @@ void main() {
   // Opacity lane no longer exists, and the fade it drew is F.I/F.O spans on the
   // transition row.
 
-  testWidgets('standing on a V LANE row rings the lane, not its track row', (
-    tester,
-  ) async {
-    await pumpStoryboard(tester);
-    await twirlOpenVLanes(tester);
+  /// 🚨EVERY DEVICE, because the bug was a device-shaped accident.
+  ///
+  /// The host's outermost `Listener` claims the panel on pointer-DOWN, and
+  /// dispatch is deepest-first, so that claim ran LAST on every press. It
+  /// claimed `selectedRow` — the getter that answers 「which RAIL row is
+  /// lit」 and collapses a lane to its track — so it un-stood you from the
+  /// lane the press had just stood on.
+  ///
+  /// ⛔A finger hid it: touch stood on the RELEASE, after the claim, while
+  /// a mouse stood on the DOWN, before it. This case drove only `tapAt`
+  /// (touch), so it stayed green while the mouse was broken. Lifting the
+  /// finger's carve-out (터치 묘화 ON) is what made it speak.
+  ///
+  /// ⛔`trackpad` is left out and the reason is the FRAMEWORK's, not a
+  /// convenience: `WidgetController.startGesture` opens a trackpad gesture
+  /// with `panZoomStart`, never a pointer down (flutter_test's own doc:
+  /// 「if kind is set to PointerDeviceKind.trackpad, the gesture will start
+  /// with a panZoomStart gesture」). A laptop trackpad CLICK arrives as a
+  /// mouse pointer, which the loop already covers.
+  for (final kind in PointerDeviceKind.values.where(
+    (kind) => kind != PointerDeviceKind.trackpad,
+  )) {
+    testWidgets('standing on a V LANE row rings the lane, not its track row '
+        '(${kind.name})', (tester) async {
+      await pumpStoryboard(tester);
+      await twirlOpenVLanes(tester);
 
-    // Stand on the effect's parameter lane by pressing its band — the
-    // storyboard's own press path (R5 ③a), through the real host wiring. The
-    // lane KIND changed with the teardown; the contract did not.
-    final laneId = effectLaneId(_trackEffect, 'brightness');
-    final laneRow = find.byKey(
-      ValueKey<String>('storyboard-track-lane-row-0-$laneId'),
-    );
-    await tester.ensureVisible(laneRow);
-    await tester.pumpAndSettle();
-    final rowRect = tester.getRect(laneRow);
-    await tester.tapAt(Offset(rowRect.left + 6, rowRect.center.dy));
-    await tester.pumpAndSettle();
+      // Stand on the effect's parameter lane by pressing its band — the
+      // storyboard's own press path (R5 ③a), through the real host
+      // wiring. The lane KIND changed with the teardown; the contract
+      // did not.
+      final laneId = effectLaneId(_trackEffect, 'brightness');
+      final laneRow = find.byKey(
+        ValueKey<String>('storyboard-track-lane-row-0-$laneId'),
+      );
+      await tester.ensureVisible(laneRow);
+      await tester.pumpAndSettle();
+      final rowRect = tester.getRect(laneRow);
+      final gesture = await tester.startGesture(
+        Offset(rowRect.left + 6, rowRect.center.dy),
+        kind: kind,
+      );
+      await tester.pump(const Duration(milliseconds: 60));
+      await gesture.up();
+      await tester.pumpAndSettle();
 
-    expectRingOnRow(tester, 'storyboard-track-lane-row-0-$laneId');
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-standing-cell')),
-      findsOneWidget,
-    );
-  });
+      expectRingOnRow(tester, 'storyboard-track-lane-row-0-$laneId');
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-standing-cell')),
+        findsOneWidget,
+      );
+    });
+  }
 }
