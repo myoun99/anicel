@@ -71,7 +71,7 @@ import 'timeline_lane_rows.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_layer_controls_header.dart';
 import '../text/vertical_writing_text.dart';
-import 'pen_friendly_scroll_controller.dart';
+import '../input/pen_friendly_scroll_controller.dart';
 import 'stylus_glide_stop.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
 import 'timeline_ruler_cut_end_boundary.dart';

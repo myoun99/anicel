@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../input/control_press_claim.dart';
+
 import '../color/color_status_bar.dart' show ColorStatusBar;
 import '../color/color_wheel_panel.dart' show ColorWheel;
 import '../text/app_strings.dart';
@@ -45,27 +47,31 @@ class ColorSwatchButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final swatch = Builder(
-      builder: (anchorContext) => Material(
-        color: Colors.transparent,
-        shape: const CircleBorder(),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          key: ValueKey<String>(keyValue),
-          customBorder: const CircleBorder(),
-          onTap: () => showColorPickerPopup(
-            anchorContext,
-            color: color,
-            onChanged: onChanged,
-            currentColorOf: currentColorOf,
-          ),
-          child: SizedBox(
-            width: diameter,
-            height: diameter,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: Color(color),
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.hairline),
+      // 🚨A swatch is a control: a press that lands here is its own,
+      // scroll included ([ControlPressClaim]).
+      builder: (anchorContext) => ControlPressClaim(
+        child: Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            key: ValueKey<String>(keyValue),
+            customBorder: const CircleBorder(),
+            onTap: () => showColorPickerPopup(
+              anchorContext,
+              color: color,
+              onChanged: onChanged,
+              currentColorOf: currentColorOf,
+            ),
+            child: SizedBox(
+              width: diameter,
+              height: diameter,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Color(color),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.hairline),
+                ),
               ),
             ),
           ),
@@ -165,9 +171,8 @@ class _ColorPickerBodyState extends State<_ColorPickerBody> {
             alignment: Alignment.centerRight,
             child: TextButton(
               key: const ValueKey<String>('color-picker-use-current'),
-              onPressed: () => _apply(
-                HSVColor.fromColor(Color(widget.currentColorOf())),
-              ),
+              onPressed: () =>
+                  _apply(HSVColor.fromColor(Color(widget.currentColorOf()))),
               style: TextButton.styleFrom(
                 minimumSize: Size.zero,
                 padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -191,8 +196,7 @@ class _ColorPickerBodyState extends State<_ColorPickerBody> {
           ColorStatusBar(
             key: const ValueKey<String>('color-picker-status'),
             color: _hsv.toColor().toARGB32(),
-            onColorChanged: (argb) =>
-                _apply(HSVColor.fromColor(Color(argb))),
+            onColorChanged: (argb) => _apply(HSVColor.fromColor(Color(argb))),
           ),
         ],
       ),

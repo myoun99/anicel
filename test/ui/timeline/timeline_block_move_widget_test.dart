@@ -229,7 +229,7 @@ void main() {
 
   testWidgets('with touch-timeline-scroll ON, a TOUCH pan no longer '
       'selects (UI-R22 #6: the scroll owns touch then)', (tester) async {
-    AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+    AppInput.settings.value = const AppInputSettings();
     addTearDown(() {
       // Back to the CORPUS baseline (flutter_test_config pins OFF; the
       // class default is ON since UI-R22F).
@@ -634,7 +634,7 @@ void main() {
       '(UI-R23 feedback #2: the first scroll touch kept moving the '
       'playhead) — painter and sparse rows alike; pen/mouse still seek '
       'and OFF keeps touch-as-pen', (tester) async {
-    AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+    AppInput.settings.value = const AppInputSettings();
     addTearDown(() {
       AppInput.settings.value = AppInputSettings.testCorpusBaseline;
     });
@@ -1228,7 +1228,7 @@ void main() {
       'ignore-pointers the gesture layer (the tablet bug, pinned)', (
     tester,
   ) async {
-    AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+    AppInput.settings.value = const AppInputSettings();
     addTearDown(() {
       AppInput.settings.value = AppInputSettings.testCorpusBaseline;
     });
@@ -1279,7 +1279,7 @@ void main() {
 
   testWidgets('PEN-9: stylus HOVER stops the coast, so the pen SELECTS '
       'right after a touch fling (the Galaxy Tab fix)', (tester) async {
-    AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+    AppInput.settings.value = const AppInputSettings();
     addTearDown(() {
       AppInput.settings.value = AppInputSettings.testCorpusBaseline;
     });
@@ -1359,7 +1359,7 @@ void main() {
       'hittable — the pen lands with NO hover and still selects', (
     tester,
   ) async {
-    AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+    AppInput.settings.value = const AppInputSettings();
     addTearDown(() {
       AppInput.settings.value = AppInputSettings.testCorpusBaseline;
     });
@@ -1426,7 +1426,7 @@ void main() {
 
   testWidgets('PEN-12 #6: with touch-timeline-scroll ON a clean finger TAP '
       'selects the frame; a finger DRAG still only scrolls', (tester) async {
-    AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+    AppInput.settings.value = const AppInputSettings();
     addTearDown(() {
       AppInput.settings.value = AppInputSettings.testCorpusBaseline;
     });

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../input/control_press_claim.dart';
 import 'inline_numeric_field.dart';
 
 /// A numeric READOUT you can operate (UI-R18 #21, the shared vocabulary
@@ -105,18 +107,24 @@ class _DragValueLabelState extends State<DragValueLabel> {
     }
     final label = MouseRegion(
       cursor: SystemMouseCursors.resizeLeftRight,
-      child: GestureDetector(
-        key: ValueKey<String>(widget.keyValue),
+      // 🚨A horizontal drag here SCRUBS the value — that is the verb, so it
+      // takes the STRONG claim. Without it an ancestor scroller wins the
+      // drag at its slop and the number never moves.
+      child: DragVerbClaim(
         behavior: HitTestBehavior.opaque,
-        onTap: _beginEdit,
-        onHorizontalDragStart: (_) => _pendingUnits = 0,
-        onHorizontalDragUpdate: (details) => _dragBy(details.delta.dx),
-        child: SizedBox(
-          width: widget.width,
-          child: Text(
-            widget.text,
-            textAlign: widget.textAlign,
-            style: widget.textStyle ?? const TextStyle(fontSize: 12),
+        child: GestureDetector(
+          key: ValueKey<String>(widget.keyValue),
+          behavior: HitTestBehavior.opaque,
+          onTap: _beginEdit,
+          onHorizontalDragStart: (_) => _pendingUnits = 0,
+          onHorizontalDragUpdate: (details) => _dragBy(details.delta.dx),
+          child: SizedBox(
+            width: widget.width,
+            child: Text(
+              widget.text,
+              textAlign: widget.textAlign,
+              style: widget.textStyle ?? const TextStyle(fontSize: 12),
+            ),
           ),
         ),
       ),

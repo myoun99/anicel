@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../input/pen_friendly_scroll_controller.dart';
 import '../layout/device_grid.dart';
 
 /// Which screen edge the dock is attached to; the hairline border sits on
@@ -40,7 +41,20 @@ class EditorPanelDock extends StatefulWidget {
 }
 
 class _EditorPanelDockState extends State<EditorPanelDock> {
-  final ScrollController _scrollController = ScrollController();
+  /// 🚨★★★PEN-FRIENDLY, and it is not the timeline's private trick.
+  ///
+  /// A `ScrollPosition` ignore-pointers the viewport's CHILDREN for the
+  /// life of any scroll activity — 🧪measured here: `RenderIgnorePointer
+  /// .ignoring == true` while this list drags or coasts. The children of
+  /// THIS list are the panels, so for that window a pen or finger landing
+  /// on a panel reaches nothing, and the press falls through to the canvas
+  /// behind it (유저 2026-08-29: 「띠의 패널 여러개띄워서 다중패널 세로
+  /// 스크롤바 활성되있으면 버그나서 **뒤의 캔버스패널의 터치가 작동**」).
+  ///
+  /// The timeline hit this first and the fix was written there; a dock is
+  /// not a timeline, so it never got it. Same law, same code, one home now
+  /// ([[unify-at-the-logic-layer]]).
+  final ScrollController _scrollController = PenFriendlyScrollController();
 
   @override
   void dispose() {

@@ -640,7 +640,7 @@ Future<void> _expectTimelineActionKeys(WidgetTester tester) async {
 /// flutter_test_config, and under OFF a cell-area touch drag EDITS (the
 /// eager pan claims it) instead of scrolling.
 void _withTouchScroll() {
-  AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+  AppInput.settings.value = const AppInputSettings();
   addTearDown(() {
     AppInput.settings.value = AppInputSettings.testCorpusBaseline;
   });

@@ -97,7 +97,7 @@ void main() {
   }
 
   testWidgets('a finger on a LAYER row scrolls the rail', (tester) async {
-    AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+    AppInput.settings.value = const AppInputSettings();
     await pump(tester);
     final controller = railScroll(tester);
     expect(
@@ -124,7 +124,7 @@ void main() {
     // 🚨The measurement that found the cause: the same finger, one row's
     // width to the right, moved the list 90px. So the scroll view was
     // willing and something over the RAIL was taking the drag first.
-    AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+    AppInput.settings.value = const AppInputSettings();
     await pump(tester);
     final controller = railScroll(tester);
     final rail = tester.getRect(railRow('l13'));
@@ -141,30 +141,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(controller.offset, greaterThan(0));
-  });
-
-  testWidgets('⛔and with touch scrolling OFF the finger edits instead', (
-    tester,
-  ) async {
-    // The other direction of the same set. 「터치로 스크롤할수있게도록」 is not
-    // 「a finger never edits」 — it is the timeline's own scroll setting
-    // deciding, and the rail now asks the same question every other edit
-    // pan on this surface asks.
-    AppInput.settings.value = const AppInputSettings(
-      touchTimelineScroll: false,
-    );
-    await pump(tester);
-    final controller = railScroll(tester);
-
-    await fingerDrag(tester, railRow('l13'), const Offset(0, -120));
-
-    expect(
-      controller.offset,
-      0,
-      reason:
-          'touch does not own the timeline scroll here, so the rail '
-          'keeps the finger',
-    );
   });
 
   testWidgets('and in 1-finger DRAWING mode that same finger selects rows', (

@@ -487,7 +487,7 @@ void main() {
 
   testWidgets('PEN-12 #6: with touch-timeline-scroll ON, a clean finger '
       'TAP on [+] still adds one cel', (tester) async {
-    AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+    AppInput.settings.value = const AppInputSettings();
     addTearDown(() {
       AppInput.settings.value = AppInputSettings.testCorpusBaseline;
     });
@@ -514,7 +514,7 @@ void main() {
 
   testWidgets('PEN-12 #3: a drag STARTING on the run property tag never '
       'scrolls the timeline', (tester) async {
-    AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+    AppInput.settings.value = const AppInputSettings();
     addTearDown(() {
       AppInput.settings.value = AppInputSettings.testCorpusBaseline;
     });

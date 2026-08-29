@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../models/app_language.dart' show AppLanguage;
 import '../input/control_press_claim.dart';
 import '../widgets/app_icon_button.dart';
-import '../input/value_control_pointers.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
@@ -1272,15 +1271,7 @@ class RailSwipeColumnPointer extends StatelessWidget {
     // ⛔The WEAK half is NOT written again here. It is [ControlPressClaim],
     // the one widget every button in the app wears; what a swipe column
     // adds is the STRONG claim, and that is all it should have to say.
-    return ControlPressClaim(
-      child: Listener(
-        onPointerDown: (event) => claimPointerForValueControl(event.pointer),
-        onPointerUp: (event) => releasePointerForValueControl(event.pointer),
-        onPointerCancel: (event) =>
-            releasePointerForValueControl(event.pointer),
-        child: child,
-      ),
-    );
+    return ControlPressClaim(child: DragVerbClaim(child: child));
   }
 }
 

@@ -11,7 +11,7 @@ import 'package:anicel/src/ui/input/app_input_settings.dart';
 /// untouched (this file opts in per test).
 void main() {
   tearDown(() {
-    AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+    AppInput.settings.value = AppInputSettings.testCorpusBaseline;
   });
 
   Future<
@@ -105,7 +105,6 @@ void main() {
   testWidgets('2-finger drag navigates (pan reaches the viewport); with '
       'rotation disabled the view never rotates', (tester) async {
     AppInput.settings.value = const AppInputSettings(
-      touchTimelineScroll: false,
       navigationRotationEnabled: false,
     );
     final probes = await pumpEngine(tester);
@@ -209,7 +208,6 @@ void main() {
   testWidgets('slots are ASSIGNABLE: 1-finger set to navigate pans the '
       'viewport instead of flipping', (tester) async {
     AppInput.settings.value = const AppInputSettings(
-      touchTimelineScroll: false,
       touchDragOneFinger: CanvasTouchDragAction.navigate,
     );
     final probes = await pumpEngine(tester);

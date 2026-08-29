@@ -72,7 +72,6 @@ void main() {
     first.setPasteboardColor(0xFF204060);
     first.setInputSettings(
       const AppInputSettings(
-        touchTimelineScroll: false,
         pressureCurveGamma: 1.5,
       ),
     );
@@ -116,7 +115,7 @@ void main() {
           AppText.settings.value.programLanguage == AppLanguage.ko &&
           AppColors.accentSettings.value.accent == const Color(0xFF123456) &&
           AppWorkspaceColors.settings.value.pasteboardArgb == 0xFF204060 &&
-          !AppInput.settings.value.touchTimelineScroll &&
+          AppInput.settings.value.pressureCurveGamma == 1.5 &&
           AppSave.settings.value.periodicSnapshotMinutes == 7 &&
           second.audioSyncSettings.value.offset == 42,
     );
@@ -126,7 +125,6 @@ void main() {
     expect(second.uiStrings, AppStrings.of(AppLanguage.ko));
     expect(AppColors.accentSettings.value.accent, const Color(0xFF123456));
     expect(AppWorkspaceColors.settings.value.pasteboardArgb, 0xFF204060);
-    expect(AppInput.settings.value.touchTimelineScroll, isFalse);
     expect(AppInput.settings.value.pressureCurveGamma, 1.5);
     expect(AppSave.settings.value.periodicSnapshotMinutes, 7);
     expect(second.audioSyncSettings.value.offset, 42);

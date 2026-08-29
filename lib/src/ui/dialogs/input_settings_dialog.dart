@@ -67,15 +67,6 @@ class InputSettingsSection extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SettingsSwitchRow(
-              tileKey: const ValueKey<String>('settings-touch-timeline-scroll'),
-              label: strings.inputTouchScroll,
-              help: strings.inputTouchScrollHelp,
-              value: settings.touchTimelineScroll,
-              onChanged: (enabled) => session.setInputSettings(
-                settings.copyWith(touchTimelineScroll: enabled),
-              ),
-            ),
             // The pen pressure response curve (PEN-3) — every
             // platform: output = input^gamma; drag live, persist on
             // release.

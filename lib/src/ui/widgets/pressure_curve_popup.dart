@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../input/control_press_claim.dart';
+
 import '../../models/brush_pressure_curve.dart';
 import '../theme/app_theme.dart';
 import 'anchored_popup.dart';
@@ -313,18 +315,24 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
   static const Size _graphSize = Size(196, 150);
 
   Widget _buildGraph() {
-    return GestureDetector(
-      key: const ValueKey<String>('pressure-curve-graph'),
+    // 🚨A drag on this graph IS the verb — it moves a curve point. So it
+    // takes the STRONG claim: no eager pan above may start from here, and
+    // the weak claim's absorber stands down for it.
+    return DragVerbClaim(
       behavior: HitTestBehavior.opaque,
-      onPanStart: _enabled ? _handlePanStart : null,
-      onPanUpdate: _enabled ? _handlePanUpdate : null,
-      onPanEnd: _enabled ? _handlePanEnd : null,
-      child: CustomPaint(
-        size: _graphSize,
-        painter: _CurveGraphPainter(
-          points: _points,
-          enabled: _enabled,
-          accent: AppColors.accent,
+      child: GestureDetector(
+        key: const ValueKey<String>('pressure-curve-graph'),
+        behavior: HitTestBehavior.opaque,
+        onPanStart: _enabled ? _handlePanStart : null,
+        onPanUpdate: _enabled ? _handlePanUpdate : null,
+        onPanEnd: _enabled ? _handlePanEnd : null,
+        child: CustomPaint(
+          size: _graphSize,
+          painter: _CurveGraphPainter(
+            points: _points,
+            enabled: _enabled,
+            accent: AppColors.accent,
+          ),
         ),
       ),
     );

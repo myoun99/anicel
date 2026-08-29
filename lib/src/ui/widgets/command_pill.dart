@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart';
 import 'app_icon_button.dart';
 import 'grip_band.dart';
@@ -120,8 +121,7 @@ class CommandPill extends StatelessWidget {
             // ⛔None when there are no verbs. A head-only pill (fx) already
             // pays its own trailing padding, and adding the tail on top of
             // it is the 「fx버튼의 오른쪽이 미묘하게 공간 있다」 gap.
-            if (children.isNotEmpty)
-              SizedBox(width: _tailBreathFor(head)),
+            if (children.isNotEmpty) SizedBox(width: _tailBreathFor(head)),
           ],
         ),
       ),
@@ -134,10 +134,7 @@ class CommandPill extends StatelessWidget {
     if (enabled) {
       return pill;
     }
-    return Opacity(
-      opacity: 0.38,
-      child: IgnorePointer(child: pill),
-    );
+    return Opacity(opacity: 0.38, child: IgnorePointer(child: pill));
   }
 }
 
@@ -203,37 +200,42 @@ class PillNameCell extends StatelessWidget {
             softWrap: false,
             style: const TextStyle(fontSize: 11.5, color: AppColors.text),
           );
-    final cell = Material(
-      color: Colors.transparent,
-      child: InkWell(
-        key: ValueKey<String>(keyValue),
-        // `customBorder`, not a hand-typed `borderRadius`: the splash has to
-        // wear the app's control shape like everything else, and a literal
-        // radius here is what `app_shapes_coverage_test` exists to catch.
-        customBorder: AppShapes.control(CommandPill.height - 4),
-        // 🚨A NAME CELL WITH NOTHING TO SHOW OPENS NOTHING. `showMenu`
-        // asserts on an empty list, so a pill whose last menu item is
-        // retired used to crash on the press rather than simply having no
-        // menu — which is a hard failure for a soft situation, and it is
-        // the noun's own name the user pressed.
-        //
-        // The entries are built to ask rather than assumed empty: several of
-        // them are gated per state, so "empty right now" is a live answer.
-        onTap: () {
-          final entries = entriesBuilder();
-          if (entries.isEmpty) {
-            return;
-          }
-          showPanelFlyout(context, entries: entries);
-        },
-        child: Container(
-          height: CommandPill.height - 4,
-          constraints: const BoxConstraints(minWidth: 24),
-          alignment: Alignment.center,
-          padding: EdgeInsets.symmetric(
-            horizontal: (label == null ? iconBreath : textBreath) - _outerInset,
+    // 🚨A name cell is a control: a press that lands here is its own,
+    // scroll included ([ControlPressClaim]).
+    final cell = ControlPressClaim(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: ValueKey<String>(keyValue),
+          // `customBorder`, not a hand-typed `borderRadius`: the splash has to
+          // wear the app's control shape like everything else, and a literal
+          // radius here is what `app_shapes_coverage_test` exists to catch.
+          customBorder: AppShapes.control(CommandPill.height - 4),
+          // 🚨A NAME CELL WITH NOTHING TO SHOW OPENS NOTHING. `showMenu`
+          // asserts on an empty list, so a pill whose last menu item is
+          // retired used to crash on the press rather than simply having no
+          // menu — which is a hard failure for a soft situation, and it is
+          // the noun's own name the user pressed.
+          //
+          // The entries are built to ask rather than assumed empty: several of
+          // them are gated per state, so "empty right now" is a live answer.
+          onTap: () {
+            final entries = entriesBuilder();
+            if (entries.isEmpty) {
+              return;
+            }
+            showPanelFlyout(context, entries: entries);
+          },
+          child: Container(
+            height: CommandPill.height - 4,
+            constraints: const BoxConstraints(minWidth: 24),
+            alignment: Alignment.center,
+            padding: EdgeInsets.symmetric(
+              horizontal:
+                  (label == null ? iconBreath : textBreath) - _outerInset,
+            ),
+            child: content,
           ),
-          child: content,
         ),
       ),
     );
@@ -378,29 +380,33 @@ class _ExpandButton extends StatelessWidget {
       cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
       onEnter: (_) => onHoverChanged(true),
       onExit: (_) => onHoverChanged(false),
-      child: GestureDetector(
-        key: ValueKey<String>(menuKey),
-        behavior: HitTestBehavior.opaque,
-        onTapDown: enabled ? (_) => onPressedChanged(true) : null,
-        onTapCancel: () => onPressedChanged(false),
-        onTap: enabled
-            ? () {
-                onPressedChanged(false);
-                onOpen(context);
-              }
-            : null,
-        child: SizedBox(
-          width: width,
-          height: CommandPill.height,
-          child: Center(
-            child: Icon(
-              Icons.arrow_drop_down,
-              size: 16,
-              color: GripBand.ink(
-                nearby: enabled,
-                hovered: hovered,
-                active: pressed,
-                idle: AppColors.hairlineStrong,
+      // 🚨The caret is a control like the button beside it — the pill bar
+      // scrolls, and a press that lands here must not become that scroll.
+      child: ControlPressClaim(
+        child: GestureDetector(
+          key: ValueKey<String>(menuKey),
+          behavior: HitTestBehavior.opaque,
+          onTapDown: enabled ? (_) => onPressedChanged(true) : null,
+          onTapCancel: () => onPressedChanged(false),
+          onTap: enabled
+              ? () {
+                  onPressedChanged(false);
+                  onOpen(context);
+                }
+              : null,
+          child: SizedBox(
+            width: width,
+            height: CommandPill.height,
+            child: Center(
+              child: Icon(
+                Icons.arrow_drop_down,
+                size: 16,
+                color: GripBand.ink(
+                  nearby: enabled,
+                  hovered: hovered,
+                  active: pressed,
+                  idle: AppColors.hairlineStrong,
+                ),
               ),
             ),
           ),

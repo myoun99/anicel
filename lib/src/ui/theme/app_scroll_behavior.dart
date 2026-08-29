@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 
 import '../panels/panel_scrollbar.dart';
@@ -43,6 +44,27 @@ import '../panels/panel_scrollbar.dart';
 /// on purpose rather than left as dead prose.
 class AppScrollBehavior extends MaterialScrollBehavior {
   const AppScrollBehavior();
+
+  /// 🚨★★★ONE RULE FOR EVERY DEVICE (유저 2026-08-29): 「펜/마우스/터치를
+  /// 스크롤 경쟁을 완벽하게 해결. 즉 셋 다 취급 통일하고 슬라이더에 대한
+  /// 조작은 슬라이더만 조작하게하고 **스크롤 애초에 발동안하도록**」.
+  ///
+  /// The framework leaves the mouse out because on a text-selecting page a
+  /// mouse drag means selection. This app is not that page: a mouse drag
+  /// means an EDIT everywhere it means anything, and where it means nothing,
+  /// dragging to scroll is the obvious thing to want.
+  ///
+  /// ⛔This is only safe because the answer stopped being about devices.
+  /// `ControlPressClaim` takes the arena on the FIRST MOVEMENT, so a press
+  /// that lands on a control is that control's whatever pressed it, and no
+  /// scroller starts there. Adding the mouse to a set that still decided by
+  /// device would have copied the pen's rival onto the mouse instead of
+  /// removing it — 유저: 「그게 싫다니까?」
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+    ...super.dragDevices,
+    PointerDeviceKind.mouse,
+  };
 
   @override
   Widget buildScrollbar(

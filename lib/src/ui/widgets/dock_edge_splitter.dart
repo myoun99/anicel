@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart'
     show DoubleTapGestureRecognizer, DragGestureRecognizer, DragStartBehavior;
 
-import '../input/value_control_pointers.dart';
+import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart';
 import 'axis_bar_gesture.dart';
 
@@ -208,14 +208,12 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
           : SystemMouseCursors.resizeUpDown,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: Listener(
+      // The grip is a drag verb like a slider's: no eager pan above it may
+      // start from a press that landed here, and the weak claim's absorber
+      // stands down for it. OPAQUE because a grip is mostly empty space and
+      // still has to be claimable.
+      child: DragVerbClaim(
         behavior: HitTestBehavior.opaque,
-        // The grip is a value control for T11's purposes too: no eager pan
-        // above it may start from a press that landed here.
-        onPointerDown: (event) => claimPointerForValueControl(event.pointer),
-        onPointerUp: (event) => releasePointerForValueControl(event.pointer),
-        onPointerCancel: (event) =>
-            releasePointerForValueControl(event.pointer),
         child: RawGestureDetector(
           behavior: HitTestBehavior.opaque,
           gestures: <Type, GestureRecognizerFactory>{
@@ -224,9 +222,8 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
                   GestureRecognizerFactoryWithHandlers<
                     OwningHorizontalDragGestureRecognizer
                   >(
-                    () => OwningHorizontalDragGestureRecognizer(
-                      debugOwner: this,
-                    ),
+                    () =>
+                        OwningHorizontalDragGestureRecognizer(debugOwner: this),
                     _configureDrag,
                   )
             else
@@ -234,8 +231,7 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
                   GestureRecognizerFactoryWithHandlers<
                     OwningVerticalDragGestureRecognizer
                   >(
-                    () =>
-                        OwningVerticalDragGestureRecognizer(debugOwner: this),
+                    () => OwningVerticalDragGestureRecognizer(debugOwner: this),
                     _configureDrag,
                   ),
             // ⛔The double tap stays a recognizer beside the drag: it is a
