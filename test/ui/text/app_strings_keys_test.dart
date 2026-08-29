@@ -298,6 +298,12 @@ void main() {
     'memoryItemBrushTips': (s) => s.memoryItemBrushTips,
     'memoryItemPanelRasters': (s) => s.memoryItemPanelRasters,
     'memoryItemViewerPages': (s) => s.memoryItemViewerPages,
+    'containerAreaSettings': (s) => s.containerAreaSettings,
+    'containerAreaBrushTips': (s) => s.containerAreaBrushTips,
+    'containerAreaRecovery': (s) => s.containerAreaRecovery,
+    'containerAreaConformed': (s) => s.containerAreaConformed,
+    'containerAreaStaged': (s) => s.containerAreaStaged,
+    'containerTotal': (s) => s.containerTotal,
     // R11: the interface scale, in the Display section.
     'uiScaleLabel': (s) => s.uiScaleLabel,
     'accentTitle': (s) => s.accentTitle,

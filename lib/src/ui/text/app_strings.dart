@@ -517,6 +517,12 @@ class AppStrings {
   String get memoryItemBrushTips => _s('memoryItemBrushTips');
   String get memoryItemPanelRasters => _s('memoryItemPanelRasters');
   String get memoryItemViewerPages => _s('memoryItemViewerPages');
+  String get containerAreaSettings => _s('containerAreaSettings');
+  String get containerAreaBrushTips => _s('containerAreaBrushTips');
+  String get containerAreaRecovery => _s('containerAreaRecovery');
+  String get containerAreaConformed => _s('containerAreaConformed');
+  String get containerAreaStaged => _s('containerAreaStaged');
+  String get containerTotal => _s('containerTotal');
 
   // --- Display (R11) ---
   String get uiScaleLabel => _s('uiScaleLabel');
@@ -1415,6 +1421,12 @@ class AppStrings {
     'memoryItemBrushTips': 'Brush tips',
     'memoryItemPanelRasters': 'Panel rasters',
     'memoryItemViewerPages': 'Viewer pages',
+    'containerAreaSettings': 'Settings',
+    'containerAreaBrushTips': 'Brush tips',
+    'containerAreaRecovery': 'Recovery snapshots',
+    'containerAreaConformed': 'Conformed audio',
+    'containerAreaStaged': 'Staged media',
+    'containerTotal': 'Total',
     'uiScaleLabel': 'Interface scale',
     'accentTitle': 'Accent colors',
     'accent1Label': 'Accent 1',
@@ -2198,6 +2210,12 @@ class AppStrings {
     'memoryItemBrushTips': 'ブラシ先端',
     'memoryItemPanelRasters': 'パネルのラスター',
     'memoryItemViewerPages': 'ビューアのページ',
+    'containerAreaSettings': '設定',
+    'containerAreaBrushTips': 'ブラシ先端',
+    'containerAreaRecovery': '復旧スナップショット',
+    'containerAreaConformed': 'コンフォーム済み音声',
+    'containerAreaStaged': '取り込み待ちメディア',
+    'containerTotal': '合計',
     'uiScaleLabel': 'UIの大きさ',
     'accentTitle': 'アクセントカラー',
     'accent1Label': 'アクセント1',
@@ -3047,6 +3065,12 @@ class AppStrings {
     'memoryItemBrushTips': '브러시 팁',
     'memoryItemPanelRasters': '패널 래스터',
     'memoryItemViewerPages': '뷰어 페이지',
+    'containerAreaSettings': '설정',
+    'containerAreaBrushTips': '브러시 팁',
+    'containerAreaRecovery': '복구 스냅샷',
+    'containerAreaConformed': '컨폼된 오디오',
+    'containerAreaStaged': '품은 미디어',
+    'containerTotal': '합계',
     'uiScaleLabel': 'UI 크기',
     'accentTitle': '강조 색상',
     'accent1Label': '강조색 1',
@@ -3912,6 +3936,12 @@ class AppStrings {
     'memoryItemBrushTips': 'Pointes de brosse',
     'memoryItemPanelRasters': 'Rasters de panneau',
     'memoryItemViewerPages': 'Pages de la visionneuse',
+    'containerAreaSettings': 'Réglages',
+    'containerAreaBrushTips': 'Pointes de brosse',
+    'containerAreaRecovery': 'Instantanés de récupération',
+    'containerAreaConformed': 'Audio conformé',
+    'containerAreaStaged': 'Médias en attente',
+    'containerTotal': 'Total',
     'accentTitle': "Couleurs d'accent",
     'accent1Label': 'Accent 1',
     'accent1Help': 'Sélection, tête de lecture, bascules actives.',
@@ -4733,6 +4763,12 @@ class AppStrings {
     'memoryItemBrushTips': '笔尖',
     'memoryItemPanelRasters': '面板栅格',
     'memoryItemViewerPages': '查看器页面',
+    'containerAreaSettings': '设置',
+    'containerAreaBrushTips': '笔尖',
+    'containerAreaRecovery': '恢复快照',
+    'containerAreaConformed': '已转换音频',
+    'containerAreaStaged': '暂存媒体',
+    'containerTotal': '合计',
     'accentTitle': '强调色',
     'accent1Label': '强调色 1',
     'accent1Help': '用于选区、播放头和已启用的开关。',
