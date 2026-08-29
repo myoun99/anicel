@@ -10,6 +10,7 @@ import '../../models/text_cel_style.dart';
 import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../../services/camera_pose_resolver.dart';
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
+import '../editor_command_actions.dart' show createActiveInstance;
 import '../dialogs/camera_key_dialog.dart';
 import '../dialogs/frame_name_conflict_dialog.dart';
 import '../dialogs/instruction_event_dialog.dart';
@@ -101,6 +102,47 @@ Future<void> activateCellEditor(
     case LayerKind.animation || LayerKind.storyboard || LayerKind.image:
       await _renameSelectedFrame(context, session);
   }
+}
+
+/// 🚨★★★I-9 — WHAT A DOUBLE TAP ON A CELL MEANS: 「빈 칸이면 만들고, 찬 칸
+/// 이면 연다」.
+///
+/// 유저 확정 2026-08-29 (I-9-Q2 = `all-kinds`): every row kind creates, each
+/// through the verb it already has. 유저 원문: 「타임라인의 se행이랑
+/// 트랜지션행이었는데 통일되서 사라졌을수도? 아무튼 **새로만들자.**」
+///
+/// ⛔SEPARATE from [activateCellEditor] on purpose, and this is the whole
+/// reason: that function is ALSO the shared pill's `Edit Instance`, which
+/// must never create. A fork inside it made the button author a camera key
+/// instead of opening the key dialog — one entrance answering two gestures.
+/// The double tap is a gesture with two meanings; the button has one.
+Future<void> activateCellOnDoubleTap(
+  BuildContext context,
+  EditorSessionManager session, {
+  required LayerId layerId,
+  required int frameIndex,
+  Axis previewAxis = Axis.horizontal,
+}) async {
+  // The tap already seeked here (the press-seek gate), so the session's
+  // 「is something in this cell」 is asked of the cell that was tapped.
+  if (frameIndex >= 0 && session.currentFrameIndex != frameIndex) {
+    session.selectFrameIndex(frameIndex);
+  }
+  // ⚠️Asked BEFORE the editor and AFTER the seek, but NOT before the lane
+  // branch: a drawing row standing on its Rotation lane is asking about the
+  // LANE, and a lane's key creation is not this fork's business — so the
+  // fork stands down and the editor's own lane branch answers.
+  if (!session.canNameLaneKeys && !session.activeCellHoldsAnInstance) {
+    createActiveInstance(session);
+    return;
+  }
+  await activateCellEditor(
+    context,
+    session,
+    layerId: layerId,
+    frameIndex: frameIndex,
+    previewAxis: previewAxis,
+  );
 }
 
 /// 🚨T25 — the SHARED pill's `Edit Instance`: whatever is selected, renamed.
@@ -254,9 +296,9 @@ Future<void> _editSeLabel(
 /// ([_editSeLabel]), addressed by (layer, global frame) because the
 /// storyboard rail's standing row never moves the drawing target (유저
 /// 2026-07-27) — the transition row's [editTransitionSpanInstance] pattern,
-/// said of sounds. COVERED frames only: creation stays the timeline's
-/// cut-scoped entrance, exactly as the transition row keeps creation on its
-/// own verb.
+/// said of sounds — and I-9 (2026-08-29) finished that likeness: an EMPTY
+/// cell CREATES here too, through the row's own cursor verb, exactly as the
+/// transition row has done since 2026-08-11.
 Future<void> editSeEntryInstance(
   BuildContext context,
   EditorSessionManager session, {
@@ -273,6 +315,18 @@ Future<void> editSeEntryInstance(
   }
   final block = coveringDrawingBlockAt(layer.timeline, globalFrame);
   if (block == null) {
+    // 🚨★★★I-9 (유저 확정 2026-08-29, I-9-Q2 = `all-kinds`): an EMPTY cell
+    // CREATES — the sentence [editTransitionSpanInstance] has said since
+    // 2026-08-11, now said of sounds too. The doc above used to end 「COVERED
+    // frames only: creation stays the timeline's cut-scoped entrance」, and
+    // that was the asymmetry the user hit: 「타임라인의 se행이랑
+    // 트랜지션행이었는데 통일되서 사라졌을수도? 아무튼 **새로만들자.**」
+    //
+    // The cursor verb, not these arguments: the first tap of the double
+    // already stood on this row and seeked to this frame, which is the pair
+    // the frame `＋` acts on. Passing them again would be a second address
+    // for one cell.
+    session.createSeEntryAtStoryboardCursor();
     return;
   }
   Frame? entry;
@@ -575,8 +629,7 @@ Future<void> _renameSelectedFrame(
   BuildContext context,
   EditorSessionManager session,
 ) async {
-  if (session.selectedFrame == null ||
-      !session.canRenameFrameAtCurrentFrame) {
+  if (session.selectedFrame == null || !session.canRenameFrameAtCurrentFrame) {
     return;
   }
 

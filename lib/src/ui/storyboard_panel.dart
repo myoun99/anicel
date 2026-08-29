@@ -4694,13 +4694,11 @@ class _StoryboardTransitionRow extends StatelessWidget {
                       layerId: layer.id,
                       frameAt: frameAt,
                       onActivate: (frame) {
-                        if (instructionSpanCovering(
-                              layer.instructions,
-                              frame,
-                            ) ==
-                            null) {
-                          return;
-                        }
+                        // 🚨★★★I-9: the strip does NOT test coverage. It
+                        // used to, and returned in silence on an empty
+                        // cell — a third copy of that question, in the
+                        // widget layer, answering nothing. The host forks
+                        // edit-vs-create beside the session now.
                         onEditSpan(frame);
                       },
                     ),
@@ -5093,10 +5091,9 @@ class _StoryboardSeRow extends StatelessWidget {
                         layerId: layer.id,
                         frameAt: frameAt,
                         onActivate: (frame) {
-                          if (coveringDrawingBlockAt(layer.timeline, frame) ==
-                              null) {
-                            return;
-                          }
+                          // 🚨★★★I-9: same as the transition strip one
+                          // class up — the coverage question belongs to
+                          // the host's fork, not to a copy here.
                           onEditSeEntry(layer.id, frame);
                         },
                       ),
