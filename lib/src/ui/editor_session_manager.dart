@@ -977,8 +977,34 @@ class EditorSessionManager extends ChangeNotifier {
     }
   }
 
+  /// 🚨★★★THE CLAIM READS THE STORE, the way [claimTimelineRow] does.
+  ///
+  /// ⛔It used to read [selectedRow], and that getter answers a DIFFERENT
+  /// question: 「which RAIL row is lit」. A lane is a subject (R10 #19) but
+  /// never a rail row, so the getter collapses it to the track — and this
+  /// claim, which fires on the host's OUTERMOST pointer-down, therefore ran
+  /// last on every press and un-stood you from the lane the press had just
+  /// stood on. One getter answering two questions, which is the shape
+  /// CLAUDE.md names: 「한 플래그가 두 질문에 답하는 것도 발명이다」.
+  ///
+  /// 🚨It looked fine for a year because of an accident of timing: a finger
+  /// stood on the RELEASE, after this claim, so the lane survived. A mouse
+  /// never did — pressing a storyboard lane band with a mouse has been
+  /// leaving the ring on the track row all along, and only lifting the
+  /// finger's carve-out (터치 묘화 ON) made a test say so.
+  ///
+  /// ⛔But only a lane THIS RAIL SHOWS. A timeline lane also passes through
+  /// [selectRow], and claiming one here would leave the storyboard's flip
+  /// counting drawings instead of cuts — the very law this claim exists to
+  /// keep (「touching the storyboard hands the flip its rail's row」).
+  /// [_trackOwnedRailOwner] is the question already asked of a lane's
+  /// carrier elsewhere, so no new rule is written here.
   void claimStoryboardRow() {
-    _verbRow = selectedRow;
+    final stored = _storyboardRow;
+    _verbRow =
+        stored is LaneRowAddress && _trackOwnedRailOwner(stored.layerId) != null
+        ? stored
+        : selectedRow;
     _publishCurrentRow();
   }
 

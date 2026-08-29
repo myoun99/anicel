@@ -656,13 +656,25 @@ abstract final class AppInput {
   /// genuinely ambiguous with the start of a scroll. That is a fact about
   /// the device rather than a preference, and 「행이든 뭐든 동일하게」 is
   /// about SURFACES (rows vs cells), which this now satisfies exactly.
-  /// 🟡One word changes it if the user wants a finger to pick on the press
-  /// too; it is left alone rather than guessed at.
+  /// 🚨★★★IT ASKS THE DOOR NOW (유저 2026-08-29): 「**터치 묘화 on이면 터치가
+  /// 마우스랑 완전 똑같이 작용하길 원하는데** 지금 그상태로 터치하면
+  /// 탭다운으로 인덱스 바껴야하는데 손떼야 바껴」.
+  ///
+  /// ⛔The carve-out was never about touch AS SUCH. It is about a finger
+  /// that is NAVIGATING — that is why UI-R23 #2 read as a bug (「the first
+  /// scroll touch kept moving the playhead」). With 터치 묘화 ON the finger
+  /// is not navigating, it IS the pointer, so it presses like one. NOT a
+  /// blanket flip: in flip mode a scroll touch still never seeks.
+  ///
+  /// [toolAcceptsPointer] already answers exactly that question and its own
+  /// doc says why this had to come here: 「every tool input layer written
+  /// afterwards took fingers in flip mode. Ask THIS from every such layer」.
+  /// This gate was one of the layers that had not.
   ///
   /// ⚠️Still a NAMED gate rather than an inline device test, and still not
   /// the ⑮ smell: it is an adapter to [InstantTapRegion.pressSeeksFor], and
   /// the name is what keeps the grid, the sheet and the rail from drifting
   /// apart — the timeline wrote this policy twice before it had one.
   static bool timelineCellPressSeeks(PointerDeviceKind kind) =>
-      kind != PointerDeviceKind.touch;
+      toolAcceptsPointer(kind);
 }
