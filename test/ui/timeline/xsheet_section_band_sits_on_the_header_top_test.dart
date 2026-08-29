@@ -155,4 +155,55 @@ void main() {
       );
     }
   });
+
+  testWidgets('🚨★★★F-32: the frame RAIL and the cells it numbers stay on '
+      'one line while scrolled', (tester) async {
+    // 유저의 첫 절: 「해당 **레이어 영역 자체가** 밀림」. Everything INSIDE
+    // the block has now been measured and holds, so the remaining reading is
+    // the block against what is OUTSIDE it — the frame-number rail beside it
+    // and the cells under it.
+    for (final width in const <double>[900, 560]) {
+      await pumpSheet(tester, width: width);
+
+      final header = find.byKey(
+        const ValueKey<String>('xsheet-layer-header-draw-0'),
+      );
+      final cells = find.byKey(
+        const ValueKey<String>('xsheet-column-draw-0-cells'),
+      );
+      final rail = find.byKey(
+        const ValueKey<String>('xsheet-frame-number-rail'),
+      );
+      expect(header, findsOneWidget, reason: 'at width $width');
+      expect(cells, findsOneWidget, reason: 'at width $width');
+      expect(rail, findsOneWidget, reason: 'at width $width');
+
+      for (final scrolled in const <bool>[false, true]) {
+        if (scrolled) {
+          final vertical = tester
+              .widget<SingleChildScrollView>(
+                find.byKey(
+                  const ValueKey<String>('xsheet-frame-vertical-viewport'),
+                ),
+              )
+              .controller!;
+          vertical.jumpTo(
+            53.0.clamp(0, vertical.position.maxScrollExtent).toDouble(),
+          );
+          await tester.pumpAndSettle();
+        }
+
+        // The rail carries the frame numbers the cells are counted by, so
+        // its top edge and the cells' top edge are one line or the numbers
+        // name the wrong rows.
+        expect(
+          tester.getRect(rail).top,
+          moreOrLessEquals(tester.getRect(cells).top, epsilon: 0.01),
+          reason:
+              'width $width, scrolled $scrolled: the frame rail and the '
+              'cells it numbers must start together (F-32)',
+        );
+      }
+    }
+  });
 }

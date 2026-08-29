@@ -1798,9 +1798,47 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                 builder: (context, offset, child) {
                                                   _lastEffectiveFrameScrollOffset =
                                                       offset;
-                                                  return Transform.translate(
-                                                    offset: Offset(0, -offset),
-                                                    child: child,
+                                                  // 🚨★★★F-32: THE SAME
+                                                  // CORRECTION THE CELLS GET.
+                                                  //
+                                                  // 유저: 「해당 레이어 영역
+                                                  // 자체가 밀림 … 띠가 살짝
+                                                  // 아래로 2px정도?」 — and it
+                                                  // only happens 「스크롤에
+                                                  // 따라」, which is the tell.
+                                                  //
+                                                  // The frame CELLS scroll
+                                                  // through
+                                                  // [DeviceGridScrollBody],
+                                                  // which cancels the offset's
+                                                  // sub-device-pixel fraction.
+                                                  // This rail moved by a RAW
+                                                  // translate, so it kept that
+                                                  // fraction — 🧪measured at
+                                                  // ratio 1.5: rail 360.0 vs
+                                                  // cells 359.667, a third of a
+                                                  // logical pixel apart, at
+                                                  // rest identical.
+                                                  //
+                                                  // ⛔Not a rounding of its own
+                                                  // here: the correction is
+                                                  // that widget's, and a second
+                                                  // copy of the arithmetic is
+                                                  // how the two drift apart
+                                                  // again the next time either
+                                                  // is touched.
+                                                  return DeviceGridScrollBody(
+                                                    controller:
+                                                        _frameScrollController,
+                                                    axisDirection:
+                                                        AxisDirection.down,
+                                                    child: Transform.translate(
+                                                      offset: Offset(
+                                                        0,
+                                                        -offset,
+                                                      ),
+                                                      child: child,
+                                                    ),
                                                   );
                                                 },
                                               ),
