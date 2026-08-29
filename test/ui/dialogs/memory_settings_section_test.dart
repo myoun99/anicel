@@ -68,6 +68,7 @@ void main() {
       'layerImages',
       'brushTips',
       'panelRasters',
+      'viewerPages',
     });
   });
 

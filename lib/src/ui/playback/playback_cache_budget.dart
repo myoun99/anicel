@@ -1,4 +1,5 @@
 import '../../models/playback_quality.dart';
+import '../../services/memory_pressure_budget.dart';
 import 'cut_frame_composite_cache.dart';
 import 'layer_frame_image_cache.dart';
 
@@ -13,8 +14,24 @@ const PlaybackQuality defaultPlaybackQuality = PlaybackQuality.half;
 /// caches.
 const int playbackCacheBudgetBytes = 600 * 1024 * 1024;
 
-/// Estimated GPU bytes of an RGBA image of the given dimensions.
-int estimatedImageBytes(int width, int height) => width * height * 4;
+/// 🚨WHERE PRESSURE PUTS IT — and until 2026-08-30 the answer was
+/// "nowhere", which made this the LARGEST cache in the app and the only
+/// one that never stood down.
+///
+/// `respondToMemoryPressure` did call [PlaybackCacheBudgetEnforcer.enforce],
+/// and the session's comment said the playback caches "re-run their budget
+/// against the shrunken world" — but nothing shrank their world. They
+/// re-applied the same 600MB while the cel store halved beside them.
+///
+/// ⚠️Four frames, derived from the number this file already states: a
+/// full-resolution 2340×1654 frame costs ~15.5MB, so 64MB is roughly four
+/// of them. Below that a scrub around the playhead rebuilds every frame it
+/// touches, and the cache has stopped being a cache.
+///
+/// ⛔Not a device-class check, and not a rescaling of the 600MB either:
+/// what a desktop holds when memory is FINE is unchanged, because that
+/// number was measured and this one is only about the warning.
+const int playbackCacheBudgetUnderPressureBytes = 64 * 1024 * 1024;
 
 /// Keeps the two playback caches inside one combined byte budget.
 ///
@@ -45,15 +62,31 @@ int estimatedImageBytes(int width, int height) => width * height * 4;
 /// rebuild the same images. Pass 0 while playing: the composite IS the
 /// screen then, and this reserve would be holding pixels nobody looks at.
 class PlaybackCacheBudgetEnforcer {
-  const PlaybackCacheBudgetEnforcer({
+  PlaybackCacheBudgetEnforcer({
     required this.layerImages,
     required this.composites,
-    this.maxBytes = playbackCacheBudgetBytes,
-  });
+    int maxBytes = playbackCacheBudgetBytes,
+  }) : _budget = MemoryPressureBudget.halving(
+         normal: maxBytes,
+         floor: playbackCacheBudgetUnderPressureBytes,
+       );
 
   final LayerFrameImageCache layerImages;
   final CutFrameCompositeCache composites;
-  final int maxBytes;
+
+  /// The combined cap in force — [playbackCacheBudgetBytes] until the OS
+  /// warns. The lowers-only rule is [MemoryPressureBudget]'s, shared with
+  /// the cel store, the undo stack and the media viewer.
+  final MemoryPressureBudget _budget;
+
+  int get maxBytes => _budget.bytes;
+
+  /// The OS said memory is tight: halve the combined budget, floored at
+  /// [playbackCacheBudgetUnderPressureBytes]. Answers whether it moved.
+  ///
+  /// ⚠️Lowering alone frees nothing — the caller runs [enforce] after, the
+  /// way the cel store cools after halving.
+  bool respondToMemoryPressure() => _budget.respondToMemoryPressure();
 
   void enforce({
     List<PlaybackProtectedRange> protect = const [],

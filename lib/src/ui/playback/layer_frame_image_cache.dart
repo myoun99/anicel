@@ -1,3 +1,4 @@
+import '../../models/rgba_image_bytes.dart';
 import 'dart:ui' as ui;
 
 import '../../models/brush_frame_key.dart';
@@ -11,7 +12,6 @@ import '../canvas/bitmap_tile_image_cache.dart';
 import '../dev_profile.dart';
 import '../canvas/deferred_image_disposal.dart';
 import '../canvas/tiled_surface_compose.dart';
-import 'playback_cache_budget.dart';
 
 /// One cached layer-frame render: the image plus the CANVAS-SPACE rect it
 /// covers ([worldRect] == the canvas rect unless the cel has pasteboard

@@ -462,7 +462,48 @@ class EditorSessionManager extends ChangeNotifier {
     // ⚠️And the undo stack, which was holding the larger share: a MOVE
     // retains a pre AND a post full-canvas surface per confirm.
     _historyManager.respondToMemoryPressure();
+    _playbackCacheBudgetEnforcer.respondToMemoryPressure();
     enforcePlaybackCacheBudget();
+    memoryPressureTicks.value += 1;
+  }
+
+  /// 🚨**HOW THE WARNING REACHES A CACHE THE SESSION DOES NOT OWN.**
+  ///
+  /// Every cache above is the session's, so the session stands it down
+  /// directly. The media viewers' page rasters are not: they live in a
+  /// widget's State, they are created and thrown away as tabs open, and
+  /// there can be two of them. Handing the session a registry of live
+  /// viewers to call would mean widgets registering and unregistering
+  /// themselves correctly on every rebuild — a notifier they can simply
+  /// listen to costs neither side a lifecycle rule.
+  ///
+  /// It counts rather than carrying a payload because the SIGNAL is the
+  /// whole message, and consecutive warnings must each be one tick (a
+  /// bool would coalesce the second one into silence).
+  final ValueNotifier<int> memoryPressureTicks = ValueNotifier<int>(0);
+
+  /// Page-raster bytes each mounted media viewer is holding, by viewer id.
+  ///
+  /// 🚨**PUSHED, where every other census number is PULLED.** The census
+  /// is deliberately addition rather than measurement — it reads counters
+  /// the holder already keeps — and it can do that because the session
+  /// owns those holders. It does not own these: the viewer's pages live in
+  /// a widget State that mounts and unmounts as tabs open and rails fold,
+  /// and there are two of them. So the viewers write here instead, and
+  /// clear their entry when they go.
+  ///
+  /// ⛔Without this the panel that answers「어떤항목이 얼만큼」 was silent
+  /// about a cache that can hold a quarter of a gigabyte per viewer — the
+  /// gap would land in `untrackedBytes` and read as engine overhead.
+  final Map<String, int> viewerRasterBytesByViewer = <String, int>{};
+
+  /// What the media viewers hold between them.
+  int get viewerRasterBytes {
+    var total = 0;
+    for (final bytes in viewerRasterBytesByViewer.values) {
+      total += bytes;
+    }
+    return total;
   }
 
   /// The conte sheet ink's cel stores (R5) — SESSION-owned so the .anicel
@@ -537,6 +578,10 @@ class EditorSessionManager extends ChangeNotifier {
   /// and became a number the cache itself carries. While playing the
   /// editing stack holds no pins, so the old "zero while playing" rule
   /// falls out for free instead of being an `if`.
+  /// The playback caches' combined cap in force (diagnostics/tests) — it
+  /// is [playbackCacheBudgetBytes] until the OS warns.
+  int get playbackCacheByteBudget => _playbackCacheBudgetEnforcer.maxBytes;
+
   void enforcePlaybackCacheBudget() => _playbackCacheBudgetEnforcer.enforce(
     protect: _playbackProtectedRanges(),
     reservedForDisplayBytes: layerFrameImageCache.pinnedBytes,
@@ -2364,6 +2409,7 @@ class EditorSessionManager extends ChangeNotifier {
     laneRangeSelection.removeListener(_publishCutLocalLaneRange);
     cutLocalLaneRangeSelection.dispose();
     revealSelectionTick.dispose();
+    memoryPressureTicks.dispose();
     _warmDebounce?.cancel();
     cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
     playback.globalFrameIndexListenable.removeListener(_followPlaybackCut);

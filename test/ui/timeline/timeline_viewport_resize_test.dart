@@ -152,8 +152,9 @@ void main() {
     );
   });
 
-  testWidgets('the spans the resize exposed actually get substrate tiles',
-      (tester) async {
+  testWidgets('the spans the resize exposed actually get substrate tiles', (
+    tester,
+  ) async {
     if (!dllAvailable) {
       markTestSkipped('qa_engine.dll not built');
       return;
@@ -188,17 +189,42 @@ void main() {
     // Let the raster drains converge: a landing repaints the rows, which
     // re-request whatever the capped queue dropped — pump and wait until
     // the landings go quiet.
+    //
+    // 🚨★★★**SILENCE IS ACCEPTED ONLY AFTER A LANDING.** This used to
+    // break on「nothing changed in the last 50ms」, and on a loaded
+    // machine that reads「the drains have not STARTED」just as often as
+    // 「the drains are done」. It then probed a cold store and got null —
+    // which is why this file went red in bulk runs and green on its own,
+    // the same family as #1361/#1362.
+    //
+    // ⛔The fix is never a longer delay: a delay tuned on an idle machine
+    // is a bet on how busy the machine will be, and the bulk run is
+    // exactly when it is busiest. Requiring positive evidence costs
+    // nothing when the machine is fast and cannot misread "not yet".
     final store = TimelineGridTileStore.instance;
+    var landed = false;
     for (var round = 0; round < 40; round += 1) {
       final before = store.revision.value;
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 50)),
       );
       await tester.pump();
-      if (store.revision.value == before && round > 1) {
+      if (store.revision.value != before) {
+        landed = true;
+        continue;
+      }
+      if (landed) {
         break;
       }
     }
+    expect(
+      landed,
+      isTrue,
+      reason:
+          'fixture: the resize enqueued rasters and at least one landed — '
+          'without this the assertion below reports a cold store as a '
+          'missing request',
+    );
 
     // ⚠️ Probed ONCE, after quiescence: tileFor ENQUEUES on a miss, so a
     // second ask after another drain would hand the broken shape the very

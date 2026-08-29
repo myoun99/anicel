@@ -1,3 +1,4 @@
+import '../../models/rgba_image_bytes.dart';
 import 'dart:ui' as ui;
 
 import '../../models/brush_frame_key.dart';
@@ -16,7 +17,6 @@ import '../canvas/layer_image_draw.dart';
 import '../canvas/subtree_image_composite.dart';
 import '../debug/input_inspector.dart';
 import 'layer_frame_image_cache.dart';
-import 'playback_cache_budget.dart';
 
 /// Resolves the store key of a layer frame within [cut] (production impl
 /// lives on the session, which knows project/track ids).

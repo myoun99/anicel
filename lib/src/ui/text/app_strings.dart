@@ -516,6 +516,7 @@ class AppStrings {
   String get memoryItemLayerImages => _s('memoryItemLayerImages');
   String get memoryItemBrushTips => _s('memoryItemBrushTips');
   String get memoryItemPanelRasters => _s('memoryItemPanelRasters');
+  String get memoryItemViewerPages => _s('memoryItemViewerPages');
 
   // --- Display (R11) ---
   String get uiScaleLabel => _s('uiScaleLabel');
@@ -1411,6 +1412,7 @@ class AppStrings {
     'memoryItemLayerImages': 'Layer images',
     'memoryItemBrushTips': 'Brush tips',
     'memoryItemPanelRasters': 'Panel rasters',
+    'memoryItemViewerPages': 'Viewer pages',
     'uiScaleLabel': 'Interface scale',
     'accentTitle': 'Accent colors',
     'accent1Label': 'Accent 1',
@@ -2191,6 +2193,7 @@ class AppStrings {
     'memoryItemLayerImages': 'レイヤー画像',
     'memoryItemBrushTips': 'ブラシ先端',
     'memoryItemPanelRasters': 'パネルのラスター',
+    'memoryItemViewerPages': 'ビューアのページ',
     'uiScaleLabel': 'UIの大きさ',
     'accentTitle': 'アクセントカラー',
     'accent1Label': 'アクセント1',
@@ -3037,6 +3040,7 @@ class AppStrings {
     'memoryItemLayerImages': '레이어 이미지',
     'memoryItemBrushTips': '브러시 팁',
     'memoryItemPanelRasters': '패널 래스터',
+    'memoryItemViewerPages': '뷰어 페이지',
     'uiScaleLabel': 'UI 크기',
     'accentTitle': '강조 색상',
     'accent1Label': '강조색 1',
@@ -3899,6 +3903,7 @@ class AppStrings {
     'memoryItemLayerImages': 'Images de calque',
     'memoryItemBrushTips': 'Pointes de brosse',
     'memoryItemPanelRasters': 'Rasters de panneau',
+    'memoryItemViewerPages': 'Pages de la visionneuse',
     'accentTitle': "Couleurs d'accent",
     'accent1Label': 'Accent 1',
     'accent1Help': 'Sélection, tête de lecture, bascules actives.',
@@ -4717,6 +4722,7 @@ class AppStrings {
     'memoryItemLayerImages': '图层图像',
     'memoryItemBrushTips': '笔尖',
     'memoryItemPanelRasters': '面板栅格',
+    'memoryItemViewerPages': '查看器页面',
     'accentTitle': '强调色',
     'accent1Label': '强调色 1',
     'accent1Help': '用于选区、播放头和已启用的开关。',

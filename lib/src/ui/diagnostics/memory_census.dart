@@ -130,6 +130,9 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
       bytes: BrushTipStampCache.instance.residentBytes,
     ),
     MemoryCensusItem(id: 'panelRasters', bytes: StaticRaster.censusBytes),
+    // Pushed by the mounted viewers rather than read off a holder the
+    // session owns — see [EditorSessionManager.viewerRasterBytesByViewer].
+    MemoryCensusItem(id: 'viewerPages', bytes: session.viewerRasterBytes),
   ]..sort((a, b) => b.bytes.compareTo(a.bytes));
 
   return MemoryCensus(

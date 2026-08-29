@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/media_asset.dart';
+import '../../native/qa_native_engine.dart';
 import '../../services/media/image_viewer_document.dart';
 import '../../services/media/video_viewer_document.dart';
 import '../../services/media/viewer_document.dart';
@@ -21,6 +22,7 @@ import '../editor_session_manager.dart';
 import '../dialogs/open_file_flow.dart';
 import '../text/app_strings.dart';
 import 'media_asset_drag_data.dart';
+import 'viewer_raster_budget.dart';
 import 'viewer_render_tier.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/drag_value_label.dart';
@@ -244,6 +246,61 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   final Map<int, _RenderedPage> _pageCache = {};
   String? _message;
 
+  /// What this device affords the page cache, and where a memory warning
+  /// puts it — see [ViewerRasterBudget].
+  ///
+  /// ⚠️Built with the State, so a test that wants a tight one sets
+  /// [ViewerRasterBudget.debugPageBytesOverride] BEFORE the panel mounts;
+  /// pumping the same widget again reuses this State and this budget.
+  final ViewerRasterBudget _budget = ViewerRasterBudget(
+    physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
+  );
+
+  /// Drops cached pages, farthest from the one on screen first, until the
+  /// cache fits [ViewerRasterBudget.byteBudget].
+  ///
+  /// 🚨[keeping] is never evicted. A raster that has just LANDED for a
+  /// page already paged away from is itself the farthest entry, and an
+  /// eviction that could drop it would throw away the render it was
+  /// called to install — the old count-based drain excluded it for the
+  /// same reason.
+  ///
+  /// ⚠️Bytes, not entries. Four pages meant a quarter of a gigabyte for a
+  /// big PDF and under a megabyte for thumbnails; the bound has to be in
+  /// the unit that runs out.
+  void _evictToBudget({required int keeping}) {
+    var total = 0;
+    for (final page in _pageCache.values) {
+      total += ViewerRasterBudget.costOf(page.image);
+    }
+    while (total > _budget.byteBudget && _pageCache.length > 1) {
+      // Two or more entries and at most one of them is [keeping], so a
+      // candidate always exists and it is always in the map. Asserted with
+      // `!` rather than guarded: a guard here would answer an impossible
+      // case by silently LEAVING the cache over budget, which is the one
+      // outcome this method exists to prevent.
+      final farthest = _pageCache.keys
+          .where((page) => page != keeping)
+          .reduce((a, b) => (a - _page).abs() >= (b - _page).abs() ? a : b);
+      final dropped = _pageCache.remove(farthest)!;
+      total -= ViewerRasterBudget.costOf(dropped.image);
+      dropped.image.dispose();
+    }
+    // The census cannot reach into this State, so the total goes to it —
+    // see [EditorSessionManager.viewerRasterBytesByViewer]. Every path
+    // that changes the cache ends here or in [_disposeContent].
+    widget.session.viewerRasterBytesByViewer[widget.viewerId] = total;
+  }
+
+  /// The OS said memory is tight. The session already stood its own caches
+  /// down; this is the viewer's share.
+  void _onMemoryPressure() {
+    if (!_budget.respondToMemoryPressure()) {
+      return;
+    }
+    setState(() => _evictToBudget(keeping: _page));
+  }
+
   /// Read-only here — the workspace holds it (see
   /// [MediaViewerTabHost.position]) and [_turnToPage] asks it to move.
   int get _page => widget.position;
@@ -303,6 +360,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   void initState() {
     super.initState();
     widget.request.addListener(_onRequestChanged);
+    widget.session.memoryPressureTicks.addListener(_onMemoryPressure);
     _load(_currentRequest);
   }
 
@@ -314,13 +372,21 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       widget.request.addListener(_onRequestChanged);
       _onRequestChanged();
     }
+    if (!identical(oldWidget.session, widget.session)) {
+      oldWidget.session.memoryPressureTicks.removeListener(_onMemoryPressure);
+      widget.session.memoryPressureTicks.addListener(_onMemoryPressure);
+    }
   }
 
   @override
   void dispose() {
     widget.request.removeListener(_onRequestChanged);
+    widget.session.memoryPressureTicks.removeListener(_onMemoryPressure);
     _generation += 1;
     _disposeContent();
+    // ⛔REMOVE, not zero: a viewer that is gone is not a viewer holding
+    // nothing, and an entry per closed tab would grow for the session.
+    widget.session.viewerRasterBytesByViewer.remove(widget.viewerId);
     super.dispose();
   }
 
@@ -333,6 +399,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       page.image.dispose();
     }
     _pageCache.clear();
+    widget.session.viewerRasterBytesByViewer[widget.viewerId] = 0;
     _rendersInFlight.clear();
     final document = _document;
     _document = null;
@@ -414,7 +481,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
 
   // --- Lazy rendering (§6-m: the visible page at the current zoom) ------
 
-
   void _ensurePageRendered(int pageIndex, double scale) {
     final document = _document;
     if (document == null) {
@@ -454,17 +520,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
         _rendersInFlight.remove((pageIndex, scale));
         _pageCache[pageIndex]?.image.dispose();
         _pageCache[pageIndex] = _RenderedPage(scale: scale, image: image);
-        // Keep the pages nearest the one on screen, drop the rest (a
-        // 100-page conte must not accumulate). Drain in a LOOP excluding
-        // the just-landed page: a landing for a page already paged away
-        // from is itself the farthest entry, and a single-shot eviction
-        // that skipped it ratcheted the cache up scrub after scrub.
-        while (_pageCache.length > 4) {
-          final farthest = _pageCache.keys
-              .where((page) => page != pageIndex)
-              .reduce((a, b) => (a - _page).abs() >= (b - _page).abs() ? a : b);
-          _pageCache.remove(farthest)?.image.dispose();
-        }
+        _evictToBudget(keeping: pageIndex);
       });
     }();
   }
@@ -485,8 +541,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   /// 「비디오 … 불러와서 재생가능하게」. It asks the DOCUMENT, so an
   /// animated GIF gets the same button a movie does; nothing here knows
   /// what a movie is.
-  bool get _canPlay =>
-      (_document?.framesPerSecond ?? 0) > 0 && _pageCount > 1;
+  bool get _canPlay => (_document?.framesPerSecond ?? 0) > 0 && _pageCount > 1;
 
   bool get _playing => _playTimer != null;
 
@@ -551,6 +606,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     final kind = mediaAssetKindForPath(path) ?? MediaAssetKind.image;
     widget.onRequestPicked?.call(MediaViewerRequest(path: path, kind: kind));
   }
+
   /// Whether the file on screen can still be added to the media pool —
   /// false for one already in it, and for nothing at all.
   bool get _canRegister {
