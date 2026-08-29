@@ -344,4 +344,49 @@ void main() {
           '다 가능하도록」',
     );
   });
+
+  /// 🚨★★★THE PRESS CAN START ON ANY ROW KIND, NOT JUST THE ONE I HAPPENED
+  /// TO WRITE FIRST.
+  ///
+  /// The claim is what lets a sweep BEGIN somewhere: a row the drag merely
+  /// crosses is painted without one. So a rail can pass every "the sweep
+  /// crossed these rows" case while half its buttons cannot start a sweep
+  /// at all — measured, and that is exactly the state this rail was in with
+  /// the eye claimed on V rows only.
+  ///
+  /// ⛔This loop is the guard. Every row kind that MOUNTS the eye has to be
+  /// able to start from it.
+  for (final start in const <({String label, String key})>[
+    (label: 'V row (the cut eye)', key: 'storyboard-cut-visibility-t1-cut'),
+    (label: 'S row (the layer eye)', key: 'storyboard-layer-visibility-t1-s1'),
+  ]) {
+    testWidgets('🚨a sweep can START on the ${start.label}', (tester) async {
+      final session = await pumpRail(tester);
+      final from = find.byKey(ValueKey<String>(start.key));
+      expect(from, findsOneWidget, reason: 'the fixture mounts ${start.key}');
+
+      final gesture = await tester.startGesture(tester.getCenter(from));
+      for (var step = 1; step <= 12; step += 1) {
+        await gesture.moveBy(const Offset(0, 25));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      // Whatever it started on, SOMETHING below it must have been painted —
+      // the two eye columns are the same column and the sweep runs down
+      // through both kinds.
+      final painted = [
+        ...pictureVisibility(session),
+        ...seVisibility(session),
+      ].where((visible) => !visible).length;
+      expect(
+        painted,
+        greaterThan(1),
+        reason:
+            'a press on ${start.key} has to be able to BEGIN a sweep, not '
+            'only be crossed by one — 유저: 「버튼이면 다 가능하도록」',
+      );
+    });
+  }
 }

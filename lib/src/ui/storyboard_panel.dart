@@ -4494,18 +4494,22 @@ class _StoryboardSeLabel extends StatelessWidget {
                     layer != null &&
                         onToggleLayerFx != null &&
                         layerKindShowsFxToggle(layer.kind)
-                    ? FxToggleButton(
-                        keyValue: 'storyboard-layer-fx-${layer.id}',
-                        state:
-                            layerFxStateOf?.call(layer.id) ?? LayerFxState.on,
-                        onToggle: () => onToggleLayerFx!(layer.id),
+                    ? RailSwipeColumnPointer(
+                        child: FxToggleButton(
+                          keyValue: 'storyboard-layer-fx-${layer.id}',
+                          state:
+                              layerFxStateOf?.call(layer.id) ?? LayerFxState.on,
+                          onToggle: () => onToggleLayerFx!(layer.id),
+                        ),
                       )
                     : null,
                 visibility: layer != null && onToggleLayerVisibility != null
-                    ? LayerVisibilityToggleButton(
-                        keyValue: 'storyboard-layer-visibility-${layer.id}',
-                        isVisible: layer.isVisible,
-                        onToggle: () => onToggleLayerVisibility!(layer.id),
+                    ? RailSwipeColumnPointer(
+                        child: LayerVisibilityToggleButton(
+                          keyValue: 'storyboard-layer-visibility-${layer.id}',
+                          isVisible: layer.isVisible,
+                          onToggle: () => onToggleLayerVisibility!(layer.id),
+                        ),
                       )
                     : null,
                 mute: layer != null && onOpenLayerMixer != null
@@ -4688,10 +4692,12 @@ class _StoryboardTransitionLabel extends StatelessWidget {
                 // fx and opacity stay kind-gated off, exactly like the
                 // timeline row's slots for this kind.
                 visibility: onToggleLayerVisibility != null
-                    ? LayerVisibilityToggleButton(
-                        keyValue: 'storyboard-layer-visibility-${layer.id}',
-                        isVisible: layer.isVisible,
-                        onToggle: () => onToggleLayerVisibility!(layer.id),
+                    ? RailSwipeColumnPointer(
+                        child: LayerVisibilityToggleButton(
+                          keyValue: 'storyboard-layer-visibility-${layer.id}',
+                          isVisible: layer.isVisible,
+                          onToggle: () => onToggleLayerVisibility!(layer.id),
+                        ),
                       )
                     : null,
               ),

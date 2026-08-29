@@ -17,6 +17,7 @@ import '../theme/app_theme.dart' show AppColors;
 import 'layer_label_controls.dart'
     show
         LayerSectionBandCell,
+        RailSwipeColumnPointer,
         fxGlyph,
         layerLaneValueSlotWidth,
         railSelectedRowColor;
@@ -617,10 +618,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       textAlign: horizontal ? TextAlign.right : TextAlign.center,
       decoration: InputDecoration(
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 4,
-          vertical: 2,
-        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         border: const OutlineInputBorder(),
         // The FIXED part, worn by the box instead of typed into it.
         suffixText: unit.isEmpty ? null : unit.trim(),
@@ -798,21 +796,25 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                       ),
                 fx: lane.groupEnabled == null
                     ? null
-                    : AppIconButton(
-                        keyValue:
-                            '$_keyPrefix-lane-group-fx-'
-                            '${layer.id}-${lane.laneId}',
-                        tooltip: lane.groupEnabled!
-                            ? 'Bypass ${lane.label}'
-                            : 'Apply ${lane.label}',
-                        onPressed: widget.onToggleLaneGroupEnabled == null
-                            ? null
-                            : () =>
-                                  widget.onToggleLaneGroupEnabled!(layer, lane),
-                        icon: fxGlyph(
-                          context: context,
-                          active: lane.groupEnabled!,
-                          fontSize: 11,
+                    : RailSwipeColumnPointer(
+                        child: AppIconButton(
+                          keyValue:
+                              '$_keyPrefix-lane-group-fx-'
+                              '${layer.id}-${lane.laneId}',
+                          tooltip: lane.groupEnabled!
+                              ? 'Bypass ${lane.label}'
+                              : 'Apply ${lane.label}',
+                          onPressed: widget.onToggleLaneGroupEnabled == null
+                              ? null
+                              : () => widget.onToggleLaneGroupEnabled!(
+                                  layer,
+                                  lane,
+                                ),
+                          icon: fxGlyph(
+                            context: context,
+                            active: lane.groupEnabled!,
+                            fontSize: 11,
+                          ),
                         ),
                       ),
                 hasOnionColumn: widget.hasOnionColumn,
@@ -1334,10 +1336,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
     // over the band's own ground, so the band stays OPAQUE and keeps
     // occluding the buried grid (F-7).
     final litGround = lit
-        ? Color.alphaBlend(
-            timelineActiveRowWashColor(colorScheme),
-            bandGround,
-          )
+        ? Color.alphaBlend(timelineActiveRowWashColor(colorScheme), bandGround)
         : bandGround;
     // The ROW SEAM, from the law — see the border below.
     final seamInk = timelineGridRowSeamInk(colorScheme);
