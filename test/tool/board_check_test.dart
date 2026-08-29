@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../../tool/board_check.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// The board gate's own guard.
@@ -40,23 +41,77 @@ void main() {
     if (acked.isNotEmpty) {
       File('${dir.path}/.gate-ack').writeAsStringSync(acked.join('\n'));
     }
-    final run = await Process.run(
-      'dart',
-      [
-        'run',
-        'tool/board_check.dart',
-        file.path,
-        // ⚠️`runInShell`: on Windows the SDK entry point is `dart.bat`, and a
-        // bare `dart` is not an executable the process API can find.
-      ],
-      workingDirectory: Directory.current.path,
-      runInShell: true,
-    );
-    // ⚠️Matched on ASCII ids only. Windows decodes a child's stdout in the
-    // console codepage, so the Korean sentences come back as mojibake here
-    // even though the hook receives them intact.
-    return '${run.stdout}';
+    // 🚨★★★CALLED, NOT SPAWNED. Each case used to run `dart run
+    // tool/board_check.dart` in a child process. Alone that is fine; inside
+    // the full affected run (6000+ tests) the process contention ALONE made
+    // it fail — 실측 2026-08-27: nine red in a bulk run, 13/13 green when
+    // run by itself. A gate that goes red for reasons that have nothing to
+    // do with the board is a gate people learn to re-run instead of read.
+    //
+    // ⛔And the mojibake went with it. A child's stdout on Windows comes
+    // back in the console codepage, so these assertions could only ever
+    // match ASCII ids — the Korean sentences arrived as noise. In-process
+    // they are the strings the gate actually wrote.
+    return boardCheckComplaints(file);
   }
+
+  test('two complaints are separated by a REAL newline', () async {
+    // ⛔The seam used to be an escaped `\n` — the two characters — so a turn
+    // that raised two complaints printed them run together with a visible
+    // backslash-n. Every newline INSIDE a complaint was already real, which
+    // is why it survived: the seam is the only place the escape showed, and
+    // the child process this test used to spawn could not be read closely
+    // enough to notice.
+    final out = await complaintFor([
+      {
+        'kind': 'item',
+        'id': 'K-2',
+        'state': 'open',
+        'ts': stamp(const Duration(hours: 1)),
+        'rest': '실기로 확인한다',
+      },
+      {
+        'kind': 'item',
+        'id': 'K-3',
+        'state': 'not-a-state',
+        'ts': stamp(const Duration(hours: 1)),
+      },
+    ]);
+    expect(out, contains('K-2'));
+    expect(out, contains('K-3'));
+    expect(
+      out,
+      isNot(contains(r'\n')),
+      reason: 'the seam prints as a line break, not as two characters',
+    );
+  });
+
+  test('the complaint arrives in Korean — which the child process could '
+      'never deliver', () async {
+    // 🚨THE OTHER HALF OF DROPPING THE SUBPROCESS. A child's stdout on
+    // Windows comes back in the console codepage, so every assertion in
+    // this file had to match ASCII ids and the sentences arrived as noise.
+    // Nothing could check that the gate says anything USEFUL — only that it
+    // said something. In-process, the string is the one the gate wrote.
+    final out = await complaintFor([
+      {
+        'kind': 'item',
+        'id': 'K-1',
+        'state': 'open',
+        'ts': stamp(const Duration(hours: 1)),
+        'rest': '실기로 확인한다',
+      },
+    ]);
+    expect(out, contains('K-1'));
+    expect(
+      out,
+      contains('확인 방법'),
+      reason:
+          'the gate writes Korean and the test can finally read it — before '
+          'this, the same assertion matched mojibake and passed for the '
+          'wrong reason',
+    );
+  });
 
   test('a card the user ANSWERED but nobody classified is named', () async {
     final out = await complaintFor([
@@ -441,13 +496,7 @@ void _recommendMustNameAnOption() {
         'recommend': ?recommend,
       }),
     );
-    final run = await Process.run(
-      'dart',
-      ['run', 'tool/board_check.dart', file.path],
-      workingDirectory: Directory.current.path,
-      runInShell: true,
-    );
-    return '${run.stdout}';
+    return boardCheckComplaints(file);
   }
 
   const keyed = [

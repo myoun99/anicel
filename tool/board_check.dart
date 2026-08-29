@@ -37,11 +37,38 @@ final RegExp _prInProse = RegExp(r'#\d{4}\b');
 /// made the name the binding). Questions raised before it are not defects.
 const String _questionNamingSince = '2026-08-27';
 
+/// The gate's whole judgement, as a STRING rather than as stdout.
+///
+/// 🚨★★★EXTRACTED SO THE TEST CAN STOP SPAWNING PROCESSES. The suite used to
+/// run `dart run tool/board_check.dart` once per case; under the full
+/// affected run (6000+ tests) the process contention alone made it fail —
+/// 실측 2026-08-27: **nine red in a bulk run, 13/13 green alone**. A gate
+/// that goes red for reasons that have nothing to do with the board is a
+/// gate people learn to re-run instead of read.
+///
+/// Empty means no complaint. [main] is the thin wrapper that prints it.
+String boardCheckComplaints(File file) {
+  final complaintsOut = <String>[];
+  _collectComplaints(file, complaintsOut);
+  // ⛔A REAL newline between complaints. It used to be an escaped one — the
+  // two characters, printed literally — so a turn that raised two of them
+  // ran them together with a visible backslash-n at the seam. Every newline
+  // INSIDE a complaint was already real, which is why nobody noticed: the
+  // seam is the only place the escape showed.
+  return complaintsOut.join('\n');
+}
+
 void main(List<String> args) {
   if (args.isEmpty) return;
   final file = File(args.first);
   if (!file.existsSync()) return;
+  final out = boardCheckComplaints(file);
+  if (out.isNotEmpty) {
+    stdout.write(out);
+  }
+}
 
+void _collectComplaints(File file, List<String> complaintsOut) {
   final bad = <int>[];
 
   /// Ids that said SOMETHING on at least one line — see [emptyCards].
@@ -513,7 +540,5 @@ void main(List<String> args) {
     );
   }
 
-  if (complaints.isNotEmpty) {
-    stdout.write(complaints.join('\\n'));
-  }
+  complaintsOut.addAll(complaints);
 }
