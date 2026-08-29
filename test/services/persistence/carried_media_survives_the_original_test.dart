@@ -157,4 +157,29 @@ void main() {
     expect(framed.readIntoSync(window, 1000, 200), 200);
     expect(window, Uint8List.sublistView(original, 1000, 1200));
   });
+
+  test(
+    '🚨a consumer asking the session for bytes never learns about blocks',
+    () {
+      final path = compressibleFile('take.wav');
+      final original = File(path).readAsBytesSync();
+      session.addMediaAssets([path], carried: true);
+      File(path).deleteSync();
+
+      // What the conform pipeline and the missing-banner probe call.
+      final source = session.mediaByteSourceFor(path);
+
+      expect(source.existsSync(), isTrue, reason: 'the project owns it now');
+      expect(
+        source.lengthSync(),
+        original.length,
+        reason: 'the FILE\'s length',
+      );
+      expect(source.readSync(), original);
+
+      final window = Uint8List(128);
+      expect(source.readIntoSync(window, 500, 128), 128);
+      expect(window, Uint8List.sublistView(original, 500, 628));
+    },
+  );
 }

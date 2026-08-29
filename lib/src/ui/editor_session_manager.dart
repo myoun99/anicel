@@ -19,6 +19,7 @@ import '../services/commands/reorder_track_command.dart';
 import '../services/commands/toggle_id_in_set_command.dart';
 import '../services/import/media_identity_reader.dart';
 import '../services/media/media_fingerprints.dart';
+import '../services/persistence/media_blob_codec.dart';
 import '../services/persistence/media_staging_store.dart';
 import '../services/persistence/anicel_incremental_writer.dart'
     show anicelCrc32, parseAnicelZipLayoutFile;
@@ -17489,18 +17490,31 @@ class EditorSessionManager extends ChangeNotifier {
           archivePath,
         ).entryNamed(entryName);
         if (entry != null) {
-          return MediaArchiveBytes(
+          final range = MediaArchiveBytes(
             archivePath: archivePath,
             dataOffset: entry.dataOffset,
             length: entry.length,
             entryCrc32: entry.crc32,
+            framed: mediaEntryIsFramed(entryName),
           );
+          // 🚨A framed entry is decoded HERE and nowhere downstream. Every
+          // consumer asked for「the bytes of this asset」and must keep
+          // getting them — the block index is this layer's business, and
+          // the reader still serves a window rather than the whole file.
+          return range.framed ? MediaFramedBytes(range) : range;
         }
       } on Object {
         // A torn or momentarily unreadable archive: the file fallback
         // below still answers for assets whose original survives, and the
         // conform store's transient handling covers the rest.
       }
+    }
+    // ⚠️Not in the archive yet — but 품기 may have staged it, and after an
+    // import that is the only place its bytes are.
+    final staged = mediaStagingStore.find(poolPath);
+    if (staged != null) {
+      final stored = MediaStagedBytes(path: staged.path, framed: staged.framed);
+      return staged.framed ? MediaFramedBytes(stored) : stored;
     }
     return MediaFileBytes(poolPath);
   }
