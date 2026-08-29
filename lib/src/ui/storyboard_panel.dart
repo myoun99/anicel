@@ -440,6 +440,10 @@ class StoryboardPanel extends StatefulWidget {
     this.onLayerOpacityChangeEnd,
     this.onLayerMarkSelected,
     this.onToggleLayerTimesheet,
+    this.layerOnTimesheetOf,
+    this.layerEyeOnOf,
+    this.seRowLaneOpenOf,
+    this.trackLaneOpenOf,
     this.layerFxStateOf,
     this.onToggleLayerFx,
     this.cutPictureVisibleOf,
@@ -815,6 +819,22 @@ class StoryboardPanel extends StatefulWidget {
   /// toggle on this rail's rows too — the SAME session verb the timeline
   /// wires, flipping [Layer.onTimesheet].
   final ValueChanged<LayerId>? onToggleLayerTimesheet;
+
+  /// A LIVE read of the sheet flag — see [EditorSessionManager.isLayerOnTimesheet].
+  /// The bulk-drag needs it: a captured [Layer] still reads the value the
+  /// last frame had, and the sweep would spread the opposite of what the
+  /// press just set.
+  final bool Function(LayerId layerId)? layerOnTimesheetOf;
+
+  /// A LIVE read of a layer’s own eye — see [layerOnTimesheetOf].
+  final bool Function(LayerId layerId)? layerEyeOnOf;
+
+  /// LIVE reads of the two twirl sets, for the same reason as
+  /// [layerOnTimesheetOf]: the host mutates them and the new value reaches
+  /// this widget only on the next build, which is a frame too late for a
+  /// bulk-drag that started on one of those buttons.
+  final bool Function(Track track, int slot)? seRowLaneOpenOf;
+  final bool Function(Track track)? trackLaneOpenOf;
 
   final LayerFxState Function(LayerId layerId)? layerFxStateOf;
   final ValueChanged<LayerId>? onToggleLayerFx;
@@ -1953,7 +1973,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           if (layer != null) {
             return toggleLayerVisibility == null
                 ? null
-                : layerRailEyeIsOn(layer);
+                : layerRailEyeIsOn(layer, live: widget.layerEyeOnOf);
           }
           if (toggleCutVisibility == null) {
             return null;
@@ -2008,7 +2028,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                 return layer != null &&
                         layerKindEligibleForTimesheetToggle(layer.kind) &&
                         layer.attachedToLayerId == null
-                    ? layer.onTimesheet
+                    ? (widget.layerOnTimesheetOf?.call(layer.id) ??
+                          layer.onTimesheet)
                     : null;
               },
               toggle: (row) {
@@ -2036,9 +2057,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                       ).isNotEmpty;
                   return toggleSeRowLane == null || !hasLanes
                       ? null
-                      : widget.expandedSeAudioRows.contains(
-                          StoryboardPanel.seRowKey(row.track, slot),
-                        );
+                      : (widget.seRowLaneOpenOf?.call(row.track, slot) ??
+                            widget.expandedSeAudioRows.contains(
+                              StoryboardPanel.seRowKey(row.track, slot),
+                            ));
                 }
                 if (row.layer != null) {
                   // The transition row: no twirl at all.
@@ -2047,9 +2069,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                 return toggleTrackLane == null ||
                         _trackOwnLanes(row.track).isEmpty
                     ? null
-                    : widget.expandedTransformTracks.contains(
-                        row.track.id.value,
-                      );
+                    : (widget.trackLaneOpenOf?.call(row.track) ??
+                          widget.expandedTransformTracks.contains(
+                            row.track.id.value,
+                          ));
               },
               toggle: (row) {
                 final slot = row.seSlot;
@@ -4427,12 +4450,15 @@ class _StoryboardSeLabel extends StatelessWidget {
                 laneToggle: onToggleLane == null
                     ? null
                     : RailSwipeColumnPointer(
+                        onPressDown: onToggleLane,
                         child: InkWell(
                           key: ValueKey<String>(
                             'storyboard-se-lane-toggle-'
                             '${track.id.value}-${slot + 1}',
                           ),
-                          onTap: onToggleLane,
+                          // ⛔A NO-OP: the press already fired it (onPressDown
+                          // above). Both would fire twice.
+                          onTap: () {},
                           child: SizedBox(
                             height: _seRowHeight,
                             child: Icon(
@@ -5820,11 +5846,14 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                 laneToggle: onToggleLane == null
                     ? null
                     : RailSwipeColumnPointer(
+                        onPressDown: onToggleLane,
                         child: InkWell(
                           key: ValueKey<String>(
                             'storyboard-track-lane-toggle-${track.id.value}',
                           ),
-                          onTap: onToggleLane,
+                          // ⛔A NO-OP: the press already fired it (onPressDown
+                          // above). Both would fire twice.
+                          onTap: () {},
                           child: SizedBox(
                             height: 24,
                             child: Icon(

@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
+import '../input/value_control_pointers.dart';
 import 'package:anicel/src/ui/input/app_input_settings.dart';
 import 'layer_rail_columns.dart';
 import 'layer_label_controls.dart'
@@ -75,6 +76,10 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
   bool? _targetValue;
   final Set<Object> _painted = <Object>{};
 
+  /// The pointer that opened this gesture — the latch asks whether a control
+  /// claimed it. No drag callback carries the id, so a Listener reads it.
+  int? _downPointer;
+
   void _paintAt(RailSwipeRow<TRow>? row) {
     final column = _column;
     final target = _targetValue;
@@ -141,9 +146,33 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
       return false;
     }
     _column = column;
-    _targetValue = !value;
+    // 🚨★★★DID ITS OWN BUTTON ALREADY DO THIS ROW?
+    //
+    // 유저 2026-08-30: 「버튼은 기본적으로 **누른순간 작동**하고 **누른채로
+    // 드래그시 일괄조작** 작동」. A press that landed ON the button fired it
+    // during the pointer-down, so the row already holds what was asked for —
+    // and the sweep spreads THAT. Painting it again toggles it straight back
+    // (measured: the row appeared twice in the toggle log).
+    //
+    // ⛔A press inside the band but OFF the button — the 4px tolerance a thin
+    // column carries for a pen — fired nothing, so that row still has to be
+    // painted and the target is the opposite of what it reads.
+    //
+    // ⚠️THE VALUE CANNOT TELL THESE APART, so the CLAIM does. A button
+    // claims the pointer on its own down, deeper than this detector, so by
+    // now it has claimed if it was pressed at all. ⚠️And every column must
+    // read LIVE for this to hold — a `valueOf` closing over a captured model
+    // object still reports the last frame and sweeps backwards (that is why
+    // `isLayerOnTimesheet` exists).
+    final pointer = _downPointer;
+    final pressedItsButton = pointer != null && controlOwnsTap(pointer);
+    _targetValue = pressedItsButton ? value : !value;
     _painted.clear();
-    _paintAt(row);
+    if (pressedItsButton) {
+      _painted.add(row.id);
+    } else {
+      _paintAt(row);
+    }
     return true;
   }
 
@@ -155,14 +184,21 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
 
   @override
   Widget build(BuildContext context) {
-    return _RailSwipeDetector(
-      axis: widget.axis,
-      columnAt: _columnAt,
-      alongOf: _along,
-      onStart: _start,
-      onUpdate: (along) => _paintAt(widget.rowAt(along)),
-      onEnd: _end,
-      child: widget.child,
+    return Listener(
+      onPointerDown: (event) => _downPointer = event.pointer,
+      // ⛔Cleared on the way out: a stale id would let the NEXT press be read
+      // as 「a button already did this」 when nothing claimed at all.
+      onPointerUp: (event) => _downPointer = null,
+      onPointerCancel: (event) => _downPointer = null,
+      child: _RailSwipeDetector(
+        axis: widget.axis,
+        columnAt: _columnAt,
+        alongOf: _along,
+        onStart: _start,
+        onUpdate: (along) => _paintAt(widget.rowAt(along)),
+        onEnd: _end,
+        child: widget.child,
+      ),
     );
   }
 }

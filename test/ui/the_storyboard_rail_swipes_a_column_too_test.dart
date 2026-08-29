@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -28,6 +29,13 @@ import 'package:anicel/src/ui/storyboard_tab_host.dart';
 /// never starts. So the first case measures the band against the button it
 /// is supposed to cover, before any case tries to use it.
 void main() {
+  // ⛔THE CLAIM SET IS GLOBAL. A sweep that ends without a matching release
+  // leaves its pointer claimed, and the next case's press — the same id 1 —
+  // is then read as 「a button already handled this row」, so the sweep skips
+  // the row it started on. Measured: these cases pass alone and fail after
+  // another one in the same file.
+  tearDown(debugClearValueControlPointers);
+
   Track track(String id, String name) => Track(
     id: TrackId(id),
     name: name,

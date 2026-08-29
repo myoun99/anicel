@@ -1,4 +1,5 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -32,6 +33,13 @@ import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
 /// the eye — so the column is the argument now, and the rail lists the
 /// toggle columns it has.
 void main() {
+  // ⛔THE CLAIM SET IS GLOBAL. A sweep that ends without a matching release
+  // leaves its pointer claimed, and the next case's press — the same id 1 —
+  // is then read as 「a button already handled this row」, so the sweep skips
+  // the row it started on. Measured: these cases pass alone and fail after
+  // another one in the same file.
+  tearDown(debugClearValueControlPointers);
+
   Project project() => Project(
     id: const ProjectId('swipe'),
     name: 'Swipe',
@@ -135,7 +143,8 @@ void main() {
     expect(
       s.onionSkinLayerIds.value.length,
       greaterThan(1),
-      reason: 'I-1: 「타임시트버튼이든 뭐 그런것들」 — every toggle column, '
+      reason:
+          'I-1: 「타임시트버튼이든 뭐 그런것들」 — every toggle column, '
           'not the one that happened to be built first',
     );
   });
@@ -324,11 +333,7 @@ void main() {
         // nesting run, so a press there painted nothing. The run is gone —
         // depth lives in the NAME now — so one x is one column at every
         // depth, which is the whole point of the move.
-        expect(
-          onSheet(s),
-          isNotEmpty,
-          reason: '깊이가 열을 옮기지 않으므로 같은 x 는 같은 열이다',
-        );
+        expect(onSheet(s), isNotEmpty, reason: '깊이가 열을 옮기지 않으므로 같은 x 는 같은 열이다');
       },
     );
     testWidgets('the LANE TWIRL column paints too', (tester) async {

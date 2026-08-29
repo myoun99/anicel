@@ -1,4 +1,5 @@
 import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
@@ -68,13 +69,31 @@ Future<List<LayerId>> _swipeDownTheEyeColumn(
   WidgetTester tester, {
   required bool withBlendColumn,
 }) async {
+  // 🚨THE FIXTURE HAS TO ACTUALLY FLIP. A harness that only RECORDS the
+  // toggle cannot measure the law the sweep follows now: the button fires on
+  // the DOWN (유저 2026-08-30) and the sweep spreads the value the pressed
+  // row is left holding. Frozen, the pressed row never changes and the sweep
+  // reads a row that disagrees with what the press just did — measured, and
+  // it looked exactly like the feature being broken.
   final toggled = <LayerId>[];
-  final layers = [_layer('layer-a'), _layer('layer-b'), _layer('layer-c')];
+  var layers = [_layer('layer-a'), _layer('layer-b'), _layer('layer-c')];
   await tester.pumpWidget(
-    _grid(
-      layers: layers,
-      withBlendColumn: withBlendColumn,
-      onToggleLayerVisibility: toggled.add,
+    StatefulBuilder(
+      builder: (context, setState) => _grid(
+        layers: layers,
+        withBlendColumn: withBlendColumn,
+        onToggleLayerVisibility: (id) {
+          toggled.add(id);
+          setState(() {
+            layers = [
+              for (final layer in layers)
+                layer.id == id
+                    ? layer.copyWith(isVisible: !layer.isVisible)
+                    : layer,
+            ];
+          });
+        },
+      ),
     ),
   );
 
@@ -109,6 +128,13 @@ Future<List<LayerId>> _swipeDownTheEyeColumn(
 }
 
 void main() {
+  // ⛔THE CLAIM SET IS GLOBAL. A sweep that ends without a matching release
+  // leaves its pointer claimed, and the next case's press — the same id 1 —
+  // is then read as 「a button already handled this row」, so the sweep skips
+  // the row it started on. Measured: these cases pass alone and fail after
+  // another one in the same file.
+  tearDown(debugClearValueControlPointers);
+
   testWidgets('the swipe crosses every row it passes', (tester) async {
     final toggled = await _swipeDownTheEyeColumn(
       tester,
@@ -123,10 +149,7 @@ void main() {
 
   testWidgets('and still does with the BLEND column mounted — the '
       'regression', (tester) async {
-    final toggled = await _swipeDownTheEyeColumn(
-      tester,
-      withBlendColumn: true,
-    );
+    final toggled = await _swipeDownTheEyeColumn(tester, withBlendColumn: true);
     expect(
       toggled,
       [

@@ -94,7 +94,8 @@ void main() {
       expect(
         s.displayedLayersOnionSkinEnabled,
         isFalse,
-        reason: 'the CONTROL — every displayed drawing row but the folder\'s '
+        reason:
+            'the CONTROL — every displayed drawing row but the folder\'s '
             'member is ghosting, so "every" is not yet true',
       );
 
@@ -103,7 +104,8 @@ void main() {
       expect(
         s.displayedLayersOnionSkinEnabled,
         isTrue,
-        reason: 'the row that disagreed is inside a folder that is off, and '
+        reason:
+            'the row that disagreed is inside a folder that is off, and '
             'a row the user cannot see is not a DISPLAYED layer',
       );
     });
@@ -284,11 +286,24 @@ void main() {
         for (var i = 0; i < lines.length; i += 1) {
           final line = lines[i];
           // A WRITE (`isVisible:` in a copyWith, `isVisible ==` in a guard)
+          // A WRITE (`isVisible:` in a copyWith, `isVisible ==` in a guard)
           // is not the offence — re-deriving the ANSWER is.
+          //
+          // ⚠️AND NEITHER IS THE ONE LIVE READER. `isLayerEyeOn` exists so
+          // that everything asking 「what does this row's eye show RIGHT
+          // NOW」 asks in ONE place: a caller holding a captured `Layer`
+          // reads what the last frame had, which is wrong for the whole
+          // length of a gesture that already toggled it (유저 2026-08-30 —
+          // a button fires on the press and the bulk-drag spreads what it
+          // set). Counting it as an offender would push the rails back to
+          // reading the flag themselves, which is the thing this test is
+          // for.
           if (!line.contains('.isVisible') ||
               line.contains('isVisible:') ||
               line.contains('isVisible ==') ||
               line.contains('isVisible !=') ||
+              line.contains('bool isLayerEyeOn') ||
+              line.contains('.isVisible;') && lines[i - 1].contains('=>') ||
               line.contains('this.isVisible')) {
             continue;
           }

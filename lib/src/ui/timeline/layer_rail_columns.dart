@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
+import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../text/app_strings.dart';
 import 'layer_label_controls.dart';
@@ -447,19 +448,20 @@ String layerTypeSemanticLabel(LayerKind kind) {
   );
 }
 
-/// What a rail row's EYE shows — this row's own flag.
+/// What a rail row's EYE shows: the LIVE answer when the host gives one, and
+/// the row's own captured flag when it does not.
 ///
-/// 🚨★★★NOT [LayerFolderQueries.rowVisible], and the difference is the whole
-/// reason this has a name. `rowVisible` answers 「is this row SHOWN」, which
-/// folds in every ancestor folder; a row inside a hidden folder answers
-/// false there while its own switch is still on. The EYE is that own switch,
-/// and a swipe latching on the folded answer would try to turn on a row that
-/// already is.
+/// 🚨★★★ONE PLACE, and `hidden_folder_is_hidden`'s ratchet is why. Three
+/// rails need the same fallback, and spelling it at each of them raised the
+/// count of places that answer 「is this row shown」 for themselves from 11
+/// to 14. The ledger says that number only ever goes DOWN.
 ///
-/// ⛔It exists so the two rails ask it ONCE. The layer rail and the
-/// storyboard rail both swipe this column, and a second raw read of the
-/// stored flag is a second answer that can drift — the ratchet in
-/// `hidden_folder_is_hidden_test` caught exactly that when the storyboard
-/// grew its swipe. ⚠️That scan is LINE-based and does not skip comments, so
-/// prose here must not spell the field access out either.
-bool layerRailEyeIsOn(Layer layer) => layer.isVisible;
+/// ⚠️[live] is a frame ahead of [layer] during a gesture: the button under
+/// the finger fires on the DOWN (유저 2026-08-30) and a captured [Layer]
+/// still reports what the last build saw. The bulk-drag needs the live one;
+/// a host that has none still DRAWS the right thing from the capture.
+///
+/// ⛔NOT [LayerFolderQueries.rowVisible] — that folds in ancestor folders,
+/// and the eye is this row's own switch.
+bool layerRailEyeIsOn(Layer layer, {bool Function(LayerId id)? live}) =>
+    live?.call(layer.id) ?? layer.isVisible;
