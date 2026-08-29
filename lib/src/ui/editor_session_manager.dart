@@ -17464,6 +17464,79 @@ class EditorSessionManager extends ChangeNotifier {
   /// the layout is already being parsed then.
   Map<String, String> _mediaEntryNames = const {};
 
+  /// What [poolPath]'s bytes ACTUALLY occupy right now, or null when only
+  /// the file on disk knows.
+  ///
+  /// 🚨★★★**THE SIZE SHOWN IS THE SIZE TAKEN** (유저 2026-08-30: 「파일이
+  /// 보여주는 크기는 압축된 크기를 보여주는게 맞겟지? … 아무튼 실제크기」).
+  /// The media browser used to read `identity.lengthBytes` — the length
+  /// the file had when it was REGISTERED — which after compression is a
+  /// number matching nothing: not the disk, not the project file, not the
+  /// staged copy.
+  ///
+  /// ⛔[MediaAsset.identity] is left alone. That field answers「is this the
+  /// same file?」for relink, and a compressed length would make every
+  /// carried asset fail to match itself.
+  ///
+  /// ⚠️Cheap by construction — a stat on the staged file, or a length the
+  /// archive layout already handed over. The browser draws a row per asset
+  /// and must not parse a ZIP to do it, which is why the archive half is
+  /// remembered at save/open rather than asked for here.
+  int? mediaStoredBytesFor(String poolPath) {
+    final staged = mediaStagingStore.find(poolPath);
+    if (staged != null) {
+      return staged.storedLength;
+    }
+    return _archivedMediaBytes()[poolPath];
+  }
+
+  /// Stored lengths for the media inside the project file, parsed ONCE per
+  /// completed save and kept until the next one.
+  ///
+  /// ⚠️Keyed on [_completedSaveGeneration] rather than time: a compaction
+  /// moves every byte, so a length from before one describes nothing. The
+  /// generation is the thing that already changes exactly when that
+  /// happens.
+  Map<String, int> _archivedMediaBytes() {
+    final path = _projectFilePath;
+    if (path == null || _mediaEntryNames.isEmpty) {
+      return const {};
+    }
+    if (_mediaStoredBytesGeneration == _completedSaveGeneration) {
+      return _mediaStoredBytes;
+    }
+    var sizes = const <String, int>{};
+    try {
+      final layout = parseAnicelZipLayoutFile(path);
+      sizes = {
+        for (final entry in _mediaEntryNames.entries)
+          if (layout.entryNamed(entry.value) case final found?)
+            entry.key: found.length,
+      };
+    } on Object {
+      // A torn or momentarily unreadable archive answers nothing rather
+      // than a wrong number; the row falls back to what it always showed.
+    }
+    _mediaStoredBytes = sizes;
+    _mediaStoredBytesGeneration = _completedSaveGeneration;
+    return sizes;
+  }
+
+  Map<String, int> _mediaStoredBytes = const {};
+  int _mediaStoredBytesGeneration = -1;
+
+  /// Every carried asset's actual size, for a list that shows sizes.
+  Map<String, int> get mediaStoredBytes {
+    final sizes = <String, int>{};
+    for (final asset in mediaAssets) {
+      final bytes = mediaStoredBytesFor(asset.path);
+      if (bytes != null) {
+        sizes[asset.path] = bytes;
+      }
+    }
+    return sizes;
+  }
+
   /// What the project carries, for tests and for anything that needs to
   /// resolve an asset's bytes without going through a save.
   Map<String, String> get mediaEntryNames =>

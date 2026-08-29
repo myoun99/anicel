@@ -2027,7 +2027,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     });
   }
 
-
   /// The one place that shows 「fx 가 사라집니다」, for every surface.
   ///
   /// ⚠️EVERY exit answers. A dialog dismissed by the barrier or by escape
@@ -2063,12 +2062,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     );
     request.answer(proceed ?? false);
   }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    widget.session.attachFxConfirm.pending.removeListener(
-      _showAttachFxConfirm,
-    );
+    widget.session.attachFxConfirm.pending.removeListener(_showAttachFxConfirm);
     _brushTool.removeListener(_rememberBrushHandSettings);
     // A pending debounce would write after the tree is gone; the values are
     // in memory, so writing them NOW is both safe and the last chance.
@@ -2727,6 +2725,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
               // answer rather than probing the disk per row.
               missingPaths: widget.session.missingMediaPaths,
               modifiedTimes: widget.session.mediaModifiedTimes,
+              // 유저 2026-08-30: 「아무튼 실제크기」 — what a carried asset
+              // occupies compressed, rather than the length its file had
+              // when it was registered.
+              storedBytes: widget.session.mediaStoredBytes,
               onRelinkMissing: () =>
                   runMediaRelinkFlow(context, widget.session),
               onRemoveAsset: widget.session.removeMediaAsset,
