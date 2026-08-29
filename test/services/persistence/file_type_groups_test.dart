@@ -227,4 +227,31 @@ void main() {
       });
     }
   });
+
+  test('the VIEWER picker offers exactly what the viewer can open — the '
+      'list is a claim about the viewer, not a taste', () {
+    // 🚨A picker narrower than the viewer makes 「the viewer plays movies」
+    // untrue from the user's side, and nothing in the viewer fails when it
+    // happens: the file simply never arrives. So the two are pinned to each
+    // other here rather than trusted to be edited together (2026-08-29 —
+    // adding video playback found this list still saying images + PDF).
+    //
+    // Audio is the one viewable-media absence with a reason: sound has no
+    // picture, and the viewer says so instead of opening an empty frame.
+    expect(
+      FileTypeGroups.viewableMedia.extensions,
+      containsAll(videoFileExtensions),
+      reason: 'the viewer plays movies, so its picker must offer them',
+    );
+    expect(
+      FileTypeGroups.viewableMedia.extensions,
+      containsAll(imageFileExtensions),
+    );
+    expect(FileTypeGroups.viewableMedia.extensions, contains('pdf'));
+    expect(
+      FileTypeGroups.viewableMedia.extensions,
+      isNot(anyElement(isIn(audioFileExtensions))),
+      reason: 'sound has no picture — the one deliberate absence',
+    );
+  });
 }
