@@ -311,6 +311,7 @@ void main() {
     'sheetFieldSheet': (s) => s.sheetFieldSheet,
     'sheetTitleHint': (s) => s.sheetTitleHint,
     'sheetArtist': (s) => s.sheetArtist,
+    'sheetStaffByProcess': (s) => s.sheetStaffByProcess,
     'sheetVisibleBoxes': (s) => s.sheetVisibleBoxes,
     'sheetNotation': (s) => s.sheetNotation,
     'sheetExposureBar': (s) => s.sheetExposureBar,

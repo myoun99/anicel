@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/layer_process.dart';
 import '../../models/timesheet_info.dart';
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
@@ -42,6 +43,21 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
   );
   late bool _seEmptyFill = widget.initialInfo.seEmptyFill;
 
+  /// One name field per 공정 — the list the user designed (I-4), which
+  /// `LayerProcess` already is and the cut envelope already binds by
+  /// (`{staff.<role>.name}`).
+  ///
+  /// ⛔EVERY process gets a row, including 用紙. Leaving one out would be a
+  /// 「~는 제외한다」 rule nobody asked for, and an empty row costs a line
+  /// while a missing one costs a question — the same reason a rail row
+  /// reserves every slot.
+  late final Map<String, TextEditingController> _staffControllers = {
+    for (final process in LayerProcess.values)
+      process.jsonValue: TextEditingController(
+        text: widget.initialInfo.staffFor(process.jsonValue).name,
+      ),
+  };
+
   static String _fieldLabel(TimesheetHeaderField field) {
     final strings = AppText.strings;
     return switch (field) {
@@ -62,24 +78,44 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
     _sceneController.dispose();
     _artistController.dispose();
     _exposureBarThresholdController.dispose();
+    for (final controller in _staffControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
   void _submit() {
     final threshold = int.tryParse(_exposureBarThresholdController.text.trim());
+    // 🚨★★★copyWith, NOT a fresh TimesheetInfo. Building one from scratch
+    // listed the fields this dialog edits and silently dropped every field
+    // it does not — `staff` and `logoAssetPath` both default to empty, so
+    // opening this window and pressing save WIPED the production staff and
+    // the logo. Nothing said so; they simply were not there afterwards.
+    //
+    // ⛔A re-construction cannot be made safe by remembering to add the
+    // next field: remembering is the part that failed. `copyWith` carries
+    // what it was not asked about ([[make-the-invariant-unrepresentable]]).
     Navigator.of(context).pop(
-      TimesheetInfo(
+      widget.initialInfo.copyWith(
         title: _titleController.text.trim(),
         episode: _episodeController.text.trim(),
         scene: _sceneController.text.trim(),
         artist: _artistController.text.trim(),
         hiddenFields: {..._hiddenFields},
-        exposureBarThreshold: _exposureBarEnabled && threshold != null
+        exposureBarThreshold: () => _exposureBarEnabled && threshold != null
             ? threshold.clamp(1, 999)
             : _exposureBarEnabled
             ? TimesheetInfo.defaultExposureBarThreshold
             : null,
         seEmptyFill: _seEmptyFill,
+        staff: {
+          for (final entry in _staffControllers.entries)
+            if (entry.value.text.trim().isNotEmpty ||
+                widget.initialInfo.staffFor(entry.key).stampAssetPath != null)
+              entry.key: widget.initialInfo
+                  .staffFor(entry.key)
+                  .copyWith(name: entry.value.text.trim()),
+        },
       ),
     );
   }
@@ -139,6 +175,28 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
                 onSubmitted: (_) => _submit(),
               ),
             ),
+            const SizedBox(height: 16),
+            Text(
+              strings.sheetStaffByProcess,
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+            const SizedBox(height: 8),
+            // 🚨One row per 공정, always all of them — the cut envelope binds
+            // `{staff.<role>.name}` by this same key, so what the form can
+            // fill and what a form can print are one list.
+            for (final process in LayerProcess.values) ...[
+              AppWindowField(
+                label: process.displayName,
+                child: TextField(
+                  key: ValueKey<String>(
+                    'timesheet-info-staff-${process.jsonValue}',
+                  ),
+                  controller: _staffControllers[process.jsonValue],
+                  onSubmitted: (_) => _submit(),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             const SizedBox(height: 16),
             Text(
               strings.sheetVisibleBoxes,
