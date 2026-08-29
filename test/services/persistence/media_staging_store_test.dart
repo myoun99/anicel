@@ -119,12 +119,15 @@ void main() {
     );
   });
 
-  test('already-compressed media is stored as the FILE, byte for byte', () {
+  test('media that will not shrink is staged as the FILE, byte for byte', () {
     if (!engineHere()) {
       markTestSkipped('no engine on this run');
       return;
     }
-    final path = noiseFile('clip.mp4');
+    // ⚠️Named  deliberately: measured, a PNG is the one common
+    // format zstd cannot improve (0.0%), while JPEG, PDF and MP4 all
+    // shrink and are framed.
+    final path = noiseFile('flat.png');
     final staged = store.stage(path)!;
     expect(staged.framed, isFalse);
     expect(

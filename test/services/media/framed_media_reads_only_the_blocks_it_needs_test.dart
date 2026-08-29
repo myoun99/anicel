@@ -173,8 +173,8 @@ void main() {
       reason: 'a short block is a broken file, not an empty one',
     );
   });
-
-  test('noise is stored, so a window into it never comes here at all', () {
+  test('incompressible bytes are stored, so a window into them never comes '
+      'here at all', () {
     if (!engineHere()) {
       markTestSkipped('no engine on this run');
       return;
@@ -187,7 +187,7 @@ void main() {
       compressMediaBlob(noise),
       isNull,
       reason:
-          'an already-compressed format keeps a plain seek — the framed '
+          'a file zstd cannot improve keeps a plain seek — the framed '
           'path is only for entries that actually got smaller',
     );
   });

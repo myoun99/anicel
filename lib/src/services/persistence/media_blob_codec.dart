@@ -13,24 +13,56 @@
 /// compresses in fixed blocks and writes down where each one landed. A
 /// read of n bytes decompresses only the blocks it touches.
 ///
-/// **The measurement that chose [mediaBlockBytes]** — the same cels and
-/// the user's own recordings, level 9, against compressing each file
-/// whole:
+/// **What blocking COSTS, measured** (유저 asked: 「4mb마다 압축하는방식,
+/// 압축률 줄어드나 혹시?」). Against compressing each file whole, level 9:
 ///
-/// | | 4MB blocks | 1MB | 256KB |
-/// |---|---|---|---|
-/// | a 17.5MB cel (very compressible) | **+2.97%** | +9.68% | +10.98% |
-/// | a 0.4MB WAV | 0% | 0% | 0% |
+/// | | 4MB blocks |
+/// |---|---|
+/// | MP4 6.3MB ×2 | **+0.00%** |
+/// | PDF 3.1MB | **+0.00%** |
+/// | PDF 4.2MB | +0.02% |
+/// | PDF 6.4MB | +0.10% |
+/// | PNG 38MB | +0.00% |
+/// | **a 17.5MB CEL** | **+2.97%** (1MB: +9.68%, 256KB: +10.98%) |
 ///
-/// Blocking is not free on large compressible data — zstd loses the
-/// history it would have had across the boundary — so the block is as big
-/// as a window can afford rather than as small as it can be.
+/// 🚨**The cel is the outlier, and it is not media.** A tile raster repeats
+/// across the whole file, so zstd loses real history at a block boundary.
+/// Media compresses LOCALLY — a PDF's streams, a JPEG's scans, a movie's
+/// frames — so a boundary costs it essentially nothing.
 ///
-/// 🚨**AND SOME MEDIA MUST NOT BE COMPRESSED AT ALL.** A PNG, a JPEG, an
-/// MP4 or a PDF is already compressed: zstd returns ~1.00× on them and
-/// every future read would pay a decompression for nothing. Those keep
-/// their plain entry name and their bytes verbatim, so a window into them
-/// stays the plain seek it is today.
+/// ⇒ 4MB is comfortable rather than tight: the measurement says a smaller
+/// block would also be nearly free here, and a smaller block means a finer
+/// window. Left at 4MB because that is the size the numbers above were
+/// taken at.
+///
+/// 🚨**AND THE FORMAT DOES NOT DECIDE — THE MEASUREMENT DOES.**
+///
+/// This paragraph used to say「a PNG, a JPEG, an MP4 or a PDF is already
+/// compressed, zstd returns ~1.00× on them」. 유저 2026-08-30 doubted it —
+/// 「전에 근데 pdf나 mp4도 압축하면 줄어든다 하지않았나」 — and they were
+/// right. What I had written as measured was a GUESS about file formats.
+/// Measured, on real files, at level 9:
+///
+/// | | saved |
+/// |---|---|
+/// | PDF ×6 | 3.0 · 5.3 · 17.2 · 23.4 · 36.9 · **40.0%** |
+/// | WAV ×3 (the user's own recordings) | **38%** |
+/// | JPEG ×2 | 14.6 · **21.5%** |
+/// | MP4 ×2 | **6.7%** |
+/// | PNG ×6 | **0.0%** |
+///
+/// Only PNG is genuinely incompressible. A PDF wraps compressed streams in
+/// an uncompressed object structure, a JPEG's entropy coding leaves plenty
+/// on the table, and even H.264 gives a few percent.
+///
+/// ⇒ [compressMediaBlob] tries and keeps the result only when it actually
+/// got smaller ([mediaCompressionWorthIt]). A rule about file EXTENSIONS
+/// would have thrown away 40% of a conte and 21% of a photo.
+///
+/// 🚨And it makes the framing matter MORE, not less: the formats that
+/// shrink are the big ones a window exists for. A 3GB movie at 6.7% is
+/// 200MB, and it is exactly the file that must not be decompressed whole
+/// to read a second of it.
 library;
 
 import 'dart:typed_data';
@@ -60,12 +92,16 @@ bool mediaEntryIsFramed(String entryName) =>
 /// The smallest saving worth paying a decompression for, as a fraction of
 /// the original.
 ///
-/// ⚠️MY judgement, not a measurement (2026-08-30). What IS measured is the
-/// shape of the two populations: the user's WAV recordings come back at
-/// 0.62 of their size, and already-compressed formats at 0.99–1.00.
-/// Nothing observed lands near this line, so it separates two clusters
-/// rather than splitting one — which is why a crude threshold is safe
-/// here. Move it only with a file that actually falls between them.
+/// ⚠️MY judgement, not a measurement — but the measurements around it are
+/// real (see the table at the top of this file). Observed ratios spread
+/// from 0.60 to 1.00 with no gap, so this is NOT a line between two
+/// clusters; it is the point past which a decompression on every read
+/// stops paying for itself.
+///
+/// 🚨At 0.95 a PDF that saved 5.3% is still taken and a PNG that saved
+/// nothing is not. If that turns out to be the wrong place, the thing to
+/// move is this number — the decision itself is right, because it asks
+/// each FILE rather than believing something about its extension.
 const double mediaCompressionWorthIt = 0.95;
 
 /// What a framed entry says about itself, before its blocks.
