@@ -6,6 +6,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
+import 'package:anicel/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 
 /// 🚨F-32 (유저): 「트랜지션·카메라 레이어만 **스크롤에 따라** 위치가
@@ -142,6 +143,76 @@ void main() {
       reason:
           'every offset must have compared at least the four kinds the '
           'report names, or this test is measuring an empty window',
+    );
+  });
+
+  testWidgets('🚨and the frame RULER stays over the cells it numbers, at '
+      'fractional scroll offsets', (tester) async {
+    // 🧪The other half of F-32's family, MEASURED rather than read.
+    //
+    // The x-sheet drifted because its cells went through
+    // `DeviceGridScrollBody` (which cancels the offset's sub-device-pixel
+    // fraction) while its rail translated raw — one half corrected, the
+    // other not. This grid's frame axis has NO such correction on either
+    // half: the ruler translates raw and the body windows itself with a
+    // leading spacer, both off one `_frameAxisOffset`. So they should agree
+    // at every offset, and this is what fails if that ever stops being true
+    // — including if someone puts the ruler on the device grid and forgets
+    // the body.
+    tester.view.devicePixelRatio = 1.5;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.binding.setSurfaceSize(const Size(700, 400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(host());
+    await tester.pumpAndSettle();
+
+    final controller = tester
+        .widget<TimelineHorizontalScrollbarRail>(
+          find.byKey(const ValueKey<String>('timeline-horizontal-scrollbar')),
+        )
+        .controller;
+    expect(
+      controller.position.maxScrollExtent,
+      greaterThan(0),
+      reason: 'the frame axis must overflow, or nothing can scroll at all',
+    );
+
+    var compared = 0;
+    // ⚠️Fractions on purpose — a whole-pixel offset is on the grid already
+    // and cannot show a quantisation seam.
+    for (final offset in <double>[
+      0,
+      1.5,
+      7.25,
+      controller.position.maxScrollExtent / 3,
+      controller.position.maxScrollExtent,
+    ]) {
+      controller.jumpTo(offset.clamp(0, controller.position.maxScrollExtent));
+      await tester.pumpAndSettle();
+
+      final ruler = find.byKey(const ValueKey<String>('timeline-frame-ruler'));
+      final cells = find.byKey(
+        const ValueKey<String>('timeline-row-cells-draw-0'),
+      );
+      if (ruler.evaluate().isEmpty || cells.evaluate().isEmpty) {
+        continue;
+      }
+      compared += 1;
+      expect(
+        tester.getRect(cells).left,
+        moreOrLessEquals(tester.getRect(ruler).left, epsilon: 0.01),
+        reason:
+            'at offset $offset the ruler and the cells it numbers must start '
+            'on one line — the x-sheet half of this family is F-32',
+      );
+    }
+
+    expect(
+      compared,
+      greaterThanOrEqualTo(3),
+      reason:
+          'a green that compared nothing looks exactly like a green that '
+          'compared everything',
     );
   });
 }
