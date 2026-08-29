@@ -20,6 +20,7 @@ import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart'
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 
 void main() {
+  _manifestCompression();
   const key = BrushFrameKey(
     projectId: ProjectId('p'),
     trackId: TrackId('t'),
@@ -181,5 +182,47 @@ void main() {
       () => parseAnicelArchiveBytes(Uint8List.fromList([1, 2, 3])),
       throwsA(anything),
     );
+  });
+}
+
+/// The project manifest is compressed, and an old uncompressed one still
+/// opens — 유저 2026-08-29 asked for「압축한게 좋은것들」 compressed even
+/// where the number is small, and this is the one that grows with the film
+/// (`anicel_file_service` notes it「can be megabytes」).
+void _manifestCompression() {
+  test('🚨the manifest entry is COMPRESSED, and it is much smaller', () {
+    final project = createDefaultProject();
+    final bytes = buildAnicelArchiveBytes(project: project, cels: const []);
+    final archive = ZipDecoder().decodeBytes(bytes);
+
+    final entry = archive.find(anicelProjectEntryNameCompressed);
+    expect(entry, isNotNull, reason: 'the save writes the compressed name');
+    expect(
+      archive.find(anicelProjectEntryName),
+      isNull,
+      reason: 'and not both — one manifest, or a reader has to pick',
+    );
+
+    final raw = buildAnicelProjectJsonBytes(project: project);
+    expect(
+      entry!.readBytes()!.length,
+      lessThan(raw.length),
+      reason: 'JSON deflates; measured ~14× on a real project',
+    );
+  });
+
+  test('🚨an OLD archive — uncompressed manifest — still parses', () {
+    final project = createDefaultProject();
+    final legacy = Archive()
+      ..add(
+        ArchiveFile.bytes(
+          anicelProjectEntryName,
+          buildAnicelProjectJsonBytes(project: project),
+        )..compression = CompressionType.none,
+      );
+    final contents = parseAnicelArchiveBytes(
+      Uint8List.fromList(ZipEncoder().encodeBytes(legacy)),
+    );
+    expect(contents.project.name, project.name);
   });
 }

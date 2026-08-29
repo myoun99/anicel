@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -75,9 +76,14 @@ void main() {
     final archive = ZipDecoder().decodeBytes(
       File(archivePath).readAsBytesSync(),
     );
-    final entry = archive.findFile('project.json');
-    expect(entry, isNotNull, reason: '$archivePath has a project.json');
-    return jsonDecode(utf8.decode(entry!.readBytes()!)) as Map<String, dynamic>;
+    final entry = archive.findFile(anicelProjectEntryNameCompressed);
+    expect(entry, isNotNull, reason: '$archivePath has a project manifest');
+    return jsonDecode(
+          utf8.decode(
+            decodeAnicelProjectEntryBytes(entry!.name, entry.readBytes()!),
+          ),
+        )
+        as Map<String, dynamic>;
   }
 
   /// A project that exercises every sidecar fact at once: audio carried

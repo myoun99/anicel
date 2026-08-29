@@ -17,6 +17,8 @@ library;
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'anicel_project_archive.dart';
+
 /// One parsed central-directory record we care about.
 class AnicelZipEntry {
   AnicelZipEntry({
@@ -53,6 +55,13 @@ class AnicelZipLayout {
     }
     return null;
   }
+
+  /// The project manifest, preferring the compressed name — an append can
+  /// shadow an old `project.json` by adding `project.json.z` beside it, so
+  /// both may be present until a compaction rewrites the file.
+  AnicelZipEntry? projectEntry() =>
+      entryNamed(anicelProjectEntryNameCompressed) ??
+      entryNamed(anicelProjectEntryName);
 }
 
 const int _eocdSignature = 0x06054b50;

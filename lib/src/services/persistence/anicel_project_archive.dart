@@ -22,6 +22,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -212,6 +213,58 @@ String anicelCelEntryName(BrushFrameKey key) {
 /// for `file_selector` and a `MethodChannel` — neither of which works
 /// there. Deciding WHICH grants are worth keeping needs to know what the
 /// project references, which is the session's business anyway; the format
+/// The entry the project manifest lives in.
+///
+/// 🚨★★★**Two names, and the reader prefers the compressed one.** The
+/// JSON deflates ~14× (measured: 53,910 → 3,899 on a small project, and
+/// the file service notes it「can be megabytes」on a large one), but the
+/// archive STOREs every entry on purpose — the incremental appender needs
+/// `bytes == the payload` to hand out file refs. So the compression goes
+/// INSIDE our format, exactly the way a `.celz` carries its own deflate.
+///
+/// ⛔The suffix is not decoration: a person opening a `.anicel` with an
+/// unzip tool should be able to tell what they are looking at, and
+/// `project.json` holding deflate bytes would lie to them.
+const String anicelProjectEntryName = 'project.json';
+const String anicelProjectEntryNameCompressed = 'project.json.z';
+
+/// The entry a save should WRITE: the compressed one, always.
+///
+/// Old files keep their uncompressed `project.json` and still open — the
+/// reader takes whichever it finds, preferring the compressed name so an
+/// incremental append can shadow the old entry without a compaction.
+({String name, Uint8List bytes}) buildAnicelProjectEntry({
+  required Project project,
+  String? saveDirectory,
+  Set<String> mediaInArchive = const {},
+  List<Map<String, Object?>> grants = const [],
+  Map<String, Object?> mediaCrcs = const {},
+}) => (
+  name: anicelProjectEntryNameCompressed,
+  bytes: Uint8List.fromList(
+    ZLibCodec(level: 9).encode(
+      buildAnicelProjectJsonBytes(
+        project: project,
+        saveDirectory: saveDirectory,
+        mediaInArchive: mediaInArchive,
+        grants: grants,
+        mediaCrcs: mediaCrcs,
+      ),
+    ),
+  ),
+);
+
+/// The manifest bytes an entry holds — inflated when the entry is the
+/// compressed one, handed back as-is when it is an old `project.json`.
+///
+/// 🚨ONE function, because every reader asks the same question and the
+/// NAME is the only thing that answers it. A reader that forgot would put
+/// deflate bytes into `jsonDecode` and report a corrupt project.
+Uint8List decodeAnicelProjectEntryBytes(String name, Uint8List bytes) =>
+    name == anicelProjectEntryNameCompressed
+    ? Uint8List.fromList(ZLibCodec().decode(bytes))
+    : bytes;
+
 /// writes down what it is handed.
 Uint8List buildAnicelProjectJsonBytes({
   required Project project,
@@ -280,17 +333,16 @@ Uint8List buildAnicelArchiveBytes({
 }) {
   // R22-C: EVERY entry is STORE'd — readers (and the file-backed cold
   // tier) address raw bytes by {offset, length} without inflating.
+  final projectEntry = buildAnicelProjectEntry(
+    project: project,
+    saveDirectory: saveDirectory,
+    grants: grants,
+    mediaCrcs: mediaCrcs,
+  );
   final archive = Archive()
     ..add(
-      ArchiveFile.bytes(
-        'project.json',
-        buildAnicelProjectJsonBytes(
-          project: project,
-          saveDirectory: saveDirectory,
-          grants: grants,
-          mediaCrcs: mediaCrcs,
-        ),
-      )..compression = CompressionType.none,
+      ArchiveFile.bytes(projectEntry.name, projectEntry.bytes)
+        ..compression = CompressionType.none,
     );
   // v3: cel blobs are already deflated — STORE them as-is (an inner
   // deflate-of-deflate would only burn CPU). Entry names are stable per
@@ -309,13 +361,18 @@ Uint8List buildAnicelArchiveBytes({
 AnicelArchiveContents parseAnicelArchiveBytes(Uint8List bytes) {
   final archive = ZipDecoder().decodeBytes(bytes);
 
-  final projectEntry = archive.find('project.json');
+  // The compressed entry wins when both are present: an incremental append
+  // shadows an old `project.json` by adding `project.json.z` beside it,
+  // and until a compaction rewrites the file the stale one is still there.
+  final compressed = archive.find(anicelProjectEntryNameCompressed);
+  final projectEntry = compressed ?? archive.find(anicelProjectEntryName);
   if (projectEntry == null) {
     throw const FormatException('Not an Anicel project (.anicel).');
   }
-  final decoded =
-      jsonDecode(utf8.decode(projectEntry.readBytes()!))
-          as Map<String, dynamic>;
+  final projectBytes = compressed == null
+      ? projectEntry.readBytes()!
+      : Uint8List.fromList(ZLibCodec().decode(projectEntry.readBytes()!));
+  final decoded = jsonDecode(utf8.decode(projectBytes)) as Map<String, dynamic>;
   if ((decoded['formatVersion'] as int? ?? 0) > anicelFormatVersion) {
     throw const FormatException(
       'This project was saved by a newer Anicel.',

@@ -89,7 +89,7 @@ void main() {
     // The placed file IS the project: parseable, project.json and the
     // drawn cel inside.
     final layout = parseAnicelZipLayoutFile(copy);
-    expect(layout.entryNamed('project.json'), isNotNull);
+    expect(layout.projectEntry(), isNotNull);
     expect(
       layout.entries.where((e) => e.name.endsWith('.celz')),
       isNotEmpty,
@@ -134,7 +134,7 @@ void main() {
 
     final copy = '${folder.path.replaceAll('\\', '/')}/copy.anicel';
     await s.writeArchiveCopy(copy);
-    expect(parseAnicelZipLayoutFile(copy).entryNamed('project.json'),
+    expect(parseAnicelZipLayoutFile(copy).projectEntry(),
         isNotNull);
 
     expect(s.projectFilePath, home);

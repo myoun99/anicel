@@ -100,7 +100,7 @@ void main() {
     final ourCelName = anicelCelEntryName(key('ours', 'f1'));
     expect(
       {for (final entry in replaced.entries) entry.name},
-      {'project.json', ourCelName},
+      {anicelProjectEntryNameCompressed, ourCelName},
       reason: 'replace means REPLACE — an append here would have kept every '
           'foreign cel alive under the new project.json, quietly retaining '
           'the other project\'s content (and its bytes for anyone with an '
