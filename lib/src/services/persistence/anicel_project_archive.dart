@@ -32,6 +32,7 @@ import '../../models/project.dart';
 import '../media/media_fingerprints.dart';
 import 'anicel_payload_codec.dart';
 import 'brush_drawing_binary_codec.dart';
+import 'media_blob_codec.dart';
 
 /// The project file's extension, without the dot — what a picker filter
 /// wants. Every filter, suffix check and suggested filename reads it from
@@ -165,7 +166,11 @@ bool anicelNeedsCompaction({
 /// ⚠️ Not derived from CONTENT. Two identical files imported under
 /// different names are two assets to the pool, and giving them one entry
 /// would make deleting either take the other's bytes with it.
-String anicelMediaEntryName(String poolPath) {
+///
+/// 🚨[framed] appends [mediaFramedEntrySuffix]. The name is what tells a
+/// reader whether the entry holds a framed blob or the file itself — see
+/// [MediaBlobHeader] for why it is the name and not a byte at the front.
+String anicelMediaEntryName(String poolPath, {bool framed = false}) {
   final normalized = poolPath.replaceAll('\\', '/');
   var hash = 0x811c9dc5;
   for (final unit in normalized.codeUnits) {
@@ -175,7 +180,7 @@ String anicelMediaEntryName(String poolPath) {
   final base = normalized.split('/').last;
   final safe = base.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
   return '$anicelMediaEntryPrefix${hash.toRadixString(16).padLeft(8, '0')}'
-      '-$safe';
+      '-$safe${framed ? mediaFramedEntrySuffix : ''}';
 }
 
 /// The cel's STABLE archive entry name (R22-C): derived from the key

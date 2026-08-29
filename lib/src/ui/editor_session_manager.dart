@@ -19,6 +19,7 @@ import '../services/commands/reorder_track_command.dart';
 import '../services/commands/toggle_id_in_set_command.dart';
 import '../services/import/media_identity_reader.dart';
 import '../services/media/media_fingerprints.dart';
+import '../services/persistence/media_staging_store.dart';
 import '../services/persistence/anicel_incremental_writer.dart'
     show anicelCrc32, parseAnicelZipLayoutFile;
 import '../services/media/media_byte_source.dart';
@@ -245,9 +246,7 @@ import 'timeline/transform_lane_editing.dart'
         transformTrackWithLaneKeyToggled,
         transformTrackWithGroupReset;
 import 'timeline/se_name_tag_lane_policy.dart'
-    show
-        seNameTagGroupLaneId,
-        seNameTagLaneDisplayOrder;
+    show seNameTagGroupLaneId, seNameTagLaneDisplayOrder;
 import 'timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder, transformLaneSpan;
 
@@ -274,6 +273,7 @@ class EditorSessionManager extends ChangeNotifier {
   EditorSessionManager({
     required Project initialProject,
     AudioConformStore? audioConformStore,
+    MediaStagingStore? mediaStagingStore,
     AppLanguageSettingsStore? languageSettingsStore,
     AppAccentSettingsStore? accentSettingsStore,
     AppInputSettingsStore? inputSettingsStore,
@@ -283,6 +283,7 @@ class EditorSessionManager extends ChangeNotifier {
     AppUiScaleStore? uiScaleStore,
   }) : _editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioConformStore = audioConformStore,
+       _injectedMediaStagingStore = mediaStagingStore,
        _appSettings = EditorAppSettings(
          languageSettingsStore: languageSettingsStore,
          accentSettingsStore: accentSettingsStore,
@@ -2446,6 +2447,14 @@ class EditorSessionManager extends ChangeNotifier {
   /// Test seam: widget tests inject a store with a fake runner so SE rows
   /// never decode real files.
   final AudioConformStore? _injectedAudioConformStore;
+  final MediaStagingStore? _injectedMediaStagingStore;
+
+  /// Where 품기 puts the bytes until a save absorbs them.
+  ///
+  /// 🚨Injectable for the same reason every other store here is: a test
+  /// must not write into the real app container.
+  late final MediaStagingStore mediaStagingStore =
+      _injectedMediaStagingStore ?? MediaStagingStore();
 
   /// Conformed audio per source path (audio program wiring): waveform
   /// peaks, exact clip lengths and the device transport's PCM, decoded
@@ -8684,6 +8693,15 @@ class EditorSessionManager extends ChangeNotifier {
   /// import and so have no answer to give: linking a file that was already
   /// on disk registers it as what it is, and only a picker the user
   /// answered can say the project should own the bytes.
+  /// Registers [paths] in the pool. When [carried], the bytes are COPIED
+  /// into the app container on the spot.
+  ///
+  /// 🚨★★★**That copy is what「품기」means now.** It used to be a promise
+  /// kept only at SAVE time — the flag said the file travels with the
+  /// project while the bytes were still the ones on disk, so editing or
+  /// deleting the original before the first save changed or emptied what
+  /// got saved. 유저 2026-08-30: 「품은 순간 데이터를 가지고있고 **불변**
+  /// 이었으면좋겠어서」.
   void addMediaAssets(List<String> paths, {bool carried = false}) {
     final pool = mediaAssets;
     final known = {for (final asset in pool) asset.path};
@@ -8699,6 +8717,14 @@ class EditorSessionManager extends ChangeNotifier {
     ];
     if (added.isEmpty) {
       return;
+    }
+    if (carried) {
+      // ⛔BEFORE the pool records them. A staged copy with no asset is an
+      // orphan the sweep takes; an asset the pool holds whose bytes were
+      // never staged is the old behaviour back, silently.
+      for (final asset in added) {
+        mediaStagingStore.stage(asset.path);
+      }
     }
     _cutCommandCoordinator.updateMediaAssets([
       ...pool,
@@ -17652,6 +17678,7 @@ class EditorSessionManager extends ChangeNotifier {
       project: _repository.requireProject(),
       projectFilePath: _projectFilePath,
       mediaEntryNames: _mediaEntryNames,
+      staging: mediaStagingStore,
     );
     await _anicelFileService.save(
       project: _repository.requireProject(),
@@ -17664,7 +17691,7 @@ class EditorSessionManager extends ChangeNotifier {
       onProgress: onProgress,
       adoptRefs: false,
     );
-    return mediaEntryNamesFor(mediaToStore.keys);
+    return mediaEntryNamesFor(mediaToStore);
   }
 
   /// The archive at [placedPath] IS this project now — no second write.
@@ -17796,6 +17823,7 @@ class EditorSessionManager extends ChangeNotifier {
       project: _repository.requireProject(),
       projectFilePath: _projectFilePath,
       mediaEntryNames: _mediaEntryNames,
+      staging: mediaStagingStore,
     );
     try {
       await _anicelFileService.save(
@@ -17824,7 +17852,14 @@ class EditorSessionManager extends ChangeNotifier {
         onProgress: onProgress,
       );
     }
-    _mediaEntryNames = mediaEntryNamesFor(mediaToStore.keys);
+    _mediaEntryNames = mediaEntryNamesFor(mediaToStore);
+    // 🚨The save ABSORBED the staged bytes, so the staged copy stops being
+    // anything — 유저 08-27: 「사본 남으면 진짜 용서안할게」. Retired HERE
+    // rather than on close or on import-undo, because this is the one
+    // moment the bytes provably live somewhere else.
+    for (final path in mediaToStore.keys) {
+      mediaStagingStore.retire(path);
+    }
     _projectFilePath = filePath;
     _hasUnsavedChanges = false;
     _completedSaveGeneration += 1;

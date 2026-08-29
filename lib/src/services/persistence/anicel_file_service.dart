@@ -271,6 +271,7 @@ class AnicelFileService {
     required String filePath,
     required String baseFilePath,
     bool Function()? isStale,
+
     /// 🚨 The overlay's `project.json` WINS OUTRIGHT over the base
     /// file's on recovery, so anything missing here is missing from the
     /// recovered session — and a recovered session is dirty by
@@ -316,7 +317,9 @@ class AnicelFileService {
     required Map<String, Object?> mediaCrcs,
   }) async {
     final stores = [brushFrameStore, ...auxCelStores];
-    final snapshots = [for (final store in stores) store.bakedSnapshotForSave()];
+    final snapshots = [
+      for (final store in stores) store.bakedSnapshotForSave(),
+    ];
     final baked = (
       hot: {for (final s in snapshots) ...s.hot},
       cold: {for (final s in snapshots) ...s.cold},
@@ -437,12 +440,15 @@ class AnicelFileService {
     List<BrushFrameStore> auxCelStores = const [],
     required String filePath,
     Map<String, MediaByteSource> mediaToStore = const {},
+
     /// The security-scoped tokens for referenced media, already reduced to
     /// JSON by the session — see [buildAnicelProjectJsonBytes].
     List<Map<String, Object?>> grants = const [],
+
     /// Pool path → CRC-32 hex, for the media somebody has read the bytes
     /// of — see [MediaFingerprints].
     Map<String, Object?> mediaCrcs = const {},
+
     /// Called on the UI isolate with 0..1 as the write proceeds. Null costs
     /// nothing — no port is opened and the writer reports into no one.
     void Function(double)? onProgress,
@@ -458,7 +464,9 @@ class AnicelFileService {
     // keys live in their own namespace, so the snapshots merge without
     // collision and each store adopts back exactly its own refs.
     final stores = [brushFrameStore, ...auxCelStores];
-    final snapshots = [for (final store in stores) store.bakedSnapshotForSave()];
+    final snapshots = [
+      for (final store in stores) store.bakedSnapshotForSave(),
+    ];
     final baked = (
       hot: {for (final s in snapshots) ...s.hot},
       cold: {for (final s in snapshots) ...s.cold},
@@ -610,169 +618,178 @@ class AnicelFileService {
     final cleanRefsToVerify = <(String, int, int)>[
       for (final ref in baked.fileRefs.entries)
         if (!dirty.contains(ref.key) && _samePath(ref.value.filePath, filePath))
-          (
-            anicelCelEntryName(ref.key),
-            ref.value.dataOffset,
-            ref.value.length,
-          ),
+          (anicelCelEntryName(ref.key), ref.value.dataOffset, ref.value.length),
     ];
 
-    return _reportingProgress(onProgress, (port) => Isolate.run(() {
-      final AnicelZipLayout layout;
-      try {
-        layout = parseAnicelZipLayoutFile(filePath);
-      } on FormatException {
-        return null; // Torn tail — compaction is the recovery.
-      }
-      // The refs' claim — "my bytes are already in this file" — is verified
-      // against the file itself before anything appends, because path
-      // equality is not proof. Every cel this append will NOT write must be
-      // in the layout exactly where its ref says: a name present at the
-      // wrong offset or length means the file was replaced out from under
-      // the refs (the pre-F-14 Save As placeholder did exactly that to the
-      // live project), and appending onto it would silently drop every
-      // clean cel. Replacing is the full rewrite's job, so a mismatch
-      // answers null.
-      final entriesByName = {
-        for (final entry in layout.entries) entry.name: entry,
-      };
-      for (final (name, dataOffset, length) in cleanRefsToVerify) {
-        final expected = entriesByName[name];
-        if (expected == null ||
-            expected.dataOffset != dataOffset ||
-            expected.length != length) {
-          return null;
-        }
-      }
-      // With zero clean refs the check above proved nothing — a fresh
-      // project's cels are all dirty, so the soundness precondition passed
-      // VACUOUSLY and this could be anyone's archive (Save As onto an
-      // existing name). Appending would keep every foreign entry alive
-      // under the new project.json, silently retaining the replaced
-      // project's content in the file. Only then is the target's own
-      // manifest read and its project id compared — on the ordinary save
-      // the verified refs already prove ownership, and project.json can be
-      // megabytes this path must not decode every Ctrl+S.
-      if (cleanRefsToVerify.isEmpty) {
-        final targetProjectEntry = layout.projectEntry();
-        if (targetProjectEntry == null) {
-          return null; // Not an archive of ours — replace, don't append.
-        }
+    return _reportingProgress(
+      onProgress,
+      (port) => Isolate.run(() {
+        final AnicelZipLayout layout;
         try {
-          final raf = File(filePath).openSync();
-          Object? targetId;
-          try {
-            raf.setPositionSync(targetProjectEntry.dataOffset);
-            final decoded = jsonDecode(
-              utf8.decode(
-                decodeAnicelProjectEntryBytes(
-                  targetProjectEntry.name,
-                  raf.readSync(targetProjectEntry.length),
-                ),
-              ),
-            );
-            final targetProject = decoded is Map ? decoded['project'] : null;
-            targetId = targetProject is Map ? targetProject['id'] : null;
-          } finally {
-            raf.closeSync();
-          }
-          final targetValue = targetId is Map ? targetId['value'] : null;
-          if (targetValue != project.id.value) {
+          layout = parseAnicelZipLayoutFile(filePath);
+        } on FormatException {
+          return null; // Torn tail — compaction is the recovery.
+        }
+        // The refs' claim — "my bytes are already in this file" — is verified
+        // against the file itself before anything appends, because path
+        // equality is not proof. Every cel this append will NOT write must be
+        // in the layout exactly where its ref says: a name present at the
+        // wrong offset or length means the file was replaced out from under
+        // the refs (the pre-F-14 Save As placeholder did exactly that to the
+        // live project), and appending onto it would silently drop every
+        // clean cel. Replacing is the full rewrite's job, so a mismatch
+        // answers null.
+        final entriesByName = {
+          for (final entry in layout.entries) entry.name: entry,
+        };
+        for (final (name, dataOffset, length) in cleanRefsToVerify) {
+          final expected = entriesByName[name];
+          if (expected == null ||
+              expected.dataOffset != dataOffset ||
+              expected.length != length) {
             return null;
           }
-        } on Object {
-          return null; // Unreadable target manifest — replace, don't append.
         }
-      }
-      if (anicelNeedsCompaction(
-        fileLength: File(filePath).lengthSync(),
-        entries: [
-          for (final entry in layout.entries)
-            (name: entry.name, length: entry.length),
-        ],
-        garbageRatio: _compactionGarbageRatio,
-      )) {
-        return null; // Garbage-heavy — compact instead of appending more.
-      }
+        // With zero clean refs the check above proved nothing — a fresh
+        // project's cels are all dirty, so the soundness precondition passed
+        // VACUOUSLY and this could be anyone's archive (Save As onto an
+        // existing name). Appending would keep every foreign entry alive
+        // under the new project.json, silently retaining the replaced
+        // project's content in the file. Only then is the target's own
+        // manifest read and its project id compared — on the ordinary save
+        // the verified refs already prove ownership, and project.json can be
+        // megabytes this path must not decode every Ctrl+S.
+        if (cleanRefsToVerify.isEmpty) {
+          final targetProjectEntry = layout.projectEntry();
+          if (targetProjectEntry == null) {
+            return null; // Not an archive of ours — replace, don't append.
+          }
+          try {
+            final raf = File(filePath).openSync();
+            Object? targetId;
+            try {
+              raf.setPositionSync(targetProjectEntry.dataOffset);
+              final decoded = jsonDecode(
+                utf8.decode(
+                  decodeAnicelProjectEntryBytes(
+                    targetProjectEntry.name,
+                    raf.readSync(targetProjectEntry.length),
+                  ),
+                ),
+              );
+              final targetProject = decoded is Map ? decoded['project'] : null;
+              targetId = targetProject is Map ? targetProject['id'] : null;
+            } finally {
+              raf.closeSync();
+            }
+            final targetValue = targetId is Map ? targetId['value'] : null;
+            if (targetValue != project.id.value) {
+              return null;
+            }
+          } on Object {
+            return null; // Unreadable target manifest — replace, don't append.
+          }
+        }
+        if (anicelNeedsCompaction(
+          fileLength: File(filePath).lengthSync(),
+          entries: [
+            for (final entry in layout.entries)
+              (name: entry.name, length: entry.length),
+          ],
+          garbageRatio: _compactionGarbageRatio,
+        )) {
+          return null; // Garbage-heavy — compact instead of appending more.
+        }
 
-      // Only what is not already in the file. Media is written once and
-      // never edited, so an asset already inside is a survivor of the
-      // append like any untouched cel — re-streaming it every save would
-      // rewrite the project's whole media area to change one drawing.
-      //
-      // Resolved BEFORE the cels so the count is complete: a fraction needs
-      // its denominator before the first thing it divides.
-      final newMedia = [
-        for (final entry in mediaToStore.entries)
-          if (layout.entryNamed(anicelMediaEntryName(entry.key)) == null)
-            AnicelStreamedEntry(
-              name: anicelMediaEntryName(entry.key),
-              length: entry.value.lengthSync(),
-              readInto: entry.value.readIntoSync,
-            ),
-      ];
-      // ⚠️ Media counts once PER PASS, not once. This writer reads every
-      // streamed entry twice (checksum, then copy), and counting it once
-      // put `_done` at `_total` when the checksum pass ended — the window
-      // said 100% and then sat there through the whole byte copy, which on
-      // a large import is most of the wait.
-      final progress = _SaveProgress(
-        port,
-        1 + works.length + newMedia.length * anicelAppendStreamPasses,
-      );
-      final projectEntry = buildAnicelProjectEntry(
-        project: project,
-        saveDirectory: saveDirectory,
-        mediaInArchive: mediaToStore.keys.toSet(),
-        grants: grants,
-        mediaCrcs: mediaCrcs,
-      );
-      progress.step();
-      final blobs = <(BrushFrameKey, String, AnicelCelBlob)>[];
-      for (final work in works) {
-        blobs.add((work.key, work.name, work.resolveBlob()));
+        // Only what is not already in the file. Media is written once and
+        // never edited, so an asset already inside is a survivor of the
+        // append like any untouched cel — re-streaming it every save would
+        // rewrite the project's whole media area to change one drawing.
+        //
+        // Resolved BEFORE the cels so the count is complete: a fraction needs
+        // its denominator before the first thing it divides.
+        final newMedia = [
+          for (final entry in mediaToStore.entries)
+            if (layout.entryNamed(
+                  anicelMediaEntryName(
+                    entry.key,
+                    framed: entry.value.storedIsFramed,
+                  ),
+                ) ==
+                null)
+              AnicelStreamedEntry(
+                name: anicelMediaEntryName(
+                  entry.key,
+                  framed: entry.value.storedIsFramed,
+                ),
+                length: entry.value.lengthSync(),
+                readInto: entry.value.readIntoSync,
+              ),
+        ];
+        // ⚠️ Media counts once PER PASS, not once. This writer reads every
+        // streamed entry twice (checksum, then copy), and counting it once
+        // put `_done` at `_total` when the checksum pass ended — the window
+        // said 100% and then sat there through the whole byte copy, which on
+        // a large import is most of the wait.
+        final progress = _SaveProgress(
+          port,
+          1 + works.length + newMedia.length * anicelAppendStreamPasses,
+        );
+        final projectEntry = buildAnicelProjectEntry(
+          project: project,
+          saveDirectory: saveDirectory,
+          mediaInArchive: mediaToStore.keys.toSet(),
+          grants: grants,
+          mediaCrcs: mediaCrcs,
+        );
         progress.step();
-      }
-      // Media the project no longer carries leaves the central directory
-      // with this save. An entry nothing names was invisible garbage that
-      // the compaction maths counted as ACTIVE media — raising the very
-      // floor that suppresses compaction, so a deleted 500MB track could
-      // sit in the file for ever — and worse, a live name silently
-      // reattached a RE-imported same-path asset to the OLD bytes (the
-      // presence check above skips streaming when the name already
-      // exists).
-      final wantedMediaNames = {
-        for (final path in mediaToStore.keys) anicelMediaEntryName(path),
-      };
-      final staleMediaNames = {
-        for (final entry in layout.entries)
-          if (entry.name.startsWith(anicelMediaEntryPrefix) &&
-              !wantedMediaNames.contains(entry.name))
-            entry.name,
-      };
-      final appended = appendAnicelEntries(
-        path: filePath,
-        newEntries: {
-          projectEntry.name: projectEntry.bytes,
-          for (final (_, name, blob) in blobs) name: blob.bytes,
-        },
-        removeNames: {...removeNames, ...staleMediaNames},
-        streamedEntries: [
-          for (final entry in newMedia) _progressed(entry, progress),
-        ],
-      );
-      progress.finish();
-      return {
-        for (final (key, name, blob) in blobs)
-          key: AnicelCelFileRef(
-            filePath: filePath,
-            dataOffset: appended.entryNamed(name)!.dataOffset,
-            length: blob.bytes.length,
-            canvasSize: blob.canvasSize,
-            tileSize: blob.tileSize,
-          ),
-      };
-    }));
+        final blobs = <(BrushFrameKey, String, AnicelCelBlob)>[];
+        for (final work in works) {
+          blobs.add((work.key, work.name, work.resolveBlob()));
+          progress.step();
+        }
+        // Media the project no longer carries leaves the central directory
+        // with this save. An entry nothing names was invisible garbage that
+        // the compaction maths counted as ACTIVE media — raising the very
+        // floor that suppresses compaction, so a deleted 500MB track could
+        // sit in the file for ever — and worse, a live name silently
+        // reattached a RE-imported same-path asset to the OLD bytes (the
+        // presence check above skips streaming when the name already
+        // exists).
+        final wantedMediaNames = {
+          for (final entry in mediaToStore.entries)
+            anicelMediaEntryName(entry.key, framed: entry.value.storedIsFramed),
+        };
+        final staleMediaNames = {
+          for (final entry in layout.entries)
+            if (entry.name.startsWith(anicelMediaEntryPrefix) &&
+                !wantedMediaNames.contains(entry.name))
+              entry.name,
+        };
+        final appended = appendAnicelEntries(
+          path: filePath,
+          newEntries: {
+            projectEntry.name: projectEntry.bytes,
+            for (final (_, name, blob) in blobs) name: blob.bytes,
+          },
+          removeNames: {...removeNames, ...staleMediaNames},
+          streamedEntries: [
+            for (final entry in newMedia) _progressed(entry, progress),
+          ],
+        );
+        progress.finish();
+        return {
+          for (final (key, name, blob) in blobs)
+            key: AnicelCelFileRef(
+              filePath: filePath,
+              dataOffset: appended.entryNamed(name)!.dataOffset,
+              length: blob.bytes.length,
+              canvasSize: blob.canvasSize,
+              tileSize: blob.tileSize,
+            ),
+        };
+      }),
+    );
   }
 
   /// Full atomic rewrite (first save, save-as, compaction, recovery):
@@ -927,74 +944,83 @@ class AnicelFileService {
     required Map<String, Object?> mediaCrcs,
     void Function(double)? onProgress,
   }) {
-    return _reportingProgress(onProgress, (port) => Isolate.run(() {
-      // One pass here, unlike the append path above — this writer patches
-      // the CRC by seeking back rather than pre-reading.
-      final progress = _SaveProgress(
-        port,
-        1 + works.length + mediaToStore.length * anicelArchiveStreamPasses,
-      );
-      // Scalars only. Holding the BLOB here to read its geometry later
-      // would keep every cel resident and give back exactly the memory
-      // this streams to avoid.
-      final geometry =
-          <BrushFrameKey, ({String name, CanvasSize canvasSize, int tileSize, int length})>{};
-      final layout = writeAnicelArchiveFile(
-        path: tempPath,
-        entries: () sync* {
-          final projectEntry = buildAnicelProjectEntry(
-            project: project,
-            saveDirectory: saveDirectory,
-            mediaInArchive: mediaToStore.keys.toSet(),
-            grants: grants,
-            mediaCrcs: mediaCrcs,
-          );
-          yield (name: projectEntry.name, bytes: projectEntry.bytes);
-          progress.step();
-          for (final work in works) {
-            // Resolved HERE rather than up front: the generator is pulled
-            // lazily, so exactly one cel is resident at a time.
-            final blob = work.resolveBlob();
-            geometry[work.key] = (
-              name: work.name,
-              canvasSize: blob.canvasSize,
-              tileSize: blob.tileSize,
-              length: blob.bytes.length,
+    return _reportingProgress(
+      onProgress,
+      (port) => Isolate.run(() {
+        // One pass here, unlike the append path above — this writer patches
+        // the CRC by seeking back rather than pre-reading.
+        final progress = _SaveProgress(
+          port,
+          1 + works.length + mediaToStore.length * anicelArchiveStreamPasses,
+        );
+        // Scalars only. Holding the BLOB here to read its geometry later
+        // would keep every cel resident and give back exactly the memory
+        // this streams to avoid.
+        final geometry =
+            <
+              BrushFrameKey,
+              ({String name, CanvasSize canvasSize, int tileSize, int length})
+            >{};
+        final layout = writeAnicelArchiveFile(
+          path: tempPath,
+          entries: () sync* {
+            final projectEntry = buildAnicelProjectEntry(
+              project: project,
+              saveDirectory: saveDirectory,
+              mediaInArchive: mediaToStore.keys.toSet(),
+              grants: grants,
+              mediaCrcs: mediaCrcs,
             );
-            yield (name: work.name, bytes: blob.bytes);
+            yield (name: projectEntry.name, bytes: projectEntry.bytes);
             progress.step();
-          }
-        }(),
-        // Every asset, every time — a full rewrite has no survivors to
-        // inherit from. The sources may point INTO the file being
-        // replaced (a compaction) or into the one being left behind (a
-        // save-as); either way the writer streams them across without
-        // re-encoding, which is what makes save-as carry media without a
-        // copy step of its own.
-        streamedEntries: [
-          for (final entry in mediaToStore.entries)
-            _progressed(
-              AnicelStreamedEntry(
-                name: anicelMediaEntryName(entry.key),
-                length: entry.value.lengthSync(),
-                readInto: entry.value.readIntoSync,
+            for (final work in works) {
+              // Resolved HERE rather than up front: the generator is pulled
+              // lazily, so exactly one cel is resident at a time.
+              final blob = work.resolveBlob();
+              geometry[work.key] = (
+                name: work.name,
+                canvasSize: blob.canvasSize,
+                tileSize: blob.tileSize,
+                length: blob.bytes.length,
+              );
+              yield (name: work.name, bytes: blob.bytes);
+              progress.step();
+            }
+          }(),
+          // Every asset, every time — a full rewrite has no survivors to
+          // inherit from. The sources may point INTO the file being
+          // replaced (a compaction) or into the one being left behind (a
+          // save-as); either way the writer streams them across without
+          // re-encoding, which is what makes save-as carry media without a
+          // copy step of its own.
+          streamedEntries: [
+            for (final entry in mediaToStore.entries)
+              _progressed(
+                AnicelStreamedEntry(
+                  name: anicelMediaEntryName(
+                    entry.key,
+                    framed: entry.value.storedIsFramed,
+                  ),
+                  length: entry.value.lengthSync(),
+                  readInto: entry.value.readIntoSync,
+                ),
+                progress,
               ),
-              progress,
+          ],
+        );
+        progress.finish();
+        return <BrushFrameKey, AnicelCelFileRef>{
+          for (final entry in geometry.entries)
+            entry.key: AnicelCelFileRef(
+              filePath: filePath,
+              dataOffset: layout.entryNamed(entry.value.name)!.dataOffset,
+              length: entry.value.length,
+              canvasSize: entry.value.canvasSize,
+              tileSize: entry.value.tileSize,
             ),
-        ],
-      );
-      progress.finish();
-      return <BrushFrameKey, AnicelCelFileRef>{
-        for (final entry in geometry.entries)
-          entry.key: AnicelCelFileRef(
-            filePath: filePath,
-            dataOffset: layout.entryNamed(entry.value.name)!.dataOffset,
-            length: entry.value.length,
-            canvasSize: entry.value.canvasSize,
-            tileSize: entry.value.tileSize,
-          ),
-      };
-    }));
+        };
+      }),
+    );
   }
 
   /// Opens [filePath], optionally laying a recovery [overlayPath] over it.
@@ -1074,9 +1100,7 @@ class AnicelFileService {
     final decoded =
         jsonDecode(utf8.decode(projectJsonBytes)) as Map<String, dynamic>;
     if ((decoded['formatVersion'] as int? ?? 0) > anicelFormatVersion) {
-      throw const FormatException(
-        'This project was saved by a newer Anicel.',
-      );
+      throw const FormatException('This project was saved by a newer Anicel.');
     }
     final project = Project.fromJson(
       decoded['project'] as Map<String, dynamic>,
@@ -1129,15 +1153,11 @@ class AnicelFileService {
       // path the project no longer uses describes nothing, and the one
       // moment that happens is this one — a project opened from a folder
       // that traveled has every reference rewritten to where it landed.
-      mediaFingerprints: MediaFingerprints.fromJson(
-        decoded['mediaCrcs'],
-      ).narrowedTo(
-        {
-          for (final path in projectMediaPaths(remapped))
-            normalizeFingerprintPath(path),
-        },
-        moved: remap,
-      ),
+      mediaFingerprints: MediaFingerprints.fromJson(decoded['mediaCrcs'])
+          .narrowedTo({
+            for (final path in projectMediaPaths(remapped))
+              normalizeFingerprintPath(path),
+          }, moved: remap),
       grants: [
         if (grantsJson is List)
           for (final entry in grantsJson)
@@ -1154,7 +1174,10 @@ class AnicelFileService {
   /// isolate — the base's refs and the overlay's have to be merged before
   /// anything leaves it, or the caller would have to know which file each
   /// cel came from.
-  static ({Uint8List projectJsonBytes, Map<BrushFrameKey, AnicelCelFileRef> cels})
+  static ({
+    Uint8List projectJsonBytes,
+    Map<BrushFrameKey, AnicelCelFileRef> cels,
+  })
   _applyOverlay({
     required String basePath,
     required String overlayPath,

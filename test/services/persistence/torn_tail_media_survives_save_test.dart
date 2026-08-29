@@ -76,13 +76,7 @@ void main() {
     File(audioPath).writeAsBytesSync(audioBytes, flush: true);
 
     final project = createDefaultProject().copyWith(
-      mediaAssets: [
-        MediaAsset(
-          path: audioPath,
-          name: '대사.wav',
-          carried: true,
-        ),
-      ],
+      mediaAssets: [MediaAsset(path: audioPath, name: '대사.wav', carried: true)],
     );
     final store = BrushFrameStore();
     store.storeBakedSurface(key('f1'), inked(3));
@@ -92,7 +86,9 @@ void main() {
       filePath: path,
       mediaToStore: {audioPath: MediaFileBytes(audioPath)},
     );
-    final mediaEntryNames = mediaEntryNamesFor([audioPath]);
+    final mediaEntryNames = mediaEntryNamesFor({
+      audioPath: MediaFileBytes(audioPath),
+    });
 
     // The import original leaves — carrying exists so this is survivable.
     File(audioPath).deleteSync();
@@ -115,7 +111,8 @@ void main() {
     expect(
       sources[audioPath],
       isA<MediaArchiveBytes>(),
-      reason: 'the torn file still holds the bytes; "nothing is inside" '
+      reason:
+          'the torn file still holds the bytes; "nothing is inside" '
           'was the answer that made the heal save destroy them',
     );
 
@@ -163,7 +160,9 @@ void main() {
       () => projectMediaSources(
         project: project,
         projectFilePath: archivePath,
-        mediaEntryNames: mediaEntryNamesFor([audioPath]),
+        mediaEntryNames: mediaEntryNamesFor({
+          audioPath: MediaFileBytes(audioPath),
+        }),
       ),
       throwsStateError,
     );

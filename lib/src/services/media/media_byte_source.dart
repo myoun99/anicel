@@ -72,6 +72,15 @@ sealed class MediaByteSource {
   /// the header it has to write anyway, so the expensive half of the
   /// identity question comes back free once media moves inside.
   int? get knownCrc32 => null;
+
+  /// Whether the bytes this source hands out are a framed blob rather than
+  /// the file itself.
+  ///
+  /// 🚨The ENTRY NAME must then carry [mediaFramedEntrySuffix] — see
+  /// [MediaBlobHeader]. It lives on the source because the source is the
+  /// only thing that knows: a save asks each one what it is handing over
+  /// and names the entry accordingly, rather than deciding twice.
+  bool get storedIsFramed => false;
 }
 
 /// Cheap facts about a source, from `stat` alone.
@@ -178,6 +187,7 @@ class MediaArchiveBytes extends MediaByteSource {
     required this.dataOffset,
     required this.length,
     this.entryCrc32,
+    this.framed = false,
   });
 
   final String archivePath;
@@ -185,6 +195,10 @@ class MediaArchiveBytes extends MediaByteSource {
   /// Offset of the entry's raw bytes in [archivePath].
   final int dataOffset;
   final int length;
+
+  /// Whether this entry's bytes are a framed blob — set from its NAME by
+  /// whoever built the source, because the name is what says so.
+  final bool framed;
 
   /// The CRC-32 ZIP already wrote in the entry header.
   final int? entryCrc32;
@@ -212,6 +226,9 @@ class MediaArchiveBytes extends MediaByteSource {
 
   @override
   int? get knownCrc32 => entryCrc32;
+
+  @override
+  bool get storedIsFramed => framed;
 
   /// Clamped to the entry, so a caller asking past the end of its media
   /// gets a short read rather than the bytes of whatever follows it in the
@@ -357,4 +374,63 @@ class MediaFramedBytes extends MediaByteSource {
 
   @override
   String toString() => 'MediaFramedBytes($label)';
+}
+
+/// A file the app staged in its own container when the media was 품기'd.
+///
+/// 🚨★★★**THE ONLY COPY THE PROJECT CONTROLS UNTIL THE FIRST SAVE.** An
+/// import used to leave the bytes where they were and read them again at
+/// save time, so editing or deleting the original in between changed or
+/// emptied what got saved. `MediaStagingStore` copies them at the moment
+/// 품기 is pressed — compressed when that is worth it — and this is how a
+/// save reads them back.
+///
+/// ⚠️Its bytes may be [framed]; the save writes them AS THEY ARE and names
+/// the entry accordingly. Decoding a staged blob only to re-encode it
+/// would burn the whole point of having compressed it at import.
+class MediaStagedBytes extends MediaByteSource {
+  const MediaStagedBytes({required this.path, required this.framed});
+
+  final String path;
+  final bool framed;
+
+  @override
+  bool get storedIsFramed => framed;
+
+  @override
+  Uint8List readSync() => File(path).readAsBytesSync();
+
+  @override
+  int lengthSync() => File(path).lengthSync();
+
+  @override
+  int readIntoSync(Uint8List buffer, int position, int size) {
+    final handle = File(path).openSync();
+    try {
+      handle.setPositionSync(position);
+      return handle.readIntoSync(buffer, 0, size);
+    } finally {
+      handle.closeSync();
+    }
+  }
+
+  @override
+  bool existsSync() => File(path).existsSync();
+
+  /// No stat offered: the staged file's mtime is when the IMPORT ran, not
+  /// anything about the media, and the conform pipeline compares stamps
+  /// against the source it was told about.
+  @override
+  MediaSourceStamp? statSync() => null;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MediaStagedBytes && other.path == path && other.framed == framed;
+
+  @override
+  int get hashCode => Object.hash(path, framed);
+
+  @override
+  String toString() => 'MediaStagedBytes($path${framed ? " framed" : ""})';
 }
