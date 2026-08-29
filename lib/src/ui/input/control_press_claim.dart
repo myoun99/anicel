@@ -1,7 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
-import '../widgets/axis_bar_gesture.dart';
 import 'value_control_pointers.dart';
 
 /// 🚨★★★A PRESS THAT LANDS ON A CONTROL BELONGS TO THAT CONTROL.
@@ -100,28 +99,56 @@ class ControlPressClaim extends StatelessWidget {
   }
 }
 
-/// The absorbing pair. They report nothing and change nothing — holding the
-/// pointer IS the whole job, and it is what stops an ancestor scroller from
-/// starting on a control.
-/// The absorbing pair. They report nothing and change nothing — holding the
+/// The absorbing pair. They report nothing and change nothing — HOLDING the
 /// pointer IS the whole job, and it is what stops an ancestor scroller from
 /// starting on a control.
 ///
-/// 🚨★★★THE STRONG CLAIM IS CHECKED AT ACCEPT TIME, NOT AT `addPointer`.
+/// What both of the claim's absorbing recognisers are: a drag that takes the
+/// arena away from an ancestor scroller, and NOTHING that a click has to get
+/// past.
 ///
-/// The first draft declined in `isPointerAllowed`, mirroring
-/// [EagerPanGestureRecognizer]. It killed every swipe column, and the
-/// reason is the nesting: a swipe column is
-/// `RailSwipeColumnPointer` → strong-claim `Listener` → the BUTTON, and the
-/// button mounts a [ControlPressClaim] of its OWN, deeper than that
-/// Listener. Pointer-down dispatch is deepest-first, so the inner
-/// recogniser is offered the pointer BEFORE the strong claim is set — it
-/// saw an unclaimed pointer and absorbed the swipe.
+/// 🚨★★★TWO RULES, ONE PLACE. They were written out twice — once per axis —
+/// and the day one of them was wrong the other was too. This is the same
+/// 「사본 금지」 that the swipe columns were pulled together for.
 ///
-/// Accepting is the later moment, and by the first MOVE every down handler
-/// on the path has run. So the question is asked there instead, where the
-/// answer is complete.
-class _ControlOwnsHorizontalDrag extends OwningHorizontalDragGestureRecognizer {
+/// ⛔RULE 1 — the slop is asked with [PointerDeviceKind.touch], never with the
+/// pointer's own kind. Flutter hardcodes a MOUSE to `kPrecisePointerHitSlop`,
+/// ONE pixel, and ignores the gesture settings for that kind alone. Asked
+/// honestly, this recogniser wins the arena a pixel into any click and the
+/// button never fires — 유저 2026-08-30: 「지금 버튼이 펜이랑 마우스 조작이
+/// 바꼈어 … **펜마우스만 그자리에서 손떼야 작동함**」. A pen was fine at 18px,
+/// which is exactly why only two of the three devices were reported.
+///
+/// ⛔RULE 2 — a pointer the STRONG claim holds is declined outright. Asked at
+/// `isPointerAllowed` this would be too early: pointer-down dispatch is
+/// deepest-first, so a rail button's own claim runs BEFORE the swipe column's
+/// strong claim above it exists, and standing down there killed every swipe
+/// column (measured). By the first move every down handler on the path has
+/// run, so the question is asked here, where the answer is complete.
+/// The ONE answer both axes give. It was written out twice — once per class —
+/// and the day one of them was wrong the other was too ([[no-copy-to-share]]).
+///
+/// ⛔THE SLOP IS ASKED WITH [PointerDeviceKind.touch], never with the
+/// pointer's own kind. Flutter hardcodes a MOUSE to `kPrecisePointerHitSlop`,
+/// ONE pixel, and ignores the gesture settings for that kind alone. Asked
+/// honestly, this recogniser wins the arena a pixel into any click and the
+/// button never fires — 유저 2026-08-30: 「지금 버튼이 펜이랑 마우스 조작이
+/// 바꼈어 … **펜마우스만 그자리에서 손떼야 작동함**」. A pen was fine at 18px,
+/// which is exactly why only two of the three devices were reported.
+///
+/// ⛔A pointer the STRONG claim holds is declined outright — and asked HERE,
+/// at accept time, not at `isPointerAllowed`. Pointer-down dispatch is
+/// deepest-first, so a rail button's own claim runs BEFORE the swipe column's
+/// strong claim above it exists; standing down there killed every swipe
+/// column (measured). By the first move every down handler has run.
+bool _absorbsThisDrag({
+  required int? pointer,
+  required double? deviceTouchSlop,
+  required bool Function(PointerDeviceKind kind, double? slop) atLeast,
+}) =>
+    !_standsDown(pointer) && atLeast(PointerDeviceKind.touch, deviceTouchSlop);
+
+class _ControlOwnsHorizontalDrag extends HorizontalDragGestureRecognizer {
   int? _pointer;
 
   @override
@@ -134,15 +161,14 @@ class _ControlOwnsHorizontalDrag extends OwningHorizontalDragGestureRecognizer {
   bool hasSufficientGlobalDistanceToAccept(
     PointerDeviceKind pointerDeviceKind,
     double? deviceTouchSlop,
-  ) =>
-      !_standsDown(_pointer) &&
-      super.hasSufficientGlobalDistanceToAccept(
-        pointerDeviceKind,
-        deviceTouchSlop,
-      );
+  ) => _absorbsThisDrag(
+    pointer: _pointer,
+    deviceTouchSlop: deviceTouchSlop,
+    atLeast: super.hasSufficientGlobalDistanceToAccept,
+  );
 }
 
-class _ControlOwnsVerticalDrag extends OwningVerticalDragGestureRecognizer {
+class _ControlOwnsVerticalDrag extends VerticalDragGestureRecognizer {
   int? _pointer;
 
   @override
@@ -155,12 +181,11 @@ class _ControlOwnsVerticalDrag extends OwningVerticalDragGestureRecognizer {
   bool hasSufficientGlobalDistanceToAccept(
     PointerDeviceKind pointerDeviceKind,
     double? deviceTouchSlop,
-  ) =>
-      !_standsDown(_pointer) &&
-      super.hasSufficientGlobalDistanceToAccept(
-        pointerDeviceKind,
-        deviceTouchSlop,
-      );
+  ) => _absorbsThisDrag(
+    pointer: _pointer,
+    deviceTouchSlop: deviceTouchSlop,
+    atLeast: super.hasSufficientGlobalDistanceToAccept,
+  );
 }
 
 /// ⛔A drag from here is somebody's VERB (a swipe column, a slider): the
