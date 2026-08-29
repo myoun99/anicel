@@ -111,6 +111,30 @@ void main() {
       track.transitionLayer.isVisible,
   ];
 
+  /// Which S rows have their lanes twirled OPEN, read off the twirl itself
+  /// rather than the host's set — the icon is what the user sees.
+  Set<String> openSeRows(WidgetTester tester) => {
+    for (final id in const ['t1', 't2', 't3'])
+      if (tester
+          .widgetList<Icon>(
+            find.descendant(
+              of: find.byKey(
+                ValueKey<String>('storyboard-se-lane-toggle-$id-1'),
+              ),
+              matching: find.byType(Icon),
+            ),
+          )
+          .any((icon) => icon.icon == Icons.arrow_drop_down))
+        '$id-1',
+  };
+
+  /// The S rows' SHEET flags — the column this rail mounted but could not
+  /// sweep until the two rails stopped keeping separate column lists.
+  List<bool> sheetFlags(EditorSessionManager session) => [
+    for (final track in session.repository.requireProject().tracks)
+      track.seLayers.single.onTimesheet,
+  ];
+
   /// The S rows the sweep CROSSES on its way down. They carry the SAME eye
   /// column, acting on the SE layer rather than a cut.
   List<bool> seVisibility(EditorSessionManager session) => [
@@ -234,5 +258,90 @@ void main() {
       true,
       true,
     ], reason: 'a swipe only runs from a column it has');
+  });
+
+  testWidgets('🚨the SHEET column sweeps too — every button, not a list', (
+    tester,
+  ) async {
+    // 유저 2026-08-29: 「버튼이면 다 가능하도록」·「로직적으로 다른규칙
+    // 두지말고 통일」. This rail mounted a sheet toggle that no swipe could
+    // reach while the layer rail swiped its own, purely because the two
+    // rails hand-wrote their column lists. There is one list now.
+    final session = await pumpRail(tester);
+    final sheets = [
+      for (final id in const ['t1-s1', 't2-s1', 't3-s1'])
+        find.byKey(ValueKey<String>('storyboard-layer-timesheet-$id')),
+    ];
+    for (final sheet in sheets) {
+      expect(sheet, findsOneWidget, reason: 'the fixture mounts the button');
+    }
+    expect(
+      sheetFlags(session),
+      [true, true, true],
+      reason: 'S rows start on the sheet, or the sweep proves nothing',
+    );
+
+    final first = tester.getCenter(sheets.first);
+    final last = tester.getCenter(sheets.last);
+    final gesture = await tester.startGesture(first);
+    for (var step = 1; step <= 6; step += 1) {
+      await gesture.moveTo(
+        Offset(first.dx, first.dy + (last.dy - first.dy) * step / 6),
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      sheetFlags(session),
+      [false, false, false],
+      reason:
+          'a LEADING column, so its band is measured from the rail edge '
+          'rather than counted back from it — the other half of the shared '
+          'construction, and the half this rail had never used',
+    );
+  });
+
+  testWidgets('🚨and the LANE TWIRL sweeps, the last column that could not', (
+    tester,
+  ) async {
+    // The fourth column, and the one that proves the law rather than a
+    // list: nobody asked for a lane sweep. It arrived because the rails
+    // stopped choosing which of their buttons could be swept.
+    await pumpRail(tester);
+    final twirls = [
+      for (final id in const ['t1', 't2', 't3'])
+        find.byKey(ValueKey<String>('storyboard-se-lane-toggle-$id-1')),
+    ];
+    for (final twirl in twirls) {
+      expect(twirl, findsOneWidget, reason: 'the fixture mounts the twirl');
+    }
+    expect(
+      openSeRows(tester),
+      isEmpty,
+      reason: 'all closed to start, or the sweep proves nothing',
+    );
+
+    final first = tester.getCenter(twirls.first);
+    // ⚠️STEPPED, not aimed at a precomputed point: opening a row's lanes
+    // makes the rail taller, so every row below the one just painted slides
+    // DOWN under the finger. A drag to where t3's twirl used to be lands
+    // above it — measured, and it left t3 unpainted.
+    final gesture = await tester.startGesture(first);
+    for (var step = 1; step <= 24; step += 1) {
+      await gesture.moveBy(const Offset(0, 20));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      openSeRows(tester),
+      containsAll(<String>['t1-1', 't2-1', 't3-1']),
+      reason:
+          'every S row the sweep crossed opened its lanes — 유저: 「버튼이면 '
+          '다 가능하도록」',
+    );
   });
 }

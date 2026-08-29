@@ -1,6 +1,9 @@
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'layer_rail_columns.dart';
+import 'layer_label_controls.dart'
+    show layerFxSlotWidth, layerOnionSlotWidth, layerVisibilitySlotWidth;
 
 /// A column a rail can SWIPE: where its band sits at a given row depth,
 /// what value a row shows there, and how to flip that row.
@@ -245,4 +248,113 @@ class _RailSwipeDetectorState extends State<_RailSwipeDetector> {
       child: widget.child,
     );
   }
+}
+
+/// What a rail can do with ONE toggle column on ONE row: read it, flip it.
+///
+/// Null [valueOf] on a row means that row has no control in this column —
+/// see [RailToggleColumn].
+typedef RailToggle<TRow> = ({
+  bool? Function(TRow row) valueOf,
+  void Function(TRow row) toggle,
+});
+
+/// 🚨★★★EVERY TOGGLE BUTTON A RAIL MOUNTS IS SWIPEABLE, AND THE LIST OF
+/// WHICH IS NOT A PER-RAIL DECISION.
+///
+/// 유저 2026-08-29: 「그건 **버튼이면 다 가능**하도록」 · 「**로직적으로 다른
+/// 규칙 두지말고 통일**」.
+///
+/// Before this, each rail hand-wrote its own column list, and the two lists
+/// disagreed: the storyboard's rail mounted a timesheet toggle and a lane
+/// twirl that no swipe could reach, while the layer rail swiped both. That
+/// is the drift a maintained list always ends in, and the widget that wears
+/// the claim already carried a note begging the two be kept in step.
+///
+/// ⇒ There is ONE construction. A rail passes what it can toggle; WHICH
+/// columns exist, WHERE their bands fall and IN WHAT ORDER they are asked
+/// are answered here for every rail at once. A column a rail cannot toggle
+/// is absent because its argument is null, never because a list forgot it.
+///
+/// ⛔The controls left out are left out by KIND, not by rail: the mark chip,
+/// the type button, the blend picker and the mute button all open flyouts
+/// (the mute button is named a toggle and is not one — it opens the mixer),
+/// and the opacity field is a slider. None has a value a sweep could paint.
+/// If one ever gains a boolean, it gains a parameter here and both rails get
+/// it in the same commit.
+List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
+  required double rowWidth,
+  required double leadingOrigin,
+  double rightPadding = 8.0,
+  bool hasOnionColumn = false,
+  bool hasBlendColumn = false,
+  RailToggle<TRow>? visibility,
+  RailToggle<TRow>? onion,
+  RailToggle<TRow>? fx,
+  RailToggle<TRow>? timesheet,
+  RailToggle<TRow>? laneToggle,
+}) {
+  /// A LEADING column's x depends on the row: the nesting indent falls
+  /// between the mark and the twirl, so the twirl and the sheet toggle move
+  /// one whole slot per level. A rail that does not nest passes rows of
+  /// depth 0 and gets the same band every time.
+  ({double left, double right}) Function(int depth) leadingBand(
+    LayerRailLeadingSlot slot,
+  ) => (depth) {
+    // The row plate's left border comes before its first cell, so a column
+    // measured from the row's edge is that much further in than the slot
+    // skeleton alone says.
+    final left = leadingOrigin + layerRailLeadingWidthTo(to: slot);
+    return (left: left, right: left + layerRailLeadingSlotWidth(slot));
+  };
+
+  /// Everything from [after] onward is what sits to this column's right,
+  /// read off the slot skeleton — so adding a column cannot put the bands
+  /// out of date.
+  ({double left, double right}) Function(int depth) trailingBand(
+    LayerRailTrailingSlot after,
+    double width,
+  ) {
+    final right =
+        rowWidth -
+        rightPadding -
+        layerRailTrailingWidth(
+          from: after,
+          hasOnionColumn: hasOnionColumn,
+          hasBlendColumn: hasBlendColumn,
+        );
+    // A little tolerance so a thin band is easy to hit with a pen.
+    //
+    // ⛔None on the leading bands: the twirl and the sheet toggle are
+    // ADJACENT, so a padded band could only ever eat into its neighbour.
+    // The trailing bands can afford the slack because it is what makes a
+    // thin column easy to hit, and that argument stops applying the moment
+    // the 4px belongs to another control.
+    final at = (left: right - width - 4, right: right + 4);
+    return (_) => at;
+  }
+
+  RailToggleColumn<TRow> column(
+    ({double left, double right}) Function(int depth) bandAt,
+    RailToggle<TRow> toggle,
+  ) => (bandAt: bandAt, valueOf: toggle.valueOf, toggle: toggle.toggle);
+
+  return [
+    if (visibility != null)
+      column(
+        trailingBand(LayerRailTrailingSlot.mute, layerVisibilitySlotWidth),
+        visibility,
+      ),
+    if (onion != null)
+      column(
+        trailingBand(LayerRailTrailingSlot.visibility, layerOnionSlotWidth),
+        onion,
+      ),
+    if (fx != null)
+      column(trailingBand(LayerRailTrailingSlot.onion, layerFxSlotWidth), fx),
+    if (timesheet != null)
+      column(leadingBand(LayerRailLeadingSlot.timesheet), timesheet),
+    if (laneToggle != null)
+      column(leadingBand(LayerRailLeadingSlot.laneToggle), laneToggle),
+  ];
 }
