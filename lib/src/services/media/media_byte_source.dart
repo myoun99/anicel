@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../persistence/media_blob_codec.dart';
+
 /// Where a media file's bytes actually are.
 ///
 /// One named answer for a question that had four call sites and four
@@ -74,7 +76,10 @@ sealed class MediaByteSource {
 
 /// Cheap facts about a source, from `stat` alone.
 class MediaSourceStamp {
-  const MediaSourceStamp({required this.lengthBytes, required this.modifiedMicros});
+  const MediaSourceStamp({
+    required this.lengthBytes,
+    required this.modifiedMicros,
+  });
 
   final int lengthBytes;
   final int modifiedMicros;
@@ -241,4 +246,115 @@ class MediaArchiveBytes extends MediaByteSource {
 
   @override
   String toString() => 'MediaArchiveBytes($archivePath@$dataOffset+$length)';
+}
+
+/// A framed media entry, seen as the file it holds.
+///
+/// 🚨★★★**THIS IS WHY MEDIA COMPRESSES IN BLOCKS AND NOT AS ONE FRAME.**
+/// [stored] hands out the entry's compressed bytes — a range in the
+/// .anicel, or a staged file in the app container. This turns a request
+/// for「bytes 300..400 of the audio」into a read of only the blocks that
+/// range lands in, so a hundred-page conte and a three-gigabyte movie are
+/// still read a piece at a time. See [MediaBlobHeader].
+///
+/// ⚠️[knownCrc32] is deliberately null. ZIP's CRC describes the COMPRESSED
+/// bytes; this class hands back the uncompressed ones, so answering with
+/// it would hand the conform pipeline a checksum of something it never
+/// sees — and that pipeline treats a mismatch as a torn read and retries.
+class MediaFramedBytes extends MediaByteSource {
+  /// Over an entry that some other source hands out.
+  MediaFramedBytes(MediaByteSource stored)
+    : this.reading(
+        readStored: stored.readIntoSync,
+        storedExists: stored.existsSync,
+        label: '$stored',
+      );
+
+  /// 🚨Takes a READ FUNCTION rather than a source, because that is all it
+  /// needs and [MediaByteSource] is sealed — a test cannot subclass one to
+  /// count what was asked for, and counting is the only way to tell this
+  /// class from one that quietly pulls the whole entry.
+  MediaFramedBytes.reading({
+    required this.readStored,
+    required this.storedExists,
+    this.label = 'framed',
+  });
+
+  /// Fills a buffer from the STORED bytes — header first, then blocks.
+  final int Function(Uint8List buffer, int position, int size) readStored;
+  final bool Function() storedExists;
+  final String label;
+
+  MediaBlobHeader? _header;
+
+  /// Read once and kept: it is the index, and re-reading it per window
+  /// would put a seek in front of every read this class exists to make
+  /// cheap.
+  MediaBlobHeader get header {
+    final known = _header;
+    if (known != null) {
+      return known;
+    }
+    final prefix = Uint8List(MediaBlobHeader.prefixLength);
+    if (readStored(prefix, 0, prefix.length) < prefix.length) {
+      throw const FormatException('framed media entry is short');
+    }
+    final length = MediaBlobHeader.headerLengthOf(prefix);
+    final bytes = Uint8List(length);
+    if (readStored(bytes, 0, length) < length) {
+      throw const FormatException('framed media index is short');
+    }
+    return _header = MediaBlobHeader.parse(bytes);
+  }
+
+  @override
+  int lengthSync() => header.totalLength;
+
+  @override
+  Uint8List readSync() {
+    final out = Uint8List(header.totalLength);
+    final read = readIntoSync(out, 0, out.length);
+    return read == out.length ? out : Uint8List.sublistView(out, 0, read);
+  }
+
+  @override
+  int readIntoSync(Uint8List buffer, int position, int size) {
+    final index = header;
+    final range = index.blocksFor(position, size);
+    if (range == null) {
+      return 0;
+    }
+    var wrote = 0;
+    for (var i = range.first; i <= range.last; i += 1) {
+      final compressed = Uint8List(index.blockLengths[i]);
+      final got = readStored(compressed, index.offsetOf(i), compressed.length);
+      if (got < compressed.length) {
+        throw const FormatException('framed media block is short');
+      }
+      final block = decompressMediaBlock(compressed);
+      // Where this block sits in the FILE, intersected with what was
+      // asked for. The first block usually starts before `position` and
+      // the last usually runs past the end of the request.
+      final blockStart = i * index.blockBytes;
+      final from = position > blockStart ? position - blockStart : 0;
+      final wanted = size - wrote;
+      final available = block.length - from;
+      final take = wanted < available ? wanted : available;
+      if (take <= 0) {
+        break;
+      }
+      buffer.setRange(wrote, wrote + take, block, from);
+      wrote += take;
+    }
+    return wrote;
+  }
+
+  @override
+  bool existsSync() => storedExists();
+
+  @override
+  MediaSourceStamp? statSync() => null;
+
+  @override
+  String toString() => 'MediaFramedBytes($label)';
 }
