@@ -305,8 +305,17 @@ abstract final class FolderPicker {
   // Both halves of that stopped being true. Grants are kept now (they are
   // written into `project.json` and re-resolved on open), so a recorded
   // path survives. And the import default moved to Copy everywhere for an
-  // unrelated reason — video is never carried, so the "3GB duplicate" fear
-  // that pushed the default the other way went with it.
+  // unrelated reason — at the time, video could not be carried at all, so
+  // the "3GB duplicate" fear that pushed the default the other way went
+  // with it.
+  //
+  // ⚠️That last clause is HISTORY, not a fact about today: the per-kind
+  // ceiling died 2026-08-14 and video carries now like anything else
+  // ([MediaAsset.carried] is the whole answer; the kind only picks the
+  // import default). It is written in the past tense because the sentence
+  // above it is about why a predicate was deleted, and a reader who takes
+  // it for the present would conclude a 3GB movie cannot be inside a
+  // project file.
   //
   // ⚠️A predicate whose last consumer left is not merely unused: this one
   // would have gone on ANSWERING, and answering wrongly. Deleted rather
@@ -645,10 +654,7 @@ abstract final class FolderPicker {
   }) async {
     final override = debugCoordinatedReplacer;
     if (override != null) {
-      return override(
-        sourcePath: sourcePath,
-        destinationPath: destinationPath,
-      );
+      return override(sourcePath: sourcePath, destinationPath: destinationPath);
     }
     if (!hasFileCoordinator) {
       return false;
@@ -683,10 +689,7 @@ abstract final class FolderPicker {
   }) async {
     final override = debugCoordinatedReader;
     if (override != null) {
-      return override(
-        sourcePath: sourcePath,
-        destinationPath: destinationPath,
-      );
+      return override(sourcePath: sourcePath, destinationPath: destinationPath);
     }
     if (!hasFileCoordinator) {
       return false;
@@ -793,10 +796,7 @@ abstract final class FolderPicker {
     final staged =
         '${Directory.systemTemp.path}${Platform.pathSeparator}'
         'anicel-open-${DateTime.now().microsecondsSinceEpoch}$extension';
-    if (await readFileCoordinated(
-          sourcePath: path,
-          destinationPath: staged,
-        ) &&
+    if (await readFileCoordinated(sourcePath: path, destinationPath: staged) &&
         await _plainlyReadable(staged)) {
       return (path: staged, staged: true);
     }
@@ -804,7 +804,6 @@ abstract final class FolderPicker {
   }
 
   static const Duration _materializeMaxStep = Duration(seconds: 2);
-
 
   /// Test seam for [requestFileDownload]. ⚠️Reset in
   /// `test/flutter_test_config.dart`.
@@ -825,9 +824,7 @@ abstract final class FolderPicker {
     if (!hasFileCoordinator) {
       return;
     }
-    await _invoke('requestFileDownload', {
-      'sourcePath': path,
-    }, GrantKind.file);
+    await _invoke('requestFileDownload', {'sourcePath': path}, GrantKind.file);
   }
 
   /// Whether a plain read can actually produce bytes — a cloud

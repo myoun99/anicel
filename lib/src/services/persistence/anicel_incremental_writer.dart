@@ -1,5 +1,5 @@
 /// Incremental .anicel appender (R22-C): the container is ordinary ZIP with
-/// every entry STORE'd (cel blobs carry their own deflate), which makes
+/// every entry STORE'd (cel blobs carry their own compression), which makes
 /// appends trivial and spec-legal — new local entries write over the old
 /// central directory's position, then a fresh central directory + EOCD
 /// close the file. Standard readers (including our own
@@ -42,7 +42,10 @@ class AnicelZipEntry {
 /// directory) plus the offset where the central directory begins — the
 /// append position.
 class AnicelZipLayout {
-  AnicelZipLayout({required this.entries, required this.centralDirectoryOffset});
+  AnicelZipLayout({
+    required this.entries,
+    required this.centralDirectoryOffset,
+  });
 
   final List<AnicelZipEntry> entries;
   final int centralDirectoryOffset;
@@ -162,8 +165,10 @@ int anicelZip64FieldLimit = anicelZip64FieldLimitShipped;
     // writer puts it immediately before the locator, so this means a file
     // built by something else in a shape this reader has not learned —
     // louder than quietly reading a truncated count.
-    throw const FormatException('ZIP64 end record not found where the '
-        'locator points.');
+    throw const FormatException(
+      'ZIP64 end record not found where the '
+      'locator points.',
+    );
   }
   return (
     entryCount: tail.getUint64(index + 32, Endian.little),
@@ -174,8 +179,12 @@ int anicelZip64FieldLimit = anicelZip64FieldLimitShipped;
 
 /// The local header offset a central record names, following its ZIP64
 /// extra field when the fixed field is all-ones.
-int _centralLocalOffset(ByteData data, int cursor, int extraStart,
-    int extraLength) {
+int _centralLocalOffset(
+  ByteData data,
+  int cursor,
+  int extraStart,
+  int extraLength,
+) {
   final fixed = data.getUint32(cursor + 42, Endian.little);
   if (fixed != _zip32Max) {
     return fixed;
@@ -205,8 +214,10 @@ int _centralLocalOffset(ByteData data, int cursor, int extraStart,
     }
     walk += 4 + size;
   }
-  throw const FormatException('Central record flags a ZIP64 offset with '
-      'no extra field to hold it.');
+  throw const FormatException(
+    'Central record flags a ZIP64 offset with '
+    'no extra field to hold it.',
+  );
 }
 
 /// The compressed size out of a LOCAL header's ZIP64 extra, or null when
@@ -232,8 +243,12 @@ int? _localZip64CompressedSize(Uint8List extraBytes) {
 /// The entry length a central record names, following its ZIP64 extra
 /// field when the fixed compressed-size field is all-ones — the size
 /// twin of [_centralLocalOffset], for entries past [anicelZip64FieldLimit].
-int _centralEntryLength(ByteData data, int cursor, int extraStart,
-    int extraLength) {
+int _centralEntryLength(
+  ByteData data,
+  int cursor,
+  int extraStart,
+  int extraLength,
+) {
   final fixed = data.getUint32(cursor + 20, Endian.little);
   if (fixed != _zip32Max) {
     return fixed;
@@ -257,8 +272,10 @@ int _centralEntryLength(ByteData data, int cursor, int extraStart,
     }
     walk += 4 + size;
   }
-  throw const FormatException('Central record flags a ZIP64 size with '
-      'no extra field to hold it.');
+  throw const FormatException(
+    'Central record flags a ZIP64 size with '
+    'no extra field to hold it.',
+  );
 }
 
 /// Parses the central directory of [bytes] (a complete .anicel). Throws
@@ -284,7 +301,8 @@ AnicelZipLayout parseAnicelZipLayout(Uint8List bytes) {
     throw const FormatException('No ZIP end-of-central-directory found.');
   }
   final zip64 = _readZip64End(data, eocd, tailStart: 0);
-  final entryCount = zip64?.entryCount ?? data.getUint16(eocd + 10, Endian.little);
+  final entryCount =
+      zip64?.entryCount ?? data.getUint16(eocd + 10, Endian.little);
   final centralOffset =
       zip64?.centralOffset ?? data.getUint32(eocd + 16, Endian.little);
 
@@ -304,8 +322,7 @@ AnicelZipLayout parseAnicelZipLayout(Uint8List bytes) {
     final nameLength = data.getUint16(cursor + 28, Endian.little);
     final extraLength = data.getUint16(cursor + 30, Endian.little);
     final commentLength = data.getUint16(cursor + 32, Endian.little);
-    if (cursor + 46 + nameLength + extraLength + commentLength >
-        bytes.length) {
+    if (cursor + 46 + nameLength + extraLength + commentLength > bytes.length) {
       throw const FormatException('Corrupt central directory.');
     }
     final compressedSize = _centralEntryLength(
@@ -340,7 +357,10 @@ AnicelZipLayout parseAnicelZipLayout(Uint8List bytes) {
     );
     cursor += 46 + nameLength + extraLength + commentLength;
   }
-  return AnicelZipLayout(entries: entries, centralDirectoryOffset: centralOffset);
+  return AnicelZipLayout(
+    entries: entries,
+    centralDirectoryOffset: centralOffset,
+  );
 }
 
 /// Parses the layout straight from the FILE with tail-only reads (EOCD
@@ -632,7 +652,7 @@ int anicelCrc32Finish(int running) => (running ^ 0xFFFFFFFF) & 0xFFFFFFFF;
 /// One entry appended by streaming rather than by handing over bytes.
 ///
 /// 🚨 The reason it exists: [appendAnicelEntries] takes a `Uint8List` per
-/// entry, which is right for a cel — small, and already deflated in hand —
+/// entry, which is right for a cel — small, and already compressed in hand —
 /// and wrong for media. A two-hundred-megabyte import would put two
 /// hundred megabytes on the heap to append it, which is the cost this
 /// round already took out of the full-save path and would otherwise walk
@@ -759,11 +779,9 @@ AnicelZipLayout appendAnicelEntries({
     raf.writeFromSync(builder.takeBytes());
     for (var i = 0; i < streamedEntries.length; i += 1) {
       final entry = streamedEntries[i];
-      raf.writeFromSync(_localHeaderBytes(
-        entry.name,
-        entry.length,
-        streamedCrcs[i],
-      ));
+      raf.writeFromSync(
+        _localHeaderBytes(entry.name, entry.length, streamedCrcs[i]),
+      );
       // Chunked on purpose: one buffer, reused, whatever the asset weighs.
       final buffer = Uint8List(_streamChunkBytes);
       var position = 0;
@@ -806,7 +824,7 @@ AnicelZipLayout appendAnicelEntries({
 ///
 /// [entries] is pulled LAZILY, so a caller that resolves each cel as it is
 /// asked for keeps exactly one cel resident. Every entry is STORE'd — cel
-/// blobs carry their own deflate — so a length is known before its bytes
+/// blobs carry their own compression — so a length is known before its bytes
 /// are written and nothing needs a second pass.
 AnicelZipLayout writeAnicelArchiveFile({
   required String path,
@@ -834,7 +852,7 @@ AnicelZipLayout writeAnicelArchiveFile({
       offset += header.length + entry.bytes.length;
     }
     // Media last, and streamed. A cel resolves to a small blob that is
-    // already deflated, so holding one at a time costs nothing; an
+    // already compressed, so holding one at a time costs nothing; an
     // imported sound can weigh more than the rest of the project put
     // together, and this path is what a backgrounding tablet runs with the
     // least headroom to spare.
@@ -1055,7 +1073,8 @@ Uint8List _eocdBytes({
   required int centralLength,
   required int centralOffset,
 }) {
-  final needs64 = anicelAlwaysZip64 ||
+  final needs64 =
+      anicelAlwaysZip64 ||
       entryCount > _zip16Max ||
       centralOffset > _zip32Max ||
       centralLength > _zip32Max;
