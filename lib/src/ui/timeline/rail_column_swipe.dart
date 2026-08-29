@@ -18,7 +18,7 @@ import 'layer_label_controls.dart'
 /// attach row's sheet slot holds an arrow, a laneless row has no twirl).
 /// Null is skipped: a swipe cannot paint what a tap could not.
 typedef RailToggleColumn<TRow> = ({
-  ({double left, double right}) Function(int depth) bandAt,
+  ({double start, double end}) Function(int depth) bandAt,
   bool? Function(TRow row) valueOf,
   void Function(TRow row) toggle,
 });
@@ -47,17 +47,22 @@ typedef RailSwipeRow<TRow> = ({TRow row, int depth, Object id});
 class RailColumnSwipe<TRow> extends StatefulWidget {
   const RailColumnSwipe({
     super.key,
+    required this.axis,
     required this.columns,
     required this.rowAt,
     required this.child,
   });
 
+  /// The axis the ROWS run along: down for a rail, across for the x-sheet
+  /// (which is the same rail transposed — layers are columns there).
+  final Axis axis;
+
   /// The swipeable columns, in any order — a press picks the first whose
   /// band holds it.
   final List<RailToggleColumn<TRow>> columns;
 
-  /// The row at a rail-local y, or null for a spacer.
-  final RailSwipeRow<TRow>? Function(double localY) rowAt;
+  /// The row at a rail-local position ALONG the rail, or null for a spacer.
+  final RailSwipeRow<TRow>? Function(double alongPosition) rowAt;
 
   final Widget child;
 
@@ -94,22 +99,36 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
     }
   }
 
+  /// The coordinate that runs ALONG the rail — down the layer rail, ACROSS
+  /// the x-sheet's layer columns. It names the row.
+  double _along(Offset local) =>
+      widget.axis == Axis.vertical ? local.dy : local.dx;
+
+  /// The coordinate that runs ACROSS the rail. It names the column.
+  ///
+  /// 🚨These two are the whole axis story. Everything else here — the latch,
+  /// the painted set, the "only rows that disagree" rule — is written in
+  /// along/across and does not know which way the rail points.
+  double _across(Offset local) =>
+      widget.axis == Axis.vertical ? local.dx : local.dy;
+
   int _columnAt(Offset local) {
-    final row = widget.rowAt(local.dy);
+    final row = widget.rowAt(_along(local));
     if (row == null) {
       return -1;
     }
+    final across = _across(local);
     for (var index = 0; index < widget.columns.length; index += 1) {
       final band = widget.columns[index].bandAt(row.depth);
-      if (local.dx >= band.left && local.dx <= band.right) {
+      if (across >= band.start && across <= band.end) {
         return index;
       }
     }
     return -1;
   }
 
-  bool _start(int columnIndex, double localY) {
-    final row = widget.rowAt(localY);
+  bool _start(int columnIndex, double alongPosition) {
+    final row = widget.rowAt(alongPosition);
     if (row == null) {
       return false;
     }
@@ -137,9 +156,11 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
   @override
   Widget build(BuildContext context) {
     return _RailSwipeDetector(
+      axis: widget.axis,
       columnAt: _columnAt,
+      alongOf: _along,
       onStart: _start,
-      onUpdate: (localY) => _paintAt(widget.rowAt(localY)),
+      onUpdate: (along) => _paintAt(widget.rowAt(along)),
       onEnd: _end,
       child: widget.child,
     );
@@ -157,6 +178,8 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
 /// the other half of that (F-8).
 class _RailSwipeDetector extends StatefulWidget {
   const _RailSwipeDetector({
+    required this.axis,
+    required this.alongOf,
     required this.columnAt,
     required this.onStart,
     required this.onUpdate,
@@ -164,12 +187,18 @@ class _RailSwipeDetector extends StatefulWidget {
     required this.child,
   });
 
+  /// Which way the rows run — the only thing here that knows about axes.
+  final Axis axis;
+
+  /// The coordinate ALONG the rail, out of a rail-local point.
+  final double Function(Offset local) alongOf;
+
   /// Which COLUMN a press at this rail-local point is in, or -1 for none.
   final int Function(Offset local) columnAt;
 
-  /// The press: which COLUMN it landed in, and where down the rail. Returns
+  /// The press: which COLUMN it landed in, and where ALONG the rail. Returns
   /// false to decline.
-  final bool Function(int columnIndex, double localY) onStart;
+  final bool Function(int columnIndex, double alongPosition) onStart;
   final ValueChanged<double> onUpdate;
   final VoidCallback onEnd;
   final Widget child;
@@ -184,6 +213,43 @@ class _RailSwipeDetectorState extends State<_RailSwipeDetector> {
 
   @override
   Widget build(BuildContext context) {
+    final vertical = widget.axis == Axis.vertical;
+
+    void down(DragDownDetails details) {
+      _pressedColumn = widget.columnAt(details.localPosition);
+      _engaged = _pressedColumn >= 0;
+    }
+
+    void start(DragStartDetails details) {
+      if (!_engaged) {
+        return;
+      }
+      _engaged = widget.onStart(
+        _pressedColumn,
+        widget.alongOf(details.localPosition),
+      );
+    }
+
+    void update(DragUpdateDetails details) {
+      if (_engaged) {
+        widget.onUpdate(widget.alongOf(details.localPosition));
+      }
+    }
+
+    void end(DragEndDetails _) {
+      if (_engaged) {
+        widget.onEnd();
+      }
+      _engaged = false;
+    }
+
+    void cancel() {
+      if (_engaged) {
+        widget.onEnd();
+      }
+      _engaged = false;
+    }
+
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       // 🚨F-8 (유저 2026-08-24: 「레이어영역도 … **터치로 스크롤할수있게**
@@ -218,33 +284,19 @@ class _RailSwipeDetectorState extends State<_RailSwipeDetector> {
       // apply to a gesture that moves nothing and only paints the rows it
       // passes.
       dragStartBehavior: DragStartBehavior.down,
-      onVerticalDragDown: (details) {
-        _pressedColumn = widget.columnAt(details.localPosition);
-        _engaged = _pressedColumn >= 0;
-      },
-      onVerticalDragStart: (details) {
-        if (!_engaged) {
-          return;
-        }
-        _engaged = widget.onStart(_pressedColumn, details.localPosition.dy);
-      },
-      onVerticalDragUpdate: (details) {
-        if (_engaged) {
-          widget.onUpdate(details.localPosition.dy);
-        }
-      },
-      onVerticalDragEnd: (_) {
-        if (_engaged) {
-          widget.onEnd();
-        }
-        _engaged = false;
-      },
-      onVerticalDragCancel: () {
-        if (_engaged) {
-          widget.onEnd();
-        }
-        _engaged = false;
-      },
+      // 🚨ONE recogniser family, chosen by the axis. A rail's sweep runs
+      // DOWN it and the x-sheet's runs ACROSS, and mounting both would put
+      // two recognisers in the arena where the host only has one gesture.
+      onVerticalDragDown: vertical ? down : null,
+      onVerticalDragStart: vertical ? start : null,
+      onVerticalDragUpdate: vertical ? update : null,
+      onVerticalDragEnd: vertical ? end : null,
+      onVerticalDragCancel: vertical ? cancel : null,
+      onHorizontalDragDown: vertical ? null : down,
+      onHorizontalDragStart: vertical ? null : start,
+      onHorizontalDragUpdate: vertical ? null : update,
+      onHorizontalDragEnd: vertical ? null : end,
+      onHorizontalDragCancel: vertical ? null : cancel,
       child: widget.child,
     );
   }
@@ -283,9 +335,9 @@ typedef RailToggle<TRow> = ({
 /// If one ever gains a boolean, it gains a parameter here and both rails get
 /// it in the same commit.
 List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
-  required double rowWidth,
+  required double crossExtent,
   required double leadingOrigin,
-  double rightPadding = 8.0,
+  double trailingPadding = 8.0,
   bool hasOnionColumn = false,
   bool hasBlendColumn = false,
   RailToggle<TRow>? visibility,
@@ -298,26 +350,26 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
   /// between the mark and the twirl, so the twirl and the sheet toggle move
   /// one whole slot per level. A rail that does not nest passes rows of
   /// depth 0 and gets the same band every time.
-  ({double left, double right}) Function(int depth) leadingBand(
+  ({double start, double end}) Function(int depth) leadingBand(
     LayerRailLeadingSlot slot,
   ) => (depth) {
     // The row plate's left border comes before its first cell, so a column
     // measured from the row's edge is that much further in than the slot
     // skeleton alone says.
-    final left = leadingOrigin + layerRailLeadingWidthTo(to: slot);
-    return (left: left, right: left + layerRailLeadingSlotWidth(slot));
+    final start = leadingOrigin + layerRailLeadingWidthTo(to: slot);
+    return (start: start, end: start + layerRailLeadingSlotWidth(slot));
   };
 
   /// Everything from [after] onward is what sits to this column's right,
   /// read off the slot skeleton — so adding a column cannot put the bands
   /// out of date.
-  ({double left, double right}) Function(int depth) trailingBand(
+  ({double start, double end}) Function(int depth) trailingBand(
     LayerRailTrailingSlot after,
     double width,
   ) {
-    final right =
-        rowWidth -
-        rightPadding -
+    final edge =
+        crossExtent -
+        trailingPadding -
         layerRailTrailingWidth(
           from: after,
           hasOnionColumn: hasOnionColumn,
@@ -330,12 +382,12 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
     // The trailing bands can afford the slack because it is what makes a
     // thin column easy to hit, and that argument stops applying the moment
     // the 4px belongs to another control.
-    final at = (left: right - width - 4, right: right + 4);
+    final at = (start: edge - width - 4, end: edge + 4);
     return (_) => at;
   }
 
   RailToggleColumn<TRow> column(
-    ({double left, double right}) Function(int depth) bandAt,
+    ({double start, double end}) Function(int depth) bandAt,
     RailToggle<TRow> toggle,
   ) => (bandAt: bandAt, valueOf: toggle.valueOf, toggle: toggle.toggle);
 
