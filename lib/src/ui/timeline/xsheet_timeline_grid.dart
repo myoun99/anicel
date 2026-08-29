@@ -1893,6 +1893,16 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                         // bracket cell per section run, wrapping
                                                         // its columns.
                                                         Row(
+                                                          // Named so a probe can
+                                                          // measure where the band
+                                                          // sits against the headers
+                                                          // it caps (F-32).
+                                                          key:
+                                                              const ValueKey<
+                                                                String
+                                                              >(
+                                                                'xsheet-section-band-row',
+                                                              ),
                                                           children: [
                                                             for (final run
                                                                 in sectionRuns)
