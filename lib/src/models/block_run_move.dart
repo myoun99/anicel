@@ -166,15 +166,34 @@ BlockRunMoveLayout planBlockRunMove({
   // 📐The seat is computed in the ORIGINAL layout — the invariant the old
   // note guarded and this keeps. Judging against the PREVIEW makes a run
   // chase its own tail.
-  int seatStartFor(int rank) {
-    var at = 0;
-    for (var position = 0; position < rank; position += 1) {
-      // Gaps belong to POSITIONS and blocks to ranks — the same split the
-      // reorder below applies, so this is where the run really lands.
-      at += slots[position].leadingGap + slots[rest[position].index].length;
-    }
-    return at + slots[rank].leadingGap;
-  }
+  //
+  // 🚨★★★A SWAP COSTS THE SLACK PLUS THE NEIGHBOUR (유저 확정 2026-08-30,
+  // 안 A). The seat is stated as ONE sentence read from either end: the run
+  // has passed a neighbour when its own far edge has cleared that
+  // NEIGHBOUR'S far edge, in the original layout.
+  //
+  // > 「빈칸을 먼저 지난다 … 선택이 빈칸으로 들어가고 4 는 제자리.
+  // > **빈칸을 다 쓴 뒤에야 4 와 자리를 바꿉니다**」
+  //
+  // ⛔What this replaces asked for a POSITION's gap and a RANK's length in
+  // the same sum. A run one step into a gap therefore reached the next seat
+  // while the slack it was moving into was still in front of it, and the
+  // block beyond the gap jumped to the LEFT of the selection a whole frame
+  // early — the two screenshots on board `R4q-unify`, 유저: 「뒤엣것이 한
+  // 칸 일찍 밀린다」.
+  //
+  // ★T14's law is unchanged and now falls out rather than being asserted:
+  // travel to pass a neighbour is `gap + neighbour.length`, which on a
+  // gapless row is the neighbour's length exactly as before, and the two
+  // directions stay asymmetric for the reason the note below gives.
+  //
+  // ⚠️It also fixes what a positional gap did to a row's EMPTY HEAD. Two
+  // blocks at 5..6 and 7..9 have a head gap of 5 that belongs to neither of
+  // them: reading it as the seat's own made the left-moving block travel 7
+  // to swap instead of 2, on a row whose blocks are glued together.
+  int seatPassing(int block, {required bool rightward}) => rightward
+      ? starts[block] + slots[block].length - runLength
+      : starts[block];
 
   // Asked from the side the hand came from. Moving right, the run passes a
   // seat once the cursor is at or past it; moving left, once it is at or
@@ -184,14 +203,14 @@ BlockRunMoveLayout planBlockRunMove({
   var rank = originalRank;
   if (wanted > runFrom) {
     for (var next = originalRank + 1; next <= rest.length; next += 1) {
-      if (seatStartFor(next) > wanted) {
+      if (seatPassing(rest[next - 1].index, rightward: true) > wanted) {
         break;
       }
       rank = next;
     }
   } else if (wanted < runFrom) {
     for (var next = originalRank - 1; next >= 0; next -= 1) {
-      if (seatStartFor(next) < wanted) {
+      if (seatPassing(rest[next].index, rightward: false) < wanted) {
         break;
       }
       rank = next;
