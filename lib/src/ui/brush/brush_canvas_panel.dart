@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HardwareKeyboard, KeyEvent;
 
 import '../debug/repaint_cause.dart';
+import '../../services/command.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
@@ -132,6 +133,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.guides,
     this.brushToolState = BrushToolState.defaults,
     this.historyManager,
+    this.takeStrokePrefixCommand,
     this.viewport,
     this.viewportController,
     this.onViewportChanged,
@@ -237,6 +239,21 @@ class BrushCanvasPanel extends StatefulWidget {
 
   final BrushToolState brushToolState;
   final HistoryManager? historyManager;
+
+  /// A command this stroke must be UNDONE WITH — the block an I-10
+  /// pen-down made on an empty cell.
+  ///
+  /// 유저 2026-08-30 chose **merged**: one stroke on an empty cell is
+  /// ONE undo, block and ink together. The two halves are made at
+  /// different moments (the block at pen-down, so the ink has
+  /// somewhere to go; the stroke at pen-up), so they are composed
+  /// here rather than grouped — `runAsOneStep` only spans one
+  /// synchronous body.
+  ///
+  /// ⚠️TAKE, not read: it must be consumed exactly once. Null
+  /// everywhere but the main canvas; the timesheet and conte hosts
+  /// have no empty-cell press to make a block for.
+  final Command? Function()? takeStrokePrefixCommand;
 
   /// The view PUSHED by a caller that keeps it in its own `setState` — an
   /// input, re-applied whenever the caller changes it.
@@ -367,9 +384,7 @@ class BrushCanvasPanel extends StatefulWidget {
   /// never answer false and every rebuild of this panel re-composited the
   /// whole stack.
   ({BitmapSurface surface, BrushFrameKey key, String fx})?
-  _activeSurfaceIdentityFor(
-    BrushFrameEditingCoordinator coordinator,
-  ) {
+  _activeSurfaceIdentityFor(BrushFrameEditingCoordinator coordinator) {
     if (activeStrokeOverlayModel == null) {
       return null;
     }
@@ -550,7 +565,11 @@ class BrushCanvasPanel extends StatefulWidget {
 
   /// Builds the fill-region dab for a tap (P6); the panel commits it
   /// through the exact stroke funnel. Null disables the fill tool.
-  final BrushDab? Function(CanvasPoint point, int color, SymmetryShape? symmetry)?
+  final BrushDab? Function(
+    CanvasPoint point,
+    int color,
+    SymmetryShape? symmetry,
+  )?
   fillDabAt;
 
   /// Builds the dab for a finished SHAPE FILL outline. Supplied by the
@@ -4012,12 +4031,24 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         );
         return;
       }
+      final stroke = BrushStrokeHistoryCommand(
+        coordinator: coordinator,
+        strokeData: strokeData,
+        cacheInvalidationSink: widget.cacheInvalidationSink,
+      );
+      final prefix = widget.takeStrokePrefixCommand?.call();
       historyManager.execute(
-        BrushStrokeHistoryCommand(
-          coordinator: coordinator,
-          strokeData: strokeData,
-          cacheInvalidationSink: widget.cacheInvalidationSink,
-        ),
+        prefix == null
+            ? stroke
+            // ⚠️The prefix ALREADY RAN at pen-down and re-running it is a
+            // no-op: `UpdateLayerTimelineCommand` holds its before/after
+            // from construction, so applying `after` twice writes the same
+            // layer. The stroke runs for the first time here, into the
+            // block that prefix made.
+            : CompositeCommand(
+                description: 'Draw on a new frame',
+                commands: [prefix, stroke],
+              ),
       );
     });
   }

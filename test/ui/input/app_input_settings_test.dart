@@ -82,4 +82,51 @@ void main() {
     expect(AppInputSettings.defaultZoomSnapPercents, contains(25));
     expect(AppInputSettings.defaultBrushSizeSnaps, containsAll([128, 256]));
   });
+
+  test('🚨every field is in == and in the round trip — a missing one is a '
+      'setting that cannot be changed', () {
+    // ⛔THIS IS NOT PEDANTRY, it is the bug I shipped and caught in a test
+    // fixture (I-10, 2026-08-31). `autoCreateFrameOnDraw` went into the
+    // class, `copyWith`, `toJson` and `fromJson` — and not into `==`.
+    //
+    // `ValueNotifier.value =` RETURNS EARLY when the new value equals the
+    // old one, so `AppInput.settings.value = old.copyWith(flag: true)` did
+    // nothing at all: the toggle would have looked wired and moved nothing.
+    // ⚠️Nothing in the app would have failed, and no widget test would have
+    // caught it either — the switch reads the notifier it just failed to
+    // write.
+    //
+    // ★So every bool field is flipped one at a time and the pair must
+    // disagree. Adding a field without adding it to `==` fails HERE.
+    const base = AppInputSettings();
+    final flipped = <String, AppInputSettings>{
+      'extraFingerModifier': base.copyWith(
+        extraFingerModifier: !base.extraFingerModifier,
+      ),
+      'flipHaptics': base.copyWith(flipHaptics: !base.flipHaptics),
+      'autoCreateFrameOnDraw': base.copyWith(
+        autoCreateFrameOnDraw: !base.autoCreateFrameOnDraw,
+      ),
+      'navigationRotationEnabled': base.copyWith(
+        navigationRotationEnabled: !base.navigationRotationEnabled,
+      ),
+      'navigationModifierRotationLock': base.copyWith(
+        navigationModifierRotationLock: !base.navigationModifierRotationLock,
+      ),
+    };
+    flipped.forEach((field, other) {
+      expect(
+        other == base,
+        isFalse,
+        reason:
+            '$field is missing from `==` — a settings write with only '
+            'this field changed would be silently dropped',
+      );
+      expect(
+        AppInputSettings.fromJson(other.toJson()) == other,
+        isTrue,
+        reason: '$field does not survive the round trip',
+      );
+    });
+  });
 }

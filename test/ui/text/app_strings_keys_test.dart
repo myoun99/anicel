@@ -547,6 +547,7 @@ void main() {
     'brRoundness': (s) => s.brRoundness,
     'brScale': (s) => s.brScale,
     'brStabilizer': (s) => s.brStabilizer,
+    'brAutoCreateFrame': (s) => s.brAutoCreateFrame,
     'brBlend': (s) => s.brBlend,
     'brBlendMode': (s) => s.brBlendMode,
     'brFeather': (s) => s.brFeather,

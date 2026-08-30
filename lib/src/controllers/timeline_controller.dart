@@ -237,6 +237,23 @@ class TimelineController {
     int length = 1,
     String? name,
     String? seName,
+  }) => _makeDrawingFrame(
+    layerId: layerId,
+    frameId: frameId,
+    length: length,
+    name: name,
+    seName: seName,
+    apply: (before, after) => _applyLayerEdit(before: before, after: after),
+  );
+
+  /// ⛔ONE BODY, two entry points — see [createDrawingFrameCommandForLayer].
+  void _makeDrawingFrame({
+    required LayerId layerId,
+    required FrameId frameId,
+    required int length,
+    required String? name,
+    required String? seName,
+    required void Function(Layer before, Layer after) apply,
   }) {
     if (length < 1) {
       throw ArgumentError.value(
@@ -314,7 +331,40 @@ class TimelineController {
       ],
       timeline: nextTimeline,
     );
-    _applyLayerEdit(before: before, after: after);
+    apply(before, after);
+  }
+
+  /// The same edit as [createDrawingFrameForLayer], handed back as a command
+  /// this caller will EXECUTE and hold rather than push.
+  ///
+  /// 🚨I-10 wants ONE undo for 「the block appeared and I drew on it」, and
+  /// the two halves happen at different MOMENTS: the block has to exist at
+  /// pen-DOWN (there is nowhere for ink to go otherwise) and the stroke is
+  /// committed at pen-UP. `runAsOneStep` groups commands run inside one
+  /// synchronous body, so it cannot span that gap — the caller keeps this
+  /// command and composes it with the stroke when the pen lifts.
+  ///
+  /// ⛔It shares [createDrawingFrameForLayer]'s body rather than copying it:
+  /// the divide-a-held-block rule, the ghost shed and the clamp are one
+  /// piece of reasoning and must not exist twice ([[no-copy-to-share]]).
+  Command createDrawingFrameCommandForLayer({
+    required LayerId layerId,
+    required FrameId frameId,
+    int length = 1,
+    String? name,
+    String? seName,
+  }) {
+    Command? made;
+    _makeDrawingFrame(
+      layerId: layerId,
+      frameId: frameId,
+      length: length,
+      name: name,
+      seName: seName,
+      apply: (before, after) =>
+          made = _layerEditCommand(before: before, after: after),
+    );
+    return made!;
   }
 
   // --- Cut exposure (the timesheet "X here" action) -------------------------

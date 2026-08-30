@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
+
 /// Pointer-input policy (UI-R22 #6, default flipped in UI-R22F #1).
 ///
 /// 🚨★★★ONE SWITCH, NOT TWO (유저 2026-08-29): 「터치스크롤 on off 옵션
@@ -47,6 +48,7 @@ class AppInputSettings {
     this.touchDragThreeFingers = CanvasTouchDragAction.brushSize,
     this.extraFingerModifier = true,
     this.flipHaptics = true,
+    this.autoCreateFrameOnDraw = false,
     this.navigationRotationEnabled = true,
     this.navigationModifierRotationLock = false,
     this.rotationSnapDegrees = 15,
@@ -72,6 +74,22 @@ class AppInputSettings {
   /// the call on their own (HapticFeedback is an optional platform
   /// channel), so this is a preference rather than a capability gate.
   final bool flipHaptics;
+
+  /// I-10: a pen-down on an EMPTY cell makes the block and draws into it,
+  /// instead of refusing with 「no frame here」.
+  ///
+  /// 유저 2026-08-30: 「빈 칸에서 펜다운하면 블록이 생기고 그대로 그려진다」,
+  /// and on the shape: 「**프레임 자동생성 on버튼** 만들게 햇던거같은데」.
+  ///
+  /// ⛔OFF BY DEFAULT. It changes what a press does on every empty cell in
+  /// the app, and a user who has not asked for it should not find blocks
+  /// appearing where they meant to say 「nothing here」.
+  ///
+  /// ⚠️It lives beside [touchDragOneFinger] and the pointer mappings
+  /// because it answers the same kind of question — 「what does this press
+  /// do」 — and because that is the one app-wide settings object with a
+  /// store behind it. The CONTROL is in the tool settings panel (I-10 ②).
+  final bool autoCreateFrameOnDraw;
 
   /// Navigate-action composition: rotation entirely off = two fingers
   /// pan+zoom only (the canvas rotate buttons/shortcut stay separate).
@@ -155,7 +173,6 @@ class AppInputSettings {
   /// through the Raw Input HID observer ([PenSidecars.freshInverted]).
   final CanvasPointerMapping canvasPenTail;
 
-
   /// The pen pressure RESPONSE curve (PEN-3, cross-platform): output =
   /// input^gamma. 1.0 = linear (the default, byte-identical to before);
   /// below 1 = SOFTER feel (a light touch already reads strong), above
@@ -184,6 +201,7 @@ class AppInputSettings {
     CanvasTouchDragAction? touchDragThreeFingers,
     bool? extraFingerModifier,
     bool? flipHaptics,
+    bool? autoCreateFrameOnDraw,
     bool? navigationRotationEnabled,
     bool? navigationModifierRotationLock,
     double? rotationSnapDegrees,
@@ -200,6 +218,7 @@ class AppInputSettings {
     touchDragThreeFingers: touchDragThreeFingers ?? this.touchDragThreeFingers,
     extraFingerModifier: extraFingerModifier ?? this.extraFingerModifier,
     flipHaptics: flipHaptics ?? this.flipHaptics,
+    autoCreateFrameOnDraw: autoCreateFrameOnDraw ?? this.autoCreateFrameOnDraw,
     navigationRotationEnabled:
         navigationRotationEnabled ?? this.navigationRotationEnabled,
     navigationModifierRotationLock:
@@ -220,6 +239,7 @@ class AppInputSettings {
     'touchDragThreeFingers': touchDragThreeFingers.name,
     'extraFingerModifier': extraFingerModifier,
     'flipHaptics': flipHaptics,
+    'autoCreateFrameOnDraw': autoCreateFrameOnDraw,
     'navigationRotationEnabled': navigationRotationEnabled,
     'navigationModifierRotationLock': navigationModifierRotationLock,
     'rotationSnapDegrees': rotationSnapDegrees,
@@ -287,6 +307,7 @@ class AppInputSettings {
         CanvasTouchDragAction.brushSize,
     extraFingerModifier: json['extraFingerModifier'] as bool? ?? true,
     flipHaptics: json['flipHaptics'] as bool? ?? true,
+    autoCreateFrameOnDraw: json['autoCreateFrameOnDraw'] as bool? ?? false,
     navigationRotationEnabled:
         json['navigationRotationEnabled'] as bool? ?? true,
     navigationModifierRotationLock:
@@ -318,6 +339,7 @@ class AppInputSettings {
       other.touchDragThreeFingers == touchDragThreeFingers &&
       other.extraFingerModifier == extraFingerModifier &&
       other.flipHaptics == flipHaptics &&
+      other.autoCreateFrameOnDraw == autoCreateFrameOnDraw &&
       other.navigationRotationEnabled == navigationRotationEnabled &&
       other.navigationModifierRotationLock == navigationModifierRotationLock &&
       other.rotationSnapDegrees == rotationSnapDegrees &&
@@ -336,6 +358,7 @@ class AppInputSettings {
     touchDragThreeFingers,
     extraFingerModifier,
     flipHaptics,
+    autoCreateFrameOnDraw,
     navigationRotationEnabled,
     navigationModifierRotationLock,
     rotationSnapDegrees,
@@ -449,7 +472,6 @@ enum CanvasTouchDragAction {
 abstract final class AppInput {
   static final ValueNotifier<AppInputSettings> settings =
       ValueNotifier<AppInputSettings>(const AppInputSettings());
-
 
   /// The drag action assigned to a finger-count slot (3+ fingers share
   /// the three-finger slot) — **the stored setting, and nothing else**.
