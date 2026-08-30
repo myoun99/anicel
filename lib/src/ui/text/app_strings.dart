@@ -820,6 +820,11 @@ class AppStrings {
   String get panelStoryboard => _s('panelStoryboard');
   String get panelTimeline => _s('panelTimeline');
   String get panelTimesheet => _s('panelTimesheet');
+  String get panelConte => _s('panelConte');
+  String get panelEnvelope => _s('panelEnvelope');
+  String get commonRegister => _s('commonRegister');
+  String get commonNameField => _s('commonNameField');
+  String get tipRegisterTitle => _s('tipRegisterTitle');
   String get panelToolLibrary => _s('panelToolLibrary');
   String get panelCollapseRegion => _s('panelCollapseRegion');
   String get panelNewGroup => _s('panelNewGroup');
@@ -1579,6 +1584,11 @@ class AppStrings {
     'panelStoryboard': 'Storyboard',
     'panelTimeline': 'Timeline',
     'panelTimesheet': 'Timesheet',
+    'panelConte': 'Conte',
+    'panelEnvelope': 'Envelope',
+    'commonRegister': 'Register',
+    'commonNameField': 'Name',
+    'tipRegisterTitle': 'Register as Tip',
     'panelToolLibrary': 'Tool library',
     'panelCollapseRegion': 'Collapse',
     'panelNewGroup': 'New panel group',
@@ -2469,6 +2479,11 @@ class AppStrings {
     'panelStoryboard': '絵コンテ',
     'panelTimeline': 'タイムライン',
     'panelTimesheet': 'タイムシート',
+    'panelConte': 'コンテ',
+    'panelEnvelope': 'エンベロープ',
+    'commonRegister': '登録',
+    'commonNameField': '名前',
+    'tipRegisterTitle': '先端として登録',
     'panelToolLibrary': 'ツールライブラリ',
     'panelCollapseRegion': '折りたたむ',
     'panelNewGroup': '新しいパネルグループ',
@@ -3382,6 +3397,11 @@ class AppStrings {
     'panelStoryboard': '콘티',
     'panelTimeline': '타임라인',
     'panelTimesheet': '타임시트',
+    'panelConte': '콘티',
+    'panelEnvelope': '엔벨로프',
+    'commonRegister': '등록',
+    'commonNameField': '이름',
+    'tipRegisterTitle': '팁으로 등록',
     'panelToolLibrary': '도구 라이브러리',
     'panelCollapseRegion': '접기',
     'panelNewGroup': '새 패널 그룹',
@@ -4326,6 +4346,11 @@ class AppStrings {
     'panelStoryboard': 'Storyboard',
     'panelTimeline': 'Timeline',
     'panelTimesheet': 'Feuille de temps',
+    'panelConte': 'Conte',
+    'panelEnvelope': 'Enveloppe',
+    'commonRegister': 'Enregistrer',
+    'commonNameField': 'Nom',
+    'tipRegisterTitle': 'Enregistrer comme pointe',
     'panelToolLibrary': "Bibliothèque d'outils",
     'panelCollapseRegion': 'Réduire',
     'panelNewGroup': 'Nouveau groupe de panneaux',
@@ -5195,6 +5220,11 @@ class AppStrings {
     'panelStoryboard': '分镜',
     'panelTimeline': '时间轴',
     'panelTimesheet': '摄影表',
+    'panelConte': '分镜稿',
+    'panelEnvelope': '包络',
+    'commonRegister': '注册',
+    'commonNameField': '名称',
+    'tipRegisterTitle': '注册为笔尖',
     'panelToolLibrary': '工具库',
     'panelCollapseRegion': '折叠',
     'panelNewGroup': '新建面板组',
