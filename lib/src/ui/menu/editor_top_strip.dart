@@ -1727,6 +1727,32 @@ Future<bool> saveProjectShowingProgress(
       windowKey: const ValueKey<String>('save-progress-dialog'),
       task: (report) => session.saveProjectToFile(path, onProgress: report),
     );
+    // 🚨★★★**A SAVE THAT WROTE FEWER CELS THAN IT HOLDS MUST SAY SO.**
+    //
+    // 유저 2026-08-30, on an iPad: delete the project file in the Files
+    // app while the project is open, draw, press Save. A save turns every
+    // cel into a ref into that file and drops its cold blob, so once the
+    // file is gone those cels' bytes are nowhere — the save now writes
+    // everything it can still reach rather than coming apart, and this is
+    // where the person is told what it could not carry.
+    //
+    // ⛔Through [showAppNotice] because F-10 says every refusal does, and
+    // HERE because this function is the one gate every save entrance goes
+    // through — the menu, the shortcut, and the unsaved-work prompt.
+    final lost = session.celsLostToAMissingFile;
+    if (lost.isNotEmpty && context.mounted) {
+      unawaited(
+        showAppNotice(
+          context,
+          title: AppText.strings.commonNotice,
+          message: AppText.strings.saveCelsLostTemplate.replaceAll(
+            '{count}',
+            '${lost.length}',
+          ),
+          windowKey: const ValueKey<String>('save-cels-lost-notice'),
+        ),
+      );
+    }
     return true;
   } catch (error) {
     if (context.mounted) {

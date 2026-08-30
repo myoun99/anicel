@@ -523,6 +523,7 @@ class AppStrings {
   String get containerAreaConformed => _s('containerAreaConformed');
   String get containerAreaStaged => _s('containerAreaStaged');
   String get containerTotal => _s('containerTotal');
+  String get saveCelsLostTemplate => _s('saveCelsLostTemplate');
 
   // --- Display (R11) ---
   String get uiScaleLabel => _s('uiScaleLabel');
@@ -1427,6 +1428,9 @@ class AppStrings {
     'containerAreaConformed': 'Conformed audio',
     'containerAreaStaged': 'Staged media',
     'containerTotal': 'Total',
+    'saveCelsLostTemplate':
+        'Saved, but {count} drawing(s) could not be included: the project '
+        'file they were stored in was removed while the project was open.',
     'uiScaleLabel': 'Interface scale',
     'accentTitle': 'Accent colors',
     'accent1Label': 'Accent 1',
@@ -2216,6 +2220,8 @@ class AppStrings {
     'containerAreaConformed': 'コンフォーム済み音声',
     'containerAreaStaged': '取り込み待ちメディア',
     'containerTotal': '合計',
+    'saveCelsLostTemplate':
+        '保存しましたが、{count} 枚の絵を含められませんでした。それらが入っていたプロジェクトファイルが、開いている間に削除されました。',
     'uiScaleLabel': 'UIの大きさ',
     'accentTitle': 'アクセントカラー',
     'accent1Label': 'アクセント1',
@@ -3071,6 +3077,8 @@ class AppStrings {
     'containerAreaConformed': '컨폼된 오디오',
     'containerAreaStaged': '품은 미디어',
     'containerTotal': '합계',
+    'saveCelsLostTemplate':
+        '저장했지만 그림 {count}장을 담지 못했습니다. 그 그림들이 들어 있던 프로젝트 파일이 열려 있는 동안 삭제되었습니다.',
     'uiScaleLabel': 'UI 크기',
     'accentTitle': '강조 색상',
     'accent1Label': '강조색 1',
@@ -3942,6 +3950,10 @@ class AppStrings {
     'containerAreaConformed': 'Audio conformé',
     'containerAreaStaged': 'Médias en attente',
     'containerTotal': 'Total',
+    'saveCelsLostTemplate':
+        'Enregistré, mais {count} dessin(s) manquent : le fichier de projet '
+        'qui les contenait a été supprimé pendant que le projet était '
+        'ouvert.',
     'accentTitle': "Couleurs d'accent",
     'accent1Label': 'Accent 1',
     'accent1Help': 'Sélection, tête de lecture, bascules actives.',
@@ -4769,6 +4781,7 @@ class AppStrings {
     'containerAreaConformed': '已转换音频',
     'containerAreaStaged': '暂存媒体',
     'containerTotal': '合计',
+    'saveCelsLostTemplate': '已保存，但有 {count} 张画面未能包含：存放它们的项目文件在项目打开期间被删除了。',
     'accentTitle': '强调色',
     'accent1Label': '强调色 1',
     'accent1Help': '用于选区、播放头和已启用的开关。',
