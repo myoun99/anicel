@@ -153,6 +153,9 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.isFrameReady,
     this.metrics = defaultMetrics,
     this.expandedLaneLayerIds = const {},
+    this.laneOpenOf,
+    this.laneGroupOnOf,
+    this.layerEyeOnOf,
     this.onToggleLayerLanes,
     this.lanesForLayer,
     this.unionLaneForLayer,
@@ -366,6 +369,17 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// as COLUMNS beside it (the layer axis runs horizontally here). Same
   /// generic provider + edit hooks as the horizontal timeline.
   final Set<LayerId> expandedLaneLayerIds;
+
+  /// A LIVE read of the twirl state — see [LayerTimelineGrid.laneOpenOf].
+  final bool Function(LayerId layerId)? laneOpenOf;
+
+  /// See [LayerTimelineGrid.laneGroupOnOf].
+  final bool Function(LayerId layerId)? laneGroupOnOf;
+
+  /// A LIVE read of a layer’s own eye — the rail’s bulk-drag needs the value
+  /// the press just set, and a captured [Layer] still reports the last
+  /// frame.
+  final bool Function(LayerId layerId)? layerEyeOnOf;
   final ValueChanged<LayerId>? onToggleLayerLanes;
   final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
 
@@ -598,7 +612,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       hasOnionColumn: onToggleOnion != null,
       hasBlendColumn: widget.onLayerBlendModeSelected != null,
       visibility: (
-        valueOf: layerRailEyeIsOn,
+        valueOf: (layer) => layerRailEyeIsOn(layer, live: widget.layerEyeOnOf),
+
         toggle: (layer) => widget.onToggleLayerVisibility(layer.id),
       ),
       onion: onToggleOnion == null || onionOf == null
@@ -622,7 +637,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
           : (
               valueOf: (layer) => lanesForLayer(layer).isEmpty
                   ? null
-                  : widget.expandedLaneLayerIds.contains(layer.id),
+                  : (widget.laneOpenOf?.call(layer.id) ??
+                        widget.expandedLaneLayerIds.contains(layer.id)),
               toggle: (layer) => onToggleLanes(layer.id),
             ),
     );

@@ -12,6 +12,7 @@ import '../widgets/panel_flyout.dart';
 import '../theme/app_theme.dart';
 import '../../services/persistence/file_type_groups.dart';
 import 'folder_pick_flow.dart';
+import '../input/control_press_claim.dart';
 
 /// Edits the sheet-header text (title/episode/scene/artist) the paper
 /// timesheet reads, and which header boxes the form prints. Pops the
@@ -362,38 +363,40 @@ class _StaffStampCell extends StatelessWidget {
     final path = assetPath;
     return Tooltip(
       message: strings.sheetStampPick,
-      child: InkWell(
-        key: ValueKey<String>('timesheet-stamp-${process.jsonValue}'),
-        customBorder: shape,
-        onTap: () => showPanelFlyout(
-          context,
-          entries: [
-            PanelFlyoutItem(
-              keyValue: 'timesheet-stamp-pick-${process.jsonValue}',
-              label: strings.sheetStampPick,
-              icon: Icons.image_outlined,
-              onSelected: () => unawaited(_pick(context)),
-            ),
-            // ⛔BOTH entries, always, even with no stamp set: a menu that
-            // grows a row the moment a file lands is the same popping this
-            // widget's own slot exists to avoid. Clearing an empty stamp is
-            // a no-op, which is a fine thing for a menu row to be.
-            PanelFlyoutItem(
-              keyValue: 'timesheet-stamp-clear-${process.jsonValue}',
-              label: strings.sheetStampClear,
-              icon: Icons.backspace_outlined,
-              onSelected: () => onPicked(null),
-            ),
-          ],
-        ),
-        child: Container(
-          width: _size,
-          height: _size,
-          decoration: ShapeDecoration(shape: shape),
-          padding: const EdgeInsets.all(3),
-          child: path == null
-              ? null
-              : Image.file(File(path), fit: BoxFit.contain),
+      child: ControlPressClaim(
+        child: InkWell(
+          key: ValueKey<String>('timesheet-stamp-${process.jsonValue}'),
+          customBorder: shape,
+          onTap: () => showPanelFlyout(
+            context,
+            entries: [
+              PanelFlyoutItem(
+                keyValue: 'timesheet-stamp-pick-${process.jsonValue}',
+                label: strings.sheetStampPick,
+                icon: Icons.image_outlined,
+                onSelected: () => unawaited(_pick(context)),
+              ),
+              // ⛔BOTH entries, always, even with no stamp set: a menu that
+              // grows a row the moment a file lands is the same popping this
+              // widget's own slot exists to avoid. Clearing an empty stamp is
+              // a no-op, which is a fine thing for a menu row to be.
+              PanelFlyoutItem(
+                keyValue: 'timesheet-stamp-clear-${process.jsonValue}',
+                label: strings.sheetStampClear,
+                icon: Icons.backspace_outlined,
+                onSelected: () => onPicked(null),
+              ),
+            ],
+          ),
+          child: Container(
+            width: _size,
+            height: _size,
+            decoration: ShapeDecoration(shape: shape),
+            padding: const EdgeInsets.all(3),
+            child: path == null
+                ? null
+                : Image.file(File(path), fit: BoxFit.contain),
+          ),
         ),
       ),
     );

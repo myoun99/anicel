@@ -9,7 +9,7 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
-/// 🚨★★★EVERY CHROME BUTTON CLAIMS ITS PRESS.
+/// 🚨★★★EVERY BUTTON IN `lib/src/ui` CLAIMS ITS PRESS.
 ///
 /// The law is in CLAUDE.md and 유저 has stated it three times — 2026-08-14
 /// for sliders (「슬라이더위에서 조작하기 시작하면 슬라이더조작하는거고 **그
@@ -35,24 +35,40 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 /// actually lands through the real widget tree — a wrapper outside a baked
 /// [StaticRaster] or a `Tooltip` could easily not. The scan reaches the
 /// buttons no test can name, which is where the next one will be.
+///
+/// ⛔AND THE SCAN CANNOT ANSWER THE OTHER HALF: whether an ANCESTOR owns the
+/// drag. Wrapping is absorbing, so a claim mounted under something whose
+/// drag is its verb kills that verb — the brush library's reorder listener
+/// and the onion strip's peg drag were both eaten this way, and both were
+/// caught by their own behaviour tests, not by anything here. A wrap that
+/// turns one of those red belongs in [notControls], not in a workaround.
 void main() {
   setUp(debugClearValueControlPointers);
   tearDown(debugClearValueControlPointers);
 
-  /// The app's own chrome: bars, rails, strips, pills. Dialogs, pickers and
-  /// the export screens are deliberately NOT here — a grid of swatches
-  /// scrolls by dragging off a swatch, and taking that away is a change
-  /// nobody asked for.
-  const chrome = <String>[
-    'lib/src/ui/timeline/layer_label_controls.dart',
-    'lib/src/ui/timeline/timeline_layer_controls_row.dart',
-    'lib/src/ui/timeline/timeline_layer_controls_header.dart',
-    'lib/src/ui/timeline/timeline_lane_rows.dart',
-    'lib/src/ui/timeline/timeline_action_toolbar.dart',
-    'lib/src/ui/timeline/xsheet_timeline_grid.dart',
-    'lib/src/ui/storyboard_panel.dart',
-    'lib/src/ui/menu/editor_top_strip.dart',
-  ];
+  /// EVERY `.dart` UNDER `lib/src/ui`, not a hand-kept list.
+  ///
+  /// ⛔It WAS a hand-kept list of eight — bars, rails, strips, pills — with
+  /// a comment saying dialogs, pickers and the export screens were left out
+  /// on purpose because 「a grid of swatches scrolls by dragging off a
+  /// swatch」. `git log -S` says that sentence arrived in the very commit
+  /// that wrote this file (#1351): nobody asked for it, which by 절대명령 3
+  /// makes it a bug, and 유저 2026-08-30 said so outright —
+  ///
+  /// > 「스크롤러가 발생하는 영역 안에 버튼은 최우선 확인대상이 맞는데,
+  /// > **그 외 버튼도 싹 다 확인이야**. 왜냐하면 지금부터 구조 바꿔서
+  /// > 스크롤 발생될수도있는거고 애초에 통일해야 구조적으로 좋으니까」
+  ///
+  /// The list had also quietly gone stale in its OWN yard: `layer_rail_columns`
+  /// (the layer-type button), `layer_rail_window`, `project_settings_pill` and
+  /// `se_layer_mixer` are timeline chrome by any reading and were bare,
+  /// because they were not among the eight names.
+  List<String> everyUiFile() => Directory('lib/src/ui')
+      .listSync(recursive: true)
+      .whereType<File>()
+      .map((file) => file.path.replaceAll(r'\', '/'))
+      .where((path) => path.endsWith('.dart'))
+      .toList();
 
   /// ⛔EACH ONE IS A DECISION, and the reason is the same question every
   /// time: 「is a drag that starts here a scroll, or this widget's own
@@ -70,17 +86,53 @@ void main() {
     'storyboard-se-label-': 'row body',
     'storyboard-transition-label-': 'row body',
     'storyboard-track-select-': 'row body',
+    // 🚨THE ROW'S DRAG IS ITS REORDER, and the reorder listener sits ABOVE
+    // it. `ReorderableListView` puts a `ReorderableDragStartListener` around
+    // the whole row, so the claim's absorbers — mounted INSIDE — take the
+    // arena first and the library could no longer be reordered at all
+    // (measured: three `brush_preset_panel_test` cases went red the moment
+    // this row was wrapped). Same shape as the storyboard rows above.
+    'brush-preset-chip-': 'its drag is its own verb (a reorder)',
+    // 🚨AND THE PEG STRIP OWNS ITS VERTICAL DRAG, one level up: 「the strip
+    // owns the vertical drag; each column owns its tap」 says so in the
+    // panel's own comment. A claim inside the column ate that drag and the
+    // peg opacity could no longer be dragged at all (measured — the onion
+    // panel's drag test went red). Same shape as the row above.
+    'onion-peg-column-': 'the strip above it owns the drag',
+    // ⛔SCRIMS AND GRID SURFACES, not buttons. Each covers a whole region
+    // and exists so that a press ANYWHERE lands somewhere; claiming one
+    // would mean the region under it could never be scrolled at all.
+    'canvas-playback-view': 'a scrim over the whole view',
+    'timesheet-header-edit-barrier': 'a tap-away scrim',
+    '-lane-stand-cell-': 'the lane grid surface, like the frame cell',
   };
 
-  test('a chrome button that is not wrapped argues for itself', () {
-    final button = RegExp(r'(^|[^A-Za-z])(IconButton|TextButton|InkWell)\(');
-    final claim = RegExp(r'(ControlPressClaim|RailSwipeColumnPointer)\(');
+  test('a button that is not wrapped argues for itself', () {
+    final button = RegExp(
+      r'(^|[^A-Za-z])(IconButton|TextButton|InkWell|GestureDetector)\(',
+    );
+    // A [GestureDetector] is only a BUTTON when it has an `onTap` — the
+    // other twenty-odd are pans, scales and long-presses whose drag IS the
+    /// verb, and a claim over one of those is the brush row's bug again.
+    final tappable = RegExp(r'onTap:');
+    // ⚠️[DragVerbClaim] counts as well, and it is not a loophole: a widget
+    // that says 「the drag from here is MY verb」 mounts its own recogniser
+    // for it, which is deeper than any ancestor scroller and therefore
+    // registered first. The scrubbable number label is the shape — a tap
+    // edits it, a horizontal drag scrubs it, and neither is a scroll.
+    final claim = RegExp(
+      r'(ControlPressClaim|RailSwipeColumnPointer|DragVerbClaim)\(',
+    );
     // A no-op `onTap` is the row/column SURFACE holding a tap recognizer in
     // the arena so scroll slop behaves as it always has — both rails say so
     // in their own comments. Claiming one would stop the panel scrolling.
+    //
+    // ⚠️The window ahead is SIXTEEN lines, not nine: the frame cell's no-op
+    // carries a nine-line explanation of why it is one, so a shorter window
+    // read straight past it and called the grid's own surface a bare button.
     final surface = RegExp(r'onTap: \(\) \{\}');
     final bare = <String>[];
-    for (final path in chrome) {
+    for (final path in everyUiFile()) {
       final lines = File(path).readAsLinesSync();
       for (var i = 0; i < lines.length; i++) {
         final line = lines[i];
@@ -91,8 +143,11 @@ void main() {
           continue;
         }
         final ahead = lines
-            .sublist(i, (i + 9).clamp(0, lines.length))
+            .sublist(i, (i + 16).clamp(0, lines.length))
             .join(' ');
+        if (line.contains('GestureDetector(') && !tappable.hasMatch(ahead)) {
+          continue;
+        }
         if (surface.hasMatch(ahead) || notControls.keys.any(ahead.contains)) {
           continue;
         }

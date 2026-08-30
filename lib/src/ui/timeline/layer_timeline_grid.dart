@@ -135,6 +135,9 @@ class LayerTimelineGrid extends StatefulWidget {
     this.isFrameReady,
     this.metrics = TimelineGridMetrics.defaults,
     this.expandedLaneLayerIds = const {},
+    this.laneOpenOf,
+    this.laneGroupOnOf,
+    this.layerEyeOnOf,
     this.onToggleLayerLanes,
     this.lanesForLayer,
     this.unionLaneForLayer,
@@ -381,6 +384,24 @@ class LayerTimelineGrid extends StatefulWidget {
   /// AE-style property lanes: layers whose twirl-down is open, the toggle,
   /// and the lane provider (generic — transform lanes now, FX lanes later).
   final Set<LayerId> expandedLaneLayerIds;
+
+  /// A LIVE read of the twirl state, when the host can give one.
+  ///
+  /// 🚨[expandedLaneLayerIds] is a widget property: the host mutates its set
+  /// and the new value reaches here on the NEXT build, which is a frame too
+  /// late for a bulk-drag that started on the twirl itself (the button fires
+  /// on the down — 유저 2026-08-30 — and the sweep spreads what it set).
+  final bool Function(LayerId layerId)? laneOpenOf;
+
+  /// A LIVE read of a lane GROUP’s switch, when the host can give one — the
+  /// transform group’s flag is the layer’s own field, and a lane row built
+  /// last frame carries a stale copy.
+  final bool Function(LayerId layerId)? laneGroupOnOf;
+
+  /// A LIVE read of a layer’s own eye — the rail’s bulk-drag needs the value
+  /// the press just set, and a captured [Layer] still reports the last
+  /// frame.
+  final bool Function(LayerId layerId)? layerEyeOnOf;
   final ValueChanged<LayerId>? onToggleLayerLanes;
   final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
 
@@ -593,7 +614,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       hasOnionColumn: onToggleOnion != null,
       hasBlendColumn: widget.onLayerBlendModeSelected != null,
       visibility: (
-        valueOf: (row) => row.isLane ? null : layerRailEyeIsOn(row.layer),
+        valueOf: (row) => row.isLane
+            ? null
+            : layerRailEyeIsOn(row.layer, live: widget.layerEyeOnOf),
         toggle: (row) => widget.onToggleLayerVisibility(row.layer.id),
       ),
       onion: onToggleOnion == null || onionOf == null
@@ -615,7 +638,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         valueOf: (row) {
           final lane = row.lane;
           if (lane != null) {
-            return onToggleLaneGroup == null ? null : lane.groupEnabled;
+            return onToggleLaneGroup == null
+                ? null
+                : (widget.laneGroupOnOf?.call(row.layer.id) ??
+                      lane.groupEnabled);
           }
           return onToggleFx == null ||
                   fxStateOf == null ||

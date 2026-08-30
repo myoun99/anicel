@@ -61,7 +61,16 @@ import 'value_control_pointers.dart';
 /// works out because pointer-down dispatch is deepest-first, so the strong
 /// claim is already set when these are offered the pointer.
 class ControlPressClaim extends StatelessWidget {
-  const ControlPressClaim({super.key, required this.child});
+  const ControlPressClaim({super.key, this.onPressDown, required this.child});
+
+  /// Fired on the pointer DOWN, right after the claim lands — 유저
+  /// 2026-08-30: 「버튼은 기본적으로 **누른순간 작동**하고 누른채로
+  /// 드래그시 일괄조작 작동」.
+  ///
+  /// ⛔It belongs HERE, not in [InstantTapRegion]: that widget stands down
+  /// for a control that claimed ([controlOwnsTap]), so a button firing
+  /// itself through it declined its own press (measured).
+  final VoidCallback? onPressDown;
 
   final Widget child;
 
@@ -88,7 +97,10 @@ class ControlPressClaim extends StatelessWidget {
             ),
       },
       child: Listener(
-        onPointerDown: (event) => claimTapForControl(event.pointer),
+        onPointerDown: (event) {
+          claimTapForControl(event.pointer);
+          onPressDown?.call();
+        },
         onPointerUp: (event) => releaseTapForControl(event.pointer),
         // ⛔Cancel too: a claim that outlives its gesture silently deafens
         // every later press handed the same pointer id.
@@ -125,22 +137,6 @@ class ControlPressClaim extends StatelessWidget {
 /// strong claim above it exists, and standing down there killed every swipe
 /// column (measured). By the first move every down handler on the path has
 /// run, so the question is asked here, where the answer is complete.
-/// The ONE answer both axes give. It was written out twice — once per class —
-/// and the day one of them was wrong the other was too ([[no-copy-to-share]]).
-///
-/// ⛔THE SLOP IS ASKED WITH [PointerDeviceKind.touch], never with the
-/// pointer's own kind. Flutter hardcodes a MOUSE to `kPrecisePointerHitSlop`,
-/// ONE pixel, and ignores the gesture settings for that kind alone. Asked
-/// honestly, this recogniser wins the arena a pixel into any click and the
-/// button never fires — 유저 2026-08-30: 「지금 버튼이 펜이랑 마우스 조작이
-/// 바꼈어 … **펜마우스만 그자리에서 손떼야 작동함**」. A pen was fine at 18px,
-/// which is exactly why only two of the three devices were reported.
-///
-/// ⛔A pointer the STRONG claim holds is declined outright — and asked HERE,
-/// at accept time, not at `isPointerAllowed`. Pointer-down dispatch is
-/// deepest-first, so a rail button's own claim runs BEFORE the swipe column's
-/// strong claim above it exists; standing down there killed every swipe
-/// column (measured). By the first move every down handler has run.
 bool _absorbsThisDrag({
   required int? pointer,
   required double? deviceTouchSlop,

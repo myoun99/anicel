@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_scroll_behavior.dart';
 
 import '../theme/app_theme.dart';
+import '../input/control_press_claim.dart';
 
 /// One tab in an [AppWindow]'s strip. The window renders the strip; the
 /// caller owns which one is selected, so Export's domains and Preferences'
@@ -234,7 +235,7 @@ class AppWindow extends StatelessWidget {
   Widget _tab(ThemeData theme, AppWindowTab tab, int index) {
     final selected = index == selectedTab;
     final accent = theme.colorScheme.primary;
-    return InkWell(
+    return ControlPressClaim(child: InkWell(
       key: tab.tabKey,
       onTap: !tab.enabled || selected ? null : tab.onSelected,
       child: Container(
@@ -260,7 +261,7 @@ class AppWindow extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ));
   }
 
   Widget _footer(ThemeData theme) {
@@ -311,15 +312,15 @@ class AppWindow extends StatelessWidget {
       // invisible rectangles on the window body. A quiet action reads as a
       // well sunk into the surface — the same level every field already uses
       // — which also puts it a step BELOW the confirm rather than beside it.
-      AppWindowActionEmphasis.quiet => TextButton(
+      AppWindowActionEmphasis.quiet => ControlPressClaim(child: TextButton(
         key: action.actionKey,
         onPressed: action.onPressed,
         style: TextButton.styleFrom(
           backgroundColor: colorScheme.surfaceContainerLowest,
         ),
         child: label,
-      ),
-      AppWindowActionEmphasis.danger => TextButton(
+      )),
+      AppWindowActionEmphasis.danger => ControlPressClaim(child: TextButton(
         key: action.actionKey,
         onPressed: action.onPressed,
         style: TextButton.styleFrom(
@@ -327,7 +328,7 @@ class AppWindow extends StatelessWidget {
           foregroundColor: colorScheme.error,
         ),
         child: label,
-      ),
+      )),
     };
   }
 }

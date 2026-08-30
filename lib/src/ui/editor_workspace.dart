@@ -128,6 +128,7 @@ import 'text/app_strings.dart';
 import 'timeline_tab_host.dart';
 import 'timesheet/timesheet_ink_controller.dart';
 import 'timesheet_tab_host.dart';
+import 'input/control_press_claim.dart';
 
 /// The editor workspace: side docks and the canvas' center dock over the
 /// bottom dock, plus the slim edge docks that home the PS/CSP-style tool
@@ -741,10 +742,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
           onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
         ),
         actions: [
-          TextButton(
+          ControlPressClaim(child: TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('Cancel'),
-          ),
+          )),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(controller.text),
             child: const Text('Rename'),
@@ -773,10 +774,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
         title: Text(AppText.strings.brDeleteTip),
         content: Text('“${tip.name}” will be removed from the library.'),
         actions: [
-          TextButton(
+          ControlPressClaim(child: TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
             child: const Text('Cancel'),
-          ),
+          )),
           FilledButton(
             key: const ValueKey<String>('delete-tip-confirm'),
             onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -857,10 +858,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
           onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
         ),
         actions: [
-          TextButton(
+          ControlPressClaim(child: TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('Cancel'),
-          ),
+          )),
           FilledButton(
             key: const ValueKey<String>('register-cut-tip-confirm'),
             onPressed: () => Navigator.of(dialogContext).pop(controller.text),
@@ -5457,7 +5458,7 @@ class _RailGroupButton extends StatelessWidget {
                   : Colors.transparent,
               clipBehavior: Clip.antiAlias,
               shape: AppShapes.control(ToolsPanel.buttonExtent),
-              child: InkWell(
+              child: ControlPressClaim(child: InkWell(
                 onTap: onPressed,
                 // The pair sizes itself to one button cell, so a group that
                 // wears a face is the same square as every other.
@@ -5465,7 +5466,7 @@ class _RailGroupButton extends StatelessWidget {
                   dimension: ToolsPanel.buttonExtent,
                   child: face,
                 ),
-              ),
+              )),
             ),
           );
     if (dragging == null) {

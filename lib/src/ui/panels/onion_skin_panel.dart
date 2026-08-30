@@ -378,6 +378,9 @@ class _OnionFalloffStripState extends State<_OnionFalloffStrip> {
           onEnter: (_) => setState(() => _hoverColumn = column),
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
+            key: ValueKey<String>(
+              'onion-peg-column-${before ? 'before' : 'after'}-${index + 1}',
+            ),
             onTap: () => _toggle(before: before, index: index),
             child: _graphColumn(
               opacity: peg.opacity,

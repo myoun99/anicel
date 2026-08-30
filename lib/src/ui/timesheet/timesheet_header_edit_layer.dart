@@ -5,6 +5,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/timesheet_info.dart';
 import '../theme/app_theme.dart';
 import 'timesheet_document_painter.dart';
+import '../input/control_press_claim.dart';
 
 /// Tap-to-edit for the sheet's typed header text: the TimesheetInfo-backed
 /// header boxes (Ep.no / Title / Scene / Name) and the Direction memo band
@@ -175,6 +176,7 @@ class _TimesheetHeaderEditLayerState extends State<TimesheetHeaderEditLayer> {
           // Tap-away barrier: clicking anywhere else commits the edit.
           Positioned.fill(
             child: GestureDetector(
+              key: const ValueKey<String>('timesheet-header-edit-barrier'),
               behavior: HitTestBehavior.opaque,
               onTap: () => _focusNode?.unfocus(),
             ),
@@ -197,7 +199,9 @@ class _TimesheetHeaderEditLayerState extends State<TimesheetHeaderEditLayer> {
       top: rect.top,
       width: rect.width,
       height: rect.height,
-      child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: onTap),
+      child: ControlPressClaim(
+        child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: onTap),
+      ),
     );
   }
 

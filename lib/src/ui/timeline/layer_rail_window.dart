@@ -25,6 +25,7 @@ import '../widgets/app_scrollbar.dart';
 import '../widgets/dock_edge_splitter.dart';
 import 'layer_rail_columns.dart';
 import 'timeline_grid_metrics.dart';
+import '../input/control_press_claim.dart';
 
 /// The narrowest window the user can drag to: the leading cluster (the
 /// section band and every control slot before the name) plus enough of the
@@ -538,20 +539,22 @@ class TimelineSecondsToggleCorner extends StatelessWidget {
     }
     return Tooltip(
       message: showSeconds ? 'Show Frames' : 'Show Seconds',
-      child: InkWell(
-        onTap: () => onChanged(!showSeconds),
-        child: SizedBox(
-          width: width,
-          height: height,
-          child: Center(
-            child: Icon(
-              showSeconds ? Icons.timer : Icons.timer_outlined,
-              // The corner is only as wide as a scrollbar lane, so the
-              // glyph is the compact one.
-              size: 13,
-              color: showSeconds
-                  ? colorScheme.primary
-                  : colorScheme.onSurfaceVariant,
+      child: ControlPressClaim(
+        child: InkWell(
+          onTap: () => onChanged(!showSeconds),
+          child: SizedBox(
+            width: width,
+            height: height,
+            child: Center(
+              child: Icon(
+                showSeconds ? Icons.timer : Icons.timer_outlined,
+                // The corner is only as wide as a scrollbar lane, so the
+                // glyph is the compact one.
+                size: 13,
+                color: showSeconds
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
         ),

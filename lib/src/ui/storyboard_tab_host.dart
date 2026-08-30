@@ -885,6 +885,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // B5③ (ordered twice): the timeline rows' sheet toggle on
                     // this rail too — the same session verb.
                     onToggleLayerTimesheet: _session.toggleLayerTimesheet,
+                    layerOnTimesheetOf: _session.isLayerOnTimesheet,
+                    layerEyeOnOf: _session.isLayerEyeOn,
+                    seRowLaneOpenOf: (track, slot) => _expandedSeAudioRows
+                        .contains(StoryboardPanel.seRowKey(track, slot)),
+                    trackLaneOpenOf: (track) =>
+                        _expandedTransformTracks.contains(track.id.value),
                     layerFxStateOf: _session.layerFxState,
                     onToggleLayerFx: _session.toggleLayerFx,
                     // The timeline's rail legend on this panel too (UI-R5): the

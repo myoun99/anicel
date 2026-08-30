@@ -6323,6 +6323,37 @@ class EditorSessionManager extends ChangeNotifier {
   /// Flips whether [layerId] is recorded on the timesheet output. One undo
   /// step; no controller rebuild — the flag never affects rendering.
   ///
+  /// Whether [layerId]'s TRANSFORM group is applied right now.
+  ///
+  /// 🚨A LIVE READ, like [isLayerEyeOn] and [isLayerOnTimesheet]: a lane row
+  /// built at the last frame carries a stale `groupEnabled`, and the rail's
+  /// bulk-drag has to spread what the press just set.
+  bool isLayerTransformOn(LayerId layerId) => requireLayerAnywhere(
+    _repository.requireProject(),
+    layerId,
+  ).transformEnabled;
+
+  /// Whether [layerId]'s own eye is on RIGHT NOW.
+  ///
+  /// 🚨A LIVE READ, for the same reason as [isLayerOnTimesheet]: a caller
+  /// holding a [Layer] captured at build time reads the value the last frame
+  /// had, and the rail's bulk-drag needs the one the press just set.
+  bool isLayerEyeOn(LayerId layerId) =>
+      requireLayerAnywhere(_repository.requireProject(), layerId).isVisible;
+
+  /// Whether [layerId] is on the timesheet RIGHT NOW.
+  ///
+  /// 🚨A LIVE READ, and that is the point. A caller holding a [Layer] it
+  /// captured at build time reads the value the LAST FRAME had, which stays
+  /// wrong for the whole length of a gesture that already toggled it. The
+  /// rail's bulk-drag needs the live one: the button under the finger fires
+  /// on the DOWN (유저 2026-08-30) and the sweep spreads what that set, so a
+  /// snapshot sends it the other way — measured, on one rail in one gesture:
+  /// the eye column read live and swept correctly, the sheet column read a
+  /// captured layer and swept backwards.
+  bool isLayerOnTimesheet(LayerId layerId) =>
+      requireLayerAnywhere(_repository.requireProject(), layerId).onTimesheet;
+
   /// ANYWHERE lookup and a nullable cut (B5③ 2026-08-17): the storyboard
   /// rail reaches this for TRACK fixtures — S rows and the transition row —
   /// whose flag is the layer's own and must flip from a gap too. The cut id

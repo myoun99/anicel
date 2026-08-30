@@ -19,6 +19,7 @@ import 'brush_preset_reorder.dart';
 import 'brush_stroke_preview.dart';
 import 'brush_tip_preview.dart';
 import '../text/app_strings.dart';
+import '../input/control_press_claim.dart';
 
 /// Which row elements the brush list shows (every combination except
 /// all-hidden is allowed — the options menu disables the last visible one),
@@ -1115,27 +1116,29 @@ class _GroupIconPicker extends StatelessWidget {
       required bool isSelected,
       required VoidCallback onTap,
     }) {
-      return InkWell(
-        key: ValueKey<String>(keyValue),
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(4),
-        child: Container(
-          width: 26,
-          height: 26,
-          decoration: BoxDecoration(
-            // Selection reads as colour only, never a checkmark.
-            color: isSelected
-                ? colorScheme.surfaceContainerHigh
-                : Colors.transparent,
-            border: Border.all(
+      return ControlPressClaim(
+        child: InkWell(
+          key: ValueKey<String>(keyValue),
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(4),
+          child: Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              // Selection reads as colour only, never a checkmark.
               color: isSelected
-                  ? colorScheme.primary
-                  : colorScheme.outlineVariant,
-              width: isSelected ? 1.5 : 1,
+                  ? colorScheme.surfaceContainerHigh
+                  : Colors.transparent,
+              border: Border.all(
+                color: isSelected
+                    ? colorScheme.primary
+                    : colorScheme.outlineVariant,
+                width: isSelected ? 1.5 : 1,
+              ),
+              borderRadius: BorderRadius.circular(4),
             ),
-            borderRadius: BorderRadius.circular(4),
+            child: child,
           ),
-          child: child,
         ),
       );
     }

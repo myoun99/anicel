@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'export_job.dart';
 import 'export_preset_rail.dart' show ExportPresetRail;
+import '../input/control_press_claim.dart';
 
 /// The right drawer: the render queue. EX2 ships the column and its
 /// collapsed strip; the executor (and the enabled Add to Queue) lands
@@ -51,7 +52,7 @@ class ExportQueueColumn extends StatelessWidget {
                       ),
                     ),
                   ),
-                  InkWell(
+                  ControlPressClaim(child: InkWell(
                     key: const ValueKey<String>('export-queue-render-all'),
                     onTap: onRenderAll,
                     borderRadius: BorderRadius.circular(4),
@@ -78,7 +79,7 @@ class ExportQueueColumn extends StatelessWidget {
                         ),
                       ),
                     ),
-                  ),
+                  )),
                 ],
               ),
             ),
@@ -142,7 +143,7 @@ class _JobCard extends StatelessWidget {
     final theme = Theme.of(context);
     final accent = theme.colorScheme.primary;
     final running = job.status == ExportJobStatus.running;
-    return InkWell(
+    return ControlPressClaim(child: InkWell(
       key: ValueKey<String>('export-queue-job-${job.id}'),
       onTap: enabled && onRestore != null ? () => onRestore!(job) : null,
       borderRadius: BorderRadius.circular(4),
@@ -178,14 +179,14 @@ class _JobCard extends StatelessWidget {
                   ),
                 ),
                 if (!running && onRemove != null)
-                  InkWell(
+                  ControlPressClaim(child: InkWell(
                     key: ValueKey<String>('export-queue-remove-${job.id}'),
                     onTap: enabled ? () => onRemove!(job) : null,
                     child: const Padding(
                       padding: EdgeInsets.all(2),
                       child: Icon(Icons.close, size: 11),
                     ),
-                  ),
+                  )),
               ],
             ),
             if (job.message != null)
@@ -208,7 +209,7 @@ class _JobCard extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ));
   }
 }
 
@@ -231,7 +232,7 @@ class ExportDrawerStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return InkWell(
+    return ControlPressClaim(child: InkWell(
       onTap: onTap,
       child: SizedBox(
         width: 22,
@@ -271,6 +272,6 @@ class ExportDrawerStrip extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ));
   }
 }

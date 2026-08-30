@@ -54,23 +54,25 @@ class ColorSwatchButton extends StatelessWidget {
           color: Colors.transparent,
           shape: const CircleBorder(),
           clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            key: ValueKey<String>(keyValue),
-            customBorder: const CircleBorder(),
-            onTap: () => showColorPickerPopup(
-              anchorContext,
-              color: color,
-              onChanged: onChanged,
-              currentColorOf: currentColorOf,
-            ),
-            child: SizedBox(
-              width: diameter,
-              height: diameter,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Color(color),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.hairline),
+          child: ControlPressClaim(
+            child: InkWell(
+              key: ValueKey<String>(keyValue),
+              customBorder: const CircleBorder(),
+              onTap: () => showColorPickerPopup(
+                anchorContext,
+                color: color,
+                onChanged: onChanged,
+                currentColorOf: currentColorOf,
+              ),
+              child: SizedBox(
+                width: diameter,
+                height: diameter,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Color(color),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.hairline),
+                  ),
                 ),
               ),
             ),
@@ -169,16 +171,18 @@ class _ColorPickerBodyState extends State<_ColorPickerBody> {
         children: [
           Align(
             alignment: Alignment.centerRight,
-            child: TextButton(
-              key: const ValueKey<String>('color-picker-use-current'),
-              onPressed: () =>
-                  _apply(HSVColor.fromColor(Color(widget.currentColorOf()))),
-              style: TextButton.styleFrom(
-                minimumSize: Size.zero,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            child: ControlPressClaim(
+              child: TextButton(
+                key: const ValueKey<String>('color-picker-use-current'),
+                onPressed: () =>
+                    _apply(HSVColor.fromColor(Color(widget.currentColorOf()))),
+                style: TextButton.styleFrom(
+                  minimumSize: Size.zero,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(AppText.strings.colorUseCurrent),
               ),
-              child: Text(AppText.strings.colorUseCurrent),
             ),
           ),
           const SizedBox(height: AnchoredPopupText.titleGap),

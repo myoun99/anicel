@@ -4,6 +4,7 @@ import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import 'instance_edit_dialog.dart';
 import 'instance_edit_preview.dart';
+import '../input/control_press_claim.dart';
 
 /// A sound the edited SE instance carries: what to show, and the opaque
 /// token the host uses to find it again (R5 #19).
@@ -131,14 +132,14 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
                           style: theme.textTheme.bodySmall,
                         ),
                       ),
-                      TextButton(
+                      ControlPressClaim(child: TextButton(
                         key: ValueKey<String>(
                           'se-unlink-audio-${link.token}',
                         ),
                         onPressed: () =>
                             setState(() => _unlinked.add(link.token)),
                         child: Text(strings.seUnlinkAudio),
-                      ),
+                      )),
                     ],
                   ),
               ],

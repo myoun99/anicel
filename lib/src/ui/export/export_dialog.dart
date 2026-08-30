@@ -70,6 +70,7 @@ import '../widgets/app_window.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/folder_pick_flow.dart';
 import '../text/app_strings.dart';
+import '../input/control_press_claim.dart';
 
 /// Picks the output directory (the Browse… button); `null` on cancel.
 typedef ExportDirectoryPicker = Future<String?> Function();
@@ -2430,7 +2431,7 @@ class ExportDialogState extends State<ExportDialog> {
       children: [
         Align(
           alignment: Alignment.centerRight,
-          child: InkWell(
+          child: ControlPressClaim(child: InkWell(
             key: const ValueKey<String>('export-presets-collapse'),
             onTap: () {
               setState(() => _presetsOpen = false);
@@ -2440,7 +2441,7 @@ class ExportDialogState extends State<ExportDialog> {
               padding: EdgeInsets.all(2),
               child: Icon(Icons.chevron_left, size: 13),
             ),
-          ),
+          )),
         ),
         Expanded(
           child: ExportPresetRail(
@@ -3661,7 +3662,7 @@ class ExportDialogState extends State<ExportDialog> {
       children: [
         Align(
           alignment: Alignment.centerLeft,
-          child: InkWell(
+          child: ControlPressClaim(child: InkWell(
             key: const ValueKey<String>('export-queue-collapse'),
             onTap: () {
               setState(() => _queueOpen = false);
@@ -3671,7 +3672,7 @@ class ExportDialogState extends State<ExportDialog> {
               padding: EdgeInsets.all(2),
               child: Icon(Icons.chevron_right, size: 13),
             ),
-          ),
+          )),
         ),
         Expanded(
           child: ExportQueueColumn(

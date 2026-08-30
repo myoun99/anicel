@@ -6,6 +6,7 @@ import '../../models/brush_tip_mask.dart';
 import '../text/app_strings.dart';
 import '../widgets/anchored_popup.dart';
 import 'brush_tip_preview.dart';
+import '../input/control_press_claim.dart';
 
 /// Which of a brush's three mask slots a picker drives.
 ///
@@ -160,26 +161,28 @@ class _TipSwatch extends StatelessWidget {
     final current = mask;
     return Tooltip(
       message: tooltip,
-      child: InkWell(
-        key: ValueKey<String>(keyValue),
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(4),
-        child: Container(
-          width: 26,
-          height: 26,
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest,
-            border: Border.all(color: colorScheme.outlineVariant),
-            borderRadius: BorderRadius.circular(4),
+      child: ControlPressClaim(
+        child: InkWell(
+          key: ValueKey<String>(keyValue),
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(4),
+          child: Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest,
+              border: Border.all(color: colorScheme.outlineVariant),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: current == null
+                ? Icon(
+                    Icons.remove,
+                    size: 14,
+                    color: colorScheme.onSurfaceVariant,
+                  )
+                : BrushTipMaskPreview(alpha: current.alpha, side: current.size),
           ),
-          clipBehavior: Clip.antiAlias,
-          child: current == null
-              ? Icon(
-                  Icons.remove,
-                  size: 14,
-                  color: colorScheme.onSurfaceVariant,
-                )
-              : BrushTipMaskPreview(alpha: current.alpha, side: current.size),
         ),
       ),
     );
@@ -381,24 +384,26 @@ class _PickerCell extends StatelessWidget {
       child: Material(
         color: selected ? colorScheme.surfaceContainerHigh : Colors.transparent,
         borderRadius: BorderRadius.circular(4),
-        child: InkWell(
-          key: ValueKey<String>(keyValue),
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(4),
-          child: Container(
-            decoration: BoxDecoration(
-              border: Border.all(
-                // Selection reads from the border colour alone — no check
-                // glyph, which would shift the grid.
-                color: selected
-                    ? colorScheme.primary
-                    : colorScheme.outlineVariant,
-                width: selected ? 1.5 : 1,
+        child: ControlPressClaim(
+          child: InkWell(
+            key: ValueKey<String>(keyValue),
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(4),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(
+                  // Selection reads from the border colour alone — no check
+                  // glyph, which would shift the grid.
+                  color: selected
+                      ? colorScheme.primary
+                      : colorScheme.outlineVariant,
+                  width: selected ? 1.5 : 1,
+                ),
+                borderRadius: BorderRadius.circular(4),
               ),
-              borderRadius: BorderRadius.circular(4),
+              padding: const EdgeInsets.all(2),
+              child: child,
             ),
-            padding: const EdgeInsets.all(2),
-            child: child,
           ),
         ),
       ),

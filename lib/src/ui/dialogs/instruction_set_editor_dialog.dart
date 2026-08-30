@@ -6,6 +6,7 @@ import '../timeline/instruction_icon_palette.dart';
 import '../theme/app_theme.dart' show AppColors;
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
+import '../input/control_press_claim.dart';
 
 /// Edits the project's instruction vocabulary: rename defs, repick their
 /// icons, add custom ones, delete. Pops the edited [CameraInstructionSet]
@@ -248,22 +249,24 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
               runSpacing: 4,
               children: [
                 for (final entry in instructionIconPalette.entries)
-                  InkWell(
-                    key: ValueKey<String>('instruction-icon-${entry.key}'),
-                    onTap: () => setState(() => _iconKey = entry.key),
-                    child: Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: _iconKey == entry.key
-                              ? colorScheme.secondary
-                              : colorScheme.outlineVariant,
-                          width: _iconKey == entry.key ? 2 : 1,
+                  ControlPressClaim(
+                    child: InkWell(
+                      key: ValueKey<String>('instruction-icon-${entry.key}'),
+                      onTap: () => setState(() => _iconKey = entry.key),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: _iconKey == entry.key
+                                ? colorScheme.secondary
+                                : colorScheme.outlineVariant,
+                            width: _iconKey == entry.key ? 2 : 1,
+                          ),
+                          borderRadius: BorderRadius.circular(6),
                         ),
-                        borderRadius: BorderRadius.circular(6),
+                        child: Icon(entry.value, size: 18),
                       ),
-                      child: Icon(entry.value, size: 18),
                     ),
                   ),
               ],
@@ -282,46 +285,50 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
               runSpacing: 4,
               children: [
                 // Default = no tint: the chip uses the row text color.
-                InkWell(
-                  key: const ValueKey<String>('instruction-color-default'),
-                  onTap: () => setState(() => _colorValue = null),
-                  child: Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: _colorValue == null
-                            ? colorScheme.secondary
-                            : colorScheme.outlineVariant,
-                        width: _colorValue == null ? 2 : 1,
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(
-                      Icons.format_color_reset_outlined,
-                      size: 14,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-                for (final color in instructionColorPalette)
-                  InkWell(
-                    key: ValueKey<String>(
-                      'instruction-color-${color.toRadixString(16)}',
-                    ),
-                    onTap: () => setState(() => _colorValue = color),
+                ControlPressClaim(
+                  child: InkWell(
+                    key: const ValueKey<String>('instruction-color-default'),
+                    onTap: () => setState(() => _colorValue = null),
                     child: Container(
                       width: 28,
                       height: 28,
                       decoration: BoxDecoration(
-                        color: Color(color),
                         border: Border.all(
-                          color: _colorValue == color
+                          color: _colorValue == null
                               ? colorScheme.secondary
                               : colorScheme.outlineVariant,
-                          width: _colorValue == color ? 2 : 1,
+                          width: _colorValue == null ? 2 : 1,
                         ),
                         borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(
+                        Icons.format_color_reset_outlined,
+                        size: 14,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ),
+                for (final color in instructionColorPalette)
+                  ControlPressClaim(
+                    child: InkWell(
+                      key: ValueKey<String>(
+                        'instruction-color-${color.toRadixString(16)}',
+                      ),
+                      onTap: () => setState(() => _colorValue = color),
+                      child: Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: Color(color),
+                          border: Border.all(
+                            color: _colorValue == color
+                                ? colorScheme.secondary
+                                : colorScheme.outlineVariant,
+                            width: _colorValue == color ? 2 : 1,
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
                       ),
                     ),
                   ),
@@ -343,27 +350,29 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
               runSpacing: 4,
               children: [
                 for (final entry in _markLabels.entries)
-                  InkWell(
-                    key: ValueKey<String>(
-                      'instruction-mark-${entry.key.jsonValue}',
-                    ),
-                    onTap: () => setState(() => _markType = entry.key),
-                    child: Container(
-                      height: 28,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: _markType == entry.key
-                              ? colorScheme.secondary
-                              : colorScheme.outlineVariant,
-                          width: _markType == entry.key ? 2 : 1,
-                        ),
-                        borderRadius: BorderRadius.circular(6),
+                  ControlPressClaim(
+                    child: InkWell(
+                      key: ValueKey<String>(
+                        'instruction-mark-${entry.key.jsonValue}',
                       ),
-                      child: Center(
-                        child: Text(
-                          entry.value,
-                          style: const TextStyle(fontSize: 11),
+                      onTap: () => setState(() => _markType = entry.key),
+                      child: Container(
+                        height: 28,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: _markType == entry.key
+                                ? colorScheme.secondary
+                                : colorScheme.outlineVariant,
+                            width: _markType == entry.key ? 2 : 1,
+                          ),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Center(
+                          child: Text(
+                            entry.value,
+                            style: const TextStyle(fontSize: 11),
+                          ),
                         ),
                       ),
                     ),

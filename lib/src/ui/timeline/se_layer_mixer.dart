@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/settings_rows.dart';
+import '../input/control_press_claim.dart';
 
 /// The SE row's mixer, opened by pressing the row's SPEAKER (R10 R3).
 ///
@@ -232,33 +233,35 @@ class _MixToggle extends StatelessWidget {
     final color = on ? AppColors.accent : AppColors.hairline;
     return Material(
       color: Colors.transparent,
-      child: InkWell(
-        key: ValueKey<String>(keyValue),
-        borderRadius: BorderRadius.circular(4),
-        onTap: onPressed,
-        child: Container(
-          height: 26,
-          decoration: BoxDecoration(
-            border: Border.all(color: color),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 14, color: on ? AppColors.accent : null),
-              const SizedBox(width: 4),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: on ? AppColors.accent : null,
+      child: ControlPressClaim(
+        child: InkWell(
+          key: ValueKey<String>(keyValue),
+          borderRadius: BorderRadius.circular(4),
+          onTap: onPressed,
+          child: Container(
+            height: 26,
+            decoration: BoxDecoration(
+              border: Border.all(color: color),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 14, color: on ? AppColors.accent : null),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: on ? AppColors.accent : null,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

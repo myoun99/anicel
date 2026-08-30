@@ -645,6 +645,9 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       return cell;
     }
     return GestureDetector(
+      key: ValueKey<String>(
+        '$_keyPrefix-lane-stand-cell-${layer.id}-${lane.laneId}',
+      ),
       behavior: HitTestBehavior.opaque,
       onTap: () => stand(layer.id, lane.laneId),
       child: cell,

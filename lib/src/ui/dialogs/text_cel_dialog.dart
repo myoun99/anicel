@@ -7,6 +7,7 @@ import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_window.dart';
 import 'instance_edit_dialog.dart';
+import '../input/control_press_claim.dart';
 
 /// The TEXT layer's instance editor (R5, §6-s): the cel's parameters —
 /// text, face, size, weight, alignment, ink/outline/box — behind the same
@@ -341,20 +342,22 @@ class _InkSwatch extends StatelessWidget {
   Widget build(BuildContext context) {
     // Selection reads as COLOR only (the app's selection grammar — no
     // checkmarks): the accent ring is the selected state.
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(4),
-      child: Container(
-        width: 22,
-        height: 22,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(
-            color: selected
-                ? AppColors.accent
-                : Theme.of(context).colorScheme.outlineVariant,
-            width: selected ? 2 : 1,
+    return ControlPressClaim(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(4),
+        child: Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(
+              color: selected
+                  ? AppColors.accent
+                  : Theme.of(context).colorScheme.outlineVariant,
+              width: selected ? 2 : 1,
+            ),
           ),
         ),
       ),

@@ -1272,7 +1272,20 @@ class _LabelPlate extends StatelessWidget {
 /// site, rather than inside the buttons: the x-sheet's column header uses
 /// the same timesheet widget and has no swipe to claim for.
 class RailSwipeColumnPointer extends StatelessWidget {
-  const RailSwipeColumnPointer({super.key, required this.child});
+  const RailSwipeColumnPointer({
+    super.key,
+    this.onPressDown,
+    required this.child,
+  });
+
+  /// Fired on the pointer DOWN — 유저 2026-08-30: 「버튼은 기본적으로
+  /// **누른순간 작동**하고 누른채로 드래그시 일괄조작 작동」.
+  ///
+  /// ⚠️A column whose control is a bare [InkWell] rather than an
+  /// [AppIconButton] has no press-fire of its own, and every one of those is
+  /// already wrapped in THIS — so the firing rides here too rather than ten
+  /// widgets being rewritten.
+  final VoidCallback? onPressDown;
 
   final Widget child;
 
@@ -1281,7 +1294,10 @@ class RailSwipeColumnPointer extends StatelessWidget {
     // ⛔The WEAK half is NOT written again here. It is [ControlPressClaim],
     // the one widget every button in the app wears; what a swipe column
     // adds is the STRONG claim, and that is all it should have to say.
-    return ControlPressClaim(child: DragVerbClaim(child: child));
+    return ControlPressClaim(
+      onPressDown: onPressDown,
+      child: DragVerbClaim(child: child),
+    );
   }
 }
 

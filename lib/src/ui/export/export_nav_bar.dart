@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../text/full_width_numerals.dart';
+import '../input/control_press_claim.dart';
 
 /// One position axis for the nav bar's scrub: how many stops, where the
 /// boundary ticks sit, and what a stop is called. The tab defines the
@@ -95,7 +96,7 @@ class ExportNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    Widget stepButton(String glyph, int delta, String key) => InkWell(
+    Widget stepButton(String glyph, int delta, String key) => ControlPressClaim(child: InkWell(
       key: ValueKey<String>(key),
       onTap: enabled && axis.length > 0 ? () => _step(delta) : null,
       borderRadius: BorderRadius.circular(4),
@@ -107,7 +108,7 @@ class ExportNavBar extends StatelessWidget {
         ),
         child: Text(glyph, style: theme.textTheme.labelSmall),
       ),
-    );
+    ));
 
     return Row(
       children: [

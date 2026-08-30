@@ -15,6 +15,7 @@ import '../theme/app_theme.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
+import '../input/control_press_claim.dart';
 
 /// The ⚙ pill: everything the frame panels' bar carried that is a SETTING
 /// rather than a command — project frame rate, project audio sample rate,
@@ -258,20 +259,22 @@ class _ChoiceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      customBorder: AppShapes.control(AppShapes.controlSmall),
-      child: SizedBox(
-        height: AppShapes.controlSmall,
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                color: current ? AppColors.accent : AppColors.text,
+    return ControlPressClaim(
+      child: InkWell(
+        onTap: onTap,
+        customBorder: AppShapes.control(AppShapes.controlSmall),
+        child: SizedBox(
+          height: AppShapes.controlSmall,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: current ? AppColors.accent : AppColors.text,
+                ),
               ),
             ),
           ),

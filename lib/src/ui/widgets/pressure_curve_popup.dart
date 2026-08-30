@@ -67,29 +67,31 @@ class PressureCurveButton extends StatelessWidget {
       message: 'Pen pressure',
       child: Material(
         color: Colors.transparent,
-        child: InkWell(
-          key: ValueKey<String>(keyValue),
-          borderRadius: BorderRadius.circular(4),
-          onTap: enabled
-              ? () => showPressureCurvePopup(
-                  context,
-                  title: title,
-                  curve: curve,
-                  onChanged: onChanged,
-                )
-              : null,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              border: Border.all(color: active ? AppColors.accent : _offEdge),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
-              child: CustomPaint(
-                size: const Size(22, 14),
-                painter: _MiniCurvePainter(
-                  curve: curve,
-                  color: active ? AppColors.accent : _offInk,
+        child: ControlPressClaim(
+          child: InkWell(
+            key: ValueKey<String>(keyValue),
+            borderRadius: BorderRadius.circular(4),
+            onTap: enabled
+                ? () => showPressureCurvePopup(
+                    context,
+                    title: title,
+                    curve: curve,
+                    onChanged: onChanged,
+                  )
+                : null,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.all(color: active ? AppColors.accent : _offEdge),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
+                child: CustomPaint(
+                  size: const Size(22, 14),
+                  painter: _MiniCurvePainter(
+                    curve: curve,
+                    color: active ? AppColors.accent : _offInk,
+                  ),
                 ),
               ),
             ),
@@ -285,22 +287,24 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
               const Expanded(
                 child: Text('Pressure →', style: AnchoredPopupText.caption),
               ),
-              InkWell(
-                key: const ValueKey<String>('pressure-curve-reset'),
-                onTap: _enabled ? _reset : null,
-                borderRadius: BorderRadius.circular(3),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 2,
-                  ),
-                  child: Text(
-                    'Reset',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: _enabled
-                          ? AppColors.text
-                          : AppColors.textDim.withValues(alpha: 0.5),
+              ControlPressClaim(
+                child: InkWell(
+                  key: const ValueKey<String>('pressure-curve-reset'),
+                  onTap: _enabled ? _reset : null,
+                  borderRadius: BorderRadius.circular(3),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 2,
+                    ),
+                    child: Text(
+                      'Reset',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: _enabled
+                            ? AppColors.text
+                            : AppColors.textDim.withValues(alpha: 0.5),
+                      ),
                     ),
                   ),
                 ),

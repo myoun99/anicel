@@ -15,6 +15,7 @@ import '../text/byte_size_label.dart';
 import '../theme/app_theme.dart' show AppColors;
 import '../widgets/panel_flyout.dart';
 import 'media_asset_drag_data.dart';
+import '../input/control_press_claim.dart';
 
 /// The dockable MEDIA POOL: every file the project knows, importable
 /// ahead of use, draggable onto SE blocks to link (footsteps reuse),
@@ -328,11 +329,11 @@ class MediaPoolPanel extends StatelessWidget {
             ),
           ),
           if (onRelinkMissing != null)
-            TextButton(
+            ControlPressClaim(child: TextButton(
               key: const ValueKey<String>('media-relink-missing'),
               onPressed: onRelinkMissing,
               child: Text(strings.mediaFindInFolder),
-            ),
+            )),
         ],
       ),
     );
