@@ -13,6 +13,7 @@ import '../../models/drawing_guide.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/project_background.dart';
 import '../canvas/flip_hud_controller.dart';
+import '../../services/command.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
@@ -93,6 +94,9 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.onStrokeInputActiveChanged,
     this.onSelectionInteractionChanged,
     this.onDrawRefused,
+    this.onAutoCreateFrame,
+    this.onAutoFrameSettled,
+    this.takeStrokePrefixCommand,
     this.rowAcceptsStrokes = true,
   });
 
@@ -237,7 +241,11 @@ class MainCanvasBrushHost extends StatefulWidget {
   final FlipHudController? flipHud;
   final ValueChanged<int>? onEyedropperPick;
   final ValueChanged<int>? onAltColorPick;
-  final BrushDab? Function(CanvasPoint point, int color, SymmetryShape? symmetry)?
+  final BrushDab? Function(
+    CanvasPoint point,
+    int color,
+    SymmetryShape? symmetry,
+  )?
   fillDabAt;
 
   /// Forwarded to [BrushCanvasPanel]: builds the dab for a drawn shape
@@ -274,6 +282,27 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// / "only the Action section can be drawn on") — the host cannot know
   /// WHICH refusal applies, so it only reports the attempt.
   final VoidCallback? onDrawRefused;
+
+  /// I-10: 「빈 칸에서 펜다운하면 블록이 생기고 그대로 그려진다」.
+  ///
+  /// Returns true when it MADE the block — the press then falls
+  /// through to the panel below and draws, so no refusal is shown.
+  /// Null or false leaves [onDrawRefused] to explain the silence.
+  ///
+  /// ⛔It hangs off the SAME listener rather than a second one. That
+  /// listener is always mounted and only its callback stands down —
+  /// the comment below says what happened the day this widget changed
+  /// shape under a live gesture, and a new conditional wrapper would
+  /// be that mistake again.
+  final bool Function()? onAutoCreateFrame;
+
+  /// Settles a block [onAutoCreateFrame] made that no stroke claimed
+  /// (I-10). Safe in either order against the stroke's own take.
+  final VoidCallback? onAutoFrameSettled;
+
+  /// The block [onAutoCreateFrame] made, handed to the stroke it was
+  /// made for so the two undo together (I-10).
+  final Command? Function()? takeStrokePrefixCommand;
 
   /// Whether the row the frame-axis verbs are standing on takes strokes at
   /// all (user, 2026-08-08).
@@ -362,6 +391,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
         (coordinator == null ? _blankCanvasContent : null);
 
     final onDrawRefused = widget.onDrawRefused;
+    final onAutoCreateFrame = widget.onAutoCreateFrame;
     // R26 #35: without an editable cel a paint press does nothing at all
     // — the passive Listener above the panel turns that silence into the
     // shared cursor notice. Translucent: it observes, never consumes, so
@@ -381,7 +411,9 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
     // gesture state must not change shape under it.
     return Listener(
       behavior: HitTestBehavior.translucent,
-      onPointerDown: hasEditableFrame || onDrawRefused == null
+      onPointerDown:
+          hasEditableFrame ||
+              (onDrawRefused == null && onAutoCreateFrame == null)
           ? null
           : (event) {
               if (event.buttons != 0 && (event.buttons & kPrimaryButton) == 0) {
@@ -399,13 +431,21 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
                   !AppInput.touchDraws) {
                 return;
               }
-              onDrawRefused();
+              // I-10 first: making the cell is what the user asked
+              // for, and a notice explaining why nothing happened would be
+              // wrong the moment something did.
+              if (onAutoCreateFrame != null && onAutoCreateFrame()) {
+                return;
+              }
+              onDrawRefused?.call();
             },
-      child: _buildPanel(
-        coordinator,
-        hasCelUnderPlayhead,
-        contentOverride,
-      ),
+      onPointerUp: widget.onAutoFrameSettled == null
+          ? null
+          : (_) => widget.onAutoFrameSettled!(),
+      onPointerCancel: widget.onAutoFrameSettled == null
+          ? null
+          : (_) => widget.onAutoFrameSettled!(),
+      child: _buildPanel(coordinator, hasCelUnderPlayhead, contentOverride),
     );
   }
 
@@ -435,6 +475,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       canvasSize: widget.canvasSize,
       guides: widget.guides,
       historyManager: widget.historyManager,
+      takeStrokePrefixCommand: widget.takeStrokePrefixCommand,
       viewport: widget.viewport,
       viewportController: widget.viewportController,
       onViewportChanged: widget.onViewportChanged,

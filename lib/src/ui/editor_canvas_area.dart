@@ -808,6 +808,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // cursor. Which refusal applies is a SECTION question, so
               // only the shell can answer it.
               onDrawRefused: () => cursorNotices.show(_drawRefusalFor(session)),
+              // I-10: the toggle, the row's own gates and 「is this cell
+              // empty」 are all inside `beginAutoFrameForStroke` — the
+              // shell only says WHERE the press landed.
+              onAutoCreateFrame: session.beginAutoFrameForStroke,
+              takeStrokePrefixCommand: session.takeAutoFrameForStroke,
+              onAutoFrameSettled: session.flushAutoFrameForStroke,
               // P5 eyedropper. Picks NEVER switch tools (R11-②): the
               // eyedropper stays armed until the user changes tools,
               // Alt-picks keep the painting tool.

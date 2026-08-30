@@ -10,6 +10,7 @@ import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart';
 import 'brush_tip_picker.dart';
 import 'brush_tool_state.dart';
+import '../input/app_input_settings.dart' show AppInput, AppInputSettings;
 import '../text/app_strings.dart';
 
 /// Editable brush tool properties — the CSP-style GROUPED layout (BB-2,
@@ -353,6 +354,37 @@ class BrushSettingsPanel extends StatelessWidget {
             keyValue: 'brush-tool-stabilizer-slider',
             onChanged: (value) =>
                 onChanged(state.copyWith(stabilizerStrength: value)),
+          ),
+          // 🚨I-10 (유저 2026-08-30): 「빈 칸에서 펜다운하면 블록이 생기고
+          // 그대로 그려진다」, and on where the control goes: 「**프레임
+          // 자동생성 on버튼** 만들게 햇던거같은데」 — the TOOL SETTINGS
+          // panel, which is the convention (⛔no panel of its own).
+          //
+          // ⚠️It is NOT part of [BrushToolState]: a brush preset must not
+          // carry it, or picking a brush would change what an empty cell
+          // does. It lives app-wide beside the other 「what does this press
+          // do」 settings and is read straight from the notifier.
+          ValueListenableBuilder<AppInputSettings>(
+            valueListenable: AppInput.settings,
+            // ⚠️ITS OWN MATERIAL, and `ToolSettingsPanel` already says why
+            // for the same widget: a ListTile paints its ink on the nearest
+            // Material ancestor, and this panel's frame paints a background
+            // between here and one. Flutter ASSERTS rather than drawing it
+            // wrong — which is how this was caught, in a sibling test that
+            // mounts the panel without the tool shell above it.
+            builder: (context, input, _) => Material(
+              type: MaterialType.transparency,
+              child: SwitchListTile(
+                key: const ValueKey<String>('brush-auto-create-frame-switch'),
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text(AppText.strings.brAutoCreateFrame),
+                value: input.autoCreateFrameOnDraw,
+                onChanged: (value) => AppInput.settings.value = input.copyWith(
+                  autoCreateFrameOnDraw: value,
+                ),
+              ),
+            ),
           ),
         ],
       ),
