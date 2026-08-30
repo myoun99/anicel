@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_repeat.dart';
 import '../../models/timeline_row_address.dart';
@@ -449,9 +448,11 @@ class TimelineCursorLayer extends StatelessWidget {
           TimelineCellExposureState stateAt(int frameIndex) =>
               timelineIndexIsGhost(layer, frameIndex)
               ? TimelineCellExposureState.uncovered
-              : layerKindBandIsInstructionsOnly(layer.kind)
-              ? instructionCellExposureState(layer, frameIndex)
-              : exposureStateForLayer(layer, frameIndex);
+              : bandExposureState(
+                  layer,
+                  frameIndex,
+                  ownCels: exposureStateForLayer,
+                );
           final displayRange = resolveSelectedExposureDisplayRange(
             active: true,
             currentFrameIndex: frame,

@@ -14,6 +14,7 @@ import 'layer_label_controls.dart' show layerMarkColor;
 import 'timeline_cell_double_tap.dart';
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
+import 'timeline_instruction_row_visual.dart' show bandExposureState;
 import 'timeline_beat_lines.dart'
     show
         timelineFrameBoundaryLineInk,
@@ -273,8 +274,16 @@ class TimelineRowCellsPainter extends CustomPainter {
     );
   }
 
+  /// What this row's BAND shows at [frameIndex] — the union for a row that
+  /// has both spans and cels, the layer's own cels for everything else.
+  ///
+  /// ⛔THE ONE READ SITE, and that is the point. The choice used to be made
+  /// by an identical ternary in `timeline_frame_cells_row` AND in
+  /// `timeline_frame_cursor_layer`, which is what a range selection
+  /// measures — so a row could DRAW a block it would not SELECT the day the
+  /// two drifted ([[no-copy-to-share]]).
   TimelineCellExposureState _stateAt(int frameIndex) =>
-      exposureStateForLayer(layer, frameIndex);
+      bandExposureState(layer, frameIndex, ownCels: exposureStateForLayer);
 
   /// The cell's rect in the ROW's local coordinates — the probe geometry
   /// tests and the row's hit-testing share (single source of truth).
@@ -541,7 +550,8 @@ class TimelineRowCellsPainter extends CustomPainter {
     // empty-space grid, which the row has to draw for itself (D43-2 — see
     // [rowGround]). A block's LEADING boundary is its edge and belongs to
     // neither: the run starts there.
-    final insideBlock = !model.ghost &&
+    final insideBlock =
+        !model.ghost &&
         model.segment.isBlock &&
         model.segment.continuesFromPrevious;
     // A ghost joins the EMPTY arm: it paints no paper of its own, so the
