@@ -22,7 +22,7 @@ import 'media_blob_codec.dart';
 /// ⛔**This is not a second copy of the asset.** It is the only copy the
 /// project controls until the first save, and it stops being anything the
 /// moment the save absorbs it. 유저 08-27: 「사본 남으면 진짜 용서안할게」 —
-/// which is what [retire] and [sweepOrphans] are for.
+/// which is what [retire] and [sweepAbandoned] are for.
 ///
 /// ⚠️**It is also not a new category in the container.** `Recovery/`
 /// already holds project snapshots and `Conformed/` already holds audio
@@ -46,12 +46,13 @@ class MediaStagingStore {
 
   /// 🚨Separators normalised HERE, once.
   ///
-  /// [sweepOrphans] compares the paths it builds against the paths the
-  /// filesystem lists, and on Windows those disagree the moment a caller
-  /// hands in a `\`-flavoured directory: `Directory.systemTemp` does. Every
-  /// live file then failed to match the keep-set and the sweep deleted the
-  /// lot — the one mistake this class must not make, caught by its own
-  /// test before it ever ran.
+  /// Every method compares a path it BUILT ([pathFor]) against a path the
+  /// filesystem LISTED, and on Windows those disagree the moment a caller
+  /// hands in a `\`-flavoured directory — `Directory.systemTemp` does. An
+  /// earlier keep-set sweep failed to match a single live file that way
+  /// and deleted the lot; the sweep is age-based now, but [find] and
+  /// [list] still stand on the same comparison, so the normalisation stays
+  /// where it cannot be forgotten.
   final String directoryPath;
 
   /// Where [poolPath]'s staged bytes live, framed or not.
@@ -111,6 +112,38 @@ class MediaStagingStore {
       framed: framed != null,
       storedLength: (framed ?? bytes).length,
     );
+  }
+
+  /// Follows an asset whose pool path changed — a relink.
+  ///
+  /// 🚨★★★**THE NAME IS DERIVED, SO IT HAS TO MOVE WHEN THE PATH DOES.**
+  /// Deriving the name is what makes a staged file impossible to remember
+  /// wrongly, and the price is exactly this: nothing points at it, so a
+  /// path change orphans it silently. The asset would then look unstaged —
+  /// back to the promise being kept at save time — while the bytes it was
+  /// promised sat under the old name waiting for the sweep.
+  ///
+  /// ⚠️The fingerprints already move this way (`_moveMediaFingerprints`),
+  /// and for the same reason. Derived state follows its key or it is not
+  /// derived, it is stale.
+  void rename(String fromPoolPath, String toPoolPath) {
+    final staged = find(fromPoolPath);
+    if (staged == null) {
+      return;
+    }
+    final destination = pathFor(toPoolPath, framed: staged.framed);
+    if (destination == staged.path) {
+      return;
+    }
+    Directory(directoryPath).createSync(recursive: true);
+    // ⛔The destination is emptied first: a rename onto an existing file
+    // fails on Windows, and the bytes already there belong to whatever
+    // used to hold that pool path — which the caller has just replaced.
+    final existing = File(destination);
+    if (existing.existsSync()) {
+      existing.deleteSync();
+    }
+    File(staged.path).renameSync(destination);
   }
 
   /// Drops the staged copy of [poolPath] — the save absorbed it.

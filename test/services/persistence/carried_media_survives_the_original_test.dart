@@ -182,4 +182,75 @@ void main() {
       expect(window, Uint8List.sublistView(original, 500, 628));
     },
   );
+
+  group('promoting a reference is the same promise, made later', () {
+    test('🚨promote stages the bytes, exactly as an import that carried '
+        'from the start would have', () {
+      final path = compressibleFile('linked.wav');
+      session.addMediaAssets([path]);
+      expect(
+        session.mediaStagingStore.find(path),
+        isNull,
+        reason: 'fixture: a reference stages nothing',
+      );
+
+      expect(session.promoteMediaAssetIntoProject(path), isTrue);
+
+      expect(
+        session.mediaStagingStore.find(path),
+        isNotNull,
+        reason:
+            '⛔this verb is the user saying「keep this inside」, which is the '
+            'same sentence the import window says — so it must mean the '
+            'same thing, or one entrance stays on the old behaviour where '
+            'deleting the original before the save quietly emptied it',
+      );
+    });
+
+    test('and the bytes survive the original after promoting', () {
+      final path = compressibleFile('linked.wav');
+      final original = File(path).readAsBytesSync();
+      session.addMediaAssets([path]);
+      session.promoteMediaAssetIntoProject(path);
+
+      File(path).deleteSync();
+
+      final source = session.mediaByteSourceFor(path);
+      expect(source.existsSync(), isTrue);
+      expect(source.readSync(), original);
+    });
+
+    test('promoting something already carried changes nothing', () {
+      final path = compressibleFile('take.wav');
+      session.addMediaAssets([path], carried: true);
+      final staged = session.mediaStagingStore.find(path)!;
+
+      expect(session.promoteMediaAssetIntoProject(path), isFalse);
+      expect(session.mediaStagingStore.find(path)!.path, staged.path);
+    });
+  });
+
+  test('🚨a relink carries the staged bytes to the new path', () {
+    final from = compressibleFile('take.wav');
+    final original = File(from).readAsBytesSync();
+    session.addMediaAssets([from], carried: true);
+    expect(session.mediaStagingStore.find(from), isNotNull);
+
+    final to = '${root.path}/moved.wav'.replaceAll(r'\', '/');
+    File(to).writeAsBytesSync(original);
+    session.relinkMediaAsset(from, to);
+
+    expect(
+      session.mediaStagingStore.find(to),
+      isNotNull,
+      reason:
+          '⛔the staged name is DERIVED from the pool path, so a relink '
+          'that left it behind would make a carried asset look unstaged '
+          'while its bytes waited under a name nothing points at',
+    );
+    expect(session.mediaStagingStore.find(from), isNull);
+
+    File(to).deleteSync();
+    expect(session.mediaByteSourceFor(to).readSync(), original);
+  });
 }
