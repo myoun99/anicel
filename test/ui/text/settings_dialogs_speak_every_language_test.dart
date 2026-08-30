@@ -20,7 +20,8 @@ import 'package:flutter_test/flutter_test.dart';
 ///
 /// So the scan follows the STRING TO THE SCREEN, not one widget's name: a
 /// `Text(…)` and every argument that a widget renders — `label`, `help`,
-/// `title`, `tooltip`, `hintText`, `message`, `labelText`, `semanticLabel`.
+/// `title`, `tooltip`, `hintText`, `message`, `labelText`, `semanticLabel`,
+/// `fieldLabel`, `confirmLabel`, `actionLabel`, `placeholder`.
 /// ⚠️It reads the file WHOLE rather than line by line, because `help:` and
 /// its string sit on different lines and a per-line scan cannot see across
 /// the break — which is how six of them hid.
@@ -39,6 +40,13 @@ void main() {
   /// change it, it does not belong here.
   const universal = <String>{
     'ms', // the unit, written 'ms' in every language this app ships
+    // 유저 2026-08-31: 「즉 **업계 용어부분쪽 관련 말고는** 다 번역」. Each
+    // of these is an abbreviation an animator reads the same in any
+    // language, and a translator asked to render them would be guessing.
+    'AA', // anti-aliasing, on the resample toggle
+    'RGB',
+    'SE',
+    'Wintab',
   };
 
   /// Every shape in which a literal reaches the screen from these files.
@@ -49,7 +57,13 @@ void main() {
     RegExp(r"""Text\(\s*(?:const\s+)?'([^'$]*)'"""),
     RegExp(
       r"""(?:label|help|title|tooltip|hintText|message|labelText"""
-      r"""|semanticLabel):\s*(?:const\s+)?'([^'$]*)'""",
+      r"""|semanticLabel|fieldLabel|confirmLabel|actionLabel"""
+      // ⚠️THE LIST GREW ONCE ALREADY, and the miss was silent. The brush
+      // preset panel names its dialogs through `fieldLabel:` and
+      // `confirmLabel:`, so eight strings sat outside a scan that had read
+      // the file — 218 where the truth was 226. ★When a widget invents a
+      // new way to be handed a word, this list is what has to learn it.
+      r"""|placeholder):\s*(?:const\s+)?'([^'$]*)'""",
     ),
   ];
 
@@ -96,6 +110,77 @@ void main() {
           'add a key to AppStrings (all five languages) and read it here — '
           'a dialog that speaks English to a Japanese user is the one place '
           'the fallback table cannot help, because nothing is missing',
+    );
+  });
+
+  /// 🚨THE REST OF F-37, COUNTED — and the number only goes down.
+  ///
+  /// The scan above is a WALL: `lib/src/ui/dialogs` is clean and must stay
+  /// clean. Everywhere else is still 200-odd strings, and a wall there would
+  /// be a wall rather than a ratchet — nobody could add a panel.
+  ///
+  /// ⛔A count is a weak instrument and it is chosen on purpose, because the
+  /// alternative was worse: a hand-kept list of 「files that are clean now」
+  /// goes stale the moment a file is split or renamed, and this repo has
+  /// already retired one of those (`every_button_claims_its_press_test` says
+  /// so in its own words). A number cannot be renamed.
+  ///
+  /// ⚠️IT ONLY CATCHES THE DIRECTION. Adding one English literal while
+  /// translating another leaves the total unmoved and passes. What it does
+  /// catch is the thing that actually happens: a new panel arriving with a
+  /// dozen literals, months after anyone remembers F-37 exists.
+  ///
+  /// ★WHEN YOU TRANSLATE SOMETHING, LOWER THIS NUMBER. That is the ratchet.
+  const untranslatedElsewhere = 226;
+
+  test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
+    final hasLetter = RegExp(r'[A-Za-z]');
+    var found = 0;
+    final worst = <String, int>{};
+    for (final file in Directory('lib/src/ui').listSync(recursive: true)) {
+      if (file is! File || !file.path.endsWith('.dart')) {
+        continue;
+      }
+      final path = file.path.replaceAll(r'\', '/');
+      // ⛔The dialogs are the wall above, not part of the count — a number
+      // that included them could be paid down by translating elsewhere while
+      // a dialog quietly went back to English.
+      if (path.contains('/ui/dialogs/')) {
+        continue;
+      }
+      final source = file.readAsStringSync();
+      final relative = path.substring(path.indexOf('lib/'));
+      for (final pattern in onScreen) {
+        for (final match in pattern.allMatches(source)) {
+          final text = match.group(1)!;
+          if (!hasLetter.hasMatch(text) || universal.contains(text)) {
+            continue;
+          }
+          found += 1;
+          worst[relative] = (worst[relative] ?? 0) + 1;
+        }
+      }
+    }
+    // ⛔A scan that broke and found nothing would look like a triumph.
+    expect(found, greaterThan(0), reason: 'the scan reached no files');
+    final top =
+        (worst.keys.toList()..sort((a, b) => worst[b]!.compareTo(worst[a]!)))
+            .take(5)
+            .map((k) => '$k ${worst[k]}')
+            .join(' · ');
+    expect(
+      found,
+      lessThanOrEqualTo(untranslatedElsewhere),
+      reason:
+          'F-37: $found hardcoded strings outside the dialogs, was '
+          '$untranslatedElsewhere. Worst: $top',
+    );
+    expect(
+      found,
+      greaterThanOrEqualTo(untranslatedElsewhere - 12),
+      reason:
+          'the count fell to $found — lower `untranslatedElsewhere` to $found '
+          'so the ground you just took cannot be given back',
     );
   });
 }

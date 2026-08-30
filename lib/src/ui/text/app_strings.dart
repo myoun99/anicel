@@ -936,6 +936,15 @@ class AppStrings {
   String get toolSelectTip => _s('toolSelectTip');
   String get toolMoveTip => _s('toolMoveTip');
   String get toolCutTip => _s('toolCutTip');
+  String get toolShapeFill => _s('toolShapeFill');
+  String get toolCutHint => _s('toolCutHint');
+  String get toolCutNothingHeld => _s('toolCutNothingHeld');
+  String get toolCutPasteAtOrigin => _s('toolCutPasteAtOrigin');
+  String get toolCutFlipHorizontal => _s('toolCutFlipHorizontal');
+  String get toolCutFlipVertical => _s('toolCutFlipVertical');
+  String get toolCutRegisterTip => _s('toolCutRegisterTip');
+  String get toolEyedropperReference => _s('toolEyedropperReference');
+  String get brushSettingsTitle => _s('brushSettingsTitle');
   String get brSize => _s('brSize');
   String get brOpacity => _s('brOpacity');
   String get brFlow => _s('brFlow');
@@ -1657,6 +1666,17 @@ class AppStrings {
     'toolSelectTip': 'Select Tool',
     'toolMoveTip': 'Move / Transform Tool',
     'toolCutTip': 'Cut Tool',
+    'toolShapeFill': 'Shape Fill',
+    'toolCutHint':
+        'Cut copies the pixels under the drag — the original stays.\nPick Stamp to place the piece you are holding.',
+    'toolCutNothingHeld':
+        'Nothing held yet.\nCut a piece with the rectangle or lasso tile first.',
+    'toolCutPasteAtOrigin': 'Paste at original position',
+    'toolCutFlipHorizontal': 'Flip horizontal',
+    'toolCutFlipVertical': 'Flip vertical',
+    'toolCutRegisterTip': 'Register as Tip…',
+    'toolEyedropperReference': 'Reference',
+    'brushSettingsTitle': 'Brush Settings',
     'brSize': 'Size',
     'brOpacity': 'Opacity',
     'brFlow': 'Flow',
@@ -2515,6 +2535,15 @@ class AppStrings {
     'toolMoveTip': '移動 / 変形ツール',
     // TVPaint's own term for this verb in Japanese studios.
     'toolCutTip': '切り抜きツール',
+    'toolShapeFill': '図形の塗り',
+    'toolCutHint': 'カットはドラッグした範囲のピクセルを複製します — 元は残ります。\n持っている断片を置くにはスタンプを選びます。',
+    'toolCutNothingHeld': 'まだ何も持っていません。\nまず矩形か投げ縄のタイルで断片をカットします。',
+    'toolCutPasteAtOrigin': '元の位置に貼り付け',
+    'toolCutFlipHorizontal': '左右反転',
+    'toolCutFlipVertical': '上下反転',
+    'toolCutRegisterTip': '先端として登録…',
+    'toolEyedropperReference': '参照',
+    'brushSettingsTitle': 'ブラシ設定',
     'brSize': 'サイズ',
     'brOpacity': '不透明度',
     'brFlow': '流量',
@@ -3394,6 +3423,16 @@ class AppStrings {
     'toolSelectTip': '선택 도구',
     'toolMoveTip': '이동 / 변형 도구',
     'toolCutTip': '잘라내기 도구',
+    'toolShapeFill': '도형 채우기',
+    'toolCutHint':
+        '잘라내기는 끈 자리의 픽셀을 복사합니다 — 원본은 남습니다.\n들고 있는 조각을 놓으려면 스탬프를 고르세요.',
+    'toolCutNothingHeld': '아직 든 것이 없습니다.\n먼저 사각형이나 올가미 타일로 조각을 잘라내세요.',
+    'toolCutPasteAtOrigin': '원래 위치에 붙여넣기',
+    'toolCutFlipHorizontal': '좌우 반전',
+    'toolCutFlipVertical': '상하 반전',
+    'toolCutRegisterTip': '팁으로 등록…',
+    'toolEyedropperReference': '참조',
+    'brushSettingsTitle': '브러시 설정',
     'brSize': '크기',
     'brOpacity': '불투명도',
     'brFlow': '흐름',
@@ -4311,6 +4350,17 @@ class AppStrings {
     'toolSelectTip': 'Outil sélection',
     'toolMoveTip': 'Outil déplacer / transformer',
     'toolCutTip': 'Outil découpe',
+    'toolShapeFill': 'Remplissage de forme',
+    'toolCutHint':
+        'La découpe copie les pixels sous le glissement — l\'original reste.\nChoisissez Tampon pour poser le morceau que vous tenez.',
+    'toolCutNothingHeld':
+        'Rien en main pour l\'instant.\nDécoupez d\'abord un morceau avec la tuile rectangle ou lasso.',
+    'toolCutPasteAtOrigin': 'Coller à la position d\'origine',
+    'toolCutFlipHorizontal': 'Miroir horizontal',
+    'toolCutFlipVertical': 'Miroir vertical',
+    'toolCutRegisterTip': 'Enregistrer comme pointe…',
+    'toolEyedropperReference': 'Référence',
+    'brushSettingsTitle': 'Réglages de brosse',
     'brSize': 'Taille',
     'brOpacity': 'Opacité',
     'brFlow': 'Débit',
@@ -5143,6 +5193,15 @@ class AppStrings {
     'toolSelectTip': '选择工具',
     'toolMoveTip': '移动 / 变换工具',
     'toolCutTip': '裁剪工具',
+    'toolShapeFill': '形状填充',
+    'toolCutHint': '裁切会复制拖动范围内的像素 — 原图仍在。\n选择图章即可放下手中的碎片。',
+    'toolCutNothingHeld': '尚未持有任何内容。\n请先用矩形或套索图块裁切一块。',
+    'toolCutPasteAtOrigin': '粘贴到原位置',
+    'toolCutFlipHorizontal': '水平翻转',
+    'toolCutFlipVertical': '垂直翻转',
+    'toolCutRegisterTip': '注册为笔尖…',
+    'toolEyedropperReference': '参考',
+    'brushSettingsTitle': '笔刷设置',
     'brSize': '大小',
     'brOpacity': '不透明度',
     'brFlow': '流量',

@@ -70,7 +70,7 @@ class BrushSettingsPanel extends StatelessWidget {
     final roundnessLabel = sliderValueText(state.roundness * 100, unit: '%');
     final angleLabel = sliderValueText(state.angleDegrees, unit: '°');
     return EditorPanelFrame(
-      title: 'Brush Settings',
+      title: AppText.strings.brushSettingsTitle,
       child: Column(
         key: const ValueKey<String>('brush-settings-panel'),
         crossAxisAlignment: CrossAxisAlignment.stretch,
