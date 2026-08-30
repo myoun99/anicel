@@ -15,6 +15,7 @@ import '../widgets/field_slider.dart';
 import '../widgets/instant_tap_region.dart';
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
+import '../text/app_strings.dart' show AppText;
 import 'timeline_grid_metrics.dart';
 
 /// Whether two [Layer] snapshots would make [TimelineLayerControlsRow] look
@@ -476,7 +477,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
                                   padding: const EdgeInsets.only(left: 4),
                                   child: Tooltip(
                                     message:
-                                        'Linked layer — pictures are shared',
+                                        AppText.strings.tlLinkedLayerTooltip,
                                     child: Icon(
                                       Icons.link,
                                       key: ValueKey<String>(
