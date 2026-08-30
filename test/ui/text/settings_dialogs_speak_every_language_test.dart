@@ -21,7 +21,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// So the scan follows the STRING TO THE SCREEN, not one widget's name: a
 /// `Text(…)` and every argument that a widget renders — `label`, `help`,
 /// `title`, `tooltip`, `hintText`, `message`, `labelText`, `semanticLabel`,
-/// `fieldLabel`, `confirmLabel`, `actionLabel`, `placeholder`.
+/// `fieldLabel`, `confirmLabel`, `actionLabel`, `placeholder`, `emptyError`.
 /// ⚠️It reads the file WHOLE rather than line by line, because `help:` and
 /// its string sit on different lines and a per-line scan cannot see across
 /// the break — which is how six of them hid.
@@ -63,7 +63,7 @@ void main() {
       // `confirmLabel:`, so eight strings sat outside a scan that had read
       // the file — 218 where the truth was 226. ★When a widget invents a
       // new way to be handed a word, this list is what has to learn it.
-      r"""|placeholder):\s*(?:const\s+)?'([^'$]*)'""",
+      r"""|placeholder|emptyError):\s*(?:const\s+)?'([^'$]*)'""",
     ),
   ];
 
@@ -131,7 +131,7 @@ void main() {
   /// dozen literals, months after anyone remembers F-37 exists.
   ///
   /// ★WHEN YOU TRANSLATE SOMETHING, LOWER THIS NUMBER. That is the ratchet.
-  const untranslatedElsewhere = 226;
+  const untranslatedElsewhere = 207;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp(r'[A-Za-z]');

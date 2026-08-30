@@ -351,14 +351,14 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     }
     final name = await showDialog<String>(
       context: context,
-      builder: (context) => const _BrushNameDialog(
+      builder: (context) => _BrushNameDialog(
         keyPrefix: 'brush-preset-group-new',
-        title: 'New brush group',
+        title: AppText.strings.brNewGroup,
         titleIcon: Icons.create_new_folder_outlined,
-        fieldLabel: 'Group name',
+        fieldLabel: AppText.strings.brGroupNameField,
         initialName: 'New Group',
-        confirmLabel: 'Create',
-        emptyError: 'Group name cannot be empty.',
+        confirmLabel: AppText.strings.brCreate,
+        emptyError: AppText.strings.brGroupNameEmpty,
       ),
     );
     if (!mounted || name == null) {
@@ -388,12 +388,12 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       context: context,
       builder: (context) => _BrushNameDialog(
         keyPrefix: 'brush-preset-rename',
-        title: 'Rename brush',
+        title: AppText.strings.brRenameBrush,
         titleIcon: Icons.drive_file_rename_outline,
-        fieldLabel: 'Brush name',
+        fieldLabel: AppText.strings.brBrushNameField,
         initialName: selected!.name,
-        confirmLabel: 'Rename',
-        emptyError: 'Brush name cannot be empty.',
+        confirmLabel: AppText.strings.commonRename,
+        emptyError: AppText.strings.brBrushNameEmpty,
       ),
     );
     if (!mounted || nextName == null) {
@@ -419,10 +419,10 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
           keyPrefix: 'brush-preset-group-rename',
           title: AppText.strings.brEditGroup,
           titleIcon: Icons.drive_file_rename_outline,
-          fieldLabel: 'Group name',
+          fieldLabel: AppText.strings.brGroupNameField,
           initialName: group.name,
-          confirmLabel: 'Save',
-          emptyError: 'Group name cannot be empty.',
+          confirmLabel: AppText.strings.commonSave,
+          emptyError: AppText.strings.brGroupNameEmpty,
           extra: _GroupIconPicker(
             selected: icon,
             onPicked: (picked) => setLocal(() => icon = picked),
@@ -456,14 +456,14 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
                   '${memberCount == 1 ? 'brush' : 'brushes'} inside it?',
         actions: [
           AppWindowAction(
-            label: 'Cancel',
+            label: AppText.strings.commonCancel,
             actionKey: const ValueKey<String>(
               'brush-preset-group-delete-cancel-button',
             ),
             onPressed: () => Navigator.of(context).pop(false),
           ),
           AppWindowAction(
-            label: 'Delete',
+            label: AppText.strings.commonDelete,
             actionKey: const ValueKey<String>(
               'brush-preset-group-delete-confirm-button',
             ),
@@ -490,19 +490,17 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         windowKey: const ValueKey<String>('brush-preset-reset-dialog'),
         title: AppText.strings.brResetLibrary,
         titleIcon: Icons.restart_alt,
-        message:
-            'Replace the whole library — every group, imported pack and '
-            'saved brush — with the built-in brushes?',
+        message: AppText.strings.brResetLibraryBody,
         actions: [
           AppWindowAction(
-            label: 'Cancel',
+            label: AppText.strings.commonCancel,
             actionKey: const ValueKey<String>(
               'brush-preset-reset-cancel-button',
             ),
             onPressed: () => Navigator.of(context).pop(false),
           ),
           AppWindowAction(
-            label: 'Reset',
+            label: AppText.strings.commonReset,
             actionKey: const ValueKey<String>(
               'brush-preset-reset-confirm-button',
             ),
@@ -882,7 +880,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     bool reorderable,
   ) {
     return EditorPanelFrame(
-      title: 'Brushes',
+      title: AppText.strings.brBrushesTitle,
       bodyPadding: const EdgeInsets.all(5),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,

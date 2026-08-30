@@ -11,17 +11,26 @@ import 'transform_tool_options.dart';
 /// ONE list feeds every drag-out verb, so a new [CanvasShapeKind] shows up
 /// under select and cut (and later fill) from a single entry here rather
 /// than from one hand-written tile per verb.
-const List<({CanvasShapeKind kind, IconData icon, String label})>
-_shapeTiles = [
-  (kind: CanvasShapeKind.rect, icon: Icons.crop_square, label: 'Rectangle'),
-  (kind: CanvasShapeKind.ellipse, icon: Icons.circle_outlined, label: 'Ellipse'),
-  (kind: CanvasShapeKind.lasso, icon: Icons.gesture, label: 'Lasso'),
-  (
-    kind: CanvasShapeKind.polygon,
-    icon: Icons.polyline_outlined,
-    label: 'Polygon',
-  ),
+const List<({CanvasShapeKind kind, IconData icon})> _shapeTiles = [
+  (kind: CanvasShapeKind.rect, icon: Icons.crop_square),
+  (kind: CanvasShapeKind.ellipse, icon: Icons.circle_outlined),
+  (kind: CanvasShapeKind.lasso, icon: Icons.gesture),
+  (kind: CanvasShapeKind.polygon, icon: Icons.polyline_outlined),
 ];
+
+/// A shape's name in the reading language.
+///
+/// ⛔THE LIST ABOVE CANNOT HOLD IT. It is `const`, and a translated string is
+/// read at call time — the same reason the shortcut registry keeps its own
+/// English wording instead of a key. So the icon stays in the const table
+/// and the WORD comes from here, in one place, the way the blend modes and
+/// effect kinds already do it.
+String shapeToolName(CanvasShapeKind kind) => switch (kind) {
+  CanvasShapeKind.rect => AppText.strings.toolShapeRect,
+  CanvasShapeKind.ellipse => AppText.strings.toolShapeEllipse,
+  CanvasShapeKind.lasso => AppText.strings.toolShapeLasso,
+  CanvasShapeKind.polygon => AppText.strings.toolShapePolygon,
+};
 
 /// The TOOL LIBRARY panel (R11-④, CSP's sub-tool palette): its content
 /// follows the active tool. The brush and the eraser show the brush
@@ -57,20 +66,26 @@ class ToolLibraryPanel extends StatelessWidget {
   final void Function(CanvasTool verb, CanvasShapeKind kind)?
   onShapeKindChanged;
 
-  /// The shape tiles for one verb. [verbLabel] trails each shape name so
-  /// the lists never read as the same tiles twice, and [keyPrefix] keeps
-  /// the widget keys addressable per verb.
+  /// The shape tiles for one verb. [labelTemplate] names each tile so the
+  /// lists never read as the same tiles twice, and [keyPrefix] keeps the
+  /// widget keys addressable per verb.
+  ///
+  /// 🚨A TEMPLATE, NOT TWO WORDS GLUED TOGETHER. It used to be
+  /// `'${shape} $verb'`, which is 「Rectangle Select」 in English and
+  /// 「사각형 선택」 in Korean by luck — French puts the verb first
+  /// (「Sélection rectangle」) and gluing would have printed it backwards in
+  /// a language nobody here reads. The order belongs to the translator.
   List<Widget> _shapeTileWidgets({
     required CanvasTool verb,
     required String keyPrefix,
-    required String verbLabel,
+    required String labelTemplate,
   }) {
     return [
       for (final tile in _shapeTiles)
         _SubToolTile(
           keyValue: '$keyPrefix-${tile.kind.name}',
           icon: tile.icon,
-          label: '${tile.label} $verbLabel',
+          label: labelTemplate.replaceAll('{shape}', shapeToolName(tile.kind)),
           // A shape tile reads as current only while ITS verb is the
           // active one — with the stamp armed no outline is being traced,
           // so none of the cut shapes is selected.
@@ -115,7 +130,7 @@ class ToolLibraryPanel extends StatelessWidget {
           children: _shapeTileWidgets(
             verb: CanvasTool.select,
             keyPrefix: 'sub-tool-select',
-            verbLabel: 'Select',
+            labelTemplate: AppText.strings.toolShapeSelectTemplate,
           ),
         );
       // The CUT tool's tiles: every shape, then the stamp. Same grammar as
@@ -134,12 +149,12 @@ class ToolLibraryPanel extends StatelessWidget {
             ..._shapeTileWidgets(
               verb: CanvasTool.cut,
               keyPrefix: 'sub-tool-cut',
-              verbLabel: 'Cut',
+              labelTemplate: AppText.strings.toolShapeCutTemplate,
             ),
             _SubToolTile(
               keyValue: 'sub-tool-cut-stamp',
               icon: Icons.approval_outlined,
-              label: 'Stamp',
+              label: AppText.strings.toolStamp,
               selected: tool == CanvasTool.cutStamp,
               onTap: () => onToolChanged(CanvasTool.cutStamp),
             ),
@@ -159,14 +174,14 @@ class ToolLibraryPanel extends StatelessWidget {
             _SubToolTile(
               keyValue: 'sub-tool-fill-bucket',
               icon: Icons.format_color_fill,
-              label: 'Bucket',
+              label: AppText.strings.toolBucket,
               selected: tool == CanvasTool.fill,
               onTap: () => onToolChanged(CanvasTool.fill),
             ),
             ..._shapeTileWidgets(
               verb: CanvasTool.fillShape,
               keyPrefix: 'sub-tool-fill',
-              verbLabel: 'Fill',
+              labelTemplate: AppText.strings.toolShapeFillTemplate,
             ),
           ],
         );
