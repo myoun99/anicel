@@ -2526,6 +2526,15 @@ String _entryRow(_Entry e, int i, {required bool open}) {
   if (ask == null) {
     b.writeln('<p class="d">${_esc(entry.text)}</p>');
   } else {
+    // 🚨★★★AN ENTRY WITH A TITLE OF ITS OWN KEEPS IT WHEN OPENED (유저
+    // 2026-08-31: 「질문 항목처럼 타이틀이 별개로 있는 건 **펼친다고 해서
+    // 타이틀 숨기지 마**」).
+    //
+    // ⛔The summary preview cuts at 44 characters, and opening a question
+    // swapped in `where`/`why`/options — which never repeat the title. So the
+    // one row whose title is the whole point of it was the one row where the
+    // title could only ever be read half-way.
+    b.writeln('<p class="d qt"><b>${_esc(entry.text)}</b></p>');
     b.writeln(_askBody(ask, answered: answered));
   }
   if (entry.how.isNotEmpty) {
@@ -2977,6 +2986,8 @@ white-space:nowrap;flex:none;min-width:38px;text-align:right}
    stage, the date and a preview so the row is findable while folded. */
 .lg{border-left:2px solid var(--line2);padding-left:9px;margin:0}
 /* 소분류는 자기 대분류 안에 들여쓴다 — 폴더가 눈에 보이게 하는 것이 전부다. */
+/* 질문처럼 자기 제목을 가진 항목은 펼쳐도 제목이 남는다. */
+.qt{margin-bottom:6px}
 .under{margin:4px 0 2px 14px;border-left:2px solid var(--line);padding-left:10px}
 .under>.lg{border-left:none;padding-left:0}
 .lg+.lg{margin-top:5px}
