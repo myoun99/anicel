@@ -874,6 +874,7 @@ List<_Entry> _readRecords(File file) {
   // 🚨A question is an entry on its card, folded in before anything is placed
   // — the section it lands in depends on it. See [_foldQuestionsIntoOrigins].
   _foldQuestionsIntoOrigins(byId);
+  _foldChecksIntoCards(byId);
   // 🚨★★★AND ONLY NOW IS THE CARD PLACED. Every entry is in, so the walk
   // backwards can see the whole story — see [_placeByStory].
   for (final e in byId.values) {
@@ -1114,15 +1115,17 @@ Future<List<_Checkout>> _readCheckouts() async {
 /// `open` is deliberately absent — a ready item wears no badge at all, because
 /// the section it sits in already said so.
 const _stateLabels = <String, String>{
-  'wip': '진행 중',
-  'ask': '답 기다림',
+  'wip': '하는 중',
+  'ask': '답할 것',
   // 유저 2026-08-25: 「대기중의 지시대기는 사실상 상담대기니까 이름 상담대기로
   // 바꾸자」. 「지시 대기」는 유저가 명령을 안 내려서 멈춰 있다고 읽히는데,
-  // 실제로 멈춰 있는 이유는 아직 이야기가 안 끝나서다 — 참고 사진을 기다리거나,
-  // 상세를 더 듣기로 했거나, 별도 라운드로 미뤄 뒀거나.
-  'gate': '상담 대기',
-  'queue': '순서 대기',
+  // 실제로 멈춰 있는 이유는 아직 이야기가 안 끝나서다.
+  // 🆕2026-08-31 유저가 다시 이름을 골랐다 — 상담 대기 → 대화 중,
+  // 순서 대기 → 나중에. 칸 이름과 배지를 같은 말로 두기 위해서다.
+  'gate': '대화 중',
+  'queue': '나중에',
   'mine': '내가 정리 중',
+  'hands': '실기 확인',
   'inbox': '분류 전',
 };
 
@@ -1173,6 +1176,14 @@ const _sectionState = <String, String>{
   '분류 전': 'inbox',
   '분류': 'inbox',
   '진행 중': 'wip',
+  // 🆕2026-08-31 — the words 유저 chose. The older spellings above stay as
+  // aliases because the file already holds them and a record written last
+  // month cannot be asked to respell itself.
+  '하는 중': 'wip',
+  '대화 중': 'gate',
+  '나중에': 'queue',
+  // 🚨실기 확인 is a SECTION now, not a kind of card — see [_foldChecksIntoCards].
+  '실기 확인': 'hands',
   '완료': 'archived',
 };
 
@@ -1287,6 +1298,44 @@ void _sortByTime(List<_Log> log) {
     ..addAll(settled.map((e) => e.$3));
 }
 
+/// 🚨★★★A HANDS-ON CHECK IS AN ENTRY TOO, and 실기 확인 is a SECTION rather
+/// than a kind of card (유저 2026-08-31: 「나중에 실기 확인도 여러 개일
+/// 가능성 있는데 그것도 통일해서 깔끔하게 구현되잖아」).
+///
+/// ⛔`kind: "check"` was a parallel card system: its own records, its own row
+/// shape, its own nesting under a landing. A card that shipped and then needed
+/// three things tried on a tablet became FOUR rows.
+///
+/// ⚠️A check that names the card it belongs to (`under`) folds into it. One
+/// that names nothing IS its own card, and gets the 실기 확인 entry written
+/// onto itself so the section falls out of its story like every other card's.
+void _foldChecksIntoCards(Map<String, _Entry> byId) {
+  final byPr = <int, _Entry>{};
+  for (final e in byId.values) {
+    for (final n in e.prs) {
+      byPr[n] = e;
+    }
+  }
+  for (final c in byId.values.toList()) {
+    if (c.kind != 'check') continue;
+    final at = c.created.isNotEmpty ? c.created : c.updated;
+    final text = c.how.isNotEmpty ? c.how : c.title;
+    // `under` is a PR NUMBER, and the card that shipped it is the one this
+    // check belongs to.
+    final host = c.under == null ? null : byPr[c.under];
+    if (host != null && host.id != c.id) {
+      c.foldedInto = host.id;
+      host.log.add(_Log(at, '실기 확인', text.isEmpty ? c.id : text));
+      continue;
+    }
+    if (_lastSection(c) == '실기 확인') continue;
+    c.log.add(_Log(at, '실기 확인', text.isEmpty ? c.id : text));
+  }
+  for (final e in byId.values) {
+    _sortByTime(e.log);
+  }
+}
+
 String _esc(String s) => const HtmlEscape().convert(s);
 
 String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
@@ -1339,7 +1388,12 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
           e.foldedInto == null &&
           (e.state == 'ask' || (e.kind == 'decision' && e.answer == null)))
       .toList();
-  final checks = alive.where((e) => e.kind == 'check' && e.answer == null).toList();
+  // 🚨★★★실기 확인 = cards whose newest 대분류 says so. Nothing lands here by
+  // merging any more (유저 2026-08-31: 「머지는 PR마다 여러 번 되는데 실기
+  // 확인은 다르잖아 … 작업 완료되면 실기 확인만 대분류로서 존재하게」).
+  // A merge is an event and a section is a place; putting a card here because
+  // a PR landed made the two share an axis, and they always drift apart.
+  final checks = alive.where((e) => e.state == 'hands').toList();
 
   // Every PR a live card ever claimed, not just its newest. An older one left
   // out here comes back as an orphan `pr-N` placeholder beside the card that
@@ -1485,16 +1539,10 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   // reason the section is open. The old note worried a page-2 check waits a
   // month; the answer to that is that turning a page is now free, not that
   // the newest work gets moved out of sight.
-  final landedPrs = {for (final e in fresh) ...e.prs};
-  final freshIds = {for (final e in fresh) e.id};
-  final orphans = [
-    for (final c in checks)
-      if (!freshIds.contains(c.id) &&
-          (c.under == null || !landedPrs.contains(c.under)))
-        c,
-  ];
-  final orphanIds = {for (final c in orphans) c.id};
-  final units = <_Entry>[...fresh, ...orphans];
+  // ⛔`fresh` — the landings — no longer feeds this section. Every unit here
+  // is a card that says 실기 확인, and its PRs ride its 구현 entries.
+  final orphanIds = {for (final c in checks) c.id};
+  final units = <_Entry>[...checks];
   final pages =
       units.isEmpty ? 1 : (units.length + _landedPerPage - 1) ~/ _landedPerPage;
   final page = landedPage.clamp(1, pages);
@@ -1548,6 +1596,8 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
           // question open inside it. Listing it here too would be one subject
           // in two rows — the shape this round exists to end.
           e.state != 'ask' &&
+          // A card waiting to be tried on a device is drawn in 실기 확인.
+          e.state != 'hands' &&
           // An answered item has been looked at and reported on; it belongs in
           // its own story now, not back in 착수 가능 claiming to be unstarted.
           e.answer == null &&
@@ -1562,7 +1612,14 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   final underway = loose.where((e) => e.state == 'wip').toList();
   final rest = loose.where((e) => e.state != 'wip').toList();
   final ready = rest.where((e) => !_waiting.contains(e.state)).toList();
-  final waiting = rest.where((e) => _waiting.contains(e.state)).toList();
+  // 🚨TWO DIFFERENT WAITS, TWO SECTIONS (유저 2026-08-31: 「대기중엔 상담대기
+  // /답대기/순서대기 있는데, **순서대기만 별도 항목 필터로서 만들어서 따로
+  // 두고 싶어**」). 나중에 is 「I could start this, I chose not to yet」;
+  // 대화 중 is 「I cannot start this until we finish talking」. Lumping them
+  // made the second invisible inside the first.
+  final later = rest.where((e) => e.state == 'queue').toList();
+  final talking =
+      rest.where((e) => _waiting.contains(e.state) && e.state != 'queue').toList();
   now.addAll(underway.map(_itemPanel));
 
   final b = StringBuffer();
@@ -1572,8 +1629,9 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   b.writeln('<div class="wrap">');
   b.write('<h1>Anicel 보드</h1>');
   b.write('<p class="stamp">분류 전 <b>${inbox.length}</b> · 답할 것 <b>${asks.length}</b>'
-      ' · 확인할 것 <b>${fresh.length + checks.length}</b> · 지금 <b>${now.length}</b>'
-      ' · 착수 가능 <b>${ready.length}</b> · 대기 <b>${waiting.length}</b>');
+      ' · 하는 중 <b>${now.length}</b> · 바로 가능 <b>${ready.length}</b>'
+      ' · 대화 중 <b>${talking.length}</b> · 나중에 <b>${later.length}</b>'
+      ' · 실기 확인 <b>${checks.length}</b>');
   if (!gh.ok) {
     b.write(' · <span class="warn">gh 를 못 불렀습니다 — PR 칸은 비어 있습니다</span>');
   }
@@ -1588,23 +1646,33 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   }
 
   b.write(_intakeForm());
+  // 🚨★★★THE SEVEN SECTIONS, IN THE ORDER 유저 NAMED THEM (2026-08-31). The
+  // names are the words a person would use, and 대기 중 is split because
+  // 「나중에」 and 「대화 중」 are two different waits: 「순서 대기만 별도
+  // 항목 필터로서 만들어서 따로 두고 싶어」.
+  //
+  // ⚠️A section name and the 대분류 that puts a card in it are the SAME WORD
+  // wherever they can be — see [_sectionState]. Three differ on purpose,
+  // because the event and the place have different names: 유저 → 분류 전,
+  // 질문 → 답할 것, 남은 것 → 바로 가능.
   b.write(_group('분류 전', inbox.length, '내가 읽고 분류한다', inbox.map(_itemPanel)));
   b.write(_group('답할 것', asks.length, '고르고 제출',
       asks.map((e) => e.kind == 'decision' ? _askPanel(e) : _itemPanel(e))));
   // The refresh lives here because this is the only section it changes, and a
   // control parked away from what it affects is a control you have to remember
   // the meaning of.
-  b.write(_group('지금', now.length, '', now,
+  b.write(_group('하는 중', now.length, '', now,
       control: _ctl('<button class="ghost sm" title="PR 상태는 페이지를 열 때만 읽습니다. '
           '지금 다시 읽으려면 누르세요 — 이 칸만 갱신됩니다." '
           'onclick="refresh(event)">↻</button>')));
-  b.write(_group('착수 가능', ready.length, '명령만 내리면 착수', ready.map(_itemPanel)));
-  b.write(_group('대기 중', waiting.length, '배지가 무엇을 기다리는지 말한다',
-      waiting.map(_itemPanel)));
+  b.write(_group('바로 가능', ready.length, '명령만 내리면 착수', ready.map(_itemPanel)));
+  b.write(_group('대화 중', talking.length, '이야기가 안 끝났다',
+      talking.map(_itemPanel)));
+  b.write(_group('나중에', later.length, '순서를 미뤄 둔 것', later.map(_itemPanel)));
   // ONE list (유저 2026-08-26). The count is the whole thing, not the page:
   // this section used to show a number that was really a cap, and that is
   // exactly what made it lie.
-  b.write(_group('확인할 것', fresh.length + checks.length,
+  b.write(_group('실기 확인', checks.length,
       '체크 = 문제 없음 · 메모 = 문제', toCheck,
       footer: _pager(units.length, page),
       control: _ctl('<button class="ghost sm" title="이 페이지의 모든 항목을 체크합니다" '
