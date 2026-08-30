@@ -136,15 +136,22 @@ void main() {
     });
   });
 
-  test('a leading gap belongs to the POSITION, so the seat includes it', () {
+  test('a row\'s EMPTY HEAD belongs to neither block, so the seat is the '
+      'neighbour\'s own start', () {
     // A row whose first block sits at frame 5, two frames long, with the
-    // second glued to its end at frame 7. The seat the second block lands
-    // in is frame 5 — the gap stays at the FRONT rather than travelling
-    // with the block that arrived carrying it.
+    // second glued to its end at frame 7. There is no slack BETWEEN them,
+    // so the travel is 2 — the neighbour's length — exactly as it is on a
+    // row with no gaps at all.
     //
-    // So the travel is 2, the neighbour's length, exactly as it is on a row
-    // with no gaps at all. A rule that measured from frame 0 would ask for
-    // 7 here and the gap would silently make one row behave unlike another.
+    // ⛔The five frames in front are the row's head, not the first block's
+    // fare. Charging them to the seat made this block travel 7 to swap with
+    // a neighbour it was already touching, which is a row behaving unlike
+    // an identical row that happens to start at 0.
+    //
+    // 🚨A gap BETWEEN two blocks is the other case and it IS charged: 유저
+    // 확정 2026-08-30 (안 A) 「빈칸을 다 쓴 뒤에야 자리를 바꿉니다」. Both
+    // fall out of one sentence — the run has passed a neighbour when its own
+    // far edge has cleared that neighbour's far edge.
     const slots = <BlockMoveSlot>[
       (leadingGap: 5, length: 2),
       (leadingGap: 0, length: 3),
@@ -169,6 +176,52 @@ void main() {
       ),
       5,
       reason: 'and it lands on the seat, not at frame 0',
+    );
+  });
+
+  test('🚨a gap BETWEEN two blocks is crossed BEFORE the swap, both ways', () {
+    // 유저 확정 2026-08-30 (board `R4q-gap-belongs-to`, 안 A):
+    //
+    // > 「빈칸을 먼저 지난다 … 선택이 빈칸으로 들어가고 4 는 제자리.
+    // > **빈칸을 다 쓴 뒤에야 4 와 자리를 바꿉니다**」
+    //
+    // ⚠️THIS IS THE CUT AXIS TOO. `planCutMove` hands its cuts to this same
+    // function, and 유저 said so in the same breath: 「이런 드래그 블록
+    // 로직은 다 **컷블록이랑 완전히 싹 다 전부다 통일**이니까」. Stating it
+    // here rather than in the row's own test is what makes that true rather
+    // than claimed.
+    const rightward = <BlockMoveSlot>[
+      (leadingGap: 0, length: 1),
+      (leadingGap: 0, length: 2),
+      (leadingGap: 1, length: 1),
+    ];
+    expect(
+      _orderAfter(slots: rightward, runStart: 1, runEnd: 1, frameDelta: 1),
+      [0, 1, 2],
+      reason: 'one frame only spends the slack — the block past it stays put',
+    );
+    expect(
+      _orderAfter(slots: rightward, runStart: 1, runEnd: 1, frameDelta: 2),
+      [0, 2, 1],
+      reason: 'the second frame is the neighbour, which is one long',
+    );
+
+    // The mirror, and it has to be measured rather than assumed: the two
+    // directions are asked by different loops on purpose.
+    const leftward = <BlockMoveSlot>[
+      (leadingGap: 0, length: 1),
+      (leadingGap: 0, length: 1),
+      (leadingGap: 1, length: 2),
+    ];
+    expect(
+      _orderAfter(slots: leftward, runStart: 2, runEnd: 2, frameDelta: -1),
+      [0, 1, 2],
+      reason: 'the run backs into the slack and nothing has been passed yet',
+    );
+    expect(
+      _orderAfter(slots: leftward, runStart: 2, runEnd: 2, frameDelta: -2),
+      [0, 2, 1],
+      reason: 'slack plus the neighbour, the same total from the other end',
     );
   });
 }
