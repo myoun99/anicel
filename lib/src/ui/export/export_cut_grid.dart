@@ -78,11 +78,13 @@ class _ExportCutGridState extends State<ExportCutGrid> {
       children: [
         Row(
           children: [
-            ControlPressClaim(child: InkWell(
-              key: const ValueKey<String>('export-cut-grid-all'),
-              onTap: widget.enabled && anyExcluded
+            ControlPressClaim(onPressed: widget.enabled && anyExcluded
                   ? widget.onAllIncluded
-                  : null,
+                  : null, child: InkWell(
+              key: const ValueKey<String>('export-cut-grid-all'),
+              onTap: silentPress(widget.enabled && anyExcluded
+                  ? widget.onAllIncluded
+                  : null),
               borderRadius: BorderRadius.circular(4),
               child: Container(
                 padding: const EdgeInsets.symmetric(
@@ -196,8 +198,8 @@ class _CutCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final accent = theme.colorScheme.primary;
-    return ControlPressClaim(child: InkWell(
-      onTap: enabled ? onTap : null,
+    return ControlPressClaim(onPressed: enabled ? onTap : null, child: InkWell(
+      onTap: silentPress(enabled ? onTap : null),
       child: CustomPaint(
         painter: selected
             ? null

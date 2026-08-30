@@ -56,8 +56,8 @@ class ExportLayerRow extends StatelessWidget {
         : selected
         ? accent
         : theme.colorScheme.onSurface;
-    return ControlPressClaim(child: InkWell(
-      onTap: onTap,
+    return ControlPressClaim(onPressed: onTap, child: InkWell(
+      onTap: silentPress(onTap),
       borderRadius: BorderRadius.circular(4),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -71,9 +71,9 @@ class ExportLayerRow extends StatelessWidget {
         child: Row(
           children: [
             if (includeDot != null) ...[
-              ControlPressClaim(child: InkWell(
+              ControlPressClaim(onPressed: onDotTap, child: InkWell(
                 key: dotKey,
-                onTap: onDotTap,
+                onTap: silentPress(onDotTap),
                 child: Container(
                   width: 9,
                   height: 9,
@@ -126,8 +126,8 @@ class ExportLayerRow extends StatelessWidget {
                 ),
               ),
             if (onRemove != null)
-              ControlPressClaim(child: InkWell(
-                onTap: onRemove,
+              ControlPressClaim(onPressed: onRemove, child: InkWell(
+                onTap: silentPress(onRemove),
                 child: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 3),
                   child: Icon(Icons.close, size: 10),

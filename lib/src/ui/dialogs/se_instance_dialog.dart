@@ -132,12 +132,13 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
                           style: theme.textTheme.bodySmall,
                         ),
                       ),
-                      ControlPressClaim(child: TextButton(
+                      ControlPressClaim(onPressed: () =>
+                            setState(() => _unlinked.add(link.token)), child: TextButton(
                         key: ValueKey<String>(
                           'se-unlink-audio-${link.token}',
                         ),
-                        onPressed: () =>
-                            setState(() => _unlinked.add(link.token)),
+                        onPressed: silentPress(() =>
+                            setState(() => _unlinked.add(link.token))),
                         child: Text(strings.seUnlinkAudio),
                       )),
                     ],

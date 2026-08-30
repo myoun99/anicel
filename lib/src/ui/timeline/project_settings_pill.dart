@@ -260,8 +260,9 @@ class _ChoiceRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ControlPressClaim(
+      onPressed: onTap,
       child: InkWell(
-        onTap: onTap,
+        onTap: silentPress(onTap),
         customBorder: AppShapes.control(AppShapes.controlSmall),
         child: SizedBox(
           height: AppShapes.controlSmall,

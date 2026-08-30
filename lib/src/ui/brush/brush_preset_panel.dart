@@ -1117,9 +1117,10 @@ class _GroupIconPicker extends StatelessWidget {
       required VoidCallback onTap,
     }) {
       return ControlPressClaim(
+        onPressed: onTap,
         child: InkWell(
           key: ValueKey<String>(keyValue),
-          onTap: onTap,
+          onTap: silentPress(onTap),
           borderRadius: BorderRadius.circular(4),
           child: Container(
             width: 26,

@@ -115,33 +115,21 @@ void main() {
       tester,
     ) async {
       // ⛔The control. Without this a claim that swallowed everything would
-      // pass the case above — including the day it swallows the whole list.
+      // pass the case above — including the day it swallows the whole panel.
       //
-      // 🚨THE MOUSE IS EXEMPT, and the reason is measured rather than
-      // chosen: Flutter hardcodes a mouse to a ONE PIXEL drag threshold, so
-      // a scrollable that takes mouse drags eats every click that wobbles.
-      // 유저 2026-08-30 reported exactly that, and the mouse came back out
-      // of `dragDevices` — see [AppScrollBehavior] for the whole reasoning
-      // and the board card that asks what to do about it.
+      // 🚨THE MOUSE IS NO LONGER EXEMPT (유저 확정 2026-08-30). It spent a
+      // round out of `dragDevices` because Flutter hardcodes a mouse to a
+      // ONE PIXEL drag threshold, so a scrollable that took mouse drags ate
+      // every click that wobbled. That is fixed at the root instead of by
+      // keeping the device out: a claimed control no longer needs to win a
+      // tap, so it can take the arena at one pixel too.
       final list = await pumpList(tester, wrap: (child) => child);
-      final moved = await dragFromControl(tester, list, kind);
-      if (kind == PointerDeviceKind.mouse) {
-        expect(
-          moved,
-          0,
-          reason:
-              'a mouse does not drag-scroll at all right now — and this is '
-              'the case that fails the day it is put back without giving '
-              'the scroller a real threshold first',
-        );
-        return;
-      }
       expect(
-        moved,
+        await dragFromControl(tester, list, kind),
         greaterThan(0),
         reason:
-            'pen and touch drag to scroll, and the claim above is what '
-            'keeps that from starting on a control',
+            'every device drags to scroll off a control, and the claim '
+            'above is what keeps that from starting ON one',
       );
     });
   }
@@ -188,9 +176,9 @@ void main() {
     // dialogs and the export screens were all 「deliberately NOT here」 until
     // 유저 2026-08-30: 「그 외 버튼도 싹 다 확인이야」.
     //
-    // ⚠️Pen and touch only, deliberately: a mouse does not drag-scroll at
-    // all right now (see THE MOUSE IS EXEMPT above), so asserting it here
-    // would measure nothing and read as coverage.
+    // ⚠️All three devices, and each one measures something: every
+    // one of them drag-scrolls off a control now, so a zero here is the
+    // claim doing its job rather than the device being absent.
     final list = ScrollController();
     addTearDown(list.dispose);
     await tester.pumpWidget(
@@ -221,6 +209,7 @@ void main() {
     for (final kind in const [
       PointerDeviceKind.touch,
       PointerDeviceKind.stylus,
+      PointerDeviceKind.mouse,
     ]) {
       expect(
         await dragFromControl(tester, list, kind),

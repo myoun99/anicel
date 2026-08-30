@@ -166,8 +166,9 @@ class _SizeCell extends StatelessWidget {
         shape: AppShapes.control(AppShapes.controlSmall),
         clipBehavior: Clip.antiAlias,
         child: ControlPressClaim(
+          onPressed: onTap,
           child: InkWell(
-            onTap: onTap,
+            onTap: silentPress(onTap),
             // ⛔WIDTH ONLY. Pinning the height too made the column overflow by
             // whatever the label's line height happened to be — a number that
             // moves with the app's typeface, so it would have come back the

@@ -91,12 +91,13 @@ class _ColorStatusBarState extends State<ColorStatusBar> {
                   onCancel: () => setState(() => _editing = _Editing.none),
                 )
               : ControlPressClaim(
+                  onPressed: () => setState(() => _editing = which),
                   child: GestureDetector(
                     key: ValueKey<String>(
                       'color-status-${label.toLowerCase()}',
                     ),
                     behavior: HitTestBehavior.opaque,
-                    onTap: () => setState(() => _editing = which),
+                    onTap: silentPress(() => setState(() => _editing = which)),
                     child: Text(
                       '$value',
                       textAlign: TextAlign.right,
@@ -149,10 +150,13 @@ class _ColorStatusBarState extends State<ColorStatusBar> {
                     onCancel: () => setState(() => _editing = _Editing.none),
                   )
                 : ControlPressClaim(
+                    onPressed: () => setState(() => _editing = _Editing.hex),
                     child: GestureDetector(
                       key: const ValueKey<String>('color-status-hex'),
                       behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(() => _editing = _Editing.hex),
+                      onTap: silentPress(
+                        () => setState(() => _editing = _Editing.hex),
+                      ),
                       child: Text(colorHexOf(widget.color), style: _readout),
                     ),
                   ),

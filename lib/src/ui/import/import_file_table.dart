@@ -167,9 +167,12 @@ class _ImportFileTableState extends State<ImportFileTable> {
                       final row = rows[index];
                       final isSelected = selected.contains(row.path);
                       return ControlPressClaim(
+                        onPressed: enabled ? () => onRowTap(row.path) : null,
                         child: InkWell(
                           key: ValueKey<String>('import-row-${row.name}'),
-                          onTap: enabled ? () => onRowTap(row.path) : null,
+                          onTap: silentPress(
+                            enabled ? () => onRowTap(row.path) : null,
+                          ),
                           child: Container(
                             color: isSelected
                                 ? AppColors.accent.withValues(alpha: 0.14)
@@ -256,20 +259,34 @@ class _HeaderButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return ControlPressClaim(
+      onPressed: enabled
+          ? () => _openColumnPopup(
+              context,
+              column: column,
+              targets: paths,
+              // A header speaks for every row, so an answer only some of
+              // them can give is still offered — the ones that cannot will
+              // resolve it away, and the cells will say so.
+              enabledFor: (value) => true,
+              current: null,
+            )
+          : null,
       child: InkWell(
         key: ValueKey<String>('import-column-${column.label}'),
-        onTap: enabled
-            ? () => _openColumnPopup(
-                context,
-                column: column,
-                targets: paths,
-                // A header speaks for every row, so an answer only some of
-                // them can give is still offered — the ones that cannot will
-                // resolve it away, and the cells will say so.
-                enabledFor: (value) => true,
-                current: null,
-              )
-            : null,
+        onTap: silentPress(
+          enabled
+              ? () => _openColumnPopup(
+                  context,
+                  column: column,
+                  targets: paths,
+                  // A header speaks for every row, so an answer only some of
+                  // them can give is still offered — the ones that cannot will
+                  // resolve it away, and the cells will say so.
+                  enabledFor: (value) => true,
+                  current: null,
+                )
+              : null,
+        ),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 1),
           child: Text(
@@ -326,20 +343,31 @@ class _OptionCell extends StatelessWidget {
         1;
     return Center(
       child: ControlPressClaim(
+        onPressed: enabled && !locked
+            ? () => _openColumnPopup(
+                context,
+                column: column,
+                targets: targets,
+                enabledFor: (option) => column.enabledFor(path, option),
+                current: value,
+              )
+            : null,
         child: InkWell(
           key: ValueKey<String>('import-cell-${column.label}-$path'),
           // The app's own corner, not a circular one: a cell is a well cut
           // into the row, and every well in this app wears the same shape.
           customBorder: AppShapes.container(AppShapes.wellRadius),
-          onTap: enabled && !locked
-              ? () => _openColumnPopup(
-                  context,
-                  column: column,
-                  targets: targets,
-                  enabledFor: (option) => column.enabledFor(path, option),
-                  current: value,
-                )
-              : null,
+          onTap: silentPress(
+            enabled && !locked
+                ? () => _openColumnPopup(
+                    context,
+                    column: column,
+                    targets: targets,
+                    enabledFor: (option) => column.enabledFor(path, option),
+                    current: value,
+                  )
+                : null,
+          ),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: ShapeDecoration(
@@ -413,9 +441,10 @@ class _PopupRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return ControlPressClaim(
+      onPressed: enabled ? onTap : null,
       child: InkWell(
         key: ValueKey<String>('import-option-$label'),
-        onTap: enabled ? onTap : null,
+        onTap: silentPress(enabled ? onTap : null),
         child: Container(
           height: 24,
           alignment: Alignment.centerLeft,

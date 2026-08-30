@@ -169,20 +169,21 @@ class AppIconButton extends StatelessWidget {
     // `Listener` lines that [ControlPressClaim] also had — and while the
     // law lived in two places the buttons that mounted neither (the
     // x-sheet's toggles, the toolbar's 1·2·3·4·N) went unnoticed.
-    // 🚨★★★A BUTTON ACTS ON THE PRESS (유저 2026-08-30): 「버튼은 기본적으로
-    // **누른순간 작동**하고 **누른채로 드래그시 일괄조작** 작동」·「애초에
-    // 내가 **탭다운으로 버튼 바뀌게 하라고** 말하고 스와이프 기능
-    // 말한건데」. Every device, finger included.
+    // 🚨★★★WHEN it acts is not this widget's to say (유저 확정 2026-08-30):
+    // a button inside a swipe column acts on the DOWN, and every other
+    // button acts when it is released still inside itself. [PressFireScope]
+    // holds that split in ONE place, so this hands over the callback and
+    // says nothing about the moment.
     //
-    // ⛔`IconButton` keeps a NO-OP callback — it still draws the ink, the
+    // ⛔`IconButton` keeps a SILENT callback — it still draws the ink, the
     // tooltip, the selected styling and the disabled look, but a button that
-    // fired on the down AND the release fired twice.
+    // fired here AND from the claim fired twice.
     return ControlPressClaim(
-      onPressDown: onPressed,
+      onPressed: onPressed,
       child: IconButton(
         key: ValueKey<String>(keyValue),
         tooltip: tooltip,
-        onPressed: onPressed == null ? null : () {},
+        onPressed: silentPress(onPressed),
         isSelected: isSelected,
         style: IconButton.styleFrom(
           // 🎯The single largest source of off-grid PAINTED edges in this

@@ -68,17 +68,27 @@ class PressureCurveButton extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: ControlPressClaim(
+          onPressed: enabled
+              ? () => showPressureCurvePopup(
+                  context,
+                  title: title,
+                  curve: curve,
+                  onChanged: onChanged,
+                )
+              : null,
           child: InkWell(
             key: ValueKey<String>(keyValue),
             borderRadius: BorderRadius.circular(4),
-            onTap: enabled
-                ? () => showPressureCurvePopup(
-                    context,
-                    title: title,
-                    curve: curve,
-                    onChanged: onChanged,
-                  )
-                : null,
+            onTap: silentPress(
+              enabled
+                  ? () => showPressureCurvePopup(
+                      context,
+                      title: title,
+                      curve: curve,
+                      onChanged: onChanged,
+                    )
+                  : null,
+            ),
             child: DecoratedBox(
               decoration: BoxDecoration(
                 border: Border.all(color: active ? AppColors.accent : _offEdge),
@@ -288,9 +298,10 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
                 child: Text('Pressure →', style: AnchoredPopupText.caption),
               ),
               ControlPressClaim(
+                onPressed: _enabled ? _reset : null,
                 child: InkWell(
                   key: const ValueKey<String>('pressure-curve-reset'),
-                  onTap: _enabled ? _reset : null,
+                  onTap: silentPress(_enabled ? _reset : null),
                   borderRadius: BorderRadius.circular(3),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(

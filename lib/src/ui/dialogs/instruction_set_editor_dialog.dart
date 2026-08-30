@@ -250,9 +250,12 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
               children: [
                 for (final entry in instructionIconPalette.entries)
                   ControlPressClaim(
+                    onPressed: () => setState(() => _iconKey = entry.key),
                     child: InkWell(
                       key: ValueKey<String>('instruction-icon-${entry.key}'),
-                      onTap: () => setState(() => _iconKey = entry.key),
+                      onTap: silentPress(
+                        () => setState(() => _iconKey = entry.key),
+                      ),
                       child: Container(
                         width: 32,
                         height: 32,
@@ -286,9 +289,12 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
               children: [
                 // Default = no tint: the chip uses the row text color.
                 ControlPressClaim(
+                  onPressed: () => setState(() => _colorValue = null),
                   child: InkWell(
                     key: const ValueKey<String>('instruction-color-default'),
-                    onTap: () => setState(() => _colorValue = null),
+                    onTap: silentPress(
+                      () => setState(() => _colorValue = null),
+                    ),
                     child: Container(
                       width: 28,
                       height: 28,
@@ -311,11 +317,14 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
                 ),
                 for (final color in instructionColorPalette)
                   ControlPressClaim(
+                    onPressed: () => setState(() => _colorValue = color),
                     child: InkWell(
                       key: ValueKey<String>(
                         'instruction-color-${color.toRadixString(16)}',
                       ),
-                      onTap: () => setState(() => _colorValue = color),
+                      onTap: silentPress(
+                        () => setState(() => _colorValue = color),
+                      ),
                       child: Container(
                         width: 28,
                         height: 28,
@@ -351,11 +360,14 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
               children: [
                 for (final entry in _markLabels.entries)
                   ControlPressClaim(
+                    onPressed: () => setState(() => _markType = entry.key),
                     child: InkWell(
                       key: ValueKey<String>(
                         'instruction-mark-${entry.key.jsonValue}',
                       ),
-                      onTap: () => setState(() => _markType = entry.key),
+                      onTap: silentPress(
+                        () => setState(() => _markType = entry.key),
+                      ),
                       child: Container(
                         height: 28,
                         padding: const EdgeInsets.symmetric(horizontal: 8),

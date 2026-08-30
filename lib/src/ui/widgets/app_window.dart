@@ -235,9 +235,9 @@ class AppWindow extends StatelessWidget {
   Widget _tab(ThemeData theme, AppWindowTab tab, int index) {
     final selected = index == selectedTab;
     final accent = theme.colorScheme.primary;
-    return ControlPressClaim(child: InkWell(
+    return ControlPressClaim(onPressed: !tab.enabled || selected ? null : tab.onSelected, child: InkWell(
       key: tab.tabKey,
-      onTap: !tab.enabled || selected ? null : tab.onSelected,
+      onTap: silentPress(!tab.enabled || selected ? null : tab.onSelected),
       child: Container(
         alignment: Alignment.bottomCenter,
         padding: const EdgeInsets.fromLTRB(11, 0, 11, 6),
@@ -312,17 +312,17 @@ class AppWindow extends StatelessWidget {
       // invisible rectangles on the window body. A quiet action reads as a
       // well sunk into the surface — the same level every field already uses
       // — which also puts it a step BELOW the confirm rather than beside it.
-      AppWindowActionEmphasis.quiet => ControlPressClaim(child: TextButton(
+      AppWindowActionEmphasis.quiet => ControlPressClaim(onPressed: action.onPressed, child: TextButton(
         key: action.actionKey,
-        onPressed: action.onPressed,
+        onPressed: silentPress(action.onPressed),
         style: TextButton.styleFrom(
           backgroundColor: colorScheme.surfaceContainerLowest,
         ),
         child: label,
       )),
-      AppWindowActionEmphasis.danger => ControlPressClaim(child: TextButton(
+      AppWindowActionEmphasis.danger => ControlPressClaim(onPressed: action.onPressed, child: TextButton(
         key: action.actionKey,
-        onPressed: action.onPressed,
+        onPressed: silentPress(action.onPressed),
         style: TextButton.styleFrom(
           backgroundColor: colorScheme.surfaceContainerLowest,
           foregroundColor: colorScheme.error,

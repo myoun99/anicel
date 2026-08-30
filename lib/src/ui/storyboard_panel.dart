@@ -4450,7 +4450,7 @@ class _StoryboardSeLabel extends StatelessWidget {
                 laneToggle: onToggleLane == null
                     ? null
                     : RailSwipeColumnPointer(
-                        onPressDown: onToggleLane,
+                        onPressed: onToggleLane,
                         child: InkWell(
                           key: ValueKey<String>(
                             'storyboard-se-lane-toggle-'
@@ -5846,7 +5846,7 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                 laneToggle: onToggleLane == null
                     ? null
                     : RailSwipeColumnPointer(
-                        onPressDown: onToggleLane,
+                        onPressed: onToggleLane,
                         child: InkWell(
                           key: ValueKey<String>(
                             'storyboard-track-lane-toggle-${track.id.value}',

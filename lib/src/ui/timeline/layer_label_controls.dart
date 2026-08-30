@@ -1274,18 +1274,18 @@ class _LabelPlate extends StatelessWidget {
 class RailSwipeColumnPointer extends StatelessWidget {
   const RailSwipeColumnPointer({
     super.key,
-    this.onPressDown,
+    this.onPressed,
     required this.child,
   });
 
-  /// Fired on the pointer DOWN — 유저 2026-08-30: 「버튼은 기본적으로
-  /// **누른순간 작동**하고 누른채로 드래그시 일괄조작 작동」.
+  /// What this column's control does. It fires on the DOWN, because
+  /// [PressFireScope] below puts everything here on [PressFire.down].
   ///
   /// ⚠️A column whose control is a bare [InkWell] rather than an
   /// [AppIconButton] has no press-fire of its own, and every one of those is
   /// already wrapped in THIS — so the firing rides here too rather than ten
   /// widgets being rewritten.
-  final VoidCallback? onPressDown;
+  final VoidCallback? onPressed;
 
   final Widget child;
 
@@ -1294,9 +1294,18 @@ class RailSwipeColumnPointer extends StatelessWidget {
     // ⛔The WEAK half is NOT written again here. It is [ControlPressClaim],
     // the one widget every button in the app wears; what a swipe column
     // adds is the STRONG claim, and that is all it should have to say.
-    return ControlPressClaim(
-      onPressDown: onPressDown,
-      child: DragVerbClaim(child: child),
+    //
+    // 🚨★★★AND THIS IS WHERE 「타임라인같은 특정버튼」 IS DEFINED (유저
+    // 확정 2026-08-30). Not a flag on each button — the predicate is 「a drag
+    // from here paints the column」, which is exactly what mounting a swipe
+    // column means, so the scope says it once for every control inside,
+    // including an [AppIconButton] that carries a claim of its own.
+    return PressFireScope(
+      fireOn: PressFire.down,
+      child: ControlPressClaim(
+        onPressed: onPressed,
+        child: DragVerbClaim(child: child),
+      ),
     );
   }
 }

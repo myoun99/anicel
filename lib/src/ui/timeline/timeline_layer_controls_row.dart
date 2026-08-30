@@ -499,13 +499,16 @@ class TimelineLayerControlsRow extends StatelessWidget {
                           width: layerLaneToggleSlotWidth,
                           child: hasGroupFold && onToggleGroupFold != null
                               ? ControlPressClaim(
+                                  onPressed: () => onToggleGroupFold!(layer.id),
                                   child: InkWell(
                                     key: ValueKey<String>(
                                       layerKindGroupsLayers(layer.kind)
                                           ? 'timeline-folder-twirl-${layer.id}'
                                           : 'timeline-attach-twirl-${layer.id}',
                                     ),
-                                    onTap: () => onToggleGroupFold!(layer.id),
+                                    onTap: silentPress(
+                                      () => onToggleGroupFold!(layer.id),
+                                    ),
                                     // R26 #28
                                     customBorder: const CircleBorder(),
                                     child: SizedBox(
@@ -695,7 +698,16 @@ class TimelineLayerControlsRow extends StatelessWidget {
     // over the LAYER area (A2 2026-08-17 pulled the band back out of the
     // section zone). `selected` stays because the row still reports it to
     // semantics and keys its memo on it.
-    return row;
+    // 🚨★★★THE WHOLE ROW IS 「레이어 쪽」 (유저 확정 2026-08-30): 「**레이어
+    // 쪽 버튼은 탭다운, 헤더쪽은 손떼면**으로 충분할거같은데 맞지?」.
+    //
+    // ⛔Mounting this on the swipe columns alone was not enough, and the gap
+    // was visible on one row: the group-fold twirl is not a swipe column, so
+    // it acted on the RELEASE while the eye and the fx beside it acted on the
+    // press. The rule the user stated is about the row, so it is stated on
+    // the row — and the header, which is a different widget, keeps the
+    // default.
+    return PressFireScope(fireOn: PressFire.down, child: row);
   }
 
   /// The row's opacity slider, live-following the session's drag preview

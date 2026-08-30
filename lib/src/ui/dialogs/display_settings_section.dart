@@ -78,12 +78,12 @@ class _ScaleStop extends StatelessWidget {
         color: selected ? colorScheme.primary : colorScheme.outlineVariant,
       ),
     );
-    return ControlPressClaim(child: InkWell(
+    return ControlPressClaim(onPressed: onPressed, child: InkWell(
       // Keyed by the PERCENTAGE rather than the index: a stop added or
       // removed later must not silently move another stop's key onto a
       // different number.
       key: ValueKey<String>('ui-scale-stop-${(stop * 100).round()}'),
-      onTap: onPressed,
+      onTap: silentPress(onPressed),
       customBorder: shape,
       child: Container(
         height: AppShapes.controlMedium,

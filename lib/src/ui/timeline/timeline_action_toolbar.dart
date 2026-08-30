@@ -646,10 +646,10 @@ class TimelineActionToolbar extends StatelessWidget {
       // buttons honest scans `IconButton(`, so a TEXT button walked straight
       // past it and a drag begun on 1·2·3·4·N leaked into the bar's pan.
       // The BOX is still theirs (a pill promised it); the LAW never was.
-      child: ControlPressClaim(
+      child: ControlPressClaim(onPressed: onPressed, 
         child: TextButton(
           key: key,
-          onPressed: onPressed,
+          onPressed: silentPress(onPressed),
           style: TextButton.styleFrom(
             // Sized to sit INSIDE a pill (28 outer, 2px of breath each side)
             // rather than to stand on its own in the bar.

@@ -91,52 +91,60 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
             runSpacing: 8,
             children: [
               ControlPressClaim(
+                onPressed: _undo,
                 child: TextButton(
                   key: const ValueKey<String>('brush-canvas-smoke-screen-undo'),
-                  onPressed: _undo,
+                  onPressed: silentPress(_undo),
                   child: const Text('Undo'),
                 ),
               ),
               ControlPressClaim(
+                onPressed: _redo,
                 child: TextButton(
                   key: const ValueKey<String>('brush-canvas-smoke-screen-redo'),
-                  onPressed: _redo,
+                  onPressed: silentPress(_redo),
                   child: const Text('Redo'),
                 ),
               ),
               ControlPressClaim(
+                onPressed: () => _resetSession(debugOperation: 'reset'),
                 child: TextButton(
                   key: const ValueKey<String>(
                     'brush-canvas-smoke-screen-reset',
                   ),
-                  onPressed: () => _resetSession(debugOperation: 'reset'),
+                  onPressed: silentPress(
+                    () => _resetSession(debugOperation: 'reset'),
+                  ),
                   child: const Text('Reset'),
                 ),
               ),
               ControlPressClaim(
+                onPressed: () => _setColor(0xFFFF0000),
                 child: TextButton(
                   key: const ValueKey<String>(
                     'brush-canvas-smoke-screen-color-red',
                   ),
-                  onPressed: () => _setColor(0xFFFF0000),
+                  onPressed: silentPress(() => _setColor(0xFFFF0000)),
                   child: const Text('Red'),
                 ),
               ),
               ControlPressClaim(
+                onPressed: () => _setColor(0xFF0000FF),
                 child: TextButton(
                   key: const ValueKey<String>(
                     'brush-canvas-smoke-screen-color-blue',
                   ),
-                  onPressed: () => _setColor(0xFF0000FF),
+                  onPressed: silentPress(() => _setColor(0xFF0000FF)),
                   child: const Text('Blue'),
                 ),
               ),
               ControlPressClaim(
+                onPressed: () => _setColor(0xFF000000),
                 child: TextButton(
                   key: const ValueKey<String>(
                     'brush-canvas-smoke-screen-color-black',
                   ),
-                  onPressed: () => _setColor(0xFF000000),
+                  onPressed: silentPress(() => _setColor(0xFF000000)),
                   child: const Text('Black'),
                 ),
               ),

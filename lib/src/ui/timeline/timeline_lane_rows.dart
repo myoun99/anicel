@@ -463,15 +463,23 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         laneEdit?.onSetValue != null) {
       final on = valueLabel == 'on';
       return ControlPressClaim(
+        onPressed: () => laneEdit!.onSetValue!.call(
+          layer,
+          lane,
+          widget.currentFrameIndex,
+          on ? 'off' : 'on',
+        ),
         child: InkWell(
           key: ValueKey<String>(
             '$_keyPrefix-lane-toggle-${layer.id}-${lane.laneId}',
           ),
-          onTap: () => laneEdit!.onSetValue!.call(
-            layer,
-            lane,
-            widget.currentFrameIndex,
-            on ? 'off' : 'on',
+          onTap: silentPress(
+            () => laneEdit!.onSetValue!.call(
+              layer,
+              lane,
+              widget.currentFrameIndex,
+              on ? 'off' : 'on',
+            ),
           ),
           child: Center(
             child: Icon(
@@ -661,12 +669,22 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   @override
   Widget build(BuildContext context) {
     final hooks = widget.currentRowHooks;
+    // 🚨A LANE ROW IS 「레이어 쪽」 too (유저 확정 2026-08-30): 「레이어 쪽
+    // 버튼은 탭다운, 헤더쪽은 손떼면」. Said once for the whole row, so the
+    // lane's twirl and its value button cannot drift from the swipe columns
+    // standing beside them.
     if (hooks == null) {
-      return _buildCell(context, null);
+      return PressFireScope(
+        fireOn: PressFire.down,
+        child: _buildCell(context, null),
+      );
     }
-    return ValueListenableBuilder<TimelineRowAddress?>(
-      valueListenable: hooks.currentRow,
-      builder: (context, currentRow, _) => _buildCell(context, currentRow),
+    return PressFireScope(
+      fireOn: PressFire.down,
+      child: ValueListenableBuilder<TimelineRowAddress?>(
+        valueListenable: hooks.currentRow,
+        builder: (context, currentRow, _) => _buildCell(context, currentRow),
+      ),
     );
   }
 
@@ -729,13 +747,18 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                 const SizedBox(width: 10),
               ],
               ControlPressClaim(
+                onPressed: onToggleGroup == null
+                    ? null
+                    : () => onToggleGroup(layer, lane),
                 child: InkWell(
                   key: ValueKey<String>(
                     '$_keyPrefix-lane-group-toggle-${layer.id}-${lane.laneId}',
                   ),
-                  onTap: onToggleGroup == null
-                      ? null
-                      : () => onToggleGroup(layer, lane),
+                  onTap: silentPress(
+                    onToggleGroup == null
+                        ? null
+                        : () => onToggleGroup(layer, lane),
+                  ),
                   customBorder: const CircleBorder(), // R26 #28
                   child: Icon(
                     layerRailTwirlIcon(expanded: lane.groupExpanded),
@@ -1057,9 +1080,10 @@ class _NavigatorButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return ControlPressClaim(
+      onPressed: enabled ? onTap : null,
       child: InkWell(
         key: buttonKey,
-        onTap: enabled ? onTap : null,
+        onTap: silentPress(enabled ? onTap : null),
         child: SizedBox(
           width: 16,
           height: 20,
