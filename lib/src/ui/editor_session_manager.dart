@@ -2457,6 +2457,25 @@ class EditorSessionManager extends ChangeNotifier {
   late final MediaStagingStore mediaStagingStore =
       _injectedMediaStagingStore ?? MediaStagingStore();
 
+  /// 🚨★★★**EVERY WAY AN ASSET BECOMES CARRIED COMES THROUGH HERE.**
+  ///
+  /// Carrying means the project holds the bytes from the moment the choice
+  /// is made — 유저 2026-08-30: 「품은 순간 데이터를 가지고있고 **불변**
+  /// 이었으면좋겠어서」 — and there are FOUR ways to make that choice: the
+  /// import window, a folder import, promoting a reference afterwards, and
+  /// recording a voice take. Each one used to be free to forget, and three
+  /// of them did.
+  ///
+  /// ⛔Called BEFORE the pool records the asset. A staged copy with no
+  /// asset is an orphan the sweep takes; an asset the pool holds whose
+  /// bytes were never staged is the old behaviour back, silently — and
+  /// silently is how it survived two rounds of this work.
+  void stageCarriedBytes(Iterable<String> poolPaths) {
+    for (final path in poolPaths) {
+      mediaStagingStore.stage(path);
+    }
+  }
+
   /// Conformed audio per source path (audio program wiring): waveform
   /// peaks, exact clip lengths and the device transport's PCM, decoded
   /// ONCE per file off the UI isolate. Conforms live in the app container
@@ -7746,12 +7765,18 @@ class EditorSessionManager extends ChangeNotifier {
     // else, which meant the pool entry itself said `carried: false`: the
     // one thing the save reads. The first save after a folder import left
     // every 参考 scan OUTSIDE the archive, and only a reopen put it right
-    // (the old `sourcePath` spelling of the same answer). The kind still
-    // sets the ceiling above this, so a delivery's 참고영상 stays a
-    // reference either way.
+    // (the old `sourcePath` spelling of the same answer).
+    //
+    // 🪦This paragraph used to end「the kind still sets the ceiling above
+    // this, so a delivery's 참고영상 stays a reference either way」. That
+    // ceiling died 2026-08-14 — the kind only picks the import window's
+    // DEFAULT now, and a movie carries if the person says so.
     final registeredAssets = [
       for (final asset in plan.assets) asset.copyWith(carried: copyIntoProject),
     ];
+    if (copyIntoProject) {
+      stageCarriedBytes([for (final asset in plan.assets) asset.path]);
+    }
 
     _historyManager.execute(
       ImportMediaCommand(
@@ -8350,6 +8375,7 @@ class EditorSessionManager extends ChangeNotifier {
     mintFrameId: _mintFrameId,
     mediaAssets: () => mediaAssets,
     rememberMediaFingerprint: rememberMediaFingerprint,
+    stageCarriedBytes: stageCarriedBytes,
     frameRangeSelection: () => frameRangeSelection,
     projectFilePath: () => _projectFilePath,
     notify: notifyListeners,
@@ -8751,12 +8777,7 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     if (carried) {
-      // ⛔BEFORE the pool records them. A staged copy with no asset is an
-      // orphan the sweep takes; an asset the pool holds whose bytes were
-      // never staged is the old behaviour back, silently.
-      for (final asset in added) {
-        mediaStagingStore.stage(asset.path);
-      }
+      stageCarriedBytes([for (final asset in added) asset.path]);
     }
     _cutCommandCoordinator.updateMediaAssets([
       ...pool,
@@ -8942,15 +8963,7 @@ class EditorSessionManager extends ChangeNotifier {
     if (!promotes) {
       return false;
     }
-    // 🚨★★★**THE SAME LAW AS AN IMPORT THAT CARRIED FROM THE START.**
-    //
-    // This verb is the user saying「actually, keep this inside」— which is
-    // the same sentence the import window's Keep inside says, so it must
-    // mean the same thing: the bytes are held from the moment it is
-    // pressed. Setting only the FLAG here left one entrance on the old
-    // behaviour, where the promise was kept at save time and deleting the
-    // original in between quietly emptied it.
-    mediaStagingStore.stage(path);
+    stageCarriedBytes([path]);
     _cutCommandCoordinator.updateMediaAssets([
       for (final asset in pool)
         asset.path == path ? asset.copyWith(carried: true) : asset,

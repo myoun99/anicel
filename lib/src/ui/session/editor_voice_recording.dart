@@ -81,6 +81,7 @@ class EditorVoiceRecording {
     required FrameId Function(LayerId) mintFrameId,
     required List<MediaAsset> Function() mediaAssets,
     required void Function(String, Uint8List) rememberMediaFingerprint,
+    required void Function(Iterable<String>) stageCarriedBytes,
     required ValueNotifier<TimelineFrameRangeSelection?> Function()
     frameRangeSelection,
     required String? Function() projectFilePath,
@@ -89,6 +90,7 @@ class EditorVoiceRecording {
        _audioDeviceTransport = audioDeviceTransport,
        _audioConformStore = audioConformStore,
        _audioSyncSettings = audioSyncSettings,
+       _stageCarriedBytes = stageCarriedBytes,
        _repositoryRef = repository,
        _cutCommandCoordinatorRef = cutCommandCoordinator,
        _uiStrings = uiStrings,
@@ -158,6 +160,10 @@ class EditorVoiceRecording {
 
   final List<MediaAsset> Function() _mediaAssets;
   List<MediaAsset> get mediaAssets => _mediaAssets();
+
+  /// Holds a take's bytes the moment it lands, the same way an import
+  /// that carries does — see [EditorSessionManager.stageCarriedBytes].
+  final void Function(Iterable<String>) _stageCarriedBytes;
 
   final void Function(String, Uint8List) _rememberMediaFingerprint;
   void rememberMediaFingerprint(String poolPath, Uint8List bytes) =>
@@ -1038,6 +1044,12 @@ class EditorVoiceRecording {
     // pool entry + the lane's whole swap.
     audioConformStore.invalidate(path);
     audioConformStore.warmPaths([path]);
+    // ⛔BEFORE the pool records it, like every other way an asset becomes
+    // carried. The take is on the user's disk in the recordings shelf, so
+    // until this ran, clearing that folder before saving took the
+    // performance with it — the very trade the comment below says nobody
+    // would make.
+    _stageCarriedBytes([path]);
     final pool = mediaAssets;
     _cutCommandCoordinator.historyManager.execute(
       CompositeCommand(
@@ -1055,6 +1067,12 @@ class EditorVoiceRecording {
                   // carries it. The shelf copy stays where it is — losing
                   // a performance because a save never happened is not a
                   // trade anyone would take.
+                  //
+                  // 🚨And that sentence is exactly why the bytes are staged
+                  // just below: the shelf file is on the user's disk, so
+                  // clearing the Recordings folder before saving used to
+                  // take the performance with it. Carrying now means held,
+                  // not just flagged.
                   carried: true,
                   identity: readMediaIdentity(path),
                 ),
