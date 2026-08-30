@@ -1018,6 +1018,23 @@ List<_Entry> _readRecords(File file) {
   }
   // 🚨A question is an entry on its card, folded in before anything is placed
   // — the section it lands in depends on it. See [_foldQuestionsIntoOrigins].
+  // 🚨★★★ON A CARD, `tag` MEANS `tags` (유저 2026-08-31: 「너가 만든 카드는
+  // 태그가 없고」).
+  //
+  // ⛔It silently meant NOTHING. Chips are drawn from `tags`, and the
+  // 「손대기 전에」 laws are matched by `e.tags.contains(l.tag)` — so a card
+  // written with `tag` got no chip AND no law, and nothing said so. I wrote
+  // `"tag":"구조"` on every card I made this session and every one landed
+  // bare. Two fields one letter apart, one of which does nothing, is a trap
+  // rather than a convention.
+  //
+  // ⚠️Folded HERE rather than per line, so it cannot be undone by a later
+  // line that names `tags`. ⚠️And not on a `law`, where `tag` keeps its own
+  // meaning — WHICH tag this law governs. A law is not a card.
+  for (final e in byId.values) {
+    if (e.kind == 'law' || e.tag.isEmpty || e.tags.contains(e.tag)) continue;
+    e.tags = [...e.tags, e.tag];
+  }
   _foldQuestionsIntoOrigins(byId);
   _foldChecksIntoCards(byId);
   // 🚨★★★AND ONLY NOW IS THE CARD PLACED. Every entry is in, so the walk
@@ -2180,12 +2197,19 @@ String _itemPanel(_Entry e) {
   // hidden.
   final answeredQuestion =
       (_byOrigin[e.id] ?? const <_Entry>[]).any((q) => q.answer != null);
-  // 대기 중 promises that 「배지가 무엇을 기다리는지 말한다」, and the state
-  // it names is folded straight out of the story now — an unanswered question
-  // makes the card's newest 대분류 a 질문, which IS the 답할 것 section.
-  // ⛔`_asking` was a second reader for that and is gone.
-  final badge =
-      (e.state == 'open' || inbox) ? '' : (_stateLabels[e.state] ?? e.state);
+  // 🚨★★★NO BADGE THAT REPEATS ITS OWN SECTION (유저 2026-08-31: 「나중에
+  // 항목의 나중에 태그 필요없고, 대화중도 필요없고 … 답할것도 답할것
+  // 태그 필요없고」).
+  //
+  // Every section is now a 대분류 spelled the same way, so `_stateLabels`
+  // hands back the name of the box the row is already sitting in — a chip
+  // that says 「나중에」 on every row of 나중에. ⛔The file already forbids
+  // this twice, for 미제출 and for 미확인; the overhaul turned every
+  // remaining badge into the same thing.
+  //
+  // ⚠️ONE survives: `mine`. 대화 중 holds both `gate` and `mine`, so 「내가
+  // 정리 중」 is the one label that still says something the section does not.
+  final badge = e.state == 'mine' ? _stateLabels['mine']! : '';
   // 분류 전 now receives three different arrivals, and which one a row is
   // decides what I do with it. The chip says so on the row (유저 2026-08-26:
   // 「분류전으로 옮기고 대답 태그 붙이면」). ⚠️Plain feedback and ideas already
@@ -2469,66 +2493,108 @@ String _prChip(int number) {
       '</span>';
 }
 
+/// One entry, rendered. Split out so a 대분류 and the 소분류 inside it are
+/// drawn by the SAME code — the difference between them is where they sit,
+/// not what they look like.
+String _entryRow(_Entry e, int i, {required bool open}) {
+  final entry = e.log[i];
+  final flat = entry.text.replaceAll('\n', ' ');
+  final peek = flat.length > 44 ? '${flat.substring(0, 44)}…' : flat;
+  final mine = _stageName(e, i);
+  // 🚨★★★ONE READER FOR 「아직 남은 것인가」 — [_stillOwed] AND THIS.
+  // 남은 것 is one record among others: only the LAST word is still owed.
+  final leftover = mine == '남은 것';
+  final live = leftover && _lastSection(e) == '남은 것' && _lastIsThis(e, i);
+  final ask = entry.ask;
+  final answered = ask?.answer != null;
+  final b = StringBuffer();
+  // ⚠️`open` is an ATTRIBUTE, not a class. Written inside the class string it
+  // renders as `class="lg open"` — valid HTML, silently folded, and 68 stages
+  // that were meant to stand open did not.
+  b.writeln('<details class="lg'
+      '${entry.byUser || mine.startsWith('유저') ? ' says' : ''}'
+      '${ask != null && !answered ? ' q' : ''}'
+      '${live ? ' todo' : ''}${leftover && !live ? ' done' : ''}"'
+      '${open ? ' open' : ''}'
+      '${ask == null ? '' : ' id="c-${_esc(ask.id)}" data-kind="decision"'}>');
+  b.writeln('<summary><span class="lgk">${_esc(mine)}</span>'
+      '<span class="lgp">${_esc(peek)}</span>'
+      '${ask == null ? '' : '<span class="chip ${answered ? 'ok' : 'run'}">'
+          '${answered ? '답함' : '대기'}</span>'}'
+      '${entry.pr == null ? '' : _prChip(entry.pr!)}'
+      '<span class="when">${_esc(_day(entry.ts))}</span></summary>');
+  if (ask == null) {
+    b.writeln('<p class="d">${_esc(entry.text)}</p>');
+  } else {
+    b.writeln(_askBody(ask, answered: answered));
+  }
+  if (entry.how.isNotEmpty) {
+    b.writeln('<p class="d"><b>이렇게 확인한다</b> — ${_esc(entry.how)}</p>');
+  }
+  if (entry.pr != null) {
+    b.writeln('<p class="d"><a class="chip link" target="_blank" '
+        'href="https://github.com/$_repo/pull/${entry.pr}">'
+        'PR #${entry.pr} 열기 →</a></p>');
+  }
+  return b.toString();
+}
+
+/// Whether entry [i] is the last 대분류 in the story — the one that decides
+/// the card's section. ⚠️Reads the same map [_lastSection] does.
+bool _lastIsThis(_Entry e, int i) {
+  for (var j = e.log.length - 1; j > i; j--) {
+    if (_sectionState.containsKey(_stageName(e, j))) return false;
+  }
+  return true;
+}
+
+/// 🚨★★★A 대분류 IS A FOLDER, AND WHAT FOLLOWS IT LIVES INSIDE.
+///
+/// 유저 2026-08-31: 「걱정인 건 **대분류는 사실 하나의 항목이자 폴더나
+/// 마찬가지인데 그게 제대로 UI로서 알기 쉽게 보여지는 건지.** 대분류
+/// 펼치고 그 안에 소분류 있고 그거 펼치는 느낌이 직관적일 거 같은데」.
+///
+/// ⛔The story was ONE FLAT LIST. 🧪`I-4` came out as sixty rows at the same
+/// depth — 질문, 남은 것, 상담, 구현, 작업 기록 all side by side — so the
+/// model knew which were sections and the screen did not. A reader could not
+/// see the spine of the card, only its sediment.
+///
+/// ⇒ Each 대분류 opens a folder and every 소분류 written after it is drawn
+/// inside, until the next 대분류 starts a new one. A folder with nothing
+/// inside stays a plain row: that is honest, it really did have nothing
+/// written under it.
+///
+/// ⚠️Entries before the FIRST 대분류 have no folder to be in and are drawn at
+/// the top level. Old cards start that way and inventing a folder for them
+/// would be putting them somewhere they never were.
 String _story(_Entry e) {
   if (e.log.isEmpty && e.rest.isEmpty) return '<p class="d">메모 없음.</p>';
-  final b = StringBuffer();
+  // Where each folder starts, and what falls inside it.
+  final heads = <int>[];
   for (var i = 0; i < e.log.length; i++) {
-    final entry = e.log[i];
-    final newest = i == e.log.length - 1;
-    final flat = entry.text.replaceAll('\n', ' ');
-    final peek = flat.length > 44 ? '${flat.substring(0, 44)}…' : flat;
-    final mine = _stageName(e, i);
-    // 🚨★★★ONE READER FOR 「아직 남은 것인가」 — [_stillOwed] AND THIS.
-    //
-    // 유저 2026-08-31: 「**색라벨은 정한 규칙대로 남은것이 마지막에 있어야**
-    // 착수가능이도록 하고싶은데, **지금 마지막이 아닌데도 착수가능이거든?**」
-    //
-    // ⛔#1395 moved the SECTION onto 「마지막 항목이 남은 것인가」 but left the
-    // colour asking a different question — 「does this entry match the `rest`
-    // field」 — so a 남은 것 with work written after it still wore the loud
-    // colour. Two readers, one question, which is the thing that splits.
-    // 남은 것 is one record among others: only the LAST word is still owed.
-    final leftover = mine == '남은 것';
-    final live = leftover && newest;
-    // ⚠️`open` is an ATTRIBUTE, not a class. Written inside the class string
-    // it renders as `class="lg open"` — valid HTML, silently folded, and 68
-    // stages that were meant to stand open did not.
-    //
-    // ⛔ONLY THE LAST ONE STANDS OPEN (유저 2026-08-31: 「마지막 항목만
-    // 펼치기 상태로 두는거고」). It used to add `|| live`, which is now the
-    // same condition anyway — kept out so the next reader cannot make them
-    // disagree again.
-    // 🚨★★★A QUESTION IS AN ENTRY, and it brings its own form with it — the
-    // radios, the memo box and the submit all live here now (유저 2026-08-31:
-    // 「원본 카드 안에 질문 UI 같은 거 만들어서」). ⛔It used to be a whole
-    // second block under the story, so an answer sat below everything no
-    // matter when it arrived.
-    final ask = entry.ask;
-    final answered = ask?.answer != null;
-    b.writeln('<details class="lg'
-        '${entry.byUser || mine.startsWith('유저') ? ' says' : ''}'
-        '${ask != null && !answered ? ' q' : ''}'
-        '${live ? ' todo' : ''}${leftover && !live ? ' done' : ''}"'
-        '${newest ? ' open' : ''}'
-        '${ask == null ? '' : ' id="c-${_esc(ask.id)}" data-kind="decision"'}>');
-    b.writeln('<summary><span class="lgk">${_esc(mine)}</span>'
-        '<span class="lgp">${_esc(peek)}</span>'
-        '${ask == null ? '' : '<span class="chip ${answered ? 'ok' : 'run'}">'
-            '${answered ? '답함' : '대기'}</span>'}'
-        '${entry.pr == null ? '' : _prChip(entry.pr!)}'
-        '<span class="when">${_esc(_day(entry.ts))}</span></summary>');
-    if (ask == null) {
-      b.writeln('<p class="d">${_esc(entry.text)}</p>');
-    } else {
-      b.writeln(_askBody(ask, answered: answered));
-    }
-    if (entry.how.isNotEmpty) {
-      b.writeln('<p class="d"><b>이렇게 확인한다</b> — ${_esc(entry.how)}</p>');
-    }
-    if (entry.pr != null) {
-      b.writeln('<p class="d"><a class="chip link" target="_blank" '
-          'href="https://github.com/$_repo/pull/${entry.pr}">'
-          'PR #${entry.pr} 열기 →</a></p>');
+    if (_sectionState.containsKey(_stageName(e, i))) heads.add(i);
+  }
+  final b = StringBuffer();
+  final firstHead = heads.isEmpty ? e.log.length : heads.first;
+  // ⚠️Only the LAST folder stands open (유저 2026-08-31: 「마지막 항목만
+  // 펼치기 상태로 두는거고」), and inside it only its last entry.
+  for (var i = 0; i < firstHead; i++) {
+    b.writeln(_entryRow(e, i, open: heads.isEmpty && i == e.log.length - 1));
+    b.writeln('</details>');
+  }
+  for (var h = 0; h < heads.length; h++) {
+    final start = heads[h];
+    final end = h + 1 < heads.length ? heads[h + 1] : e.log.length;
+    final inside = end - start - 1;
+    final lastFolder = h == heads.length - 1;
+    b.writeln(_entryRow(e, start, open: lastFolder));
+    if (inside > 0) {
+      b.writeln('<div class="under">');
+      for (var i = start + 1; i < end; i++) {
+        b.writeln(_entryRow(e, i, open: lastFolder && i == end - 1));
+        b.writeln('</details>');
+      }
+      b.writeln('</div>');
     }
     b.writeln('</details>');
   }
@@ -2910,6 +2976,9 @@ white-space:nowrap;flex:none;min-width:38px;text-align:right}
    reads as one thing rather than as many panels; the summary carries the
    stage, the date and a preview so the row is findable while folded. */
 .lg{border-left:2px solid var(--line2);padding-left:9px;margin:0}
+/* 소분류는 자기 대분류 안에 들여쓴다 — 폴더가 눈에 보이게 하는 것이 전부다. */
+.under{margin:4px 0 2px 14px;border-left:2px solid var(--line);padding-left:10px}
+.under>.lg{border-left:none;padding-left:0}
 .lg+.lg{margin-top:5px}
 .lg>summary{display:flex;gap:8px;align-items:baseline;padding:2px 0;
 cursor:pointer;list-style:none}
