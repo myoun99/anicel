@@ -57,8 +57,8 @@ class ExportAccordion extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ControlPressClaim(child: InkWell(
-            onTap: onToggle,
+          ControlPressClaim(onPressed: onToggle, child: InkWell(
+            onTap: silentPress(onToggle),
             child: Container(
               color: AppColors.washUp.withValues(alpha: 0.5),
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
@@ -113,8 +113,8 @@ class _ResetChip extends StatelessWidget {
     final color = enabled
         ? theme.colorScheme.onSurface
         : theme.disabledColor.withValues(alpha: 0.4);
-    return ControlPressClaim(child: InkWell(
-      onTap: enabled ? onPressed : null,
+    return ControlPressClaim(onPressed: enabled ? onPressed : null, child: InkWell(
+      onTap: silentPress(enabled ? onPressed : null),
       borderRadius: BorderRadius.circular(4),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
@@ -152,8 +152,8 @@ class ExportChip extends StatelessWidget {
     final theme = Theme.of(context);
     final accent = theme.colorScheme.primary;
     final disabled = onTap == null;
-    return ControlPressClaim(child: InkWell(
-      onTap: onTap,
+    return ControlPressClaim(onPressed: onTap, child: InkWell(
+      onTap: silentPress(onTap),
       borderRadius: BorderRadius.circular(4),
       child: Container(
         padding: _chipPadding,

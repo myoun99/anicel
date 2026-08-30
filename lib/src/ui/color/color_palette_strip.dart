@@ -36,9 +36,10 @@ class ColorPaletteStrip extends StatelessWidget {
   }) {
     final enabled = onTap != null;
     return ControlPressClaim(
+      onPressed: onTap,
       child: InkWell(
         key: ValueKey<String>(keyValue),
-        onTap: onTap,
+        onTap: silentPress(onTap),
         child: Container(
           width: 20,
           height: 20,
@@ -69,9 +70,10 @@ class ColorPaletteStrip extends StatelessWidget {
 
   Widget _swatch({required Key key, required int color}) {
     return ControlPressClaim(
+      onPressed: () => onColorSelected(color),
       child: InkWell(
         key: key,
-        onTap: () => onColorSelected(color),
+        onTap: silentPress(() => onColorSelected(color)),
         child: Container(
           width: 20,
           height: 20,

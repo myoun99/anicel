@@ -343,8 +343,9 @@ class _InkSwatch extends StatelessWidget {
     // Selection reads as COLOR only (the app's selection grammar — no
     // checkmarks): the accent ring is the selected state.
     return ControlPressClaim(
+      onPressed: onTap,
       child: InkWell(
-        onTap: onTap,
+        onTap: silentPress(onTap),
         borderRadius: BorderRadius.circular(4),
         child: Container(
           width: 22,

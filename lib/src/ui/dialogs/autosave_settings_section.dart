@@ -186,20 +186,44 @@ class AutosaveSettingsSection extends StatelessWidget {
                 if (!Platform.isAndroid && !Platform.isIOS) ...[
                   if (settings.recordingsDirectory != null)
                     ControlPressClaim(
+                      onPressed: () => session.setSaveSettings(
+                        settings.copyWith(recordingsDirectory: null),
+                      ),
                       child: TextButton(
                         key: const ValueKey<String>(
                           'settings-recordings-reset',
                         ),
-                        onPressed: () => session.setSaveSettings(
-                          settings.copyWith(recordingsDirectory: null),
+                        onPressed: silentPress(
+                          () => session.setSaveSettings(
+                            settings.copyWith(recordingsDirectory: null),
+                          ),
                         ),
                         child: Text(AppText.strings.autosaveDefault),
                       ),
                     ),
                   ControlPressClaim(
+                    onPressed: () async {
+                      // The GRANT flavour: this path is read again at the
+                      // NEXT launch, and on macOS a stored path without
+                      // its token is refused there — the setting stayed
+                      // on screen while every write quietly failed
+                      // (Q-scoped-folder-settings, 유저 「알아서 맡김」).
+                      final grant = await pickFolderGrantForUser(context);
+                      final path = grant?.path;
+                      if (path != null) {
+                        session.setSaveSettings(
+                          AppSave.settings.value.copyWith(
+                            recordingsDirectory: GrantedDirectory(
+                              path: path,
+                              bookmark: grant!.bookmark,
+                            ),
+                          ),
+                        );
+                      }
+                    },
                     child: TextButton(
                       key: const ValueKey<String>('settings-recordings-browse'),
-                      onPressed: () async {
+                      onPressed: silentPress(() async {
                         // The GRANT flavour: this path is read again at the
                         // NEXT launch, and on macOS a stored path without
                         // its token is refused there — the setting stayed
@@ -217,7 +241,7 @@ class AutosaveSettingsSection extends StatelessWidget {
                             ),
                           );
                         }
-                      },
+                      }),
                       child: Text(AppText.strings.autosaveChoose),
                     ),
                   ),
@@ -253,18 +277,39 @@ class AutosaveSettingsSection extends StatelessWidget {
                 if (!Platform.isAndroid && !Platform.isIOS) ...[
                   if (settings.conformDirectory != null)
                     ControlPressClaim(
+                      onPressed: () => session.setSaveSettings(
+                        settings.copyWith(conformDirectory: null),
+                      ),
                       child: TextButton(
                         key: const ValueKey<String>('settings-conform-reset'),
-                        onPressed: () => session.setSaveSettings(
-                          settings.copyWith(conformDirectory: null),
+                        onPressed: silentPress(
+                          () => session.setSaveSettings(
+                            settings.copyWith(conformDirectory: null),
+                          ),
                         ),
                         child: Text(AppText.strings.autosaveDefault),
                       ),
                     ),
                   ControlPressClaim(
+                    onPressed: () async {
+                      // The GRANT flavour, same reason as the recordings
+                      // folder above.
+                      final grant = await pickFolderGrantForUser(context);
+                      final path = grant?.path;
+                      if (path != null) {
+                        session.setSaveSettings(
+                          AppSave.settings.value.copyWith(
+                            conformDirectory: GrantedDirectory(
+                              path: path,
+                              bookmark: grant!.bookmark,
+                            ),
+                          ),
+                        );
+                      }
+                    },
                     child: TextButton(
                       key: const ValueKey<String>('settings-conform-browse'),
-                      onPressed: () async {
+                      onPressed: silentPress(() async {
                         // The GRANT flavour, same reason as the recordings
                         // folder above.
                         final grant = await pickFolderGrantForUser(context);
@@ -279,7 +324,7 @@ class AutosaveSettingsSection extends StatelessWidget {
                             ),
                           );
                         }
-                      },
+                      }),
                       child: Text(AppText.strings.autosaveChoose),
                     ),
                   ),
@@ -403,9 +448,12 @@ class _RecoverySnapshotsBlockState extends State<_RecoverySnapshotsBlock> {
               ),
             ),
             ControlPressClaim(
+              onPressed: _selected.isEmpty ? null : _confirmDelete,
               child: TextButton(
                 key: const ValueKey<String>('settings-recovery-delete'),
-                onPressed: _selected.isEmpty ? null : _confirmDelete,
+                onPressed: silentPress(
+                  _selected.isEmpty ? null : _confirmDelete,
+                ),
                 child: Text(AppText.strings.commonDelete),
               ),
             ),
@@ -431,13 +479,20 @@ class _RecoverySnapshotsBlockState extends State<_RecoverySnapshotsBlock> {
                 final row = _rows[index];
                 final selected = _selected.contains(row.path);
                 return ControlPressClaim(
+                  onPressed: () => setState(() {
+                    if (!_selected.add(row.path)) {
+                      _selected.remove(row.path);
+                    }
+                  }),
                   child: InkWell(
                     key: ValueKey<String>('settings-recovery-row-${row.path}'),
-                    onTap: () => setState(() {
-                      if (!_selected.add(row.path)) {
-                        _selected.remove(row.path);
-                      }
-                    }),
+                    onTap: silentPress(
+                      () => setState(() {
+                        if (!_selected.add(row.path)) {
+                          _selected.remove(row.path);
+                        }
+                      }),
+                    ),
                     child: Container(
                       // Selection is COLOR only (법): no mark, no reflow.
                       color: selected
@@ -538,6 +593,11 @@ class _ConformCacheSizeRowState extends State<_ConformCacheSizeRow> {
         ),
         if (_bytes > 0)
           ControlPressClaim(
+            onPressed: () {
+              widget.releaseDiskBackedConforms();
+              clearConformCache();
+              setState(() => _bytes = conformCacheBytes());
+            },
             child: TextButton(
               key: const ValueKey<String>('settings-conform-clear'),
               // No confirmation on purpose: a conform is derived data, so
@@ -551,11 +611,11 @@ class _ConformCacheSizeRowState extends State<_ConformCacheSizeRow> {
               // and the clip is silent for the rest of the session and in
               // the export, and on Windows the open reader blocks the
               // delete so the biggest entries survive the emptying.
-              onPressed: () {
+              onPressed: silentPress(() {
                 widget.releaseDiskBackedConforms();
                 clearConformCache();
                 setState(() => _bytes = conformCacheBytes());
-              },
+              }),
               child: Text(AppText.strings.autosaveEmptyNow),
             ),
           ),

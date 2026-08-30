@@ -1077,8 +1077,9 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
       // PANEL being hovered, not this button, and the InkWell already
       // paints its own hover for the button itself.
       child: ControlPressClaim(
+        onPressed: widget.onPressed,
         child: InkWell(
-          onTap: widget.onPressed,
+          onTap: silentPress(widget.onPressed),
           // THE SELECTED TAB IS THE PANEL'S FOOT, not a chip lying on the
           // sill. It wears the body's own fill and rounds only the corners
           // AWAY from the body, so the seam between them disappears and the

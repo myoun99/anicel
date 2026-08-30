@@ -332,9 +332,10 @@ class MediaPoolPanel extends StatelessWidget {
           ),
           if (onRelinkMissing != null)
             ControlPressClaim(
+              onPressed: onRelinkMissing,
               child: TextButton(
                 key: const ValueKey<String>('media-relink-missing'),
-                onPressed: onRelinkMissing,
+                onPressed: silentPress(onRelinkMissing),
                 child: Text(strings.mediaFindInFolder),
               ),
             ),

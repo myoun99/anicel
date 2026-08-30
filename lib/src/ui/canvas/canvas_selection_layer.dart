@@ -3997,6 +3997,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                 shape: const CircleBorder(),
                 elevation: 2,
                 child: ControlPressClaim(
+                  onPressed: () {
+                    if (_transform != null) {
+                      _commitTransform();
+                    }
+                    if (_movePending) {
+                      _confirmMoveSession();
+                    }
+                  },
                   child: InkWell(
                     customBorder: const CircleBorder(),
                     // The button is offered while a transform box is OPEN —
@@ -4016,14 +4024,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                     // warped box commits warped (the inner confirm fires and
                     // the outer no-ops on a null pending stamp) and an
                     // untouched box closes and confirms in one tap.
-                    onTap: () {
+                    onTap: silentPress(() {
                       if (_transform != null) {
                         _commitTransform();
                       }
                       if (_movePending) {
                         _confirmMoveSession();
                       }
-                    },
+                    }),
                     child: const Padding(
                       padding: EdgeInsets.all(6),
                       child: Icon(Icons.check, size: 18, color: Colors.white),

@@ -142,11 +142,12 @@ class _AccentRow extends StatelessWidget {
           children: [
             for (final preset in _presetAccents)
               ControlPressClaim(
+                onPressed: () => onChanged(preset),
                 child: InkWell(
                   key: ValueKey<String>(
                     '$keyPrefix-preset-${preset.toARGB32().toRadixString(16)}',
                   ),
-                  onTap: () => onChanged(preset),
+                  onTap: silentPress(() => onChanged(preset)),
                   borderRadius: BorderRadius.circular(4),
                   child: Container(
                     width: 24,

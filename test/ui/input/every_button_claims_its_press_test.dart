@@ -151,12 +151,24 @@ void main() {
         if (surface.hasMatch(ahead) || notControls.keys.any(ahead.contains)) {
           continue;
         }
-        var wrapped = false;
-        for (var back = 0; back <= 3 && i - back >= 0; back++) {
-          if (claim.hasMatch(lines[i - back])) {
-            wrapped = true;
-            break;
+        // ⛔NOT "the last three lines". The claim carries the control's
+        // callback now, and a callback with a body pushes the `child:` an
+        // arbitrary distance below it — twelve real wraps went unseen at
+        // three. The claim is the control's PARENT, so walk back to the
+        // first line indented LESS than the control's own: in formatted
+        // Dart that is the line that opened the thing enclosing it.
+        var wrapped = claim.hasMatch(line);
+        final indent = line.length - line.trimLeft().length;
+        for (var back = i - 1; back >= 0 && !wrapped; back--) {
+          final above = lines[back];
+          if (above.trim().isEmpty) {
+            continue;
           }
+          if (above.length - above.trimLeft().length >= indent) {
+            continue;
+          }
+          wrapped = claim.hasMatch(above);
+          break;
         }
         if (!wrapped) {
           bare.add('$path:${i + 1}');

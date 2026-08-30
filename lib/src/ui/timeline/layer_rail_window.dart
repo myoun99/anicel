@@ -540,8 +540,9 @@ class TimelineSecondsToggleCorner extends StatelessWidget {
     return Tooltip(
       message: showSeconds ? 'Show Frames' : 'Show Seconds',
       child: ControlPressClaim(
+        onPressed: () => onChanged(!showSeconds),
         child: InkWell(
-          onTap: () => onChanged(!showSeconds),
+          onTap: silentPress(() => onChanged(!showSeconds)),
           child: SizedBox(
             width: width,
             height: height,

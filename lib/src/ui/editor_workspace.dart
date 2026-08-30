@@ -742,8 +742,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
           onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
         ),
         actions: [
-          ControlPressClaim(child: TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
+          ControlPressClaim(onPressed: () => Navigator.of(dialogContext).pop(), child: TextButton(
+            onPressed: silentPress(() => Navigator.of(dialogContext).pop()),
             child: const Text('Cancel'),
           )),
           FilledButton(
@@ -774,8 +774,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
         title: Text(AppText.strings.brDeleteTip),
         content: Text('“${tip.name}” will be removed from the library.'),
         actions: [
-          ControlPressClaim(child: TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
+          ControlPressClaim(onPressed: () => Navigator.of(dialogContext).pop(false), child: TextButton(
+            onPressed: silentPress(() => Navigator.of(dialogContext).pop(false)),
             child: const Text('Cancel'),
           )),
           FilledButton(
@@ -858,8 +858,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
           onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
         ),
         actions: [
-          ControlPressClaim(child: TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
+          ControlPressClaim(onPressed: () => Navigator.of(dialogContext).pop(), child: TextButton(
+            onPressed: silentPress(() => Navigator.of(dialogContext).pop()),
             child: const Text('Cancel'),
           )),
           FilledButton(
@@ -5458,8 +5458,8 @@ class _RailGroupButton extends StatelessWidget {
                   : Colors.transparent,
               clipBehavior: Clip.antiAlias,
               shape: AppShapes.control(ToolsPanel.buttonExtent),
-              child: ControlPressClaim(child: InkWell(
-                onTap: onPressed,
+              child: ControlPressClaim(onPressed: onPressed, child: InkWell(
+                onTap: silentPress(onPressed),
                 // The pair sizes itself to one button cell, so a group that
                 // wears a face is the same square as every other.
                 child: SizedBox.square(

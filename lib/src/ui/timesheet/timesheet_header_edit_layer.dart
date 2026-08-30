@@ -200,7 +200,11 @@ class _TimesheetHeaderEditLayerState extends State<TimesheetHeaderEditLayer> {
       width: rect.width,
       height: rect.height,
       child: ControlPressClaim(
-        child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: onTap),
+        onPressed: onTap,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: silentPress(onTap),
+        ),
       ),
     );
   }
