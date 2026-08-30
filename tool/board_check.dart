@@ -5,57 +5,53 @@
 // here costs 1.8s of JIT on EVERY turn, which is what retired the last
 // gate-side dart check. An exe starts in tens of milliseconds.
 //
-// It checks three things:
-//
-//  1. **Every line parses.** The board renderer SKIPS a bad line and carries
-//     on — the right call for a board (30 items beat none) and the wrong one
-//     for a gate, since a skipped item just quietly stops existing.
-//
-//  2. 🚨**Every question a person is meant to answer is actually answerable.**
-//     Added 2026-08-26 because the user could not answer three cards in a row:
-//
-//     > 「지금 답할것 질문이 자세하게 안써있고 **대답칸도 없어서** 뭘 말하는
-//     > 건지 모르겠어. **계속 그러는데** 해당항목 앞으로 구체적으로 쓰도록
-//     > **규칙으로 강제해줘**」
-//
-//     The cause was mechanical, not stylistic. `_askPanel` renders `where`,
-//     `why` and `options` — and never renders `note`. Cards written as one
-//     `note` blob therefore arrived on screen as a bare title with no detail
-//     and, because the radio buttons ARE the options, **no way to answer**.
-//     A rule in a document could not have caught that; this can.
-//
-//  3. **Every new line says when it was written.** See `tsRequired` below.
+// 🚨★★★IT JUDGES THE BOARD BY THE BOARD'S OWN MODEL. Every question about
+// where a card sits is asked through `board_model.dart`, the same file the
+// server renders from. ⛔It may never answer 「어느 칸인가」 for itself: a
+// gate with its own copy of the rules is a second reader of the one question
+// this redesign existed to unify, sitting inside the thing that is supposed
+// to catch second readers.
 import 'dart:convert';
 import 'dart:io';
+
+import 'board_model.dart';
 
 /// Matches a PR named in prose — 「#1302」, 「PR #1302」 — which the board
 /// cannot file by. Four digits only: three-digit issue numbers and 「#1」
 /// style round tags are not PRs.
-final RegExp _prInProse = RegExp(r'#\d{4}\b');
+final _prInProse = RegExp(r'#\d{4}\b');
 
-/// When `<원본id>-Q<번호>` became the way to name a question (the round that
-/// made the name the binding). Questions raised before it are not defects.
-const String _questionNamingSince = '2026-08-27';
+/// Words that describe a CHECK rather than work. Used on `rest` only.
+final _checkWords = RegExp('실기|재확인|확인한다|확인해|검증|눌러 ?본|봐야');
+
+/// When `<원본id>-Q<번호>` became the way to name a question. Questions
+/// raised before it are not defects.
+const _questionNamingSince = '2026-08-27';
+
+/// How long a card may sit waiting for me before it is not triage any more.
+const _staleAfter = Duration(hours: 24);
 
 /// The gate's whole judgement, as a STRING rather than as stdout.
 ///
 /// 🚨★★★EXTRACTED SO THE TEST CAN STOP SPAWNING PROCESSES. The suite used to
 /// run `dart run tool/board_check.dart` once per case; under the full
-/// affected run (6000+ tests) the process contention alone made it fail —
-/// 실측 2026-08-27: **nine red in a bulk run, 13/13 green alone**. A gate
-/// that goes red for reasons that have nothing to do with the board is a
-/// gate people learn to re-run instead of read.
-///
-/// Empty means no complaint. [main] is the thin wrapper that prints it.
+/// affected run the process contention alone made it fail — 실측 2026-08-27:
+/// **nine red in a bulk run, 13/13 green alone**. A gate that goes red for
+/// reasons that have nothing to do with the board is a gate people learn to
+/// re-run instead of read.
 String boardCheckComplaints(File file) {
-  final complaintsOut = <String>[];
-  _collectComplaints(file, complaintsOut);
-  // ⛔A REAL newline between complaints. It used to be an escaped one — the
-  // two characters, printed literally — so a turn that raised two of them
-  // ran them together with a visible backslash-n at the seam. Every newline
-  // INSIDE a complaint was already real, which is why nobody noticed: the
-  // seam is the only place the escape showed.
-  return complaintsOut.join('\n');
+  final cards = readBoard(file);
+  final acks = _acks(file);
+  final complaints = <String>[
+    ..._brokenLines(),
+    ..._cardsOffTheBoard(cards, acks),
+    ..._sectionsTheStoryCannotName(file, acks),
+    ..._workThatShipped(cards, acks),
+    ..._questionsNobodyCanAnswer(cards, acks),
+    ..._answersNobodyRead(cards, acks),
+    ..._deadAcks(cards, acks),
+  ];
+  return complaints.join('\n');
 }
 
 void main(List<String> args) {
@@ -63,482 +59,442 @@ void main(List<String> args) {
   final file = File(args.first);
   if (!file.existsSync()) return;
   final out = boardCheckComplaints(file);
-  if (out.isNotEmpty) {
-    stdout.write(out);
-  }
+  if (out.isNotEmpty) stdout.write(out);
 }
 
-void _collectComplaints(File file, List<String> complaintsOut) {
-  final bad = <int>[];
+// ─────────────────────────────────────────────────────── 1. 읽히지 않는 줄
 
-  /// Ids that said SOMETHING on at least one line — see [emptyCards].
-  final hasWords = <String>{};
-  // 🚨Lines appended after the watermark must carry `ts`, and the watermark is
-  // a line in the file rather than a number in this source: the records file
-  // is append-only, so 「everything after this line」 is a stable rule that no
-  // later edit can shift.
-  //
-  // Why it needed a gate at all — the panel date (유저 2026-08-26: 「그 패널이
-  // 갱신된게 언제인지」) is computed from `ts`, and 252 of 408 existing lines
-  // did not have one. A date the board cannot know renders blank, which is
-  // honest but useless; the only way it stops being blank is if every line
-  // written from here on carries one. ⛔A rule in a document would not have —
-  // three of the lines missing `ts` were written the same day this was found.
-  final noTs = <int>[];
-  var tsRequired = false;
-  // 🚨★★★A CHECK WRITTEN INTO `rest` (유저 2026-08-27: 「이런거 잘 규칙으로
-  // 정리하자. 재발안하도록」).
-  //
-  // `rest` means CODE remains, and a card that has any drops out of 확인할 것.
-  // So a verification instruction put there does the exact opposite of what
-  // it intends: the card that just shipped and most needs looking at is the
-  // one that vanishes from the list of things to look at.
-  //
-  // ⛔A written law was not enough — I wrote that law on 08-27 and broke it
-  // the same day, on the very next card. This is a lint on my own prose,
-  // which is the honest shape: the gate is telling me I have described a
-  // CHECK in the field for WORK. The check belongs on the 구현 stage's `how`.
-  //
-  // ⚠️Judged on the MERGED card, never line by line. The file is append-only,
-  // so a `rest` I wrote badly and then cleared is still sitting in it — and a
-  // gate that read every line would complain about corrected history forever,
-  // which is the fastest way to teach someone to ignore a gate.
-  final restIsACheck = <String>[];
-  final checkWords = RegExp('실기|재확인|확인한다|확인해|검증|눌러 ?본|봐야');
-  // Merged the way the server merges: later records overwrite only the
-  // fields they name, so a card is judged as it will RENDER, not as any one
-  // line spells it. Without that, an amendment line touching `state` alone
-  // would read as a card with no options at all.
-  final merged = <String, Map<String, dynamic>>{};
-  final order = <String>[];
+/// A line the reader could not use. The renderer SKIPS one and carries on —
+/// the right call for a board (30 items beat none) and the wrong one for a
+/// gate, since a skipped item just quietly stops existing.
+///
+/// ⚠️Reads [badLines], which `readBoard` fills. That is deliberate: the gate
+/// learns what could not be read from the same parse the screen used.
+Iterable<String> _brokenLines() sync* {
+  if (badLines.isEmpty) return;
+  yield '${badLines.length}개 줄이 깨졌습니다 (줄 ${badLines.join(', ')})\n'
+      '보드는 못 읽은 줄을 건너뛰고 나머지를 그립니다 — 그 항목은 화면에 '
+      '아예 없습니다.';
+}
 
+// ─────────────────────────────────────── 2. 어느 칸에도 못 서는 카드
+
+/// 🚨★★★A CARD WHOSE STORY NAMES NO SECTION.
+///
+/// ⛔THE OLD RULE ASKED SOMETHING ELSE ENTIRELY — `kind == item && answered
+/// && state != inbox && !pr` — because sections came from a `state` field.
+/// They come from the story now, so the way to fall off the board is to have
+/// never written a 대분류 at all. Such a card lands in 바로 가능 by default
+/// and claims to be startable work, whatever it actually is.
+///
+/// ⚠️A card with NO entries is not this: it is a bare `{"id":…,"pr":N}` and
+/// [_workThatShipped] has a better complaint for it.
+Iterable<String> _cardsOffTheBoard(
+  List<BoardCard> cards,
+  Set<String> acks,
+) sync* {
+  final lost = <String>[];
+  for (final c in cards) {
+    if (!_live(c) || acks.contains(c.id)) continue;
+    if (c.log.isEmpty || !_recent(c)) continue;
+    if (lastSection(c).isNotEmpty) continue;
+    lost.add(c.id);
+  }
+  if (lost.isEmpty) return;
+  yield '어느 칸도 말하지 않는 카드: ${lost.join(', ')}\n'
+      '카드의 칸은 **이야기의 마지막 대분류**가 정합니다 — 하나도 없으면 '
+      '기본값인 「바로 가능」에 앉아 착수할 일인 척합니다.\n'
+      '⇒ 한 줄 적으세요: {"id":…, "at":"<대분류>", "note":…}. '
+      '대분류는 ${kSection.keys.take(8).join(' · ')} …';
+}
+
+// ─────────────────────────────── 3. 이야기가 이름을 모르는 칸 · state 손대기
+
+/// 🚨★★★A STAGE NAME THE MODEL DOES NOT KNOW MOVES NOTHING.
+///
+/// ⛔The old rule watched `state` for this, and it was right for its time:
+/// an invented state name silently filed the card under 「착수 가능」. The
+/// hazard MOVED. `state` is computed now, so the way to file a card nowhere
+/// is to invent an `at` — and it fails exactly as silently.
+///
+/// 🚨AND `state` WRITTEN BY HAND IS ITSELF THE DEFECT NOW. It is folded out
+/// of the story; a line that sets it is either dead weight or a second
+/// answer to a question the story already answered. ⚠️Two survive, because
+/// they are ENDINGS rather than sections and no stage word produces them:
+/// `archived` and `deleted`.
+///
+/// ⚠️Judged LINE BY LINE, not on the merged card: the file is append-only,
+/// so the offending word is in a line, and naming the line is what lets it be
+/// found. ⛔But only lines written since this rule existed — a gate that
+/// complains about corrected history forever is a gate nobody reads.
+Iterable<String> _sectionsTheStoryCannotName(File file, Set<String> acks) sync* {
+  const knownEndings = {'archived', 'deleted'};
+  final unknownStage = <String>[];
+  final handWrittenState = <String>[];
   var n = 0;
   for (final line in file.readAsLinesSync()) {
     n++;
     final t = line.trim();
     if (t.isEmpty) continue;
+    Map<String, dynamic> json;
     try {
-      final json = jsonDecode(t);
-      if (json is! Map) {
-        bad.add(n);
-        continue;
-      }
-      if (json['kind'] != 'meta' && json['id'] == null) {
-        bad.add(n);
-        continue;
-      }
-      if (tsRequired && '${json['ts'] ?? ''}'.trim().isEmpty) noTs.add(n);
-      if (json['kind'] == 'meta' && json['tsRequired'] == true) {
-        tsRequired = true;
-      }
-      final id = json['id'];
-      if (id is! String) continue;
-      for (final field in const ['how', 'note', 'think', 'said', 'why']) {
-        if ('${json[field] ?? ''}'.trim().isNotEmpty) hasWords.add(id);
-      }
-      if (!merged.containsKey(id)) {
-        order.add(id);
-      }
-      merged[id] = {...?merged[id], ...json.cast<String, dynamic>()};
+      json = jsonDecode(t) as Map<String, dynamic>;
     } catch (_) {
-      bad.add(n);
+      continue;
+    }
+    if (json['kind'] == 'law' || json['kind'] == 'meta') continue;
+    final id = '${json['id'] ?? ''}';
+    if (acks.contains(id)) continue;
+    if ('${json['ts'] ?? ''}'.compareTo(_gateSince) < 0) continue;
+    final at = '${json['at'] ?? ''}'.trim();
+    if (at.isNotEmpty && !kSection.containsKey(at) && !_kSubStage.contains(at)) {
+      unknownStage.add('$n:$id($at)');
+    }
+    final state = '${json['state'] ?? ''}'.trim();
+    if (state.isNotEmpty && !knownEndings.contains(state)) {
+      handWrittenState.add('$n:$id($state)');
     }
   }
+  if (unknownStage.isNotEmpty) {
+    yield '모르는 항목 이름: ${unknownStage.join(', ')}\n'
+        '보드는 아는 이름만 칸으로 읽습니다 — 모르는 이름은 칸을 바꾸지 '
+        '못하고, 그 카드는 **조용히 「바로 가능」에 남습니다.**\n'
+        '⇒ 대분류: ${kSection.keys.join(' · ')}\n'
+        '⇒ 소분류: ${_kSubStage.join(' · ')}';
+  }
+  if (handWrittenState.isNotEmpty) {
+    yield 'state 를 손으로 쓴 줄: ${handWrittenState.join(', ')}\n'
+        '`state` 는 이제 **이야기에서 계산되는 값**입니다 — 손으로 쓰면 다음 '
+        '줄에 덮이거나, 이야기와 다른 말을 하게 됩니다.\n'
+        '⇒ 카드를 옮기려면 `at` 에 대분류를 적으세요. '
+        '⚠️예외는 끝을 뜻하는 archived · deleted 둘뿐입니다.';
+  }
+}
 
-  // 🚨★★★DRAWN NOWHERE. A card can be in the file and on no list at all, and
-  // that is worse than being on the wrong one — nothing brings it back
-  // because nothing shows it (유저 2026-08-27: 「여러가지 함정있잖아? 제대로
-  // 규칙대로 안굴러가는거」).
-  //
-  // The sections, and what each demands:
-  //   분류 전   state == inbox
-  //   답할 것   kind == decision && answer == null
-  //   확인할 것 kind == check && answer == null   ·  OR a card with a pr
-  //   착수/대기 kind == item && state != inbox && answer == null
-  //
-  // ⇒ An ITEM that is answered, out of the inbox and holds no PR satisfies
-  // none of them. `C-ipad-crash` spent a turn exactly there: answered by a
-  // memo, then triaged onward, which moved its state and left the answer set.
-  final invisible = <String>[];
-  // 🚨A CARD THAT IS ONLY A TITLE (유저 2026-08-27: 「카드있는 실기확인의 pr
-  // 있는데, 그런거 가끔 진짜 pr이름만 타이틀로 있고 내용 아무것도 없을때
-  // 많거든? 진짜 심플하게 pr만 카드로 등록한게 끝인거」).
-  //
-  // Claiming the PR is not the same as saying anything about it. A card with
-  // the PR's own English title and no 이렇게 본다, no note, no story is the
-  // `카드 없음` row wearing a card's clothes — and it passes the 「is there a
-  // card」 check precisely because someone typed the two fields that make one.
-  final emptyCards = <String>[];
-  final prosePrs = <String>[];
-  // 🚨★★★A STATE THE BOARD HAS NEVER HEARD OF FILES AS 「착수 가능」.
-  //
-  // The renderer drops `archived`/`deleted`, labels `wip`/`ask`/`gate`/
-  // `queue`/`mine`/`inbox`, and treats everything else as ready to start.
-  // So inventing a state name does not create a new column — it silently
-  // files the card under 「명령만 내리면 착수」.
-  //
-  // 유저 2026-08-29 saw the result: 「색 키를 GPU로 보니까 작업완료고 남은건
-  // 실기뿐인거같은데 이런건 착수가능이 아니라 실기확인에 있는게 맞는거아니야?
-  // … 이거 게이트에 문제있는거같은데 분류못해내는거보니」. Twenty finished
-  // cards were sitting there under `done`, a word nothing in the server
-  // defines — along with `later`, `blocked`, `answered` and `idea`.
-  //
-  // ⛔The fix is NOT to teach the renderer these words. A state that means
-  // 「finished」 already exists; a second name for it is the invention.
-  final unknownStates = <String>[];
-  const knownStates = <String>{
-    'open',
-    'inbox',
-    'wip',
-    'ask',
-    'gate',
-    'queue',
-    'mine',
-    'archived',
-    'deleted',
-  };
-  // 🚨A question that belongs to nothing. `T14-Q1` binds by NAME; anything
-  // else needs `of`. Without either, the answer has nowhere to be carried
-  // back to and the card's own Q row will never mention it.
-  final orphanQuestions = <String>[];
-  final qName = RegExp(r'^(.+)-Q\d+$');
+/// Stage names that are entries but NOT sections. ⚠️Kept here rather than in
+/// the model on purpose: the model needs to know which words MOVE a card,
+/// and this is the gate's separate business — which words it recognises at
+/// all. A name in neither list is a typo.
+const _kSubStage = <String>{
+  '작업 기록',
+  '코드 확인',
+  'AI 판단',
+  '구현',
+  '정정',
+  '유저 메모',
+  '유저 피드백',
+  '유저 대답',
+  '유저 아이디어',
+  '유저 지시',
+  '유저 정정',
+  '유저 결정',
+  '임시 메모',
+  '작업전 확인',
+  '착지 후 점검',
+  '검토 대기',
+  '확인함',
+  '확인할 것',
+  '착수 근거',
+  '확정',
+};
 
-  // 🚨ONE ack file, EVERY complaint. It used to exempt only the checks added
-  // last, so acking a card the gate named did nothing and the same line came
-  // back every turn — an ack that does not silence is worse than none,
-  // because the next reader learns to scroll past the gate.
-  //
-  // ⚠️What it means is 「I have decided to leave this card alone」, and that
-  // decision is the same decision whichever complaint prompted it. Deciding
-  // is the point; the file is where the decision is written down.
-  // 🚨AN ACK CARRIES ITS REASON. A bare number is indistinguishable from
-  // every other bare number, and by 2026-08-29 thirty-four had piled up —
-  // nobody could say which were 「another session landed this」 and which
-  // were 「I did not get to it」. Seventeen of them turned out to be dead:
-  // the landing HAD a card by then, so the ack was silencing nothing.
-  //
-  // The second token is free text. What it buys is that an ack naming a
-  // number can be CHECKED against the board, and dropped the moment that
-  // number appears in a card's `pr` field.
-  //
-  // ⛔BARE LINES STILL SILENCE. Rejecting them outright would have re-fired
-  // thirty-four complaints in one turn, which is the wall this file's own
-  // doc warns about: a gate nobody reads. The format tightens going
-  // forward, not retroactively.
-  final ackFile = File('${file.parent.path}/.gate-ack');
-  final ackReason = <String, String>{};
-  if (ackFile.existsSync()) {
-    for (final raw in ackFile.readAsLinesSync()) {
-      final line = raw.trim();
-      if (line.isEmpty || line.startsWith('#')) {
-        continue;
+/// When these rules started applying. ⛔Not retroactive: 1500 lines of
+/// history were written under the old model and re-firing them all in one
+/// turn is the wall this file's own doc warns about.
+const _gateSince = '2026-08-31T12:00:00';
+
+// ──────────────────────────────────────────── 4. 착지했는데 실기로 안 간 일
+
+/// 🚨★★★A MERGE NO LONGER MOVES A CARD, SO NOTHING MOVES IT BUT ME.
+///
+/// 유저 확정 2026-08-31: 「머지는 PR마다 여러 번 되는데 실기 확인은 다르잖아
+/// … 작업 완료되면 실기 확인만 대분류로서 존재하게」. That is the right
+/// model and it opens a hole the old board did not have: a card can ship and
+/// then sit in 바로 가능 for ever because I never wrote 실기 확인 on it.
+///
+/// ⚠️Only when nothing is still owed — a card with leftovers belongs where
+/// the work is, which is exactly what `stillOwed` answers.
+Iterable<String> _workThatShipped(
+  List<BoardCard> cards,
+  Set<String> acks,
+) sync* {
+  final shipped = <String>[];
+  final bare = <String>[];
+  final prose = <String>[];
+  // ⚠️LOCAL. It was a top-level list once and the test caught it in one run:
+  // complaints from an earlier board leaked into the next, because a gate
+  // called twice in one process kept adding to the same list.
+  final restIsACheck = <String>[];
+  for (final c in cards) {
+    if (!_live(c) || acks.contains(c.id)) continue;
+    if (c.prs.isNotEmpty && _recent(c)) {
+      final section = lastSection(c);
+      final where = kSection[section];
+      if (where != 'hands' && where != 'archived' && !stillOwed(c)) {
+        shipped.add(c.id);
       }
-      final gap = line.indexOf(RegExp(r'\s'));
-      ackReason[gap < 0 ? line : line.substring(0, gap)] = gap < 0
-          ? ''
-          : line.substring(gap + 1).trim();
+      if (!_saysSomething(c)) bare.add(c.id);
+    } else if (_recent(c) && _prInProse.hasMatch(c.note)) {
+      prose.add(c.id);
     }
+    final rest = c.rest.trim();
+    if (rest.isNotEmpty && _checkWords.hasMatch(rest)) restIsACheck.add(c.id);
   }
-  final acked = ackReason.keys.toSet();
-
-  for (final id in order) {
-    final card = merged[id]!;
-    final state = '${card['state'] ?? 'open'}';
-    if (state == 'archived' || state == 'deleted') continue;
-    if (acked.contains(id)) continue;
-    final rest = '${card['rest'] ?? ''}'.trim();
-    if (rest.isNotEmpty && checkWords.hasMatch(rest)) restIsACheck.add(id);
-
-    final kind = '${card['kind'] ?? 'item'}';
-    if (kind == 'law' || kind == 'meta') continue;
-    final answered = '${card['answer'] ?? ''}'.isNotEmpty;
-    final hasPr = card['pr'] != null;
-
-    // ⚠️Only questions raised SINCE the naming convention. The old
-    // standalone ones are not defects — `Q-remaining-14` asks which of
-    // fourteen cards to do first and genuinely belongs to none of them — and
-    // a gate that complains about them every turn is a gate nobody reads.
-    if (kind == 'decision' &&
-        card['answer'] == null &&
-        '${card['ts'] ?? ''}'.compareTo(_questionNamingSince) >= 0 &&
-        !qName.hasMatch(id) &&
-        '${card['of'] ?? ''}'.trim().isEmpty) {
-      orphanQuestions.add(id);
-    }
-
-    // ⛔ITEMS only. An answered DECISION is meant to leave the lists — it
-    // lives on as the reference in its origin's Q row — and an answered
-    // CHECK was either ticked (deleted) or came back as feedback (inbox).
-    // The hole is an item: answered, moved out of the inbox, holding no PR.
-    if (kind == 'item' && answered && state != 'inbox' && !hasPr) {
-      invisible.add(id);
-    }
-    if (hasPr && !hasWords.contains(id)) emptyCards.add(id);
-
-    // 🚨★★★A PR NAMED IN PROSE IS A PR THE BOARD CANNOT SEE.
-    //
-    // The board files a card by its `pr` FIELD: a card whose PRs are all
-    // merged leaves 착수 가능 and becomes something to check. Writing
-    // 「#1302」 in the note tells the reader and nobody else, so the card
-    // sits in 착수 가능 claiming to be unstarted work.
-    //
-    // 유저 2026-08-29 found four of them at once: 「색 키를 GPU로 보니까
-    // 작업완료고 남은건 실기뿐인거같은데 이런건 착수가능이 아니라
-    // 실기확인에 있는게 맞는거아니야? … 이거 게이트에 문제있는거같은데
-    // 분류못해내는거보니」. The rule existed; nothing checked the input.
-    if (kind == 'item' &&
-        !hasPr &&
-        state != 'archived' &&
-        state != 'deleted' &&
-        _prInProse.hasMatch('${card['note'] ?? ''}')) {
-      prosePrs.add(id);
-    }
-    if (!knownStates.contains(state)) {
-      unknownStates.add('$id($state)');
-    }
+  if (shipped.isNotEmpty) {
+    yield '착지했는데 실기 확인으로 안 올라온 카드: ${shipped.join(', ')}\n'
+        '머지는 카드를 옮기지 않습니다 — 그게 이 모델의 요점입니다(머지는 '
+        '사건이고 칸은 자리). 그래서 **내가 안 적으면 아무도 안 옮깁니다.**\n'
+        '⇒ 한 줄: {"id":…, "at":"실기 확인", "note":"기기에서 무엇을 볼지"}';
   }
-
-  final complaints = <String>[];
-  if (bad.isNotEmpty) {
-    complaints.add('${bad.length}개 줄이 깨졌습니다 (줄 ${bad.join(', ')})');
+  if (bare.isNotEmpty) {
+    yield '제목만 있고 내용이 없는 카드: ${bare.join(', ')}\n'
+        'PR을 물었다는 것과 그 PR에 대해 뭐라도 말했다는 것은 다릅니다.\n'
+        '⇒ 최소한 하나: how(이렇게 본다) · note(무엇을 왜 바꿨나) · '
+        'think(판단) · said(유저 원문)';
   }
-  if (emptyCards.isNotEmpty) {
-    complaints.add(
-      '제목만 있고 내용이 없는 카드: ${emptyCards.join(', ')}\n'
-      'PR을 물었다는 것과 그 PR에 대해 뭐라도 말했다는 것은 다릅니다 — 제목이 '
-      'PR 제목 그대로면 보드를 열어도 무엇을 볼지 알 수 없습니다.\n'
-      '⇒ 최소한 하나는 있어야 합니다: how(이렇게 본다) · note(무엇을 왜 '
-      '바꿨나) · think(판단) · said(유저 원문)',
-    );
-  }
-  if (invisible.isNotEmpty) {
-    complaints.add(
-      '어느 목록에도 안 뜨는 카드: ${invisible.join(', ')}\n'
-      '답이 있으면 확인할 것에서 빠지고, state 가 inbox 가 아니면 분류 전에서도 '
-      '빠지고, 착수 가능은 답 없는 것만 받습니다 — 파일에는 있고 화면에는 '
-      '없습니다.\n'
-      '⇒ 다시 일로 돌리려면 답을 비우세요: {"id":…, "answer":"", "state":"open"}',
-    );
-  }
-  if (orphanQuestions.isNotEmpty) {
-    complaints.add(
-      '어느 카드의 질문인지 모르는 결정: ${orphanQuestions.join(', ')}\n'
-      '이름이 `<원본id>-Q<번호>` 면 이름이 곧 연결입니다(예: T14-Q1). 옛 이름을 '
-      '쓰려면 `of` 로 원본을 적으세요 — 없으면 답이 돌아갈 곳이 없고 원본 카드의 '
-      'Q 목록에도 안 뜹니다.',
-    );
+  if (prose.isNotEmpty) {
+    yield 'PR을 본문에만 적은 카드: ${prose.join(', ')}\n'
+        '⛔옛 이유(「pr 필드가 없으면 착수 가능에 남는다」)는 이제 무효입니다 — '
+        '머지는 카드를 안 옮깁니다. **새 이유**: `구현` 항목에 PR이 안 붙으면 '
+        '이야기에 링크가 없고, 「착지했는데 실기로 안 갔다」를 아예 못 봅니다.\n'
+        '⚠️여러 장이면 줄마다 pr 하나로 나눠 적으세요.';
   }
   if (restIsACheck.isNotEmpty) {
-    complaints.add(
-      '「남은 것」에 확인 방법이 들어 있는 카드: ${restIsACheck.join(', ')}\n'
-      '`rest` 는 **코드가 남았다**는 뜻입니다 — rest 가 있으면 그 카드는 '
-      '확인할 것에서 빠집니다. 방금 착지해서 확인이 필요한 카드가 확인 목록에서 '
-      '사라지는 것이 정확히 반대 결과입니다.\n'
-      '⇒ 확인 방법은 그 착지의 **구현 공정**에 씁니다: '
-      '{"id":…, "at":"구현", "pr":N, "note":…, "how":"이렇게 확인한다 …"}',
-    );
+    yield '「남은 것」에 확인 방법이 들어 있는 카드: ${restIsACheck.join(', ')}\n'
+        '⛔옛 이유(「확인할 것에서 빠진다」)는 그 칸이 없어져 무효입니다. '
+        '**새 이유**: `rest` 는 곧 「바로 가능」이라, 확인 방법을 거기 쓰면 '
+        '실기 확인이 아니라 **바로 가능**에 앉습니다.\n'
+        '⇒ 확인 방법은 `실기 확인` 항목이나 구현의 `how` 에 씁니다.';
   }
-  if (noTs.isNotEmpty) {
-    complaints.add(
-      'ts 가 없는 줄: ${noTs.join(', ')}\n'
-      '보드 패널의 「생김 · 갱신」은 ts 로 그립니다 — 없으면 그 카드는 날짜가 '
-      '안 뜨거나 옛 날짜에 멈춥니다. 각 줄에 '
-      '"ts":"YYYY-MM-DDTHH:MM:SS+09:00" 를 넣으세요.',
-    );
-  }
+}
 
-  // A LIVE question: a decision still asking, with no answer submitted.
+
+// ────────────────────────────────────────────── 5. 답할 수 없는 질문
+
+/// A question a person is meant to answer must actually be answerable.
+///
+/// Added 2026-08-26 because the user could not answer three cards in a row:
+/// 「지금 답할것 질문이 자세하게 안써있고 **대답칸도 없어서** 뭘 말하는 건지
+/// 모르겠어. **계속 그러는데** … **규칙으로 강제해줘**」. The cause was
+/// mechanical: the panel renders `where`, `why` and `options` and never
+/// renders `note`, so a card written as one blob arrived as a bare title with
+/// no way to answer.
+///
+/// 🆕AND THE OTHER HALF, which the overhaul opened: a question is an entry on
+/// its card now, so an unanswered one must leave the card IN 답할 것. Answer
+/// one of three and the card comes back to 분류 전 with two still open and
+/// nothing saying so.
+Iterable<String> _questionsNobodyCanAnswer(
+  List<BoardCard> cards,
+  Set<String> acks,
+) sync* {
   final unanswerable = <String>[];
   final thin = <String>[];
   final misdirected = <String>[];
-  for (final id in order) {
-    final card = merged[id]!;
-    if (card['kind'] != 'decision') continue;
-    if (card['state'] != 'ask') continue;
-    if (card['answer'] != null) continue;
+  final orphan = <String>[];
+  final byOrigin = <String, List<BoardCard>>{};
+  for (final q in cards) {
+    if (q.kind != 'decision') continue;
+    final (of, _) = asksOf(q);
+    if (of.isNotEmpty) (byOrigin[of] ??= []).add(q);
+    if (!_notEnded(q) || acks.contains(q.id) || q.answer != null) continue;
 
-    final options = card['options'];
-    if (options is! List || options.length < 2) {
-      unanswerable.add(id);
+    if (of.isEmpty && q.updated.compareTo(_questionNamingSince) >= 0) {
+      orphan.add(q.id);
+    }
+    final options = q.options;
+    if (options.length < 2) {
+      unanswerable.add(q.id);
       continue;
     }
-    // The detail the panel can actually show. `note` is not on that list —
-    // it renders nowhere, so a card that keeps its reasoning there is a
-    // title and a set of radio buttons with nothing to decide between.
-    final where = '${card['where'] ?? ''}'.trim();
-    final why = '${card['why'] ?? ''}'.trim();
-    final labelled = options.every(
-      (o) => o is Map && '${o['label'] ?? ''}'.trim().isNotEmpty,
-    );
-    if (where.isEmpty || why.isEmpty || !labelled) {
-      thin.add(id);
+    final labelled = options.every((o) => '${o['label'] ?? ''}'.trim().isNotEmpty);
+    if (q.where.trim().isEmpty || q.why.trim().isEmpty || !labelled) {
+      thin.add(q.id);
     }
-    // 🚨A `recommend` THAT NAMES NO OPTION IS TEXT NOBODY EVER SEES.
-    //
-    // The panel only compares it against an option key, so prose written
-    // there renders as **nothing at all**. I put a whole paragraph of
-    // reasoning into `recommend` on I-4-tone (2026-08-28) and the user never
-    // saw a word of it — the same shape as the `note` failure this file was
-    // written for. ⛔The server now shows misplaced text with a warning, but
-    // the card should not get written that way in the first place.
-    final recommend = '${card['recommend'] ?? ''}'.trim();
+    final recommend = q.recommend?.trim() ?? '';
     if (recommend.isNotEmpty) {
       var index = 0;
-      final keys = options.map((o) {
-        index++;
-        return '${(o is Map ? o['key'] : null) ?? index}';
-      }).toSet();
-      if (!keys.contains(recommend)) {
-        misdirected.add(id);
-      }
+      final keys = options.map((o) => '${o['key'] ?? ++index}').toSet();
+      if (!keys.contains(recommend)) misdirected.add(q.id);
     }
+  }
+
+  // 🆕The card that owns an unanswered question must be IN 답할 것.
+  final hidden = <String>[];
+  for (final c in cards) {
+    if (!_live(c) || acks.contains(c.id)) continue;
+    final open = (byOrigin[c.id] ?? const <BoardCard>[])
+        .where((q) => q.answer == null && _notEnded(q));
+    if (open.isEmpty) continue;
+    // ⚠️By SECTION, not by the word: 질문 and 답할 것 are two stage names for
+    // one column, and comparing the word missed a card I had already moved.
+    if (kSection[lastSection(c)] == 'ask') continue;
+    hidden.add('${c.id}(${open.map((q) => q.id).join('·')})');
   }
 
   if (unanswerable.isNotEmpty) {
-    complaints.add(
-      '답할 수 없는 결정 카드: ${unanswerable.join(', ')}\\n'
-      '보드의 답변 라디오는 options 로 그려집니다 — options 가 없으면 화면에는 '
-      '제목과 「다른 안」 칸만 뜹니다. 2개 이상 넣으세요.',
-    );
+    yield '답할 수 없는 결정 카드: ${unanswerable.join(', ')}\n'
+        '답변 라디오는 options 로 그려집니다 — 없으면 제목과 「다른 안」 칸만 '
+        '뜹니다. 2개 이상 넣으세요.';
   }
   if (thin.isNotEmpty) {
-    complaints.add(
-      '내용이 안 보이는 결정 카드: ${thin.join(', ')}\\n'
-      'where(화면에서 뭔지) + why(왜 막혔나) + 각 option 의 label 이 필요합니다. '
-      '⛔note 는 이 패널에 렌더링되지 않습니다 — 거기 적은 설명은 유저에게 '
-      '보이지 않습니다.',
-    );
+    yield '내용이 안 보이는 결정 카드: ${thin.join(', ')}\n'
+        'where(화면에서 뭔지) + why(왜 막혔나) + 각 option 의 label 이 '
+        '필요합니다. ⛔note 는 이 패널에 안 그려집니다.';
   }
-
-  if (unknownStates.isNotEmpty) {
-    complaints.add(
-      '보드가 모르는 state: ${unknownStates.join(', ')}\n'
-      '아는 것은 ${knownStates.join(' · ')} 뿐이고, 나머지는 전부 '
-      '「착수 가능」으로 떨어집니다 — 끝난 카드가 「명령만 내리면 착수」 칸에 '
-      '앉습니다. ⛔새 이름을 지어내지 말고 있는 것을 쓰세요: 끝났으면 '
-      'archived, 유저가 체크했으면 deleted, 나중이면 queue, 상담 대기면 gate.',
-    );
-  }
-
-  // 🚨★★★AN ACK THAT SILENCES NOTHING IS A LINE TO DELETE.
-  //
-  // `.gate-ack` is where 「this landing goes past without a card」 is written
-  // down. The moment a card DOES carry that PR the sentence stops being
-  // true, and the line becomes one more bare number nobody can account for
-  // — which is how seventeen of thirty-four got there by 2026-08-29.
-  //
-  // ⛔It names the line rather than dropping it silently: the file is the
-  // user's record of decisions, and a gate that edits it would be deciding
-  // on their behalf.
-  //
-  // ⚠️Every card, whatever its state. A landing whose card was archived
-  // still HAS a card — that is the whole point of archiving it — so reading
-  // this off the main loop (which skips archived and acked cards) would
-  // have called the healthy ones dead.
-  final cardPrs = <int>{};
-  for (final card in merged.values) {
-    final pr = card['pr'];
-    if (pr is int) {
-      cardPrs.add(pr);
-    }
-  }
-  final settledAcks = <String>[];
-  for (final key in ackReason.keys) {
-    final pr = int.tryParse(key);
-    if (pr != null && cardPrs.contains(pr)) {
-      settledAcks.add(key);
-    }
-  }
-  if (settledAcks.isNotEmpty) {
-    complaints.add(
-      '카드가 생긴 착지의 ack: ${settledAcks.join(', ')}\n'
-      'ack 는 「이 착지는 카드 없이 지나간다」는 뜻인데 그 PR을 든 카드가 '
-      '이제 있습니다 — `.gate-ack` 에서 그 줄을 지우세요. 남겨두면 다음에 '
-      '읽는 쪽이 아직 카드가 없는 줄로 압니다.',
-    );
-  }
-
-  if (prosePrs.isNotEmpty) {
-    complaints.add(
-      'PR을 본문에만 적은 카드: ${prosePrs.join(', ')}\n'
-      '보드는 `pr` **필드**로 카드를 분류합니다 — PR이 전부 머지된 카드는 '
-      '착수 가능에서 빠지고 확인할 것으로 갑니다. note 본문의 「#1302」는 '
-      '사람만 읽습니다. ⚠️여러 장이면 **줄마다 pr 하나**로 나눠 적으세요 '
-      '(`e.prs` 는 줄의 `pr` 로만 채워집니다).',
-    );
-  }
-
   if (misdirected.isNotEmpty) {
-    complaints.add(
-      '추천이 안 보이는 결정 카드: ${misdirected.join(', ')}\n'
-      '`recommend` 는 **선택지의 키**(보통 1·2·3)를 적는 칸이고, 그 선택지에 '
-      '「추천」 칩을 붙이는 데에만 쓰입니다. 문장을 적으면 화면에 아무것도 '
-      '안 나옵니다 — 추천하는 이유는 why 나 그 선택지의 what/cost 에 쓰세요.',
-    );
+    yield '추천이 안 보이는 결정 카드: ${misdirected.join(', ')}\n'
+        '`recommend` 는 **선택지의 키**를 적는 칸입니다 — 문장을 적으면 화면에 '
+        '아무것도 안 나옵니다.';
   }
+  if (orphan.isNotEmpty) {
+    yield '어느 카드의 질문인지 모르는 결정: ${orphan.join(', ')}\n'
+        '질문은 이제 **카드 안의 항목**입니다 — 이름이 `<원본id>-Q<번호>` 면 '
+        '이름이 곧 연결이고, 아니면 `of` 로 원본을 적습니다. 없으면 그 질문은 '
+        '자기 혼자 카드로 서고, 답이 돌아갈 카드가 없습니다.';
+  }
+  if (hidden.isNotEmpty) {
+    yield '미답 질문이 있는데 답할 것에 없는 카드: ${hidden.join(', ')}\n'
+        '질문 셋 중 하나만 답하면 카드는 분류 전으로 오고 **남은 둘은 조용해집니다.** '
+        '아직 답을 기다린다면 그 카드의 마지막 대분류는 `질문` 이어야 합니다.\n'
+        '⇒ {"id":…, "at":"질문", "note":"무엇이 아직 미답인지"} 또는 남은 질문을 '
+        '다시 올리세요.';
+  }
+}
 
-  // 🚨★★★AN ANSWER NOBODY READ IS THE SAME AS NO ANSWER.
-  //
-  // 유저 2026-08-27: 「세션에서 대답 완료해서 작업끝났것이 답할것에 아직
-  // 올라와있고 그런데 확인해줄래? **그런일 발생안하도록 작업흐름 개선하고
-  // 싶고**」 — measured that day: TEN cards sat in 분류 전 with an answer on
-  // them, and EIGHT more sat there unclassified. Two of those memos were the
-  // work the user had just asked for out loud, written days earlier in a card
-  // I had never opened.
-  //
-  // 분류 전 means 「내가 읽고 분류한다」. A card that stays there is not
-  // waiting for the user, it is waiting for ME — and nothing made that
-  // visible at the end of a turn.
-  //
-  // ⚠️AGE, not presence: feedback arriving this turn belongs in 분류 전 and
-  // blocking on it would make the section useless. A day later it is not
-  // triage any more, it is a card nobody read.
+// ────────────────────────────────────────── 6. 유저 답을 안 읽고 넘어감
+
+/// 🚨★★★AN ANSWER NOBODY READ IS THE SAME AS NO ANSWER.
+///
+/// 유저 2026-08-27: 「세션에서 대답 완료해서 작업끝났것이 답할것에 아직
+/// 올라와있고 그런데 확인해줄래? **그런일 발생안하도록 작업흐름 개선하고
+/// 싶고**」 — measured that day: TEN cards sat in 분류 전 with an answer on
+/// them, and EIGHT more sat there unclassified.
+///
+/// 분류 전 means 「내가 읽고 분류한다」. A card that stays there is not
+/// waiting for the user, it is waiting for ME.
+///
+/// ⚠️AGE, not presence: feedback arriving this turn belongs in 분류 전 and
+/// blocking on it would make the section useless.
+Iterable<String> _answersNobodyRead(
+  List<BoardCard> cards,
+  Set<String> acks,
+) sync* {
   final untriaged = <String>[];
-  // The other half — a question still asking whose answer arrived in CHAT.
-  // The board cannot know about those, so they sit for ever
-  // (`Q-remaining-14` did, while the work its answer named was merged).
-  final stale = <String>[];
+  final waiting = <String>[];
   final now = DateTime.now();
-  bool old(Map<String, dynamic> card) {
-    final ts = DateTime.tryParse('${card['ts'] ?? ''}');
-    // No stamp at all means it predates the `ts` rule — old by construction.
-    return ts == null || now.difference(ts).inHours >= 24;
+  for (final c in cards) {
+    if (!_live(c) || acks.contains(c.id)) continue;
+    final section = lastSection(c);
+    if (section != '유저' && section != '분류 전' && section != '질문') continue;
+    final at = DateTime.tryParse(c.updated);
+    if (at != null && now.difference(at) < _staleAfter) continue;
+    (section == '질문' ? waiting : untriaged).add(c.id);
   }
-
-  for (final id in order) {
-    final card = merged[id]!;
-    final state = '${card['state'] ?? ''}';
-    if (acked.contains(id)) continue;
-    final answer = card['answer'];
-    final answered =
-        answer != null && '$answer'.trim().isNotEmpty && '$answer' != 'null';
-    if (state == 'inbox' && (answered || old(card))) {
-      untriaged.add(id);
-      continue;
-    }
-    if (state == 'ask' && !answered && old(card)) {
-      stale.add(id);
-    }
-  }
-
   if (untriaged.isNotEmpty) {
-    complaints.add(
-      '분류 전에 하루 넘게 남은 카드: ${untriaged.join(', ')}\n'
-      '분류 전은 「내가 읽고 분류한다」는 뜻입니다 — 그대로 두면 유저가 준 '
-      '피드백을 아무도 안 읽은 것이 됩니다. 08-27에 열여덟 건이 그렇게 쌓였고 '
-      '그중 둘이 유저가 그날 말로 요청한 바로 그 작업이었습니다.\n'
-      '⇒ 카드마다 한 줄: 태그와 state 를 붙이고(할 일이 없으면 archived), '
-      '유저 메모가 있으면 그 원문을 "said" 로 남기고 "answer":null 로 지웁니다.',
-    );
+    yield '분류 전에 하루 넘게 남은 카드: ${untriaged.join(', ')}\n'
+        '분류 전은 「내가 읽고 분류한다」는 뜻입니다 — 그대로 두면 유저가 쓴 '
+        '것을 아무도 안 읽은 것이 됩니다.\n'
+        '⇒ 읽고 한 줄 적어 옮기세요: {"id":…, "at":"<대분류>", "note":…}';
   }
-  if (stale.isNotEmpty) {
-    complaints.add(
-      '하루 넘게 답을 기다리는 질문: ${stale.join(', ')}\n'
-      '이 대화에서 이미 답이 나오지 않았는지 확인하세요 — 채팅으로 온 답은 '
-      '보드가 모릅니다. 답이 나왔으면 카드에 옮겨 적고 닫으세요.\n'
-      '아직 진짜로 열려 있는 질문이면 그 id 를 .gate-ack 에 한 줄로 적으세요.',
-    );
+  if (waiting.isNotEmpty) {
+    yield '하루 넘게 답을 기다리는 질문: ${waiting.join(', ')}\n'
+        '이 대화에서 이미 답이 나오지 않았는지 확인하세요 — 채팅으로 온 답은 '
+        '보드가 모릅니다. 아직 진짜로 열려 있으면 그 id 를 .gate-ack 에 '
+        '한 줄로 적으세요.';
   }
+}
 
-  complaintsOut.addAll(complaints);
+// ────────────────────────────────────────────────────── 7. 죽은 ack
+
+/// 🚨★★★AN ACK THAT SILENCES NOTHING IS A LINE TO DELETE.
+///
+/// `.gate-ack` is where 「this landing goes past without a card」 is written
+/// down. The moment a card DOES carry that PR the sentence stops being true,
+/// and the line becomes one more bare number nobody can account for — which
+/// is how seventeen of thirty-four got there by 2026-08-29.
+///
+/// ⛔It NAMES the line rather than dropping it: the file is the user's record
+/// of decisions, and a gate that edits it would be deciding on their behalf.
+///
+/// ⚠️Every card, whatever its section. A landing whose card was archived
+/// still HAS a card — that is the point of archiving it.
+Iterable<String> _deadAcks(List<BoardCard> cards, Set<String> acks) sync* {
+  final claimed = <int>{for (final c in cards) ...c.prs};
+  final settled = <String>[];
+  for (final key in acks) {
+    final pr = int.tryParse(key);
+    if (pr != null && claimed.contains(pr)) settled.add(key);
+  }
+  if (settled.isEmpty) return;
+  yield '카드가 생긴 착지의 ack: ${settled.join(', ')}\n'
+      'ack 는 「이 착지는 카드 없이 지나간다」는 뜻인데 그 PR을 든 카드가 이제 '
+      '있습니다 — `.gate-ack` 에서 그 줄을 지우세요.';
+}
+/// Drawn on the board as a card at all.
+///
+/// ⚠️Three ways to not be one: an ENDING (`archived` · `deleted`), a record
+/// folded INTO another card — reachable through the entry that holds it, and
+/// asking 「어느 칸이냐」 of it asks about something that no longer has one —
+/// and a `law`, which is not work and never appears as a card.
+bool _live(BoardCard c) =>
+    c.kind != 'law' &&
+    c.kind != 'meta' &&
+    c.state != 'archived' &&
+    c.state != 'deleted' &&
+    c.foldedInto == null;
+
+/// 🚨★★★JUDGED ONLY SINCE THE RULE EXISTED.
+///
+/// ⛔Without this the two checks the overhaul ADDED fired on the whole file:
+/// 30 cards with no 대분류 and 18 that shipped without reaching 실기 확인 —
+/// and every one of them was CORRECT under the model it was written for.
+/// Before the overhaul a card with no `at` and `state: open` really was
+/// startable work, and a merge really did move a card by itself.
+///
+/// A gate that opens with thirty complaints about history is the gate this
+/// file's own doc warns about: one people learn to scroll past. The backlog
+/// is a card on the board, which is where a list of work belongs; this is a
+/// gate, and a gate watches what happens next.
+bool _recent(BoardCard c) => c.updated.compareTo(_gateSince) >= 0;
+
+/// Not an ENDING. ⚠️Weaker than [_live] on purpose: a question folded into
+/// another card is still a question, and whether it can be ANSWERED has
+/// nothing to do with where it is drawn. Using [_live] here skipped every
+/// folded question, which the test caught in one run.
+bool _notEnded(BoardCard c) => c.state != 'archived' && c.state != 'deleted';
+
+/// Whether the card ever said anything beyond its title.
+///
+/// ⚠️A bare move entry does not count. `readBoard` writes 「실기 확인으로
+/// 옮김」 for a line that names a section and says nothing else — that is the
+/// board narrating the move, not me describing the work, and counting it let
+/// a card claim a PR and say nothing while passing.
+bool _saysSomething(BoardCard c) => c.log.any((l) {
+      final t = l.text.trim();
+      return t.isNotEmpty && t != 'PR #${l.pr}' && !t.endsWith(' 옮김');
+    });
+
+/// 🚨ONE ack file, EVERY complaint. It used to exempt only the checks added
+/// last, so acking a card the gate named did nothing and the same line came
+/// back every turn — an ack that does not silence is worse than none.
+///
+/// ⚠️What it means is 「I have decided to leave this card alone」, and that
+/// decision is the same decision whichever complaint prompted it.
+///
+/// 🚨AN ACK CARRIES ITS REASON. A bare number is indistinguishable from every
+/// other bare number, and by 2026-08-29 thirty-four had piled up. ⛔Bare
+/// lines still silence: rejecting them outright would have re-fired
+/// thirty-four complaints in one turn.
+Set<String> _acks(File records) {
+  final file = File('${records.parent.path}/.gate-ack');
+  if (!file.existsSync()) return const {};
+  final out = <String>{};
+  for (final raw in file.readAsLinesSync()) {
+    final line = raw.trim();
+    if (line.isEmpty || line.startsWith('#')) continue;
+    final gap = line.indexOf(RegExp(r'\s'));
+    out.add(gap < 0 ? line : line.substring(0, gap));
+  }
+  return out;
 }

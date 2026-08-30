@@ -1,540 +1,327 @@
-import 'dart:convert';
 import 'dart:io';
 
-import '../../tool/board_check.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// The board gate's own guard.
+import '../../tool/board_check.dart';
+
+/// 🚨★★★THE GATE, DRIVEN AS A FUNCTION.
 ///
-/// 유저 2026-08-27: 「세션에서 대답 완료해서 작업끝났것이 답할것에 아직
-/// 올라와있고 … 그런일 발생안하도록 작업흐름 개선하고싶고」. Measured that
-/// day: ten cards sat in 분류 전 carrying an answer and eight more sat there
-/// unclassified, some for days — and two of those memos were the work the
-/// user had just asked for out loud.
+/// ⛔It used to be driven as a PROCESS — `dart run tool/board_check.dart` once
+/// per case — and under the full affected run the contention alone made it
+/// fail: 실측 2026-08-27, **nine red in a bulk run, 13/13 green alone**. A
+/// test that goes red for reasons that have nothing to do with the subject is
+/// a test people learn to re-run instead of read.
 ///
-/// ⚠️These drive the REAL program, not a copy of its rules. The gate is a
-/// `main()` that the Stop hook runs as an exe; a test that re-implemented the
-/// predicate would go green while the thing the hook runs said something else.
+/// 🚨EVERY CASE IS A PAIR: a file that must complain and the smallest edit
+/// that must silence it. A one-sided test proves the gate can shout, not that
+/// it can tell the difference — and a gate that shouts at everything is the
+/// failure mode this file exists to prevent, not the one it is testing for.
 void main() {
-  _recommendMustNameAnOption();
   late Directory dir;
 
-  setUp(() {
-    dir = Directory.systemTemp.createTempSync('anicel-board-check');
-  });
+  setUp(() => dir = Directory.systemTemp.createTempSync('board-check'));
+  tearDown(() => dir.deleteSync(recursive: true));
 
-  tearDown(() {
-    try {
-      dir.deleteSync(recursive: true);
-    } catch (_) {}
-  });
+  /// ⚠️Everything is stamped AFTER the gate's own start line. The gate judges
+  /// only what was written since the model changed, so a fixture dated before
+  /// it would silently test nothing — which is exactly the shape of a green
+  /// that measures an empty room.
+  String at(String hhmm) => '2026-09-01T$hhmm:00+09:00';
 
-  String stamp(Duration ago) => DateTime.now().subtract(ago).toIso8601String();
-
-  /// Runs the gate over [records] and returns what it complained about.
-  Future<String> complaintFor(
-    List<Map<String, dynamic>> records, {
-    List<String> acked = const [],
-  }) async {
-    final file = File('${dir.path}/board.jsonl');
-    file.writeAsStringSync(records.map(jsonEncode).join('\n'));
-    if (acked.isNotEmpty) {
-      File('${dir.path}/.gate-ack').writeAsStringSync(acked.join('\n'));
-    }
-    // 🚨★★★CALLED, NOT SPAWNED. Each case used to run `dart run
-    // tool/board_check.dart` in a child process. Alone that is fine; inside
-    // the full affected run (6000+ tests) the process contention ALONE made
-    // it fail — 실측 2026-08-27: nine red in a bulk run, 13/13 green when
-    // run by itself. A gate that goes red for reasons that have nothing to
-    // do with the board is a gate people learn to re-run instead of read.
-    //
-    // ⛔And the mojibake went with it. A child's stdout on Windows comes
-    // back in the console codepage, so these assertions could only ever
-    // match ASCII ids — the Korean sentences arrived as noise. In-process
-    // they are the strings the gate actually wrote.
+  String complaintsFor(List<String> lines) {
+    final file = File('${dir.path}/board.jsonl')
+      ..writeAsStringSync(lines.map((l) => '$l\n').join());
     return boardCheckComplaints(file);
   }
 
-  test('two complaints are separated by a REAL newline', () async {
-    // ⛔The seam used to be an escaped `\n` — the two characters — so a turn
-    // that raised two complaints printed them run together with a visible
-    // backslash-n. Every newline INSIDE a complaint was already real, which
-    // is why it survived: the seam is the only place the escape showed, and
-    // the child process this test used to spawn could not be read closely
-    // enough to notice.
-    final out = await complaintFor([
-      {
-        'kind': 'item',
-        'id': 'K-2',
-        'state': 'open',
-        'ts': stamp(const Duration(hours: 1)),
-        'rest': '실기로 확인한다',
-      },
-      {
-        'kind': 'item',
-        'id': 'K-3',
-        'state': 'not-a-state',
-        'ts': stamp(const Duration(hours: 1)),
-      },
-    ]);
-    expect(out, contains('K-2'));
-    expect(out, contains('K-3'));
-    expect(
-      out,
-      isNot(contains(r'\n')),
-      reason: 'the seam prints as a line break, not as two characters',
-    );
+  /// The smallest card that passes everything: a story with one 대분류.
+  String card(String id, {String at_ = '남은 것', String rest = '아직 남았다'}) =>
+      '{"kind":"item","id":"$id","at":"$at_","rest":"$rest",'
+      '"ts":"${at('09:00')}","title":"$id","tags":["구조"]}';
+
+  test('a clean board says nothing at all', () {
+    expect(complaintsFor([card('A')]), isEmpty);
   });
 
-  test('the complaint arrives in Korean — which the child process could '
-      'never deliver', () async {
-    // 🚨THE OTHER HALF OF DROPPING THE SUBPROCESS. A child's stdout on
-    // Windows comes back in the console codepage, so every assertion in
-    // this file had to match ASCII ids and the sentences arrived as noise.
-    // Nothing could check that the gate says anything USEFUL — only that it
-    // said something. In-process, the string is the one the gate wrote.
-    final out = await complaintFor([
-      {
-        'kind': 'item',
-        'id': 'K-1',
-        'state': 'open',
-        'ts': stamp(const Duration(hours: 1)),
-        'rest': '실기로 확인한다',
-      },
-    ]);
-    expect(out, contains('K-1'));
-    expect(
-      out,
-      contains('확인 방법'),
-      reason:
-          'the gate writes Korean and the test can finally read it — before '
-          'this, the same assertion matched mojibake and passed for the '
-          'wrong reason',
-    );
+  group('읽히지 않는 줄', () {
+    test('a line the reader could not use is named by its number', () {
+      final out = complaintsFor([card('A'), '{ this is not json']);
+      expect(out, contains('깨졌습니다'));
+      expect(out, contains('2'), reason: 'the line number is the whole point');
+    });
   });
 
-  test('a card the user ANSWERED but nobody classified is named', () async {
-    final out = await complaintFor([
-      {
-        'kind': 'item',
-        'id': 'Q-apple-gate-time',
-        'state': 'inbox',
-        'answer': 'A + 스위트 3샤드',
-        'ts': stamp(const Duration(minutes: 5)),
-      },
-    ]);
-    expect(
-      out,
-      contains('Q-apple-gate-time'),
-      reason:
-          '분류 전은 「내가 읽고 분류한다」 — 답이 달린 채 남으면 유저 '
-          '피드백을 아무도 안 읽은 것이 된다',
-    );
-  });
-
-  test('feedback that arrived THIS TURN is not a failure', () async {
-    final out = await complaintFor([
-      {
-        'kind': 'item',
-        'id': 'F-99',
-        'state': 'inbox',
-        'said': '방금 적어 준 것',
-        'ts': stamp(const Duration(minutes: 5)),
-      },
-    ]);
-    expect(
-      out,
-      isEmpty,
-      reason:
-          '⛔새 피드백이 분류 전에 있는 것은 정상이다 — 그것으로 막으면 '
-          '그 칸이 쓸모가 없어진다',
-    );
-  });
-
-  test('the same card a day later IS a failure', () async {
-    final out = await complaintFor([
-      {
-        'kind': 'item',
-        'id': 'F-38',
-        'state': 'inbox',
-        'said': '변형 언두하면 선택도 되돌리기',
-        'ts': stamp(const Duration(hours: 25)),
-      },
-    ]);
-    expect(out, contains('F-38'));
-  });
-
-  test('a question still asking after a day is named — its answer may have '
-      'come in CHAT, which the board cannot see', () async {
-    final out = await complaintFor([
-      {
-        'kind': 'decision',
-        'id': 'Q-remaining-14',
-        'state': 'ask',
-        'ts': stamp(const Duration(hours: 30)),
-        'where': 'x',
-        'why': 'y',
-        'options': [
-          {'key': '1', 'label': 'a'},
-          {'key': '2', 'label': 'b'},
-        ],
-      },
-    ]);
-    expect(out, contains('Q-remaining-14'));
-  });
-
-  test('an ANSWERED question is not still asking', () async {
-    final out = await complaintFor([
-      {
-        'kind': 'decision',
-        'id': 'Q-done',
-        'state': 'ask',
-        'answer': '2',
-        'ts': stamp(const Duration(hours: 30)),
-      },
-    ]);
-    expect(
-      out,
-      isEmpty,
-      reason:
-          'the board moves an answered question to 분류 전 by itself; '
-          'this one has been answered and its state simply has not caught up',
-    );
-  });
-
-  test('the ack silences EVERY complaint, not only the newest ones', () async {
-    // 🚨It used to exempt a card from the age checks and nothing else, so
-    // acking a card the gate had named changed nothing and the same line
-    // came back every turn. An ack that does not silence is worse than
-    // none: the next reader learns to scroll past the gate.
-    final out = await complaintFor(
-      [
-        {
-          'kind': 'item',
-          'id': 'I-8',
-          'state': 'open',
-          'ts': stamp(const Duration(hours: 1)),
-          // The older complaint: a check written where remaining CODE goes.
-          'rest': '실기로 확인한다',
-        },
-      ],
-      acked: ['I-8'],
-    );
-    expect(out, isEmpty);
-  });
-
-  test('and without the ack that same card IS named', () async {
-    final out = await complaintFor([
-      {
-        'kind': 'item',
-        'id': 'I-8',
-        'state': 'open',
-        'ts': stamp(const Duration(hours: 1)),
-        'rest': '실기로 확인한다',
-      },
-    ]);
-    expect(out, contains('I-8'));
-  });
-
-  test('an id in .gate-ack goes quiet — a question that is genuinely still '
-      'open must not nag for ever', () async {
-    final out = await complaintFor(
-      [
-        {
-          'kind': 'decision',
-          'id': 'F-31-rest',
-          'state': 'ask',
-          'ts': stamp(const Duration(hours: 30)),
-          // ⚠️Answerable, deliberately: without these the OLDER check (「답할 수
-          // 없는 결정 카드」) fires and the ack would look broken when what it
-          // silenced was a different complaint entirely.
-          'where': 'x',
-          'why': 'y',
-          'options': [
-            {'key': '1', 'label': 'a'},
-            {'key': '2', 'label': 'b'},
-          ],
-        },
-      ],
-      acked: ['F-31-rest'],
-    );
-    expect(out, isEmpty);
-  });
-
-  // 🚨★★★유저 2026-08-29: 「색 키를 GPU로 보니까 작업완료고 남은건
-  // 실기뿐인거같은데 이런건 착수가능이 아니라 실기확인에 있는게 맞는거
-  // 아니야? … 이거 게이트에 문제있는거같은데 분류못해내는거보니」.
-  //
-  // Twenty finished cards were sitting in 착수 가능. The renderer knows
-  // nine states and drops everything else into that column, so a state
-  // name nobody defined does not create a new column — it silently files
-  // the card as unstarted work.
-  group('보드가 모르는 state', () {
-    test('정의되지 않은 state 는 잡힌다', () async {
-      final out = await complaintFor([
-        {'id': 'X1', 'kind': 'item', 'state': 'done', 'note': 'x'},
+  group('어느 칸도 말하지 않는 카드', () {
+    test('a story with entries but no 대분류 is filed nowhere on purpose', () {
+      // ⚠️`작업 기록` is a 소분류: it is a real entry and it moves nothing, so
+      // this card lands in 바로 가능 by default and claims to be startable.
+      final out = complaintsFor([
+        '{"kind":"item","id":"A","at":"작업 기록","note":"뭔가 했다",'
+            '"ts":"${at('09:00')}"}',
       ]);
-      expect(out, contains('X1(done)'));
-      // ⛔ASCII ONLY in assertions: the harness reads the child's stdout
-      // through the system codepage, so Korean comes back mojibake. Every
-      // test here checks the CARD ID, which is what the reader needs to
-      // act on anyway.
+      expect(out, contains('어느 칸도 말하지 않는 카드'));
+      expect(out, contains('A'));
     });
 
-    test('아는 state 아홉은 조용하다', () async {
-      for (final s in const [
-        'open',
-        'inbox',
-        'wip',
-        'ask',
-        'gate',
-        'queue',
-        'mine',
-        'archived',
-        'deleted',
-      ]) {
-        final out = await complaintFor([
-          {
-            'id': 'X-$s',
-            'kind': 'item',
-            'state': s,
-            'note': 'x',
-            // ⛔A fresh ts: an inbox card older than a day is caught by a
-            // DIFFERENT check, and this test is about state names only.
-            'ts': stamp(Duration.zero),
-          },
-        ]);
-        expect(out, isNot(contains('X-$s')), reason: '$s 는 아는 상태다');
-      }
-    });
-
-    test('state 를 안 쓰면 open 이라 조용하다', () async {
-      final out = await complaintFor([
-        {'id': 'X2', 'kind': 'item', 'note': 'x'},
-      ]);
-      expect(out, isNot(contains('X2')));
-    });
-  });
-
-  // 🚨The board files a card by its `pr` FIELD. 「#1302」 in the note tells
-  // the reader and nobody else, so a shipped card sits in 착수 가능.
-  group('PR을 본문에만 적은 카드', () {
-    test('note 에 PR 번호가 있는데 pr 필드가 없으면 잡힌다', () async {
-      final out = await complaintFor([
-        {'id': 'Y1', 'kind': 'item', 'note': '고쳤다 (PR #1302).'},
-      ]);
-      expect(out, contains('Y1'));
-    });
-
-    test('pr 필드가 있으면 조용하다', () async {
-      final out = await complaintFor([
-        {'id': 'Y2', 'kind': 'item', 'pr': 1302, 'note': '고쳤다 (PR #1302).'},
-      ]);
-      expect(out, isNot(contains('Y2')));
-    });
-
-    test('끝난 카드에는 PR을 요구하지 않는다', () async {
-      // ⛔An archived card is off every list — nothing to misfile, and a
-      // gate that cries wolf is a gate nobody reads.
-      final out = await complaintFor([
-        {
-          'id': 'Y3',
-          'kind': 'item',
-          'state': 'archived',
-          'note': '고쳤다 (PR #1302).',
-        },
-      ]);
-      expect(out, isNot(contains('Y3')));
-    });
-
-    test('세 자리 숫자는 PR 이 아니다', () async {
-      final out = await complaintFor([
-        {'id': 'Y4', 'kind': 'item', 'note': 'R26 #41 시트 페이지뷰.'},
-      ]);
-      expect(out, isNot(contains('Y4')));
-    });
-  });
-
-  // 🚨★★★AN ACK CARRIES ITS REASON, AND A DEAD ACK GETS NAMED.
-  //
-  // `.gate-ack` was a bare list of numbers. By 2026-08-29 it held 34 and
-  // seventeen of them were dead — the landing had a card by then, so the
-  // line silenced nothing and read to the next person as "still uncarded".
-  group('.gate-ack', () {
-    test('a reason after the key still silences — the key is the first '
-        'token, not the whole line', () async {
-      final out = await complaintFor(
-        [
-          {
-            'kind': 'item',
-            'id': 'I-8',
-            'state': 'open',
-            'ts': stamp(const Duration(hours: 1)),
-            'rest': '실기로 확인한다',
-          },
-        ],
-        acked: ['I-8 another session owns this one'],
+    test('⛔and one 대분류 anywhere in the story silences it', () {
+      expect(
+        complaintsFor([
+          '{"kind":"item","id":"A","at":"남은 것","rest":"남음",'
+              '"ts":"${at('09:00')}"}',
+          '{"kind":"item","id":"A","at":"작업 기록","note":"그 뒤에 한 일",'
+              '"ts":"${at('10:00')}"}',
+        ]),
+        isEmpty,
+        reason: '소분류가 뒤에 쌓여도 칸은 마지막 대분류가 정한다',
       );
-      expect(out, isEmpty);
     });
 
-    test('a # line is a comment, not a key', () async {
-      // The file needs somewhere to say what its own format is, and a
-      // header that silenced a card called `#` would be a trap.
-      final out = await complaintFor(
-        [
-          {
-            'kind': 'item',
-            'id': 'I-8',
-            'state': 'open',
-            'ts': stamp(const Duration(hours: 1)),
-            'rest': '실기로 확인한다',
-          },
-        ],
-        acked: ['# key <space> reason', 'I-8 still open'],
+    test('⛔a law is not a card and is never asked where it sits', () {
+      expect(
+        complaintsFor([
+          card('A'),
+          '{"kind":"law","id":"law-구조","tag":"구조","note":"이 영역의 법",'
+              '"ts":"${at('09:00')}"}',
+        ]),
+        isEmpty,
       );
-      expect(out, isEmpty);
     });
 
-    test('an ack for a landing that NOW has a card is named', () async {
-      final out = await complaintFor(
-        [
-          {
-            'kind': 'item',
-            'id': 'C-1',
-            'state': 'open',
-            'pr': 1302,
-            'note': 'x',
-            'how': 'y',
-            'ts': stamp(const Duration(hours: 1)),
-          },
-        ],
-        acked: ['1302 was another session'],
+    test('⛔nor is a question folded into another card', () {
+      // 🚨THE REAL SHAPE, from Q-brush-param on 2026-08-31: an ANSWERED
+      // question. Its own story then holds a 유저 대답 entry — a 소분류 — and
+      // no 대분류 at all, so judged as a card it looks filed nowhere. It is
+      // not a card: it is an entry inside the card it was folded into.
+      //
+      // ⛔The first version of this case used an UNANSWERED question, whose
+      // own log is empty, so it was skipped before the folding rule was ever
+      // consulted. 🧪The mutation proved it: removing `foldedInto == null`
+      // killed nothing. A green that measures an empty room.
+      expect(
+        complaintsFor([
+          card('A'),
+          '{"kind":"decision","id":"A-Q1","title":"질문","where":"w","why":"y",'
+              '"options":[{"key":"1","label":"ㄱ"},{"key":"2","label":"ㄴ"}],'
+              '"ts":"${at('09:30')}"}',
+          '{"kind":"decision","id":"A-Q1","answer":"1","answerNote":"이걸로",'
+              '"ts":"${at('10:00')}"}',
+        ]),
+        isNot(contains('어느 칸도')),
       );
-      expect(out, contains('1302'));
+    });
+  });
+
+  group('모르는 항목 이름 · state 손대기', () {
+    test('an invented stage name moves nothing, and says so', () {
+      final out = complaintsFor([
+        '{"kind":"item","id":"A","at":"보류중임","note":"x","ts":"${at('09:00')}"}',
+      ]);
+      expect(out, contains('모르는 항목 이름'));
+      expect(out, contains('보류중임'));
     });
 
-    test('and an ack for a landing with no card stays quiet', () async {
-      // ⛔THE CONTROL. A rule that named every numeric ack would "pass" the
-      // test above while telling the user to delete lines that are still
-      // doing their job.
-      final out = await complaintFor(
-        [
-          {
-            'kind': 'item',
-            'id': 'C-1',
-            'state': 'open',
-            'pr': 1302,
-            'note': 'x',
-            'how': 'y',
-            'ts': stamp(const Duration(hours: 1)),
-          },
-        ],
-        acked: ['1399 nobody carded this'],
+    test('⛔a name the model knows is silent', () {
+      expect(complaintsFor([card('A', at_: '나중에', rest: '')]), isEmpty);
+    });
+
+    test('🚨writing `state` by hand is itself the defect now', () {
+      final out = complaintsFor([
+        '{"kind":"item","id":"A","at":"남은 것","rest":"남음","state":"queue",'
+            '"ts":"${at('09:00')}"}',
+      ]);
+      expect(out, contains('state 를 손으로 쓴 줄'));
+    });
+
+    test('⛔except the two endings, which no stage word produces', () {
+      expect(
+        complaintsFor([
+          card('A'),
+          '{"kind":"item","id":"B","state":"archived","ts":"${at('09:00')}"}',
+          '{"kind":"item","id":"C","state":"deleted","ts":"${at('09:00')}"}',
+        ]),
+        isEmpty,
       );
-      expect(out, isEmpty);
+    });
+  });
+
+  group('착지했는데 실기 확인으로 안 갔다', () {
+    test('a merge moves nothing, so a shipped card sits until I move it', () {
+      final out = complaintsFor([
+        '{"kind":"item","id":"A","at":"구현","pr":1234,"note":"고쳤다",'
+            '"ts":"${at('09:00')}"}',
+      ]);
+      expect(out, contains('착지했는데'));
+      expect(out, contains('A'));
     });
 
-    test('an ARCHIVED card still counts as having the landing', () async {
-      // The gate's main loop skips archived cards. Reading the PR set off
-      // that loop would have called a healthy ack dead — archiving a card
-      // is the opposite of losing it.
-      final out = await complaintFor(
-        [
-          {
-            'kind': 'item',
-            'id': 'C-1',
-            'state': 'archived',
-            'pr': 1302,
-            'note': 'x',
-            'how': 'y',
-            'ts': stamp(const Duration(hours: 1)),
-          },
-        ],
-        acked: ['1302 was another session'],
+    test('⛔writing 실기 확인 silences it', () {
+      expect(
+        complaintsFor([
+          '{"kind":"item","id":"A","at":"구현","pr":1234,"note":"고쳤다",'
+              '"ts":"${at('09:00')}"}',
+          '{"kind":"item","id":"A","at":"실기 확인","note":"기기에서 볼 것",'
+              '"ts":"${at('10:00')}"}',
+        ]),
+        isEmpty,
       );
-      expect(out, contains('1302'));
+    });
+
+    test('⛔and so does still owing something — the work is not done', () {
+      expect(
+        complaintsFor([
+          '{"kind":"item","id":"A","at":"구현","pr":1234,"note":"절반 했다",'
+              '"ts":"${at('09:00')}"}',
+          '{"kind":"item","id":"A","at":"남은 것","rest":"나머지",'
+              '"ts":"${at('10:00')}"}',
+        ]),
+        isEmpty,
+      );
+    });
+
+    test('a card that only claims a PR and says nothing is named', () {
+      final out = complaintsFor([
+        '{"kind":"item","id":"A","pr":1234,"at":"실기 확인",'
+            '"ts":"${at('09:00')}"}',
+      ]);
+      expect(out, contains('제목만 있고'));
+    });
+
+    test('a PR written only in prose is invisible to the board', () {
+      final out = complaintsFor([
+        '{"kind":"item","id":"A","at":"남은 것","rest":"남음",'
+            '"note":"#1302 에서 고쳤다","ts":"${at('09:00')}"}',
+      ]);
+      expect(out, contains('본문에만'));
+    });
+
+    test('🚨a check written into `rest` files the card as startable work', () {
+      final out = complaintsFor([
+        '{"kind":"item","id":"A","at":"남은 것","rest":"태블릿에서 눌러본다",'
+            '"ts":"${at('09:00')}"}',
+      ]);
+      expect(out, contains('확인 방법이 들어 있는'));
     });
   });
-}
 
-/// 🚨추천이 선택지를 안 가리키면 **화면에 아무것도 안 나온다.**
-///
-/// 2026-08-28 실사고: `I-4-tone` 의 `recommend` 에 추천 이유를 문단으로 적었고,
-/// 유저는 **한 글자도 못 봤다.** `note` 가 안 그려지던 것과 같은 모양이라 같은
-/// 게이트가 막아야 한다.
-void _recommendMustNameAnOption() {
-  late Directory dir;
-  setUp(() {
-    dir = Directory.systemTemp.createTempSync('anicel-board-rec');
+  group('답할 수 없는 질문', () {
+    String question(String body) =>
+        '{"kind":"decision","id":"Q-a","ts":"${at('09:00')}",$body}';
+
+    test('no options means the radios cannot be drawn', () {
+      final out = complaintsFor([
+        question('"title":"질문","where":"w","why":"y","of":"A"'),
+        card('A'),
+      ]);
+      expect(out, contains('답할 수 없는'));
+    });
+
+    test('options with no where/why leave nothing to decide between', () {
+      final out = complaintsFor([
+        question('"title":"질문","of":"A","options":'
+            '[{"key":"1","label":"ㄱ"},{"key":"2","label":"ㄴ"}]'),
+        card('A'),
+      ]);
+      expect(out, contains('내용이 안 보이는'));
+    });
+
+    test('🚨a recommend that names no option renders as nothing at all', () {
+      final out = complaintsFor([
+        question('"title":"질문","where":"w","why":"y","of":"A",'
+            '"recommend":"첫 번째가 낫습니다","options":'
+            '[{"key":"1","label":"ㄱ"},{"key":"2","label":"ㄴ"}]'),
+        card('A'),
+      ]);
+      expect(out, contains('추천이 안 보이는'));
+    });
+
+    test('a question belonging to nothing has nowhere to carry an answer', () {
+      final out = complaintsFor([
+        question('"title":"질문","where":"w","why":"y","options":'
+            '[{"key":"1","label":"ㄱ"},{"key":"2","label":"ㄴ"}]'),
+      ]);
+      expect(out, contains('어느 카드의 질문인지'));
+    });
+
+    test('🚨★★★an unanswered question whose card is NOT in 답할 것', () {
+      // 🧪THE REAL SHAPE, taken from H25 on 2026-08-31: I raised the question
+      // and wrote 대기중 on the card ONE MINUTE later, so the card sat in
+      // 대화 중 holding a question nobody was being asked.
+      //
+      // ⚠️A question alone does NOT trigger this — folding it in makes it the
+      // newest 대분류, which IS 답할 것. It takes a later 대분류 to bury it,
+      // and that is exactly what the first fixture here got wrong.
+      final out = complaintsFor([
+        card('A'),
+        question('"title":"질문","where":"w","why":"y","of":"A","options":'
+            '[{"key":"1","label":"ㄱ"},{"key":"2","label":"ㄴ"}]'),
+        '{"kind":"item","id":"A","at":"나중에","note":"나중에 하기로",'
+            '"ts":"${at('11:00')}"}',
+      ]);
+      expect(out, contains('답할 것에 없는'));
+      expect(out, contains('A'));
+    });
+
+    test('⛔a question folded in with nothing after it IS 답할 것', () {
+      expect(
+        complaintsFor([
+          card('A'),
+          question('"title":"질문","where":"w","why":"y","of":"A","options":'
+              '[{"key":"1","label":"ㄱ"},{"key":"2","label":"ㄴ"}]'),
+        ]),
+        isEmpty,
+        reason: '질문이 마지막 대분류면 카드는 이미 답할 것에 있다',
+      );
+    });
+
+    test('⛔and the card sitting in 답할 것 silences it', () {
+      expect(
+        complaintsFor([
+          card('A', at_: '나중에', rest: ''),
+          question('"title":"질문","where":"w","why":"y","of":"A","options":'
+              '[{"key":"1","label":"ㄱ"},{"key":"2","label":"ㄴ"}]'),
+          '{"kind":"item","id":"A","at":"답할 것","note":"Q-a 가 미답",'
+              '"ts":"${at('11:00')}"}',
+        ]),
+        isEmpty,
+        reason: '질문과 답할 것은 한 칸의 두 이름이다 — 단어가 아니라 칸으로 본다',
+      );
+    });
   });
-  tearDown(() {
-    try {
-      dir.deleteSync(recursive: true);
-    } catch (_) {}
+
+  group('죽은 ack', () {
+    test('an ack for a landing that now HAS a card is a line to delete', () {
+      File('${dir.path}/.gate-ack').writeAsStringSync('1234 카드 없이 지나감\n');
+      final out = complaintsFor([
+        '{"kind":"item","id":"A","at":"실기 확인","pr":1234,"note":"고쳤다",'
+            '"ts":"${at('09:00')}"}',
+      ]);
+      expect(out, contains('카드가 생긴 착지의 ack'));
+    });
+
+    test('⛔an ack silences every complaint about that card, not just one', () {
+      File('${dir.path}/.gate-ack').writeAsStringSync('A 손대지 않기로 했다\n');
+      expect(
+        complaintsFor([
+          '{"kind":"item","id":"A","at":"보류중임","state":"queue","pr":1234,'
+              '"ts":"${at('09:00')}"}',
+        ]),
+        isEmpty,
+      );
+    });
   });
 
-  /// ⚠️Same invocation as the gate's other tests: `dart` is `dart.bat` on
-  /// Windows so it needs a shell, and the argument is the FILE. The reply is
-  /// matched on the ASCII id — Windows decodes the child's Korean in the
-  /// console codepage and it arrives here as mojibake.
-  Future<String> gate(
-    String id, {
-    Object? recommend,
-    required List<Map<String, String>> options,
-  }) async {
-    final file = File('${dir.path}/board.jsonl');
-    file.writeAsStringSync(
-      jsonEncode({
-        'kind': 'decision',
-        'id': id,
-        'state': 'ask',
-        'ts': DateTime.now().toIso8601String(),
-        'where': 'somewhere on screen',
-        'why': 'blocked for this reason',
-        'options': options,
-        'recommend': ?recommend,
-      }),
-    );
-    return boardCheckComplaints(file);
-  }
-
-  const keyed = [
-    {'key': '1', 'label': 'a'},
-    {'key': '2', 'label': 'b'},
-  ];
-
-  test('문장을 적으면 게이트가 이름을 부른다', () async {
-    final out = await gate(
-      'T99-Q1',
-      recommend: '1번이 낫습니다 — 폭이 넓어지고 대가가 없어서',
-      options: keyed,
-    );
-    expect(out, contains('T99-Q1'));
-  });
-
-  test('키를 적으면 조용하다', () async {
-    final out = await gate('T99-Q2', recommend: '2', options: keyed);
-    expect(
-      out,
-      isNot(contains('T99-Q2')),
-      reason:
-          '⚠️이 카드는 방금 만들어졌고 where·why·label 이 다 있으므로, '
-          '이름이 뜬다면 그건 추천 때문이다',
-    );
-  });
-
-  test('키를 안 쓴 선택지도 번호로 세어 준다 — 서버가 그렇게 채운다', () async {
-    // 서버는 key 가 없으면 순번을 넣는다. 게이트가 다른 규칙으로 세면
-    // 「서버는 받아들이는데 게이트는 막는」 어긋남이 생긴다.
-    final out = await gate(
-      'T99-Q3',
-      recommend: '2',
-      options: const [
-        {'label': 'a'},
-        {'label': 'b'},
-      ],
-    );
-    expect(out, isNot(contains('T99-Q3')));
+  group('역사는 다시 심판하지 않는다', () {
+    test('🚨a card written before the model changed is left alone', () {
+      // ⛔Without this the gate opened with THIRTY complaints about history —
+      // and every one was correct under the model it was written for. A gate
+      // that starts by shouting at the past is one people scroll past.
+      expect(
+        complaintsFor([
+          '{"kind":"item","id":"A","at":"작업 기록","note":"옛날 카드",'
+              '"ts":"2026-08-20T09:00:00+09:00"}',
+        ]),
+        isEmpty,
+      );
+    });
   });
 }
