@@ -84,7 +84,8 @@ abstract final class AnchoredPopupText {
   /// The window's ONE margin. Content that fills its own width — a swatch
   /// grid, a colour wheel — lines its padding up with this rather than
   /// picking a smaller number of its own.
-  static const EdgeInsets bodyPadding = EdgeInsets.all(10);
+  static const double bodyPaddingValue = 10;
+  static const EdgeInsets bodyPadding = EdgeInsets.all(bodyPaddingValue);
 
   /// Between the title row and the first control under it.
   static const double titleGap = 8;

@@ -29,6 +29,15 @@ enum PropertyLaneValueKind {
 
   /// A flag: the value cell IS the control, and a tap flips it.
   boolean,
+
+  /// A colour: the value cell is a round swatch that opens the shared
+  /// picker, the same control every other colour in the app is chosen with.
+  ///
+  /// ⚠️It carries `none` as well as `#RRGGBB` — the box colour really is
+  /// absent when the アフレコ box is off — so the swatch has to be able to
+  /// show and to reach a state no colour wheel has. That is the picker's
+  /// 「없음」 row (`Q-f22-none`, 유저 답 1번), not a second kind here.
+  color,
 }
 
 /// ONE editable piece of a lane's value: the number a person types, and the
@@ -119,6 +128,18 @@ enum PropertyLaneKeyShape {
   mixed,
 }
 
+/// A lane colour written the way its own parser reads it back —
+/// `#RRGGBB`, or `none` where the lane allows absence.
+///
+/// ⛔ONE SPELLING. The label a row prints and the text a swatch commits go
+/// through this same function, so a colour can never be printed in a form
+/// its own lane cannot parse ([[no-copy-to-share]]). `parseArgbInput` is
+/// the other half and stays where it is, beside the commit path that has
+/// always owned it.
+String formatLaneColorValue(int? argb) => argb == null
+    ? 'none'
+    : '#${(argb & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
+
 class PropertyLaneRow {
   const PropertyLaneRow({
     required this.laneId,
@@ -129,6 +150,7 @@ class PropertyLaneRow {
     this.keyNames = const {},
     this.valueLabel,
     this.valueKind = PropertyLaneValueKind.number,
+    this.colorCanBeNone = false,
     this.scrubValue,
     this.showsKeyNavigator = true,
     this.isGroupHeader = false,
@@ -139,6 +161,14 @@ class PropertyLaneRow {
 
   /// See [PropertyLaneValueKind].
   final PropertyLaneValueKind valueKind;
+
+  /// Whether this lane's colour may be ABSENT — only meaningful when
+  /// [valueKind] is [PropertyLaneValueKind.color].
+  ///
+  /// ⛔The lane carries it, so nothing downstream switches on a lane id to
+  /// find out: the value cell asks the row it was handed, exactly as it
+  /// asks it what kind of value it holds.
+  final bool colorCanBeNone;
 
   /// R5 #7: a group header may show a live PREVIEW of what it draws, in the
   /// region right of the fx column. Two fixed runs — the name and the

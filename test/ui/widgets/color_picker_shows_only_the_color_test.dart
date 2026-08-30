@@ -19,6 +19,7 @@ void main() {
     WidgetTester tester, {
     int color = 0xFF102030,
     int current = 0xFFAABBCC,
+    VoidCallback? onNone,
   }) async {
     final picked = <int>[];
     await tester.pumpWidget(
@@ -31,6 +32,7 @@ void main() {
               color: color,
               currentColorOf: () => current,
               onChanged: picked.add,
+              onNone: onNone,
             ),
           ),
         ),
@@ -123,9 +125,7 @@ void main() {
       'color-wheel-foreground-swatch',
       'color-wheel-background-swatch',
     ]) {
-      final box = tester.widget<Container>(
-        find.byKey(ValueKey<String>(key)),
-      );
+      final box = tester.widget<Container>(find.byKey(ValueKey<String>(key)));
       expect(
         (box.decoration! as BoxDecoration).shape,
         BoxShape.circle,
@@ -136,5 +136,48 @@ void main() {
 
   test('the button label is a translated string, not typed Korean', () {
     expect(AppText.strings.colorUseCurrent, isNotEmpty);
+    expect(AppText.strings.colorNone, isNotEmpty);
+  });
+
+  testWidgets('🚨every control the window can hold FITS in the window', (
+    tester,
+  ) async {
+    // ⛔THIS IS WHY THE 「없음」 ROW IS A ROW (`Q-f22-none` 답 1번: 「그 창
+    // **아래**에 「없음」 버튼이 **한 줄 더**」). Putting it beside 「현재 색
+    // 반영」 read as the tidier layout and overflowed the window by 100px —
+    // 「Use current color」 very nearly fills 248 on its own — so the striped
+    // overflow bar went up in twelve unrelated tests before anything here
+    // said a word about it.
+    //
+    // ⚠️`onNone` non-null is the WIDEST the window ever gets. A fixture that
+    // opened the picker without it would measure the narrow case forever.
+    await pumpAndOpen(tester, onNone: () {});
+    expect(
+      find.byKey(const ValueKey<String>('color-picker-none')),
+      findsOneWidget,
+      reason: 'fixture premise: the widest case is the one on screen',
+    );
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: 'a RenderFlex overflow here is a striped bar the user sees',
+    );
+  });
+
+  testWidgets('🚨the 「없음」 seat is there even where absence is not a value', (
+    tester,
+  ) async {
+    // 유저 2026-08-26: 「none버튼 신설해서 **캔버스알약쪽이랑 멤버쪽에
+    // 존재하도록**」 — and 없다가 생기는 UI 금지. The canvas surfaces cannot
+    // be 「없음」, so the button is dead there; it does not vanish, because
+    // the window would then be two windows.
+    await pumpAndOpen(tester);
+    final none = find.byKey(const ValueKey<String>('color-picker-none'));
+    expect(none, findsOneWidget);
+    expect(
+      tester.widget<TextButton>(none).onPressed,
+      isNull,
+      reason: 'present, and dead — 「없음이 가능한 자리에서만 눌리고」',
+    );
   });
 }
