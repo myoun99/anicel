@@ -59,7 +59,7 @@ typedef ConformCacheEntry = ({String path, int bytes, DateTime lastUsed});
 /// never touch, under a button that looks like it worked.
 ///
 /// 🚨The `.z` is not optional decoration — a conform is written compressed
-/// when that is worth it ([compressMediaBlob]), and a pattern that only
+/// when that is worth it ([writeMediaBlob]), and a pattern that only
 /// matched the plain spelling would have made every compressed conform
 /// INVISIBLE to this file: uncounted in the size the settings panel shows,
 /// and unreachable by the collector, so the pile this exists to bound

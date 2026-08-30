@@ -1,7 +1,10 @@
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/framed_media_fixture.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 
@@ -139,7 +142,7 @@ void main() {
         List<int>.generate(256 * 1024, (_) => random.nextInt(256)),
       );
       expect(
-        compressMediaBlob(noise),
+        framedEntryBytes(noise),
         isNull,
         reason:
             'null means「store the file as it is」— paying a decompression '
@@ -153,7 +156,7 @@ void main() {
         return;
       }
       final source = compressible(300 * 1024);
-      final packed = compressMediaBlob(source);
+      final packed = framedEntryBytes(source);
       expect(packed, isNotNull, reason: 'fixture: this data does compress');
       expect(
         packed!.length,
@@ -170,7 +173,7 @@ void main() {
       }
       // Two blocks and a bit, at a block size a test can afford.
       final source = compressible(mediaBlockBytes * 2 + 1024);
-      final packed = compressMediaBlob(source);
+      final packed = framedEntryBytes(source);
       expect(packed, isNotNull);
       final header = MediaBlobHeader.parse(packed!);
       expect(header.blockCount, 3);
@@ -179,7 +182,7 @@ void main() {
     });
 
     test('an empty file is stored', () {
-      expect(compressMediaBlob(Uint8List(0)), isNull);
+      expect(framedEntryBytes(Uint8List(0)), isNull);
     });
 
     test('without an engine, everything is stored — no deflate floor here', () {
@@ -189,7 +192,7 @@ void main() {
         QaCelCompressor.debugResetForTests();
       });
       expect(
-        compressMediaBlob(compressible(64 * 1024)),
+        framedEntryBytes(compressible(64 * 1024)),
         isNull,
         reason:
             '⛔a cel MUST be readable by any build, but media has a free '
@@ -220,7 +223,61 @@ void main() {
       // The contract a plain seek and an unzip tool both depend on: when
       // this answers null the caller writes the source bytes untouched, so
       // there is no header to skip and no byte to strip.
-      expect(compressMediaBlob(noise), isNull);
+      expect(framedEntryBytes(noise), isNull);
+    });
+
+    /// 🚨**THE WRITE IS STREAMED, AND THIS IS WHAT SAYS SO.**
+    ///
+    /// The writer this replaced took the asset as one `Uint8List` and built
+    /// every compressed block beside it before judging the total — so a 4GB
+    /// movie was the file twice over, resident at once, at the moment 품기
+    /// is pressed. Nothing about the OUTPUT changed, which is why no
+    /// existing test moved: the property that changed is how much is held
+    /// at once, and the only handle a test has on it is the size of the
+    /// reads the writer asks for.
+    test('🚨 no read is larger than one block, whatever the asset weighs', () {
+      if (!engineHere()) {
+        markTestSkipped('no engine on this run');
+        return;
+      }
+      const block = 64 * 1024;
+      final random = Random(11);
+      final noise = Uint8List.fromList(
+        List<int>.generate(block * 8, (_) => random.nextInt(256)),
+      );
+      var biggest = 0;
+      final directory = Directory.systemTemp.createTempSync('anicel-stream-');
+      try {
+        final read = mediaBytesReader(noise);
+        final written = writeMediaBlob(
+          basePath: '${directory.path.replaceAll(r'\', '/')}/entry',
+          length: noise.length,
+          blockBytes: block,
+          readInto: (buffer, position, size) {
+            biggest = size > biggest ? size : biggest;
+            return read(buffer, position, size);
+          },
+        );
+        expect(
+          written.framed,
+          isFalse,
+          reason: 'fixture: noise does not shrink',
+        );
+        expect(
+          File(written.path).readAsBytesSync(),
+          noise,
+          reason: 'a stored entry IS the asset, byte for byte',
+        );
+      } finally {
+        directory.deleteSync(recursive: true);
+      }
+      expect(
+        biggest,
+        lessThanOrEqualTo(block),
+        reason:
+            'a read bigger than a block means the whole asset landed in '
+            'memory — the shape this write was rebuilt to lose',
+      );
     });
   });
 }
