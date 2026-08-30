@@ -54,6 +54,7 @@ void main() {
     'N', // the comma count button, a number in every language
     'X',
     'Y', // the transform axes
+    'V', // the storyboard's V column, a sheet letter
   };
 
   /// Every shape in which a literal reaches the screen from these files.
@@ -145,8 +146,15 @@ void main() {
   /// `every_action_has_a_word_in_every_language_test`, which asks the
   /// question a count cannot: 「is every id answered」.
   ///
+  /// 🚨AND THE NUMBER COMES FROM THIS TEST, NEVER FROM A SIBLING SCRIPT.
+  /// I set it once from a scratch counter that scanned the same corpus with
+  /// the same regexes — and was six too high, because its `ui/debug/`
+  /// exclusion had a broken escape. Six English strings could have come back
+  /// and this would have stayed green. ★Run it, read the count out of the
+  /// failure, put THAT in.
+  ///
   /// ★WHEN YOU TRANSLATE SOMETHING, LOWER THIS NUMBER. That is the ratchet.
-  const untranslatedElsewhere = 149;
+  const untranslatedElsewhere = 134;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp(r'[A-Za-z]');
@@ -163,10 +171,13 @@ void main() {
       //
       // ⛔AND THE BRUSH SMOKE SCREEN IS NOT UI. `brush_v1_scope_guard_test`
       // proves it is wired into no production route; its six buttons are a
-      // developer's harness, and translating them would make a debug screen
+      // developer's harness. `ui/debug/` is there for the same reason — the
+      // Input Inspector is one of the `edit-*` menu toggles nobody tabled,
+      // and translating a diagnostic would make it
       // read differently depending on who opened it.
       if (path.contains('/ui/dialogs/') ||
-          path.endsWith('/brush_canvas_smoke_screen.dart')) {
+          path.endsWith('/brush_canvas_smoke_screen.dart') ||
+          path.contains('/ui/debug/')) {
         continue;
       }
       final source = file.readAsStringSync();
