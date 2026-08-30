@@ -378,12 +378,15 @@ String _intake(Map<String, dynamic> body) {
   final kind = '${body['kind']}';
   final text = '${body['text'] ?? ''}'.trim();
   final tag = '${body['tag'] ?? ''}'.trim();
-  // 임시 is its own filing, not a lesser feedback: it says the thought is not
-  // finished yet, so whoever reads it should expect to ask rather than act.
-  final (prefix, label, stage) = switch (kind) {
-    'idea' => ('I', '아이디어', '유저 아이디어'),
-    'draft' => ('M', '임시', '임시 메모'),
-    _ => ('F', '피드백', '유저 피드백'),
+  // ⚠️The stage name is 유저 for all three now — see below. What still
+  // differs is the id prefix and the tag, and the tag is where a reader looks
+  // to tell a finished thought from an unfinished one: 임시 is its own filing,
+  // not a lesser feedback, and says whoever reads it should expect to ask
+  // rather than act.
+  final (prefix, label) = switch (kind) {
+    'idea' => ('I', '아이디어'),
+    'draft' => ('M', '임시'),
+    _ => ('F', '피드백'),
   };
   final id = _nextId(prefix);
   final firstLine = text.split('\n').first;
@@ -398,9 +401,15 @@ String _intake(Map<String, dynamic> body) {
     // and theirs share a field — and writing both would print the same
     // paragraph twice, once under each name.
     'said': text,
-    'at': stage,
+    // 🚨★★★`유저`, THE 대분류 — not a label of its own. Everything the user
+    // writes is one kind of entry and it lands in 분류 전; which KIND of
+    // filing it was is the tag beside it (피드백 / 아이디어 / 임시), so the
+    // stage name was saying it twice. ⛔And `state: 'inbox'` is gone with it:
+    // this was the last place a section was written rather than folded out of
+    // the story. Older intake records keep their own `state`, which still
+    // works — nothing in their story names a section, so nothing overrides it.
+    'at': '유저',
     'tags': [label, if (tag.isNotEmpty) tag],
-    'state': 'inbox',
     'ts': _now(),
   });
   return id;
