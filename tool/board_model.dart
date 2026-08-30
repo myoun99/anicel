@@ -62,7 +62,7 @@ String originOfId(String id, File records) {
 /// of it, then what I worked out.
 class BoardLog {
   BoardLog(this.ts, this.at, this.text,
-      {this.byUser = false, this.pr, this.how = '', this.ask});
+      {this.byUser = false, this.pr, this.how = '', this.ask, this.ref = ''});
 
   /// 🚨★★★THE QUESTION THIS ENTRY IS, when it is one (유저 2026-08-31:
   /// 「질문 자체를 대분류로 옮기고, 새로운 카드 만들어서 참조가 아니라,
@@ -116,6 +116,11 @@ class BoardLog {
   /// its `how` here. Everywhere else `how` is still the card's, which is what
   /// a hand-written 실기 확인 uses.
   final String how;
+
+  /// 🚨The entry this one ANSWERS, named by its `ts`. Only a 완료 uses it:
+  /// it says WHICH 실기 확인 was cleared, so a card holding three of them
+  /// leaves only when all three have one — see [placeByStory].
+  final String ref;
 }
 
 class BoardCard {
@@ -240,7 +245,7 @@ class BoardCard {
 /// Stop hook that cost 2.4s of every turn to answer the same question.
 List<int> badLines = const [];
 
-List<BoardCard> readBoard(File file) {
+List<BoardCard> readBoard(File file, {DateTime? now}) {
   final bad = <int>[];
   final byId = <String, BoardCard>{};
   final order = <String>[];
@@ -311,13 +316,21 @@ List<BoardCard> readBoard(File file) {
       // sat in 바로 가능 with the word written in the file. Now an unadded
       // entry leaves `at` for the next text on the line, and if nothing takes
       // it the caller writes the bare move entry.
-      if (e.log.any((l) => l.text == text)) return;
+      // 🚨★★★AND IT MUST NOT EAT AN ENTRY THAT ANSWERS SOMETHING ELSE.
+      // Three hands-on checks ticked in a row all say 「확인 — 문제 없음」,
+      // so by TEXT alone the second and third were the first one again — and
+      // the card sat there holding two cleared checks it could not see.
+      // 🧪Measured: buttons went 3 → 2 → 1 → 1 and the card never left.
+      // What makes them different is `ref`: WHICH entry each one answers.
+      final ref = '${json['ref'] ?? ''}';
+      if (e.log.any((l) => l.text == text && l.ref == ref)) return;
       final label = at.isEmpty ? fallback : at;
       at = '';
       // ⚠️The PR rides the FIRST stage this line opens, not all of them: it
       // shipped once, however many things the line had to say about it.
       e.log.add(BoardLog(ts, label, text,
-          byUser: byUser, pr: prLeft, how: prLeft == null ? '' : stageHow));
+          byUser: byUser, pr: prLeft, how: prLeft == null ? '' : stageHow,
+          ref: ref));
       prLeft = null;
     }
 
@@ -471,10 +484,14 @@ List<BoardCard> readBoard(File file) {
     if (e.kind == 'law' || e.tag.isEmpty || e.tags.contains(e.tag)) continue;
     e.tags = [...e.tags, e.tag];
   }
-  foldQuestionsIntoCards(byId);
-  foldChecksIntoCards(byId);
-  // 🚨★★★AND ONLY NOW IS THE CARD PLACED. Every entry is in, so the walk
-  // backwards can see the whole story — see [placeByStory].
+  foldQuestionsIntoCards(byId, now);
+  // 🚨★★★PLACED BEFORE THE CHECKS FOLD, because that fold has to know which
+  // hosts are still on the board — see [foldChecksIntoCards]. Then placed
+  // again, because the fold adds entries that decide where a card sits.
+  for (final e in byId.values) {
+    placeByStory(e);
+  }
+  foldChecksIntoCards(byId, now);
   for (final e in byId.values) {
     placeByStory(e);
   }
@@ -532,6 +549,18 @@ const kSection = <String, String>{
   '나중에': 'queue',
   // 🚨실기 확인 is a SECTION now, not a kind of card — see [foldChecksIntoCards].
   '실기 확인': 'hands',
+  // 🚨끝은 자리가 아니라 끝이다. 유저 2026-08-31: 「확인 다 끝나서 사라지는
+  // 카드는 대분류 확인이 된다고 했잖아 … **대분류 이름적으로 완료가 더
+  // 정확한데**」 — 맞다. 개별 체크 하나를 지우는  는 **소분류**라
+  // 여기 없다: 칸을 안 바꾸므로 카드는 실기 확인에 그대로 있고, 규칙은
+  // 하나도 늘지 않는다.
+  // 🚨끝은 자리가 아니라 끝이다. 유저 2026-08-31: 「확인 다 끝나서 사라지는
+  // 카드는 대분류 확인이 된다고 했잖아 … **대분류 이름적으로 완료가 더
+  // 정확한데**」 — 맞다. 그래서 카드를 끝내는 말은 `완료` 다.
+  //
+  // ⚠️개별 체크 하나를 지우는 `확인 완료` 는 **소분류라 여기 없다**: 칸을
+  // 안 바꾸므로 카드는 실기 확인에 그대로 있고, 규칙은 하나도 늘지 않는다
+  // (유저: 「규칙 하나도 안 늘어나고 보드에서 확인 항목만 안 보일 뿐」).
   '완료': 'archived',
 };
 
@@ -604,7 +633,35 @@ void placeByStory(BoardCard e) {
     return;
   }
   final section = kSection[lastSection(e)];
-  if (section != null) e.state = section;
+  if (section == null) return;
+  e.state = section;
+}
+
+/// 🚨★★★HOW MANY HANDS-ON CHECKS ON THIS CARD ARE STILL WAITING.
+///
+/// ⚠️Read by the TICK HANDLER, not by [placeByStory]. 유저 2026-08-31:
+/// 「그냥 내가 실기 확인 제출해서 0개 되면 사라지는데, 그걸 그냥 **대분류
+/// 확인이라는 항목을 만드는 작업으로 하면** 자연스럽게 되는 거 아니야?」 —
+/// yes, and it deletes a special case: placement used to carry 「완료인데
+/// 체크가 남았으면 실기로 되돌린다」, a rule about ONE 대분류 living inside
+/// the reader. Now the writer counts and says which word it is — `확인` while
+/// any remain, `완료` for the last — and the reader keeps its one rule.
+List<String> checksWaiting(BoardCard e) {
+  final open = <String>[];
+  final cleared = <String>{};
+  var endsTheCard = false;
+  for (var i = 0; i < e.log.length; i++) {
+    final name = stageName(e, i);
+    if (name == '실기 확인') open.add(e.log[i].ts);
+    if (name != '확인 완료' && name != '완료') continue;
+    final ref = e.log[i].ref;
+    // ⚠️No `ref` on a 완료 means 「this card is done」, full stop — what every
+    // 완료 written before per-check ticks existed meant.
+    if (ref.isEmpty && name == '완료') endsTheCard = true;
+    cleared.add(ref);
+  }
+  if (endsTheCard) return const [];
+  return [for (final ts in open) if (!cleared.contains(ts)) ts];
 }
 
 /// 🚨★★★A QUESTION IS AN ENTRY ON THE CARD THAT RAISED IT — not a card of its
@@ -628,7 +685,7 @@ void placeByStory(BoardCard e) {
 /// 답할 것 while its newest word is a question and moves to 분류 전 the moment
 /// one is answered — the sections fall out of the story instead of being
 /// maintained beside it, and `_asking` stopped being needed at all.
-void foldQuestionsIntoCards(Map<String, BoardCard> byId) {
+void foldQuestionsIntoCards(Map<String, BoardCard> byId, [DateTime? now]) {
   for (final q in byId.values.toList()) {
     if (q.kind != 'decision') continue;
     final (of, _) = asksOf(q);
@@ -659,17 +716,37 @@ void foldQuestionsIntoCards(Map<String, BoardCard> byId) {
     origin.log.add(BoardLog(at, '유저', text, byUser: true));
   }
   for (final e in byId.values) {
-    sortByTime(e.log);
+    sortByTime(e.log, now);
   }
 }
 
 /// ⚠️STABLE, and unparseable timestamps keep the position they were read in.
 /// Older lines predate the `ts` field entirely, and a made-up time would
 /// scatter them; leaving them where the file put them is the honest answer.
-void sortByTime(List<BoardLog> log) {
+/// ⚠️[now] is an ARGUMENT so a test can pin it. Taking the wall clock here
+/// made every fixture stamped 「later today」 read as the future, which the
+/// clamp below then flattened into file order — a suite that passed or failed
+/// by what time of day it ran.
+void sortByTime(List<BoardLog> log, [DateTime? now]) {
+  // 🚨★★★A TIME THAT HAS NOT HAPPENED CANNOT ORDER ANYTHING.
+  //
+  // ⛔I stamped 39 records on 2026-08-31 with clock times of 02·03·04·06·09·
+  // 11·12·14시 while the actual clock read 01:36 — plausible-looking numbers
+  // I made up instead of reading. The cost landed on 유저 mid-test: they
+  // ticked `C-t11` 완료 at 01:34 and the card did not leave, because my
+  // 실기 확인 stamped 14:10 sorted AFTER their tick and stayed the last
+  // 대분류. They saw both halves of it: 「제출 버튼 눌러도 바로 삭제
+  // 안 되네?」 and 「완료 항목은 실기 확인 다음 아닌가? 타임라인적으로?」.
+  //
+  // A future stamp is treated as NO stamp: it inherits the entry before it,
+  // which puts it in file order — and file order is the true order, because
+  // the file is append-only. ⚠️This does not hide the mistake; the gate names
+  // it (see board_check). It stops the mistake from reordering the story.
+  final clock = now ?? DateTime.now();
   final keyed = <(DateTime?, int, BoardLog)>[];
   for (var i = 0; i < log.length; i++) {
-    keyed.add((DateTime.tryParse(log[i].ts), i, log[i]));
+    final t = DateTime.tryParse(log[i].ts);
+    keyed.add((t != null && t.isAfter(clock) ? null : t, i, log[i]));
   }
   // A row with no time inherits the one before it, so it cannot jump.
   DateTime? carry;
@@ -698,7 +775,7 @@ void sortByTime(List<BoardLog> log) {
 /// ⚠️A check that names the card it belongs to (`under`) folds into it. One
 /// that names nothing IS its own card, and gets the 실기 확인 entry written
 /// onto itself so the section falls out of its story like every other card's.
-void foldChecksIntoCards(Map<String, BoardCard> byId) {
+void foldChecksIntoCards(Map<String, BoardCard> byId, [DateTime? now]) {
   final byPr = <int, BoardCard>{};
   for (final e in byId.values) {
     for (final n in e.prs) {
@@ -712,7 +789,24 @@ void foldChecksIntoCards(Map<String, BoardCard> byId) {
     // `under` is a PR NUMBER, and the card that shipped it is the one this
     // check belongs to.
     final host = c.under == null ? null : byPr[c.under];
-    if (host != null && host.id != c.id) {
+    // 🚨★★★A CHECK NEVER GOES DOWN WITH ITS HOST.
+    //
+    // ⛔Folding put the check INSIDE the card that shipped its PR, and if that
+    // card had ended the check went with it — still unticked, and now on no
+    // list at all, so nothing could ever bring it back. 🧪TEN of them: the
+    // 4GB save check rode `stop-gate-was-dead` into the archive, four buffer
+    // checks rode `scroll-the-buffer-on-a-pan`, two rode a deleted round.
+    // 유저 found the symptom from the other side — 「실기 확인에 등장 안 하는
+    // 카드가 있어」 — and it is the same law they had just stated about ticks:
+    // **something else finishing is not this check passing.**
+    //
+    // ⇒ A check whose host has ended stands as its own card. That is what it
+    // was before the fold and it is where a person can still act on it.
+    final hostGone = host != null &&
+        (host.state == 'archived' ||
+            host.state == 'deleted' ||
+            host.foldedInto != null);
+    if (host != null && host.id != c.id && !hostGone) {
       c.foldedInto = host.id;
       host.log.add(BoardLog(at, '실기 확인', text.isEmpty ? c.id : text));
       continue;
@@ -721,7 +815,7 @@ void foldChecksIntoCards(Map<String, BoardCard> byId) {
     c.log.add(BoardLog(at, '실기 확인', text.isEmpty ? c.id : text));
   }
   for (final e in byId.values) {
-    sortByTime(e.log);
+    sortByTime(e.log, now);
   }
 }
 

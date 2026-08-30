@@ -355,8 +355,36 @@ Future<void> _handle(HttpRequest req) async {
       // for. Everything the user writes comes back to me to act on, which has
       // been the law since 2026-08-26 and is the reason **유저는 분류 체계를
       // 몰라도 된다**: the request is the entry's text, and moving the card is
-      // my job. ⛔Writing 「나중에」 straight from the button would make the
-      // board move a card nobody had read.
+      // 🚨★★★THE WRITER COUNTS, SO THE READER KEEPS ONE RULE (유저
+      // 2026-08-31: 「그냥 내가 실기 확인 제출해서 0개 되면 사라지는데, 그걸
+      // 그냥 **대분류 확인이라는 항목을 만드는 작업으로 하면** 자연스럽게
+      // 되는 거 아니야?」).
+      //
+      // ⛔Placement used to carry 「완료인데 체크가 남았으면 실기로
+      // 되돌린다」 — a rule about ONE 대분류 living inside the reader, which
+      // is the shape this whole redesign removes. Here the tick asks how many
+      // checks are still waiting and writes the word that is true: `확인`
+      // while any remain, `완료` for the last one. 칸 = 마지막 대분류, still.
+      //
+      // ⚠️`ref` is the ts of the check being cleared — an entry has no id of
+      // its own, and within one card a ts IS its identity.
+      case '/tick':
+        final id = '${body['id']}';
+        final ref = '${body['ref'] ?? ''}';
+        final card = readBoard(File(_recordsPath))
+            .where((c) => c.id == id)
+            .firstOrNull;
+        final left = card == null
+            ? const <String>[]
+            : checksWaiting(card).where((ts) => ts != ref).toList();
+        _append({
+          'kind': 'item',
+          'id': id,
+          'at': left.isEmpty ? '완료' : '확인 완료',
+          'ref': ref,
+          'said': '확인 — 문제 없음',
+          'ts': _now(),
+        });
       case '/ask-move':
         _append({
           'kind': 'item',
@@ -1058,7 +1086,8 @@ String _render(List<BoardCard> entries, _Gh gh, List<_Checkout> gits,
   b.write('<p class="stamp">분류 전 <b>${inbox.length}</b> · 답할 것 <b>${asks.length}</b>'
       ' · 하는 중 <b>${now.length}</b> · 바로 가능 <b>${ready.length}</b>'
       ' · 대화 중 <b>${talking.length}</b> · 나중에 <b>${later.length}</b>'
-      ' · 실기 확인 <b>${checks.length}</b>');
+      ' · 실기 확인 <b>${checks.length}</b>'
+      );
   if (!gh.ok) {
     b.write(' · <span class="warn">gh 를 못 불렀습니다 — PR 칸은 비어 있습니다</span>');
   }
@@ -1759,6 +1788,21 @@ String _entryRow(BoardCard e, int i, {required bool open}) {
         'href="https://github.com/$_repo/pull/${entry.pr}">'
         'PR #${entry.pr} 열기 →</a></p>');
   }
+  // 🚨★★★EACH HANDS-ON CHECK IS TICKED ON ITS OWN (유저 2026-08-31: 「실기
+  // 확인은 카드 안에 여러 개 존재하니까 **모든 게 ok일 때만 사라져야**
+  // 하겠지만」).
+  //
+  // ⛔One 제출 on the card cleared everything it was holding, so ticking the
+  // first of three checks took the other two off the board — and nothing
+  // brings them back, because nothing shows them. The form lives on the entry
+  // now, exactly like a question's, and the card leaves when the last one is
+  // ticked.
+  if (mine == '실기 확인' && !_cleared(e, entry.ts)) {
+    b.writeln('<div class="foot">'
+        '<button onclick="tick(event,\'${_esc(e.id)}\',\'${_esc(entry.ts)}\')">'
+        '확인 — 문제 없음</button>'
+        '<span class="state"></span></div>');
+  }
   return b.toString();
 }
 
@@ -1770,6 +1814,15 @@ bool _lastIsThis(BoardCard e, int i) {
   }
   return true;
 }
+
+/// Whether the hands-on check written at [ts] has already been ticked.
+///
+/// ⚠️ONE READER: [checksWaiting] is what the tick handler counts with, so the
+/// button and the word that handler writes can never disagree about which
+/// checks are still open. 🧪They DID disagree for one round — this asked only
+/// for 「완료」 and never learned about 「확인 완료」, so every button stayed
+/// on screen while the count behind them was right.
+bool _cleared(BoardCard e, String ts) => !checksWaiting(e).contains(ts);
 
 /// 🚨★★★A 대분류 IS A FOLDER, AND WHAT FOLLOWS IT LIVES INSIDE.
 ///
@@ -1793,9 +1846,16 @@ bool _lastIsThis(BoardCard e, int i) {
 String _story(BoardCard e) {
   if (e.log.isEmpty && e.rest.isEmpty) return '<p class="d">메모 없음.</p>';
   // Where each folder starts, and what falls inside it.
+  // ⚠️AN ENDING IS NOT A FOLDER (유저 2026-08-31: 「적어도 실기 확인이라는
+  // 대분류에서 **소분류로 완료라고 찍히는 게** 맞지 않을까」). A folder holds
+  // what was written AFTER it, and nothing is ever written after 완료 — so it
+  // opened a folder of one row, sitting beside the hands-on check it belonged
+  // to instead of inside it. It still ENDS the card; it just does not hold
+  // anything.
   final heads = <int>[];
   for (var i = 0; i < e.log.length; i++) {
-    if (kSection.containsKey(stageName(e, i))) heads.add(i);
+    final section = kSection[stageName(e, i)];
+    if (section != null && section != 'archived') heads.add(i);
   }
   final b = StringBuffer();
   final firstHead = heads.isEmpty ? e.log.length : heads.first;
@@ -1858,6 +1918,15 @@ function send(id){
 }
 // One press = one 유저 entry saying where the card should go. The card lands
 // in 분류 전 and I move it -- the button never moves it itself.
+// One hands-on check, ticked on its own. The card leaves only when the last
+// of them is cleared -- see `placeByStory`.
+function tick(ev, id, ref){
+  ev.stopPropagation();
+  const c = document.getElementById('c-'+id);
+  post('/tick', {id:id, ref:ref}, c)
+    .then(()=>redraw(c.id))
+    .catch(e=>stateOf(c).textContent = '실패: '+e.message);
+}
 function askMove(ev, id, to){
   ev.stopPropagation();
   const c = document.getElementById('c-'+id);

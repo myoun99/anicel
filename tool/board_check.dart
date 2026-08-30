@@ -39,17 +39,35 @@ const _staleAfter = Duration(hours: 24);
 /// **nine red in a bulk run, 13/13 green alone**. A gate that goes red for
 /// reasons that have nothing to do with the board is a gate people learn to
 /// re-run instead of read.
-String boardCheckComplaints(File file) {
-  final cards = readBoard(file);
+/// 🚨★★★BOTH CUTOFFS ARE ARGUMENTS, because a test that compares its fixtures
+/// against a hardcoded date is a test that depends on what day the machine
+/// thinks it is. 🧪CI proved it: green here, red on a Windows shard, and
+/// nothing about the board had changed — only the clock.
+///
+/// [since] is when the MODEL changed (a card written before it was correct
+/// under the rules it was written for). [linesSince] is when the two LINE
+/// rules landed — 「state 를 손으로 쓰지 말라」와 「미래 시각을 쓰지 말라」 —
+/// which is later, because lines cannot be fixed by appending.
+///
+/// ⚠️`now` too: the future-stamp check needs one, and taking it from the
+/// clock inside a test makes the fixture's meaning depend on when it runs.
+String boardCheckComplaints(
+  File file, {
+  String since = kGateSince,
+  String linesSince = kLinesSince,
+  DateTime? now,
+}) {
+  final cards = readBoard(file, now: now);
   final acks = _acks(file);
   final complaints = <String>[
     ..._brokenLines(),
-    ..._cardsOffTheBoard(cards, acks),
-    ..._sectionsTheStoryCannotName(file, acks),
-    ..._workThatShipped(cards, acks),
-    ..._questionsNobodyCanAnswer(cards, acks),
-    ..._answersNobodyRead(cards, acks),
+    ..._cardsOffTheBoard(cards, acks, since),
+    ..._sectionsTheStoryCannotName(file, acks, since, now, linesSince),
+    ..._workThatShipped(cards, acks, since),
+    ..._questionsNobodyCanAnswer(cards, acks, since),
+    ..._answersNobodyRead(cards, acks, since),
     ..._deadAcks(cards, acks),
+    ..._drawnNowhere(cards, acks),
   ];
   return complaints.join('\n');
 }
@@ -92,11 +110,12 @@ Iterable<String> _brokenLines() sync* {
 Iterable<String> _cardsOffTheBoard(
   List<BoardCard> cards,
   Set<String> acks,
+  String since,
 ) sync* {
   final lost = <String>[];
   for (final c in cards) {
     if (!_live(c) || acks.contains(c.id)) continue;
-    if (c.log.isEmpty || !_recent(c)) continue;
+    if (c.log.isEmpty || !_recent(c, since)) continue;
     if (lastSection(c).isNotEmpty) continue;
     lost.add(c.id);
   }
@@ -127,9 +146,16 @@ Iterable<String> _cardsOffTheBoard(
 /// so the offending word is in a line, and naming the line is what lets it be
 /// found. ⛔But only lines written since this rule existed — a gate that
 /// complains about corrected history forever is a gate nobody reads.
-Iterable<String> _sectionsTheStoryCannotName(File file, Set<String> acks) sync* {
+Iterable<String> _sectionsTheStoryCannotName(
+  File file,
+  Set<String> acks,
+  String since,
+  DateTime? now,
+  String linesSince,
+) sync* {
   const knownEndings = {'archived', 'deleted'};
   final unknownStage = <String>[];
+  final future = <String>[];
   final handWrittenState = <String>[];
   var n = 0;
   for (final line in file.readAsLinesSync()) {
@@ -145,7 +171,27 @@ Iterable<String> _sectionsTheStoryCannotName(File file, Set<String> acks) sync* 
     if (json['kind'] == 'law' || json['kind'] == 'meta') continue;
     final id = '${json['id'] ?? ''}';
     if (acks.contains(id)) continue;
-    if ('${json['ts'] ?? ''}'.compareTo(_gateSince) < 0) continue;
+    // ⚠️ASKED BEFORE the history cutoff below: a stamp in the future is
+    // wrong whenever it was written, and gating it would have hidden every
+    // one made before the rule existed — including the 39 that caused it.
+    // 🚨★★★A STAMP THAT HAS NOT HAPPENED YET.
+    //
+    // ⛔I wrote 39 of them on 2026-08-31 — clock times of 02·03·04·06·09·11·
+    // 12·14시 while the actual clock read 01:36, plausible-looking numbers I
+    // made up instead of reading. 유저 hit it mid-test: they ticked `C-t11`
+    // at 01:34 and the card did not leave, because my 실기 확인 stamped 14:10
+    // sorted AFTER their tick and stayed the last 대분류.
+    //
+    // `ts` is the story's ORDER now, not just a date on a panel. A stamp in
+    // the future reorders somebody else's work around a time that never was.
+    final when = DateTime.tryParse('${json['ts'] ?? ''}');
+    final clock = now ?? DateTime.now();
+    if (when != null &&
+        when.isAfter(clock) &&
+        '${json['ts']}'.compareTo(linesSince) >= 0) {
+      future.add('$n:$id(${json['ts']})');
+    }
+    if ('${json['ts'] ?? ''}'.compareTo(linesSince) < 0) continue;
     final at = '${json['at'] ?? ''}'.trim();
     if (at.isNotEmpty && !kSection.containsKey(at) && !_kSubStage.contains(at)) {
       unknownStage.add('$n:$id($at)');
@@ -162,6 +208,13 @@ Iterable<String> _sectionsTheStoryCannotName(File file, Set<String> acks) sync* 
         '⇒ 대분류: ${kSection.keys.join(' · ')}\n'
         '⇒ 소분류: ${_kSubStage.join(' · ')}';
   }
+  if (future.isNotEmpty) {
+    yield '아직 오지 않은 시각이 찍힌 줄: ${future.join(', ')}\n'
+        '`ts` 는 이제 **이야기의 순서**입니다 — 미래 시각은 남의 일을 자기 '
+        '뒤로 밀어냅니다. 🧪08-31에 39줄을 그렇게 써서, 유저가 체크한 완료가 '
+        '제가 지어낸 실기 확인보다 앞으로 정렬돼 **카드가 안 사라졌습니다.**\n'
+        '⇒ 시계를 읽고 쓰세요. 지어내지 마세요.';
+  }
   if (handWrittenState.isNotEmpty) {
     yield 'state 를 손으로 쓴 줄: ${handWrittenState.join(', ')}\n'
         '`state` 는 이제 **이야기에서 계산되는 값**입니다 — 손으로 쓰면 다음 '
@@ -177,6 +230,7 @@ Iterable<String> _sectionsTheStoryCannotName(File file, Set<String> acks) sync* 
 /// all. A name in neither list is a typo.
 const _kSubStage = <String>{
   '작업 기록',
+  '확인 완료',
   '코드 확인',
   'AI 판단',
   '구현',
@@ -201,7 +255,28 @@ const _kSubStage = <String>{
 /// When these rules started applying. ⛔Not retroactive: 1500 lines of
 /// history were written under the old model and re-firing them all in one
 /// turn is the wall this file's own doc warns about.
-const _gateSince = '2026-08-31T12:00:00';
+/// ⛔A CUTOFF THAT IS ITSELF IN THE FUTURE JUDGES NOTHING. The first value
+/// here was 2026-08-31T12:00 — picked while I believed it was afternoon and
+/// the clock read 01:36, so every new rule sat idle for ten hours and the
+/// test fixtures had to be stamped TOMORROW to clear it. The overhaul landed
+/// on the evening of 08-30; that is the honest line.
+/// ⚠️The moment the model actually changed: PR 1398 merged 2026-08-30T12:48Z.
+/// Anything older was written under a model where it was correct.
+const kGateSince = '2026-08-30T21:48:00';
+
+/// ⚠️A SECOND LINE, for the two rules that judge a LINE rather than a card.
+///
+/// 「state 를 손으로 쓰지 말라」와 「미래 시각을 쓰지 말라」는 **이 게이트가
+/// 생기면서** 규칙이 됐다. 모델이 바뀐 시각(08-30 21:48)부터 재면, 그 사이에
+/// 쓰인 줄들이 영영 불평으로 남는다 — 덧붙여서는 고칠 수 없는 줄들이라
+/// 「고쳐라」가 아니라 「영원히 시끄럽다」가 된다. ⛔그것이 이 파일이
+/// 스스로 경고하는 「아무도 안 읽는 게이트」다.
+/// ⚠️AFTER THE LAST BOGUS STAMP I WROTE (14:10 today). Those lines cannot be
+/// unwritten and cannot be fixed by appending, so judging them would be a
+/// complaint that never clears — the 「아무도 안 읽는 게이트」 this file warns
+/// about. The rules start where my mistakes stop.
+const kLinesSince = '2026-08-31T15:00:00';
+
 
 // ──────────────────────────────────────────── 4. 착지했는데 실기로 안 간 일
 
@@ -217,6 +292,7 @@ const _gateSince = '2026-08-31T12:00:00';
 Iterable<String> _workThatShipped(
   List<BoardCard> cards,
   Set<String> acks,
+  String since,
 ) sync* {
   final shipped = <String>[];
   final bare = <String>[];
@@ -227,14 +303,21 @@ Iterable<String> _workThatShipped(
   final restIsACheck = <String>[];
   for (final c in cards) {
     if (!_live(c) || acks.contains(c.id)) continue;
-    if (c.prs.isNotEmpty && _recent(c)) {
-      final section = lastSection(c);
-      final where = kSection[section];
-      if (where != 'hands' && where != 'archived' && !stillOwed(c)) {
+    if (c.prs.isNotEmpty && _recent(c, since)) {
+      // ⚠️ONLY WHERE IT IS A LIE. A shipped card sitting in 바로 가능 or
+      // 나중에 says 「이건 아직 할 일」 while the work already landed. One in
+      // 분류 전 · 답할 것 · 대화 중 · 하는 중 is not lying — somebody is on
+      // it, and the card says so. 🧪Without this it named ten cards I had
+      // moved to 분류 전 minutes earlier, which is exactly where they belong.
+      // ⚠️`c.state` IS the section — `placeByStory` already folded it out of
+      // the story. Deriving it again from the stage word missed a card with
+      // NO 대분류 at all, which defaults to 바로 가능 and is the loudest case.
+      final idle = c.state == 'open' || c.state == 'queue';
+      if (idle && !stillOwed(c)) {
         shipped.add(c.id);
       }
       if (!_saysSomething(c)) bare.add(c.id);
-    } else if (_recent(c) && _prInProse.hasMatch(c.note)) {
+    } else if (_recent(c, since) && _prInProse.hasMatch(c.note)) {
       prose.add(c.id);
     }
     final rest = c.rest.trim();
@@ -287,6 +370,7 @@ Iterable<String> _workThatShipped(
 Iterable<String> _questionsNobodyCanAnswer(
   List<BoardCard> cards,
   Set<String> acks,
+  String since,
 ) sync* {
   final unanswerable = <String>[];
   final thin = <String>[];
@@ -379,6 +463,7 @@ Iterable<String> _questionsNobodyCanAnswer(
 Iterable<String> _answersNobodyRead(
   List<BoardCard> cards,
   Set<String> acks,
+  String since,
 ) sync* {
   final untriaged = <String>[];
   final waiting = <String>[];
@@ -403,6 +488,49 @@ Iterable<String> _answersNobodyRead(
         '보드가 모릅니다. 아직 진짜로 열려 있으면 그 id 를 .gate-ack 에 '
         '한 줄로 적으세요.';
   }
+}
+
+// ──────────────────────────── 8. 끝난 것도 아닌데 어디에도 안 그려지는 카드
+
+/// 🚨★★★EVERY CARD IS IN EXACTLY ONE PLACE: a column, an ending, or inside
+/// another card. Anything else is a hole, and a hole looks EXACTLY like a
+/// finish from the outside.
+///
+/// 유저 2026-08-31: 「**끝난 것을 등장 안 한다고 오해 안 하도록** 잘 구조적으로
+/// 해 줄 수 있나」 — after ten hands-on checks vanished by riding an archived
+/// host into the void. From the screen there was no way to tell those from
+/// the seventeen that had genuinely been ticked.
+///
+/// ⇒ The invariant is stated here instead of being eyeballed: take every
+/// card, drop the ones that ENDED and the ones FOLDED into another, and every
+/// survivor must land in a column the board draws. One that does not is named
+/// — and 「사라졌다」 stops being ambiguous, because a finish is now the only
+/// silent way to leave.
+Iterable<String> _drawnNowhere(List<BoardCard> cards, Set<String> acks) sync* {
+  final byId = {for (final c in cards) c.id: c};
+  final lost = <String>[];
+  for (final c in cards) {
+    if (c.kind == 'law' || c.kind == 'meta') continue;
+    if (acks.contains(c.id)) continue;
+    // Two of the three legitimate ways to be off the board.
+    if (c.state == 'archived' || c.state == 'deleted') continue;
+    final host = c.foldedInto;
+    if (host == null) continue;
+    // The third: 「접힘」 means 「drawn INSIDE that card」. If that card is not
+    // drawn, the sentence is false and this one is nowhere at all.
+    final into = byId[host];
+    final shown = into != null &&
+        into.state != 'archived' &&
+        into.state != 'deleted' &&
+        into.foldedInto == null;
+    if (!shown) lost.add('${c.id}→$host');
+  }
+  if (lost.isEmpty) return;
+  yield '끝나지도 않았는데 어느 칸에도 안 그려지는 카드: ${lost.join(', ')}\n'
+      '카드가 있을 수 있는 자리는 셋뿐입니다 — **칸 하나 · 끝(완료·삭제) · '
+      '다른 카드 안(접힘)**. 접혔는데 그 카드가 안 그려지면 셋 중 어디에도 '
+      '없는 것이고, 화면에서는 **끝난 것과 똑같이 보입니다.**\n'
+      '⇒ 호스트가 끝났으면 접지 말고 자기 카드로 세우세요.';
 }
 
 // ────────────────────────────────────────────────────── 7. 죽은 ack
@@ -456,7 +584,7 @@ bool _live(BoardCard c) =>
 /// file's own doc warns about: one people learn to scroll past. The backlog
 /// is a card on the board, which is where a list of work belongs; this is a
 /// gate, and a gate watches what happens next.
-bool _recent(BoardCard c) => c.updated.compareTo(_gateSince) >= 0;
+bool _recent(BoardCard c, String since) => c.updated.compareTo(since) >= 0;
 
 /// Not an ENDING. ⚠️Weaker than [_live] on purpose: a question folded into
 /// another card is still a question, and whether it can be ANSWERED has

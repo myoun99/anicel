@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/board_check.dart';
+import '../../tool/board_model.dart';
 
 /// 🚨★★★THE GATE, DRIVEN AS A FUNCTION.
 ///
@@ -22,16 +23,40 @@ void main() {
   setUp(() => dir = Directory.systemTemp.createTempSync('board-check'));
   tearDown(() => dir.deleteSync(recursive: true));
 
-  /// ⚠️Everything is stamped AFTER the gate's own start line. The gate judges
-  /// only what was written since the model changed, so a fixture dated before
-  /// it would silently test nothing — which is exactly the shape of a green
-  /// that measures an empty room.
-  String at(String hhmm) => '2026-09-01T$hhmm:00+09:00';
+  /// ⚠️Stamped from the REAL clock, minutes ago — never a fixed date. A fixed
+  /// one has to clear the gate's history cutoff, which pushed these fixtures
+  /// into TOMORROW, and the future-stamp check then caught every one of them.
+  /// 🧪That is the same mistake the check exists to catch, made in the test.
+  // ⚠️A FIXED instant, not the clock: every fixture time is derived from it
+  // and so is the gate's idea of 「now」, so a case means the same thing
+  // whenever and wherever it runs.
+  final base = DateTime.parse('2026-08-31T00:00:00Z');
+  String at(String hhmm) {
+    final parts = hhmm.split(':');
+    return base
+        .add(Duration(
+          minutes: int.parse(parts[0]) * 6 + int.parse(parts[1]),
+        ))
+        .toIso8601String();
+  }
 
   String complaintsFor(List<String> lines) {
     final file = File('${dir.path}/board.jsonl')
       ..writeAsStringSync(lines.map((l) => '$l\n').join());
-    return boardCheckComplaints(file);
+    // ⚠️The line rules start at a constant that is AFTER the bogus stamps in
+    // the real records (see kLinesSince). A fixture cannot be stamped there
+    // without being in the future, which the future check would then catch —
+    // so the test names its own line, minutes before its own fixtures.
+    // 🚨THE TEST NAMES ITS OWN POLICY. Comparing fixtures against the gate's
+    // hardcoded dates made the suite depend on what day the machine thinks
+    // it is — green here, red on a Windows CI shard, with nothing about the
+    // board changed. Both cutoffs and 「now」 are stated here instead.
+    return boardCheckComplaints(
+      file,
+      since: base.toIso8601String(),
+      linesSince: base.toIso8601String(),
+      now: base.add(const Duration(hours: 2)),
+    );
   }
 
   /// The smallest card that passes everything: a story with one 대분류.
@@ -322,6 +347,107 @@ void main() {
         ]),
         isEmpty,
       );
+    });
+  });
+
+  group('아직 오지 않은 시각', () {
+    test('🚨a stamp in the future reorders somebody else\'s work', () {
+      // 🧪The real one: I stamped 39 records with times that had not happened,
+      // and 유저 ticked a card that then would not leave, because my future
+      // 실기 확인 sorted AFTER their 완료 and stayed the last 대분류.
+      // ⚠️Future relative to the gate's  (base + 2h), not the wall clock.
+      final soon = base.add(const Duration(hours: 9));
+      final out = complaintsFor([
+        '{"kind":"item","id":"A","at":"남은 것","rest":"남음",'
+            '"ts":"${soon.toIso8601String()}"}',
+      ]);
+      expect(out, contains('아직 오지 않은 시각'));
+    });
+
+    test('⛔a stamp that has happened is silent', () {
+      expect(complaintsFor([card('A')]), isEmpty);
+    });
+
+    test('⚠️and it is asked even of lines older than the cutoff', () {
+      // Gating it behind the history rule would have hidden every stamp made
+      // before the rule existed — including the ones that caused it.
+      final out = complaintsFor([
+        '{"kind":"item","id":"A","at":"남은 것","rest":"남음",'
+            '"ts":"2027-01-01T09:00:00+09:00"}',
+      ]);
+      expect(out, contains('아직 오지 않은 시각'));
+    });
+  });
+
+  group('실기 확인이 여럿이면 전부 ok일 때만', () {
+    String check(String note, String hhmm) =>
+        '{"kind":"item","id":"A","at":"실기 확인","note":"$note",'
+        '"ts":"${at(hhmm)}"}';
+    String tick(String hhmm) =>
+        '{"kind":"item","id":"A","at":"확인 완료","said":"확인 — 문제 없음",'
+        '"ref":"${at(hhmm)}","ts":"${at('11:00')}"}';
+
+    test('🚨★★★one tick does not take the other two off the board', () {
+      // ⛔It used to: one 완료 ended the card whatever else it held, so
+      // ticking the first of three took the other two with it — and nothing
+      // brings them back, because nothing shows them.
+      final out = complaintsFor([
+        check('첫째', '09:00'),
+        check('둘째', '09:01'),
+        check('셋째', '09:02'),
+        tick('09:00'),
+      ]);
+      expect(out, isEmpty, reason: '아직 둘이 남았으므로 카드는 실기 확인에 있다');
+    });
+
+    test('⛔and a 완료 with no ref still ends the whole card', () {
+      // Every 완료 written before per-check ticks existed meant exactly that.
+      expect(
+        complaintsFor([
+          check('첫째', '09:00'),
+          check('둘째', '09:01'),
+          '{"kind":"item","id":"A","at":"완료","said":"확인 — 문제 없음",'
+              '"ts":"${at('11:00')}"}',
+        ]),
+        isEmpty,
+      );
+    });
+  });
+
+  group('체크는 호스트와 함께 죽지 않는다', () {
+    test('🚨★★★a check whose host has ended still stands on its own', () {
+      // 🧪TEN of them were gone this way: the 4GB save check rode
+      // `stop-gate-was-dead` into the archive, four buffer checks rode
+      // `scroll-the-buffer-on-a-pan`, two rode a deleted round. Still
+      // unticked, and on no list at all — nothing could bring them back.
+      // 유저 saw it from the other side: 「실기 확인에 등장 안 하는 카드가
+      // 있어」. It is the law they had just stated about ticks: something
+      // ELSE finishing is not this check passing.
+      // ⛔ASKED OF THE MODEL, not of the gate. A gate-level assertion passes
+      // either way — a folded check raises no complaint and neither does a
+      // clean standing one — which is the empty room this suite already
+      // caught itself measuring once.
+      final file = File('${dir.path}/board.jsonl')
+        ..writeAsStringSync(
+          '{"kind":"item","id":"HOST","at":"완료","pr":1234,"note":"끝났다",'
+          '"ts":"${at('09:00')}"}\n'
+          '{"kind":"check","id":"C-x","under":1234,"title":"기기에서 볼 것",'
+          '"how":"눌러 본다","ts":"${at('09:30')}"}\n',
+        );
+      final check = readBoard(file, now: base.add(const Duration(hours: 2))).firstWhere((c) => c.id == 'C-x');
+      expect(check.foldedInto, isNull, reason: '호스트가 끝났으니 접히지 않는다');
+      expect(check.state, 'hands', reason: '그리고 실기 확인 칸에 선다');
+    });
+
+    test('⛔but it DOES fold when the host is still on the board', () {
+      final file = File('${dir.path}/board.jsonl')
+        ..writeAsStringSync(
+          '{"kind":"item","id":"HOST","at":"실기 확인","pr":1234,"note":"산다",'
+          '"ts":"${at('09:00')}"}\n'
+          '{"kind":"check","id":"C-x","under":1234,"title":"기기에서 볼 것",'
+          '"how":"눌러 본다","ts":"${at('09:30')}"}\n',
+        );
+      expect(readBoard(file, now: base.add(const Duration(hours: 2))).firstWhere((c) => c.id == 'C-x').foldedInto, 'HOST');
     });
   });
 }
