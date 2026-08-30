@@ -12,6 +12,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/persistence/anicel_payload_codec.dart';
+import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 
 /// 🚨★★★**THE FLOOR IS SILENT, SO SOMETHING HAS TO WATCH IT.**
@@ -133,6 +134,57 @@ void main() {
       final packed = compressAnicelPayload(bytes);
       expect(packed.codec, anicelCodecDeflate);
       expect(decompressAnicelPayload(packed.codec, packed.bytes), bytes);
+    });
+
+    /// 🚨**WHAT A PERSON IS TOLD WHEN A FILE WILL NOT OPEN.**
+    ///
+    /// `_showFileError` writes `'$error'` onto the screen, so whatever is
+    /// thrown here IS the message. zlib throws「Filter error, bad data」—
+    /// it names its own internal filter and says nothing about the file —
+    /// and 유저 2026-08-31 met exactly that on a project, with nothing in
+    /// it to act on. The zstd arm has always answered in the app's terms;
+    /// this pins that BOTH do.
+    test('🚨 a payload that will not inflate says so in the app terms', () {
+      // Not a deflate stream at all: the shape a truncated archive, or a
+      // file from a build that laid its bytes down differently, arrives in.
+      final rubbish = Uint8List.fromList(
+        List<int>.generate(64, (i) => (i * 7 + 3) & 0xFF),
+      );
+      expect(
+        () => decompressAnicelPayload(anicelCodecDeflate, rubbish),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            allOf(
+              contains('could not be decompressed'),
+              contains('damaged'),
+              // ⛔zlib's own words stay, at the END — a bug report needs
+              // them and a dialog must not lead with them.
+              contains('Filter error'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('🚨 an empty manifest entry says the file is truncated', () {
+      expect(
+        () => decodeAnicelProjectEntryBytes(
+          anicelProjectEntryNameCompressed,
+          Uint8List(0),
+        ),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('truncated'),
+          ),
+        ),
+        reason:
+            '`bytes.first` on an empty entry is StateError: No element, and '
+            'that goes on the screen verbatim',
+      );
     });
   });
 }

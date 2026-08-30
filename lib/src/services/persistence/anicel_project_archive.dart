@@ -376,10 +376,21 @@ const String anicelProjectEntryNameCompressed = 'project.json.z';
 /// compressed bytes into `jsonDecode` and report a corrupt project — which
 /// is exactly what happened to the ownership check on the save path, and
 /// it turned every save into a full rewrite without failing anything.
-Uint8List decodeAnicelProjectEntryBytes(String name, Uint8List bytes) =>
-    name == anicelProjectEntryNameCompressed
-    ? decompressAnicelPayload(bytes.first, Uint8List.sublistView(bytes, 1))
-    : bytes;
+Uint8List decodeAnicelProjectEntryBytes(String name, Uint8List bytes) {
+  if (name != anicelProjectEntryNameCompressed) {
+    return bytes;
+  }
+  // ⛔`bytes.first` on an empty entry is `StateError: No element`, and
+  // `_showFileError` puts whatever is thrown on the screen verbatim. A
+  // truncated archive is a thing that happens; answering it with a Dart
+  // collection error tells the person nothing about their file.
+  if (bytes.isEmpty) {
+    throw const FormatException(
+      'this project has an empty manifest — the file is truncated',
+    );
+  }
+  return decompressAnicelPayload(bytes.first, Uint8List.sublistView(bytes, 1));
+}
 
 /// writes down what it is handed.
 Uint8List buildAnicelProjectJsonBytes({
