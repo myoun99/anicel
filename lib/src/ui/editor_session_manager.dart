@@ -2457,6 +2457,27 @@ class EditorSessionManager extends ChangeNotifier {
   late final MediaStagingStore mediaStagingStore =
       _injectedMediaStagingStore ?? MediaStagingStore();
 
+  /// Whether the PROJECT has [poolPath]'s bytes, wherever the file on disk
+  /// has got to.
+  ///
+  /// 🚨★★★**THIS IS WHAT「MISSING」HAS TO MEAN.** An asset whose original
+  /// is gone but whose bytes the project holds is not missing — that is
+  /// carrying working. Asking only about the ARCHIVE was right until 품기
+  /// started staging at import: between the import and the first save the
+  /// bytes are in the container and nowhere else, so a carried asset whose
+  /// original the user deleted wore a "File missing — relink it" banner
+  /// over a file the project had already secured.
+  ///
+  /// ⛔And the banner is not cosmetic. It feeds the relink hunt, whose
+  /// "success" re-keys the asset to a different path — which, for bytes
+  /// held under the OLD key, is how you lose them.
+  ///
+  /// ⚠️Cheap on purpose: a map lookup and a stat. The pool draws a row per
+  /// asset and must not open the archive to do it.
+  bool projectHoldsMediaBytes(String poolPath) =>
+      _mediaEntryNames.containsKey(poolPath) ||
+      mediaStagingStore.find(poolPath) != null;
+
   /// 🚨★★★**EVERY WAY AN ASSET BECOMES CARRIED COMES THROUGH HERE.**
   ///
   /// Carrying means the project holds the bytes from the moment the choice
@@ -8825,9 +8846,22 @@ class EditorSessionManager extends ChangeNotifier {
     audioConformStore.invalidate(newPath);
     _cutCommandCoordinator.relinkMediaAsset(oldPath: oldPath, newPath: newPath);
     _moveMediaFingerprints({oldPath: newPath});
-    // The staged bytes are keyed by pool path too, and the same sentence
-    // applies: derived state follows its key or it is stale.
-    mediaStagingStore.rename(oldPath, newPath);
+    // 🚨★★★**THIS RELINK RE-STAGES; THE BATCH ONE MOVES. THE DIFFERENCE
+    // IS WHAT EACH CALLER KNOWS.**
+    //
+    // Here the user picked a file by hand and said「this asset is THAT
+    // one」. Nothing checked that it holds the same content — so carrying
+    // the OLD staged bytes over to the new key would keep serving the old
+    // picture under the name of the new file, for ever, with the project
+    // insisting it was right.
+    //
+    // The batch relink below verified identity before proposing anything,
+    // so there the bytes ARE the same and moving them costs one rename
+    // instead of re-reading every matched file.
+    mediaStagingStore.retire(oldPath);
+    if (mediaAssets.any((asset) => asset.path == newPath && asset.carried)) {
+      stageCarriedBytes([newPath]);
+    }
     refreshMediaExistence();
     notifyListeners();
   }
@@ -8855,6 +8889,12 @@ class EditorSessionManager extends ChangeNotifier {
     // And the staged bytes, keyed by the same path — see
     // [MediaStagingStore.rename]. The sentence above about derived state
     // is the whole reason both of these lines exist.
+    //
+    // ⚠️MOVED, not re-staged, and only because this caller EARNED it: the
+    // matcher accepts a candidate only when its identity matches the one
+    // recorded for the missing asset, so the bytes are the same bytes and
+    // re-reading every matched file would be work for nothing. The
+    // by-hand relink above cannot say that, and re-stages.
     for (final move in moves.entries) {
       mediaStagingStore.rename(move.key, move.value);
     }
@@ -8900,12 +8940,12 @@ class EditorSessionManager extends ChangeNotifier {
     for (final asset in mediaAssets) {
       if (!probe(asset.path)) {
         // The import original leaving is NOT "missing" for an asset whose
-        // bytes live inside the archive — deleting the original is the
-        // very act carrying exists to survive. Probing only the path put
-        // the "File missing — relink it" banner on assets the project
-        // already owns and fed them to the relink hunt, whose "success"
-        // would re-key the asset and orphan the archive entry.
-        if (!_mediaEntryNames.containsKey(asset.path)) {
+        // bytes the project holds — deleting the original is the very act
+        // carrying exists to survive. Probing only the path put the "File
+        // missing — relink it" banner on assets the project already owns
+        // and fed them to the relink hunt, whose "success" would re-key
+        // the asset and orphan what held its bytes.
+        if (!projectHoldsMediaBytes(asset.path)) {
           missing.add(asset.path);
         }
         continue;

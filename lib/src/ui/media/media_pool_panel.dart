@@ -210,7 +210,9 @@ class MediaPoolPanel extends StatelessWidget {
     if (onPromoteAsset(asset.path)) {
       return;
     }
-    // Already carried, or a kind that never is. Saying nothing would read
+    // Already carried. (This used to say「or a kind that never is」 — the
+    // per-kind ceiling died 2026-08-14 and every kind carries now.)
+    // Saying nothing would read
     // as a menu item that does not work.
     unawaited(
       showAppNotice(
@@ -329,11 +331,13 @@ class MediaPoolPanel extends StatelessWidget {
             ),
           ),
           if (onRelinkMissing != null)
-            ControlPressClaim(child: TextButton(
-              key: const ValueKey<String>('media-relink-missing'),
-              onPressed: onRelinkMissing,
-              child: Text(strings.mediaFindInFolder),
-            )),
+            ControlPressClaim(
+              child: TextButton(
+                key: const ValueKey<String>('media-relink-missing'),
+                onPressed: onRelinkMissing,
+                child: Text(strings.mediaFindInFolder),
+              ),
+            ),
         ],
       ),
     );
