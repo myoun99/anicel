@@ -57,3 +57,11 @@ app.*.map.json
 *.certSigningRequest
 *.mobileprovision
 AuthKey_*.p8
+
+# Voice takes the app itself writes. `appRecordingsDirectory()` puts the take
+# shelf at `<app documents>/Recordings` on purpose — a folder a file manager
+# shows, so a discarded session leaves its takes findable — and a desktop dev
+# run resolves that to the checkout root. So running the app from here drops
+# .wav files beside the source and they sit in `git status` for ever.
+# ⛔Ignored, NOT deleted: they are somebody's hands-on takes.
+/Recordings/
