@@ -221,4 +221,115 @@ void main() {
       expect(list.offset, 0, reason: 'and it did not fling either');
     }
   });
+
+  testWidgets('🚨H24: a SQUEEZED panel puts a second scroller outside the '
+      'rail, and a control in EITHER owns its press', (tester) async {
+    // 유저 2026-08-26, the half of H24 that outlived the multitouch fix:
+    //
+    // > 「통과는 해결됬는데 사진처럼 **패널이 여러개 열려있어서 레일이
+    // > 생긴경우 터치하면 스크롤이 발생**해버림」
+    //
+    // Several panels open means the dock cannot give each its natural size,
+    // so it wraps the squeezed panel in a scroller of its own
+    // (`_EditorPanelTabsState._verticalOverflow`) — OUTSIDE the rail's. The
+    // fixture above has one scroller; this has two, nested, which is the
+    // shape the user actually reported.
+    //
+    // 🚨TWO CONTROLS, AND THE SECOND ONE IS THE POINT. A drag inside the
+    // rail is taken by the RAIL's recogniser — the squeeze scroller never
+    // sees it — so asserting «the outer did not move» from a press in the
+    // rail asserts nothing at all. The panel's own chrome (a header button,
+    // a toolbar) sits inside the squeeze scroller and outside the rail, and
+    // that is the press only the outer scroller competes for.
+    final outer = ScrollController();
+    final rail = ScrollController();
+    addTearDown(outer.dispose);
+    addTearDown(rail.dispose);
+    Widget claimed(String key) => ControlPressClaim(
+      child: Listener(
+        key: ValueKey<String>(key),
+        behavior: HitTestBehavior.opaque,
+        child: const SizedBox(height: 60),
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        scrollBehavior: const AppScrollBehavior(),
+        home: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 200,
+            height: 200,
+            child: SingleChildScrollView(
+              controller: outer,
+              child: Column(
+                // ⚠️STRETCH, and it is not layout taste: a `Column` hands its
+                // children LOOSE constraints, so the chrome control below
+                // came out 60 HIGH AND 0 WIDE — every press missed it and
+                // landed on the scroller, which reads exactly like the bug
+                // this case exists to catch. `ListView` above tightens width
+                // on its own, which is why only this half needed saying.
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // The panel's chrome: inside the squeeze, outside the rail.
+                  claimed('chrome'),
+                  SizedBox(
+                    height: 300,
+                    child: ListView(
+                      controller: rail,
+                      children: [
+                        claimed('control'),
+                        for (var i = 0; i < 8; i++) const SizedBox(height: 80),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(
+      outer.position.maxScrollExtent,
+      greaterThan(0),
+      reason:
+          'the SQUEEZE scroller must be able to move, or the case below '
+          'measures nothing — which is how the reported bug hid',
+    );
+    expect(rail.position.maxScrollExtent, greaterThan(0));
+
+    for (final kind in const [
+      PointerDeviceKind.touch,
+      PointerDeviceKind.stylus,
+      PointerDeviceKind.mouse,
+    ]) {
+      expect(
+        await dragFromControl(tester, rail, kind),
+        0,
+        reason: '${kind.name}: a press in the rail did not scroll the rail',
+      );
+      // The chrome press: the drag the squeeze scroller would take.
+      final g = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey<String>('chrome'))),
+        kind: kind,
+      );
+      for (var i = 0; i < 5; i++) {
+        await g.moveBy(const Offset(0, -30));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      final squeezed = outer.offset;
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(
+        squeezed,
+        0,
+        reason:
+            '${kind.name}: 유저 「레일이 생긴경우 터치하면 스크롤이 '
+            '발생해버림」 — the squeeze scroller must not move either',
+      );
+      expect(outer.offset, 0, reason: '${kind.name}: and it did not fling');
+    }
+  });
 }
