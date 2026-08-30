@@ -35,6 +35,13 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 /// actually lands through the real widget tree — a wrapper outside a baked
 /// [StaticRaster] or a `Tooltip` could easily not. The scan reaches the
 /// buttons no test can name, which is where the next one will be.
+///
+/// ⛔AND THE SCAN CANNOT ANSWER THE OTHER HALF: whether an ANCESTOR owns the
+/// drag. Wrapping is absorbing, so a claim mounted under something whose
+/// drag is its verb kills that verb — the brush library's reorder listener
+/// and the onion strip's peg drag were both eaten this way, and both were
+/// caught by their own behaviour tests, not by anything here. A wrap that
+/// turns one of those red belongs in [notControls], not in a workaround.
 void main() {
   setUp(debugClearValueControlPointers);
   tearDown(debugClearValueControlPointers);
@@ -86,6 +93,12 @@ void main() {
     // (measured: three `brush_preset_panel_test` cases went red the moment
     // this row was wrapped). Same shape as the storyboard rows above.
     'brush-preset-chip-': 'its drag is its own verb (a reorder)',
+    // 🚨AND THE PEG STRIP OWNS ITS VERTICAL DRAG, one level up: 「the strip
+    // owns the vertical drag; each column owns its tap」 says so in the
+    // panel's own comment. A claim inside the column ate that drag and the
+    // peg opacity could no longer be dragged at all (measured — the onion
+    // panel's drag test went red). Same shape as the row above.
+    'onion-peg-column-': 'the strip above it owns the drag',
     // ⛔SCRIMS AND GRID SURFACES, not buttons. Each covers a whole region
     // and exists so that a press ANYWHERE lands somewhere; claiming one
     // would mean the region under it could never be scrolled at all.

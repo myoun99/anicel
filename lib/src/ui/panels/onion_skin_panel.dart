@@ -7,7 +7,6 @@ import '../widgets/color_swatch_button.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
 import '../layout/device_grid.dart';
-import '../input/control_press_claim.dart';
 
 /// The onion-skin dock panel: the light-table graph every 2D package
 /// speaks (TVPaint's light table, Krita's onion docker) — ONE strip
@@ -377,17 +376,18 @@ class _OnionFalloffStripState extends State<_OnionFalloffStrip> {
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
           onEnter: (_) => setState(() => _hoverColumn = column),
-          child: ControlPressClaim(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _toggle(before: before, index: index),
-              child: _graphColumn(
-                opacity: peg.opacity,
-                color: tint,
-                sideWash: tint.withValues(alpha: 0.05),
-                hovered: _hoverColumn == column,
-                label: showPercent ? '$percent' : null,
-              ),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            key: ValueKey<String>(
+              'onion-peg-column-${before ? 'before' : 'after'}-${index + 1}',
+            ),
+            onTap: () => _toggle(before: before, index: index),
+            child: _graphColumn(
+              opacity: peg.opacity,
+              color: tint,
+              sideWash: tint.withValues(alpha: 0.05),
+              hovered: _hoverColumn == column,
+              label: showPercent ? '$percent' : null,
             ),
           ),
         ),
