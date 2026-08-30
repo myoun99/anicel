@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'canvas_playback_controller.dart';
+import '../text/app_strings.dart' show AppText;
 
 /// The playback level meter (AUDIO-PRO R2): two thin bars fed by the
 /// device transport's PRE-CLIP bus peaks. Green through the working
@@ -28,11 +29,9 @@ class AudioLevelMeter extends StatelessWidget {
     return ValueListenableBuilder<int?>(
       valueListenable: controller.globalFrameIndexListenable,
       builder: (context, frame, _) {
-        final peaks = frame == null
-            ? (left: 0.0, right: 0.0)
-            : resolvePeaks();
+        final peaks = frame == null ? (left: 0.0, right: 0.0) : resolvePeaks();
         return Semantics(
-          label: 'audio level meter',
+          label: AppText.strings.audioLevelMeter,
           child: SizedBox(
             key: const ValueKey<String>('audio-level-meter'),
             width: 6,
