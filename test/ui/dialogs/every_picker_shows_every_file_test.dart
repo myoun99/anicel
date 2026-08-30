@@ -77,11 +77,21 @@ void main() {
 /// being created and hides nothing the user came for, so its type group
 /// stays. Detected by the call it sits inside rather than by file, so a new
 /// save site is covered and a new OPEN site in the same file is not missed.
+/// Whether this filter belongs to a dialog that CREATES a file rather than
+/// one that opens one.
+///
+/// ⚠️A proximity heuristic, and it has to name every save door by hand —
+/// `handWrittenFileToUser` was added later and this said nothing, so a
+/// perfectly legal save filter came back as an offender. Growing the list
+/// is not loosening the rule: the rule is「an OPEN picker must not filter」,
+/// and a door that writes is simply not one.
 bool _isSaveDialog(String source, String line) {
   final at = source.indexOf(line);
   if (at < 0) {
     return false;
   }
   final before = source.substring((at - 400).clamp(0, at), at);
-  return before.contains('pickSaveDestination') || before.contains('exportFile');
+  return before.contains('pickSaveDestination') ||
+      before.contains('exportFile') ||
+      before.contains('handWrittenFileToUser');
 }
