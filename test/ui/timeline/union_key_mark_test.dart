@@ -33,6 +33,37 @@ void main() {
     isGroupHeader: true,
   );
 
+  /// ⚠️A WIDE CELL, and the reason is a test that measured nothing.
+  ///
+  /// `find.text` returns the Text WIDGET's box, not its ink — and at the
+  /// default 24px cell the word 「Wall」 is exactly 24 wide, so the `Align`
+  /// inside had no room to move it and every alignment produced the same
+  /// rect. 🧪Mutation proved it: flipping `Alignment.center` to `centerLeft`
+  /// left the suite green. At 72 the box is a third of the cell and the
+  /// alignment is the only thing deciding where it sits.
+  Future<void> pumpWideLane(WidgetTester tester, PropertyLaneRow lane) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Material(
+          child: SizedBox(
+            width: 480,
+            height: 40,
+            child: TimelineLaneFrameRow(
+              layer: layer,
+              lane: lane,
+              frameStartIndex: 0,
+              frameEndIndexExclusive: 6,
+              leadingFrameSpacerWidth: 0,
+              trailingFrameSpacerWidth: 0,
+              metrics: const TimelineGridMetrics(frameCellWidth: 72),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+  }
+
   Future<void> pumpLane(WidgetTester tester, PropertyLaneRow lane) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -84,20 +115,56 @@ void main() {
     );
   });
 
-  testWidgets('a UNION name sits in the middle of its cell; a member name '
-      'stays beside its diamond', (tester) async {
-    final cellCentre = 2 * metrics.frameCellWidth + metrics.frameCellWidth / 2;
+  testWidgets('🚨EVERY key name sits in the middle of its cell', (
+    tester,
+  ) async {
+    // ⚠️THIS TEST USED TO ASSERT THE OPPOSITE, and the assertion was mine
+    // rather than the user's. 유저 원문 ㉗ named the UNION alone — 「**유니언
+    // 이름은** 오른쪽 위가 아니라 칸 중앙」 — and I extended it into a rule
+    // for members, put the label beside the diamond, and wrote my reasoning
+    // into the code and into this file as if it had been decided.
+    //
+    // `F-17-Q1` put the real question on 2026-08-26 and the answer was **B —
+    // 「마크는 그대로, 이름만 칸 중앙에」**. The objection I had assumed (a
+    // 6px mark cannot hold a word, so the word would swallow the mark) was
+    // waved off in one line: 「키가 있는건 글자로도 아니까 아무문제없어」.
+    const wideCell = 72.0;
+    const cellCentre = 2 * wideCell + wideCell / 2;
 
+    for (final lane in [member, union]) {
+      await pumpWideLane(tester, lane);
+      final name = tester.getRect(find.text('Wall'));
+      expect(
+        name.width,
+        lessThan(wideCell - 8),
+        reason:
+            '${lane.laneId} — fixture premise: the word is NARROWER '
+            'than its cell, or nothing below can move',
+      );
+      expect(
+        name.center.dx,
+        moreOrLessEquals(cellCentre, epsilon: 0.5),
+        reason: '${lane.laneId} — 「이름만 칸 중앙에」',
+      );
+    }
+  });
+
+  testWidgets('⛔and the member mark is still 6px — that was option A', (
+    tester,
+  ) async {
+    // Growing the member mark to make room for the name WAS on the ballot
+    // (A) and was not chosen. A test that only checked the name would go
+    // green on it, so the size is pinned here beside the decision.
     await pumpLane(tester, member);
-    final memberName = tester.getRect(find.text('Wall'));
-    expect(
-      memberName.left,
-      greaterThan(cellCentre),
-      reason: 'a member label starts to the RIGHT of its diamond',
-    );
-
+    final memberMark = markSizeOf(tester, 'position');
     await pumpLane(tester, union);
-    final unionName = tester.getRect(find.text('Wall'));
-    expect(unionName.center.dx, moreOrLessEquals(cellCentre, epsilon: 0.5));
+    final unionMark = markSizeOf(tester, 'transform-group');
+    expect(
+      memberMark.width,
+      lessThan(unionMark.width),
+      reason:
+          'the union is still the one that summarises, and it still '
+          'looks like it',
+    );
   });
 }
