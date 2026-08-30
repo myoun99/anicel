@@ -114,6 +114,38 @@ class MediaStagingStore {
     );
   }
 
+  /// Follows an asset whose pool path changed — a relink.
+  ///
+  /// 🚨★★★**THE NAME IS DERIVED, SO IT HAS TO MOVE WHEN THE PATH DOES.**
+  /// Deriving the name is what makes a staged file impossible to remember
+  /// wrongly, and the price is exactly this: nothing points at it, so a
+  /// path change orphans it silently. The asset would then look unstaged —
+  /// back to the promise being kept at save time — while the bytes it was
+  /// promised sat under the old name waiting for the sweep.
+  ///
+  /// ⚠️The fingerprints already move this way (`_moveMediaFingerprints`),
+  /// and for the same reason. Derived state follows its key or it is not
+  /// derived, it is stale.
+  void rename(String fromPoolPath, String toPoolPath) {
+    final staged = find(fromPoolPath);
+    if (staged == null) {
+      return;
+    }
+    final destination = pathFor(toPoolPath, framed: staged.framed);
+    if (destination == staged.path) {
+      return;
+    }
+    Directory(directoryPath).createSync(recursive: true);
+    // ⛔The destination is emptied first: a rename onto an existing file
+    // fails on Windows, and the bytes already there belong to whatever
+    // used to hold that pool path — which the caller has just replaced.
+    final existing = File(destination);
+    if (existing.existsSync()) {
+      existing.deleteSync();
+    }
+    File(staged.path).renameSync(destination);
+  }
+
   /// Drops the staged copy of [poolPath] — the save absorbed it.
   void retire(String poolPath) {
     for (final framed in [true, false]) {

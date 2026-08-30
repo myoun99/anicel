@@ -235,4 +235,55 @@ void main() {
     expect(store.find(second), isNotNull);
     expect(store.find(first)!.path, isNot(store.find(second)!.path));
   });
+
+  group('a relink takes the staged bytes with it', () {
+    test('🚨the derived name follows the pool path', () {
+      final from = sourceFile('take.wav');
+      final original = File(from).readAsBytesSync();
+      final staged = store.stage(from)!;
+      final to = '${root.path}/moved.wav'.replaceAll(r'\', '/');
+
+      store.rename(from, to);
+
+      expect(
+        store.find(from),
+        isNull,
+        reason: 'nothing is left under the old key',
+      );
+      final moved = store.find(to);
+      expect(
+        moved,
+        isNotNull,
+        reason:
+            '⛔otherwise the asset looks unstaged — back to the promise '
+            'being kept at save time — while its bytes wait under a name '
+            'nothing points at',
+      );
+      expect(moved!.framed, staged.framed);
+      final stored = moved.readStoredSync();
+      expect(moved.framed ? decompressMediaBlob(stored) : stored, original);
+      expect(store.list(), hasLength(1), reason: 'moved, not copied');
+    });
+
+    test('renaming something never staged does nothing', () {
+      store.rename('${root.path}/never.wav', '${root.path}/other.wav');
+      expect(store.list(), isEmpty);
+    });
+
+    test('a destination that already holds bytes is replaced', () {
+      // The caller has just pointed the pool path at a different file, so
+      // whatever was staged under it belongs to the asset being replaced.
+      final from = sourceFile('take.wav');
+      final to = sourceFile('other.wav', length: 120 * 1024);
+      store.stage(from);
+      store.stage(to);
+      expect(store.list(), hasLength(2));
+
+      store.rename(from, to);
+
+      expect(store.list(), hasLength(1));
+      expect(store.find(to), isNotNull);
+      expect(store.find(from), isNull);
+    });
+  });
 }

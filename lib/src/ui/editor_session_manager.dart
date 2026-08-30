@@ -8825,6 +8825,9 @@ class EditorSessionManager extends ChangeNotifier {
     audioConformStore.invalidate(newPath);
     _cutCommandCoordinator.relinkMediaAsset(oldPath: oldPath, newPath: newPath);
     _moveMediaFingerprints({oldPath: newPath});
+    // The staged bytes are keyed by pool path too, and the same sentence
+    // applies: derived state follows its key or it is stale.
+    mediaStagingStore.rename(oldPath, newPath);
     refreshMediaExistence();
     notifyListeners();
   }
@@ -8849,6 +8852,12 @@ class EditorSessionManager extends ChangeNotifier {
     // keeps only keys the pool still holds. Left out, the feature works
     // exactly once per asset and only on the machine that imported it.
     _moveMediaFingerprints(moves);
+    // And the staged bytes, keyed by the same path — see
+    // [MediaStagingStore.rename]. The sentence above about derived state
+    // is the whole reason both of these lines exist.
+    for (final move in moves.entries) {
+      mediaStagingStore.rename(move.key, move.value);
+    }
     refreshMediaExistence();
     notifyListeners();
   }

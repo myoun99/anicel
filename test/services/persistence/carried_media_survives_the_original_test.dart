@@ -229,4 +229,28 @@ void main() {
       expect(session.mediaStagingStore.find(path)!.path, staged.path);
     });
   });
+
+  test('🚨a relink carries the staged bytes to the new path', () {
+    final from = compressibleFile('take.wav');
+    final original = File(from).readAsBytesSync();
+    session.addMediaAssets([from], carried: true);
+    expect(session.mediaStagingStore.find(from), isNotNull);
+
+    final to = '${root.path}/moved.wav'.replaceAll(r'\', '/');
+    File(to).writeAsBytesSync(original);
+    session.relinkMediaAsset(from, to);
+
+    expect(
+      session.mediaStagingStore.find(to),
+      isNotNull,
+      reason:
+          '⛔the staged name is DERIVED from the pool path, so a relink '
+          'that left it behind would make a carried asset look unstaged '
+          'while its bytes waited under a name nothing points at',
+    );
+    expect(session.mediaStagingStore.find(from), isNull);
+
+    File(to).deleteSync();
+    expect(session.mediaByteSourceFor(to).readSync(), original);
+  });
 }
