@@ -32,7 +32,11 @@ import '../services/import/tvp_import_planner.dart';
 import '../services/import/tvpp_raster_decoder.dart';
 import '../services/pdf/pdf_render_service.dart';
 import '../services/project_lookup.dart'
-    show cutIdOfLayer, projectAudioSourcePaths, requireLayerAnywhere;
+    show
+        cutIdOfLayer,
+        projectArchivedMediaPaths,
+        projectAudioSourcePaths,
+        requireLayerAnywhere;
 import '../models/app_language.dart';
 // The six settings stores are injected THROUGH this class into
 // [EditorAppSettings], so their types stay in this file's constructor
@@ -8859,7 +8863,14 @@ class EditorSessionManager extends ChangeNotifier {
     // so there the bytes ARE the same and moving them costs one rename
     // instead of re-reading every matched file.
     mediaStagingStore.retire(oldPath);
-    if (mediaAssets.any((asset) => asset.path == newPath && asset.carried)) {
+    // ⛔Through [projectArchivedMediaPaths] rather than a hand-rolled
+    // `any(... && asset.carried)`. That function is the ONE answer to
+    // 「which media does this project carry」, and a second spelling of it
+    // here is how the kind ceiling came to be enforced in two places and
+    // disagree with itself.
+    if (projectArchivedMediaPaths(
+      _repository.requireProject(),
+    ).contains(newPath)) {
       stageCarriedBytes([newPath]);
     }
     refreshMediaExistence();
@@ -8987,10 +8998,13 @@ class EditorSessionManager extends ChangeNotifier {
   /// and the file stays exactly where it was. Same sound, same address —
   /// nothing to relink, nothing to re-conform.
   ///
-  /// Returns false when there is nothing to promote — no such asset, one
-  /// already carried, or a kind that is never carried whatever anyone
-  /// picks — because a promotion that changed nothing must not spend an
+  /// Returns false when there is nothing to promote: no such asset, or one
+  /// already carried. A promotion that changed nothing must not spend an
   /// undo step saying so.
+  ///
+  /// 🪦It used to add「or a kind that is never carried whatever anyone
+  /// picks」. That ceiling died 2026-08-14 — every kind carries now, and
+  /// the kind only chooses the import window's default.
   ///
   /// ⛔ONE DIRECTION on purpose. Carrying is always safe; UN-carrying
   /// strands a project whose original has since been moved or deleted, so
@@ -17701,7 +17715,7 @@ class EditorSessionManager extends ChangeNotifier {
           // consumer asked for「the bytes of this asset」and must keep
           // getting them — the block index is this layer's business, and
           // the reader still serves a window rather than the whole file.
-          return range.framed ? MediaFramedBytes(range) : range;
+          return mediaSourceDecodingFrames(range);
         }
       } on Object {
         // A torn or momentarily unreadable archive: the file fallback
@@ -17714,7 +17728,7 @@ class EditorSessionManager extends ChangeNotifier {
     final staged = mediaStagingStore.find(poolPath);
     if (staged != null) {
       final stored = MediaStagedBytes(path: staged.path, framed: staged.framed);
-      return staged.framed ? MediaFramedBytes(stored) : stored;
+      return mediaSourceDecodingFrames(stored);
     }
     return MediaFileBytes(poolPath);
   }

@@ -312,9 +312,13 @@ class _OptionCell extends StatelessWidget {
       );
     }
     final value = column.valueOf(path);
-    // A value the file was FORCED to (an expanded PSD is baked, a movie is
-    // never carried) is shown, and shown quiet: it is the answer, and it is
-    // not one the user can change here.
+    // A value the file was FORCED to (an expanded PSD is baked) is shown,
+    // and shown quiet: it is the answer, and it is not one the user can
+    // change here.
+    //
+    // 🪦The example used to be「a movie is never carried」. That ceiling
+    // died 2026-08-14 — a movie's carry chip is a CHOICE now, starting on
+    // Reference, so it is not one of the locked ones.
     final locked =
         column.values
             .where((option) => column.enabledFor(path, option))
