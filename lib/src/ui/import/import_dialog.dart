@@ -1117,10 +1117,14 @@ class _ImportDialogState extends State<ImportDialog> {
 
   /// The files big enough that carrying them should be said out loud.
   ///
-  /// Only ones that WOULD be carried. The kind ceiling means a movie is
-  /// never in here however the chips are set, and warning about a file
-  /// that was always going to stay outside is the noise that teaches
-  /// people to ignore the real warning.
+  /// Only ones that WOULD be carried — warning about a file that is
+  /// staying outside is the noise that teaches people to ignore the real
+  /// warning.
+  ///
+  /// 🪦It used to say「the kind ceiling means a movie is never in here
+  /// however the chips are set」. That ceiling died 2026-08-14: a movie
+  /// STARTS on Reference and lands here the moment someone sets it to
+  /// Keep inside — which is exactly when a 3GB warning is worth having.
   List<String> _largeCarriedPaths() {
     // Loose files answer one at a time now, so the question is per row:
     // which of them are big AND set to travel inside the project file.

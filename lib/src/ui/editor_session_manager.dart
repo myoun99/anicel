@@ -32,7 +32,11 @@ import '../services/import/tvp_import_planner.dart';
 import '../services/import/tvpp_raster_decoder.dart';
 import '../services/pdf/pdf_render_service.dart';
 import '../services/project_lookup.dart'
-    show cutIdOfLayer, projectAudioSourcePaths, requireLayerAnywhere;
+    show
+        cutIdOfLayer,
+        projectArchivedMediaPaths,
+        projectAudioSourcePaths,
+        requireLayerAnywhere;
 import '../models/app_language.dart';
 // The six settings stores are injected THROUGH this class into
 // [EditorAppSettings], so their types stay in this file's constructor
@@ -2456,6 +2460,27 @@ class EditorSessionManager extends ChangeNotifier {
   /// must not write into the real app container.
   late final MediaStagingStore mediaStagingStore =
       _injectedMediaStagingStore ?? MediaStagingStore();
+
+  /// Whether the PROJECT has [poolPath]'s bytes, wherever the file on disk
+  /// has got to.
+  ///
+  /// 🚨★★★**THIS IS WHAT「MISSING」HAS TO MEAN.** An asset whose original
+  /// is gone but whose bytes the project holds is not missing — that is
+  /// carrying working. Asking only about the ARCHIVE was right until 품기
+  /// started staging at import: between the import and the first save the
+  /// bytes are in the container and nowhere else, so a carried asset whose
+  /// original the user deleted wore a "File missing — relink it" banner
+  /// over a file the project had already secured.
+  ///
+  /// ⛔And the banner is not cosmetic. It feeds the relink hunt, whose
+  /// "success" re-keys the asset to a different path — which, for bytes
+  /// held under the OLD key, is how you lose them.
+  ///
+  /// ⚠️Cheap on purpose: a map lookup and a stat. The pool draws a row per
+  /// asset and must not open the archive to do it.
+  bool projectHoldsMediaBytes(String poolPath) =>
+      _mediaEntryNames.containsKey(poolPath) ||
+      mediaStagingStore.find(poolPath) != null;
 
   /// 🚨★★★**EVERY WAY AN ASSET BECOMES CARRIED COMES THROUGH HERE.**
   ///
@@ -8825,9 +8850,29 @@ class EditorSessionManager extends ChangeNotifier {
     audioConformStore.invalidate(newPath);
     _cutCommandCoordinator.relinkMediaAsset(oldPath: oldPath, newPath: newPath);
     _moveMediaFingerprints({oldPath: newPath});
-    // The staged bytes are keyed by pool path too, and the same sentence
-    // applies: derived state follows its key or it is stale.
-    mediaStagingStore.rename(oldPath, newPath);
+    // 🚨★★★**THIS RELINK RE-STAGES; THE BATCH ONE MOVES. THE DIFFERENCE
+    // IS WHAT EACH CALLER KNOWS.**
+    //
+    // Here the user picked a file by hand and said「this asset is THAT
+    // one」. Nothing checked that it holds the same content — so carrying
+    // the OLD staged bytes over to the new key would keep serving the old
+    // picture under the name of the new file, for ever, with the project
+    // insisting it was right.
+    //
+    // The batch relink below verified identity before proposing anything,
+    // so there the bytes ARE the same and moving them costs one rename
+    // instead of re-reading every matched file.
+    mediaStagingStore.retire(oldPath);
+    // ⛔Through [projectArchivedMediaPaths] rather than a hand-rolled
+    // `any(... && asset.carried)`. That function is the ONE answer to
+    // 「which media does this project carry」, and a second spelling of it
+    // here is how the kind ceiling came to be enforced in two places and
+    // disagree with itself.
+    if (projectArchivedMediaPaths(
+      _repository.requireProject(),
+    ).contains(newPath)) {
+      stageCarriedBytes([newPath]);
+    }
     refreshMediaExistence();
     notifyListeners();
   }
@@ -8855,6 +8900,12 @@ class EditorSessionManager extends ChangeNotifier {
     // And the staged bytes, keyed by the same path — see
     // [MediaStagingStore.rename]. The sentence above about derived state
     // is the whole reason both of these lines exist.
+    //
+    // ⚠️MOVED, not re-staged, and only because this caller EARNED it: the
+    // matcher accepts a candidate only when its identity matches the one
+    // recorded for the missing asset, so the bytes are the same bytes and
+    // re-reading every matched file would be work for nothing. The
+    // by-hand relink above cannot say that, and re-stages.
     for (final move in moves.entries) {
       mediaStagingStore.rename(move.key, move.value);
     }
@@ -8900,12 +8951,12 @@ class EditorSessionManager extends ChangeNotifier {
     for (final asset in mediaAssets) {
       if (!probe(asset.path)) {
         // The import original leaving is NOT "missing" for an asset whose
-        // bytes live inside the archive — deleting the original is the
-        // very act carrying exists to survive. Probing only the path put
-        // the "File missing — relink it" banner on assets the project
-        // already owns and fed them to the relink hunt, whose "success"
-        // would re-key the asset and orphan the archive entry.
-        if (!_mediaEntryNames.containsKey(asset.path)) {
+        // bytes the project holds — deleting the original is the very act
+        // carrying exists to survive. Probing only the path put the "File
+        // missing — relink it" banner on assets the project already owns
+        // and fed them to the relink hunt, whose "success" would re-key
+        // the asset and orphan what held its bytes.
+        if (!projectHoldsMediaBytes(asset.path)) {
           missing.add(asset.path);
         }
         continue;
@@ -8947,10 +8998,13 @@ class EditorSessionManager extends ChangeNotifier {
   /// and the file stays exactly where it was. Same sound, same address —
   /// nothing to relink, nothing to re-conform.
   ///
-  /// Returns false when there is nothing to promote — no such asset, one
-  /// already carried, or a kind that is never carried whatever anyone
-  /// picks — because a promotion that changed nothing must not spend an
+  /// Returns false when there is nothing to promote: no such asset, or one
+  /// already carried. A promotion that changed nothing must not spend an
   /// undo step saying so.
+  ///
+  /// 🪦It used to add「or a kind that is never carried whatever anyone
+  /// picks」. That ceiling died 2026-08-14 — every kind carries now, and
+  /// the kind only chooses the import window's default.
   ///
   /// ⛔ONE DIRECTION on purpose. Carrying is always safe; UN-carrying
   /// strands a project whose original has since been moved or deleted, so
@@ -17661,7 +17715,7 @@ class EditorSessionManager extends ChangeNotifier {
           // consumer asked for「the bytes of this asset」and must keep
           // getting them — the block index is this layer's business, and
           // the reader still serves a window rather than the whole file.
-          return range.framed ? MediaFramedBytes(range) : range;
+          return mediaSourceDecodingFrames(range);
         }
       } on Object {
         // A torn or momentarily unreadable archive: the file fallback
@@ -17674,7 +17728,7 @@ class EditorSessionManager extends ChangeNotifier {
     final staged = mediaStagingStore.find(poolPath);
     if (staged != null) {
       final stored = MediaStagedBytes(path: staged.path, framed: staged.framed);
-      return staged.framed ? MediaFramedBytes(stored) : stored;
+      return mediaSourceDecodingFrames(stored);
     }
     return MediaFileBytes(poolPath);
   }

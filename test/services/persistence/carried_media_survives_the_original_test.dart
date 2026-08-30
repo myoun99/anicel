@@ -253,4 +253,89 @@ void main() {
     File(to).deleteSync();
     expect(session.mediaByteSourceFor(to).readSync(), original);
   });
+
+  group('🚨relink: the two kinds know different things', () {
+    test('a BY-HAND relink re-stages from the file the user picked', () {
+      final from = compressibleFile('take.wav');
+      session.addMediaAssets([from], carried: true);
+      expect(session.mediaStagingStore.find(from), isNotNull);
+
+      // A DIFFERENT file — nothing checked that it matches.
+      final to = '${root.path}/other.wav'.replaceAll(r'\', '/');
+      final otherBytes = Uint8List(180 * 1024);
+      for (var i = 0; i < otherBytes.length; i += 1) {
+        otherBytes[i] = (i ~/ 5 + 7) & 0xFF;
+      }
+      File(to).writeAsBytesSync(otherBytes);
+
+      session.relinkMediaAsset(from, to);
+
+      expect(session.mediaStagingStore.find(from), isNull);
+      final staged = session.mediaStagingStore.find(to);
+      expect(staged, isNotNull, reason: 'the new file is held');
+
+      final stored = staged!.readStoredSync();
+      expect(
+        staged.framed ? decompressMediaBlob(stored) : stored,
+        otherBytes,
+        reason:
+            '⛔the bytes are the ONE THE USER PICKED. Moving the old staged '
+            'blob over would keep serving the old picture under the new '
+            "file's name, for ever, with the project insisting it was right",
+      );
+    });
+
+    test('a BATCH relink moves the bytes, because the matcher checked '
+        'identity first', () {
+      final from = compressibleFile('take.wav');
+      final original = File(from).readAsBytesSync();
+      session.addMediaAssets([from], carried: true);
+
+      // What the matcher proposes: the SAME content at a new location.
+      final to = '${root.path}/moved/take.wav'.replaceAll(r'\', '/');
+      Directory('${root.path}/moved').createSync();
+      File(to).writeAsBytesSync(original);
+
+      session.relinkMediaAssets({from: to});
+
+      final staged = session.mediaStagingStore.find(to);
+      expect(staged, isNotNull);
+      final stored = staged!.readStoredSync();
+      expect(staged.framed ? decompressMediaBlob(stored) : stored, original);
+      expect(session.mediaStagingStore.find(from), isNull);
+    });
+
+    test('a by-hand relink of a REFERENCED asset stages nothing', () {
+      final from = compressibleFile('linked.wav');
+      session.addMediaAssets([from]);
+      final to = '${root.path}/elsewhere.wav'.replaceAll(r'\', '/');
+      File(to).writeAsBytesSync(File(from).readAsBytesSync());
+
+      session.relinkMediaAsset(from, to);
+
+      expect(
+        session.mediaStagingStore.find(to),
+        isNull,
+        reason: 'the user kept the link; relinking is not a promotion',
+      );
+    });
+  });
+
+  test('🚨a carried asset whose original is gone is NOT missing', () {
+    final path = compressibleFile('take.wav');
+    session.addMediaAssets([path], carried: true);
+    File(path).deleteSync();
+
+    session.refreshMediaExistence();
+
+    expect(
+      session.missingMediaPaths,
+      isNot(contains(path)),
+      reason:
+          '⛔the project holds these bytes — deleting the original is the '
+          'very act carrying exists to survive. A missing banner here '
+          'feeds the relink hunt, whose "success" re-keys the asset away '
+          'from the bytes it was promised',
+    );
+  });
 }

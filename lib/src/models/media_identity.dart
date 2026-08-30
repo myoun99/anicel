@@ -44,7 +44,8 @@ class MediaIdentity {
   /// Null is the ordinary state, not a defect. Reading a file end to end to
   /// record this at import time would cost a full pass over every reference
   /// — and after the media move the files that STAY references are the big
-  /// ones (video is reference-only by kind), so that pass is exactly the
+  /// ones (a movie is the usual one left linked — the kind picks that
+  /// DEFAULT, it no longer forces it), so that pass is exactly the
   /// one nobody can afford. It gets filled in later, by whoever happens to
   /// read the bytes for another reason.
   final int? crc32;
@@ -70,8 +71,9 @@ class MediaIdentity {
 
   /// `<length>` or `<length>:<crc32 hex>` — a string like the stamp beside
   /// it, so `project.json` gains a short value rather than an object.
-  String toJson() =>
-      crc32 == null ? '$lengthBytes' : '$lengthBytes:${crc32!.toRadixString(16)}';
+  String toJson() => crc32 == null
+      ? '$lengthBytes'
+      : '$lengthBytes:${crc32!.toRadixString(16)}';
 
   /// Reads back [toJson]; null for anything unrecognized, so a file written
   /// by a future build cannot make an older one throw on open.

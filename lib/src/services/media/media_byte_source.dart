@@ -434,3 +434,19 @@ class MediaStagedBytes extends MediaByteSource {
   @override
   String toString() => 'MediaStagedBytes($path${framed ? " framed" : ""})';
 }
+
+/// The source a CONSUMER should read: a framed entry seen as the file it
+/// holds, anything else as itself.
+///
+/// 🚨★★★**ONE PLACE DECIDES WHETHER TO DECODE.** The rule is three words
+/// — decode if framed — which is exactly the size of rule that gets
+/// written again at the next call site and then drifts. It was already
+/// spelled twice before this existed, and both spellings had to be right
+/// for a carried asset to come back as its own bytes.
+///
+/// ⛔The SAVE deliberately does not call this. It wants the entry as it
+/// sits, so it can stream a staged blob into the archive without decoding
+/// and re-encoding it — see `projectMediaSources`, which hands out stored
+/// sources on purpose.
+MediaByteSource mediaSourceDecodingFrames(MediaByteSource stored) =>
+    stored.storedIsFramed ? MediaFramedBytes(stored) : stored;
