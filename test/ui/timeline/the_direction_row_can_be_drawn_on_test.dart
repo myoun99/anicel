@@ -63,6 +63,59 @@ void main() {
     }
   });
 
+  group('🚨a row you can draw on is a row you can give a cel', () {
+    // 유저 2026-08-27: 「그림은 그려지지도않아. **프레임이 없다고 뜨거든**」.
+    //
+    // That notice means 「this layer takes a brush, but there is no cel at
+    // this frame」 — so the brush gate was open and the CREATION gate was
+    // shut. R27 #16 flipped `layerKindIsDrawingCel` and left
+    // `layerKindHoldsDrawings`, which is what `canCreateDrawingAtCurrentFrame`
+    // asks.
+    test('a direction row takes an authored cel; camera and transition do '
+        'not', () {
+      expect(layerKindTakesAuthoredCels(LayerKind.instruction), isTrue);
+      for (final kind in [
+        LayerKind.camera,
+        LayerKind.transition,
+        LayerKind.folder,
+        LayerKind.adjustment,
+      ]) {
+        expect(layerKindTakesAuthoredCels(kind), isFalse, reason: '$kind');
+      }
+    });
+
+    test('⛔the SE row keeps it — it holds cels without being one', () {
+      // The two predicates disagree on exactly two kinds, and this is the
+      // other one. A split that quietly dropped SE would take frame
+      // creation off the sound row.
+      expect(layerKindIsDrawingCel(LayerKind.se), isFalse);
+      expect(layerKindTakesAuthoredCels(LayerKind.se), isTrue);
+    });
+
+    test('the derivation is pinned, so the halves cannot drift again', () {
+      for (final kind in LayerKind.values) {
+        expect(
+          layerKindTakesAuthoredCels(kind),
+          layerKindHoldsDrawings(kind) || layerKindIsDrawingCel(kind),
+          reason: '$kind — one derivation',
+        );
+      }
+    });
+
+    test('⛔THE FURNITURE DID NOT FOLLOW — that is the whole point of the '
+        'split', () {
+      // `layerKindHoldsDrawings` also gates the timesheet X in every empty
+      // cell, the run labels over the blocks, the comma-drag grips and the
+      // media drop target. A direction row wearing those is exactly the
+      // kind of thing 「누가 멋대로 이상한짓하라했지」 was about.
+      expect(
+        layerKindHoldsDrawings(LayerKind.instruction),
+        isFalse,
+        reason: 'the direction row still wears no drawing-row furniture',
+      );
+    });
+  });
+
   group('🚨the band shows BOTH — R27 #16 left it showing neither', () {
     // 유저 2026-08-27, on what shipped: 「지금 스샷보면 **블록의 배경색
     // 흰색이 사라졌는데?**」. Giving the row cels flipped

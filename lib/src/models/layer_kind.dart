@@ -267,9 +267,7 @@ bool layerKindHasLayerTransform(LayerKind kind) {
     // shows the Effects groups alone.
     // Nothing of the TRANSITION row's own to move either — it is notation
     // on the track's axis, read-only where a cut can see it.
-    LayerKind.transition ||
-    LayerKind.camera ||
-    LayerKind.adjustment => false,
+    LayerKind.transition || LayerKind.camera || LayerKind.adjustment => false,
   };
 }
 
@@ -553,6 +551,35 @@ bool layerKindCarriesInstructions(LayerKind kind) {
 /// [layerKindCarriesInstructions] — that half did not change.
 bool layerKindBandIsInstructionsOnly(LayerKind kind) =>
     layerKindCarriesInstructions(kind) && !layerKindIsDrawingCel(kind);
+
+/// Whether a row can be GIVEN a cel — a frame authored at a timeline index,
+/// which is the thing a brush then writes into.
+///
+/// 🚨R27 #16 FLIPPED ONE PREDICATE AND NOT THIS ONE (유저 2026-08-27: 「그림은
+/// 그려지지도않아. **프레임이 없다고 뜨거든**」). The direction row became a
+/// drawing cel, but `canCreateDrawingAtCurrentFrame` asks
+/// [layerKindHoldsDrawings] — false for `instruction` — so there was no way
+/// to make the frame the brush then refused for want of.
+///
+/// ⛔IT IS NOT [layerKindHoldsDrawings] WITH ONE MORE KIND. That predicate
+/// answers a SECOND question wherever it is asked in the UI — 「does this row
+/// wear the drawing row's furniture」: the timesheet X in every empty cell,
+/// the run labels over the blocks, the comma-drag grips, the media drop
+/// target. A direction row wearing those is exactly the kind of thing the
+/// feedback above was about. So the split is here, and the furniture keeps
+/// asking the old one.
+///
+/// ⚠️SCOPED TO CREATION, deliberately, because the user's sentence was:
+/// 「**그림 그릴 수 있는 기능**(추가로 없으면 블록을 회색으로. 로직은 통일)
+/// **만** 추가하라했지」. Blanking an exposure, duplicating a block, pasting
+/// and marking are other verbs on other rows' terms; widening them together
+/// would be answering a question nobody asked.
+///
+/// ⛔DERIVED, and the derivation is pinned by a test — the same discipline
+/// [layerKindBandIsInstructionsOnly] follows, so the two halves cannot drift
+/// apart the way these two just did.
+bool layerKindTakesAuthoredCels(LayerKind kind) =>
+    layerKindHoldsDrawings(kind) || layerKindIsDrawingCel(kind);
 
 /// Whether [kind] is a FIXED kind — one the user can neither convert a
 /// layer into nor convert away from (the camera fixture, folders and

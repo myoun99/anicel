@@ -232,6 +232,36 @@ void main() {
       expect(s.celHasContentForLayer(camera, 0), isTrue);
     });
 
+    test('🚨R27 #16: the direction row can actually BE GIVEN a cel', () {
+      // 유저 2026-08-27: 「그림은 그려지지도않아. **프레임이 없다고 뜨거든**」.
+      //
+      // ⚠️THE PREDICATE TEST IS NOT THIS TEST. Asserting
+      // `layerKindTakesAuthoredCels(instruction)` proves a switch statement;
+      // this drives the session and reads what came out, because the gate
+      // sits behind three more conditions the predicate knows nothing about.
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      final row = s.layers.firstWhere((l) => l.kind == LayerKind.instruction);
+      s.selectLayer(row.id);
+      s.selectFrameIndex(0);
+
+      expect(
+        s.canCreateDrawingAtCurrentFrame,
+        isTrue,
+        reason: 'the row takes a brush, so it has to be able to hold a cel',
+      );
+      s.createDrawingAtCurrentFrame();
+      final after = s.layers.firstWhere((l) => l.id == row.id);
+      expect(after.frames, hasLength(1));
+      expect(
+        s.celHasContentForLayer(after, 0),
+        isFalse,
+        reason:
+            'a fresh cel holds no picture — so the block is grey until '
+            'a line starts, which is the other half of this round',
+      );
+    });
+
     test('🚨R27 #16: a DIRECTION span with no cel behind it is grey', () {
       // 유저 2026-08-27: 「그림 그릴 수 있는 기능(추가로 **없으면 블록을
       // 회색으로**. 로직은 통일)만 추가하라했지」.

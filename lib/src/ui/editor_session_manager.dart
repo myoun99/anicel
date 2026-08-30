@@ -9300,7 +9300,10 @@ class EditorSessionManager extends ChangeNotifier {
 
   bool get canCreateDrawingAtCurrentFrame {
     final layer = activeLayer;
-    if (layer == null || !layerKindHoldsDrawings(layer.kind)) {
+    // ⛔[layerKindTakesAuthoredCels], not `holdsDrawings`: the direction row
+    // holds cels since R27 #16 and could not be given one (유저: 「프레임이
+    // 없다고 뜨거든」).
+    if (layer == null || !layerKindTakesAuthoredCels(layer.kind)) {
       return false;
     }
     // SYNCED attach rows (UI-R23 #7 v2): the ALWAYS-MIRROR invariant keeps
@@ -9565,7 +9568,8 @@ class EditorSessionManager extends ChangeNotifier {
         }
         continue;
       }
-      if (!layerKindHoldsDrawings(layer.kind) || isSyncedAttachedLayer(layer)) {
+      if (!layerKindTakesAuthoredCels(layer.kind) ||
+          isSyncedAttachedLayer(layer)) {
         continue; // Synced mirrors follow their base; nothing to author.
       }
       // R9 #9: a COVERING row is one cel edge to edge — there is no "add a
