@@ -749,12 +749,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
             onPressed: () => Navigator.of(dialogContext).pop(),
             child: TextButton(
               onPressed: silentPress(() => Navigator.of(dialogContext).pop()),
-              child: const Text('Cancel'),
+              child: Text(AppText.strings.commonCancel),
             ),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-            child: const Text('Rename'),
+            child: Text(AppText.strings.commonRename),
           ),
         ],
       ),
@@ -786,13 +786,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
               onPressed: silentPress(
                 () => Navigator.of(dialogContext).pop(false),
               ),
-              child: const Text('Cancel'),
+              child: Text(AppText.strings.commonCancel),
             ),
           ),
           FilledButton(
             key: const ValueKey<String>('delete-tip-confirm'),
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Delete'),
+            child: Text(AppText.strings.commonDelete),
           ),
         ],
       ),
@@ -860,12 +860,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       context: context,
       builder: (dialogContext) => AlertDialog(
         key: const ValueKey<String>('register-cut-tip-dialog'),
-        title: const Text('Register as Tip'),
+        title: Text(AppText.strings.tipRegisterTitle),
         content: TextField(
           key: const ValueKey<String>('register-cut-tip-name-field'),
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(labelText: 'Name'),
+          decoration: InputDecoration(
+            labelText: AppText.strings.commonNameField,
+          ),
           onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
         ),
         actions: [
@@ -873,13 +875,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
             onPressed: () => Navigator.of(dialogContext).pop(),
             child: TextButton(
               onPressed: silentPress(() => Navigator.of(dialogContext).pop()),
-              child: const Text('Cancel'),
+              child: Text(AppText.strings.commonCancel),
             ),
           ),
           FilledButton(
             key: const ValueKey<String>('register-cut-tip-confirm'),
             onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-            child: const Text('Register'),
+            child: Text(AppText.strings.commonRegister),
           ),
         ],
       ),
@@ -2350,7 +2352,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       case EditorWorkspace.toolsTabId:
         return EditorPanelTab(
           id: tabId,
-          label: 'Tools',
+          label: AppText.strings.panelTools,
           icon: Icons.handyman_outlined,
           locked: locked,
           // Sliced (R18 UI-1): only an actual TOOL change reshapes this
@@ -2399,7 +2401,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       case EditorWorkspace.canvasTabId:
         return EditorPanelTab(
           id: tabId,
-          label: 'Canvas',
+          label: AppText.strings.panelCanvas,
           icon: Icons.image_outlined,
           locked: locked,
           keepAlive: true,
@@ -2740,7 +2742,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       case EditorWorkspace.mediaTabId:
         return EditorPanelTab(
           id: tabId,
-          label: 'Media',
+          label: AppText.strings.panelMedia,
           icon: Icons.library_music_outlined,
           locked: locked,
           builder: (context) => ListenableBuilder(
@@ -2815,7 +2817,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       case EditorWorkspace.timelineTabId:
         return EditorPanelTab(
           id: tabId,
-          label: 'Timeline',
+          label: AppText.strings.panelTimeline,
           icon: Icons.view_timeline_outlined,
           // The legacy mode-toggle keys stay on the tab buttons so every
           // existing flow (and test helper) keeps working.
@@ -2925,7 +2927,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       case EditorWorkspace.storyboardTabId:
         return EditorPanelTab(
           id: tabId,
-          label: 'Storyboard',
+          label: AppText.strings.panelStoryboard,
           icon: Icons.movie_outlined,
           buttonKey: const ValueKey<String>('timeline-mode-storyboard-button'),
           minContentWidth: _minContentWidthFor(tabId),
@@ -2992,7 +2994,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       case EditorWorkspace.conteTabId:
         return EditorPanelTab(
           id: tabId,
-          label: 'Conte',
+          label: AppText.strings.panelConte,
           icon: Icons.grid_on_outlined,
           buttonKey: const ValueKey<String>('timeline-mode-conte-button'),
           minContentWidth: _minContentWidthFor(tabId),
@@ -3037,7 +3039,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       case EditorWorkspace.envelopeTabId:
         return EditorPanelTab(
           id: tabId,
-          label: 'Envelope',
+          label: AppText.strings.panelEnvelope,
           icon: Icons.mail_outline,
           buttonKey: const ValueKey<String>('timeline-mode-envelope-button'),
           minContentWidth: _minContentWidthFor(tabId),
@@ -3079,7 +3081,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       case EditorWorkspace.timesheetTabId:
         return EditorPanelTab(
           id: tabId,
-          label: 'Timesheet',
+          label: AppText.strings.panelTimesheet,
           icon: Icons.table_chart_outlined,
           locked: locked,
           // Manages its own seams: the sheet's two strata are baked
