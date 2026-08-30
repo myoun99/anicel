@@ -60,6 +60,114 @@ late final String _shotsDir;
 late final String _ghPath;
 late final String _gitRoot;
 
+/// 🚨★★★THE BOARD REPLACES ITSELF WHEN ITS OWN SOURCE CHANGES.
+///
+/// 유저 2026-08-31: 「근데 **매번 너가 갱신해줘야 반영되는건가? 좀 약한
+/// 구조 아닌가**」 — it was. The chain was ①I merge ②I pull the checkout
+/// ③some session's Stop hook notices and rebuilds. Step ③ only happens while
+/// a session is running, so opening the board with no session open served
+/// whatever was last built, silently and for as long as nobody looked.
+///
+/// ⛔A fix that merged and never reached the screen is the exact shape this
+/// project keeps stepping in: on 2026-08-31 유저 asked why a rule was not
+/// working when it had merged twelve minutes earlier and the exe was older
+/// than the merge.
+///
+/// ⇒ The running board carries a copy of the source it was built from. Every
+/// request compares — a byte compare of ~130KB, well under a millisecond —
+/// and when they differ it draws ONE more page saying so, hands the rebuild
+/// to [_relaunch], and exits. Nobody has to remember anything.
+///
+/// ⚠️Silent when the copy is missing, which is what `dart run` looks like: a
+/// development run must not blow itself up mid-probe.
+File? _builtFrom;
+File? _liveSource;
+
+/// The source this exe was built from, and the source as it is now — set once
+/// at startup so a request only pays the compare.
+void _findOwnSource() {
+  final stamp = File('${Platform.resolvedExecutable}.src');
+  if (!stamp.existsSync()) return;
+  final live = File('$_gitRoot/tool/board_server.dart');
+  if (!live.existsSync()) return;
+  _builtFrom = stamp;
+  _liveSource = live;
+}
+
+/// ⚠️Bytes, not a hash and NOT mtime. mtime was measured wrong on this very
+/// file: the source read 16:57:11 and the exe 16:57:44 — OLDER source, NEWER
+/// content, because git does not rewrite a path whose content it already
+/// holds. A hash would work too but needs a package; the build already keeps
+/// the copy, so comparing it is exact and costs nothing to maintain.
+bool _sourceMoved() {
+  final was = _builtFrom, now = _liveSource;
+  if (was == null || now == null) return false;
+  try {
+    final a = was.readAsBytesSync(), b = now.readAsBytesSync();
+    if (a.length != b.length) return true;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return true;
+    }
+    return false;
+  } catch (_) {
+    // Unreadable for a moment mid-write. Not news; the next request asks again.
+    return false;
+  }
+}
+
+/// Hands the rebuild to the script that owns it and steps out of the way.
+///
+/// ⚠️Windows will not let us overwrite a running exe, so this process has to
+/// END for the rebuild to succeed — which is why the page said so first. The
+/// launcher recompiles and starts the new one; a browser that reloads finds
+/// the new board on the same port.
+///
+/// ⛔The rule for WHEN to rebuild is not repeated here. `board_up.sh` owns it,
+/// the Stop hook calls the same script, and a second copy of the test is how
+/// this bug happened the first time.
+Never _relaunch() {
+  final up = File('${File(_recordsPath).parent.path}/board_up.sh');
+  if (up.existsSync()) {
+    Process.start(
+      'bash',
+      [up.path],
+      mode: ProcessStartMode.detached,
+      runInShell: true,
+    );
+  }
+  exit(0);
+}
+
+/// The one page a stale board serves: it says what is happening and comes back
+/// on its own when the new build answers. ⚠️Self-contained — the CSS and JS of
+/// the real board belong to the build that is being replaced.
+String _rebuildingPage() => '''
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>보드를 다시 만드는 중</title>
+<style>
+body{margin:0;display:grid;place-items:center;height:100vh;
+  font:15px/1.6 "BIZ UDPGothic","Nanum Gothic",system-ui,sans-serif;
+  background:#14161a;color:#e6e8ec}
+.box{max-width:520px;padding:28px 32px;text-align:center}
+h1{font-size:17px;margin:0 0 10px}
+p{margin:6px 0;color:#9aa1ad;font-size:13.5px}
+b{color:#e6e8ec}
+</style></head><body><div class="box">
+<h1>보드 코드가 바뀌었습니다 — 다시 만드는 중</h1>
+<p>보통 30초 안팎, 처음 만드는 경우 몇 분까지 걸립니다. <b>끝나면 이 화면이 알아서 새 보드로 바뀝니다.</b></p>
+<p>제출한 답과 메모는 이미 기록에 들어가 있어 사라지지 않습니다.</p>
+</div>
+<script>
+setInterval(function(){
+  fetch('/fresh',{cache:'no-store'})
+    .then(function(r){ if(r.ok) location.replace('/'); })
+    .catch(function(){});
+}, 1000);
+</script>
+</body></html>
+''';
+
 Future<void> main(List<String> args) async {
   _recordsPath = _flag(args, '--records') ?? '';
   _ghPath = _flag(args, '--gh') ?? 'gh';
@@ -73,6 +181,7 @@ Future<void> main(List<String> args) async {
   }
   _shotsDir = '${File(_recordsPath).parent.path}/board-shots';
   Directory(_shotsDir).createSync(recursive: true);
+  _findOwnSource();
 
   HttpServer server;
   try {
@@ -286,10 +395,51 @@ Future<void> _handle(HttpRequest req) async {
     return;
   }
 
+  // A liveness probe with a name: it answers as soon as the board is up, which
+  // is what the rebuilding page waits for.
+  if (path == '/fresh') {
+    req.response
+      ..headers.contentType = ContentType.json
+      ..headers.set('Cache-Control', 'no-store')
+      ..write(jsonEncode({'moved': _sourceMoved()}));
+    await req.response.close();
+    return;
+  }
   if (path != '/') {
     req.response.statusCode = 404;
     await req.response.close();
     return;
+  }
+  // 🚨★★★NEW CODE ARRIVES ON A REFRESH, AND ONLY ON A REFRESH.
+  //
+  // 유저 2026-08-31: 「그냥 새로고침 누르면 갱신되도록 할 수 있나? 그럼
+  // 내가 알아서 새로고침하면 되는 거니까 단순해지는 거 같은데」 — it is.
+  // No banner, no polling, no button: the board is stale until you ask for a
+  // fresh page, and asking is the one gesture that already means 「throw this
+  // page away」.
+  //
+  // ⚠️`partial` IS THE SAFETY, and it is the user's other requirement:
+  // 「내가 소스가 바뀌기 전에 답한 것도 안 사라지게 잘 하는 것도 중요하고」.
+  // The page refetches this same path to redraw one card after a submit, and
+  // handing THAT over would kill the server in the middle of the flow that
+  // just recorded an answer. Those fetches say `partial=1` and never rebuild.
+  //
+  // ✅The answer itself is never at risk either way: `_append` writes the line
+  // SYNCHRONOUSLY, so it is on disk before the reply is sent and a restart
+  // re-reads it. What a refresh can lose is text still sitting in a box, and
+  // that is exactly what the user chose to lose by refreshing.
+  //
+  // ⚠️Windows will not overwrite a running exe, so this process has to end for
+  // the rebuild to work — the page it serves first says so and waits for the
+  // new board on the same port.
+  final partial = req.uri.queryParameters['partial'] == '1';
+  if (!partial && _sourceMoved()) {
+    req.response
+      ..headers.contentType = ContentType.html
+      ..headers.set('Cache-Control', 'no-store')
+      ..write(_rebuildingPage());
+    await req.response.close();
+    _relaunch();
   }
   final entries = _readRecords(File(_recordsPath));
   final gh = await _prs();
@@ -2500,7 +2650,7 @@ function redraw(skipId, done){
   // ⚠️Re-fetch the page you are ON. Asking for `/` returns page 1, so
   // submitting anything from page 2 used to teleport you back to the top of a
   // list you had scrolled past.
-  return fetch('/?landed=' + curPage(), {cache:'no-store'})
+  return fetch('/?partial=1&landed=' + curPage(), {cache:'no-store'})
     .then(r=>r.text())
     .then(html=>{
       const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -2574,7 +2724,7 @@ function goPage(n){
 // page is unaffected by a PR lookup, and a full reload throws away every panel
 // you had open to read.
 function swapSection(id, done){
-  return fetch('/?landed=' + curPage(), {cache:'no-store'})
+  return fetch('/?partial=1&landed=' + curPage(), {cache:'no-store'})
     .then(r=>r.text())
     .then(html=>{
       const doc = new DOMParser().parseFromString(html, 'text/html');
