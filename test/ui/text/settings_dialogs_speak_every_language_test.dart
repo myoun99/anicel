@@ -130,6 +130,14 @@ void main() {
   /// catch is the thing that actually happens: a new panel arriving with a
   /// dozen literals, months after anyone remembers F-37 exists.
   ///
+  /// ⚠️AND IT COUNTS SOME CORRECT LINES AS DEBT. The shortcut registry and
+  /// the menu bar are `const`, so their ENGLISH lives at the call site by
+  /// contract and the other languages are keyed by id — 42 lines this scan
+  /// reads as untranslated are the English row itself. The number is a
+  /// CEILING, not a debt figure; the contract those files really owe is in
+  /// `every_action_has_a_word_in_every_language_test`, which asks the
+  /// question a count cannot: 「is every id answered」.
+  ///
   /// ★WHEN YOU TRANSLATE SOMETHING, LOWER THIS NUMBER. That is the ratchet.
   const untranslatedElsewhere = 207;
 
