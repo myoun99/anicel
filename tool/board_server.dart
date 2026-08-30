@@ -1203,7 +1203,7 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
     if (e.prs.isEmpty || e.answer != null) continue;
     // 🚨A MERGE IS NOT A FINISH — a card with leftovers stays where the work
     // is, because a tick here deletes it and the leftovers go with it.
-    if (e.rest.isNotEmpty) continue;
+    if (_stillOwed(e)) continue;
     // Still building: it belongs in 지금, not in a list of things to look at.
     if (e.prs.any(openPrs.contains)) continue;
     // ⚠️The 최근 착지 mark only applies to PRs gh still knows about. For one
@@ -1320,7 +1320,7 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
           // A claimed PR normally means the card is being CHECKED, not
           // started. Unless it still has leftovers — then this is exactly
           // where it belongs, with the merged part already in its story.
-          (e.pr == null || !claimed.containsKey(e.pr) || e.rest.isNotEmpty))
+          (e.pr == null || !claimed.containsKey(e.pr) || _stillOwed(e)))
       .toList();
   // Work can be underway before there is a PR to point at -- an investigation,
   // a round mid-flight. Without this those items sat in 착수 가능 claiming to
@@ -2058,6 +2058,32 @@ String _checkoutPanel(_Checkout c) {
 /// through the intake form is the user filing it, and its intake tag already
 /// says which kind of filing it was. Everything else with no stage is my own
 /// working note.
+/// 🚨★★★**남은 것이 마지막 항목일 때만 아직 남은 것이다.**
+///
+/// 유저 2026-08-30, 정정: 「기록은 기록이니까 **남은것 그대로 남겨야지 그 다음
+/// 구현이 오는거고 맨 마지막에 남은것항목일때만 착수가능이나 대기중에 올리는
+/// 거고**」.
+///
+/// ⛔예전에는 `rest` 필드가 **비어 있지 않기만 하면** 미완으로 쳤다. 그 필드는
+/// 한번 쓰면 누가 지워 주기 전까지 남으므로, 그 뒤에 구현이 오고 일이 끝나도
+/// 카드가 영영 착수 칸에 앉아 있었다 — I-4 가 그랬고, 유저가 「작업끝난걸로
+/// 아는데」라고 물어서 드러났다.
+///
+/// ⛔그리고 이것을 **그리는 자리를 옮겨서** 풀려고 했던 것도 틀렸다. 기록은
+/// 기록이라 쓰인 자리에 그대로 있어야 한다(유저: 「멋대로하지말라고」). 위치가
+/// 아니라 **순서**가 답한다.
+///
+/// ⚠️뒤에 오는 것이 구현이어야 하는 것은 **아니다**(유저 정정: 「반드시 그렇단게
+/// 아니라 **내 피드백이던 뭐던 올수있는거고 남은것은 그냥 하나의 기록일뿐**
+/// 이라는 의미야」). 남은 것은 특별한 상태가 아니라 **기록 하나**일 뿐이고,
+/// 그 뒤에 무엇이든 한 줄이 더 적혔다면 그것은 더 이상 마지막 말이 아니다.
+/// 여전히 남은 것이 있다면 **다시 한 줄 적으면 된다.**
+///
+/// ⚠️그래서 아직 남은 것이 있으면 **`rest` 를 마지막 줄에 단독으로** 써야 한다.
+/// 한 줄에 `rest` 와 `pr` 을 같이 쓰면 구현이 뒤에 붙어 완료로 읽힌다.
+bool _stillOwed(_Entry e) =>
+    e.log.isNotEmpty && _stageName(e, e.log.length - 1) == '남은 것';
+
 String _stageName(_Entry e, int i) {
   final at = e.log[i].at;
   if (at.isNotEmpty) return at;
