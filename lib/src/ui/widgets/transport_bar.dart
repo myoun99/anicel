@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'app_icon_button.dart';
 import 'drag_value_label.dart';
+import '../text/app_strings.dart' show AppText;
 
 /// THE transport bar: a scrub track with IN/OUT handles, the player
 /// buttons, and the two range fields at the ends.
@@ -90,33 +91,36 @@ class TransportBar extends StatelessWidget {
         Row(
           children: [
             if (showRange)
-            SizedBox(
-              width: compact ? 64 : 84,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('In', style: _dimStyle(context)),
-                    const SizedBox(width: 4),
-                    DragValueLabel(
-                      keyValue: 'transport-in',
-                      text: label(inFrame),
-                      width: compact ? 34 : 44,
-                      unitsPerPixel: 1,
-                      onDragDelta: (delta) => _setIn(inFrame + delta.round()),
-                      onEditSubmit: (text) {
-                        final typed = int.tryParse(text.trim());
-                        if (typed != null) {
-                          _setIn(typed - 1);
-                        }
-                      },
-                    ),
-                  ],
+              SizedBox(
+                width: compact ? 64 : 84,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        AppText.strings.transportIn,
+                        style: _dimStyle(context),
+                      ),
+                      const SizedBox(width: 4),
+                      DragValueLabel(
+                        keyValue: 'transport-in',
+                        text: label(inFrame),
+                        width: compact ? 34 : 44,
+                        unitsPerPixel: 1,
+                        onDragDelta: (delta) => _setIn(inFrame + delta.round()),
+                        onEditSubmit: (text) {
+                          final typed = int.tryParse(text.trim());
+                          if (typed != null) {
+                            _setIn(typed - 1);
+                          }
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
             // The buttons are CENTRED in the bar, and squeezing the window
             // must not throw an overflow at the one moment the user is
             // dragging its edge: below the width they need, they scale
@@ -129,7 +133,7 @@ class TransportBar extends StatelessWidget {
                   children: [
                     AppIconButton(
                       keyValue: 'transport-to-in',
-                      tooltip: 'In',
+                      tooltip: AppText.strings.transportIn,
                       icon: const Icon(Icons.first_page),
                       size: AppIconButtonSize.strip,
                       onPressed: () => onSeek(inFrame),
@@ -137,7 +141,7 @@ class TransportBar extends StatelessWidget {
                     if (!compact)
                       AppIconButton(
                         keyValue: 'transport-step-back',
-                        tooltip: 'Previous frame',
+                        tooltip: AppText.strings.transportPrevFrame,
                         icon: const Icon(Icons.chevron_left),
                         size: AppIconButtonSize.strip,
                         onPressed: () => onSeek(_clamp(currentFrame - 1)),
@@ -153,14 +157,14 @@ class TransportBar extends StatelessWidget {
                     if (!compact)
                       AppIconButton(
                         keyValue: 'transport-step-forward',
-                        tooltip: 'Next frame',
+                        tooltip: AppText.strings.transportNextFrame,
                         icon: const Icon(Icons.chevron_right),
                         size: AppIconButtonSize.strip,
                         onPressed: () => onSeek(_clamp(currentFrame + 1)),
                       ),
                     AppIconButton(
                       keyValue: 'transport-to-out',
-                      tooltip: 'Out',
+                      tooltip: AppText.strings.transportOut,
                       icon: const Icon(Icons.last_page),
                       size: AppIconButtonSize.strip,
                       onPressed: () => onSeek(outFrame),
@@ -168,7 +172,7 @@ class TransportBar extends StatelessWidget {
                     if (onLoopingChanged != null)
                       AppIconButton(
                         keyValue: 'transport-loop',
-                        tooltip: 'Loop',
+                        tooltip: AppText.strings.transportLoop,
                         icon: const Icon(Icons.repeat),
                         size: AppIconButtonSize.strip,
                         isSelected: looping,
@@ -179,34 +183,38 @@ class TransportBar extends StatelessWidget {
               ),
             ),
             if (showRange)
-            SizedBox(
-              width: compact ? 64 : 84,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerRight,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    DragValueLabel(
-                      keyValue: 'transport-out',
-                      text: label(outFrame),
-                      width: compact ? 34 : 44,
-                      unitsPerPixel: 1,
-                      onDragDelta: (delta) => _setOut(outFrame + delta.round()),
-                      onEditSubmit: (text) {
-                        final typed = int.tryParse(text.trim());
-                        if (typed != null) {
-                          _setOut(typed - 1);
-                        }
-                      },
-                    ),
-                    const SizedBox(width: 4),
-                    Text('Out', style: _dimStyle(context)),
-                  ],
+              SizedBox(
+                width: compact ? 64 : 84,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      DragValueLabel(
+                        keyValue: 'transport-out',
+                        text: label(outFrame),
+                        width: compact ? 34 : 44,
+                        unitsPerPixel: 1,
+                        onDragDelta: (delta) =>
+                            _setOut(outFrame + delta.round()),
+                        onEditSubmit: (text) {
+                          final typed = int.tryParse(text.trim());
+                          if (typed != null) {
+                            _setOut(typed - 1);
+                          }
+                        },
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        AppText.strings.transportOut,
+                        style: _dimStyle(context),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
           ],
         ),
         const SizedBox(height: 2),

@@ -824,6 +824,17 @@ class AppStrings {
   String get panelColorWheel => _s('panelColorWheel');
   String get panelColorRgb => _s('panelColorRgb');
   String get panelColorPalette => _s('panelColorPalette');
+  String get transportIn => _s('transportIn');
+  String get transportOut => _s('transportOut');
+  String get transportLoop => _s('transportLoop');
+  String get transportPrevFrame => _s('transportPrevFrame');
+  String get transportNextFrame => _s('transportNextFrame');
+  String get colorRecent => _s('colorRecent');
+  String get colorBackgroundSwap => _s('colorBackgroundSwap');
+  String get penPressureTitle => _s('penPressureTitle');
+  String get penPressureAxis => _s('penPressureAxis');
+  String get onionCurrentDrawing => _s('onionCurrentDrawing');
+  String get audioLevelMeter => _s('audioLevelMeter');
   String get panelMedia => _s('panelMedia');
   String get panelMediaViewer => _s('panelMediaViewer');
   String get panelMediaViewerSub => _s('panelMediaViewerSub');
@@ -1588,6 +1599,17 @@ class AppStrings {
     'panelMediaViewerSub': 'Sub Viewer',
     'panelCanvas': 'Canvas',
     'panelColorWheel': 'Colour wheel',
+    'transportIn': 'In',
+    'transportOut': 'Out',
+    'transportLoop': 'Loop',
+    'transportPrevFrame': 'Previous frame',
+    'transportNextFrame': 'Next frame',
+    'colorRecent': 'Recent',
+    'colorBackgroundSwap': 'Background colour (tap to swap)',
+    'penPressureTitle': 'Pen pressure',
+    'penPressureAxis': 'Pressure →',
+    'onionCurrentDrawing': 'Current drawing',
+    'audioLevelMeter': 'audio level meter',
     'panelColorRgb': 'RGB',
     'panelColorPalette': 'Palette',
     'panelMedia': 'Media',
@@ -2495,6 +2517,17 @@ class AppStrings {
     'panelMediaViewerSub': 'サブビューア',
     'panelCanvas': 'カンバス',
     'panelColorWheel': 'カラーホイール',
+    'transportIn': 'イン',
+    'transportOut': 'アウト',
+    'transportLoop': 'ループ',
+    'transportPrevFrame': '前のフレーム',
+    'transportNextFrame': '次のフレーム',
+    'colorRecent': '最近',
+    'colorBackgroundSwap': '背景色（タップで入れ替え）',
+    'penPressureTitle': '筆圧',
+    'penPressureAxis': '筆圧 →',
+    'onionCurrentDrawing': '現在の絵',
+    'audioLevelMeter': '音声レベルメーター',
     'panelColorRgb': 'RGB',
     'panelColorPalette': 'パレット',
     'panelMedia': 'メディア',
@@ -3425,6 +3458,17 @@ class AppStrings {
     'panelMediaViewerSub': '서브 뷰어',
     'panelCanvas': '캔버스',
     'panelColorWheel': '컬러 휠',
+    'transportIn': '인',
+    'transportOut': '아웃',
+    'transportLoop': '루프',
+    'transportPrevFrame': '이전 프레임',
+    'transportNextFrame': '다음 프레임',
+    'colorRecent': '최근',
+    'colorBackgroundSwap': '배경색 (눌러서 교체)',
+    'penPressureTitle': '필압',
+    'penPressureAxis': '필압 →',
+    'onionCurrentDrawing': '현재 그림',
+    'audioLevelMeter': '오디오 레벨 미터',
     'panelColorRgb': 'RGB',
     'panelColorPalette': '팔레트',
     'panelMedia': '미디어',
@@ -4386,6 +4430,17 @@ class AppStrings {
         "Encore lié sur des lignes SE — retirez d'abord ses sons.",
     'panelCanvas': 'Canevas',
     'panelColorWheel': 'Roue chromatique',
+    'transportIn': 'Entrée',
+    'transportOut': 'Sortie',
+    'transportLoop': 'Boucle',
+    'transportPrevFrame': 'Image précédente',
+    'transportNextFrame': 'Image suivante',
+    'colorRecent': 'Récentes',
+    'colorBackgroundSwap': 'Couleur de fond (toucher pour échanger)',
+    'penPressureTitle': 'Pression du stylet',
+    'penPressureAxis': 'Pression →',
+    'onionCurrentDrawing': 'Dessin actuel',
+    'audioLevelMeter': 'vumètre audio',
     'panelColorRgb': 'RVB',
     'panelColorPalette': 'Palette',
     'panelMedia': 'Médias',
@@ -5272,6 +5327,17 @@ class AppStrings {
     'panelMediaViewerSub': '副查看器',
     'panelCanvas': '画布',
     'panelColorWheel': '色轮',
+    'transportIn': '入点',
+    'transportOut': '出点',
+    'transportLoop': '循环',
+    'transportPrevFrame': '上一帧',
+    'transportNextFrame': '下一帧',
+    'colorRecent': '最近',
+    'colorBackgroundSwap': '背景色（点按交换）',
+    'penPressureTitle': '笔压',
+    'penPressureAxis': '笔压 →',
+    'onionCurrentDrawing': '当前画面',
+    'audioLevelMeter': '音频电平表',
     'panelColorRgb': 'RGB',
     'panelColorPalette': '色板',
     'panelMedia': '媒体',

@@ -52,6 +52,8 @@ void main() {
     'fx',
     'Fx',
     'N', // the comma count button, a number in every language
+    'X',
+    'Y', // the transform axes
   };
 
   /// Every shape in which a literal reaches the screen from these files.
@@ -144,7 +146,7 @@ void main() {
   /// question a count cannot: 「is every id answered」.
   ///
   /// ★WHEN YOU TRANSLATE SOMETHING, LOWER THIS NUMBER. That is the ratchet.
-  const untranslatedElsewhere = 172;
+  const untranslatedElsewhere = 149;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp(r'[A-Za-z]');
@@ -158,7 +160,13 @@ void main() {
       // ⛔The dialogs are the wall above, not part of the count — a number
       // that included them could be paid down by translating elsewhere while
       // a dialog quietly went back to English.
-      if (path.contains('/ui/dialogs/')) {
+      //
+      // ⛔AND THE BRUSH SMOKE SCREEN IS NOT UI. `brush_v1_scope_guard_test`
+      // proves it is wired into no production route; its six buttons are a
+      // developer's harness, and translating them would make a debug screen
+      // read differently depending on who opened it.
+      if (path.contains('/ui/dialogs/') ||
+          path.endsWith('/brush_canvas_smoke_screen.dart')) {
         continue;
       }
       final source = file.readAsStringSync();

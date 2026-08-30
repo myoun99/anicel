@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../input/control_press_claim.dart';
+import '../text/app_strings.dart' show AppText;
 
 /// The Photoshop-style overlapped foreground/background swatch pair.
 ///
@@ -67,7 +68,7 @@ class ColorSlotPair extends StatelessWidget {
             right: 0,
             bottom: 0,
             child: Tooltip(
-              message: 'Background Color (Tap to Swap)',
+              message: AppText.strings.colorBackgroundSwap,
               child: ControlPressClaim(
                 onPressed: onBackgroundTap,
                 child: GestureDetector(

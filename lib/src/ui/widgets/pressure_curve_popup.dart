@@ -5,6 +5,7 @@ import '../input/control_press_claim.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../theme/app_theme.dart';
 import 'anchored_popup.dart';
+import '../text/app_strings.dart' show AppText;
 
 /// BB-3 (R26 #11): the shared pen-pressure curve editor — a CSP-style
 /// 筆圧設定 popup. One [PressureCurveButton] sits at the right of each
@@ -64,7 +65,7 @@ class PressureCurveButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final active = curve != null && enabled;
     final button = Tooltip(
-      message: 'Pen pressure',
+      message: AppText.strings.penPressureTitle,
       child: Material(
         color: Colors.transparent,
         child: ControlPressClaim(
@@ -93,9 +94,7 @@ class PressureCurveButton extends StatelessWidget {
               decoration: ShapeDecoration(
                 shape: AppShapes.container(
                   AppShapes.wellRadius,
-                  side: BorderSide(
-                    color: active ? AppColors.accent : _offEdge,
-                  ),
+                  side: BorderSide(color: active ? AppColors.accent : _offEdge),
                 ),
               ),
               child: Padding(
@@ -298,8 +297,11 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
           const SizedBox(height: 4),
           Row(
             children: [
-              const Expanded(
-                child: Text('Pressure →', style: AnchoredPopupText.caption),
+              Expanded(
+                child: Text(
+                  AppText.strings.penPressureAxis,
+                  style: AnchoredPopupText.caption,
+                ),
               ),
               ControlPressClaim(
                 onPressed: _enabled ? _reset : null,
@@ -313,7 +315,7 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
                       vertical: 2,
                     ),
                     child: Text(
-                      'Reset',
+                      AppText.strings.commonReset,
                       style: TextStyle(
                         fontSize: 10,
                         color: _enabled

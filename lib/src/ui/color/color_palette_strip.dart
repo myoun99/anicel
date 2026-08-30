@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../services/color_palette_file_service.dart';
 import '../theme/app_theme.dart' show AppColors, AppShapes;
 import '../input/control_press_claim.dart';
+import '../text/app_strings.dart' show AppText;
 
 /// The palette rows under the color wheel (P4): recent colors (newest
 /// first, read-only) and the pinned palette (tap = pick; the + chip pins
@@ -98,7 +99,7 @@ class ColorPaletteStrip extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (palette.recent.isNotEmpty) ...[
-          Text('Recent', style: theme.textTheme.labelSmall),
+          Text(AppText.strings.colorRecent, style: theme.textTheme.labelSmall),
           const SizedBox(height: 4),
           Wrap(
             spacing: 4,
@@ -113,7 +114,10 @@ class ColorPaletteStrip extends StatelessWidget {
           ),
           const SizedBox(height: 8),
         ],
-        Text('Palette', style: theme.textTheme.labelSmall),
+        Text(
+          AppText.strings.panelColorPalette,
+          style: theme.textTheme.labelSmall,
+        ),
         const SizedBox(height: 4),
         Wrap(
           spacing: 4,

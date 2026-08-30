@@ -350,7 +350,7 @@ class _OnionFalloffStripState extends State<_OnionFalloffStrip> {
       return Expanded(
         child: Tooltip(
           key: const ValueKey<String>('onion-peg-current'),
-          message: 'Current drawing',
+          message: AppText.strings.onionCurrentDrawing,
           child: _graphColumn(
             opacity: 1,
             color: AppColors.accent,
