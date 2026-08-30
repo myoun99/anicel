@@ -6,6 +6,7 @@ import '../../models/canvas_size.dart';
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
+import '../theme/app_theme.dart' show AppShapes;
 
 /// What the canvas-size dialog confirms: the new size plus the anchor the
 /// existing artwork stays pinned to.
@@ -242,9 +243,11 @@ class _AnchorGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border.all(color: colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(4),
+      decoration: ShapeDecoration(
+        shape: AppShapes.container(
+          AppShapes.wellRadius,
+          side: BorderSide(color: colorScheme.outlineVariant),
+        ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

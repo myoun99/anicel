@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../text/full_width_numerals.dart';
 import '../input/control_press_claim.dart';
+import '../theme/app_theme.dart' show AppShapes;
 
 /// One position axis for the nav bar's scrub: how many stops, where the
 /// boundary ticks sit, and what a stop is called. The tab defines the
@@ -26,8 +27,7 @@ class ExportNavAxis {
   String caption(int position) =>
       captionOf?.call(position) ?? '${position + 1}';
 
-  int clamp(int position) =>
-      length <= 0 ? 0 : position.clamp(0, length - 1);
+  int clamp(int position) => length <= 0 ? 0 : position.clamp(0, length - 1);
 }
 
 /// The v10 nav bar (전 탭 공통): optional in/out number fields at the very
@@ -96,19 +96,26 @@ class ExportNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    Widget stepButton(String glyph, int delta, String key) => ControlPressClaim(onPressed: enabled && axis.length > 0 ? () => _step(delta) : null, child: InkWell(
-      key: ValueKey<String>(key),
-      onTap: silentPress(enabled && axis.length > 0 ? () => _step(delta) : null),
-      borderRadius: BorderRadius.circular(4),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        decoration: BoxDecoration(
-          border: Border.all(color: theme.dividerColor),
-          borderRadius: BorderRadius.circular(4),
+    Widget stepButton(String glyph, int delta, String key) => ControlPressClaim(
+      onPressed: enabled && axis.length > 0 ? () => _step(delta) : null,
+      child: InkWell(
+        key: ValueKey<String>(key),
+        onTap: silentPress(
+          enabled && axis.length > 0 ? () => _step(delta) : null,
         ),
-        child: Text(glyph, style: theme.textTheme.labelSmall),
+        customBorder: AppShapes.container(AppShapes.wellRadius),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: ShapeDecoration(
+            shape: AppShapes.container(
+              AppShapes.wellRadius,
+              side: BorderSide(color: theme.dividerColor),
+            ),
+          ),
+          child: Text(glyph, style: theme.textTheme.labelSmall),
+        ),
       ),
-    ));
+    );
 
     return Row(
       children: [
@@ -175,10 +182,8 @@ class _ExportScrubBar extends StatelessWidget {
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTapDown: (details) => seekTo(details.localPosition.dx),
-          onHorizontalDragStart: (details) =>
-              seekTo(details.localPosition.dx),
-          onHorizontalDragUpdate: (details) =>
-              seekTo(details.localPosition.dx),
+          onHorizontalDragStart: (details) => seekTo(details.localPosition.dx),
+          onHorizontalDragUpdate: (details) => seekTo(details.localPosition.dx),
           child: SizedBox(
             height: 26,
             child: CustomPaint(
@@ -225,9 +230,8 @@ class _ExportScrubPainter extends CustomPainter {
   final Color dimColor;
   final TextStyle? captionStyle;
 
-  double _x(Size size, int position) => axis.length <= 1
-      ? 0
-      : position / (axis.length - 1) * size.width;
+  double _x(Size size, int position) =>
+      axis.length <= 1 ? 0 : position / (axis.length - 1) * size.width;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -236,11 +240,7 @@ class _ExportScrubPainter extends CustomPainter {
       ..color = trackColor
       ..strokeWidth = 3
       ..strokeCap = StrokeCap.round;
-    canvas.drawLine(
-      Offset(0, centerY),
-      Offset(size.width, centerY),
-      track,
-    );
+    canvas.drawLine(Offset(0, centerY), Offset(size.width, centerY), track);
     if (axis.length <= 0) {
       return;
     }
@@ -291,10 +291,7 @@ class _ExportScrubPainter extends CustomPainter {
       // clamp with an inverted range throws.
       final maxLeft = size.width - painter.width;
       if (maxLeft >= 0) {
-        painter.paint(
-          canvas,
-          Offset((playheadX + 4).clamp(0.0, maxLeft), 0),
-        );
+        painter.paint(canvas, Offset((playheadX + 4).clamp(0.0, maxLeft), 0));
       }
     }
   }

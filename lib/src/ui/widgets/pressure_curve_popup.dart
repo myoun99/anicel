@@ -78,7 +78,7 @@ class PressureCurveButton extends StatelessWidget {
               : null,
           child: InkWell(
             key: ValueKey<String>(keyValue),
-            borderRadius: BorderRadius.circular(4),
+            customBorder: AppShapes.container(AppShapes.wellRadius),
             onTap: silentPress(
               enabled
                   ? () => showPressureCurvePopup(
@@ -90,9 +90,13 @@ class PressureCurveButton extends StatelessWidget {
                   : null,
             ),
             child: DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border.all(color: active ? AppColors.accent : _offEdge),
-                borderRadius: BorderRadius.circular(4),
+              decoration: ShapeDecoration(
+                shape: AppShapes.container(
+                  AppShapes.wellRadius,
+                  side: BorderSide(
+                    color: active ? AppColors.accent : _offEdge,
+                  ),
+                ),
               ),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
@@ -302,7 +306,7 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
                 child: InkWell(
                   key: const ValueKey<String>('pressure-curve-reset'),
                   onTap: silentPress(_enabled ? _reset : null),
-                  borderRadius: BorderRadius.circular(3),
+                  customBorder: AppShapes.container(3),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 4,

@@ -12,7 +12,7 @@ import '../dialogs/folder_pick_flow.dart';
 
 import '../text/app_strings.dart';
 import '../text/byte_size_label.dart';
-import '../theme/app_theme.dart' show AppColors;
+import '../theme/app_theme.dart' show AppColors, AppShapes;
 import '../widgets/panel_flyout.dart';
 import 'media_asset_drag_data.dart';
 import '../input/control_press_claim.dart';
@@ -578,7 +578,7 @@ class MediaPoolPanel extends StatelessWidget {
       dragAnchorStrategy: pointerDragAnchorStrategy,
       feedback: Material(
         elevation: 4,
-        borderRadius: BorderRadius.circular(4),
+        shape: AppShapes.container(AppShapes.wellRadius),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           child: Row(

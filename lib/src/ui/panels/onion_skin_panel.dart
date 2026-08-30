@@ -7,6 +7,7 @@ import '../widgets/color_swatch_button.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
 import '../layout/device_grid.dart';
+import '../widgets/superellipse_clip.dart';
 
 /// The onion-skin dock panel: the light-table graph every 2D package
 /// speaks (TVPaint's light table, Krita's onion docker) — ONE strip
@@ -300,13 +301,15 @@ class _OnionFalloffStripState extends State<_OnionFalloffStrip> {
                 onExit: (_) => setState(() => _hoverColumn = null),
                 child: Container(
                   height: _stripHeight,
-                  decoration: BoxDecoration(
+                  decoration: ShapeDecoration(
                     color: AppColors.backdrop,
-                    border: Border.all(color: AppColors.hairline),
-                    borderRadius: BorderRadius.circular(4),
+                    shape: AppShapes.container(
+                      AppShapes.wellRadius,
+                      side: const BorderSide(color: AppColors.hairline),
+                    ),
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(3),
+                  child: SuperellipseClip(
+                    shape: AppShapes.container(3),
                     child: Row(
                       // Stretch, or the Row's loose cross-axis constraints
                       // let each column shrink to its own bar: the bars

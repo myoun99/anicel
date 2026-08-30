@@ -771,7 +771,7 @@ class PanelFlyoutButton extends StatelessWidget {
       child: ControlPressClaim(onPressed: enabled
             ? () => showPanelFlyout(context, entries: entriesBuilder())
             : null, child: InkWell(
-        borderRadius: BorderRadius.circular(4),
+        customBorder: AppShapes.container(AppShapes.wellRadius),
         // Null, not a no-op: an `InkWell` with a null callback stops
         // splashing and stops taking hover, so the button reads shut to the
         // hand as well as to the eye.
@@ -779,13 +779,15 @@ class PanelFlyoutButton extends StatelessWidget {
             ? () => showPanelFlyout(context, entries: entriesBuilder())
             : null),
         child: DecoratedBox(
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: enabled
-                  ? AppColors.hairline
-                  : AppColors.hairline.withValues(alpha: 0.5),
+          decoration: ShapeDecoration(
+            shape: AppShapes.container(
+              AppShapes.wellRadius,
+              side: BorderSide(
+                color: enabled
+                    ? AppColors.hairline
+                    : AppColors.hairline.withValues(alpha: 0.5),
+              ),
             ),
-            borderRadius: BorderRadius.circular(4),
           ),
           child: Padding(
             padding: padding,

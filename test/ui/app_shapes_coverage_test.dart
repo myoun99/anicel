@@ -37,35 +37,23 @@ void main() {
         offenders.add('$path:${i + 1}  ${line.trim()}');
       }
     }
-    // A RATCHET, not a wall. There were 84 of these when the app's corner
-    // reached the theme, spread over dialogs, the brush panels and the
-    // export rows — converting them all in one change would have been a
-    // bigger diff than the round that created the corner. So the number
-    // may only ever go DOWN: a new circular corner fails immediately, and
-    // every round that converts a few lowers the bound.
-    //
-    // When it reaches zero, replace this with `expect(offenders, isEmpty)`
-    // and delete the number.
+    // 🏆THE RATCHET GRADUATED. It carried a number for as long as there were
+    // corners left — 84 when the app's shape reached the theme, then 74, 51,
+    // 32 — and the file's own instruction was 「when it reaches zero, replace
+    // this with `expect(offenders, isEmpty)` and delete the number」. It is
+    // zero. ⛔The number is gone with it: a bound nobody has to lower is a
+    // bound somebody will raise.
     expect(
-      offenders.length,
-      lessThanOrEqualTo(_knownOffenders),
+      offenders,
+      isEmpty,
       reason:
           'A circular corner was added. Use AppShapes.control(size) for a '
           'control, AppShapes.container(radius) for a surface, and '
-          'AppShapes.clipper(shape) to CLIP to it — a shape that is only '
-          'painted leaves square corners behind, which is exactly how the '
-          'floating region looked square while its silhouette was right. If '
-          'a site genuinely cannot take the app shape, add it to _allowed '
-          'with the reason.\n${offenders.join('\n')}',
-    );
-    // And the bound has to stay honest: if a round converts some, it lowers
-    // the number in the same commit rather than banking the slack.
-    expect(
-      offenders.length,
-      greaterThanOrEqualTo(_knownOffenders),
-      reason:
-          'Corners were converted — lower _knownOffenders to '
-          '${offenders.length} so the ratchet keeps its grip.',
+          'SuperellipseClip to CLIP to it — a shape that is only painted '
+          'leaves square corners behind, which is exactly how the floating '
+          'region looked square while its silhouette was right. If a site '
+          'genuinely cannot take the app shape, add it to _allowed with the '
+          'reason.\n${offenders.join('\n')}',
     );
   });
 
@@ -115,28 +103,6 @@ void main() {
     expect(found, isEmpty);
   });
 }
-
-/// The debt the app's corner arrived to. Only ever goes down.
-/// 84 at R1e. **81** since R4 #8 folded the anchored popup's three
-/// hand-rolled `Material(borderRadius: circular(6))` surfaces into one
-/// `AppShapes.container(AppShapes.windowRadius)` inside the shell itself.
-/// **77** since the V row's transform teardown took the cut-fade envelope span
-/// with it — one corner fewer to convert, banked here rather than left as slack.
-/// **76** since the command-pill round retired `SplitIconButton` — its
-/// hand-typed corners went with it, and the pill that replaced it wears
-/// `AppShapes.control` on both its border and its splash.
-///
-/// ⚠️Those two rounds ran in parallel and each lowered this to 77 for its own
-/// reason, so the merge had to RE-COUNT rather than take either number — two
-/// independent subtractions from the same total are not the same subtraction,
-/// and neither is their sum: guessing 75 from "one each" was wrong too,
-/// because the pill round removed one line and ADDED one back inside the
-/// widget it replaced it with. The only honest way through a conflict on a
-/// ratchet is to run it.
-/// 🆕F-23 lowered it to 74: the colour SLOT PAIR and the readout's chip
-/// were rounded rectangles, and 「색 보여주는건 싹 다 일반 동그라미로 변경」
-/// turned both into circles — which is not a corner radius at all.
-const int _knownOffenders = 32;
 
 final RegExp _offending = RegExp(
   r'BorderRadius\.circular|RoundedRectangleBorder|ClipRRect',
