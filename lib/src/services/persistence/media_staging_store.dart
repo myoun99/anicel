@@ -1,7 +1,8 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show immutable;
+import 'package:flutter/foundation.dart' show immutable, visibleForTesting;
 
 import 'app_support_path.dart';
 import 'media_blob_codec.dart';
@@ -44,6 +45,27 @@ class MediaStagingStore {
   /// `<container>/Staged`, beside `Recovery` and `Conformed`.
   static String defaultDirectory() => appSupportFilePath('Staged');
 
+  /// Test seam: do the staging work HERE instead of in an isolate.
+  ///
+  /// 🚨★★★**A `testWidgets` CLOCK NEVER LETS A REAL ISOLATE FINISH.** The
+  /// widget binding runs the body in a fake-async zone, so awaiting
+  /// [Isolate.run] is a hang, not a wait — every voice-take and import
+  /// widget test stopped at「did not complete」the moment this moved off
+  /// the UI isolate. `tester.runAsync` is the other answer and it does not
+  /// fit: these tests pump between the await and the assertion.
+  ///
+  /// ⛔**Inline is not a second implementation.** The same [_stageBytes]
+  /// runs either way, and [stageAll] stays `async` either way — so the
+  /// ORDER a caller sees is identical, which is what the entrances'
+  /// invariant actually rests on.
+  ///
+  /// ⚠️`flutter_test_config.dart` turns this ON for the whole suite, so the
+  /// isolate road needs one test that turns it back OFF — see
+  /// `media_staging_store_test`. Without that, nothing would ever run the
+  /// road production takes.
+  @visibleForTesting
+  static bool debugStageInline = false;
+
   /// 🚨Separators normalised HERE, once.
   ///
   /// Every method compares a path it BUILT ([pathFor]) against a path the
@@ -64,7 +86,7 @@ class MediaStagingStore {
       mediaPathFramed(_basePathFor(poolPath), framed: framed);
 
   String _basePathFor(String poolPath) =>
-      '$directoryPath/${_stagedName(poolPath)}';
+      '$directoryPath/${stagedNameFor(poolPath)}';
 
   /// The staged copy of [poolPath], or null when there is none.
   ///
@@ -91,45 +113,66 @@ class MediaStagingStore {
   /// Idempotent: an asset already staged is left alone, because the bytes
   /// it holds are the ones the user asked to keep and the file on disk may
   /// have moved on since.
-  StagedMedia? stage(String poolPath) {
-    final already = find(poolPath);
-    if (already != null) {
-      return already;
+  ///
+  /// 🚨★★★**THE WORK RUNS IN AN ISOLATE AND THE CALLER WAITS FOR IT.**
+  ///
+  /// Memory stopped being the problem when the write started streaming, but
+  /// TIME did not: zstd is a blocking native call, so compressing a carried
+  /// movie held the UI thread from the moment 품기 was pressed until the
+  /// last block — minutes on a big file, with the app frozen.
+  ///
+  /// ⛔**Awaited, never fired and forgotten.** 유저 2026-08-30 asked for
+  /// exactly one property — 「품은 순간 데이터를 가지고있고 **불변**
+  /// 이었으면좋겠어서」 — and the pool must not record an asset whose bytes
+  /// are still being secured. Every entrance therefore awaits this before
+  /// the command that registers the asset runs, which is what turned four
+  /// call sites async. The same shape the .tvpp import already uses:
+  /// `Isolate.run` per unit, awaited, nothing registered early.
+  Future<StagedMedia?> stage(String poolPath) async =>
+      (await stageAll([poolPath])).firstOrNull;
+
+  /// Every path in [poolPaths], in ONE isolate.
+  ///
+  /// ⚡One, not one each. A folder import can hand this hundreds of files,
+  /// and an isolate costs milliseconds to start — spawning per file would
+  /// have made the many-small-files case SLOWER than the synchronous
+  /// version it replaces, while fixing only the one-big-file case.
+  ///
+  /// Answers only what actually landed: a path that was already staged
+  /// comes back as it sits, and one whose file is gone is absent rather
+  /// than null-in-place, because no caller asks "which index failed".
+  Future<List<StagedMedia>> stageAll(Iterable<String> poolPaths) async {
+    final todo = <String>[];
+    final done = <StagedMedia>[];
+    for (final path in poolPaths) {
+      final already = find(path);
+      if (already != null) {
+        done.add(already);
+      } else if (File(path).existsSync()) {
+        todo.add(path);
+      }
     }
-    final source = File(poolPath);
-    if (!source.existsSync()) {
-      return null;
+    if (todo.isEmpty) {
+      return done;
     }
     Directory(directoryPath).createSync(recursive: true);
-    // 🚨★★★**THE ASSET IS NEVER RESIDENT.** This read the file whole and
-    // handed it to the in-memory codec, which built every compressed block
-    // beside it before judging the total — a 4GB movie was the file twice
-    // over, on the UI isolate, at the moment 품기 is pressed. Streaming is
-    // not an optimisation here: it is the difference between carrying a
-    // big movie and being killed for trying.
-    final handle = source.openSync();
-    final ({String path, bool framed}) written;
-    try {
-      written = writeMediaBlob(
-        basePath: _basePathFor(poolPath),
-        length: handle.lengthSync(),
-        // ONE handle for the whole file. `MediaFileBytes.readIntoSync`
-        // opens and closes per call, which a 4GB asset would pay eight
-        // thousand times.
-        readInto: (buffer, position, size) {
-          handle.setPositionSync(position);
-          return handle.readIntoSync(buffer, 0, size);
-        },
+    // Scalars only. The closure crosses an isolate boundary, so it opens
+    // its own handles over there rather than capturing any from here.
+    final directory = directoryPath;
+    final written = debugStageInline
+        ? _stageBytes(todo, directory)
+        : await Isolate.run(() => _stageBytes(todo, directory));
+    for (final one in written) {
+      done.add(
+        StagedMedia(
+          poolPath: one.poolPath,
+          path: one.path,
+          framed: one.framed,
+          storedLength: one.storedLength,
+        ),
       );
-    } finally {
-      handle.closeSync();
     }
-    return StagedMedia(
-      poolPath: poolPath,
-      path: written.path,
-      framed: written.framed,
-      storedLength: File(written.path).lengthSync(),
-    );
+    return done;
   }
 
   /// Follows an asset whose pool path changed — a relink.
@@ -248,7 +291,12 @@ class MediaStagingStore {
   /// The basename rides ahead of the hash for the same reason the archive
   /// entry's does: a person looking in the folder should be able to tell
   /// what they are looking at.
-  static String _stagedName(String poolPath) {
+  /// The staged file's name for [poolPath] — derived, never recorded.
+  ///
+  /// Public because [_stageBytes] runs in an isolate and has to derive the
+  /// same name over there; a second spelling of this rule is exactly the
+  /// drift the derived-name design exists to make impossible.
+  static String stagedNameFor(String poolPath) {
     final normalized = poolPath.replaceAll(r'\', '/');
     final slash = normalized.lastIndexOf('/');
     final base = slash < 0 ? normalized : normalized.substring(slash + 1);
@@ -291,4 +339,47 @@ class StagedMedia {
   /// to re-encode it would burn the whole point of having compressed it at
   /// import.
   Uint8List readStoredSync() => File(path).readAsBytesSync();
+}
+
+/// [MediaStagingStore.stageAll]'s work, as a top-level function so the
+/// isolate closure captures a list of strings and nothing else.
+///
+/// ONE handle per file: `MediaFileBytes.readIntoSync` opens and closes per
+/// call, which a 4GB asset at 512KB blocks would pay eight thousand times.
+///
+/// ⚠️A file that cannot be opened is SKIPPED, not thrown for. The batch may
+/// be a whole folder, and one unreadable asset must not cost the rest their
+/// bytes — the pool then simply has no staged copy for it, which is the
+/// same state as never having asked.
+List<({String poolPath, String path, bool framed, int storedLength})>
+_stageBytes(List<String> poolPaths, String directoryPath) {
+  final out =
+      <({String poolPath, String path, bool framed, int storedLength})>[];
+  for (final poolPath in poolPaths) {
+    final RandomAccessFile handle;
+    try {
+      handle = File(poolPath).openSync();
+    } on FileSystemException {
+      continue;
+    }
+    try {
+      final written = writeMediaBlob(
+        basePath: '$directoryPath/${MediaStagingStore.stagedNameFor(poolPath)}',
+        length: handle.lengthSync(),
+        readInto: (buffer, position, size) {
+          handle.setPositionSync(position);
+          return handle.readIntoSync(buffer, 0, size);
+        },
+      );
+      out.add((
+        poolPath: poolPath,
+        path: written.path,
+        framed: written.framed,
+        storedLength: File(written.path).lengthSync(),
+      ));
+    } finally {
+      handle.closeSync();
+    }
+  }
+  return out;
 }

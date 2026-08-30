@@ -81,7 +81,7 @@ class EditorVoiceRecording {
     required FrameId Function(LayerId) mintFrameId,
     required List<MediaAsset> Function() mediaAssets,
     required void Function(String, Uint8List) rememberMediaFingerprint,
-    required void Function(Iterable<String>) stageCarriedBytes,
+    required Future<void> Function(Iterable<String>) stageCarriedBytes,
     required ValueNotifier<TimelineFrameRangeSelection?> Function()
     frameRangeSelection,
     required String? Function() projectFilePath,
@@ -163,7 +163,7 @@ class EditorVoiceRecording {
 
   /// Holds a take's bytes the moment it lands, the same way an import
   /// that carries does — see [EditorSessionManager.stageCarriedBytes].
-  final void Function(Iterable<String>) _stageCarriedBytes;
+  final Future<void> Function(Iterable<String>) _stageCarriedBytes;
 
   final void Function(String, Uint8List) _rememberMediaFingerprint;
   void rememberMediaFingerprint(String poolPath, Uint8List bytes) =>
@@ -886,7 +886,7 @@ class EditorVoiceRecording {
   /// both directions). Returns null on clean success, otherwise a
   /// message for the user — including the case where the take was PLACED
   /// but the capture ring dropped frames (a damaged take must say so).
-  String? stopVoiceRecordingAndPlace() {
+  Future<String?> stopVoiceRecordingAndPlace() async {
     final recorder = _voiceRecorder;
     _voiceRecorder = null;
     final laneId = _voiceRecordLaneId;
@@ -913,7 +913,7 @@ class EditorVoiceRecording {
     if (recording.length == 0) {
       return uiStrings.recordTakeEmpty;
     }
-    final placed = placeVoiceRecording(
+    final placed = await placeVoiceRecording(
       recording,
       laneId: laneId,
       anchorFrame: _voiceRecordAnchorFrame,
@@ -942,7 +942,7 @@ class EditorVoiceRecording {
   /// recording): trims the head (latency + punch run-up), clamps to the
   /// punch window, writes the WAV, and swaps the lane through the
   /// tape-style planner — pool entry and lane swap in ONE undo step.
-  bool placeVoiceRecording(
+  Future<bool> placeVoiceRecording(
     AudioRecording recording, {
     required LayerId? laneId,
     required int anchorFrame,
@@ -951,7 +951,7 @@ class EditorVoiceRecording {
     int gainDb = 0,
     VoiceInputChannelMode channelMode = VoiceInputChannelMode.device,
     bool denoise = false,
-  }) {
+  }) async {
     final lane = laneId == null ? null : trackSeGlobalLayerById(laneId);
     if (lane == null ||
         anchorFrame < 0 ||
@@ -1049,7 +1049,7 @@ class EditorVoiceRecording {
     // until this ran, clearing that folder before saving took the
     // performance with it — the very trade the comment below says nobody
     // would make.
-    _stageCarriedBytes([path]);
+    await _stageCarriedBytes([path]);
     final pool = mediaAssets;
     _cutCommandCoordinator.historyManager.execute(
       CompositeCommand(

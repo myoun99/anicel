@@ -52,7 +52,7 @@ Future<void> _pump(
               callbacks.removed.add(path);
               return callbacks.removeResult;
             },
-            onPromoteAsset: (path) {
+            onPromoteAsset: (path) async {
               callbacks.promoted.add(path);
               return callbacks.promoteResult;
             },

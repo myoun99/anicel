@@ -84,7 +84,7 @@ class MediaPoolPanel extends StatelessWidget {
   /// Marks a referenced file as one the project carries, so the next save
   /// writes its bytes inside the `.anicel`. Nothing on disk moves. False
   /// when there was nothing to promote.
-  final bool Function(String path) onPromoteAsset;
+  final Future<bool> Function(String path) onPromoteAsset;
 
   /// Opens the asset in the MAIN viewer (double-click or the row menu);
   /// null hides both entrances.
@@ -234,8 +234,16 @@ class MediaPoolPanel extends StatelessWidget {
     onRenameAsset(asset.path, name);
   }
 
-  void _promote(BuildContext context, MediaAsset asset) {
-    if (onPromoteAsset(asset.path)) {
+  /// ⚠️Async because carrying an asset now secures its bytes in an isolate
+  /// and the answer waits for that — so the notice below crosses an await,
+  /// and this panel is a `StatelessWidget` with no `mounted` of its own.
+  /// `context.mounted` is the guard: a pool row can be gone by the time a
+  /// big file finishes, and showing a dialog on a dead context throws.
+  Future<void> _promote(BuildContext context, MediaAsset asset) async {
+    if (await onPromoteAsset(asset.path)) {
+      return;
+    }
+    if (!context.mounted) {
       return;
     }
     // Already carried. (This used to say「or a kind that never is」 — the

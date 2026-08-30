@@ -40,10 +40,7 @@ void main() {
       return Column(
         children: [
           Expanded(
-            child: ColorWheelPanel(
-              color: 0xFF3366CC,
-              onColorChanged: (_) {},
-            ),
+            child: ColorWheelPanel(color: 0xFF3366CC, onColorChanged: (_) {}),
           ),
           ConstrainedBox(
             constraints: BoxConstraints(maxHeight: paletteCap),
@@ -81,7 +78,7 @@ void main() {
     onRenameAsset: (_, _) {},
     onRelinkAsset: (_, _, _) {},
     onRemoveAsset: (_) => true,
-    onPromoteAsset: (_) => true,
+    onPromoteAsset: (_) async => true,
     // RELINK-2: nothing missing is the default now, which is what
     // `fileExists: (_) => true` was saying.
   );

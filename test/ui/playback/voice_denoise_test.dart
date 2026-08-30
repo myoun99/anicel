@@ -52,7 +52,7 @@ void main() {
   }
 
   test('denoiseVoice round-trips and defaults OFF (pristine capture is '
-      'the safer default)', () {
+      'the safer default)', () async {
     expect(AudioSyncSettings.defaults.denoiseVoice, isFalse);
     const settings = AudioSyncSettings(denoiseVoice: true);
     expect(AudioSyncSettings.fromJson(settings.toJson()), settings);
@@ -65,7 +65,7 @@ void main() {
   });
 
   test('arming with suppression ON asks the device for 48 kHz; OFF asks '
-      'for the project rate', () {
+      'for the project rate', () async {
     final manager = session(projectSampleRate: 44100);
     final lane = manager.activeTrack.seLayers.first;
     manager.selectLayer(lane.id);
@@ -75,7 +75,7 @@ void main() {
 
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
     expect(recorder.requestedSampleRate, 44100);
-    manager.stopVoiceRecordingAndPlace();
+    await manager.stopVoiceRecordingAndPlace();
 
     manager.setAudioSyncSettings(
       manager.audioSyncSettings.value.copyWith(denoiseVoice: true),
@@ -85,7 +85,7 @@ void main() {
       recorder.requestedSampleRate,
       EditorSessionManager.voiceDenoiseCaptureRate,
     );
-    manager.stopVoiceRecordingAndPlace();
+    await manager.stopVoiceRecordingAndPlace();
     manager.dispose();
   });
 
@@ -110,7 +110,7 @@ void main() {
     };
 
     expect(
-      manager.placeVoiceRecording(
+      await manager.placeVoiceRecording(
         takeOfSeconds(1.0),
         laneId: lane.id,
         anchorFrame: 0,
@@ -145,7 +145,7 @@ void main() {
     };
 
     expect(
-      manager.placeVoiceRecording(
+      await manager.placeVoiceRecording(
         takeOfSeconds(0.5),
         laneId: lane.id,
         anchorFrame: 0,
@@ -159,7 +159,7 @@ void main() {
     expect(decoded.samples.first, closeTo(0.25, 1e-3));
 
     expect(
-      manager.placeVoiceRecording(
+      await manager.placeVoiceRecording(
         takeOfSeconds(0.5),
         laneId: lane.id,
         anchorFrame: 30,
@@ -171,7 +171,7 @@ void main() {
   });
 
   test('a device that refuses 48 kHz records CLEAN — the armed snapshot '
-      'drops suppression rather than run the model off-rate', () {
+      'drops suppression rather than run the model off-rate', () async {
     final manager = session();
     manager.setAudioSyncSettings(
       manager.audioSyncSettings.value.copyWith(denoiseVoice: true),
@@ -190,7 +190,7 @@ void main() {
     );
 
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
-    manager.stopVoiceRecordingAndPlace();
+    await manager.stopVoiceRecordingAndPlace();
     expect(calls, 0);
     manager.dispose();
   });

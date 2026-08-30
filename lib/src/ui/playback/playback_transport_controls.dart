@@ -22,7 +22,7 @@ Future<void> toggleVoiceRecordingWithFeedback(
   final strings = session.uiStrings;
   final String? message;
   if (session.isVoiceRecording.value) {
-    message = session.stopVoiceRecordingAndPlace();
+    message = await session.stopVoiceRecordingAndPlace();
   } else if (!await AppStorage.ensureMicrophoneAccess()) {
     // Android's runtime grant; the Future waits out the system dialog.
     message = strings.recordMicPermissionDenied;
@@ -40,11 +40,7 @@ Future<void> toggleVoiceRecordingWithFeedback(
   // land at the bottom edge of the window, nowhere near the button that
   // was pressed, and leave on a timer.
   if (message != null && context.mounted) {
-    await showAppNotice(
-      context,
-      title: strings.commonNotice,
-      message: message,
-    );
+    await showAppNotice(context, title: strings.commonNotice, message: message);
   }
 }
 

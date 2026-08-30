@@ -733,12 +733,16 @@ class EditorSessionManager extends ChangeNotifier {
     resolveCueClips: () => voiceRecordCueClips,
   );
 
-  void _onPlaybackStopped(PlaybackPosition lastPosition) {
+  /// ⚠️`void` and `async`: the playback controller does not wait for this,
+  /// but the BODY's own order still matters — the take has to have landed
+  /// before the cut selection below runs, or the two commands reach the
+  /// undo history in whichever order the isolate happened to finish in.
+  void _onPlaybackStopped(PlaybackPosition lastPosition) async {
     // Transport stop finishes a rolling take (REC1-B): record = play +
     // capture, so ending one ends the other. The result message goes out
     // on the notice channel — this path has no button to return through.
     if (isVoiceRecording.value) {
-      voiceRecordingNotice.value = stopVoiceRecordingAndPlace();
+      voiceRecordingNotice.value = await stopVoiceRecordingAndPlace();
     }
     if (lastPosition.cutId != _editingSession.activeCutId) {
       selectCut(lastPosition.cutId);
@@ -752,11 +756,12 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Stop landed on a playlist GAP frame (UI-R9 #3): match the editing
   /// gap semantics — park there with NO active cut.
-  void _onPlaybackStoppedInGap(int globalFrame) {
+  /// ⚠️`void` and `async` for the same reason as [_onPlaybackStopped].
+  void _onPlaybackStoppedInGap(int globalFrame) async {
     // The gap-stop twin of _onPlaybackStopped's take finish: a lane is
     // cut-independent, so a take may legitimately end over a gap.
     if (isVoiceRecording.value) {
-      voiceRecordingNotice.value = stopVoiceRecordingAndPlace();
+      voiceRecordingNotice.value = await stopVoiceRecordingAndPlace();
     }
     _gapGlobalFrame = globalFrame;
     _deselectActiveCutForGap();
@@ -2495,11 +2500,16 @@ class EditorSessionManager extends ChangeNotifier {
   /// asset is an orphan the sweep takes; an asset the pool holds whose
   /// bytes were never staged is the old behaviour back, silently — and
   /// silently is how it survived two rounds of this work.
-  void stageCarriedBytes(Iterable<String> poolPaths) {
-    for (final path in poolPaths) {
-      mediaStagingStore.stage(path);
-    }
-  }
+  /// 🚨★★★**AWAIT IT. A DROPPED FUTURE HERE IS THE OLD BUG, SILENTLY.**
+  ///
+  /// The compression moved into an isolate so a carried movie stops
+  /// freezing the app, and that turned this into a `Future`. Nothing in the
+  /// analyzer stops a caller from ignoring it — `stageCarriedBytes(paths);`
+  /// still compiles inside a `void` method — and a caller that does has put
+  /// the registration back in front of the bytes, which is exactly the
+  /// state the ⛔ above forbids. That is why the entrances are async now.
+  Future<void> stageCarriedBytes(Iterable<String> poolPaths) =>
+      mediaStagingStore.stageAll(poolPaths);
 
   /// Conformed audio per source path (audio program wiring): waveform
   /// peaks, exact clip lengths and the device transport's PCM, decoded
@@ -7874,7 +7884,11 @@ class EditorSessionManager extends ChangeNotifier {
       for (final asset in plan.assets) asset.copyWith(carried: copyIntoProject),
     ];
     if (copyIntoProject) {
-      stageCarriedBytes([for (final asset in plan.assets) asset.path]);
+      // ⛔Awaited BEFORE the command that registers them. The isolate that
+      // secures these bytes is the reason this is a `Future` at all, and
+      // letting the registration overtake it is the one thing carrying
+      // must not do.
+      await stageCarriedBytes([for (final asset in plan.assets) asset.path]);
     }
 
     _historyManager.execute(
@@ -8529,7 +8543,7 @@ class EditorSessionManager extends ChangeNotifier {
   VoiceRecordStartResult startVoiceRecording() =>
       _voiceRecording.startVoiceRecording();
 
-  String? stopVoiceRecordingAndPlace() =>
+  Future<String?> stopVoiceRecordingAndPlace() =>
       _voiceRecording.stopVoiceRecordingAndPlace();
 
   /// Test seams: assignable, so both halves of the property are forwarded.
@@ -8556,7 +8570,7 @@ class EditorSessionManager extends ChangeNotifier {
       _voiceRecording.debugIngestVoiceRecordChunk(interleaved, channels);
 
   @visibleForTesting
-  bool placeVoiceRecording(
+  Future<bool> placeVoiceRecording(
     AudioRecording recording, {
     required LayerId? laneId,
     required int anchorFrame,
@@ -8859,7 +8873,14 @@ class EditorSessionManager extends ChangeNotifier {
   /// deleting the original before the first save changed or emptied what
   /// got saved. 유저 2026-08-30: 「품은 순간 데이터를 가지고있고 **불변**
   /// 이었으면좋겠어서」.
-  void addMediaAssets(List<String> paths, {bool carried = false}) {
+  ///
+  /// ⚠️Async because that copy runs in an isolate now, and the pool must
+  /// not record an asset before its bytes are secured. A caller that
+  /// forgets to await gets the pre-carry behaviour back without a word.
+  Future<void> addMediaAssets(
+    List<String> paths, {
+    bool carried = false,
+  }) async {
     final pool = mediaAssets;
     final known = {for (final asset in pool) asset.path};
     final added = [
@@ -8876,7 +8897,7 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     if (carried) {
-      stageCarriedBytes([for (final asset in added) asset.path]);
+      await stageCarriedBytes([for (final asset in added) asset.path]);
     }
     _cutCommandCoordinator.updateMediaAssets([
       ...pool,
@@ -8920,7 +8941,10 @@ class EditorSessionManager extends ChangeNotifier {
   /// Points the [oldPath] asset at [newPath] — the pool entry AND every
   /// referencing clip, one undo step (Resolve-style relink for moved
   /// files). Waveforms re-extract from the new file.
-  void relinkMediaAsset(String oldPath, String newPath) {
+  ///
+  /// ⚠️Async because the re-stage below runs in an isolate — see
+  /// [stageCarriedBytes].
+  Future<void> relinkMediaAsset(String oldPath, String newPath) async {
     audioConformStore.invalidate(newPath);
     _cutCommandCoordinator.relinkMediaAsset(oldPath: oldPath, newPath: newPath);
     _moveMediaFingerprints({oldPath: newPath});
@@ -8945,7 +8969,7 @@ class EditorSessionManager extends ChangeNotifier {
     if (projectArchivedMediaPaths(
       _repository.requireProject(),
     ).contains(newPath)) {
-      stageCarriedBytes([newPath]);
+      await stageCarriedBytes([newPath]);
     }
     refreshMediaExistence();
     notifyListeners();
@@ -9085,7 +9109,11 @@ class EditorSessionManager extends ChangeNotifier {
   /// the two are not a pair of switches to offer side by side. A reverse
   /// verb needs a "the original is still there" guard of its own first,
   /// and that is a separate decision.
-  bool promoteMediaAssetIntoProject(String path) {
+  ///
+  /// ⚠️Async because securing the bytes runs in an isolate — see
+  /// [stageCarriedBytes]. The answer still means「something changed」, and
+  /// it is still decided before any waiting happens.
+  Future<bool> promoteMediaAssetIntoProject(String path) async {
     final pool = mediaAssets;
     var promotes = false;
     for (final asset in pool) {
@@ -9100,7 +9128,7 @@ class EditorSessionManager extends ChangeNotifier {
     if (!promotes) {
       return false;
     }
-    stageCarriedBytes([path]);
+    await stageCarriedBytes([path]);
     _cutCommandCoordinator.updateMediaAssets([
       for (final asset in pool)
         asset.path == path ? asset.copyWith(carried: true) : asset,

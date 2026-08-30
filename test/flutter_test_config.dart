@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
+import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/services/persistence/app_documents.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
@@ -61,6 +62,17 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // notice for every file after it.
   debugDriveNoticeShown = false;
   AppStorage.debugAllFilesAccessOverride = null;
+  // 🚨SET rather than reset, and it is the only one here that is. Carrying
+  // a file secures its bytes in an isolate so a big movie stops freezing
+  // the app; a `testWidgets` clock is fake, so awaiting a real isolate is a
+  // hang and every voice-take and import widget test stopped at「did not
+  // complete」. The same work runs either way and `stageAll` stays async
+  // either way, so the ORDER the entrances depend on is unchanged.
+  //
+  // ⚠️The isolate road therefore needs one test that turns this back OFF —
+  // `media_staging_store_test` has it. Deleting that test would leave the
+  // road production takes with no coverage at all.
+  MediaStagingStore.debugStageInline = true;
   try {
     await testMain();
   } finally {

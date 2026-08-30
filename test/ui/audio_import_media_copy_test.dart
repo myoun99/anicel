@@ -66,29 +66,29 @@ void main() {
       reason: 'the last site that made a .anicel grow a sibling',
     );
     expect(File(asset.path).readAsBytesSync(), [1, 2, 3, 4]);
-    expect(
-      archived(session),
-      {'$root/외부소재/발소리.wav'},
-      reason: 'the pool entry is what the save reads',
-    );
+    expect(archived(session), {
+      '$root/외부소재/발소리.wav',
+    }, reason: 'the pool entry is what the save reads');
     session.dispose();
   });
 
-  test('a REFERENCE records the same path and asks the save for nothing',
-      () async {
-    final session = sessionWithFakeConforms();
-    await session.saveProjectToFile('${directory.path}/scene.anicel');
-    final source = File('${directory.path}/guide.wav')
-      ..writeAsBytesSync([8, 9]);
+  test(
+    'a REFERENCE records the same path and asks the save for nothing',
+    () async {
+      final session = sessionWithFakeConforms();
+      await session.saveProjectToFile('${directory.path}/scene.anicel');
+      final source = File('${directory.path}/guide.wav')
+        ..writeAsBytesSync([8, 9]);
 
-    session.importMediaFiles([source.path], copyIntoProject: false);
+      session.importMediaFiles([source.path], copyIntoProject: false);
 
-    final asset = session.mediaAssets.single;
-    expect(asset.path, source.path.replaceAll('\\', '/'));
-    expect(asset.carried, isFalse);
-    expect(archived(session), isEmpty);
-    session.dispose();
-  });
+      final asset = session.mediaAssets.single;
+      expect(asset.path, source.path.replaceAll('\\', '/'));
+      expect(asset.carried, isFalse);
+      expect(archived(session), isEmpty);
+      session.dispose();
+    },
+  );
 
   test('an UNSAVED project carries just the same', () async {
     // It could not before: with nothing to sit beside, the copy degraded
@@ -148,19 +148,22 @@ void main() {
     expect(
       session.importAudioFile(source.path),
       source.path.replaceAll('\\', '/'),
-      reason: 'the pool is keyed by path, so a backslash spelling would be '
+      reason:
+          'the pool is keyed by path, so a backslash spelling would be '
           'a second asset for one file',
     );
     session.dispose();
   });
 
-  test('a missing file still registers — an import degrades, never refuses',
-      () {
-    final session = sessionWithFakeConforms();
-    final missing = '${directory.path}/없는파일.wav';
-    expect(session.importAudioFile(missing), missing.replaceAll('\\', '/'));
-    session.dispose();
-  });
+  test(
+    'a missing file still registers — an import degrades, never refuses',
+    () {
+      final session = sessionWithFakeConforms();
+      final missing = '${directory.path}/없는파일.wav';
+      expect(session.importAudioFile(missing), missing.replaceAll('\\', '/'));
+      session.dispose();
+    },
+  );
 
   test('registering a reference marks it carried in ONE undo, and moves '
       'nothing on disk', () async {
@@ -173,7 +176,10 @@ void main() {
     session.importMediaFiles([outside.path], copyIntoProject: false);
     expect(session.mediaAssets.single.carried, isFalse);
 
-    expect(session.promoteMediaAssetIntoProject('$root/guide.wav'), isTrue);
+    expect(
+      await session.promoteMediaAssetIntoProject('$root/guide.wav'),
+      isTrue,
+    );
 
     final promoted = session.mediaAssets.single;
     expect(promoted.carried, isTrue);
@@ -199,7 +205,7 @@ void main() {
     session.importMediaFiles([source.path], copyIntoProject: true);
     final path = session.mediaAssets.single.path;
 
-    expect(session.promoteMediaAssetIntoProject(path), isFalse);
+    expect(await session.promoteMediaAssetIntoProject(path), isFalse);
     expect(session.mediaAssets.single.carried, isTrue);
     session.dispose();
   });
@@ -217,10 +223,10 @@ void main() {
     session.importMediaFiles([movie.path], copyIntoProject: false);
     final path = session.mediaAssets.single.path;
 
-    expect(session.promoteMediaAssetIntoProject(path), isTrue);
+    expect(await session.promoteMediaAssetIntoProject(path), isTrue);
     expect(session.mediaAssets.single.carried, isTrue);
     expect(
-      session.promoteMediaAssetIntoProject(path),
+      await session.promoteMediaAssetIntoProject(path),
       isFalse,
       reason: 'and there is nothing left to promote the second time',
     );
@@ -229,7 +235,10 @@ void main() {
 
   test('promoting an unknown path is refused', () async {
     final session = sessionWithFakeConforms();
-    expect(session.promoteMediaAssetIntoProject('/nowhere/x.wav'), isFalse);
+    expect(
+      await session.promoteMediaAssetIntoProject('/nowhere/x.wav'),
+      isFalse,
+    );
     session.dispose();
   });
 
@@ -271,7 +280,7 @@ void main() {
     final foot = File('${directory.path}/foot.wav')
       ..writeAsBytesSync(List<int>.filled(12, 1));
 
-    session.addMediaAssets([foot.path]);
+    await session.addMediaAssets([foot.path]);
 
     expect(session.mediaAssets.single.identity!.lengthBytes, 12);
     expect(session.mediaAssets.single.carried, isFalse);
