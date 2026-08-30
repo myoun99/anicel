@@ -140,11 +140,11 @@ class AudioConformStore extends ChangeNotifier {
   }
 
   void _closeStreamReader(String sourcePath) {
-    _streamReaders.remove(sourcePath)?.close();
+    _streamReaders.remove(sourcePath);
   }
 
-  /// Lets go of every conform whose PCM lives only on DISK — readers
-  /// closed, entries dropped — so the cache underneath can be collected.
+  /// Lets go of every conform whose PCM lives only on DISK, so the cache
+  /// underneath can be collected.
   ///
   /// 🚨 The cache has a size bound and a Preferences button that empties
   /// it, and the collector cannot know what this session is holding. A
@@ -156,9 +156,11 @@ class AudioConformStore extends ChangeNotifier {
   /// clip is silent for the rest of the session and silent in the export,
   /// with a debug line as the only trace.
   ///
-  /// The mirror image on Windows is just as bad: an open reader makes the
-  /// delete fail, so the biggest entries survive the emptying that existed
-  /// to reclaim them.
+  /// 🪦There used to be a mirror image on Windows — an open reader made the
+  /// delete fail, so the biggest entries survived the emptying meant to
+  /// reclaim them. [ConformWavStreamReader] holds no handle any more, so
+  /// only the half above is left. ⛔Which does NOT make this optional: the
+  /// half that is left is the one that goes SILENT.
   ///
   /// So the session stands down BEFORE the collector runs. What it drops
   /// re-conforms on next use, and if the file survived the prune that
@@ -453,9 +455,6 @@ class AudioConformStore extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    for (final reader in _streamReaders.values) {
-      reader.close();
-    }
     _streamReaders.clear();
     super.dispose();
   }

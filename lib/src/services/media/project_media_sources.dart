@@ -85,7 +85,7 @@ Map<String, MediaByteSource> projectMediaSources({
     // when that was worth it. They go in AS THEY ARE.
     final staged = staging?.find(path);
     if (staged != null) {
-      sources[path] = MediaStagedBytes(
+      sources[path] = MediaAppFileBytes(
         path: staged.path,
         framed: staged.framed,
       );

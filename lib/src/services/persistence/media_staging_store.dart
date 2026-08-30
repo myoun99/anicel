@@ -61,18 +61,23 @@ class MediaStagingStore {
   /// [mediaFramedEntrySuffix] — so a staged file can be streamed into the
   /// .anicel without being decoded and re-encoded on the way.
   String pathFor(String poolPath, {required bool framed}) =>
-      '$directoryPath/${_stagedName(poolPath)}'
-      '${framed ? mediaFramedEntrySuffix : ''}';
+      mediaPathFramed(_basePathFor(poolPath), framed: framed);
+
+  String _basePathFor(String poolPath) =>
+      '$directoryPath/${_stagedName(poolPath)}';
 
   /// The staged copy of [poolPath], or null when there is none.
+  ///
+  /// Framed-first, through [mediaFramedOrPlainPaths] — the one place that
+  /// knows a file this app wrote may wear either name.
   StagedMedia? find(String poolPath) {
-    for (final framed in [true, false]) {
-      final file = File(pathFor(poolPath, framed: framed));
+    for (final candidate in mediaFramedOrPlainPaths(_basePathFor(poolPath))) {
+      final file = File(candidate);
       if (file.existsSync()) {
         return StagedMedia(
           poolPath: poolPath,
           path: file.path.replaceAll(r'\', '/'),
-          framed: framed,
+          framed: mediaEntryIsFramed(candidate),
           storedLength: file.lengthSync(),
         );
       }
@@ -147,9 +152,13 @@ class MediaStagingStore {
   }
 
   /// Drops the staged copy of [poolPath] — the save absorbed it.
+  ///
+  /// BOTH spellings, because which one is on disk depends on whether the
+  /// bytes shrank, and a save must not leave half of an absorbed import
+  /// behind (유저 08-27: 「사본 남으면 진짜 용서안할게」).
   void retire(String poolPath) {
-    for (final framed in [true, false]) {
-      final file = File(pathFor(poolPath, framed: framed));
+    for (final candidate in mediaFramedOrPlainPaths(_basePathFor(poolPath))) {
+      final file = File(candidate);
       if (file.existsSync()) {
         file.deleteSync();
       }

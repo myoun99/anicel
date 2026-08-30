@@ -11,6 +11,21 @@
 /// any audio tool can open it, which makes a suspect conform something you
 /// can listen to instead of something you have to reason about.
 ///
+/// 🚨★★★**BUT WHAT LANDS ON DISK IS COMPRESSED, SO「open it in any tool」
+/// IS NO LONGER TRUE OF THE FILE.** The bytes this file produces are
+/// standard; [AudioConformPipeline] then block-frames them
+/// ([compressMediaBlob]) before writing, because a conform is ~12× its
+/// source and zstd takes 38–51% of that back. 유저 2026-08-30 was given
+/// exactly this trade and chose it — 「다른 앱으로 들을 필요성을 못느끼겟고
+/// 그럴거면 압축해제시켜서 내보내기 기능 만들면 되는거아닌가?」 — so the
+/// listen-to-it property moved to an EXPORT rather than being dropped.
+///
+/// ⛔Do not "fix" the compression by reading this paragraph's first half
+/// alone. The standard layout still earns its keep: it is what the export
+/// hands over, and it is what makes [decodeConformWav] and
+/// `ConformWavStreamReader` able to read the same bytes whether they came
+/// from a file, a framed blob, or the `.anicel`.
+///
 /// The source fingerprint rides in a custom `qacf` RIFF chunk. RIFF readers
 /// skip chunks they do not know, so the file stays ordinary — and the
 /// conform carries its own provenance instead of needing a second file
@@ -72,7 +87,6 @@ class ConformSourceFingerprint {
       'crc32: $sourceCrc32)';
 }
 
-/// A decoded conform: interleaved samples plus what they mean.
 /// The CHEAP half of "has this source changed": what `stat` says.
 ///
 /// Not an identity — that is [ConformSourceFingerprint], which reads the
@@ -113,6 +127,11 @@ class ConformSourceStat {
       'modified: $sourceModifiedMicros)';
 }
 
+/// A decoded conform: interleaved samples plus what they mean.
+///
+/// 🪦This line used to sit above [ConformSourceStat], which was inserted
+/// underneath it — so the stat class wore two opening sentences and this
+/// class had none.
 class ConformAudio {
   const ConformAudio({
     required this.samples,
@@ -223,9 +242,7 @@ Uint8List encodeConformWav({
   final fingerprintPadded = fingerprintBytes == null
       ? 0
       : fingerprintBytes.length + (fingerprintBytes.length.isOdd ? 1 : 0);
-  final fingerprintChunk = fingerprintBytes == null
-      ? 0
-      : 8 + fingerprintPadded;
+  final fingerprintChunk = fingerprintBytes == null ? 0 : 8 + fingerprintPadded;
 
   final dataBytes = samples.length * 2;
   final dataPadded = dataBytes + (dataBytes.isOdd ? 1 : 0);
@@ -253,7 +270,11 @@ Uint8List encodeConformWav({
   if (fingerprintBytes != null) {
     view.setUint32(offset, _qacf, Endian.little);
     view.setUint32(offset + 4, fingerprintBytes.length, Endian.little);
-    out.setRange(offset + 8, offset + 8 + fingerprintBytes.length, fingerprintBytes);
+    out.setRange(
+      offset + 8,
+      offset + 8 + fingerprintBytes.length,
+      fingerprintBytes,
+    );
     offset += 8 + fingerprintPadded;
   }
 

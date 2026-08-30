@@ -128,6 +128,28 @@ const String mediaFramedEntrySuffix = '.z';
 bool mediaEntryIsFramed(String entryName) =>
     entryName.endsWith(mediaFramedEntrySuffix);
 
+/// The name [basePath] takes when it is [framed] and when it is not.
+String mediaPathFramed(String basePath, {required bool framed}) =>
+    framed ? '$basePath$mediaFramedEntrySuffix' : basePath;
+
+/// Both names [basePath] can be on disk under, **framed first**.
+///
+/// 🚨★★★**THE ORDER IS THE LAW, AND IT LIVES HERE ONCE.** Whether a file
+/// this app wrote got compressed is decided per FILE, by measurement
+/// ([mediaCompressionWorthIt]) — so every store that writes one has to be
+/// able to find it either way, and every one of them was spelling the same
+/// two-line loop. Framed comes first because that is what a build with an
+/// engine writes; a plain file under the same base name is either an older
+/// write or a file that would not shrink.
+///
+/// ⚠️Callers that WRITE must remove the other spelling. A rebuild that
+/// flips framedness would otherwise leave both, and the stale one is the
+/// one this order finds.
+List<String> mediaFramedOrPlainPaths(String basePath) => [
+  mediaPathFramed(basePath, framed: true),
+  basePath,
+];
+
 /// The smallest saving worth paying a decompression for, as a fraction of
 /// the original.
 ///

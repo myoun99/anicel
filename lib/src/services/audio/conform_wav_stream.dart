@@ -1,33 +1,62 @@
-import 'dart:io';
 import 'dart:typed_data';
 
-/// Windowed access to a conform WAV on disk (AUDIO-PRO R6).
+import '../media/media_byte_source.dart';
+
+/// Windowed access to a conform WAV (AUDIO-PRO R6).
 ///
 /// A resident conform costs 4 bytes per sample per channel — 23 MB per
 /// stereo minute, which on a tablet turns one long dialogue track into
 /// the app's whole memory budget. Past a length threshold the PCM stays
-/// on disk and playback reads a sliding WINDOW of it; this reader is the
-/// disk half of that.
+/// out of memory and playback reads a sliding WINDOW of it; this reader is
+/// the other half of that.
+///
+/// 🚨★★★**IT READS A [MediaByteSource], NOT A FILE, AND THAT IS THE WHOLE
+/// POINT.** A conform now lives in three places — plain in the app
+/// container, framed (compressed) in the app container, and inside the
+/// `.anicel` the project travels as — and all three are already a
+/// [MediaByteSource]. Handing this one the source instead of a path is
+/// what makes those three the SAME code rather than three readers that
+/// have to agree about int16 scaling forever.
+///
+/// ⛔It holds no OS handle. That is deliberate, not an oversight: the old
+/// reader kept a `RandomAccessFile` open for its whole life, and on
+/// Windows that made the cache collector's deletes fail — so the biggest
+/// entries survived the emptying that existed to reclaim them. Reads go
+/// through [MediaByteSource.readIntoSync], which opens and closes around
+/// each one. The cost is tens of microseconds against a read measured in
+/// megabytes, and there is nothing left to close.
 ///
 /// Reads are synchronous and run on the CONTROL side (the schedule
-/// refresh), never the audio callback — the realtime thread only ever
-/// touches memory the C side already owns. A window read is a seek plus
-/// one contiguous read (int16 → float32), a few milliseconds for tens of
-/// seconds of audio.
+/// refresh and the scrubber's re-centre), never the audio callback — the
+/// realtime thread only ever touches memory the C side already owns.
+///
+/// 🚨**WHICH IS WHAT MAKES COMPRESSION SAFE HERE** (유저 2026-08-30:
+/// 「재생시 압축해제때문에 오디오가 싱크 안맞으면 절대 안되니 그부분만
+/// 철저히」). A framed window costs a decompression of the blocks it lands
+/// in — a 30-second stereo window is ~5.8MB across twelve 512KB blocks,
+/// about 10ms at the measured 600 MB/s. That is spent on the control side
+/// building the NEXT window, half a window ahead of the playhead; the
+/// callback plays a `Float32List` that was already materialised. A late
+/// window would be silence, never a slip: the schedule's
+/// `source_start`/`length` describe what actually came back, so a short
+/// read shortens the source rather than shifting it.
+///
+/// ⛔The window size is the deadline. Halving [aheadSeconds] would halve
+/// the margin this stands on.
 ///
 /// The chunk walk mirrors [decodeConformWav]: order not assumed, unknown
 /// chunks skipped. Only the header is parsed at open; the data chunk is
-/// left on disk.
+/// left where it is.
 class ConformWavStreamReader {
   ConformWavStreamReader._(
-    this._file,
+    this._source,
     this.channels,
     this.sampleRate,
     this.length,
     this._dataStart,
   );
 
-  final RandomAccessFile _file;
+  final MediaByteSource _source;
 
   final int channels;
   final int sampleRate;
@@ -35,7 +64,7 @@ class ConformWavStreamReader {
   /// Samples per channel in the data chunk.
   final int length;
 
-  /// Byte offset of the first data sample.
+  /// Byte offset of the first data sample, in the WAV's own bytes.
   final int _dataStart;
 
   static const int _riff = 0x46464952; // 'RIFF'
@@ -43,28 +72,29 @@ class ConformWavStreamReader {
   static const int _fmt = 0x20746d66; // 'fmt '
   static const int _data = 0x61746164; // 'data'
 
-  /// Opens [path] and parses the header, or returns null when the file is
-  /// not a 16-bit PCM WAV this project writes — a caller falling back to
-  /// the resident path, never a crash.
-  static ConformWavStreamReader? open(String path) {
-    RandomAccessFile? file;
+  /// Opens the conform at [path] — framed or not, decided by its name.
+  ///
+  /// The convenience the callers that hold a path want; [over] is the one
+  /// that does the work.
+  static ConformWavStreamReader? open(String path) =>
+      over(mediaAppFileSource(path));
+
+  /// Parses [source]'s header, or returns null when it is not a 16-bit PCM
+  /// WAV this project writes — a caller falling back to the resident path,
+  /// never a crash.
+  static ConformWavStreamReader? over(MediaByteSource source) {
     try {
-      file = File(path).openSync();
-      final fileLength = file.lengthSync();
-      if (fileLength < 44) {
-        file.closeSync();
+      final sourceLength = source.lengthSync();
+      if (sourceLength < 44) {
         return null;
       }
-      final head = file.readSync(12);
-      final headView = ByteData.view(
-        head.buffer,
-        head.offsetInBytes,
-        head.length,
-      );
-      if (head.length < 12 ||
-          headView.getUint32(0, Endian.little) != _riff ||
+      final head = _read(source, 0, 12);
+      if (head == null) {
+        return null;
+      }
+      final headView = ByteData.sublistView(head);
+      if (headView.getUint32(0, Endian.little) != _riff ||
           headView.getUint32(8, Endian.little) != _wave) {
-        file.closeSync();
         return null;
       }
 
@@ -74,30 +104,24 @@ class ConformWavStreamReader {
       int? dataStart;
       int? dataBytes;
       var offset = 12;
-      while (offset + 8 <= fileLength) {
-        file.setPositionSync(offset);
-        final header = file.readSync(8);
-        if (header.length < 8) {
+      while (offset + 8 <= sourceLength) {
+        final header = _read(source, offset, 8);
+        if (header == null) {
           break;
         }
-        final view = ByteData.view(
-          header.buffer,
-          header.offsetInBytes,
-          header.length,
-        );
+        final view = ByteData.sublistView(header);
         final id = view.getUint32(0, Endian.little);
         final size = view.getUint32(4, Endian.little);
         final body = offset + 8;
-        if (body + size > fileLength) {
+        if (body + size > sourceLength) {
           break;
         }
         if (id == _fmt && size >= 16) {
-          final fmt = file.readSync(16);
-          final fmtView = ByteData.view(
-            fmt.buffer,
-            fmt.offsetInBytes,
-            fmt.length,
-          );
+          final fmt = _read(source, body, 16);
+          if (fmt == null) {
+            break;
+          }
+          final fmtView = ByteData.sublistView(fmt);
           channels = fmtView.getUint16(2, Endian.little);
           sampleRate = fmtView.getUint32(4, Endian.little);
           bitsPerSample = fmtView.getUint16(14, Endian.little);
@@ -115,24 +139,26 @@ class ConformWavStreamReader {
           bitsPerSample != 16 ||
           dataStart == null ||
           dataBytes == null) {
-        file.closeSync();
         return null;
       }
       return ConformWavStreamReader._(
-        file,
+        source,
         channels,
         sampleRate,
         dataBytes ~/ (2 * channels),
         dataStart,
       );
     } on Object {
-      try {
-        file?.closeSync();
-      } on Object {
-        // Already as closed as it gets.
-      }
+      // A source that will not read, or a framed entry no engine here can
+      // decompress: the caller falls back exactly as for a foreign file.
       return null;
     }
+  }
+
+  /// Exactly [size] bytes at [position], or null on a short read.
+  static Uint8List? _read(MediaByteSource source, int position, int size) {
+    final buffer = Uint8List(size);
+    return source.readIntoSync(buffer, position, size) < size ? null : buffer;
   }
 
   /// Reads [sampleCount] samples per channel starting at [startSample],
@@ -165,14 +191,15 @@ class ConformWavStreamReader {
       return (startSample: start, samples: Float32List(0));
     }
     try {
-      _file.setPositionSync(_dataStart + start * 2 * channels);
-      final bytes = _file.readSync(count * 2 * channels);
-      final got = bytes.length ~/ (2 * channels);
-      final view = ByteData.view(
-        bytes.buffer,
-        bytes.offsetInBytes,
-        got * 2 * channels,
+      final wanted = count * 2 * channels;
+      final bytes = Uint8List(wanted);
+      final read = _source.readIntoSync(
+        bytes,
+        _dataStart + start * 2 * channels,
+        wanted,
       );
+      final got = read ~/ (2 * channels);
+      final view = ByteData.sublistView(bytes, 0, got * 2 * channels);
       final samples = Float32List(got * channels);
       for (var index = 0; index < samples.length; index += 1) {
         samples[index] = view.getInt16(index * 2, Endian.little) / 32768.0;
@@ -182,14 +209,6 @@ class ConformWavStreamReader {
       // A failed read (file replaced mid-run, drive gone) degrades to
       // silence for this window; the next refresh tries again.
       return (startSample: start, samples: Float32List(0));
-    }
-  }
-
-  void close() {
-    try {
-      _file.closeSync();
-    } on Object {
-      // Double-close and platform quirks are not worth surfacing.
     }
   }
 }

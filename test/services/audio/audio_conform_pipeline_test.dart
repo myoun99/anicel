@@ -118,8 +118,10 @@ void main() {
         layout.conformPathFor('/work/p.assets/Media/대사.m4a'),
         startsWith('/cache/대사.m4a.'),
       );
-      expect(layout.conformPathFor('/work/p.assets/Media/대사.m4a'),
-          endsWith('.wav'));
+      expect(
+        layout.conformPathFor('/work/p.assets/Media/대사.m4a'),
+        endsWith('.wav'),
+      );
     });
 
     test('a windows path with backslashes resolves the same', () {
@@ -258,12 +260,13 @@ void main() {
       expect(AppSave.conformRootDirectory, contains('qa_test_conform_'));
     });
 
-
     test('the default root is redirected under test', () {
       // Without this a test run caches into the real user's app folder and
       // reads whatever a previous run left there.
-      expect(AppSave.conformRootDirectory, contains(Directory.systemTemp.path
-          .replaceAll('\\', '/')));
+      expect(
+        AppSave.conformRootDirectory,
+        contains(Directory.systemTemp.path.replaceAll('\\', '/')),
+      );
     });
 
     test('🚨 the cache a SESSION uses is assembled, not just available', () {
@@ -276,7 +279,9 @@ void main() {
       // again.
       //
       // A session with NO injected store is the only way to see it.
-      final session = EditorSessionManager(initialProject: createDefaultProject());
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
       addTearDown(session.dispose);
       final project = session.repository.requireProject();
 
@@ -292,7 +297,8 @@ void main() {
       expect(
         session.audioConformStore.resolveConformPath('/x/대사.m4a'),
         isNotNull,
-        reason: 'and an UNSAVED project caches like any other now — the '
+        reason:
+            'and an UNSAVED project caches like any other now — the '
             'old key was the project path, so a project with no name got '
             'no cache and re-decoded its audio every launch',
       );
@@ -355,10 +361,9 @@ void main() {
       final conformPath = '$blocker/nested/retry.wav.wav';
 
       expect(
-        pipelineFor().ensureConform(
-          sourcePath: source,
-          conformPath: conformPath,
-        ).isUsable,
+        pipelineFor()
+            .ensureConform(sourcePath: source, conformPath: conformPath)
+            .isUsable,
         isTrue,
       );
 
@@ -369,9 +374,12 @@ void main() {
         conformPath: conformPath,
       );
       expect(second.outcome, ConformOutcome.built);
-      expect(second.conformPath, conformPath);
+      // The name gains `.z` when the write compressed, so the assertion is
+      // that it landed AT this address — not that it wears the plain
+      // spelling of it.
+      expect(second.conformPath, startsWith(conformPath));
       expect(second.error, isNull);
-      expect(File(conformPath).existsSync(), isTrue);
+      expect(File(second.conformPath!).existsSync(), isTrue);
     });
 
     test('a 44.1k source is resampled to the project rate', () {
@@ -388,7 +396,7 @@ void main() {
 
       // And the file on disk really is at the project rate.
       final written = decodeConformWav(
-        File(result.conformPath!).readAsBytesSync(),
+        mediaAppFileSource(result.conformPath!).readSync(),
       );
       expect(written.sampleRate, 48000);
     });
@@ -400,7 +408,7 @@ void main() {
         conformPath: '${temp.path}/Conformed/fp.wav.wav',
       );
       final written = decodeConformWav(
-        File(result.conformPath!).readAsBytesSync(),
+        mediaAppFileSource(result.conformPath!).readSync(),
       );
       expect(written.fingerprint, isNotNull);
       expect(
@@ -419,26 +427,35 @@ void main() {
       // Untested, it is one line nobody would miss removing.
       final source = writeSource('warm.wav');
       final conformPath = '${temp.path}/Conformed/warm.wav.wav';
-      expect(
-        pipelineFor()
-            .ensureConform(sourcePath: source, conformPath: conformPath)
-            .outcome,
-        ConformOutcome.built,
+      final built = pipelineFor().ensureConform(
+        sourcePath: source,
+        conformPath: conformPath,
       );
+      expect(built.outcome, ConformOutcome.built);
+      // 🚨The file the write LANDED on, which gains `.z` when it
+      // compressed. Touching the base name instead would leave the real
+      // entry looking cold — and it would look like this test passed,
+      // because the base name would not exist to contradict it.
+      final onDisk = built.conformPath!;
       final cold = DateTime.now().subtract(const Duration(days: 30));
-      File(conformPath).setLastModifiedSync(cold);
+      File(onDisk).setLastModifiedSync(cold);
 
+      final reused = pipelineFor().ensureConform(
+        sourcePath: source,
+        conformPath: conformPath,
+      );
+      expect(reused.outcome, ConformOutcome.reused);
       expect(
-        pipelineFor()
-            .ensureConform(sourcePath: source, conformPath: conformPath)
-            .outcome,
-        ConformOutcome.reused,
+        reused.conformPath,
+        onDisk,
+        reason: 'a reuse reports the file it actually read',
       );
 
       expect(
-        File(conformPath).lastModifiedSync().isAfter(cold),
+        File(onDisk).lastModifiedSync().isAfter(cold),
         isTrue,
-        reason: 'wanted just now, so it must not look like the coldest '
+        reason:
+            'wanted just now, so it must not look like the coldest '
             'thing in the cache',
       );
     });
@@ -453,10 +470,9 @@ void main() {
       final source = writeSource('touched.wav');
       final conformPath = '${temp.path}/Conformed/touched.wav.wav';
       expect(
-        pipelineFor().ensureConform(
-          sourcePath: source,
-          conformPath: conformPath,
-        ).outcome,
+        pipelineFor()
+            .ensureConform(sourcePath: source, conformPath: conformPath)
+            .outcome,
         ConformOutcome.built,
       );
 
@@ -465,10 +481,9 @@ void main() {
       );
 
       expect(
-        pipelineFor().ensureConform(
-          sourcePath: source,
-          conformPath: conformPath,
-        ).outcome,
+        pipelineFor()
+            .ensureConform(sourcePath: source, conformPath: conformPath)
+            .outcome,
         ConformOutcome.reused,
         reason: 'the bytes never moved, so neither did the answer',
       );
@@ -481,10 +496,7 @@ void main() {
       // stale conform plays the old sound against the new drawing.
       final source = writeSource('swapped.wav');
       final conformPath = '${temp.path}/Conformed/swapped.wav.wav';
-      pipelineFor().ensureConform(
-        sourcePath: source,
-        conformPath: conformPath,
-      );
+      pipelineFor().ensureConform(sourcePath: source, conformPath: conformPath);
 
       final other = writeSource('other.wav', rate: 44100);
       final swapped = File(other).readAsBytesSync();
@@ -503,10 +515,9 @@ void main() {
       );
 
       expect(
-        pipelineFor().ensureConform(
-          sourcePath: source,
-          conformPath: conformPath,
-        ).outcome,
+        pipelineFor()
+            .ensureConform(sourcePath: source, conformPath: conformPath)
+            .outcome,
         ConformOutcome.built,
       );
     });
@@ -528,15 +539,9 @@ void main() {
       // the reuse decision. Writing the same literal twice truncates the
       // same way wherever it runs.
       const stamp = 1767225600000000; // 2026-01-01T00:00:00Z, whole seconds
-      final stampedAt = DateTime.fromMicrosecondsSinceEpoch(
-        stamp,
-        isUtc: true,
-      );
+      final stampedAt = DateTime.fromMicrosecondsSinceEpoch(stamp, isUtc: true);
       File(source).setLastModifiedSync(stampedAt);
-      pipelineFor().ensureConform(
-        sourcePath: source,
-        conformPath: conformPath,
-      );
+      pipelineFor().ensureConform(sourcePath: source, conformPath: conformPath);
 
       final statBefore = AudioConformPipeline.statOf(source);
 
@@ -555,10 +560,9 @@ void main() {
       );
 
       expect(
-        pipelineFor().ensureConform(
-          sourcePath: source,
-          conformPath: conformPath,
-        ).outcome,
+        pipelineFor()
+            .ensureConform(sourcePath: source, conformPath: conformPath)
+            .outcome,
         ConformOutcome.reused,
         reason: 'the hint matched, so the bytes were never looked at',
       );
@@ -635,9 +639,9 @@ void main() {
       final conform = '${temp.path}/Conformed/ratechange.wav.wav';
 
       expect(
-        pipelineFor(projectSampleRate: 44100)
-            .ensureConform(sourcePath: source, conformPath: conform)
-            .outcome,
+        pipelineFor(
+          projectSampleRate: 44100,
+        ).ensureConform(sourcePath: source, conformPath: conform).outcome,
         ConformOutcome.built,
       );
 
@@ -646,8 +650,11 @@ void main() {
         sourcePath: source,
         conformPath: conform,
       );
-      expect(rebuilt.outcome, ConformOutcome.built,
-          reason: '44.1k PCM on a 48k schedule would shift every clip');
+      expect(
+        rebuilt.outcome,
+        ConformOutcome.built,
+        reason: '44.1k PCM on a 48k schedule would shift every clip',
+      );
       expect(rebuilt.sampleRate, 48000);
       expect(
         decodeConformWav(File(conform).readAsBytesSync()).sampleRate,
@@ -661,8 +668,12 @@ void main() {
       final conform = '${temp.path}/Conformed/reuse.wav.wav';
       final pipeline = pipelineFor(resampleLog: log);
 
-      expect(pipeline.ensureConform(sourcePath: source, conformPath: conform)
-          .outcome, ConformOutcome.built);
+      expect(
+        pipeline
+            .ensureConform(sourcePath: source, conformPath: conform)
+            .outcome,
+        ConformOutcome.built,
+      );
       log.clear();
 
       final second = pipeline.ensureConform(
@@ -688,12 +699,13 @@ void main() {
           sampleRate: 48000,
         ),
       );
-      File(source).setLastModifiedSync(
-        DateTime.now().add(const Duration(seconds: 5)),
-      );
+      File(
+        source,
+      ).setLastModifiedSync(DateTime.now().add(const Duration(seconds: 5)));
 
       expect(
-        pipeline.ensureConform(sourcePath: source, conformPath: conform)
+        pipeline
+            .ensureConform(sourcePath: source, conformPath: conform)
             .outcome,
         ConformOutcome.built,
         reason: 'the source changed, so the old conform must not be trusted',
@@ -707,15 +719,12 @@ void main() {
       final conform = '${temp.path}/Conformed/foreign.wav.wav';
       Directory('${temp.path}/Conformed').createSync(recursive: true);
       File(conform).writeAsBytesSync(
-        encodeConformWav(
-          samples: ramp(100, 1),
-          channels: 1,
-          sampleRate: 48000,
-        ),
+        encodeConformWav(samples: ramp(100, 1), channels: 1, sampleRate: 48000),
       );
 
       expect(
-        pipelineFor().ensureConform(sourcePath: source, conformPath: conform)
+        pipelineFor()
+            .ensureConform(sourcePath: source, conformPath: conform)
             .outcome,
         ConformOutcome.built,
       );
@@ -728,7 +737,8 @@ void main() {
       File(conform).writeAsStringSync('this is not a wav');
 
       expect(
-        pipelineFor().ensureConform(sourcePath: source, conformPath: conform)
+        pipelineFor()
+            .ensureConform(sourcePath: source, conformPath: conform)
             .outcome,
         ConformOutcome.built,
       );

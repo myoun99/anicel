@@ -114,7 +114,7 @@ void main() {
     File(path).deleteSync();
 
     final staged = session.mediaStagingStore.find(path)!;
-    final source = MediaStagedBytes(path: staged.path, framed: staged.framed);
+    final source = MediaAppFileBytes(path: staged.path, framed: staged.framed);
     final bytes = staged.framed
         ? MediaFramedBytes(source).readSync()
         : source.readSync();
@@ -130,7 +130,7 @@ void main() {
     File(path).writeAsBytesSync(Uint8List(64));
 
     final staged = session.mediaStagingStore.find(path)!;
-    final source = MediaStagedBytes(path: staged.path, framed: staged.framed);
+    final source = MediaAppFileBytes(path: staged.path, framed: staged.framed);
     expect(
       staged.framed ? MediaFramedBytes(source).readSync() : source.readSync(),
       original,
@@ -151,7 +151,7 @@ void main() {
     final staged = session.mediaStagingStore.find(path)!;
 
     final framed = MediaFramedBytes(
-      MediaStagedBytes(path: staged.path, framed: true),
+      MediaAppFileBytes(path: staged.path, framed: true),
     );
     final window = Uint8List(200);
     expect(framed.readIntoSync(window, 1000, 200), 200);

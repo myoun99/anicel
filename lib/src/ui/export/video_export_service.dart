@@ -56,8 +56,8 @@ typedef VideoEncoderResolver = QaVideoEncoder? Function();
 
 QaVideoEncoder? _defaultEncoderResolver() =>
     Platform.environment['FLUTTER_TEST'] == 'true'
-        ? null
-        : QaVideoEncoder.instance;
+    ? null
+    : QaVideoEncoder.instance;
 
 /// Internal: the OS encoder refused the JOB (no encoder MFT, bad open) —
 /// distinct from failing midway, because refusing up front means the
@@ -292,7 +292,7 @@ class VideoExportService {
       bitrateBps: bitrateBps,
     )) {
       first.dispose();
-      audio?.close();
+
       throw const _OsEncoderRefused();
     }
 
@@ -377,7 +377,6 @@ class VideoExportService {
       processed += 1;
       onProgress?.call(processed, count);
     }
-    audio?.close();
 
     if (failed) {
       final detail = encoder.lastError;

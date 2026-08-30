@@ -40,6 +40,7 @@ import 'dart:typed_data';
 import '../media/media_byte_source.dart';
 import '../persistence/anicel_incremental_writer.dart' show anicelCrc32;
 import '../persistence/app_save_settings.dart' show AppSave;
+import '../persistence/media_blob_codec.dart';
 import 'audio_peaks_extractor.dart';
 import 'conform_wav_codec.dart';
 
@@ -177,8 +178,7 @@ class ProjectAssetLayout {
   /// longer used and leaves the decision where it belongs. Which also
   /// means this keeps answering yes until they act, and that is honest:
   /// the folder really is still there.
-  bool get hasLegacyAssetsDirectory =>
-      Directory(assetsDirectory).existsSync();
+  bool get hasLegacyAssetsDirectory => Directory(assetsDirectory).existsSync();
 }
 
 /// Where conforms are cached, and what they are called.
@@ -364,10 +364,14 @@ class AudioConformPipeline {
   /// last wanted, and without it the eviction order would be "oldest
   /// built" — which throws out the sound someone uses in every cut and
   /// keeps the one they imported once by mistake.
-  ConformResult _reuse(ConformAudio existing, String? conformPath) {
-    if (conformPath != null) {
+  /// [cachedAt] is the file the conform was actually READ from — the `.z`
+  /// spelling or the plain one — never the base name the request carried.
+  /// Touching the wrong one would leave the real entry looking cold and
+  /// evict the sound someone uses in every cut.
+  ConformResult _reuse(ConformAudio existing, String? cachedAt) {
+    if (cachedAt != null) {
       try {
-        File(conformPath).setLastModifiedSync(DateTime.now());
+        File(cachedAt).setLastModifiedSync(DateTime.now());
       } on Object {
         // A read-only cache still reuses; it just evicts in a worse
         // order. Never worth failing a conform over.
@@ -375,7 +379,7 @@ class AudioConformPipeline {
     }
     return ConformResult(
       outcome: ConformOutcome.reused,
-      conformPath: conformPath,
+      conformPath: cachedAt,
       peaks: peaksFromSamples(
         samples: existing.samples,
         channels: existing.channels,
@@ -415,7 +419,11 @@ class AudioConformPipeline {
     // happens to hold for free: ZIP wrote the CRC in the entry header).
     final stat = src.statSync();
 
-    final existing = conformPath == null ? null : _readConform(conformPath);
+    final cached = conformPath == null ? null : _readConform(conformPath);
+    final existing = cached?.audio;
+    // The file the conform was READ from — `.z` or plain. Every reuse
+    // below touches THIS, never the base name it was looked up under.
+    final reusableAt = cached?.path;
     // A conform at another rate is stale even with a matching source: the
     // project's audio rate is a setting now (EXPORT-AUDIO ③), and playing
     // 44.1k PCM on a 48k schedule would shift every clip. The same goes for
@@ -442,7 +450,7 @@ class AudioConformPipeline {
               ),
             ) ==
             true) {
-      return _reuse(existing, conformPath);
+      return _reuse(existing, reusableAt);
     }
 
     // The archive's fast path: the entry header already knows the CRC, so
@@ -457,7 +465,7 @@ class AudioConformPipeline {
             sourceCrc32: knownCrc,
           ),
         )) {
-      return _reuse(existing, conformPath);
+      return _reuse(existing, reusableAt);
     }
 
     // SLOW PATH: the hint missed, which says nothing by itself — a copied,
@@ -490,7 +498,7 @@ class AudioConformPipeline {
     final fingerprint = fingerprintOf(sourceBytes);
 
     if (settingsMatch && conformMatchesSource(existing, fingerprint)) {
-      return _reuse(existing, conformPath);
+      return _reuse(existing, reusableAt);
     }
 
     final decoded = decode(sourceBytes);
@@ -509,8 +517,7 @@ class AudioConformPipeline {
     // 48048000→48000000 conversion — integer ratios end to end, and the
     // output lands at the project rate holding 0.1% less time.
     final unitySpeed = speedNumerator == speedDenominator;
-    final converted =
-        decoded.sampleRate == projectSampleRate && unitySpeed
+    final converted = decoded.sampleRate == projectSampleRate && unitySpeed
         ? decoded.samples
         : resample(
             samples: decoded.samples,
@@ -537,6 +544,19 @@ class AudioConformPipeline {
     // purpose. So report exactly that: built, cached nowhere, with the
     // reason. The next ensure tries the write again, which is what lets a
     // volume coming back fix itself.
+    //
+    // 🚨★★★**AND IT IS WRITTEN COMPRESSED.** A conform is ~12× its source
+    // and zstd takes 38–51% of it back, measured on the user's own audio
+    // (see [compressMediaBlob]). 유저 2026-08-30 chose this against the
+    // alternative — 「다른 앱으로 들을 필요성을 못느끼겟고 그럴거면
+    // 압축해제시켜서 내보내기 기능 만들면 되는거아닌가?」 — which is why
+    // `conform_wav_codec.dart`'s「any audio tool can open it」is now a
+    // property of the EXPORT, not of the cache file.
+    //
+    // ⛔Block-framed, never one frame: a long conform is read as a sliding
+    // WINDOW by [ConformWavStreamReader], and a whole frame has no random
+    // access. This is the same codec media uses, so「how do I read this」
+    // has one answer for both.
     var cachedAt = conformPath;
     String? cacheError;
     if (conformPath != null) {
@@ -546,28 +566,38 @@ class AudioConformPipeline {
           conformPath.replaceAll('\\', '/').lastIndexOf('/'),
         );
         Directory(directory).createSync(recursive: true);
-        File(conformPath).writeAsBytesSync(
-          encodeConformWav(
-            samples: converted,
-            channels: decoded.channels,
-            sampleRate: projectSampleRate,
-            fingerprint: fingerprint,
-            // Recorded from the stat taken BEFORE the read, so the hint
-            // describes the file this conform actually came from. Re-statting
-            // now could catch a write that landed mid-build and bless a
-            // conform of the previous contents. Null for an archive range —
-            // no stat exists, and the content fingerprint above is the
-            // whole identity there anyway.
-            sourceStat: stat == null
-                ? null
-                : ConformSourceStat(
-                    sourceLength: stat.lengthBytes,
-                    sourceModifiedMicros: stat.modifiedMicros,
-                  ),
-            speedNumerator: speedNumerator,
-            speedDenominator: speedDenominator,
-          ),
+        final wav = encodeConformWav(
+          samples: converted,
+          channels: decoded.channels,
+          sampleRate: projectSampleRate,
+          fingerprint: fingerprint,
+          // Recorded from the stat taken BEFORE the read, so the hint
+          // describes the file this conform actually came from. Re-statting
+          // now could catch a write that landed mid-build and bless a
+          // conform of the previous contents. Null for an archive range —
+          // no stat exists, and the content fingerprint above is the
+          // whole identity there anyway.
+          sourceStat: stat == null
+              ? null
+              : ConformSourceStat(
+                  sourceLength: stat.lengthBytes,
+                  sourceModifiedMicros: stat.modifiedMicros,
+                ),
+          speedNumerator: speedNumerator,
+          speedDenominator: speedDenominator,
         );
+        final framed = compressMediaBlob(wav);
+        cachedAt = mediaPathFramed(conformPath, framed: framed != null);
+        File(cachedAt).writeAsBytesSync(framed ?? wav, flush: true);
+        // ⛔The OTHER spelling goes. A rebuild that flips framedness — a
+        // build without an engine, or audio that stopped shrinking — would
+        // otherwise leave both, and [mediaFramedOrPlainPaths] asks framed
+        // first, so the stale one is the one the next open would find.
+        for (final other in mediaFramedOrPlainPaths(conformPath)) {
+          if (other != cachedAt && File(other).existsSync()) {
+            File(other).deleteSync();
+          }
+        }
       } on Object catch (error) {
         cachedAt = null;
         cacheError = 'could not cache the conform: $error';
@@ -587,24 +617,35 @@ class AudioConformPipeline {
       samples: converted,
       channels: decoded.channels,
       sampleRate: projectSampleRate,
-      frames: decoded.channels <= 0
-          ? 0
-          : converted.length ~/ decoded.channels,
+      frames: decoded.channels <= 0 ? 0 : converted.length ~/ decoded.channels,
       speedNumerator: speedNumerator,
       speedDenominator: speedDenominator,
     );
   }
 
-  ConformAudio? _readConform(String path) {
-    try {
-      final file = File(path);
-      if (!file.existsSync()) {
+  /// The conform cached under [basePath], and WHICH of its two names it is
+  /// actually under.
+  ///
+  /// A cached conform is compressed when that was worth it, so it wears
+  /// `.z` or it does not — [mediaFramedOrPlainPaths] is the one place that
+  /// knows the order to ask in, and [mediaAppFileSource] the one place that
+  /// knows the name decides how to read it.
+  ({ConformAudio audio, String path})? _readConform(String basePath) {
+    for (final candidate in mediaFramedOrPlainPaths(basePath)) {
+      if (!File(candidate).existsSync()) {
+        continue;
+      }
+      try {
+        final audio = decodeConformWav(
+          mediaAppFileSource(candidate).readSync(),
+        );
+        return (audio: audio, path: candidate);
+      } on Object {
+        // Unreadable, foreign, or framed with no engine on this build:
+        // rebuilt, exactly as a missing one would be.
         return null;
       }
-      return decodeConformWav(file.readAsBytesSync());
-    } on Object {
-      // An unreadable or foreign conform is simply rebuilt.
-      return null;
     }
+    return null;
   }
 }

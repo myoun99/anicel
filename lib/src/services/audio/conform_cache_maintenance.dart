@@ -1,6 +1,9 @@
 import 'dart:io';
+import 'dart:typed_data';
 
+import '../media/media_byte_source.dart';
 import '../persistence/app_save_settings.dart';
+import '../persistence/media_blob_codec.dart';
 
 /// How much conform cache is allowed to accumulate before the least
 /// recently used entries are dropped.
@@ -48,7 +51,16 @@ typedef ConformCacheEntry = ({String path, int bytes, DateTime lastUsed});
 /// The same rule governs the SIZE, not only the deleting: a number that
 /// counted the user's own files would promise to reclaim what it must
 /// never touch, under a button that looks like it worked.
-final RegExp _ourEntryName = RegExp(r'\.[0-9a-f]{8}\.wav$');
+///
+/// 🚨The `.z` is not optional decoration — a conform is written compressed
+/// when that is worth it ([compressMediaBlob]), and a pattern that only
+/// matched the plain spelling would have made every compressed conform
+/// INVISIBLE to this file: uncounted in the size the settings panel shows,
+/// and unreachable by the collector, so the pile this exists to bound
+/// would have grown without a bound and without a trace.
+final RegExp _ourEntryName = RegExp(
+  r'\.[0-9a-f]{8}\.wav(\' + mediaFramedEntrySuffix + r')?$',
+);
 final RegExp _ourLegacyFolder = RegExp(r'\.anicel\.[0-9a-f]{8}$');
 
 /// `RIFF....WAVE` then `fmt ` (24 bytes) then our `qacf` at offset 36.
@@ -65,17 +77,23 @@ bool _tagAt(List<int> bytes, int offset, List<int> tag) {
   return true;
 }
 
-/// Whether [path] is a conform THIS app wrote, decided by reading forty
-/// bytes of it rather than by looking at its name.
+/// Whether [path] is a conform THIS app wrote, decided by reading the
+/// first forty bytes of the WAV it holds rather than by looking at its
+/// name.
 bool _isOurConform(String path) {
   if (!_ourEntryName.hasMatch(path)) {
     return false; // Cheap reject; the read below is the actual answer.
   }
-  RandomAccessFile? handle;
   try {
-    handle = File(path).openSync();
-    final head = handle.readSync(40);
-    if (head.length < 40) {
+    // 🚨Through [mediaAppFileSource], which is where「the name says whether
+    // it is framed」lives. For a compressed conform that decompresses the
+    // FIRST BLOCK and nothing else — 512KB, under a millisecond — so the
+    // proof stays exactly as strong as it was when the bytes were plain.
+    // Reading the file raw instead would see a block index where it wanted
+    // `RIFF` and quietly answer「not ours」to every file this app now
+    // writes.
+    final head = Uint8List(40);
+    if (mediaAppFileSource(path).readIntoSync(head, 0, head.length) < 40) {
       return false;
     }
     return _tagAt(head, 0, _riffTag) &&
@@ -83,12 +101,6 @@ bool _isOurConform(String path) {
         _tagAt(head, 36, _qacfTag);
   } on Object {
     return false; // Unreadable is not ours as far as deleting goes.
-  } finally {
-    try {
-      handle?.closeSync();
-    } on Object {
-      // Nothing to do about a handle that will not close.
-    }
   }
 }
 
@@ -163,8 +175,11 @@ int pruneConformCache({int budgetBytes = conformCacheBudgetBytes}) {
   final entries = conformCacheEntries();
   var total = entries.fold<int>(0, (sum, entry) => sum + entry.bytes);
   // Newest first, so walking backwards drops the coldest first.
-  for (var index = entries.length - 1; index >= 0 && total > budgetBytes;
-      index -= 1) {
+  for (
+    var index = entries.length - 1;
+    index >= 0 && total > budgetBytes;
+    index -= 1
+  ) {
     final entry = entries[index];
     try {
       File(entry.path).deleteSync();
@@ -184,9 +199,12 @@ int pruneConformCache({int budgetBytes = conformCacheBudgetBytes}) {
 /// and the file as the copy of record, so deleting that file behind a live
 /// entry does not cost a re-decode — the store goes on believing it has a
 /// usable conform, the reader opens nothing, and the clip is silent for
-/// the rest of the session and silent in the export. On Windows the
-/// mirror applies: an open reader blocks the delete, so the biggest
-/// entries survive the emptying that was meant to reclaim them.
+/// the rest of the session and silent in the export.
+///
+/// 🪦Windows used to have a mirror of this — an open reader blocked the
+/// delete, so the biggest entries survived the emptying meant to reclaim
+/// them. `ConformWavStreamReader` holds no handle now, so that half is
+/// gone. The silence half is not, which is why this stays mandatory.
 ///
 /// ⛔ So never call this without `AudioConformStore.releaseDiskBacked()`
 /// first. "Derived data, worst case a re-decode" is only true once the
@@ -226,4 +244,3 @@ int _collectLegacyFolder(Directory directory) {
   }
   return bytes;
 }
-

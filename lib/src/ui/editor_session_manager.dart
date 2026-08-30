@@ -17727,8 +17727,9 @@ class EditorSessionManager extends ChangeNotifier {
     // import that is the only place its bytes are.
     final staged = mediaStagingStore.find(poolPath);
     if (staged != null) {
-      final stored = MediaStagedBytes(path: staged.path, framed: staged.framed);
-      return mediaSourceDecodingFrames(stored);
+      // Through [mediaAppFileSource] rather than assembling the pair here:
+      // framed-or-not is written into the name, and one place reads it.
+      return mediaAppFileSource(staged.path);
     }
     return MediaFileBytes(poolPath);
   }
