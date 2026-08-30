@@ -1088,9 +1088,19 @@ class AnicelFileService {
       (port) => Isolate.run(() {
         // One pass here, unlike the append path above — this writer patches
         // the CRC by seeking back rather than pre-reading.
+        //
+        // 🚨Conforms count. They are streamed entries like the media, they
+        // are written LAST, and they are the biggest things in the file —
+        // so leaving them out of the denominator does not shave the bar, it
+        // parks it at 100% for the whole of the largest write. The append
+        // path above has always counted them; this one was missed when
+        // conforms started riding in the archive, and nothing failed.
         final progress = _SaveProgress(
           port,
-          1 + works.length + mediaToStore.length * anicelArchiveStreamPasses,
+          1 +
+              works.length +
+              (mediaToStore.length + conforms.entries.length) *
+                  anicelArchiveStreamPasses,
         );
         // Scalars only. Holding the BLOB here to read its geometry later
         // would keep every cel resident and give back exactly the memory
