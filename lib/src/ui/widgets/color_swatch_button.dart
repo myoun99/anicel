@@ -163,7 +163,7 @@ Future<void> showColorPickerPopup(
     // The wheel, the action row above it and the readout below it. Grown
     // by the readout's own height when it arrived, so the wheel keeps the
     // 180 it was drawn at.
-    height: 252 + ColorStatusBar.height,
+    height: 252 + _noneRowHeight + ColorStatusBar.height,
     builder: (context, _) => _ColorPickerBody(
       initialColor: color,
       onChanged: onChanged,
@@ -172,6 +172,10 @@ Future<void> showColorPickerPopup(
     ),
   );
 }
+
+/// The 「없음」 row's own height, counted into the window so the wheel keeps
+/// the 180 it was drawn at rather than being squeezed by a row below it.
+const double _noneRowHeight = 28;
 
 class _ColorPickerBody extends StatefulWidget {
   const _ColorPickerBody({
@@ -206,6 +210,7 @@ class _ColorPickerBodyState extends State<_ColorPickerBody> {
 
   @override
   Widget build(BuildContext context) {
+    final currentColorOf = widget.currentColorOf;
     // ⛔No `Material` of its own (R4 #8). It drew elevation 8 where the two
     // other anchored windows drew 6 — one window in three costumes, until a
     // fourth arrived with none.
@@ -242,7 +247,17 @@ class _ColorPickerBodyState extends State<_ColorPickerBody> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _actions(),
+              Align(
+                alignment: Alignment.centerRight,
+                child: _action(
+                  keyValue: 'color-picker-use-current',
+                  label: AppText.strings.colorUseCurrent,
+                  onPressed: currentColorOf == null
+                      ? null
+                      : () =>
+                            _apply(HSVColor.fromColor(Color(currentColorOf()))),
+                ),
+              ),
               const SizedBox(height: AnchoredPopupText.titleGap),
               SizedBox(
                 height: 180,
@@ -252,7 +267,7 @@ class _ColorPickerBodyState extends State<_ColorPickerBody> {
                   onChanged: _apply,
                 ),
               ),
-              const SizedBox(height: AnchoredPopupText.bodyPaddingValue),
+              SizedBox(height: _noneRowHeight, child: _noneRow()),
             ],
           ),
         ),
@@ -268,37 +283,34 @@ class _ColorPickerBodyState extends State<_ColorPickerBody> {
     );
   }
 
-  /// The header row: 「없음」 on the left, 「현재 색 반영」 on the right.
+  /// 🚨A ROW OF ITS OWN, UNDER THE WHEEL — which is what `Q-f22-none` 답 1번
+  /// actually says: 「색상환과 「현재 색 반영」이 있는 그 창 **아래**에
+  /// 「없음」 버튼이 **한 줄 더** 생깁니다」.
   ///
-  /// ⛔BOTH SEATS ARE ALWAYS THERE, live or dead (유저 2026-08-26: 「none버튼
+  /// ⛔It spent one CI run beside 「현재 색 반영」 instead, because that read
+  /// as the tidier layout. The window overflowed by 100px and the striped
+  /// overflow bar went up in twelve tests — 「Use current color」 alone very
+  /// nearly fills 248. **The drawn design was right and the tidier one was
+  /// not mine to substitute** ([[build-what-was-drawn]]).
+  ///
+  /// ⛔THE SEAT IS ALWAYS THERE, live or dead (유저 2026-08-26: 「none버튼
   /// 신설해서 **캔버스알약쪽이랑 멤버쪽에 존재하도록**」, and 없다가 생기는
-  /// UI 금지). A row that grew a button only where absence is meaningful
-  /// would move 「현재 색 반영」 sideways between two windows that are
-  /// supposed to be the same window.
-  Widget _actions() {
-    final currentColorOf = widget.currentColorOf;
+  /// UI 금지). The window is one window; a row that appears only on member
+  /// lanes would make it two.
+  Widget _noneRow() {
     final onNone = widget.onNone;
-    return Row(
-      children: [
-        _action(
-          keyValue: 'color-picker-none',
-          label: AppText.strings.colorNone,
-          onPressed: onNone == null
-              ? null
-              : () {
-                  onNone();
-                  Navigator.of(context).maybePop();
-                },
-        ),
-        const Spacer(),
-        _action(
-          keyValue: 'color-picker-use-current',
-          label: AppText.strings.colorUseCurrent,
-          onPressed: currentColorOf == null
-              ? null
-              : () => _apply(HSVColor.fromColor(Color(currentColorOf()))),
-        ),
-      ],
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: _action(
+        keyValue: 'color-picker-none',
+        label: AppText.strings.colorNone,
+        onPressed: onNone == null
+            ? null
+            : () {
+                onNone();
+                Navigator.of(context).maybePop();
+              },
+      ),
     );
   }
 
