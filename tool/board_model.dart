@@ -549,6 +549,11 @@ const kSection = <String, String>{
   '나중에': 'queue',
   // 🚨실기 확인 is a SECTION now, not a kind of card — see [foldChecksIntoCards].
   '실기 확인': 'hands',
+  // 🚨A TICK ON ONE CHECK. It keeps the card exactly where it is — 실기 확인 —
+  // because the OTHER checks are still waiting. ⚠️No column of its own: 유저
+  // 2026-08-31, 「규칙 하나도 안 늘어나고 **보드에서 확인 항목만 안 보일**
+  // 뿐인 거지」. It is an entry in the story, not a place to sit.
+  '확인': 'hands',
   '완료': 'archived',
 };
 
@@ -622,39 +627,34 @@ void placeByStory(BoardCard e) {
   }
   final section = kSection[lastSection(e)];
   if (section == null) return;
-  // 🚨★★★A CARD WITH SEVERAL HANDS-ON CHECKS LEAVES ONLY WHEN THEY ALL PASS
-  // (유저 2026-08-31: 「물론 실기 확인은 카드 안에 여러 개 존재하니까 **모든
-  // 게 ok일 때만 사라져야 하겠지만**」).
-  //
-  // ⛔One 완료 used to end the card whatever else it was still holding, so
-  // ticking the first of three checks took the other two off the board with
-  // it — and nothing would ever bring them back, because nothing shows them.
-  //
-  // ⚠️A 완료 answers ONE check, named by `ref` — the ts of the entry it
-  // clears. A 완료 with no `ref` is the old shape and still ends the whole
-  // card; that is what every 완료 written before this meant.
-  if (section == 'archived' && _checksLeft(e)) {
-    e.state = 'hands';
-    return;
-  }
   e.state = section;
 }
 
-/// Whether any 실기 확인 entry on this card is still waiting for its own 완료.
-bool _checksLeft(BoardCard e) {
-  final checks = <String>{};
+/// 🚨★★★HOW MANY HANDS-ON CHECKS ON THIS CARD ARE STILL WAITING.
+///
+/// ⚠️Read by the TICK HANDLER, not by [placeByStory]. 유저 2026-08-31:
+/// 「그냥 내가 실기 확인 제출해서 0개 되면 사라지는데, 그걸 그냥 **대분류
+/// 확인이라는 항목을 만드는 작업으로 하면** 자연스럽게 되는 거 아니야?」 —
+/// yes, and it deletes a special case: placement used to carry 「완료인데
+/// 체크가 남았으면 실기로 되돌린다」, a rule about ONE 대분류 living inside
+/// the reader. Now the writer counts and says which word it is — `확인` while
+/// any remain, `완료` for the last — and the reader keeps its one rule.
+List<String> checksWaiting(BoardCard e) {
+  final open = <String>[];
   final cleared = <String>{};
+  var endsTheCard = false;
   for (var i = 0; i < e.log.length; i++) {
     final name = stageName(e, i);
-    if (name == '실기 확인') checks.add(e.log[i].ts);
-    if (name != '완료') continue;
+    if (name == '실기 확인') open.add(e.log[i].ts);
+    if (name != '확인' && name != '완료') continue;
     final ref = e.log[i].ref;
-    // ⚠️No `ref` means 「this card is done」, full stop. Every 완료 written
-    // before per-check ticks existed means exactly that.
-    if (ref.isEmpty) return false;
+    // ⚠️No `ref` on a 완료 means 「this card is done」, full stop — what every
+    // 완료 written before per-check ticks existed meant.
+    if (ref.isEmpty && name == '완료') endsTheCard = true;
     cleared.add(ref);
   }
-  return !checks.every(cleared.contains);
+  if (endsTheCard) return const [];
+  return [for (final ts in open) if (!cleared.contains(ts)) ts];
 }
 
 /// 🚨★★★A QUESTION IS AN ENTRY ON THE CARD THAT RAISED IT — not a card of its

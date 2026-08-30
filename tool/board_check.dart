@@ -506,26 +506,30 @@ Iterable<String> _answersNobodyRead(
 /// — and 「사라졌다」 stops being ambiguous, because a finish is now the only
 /// silent way to leave.
 Iterable<String> _drawnNowhere(List<BoardCard> cards, Set<String> acks) sync* {
-  const drawn = <String>{
-    'inbox', 'ask', 'wip', 'open', 'gate', 'queue', 'hands', 'mine',
-  };
+  final byId = {for (final c in cards) c.id: c};
   final lost = <String>[];
   for (final c in cards) {
     if (c.kind == 'law' || c.kind == 'meta') continue;
     if (acks.contains(c.id)) continue;
-    // The three legitimate ways to be off the board.
+    // Two of the three legitimate ways to be off the board.
     if (c.state == 'archived' || c.state == 'deleted') continue;
-    if (c.foldedInto != null) continue;
-    if (drawn.contains(c.state)) continue;
-    lost.add('${c.id}(${c.state})');
+    final host = c.foldedInto;
+    if (host == null) continue;
+    // The third: 「접힘」 means 「drawn INSIDE that card」. If that card is not
+    // drawn, the sentence is false and this one is nowhere at all.
+    final into = byId[host];
+    final shown = into != null &&
+        into.state != 'archived' &&
+        into.state != 'deleted' &&
+        into.foldedInto == null;
+    if (!shown) lost.add('${c.id}→$host');
   }
   if (lost.isEmpty) return;
   yield '끝나지도 않았는데 어느 칸에도 안 그려지는 카드: ${lost.join(', ')}\n'
       '카드가 있을 수 있는 자리는 셋뿐입니다 — **칸 하나 · 끝(완료·삭제) · '
-      '다른 카드 안(접힘)**. 그 밖은 구멍이고, 화면에서는 끝난 것과 똑같이 '
-      '보입니다.\n'
-      '⇒ 그 카드의 마지막 대분류를 보세요. 보드가 아는 칸이 아니면 아무 데도 '
-      '안 그려집니다.';
+      '다른 카드 안(접힘)**. 접혔는데 그 카드가 안 그려지면 셋 중 어디에도 '
+      '없는 것이고, 화면에서는 **끝난 것과 똑같이 보입니다.**\n'
+      '⇒ 호스트가 끝났으면 접지 말고 자기 카드로 세우세요.';
 }
 
 // ────────────────────────────────────────────────────── 7. 죽은 ack

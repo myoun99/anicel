@@ -355,21 +355,33 @@ Future<void> _handle(HttpRequest req) async {
       // for. Everything the user writes comes back to me to act on, which has
       // been the law since 2026-08-26 and is the reason **유저는 분류 체계를
       // 몰라도 된다**: the request is the entry's text, and moving the card is
-      // my job. ⛔Writing 「나중에」 straight from the button would make the
-      // board move a card nobody had read.
-      // 🚨★★★ONE HANDS-ON CHECK, TICKED ON ITS OWN (유저 2026-08-31: 「실기
-      // 확인은 카드 안에 여러 개 존재하니까 모든 게 ok일 때만 사라져야」).
+      // 🚨★★★THE WRITER COUNTS, SO THE READER KEEPS ONE RULE (유저
+      // 2026-08-31: 「그냥 내가 실기 확인 제출해서 0개 되면 사라지는데, 그걸
+      // 그냥 **대분류 확인이라는 항목을 만드는 작업으로 하면** 자연스럽게
+      // 되는 거 아니야?」).
       //
-      // ⚠️`ref` is the ts of the 실기 확인 entry this clears — the entry has
-      // no id of its own, and within one card a ts IS its identity. A 완료
-      // with no `ref` still means 「이 카드 전부」, which is what the card's
-      // own 확인 button has always meant.
+      // ⛔Placement used to carry 「완료인데 체크가 남았으면 실기로
+      // 되돌린다」 — a rule about ONE 대분류 living inside the reader, which
+      // is the shape this whole redesign removes. Here the tick asks how many
+      // checks are still waiting and writes the word that is true: `확인`
+      // while any remain, `완료` for the last one. 칸 = 마지막 대분류, still.
+      //
+      // ⚠️`ref` is the ts of the check being cleared — an entry has no id of
+      // its own, and within one card a ts IS its identity.
       case '/tick':
+        final id = '${body['id']}';
+        final ref = '${body['ref'] ?? ''}';
+        final card = readBoard(File(_recordsPath))
+            .where((c) => c.id == id)
+            .firstOrNull;
+        final left = card == null
+            ? const <String>[]
+            : checksWaiting(card).where((ts) => ts != ref).toList();
         _append({
           'kind': 'item',
-          'id': body['id'],
-          'at': '완료',
-          'ref': body['ref'],
+          'id': id,
+          'at': left.isEmpty ? '완료' : '확인',
+          'ref': ref,
           'said': '확인 — 문제 없음',
           'ts': _now(),
         });
@@ -1074,7 +1086,8 @@ String _render(List<BoardCard> entries, _Gh gh, List<_Checkout> gits,
   b.write('<p class="stamp">분류 전 <b>${inbox.length}</b> · 답할 것 <b>${asks.length}</b>'
       ' · 하는 중 <b>${now.length}</b> · 바로 가능 <b>${ready.length}</b>'
       ' · 대화 중 <b>${talking.length}</b> · 나중에 <b>${later.length}</b>'
-      ' · 실기 확인 <b>${checks.length}</b>');
+      ' · 실기 확인 <b>${checks.length}</b>'
+      );
   if (!gh.ok) {
     b.write(' · <span class="warn">gh 를 못 불렀습니다 — PR 칸은 비어 있습니다</span>');
   }
