@@ -224,7 +224,7 @@ class _ShapeFillSettings extends StatelessWidget {
       key: const ValueKey<String>('tool-settings-fill-shape'),
       padding: const EdgeInsets.all(12),
       children: [
-        Text('Shape Fill', style: theme.textTheme.titleSmall),
+        Text(AppText.strings.toolShapeFill, style: theme.textTheme.titleSmall),
         _ClosePolygonButton(
           shapeKind: shapeKind,
           selectionCommands: selectionCommands,
@@ -265,8 +265,7 @@ class _CutGrabSettings extends StatelessWidget {
           Align(
             alignment: Alignment.topLeft,
             child: Text(
-              'Cut copies the pixels under the drag — the original stays.\n'
-              'Pick Stamp to place the piece you are holding.',
+              AppText.strings.toolCutHint,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -361,8 +360,7 @@ class _CutStampSettings extends StatelessWidget {
             child: Align(
               alignment: Alignment.topLeft,
               child: Text(
-                'Nothing held yet.\n'
-                'Cut a piece with the rectangle or lasso tile first.',
+                AppText.strings.toolCutNothingHeld,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -398,7 +396,7 @@ class _CutStampSettings extends StatelessWidget {
             OutlinedButton(
               key: const ValueKey<String>('cut-paste-at-origin-button'),
               onPressed: onPasteAtOrigin,
-              child: const Text('Paste at original position'),
+              child: Text(AppText.strings.toolCutPasteAtOrigin),
             ),
             const SizedBox(height: 16),
             // Flip is a flag applied at stamp time, never baked into the
@@ -408,16 +406,15 @@ class _CutStampSettings extends StatelessWidget {
               key: const ValueKey<String>('cut-flip-horizontal-switch'),
               dense: true,
               contentPadding: EdgeInsets.zero,
-              title: const Text('Flip horizontal'),
+              title: Text(AppText.strings.toolCutFlipHorizontal),
               value: piece.flipHorizontal,
-              onChanged: (value) =>
-                  holder.updatePose(flipHorizontal: value),
+              onChanged: (value) => holder.updatePose(flipHorizontal: value),
             ),
             SwitchListTile(
               key: const ValueKey<String>('cut-flip-vertical-switch'),
               dense: true,
               contentPadding: EdgeInsets.zero,
-              title: const Text('Flip vertical'),
+              title: Text(AppText.strings.toolCutFlipVertical),
               value: piece.flipVertical,
               onChanged: (value) => holder.updatePose(flipVertical: value),
             ),
@@ -448,14 +445,14 @@ class _CutStampSettings extends StatelessWidget {
                 OutlinedButton(
                   key: const ValueKey<String>('cut-reset-button'),
                   onPressed: piece.isPosed ? holder.resetPose : null,
-                  child: const Text('Reset'),
+                  child: Text(AppText.strings.commonReset),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton(
                     key: const ValueKey<String>('cut-register-tip-button'),
                     onPressed: onRegisterAsTip,
-                    child: const Text('Register as Tip…'),
+                    child: Text(AppText.strings.toolCutRegisterTip),
                   ),
                 ),
               ],
@@ -979,7 +976,7 @@ class _EyedropperSettings extends StatelessWidget {
         Text(AppText.strings.toolEyedropper, style: theme.textTheme.titleSmall),
         const SizedBox(height: 8),
         Text(
-          'Reference',
+          AppText.strings.toolEyedropperReference,
           style: theme.textTheme.labelSmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -1033,7 +1030,7 @@ class _FillSettings extends StatelessWidget {
       key: const ValueKey<String>('tool-settings-fill'),
       padding: const EdgeInsets.all(12),
       children: [
-        Text('Fill', style: theme.textTheme.titleSmall),
+        Text(AppText.strings.toolFill, style: theme.textTheme.titleSmall),
         const SizedBox(height: 8),
         FieldSlider(
           key: const ValueKey<String>('fill-tolerance-slider'),
