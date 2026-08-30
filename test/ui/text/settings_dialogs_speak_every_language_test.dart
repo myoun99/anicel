@@ -139,7 +139,7 @@ void main() {
   /// question a count cannot: 「is every id answered」.
   ///
   /// ★WHEN YOU TRANSLATE SOMETHING, LOWER THIS NUMBER. That is the ratchet.
-  const untranslatedElsewhere = 191;
+  const untranslatedElsewhere = 186;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp(r'[A-Za-z]');

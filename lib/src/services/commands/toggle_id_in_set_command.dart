@@ -24,19 +24,24 @@ class ToggleIdInSetCommand implements Command {
   ToggleIdInSetCommand({
     required this.notifier,
     required this.layerId,
-    required this.label,
+    required this.debugLabel,
   });
 
   final ValueNotifier<Set<LayerId>> notifier;
   final LayerId layerId;
 
-  /// What this reads as in the history — "Toggle onion skin".
-  final String label;
+  /// 🚨A DEBUG LINE, NOT A LABEL — and the name mattered. `Command.description`
+  /// is read by no UI in this repo (grepped 2026-08-31); it exists for a
+  /// history dump and for reading a stack trace. Calling this `label` made it
+  /// look like a word on screen, and F-37's scan for untranslated UI counted
+  /// it as debt four times over. ⛔It must NOT be translated: a diagnostic
+  /// that changes with the reading language is a diagnostic nobody can grep.
+  final String debugLabel;
 
   bool? _wasMember;
 
   @override
-  String get description => '$label $layerId';
+  String get description => '$debugLabel $layerId';
 
   @override
   void execute() {

@@ -43,7 +43,7 @@ class UpdateLayerDisplayCommand implements Command {
     required this.repository,
     required this.layerId,
     required this.apply,
-    required this.label,
+    required this.debugLabel,
   });
 
   final ProjectRepository repository;
@@ -54,13 +54,18 @@ class UpdateLayerDisplayCommand implements Command {
   /// undoing a no-op is a no-op.
   final Layer Function(Layer layer) apply;
 
-  /// What this reads as in the history — "Toggle layer visibility".
-  final String label;
+  /// 🚨A DEBUG LINE, NOT A LABEL — and the name mattered. `Command.description`
+  /// is read by no UI in this repo (grepped 2026-08-31); it exists for a
+  /// history dump and for reading a stack trace. Calling this `label` made it
+  /// look like a word on screen, and F-37's scan for untranslated UI counted
+  /// it as debt four times over. ⛔It must NOT be translated: a diagnostic
+  /// that changes with the reading language is a diagnostic nobody can grep.
+  final String debugLabel;
 
   _DisplayState? _previous;
 
   @override
-  String get description => '$label $layerId';
+  String get description => '$debugLabel $layerId';
 
   @override
   void execute() {

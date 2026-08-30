@@ -1154,7 +1154,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       ToggleIdInSetCommand(
         notifier: _expandedLaneLayerIds,
         layerId: layerId,
-        label: 'Toggle layer lanes',
+        debugLabel: 'Toggle layer lanes',
       ),
     );
     if (closing) {
