@@ -28,10 +28,22 @@ class AppProgress {
 /// isolate either way — so the honest shape is one that stays until the
 /// work is over and then says so.
 ///
-/// The finished state is spelled out in WORDS rather than badged with a
-/// check. A check glyph is this app's mark for a toggle that is on (see
-/// [AppWindow]'s callers and the selection rules), and borrowing it here to
-/// mean "over" would make the one symbol carry two jobs.
+/// 🚨★★★THE FINISHED STATE WEARS A CHECK, and that REVERSES an earlier call
+/// of this file's own (유저 2026-08-31, F-53: 「로딩 완료 시 로딩 아이콘
+/// 위치에 **체크 아이콘 넣어서 완료됐단 느낌** 내고 싶음. 저장 완료 시나
+/// 그런 상황. **공통적으로 사용**」).
+///
+/// ⛔The reason it did NOT have one is kept, because it is a real fact and
+/// the next reader deserves it: 「A check glyph is this app's mark for a
+/// toggle that is ON, and borrowing it here to mean 『over』 would make the
+/// one symbol carry two jobs.」 That is true elsewhere — and it is weak
+/// HERE, which is why 유저 overruled it: this window has no toggles in it,
+/// nothing to confuse the mark with, and the spinner's slot going empty was
+/// the only thing marking the end.
+///
+/// ⚠️The glyph goes in the SPINNER'S OWN SLOT, which was already reserved at
+/// full size so the line would not shuffle sideways on its last frame. The
+/// slot did not change; only what stands in it.
 class AppProgressDialog extends StatelessWidget {
   const AppProgressDialog({
     super.key,
@@ -104,7 +116,12 @@ class AppProgressDialog extends StatelessWidget {
                 width: _spinnerBox,
                 height: _spinnerBox,
                 child: value.done
-                    ? null
+                    ? Icon(
+                        Icons.check_rounded,
+                        size: _spinnerBox,
+                        color: theme.colorScheme.primary,
+                        key: const ValueKey<String>('app-progress-done'),
+                      )
                     : const CircularProgressIndicator(strokeWidth: 2),
               ),
               const SizedBox(width: 12),
