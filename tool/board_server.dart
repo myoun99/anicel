@@ -220,7 +220,7 @@ Future<void> _handle(HttpRequest req) async {
           'kind': 'item',
           'id': body['id'],
           'at': '유저',
-          'said': '${body['to'] ?? ''} 로 옮겨 주세요',
+          'said': '${body['to'] ?? ''}${_ro('${body['to'] ?? ''}')} 옮겨 주세요',
           'ts': _now(),
         });
       case '/intake':
@@ -820,7 +820,7 @@ List<_Entry> _readRecords(File file) {
     // ⛔The old shape wrote it into a `state` field instead, off the timeline,
     // which is the split this round exists to end.
     if (at.isNotEmpty && _sectionState.containsKey(at)) {
-      stage('$at 으로 옮김', at);
+      stage('$at${_ro(at)} 옮김', at);
     }
     if (json['title'] != null) e.title = json['title'] as String;
     if (json['state'] != null) e.state = json['state'] as String;
@@ -1388,6 +1388,21 @@ void _foldChecksIntoCards(Map<String, _Entry> byId) {
 }
 
 String _esc(String s) => const HtmlEscape().convert(s);
+
+/// 「로」 or 「으로」 for [word] — chosen by its last syllable, the way a
+/// person writes it. ⚠️Not decoration: the board writes this particle into
+/// entries and buttons, and 「분류 으로 옮김」 / 「실기 확인 로」 read as
+/// machine output, which is what makes a reader stop trusting the text
+/// around it.
+String _ro(String word) {
+  if (word.isEmpty) return '로';
+  final code = word.codeUnitAt(word.length - 1);
+  // Outside the Hangul syllable block there is no 받침 to look at.
+  if (code < 0xAC00 || code > 0xD7A3) return '로';
+  final jong = (code - 0xAC00) % 28;
+  // No final consonant, or ㄹ — both take the short form.
+  return jong == 0 || jong == 8 ? '로' : '으로';
+}
 
 String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
     {int landedPage = 1}) {
@@ -2260,7 +2275,7 @@ String _itemPanel(_Entry e) {
   b.writeln('<div class="foot moves">');
   for (final to in const ['나중에', '대화 중', '바로 가능', '실기 확인']) {
     b.writeln('<button class="ghost sm" '
-        'onclick="askMove(event,\'${_esc(e.id)}\',\'$to\')">$to 로</button>');
+        'onclick="askMove(event,\'${_esc(e.id)}\',\'$to\')">$to${_ro(to)}</button>');
   }
   b.writeln('<span class="state"></span></div>');
   b.writeln('</div></details>');
