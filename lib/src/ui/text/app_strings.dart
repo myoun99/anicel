@@ -945,6 +945,23 @@ class AppStrings {
   String get toolCutRegisterTip => _s('toolCutRegisterTip');
   String get toolEyedropperReference => _s('toolEyedropperReference');
   String get brushSettingsTitle => _s('brushSettingsTitle');
+  String get toolShapeRect => _s('toolShapeRect');
+  String get toolShapeEllipse => _s('toolShapeEllipse');
+  String get toolShapeLasso => _s('toolShapeLasso');
+  String get toolShapePolygon => _s('toolShapePolygon');
+  String get toolShapeSelectTemplate => _s('toolShapeSelectTemplate');
+  String get toolShapeCutTemplate => _s('toolShapeCutTemplate');
+  String get toolShapeFillTemplate => _s('toolShapeFillTemplate');
+  String get toolStamp => _s('toolStamp');
+  String get toolBucket => _s('toolBucket');
+  String get brBrushesTitle => _s('brBrushesTitle');
+  String get brGroupNameField => _s('brGroupNameField');
+  String get brCreate => _s('brCreate');
+  String get brRenameBrush => _s('brRenameBrush');
+  String get brBrushNameField => _s('brBrushNameField');
+  String get brGroupNameEmpty => _s('brGroupNameEmpty');
+  String get brBrushNameEmpty => _s('brBrushNameEmpty');
+  String get brResetLibraryBody => _s('brResetLibraryBody');
   String get brSize => _s('brSize');
   String get brOpacity => _s('brOpacity');
   String get brFlow => _s('brFlow');
@@ -1677,6 +1694,24 @@ class AppStrings {
     'toolCutRegisterTip': 'Register as Tip…',
     'toolEyedropperReference': 'Reference',
     'brushSettingsTitle': 'Brush Settings',
+    'toolShapeRect': 'Rectangle',
+    'toolShapeEllipse': 'Ellipse',
+    'toolShapeLasso': 'Lasso',
+    'toolShapePolygon': 'Polygon',
+    'toolShapeSelectTemplate': '{shape} Select',
+    'toolShapeCutTemplate': '{shape} Cut',
+    'toolShapeFillTemplate': '{shape} Fill',
+    'toolStamp': 'Stamp',
+    'toolBucket': 'Bucket',
+    'brBrushesTitle': 'Brushes',
+    'brGroupNameField': 'Group name',
+    'brCreate': 'Create',
+    'brRenameBrush': 'Rename brush',
+    'brBrushNameField': 'Brush name',
+    'brGroupNameEmpty': 'Group name cannot be empty.',
+    'brBrushNameEmpty': 'Brush name cannot be empty.',
+    'brResetLibraryBody':
+        'Replace the whole library — every group, imported pack and saved brush — with the built-in brushes?',
     'brSize': 'Size',
     'brOpacity': 'Opacity',
     'brFlow': 'Flow',
@@ -2544,6 +2579,24 @@ class AppStrings {
     'toolCutRegisterTip': '先端として登録…',
     'toolEyedropperReference': '参照',
     'brushSettingsTitle': 'ブラシ設定',
+    'toolShapeRect': '矩形',
+    'toolShapeEllipse': '楕円',
+    'toolShapeLasso': '投げ縄',
+    'toolShapePolygon': '多角形',
+    'toolShapeSelectTemplate': '{shape}選択',
+    'toolShapeCutTemplate': '{shape}カット',
+    'toolShapeFillTemplate': '{shape}塗り',
+    'toolStamp': 'スタンプ',
+    'toolBucket': '塗りつぶし',
+    'brBrushesTitle': 'ブラシ',
+    'brGroupNameField': 'グループ名',
+    'brCreate': '作成',
+    'brRenameBrush': 'ブラシ名を変更',
+    'brBrushNameField': 'ブラシ名',
+    'brGroupNameEmpty': 'グループ名は空にできません。',
+    'brBrushNameEmpty': 'ブラシ名は空にできません。',
+    'brResetLibraryBody':
+        'ライブラリ全体 — すべてのグループ、読み込んだパック、保存したブラシ — を組み込みのブラシで置き換えますか？',
     'brSize': 'サイズ',
     'brOpacity': '不透明度',
     'brFlow': '流量',
@@ -3433,6 +3486,23 @@ class AppStrings {
     'toolCutRegisterTip': '팁으로 등록…',
     'toolEyedropperReference': '참조',
     'brushSettingsTitle': '브러시 설정',
+    'toolShapeRect': '사각형',
+    'toolShapeEllipse': '타원',
+    'toolShapeLasso': '올가미',
+    'toolShapePolygon': '다각형',
+    'toolShapeSelectTemplate': '{shape} 선택',
+    'toolShapeCutTemplate': '{shape} 잘라내기',
+    'toolShapeFillTemplate': '{shape} 채우기',
+    'toolStamp': '스탬프',
+    'toolBucket': '채우기',
+    'brBrushesTitle': '브러시',
+    'brGroupNameField': '그룹 이름',
+    'brCreate': '만들기',
+    'brRenameBrush': '브러시 이름 변경',
+    'brBrushNameField': '브러시 이름',
+    'brGroupNameEmpty': '그룹 이름은 비워 둘 수 없습니다.',
+    'brBrushNameEmpty': '브러시 이름은 비워 둘 수 없습니다.',
+    'brResetLibraryBody': '라이브러리 전체 — 모든 그룹, 가져온 팩, 저장한 브러시 — 를 기본 브러시로 바꿀까요?',
     'brSize': '크기',
     'brOpacity': '불투명도',
     'brFlow': '흐름',
@@ -4361,6 +4431,24 @@ class AppStrings {
     'toolCutRegisterTip': 'Enregistrer comme pointe…',
     'toolEyedropperReference': 'Référence',
     'brushSettingsTitle': 'Réglages de brosse',
+    'toolShapeRect': 'Rectangle',
+    'toolShapeEllipse': 'Ellipse',
+    'toolShapeLasso': 'Lasso',
+    'toolShapePolygon': 'Polygone',
+    'toolShapeSelectTemplate': 'Sélection {shape}',
+    'toolShapeCutTemplate': 'Découpe {shape}',
+    'toolShapeFillTemplate': 'Remplissage {shape}',
+    'toolStamp': 'Tampon',
+    'toolBucket': 'Pot de peinture',
+    'brBrushesTitle': 'Brosses',
+    'brGroupNameField': 'Nom du groupe',
+    'brCreate': 'Créer',
+    'brRenameBrush': 'Renommer la brosse',
+    'brBrushNameField': 'Nom de la brosse',
+    'brGroupNameEmpty': 'Le nom du groupe ne peut pas être vide.',
+    'brBrushNameEmpty': 'Le nom de la brosse ne peut pas être vide.',
+    'brResetLibraryBody':
+        'Remplacer toute la bibliothèque — chaque groupe, pack importé et brosse enregistrée — par les brosses intégrées ?',
     'brSize': 'Taille',
     'brOpacity': 'Opacité',
     'brFlow': 'Débit',
@@ -5202,6 +5290,23 @@ class AppStrings {
     'toolCutRegisterTip': '注册为笔尖…',
     'toolEyedropperReference': '参考',
     'brushSettingsTitle': '笔刷设置',
+    'toolShapeRect': '矩形',
+    'toolShapeEllipse': '椭圆',
+    'toolShapeLasso': '套索',
+    'toolShapePolygon': '多边形',
+    'toolShapeSelectTemplate': '{shape}选择',
+    'toolShapeCutTemplate': '{shape}裁剪',
+    'toolShapeFillTemplate': '{shape}填充',
+    'toolStamp': '图章',
+    'toolBucket': '油漆桶',
+    'brBrushesTitle': '笔刷',
+    'brGroupNameField': '组名称',
+    'brCreate': '创建',
+    'brRenameBrush': '重命名笔刷',
+    'brBrushNameField': '笔刷名称',
+    'brGroupNameEmpty': '组名称不能为空。',
+    'brBrushNameEmpty': '笔刷名称不能为空。',
+    'brResetLibraryBody': '要用内置笔刷替换整个库 — 包括每个组、导入的包和已保存的笔刷吗？',
     'brSize': '大小',
     'brOpacity': '不透明度',
     'brFlow': '流量',
