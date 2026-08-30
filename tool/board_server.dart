@@ -193,14 +193,14 @@ Future<void> _handle(HttpRequest req) async {
           _append({'kind': 'item', 'id': origin, 'ts': _now()});
         } else if (kind == 'decision') {
           // A question nobody folded — it IS the card, so the answer stays on
-          // it and it goes to 분류 전 like any other thing the user said.
+          // it. ⚠️No `state`: the fold relabels its answer entry `유저`, and
+          // 분류 전 falls out of the story like every other card's.
           _append({
             'kind': kind,
             'id': id,
             'answer': body['answer'] ?? '',
             'answerNote': memo,
             'ts': _now(),
-            'state': 'inbox',
           });
         } else if (ticked) {
           // ⛔NOT `deleted`. That was safe only while a 실기 확인 row WAS a
@@ -291,11 +291,8 @@ Future<void> _handle(HttpRequest req) async {
     await req.response.close();
     return;
   }
-  // Order matters: reading the records is what loads the 최근 착지 mark, and
-  // the baseline write needs to know whether one is already there.
   final entries = _readRecords(File(_recordsPath));
   final gh = await _prs();
-  _markLandedBaseline(gh);
   req.response
     ..headers.contentType = ContentType.html
     ..headers.set('Cache-Control', 'no-store')
@@ -303,37 +300,6 @@ Future<void> _handle(HttpRequest req) async {
         landedPage: int.tryParse(req.uri.queryParameters['landed'] ?? '') ?? 1));
   await req.response.close();
 }
-
-/// Writes the 최근 착지 mark once, the first time a board ever draws.
-///
-/// This is the only place the board writes without being asked. The
-/// alternative is a first visit that dumps every merge within reach and asks
-/// the reader to confirm history they watched happen.
-///
-/// A FAILED LOOKUP MUST NEVER SET THE BASELINE. gh returns an empty list when
-/// it cannot answer, and an empty list looks exactly like "nothing has landed
-/// yet" -- mark on that and every merge in the repo is silently older than the
-/// mark, so the section stays empty forever and nobody finds out. `ok` is the
-/// only field that can tell those two apart.
-///
-/// An empty list from a gh that DID answer needs no guard of its own: marking
-/// a repo with no merges yet is harmless, since everything that lands after
-/// still lands after. A guard for it was here and was removed -- it made the
-/// `ok` check untestable by shadowing it on every path a test could reach.
-void _markLandedBaseline(_Gh gh) {
-  if (_landedSince != null) return;
-  if (!gh.ok) return;
-
-  final at = DateTime.now().toUtc().toIso8601String();
-  _append({
-    'kind': 'meta',
-    'landedSince': at,
-    'note': '최근 착지의 기준선 — 이 시각까지 머지된 것은 이미 본 것으로 친다. '
-        '보드가 생기기 전에 머지된 PR을 다시 확인하라고 물을 이유가 없다.',
-  });
-  _landedSince = DateTime.parse(at);
-}
-
 /// Which card a question belongs to, asked at SUBMIT time — before a render
 /// has built [_byOrigin].
 ///
@@ -687,35 +653,8 @@ class _Entry {
 /// Stop hook that cost 2.4s of every turn to answer the same question.
 List<int> _badLines = const [];
 
-/// 최근 착지 reports only what landed AFTER this moment.
-///
-/// Without it the section was a window onto all of git history: it showed the
-/// eight newest merges, and ticking those eight revealed the next eight, and
-/// so on for as far back as `gh pr list` would reach -- each tick also costing
-/// a permanent `pr-N archived` line. But a PR that merged before this board
-/// existed was watched as it merged. It is not news, and asking for it to be
-/// confirmed is asking twice.
-///
-/// So the section is bounded by a mark instead of a count: everything at or
-/// before the mark is already seen. The mark is written once, by the board
-/// itself, the first time it runs -- which is what removed the cap. The list
-/// is short now because it is genuinely short.
-DateTime? _landedSince;
-
-/// Did this land after the mark?
-bool _isNews(_Pr pr) {
-  final since = _landedSince;
-  if (since == null) return true;
-  final at = pr.mergedAt;
-  // A merge gh gave no timestamp for cannot be placed against the mark. Show
-  // it: 확인 can dismiss a row, nothing can recover one that was never drawn.
-  return at == null || at.isAfter(since);
-}
 
 List<_Entry> _readRecords(File file) {
-  // Reset, not update: the file is the state. A mark that survived a read of a
-  // file that no longer carries one would be a mark nobody can remove.
-  _landedSince = null;
   final bad = <int>[];
   final byId = <String, _Entry>{};
   final order = <String>[];
@@ -734,10 +673,7 @@ List<_Entry> _readRecords(File file) {
     }
     final kind = json['kind'] as String? ?? '';
     if (kind == 'meta') {
-      // meta lines are notes to self and carry no id, with one exception: the
-      // 최근 착지 mark. A later line wins, same as every other field here.
-      final since = json['landedSince'] as String?;
-      if (since != null) _landedSince = DateTime.tryParse(since);
+      // meta lines are notes to self and carry no id.
       continue;
     }
     final id = json['id'] as String?;
@@ -1344,8 +1280,19 @@ void _foldQuestionsIntoOrigins(Map<String, _Entry> byId) {
     if (q.kind != 'decision') continue;
     final (of, _) = _asks(q);
     final origin = of.isEmpty ? null : byId[of];
-    // A question whose origin is not in the file IS the card. Nothing to fold.
-    if (origin == null) continue;
+    // A question whose origin is not in the file IS the card. Nothing folds,
+    // but its own answer still has to place it — ⚠️relabelled `유저`, the
+    // 대분류, so 분류 전 comes out of its story like every other card's
+    // instead of being written into a `state` by the submit handler.
+    if (origin == null) {
+      for (var i = q.log.length - 1; i >= 0; i--) {
+        if (!q.log[i].byUser) continue;
+        final was = q.log[i];
+        q.log[i] = _Log(was.ts, '유저', was.text, byUser: true);
+        break;
+      }
+      continue;
+    }
     q.foldedInto = origin.id;
     final raised = q.created.isNotEmpty ? q.created : q.updated;
     origin.log.add(_Log(raised, '질문', q.title, ask: q));
@@ -1543,7 +1490,6 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
     for (final pr in gh.prs)
       if (pr.state == 'OPEN') pr.number,
   };
-  final byNumber = {for (final pr in gh.prs) pr.number: pr};
   _prState = {for (final pr in gh.prs) pr.number: pr.state};
   // 🚨★★★지금 IS BUILT FROM CARDS TOO (유저 2026-08-27: 「이거 답할것이 원본
   // 카드에서 포인터로서 존재하는거랑 똑같은 규칙이나 로직 적용하면 지금항목에
@@ -1575,77 +1521,17 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   }
   final now = [for (final e in nowCards) _itemPanel(e)];
 
-  // What a card is waiting to be looked at with, newest first. A card whose PR
-  // gh no longer lists still sorts — by when the card itself last moved.
-  DateTime? landedAt(_Entry e) {
-    DateTime? best;
-    for (final n in e.prs) {
-      final at = byNumber[n]?.mergedAt;
-      if (at != null && (best == null || at.isAfter(best))) best = at;
-    }
-    return best ?? DateTime.tryParse(e.updated);
-  }
 
-  final fresh = <_Entry>[];
-  for (final e in alive) {
-    if (e.prs.isEmpty || e.answer != null) continue;
-    // 🚨A MERGE IS NOT A FINISH — a card with leftovers stays where the work
-    // is, because a tick here deletes it and the leftovers go with it.
-    if (_stillOwed(e)) continue;
-    // Still building: it belongs in 지금, not in a list of things to look at.
-    if (e.prs.any(openPrs.contains)) continue;
-    // ⚠️The 최근 착지 mark only applies to PRs gh still knows about. For one
-    // outside the window there is no merge time to compare, and dropping it
-    // would be the disappearing-row bug wearing a different hat.
-    final known = e.prs.map((n) => byNumber[n]).whereType<_Pr>();
-    if (known.isNotEmpty && !known.any(_isNews)) continue;
-    fresh.add(e);
-  }
-  // Landings nobody claimed still need a row — that is the whole point of the
-  // placeholder — but only while gh can see them.
-  for (final pr in gh.prs) {
-    if (pr.state != 'MERGED' || !_isNews(pr)) continue;
-    if (claimed.containsKey(pr.number)) continue;
-    if (buriedPrs.contains(pr.number)) continue;
-    if (buriedIds.contains('pr-${pr.number}')) continue;
-    fresh.add(_prEntry(pr)..prs.add(pr.number));
-  }
-  fresh.sort((a, b) {
-    final x = landedAt(a), y = landedAt(b);
-    if (x == null) return y == null ? 0 : 1;
-    if (y == null) return -1;
-    return y.compareTo(x);
-  });
-  // 확인할 것 = every landing, plus the checks that stand on their own.
+  // 실기 확인 = the cards whose newest 대분류 says so, and nothing else.
   //
-  // 🚨ONE SUBJECT, ONE ROW, ONE PAGE. Three ways a row could double up, all
-  // closed here rather than left to luck:
-  //
-  //  1. A record that is BOTH a `check` and the claimer of a PR would render
-  //     once as a landing and again out of `checks` — `freshIds` stops that.
-  //  2. A check written as the hands-on half of a landing would sit BESIDE the
-  //     landing it belongs to. That one was real: C-tp1..C-tp6 are the device
-  //     checks for the tool-preset round, whose PR was on this very list.
-  //     `subs` nests them inside it.
-  //  3. 🆕A check whose landing sits on ANOTHER page used to fall through to
-  //     standalone and get drawn on EVERY page — the old answer to 「never
-  //     hide a check」. 유저 2026-08-28: 「중복된게 두 페이지에 걸쳐있거든?
-  //     … 페이지마다 내용 완전히 달라야지」. It is not a scroll.
-  //
-  //
-  // The new answer keeps the promise without the duplication: a check travels
-  // WITH its landing, and one that has no landing here goes LAST, which is
-  // where it always went.
-  //
-  // ⛔The order is not the lever. Putting the hand-written checks first would
-  // keep them on page 1 — and it pushed every landing onto page 2, which is
-  // the wrong half to hide: a landing is a thing merged minutes ago and the
-  // reason the section is open. The old note worried a page-2 check waits a
-  // month; the answer to that is that turning a page is now free, not that
-  // the newest work gets moved out of sight.
-  // ⛔`fresh` — the landings — no longer feeds this section. Every unit here
-  // is a card that says 실기 확인, and its PRs ride its 구현 entries.
-  final orphanIds = {for (final c in checks) c.id};
+  // ⛔A LIST OF LANDINGS USED TO BE HALF OF THIS SECTION, built from `gh` and
+  // sorted by merge time, with three hand-written rules stopping a row
+  // appearing twice — a check nested under its landing, a check whose landing
+  // was on another page, a card that was both. All of it existed because a
+  // MERGE put a card here. A merge is an event and a section is a place, and
+  // 유저 2026-08-31 ended the pairing: 「머지는 PR마다 여러 번 되는데 실기
+  // 확인은 다르잖아 … 작업 완료되면 실기 확인만 대분류로서 존재하게」.
+  // ⇒ Nothing can double up now, because there is only one way in.
   final units = <_Entry>[...checks];
   final pages =
       units.isEmpty ? 1 : (units.length + _landedPerPage - 1) ~/ _landedPerPage;
@@ -1654,39 +1540,19 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   // EVERY page is rendered, and the pager only moves a class. Turning a page
   // used to refetch the whole board — measured at 0.5s on a warm cache and
   // 3.7s when the `gh` window had expired, for a change that touches nothing
-  // but these rows (유저: 「그냥 누르자마자 전환되게하고싶은데」). Rendering
+  // but these rows (유저: 「그냥 누르자마자 전환되게하고싶은데」). Sending
   // both pages costs less than sending the other 610KB of board twice.
+  //
+  // ⛔A PR BADGE, A `here` SET AND A `subs` MAP USED TO LIVE IN THIS LOOP, to
+  // nest a hands-on check under the landing it belonged to and to badge each
+  // landing with its newest PR. All of it went with the landings themselves:
+  // every row is one card that says 실기 확인, and its PRs are 구현 entries
+  // inside it.
   final toCheck = <String>[];
   for (var p = 1; p <= pages; p++) {
-    final onPage = units.skip((p - 1) * _landedPerPage).take(_landedPerPage);
-    final here = {
-      for (final e in onPage)
-        if (!orphanIds.contains(e.id)) ...e.prs,
-    };
-    final subs = <int, List<_Entry>>{};
-    for (final c in checks) {
-      final u = c.under;
-      if (u != null && here.contains(u)) (subs[u] ??= []).add(c);
-    }
     final rows = StringBuffer();
-    for (final e in onPage) {
-      if (orphanIds.contains(e.id)) {
-        rows.write(_checkRow(e));
-        continue;
-      }
-      // The row badges the NEWEST of this card's PRs that gh can still see —
-      // the rest are in its story as 구현 stages. A card whose PRs have all
-      // aged out of the window gets no badge and loses nothing: the stages
-      // carry the numbers and the links.
-      _Pr? badge;
-      for (final n in e.prs) {
-        final pr = byNumber[n];
-        if (pr == null) continue;
-        if (badge == null || n > badge.number) badge = pr;
-      }
-      rows.write(_checkRow(e, pr: badge, subs: [
-        for (final n in e.prs) ...?subs[n],
-      ]));
+    for (final e in units.skip((p - 1) * _landedPerPage).take(_landedPerPage)) {
+      rows.write(_checkRow(e));
     }
     toCheck.add('<div class="pg${p == page ? ' on' : ''}" data-pg="$p">'
         '$rows</div>');
@@ -1980,19 +1846,6 @@ Map<String, List<_Entry>> _byOrigin = const {};
 /// nothing rather than guessing — the same rule the 확인할 것 badge follows.
 Map<int, String> _prState = const {};
 
-/// 🚨THE WAY BACK TO THE CARD THAT ASKED (유저 2026-08-26: 「그 답할것패널에
-/// 포인터? 내부에 태그같은거로서 질문이 생성된 패널을 표시해줌」).
-///
-/// A question torn out of its card is a question with no subject — that is
-/// the same disease as a 확인할 것 row saying only 「T14」, one section over.
-/// The link jumps to the origin AND opens it, because an anchor that lands on
-/// a folded `<details>` looks like it did nothing.
-String _origin(_Entry e) {
-  final (of, _) = _asks(e);
-  if (of.isEmpty) return '';
-  return '<p class="d"><a class="chip link" href="#c-${_esc(of)}" '
-      'onclick="jump(\'${_esc(of)}\');return false;">↑ ${_esc(of)} 에서 나온 질문</a></p>';
-}
 
 
 /// 🚨★★★THE QUESTION ITSELF — where it is asked, why it is stuck, the
@@ -2080,59 +1933,37 @@ String _askPanel(_Entry d) {
   return b.toString();
 }
 
-/// ONE row of 확인할 것, whether it arrived as a landed PR or as a check
-/// somebody wrote (유저 2026-08-26: 「그런것도 싹 하나의 확인목록으로 병합.
-/// 다만 pr인지아닌지는 구분하고싶으니 태그로」).
+/// ONE row of 실기 확인 — a card waiting to be tried on a device.
 ///
-/// 🚨The two lists were the same list wearing two costumes. 최근 착지 came from
-/// `gh` for free but had NOWHERE to report a result; 실기 확인 had the memo box
-/// but had to be hand-written — so one change got written twice, once as an
-/// item note and again as a check card. 유저: 「둘다 뭐가 작업됬는지 하나하나
-/// 확인하는용이라서. 그래서 너가 두군데 써넣는것도 힘들거고」.
+/// ⛔THIS PANEL USED TO SERVE TWO LISTS. 최근 착지 came from `gh` for free
+/// but had NOWHERE to report a result; 실기 확인 had the memo box but had to
+/// be hand-written — so one change got written twice, once as an item note
+/// and again as a check card (유저 2026-08-26: 「둘다 뭐가 작업됬는지 하나
+/// 하나 확인하는용이라서. 그래서 너가 두군데 써넣는것도 힘들거고」).
+/// Merging them into one panel was right; what was still wrong is that a
+/// MERGE put a card here at all. 유저 2026-08-31 ended that, and with it went
+/// the `#1236` badge, the 실기 chip that told the two halves apart, and the
+/// nested sub-checks. There is one shape now, so nothing needs naming.
 ///
-/// ⇒ One panel, both affordances, and the DIFFERENCE says itself without a
-/// word for it: a landing carries its `#1236` badge, a hand-written one
-/// carries [_kHandsOn] and no badge.
-///
-/// The two answers stay distinct because they mean different things and cost
-/// different amounts (유저 확정): the TICK is "봤고 문제 없음" and sweeps many
-/// rows at once through 확인; the MEMO is "문제가 있다" and is written per row.
-String _checkRow(_Entry c, {_Pr? pr, List<_Entry> subs = const []}) {
-  final landed = pr != null;
-  // The badge says WHICH PR; nothing needs to say THAT it is a PR. A
-  // hands-on row needs no badge at all — every row in this section is
-  // unchecked by definition,
-  // so 「미확인」 was labelling the section, not the row.
-  final badge = landed ? '#${pr.number}' : '';
+/// The two ANSWERS stay distinct, because they mean different things and cost
+/// different amounts (유저 확정): the TICK is 「봤고 문제 없음」 and sweeps
+/// many rows at once through 확인; the MEMO is 「문제가 있다」 and is written
+/// per row.
+String _checkRow(_Entry c) {
   final b = StringBuffer();
-  // The sub-count goes in the HEAD because a nested check is invisible until
-  // the row is opened, and a check nobody can see is a check nobody does.
-  // ⛔No 머지 chip on a landed row: the `#1236` badge beside it already says
-  // it came from a PR, and the number says WHICH (유저 2026-08-26: 「머지태그도
-  // 솔직히 #1236 이런 pr태그있으니까 필요없을듯」). Only the hand-written half
-  // needs naming, because it is the half with no badge.
-  //
-  // ⛔And no 공정 N count. It was a number nobody acts on — the story is right
-  // there when the row opens, and a chip that only says 「there is some」 is
-  // the same noise as a badge repeating its section.
   final gap = _isGap(c);
-  final tags = [
-    if (gap) '카드 없음',
-    if (!landed) _kHandsOn,
-    if (subs.isNotEmpty) '실기 ${subs.length}',
-    ...c.tags,
-  ];
+  final tags = [if (gap) '카드 없음', ...c.tags];
   // data-kind is what `send` writes back, and it is `check` on BOTH shapes:
-  // the result of looking at a thing is a check result whatever put it on the
-  // list. ⚠️It is also what routes the submit: a tick deletes the card, a
-  // memo sends it back to 분류 전 (see `/submit`).
+  // data-kind is what `send` writes back: the result of looking at a thing is
+  // a check result. ⚠️It also routes the submit — a tick writes 완료, a memo
+  // comes back as 유저 (see `/submit`).
   b.writeln('<details class="p chk" id="c-${_esc(c.id)}" data-kind="check">');
   b.writeln(_head(
     c.id,
     c.title,
     tags,
-    badge,
-    landed ? 'ok' : 'run',
+    '',
+    'run',
     lead: '<input type="checkbox" class="pick" value="${_esc(c.id)}" '
         'onclick="event.stopPropagation()">',
     date: c.updated,
@@ -2166,20 +1997,9 @@ String _checkRow(_Entry c, {_Pr? pr, List<_Entry> subs = const []}) {
   b.writeln(_shotStrip(c.id));
   b.writeln('<div class="foot"><button onclick="send(\'${_esc(c.id)}\')">제출</button>'
       '<span class="state"></span></div>');
-  // The hands-on checks that belong to this landing, nested inside it. Each
-  // keeps its own id, its own box and its own 제출 — the merge is about where
-  // a row SITS, not about answering six things with one click.
-  for (final s in subs) {
-    b.writeln(_checkRow(s));
-  }
   b.writeln('</div></details>');
   return b.toString();
 }
-
-/// The tag for a 확인할 것 row that no PR produced. Its opposite needs no tag:
-/// a landing already wears the PR number, and 「머지」 beside 「#1236」 was the
-/// same fact twice on one line.
-const String _kHandsOn = '실기';
 
 /// A stand-in for a PR that no board item ever claimed — a landing the records
 /// know nothing about. It has the PR's own title and nothing else, which is
@@ -2262,7 +2082,6 @@ String _itemPanel(_Entry e) {
       '',
       date: e.updated));
   b.writeln('<div class="body">');
-  b.writeln(_origin(e));
   if (editable) {
     // Still editable, because a filing made mid-thought is usually wrong in
     // some small way and the moment to fix it is when you notice.
