@@ -60,6 +60,114 @@ late final String _shotsDir;
 late final String _ghPath;
 late final String _gitRoot;
 
+/// 🚨★★★THE BOARD REPLACES ITSELF WHEN ITS OWN SOURCE CHANGES.
+///
+/// 유저 2026-08-31: 「근데 **매번 너가 갱신해줘야 반영되는건가? 좀 약한
+/// 구조 아닌가**」 — it was. The chain was ①I merge ②I pull the checkout
+/// ③some session's Stop hook notices and rebuilds. Step ③ only happens while
+/// a session is running, so opening the board with no session open served
+/// whatever was last built, silently and for as long as nobody looked.
+///
+/// ⛔A fix that merged and never reached the screen is the exact shape this
+/// project keeps stepping in: on 2026-08-31 유저 asked why a rule was not
+/// working when it had merged twelve minutes earlier and the exe was older
+/// than the merge.
+///
+/// ⇒ The running board carries a copy of the source it was built from. Every
+/// request compares — a byte compare of ~130KB, well under a millisecond —
+/// and when they differ it draws ONE more page saying so, hands the rebuild
+/// to [_relaunch], and exits. Nobody has to remember anything.
+///
+/// ⚠️Silent when the copy is missing, which is what `dart run` looks like: a
+/// development run must not blow itself up mid-probe.
+File? _builtFrom;
+File? _liveSource;
+
+/// The source this exe was built from, and the source as it is now — set once
+/// at startup so a request only pays the compare.
+void _findOwnSource() {
+  final stamp = File('${Platform.resolvedExecutable}.src');
+  if (!stamp.existsSync()) return;
+  final live = File('$_gitRoot/tool/board_server.dart');
+  if (!live.existsSync()) return;
+  _builtFrom = stamp;
+  _liveSource = live;
+}
+
+/// ⚠️Bytes, not a hash and NOT mtime. mtime was measured wrong on this very
+/// file: the source read 16:57:11 and the exe 16:57:44 — OLDER source, NEWER
+/// content, because git does not rewrite a path whose content it already
+/// holds. A hash would work too but needs a package; the build already keeps
+/// the copy, so comparing it is exact and costs nothing to maintain.
+bool _sourceMoved() {
+  final was = _builtFrom, now = _liveSource;
+  if (was == null || now == null) return false;
+  try {
+    final a = was.readAsBytesSync(), b = now.readAsBytesSync();
+    if (a.length != b.length) return true;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return true;
+    }
+    return false;
+  } catch (_) {
+    // Unreadable for a moment mid-write. Not news; the next request asks again.
+    return false;
+  }
+}
+
+/// Hands the rebuild to the script that owns it and steps out of the way.
+///
+/// ⚠️Windows will not let us overwrite a running exe, so this process has to
+/// END for the rebuild to succeed — which is why the page said so first. The
+/// launcher recompiles and starts the new one; a browser that reloads finds
+/// the new board on the same port.
+///
+/// ⛔The rule for WHEN to rebuild is not repeated here. `board_up.sh` owns it,
+/// the Stop hook calls the same script, and a second copy of the test is how
+/// this bug happened the first time.
+Never _relaunch() {
+  final up = File('${File(_recordsPath).parent.path}/board_up.sh');
+  if (up.existsSync()) {
+    Process.start(
+      'bash',
+      [up.path],
+      mode: ProcessStartMode.detached,
+      runInShell: true,
+    );
+  }
+  exit(0);
+}
+
+/// The one page a stale board serves: it says what is happening and comes back
+/// on its own when the new build answers. ⚠️Self-contained — the CSS and JS of
+/// the real board belong to the build that is being replaced.
+String _rebuildingPage() => '''
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>보드를 다시 만드는 중</title>
+<style>
+body{margin:0;display:grid;place-items:center;height:100vh;
+  font:15px/1.6 "BIZ UDPGothic","Nanum Gothic",system-ui,sans-serif;
+  background:#14161a;color:#e6e8ec}
+.box{max-width:520px;padding:28px 32px;text-align:center}
+h1{font-size:17px;margin:0 0 10px}
+p{margin:6px 0;color:#9aa1ad;font-size:13.5px}
+b{color:#e6e8ec}
+</style></head><body><div class="box">
+<h1>보드 코드가 바뀌었습니다 — 다시 만드는 중</h1>
+<p>보통 30초 안팎, 처음 만드는 경우 몇 분까지 걸립니다. <b>끝나면 이 화면이 알아서 새 보드로 바뀝니다.</b></p>
+<p>제출한 답과 메모는 이미 기록에 들어가 있어 사라지지 않습니다.</p>
+</div>
+<script>
+setInterval(function(){
+  fetch('/fresh',{cache:'no-store'})
+    .then(function(r){ if(r.ok) location.replace('/'); })
+    .catch(function(){});
+}, 1000);
+</script>
+</body></html>
+''';
+
 Future<void> main(List<String> args) async {
   _recordsPath = _flag(args, '--records') ?? '';
   _ghPath = _flag(args, '--gh') ?? 'gh';
@@ -73,6 +181,7 @@ Future<void> main(List<String> args) async {
   }
   _shotsDir = '${File(_recordsPath).parent.path}/board-shots';
   Directory(_shotsDir).createSync(recursive: true);
+  _findOwnSource();
 
   HttpServer server;
   try {
@@ -166,27 +275,61 @@ Future<void> _handle(HttpRequest req) async {
         // because an answer is something the user said that I have to read
         // and act on. One card, one row, and the answer is where the work is.
         final origin = kind == 'decision' ? _originOfId(id) : '';
-        _append({
-          'kind': kind,
-          'id': id,
-          'answer': body['answer'] ?? '',
-          'answerNote': memo,
-          'ts': _now(),
-          'state': ticked || origin.isNotEmpty ? 'archived' : 'inbox',
-        });
+        // 🚨★★★WHAT THE USER SUBMITS IS AN ENTRY, and the entry says where the
+        // card goes. ⛔Every branch here used to write a `state` as well, and
+        // the story then overrode it — the same 「한 질문에 리더 둘」 this
+        // round is removing everywhere else. 🧪H2 proved it: a memo left on a
+        // 실기 확인 row wrote `state: "inbox"` and the card stayed in 실기
+        // 확인, because its newest 대분류 still said so.
+        //
+        // Three shapes, one rule each:
+        //  · 결정에 답함 → the answer rides the QUESTION record (archived), and
+        //    the fold puts it on the card as a `유저` entry, which is 분류 전.
+        //  · 체크 → 완료. 「봤고 문제 없음」 ends the card, and the tick is in
+        //    its story as the user's own word.
+        //  · 메모 → 유저. Something to read, so it comes back to me.
         if (origin.isNotEmpty) {
-          _append({
-            'kind': 'item',
-            'id': origin,
-            'state': 'inbox',
-            'ts': _now(),
-          });
-        }
-        if (ticked) {
           _append({
             'kind': kind,
             'id': id,
-            'state': 'deleted',
+            'answer': body['answer'] ?? '',
+            'answerNote': memo,
+            'ts': _now(),
+            'state': 'archived',
+          });
+          // ⚠️No `state` on the card: the folded `유저` entry already says
+          // 분류 전. This line exists only so the head's date moves.
+          _append({'kind': 'item', 'id': origin, 'ts': _now()});
+        } else if (kind == 'decision') {
+          // A question nobody folded — it IS the card, so the answer stays on
+          // it. ⚠️No `state`: the fold relabels its answer entry `유저`, and
+          // 분류 전 falls out of the story like every other card's.
+          _append({
+            'kind': kind,
+            'id': id,
+            'answer': body['answer'] ?? '',
+            'answerNote': memo,
+            'ts': _now(),
+          });
+        } else if (ticked) {
+          // ⛔NOT `deleted`. That was safe only while a 실기 확인 row WAS a
+          // check record with nothing but a title. The section holds real
+          // cards with whole stories now, and this is the section the user
+          // sweeps many rows at a time — one click would have taken a card
+          // and its story with it. 완료 clears the list just the same.
+          _append({
+            'kind': 'item',
+            'id': id,
+            'at': '완료',
+            'said': '확인 — 문제 없음',
+            'ts': _now(),
+          });
+        } else {
+          _append({
+            'kind': 'item',
+            'id': id,
+            'at': '유저',
+            'said': memo,
             'ts': _now(),
           });
         }
@@ -199,6 +342,25 @@ Future<void> _handle(HttpRequest req) async {
             'ts': _now(),
           });
         }
+      // 🚨★★★THE USER ASKS FOR A MOVE; I MAKE IT (유저 2026-08-31: 「대기중/
+      // 착수 가능 등에서 내가 아 이건 순서 보류하고 싶다 싶을 때 **가볍게
+      // 순서 대기 쪽으로 옮기는 게 힘든데, 그거 하는 기능 있으면 좋을 거
+      // 같아**」).
+      //
+      // ⚠️ONE LINE, and its 대분류 is 분류 전 — not the section they asked
+      // for. Everything the user writes comes back to me to act on, which has
+      // been the law since 2026-08-26 and is the reason **유저는 분류 체계를
+      // 몰라도 된다**: the request is the entry's text, and moving the card is
+      // my job. ⛔Writing 「나중에」 straight from the button would make the
+      // board move a card nobody had read.
+      case '/ask-move':
+        _append({
+          'kind': 'item',
+          'id': body['id'],
+          'at': '유저',
+          'said': '${body['to'] ?? ''}${_ro('${body['to'] ?? ''}')} 옮겨 주세요',
+          'ts': _now(),
+        });
       case '/intake':
         newId = _intake(body);
       case '/edit':
@@ -233,16 +395,54 @@ Future<void> _handle(HttpRequest req) async {
     return;
   }
 
+  // A liveness probe with a name: it answers as soon as the board is up, which
+  // is what the rebuilding page waits for.
+  if (path == '/fresh') {
+    req.response
+      ..headers.contentType = ContentType.json
+      ..headers.set('Cache-Control', 'no-store')
+      ..write(jsonEncode({'moved': _sourceMoved()}));
+    await req.response.close();
+    return;
+  }
   if (path != '/') {
     req.response.statusCode = 404;
     await req.response.close();
     return;
   }
-  // Order matters: reading the records is what loads the 최근 착지 mark, and
-  // the baseline write needs to know whether one is already there.
+  // 🚨★★★NEW CODE ARRIVES ON A REFRESH, AND ONLY ON A REFRESH.
+  //
+  // 유저 2026-08-31: 「그냥 새로고침 누르면 갱신되도록 할 수 있나? 그럼
+  // 내가 알아서 새로고침하면 되는 거니까 단순해지는 거 같은데」 — it is.
+  // No banner, no polling, no button: the board is stale until you ask for a
+  // fresh page, and asking is the one gesture that already means 「throw this
+  // page away」.
+  //
+  // ⚠️`partial` IS THE SAFETY, and it is the user's other requirement:
+  // 「내가 소스가 바뀌기 전에 답한 것도 안 사라지게 잘 하는 것도 중요하고」.
+  // The page refetches this same path to redraw one card after a submit, and
+  // handing THAT over would kill the server in the middle of the flow that
+  // just recorded an answer. Those fetches say `partial=1` and never rebuild.
+  //
+  // ✅The answer itself is never at risk either way: `_append` writes the line
+  // SYNCHRONOUSLY, so it is on disk before the reply is sent and a restart
+  // re-reads it. What a refresh can lose is text still sitting in a box, and
+  // that is exactly what the user chose to lose by refreshing.
+  //
+  // ⚠️Windows will not overwrite a running exe, so this process has to end for
+  // the rebuild to work — the page it serves first says so and waits for the
+  // new board on the same port.
+  final partial = req.uri.queryParameters['partial'] == '1';
+  if (!partial && _sourceMoved()) {
+    req.response
+      ..headers.contentType = ContentType.html
+      ..headers.set('Cache-Control', 'no-store')
+      ..write(_rebuildingPage());
+    await req.response.close();
+    _relaunch();
+  }
   final entries = _readRecords(File(_recordsPath));
   final gh = await _prs();
-  _markLandedBaseline(gh);
   req.response
     ..headers.contentType = ContentType.html
     ..headers.set('Cache-Control', 'no-store')
@@ -250,37 +450,6 @@ Future<void> _handle(HttpRequest req) async {
         landedPage: int.tryParse(req.uri.queryParameters['landed'] ?? '') ?? 1));
   await req.response.close();
 }
-
-/// Writes the 최근 착지 mark once, the first time a board ever draws.
-///
-/// This is the only place the board writes without being asked. The
-/// alternative is a first visit that dumps every merge within reach and asks
-/// the reader to confirm history they watched happen.
-///
-/// A FAILED LOOKUP MUST NEVER SET THE BASELINE. gh returns an empty list when
-/// it cannot answer, and an empty list looks exactly like "nothing has landed
-/// yet" -- mark on that and every merge in the repo is silently older than the
-/// mark, so the section stays empty forever and nobody finds out. `ok` is the
-/// only field that can tell those two apart.
-///
-/// An empty list from a gh that DID answer needs no guard of its own: marking
-/// a repo with no merges yet is harmless, since everything that lands after
-/// still lands after. A guard for it was here and was removed -- it made the
-/// `ok` check untestable by shadowing it on every path a test could reach.
-void _markLandedBaseline(_Gh gh) {
-  if (_landedSince != null) return;
-  if (!gh.ok) return;
-
-  final at = DateTime.now().toUtc().toIso8601String();
-  _append({
-    'kind': 'meta',
-    'landedSince': at,
-    'note': '최근 착지의 기준선 — 이 시각까지 머지된 것은 이미 본 것으로 친다. '
-        '보드가 생기기 전에 머지된 PR을 다시 확인하라고 물을 이유가 없다.',
-  });
-  _landedSince = DateTime.parse(at);
-}
-
 /// Which card a question belongs to, asked at SUBMIT time — before a render
 /// has built [_byOrigin].
 ///
@@ -325,12 +494,15 @@ String _intake(Map<String, dynamic> body) {
   final kind = '${body['kind']}';
   final text = '${body['text'] ?? ''}'.trim();
   final tag = '${body['tag'] ?? ''}'.trim();
-  // 임시 is its own filing, not a lesser feedback: it says the thought is not
-  // finished yet, so whoever reads it should expect to ask rather than act.
-  final (prefix, label, stage) = switch (kind) {
-    'idea' => ('I', '아이디어', '유저 아이디어'),
-    'draft' => ('M', '임시', '임시 메모'),
-    _ => ('F', '피드백', '유저 피드백'),
+  // ⚠️The stage name is 유저 for all three now — see below. What still
+  // differs is the id prefix and the tag, and the tag is where a reader looks
+  // to tell a finished thought from an unfinished one: 임시 is its own filing,
+  // not a lesser feedback, and says whoever reads it should expect to ask
+  // rather than act.
+  final (prefix, label) = switch (kind) {
+    'idea' => ('I', '아이디어'),
+    'draft' => ('M', '임시'),
+    _ => ('F', '피드백'),
   };
   final id = _nextId(prefix);
   final firstLine = text.split('\n').first;
@@ -345,9 +517,15 @@ String _intake(Map<String, dynamic> body) {
     // and theirs share a field — and writing both would print the same
     // paragraph twice, once under each name.
     'said': text,
-    'at': stage,
+    // 🚨★★★`유저`, THE 대분류 — not a label of its own. Everything the user
+    // writes is one kind of entry and it lands in 분류 전; which KIND of
+    // filing it was is the tag beside it (피드백 / 아이디어 / 임시), so the
+    // stage name was saying it twice. ⛔And `state: 'inbox'` is gone with it:
+    // this was the last place a section was written rather than folded out of
+    // the story. Older intake records keep their own `state`, which still
+    // works — nothing in their story names a section, so nothing overrides it.
+    'at': '유저',
     'tags': [label, if (tag.isNotEmpty) tag],
-    'state': 'inbox',
     'ts': _now(),
   });
   return id;
@@ -447,7 +625,23 @@ List<String> _shotsFor(String id) {
 /// of it, then what I worked out.
 class _Log {
   _Log(this.ts, this.at, this.text,
-      {this.byUser = false, this.pr, this.how = ''});
+      {this.byUser = false, this.pr, this.how = '', this.ask});
+
+  /// 🚨★★★THE QUESTION THIS ENTRY IS, when it is one (유저 2026-08-31:
+  /// 「질문 자체를 대분류로 옮기고, 새로운 카드 만들어서 참조가 아니라,
+  /// **해당 원본 카드 내에서** 질문 카드를 만드는? 질문 여러 개일 수 있잖아.
+  /// 그래서 카드 내에 질문이 생기는 거지」).
+  ///
+  /// ⛔A question used to be a CARD of its own — its own id, its own panel in
+  /// 답할 것, a link back to the card that raised it, and a second block
+  /// rendered under that card's story. So one subject had two rows, and the
+  /// answer landed outside the timeline no matter when it arrived.
+  ///
+  /// ⚠️Held BY REFERENCE, never copied: the entry keeps the question entry
+  /// itself, so the options and the answer are read live. Copying them in
+  /// would put one fact in two records, which is the failure this whole board
+  /// keeps being redesigned around.
+  final _Entry? ask;
   final String ts;
 
   /// 🚨The PR this stage shipped, when it is a 구현 stage (유저 2026-08-26:
@@ -514,6 +708,15 @@ class _Entry {
   /// ⚠️Empty when no record for this card carried a `ts` — older lines
   /// predate the field, and a made-up date is worse than none.
   String updated = '';
+
+  /// The FIRST ts any record for this card carried — when it was raised.
+  /// [updated] is last-wins and cannot answer that, and a question folded into
+  /// its card has to land in the story at the moment it was ASKED.
+  String created = '';
+
+  /// Set when this record has been folded into another card as an entry, so it
+  /// no longer stands as a card of its own — see [_foldQuestionsIntoOrigins].
+  String? foldedInto;
 
   /// 🚨★★★EVERY WORD THIS CARD HAS EVER CARRIED, oldest first (유저
   /// 2026-08-26: 「각 공정마다 원문을 무조건 남길것. 패널내용이 길어지는건
@@ -600,35 +803,8 @@ class _Entry {
 /// Stop hook that cost 2.4s of every turn to answer the same question.
 List<int> _badLines = const [];
 
-/// 최근 착지 reports only what landed AFTER this moment.
-///
-/// Without it the section was a window onto all of git history: it showed the
-/// eight newest merges, and ticking those eight revealed the next eight, and
-/// so on for as far back as `gh pr list` would reach -- each tick also costing
-/// a permanent `pr-N archived` line. But a PR that merged before this board
-/// existed was watched as it merged. It is not news, and asking for it to be
-/// confirmed is asking twice.
-///
-/// So the section is bounded by a mark instead of a count: everything at or
-/// before the mark is already seen. The mark is written once, by the board
-/// itself, the first time it runs -- which is what removed the cap. The list
-/// is short now because it is genuinely short.
-DateTime? _landedSince;
-
-/// Did this land after the mark?
-bool _isNews(_Pr pr) {
-  final since = _landedSince;
-  if (since == null) return true;
-  final at = pr.mergedAt;
-  // A merge gh gave no timestamp for cannot be placed against the mark. Show
-  // it: 확인 can dismiss a row, nothing can recover one that was never drawn.
-  return at == null || at.isAfter(since);
-}
 
 List<_Entry> _readRecords(File file) {
-  // Reset, not update: the file is the state. A mark that survived a read of a
-  // file that no longer carries one would be a mark nobody can remove.
-  _landedSince = null;
   final bad = <int>[];
   final byId = <String, _Entry>{};
   final order = <String>[];
@@ -647,10 +823,7 @@ List<_Entry> _readRecords(File file) {
     }
     final kind = json['kind'] as String? ?? '';
     if (kind == 'meta') {
-      // meta lines are notes to self and carry no id, with one exception: the
-      // 최근 착지 mark. A later line wins, same as every other field here.
-      final since = json['landedSince'] as String?;
-      if (since != null) _landedSince = DateTime.tryParse(since);
+      // meta lines are notes to self and carry no id.
       continue;
     }
     final id = json['id'] as String?;
@@ -667,6 +840,7 @@ List<_Entry> _readRecords(File file) {
     // Last line wins: the head shows when this card last moved.
     final ts = '${json['ts'] ?? ''}';
     if (ts.isNotEmpty) e.updated = ts;
+    if (ts.isNotEmpty && e.created.isEmpty) e.created = ts;
     // ⚠️Recorded BEFORE `note` is merged, so the list keeps what each line
     // said rather than what the card ended up saying. A line that repeats the
     // note verbatim adds nothing and is skipped — amendments that touch only
@@ -694,9 +868,16 @@ List<_Entry> _readRecords(File file) {
         : '';
     void stage(String text, String fallback, {bool byUser = false}) {
       if (text.isEmpty) return;
+      // 🚨★★★THE DEDUPE MUST NOT EAT THE SECTION WORD. It used to clear `at`
+      // BEFORE this check, so a line whose text repeated an earlier entry
+      // added nothing AND consumed its own stage name — the move vanished
+      // with no trace anywhere. 🧪H25 lost its 대기중 exactly that way and
+      // sat in 바로 가능 with the word written in the file. Now an unadded
+      // entry leaves `at` for the next text on the line, and if nothing takes
+      // it the caller writes the bare move entry.
+      if (e.log.any((l) => l.text == text)) return;
       final label = at.isEmpty ? fallback : at;
       at = '';
-      if (e.log.any((l) => l.text == text)) return;
       // ⚠️The PR rides the FIRST stage this line opens, not all of them: it
       // shipped once, however many things the line had to say about it.
       e.log.add(_Log(ts, label, text,
@@ -742,13 +923,28 @@ List<_Entry> _readRecords(File file) {
     // ⚠️Clearing (`rest: ""`) writes no stage, deliberately: nothing was said,
     // and the correction that goes with it belongs in a note of its own.
     final leftover = '${json['rest'] ?? ''}'.trim();
-    if (leftover.isNotEmpty && !e.log.any((l) => l.text == leftover)) {
-      e.log.add(_Log(ts, '남은 것', leftover));
-    }
+    // ⚠️Through `stage()` like every other text on the line, so it CONSUMES
+    // the line's `at`. It used to append straight to the log, which left `at`
+    // unclaimed and made the bare-move fallback fire a second, empty entry
+    // beside it —「남은 것」 and「남은 것 으로 옮김」on one line.
+    stage(leftover, '남은 것');
     // A bare `{"id":…, "pr":N}` with nothing written still happened, and a 구현
     // with no story is better than a 구현 that vanishes.
     if (prLeft != null) {
       e.log.add(_Log(ts, '구현', 'PR #$prLeft', pr: prLeft, how: stageHow));
+    }
+    // 🚨★★★A MOVE IS AN ENTRY LIKE ANY OTHER (유저 2026-08-31: 「거기서
+    // 대기중 이동 이런 거나 분류 전 이동 이런 그냥 항목 이동? 착수 가능
+    // 이동 그냥 이런 항목을 만드는 게 좋을 거 같기도 하고. **그 마지막
+    // 항목에 따라 위치가 정해지는?**」).
+    //
+    // A line can carry a section word and nothing to say — `{"id":…,
+    // "at":"대기중"}`. Nothing consumed the word, so without this the story
+    // would not show the move and [_placeByStory] would have nothing to read.
+    // ⛔The old shape wrote it into a `state` field instead, off the timeline,
+    // which is the split this round exists to end.
+    if (at.isNotEmpty && _sectionState.containsKey(at)) {
+      stage('$at${_ro(at)} 옮김', at);
     }
     if (json['title'] != null) e.title = json['title'] as String;
     if (json['state'] != null) e.state = json['state'] as String;
@@ -819,6 +1015,15 @@ List<_Entry> _readRecords(File file) {
     if (told.isEmpty) continue;
     e.log.removeWhere((l) => l.pr != null && told.contains(l.pr) &&
         l.text == 'PR #${l.pr}');
+  }
+  // 🚨A question is an entry on its card, folded in before anything is placed
+  // — the section it lands in depends on it. See [_foldQuestionsIntoOrigins].
+  _foldQuestionsIntoOrigins(byId);
+  _foldChecksIntoCards(byId);
+  // 🚨★★★AND ONLY NOW IS THE CARD PLACED. Every entry is in, so the walk
+  // backwards can see the whole story — see [_placeByStory].
+  for (final e in byId.values) {
+    _placeByStory(e);
   }
   return [for (final id in order) byId[id]!];
 }
@@ -1055,15 +1260,17 @@ Future<List<_Checkout>> _readCheckouts() async {
 /// `open` is deliberately absent — a ready item wears no badge at all, because
 /// the section it sits in already said so.
 const _stateLabels = <String, String>{
-  'wip': '진행 중',
-  'ask': '답 기다림',
+  'wip': '하는 중',
+  'ask': '답할 것',
   // 유저 2026-08-25: 「대기중의 지시대기는 사실상 상담대기니까 이름 상담대기로
   // 바꾸자」. 「지시 대기」는 유저가 명령을 안 내려서 멈춰 있다고 읽히는데,
-  // 실제로 멈춰 있는 이유는 아직 이야기가 안 끝나서다 — 참고 사진을 기다리거나,
-  // 상세를 더 듣기로 했거나, 별도 라운드로 미뤄 뒀거나.
-  'gate': '상담 대기',
-  'queue': '순서 대기',
+  // 실제로 멈춰 있는 이유는 아직 이야기가 안 끝나서다.
+  // 🆕2026-08-31 유저가 다시 이름을 골랐다 — 상담 대기 → 대화 중,
+  // 순서 대기 → 나중에. 칸 이름과 배지를 같은 말로 두기 위해서다.
+  'gate': '대화 중',
+  'queue': '나중에',
   'mine': '내가 정리 중',
+  'hands': '실기 확인',
   'inbox': '분류 전',
 };
 
@@ -1071,7 +1278,266 @@ const _stateLabels = <String, String>{
 /// ready to go.
 const _waiting = <String>{'ask', 'gate', 'queue', 'mine'};
 
+/// 🚨★★★THE SECTION A STAGE NAME PUTS THE CARD IN — the one place a written
+/// word becomes a column.
+///
+/// 유저 2026-08-31: 「순서 대기인 게 왜 착수 가능에 있냐? … 이거 애초에
+/// 보드 구조가 이상해서 니가 이상하게 받아들이는 건가?」 — it was. `at` is
+/// the word on the card; `state` is the code the sections were computed from;
+/// nothing made them agree. Seven live cards disagreed when this was written.
+///
+/// ⚠️This is the INVERSE of [_stateLabels] and must stay so: every value here
+/// is a key there. A word that is not a section (구현 · AI 판단 · 정정 ·
+/// 유저 피드백 …) is deliberately absent — those are stages in the story, not
+/// places to put the card.
+///
+/// ⚠️Spelling variants are listed, not normalised away: the file already has
+/// both 「대기중」 and 「대기 중」, both 「답할것」 and 「답할 것」, and a
+/// record written last month cannot be asked to respell itself. ⛔Do NOT add a
+/// fuzzy match instead — a card silently landing in a section because its
+/// label nearly matched is the failure this map exists to end.
+const _sectionState = <String, String>{
+  '착수 가능': 'open',
+  // 🚨남은 것 IS the 바로 가능 column: the entry says WHAT is left, the column
+  // says WHERE it waits. Two of these rows differ that way on purpose.
+  '남은 것': 'open',
+  // 🚨A question I raised puts the card in 답할 것; the user's answer hands it
+  // straight back to me. Both are 대분류, so the two sections fall out of the
+  // story in time order instead of being maintained beside it.
+  // ⚠️`유저` is the NEW name and the only one mapped. The legacy labels
+  // (유저 메모 · 유저 피드백 · 유저 대답) stay 소분류 on purpose — mapping
+  // them would drag every card that ever heard from the user back to 분류 전.
+  '질문': 'ask',
+  '유저': 'inbox',
+  '착수': 'open',
+  '순서 대기': 'queue',
+  '상담 대기': 'gate',
+  '상담': 'gate',
+  '대기중': 'gate',
+  '대기 중': 'gate',
+  '보류': 'gate',
+  '답할 것': 'ask',
+  '답할것': 'ask',
+  '분류 전': 'inbox',
+  '분류': 'inbox',
+  '진행 중': 'wip',
+  // 🆕2026-08-31 — the words 유저 chose. The older spellings above stay as
+  // aliases because the file already holds them and a record written last
+  // month cannot be asked to respell itself.
+  '하는 중': 'wip',
+  '대화 중': 'gate',
+  '나중에': 'queue',
+  // 🚨실기 확인 is a SECTION now, not a kind of card — see [_foldChecksIntoCards].
+  '실기 확인': 'hands',
+  '완료': 'archived',
+};
+
+/// 🚨★★★THE LAST 대분류 IN THE CARD'S STORY — the one reader for 「이 카드는
+/// 어디 있나」 and for 「아직 남은 것이 있나」.
+///
+/// 유저 2026-08-31: 「마지막에 남은 작업이라는 항목이 있고, 그 밑에 대분류적인
+/// 항목이 없다면 [착수 가능]. … **해당 항목 내에서 코드확인기록이나
+/// 유저피드백기록 이런 게 쌓여도 대분류적으로 착수 가능이면 착수 가능에
+/// 두도록**」.
+///
+/// ⛔This REPLACES 「the last entry, whatever it is」 (#1395). That rule moved
+/// a card out of 바로 가능 the moment anything at all was written after its
+/// 남은 것 — including a note recording that I had just checked the code,
+/// which is the one thing a card in that column most wants to have.
+String _lastSection(_Entry e) {
+  for (var i = e.log.length - 1; i >= 0; i--) {
+    final name = _stageName(e, i);
+    if (!_sectionState.containsKey(name)) continue;
+    // ⏱🚨★★★하는 중 IS A CLAIM WITH A SHELF LIFE, and that is the whole
+    // reason it can exist at all (유저 2026-08-31: 「해당 카드에 대한 작업을
+    // 시작할 때 해당 세션이 작업자로서 자기 이름 기록하는 곳에 기록하고 …
+    // **근데 카드 집어서 작업 시작하는 거 낡기 쉬울 거 같으니 낡지 않는
+    // 구조로** 하고」).
+    //
+    // ⛔As a STATE it would go stale the instant a session died: the card
+    // would say 하는 중 for ever and only a person noticing could clear it.
+    // As a claim that expires, nobody has to clear anything — a session that
+    // is really working keeps writing entries, and one that stopped simply
+    // stops renewing. The card falls back to whatever section it came from.
+    if (_sectionState[name] == 'wip' && _wentQuiet(e)) continue;
+    return name;
+  }
+  return '';
+}
+
+/// ⏱Whether the card's newest entry is older than a working day's worth of
+/// silence. ⚠️Measured from the NEWEST entry of all, not from the claim: a
+/// session that is still writing notes is still working, whatever it last
+/// called the section.
+bool _wentQuiet(_Entry e) {
+  if (e.log.isEmpty) return true;
+  final last = DateTime.tryParse(e.log.last.ts);
+  // No timestamp at all means an old record that predates the field. Those
+  // cannot be renewed, so they cannot hold a claim either.
+  if (last == null) return true;
+  return DateTime.now().difference(last) > _claimLasts;
+}
+
+/// ⏱Long enough to cover a night and a normal interruption, short enough that
+/// a dead session does not hold a card past tomorrow.
+const Duration _claimLasts = Duration(hours: 24);
+
+/// 🚨★★★AND THE SECTION IS COMPUTED, NEVER STORED.
+///
+/// ⛔`state` used to be written by hand beside `at`, and nothing made the two
+/// agree — 7 live cards disagreed when this was written, `linux-target` among
+/// them: `at: 순서 대기` with `state: open`, so it sat in 착수 가능 wearing a
+/// 순서 대기 label. 유저 found it: 「순서 대기인 게 왜 착수 가능에 있냐?」.
+/// A value nobody recomputes is a value that goes stale; a value folded out of
+/// the story cannot.
+///
+/// ⚠️Three states are endings or hand-markings with no stage word behind them,
+/// so a walk backwards would resurrect the card from an older section:
+/// `deleted` · `archived` written straight onto the card · `mine`. Reopening
+/// is an ENTRY (`at: 남은 것`, `at: 하는 중`), and that entry writes `open`
+/// first, so the guard never blocks a real reopen.
+void _placeByStory(_Entry e) {
+  if (e.state == 'deleted' || e.state == 'archived' || e.state == 'mine') {
+    return;
+  }
+  final section = _sectionState[_lastSection(e)];
+  if (section != null) e.state = section;
+}
+
+/// 🚨★★★A QUESTION IS AN ENTRY ON THE CARD THAT RAISED IT — not a card of its
+/// own (유저 2026-08-31: 「질문이 생기면 참조카드 + 원본카드 여러 개 생기는
+/// 게 아니라 **원본 카드 안에 질문 UI 같은 거 만들어서** 답할 것 대분류로
+/// 옮기는 거지」).
+///
+/// ⛔The old shape put ONE SUBJECT IN TWO ROWS: a `X-Q1` card in 답할 것, the
+/// origin card in 대기, a link each way, and a third rendering of the same
+/// question in a block under the origin's story. The answer then sat below the
+/// whole story no matter when it was given, which is what 유저 found:
+/// 「대답한 거는 무조건 아래 고정인가? … 별개로 두는 것 좀 절대로 없게 해.」
+///
+/// ⚠️NO MIGRATION. The old records stay exactly as they are and are folded on
+/// the way to the screen — the file is the record, and rewriting history to
+/// suit a renderer is how a board starts lying about what happened.
+///
+/// ⚠️The answer is folded as `유저`, which IS a 대분류 (→ 분류 전): an answer
+/// hands the card back to me to act on, and that has been the law since
+/// 2026-08-26. The question folds as `질문` (→ 답할 것). So a card sits in
+/// 답할 것 while its newest word is a question and moves to 분류 전 the moment
+/// one is answered — the sections fall out of the story instead of being
+/// maintained beside it, and `_asking` stopped being needed at all.
+void _foldQuestionsIntoOrigins(Map<String, _Entry> byId) {
+  for (final q in byId.values.toList()) {
+    if (q.kind != 'decision') continue;
+    final (of, _) = _asks(q);
+    final origin = of.isEmpty ? null : byId[of];
+    // A question whose origin is not in the file IS the card. Nothing folds,
+    // but its own answer still has to place it — ⚠️relabelled `유저`, the
+    // 대분류, so 분류 전 comes out of its story like every other card's
+    // instead of being written into a `state` by the submit handler.
+    if (origin == null) {
+      for (var i = q.log.length - 1; i >= 0; i--) {
+        if (!q.log[i].byUser) continue;
+        final was = q.log[i];
+        q.log[i] = _Log(was.ts, '유저', was.text, byUser: true);
+        break;
+      }
+      continue;
+    }
+    q.foldedInto = origin.id;
+    final raised = q.created.isNotEmpty ? q.created : q.updated;
+    origin.log.add(_Log(raised, '질문', q.title, ask: q));
+    if (q.answer == null) continue;
+    // The answer already exists as an entry on the question, written when it
+    // was submitted. Its TIME is the thing worth keeping — that is the whole
+    // point of putting it in the stream.
+    final said = q.log.where((l) => l.byUser).toList();
+    final at = said.isEmpty ? q.updated : said.last.ts;
+    final text = said.isEmpty ? q.answer! : said.last.text;
+    origin.log.add(_Log(at, '유저', text, byUser: true));
+  }
+  for (final e in byId.values) {
+    _sortByTime(e.log);
+  }
+}
+
+/// ⚠️STABLE, and unparseable timestamps keep the position they were read in.
+/// Older lines predate the `ts` field entirely, and a made-up time would
+/// scatter them; leaving them where the file put them is the honest answer.
+void _sortByTime(List<_Log> log) {
+  final keyed = <(DateTime?, int, _Log)>[];
+  for (var i = 0; i < log.length; i++) {
+    keyed.add((DateTime.tryParse(log[i].ts), i, log[i]));
+  }
+  // A row with no time inherits the one before it, so it cannot jump.
+  DateTime? carry;
+  final settled = <(DateTime, int, _Log)>[];
+  for (final (t, i, l) in keyed) {
+    carry = t ?? carry;
+    settled.add((carry ?? DateTime(1970), i, l));
+  }
+  settled.sort((a, b) {
+    final c = a.$1.compareTo(b.$1);
+    return c != 0 ? c : a.$2.compareTo(b.$2);
+  });
+  log
+    ..clear()
+    ..addAll(settled.map((e) => e.$3));
+}
+
+/// 🚨★★★A HANDS-ON CHECK IS AN ENTRY TOO, and 실기 확인 is a SECTION rather
+/// than a kind of card (유저 2026-08-31: 「나중에 실기 확인도 여러 개일
+/// 가능성 있는데 그것도 통일해서 깔끔하게 구현되잖아」).
+///
+/// ⛔`kind: "check"` was a parallel card system: its own records, its own row
+/// shape, its own nesting under a landing. A card that shipped and then needed
+/// three things tried on a tablet became FOUR rows.
+///
+/// ⚠️A check that names the card it belongs to (`under`) folds into it. One
+/// that names nothing IS its own card, and gets the 실기 확인 entry written
+/// onto itself so the section falls out of its story like every other card's.
+void _foldChecksIntoCards(Map<String, _Entry> byId) {
+  final byPr = <int, _Entry>{};
+  for (final e in byId.values) {
+    for (final n in e.prs) {
+      byPr[n] = e;
+    }
+  }
+  for (final c in byId.values.toList()) {
+    if (c.kind != 'check') continue;
+    final at = c.created.isNotEmpty ? c.created : c.updated;
+    final text = c.how.isNotEmpty ? c.how : c.title;
+    // `under` is a PR NUMBER, and the card that shipped it is the one this
+    // check belongs to.
+    final host = c.under == null ? null : byPr[c.under];
+    if (host != null && host.id != c.id) {
+      c.foldedInto = host.id;
+      host.log.add(_Log(at, '실기 확인', text.isEmpty ? c.id : text));
+      continue;
+    }
+    if (_lastSection(c) == '실기 확인') continue;
+    c.log.add(_Log(at, '실기 확인', text.isEmpty ? c.id : text));
+  }
+  for (final e in byId.values) {
+    _sortByTime(e.log);
+  }
+}
+
 String _esc(String s) => const HtmlEscape().convert(s);
+
+/// 「로」 or 「으로」 for [word] — chosen by its last syllable, the way a
+/// person writes it. ⚠️Not decoration: the board writes this particle into
+/// entries and buttons, and 「분류 으로 옮김」 / 「실기 확인 로」 read as
+/// machine output, which is what makes a reader stop trusting the text
+/// around it.
+String _ro(String word) {
+  if (word.isEmpty) return '로';
+  final code = word.codeUnitAt(word.length - 1);
+  // Outside the Hangul syllable block there is no 받침 to look at.
+  if (code < 0xAC00 || code > 0xD7A3) return '로';
+  final jong = (code - 0xAC00) % 28;
+  // No final consonant, or ㄹ — both take the short form.
+  return jong == 0 || jong == 8 ? '로' : '으로';
+}
 
 String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
     {int landedPage = 1}) {
@@ -1079,8 +1545,13 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   // words for two different endings, kept apart on purpose: 「archived」 is I
   // put this away, 「deleted」 is the user ticked it and it is finished. The
   // file keeps both lines either way.
-  final alive =
-      entries.where((e) => e.state != 'archived' && e.state != 'deleted').toList();
+  // ⚠️And a record folded into another card is not a card here either — see
+  // [_foldQuestionsIntoOrigins]. It is still reachable through the entry that
+  // holds it, which is the only place it should now be seen.
+  final alive = entries
+      .where((e) =>
+          e.state != 'archived' && e.state != 'deleted' && e.foldedInto == null)
+      .toList();
   // Laws are not work: they never appear as a card of their own, they attach
   // to the cards whose tag they name. Set before anything renders.
   _laws = alive.where((e) => e.kind == 'law').toList();
@@ -1102,22 +1573,28 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
     });
   }
   _byOrigin = byOrigin;
-  // ⚠️An ARCHIVED question no longer blocks — I put it away because it was
-  // dealt with. Only a live, unanswered one holds the card.
-  _asking = {
-    for (final entry in byOrigin.entries)
-      if (entry.value.any((q) =>
-          q.answer == null && q.state != 'archived' && q.state != 'deleted'))
-        entry.key,
-  };
   final inbox = alive.where((e) => e.state == 'inbox').toList();
-  // 답할 것 holds only what is still unanswered. An answered question leaves
-  // for 분류 전 — see `/submit` for why that is the same section and not a
-  // second one.
+  // 🚨★★★답할 것 LISTS CARDS, NOT QUESTIONS (유저 2026-08-31: 「질문이
+  // 생기면 참조카드 + 원본카드 여러 개 생기는 게 아니라 원본 카드 안에
+  // 질문 UI 같은 거 만들어서 답할 것 대분류로 옮기는 거지」).
+  //
+  // The card is here because its newest 대분류 is a 질문 — see
+  // [_foldQuestionsIntoOrigins]. ⛔No second reader: this does NOT ask 「does
+  // it have an unanswered question」 anywhere. The story already answered.
+  //
+  // ⚠️A question whose origin is not in the file was never folded, so it still
+  // stands as a card of its own — that is what `foldedInto == null` keeps.
   final asks = alive
-      .where((e) => e.kind == 'decision' && e.answer == null)
+      .where((e) =>
+          e.foldedInto == null &&
+          (e.state == 'ask' || (e.kind == 'decision' && e.answer == null)))
       .toList();
-  final checks = alive.where((e) => e.kind == 'check' && e.answer == null).toList();
+  // 🚨★★★실기 확인 = cards whose newest 대분류 says so. Nothing lands here by
+  // merging any more (유저 2026-08-31: 「머지는 PR마다 여러 번 되는데 실기
+  // 확인은 다르잖아 … 작업 완료되면 실기 확인만 대분류로서 존재하게」).
+  // A merge is an event and a section is a place; putting a card here because
+  // a PR landed made the two share an axis, and they always drift apart.
+  final checks = alive.where((e) => e.state == 'hands').toList();
 
   // Every PR a live card ever claimed, not just its newest. An older one left
   // out here comes back as an orphan `pr-N` placeholder beside the card that
@@ -1163,7 +1640,6 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
     for (final pr in gh.prs)
       if (pr.state == 'OPEN') pr.number,
   };
-  final byNumber = {for (final pr in gh.prs) pr.number: pr};
   _prState = {for (final pr in gh.prs) pr.number: pr.state};
   // 🚨★★★지금 IS BUILT FROM CARDS TOO (유저 2026-08-27: 「이거 답할것이 원본
   // 카드에서 포인터로서 존재하는거랑 똑같은 규칙이나 로직 적용하면 지금항목에
@@ -1195,84 +1671,18 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   }
   final now = [for (final e in nowCards) _itemPanel(e)];
 
-  // What a card is waiting to be looked at with, newest first. A card whose PR
-  // gh no longer lists still sorts — by when the card itself last moved.
-  DateTime? landedAt(_Entry e) {
-    DateTime? best;
-    for (final n in e.prs) {
-      final at = byNumber[n]?.mergedAt;
-      if (at != null && (best == null || at.isAfter(best))) best = at;
-    }
-    return best ?? DateTime.tryParse(e.updated);
-  }
 
-  final fresh = <_Entry>[];
-  for (final e in alive) {
-    if (e.prs.isEmpty || e.answer != null) continue;
-    // 🚨A MERGE IS NOT A FINISH — a card with leftovers stays where the work
-    // is, because a tick here deletes it and the leftovers go with it.
-    if (_stillOwed(e)) continue;
-    // Still building: it belongs in 지금, not in a list of things to look at.
-    if (e.prs.any(openPrs.contains)) continue;
-    // ⚠️The 최근 착지 mark only applies to PRs gh still knows about. For one
-    // outside the window there is no merge time to compare, and dropping it
-    // would be the disappearing-row bug wearing a different hat.
-    final known = e.prs.map((n) => byNumber[n]).whereType<_Pr>();
-    if (known.isNotEmpty && !known.any(_isNews)) continue;
-    fresh.add(e);
-  }
-  // Landings nobody claimed still need a row — that is the whole point of the
-  // placeholder — but only while gh can see them.
-  for (final pr in gh.prs) {
-    if (pr.state != 'MERGED' || !_isNews(pr)) continue;
-    if (claimed.containsKey(pr.number)) continue;
-    if (buriedPrs.contains(pr.number)) continue;
-    if (buriedIds.contains('pr-${pr.number}')) continue;
-    fresh.add(_prEntry(pr)..prs.add(pr.number));
-  }
-  fresh.sort((a, b) {
-    final x = landedAt(a), y = landedAt(b);
-    if (x == null) return y == null ? 0 : 1;
-    if (y == null) return -1;
-    return y.compareTo(x);
-  });
-  // 확인할 것 = every landing, plus the checks that stand on their own.
+  // 실기 확인 = the cards whose newest 대분류 says so, and nothing else.
   //
-  // 🚨ONE SUBJECT, ONE ROW, ONE PAGE. Three ways a row could double up, all
-  // closed here rather than left to luck:
-  //
-  //  1. A record that is BOTH a `check` and the claimer of a PR would render
-  //     once as a landing and again out of `checks` — `freshIds` stops that.
-  //  2. A check written as the hands-on half of a landing would sit BESIDE the
-  //     landing it belongs to. That one was real: C-tp1..C-tp6 are the device
-  //     checks for the tool-preset round, whose PR was on this very list.
-  //     `subs` nests them inside it.
-  //  3. 🆕A check whose landing sits on ANOTHER page used to fall through to
-  //     standalone and get drawn on EVERY page — the old answer to 「never
-  //     hide a check」. 유저 2026-08-28: 「중복된게 두 페이지에 걸쳐있거든?
-  //     … 페이지마다 내용 완전히 달라야지」. It is not a scroll.
-  //
-  //
-  // The new answer keeps the promise without the duplication: a check travels
-  // WITH its landing, and one that has no landing here goes LAST, which is
-  // where it always went.
-  //
-  // ⛔The order is not the lever. Putting the hand-written checks first would
-  // keep them on page 1 — and it pushed every landing onto page 2, which is
-  // the wrong half to hide: a landing is a thing merged minutes ago and the
-  // reason the section is open. The old note worried a page-2 check waits a
-  // month; the answer to that is that turning a page is now free, not that
-  // the newest work gets moved out of sight.
-  final landedPrs = {for (final e in fresh) ...e.prs};
-  final freshIds = {for (final e in fresh) e.id};
-  final orphans = [
-    for (final c in checks)
-      if (!freshIds.contains(c.id) &&
-          (c.under == null || !landedPrs.contains(c.under)))
-        c,
-  ];
-  final orphanIds = {for (final c in orphans) c.id};
-  final units = <_Entry>[...fresh, ...orphans];
+  // ⛔A LIST OF LANDINGS USED TO BE HALF OF THIS SECTION, built from `gh` and
+  // sorted by merge time, with three hand-written rules stopping a row
+  // appearing twice — a check nested under its landing, a check whose landing
+  // was on another page, a card that was both. All of it existed because a
+  // MERGE put a card here. A merge is an event and a section is a place, and
+  // 유저 2026-08-31 ended the pairing: 「머지는 PR마다 여러 번 되는데 실기
+  // 확인은 다르잖아 … 작업 완료되면 실기 확인만 대분류로서 존재하게」.
+  // ⇒ Nothing can double up now, because there is only one way in.
+  final units = <_Entry>[...checks];
   final pages =
       units.isEmpty ? 1 : (units.length + _landedPerPage - 1) ~/ _landedPerPage;
   final page = landedPage.clamp(1, pages);
@@ -1280,39 +1690,19 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   // EVERY page is rendered, and the pager only moves a class. Turning a page
   // used to refetch the whole board — measured at 0.5s on a warm cache and
   // 3.7s when the `gh` window had expired, for a change that touches nothing
-  // but these rows (유저: 「그냥 누르자마자 전환되게하고싶은데」). Rendering
+  // but these rows (유저: 「그냥 누르자마자 전환되게하고싶은데」). Sending
   // both pages costs less than sending the other 610KB of board twice.
+  //
+  // ⛔A PR BADGE, A `here` SET AND A `subs` MAP USED TO LIVE IN THIS LOOP, to
+  // nest a hands-on check under the landing it belonged to and to badge each
+  // landing with its newest PR. All of it went with the landings themselves:
+  // every row is one card that says 실기 확인, and its PRs are 구현 entries
+  // inside it.
   final toCheck = <String>[];
   for (var p = 1; p <= pages; p++) {
-    final onPage = units.skip((p - 1) * _landedPerPage).take(_landedPerPage);
-    final here = {
-      for (final e in onPage)
-        if (!orphanIds.contains(e.id)) ...e.prs,
-    };
-    final subs = <int, List<_Entry>>{};
-    for (final c in checks) {
-      final u = c.under;
-      if (u != null && here.contains(u)) (subs[u] ??= []).add(c);
-    }
     final rows = StringBuffer();
-    for (final e in onPage) {
-      if (orphanIds.contains(e.id)) {
-        rows.write(_checkRow(e));
-        continue;
-      }
-      // The row badges the NEWEST of this card's PRs that gh can still see —
-      // the rest are in its story as 구현 stages. A card whose PRs have all
-      // aged out of the window gets no badge and loses nothing: the stages
-      // carry the numbers and the links.
-      _Pr? badge;
-      for (final n in e.prs) {
-        final pr = byNumber[n];
-        if (pr == null) continue;
-        if (badge == null || n > badge.number) badge = pr;
-      }
-      rows.write(_checkRow(e, pr: badge, subs: [
-        for (final n in e.prs) ...?subs[n],
-      ]));
+    for (final e in units.skip((p - 1) * _landedPerPage).take(_landedPerPage)) {
+      rows.write(_checkRow(e));
     }
     toCheck.add('<div class="pg${p == page ? ' on' : ''}" data-pg="$p">'
         '$rows</div>');
@@ -1322,6 +1712,12 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
       .where((e) =>
           e.kind == 'item' &&
           e.state != 'inbox' &&
+          // A card whose newest 대분류 is a 질문 is drawn in 답할 것, with the
+          // question open inside it. Listing it here too would be one subject
+          // in two rows — the shape this round exists to end.
+          e.state != 'ask' &&
+          // A card waiting to be tried on a device is drawn in 실기 확인.
+          e.state != 'hands' &&
           // An answered item has been looked at and reported on; it belongs in
           // its own story now, not back in 착수 가능 claiming to be unstarted.
           e.answer == null &&
@@ -1335,12 +1731,15 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   // be unstarted, which is the one thing they are not.
   final underway = loose.where((e) => e.state == 'wip').toList();
   final rest = loose.where((e) => e.state != 'wip').toList();
-  final ready = rest
-      .where((e) => !_waiting.contains(e.state) && !_asking.contains(e.id))
-      .toList();
-  final waiting = rest
-      .where((e) => _waiting.contains(e.state) || _asking.contains(e.id))
-      .toList();
+  final ready = rest.where((e) => !_waiting.contains(e.state)).toList();
+  // 🚨TWO DIFFERENT WAITS, TWO SECTIONS (유저 2026-08-31: 「대기중엔 상담대기
+  // /답대기/순서대기 있는데, **순서대기만 별도 항목 필터로서 만들어서 따로
+  // 두고 싶어**」). 나중에 is 「I could start this, I chose not to yet」;
+  // 대화 중 is 「I cannot start this until we finish talking」. Lumping them
+  // made the second invisible inside the first.
+  final later = rest.where((e) => e.state == 'queue').toList();
+  final talking =
+      rest.where((e) => _waiting.contains(e.state) && e.state != 'queue').toList();
   now.addAll(underway.map(_itemPanel));
 
   final b = StringBuffer();
@@ -1350,8 +1749,9 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   b.writeln('<div class="wrap">');
   b.write('<h1>Anicel 보드</h1>');
   b.write('<p class="stamp">분류 전 <b>${inbox.length}</b> · 답할 것 <b>${asks.length}</b>'
-      ' · 확인할 것 <b>${fresh.length + checks.length}</b> · 지금 <b>${now.length}</b>'
-      ' · 착수 가능 <b>${ready.length}</b> · 대기 <b>${waiting.length}</b>');
+      ' · 하는 중 <b>${now.length}</b> · 바로 가능 <b>${ready.length}</b>'
+      ' · 대화 중 <b>${talking.length}</b> · 나중에 <b>${later.length}</b>'
+      ' · 실기 확인 <b>${checks.length}</b>');
   if (!gh.ok) {
     b.write(' · <span class="warn">gh 를 못 불렀습니다 — PR 칸은 비어 있습니다</span>');
   }
@@ -1366,22 +1766,33 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   }
 
   b.write(_intakeForm());
+  // 🚨★★★THE SEVEN SECTIONS, IN THE ORDER 유저 NAMED THEM (2026-08-31). The
+  // names are the words a person would use, and 대기 중 is split because
+  // 「나중에」 and 「대화 중」 are two different waits: 「순서 대기만 별도
+  // 항목 필터로서 만들어서 따로 두고 싶어」.
+  //
+  // ⚠️A section name and the 대분류 that puts a card in it are the SAME WORD
+  // wherever they can be — see [_sectionState]. Three differ on purpose,
+  // because the event and the place have different names: 유저 → 분류 전,
+  // 질문 → 답할 것, 남은 것 → 바로 가능.
   b.write(_group('분류 전', inbox.length, '내가 읽고 분류한다', inbox.map(_itemPanel)));
-  b.write(_group('답할 것', asks.length, '고르고 제출', asks.map(_askPanel)));
+  b.write(_group('답할 것', asks.length, '고르고 제출',
+      asks.map((e) => e.kind == 'decision' ? _askPanel(e) : _itemPanel(e))));
   // The refresh lives here because this is the only section it changes, and a
   // control parked away from what it affects is a control you have to remember
   // the meaning of.
-  b.write(_group('지금', now.length, '', now,
+  b.write(_group('하는 중', now.length, '', now,
       control: _ctl('<button class="ghost sm" title="PR 상태는 페이지를 열 때만 읽습니다. '
           '지금 다시 읽으려면 누르세요 — 이 칸만 갱신됩니다." '
           'onclick="refresh(event)">↻</button>')));
-  b.write(_group('착수 가능', ready.length, '명령만 내리면 착수', ready.map(_itemPanel)));
-  b.write(_group('대기 중', waiting.length, '배지가 무엇을 기다리는지 말한다',
-      waiting.map(_itemPanel)));
+  b.write(_group('바로 가능', ready.length, '명령만 내리면 착수', ready.map(_itemPanel)));
+  b.write(_group('대화 중', talking.length, '이야기가 안 끝났다',
+      talking.map(_itemPanel)));
+  b.write(_group('나중에', later.length, '순서를 미뤄 둔 것', later.map(_itemPanel)));
   // ONE list (유저 2026-08-26). The count is the whole thing, not the page:
   // this section used to show a number that was really a cap, and that is
   // exactly what made it lie.
-  b.write(_group('확인할 것', fresh.length + checks.length,
+  b.write(_group('실기 확인', checks.length,
       '체크 = 문제 없음 · 메모 = 문제', toCheck,
       footer: _pager(units.length, page),
       control: _ctl('<button class="ghost sm" title="이 페이지의 모든 항목을 체크합니다" '
@@ -1572,15 +1983,6 @@ final _qName = RegExp(r'^(.+)-Q(\d+)$');
 /// a ticked landing came back: `alive` filters out precisely what you need.)
 Map<String, List<_Entry>> _byOrigin = const {};
 
-/// 🚨★★★Cards with a question still unanswered — they are NOT 착수 가능
-/// (유저 2026-08-26: 「결정대기가 남아있으면 대기중항목인게 맞지않냐?」).
-///
-/// The law was already written — CLAUDE.md: 「⛔미결이 남은 칸은 착수 가능이
-/// 아니다」 — and F-17 broke it the moment I raised F-17-Q1, because nothing
-/// moved the card. **A law nobody can forget is one the code applies**, so
-/// this is derived from the questions themselves rather than kept as a state
-/// I would have to remember to set and, worse, remember to unset.
-Set<String> _asking = const {};
 
 /// What `gh` says each PR is doing, so a 구현 stage can say it (유저
 /// 2026-08-27: 「지금을 만드는게 아니라 구현항목을 잘 활용하면 될거같은데」).
@@ -1594,86 +1996,23 @@ Set<String> _asking = const {};
 /// nothing rather than guessing — the same rule the 확인할 것 badge follows.
 Map<int, String> _prState = const {};
 
-/// 🚨THE WAY BACK TO THE CARD THAT ASKED (유저 2026-08-26: 「그 답할것패널에
-/// 포인터? 내부에 태그같은거로서 질문이 생성된 패널을 표시해줌」).
-///
-/// A question torn out of its card is a question with no subject — that is
-/// the same disease as a 확인할 것 row saying only 「T14」, one section over.
-/// The link jumps to the origin AND opens it, because an anchor that lands on
-/// a folded `<details>` looks like it did nothing.
-String _origin(_Entry e) {
-  final (of, _) = _asks(e);
-  if (of.isEmpty) return '';
-  return '<p class="d"><a class="chip link" href="#c-${_esc(of)}" '
-      'onclick="jump(\'${_esc(of)}\');return false;">↑ ${_esc(of)} 에서 나온 질문</a></p>';
-}
 
-/// 🚨★★★THE OTHER HALF OF THE LINK — the card's own list of its questions
-/// (유저 2026-08-26: 「답할것 발생할때마다 대기중 패널에 Q1 Q2 이렇게 항목
-/// 만들어서 그거누르면 해당패널로 이동하게. 대답하면 그 항목에 대답 이식되고」).
-///
-/// ⛔NOT transplanted, and that is the improvement on the ask. Copying the
-/// answer into the origin would put one fact in two records, and the day one
-/// of them is edited they disagree — the failure this whole board keeps being
-/// redesigned around. Rendered by reference, the card cannot show a stale
-/// answer, because it is not holding one.
-String _questions(_Entry e) {
-  final mine = _byOrigin[e.id];
-  if (mine == null || mine.isEmpty) return '';
-  final b = StringBuffer();
-  for (var i = 0; i < mine.length; i++) {
-    final q = mine[i];
-    final (_, n) = _asks(q);
-    final label = 'Q${n == 0 ? i + 1 : n}';
-    final answered = q.answer != null;
-    final picked = answered
-        ? q.options.firstWhere((o) => o['key'] == q.answer,
-            orElse: () => <String, dynamic>{'label': q.answer})
-        : const <String, dynamic>{};
-    b.writeln('<details class="lg q">');
-    b.writeln('<summary><span class="lgk">$label</span>'
-        '<span class="lgp">${_esc(q.title)}</span>'
-        '<span class="chip ${answered ? 'ok' : 'run'}">'
-        '${answered ? '답함' : '대기'}</span></summary>');
-    if (answered) {
-      final said = '${picked['label'] ?? q.answer}';
-      if (said.isNotEmpty && said != 'ok') {
-        b.writeln('<p class="d"><b>→ ${_esc(said)}</b></p>');
-      }
-      if (q.answerNote.isNotEmpty) {
-        b.writeln('<p class="d">${_esc(q.answerNote)}</p>');
-      }
-    } else if (q.why.isNotEmpty) {
-      b.writeln('<p class="d">${_esc(q.why)}</p>');
-    }
-    // ⛔No link once the question is put away: its panel is no longer drawn,
-    // and a link to a row that is not on the page does nothing when clicked,
-    // which reads as broken rather than as finished. The row above already
-    // carries the whole question and its answer, so nothing is lost by
-    // dropping the link — that is the point of rendering by reference.
-    final reachable = q.state != 'archived' && q.state != 'deleted';
-    b.writeln(reachable
-        ? '<p class="d"><a class="chip link" href="#c-${_esc(q.id)}" '
-            'onclick="jump(\'${_esc(q.id)}\');return false;">'
-            '${_esc(q.id)} 로 이동 →</a></p>'
-        : '<p class="d mono">${_esc(q.id)} · 처리 완료</p>');
-    b.writeln('</details>');
-  }
-  return b.toString();
-}
 
-String _askPanel(_Entry d) {
+/// 🚨★★★THE QUESTION ITSELF — where it is asked, why it is stuck, the
+/// options, and the box to answer in. Rendered INSIDE the story of the card
+/// that raised it (유저 2026-08-31: 「원본 카드 안에 질문 UI 같은 거 만들어서
+/// 답할 것 대분류로 옮기는 거지」).
+///
+/// ⚠️`data-kind="decision"` and the radio name both key off the QUESTION's own
+/// id, not the card's — so one card can carry several questions and each
+/// submits on its own. The `/submit` contract is untouched: it still receives
+/// the question's id and still hands the card back to me.
+///
+/// ⛔This used to be the whole of `_askPanel`, a panel of its own with its own
+/// head and its own row in 답할 것. Splitting the body out is what let one
+/// subject stop being two rows.
+String _askBody(_Entry d, {required bool answered}) {
   final b = StringBuffer();
-  b.writeln('<details class="p ask" id="c-${_esc(d.id)}" data-kind="decision">');
-  // ⛔No 미제출 badge. Every card in this section is unanswered by
-  // construction now — an answered one leaves for 분류 전 — so the badge was
-  // labelling the section on every row (유저 2026-08-26: 「답할것도 미제출태그
-  // 필요없어질테니」).
-  b.writeln(_head(d.id, d.title, d.tags, '', '', date: d.updated));
-  b.writeln('<div class="body">');
-  b.writeln(_care(d));
-  b.writeln(_recordPanels(d));
-  b.writeln(_origin(d));
   if (d.where.isNotEmpty) {
     b.writeln('<p class="d"><b>화면에서</b> — ${_esc(d.where)}</p>');
   }
@@ -1687,14 +2026,22 @@ String _askPanel(_Entry d) {
   // into it on 2026-08-28 and the user never saw a word. ⛔Silence is the
   // wrong failure: show the text and say it is misplaced, so the author
   // finds out and the reader still gets the sentence.
-  final recommendsAnOption =
-      d.options.any((o) => '${o['key']}' == d.recommend);
-  if (d.recommend != null &&
-      d.recommend!.isNotEmpty &&
-      !recommendsAnOption) {
+  final recommendsAnOption = d.options.any((o) => '${o['key']}' == d.recommend);
+  if (d.recommend != null && d.recommend!.isNotEmpty && !recommendsAnOption) {
     b.writeln('<p class="d"><b>⚠️추천</b> — ${_esc(d.recommend!)}'
         '<br><i>(선택지 키가 아니라 문장이 들어 있어 추천 표시가 안 붙습니다 '
         '— `recommend` 에는 선택지의 번호를 씁니다)</i></p>');
+  }
+  // ⚠️An ANSWERED question keeps its options on screen but loses the form:
+  // the answer is already an entry further down the story, and a live radio
+  // beside it would invite a second answer to a settled question.
+  if (answered) {
+    final picked = d.options.firstWhere(
+      (o) => '${o['key']}' == d.answer,
+      orElse: () => <String, dynamic>{'label': d.answer},
+    );
+    b.writeln('<p class="d"><b>→ ${_esc('${picked['label']}')}</b></p>');
+    return b.toString();
   }
   for (final o in d.options) {
     final key = '${o['key']}';
@@ -1718,63 +2065,55 @@ String _askPanel(_Entry d) {
   b.writeln(_shotStrip(d.id));
   b.writeln('<div class="foot"><button onclick="send(\'${_esc(d.id)}\')">제출</button>'
       '<span class="state"></span></div>');
+  return b.toString();
+}
+
+/// A question whose origin is not in the file is a card in its own right —
+/// nothing folded it, so it still needs a panel. ⚠️Every other question is
+/// drawn by [_story] as an entry.
+String _askPanel(_Entry d) {
+  final b = StringBuffer();
+  b.writeln('<details class="p ask" id="c-${_esc(d.id)}" data-kind="decision">');
+  b.writeln(_head(d.id, d.title, d.tags, '', '', date: d.updated));
+  b.writeln('<div class="body">');
+  b.writeln(_care(d));
+  b.writeln(_recordPanels(d));
+  b.writeln(_askBody(d, answered: d.answer != null));
   b.writeln('</div></details>');
   return b.toString();
 }
 
-/// ONE row of 확인할 것, whether it arrived as a landed PR or as a check
-/// somebody wrote (유저 2026-08-26: 「그런것도 싹 하나의 확인목록으로 병합.
-/// 다만 pr인지아닌지는 구분하고싶으니 태그로」).
+/// ONE row of 실기 확인 — a card waiting to be tried on a device.
 ///
-/// 🚨The two lists were the same list wearing two costumes. 최근 착지 came from
-/// `gh` for free but had NOWHERE to report a result; 실기 확인 had the memo box
-/// but had to be hand-written — so one change got written twice, once as an
-/// item note and again as a check card. 유저: 「둘다 뭐가 작업됬는지 하나하나
-/// 확인하는용이라서. 그래서 너가 두군데 써넣는것도 힘들거고」.
+/// ⛔THIS PANEL USED TO SERVE TWO LISTS. 최근 착지 came from `gh` for free
+/// but had NOWHERE to report a result; 실기 확인 had the memo box but had to
+/// be hand-written — so one change got written twice, once as an item note
+/// and again as a check card (유저 2026-08-26: 「둘다 뭐가 작업됬는지 하나
+/// 하나 확인하는용이라서. 그래서 너가 두군데 써넣는것도 힘들거고」).
+/// Merging them into one panel was right; what was still wrong is that a
+/// MERGE put a card here at all. 유저 2026-08-31 ended that, and with it went
+/// the `#1236` badge, the 실기 chip that told the two halves apart, and the
+/// nested sub-checks. There is one shape now, so nothing needs naming.
 ///
-/// ⇒ One panel, both affordances, and the DIFFERENCE says itself without a
-/// word for it: a landing carries its `#1236` badge, a hand-written one
-/// carries [_kHandsOn] and no badge.
-///
-/// The two answers stay distinct because they mean different things and cost
-/// different amounts (유저 확정): the TICK is "봤고 문제 없음" and sweeps many
-/// rows at once through 확인; the MEMO is "문제가 있다" and is written per row.
-String _checkRow(_Entry c, {_Pr? pr, List<_Entry> subs = const []}) {
-  final landed = pr != null;
-  // The badge says WHICH PR; nothing needs to say THAT it is a PR. A
-  // hands-on row needs no badge at all — every row in this section is
-  // unchecked by definition,
-  // so 「미확인」 was labelling the section, not the row.
-  final badge = landed ? '#${pr.number}' : '';
+/// The two ANSWERS stay distinct, because they mean different things and cost
+/// different amounts (유저 확정): the TICK is 「봤고 문제 없음」 and sweeps
+/// many rows at once through 확인; the MEMO is 「문제가 있다」 and is written
+/// per row.
+String _checkRow(_Entry c) {
   final b = StringBuffer();
-  // The sub-count goes in the HEAD because a nested check is invisible until
-  // the row is opened, and a check nobody can see is a check nobody does.
-  // ⛔No 머지 chip on a landed row: the `#1236` badge beside it already says
-  // it came from a PR, and the number says WHICH (유저 2026-08-26: 「머지태그도
-  // 솔직히 #1236 이런 pr태그있으니까 필요없을듯」). Only the hand-written half
-  // needs naming, because it is the half with no badge.
-  //
-  // ⛔And no 공정 N count. It was a number nobody acts on — the story is right
-  // there when the row opens, and a chip that only says 「there is some」 is
-  // the same noise as a badge repeating its section.
   final gap = _isGap(c);
-  final tags = [
-    if (gap) '카드 없음',
-    if (!landed) _kHandsOn,
-    if (subs.isNotEmpty) '실기 ${subs.length}',
-    ...c.tags,
-  ];
+  final tags = [if (gap) '카드 없음', ...c.tags];
   // data-kind is what `send` writes back, and it is `check` on BOTH shapes:
-  // the result of looking at a thing is a check result whatever put it on the
-  // list. ⚠️It is also what routes the submit: a tick deletes the card, a
-  // memo sends it back to 분류 전 (see `/submit`).
+  // data-kind is what `send` writes back: the result of looking at a thing is
+  // a check result. ⚠️It also routes the submit — a tick writes 완료, a memo
+  // comes back as 유저 (see `/submit`).
   b.writeln('<details class="p chk" id="c-${_esc(c.id)}" data-kind="check">');
   b.writeln(_head(
     c.id,
     c.title,
     tags,
-    badge,
-    landed ? 'ok' : 'run',
+    '',
+    'run',
     lead: '<input type="checkbox" class="pick" value="${_esc(c.id)}" '
         'onclick="event.stopPropagation()">',
     date: c.updated,
@@ -1803,26 +2142,14 @@ String _checkRow(_Entry c, {_Pr? pr, List<_Entry> subs = const []}) {
   b.writeln(_story(c));
   // Its questions come with it to 확인할 것 — 「무엇을 물었고 무엇으로 정했나」
   // is half of knowing whether the thing in front of you is right.
-  b.writeln(_questions(c));
   b.writeln('<textarea rows="2" placeholder="문제가 있으면 적어 주세요 — 비워 두면 OK '
       '(스크린샷은 Ctrl+V)"></textarea>');
   b.writeln(_shotStrip(c.id));
   b.writeln('<div class="foot"><button onclick="send(\'${_esc(c.id)}\')">제출</button>'
       '<span class="state"></span></div>');
-  // The hands-on checks that belong to this landing, nested inside it. Each
-  // keeps its own id, its own box and its own 제출 — the merge is about where
-  // a row SITS, not about answering six things with one click.
-  for (final s in subs) {
-    b.writeln(_checkRow(s));
-  }
   b.writeln('</div></details>');
   return b.toString();
 }
-
-/// The tag for a 확인할 것 row that no PR produced. Its opposite needs no tag:
-/// a landing already wears the PR number, and 「머지」 beside 「#1236」 was the
-/// same fact twice on one line.
-const String _kHandsOn = '실기';
 
 /// A stand-in for a PR that no board item ever claimed — a landing the records
 /// know nothing about. It has the PR's own title and nothing else, which is
@@ -1853,12 +2180,12 @@ String _itemPanel(_Entry e) {
   // hidden.
   final answeredQuestion =
       (_byOrigin[e.id] ?? const <_Entry>[]).any((q) => q.answer != null);
-  // 대기 중 promises that 「배지가 무엇을 기다리는지 말한다」, and an unanswered
-  // question outranks whatever the state says: it is the thing actually
-  // holding the card, and it is the one the user can clear.
-  final badge = _asking.contains(e.id)
-      ? '답 대기'
-      : (e.state == 'open' || inbox) ? '' : (_stateLabels[e.state] ?? e.state);
+  // 대기 중 promises that 「배지가 무엇을 기다리는지 말한다」, and the state
+  // it names is folded straight out of the story now — an unanswered question
+  // makes the card's newest 대분류 a 질문, which IS the 답할 것 section.
+  // ⛔`_asking` was a second reader for that and is gone.
+  final badge =
+      (e.state == 'open' || inbox) ? '' : (_stateLabels[e.state] ?? e.state);
   // 분류 전 now receives three different arrivals, and which one a row is
   // decides what I do with it. The chip says so on the row (유저 2026-08-26:
   // 「분류전으로 옮기고 대답 태그 붙이면」). ⚠️Plain feedback and ideas already
@@ -1905,7 +2232,6 @@ String _itemPanel(_Entry e) {
       '',
       date: e.updated));
   b.writeln('<div class="body">');
-  b.writeln(_origin(e));
   if (editable) {
     // Still editable, because a filing made mid-thought is usually wrong in
     // some small way and the moment to fix it is when you notice.
@@ -1916,6 +2242,12 @@ String _itemPanel(_Entry e) {
         '<button onclick="save(\'${_esc(e.id)}\')">저장</button>'
         '<button class="ghost" onclick="purge(\'${_esc(e.id)}\')">삭제</button>'
         '<span class="state"></span></div>');
+    // 🚨★★★AND ITS STORY, ALWAYS. A card in 분류 전 used to show the edit box
+    // and NOTHING ELSE, so a card that arrived here because the user pressed
+    // 「나중에 로」 showed no sign of having been asked — the request was in
+    // the file and invisible on screen. ⛔That is the same 「별개로 둠」 this
+    // round is removing everywhere else (유저: 「싹 다 타임라인흐름이야」).
+    b.writeln(_story(e));
   } else {
     b.writeln(_care(e));
     b.writeln(_recordPanels(e));
@@ -1925,7 +2257,6 @@ String _itemPanel(_Entry e) {
           '그대로입니다.</p>');
     }
     b.writeln(_story(e));
-    b.writeln(_questions(e));
     b.writeln(_shotStrip(e.id));
     // 🚨EVERY CARD TAKES FEEDBACK, not just the ones in 확인할 것 (유저
     // 2026-08-26, looking at a card that had just moved OUT of that section:
@@ -1942,6 +2273,18 @@ String _itemPanel(_Entry e) {
         '<button onclick="send(\'${_esc(e.id)}\')">피드백 제출</button>'
         '<span class="state"></span></div>');
   }
+  // 🚨★★★MOVING A CARD SHOULD COST ONE PRESS (유저 2026-08-31: 「가볍게
+  // 순서 대기 쪽으로 옮기는 게 힘든데, 그거 하는 기능 있으면 좋겠어」).
+  // ⚠️These ASK; they do not move. The press writes one 유저 entry saying
+  // where it should go, which lands the card in 분류 전 for me to read — see
+  // `/ask-move`. ⛔A button that moved the card itself would move something
+  // nobody had read, and the request would leave no trace in the story.
+  b.writeln('<div class="foot moves">');
+  for (final to in const ['나중에', '대화 중', '바로 가능', '실기 확인']) {
+    b.writeln('<button class="ghost sm" '
+        'onclick="askMove(event,\'${_esc(e.id)}\',\'$to\')">$to${_ro(to)}</button>');
+  }
+  b.writeln('<span class="state"></span></div>');
   b.writeln('</div></details>');
   return b.toString();
 }
@@ -2087,10 +2430,16 @@ String _checkoutPanel(_Checkout c) {
 /// 그 뒤에 무엇이든 한 줄이 더 적혔다면 그것은 더 이상 마지막 말이 아니다.
 /// 여전히 남은 것이 있다면 **다시 한 줄 적으면 된다.**
 ///
-/// ⚠️그래서 아직 남은 것이 있으면 **`rest` 를 마지막 줄에 단독으로** 써야 한다.
-/// 한 줄에 `rest` 와 `pr` 을 같이 쓰면 구현이 뒤에 붙어 완료로 읽힌다.
-bool _stillOwed(_Entry e) =>
-    e.log.isNotEmpty && _stageName(e, e.log.length - 1) == '남은 것';
+/// ⚠️그래서 아직 남은 것이 있으면 **`rest` 를 마지막 대분류로** 써야 한다.
+/// 한 줄에 `rest` 와 다른 대분류를 같이 쓰면 뒤엣것이 이긴다.
+///
+/// 🆕2026-08-31: 뒤에 오는 것이 **소분류**(작업 기록·코드 확인·AI 판단·구현)
+/// 라면 이제 남은 것 그대로다 — 유저: 「해당 항목 내에서 코드확인기록이나
+/// 유저피드백기록 이런 게 쌓여도 대분류적으로 착수 가능이면 착수 가능에」.
+/// ⛔#1395 는 「무엇이든 뒤에 오면 끝」이었고, 그건 **코드를 확인했다고 적는
+/// 순간 카드가 칸을 떠나게** 만들었다 — 그 칸의 카드가 가장 갖고 싶어 하는
+/// 바로 그 기록이다.
+bool _stillOwed(_Entry e) => _lastSection(e) == '남은 것';
 
 String _stageName(_Entry e, int i) {
   final at = e.log[i].at;
@@ -2149,15 +2498,30 @@ String _story(_Entry e) {
     // 펼치기 상태로 두는거고」). It used to add `|| live`, which is now the
     // same condition anyway — kept out so the next reader cannot make them
     // disagree again.
+    // 🚨★★★A QUESTION IS AN ENTRY, and it brings its own form with it — the
+    // radios, the memo box and the submit all live here now (유저 2026-08-31:
+    // 「원본 카드 안에 질문 UI 같은 거 만들어서」). ⛔It used to be a whole
+    // second block under the story, so an answer sat below everything no
+    // matter when it arrived.
+    final ask = entry.ask;
+    final answered = ask?.answer != null;
     b.writeln('<details class="lg'
         '${entry.byUser || mine.startsWith('유저') ? ' says' : ''}'
+        '${ask != null && !answered ? ' q' : ''}'
         '${live ? ' todo' : ''}${leftover && !live ? ' done' : ''}"'
-        '${newest ? ' open' : ''}>');
+        '${newest ? ' open' : ''}'
+        '${ask == null ? '' : ' id="c-${_esc(ask.id)}" data-kind="decision"'}>');
     b.writeln('<summary><span class="lgk">${_esc(mine)}</span>'
         '<span class="lgp">${_esc(peek)}</span>'
+        '${ask == null ? '' : '<span class="chip ${answered ? 'ok' : 'run'}">'
+            '${answered ? '답함' : '대기'}</span>'}'
         '${entry.pr == null ? '' : _prChip(entry.pr!)}'
         '<span class="when">${_esc(_day(entry.ts))}</span></summary>');
-    b.writeln('<p class="d">${_esc(entry.text)}</p>');
+    if (ask == null) {
+      b.writeln('<p class="d">${_esc(entry.text)}</p>');
+    } else {
+      b.writeln(_askBody(ask, answered: answered));
+    }
     if (entry.how.isNotEmpty) {
       b.writeln('<p class="d"><b>이렇게 확인한다</b> — ${_esc(entry.how)}</p>');
     }
@@ -2200,6 +2564,15 @@ function send(id){
     stateOf(c).textContent = '적을 내용이 있어야 제출됩니다'; return;
   }
   post('/submit', {id:id, kind:c.dataset.kind, answer:answer||'ok', memo:memo}, c)
+    .then(()=>redraw(c.id))
+    .catch(e=>stateOf(c).textContent = '실패: '+e.message);
+}
+// One press = one 유저 entry saying where the card should go. The card lands
+// in 분류 전 and I move it -- the button never moves it itself.
+function askMove(ev, id, to){
+  ev.stopPropagation();
+  const c = document.getElementById('c-'+id);
+  post('/ask-move', {id:id, to:to}, c)
     .then(()=>redraw(c.id))
     .catch(e=>stateOf(c).textContent = '실패: '+e.message);
 }
@@ -2277,7 +2650,7 @@ function redraw(skipId, done){
   // ⚠️Re-fetch the page you are ON. Asking for `/` returns page 1, so
   // submitting anything from page 2 used to teleport you back to the top of a
   // list you had scrolled past.
-  return fetch('/?landed=' + curPage(), {cache:'no-store'})
+  return fetch('/?partial=1&landed=' + curPage(), {cache:'no-store'})
     .then(r=>r.text())
     .then(html=>{
       const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -2351,7 +2724,7 @@ function goPage(n){
 // page is unaffected by a PR lookup, and a full reload throws away every panel
 // you had open to read.
 function swapSection(id, done){
-  return fetch('/?landed=' + curPage(), {cache:'no-store'})
+  return fetch('/?partial=1&landed=' + curPage(), {cache:'no-store'})
     .then(r=>r.text())
     .then(html=>{
       const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -2599,6 +2972,7 @@ textarea{resize:vertical}
 .shots img{max-height:120px;border:1px solid var(--line2);border-radius:4px;
 cursor:zoom-in}
 .foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.foot.moves{margin-top:6px;border-top:1px solid var(--line);padding-top:8px}
 button{font-family:var(--sans);font-size:13px;font-weight:600;padding:6px 14px;
 border-radius:4px;border:1px solid var(--ok);background:var(--okbg);
 color:var(--ok);cursor:pointer}
