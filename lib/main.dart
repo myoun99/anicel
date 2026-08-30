@@ -1,4 +1,5 @@
 import 'dart:async' show unawaited;
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart'
     show LicenseEntryWithLineBreaks, LicenseRegistry;
@@ -116,6 +117,15 @@ Future<void> main() async {
   final storedScale = await AppUiScaleStore().load();
   if (storedScale != null) {
     AppUiScale.value.value = storedScale;
+  } else {
+    // ⛔FIRST RUN ONLY (유저 2026-08-31, I-11: 「초기값은 첫 실행 때만
+    // 정해짐」). `load` returns null exactly when no settings file exists,
+    // so a stored scale — even one equal to the default — is never
+    // reconsidered. The branch structure IS the guarantee: there is no path
+    // from here that can overwrite a value the user chose.
+    AppUiScale.value.value = AppUiScale.firstRunScaleFor(
+      PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 1.0,
+    );
   }
   // Read BEFORE this launch starts writing its own: an entry with no END
   // means the app died in the middle of that work, and a memory kill
@@ -183,7 +193,9 @@ class AnicelApp extends StatelessWidget {
         // BELOW the Navigator is not.
         builder: (context, child) => EffectiveDevicePixelRatioScope(
           uiScale: AppUiScale.value.value,
-          child: MeasurementReadoutHost(child: child ?? const SizedBox.shrink()),
+          child: MeasurementReadoutHost(
+            child: child ?? const SizedBox.shrink(),
+          ),
         ),
         home: const HomePage(),
       ),
