@@ -204,6 +204,25 @@ Future<void> _handle(HttpRequest req) async {
             'ts': _now(),
           });
         }
+      // 🚨★★★THE USER ASKS FOR A MOVE; I MAKE IT (유저 2026-08-31: 「대기중/
+      // 착수 가능 등에서 내가 아 이건 순서 보류하고 싶다 싶을 때 **가볍게
+      // 순서 대기 쪽으로 옮기는 게 힘든데, 그거 하는 기능 있으면 좋을 거
+      // 같아**」).
+      //
+      // ⚠️ONE LINE, and its 대분류 is 분류 전 — not the section they asked
+      // for. Everything the user writes comes back to me to act on, which has
+      // been the law since 2026-08-26 and is the reason **유저는 분류 체계를
+      // 몰라도 된다**: the request is the entry's text, and moving the card is
+      // my job. ⛔Writing 「나중에」 straight from the button would make the
+      // board move a card nobody had read.
+      case '/ask-move':
+        _append({
+          'kind': 'item',
+          'id': body['id'],
+          'at': '유저',
+          'said': '${body['to'] ?? ''} 로 옮겨 주세요',
+          'ts': _now(),
+        });
       case '/intake':
         newId = _intake(body);
       case '/edit':
@@ -780,9 +799,11 @@ List<_Entry> _readRecords(File file) {
     // ⚠️Clearing (`rest: ""`) writes no stage, deliberately: nothing was said,
     // and the correction that goes with it belongs in a note of its own.
     final leftover = '${json['rest'] ?? ''}'.trim();
-    if (leftover.isNotEmpty && !e.log.any((l) => l.text == leftover)) {
-      e.log.add(_Log(ts, '남은 것', leftover));
-    }
+    // ⚠️Through `stage()` like every other text on the line, so it CONSUMES
+    // the line's `at`. It used to append straight to the log, which left `at`
+    // unclaimed and made the bare-move fallback fire a second, empty entry
+    // beside it —「남은 것」 and「남은 것 으로 옮김」on one line.
+    stage(leftover, '남은 것');
     // A bare `{"id":…, "pr":N}` with nothing written still happened, and a 구현
     // with no story is better than a 구현 that vanishes.
     if (prLeft != null) {
@@ -1202,10 +1223,40 @@ const _sectionState = <String, String>{
 String _lastSection(_Entry e) {
   for (var i = e.log.length - 1; i >= 0; i--) {
     final name = _stageName(e, i);
-    if (_sectionState.containsKey(name)) return name;
+    if (!_sectionState.containsKey(name)) continue;
+    // ⏱🚨★★★하는 중 IS A CLAIM WITH A SHELF LIFE, and that is the whole
+    // reason it can exist at all (유저 2026-08-31: 「해당 카드에 대한 작업을
+    // 시작할 때 해당 세션이 작업자로서 자기 이름 기록하는 곳에 기록하고 …
+    // **근데 카드 집어서 작업 시작하는 거 낡기 쉬울 거 같으니 낡지 않는
+    // 구조로** 하고」).
+    //
+    // ⛔As a STATE it would go stale the instant a session died: the card
+    // would say 하는 중 for ever and only a person noticing could clear it.
+    // As a claim that expires, nobody has to clear anything — a session that
+    // is really working keeps writing entries, and one that stopped simply
+    // stops renewing. The card falls back to whatever section it came from.
+    if (_sectionState[name] == 'wip' && _wentQuiet(e)) continue;
+    return name;
   }
   return '';
 }
+
+/// ⏱Whether the card's newest entry is older than a working day's worth of
+/// silence. ⚠️Measured from the NEWEST entry of all, not from the claim: a
+/// session that is still writing notes is still working, whatever it last
+/// called the section.
+bool _wentQuiet(_Entry e) {
+  if (e.log.isEmpty) return true;
+  final last = DateTime.tryParse(e.log.last.ts);
+  // No timestamp at all means an old record that predates the field. Those
+  // cannot be renewed, so they cannot hold a claim either.
+  if (last == null) return true;
+  return DateTime.now().difference(last) > _claimLasts;
+}
+
+/// ⏱Long enough to cover a night and a normal interruption, short enough that
+/// a dead session does not hold a card past tomorrow.
+const Duration _claimLasts = Duration(hours: 24);
 
 /// 🚨★★★AND THE SECTION IS COMPUTED, NEVER STORED.
 ///
@@ -2169,6 +2220,12 @@ String _itemPanel(_Entry e) {
         '<button onclick="save(\'${_esc(e.id)}\')">저장</button>'
         '<button class="ghost" onclick="purge(\'${_esc(e.id)}\')">삭제</button>'
         '<span class="state"></span></div>');
+    // 🚨★★★AND ITS STORY, ALWAYS. A card in 분류 전 used to show the edit box
+    // and NOTHING ELSE, so a card that arrived here because the user pressed
+    // 「나중에 로」 showed no sign of having been asked — the request was in
+    // the file and invisible on screen. ⛔That is the same 「별개로 둠」 this
+    // round is removing everywhere else (유저: 「싹 다 타임라인흐름이야」).
+    b.writeln(_story(e));
   } else {
     b.writeln(_care(e));
     b.writeln(_recordPanels(e));
@@ -2194,6 +2251,18 @@ String _itemPanel(_Entry e) {
         '<button onclick="send(\'${_esc(e.id)}\')">피드백 제출</button>'
         '<span class="state"></span></div>');
   }
+  // 🚨★★★MOVING A CARD SHOULD COST ONE PRESS (유저 2026-08-31: 「가볍게
+  // 순서 대기 쪽으로 옮기는 게 힘든데, 그거 하는 기능 있으면 좋겠어」).
+  // ⚠️These ASK; they do not move. The press writes one 유저 entry saying
+  // where it should go, which lands the card in 분류 전 for me to read — see
+  // `/ask-move`. ⛔A button that moved the card itself would move something
+  // nobody had read, and the request would leave no trace in the story.
+  b.writeln('<div class="foot moves">');
+  for (final to in const ['나중에', '대화 중', '바로 가능', '실기 확인']) {
+    b.writeln('<button class="ghost sm" '
+        'onclick="askMove(event,\'${_esc(e.id)}\',\'$to\')">$to 로</button>');
+  }
+  b.writeln('<span class="state"></span></div>');
   b.writeln('</div></details>');
   return b.toString();
 }
@@ -2473,6 +2542,15 @@ function send(id){
     stateOf(c).textContent = '적을 내용이 있어야 제출됩니다'; return;
   }
   post('/submit', {id:id, kind:c.dataset.kind, answer:answer||'ok', memo:memo}, c)
+    .then(()=>redraw(c.id))
+    .catch(e=>stateOf(c).textContent = '실패: '+e.message);
+}
+// One press = one 유저 entry saying where the card should go. The card lands
+// in 분류 전 and I move it -- the button never moves it itself.
+function askMove(ev, id, to){
+  ev.stopPropagation();
+  const c = document.getElementById('c-'+id);
+  post('/ask-move', {id:id, to:to}, c)
     .then(()=>redraw(c.id))
     .catch(e=>stateOf(c).textContent = '실패: '+e.message);
 }
@@ -2872,6 +2950,7 @@ textarea{resize:vertical}
 .shots img{max-height:120px;border:1px solid var(--line2);border-radius:4px;
 cursor:zoom-in}
 .foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.foot.moves{margin-top:6px;border-top:1px solid var(--line);padding-top:8px}
 button{font-family:var(--sans);font-size:13px;font-weight:600;padding:6px 14px;
 border-radius:4px;border:1px solid var(--ok);background:var(--okbg);
 color:var(--ok);cursor:pointer}
