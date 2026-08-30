@@ -704,6 +704,28 @@ List<_Entry> _readRecords(File file) {
       prLeft = null;
     }
 
+    // 🚨★★★AN ANSWER IS NOT PINNED ANYWHERE — it stands where it was said
+    // (유저 2026-08-31: 「설마 대답한거는 무조건 아래고정인가? 대답도
+    // 타임라인흐름대로 기록해야하지않나? 별개로 두면안되지. **별개로
+    // 두는것좀 절대로 없게해. 싹 다 타임라인흐름이야**」).
+    //
+    // ⛔It USED to be emitted after 작업 기록, 남은 것 and 구현, so a line
+    // carrying both an answer and what that answer left over showed my note
+    // first and the user's own words underneath it — pinned below, exactly
+    // the shape they named. The user's words open the line now, beside
+    // `유저 메모`, because the line exists BECAUSE they said something.
+    final ansNote = '${json['answerNote'] ?? ''}'.trim();
+    final ans = '${json['answer'] ?? ''}'.trim();
+    if (ans.isNotEmpty || ansNote.isNotEmpty) {
+      final said = [
+        if (ans.isNotEmpty && ans != 'ok') '고른 것: $ans',
+        if (ansNote.isNotEmpty) ansNote,
+        if (ans == 'ok' && ansNote.isEmpty) '확인 — 문제 없음',
+      ].join('\n');
+      if (!e.log.any((l) => l.text == said)) {
+        e.log.add(_Log(ts, '유저 대답', said, byUser: true));
+      }
+    }
     stage('${json['said'] ?? ''}'.trim(), '유저 메모', byUser: true);
     stage('${json['note'] ?? ''}'.trim(), '작업 기록');
     stage('${json['think'] ?? ''}'.trim(), 'AI 판단');
@@ -727,20 +749,6 @@ List<_Entry> _readRecords(File file) {
     // with no story is better than a 구현 that vanishes.
     if (prLeft != null) {
       e.log.add(_Log(ts, '구현', 'PR #$prLeft', pr: prLeft, how: stageHow));
-    }
-    // An answer is the user's own words and belongs in the same story — it is
-    // the one kind of entry the board itself writes on their behalf.
-    final ansNote = '${json['answerNote'] ?? ''}'.trim();
-    final ans = '${json['answer'] ?? ''}'.trim();
-    if (ans.isNotEmpty || ansNote.isNotEmpty) {
-      final said = [
-        if (ans.isNotEmpty && ans != 'ok') '고른 것: $ans',
-        if (ansNote.isNotEmpty) ansNote,
-        if (ans == 'ok' && ansNote.isEmpty) '확인 — 문제 없음',
-      ].join('\n');
-      if (!e.log.any((l) => l.text == said)) {
-        e.log.add(_Log(ts, '유저 대답', said, byUser: true));
-      }
     }
     if (json['title'] != null) e.title = json['title'] as String;
     if (json['state'] != null) e.state = json['state'] as String;
@@ -2121,19 +2129,30 @@ String _story(_Entry e) {
     final flat = entry.text.replaceAll('\n', ' ');
     final peek = flat.length > 44 ? '${flat.substring(0, 44)}…' : flat;
     final mine = _stageName(e, i);
-    // 🚨Only the LIVE 남은 것 is loud. Earlier ones are history — a list that
-    // has since got shorter — and shouting every one of them would drown the
-    // one that is actually still owed. Live means: the card still has
-    // leftovers, and these are them.
+    // 🚨★★★ONE READER FOR 「아직 남은 것인가」 — [_stillOwed] AND THIS.
+    //
+    // 유저 2026-08-31: 「**색라벨은 정한 규칙대로 남은것이 마지막에 있어야**
+    // 착수가능이도록 하고싶은데, **지금 마지막이 아닌데도 착수가능이거든?**」
+    //
+    // ⛔#1395 moved the SECTION onto 「마지막 항목이 남은 것인가」 but left the
+    // colour asking a different question — 「does this entry match the `rest`
+    // field」 — so a 남은 것 with work written after it still wore the loud
+    // colour. Two readers, one question, which is the thing that splits.
+    // 남은 것 is one record among others: only the LAST word is still owed.
     final leftover = mine == '남은 것';
-    final live = leftover && e.rest == entry.text;
+    final live = leftover && newest;
     // ⚠️`open` is an ATTRIBUTE, not a class. Written inside the class string
     // it renders as `class="lg open"` — valid HTML, silently folded, and 68
     // stages that were meant to stand open did not.
+    //
+    // ⛔ONLY THE LAST ONE STANDS OPEN (유저 2026-08-31: 「마지막 항목만
+    // 펼치기 상태로 두는거고」). It used to add `|| live`, which is now the
+    // same condition anyway — kept out so the next reader cannot make them
+    // disagree again.
     b.writeln('<details class="lg'
         '${entry.byUser || mine.startsWith('유저') ? ' says' : ''}'
         '${live ? ' todo' : ''}${leftover && !live ? ' done' : ''}"'
-        '${newest || live ? ' open' : ''}>');
+        '${newest ? ' open' : ''}>');
     b.writeln('<summary><span class="lgk">${_esc(mine)}</span>'
         '<span class="lgp">${_esc(peek)}</span>'
         '${entry.pr == null ? '' : _prChip(entry.pr!)}'
