@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../editor_session_manager.dart';
 import '../theme/app_accents.dart';
-import '../theme/app_theme.dart' show AppColors;
+import '../theme/app_theme.dart' show AppColors, AppShapes;
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
 import '../widgets/settings_rows.dart';
@@ -120,10 +120,12 @@ class _AccentRow extends StatelessWidget {
               key: ValueKey<String>('$keyPrefix-swatch'),
               width: 22,
               height: 22,
-              decoration: BoxDecoration(
+              decoration: ShapeDecoration(
                 color: value,
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: colorScheme.outline),
+                shape: AppShapes.container(
+                  AppShapes.wellRadius,
+                  side: BorderSide(color: colorScheme.outline),
+                ),
               ),
             ),
             const SizedBox(width: 8),
@@ -148,18 +150,20 @@ class _AccentRow extends StatelessWidget {
                     '$keyPrefix-preset-${preset.toARGB32().toRadixString(16)}',
                   ),
                   onTap: silentPress(() => onChanged(preset)),
-                  borderRadius: BorderRadius.circular(4),
+                  customBorder: AppShapes.container(AppShapes.wellRadius),
                   child: Container(
                     width: 24,
                     height: 24,
-                    decoration: BoxDecoration(
+                    decoration: ShapeDecoration(
                       color: preset,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(
-                        color: preset == value
-                            ? colorScheme.onSurface
-                            : colorScheme.outlineVariant,
-                        width: preset == value ? 2 : 1,
+                      shape: AppShapes.container(
+                        AppShapes.wellRadius,
+                        side: BorderSide(
+                          color: preset == value
+                              ? colorScheme.onSurface
+                              : colorScheme.outlineVariant,
+                          width: preset == value ? 2 : 1,
+                        ),
                       ),
                     ),
                   ),

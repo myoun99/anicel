@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
 import '../timeline/instruction_icon_palette.dart';
-import '../theme/app_theme.dart' show AppColors;
+import '../theme/app_theme.dart' show AppColors, AppShapes;
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
@@ -259,14 +259,16 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
                       child: Container(
                         width: 32,
                         height: 32,
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: _iconKey == entry.key
-                                ? colorScheme.secondary
-                                : colorScheme.outlineVariant,
-                            width: _iconKey == entry.key ? 2 : 1,
+                        decoration: ShapeDecoration(
+                          shape: AppShapes.container(
+                            AppShapes.windowRadius,
+                            side: BorderSide(
+                              color: _iconKey == entry.key
+                                  ? colorScheme.secondary
+                                  : colorScheme.outlineVariant,
+                              width: _iconKey == entry.key ? 2 : 1,
+                            ),
                           ),
-                          borderRadius: BorderRadius.circular(6),
                         ),
                         child: Icon(entry.value, size: 18),
                       ),
@@ -298,14 +300,15 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
                     child: Container(
                       width: 28,
                       height: 28,
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: _colorValue == null
-                              ? colorScheme.secondary
-                              : colorScheme.outlineVariant,
-                          width: _colorValue == null ? 2 : 1,
+                      decoration: ShapeDecoration(
+                        shape: CircleBorder(
+                          side: BorderSide(
+                            color: _colorValue == null
+                                ? colorScheme.secondary
+                                : colorScheme.outlineVariant,
+                            width: _colorValue == null ? 2 : 1,
+                          ),
                         ),
-                        borderRadius: BorderRadius.circular(14),
                       ),
                       child: Icon(
                         Icons.format_color_reset_outlined,
@@ -328,15 +331,16 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
                       child: Container(
                         width: 28,
                         height: 28,
-                        decoration: BoxDecoration(
+                        decoration: ShapeDecoration(
                           color: Color(color),
-                          border: Border.all(
-                            color: _colorValue == color
-                                ? colorScheme.secondary
-                                : colorScheme.outlineVariant,
-                            width: _colorValue == color ? 2 : 1,
+                          shape: CircleBorder(
+                            side: BorderSide(
+                              color: _colorValue == color
+                                  ? colorScheme.secondary
+                                  : colorScheme.outlineVariant,
+                              width: _colorValue == color ? 2 : 1,
+                            ),
                           ),
-                          borderRadius: BorderRadius.circular(14),
                         ),
                       ),
                     ),
@@ -371,14 +375,16 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
                       child: Container(
                         height: 28,
                         padding: const EdgeInsets.symmetric(horizontal: 8),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: _markType == entry.key
-                                ? colorScheme.secondary
-                                : colorScheme.outlineVariant,
-                            width: _markType == entry.key ? 2 : 1,
+                        decoration: ShapeDecoration(
+                          shape: AppShapes.container(
+                            AppShapes.windowRadius,
+                            side: BorderSide(
+                              color: _markType == entry.key
+                                  ? colorScheme.secondary
+                                  : colorScheme.outlineVariant,
+                              width: _markType == entry.key ? 2 : 1,
+                            ),
                           ),
-                          borderRadius: BorderRadius.circular(6),
                         ),
                         child: Center(
                           child: Text(

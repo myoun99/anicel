@@ -869,7 +869,7 @@ class _PanelTabDragFeedback extends StatelessWidget {
       // literally carrying, and on a dark UI its drop shadow is nearly
       // nothing, so the fill has to do the lifting.
       color: colorScheme.surfaceContainerHigh,
-      borderRadius: BorderRadius.circular(4),
+      shape: AppShapes.container(AppShapes.wellRadius),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         child: Row(

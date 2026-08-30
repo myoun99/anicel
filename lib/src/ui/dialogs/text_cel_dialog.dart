@@ -283,9 +283,9 @@ class _TextCelDialogState extends State<TextCelDialog> {
       preview: Container(
         constraints: const BoxConstraints(minHeight: 56, maxHeight: 120),
         alignment: Alignment.center,
-        decoration: BoxDecoration(
+        decoration: ShapeDecoration(
           color: theme.colorScheme.surfaceContainerLowest,
-          borderRadius: BorderRadius.circular(4),
+          shape: AppShapes.container(AppShapes.wellRadius),
         ),
         padding: const EdgeInsets.all(8),
         child: FittedBox(
@@ -346,18 +346,20 @@ class _InkSwatch extends StatelessWidget {
       onPressed: onTap,
       child: InkWell(
         onTap: silentPress(onTap),
-        borderRadius: BorderRadius.circular(4),
+        customBorder: AppShapes.container(AppShapes.wellRadius),
         child: Container(
           width: 22,
           height: 22,
-          decoration: BoxDecoration(
+          decoration: ShapeDecoration(
             color: color,
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(
-              color: selected
-                  ? AppColors.accent
-                  : Theme.of(context).colorScheme.outlineVariant,
-              width: selected ? 2 : 1,
+            shape: AppShapes.container(
+              AppShapes.wellRadius,
+              side: BorderSide(
+                color: selected
+                    ? AppColors.accent
+                    : Theme.of(context).colorScheme.outlineVariant,
+                width: selected ? 2 : 1,
+              ),
             ),
           ),
         ),

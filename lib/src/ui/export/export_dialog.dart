@@ -71,6 +71,7 @@ import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/folder_pick_flow.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
+import '../theme/app_theme.dart' show AppShapes;
 
 /// Picks the output directory (the Browse… button); `null` on cancel.
 typedef ExportDirectoryPicker = Future<String?> Function();
@@ -141,6 +142,7 @@ class ExportDialogState extends State<ExportDialog> {
     _location = path;
     _locationBookmark = bookmark;
   }
+
   final Map<String, bool> _expanded = {};
   final ExportQueueModel _queue = ExportQueueModel();
 
@@ -2431,20 +2433,23 @@ class ExportDialogState extends State<ExportDialog> {
       children: [
         Align(
           alignment: Alignment.centerRight,
-          child: ControlPressClaim(onPressed: () {
+          child: ControlPressClaim(
+            onPressed: () {
               setState(() => _presetsOpen = false);
               _persist();
-            }, child: InkWell(
-            key: const ValueKey<String>('export-presets-collapse'),
-            onTap: silentPress(() {
-              setState(() => _presetsOpen = false);
-              _persist();
-            }),
-            child: const Padding(
-              padding: EdgeInsets.all(2),
-              child: Icon(Icons.chevron_left, size: 13),
+            },
+            child: InkWell(
+              key: const ValueKey<String>('export-presets-collapse'),
+              onTap: silentPress(() {
+                setState(() => _presetsOpen = false);
+                _persist();
+              }),
+              child: const Padding(
+                padding: EdgeInsets.all(2),
+                child: Icon(Icons.chevron_left, size: 13),
+              ),
             ),
-          )),
+          ),
         ),
         Expanded(
           child: ExportPresetRail(
@@ -2566,9 +2571,11 @@ class ExportDialogState extends State<ExportDialog> {
         children: [
           Expanded(
             child: Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: theme.dividerColor),
-                borderRadius: BorderRadius.circular(4),
+              decoration: ShapeDecoration(
+                shape: AppShapes.container(
+                  AppShapes.wellRadius,
+                  side: BorderSide(color: theme.dividerColor),
+                ),
               ),
               alignment: Alignment.center,
               padding: const EdgeInsets.all(8),
@@ -3665,20 +3672,23 @@ class ExportDialogState extends State<ExportDialog> {
       children: [
         Align(
           alignment: Alignment.centerLeft,
-          child: ControlPressClaim(onPressed: () {
+          child: ControlPressClaim(
+            onPressed: () {
               setState(() => _queueOpen = false);
               _persist();
-            }, child: InkWell(
-            key: const ValueKey<String>('export-queue-collapse'),
-            onTap: silentPress(() {
-              setState(() => _queueOpen = false);
-              _persist();
-            }),
-            child: const Padding(
-              padding: EdgeInsets.all(2),
-              child: Icon(Icons.chevron_right, size: 13),
+            },
+            child: InkWell(
+              key: const ValueKey<String>('export-queue-collapse'),
+              onTap: silentPress(() {
+                setState(() => _queueOpen = false);
+                _persist();
+              }),
+              child: const Padding(
+                padding: EdgeInsets.all(2),
+                child: Icon(Icons.chevron_right, size: 13),
+              ),
             ),
-          )),
+          ),
         ),
         Expanded(
           child: ExportQueueColumn(

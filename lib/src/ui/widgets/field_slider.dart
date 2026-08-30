@@ -9,6 +9,7 @@ import '../input/wheel_law.dart';
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import 'axis_bar_gesture.dart';
+import 'superellipse_clip.dart';
 
 /// THE value text a slider shows (F-9, 유저 2026-08-24).
 ///
@@ -478,13 +479,15 @@ class _FieldSliderState extends State<FieldSlider> {
       builder: (context, constraints) {
         _trackExtent = _vertical ? constraints.maxHeight : constraints.maxWidth;
         return DecoratedBox(
-          decoration: BoxDecoration(
+          decoration: ShapeDecoration(
             color: AppColors.surface,
-            borderRadius: BorderRadius.circular(_radius),
-            border: Border.all(color: AppColors.hairline),
+            shape: AppShapes.container(
+              _radius,
+              side: const BorderSide(color: AppColors.hairline),
+            ),
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(_radius),
+          child: SuperellipseClip(
+            shape: AppShapes.container(_radius),
             child: CustomPaint(
               painter: _FieldSliderTrackPainter(
                 axis: widget.axis,

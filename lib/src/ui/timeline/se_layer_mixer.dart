@@ -237,13 +237,15 @@ class _MixToggle extends StatelessWidget {
         onPressed: onPressed,
         child: InkWell(
           key: ValueKey<String>(keyValue),
-          borderRadius: BorderRadius.circular(4),
+          customBorder: AppShapes.container(AppShapes.wellRadius),
           onTap: silentPress(onPressed),
           child: Container(
             height: 26,
-            decoration: BoxDecoration(
-              border: Border.all(color: color),
-              borderRadius: BorderRadius.circular(4),
+            decoration: ShapeDecoration(
+              shape: AppShapes.container(
+                AppShapes.wellRadius,
+                side: BorderSide(color: color),
+              ),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,

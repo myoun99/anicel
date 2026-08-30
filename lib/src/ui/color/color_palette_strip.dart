@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/color_palette_file_service.dart';
-import '../theme/app_theme.dart' show AppColors;
+import '../theme/app_theme.dart' show AppColors, AppShapes;
 import '../input/control_press_claim.dart';
 
 /// The palette rows under the color wheel (P4): recent colors (newest
@@ -43,12 +43,14 @@ class ColorPaletteStrip extends StatelessWidget {
         child: Container(
           width: 20,
           height: 20,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(
-              color: enabled
-                  ? theme.colorScheme.outline
-                  : theme.colorScheme.outlineVariant,
+          decoration: ShapeDecoration(
+            shape: AppShapes.container(
+              AppShapes.wellRadius,
+              side: BorderSide(
+                color: enabled
+                    ? theme.colorScheme.outline
+                    : theme.colorScheme.outlineVariant,
+              ),
             ),
           ),
           child: Icon(
@@ -77,10 +79,12 @@ class ColorPaletteStrip extends StatelessWidget {
         child: Container(
           width: 20,
           height: 20,
-          decoration: BoxDecoration(
+          decoration: ShapeDecoration(
             color: Color(color),
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: const Color(0x33000000)),
+            shape: AppShapes.container(
+              AppShapes.wellRadius,
+              side: const BorderSide(color: Color(0x33000000)),
+            ),
           ),
         ),
       ),

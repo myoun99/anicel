@@ -269,9 +269,14 @@ class ExportDrawerStrip extends StatelessWidget {
                     horizontal: 4,
                     vertical: 1,
                   ),
-                  decoration: BoxDecoration(
+                  // ⚠️A PILL, and it says so now. `circular(999)` clamps to
+                  // half the shorter side, which IS a stadium — the shape
+                  // ledger reads corner radii and could not tell that this
+                  // one was never a corner. Same pixels, stated instead of
+                  // implied.
+                  decoration: ShapeDecoration(
                     color: theme.colorScheme.primary,
-                    borderRadius: BorderRadius.circular(999),
+                    shape: const StadiumBorder(),
                   ),
                   child: Text(
                     '$badgeCount',
