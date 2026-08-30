@@ -694,9 +694,16 @@ List<_Entry> _readRecords(File file) {
         : '';
     void stage(String text, String fallback, {bool byUser = false}) {
       if (text.isEmpty) return;
+      // 🚨★★★THE DEDUPE MUST NOT EAT THE SECTION WORD. It used to clear `at`
+      // BEFORE this check, so a line whose text repeated an earlier entry
+      // added nothing AND consumed its own stage name — the move vanished
+      // with no trace anywhere. 🧪H25 lost its 대기중 exactly that way and
+      // sat in 바로 가능 with the word written in the file. Now an unadded
+      // entry leaves `at` for the next text on the line, and if nothing takes
+      // it the caller writes the bare move entry.
+      if (e.log.any((l) => l.text == text)) return;
       final label = at.isEmpty ? fallback : at;
       at = '';
-      if (e.log.any((l) => l.text == text)) return;
       // ⚠️The PR rides the FIRST stage this line opens, not all of them: it
       // shipped once, however many things the line had to say about it.
       e.log.add(_Log(ts, label, text,
@@ -749,6 +756,19 @@ List<_Entry> _readRecords(File file) {
     // with no story is better than a 구현 that vanishes.
     if (prLeft != null) {
       e.log.add(_Log(ts, '구현', 'PR #$prLeft', pr: prLeft, how: stageHow));
+    }
+    // 🚨★★★A MOVE IS AN ENTRY LIKE ANY OTHER (유저 2026-08-31: 「거기서
+    // 대기중 이동 이런 거나 분류 전 이동 이런 그냥 항목 이동? 착수 가능
+    // 이동 그냥 이런 항목을 만드는 게 좋을 거 같기도 하고. **그 마지막
+    // 항목에 따라 위치가 정해지는?**」).
+    //
+    // A line can carry a section word and nothing to say — `{"id":…,
+    // "at":"대기중"}`. Nothing consumed the word, so without this the story
+    // would not show the move and [_placeByStory] would have nothing to read.
+    // ⛔The old shape wrote it into a `state` field instead, off the timeline,
+    // which is the split this round exists to end.
+    if (at.isNotEmpty && _sectionState.containsKey(at)) {
+      stage('$at 으로 옮김', at);
     }
     if (json['title'] != null) e.title = json['title'] as String;
     if (json['state'] != null) e.state = json['state'] as String;
@@ -819,6 +839,11 @@ List<_Entry> _readRecords(File file) {
     if (told.isEmpty) continue;
     e.log.removeWhere((l) => l.pr != null && told.contains(l.pr) &&
         l.text == 'PR #${l.pr}');
+  }
+  // 🚨★★★AND ONLY NOW IS THE CARD PLACED. Every entry is in, so the walk
+  // backwards can see the whole story — see [_placeByStory].
+  for (final e in byId.values) {
+    _placeByStory(e);
   }
   return [for (final id in order) byId[id]!];
 }
@@ -1070,6 +1095,86 @@ const _stateLabels = <String, String>{
 /// Item states that mean "not startable yet". Anything else with no PR is
 /// ready to go.
 const _waiting = <String>{'ask', 'gate', 'queue', 'mine'};
+
+/// 🚨★★★THE SECTION A STAGE NAME PUTS THE CARD IN — the one place a written
+/// word becomes a column.
+///
+/// 유저 2026-08-31: 「순서 대기인 게 왜 착수 가능에 있냐? … 이거 애초에
+/// 보드 구조가 이상해서 니가 이상하게 받아들이는 건가?」 — it was. `at` is
+/// the word on the card; `state` is the code the sections were computed from;
+/// nothing made them agree. Seven live cards disagreed when this was written.
+///
+/// ⚠️This is the INVERSE of [_stateLabels] and must stay so: every value here
+/// is a key there. A word that is not a section (구현 · AI 판단 · 정정 ·
+/// 유저 피드백 …) is deliberately absent — those are stages in the story, not
+/// places to put the card.
+///
+/// ⚠️Spelling variants are listed, not normalised away: the file already has
+/// both 「대기중」 and 「대기 중」, both 「답할것」 and 「답할 것」, and a
+/// record written last month cannot be asked to respell itself. ⛔Do NOT add a
+/// fuzzy match instead — a card silently landing in a section because its
+/// label nearly matched is the failure this map exists to end.
+const _sectionState = <String, String>{
+  '착수 가능': 'open',
+  // 🚨남은 것 IS the 바로 가능 column: the entry says WHAT is left, the column
+  // says WHERE it waits. Two of these rows differ that way on purpose.
+  '남은 것': 'open',
+  '착수': 'open',
+  '순서 대기': 'queue',
+  '상담 대기': 'gate',
+  '상담': 'gate',
+  '대기중': 'gate',
+  '대기 중': 'gate',
+  '보류': 'gate',
+  '답할 것': 'ask',
+  '답할것': 'ask',
+  '분류 전': 'inbox',
+  '분류': 'inbox',
+  '진행 중': 'wip',
+  '완료': 'archived',
+};
+
+/// 🚨★★★THE LAST 대분류 IN THE CARD'S STORY — the one reader for 「이 카드는
+/// 어디 있나」 and for 「아직 남은 것이 있나」.
+///
+/// 유저 2026-08-31: 「마지막에 남은 작업이라는 항목이 있고, 그 밑에 대분류적인
+/// 항목이 없다면 [착수 가능]. … **해당 항목 내에서 코드확인기록이나
+/// 유저피드백기록 이런 게 쌓여도 대분류적으로 착수 가능이면 착수 가능에
+/// 두도록**」.
+///
+/// ⛔This REPLACES 「the last entry, whatever it is」 (#1395). That rule moved
+/// a card out of 바로 가능 the moment anything at all was written after its
+/// 남은 것 — including a note recording that I had just checked the code,
+/// which is the one thing a card in that column most wants to have.
+String _lastSection(_Entry e) {
+  for (var i = e.log.length - 1; i >= 0; i--) {
+    final name = _stageName(e, i);
+    if (_sectionState.containsKey(name)) return name;
+  }
+  return '';
+}
+
+/// 🚨★★★AND THE SECTION IS COMPUTED, NEVER STORED.
+///
+/// ⛔`state` used to be written by hand beside `at`, and nothing made the two
+/// agree — 7 live cards disagreed when this was written, `linux-target` among
+/// them: `at: 순서 대기` with `state: open`, so it sat in 착수 가능 wearing a
+/// 순서 대기 label. 유저 found it: 「순서 대기인 게 왜 착수 가능에 있냐?」.
+/// A value nobody recomputes is a value that goes stale; a value folded out of
+/// the story cannot.
+///
+/// ⚠️Three states are endings or hand-markings with no stage word behind them,
+/// so a walk backwards would resurrect the card from an older section:
+/// `deleted` · `archived` written straight onto the card · `mine`. Reopening
+/// is an ENTRY (`at: 남은 것`, `at: 하는 중`), and that entry writes `open`
+/// first, so the guard never blocks a real reopen.
+void _placeByStory(_Entry e) {
+  if (e.state == 'deleted' || e.state == 'archived' || e.state == 'mine') {
+    return;
+  }
+  final section = _sectionState[_lastSection(e)];
+  if (section != null) e.state = section;
+}
 
 String _esc(String s) => const HtmlEscape().convert(s);
 
@@ -2087,10 +2192,16 @@ String _checkoutPanel(_Checkout c) {
 /// 그 뒤에 무엇이든 한 줄이 더 적혔다면 그것은 더 이상 마지막 말이 아니다.
 /// 여전히 남은 것이 있다면 **다시 한 줄 적으면 된다.**
 ///
-/// ⚠️그래서 아직 남은 것이 있으면 **`rest` 를 마지막 줄에 단독으로** 써야 한다.
-/// 한 줄에 `rest` 와 `pr` 을 같이 쓰면 구현이 뒤에 붙어 완료로 읽힌다.
-bool _stillOwed(_Entry e) =>
-    e.log.isNotEmpty && _stageName(e, e.log.length - 1) == '남은 것';
+/// ⚠️그래서 아직 남은 것이 있으면 **`rest` 를 마지막 대분류로** 써야 한다.
+/// 한 줄에 `rest` 와 다른 대분류를 같이 쓰면 뒤엣것이 이긴다.
+///
+/// 🆕2026-08-31: 뒤에 오는 것이 **소분류**(작업 기록·코드 확인·AI 판단·구현)
+/// 라면 이제 남은 것 그대로다 — 유저: 「해당 항목 내에서 코드확인기록이나
+/// 유저피드백기록 이런 게 쌓여도 대분류적으로 착수 가능이면 착수 가능에」.
+/// ⛔#1395 는 「무엇이든 뒤에 오면 끝」이었고, 그건 **코드를 확인했다고 적는
+/// 순간 카드가 칸을 떠나게** 만들었다 — 그 칸의 카드가 가장 갖고 싶어 하는
+/// 바로 그 기록이다.
+bool _stillOwed(_Entry e) => _lastSection(e) == '남은 것';
 
 String _stageName(_Entry e, int i) {
   final at = e.log[i].at;
