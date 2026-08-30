@@ -691,11 +691,25 @@ class AudioConformPipeline {
       // conforms, so a `.part` here would be invisible to it and sit in
       // the user's cache folder for ever.
       //
-      // A kill mid-write is safe without one: [decodeConform] breaks
-      // its chunk walk at a truncated tail and then throws「missing data
-      // chunk」, so a half-restored conform is rejected and rebuilt like
-      // any other unreadable one.
-      File(path).writeAsBytesSync(carried.readSync(), flush: true);
+      // A kill mid-write is safe without one: a conform's length is
+      // declared in its own fixed header, so [decodeConform] refuses a
+      // file that is「short of the PCM it claims」and it is rebuilt like
+      // any other unreadable one. (This used to say「breaks its chunk walk
+      // … missing data chunk」— true while a conform was a WAV, and #1397
+      // replaced the chunk walk with the header.)
+      //
+      // 🚨**A BLOCK AT A TIME.** This read the whole thing to write the
+      // whole thing — bytes in, the same bytes out, with an hour of
+      // dialogue (~428MB compressed) resident in between to achieve
+      // nothing. That is the shape the carry and staging rounds removed
+      // everywhere else; it was still here.
+      if (!copyMediaBytesToFile(
+        destinationPath: path,
+        length: carried.lengthSync(),
+        readInto: carried.readIntoSync,
+      )) {
+        throw const FileSystemException('the carried conform ran short');
+      }
     } on Object {
       // Leave nothing half-written behind under a name the collector will
       // later believe. The decode below is the fallback, and it always
