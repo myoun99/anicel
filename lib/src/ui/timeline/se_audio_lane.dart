@@ -605,9 +605,9 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
           top: 2,
           child: IgnorePointer(
             child: DecoratedBox(
-              decoration: BoxDecoration(
+              decoration: ShapeDecoration(
                 color: AppColors.accent.withValues(alpha: 0.85),
-                borderRadius: BorderRadius.circular(3),
+                shape: AppShapes.container(3),
               ),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
@@ -653,4 +653,3 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
     );
   }
 }
-

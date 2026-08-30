@@ -9,7 +9,7 @@ import '../../services/input/platform_pen_channel_service.dart';
 import '../../services/input/raw_pen_input_service.dart';
 import '../../services/input/wintab_pen_service.dart';
 import '../canvas/canvas_touch_contacts.dart' show CanvasTouchContacts;
-import '../theme/app_theme.dart' show AppColors;
+import '../theme/app_theme.dart' show AppColors, AppShapes;
 
 /// The cross-platform INPUT INSPECTOR (pen program, PEN-1).
 ///
@@ -365,7 +365,7 @@ class _InspectorCard extends StatelessWidget {
     return Material(
       key: const ValueKey<String>('input-inspector-card'),
       elevation: 6,
-      borderRadius: BorderRadius.circular(6),
+      shape: AppShapes.container(AppShapes.windowRadius),
       color: colorScheme.surfaceContainerHigh.withValues(alpha: 0.92),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 340),

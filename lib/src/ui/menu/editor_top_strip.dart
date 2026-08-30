@@ -43,6 +43,7 @@ import '../export/export_plan.dart' show sanitizeExportFileComponent;
 import '../panels/workspace_panels_menu.dart';
 import '../shortcuts/editor_shortcut_bindings.dart';
 import '../shortcuts/shortcut_settings_dialog.dart';
+import '../theme/app_theme.dart';
 
 /// The editor's top strip: two icon buttons and the work's name, the way
 /// Procreate and Callipeg do it.
@@ -1137,9 +1138,11 @@ class _BlendModeControl extends StatelessWidget {
             child: Container(
               key: const ValueKey<String>('brush-tool-blend-locked'),
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-              decoration: BoxDecoration(
-                border: Border.all(color: theme.colorScheme.outlineVariant),
-                borderRadius: BorderRadius.circular(4),
+              decoration: ShapeDecoration(
+                shape: AppShapes.container(
+                  AppShapes.wellRadius,
+                  side: BorderSide(color: theme.colorScheme.outlineVariant),
+                ),
               ),
               child: Row(
                 children: [

@@ -7,6 +7,7 @@ import '../text/app_strings.dart';
 import '../widgets/anchored_popup.dart';
 import 'brush_tip_preview.dart';
 import '../input/control_press_claim.dart';
+import '../theme/app_theme.dart' show AppShapes;
 
 /// Which of a brush's three mask slots a picker drives.
 ///
@@ -166,14 +167,16 @@ class _TipSwatch extends StatelessWidget {
         child: InkWell(
           key: ValueKey<String>(keyValue),
           onTap: silentPress(onTap),
-          borderRadius: BorderRadius.circular(4),
+          customBorder: AppShapes.container(AppShapes.wellRadius),
           child: Container(
             width: 26,
             height: 26,
-            decoration: BoxDecoration(
+            decoration: ShapeDecoration(
               color: colorScheme.surfaceContainerHighest,
-              border: Border.all(color: colorScheme.outlineVariant),
-              borderRadius: BorderRadius.circular(4),
+              shape: AppShapes.container(
+                AppShapes.wellRadius,
+                side: BorderSide(color: colorScheme.outlineVariant),
+              ),
             ),
             clipBehavior: Clip.antiAlias,
             child: current == null
@@ -384,24 +387,26 @@ class _PickerCell extends StatelessWidget {
       message: tooltip,
       child: Material(
         color: selected ? colorScheme.surfaceContainerHigh : Colors.transparent,
-        borderRadius: BorderRadius.circular(4),
+        shape: AppShapes.container(AppShapes.wellRadius),
         child: ControlPressClaim(
           onPressed: onTap,
           child: InkWell(
             key: ValueKey<String>(keyValue),
             onTap: silentPress(onTap),
-            borderRadius: BorderRadius.circular(4),
+            customBorder: AppShapes.container(AppShapes.wellRadius),
             child: Container(
-              decoration: BoxDecoration(
-                border: Border.all(
-                  // Selection reads from the border colour alone — no check
-                  // glyph, which would shift the grid.
-                  color: selected
-                      ? colorScheme.primary
-                      : colorScheme.outlineVariant,
-                  width: selected ? 1.5 : 1,
+              decoration: ShapeDecoration(
+                shape: AppShapes.container(
+                  AppShapes.wellRadius,
+                  side: BorderSide(
+                    // Selection reads from the border colour, not a
+                    // glyph, which would shift the grid.
+                    color: selected
+                        ? colorScheme.primary
+                        : colorScheme.outlineVariant,
+                    width: selected ? 1.5 : 1,
+                  ),
                 ),
-                borderRadius: BorderRadius.circular(4),
               ),
               padding: const EdgeInsets.all(2),
               child: child,
