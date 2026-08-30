@@ -21,9 +21,9 @@ import 'package:flutter_test/flutter_test.dart';
 /// scan is deliberately not widened — a dialog's text action is not an icon
 /// button and dragging twenty of them in here would say nothing — but the
 /// LAW those buttons were missing has its own scan, over text buttons and
-/// ink wells too: `every_chrome_button_claims_its_press_test`. Two lists,
+/// ink wells too: `every_button_claims_its_press_test`. Two lists,
 /// because they answer two questions (this one licenses a BOX; that one
-/// holds every chrome button to the press claim).
+/// holds every button under `lib/src/ui` to the press claim).
 ///
 /// ⚠️THE LEDGER BELOW IS THE POINT OF THIS TEST. A hand-rolled button is
 /// allowed only where a PARENT has already promised the box, because

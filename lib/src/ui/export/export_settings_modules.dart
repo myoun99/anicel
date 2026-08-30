@@ -9,6 +9,7 @@ import '../../models/export_spec.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
+import '../input/control_press_claim.dart';
 
 /// Compact building blocks of the export window's settings column (v10):
 /// one accordion grammar, chip pickers, and the shared Format module.
@@ -56,7 +57,7 @@ class ExportAccordion extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          InkWell(
+          ControlPressClaim(child: InkWell(
             onTap: onToggle,
             child: Container(
               color: AppColors.washUp.withValues(alpha: 0.5),
@@ -88,7 +89,7 @@ class ExportAccordion extends StatelessWidget {
                 ],
               ),
             ),
-          ),
+          )),
           if (expanded)
             Padding(
               padding: const EdgeInsets.fromLTRB(7, 6, 7, 7),
@@ -112,7 +113,7 @@ class _ResetChip extends StatelessWidget {
     final color = enabled
         ? theme.colorScheme.onSurface
         : theme.disabledColor.withValues(alpha: 0.4);
-    return InkWell(
+    return ControlPressClaim(child: InkWell(
       onTap: enabled ? onPressed : null,
       borderRadius: BorderRadius.circular(4),
       child: Container(
@@ -128,7 +129,7 @@ class _ResetChip extends StatelessWidget {
           style: theme.textTheme.labelSmall?.copyWith(color: color),
         ),
       ),
-    );
+    ));
   }
 }
 
@@ -151,7 +152,7 @@ class ExportChip extends StatelessWidget {
     final theme = Theme.of(context);
     final accent = theme.colorScheme.primary;
     final disabled = onTap == null;
-    return InkWell(
+    return ControlPressClaim(child: InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(4),
       child: Container(
@@ -174,7 +175,7 @@ class ExportChip extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ));
   }
 }
 

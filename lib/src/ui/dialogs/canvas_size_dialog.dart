@@ -5,6 +5,7 @@ import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
+import '../input/control_press_claim.dart';
 
 /// What the canvas-size dialog confirms: the new size plus the anchor the
 /// existing artwork stays pinned to.
@@ -253,25 +254,29 @@ class _AnchorGrid extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 for (final anchor in row)
-                  InkWell(
-                    key: ValueKey<String>('canvas-size-anchor-${anchor.name}'),
-                    onTap: () => onSelected(anchor),
-                    child: SizedBox(
-                      width: 26,
-                      height: 26,
-                      child: Center(
-                        child: Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: anchor == selected
-                                ? colorScheme.primary
-                                : Colors.transparent,
-                            border: Border.all(
+                  ControlPressClaim(
+                    child: InkWell(
+                      key: ValueKey<String>(
+                        'canvas-size-anchor-${anchor.name}',
+                      ),
+                      onTap: () => onSelected(anchor),
+                      child: SizedBox(
+                        width: 26,
+                        height: 26,
+                        child: Center(
+                          child: Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
                               color: anchor == selected
                                   ? colorScheme.primary
-                                  : colorScheme.onSurfaceVariant,
+                                  : Colors.transparent,
+                              border: Border.all(
+                                color: anchor == selected
+                                    ? colorScheme.primary
+                                    : colorScheme.onSurfaceVariant,
+                              ),
                             ),
                           ),
                         ),

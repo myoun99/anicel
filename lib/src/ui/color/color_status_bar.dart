@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/inline_numeric_field.dart';
 import 'color_hex.dart';
+import '../input/control_press_claim.dart';
 
 /// The colour window's bottom STATUS BAR (R10 R5, the user's layout B):
 /// tabs / content / this, shared by every tab.
@@ -89,14 +90,18 @@ class _ColorStatusBarState extends State<ColorStatusBar> {
                   onSubmit: (text) => _commitChannel(which, text),
                   onCancel: () => setState(() => _editing = _Editing.none),
                 )
-              : GestureDetector(
-                  key: ValueKey<String>('color-status-${label.toLowerCase()}'),
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => setState(() => _editing = which),
-                  child: Text(
-                    '$value',
-                    textAlign: TextAlign.right,
-                    style: _readout,
+              : ControlPressClaim(
+                  child: GestureDetector(
+                    key: ValueKey<String>(
+                      'color-status-${label.toLowerCase()}',
+                    ),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => setState(() => _editing = which),
+                    child: Text(
+                      '$value',
+                      textAlign: TextAlign.right,
+                      style: _readout,
+                    ),
                   ),
                 ),
         ),
@@ -143,11 +148,13 @@ class _ColorStatusBarState extends State<ColorStatusBar> {
                     onSubmit: _commitHex,
                     onCancel: () => setState(() => _editing = _Editing.none),
                   )
-                : GestureDetector(
-                    key: const ValueKey<String>('color-status-hex'),
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => setState(() => _editing = _Editing.hex),
-                    child: Text(colorHexOf(widget.color), style: _readout),
+                : ControlPressClaim(
+                    child: GestureDetector(
+                      key: const ValueKey<String>('color-status-hex'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => setState(() => _editing = _Editing.hex),
+                      child: Text(colorHexOf(widget.color), style: _readout),
+                    ),
                   ),
           ),
           const Spacer(),

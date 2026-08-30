@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/color_palette_file_service.dart';
 import '../theme/app_theme.dart' show AppColors;
+import '../input/control_press_claim.dart';
 
 /// The palette rows under the color wheel (P4): recent colors (newest
 /// first, read-only) and the pinned palette (tap = pick; the + chip pins
@@ -34,47 +35,51 @@ class ColorPaletteStrip extends StatelessWidget {
     bool accent = false,
   }) {
     final enabled = onTap != null;
-    return InkWell(
-      key: ValueKey<String>(keyValue),
-      onTap: onTap,
-      child: Container(
-        width: 20,
-        height: 20,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(
-            color: enabled
-                ? theme.colorScheme.outline
-                : theme.colorScheme.outlineVariant,
+    return ControlPressClaim(
+      child: InkWell(
+        key: ValueKey<String>(keyValue),
+        onTap: onTap,
+        child: Container(
+          width: 20,
+          height: 20,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(
+              color: enabled
+                  ? theme.colorScheme.outline
+                  : theme.colorScheme.outlineVariant,
+            ),
           ),
-        ),
-        child: Icon(
-          icon,
-          size: 14,
-          // 「＋가 있는 모든 곳, 공통적으로」 — the add chip wears the accent
-          // and its − mirror does not, which is the whole difference the two
-          // glyphs are trying to say at 14px. The caller says which, rather
-          // than this reading the glyph back: an argument is a decision, and
-          // `icon == Icons.add` is a guess about one.
-          color: enabled
-              ? (accent ? AppColors.addGlyph(enabled: true) : null)
-              : theme.disabledColor,
+          child: Icon(
+            icon,
+            size: 14,
+            // 「＋가 있는 모든 곳, 공통적으로」 — the add chip wears the accent
+            // and its − mirror does not, which is the whole difference the two
+            // glyphs are trying to say at 14px. The caller says which, rather
+            // than this reading the glyph back: an argument is a decision, and
+            // `icon == Icons.add` is a guess about one.
+            color: enabled
+                ? (accent ? AppColors.addGlyph(enabled: true) : null)
+                : theme.disabledColor,
+          ),
         ),
       ),
     );
   }
 
   Widget _swatch({required Key key, required int color}) {
-    return InkWell(
-      key: key,
-      onTap: () => onColorSelected(color),
-      child: Container(
-        width: 20,
-        height: 20,
-        decoration: BoxDecoration(
-          color: Color(color),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: const Color(0x33000000)),
+    return ControlPressClaim(
+      child: InkWell(
+        key: key,
+        onTap: () => onColorSelected(color),
+        child: Container(
+          width: 20,
+          height: 20,
+          decoration: BoxDecoration(
+            color: Color(color),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: const Color(0x33000000)),
+          ),
         ),
       ),
     );

@@ -20,6 +20,7 @@ import '../widgets/field_slider.dart';
 import '../widgets/settings_rows.dart';
 import 'app_confirm_dialog.dart';
 import 'folder_pick_flow.dart';
+import '../input/control_press_claim.dart';
 
 /// SAVE-1: the autosave policy section (Preferences ▸ Autosave).
 ///
@@ -184,35 +185,41 @@ class AutosaveSettingsSection extends StatelessWidget {
                 ),
                 if (!Platform.isAndroid && !Platform.isIOS) ...[
                   if (settings.recordingsDirectory != null)
-                    TextButton(
-                      key: const ValueKey<String>('settings-recordings-reset'),
-                      onPressed: () => session.setSaveSettings(
-                        settings.copyWith(recordingsDirectory: null),
+                    ControlPressClaim(
+                      child: TextButton(
+                        key: const ValueKey<String>(
+                          'settings-recordings-reset',
+                        ),
+                        onPressed: () => session.setSaveSettings(
+                          settings.copyWith(recordingsDirectory: null),
+                        ),
+                        child: Text(AppText.strings.autosaveDefault),
                       ),
-                      child: Text(AppText.strings.autosaveDefault),
                     ),
-                  TextButton(
-                    key: const ValueKey<String>('settings-recordings-browse'),
-                    onPressed: () async {
-                      // The GRANT flavour: this path is read again at the
-                      // NEXT launch, and on macOS a stored path without
-                      // its token is refused there — the setting stayed
-                      // on screen while every write quietly failed
-                      // (Q-scoped-folder-settings, 유저 「알아서 맡김」).
-                      final grant = await pickFolderGrantForUser(context);
-                      final path = grant?.path;
-                      if (path != null) {
-                        session.setSaveSettings(
-                          AppSave.settings.value.copyWith(
-                            recordingsDirectory: GrantedDirectory(
-                              path: path,
-                              bookmark: grant!.bookmark,
+                  ControlPressClaim(
+                    child: TextButton(
+                      key: const ValueKey<String>('settings-recordings-browse'),
+                      onPressed: () async {
+                        // The GRANT flavour: this path is read again at the
+                        // NEXT launch, and on macOS a stored path without
+                        // its token is refused there — the setting stayed
+                        // on screen while every write quietly failed
+                        // (Q-scoped-folder-settings, 유저 「알아서 맡김」).
+                        final grant = await pickFolderGrantForUser(context);
+                        final path = grant?.path;
+                        if (path != null) {
+                          session.setSaveSettings(
+                            AppSave.settings.value.copyWith(
+                              recordingsDirectory: GrantedDirectory(
+                                path: path,
+                                bookmark: grant!.bookmark,
+                              ),
                             ),
-                          ),
-                        );
-                      }
-                    },
-                    child: Text(AppText.strings.autosaveChoose),
+                          );
+                        }
+                      },
+                      child: Text(AppText.strings.autosaveChoose),
+                    ),
                   ),
                 ],
               ],
@@ -245,32 +252,36 @@ class AutosaveSettingsSection extends StatelessWidget {
                 ),
                 if (!Platform.isAndroid && !Platform.isIOS) ...[
                   if (settings.conformDirectory != null)
-                    TextButton(
-                      key: const ValueKey<String>('settings-conform-reset'),
-                      onPressed: () => session.setSaveSettings(
-                        settings.copyWith(conformDirectory: null),
+                    ControlPressClaim(
+                      child: TextButton(
+                        key: const ValueKey<String>('settings-conform-reset'),
+                        onPressed: () => session.setSaveSettings(
+                          settings.copyWith(conformDirectory: null),
+                        ),
+                        child: Text(AppText.strings.autosaveDefault),
                       ),
-                      child: Text(AppText.strings.autosaveDefault),
                     ),
-                  TextButton(
-                    key: const ValueKey<String>('settings-conform-browse'),
-                    onPressed: () async {
-                      // The GRANT flavour, same reason as the recordings
-                      // folder above.
-                      final grant = await pickFolderGrantForUser(context);
-                      final path = grant?.path;
-                      if (path != null) {
-                        session.setSaveSettings(
-                          AppSave.settings.value.copyWith(
-                            conformDirectory: GrantedDirectory(
-                              path: path,
-                              bookmark: grant!.bookmark,
+                  ControlPressClaim(
+                    child: TextButton(
+                      key: const ValueKey<String>('settings-conform-browse'),
+                      onPressed: () async {
+                        // The GRANT flavour, same reason as the recordings
+                        // folder above.
+                        final grant = await pickFolderGrantForUser(context);
+                        final path = grant?.path;
+                        if (path != null) {
+                          session.setSaveSettings(
+                            AppSave.settings.value.copyWith(
+                              conformDirectory: GrantedDirectory(
+                                path: path,
+                                bookmark: grant!.bookmark,
+                              ),
                             ),
-                          ),
-                        );
-                      }
-                    },
-                    child: Text(AppText.strings.autosaveChoose),
+                          );
+                        }
+                      },
+                      child: Text(AppText.strings.autosaveChoose),
+                    ),
                   ),
                 ],
               ],
@@ -391,10 +402,12 @@ class _RecoverySnapshotsBlockState extends State<_RecoverySnapshotsBlock> {
                 style: const TextStyle(fontSize: 12),
               ),
             ),
-            TextButton(
-              key: const ValueKey<String>('settings-recovery-delete'),
-              onPressed: _selected.isEmpty ? null : _confirmDelete,
-              child: Text(AppText.strings.commonDelete),
+            ControlPressClaim(
+              child: TextButton(
+                key: const ValueKey<String>('settings-recovery-delete'),
+                onPressed: _selected.isEmpty ? null : _confirmDelete,
+                child: Text(AppText.strings.commonDelete),
+              ),
             ),
           ],
         ),
@@ -417,49 +430,51 @@ class _RecoverySnapshotsBlockState extends State<_RecoverySnapshotsBlock> {
               itemBuilder: (context, index) {
                 final row = _rows[index];
                 final selected = _selected.contains(row.path);
-                return InkWell(
-                  key: ValueKey<String>('settings-recovery-row-${row.path}'),
-                  onTap: () => setState(() {
-                    if (!_selected.add(row.path)) {
-                      _selected.remove(row.path);
-                    }
-                  }),
-                  child: Container(
-                    // Selection is COLOR only (법): no mark, no reflow.
-                    color: selected
-                        ? colorScheme.primary.withValues(alpha: 0.16)
-                        : null,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    alignment: Alignment.centerLeft,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            row.projectPath ?? row.projectName,
+                return ControlPressClaim(
+                  child: InkWell(
+                    key: ValueKey<String>('settings-recovery-row-${row.path}'),
+                    onTap: () => setState(() {
+                      if (!_selected.add(row.path)) {
+                        _selected.remove(row.path);
+                      }
+                    }),
+                    child: Container(
+                      // Selection is COLOR only (법): no mark, no reflow.
+                      color: selected
+                          ? colorScheme.primary.withValues(alpha: 0.16)
+                          : null,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              row.projectPath ?? row.projectName,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: selected ? colorScheme.primary : null,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _dateLabel(row.modified),
                             style: TextStyle(
                               fontSize: 12,
-                              color: selected ? colorScheme.primary : null,
+                              color: colorScheme.onSurfaceVariant,
                             ),
-                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _dateLabel(row.modified),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: colorScheme.onSurfaceVariant,
+                          const SizedBox(width: 8),
+                          Text(
+                            byteSizeLabel(row.bytes),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          byteSizeLabel(row.bytes),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 );
@@ -522,25 +537,27 @@ class _ConformCacheSizeRowState extends State<_ConformCacheSizeRow> {
           ),
         ),
         if (_bytes > 0)
-          TextButton(
-            key: const ValueKey<String>('settings-conform-clear'),
-            // No confirmation on purpose: a conform is derived data, so
-            // the worst this can cost is a re-decode. Asking "are you
-            // sure" about something that cannot lose anything teaches
-            // people to click through the dialogs that can.
-            //
-            // 🚨 That is only true once the SESSION has let go. A conform
-            // past the streaming threshold is held with no resident PCM
-            // and the file as the copy of record — delete it underneath
-            // and the clip is silent for the rest of the session and in
-            // the export, and on Windows the open reader blocks the
-            // delete so the biggest entries survive the emptying.
-            onPressed: () {
-              widget.releaseDiskBackedConforms();
-              clearConformCache();
-              setState(() => _bytes = conformCacheBytes());
-            },
-            child: Text(AppText.strings.autosaveEmptyNow),
+          ControlPressClaim(
+            child: TextButton(
+              key: const ValueKey<String>('settings-conform-clear'),
+              // No confirmation on purpose: a conform is derived data, so
+              // the worst this can cost is a re-decode. Asking "are you
+              // sure" about something that cannot lose anything teaches
+              // people to click through the dialogs that can.
+              //
+              // 🚨 That is only true once the SESSION has let go. A conform
+              // past the streaming threshold is held with no resident PCM
+              // and the file as the copy of record — delete it underneath
+              // and the clip is silent for the rest of the session and in
+              // the export, and on Windows the open reader blocks the
+              // delete so the biggest entries survive the emptying.
+              onPressed: () {
+                widget.releaseDiskBackedConforms();
+                clearConformCache();
+                setState(() => _bytes = conformCacheBytes());
+              },
+              child: Text(AppText.strings.autosaveEmptyNow),
+            ),
           ),
       ],
     );

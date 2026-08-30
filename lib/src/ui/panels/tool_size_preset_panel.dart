@@ -165,36 +165,38 @@ class _SizeCell extends StatelessWidget {
         color: Colors.transparent,
         shape: AppShapes.control(AppShapes.controlSmall),
         clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          // ⛔WIDTH ONLY. Pinning the height too made the column overflow by
-          // whatever the label's line height happened to be — a number that
-          // moves with the app's typeface, so it would have come back the
-          // day the font changed. The dot's box is fixed; the label takes
-          // what it takes.
-          child: SizedBox(
-            width: _cell,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  height: _cell,
-                  child: Center(
-                    child: Container(
-                      width: math.min(value, _maxDot),
-                      height: math.min(value, _maxDot),
-                      decoration: BoxDecoration(
-                        color: ink,
-                        shape: BoxShape.circle,
+        child: ControlPressClaim(
+          child: InkWell(
+            onTap: onTap,
+            // ⛔WIDTH ONLY. Pinning the height too made the column overflow by
+            // whatever the label's line height happened to be — a number that
+            // moves with the app's typeface, so it would have come back the
+            // day the font changed. The dot's box is fixed; the label takes
+            // what it takes.
+            child: SizedBox(
+              width: _cell,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: _cell,
+                    child: Center(
+                      child: Container(
+                        width: math.min(value, _maxDot),
+                        height: math.min(value, _maxDot),
+                        decoration: BoxDecoration(
+                          color: ink,
+                          shape: BoxShape.circle,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                Text(
-                  ToolSizePresetPanel.label(value),
-                  style: TextStyle(fontSize: 10, color: ink),
-                ),
-              ],
+                  Text(
+                    ToolSizePresetPanel.label(value),
+                    style: TextStyle(fontSize: 10, color: ink),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

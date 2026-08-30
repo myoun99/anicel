@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
 import '../widgets/app_scrollbar.dart';
+import '../input/control_press_claim.dart';
 
 /// The import window's file list: one row per file, one COLUMN per question.
 ///
@@ -165,48 +166,52 @@ class _ImportFileTableState extends State<ImportFileTable> {
                     itemBuilder: (context, index) {
                       final row = rows[index];
                       final isSelected = selected.contains(row.path);
-                      return InkWell(
-                        key: ValueKey<String>('import-row-${row.name}'),
-                        onTap: enabled ? () => onRowTap(row.path) : null,
-                        child: Container(
-                          color: isSelected
-                              ? AppColors.accent.withValues(alpha: 0.14)
-                              : null,
-                          padding: const EdgeInsets.fromLTRB(8, 3, 8, 3),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  row.name,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    color: isSelected ? AppColors.accent : null,
+                      return ControlPressClaim(
+                        child: InkWell(
+                          key: ValueKey<String>('import-row-${row.name}'),
+                          onTap: enabled ? () => onRowTap(row.path) : null,
+                          child: Container(
+                            color: isSelected
+                                ? AppColors.accent.withValues(alpha: 0.14)
+                                : null,
+                            padding: const EdgeInsets.fromLTRB(8, 3, 8, 3),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    row.name,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: isSelected
+                                          ? AppColors.accent
+                                          : null,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              SizedBox(
-                                width: 58,
-                                child: Text(row.modified, style: dim),
-                              ),
-                              SizedBox(
-                                width: 52,
-                                child: Text(
-                                  row.size,
-                                  style: dim,
-                                  textAlign: TextAlign.right,
-                                ),
-                              ),
-                              for (final column in columns)
                                 SizedBox(
-                                  width: column.width,
-                                  child: _OptionCell(
-                                    column: column,
-                                    path: row.path,
-                                    enabled: enabled,
-                                    targets: _targets(row.path),
+                                  width: 58,
+                                  child: Text(row.modified, style: dim),
+                                ),
+                                SizedBox(
+                                  width: 52,
+                                  child: Text(
+                                    row.size,
+                                    style: dim,
+                                    textAlign: TextAlign.right,
                                   ),
                                 ),
-                            ],
+                                for (final column in columns)
+                                  SizedBox(
+                                    width: column.width,
+                                    child: _OptionCell(
+                                      column: column,
+                                      path: row.path,
+                                      enabled: enabled,
+                                      targets: _targets(row.path),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       );
@@ -250,27 +255,29 @@ class _HeaderButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return InkWell(
-      key: ValueKey<String>('import-column-${column.label}'),
-      onTap: enabled
-          ? () => _openColumnPopup(
-              context,
-              column: column,
-              targets: paths,
-              // A header speaks for every row, so an answer only some of
-              // them can give is still offered — the ones that cannot will
-              // resolve it away, and the cells will say so.
-              enabledFor: (value) => true,
-              current: null,
-            )
-          : null,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 1),
-        child: Text(
-          column.label,
-          textAlign: TextAlign.center,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: enabled ? AppColors.textDim : theme.disabledColor,
+    return ControlPressClaim(
+      child: InkWell(
+        key: ValueKey<String>('import-column-${column.label}'),
+        onTap: enabled
+            ? () => _openColumnPopup(
+                context,
+                column: column,
+                targets: paths,
+                // A header speaks for every row, so an answer only some of
+                // them can give is still offered — the ones that cannot will
+                // resolve it away, and the cells will say so.
+                enabledFor: (value) => true,
+                current: null,
+              )
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 1),
+          child: Text(
+            column.label,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: enabled ? AppColors.textDim : theme.disabledColor,
+            ),
           ),
         ),
       ),
@@ -314,34 +321,36 @@ class _OptionCell extends StatelessWidget {
             .length <=
         1;
     return Center(
-      child: InkWell(
-        key: ValueKey<String>('import-cell-${column.label}-$path'),
-        // The app's own corner, not a circular one: a cell is a well cut
-        // into the row, and every well in this app wears the same shape.
-        customBorder: AppShapes.container(AppShapes.wellRadius),
-        onTap: enabled && !locked
-            ? () => _openColumnPopup(
-                context,
-                column: column,
-                targets: targets,
-                enabledFor: (option) => column.enabledFor(path, option),
-                current: value,
-              )
-            : null,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: ShapeDecoration(
-            shape: AppShapes.container(
-              AppShapes.wellRadius,
-              side: BorderSide(
-                color: locked ? theme.dividerColor : AppColors.hairlineStrong,
+      child: ControlPressClaim(
+        child: InkWell(
+          key: ValueKey<String>('import-cell-${column.label}-$path'),
+          // The app's own corner, not a circular one: a cell is a well cut
+          // into the row, and every well in this app wears the same shape.
+          customBorder: AppShapes.container(AppShapes.wellRadius),
+          onTap: enabled && !locked
+              ? () => _openColumnPopup(
+                  context,
+                  column: column,
+                  targets: targets,
+                  enabledFor: (option) => column.enabledFor(path, option),
+                  current: value,
+                )
+              : null,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: ShapeDecoration(
+              shape: AppShapes.container(
+                AppShapes.wellRadius,
+                side: BorderSide(
+                  color: locked ? theme.dividerColor : AppColors.hairlineStrong,
+                ),
               ),
             ),
-          ),
-          child: Text(
-            column.labelOf(value),
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: locked ? theme.disabledColor : null,
+            child: Text(
+              column.labelOf(value),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: locked ? theme.disabledColor : null,
+              ),
             ),
           ),
         ),
@@ -399,22 +408,24 @@ class _PopupRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return InkWell(
-      key: ValueKey<String>('import-option-$label'),
-      onTap: enabled ? onTap : null,
-      child: Container(
-        height: 24,
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        color: selected ? AppColors.accent.withValues(alpha: 0.18) : null,
-        child: Text(
-          label,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: !enabled
-                ? theme.disabledColor
-                : selected
-                ? AppColors.accent
-                : null,
+    return ControlPressClaim(
+      child: InkWell(
+        key: ValueKey<String>('import-option-$label'),
+        onTap: enabled ? onTap : null,
+        child: Container(
+          height: 24,
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          color: selected ? AppColors.accent.withValues(alpha: 0.18) : null,
+          child: Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: !enabled
+                  ? theme.disabledColor
+                  : selected
+                  ? AppColors.accent
+                  : null,
+            ),
           ),
         ),
       ),

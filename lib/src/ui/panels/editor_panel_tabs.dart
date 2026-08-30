@@ -13,6 +13,7 @@ import '../widgets/superellipse_clip.dart';
 import 'panel_collapsed_scope.dart';
 import 'panel_flash.dart';
 import 'panel_visibility_scope.dart';
+import '../input/control_press_claim.dart';
 
 /// One tab in an [EditorPanelTabs] group.
 class EditorPanelTab {
@@ -1075,60 +1076,62 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
       // ⛔No MouseRegion of its own any more: the band's first rung is the
       // PANEL being hovered, not this button, and the InkWell already
       // paints its own hover for the button itself.
-      child: InkWell(
-        onTap: widget.onPressed,
-        // THE SELECTED TAB IS THE PANEL'S FOOT, not a chip lying on the
-        // sill. It wears the body's own fill and rounds only the corners
-        // AWAY from the body, so the seam between them disappears and the
-        // panel reads as one shape that grows out of its buttons — which
-        // is what the sill was for. Its neighbours are bare, so the fill
-        // still says which one is on, alongside the accent glyph and the
-        // band on the edge facing the WINDOW rather than along the seam
-        // the panel wants invisible.
-        //
-        // The band is CLIPPED to that shape, the way every other grip in
-        // the app is clipped to the panel it belongs to: the tab's rounded
-        // corners cut it, so it reads as the tab's own edge.
-        child: SuperellipseClip(
-          shape: _shape(),
-          // PASSTHROUGH, not the default loose fit. A loose Stack hands
-          // its non-positioned child the incoming constraints LOOSENED,
-          // so the tab's body shrank to its 16px glyph and sat at the top
-          // of a 30px strip: the selected fill stopped reaching the panel
-          // body it is supposed to merge into, and every glyph rode 7px
-          // high. Passthrough keeps the strip's tight height and the
-          // loose width, which is exactly what a tab wants — as tall as
-          // the strip, as wide as what it holds.
-          child: Stack(
-            fit: StackFit.passthrough,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                decoration: ShapeDecoration(
-                  color: widget.selected
-                      ? colorScheme.surface
-                      : Colors.transparent,
-                  shape: _shape(),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(widget.icon, size: 16, color: foreground),
-                    if (widget.locked) ...[
-                      const SizedBox(width: 3),
-                      Icon(Icons.lock, size: 9, color: colorScheme.primary),
+      child: ControlPressClaim(
+        child: InkWell(
+          onTap: widget.onPressed,
+          // THE SELECTED TAB IS THE PANEL'S FOOT, not a chip lying on the
+          // sill. It wears the body's own fill and rounds only the corners
+          // AWAY from the body, so the seam between them disappears and the
+          // panel reads as one shape that grows out of its buttons — which
+          // is what the sill was for. Its neighbours are bare, so the fill
+          // still says which one is on, alongside the accent glyph and the
+          // band on the edge facing the WINDOW rather than along the seam
+          // the panel wants invisible.
+          //
+          // The band is CLIPPED to that shape, the way every other grip in
+          // the app is clipped to the panel it belongs to: the tab's rounded
+          // corners cut it, so it reads as the tab's own edge.
+          child: SuperellipseClip(
+            shape: _shape(),
+            // PASSTHROUGH, not the default loose fit. A loose Stack hands
+            // its non-positioned child the incoming constraints LOOSENED,
+            // so the tab's body shrank to its 16px glyph and sat at the top
+            // of a 30px strip: the selected fill stopped reaching the panel
+            // body it is supposed to merge into, and every glyph rode 7px
+            // high. Passthrough keeps the strip's tight height and the
+            // loose width, which is exactly what a tab wants — as tall as
+            // the strip, as wide as what it holds.
+            child: Stack(
+              fit: StackFit.passthrough,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  decoration: ShapeDecoration(
+                    color: widget.selected
+                        ? colorScheme.surface
+                        : Colors.transparent,
+                    shape: _shape(),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(widget.icon, size: 16, color: foreground),
+                      if (widget.locked) ...[
+                        const SizedBox(width: 3),
+                        Icon(Icons.lock, size: 9, color: colorScheme.primary),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              Positioned(
-                left: 0,
-                right: 0,
-                top: widget.stripAtBottom ? null : 0,
-                bottom: widget.stripAtBottom ? 0 : null,
-                child: grip,
-              ),
-            ],
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: widget.stripAtBottom ? null : 0,
+                  bottom: widget.stripAtBottom ? 0 : null,
+                  child: grip,
+                ),
+              ],
+            ),
           ),
         ),
       ),

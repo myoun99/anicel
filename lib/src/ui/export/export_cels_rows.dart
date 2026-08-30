@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/attached_layer_resolve.dart';
 import '../../models/attached_mode.dart';
 import '../../models/layer.dart';
+import '../input/control_press_claim.dart';
 import '../timeline/layer_label_controls.dart'
     show layerKindIcon, layerMarkColor;
 
@@ -55,7 +56,7 @@ class ExportLayerRow extends StatelessWidget {
         : selected
         ? accent
         : theme.colorScheme.onSurface;
-    return InkWell(
+    return ControlPressClaim(child: InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(4),
       child: Container(
@@ -70,7 +71,7 @@ class ExportLayerRow extends StatelessWidget {
         child: Row(
           children: [
             if (includeDot != null) ...[
-              InkWell(
+              ControlPressClaim(child: InkWell(
                 key: dotKey,
                 onTap: onDotTap,
                 child: Container(
@@ -84,7 +85,7 @@ class ExportLayerRow extends StatelessWidget {
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-              ),
+              )),
               const SizedBox(width: 5),
             ],
             Container(
@@ -125,17 +126,17 @@ class ExportLayerRow extends StatelessWidget {
                 ),
               ),
             if (onRemove != null)
-              InkWell(
+              ControlPressClaim(child: InkWell(
                 onTap: onRemove,
                 child: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 3),
                   child: Icon(Icons.close, size: 10),
                 ),
-              ),
+              )),
           ],
         ),
       ),
-    );
+    ));
   }
 }
 

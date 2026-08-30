@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
+import '../input/control_press_claim.dart';
 
 /// One entry of a [showPanelFlyout] list.
 ///
@@ -491,7 +492,7 @@ class _HoverReporter extends StatelessWidget {
       onEnter: (_) => _report(context),
       // A finger has no hover, so a tap does the same thing. ⛔Not a second
       // behaviour — the same call, reached the only way a finger can.
-      child: InkWell(
+      child: ControlPressClaim(child: InkWell(
         onTap: () => _report(context),
         // 🚨And it STAYS lit while its child is up. Hover cannot say this:
         // by the time the submenu is open the pointer has moved off the
@@ -510,7 +511,7 @@ class _HoverReporter extends StatelessWidget {
           ),
           child: child,
         ),
-      ),
+      )),
     );
   }
 }
@@ -556,14 +557,14 @@ class _SubmenuLayer extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               for (final item in items)
-                InkWell(
+                ControlPressClaim(child: InkWell(
                   key: ValueKey<String>(item.keyValue),
                   onTap: item.enabled ? () => onPicked(item) : null,
                   // ⛔The SAME row surface and the SAME body the parent list
                   // draws — a submenu that laid itself out would drift from
                   // the list it belongs to.
                   child: flyoutRowSurface(_itemBody(item)),
-                ),
+                )),
             ],
           ),
         ),
@@ -676,7 +677,7 @@ class PanelFlyoutTrigger extends StatelessWidget {
   Widget build(BuildContext context) {
     final Widget button = Material(
       color: Colors.transparent,
-      child: InkWell(
+      child: ControlPressClaim(child: InkWell(
         // `customBorder` and not `borderRadius`: the splash is a corner like
         // any other and takes the app's superellipse, so this widget adds
         // nothing to the circular-corner debt (`app_shapes_coverage_test`,
@@ -685,7 +686,7 @@ class PanelFlyoutTrigger extends StatelessWidget {
         customBorder: AppShapes.container(AppShapes.wellRadius),
         onTap: () => showPanelFlyout(context, entries: entriesBuilder()),
         child: Padding(padding: padding, child: child),
-      ),
+      )),
     );
     final message = tooltip;
     if (message == null) {
@@ -767,7 +768,7 @@ class PanelFlyoutButton extends StatelessWidget {
           );
     final chip = Material(
       color: Colors.transparent,
-      child: InkWell(
+      child: ControlPressClaim(child: InkWell(
         borderRadius: BorderRadius.circular(4),
         // Null, not a no-op: an `InkWell` with a null callback stops
         // splashing and stops taking hover, so the button reads shut to the
@@ -809,7 +810,7 @@ class PanelFlyoutButton extends StatelessWidget {
             ),
           ),
         ),
-      ),
+      )),
     );
     if (tooltip == null) {
       return chip;

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../models/cut_id.dart';
+import '../input/control_press_claim.dart';
 
 /// One scope cut for the grid: its number and identity.
 typedef ExportCutEntry = ({CutId id, int number});
@@ -77,7 +78,7 @@ class _ExportCutGridState extends State<ExportCutGrid> {
       children: [
         Row(
           children: [
-            InkWell(
+            ControlPressClaim(child: InkWell(
               key: const ValueKey<String>('export-cut-grid-all'),
               onTap: widget.enabled && anyExcluded
                   ? widget.onAllIncluded
@@ -105,7 +106,7 @@ class _ExportCutGridState extends State<ExportCutGrid> {
                   ),
                 ),
               ),
-            ),
+            )),
             const SizedBox(width: 6),
             Flexible(
               child: Text(
@@ -195,7 +196,7 @@ class _CutCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final accent = theme.colorScheme.primary;
-    return InkWell(
+    return ControlPressClaim(child: InkWell(
       onTap: enabled ? onTap : null,
       child: CustomPaint(
         painter: selected
@@ -223,7 +224,7 @@ class _CutCell extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ));
   }
 }
 

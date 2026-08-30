@@ -20,6 +20,7 @@ import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/history_manager.dart';
 import 'brush_edit_canvas_input_settings.dart';
 import 'interactive_brush_canvas_smoke_host.dart';
+import '../input/control_press_claim.dart';
 
 class BrushCanvasSmokeScreen extends StatefulWidget {
   const BrushCanvasSmokeScreen({
@@ -89,41 +90,55 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              TextButton(
-                key: const ValueKey<String>('brush-canvas-smoke-screen-undo'),
-                onPressed: _undo,
-                child: const Text('Undo'),
-              ),
-              TextButton(
-                key: const ValueKey<String>('brush-canvas-smoke-screen-redo'),
-                onPressed: _redo,
-                child: const Text('Redo'),
-              ),
-              TextButton(
-                key: const ValueKey<String>('brush-canvas-smoke-screen-reset'),
-                onPressed: () => _resetSession(debugOperation: 'reset'),
-                child: const Text('Reset'),
-              ),
-              TextButton(
-                key: const ValueKey<String>(
-                  'brush-canvas-smoke-screen-color-red',
+              ControlPressClaim(
+                child: TextButton(
+                  key: const ValueKey<String>('brush-canvas-smoke-screen-undo'),
+                  onPressed: _undo,
+                  child: const Text('Undo'),
                 ),
-                onPressed: () => _setColor(0xFFFF0000),
-                child: const Text('Red'),
               ),
-              TextButton(
-                key: const ValueKey<String>(
-                  'brush-canvas-smoke-screen-color-blue',
+              ControlPressClaim(
+                child: TextButton(
+                  key: const ValueKey<String>('brush-canvas-smoke-screen-redo'),
+                  onPressed: _redo,
+                  child: const Text('Redo'),
                 ),
-                onPressed: () => _setColor(0xFF0000FF),
-                child: const Text('Blue'),
               ),
-              TextButton(
-                key: const ValueKey<String>(
-                  'brush-canvas-smoke-screen-color-black',
+              ControlPressClaim(
+                child: TextButton(
+                  key: const ValueKey<String>(
+                    'brush-canvas-smoke-screen-reset',
+                  ),
+                  onPressed: () => _resetSession(debugOperation: 'reset'),
+                  child: const Text('Reset'),
                 ),
-                onPressed: () => _setColor(0xFF000000),
-                child: const Text('Black'),
+              ),
+              ControlPressClaim(
+                child: TextButton(
+                  key: const ValueKey<String>(
+                    'brush-canvas-smoke-screen-color-red',
+                  ),
+                  onPressed: () => _setColor(0xFFFF0000),
+                  child: const Text('Red'),
+                ),
+              ),
+              ControlPressClaim(
+                child: TextButton(
+                  key: const ValueKey<String>(
+                    'brush-canvas-smoke-screen-color-blue',
+                  ),
+                  onPressed: () => _setColor(0xFF0000FF),
+                  child: const Text('Blue'),
+                ),
+              ),
+              ControlPressClaim(
+                child: TextButton(
+                  key: const ValueKey<String>(
+                    'brush-canvas-smoke-screen-color-black',
+                  ),
+                  onPressed: () => _setColor(0xFF000000),
+                  child: const Text('Black'),
+                ),
               ),
             ],
           ),

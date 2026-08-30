@@ -6,6 +6,7 @@ import '../../models/layer_kind.dart';
 import '../text/app_strings.dart';
 import 'layer_label_controls.dart';
 import 'row_control_surface.dart';
+import '../input/control_press_claim.dart';
 
 /// The rail row's COLUMN SKELETON — the one declaration of slot ORDER and
 /// slot WIDTH, shared by every surface that draws a horizontal rail row.
@@ -409,18 +410,20 @@ class LayerTypeButton extends StatelessWidget {
       );
     }
 
-    return InkWell(
-      key: ValueKey<String>('$keyPrefix-layer-type-button-$idValue'),
-      onTap: onTap,
-      customBorder: const CircleBorder(), // R26 #28
-      child: SizedBox(
-        width: layerTypeSlotWidth,
-        height: height,
-        child: Center(
-          child: Semantics(
-            label: label,
-            container: true,
-            child: ExcludeSemantics(child: glyph),
+    return ControlPressClaim(
+      child: InkWell(
+        key: ValueKey<String>('$keyPrefix-layer-type-button-$idValue'),
+        onTap: onTap,
+        customBorder: const CircleBorder(), // R26 #28
+        child: SizedBox(
+          width: layerTypeSlotWidth,
+          height: height,
+          child: Center(
+            child: Semantics(
+              label: label,
+              container: true,
+              child: ExcludeSemantics(child: glyph),
+            ),
           ),
         ),
       ),

@@ -38,6 +38,7 @@ import 'bitmap_surface_painter.dart';
 import 'provisional_tile_pictures.dart';
 import 'bitmap_tile_image_cache.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../input/control_press_claim.dart';
 
 /// The P9 selection interaction layer, mounted over the canvas while a
 /// selection tool is active (Photoshop/CSP language):
@@ -3995,36 +3996,38 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                 color: AppColors.selectionSession(changed: _sessionHasChanges),
                 shape: const CircleBorder(),
                 elevation: 2,
-                child: InkWell(
-                  customBorder: const CircleBorder(),
-                  // The button is offered while a transform box is OPEN —
-                  // its visibility test is `_movePending`, which says
-                  // nothing about `_transform`. Wired straight to
-                  // `_confirmMoveSession` it landed the unwarped lift: the
-                  // artwork committed at its PRE-transform position and
-                  // size, the warped preview kept painting on top until
-                  // something closed the box, and the wrong landing went
-                  // into history. Enter has branched on this since R16-①;
-                  // the button never did.
-                  //
-                  // Both `if`s, not Enter's single branch. `_commitTransform`
-                  // on an identity affine only closes the box and leaves
-                  // the session pending, so Enter's form would make one tap
-                  // of a button labelled "confirm" into two. With both, a
-                  // warped box commits warped (the inner confirm fires and
-                  // the outer no-ops on a null pending stamp) and an
-                  // untouched box closes and confirms in one tap.
-                  onTap: () {
-                    if (_transform != null) {
-                      _commitTransform();
-                    }
-                    if (_movePending) {
-                      _confirmMoveSession();
-                    }
-                  },
-                  child: const Padding(
-                    padding: EdgeInsets.all(6),
-                    child: Icon(Icons.check, size: 18, color: Colors.white),
+                child: ControlPressClaim(
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    // The button is offered while a transform box is OPEN —
+                    // its visibility test is `_movePending`, which says
+                    // nothing about `_transform`. Wired straight to
+                    // `_confirmMoveSession` it landed the unwarped lift: the
+                    // artwork committed at its PRE-transform position and
+                    // size, the warped preview kept painting on top until
+                    // something closed the box, and the wrong landing went
+                    // into history. Enter has branched on this since R16-①;
+                    // the button never did.
+                    //
+                    // Both `if`s, not Enter's single branch. `_commitTransform`
+                    // on an identity affine only closes the box and leaves
+                    // the session pending, so Enter's form would make one tap
+                    // of a button labelled "confirm" into two. With both, a
+                    // warped box commits warped (the inner confirm fires and
+                    // the outer no-ops on a null pending stamp) and an
+                    // untouched box closes and confirms in one tap.
+                    onTap: () {
+                      if (_transform != null) {
+                        _commitTransform();
+                      }
+                      if (_movePending) {
+                        _confirmMoveSession();
+                      }
+                    },
+                    child: const Padding(
+                      padding: EdgeInsets.all(6),
+                      child: Icon(Icons.check, size: 18, color: Colors.white),
+                    ),
                   ),
                 ),
               ),

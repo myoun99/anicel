@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import '../input/control_press_claim.dart';
 
 /// The "answer a question" window: a sentence and the ways out of it.
 ///
@@ -87,7 +88,7 @@ class _DetailsDisclosureState extends State<_DetailsDisclosure> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        InkWell(
+        ControlPressClaim(child: InkWell(
           key: const ValueKey<String>('app-notice-details-toggle'),
           onTap: () => setState(() => _open = !_open),
           child: Row(
@@ -103,7 +104,7 @@ class _DetailsDisclosureState extends State<_DetailsDisclosure> {
               ),
             ],
           ),
-        ),
+        )),
         // ⛔The space is NOT reserved when closed: this is a dialog that
         // sizes to its content, and an empty box under the heading would
         // make every notice taller for a list nobody opened. The rule it

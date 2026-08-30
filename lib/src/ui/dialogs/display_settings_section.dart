@@ -4,6 +4,7 @@ import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart' show AppShapes;
 import '../ui_scale.dart';
+import '../input/control_press_claim.dart';
 
 /// Preferences ▸ Display: the interface scale (R11).
 ///
@@ -77,7 +78,7 @@ class _ScaleStop extends StatelessWidget {
         color: selected ? colorScheme.primary : colorScheme.outlineVariant,
       ),
     );
-    return InkWell(
+    return ControlPressClaim(child: InkWell(
       // Keyed by the PERCENTAGE rather than the index: a stop added or
       // removed later must not silently move another stop's key onto a
       // different number.
@@ -107,6 +108,6 @@ class _ScaleStop extends StatelessWidget {
           ).textTheme.bodySmall?.copyWith(color: selected ? colorScheme.primary : null),
         ),
       ),
-    );
+    ));
   }
 }

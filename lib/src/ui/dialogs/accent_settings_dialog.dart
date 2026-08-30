@@ -6,6 +6,7 @@ import '../theme/app_theme.dart' show AppColors;
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
 import '../widgets/settings_rows.dart';
+import '../input/control_press_claim.dart';
 
 /// The two-accent settings dialog (UI-R22 #5): accent 1 (selection,
 /// playhead, active toggles) and accent 2 (the secondary highlight —
@@ -140,23 +141,25 @@ class _AccentRow extends StatelessWidget {
           runSpacing: 6,
           children: [
             for (final preset in _presetAccents)
-              InkWell(
-                key: ValueKey<String>(
-                  '$keyPrefix-preset-${preset.toARGB32().toRadixString(16)}',
-                ),
-                onTap: () => onChanged(preset),
-                borderRadius: BorderRadius.circular(4),
-                child: Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: preset,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(
-                      color: preset == value
-                          ? colorScheme.onSurface
-                          : colorScheme.outlineVariant,
-                      width: preset == value ? 2 : 1,
+              ControlPressClaim(
+                child: InkWell(
+                  key: ValueKey<String>(
+                    '$keyPrefix-preset-${preset.toARGB32().toRadixString(16)}',
+                  ),
+                  onTap: () => onChanged(preset),
+                  borderRadius: BorderRadius.circular(4),
+                  child: Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: preset,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: preset == value
+                            ? colorScheme.onSurface
+                            : colorScheme.outlineVariant,
+                        width: preset == value ? 2 : 1,
+                      ),
                     ),
                   ),
                 ),

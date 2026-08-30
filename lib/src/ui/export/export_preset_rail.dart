@@ -7,6 +7,7 @@ import '../../models/export_spec.dart';
 import '../dialogs/app_prompt_dialog.dart';
 import 'export_settings_modules.dart';
 import '../text/app_strings.dart';
+import '../input/control_press_claim.dart';
 
 /// The left drawer: per-tab presets (자동 규칙만). Selection highlight is
 /// value equality against the live spec — editing any knob visibly
@@ -92,29 +93,31 @@ class ExportPresetRail extends StatelessWidget {
                   onApply: () => onApply(preset),
                   onDelete: () => onDelete(preset),
                 ),
-              InkWell(
-                key: const ValueKey<String>('export-preset-save-current'),
-                onTap: enabled ? onSaveCurrent : null,
-                borderRadius: BorderRadius.circular(4),
-                child: Container(
-                  margin: const EdgeInsets.only(top: 2),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color: theme.dividerColor,
-                      style: BorderStyle.solid,
+              ControlPressClaim(
+                child: InkWell(
+                  key: const ValueKey<String>('export-preset-save-current'),
+                  onTap: enabled ? onSaveCurrent : null,
+                  borderRadius: BorderRadius.circular(4),
+                  child: Container(
+                    margin: const EdgeInsets.only(top: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 4,
                     ),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    '+ Save current…',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: enabled
-                          ? theme.colorScheme.onSurfaceVariant
-                          : theme.disabledColor,
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: theme.dividerColor,
+                        style: BorderStyle.solid,
+                      ),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '+ Save current…',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: enabled
+                            ? theme.colorScheme.onSurfaceVariant
+                            : theme.disabledColor,
+                      ),
                     ),
                   ),
                 ),
@@ -157,59 +160,65 @@ class _PresetEntry extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final accent = theme.colorScheme.primary;
-    return InkWell(
-      key: ValueKey<String>('export-preset-${preset.id.value}'),
-      onTap: enabled ? onApply : null,
-      borderRadius: BorderRadius.circular(4),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 3),
-        padding: const EdgeInsets.fromLTRB(7, 3, 4, 4),
-        decoration: BoxDecoration(
-          color: selected ? accent.withValues(alpha: 0.12) : null,
-          border: Border.all(color: selected ? accent : Colors.transparent),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    preset.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: selected ? accent : null,
+    return ControlPressClaim(
+      child: InkWell(
+        key: ValueKey<String>('export-preset-${preset.id.value}'),
+        onTap: enabled ? onApply : null,
+        borderRadius: BorderRadius.circular(4),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 3),
+          padding: const EdgeInsets.fromLTRB(7, 3, 4, 4),
+          decoration: BoxDecoration(
+            color: selected ? accent.withValues(alpha: 0.12) : null,
+            border: Border.all(color: selected ? accent : Colors.transparent),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      preset.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: selected ? accent : null,
+                      ),
                     ),
+                    Text(
+                      ExportPresetRail.describe(preset.spec),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontSize: 9.5,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ControlPressClaim(
+                child: InkWell(
+                  key: ValueKey<String>(
+                    'export-preset-delete-${preset.id.value}',
                   ),
-                  Text(
-                    ExportPresetRail.describe(preset.spec),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontSize: 9.5,
+                  onTap: enabled ? onDelete : null,
+                  child: Padding(
+                    padding: const EdgeInsets.all(2),
+                    child: Icon(
+                      Icons.close,
+                      size: 11,
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
-                ],
-              ),
-            ),
-            InkWell(
-              key: ValueKey<String>('export-preset-delete-${preset.id.value}'),
-              onTap: enabled ? onDelete : null,
-              child: Padding(
-                padding: const EdgeInsets.all(2),
-                child: Icon(
-                  Icons.close,
-                  size: 11,
-                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
