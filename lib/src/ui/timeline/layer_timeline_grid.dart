@@ -75,6 +75,7 @@ import 'timeline_vertical_scrollbar_rail.dart';
 import 'timeline_visible_range.dart';
 
 import '../../models/project_frame_rate.dart';
+import '../text/app_strings.dart' show AppText;
 import '../layout/device_grid_scroll_controller.dart';
 
 class LayerTimelineGrid extends StatefulWidget {
@@ -2651,7 +2652,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                                     8,
                                                                                   ),
                                                                                   child: Text(
-                                                                                    'No layers',
+                                                                                    AppText.strings.tlNoLayers,
                                                                                     style: TextStyle(
                                                                                       color: colorScheme.onSurfaceVariant,
                                                                                     ),

@@ -246,12 +246,14 @@ class TimelineLayerControlsHeader extends StatelessWidget {
       return Builder(
         builder: (anchorContext) => Tooltip(
           message: tooltip,
-          child: ControlPressClaim(onPressed: () =>
-                  showPanelFlyout(anchorContext, entries: entriesBuilder()), 
+          child: ControlPressClaim(
+            onPressed: () =>
+                showPanelFlyout(anchorContext, entries: entriesBuilder()),
             child: InkWell(
               key: ValueKey<String>(keyValue),
-              onTap: silentPress(() =>
-                  showPanelFlyout(anchorContext, entries: entriesBuilder())),
+              onTap: silentPress(
+                () => showPanelFlyout(anchorContext, entries: entriesBuilder()),
+              ),
               child: content,
             ),
           ),
@@ -346,16 +348,19 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                             message: anyLanesExpanded
                                 ? 'Collapse all layers'
                                 : 'Expand all layers',
-                            child: ControlPressClaim(onPressed: anyLanesExpanded
-                                    ? onCollapseAllLanes
-                                    : onExpandAllLanes, 
+                            child: ControlPressClaim(
+                              onPressed: anyLanesExpanded
+                                  ? onCollapseAllLanes
+                                  : onExpandAllLanes,
                               child: InkWell(
                                 key: const ValueKey<String>(
                                   'legend-lanes-toggle',
                                 ),
-                                onTap: silentPress(anyLanesExpanded
-                                    ? onCollapseAllLanes
-                                    : onExpandAllLanes),
+                                onTap: silentPress(
+                                  anyLanesExpanded
+                                      ? onCollapseAllLanes
+                                      : onExpandAllLanes,
+                                ),
                                 child: Center(
                                   child: Icon(
                                     anyLanesExpanded
@@ -425,11 +430,9 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                                 // project — the filter was always about what
                                 // is actually on the rows, and this says so.
                                 for (final mark
-                                    in marksInUse.toList()
-                                      ..sort(
-                                        (a, b) =>
-                                            a.sortKey.compareTo(b.sortKey),
-                                      ))
+                                    in marksInUse.toList()..sort(
+                                      (a, b) => a.sortKey.compareTo(b.sortKey),
+                                    ))
                                   if (!mark.isNone)
                                     PanelFlyoutItem(
                                       keyValue:
@@ -499,7 +502,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                         : Align(
                             alignment: Alignment.centerLeft,
                             child: Text(
-                              'LAYER',
+                              AppText.strings.tlLegendLayer,
                               key: const ValueKey<String>('legend-layer'),
                               style: TextStyle(
                                 fontSize: 9,
@@ -656,18 +659,21 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     // the muted state — no flyout.
                     mute: Tooltip(
                       message: allSeMuted ? 'Unmute all SE' : 'Mute all SE',
-                      child: ControlPressClaim(onPressed: legend == null
-                              ? null
-                              : (allSeMuted
-                                    ? legend.onUnmuteAllSe
-                                    : legend.onMuteAllSe), 
+                      child: ControlPressClaim(
+                        onPressed: legend == null
+                            ? null
+                            : (allSeMuted
+                                  ? legend.onUnmuteAllSe
+                                  : legend.onMuteAllSe),
                         child: InkWell(
                           key: const ValueKey<String>('legend-mute'),
-                          onTap: silentPress(legend == null
-                              ? null
-                              : (allSeMuted
-                                    ? legend.onUnmuteAllSe
-                                    : legend.onMuteAllSe)),
+                          onTap: silentPress(
+                            legend == null
+                                ? null
+                                : (allSeMuted
+                                      ? legend.onUnmuteAllSe
+                                      : legend.onMuteAllSe),
+                          ),
                           child: Center(
                             child: legendIcon(
                               allSeMuted
@@ -693,7 +699,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                             displayedLayerIds != null &&
                             !isVertical
                         ? Tooltip(
-                            message: 'All displayed layers opacity',
+                            message: AppText.strings.tlAllDisplayedOpacity,
                             child: FieldSlider.opacity(
                               key: const ValueKey<String>('legend-opacity'),
                               value: displayedOpacity

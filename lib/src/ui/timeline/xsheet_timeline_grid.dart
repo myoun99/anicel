@@ -16,6 +16,7 @@ import '../../models/layer_blend_mode.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
+import '../text/app_strings.dart' show AppText;
 import '../theme/app_theme.dart';
 import '../widgets/field_slider.dart';
 import 'layer_label_controls.dart';
@@ -2009,7 +2010,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                         child: Padding(
                                           padding: const EdgeInsets.all(8),
                                           child: Text(
-                                            'No layers',
+                                            AppText.strings.tlNoLayers,
                                             style: TextStyle(
                                               color:
                                                   colorScheme.onSurfaceVariant,

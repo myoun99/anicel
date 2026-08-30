@@ -704,8 +704,7 @@ class _TimelineRowEditChromeLayerState
     _addPan.onUpdate = (details) {
       final panned = _autoPanEdge(details.globalPosition);
       _updateAdd(
-        details.delta +
-            (_horizontal ? Offset(panned, 0) : Offset(0, panned)),
+        details.delta + (_horizontal ? Offset(panned, 0) : Offset(0, panned)),
       );
     };
     _addPan.onEnd = (_) => _endAdd();
@@ -924,13 +923,13 @@ class _TimelineRowEditChromeLayerState
       entries: [
         PanelFlyoutItem(
           keyValue: 'run-edge-mode-none',
-          label: 'None',
+          label: AppText.strings.tlRunEdgeNone,
           checked: target.mode == null,
           onSelected: () => pick(null),
         ),
         PanelFlyoutItem(
           keyValue: 'run-edge-mode-hold',
-          label: 'Hold',
+          label: AppText.strings.tlRunEdgeHold,
           checked: target.mode == TimelineRunEdgeMode.hold,
           onSelected: () => pick(TimelineRunEdgeMode.hold),
         ),

@@ -47,6 +47,11 @@ void main() {
     'RGB',
     'SE',
     'Wintab',
+    // 현장 용어, and the code already said so where it lives: the Fx button
+    // carries 「Untranslated on purpose — 현장 용어 stays in the original」.
+    'fx',
+    'Fx',
+    'N', // the comma count button, a number in every language
   };
 
   /// Every shape in which a literal reaches the screen from these files.
@@ -139,7 +144,7 @@ void main() {
   /// question a count cannot: 「is every id answered」.
   ///
   /// ★WHEN YOU TRANSLATE SOMETHING, LOWER THIS NUMBER. That is the ratchet.
-  const untranslatedElsewhere = 186;
+  const untranslatedElsewhere = 172;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp(r'[A-Za-z]');

@@ -576,6 +576,18 @@ class AppStrings {
 
   // --- The timeline action toolbar and its flyouts ---
   String get tlAddLayerHeader => _s('tlAddLayerHeader');
+  String get tlNoLayers => _s('tlNoLayers');
+  String get tlLegendLayer => _s('tlLegendLayer');
+  String get tlAllDisplayedOpacity => _s('tlAllDisplayedOpacity');
+  String get tlLinkedLayerTooltip => _s('tlLinkedLayerTooltip');
+  String get tlAudioLane => _s('tlAudioLane');
+  String get tlNameTagGroup => _s('tlNameTagGroup');
+  String get tlTransformGroup => _s('tlTransformGroup');
+  String get tlRunEdgeNone => _s('tlRunEdgeNone');
+  String get tlRunEdgeHold => _s('tlRunEdgeHold');
+  String get tlSelectedFrameRange => _s('tlSelectedFrameRange');
+  String get tlSelectedLaneRange => _s('tlSelectedLaneRange');
+  String get tlSelectedCell => _s('tlSelectedCell');
   String get tlSameAsSelected => _s('tlSameAsSelected');
   String get tlKindAnimation => _s('tlKindAnimation');
   String get tlKindStoryboard => _s('tlKindStoryboard');
@@ -1852,6 +1864,18 @@ class AppStrings {
     'tlRepeatSelection': 'Repeat selection',
     'tlSeNameTemplate': 'SE name {name}',
     'tlAddLayerHeader': 'Add layer',
+    'tlNoLayers': 'No layers',
+    'tlLegendLayer': 'LAYER',
+    'tlAllDisplayedOpacity': 'All displayed layers opacity',
+    'tlLinkedLayerTooltip': 'Linked layer — pictures are shared',
+    'tlAudioLane': 'Audio',
+    'tlNameTagGroup': 'Name Tag',
+    'tlTransformGroup': 'Transform',
+    'tlRunEdgeNone': 'None',
+    'tlRunEdgeHold': 'Hold',
+    'tlSelectedFrameRange': 'selected frame range',
+    'tlSelectedLaneRange': 'selected lane range',
+    'tlSelectedCell': 'selected cell',
     'tlSameAsSelected': 'Same as selected',
     'tlKindAnimation': 'Animation',
     'tlKindStoryboard': 'Storyboard',
@@ -2776,6 +2800,18 @@ class AppStrings {
     'tlRepeatSelection': '選択範囲をリピート',
     'tlSeNameTemplate': 'SE名 {name}',
     'tlAddLayerHeader': 'レイヤーを追加',
+    'tlNoLayers': 'レイヤーがありません',
+    'tlLegendLayer': 'レイヤー',
+    'tlAllDisplayedOpacity': '表示中レイヤー全体の不透明度',
+    'tlLinkedLayerTooltip': 'リンクレイヤー — 絵を共有しています',
+    'tlAudioLane': '音声',
+    'tlNameTagGroup': 'ネームタグ',
+    'tlTransformGroup': 'トランスフォーム',
+    'tlRunEdgeNone': 'なし',
+    'tlRunEdgeHold': 'ホールド',
+    'tlSelectedFrameRange': '選択中のフレーム範囲',
+    'tlSelectedLaneRange': '選択中のレーン範囲',
+    'tlSelectedCell': '選択中のセル',
     'tlSameAsSelected': '選択中と同じ種類',
     'tlKindAnimation': '動画',
     'tlKindStoryboard': '絵コンテ',
@@ -3691,6 +3727,18 @@ class AppStrings {
     'tlRepeatSelection': '선택 영역 반복',
     'tlSeNameTemplate': 'SE 이름 {name}',
     'tlAddLayerHeader': '레이어 추가',
+    'tlNoLayers': '레이어 없음',
+    'tlLegendLayer': '레이어',
+    'tlAllDisplayedOpacity': '표시 중인 레이어 전체 불투명도',
+    'tlLinkedLayerTooltip': '링크 레이어 — 그림을 공유합니다',
+    'tlAudioLane': '오디오',
+    'tlNameTagGroup': '네임태그',
+    'tlTransformGroup': '트랜스폼',
+    'tlRunEdgeNone': '없음',
+    'tlRunEdgeHold': '홀드',
+    'tlSelectedFrameRange': '선택된 프레임 범위',
+    'tlSelectedLaneRange': '선택된 레인 범위',
+    'tlSelectedCell': '선택된 칸',
     'tlSameAsSelected': '선택한 것과 같은 종류',
     'tlKindAnimation': '동화',
     'tlKindStoryboard': '콘티',
@@ -4632,6 +4680,18 @@ class AppStrings {
     'tlRepeatSelection': 'Répéter la sélection',
     'tlSeNameTemplate': 'Nom SE {name}',
     'tlAddLayerHeader': 'Ajouter un calque',
+    'tlNoLayers': 'Aucun calque',
+    'tlLegendLayer': 'CALQUE',
+    'tlAllDisplayedOpacity': 'Opacité de tous les calques affichés',
+    'tlLinkedLayerTooltip': 'Calque lié — les images sont partagées',
+    'tlAudioLane': 'Audio',
+    'tlNameTagGroup': 'Cartouche',
+    'tlTransformGroup': 'Transformation',
+    'tlRunEdgeNone': 'Aucun',
+    'tlRunEdgeHold': 'Maintien',
+    'tlSelectedFrameRange': 'plage d\'images sélectionnée',
+    'tlSelectedLaneRange': 'plage de piste sélectionnée',
+    'tlSelectedCell': 'cellule sélectionnée',
     'tlSameAsSelected': 'Comme la sélection',
     'tlKindAnimation': 'Animation',
     'tlKindStoryboard': 'Storyboard',
@@ -5477,6 +5537,18 @@ class AppStrings {
     'tlRepeatSelection': '重复所选',
     'tlSeNameTemplate': 'SE 名称 {name}',
     'tlAddLayerHeader': '添加图层',
+    'tlNoLayers': '没有图层',
+    'tlLegendLayer': '图层',
+    'tlAllDisplayedOpacity': '所有显示图层的不透明度',
+    'tlLinkedLayerTooltip': '链接图层 — 画面是共享的',
+    'tlAudioLane': '音频',
+    'tlNameTagGroup': '名牌',
+    'tlTransformGroup': '变换',
+    'tlRunEdgeNone': '无',
+    'tlRunEdgeHold': '保持',
+    'tlSelectedFrameRange': '选中的帧范围',
+    'tlSelectedLaneRange': '选中的轨道范围',
+    'tlSelectedCell': '选中的单元格',
     'tlSameAsSelected': '与所选相同',
     'tlKindAnimation': '动画',
     'tlKindStoryboard': '分镜',

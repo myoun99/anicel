@@ -19,6 +19,7 @@ import 'timeline_grid_metrics.dart';
 import 'timeline_instruction_row_visual.dart';
 import 'timeline_playhead.dart';
 import 'timeline_selected_exposure_outline.dart';
+import '../text/app_strings.dart' show AppText;
 import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 
 /// Everything of a timeline grid that moves with the frame cursor — the
@@ -229,7 +230,7 @@ class TimelineCursorLayer extends StatelessWidget {
             final rowOffset = rangeRowIndex * metrics.layerRowHeight;
             final band = Semantics(
               key: const ValueKey<String>('timeline-frame-range-selection'),
-              label: 'selected frame range',
+              label: AppText.strings.tlSelectedFrameRange,
               container: true,
               child: DecoratedBox(
                 decoration: timelineRangeSelectionBandDecoration,
@@ -312,7 +313,7 @@ class TimelineCursorLayer extends StatelessWidget {
             final bandCross = laneRowCount * metrics.layerRowHeight;
             final band = Semantics(
               key: const ValueKey<String>('timeline-lane-range-selection'),
-              label: 'selected lane range',
+              label: AppText.strings.tlSelectedLaneRange,
               container: true,
               child: DecoratedBox(
                 decoration: timelineRangeSelectionBandDecoration,
@@ -385,7 +386,7 @@ class TimelineCursorLayer extends StatelessWidget {
           final rowOffset = standingLaneIndex * metrics.layerRowHeight;
           final mark = Semantics(
             key: const ValueKey<String>('timeline-lane-standing-cell'),
-            label: 'selected cell',
+            label: AppText.strings.tlSelectedCell,
             container: true,
             child: DecoratedBox(decoration: timelineStandingCellDecoration),
           );
@@ -474,7 +475,7 @@ class TimelineCursorLayer extends StatelessWidget {
           final onBlock = displayRange.resolvedRange.isBlock;
           final ring = Semantics(
             key: selectedSemanticsKey,
-            label: 'selected cell',
+            label: AppText.strings.tlSelectedCell,
             container: true,
             child: onBlock
                 ? const SizedBox.expand()
