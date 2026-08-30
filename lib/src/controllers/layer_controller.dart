@@ -226,7 +226,7 @@ class LayerController {
     required bool visible,
   }) => _executeDisplayBatch(
     layerIds: layerIds,
-    label: 'Set layer visibility',
+    debugLabel: 'Set layer visibility',
     apply: (layer) =>
         layer.isVisible == visible ? layer : layer.copyWith(isVisible: visible),
   );
@@ -239,7 +239,7 @@ class LayerController {
     final clamped = opacity.clamp(0.0, 1.0).toDouble();
     _executeDisplayBatch(
       layerIds: layerIds,
-      label: 'Set layer opacity',
+      debugLabel: 'Set layer opacity',
       apply: (layer) =>
           layer.opacity == clamped ? layer : layer.copyWith(opacity: clamped),
     );
@@ -249,7 +249,7 @@ class LayerController {
   void setLayersMuted({required List<LayerId> layerIds, required bool muted}) =>
       _executeDisplayBatch(
         layerIds: layerIds,
-        label: 'Set layer mute',
+        debugLabel: 'Set layer mute',
         apply: (layer) =>
             layer.muted == muted ? layer : layer.copyWith(muted: muted),
       );
@@ -260,7 +260,7 @@ class LayerController {
     required LayerBlendMode blendMode,
   }) => _executeDisplayBatch(
     layerIds: layerIds,
-    label: 'Set layer blend mode',
+    debugLabel: 'Set layer blend mode',
     apply: (layer) => layer.blendMode == blendMode
         ? layer
         : layer.copyWith(blendMode: blendMode),
@@ -268,7 +268,7 @@ class LayerController {
 
   void _executeDisplayBatch({
     required List<LayerId> layerIds,
-    required String label,
+    required String debugLabel,
     required Layer Function(Layer layer) apply,
   }) {
     if (layerIds.isEmpty) {
@@ -279,7 +279,7 @@ class LayerController {
         UpdateLayerDisplayCommand(
           repository: _repository,
           layerId: layerIds.single,
-          label: label,
+          debugLabel: debugLabel,
           apply: apply,
         ),
       );
@@ -287,13 +287,13 @@ class LayerController {
     }
     _historyManager.execute(
       CompositeCommand(
-        description: '$label (${layerIds.length} layers)',
+        description: '$debugLabel (${layerIds.length} layers)',
         commands: [
           for (final layerId in layerIds)
             UpdateLayerDisplayCommand(
               repository: _repository,
               layerId: layerId,
-              label: label,
+              debugLabel: debugLabel,
               apply: apply,
             ),
         ],
@@ -313,7 +313,7 @@ class LayerController {
       UpdateLayerDisplayCommand(
         repository: _repository,
         layerId: layerId,
-        label: 'Toggle layer visibility',
+        debugLabel: 'Toggle layer visibility',
         apply: (layer) => layer.copyWith(isVisible: nextVisible),
       ),
     );
@@ -336,7 +336,7 @@ class LayerController {
       UpdateLayerDisplayCommand(
         repository: _repository,
         layerId: layerId,
-        label: 'Toggle layer collapsed',
+        debugLabel: 'Toggle layer collapsed',
         apply: (layer) => layer.copyWith(collapsed: !layer.collapsed),
       ),
     );
@@ -353,7 +353,7 @@ class LayerController {
       UpdateLayerDisplayCommand(
         repository: _repository,
         layerId: layerId,
-        label: 'Toggle layer mute',
+        debugLabel: 'Toggle layer mute',
         apply: (layer) => layer.copyWith(muted: !layer.muted),
       ),
     );
@@ -381,7 +381,7 @@ class LayerController {
       UpdateLayerDisplayCommand(
         repository: _repository,
         layerId: layerId,
-        label: 'Set layer blend mode',
+        debugLabel: 'Set layer blend mode',
         apply: (layer) => layer.blendMode == blendMode
             ? layer
             : layer.copyWith(blendMode: blendMode),
@@ -398,7 +398,7 @@ class LayerController {
       UpdateLayerDisplayCommand(
         repository: _repository,
         layerId: layerId,
-        label: 'Set layer opacity',
+        debugLabel: 'Set layer opacity',
         apply: (layer) =>
             layer.opacity == clamped ? layer : layer.copyWith(opacity: clamped),
       ),

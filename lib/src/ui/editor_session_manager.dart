@@ -6838,7 +6838,7 @@ class EditorSessionManager extends ChangeNotifier {
         trackId: track.id,
         before: before,
         after: before.copyWith(instructions: next),
-        label: 'Add transition',
+        debugLabel: 'Add transition',
       ),
     );
     _transitionDisplayClone = null;
@@ -6861,7 +6861,7 @@ class EditorSessionManager extends ChangeNotifier {
         after: before.copyWith(
           instructions: SplayTreeMap<int, InstructionEvent>.from(instructions),
         ),
-        label: description,
+        debugLabel: description,
       ),
     );
     _transitionDisplayClone = null;
@@ -14829,7 +14829,7 @@ class EditorSessionManager extends ChangeNotifier {
           after: owner.transitionLayer.copyWith(
             instructions: SplayTreeMap<int, InstructionEvent>.from(entry.value),
           ),
-          label: 'Move transition',
+          debugLabel: 'Move transition',
         )
       else if (cut != null)
         UpdateLayerInstructionsCommand(
@@ -17560,7 +17560,7 @@ class EditorSessionManager extends ChangeNotifier {
       ToggleIdInSetCommand(
         notifier: onionSkinLayerIds,
         layerId: layerId,
-        label: 'Toggle onion skin',
+        debugLabel: 'Toggle onion skin',
       ),
     );
     // Row/legend toggle glyphs read through the session listenable.
@@ -17622,7 +17622,7 @@ class EditorSessionManager extends ChangeNotifier {
             ToggleIdInSetCommand(
               notifier: onionSkinLayerIds,
               layerId: layerId,
-              label: 'Toggle onion skin',
+              debugLabel: 'Toggle onion skin',
             ),
         ],
       ),

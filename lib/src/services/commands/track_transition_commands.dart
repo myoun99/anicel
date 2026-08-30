@@ -16,17 +16,21 @@ class UpdateTrackTransitionLayerCommand implements Command {
     required this.trackId,
     required this.before,
     required this.after,
-    String? label,
-  }) : _label = label;
+    String? debugLabel,
+  }) : _debugLabel = debugLabel;
 
   final ProjectRepository repository;
   final TrackId trackId;
   final Layer before;
   final Layer after;
-  final String? _label;
+
+  /// 🚨A DEBUG LINE, NOT A LABEL — the Command.description getter is read
+  /// by no UI in this repo. ⛔It must NOT be translated: a diagnostic that
+  /// changes with the reading language is a diagnostic nobody can grep.
+  final String? _debugLabel;
 
   @override
-  String get description => _label ?? 'Edit transition';
+  String get description => _debugLabel ?? 'Edit transition';
 
   @override
   void execute() {
