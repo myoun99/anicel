@@ -2431,12 +2431,15 @@ class ExportDialogState extends State<ExportDialog> {
       children: [
         Align(
           alignment: Alignment.centerRight,
-          child: ControlPressClaim(child: InkWell(
-            key: const ValueKey<String>('export-presets-collapse'),
-            onTap: () {
+          child: ControlPressClaim(onPressed: () {
               setState(() => _presetsOpen = false);
               _persist();
-            },
+            }, child: InkWell(
+            key: const ValueKey<String>('export-presets-collapse'),
+            onTap: silentPress(() {
+              setState(() => _presetsOpen = false);
+              _persist();
+            }),
             child: const Padding(
               padding: EdgeInsets.all(2),
               child: Icon(Icons.chevron_left, size: 13),
@@ -3662,12 +3665,15 @@ class ExportDialogState extends State<ExportDialog> {
       children: [
         Align(
           alignment: Alignment.centerLeft,
-          child: ControlPressClaim(child: InkWell(
-            key: const ValueKey<String>('export-queue-collapse'),
-            onTap: () {
+          child: ControlPressClaim(onPressed: () {
               setState(() => _queueOpen = false);
               _persist();
-            },
+            }, child: InkWell(
+            key: const ValueKey<String>('export-queue-collapse'),
+            onTap: silentPress(() {
+              setState(() => _queueOpen = false);
+              _persist();
+            }),
             child: const Padding(
               padding: EdgeInsets.all(2),
               child: Icon(Icons.chevron_right, size: 13),

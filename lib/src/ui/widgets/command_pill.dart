@@ -203,6 +203,13 @@ class PillNameCell extends StatelessWidget {
     // 🚨A name cell is a control: a press that lands here is its own,
     // scroll included ([ControlPressClaim]).
     final cell = ControlPressClaim(
+      onPressed: () {
+        final entries = entriesBuilder();
+        if (entries.isEmpty) {
+          return;
+        }
+        showPanelFlyout(context, entries: entries);
+      },
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -219,13 +226,7 @@ class PillNameCell extends StatelessWidget {
           //
           // The entries are built to ask rather than assumed empty: several of
           // them are gated per state, so "empty right now" is a live answer.
-          onTap: () {
-            final entries = entriesBuilder();
-            if (entries.isEmpty) {
-              return;
-            }
-            showPanelFlyout(context, entries: entries);
-          },
+          onTap: () {},
           child: Container(
             height: CommandPill.height - 4,
             constraints: const BoxConstraints(minWidth: 24),

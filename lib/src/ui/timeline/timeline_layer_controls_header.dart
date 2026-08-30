@@ -246,11 +246,12 @@ class TimelineLayerControlsHeader extends StatelessWidget {
       return Builder(
         builder: (anchorContext) => Tooltip(
           message: tooltip,
-          child: ControlPressClaim(
+          child: ControlPressClaim(onPressed: () =>
+                  showPanelFlyout(anchorContext, entries: entriesBuilder()), 
             child: InkWell(
               key: ValueKey<String>(keyValue),
-              onTap: () =>
-                  showPanelFlyout(anchorContext, entries: entriesBuilder()),
+              onTap: silentPress(() =>
+                  showPanelFlyout(anchorContext, entries: entriesBuilder())),
               child: content,
             ),
           ),
@@ -345,14 +346,16 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                             message: anyLanesExpanded
                                 ? 'Collapse all layers'
                                 : 'Expand all layers',
-                            child: ControlPressClaim(
+                            child: ControlPressClaim(onPressed: anyLanesExpanded
+                                    ? onCollapseAllLanes
+                                    : onExpandAllLanes, 
                               child: InkWell(
                                 key: const ValueKey<String>(
                                   'legend-lanes-toggle',
                                 ),
-                                onTap: anyLanesExpanded
+                                onTap: silentPress(anyLanesExpanded
                                     ? onCollapseAllLanes
-                                    : onExpandAllLanes,
+                                    : onExpandAllLanes),
                                 child: Center(
                                   child: Icon(
                                     anyLanesExpanded
@@ -653,14 +656,18 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     // the muted state — no flyout.
                     mute: Tooltip(
                       message: allSeMuted ? 'Unmute all SE' : 'Mute all SE',
-                      child: ControlPressClaim(
-                        child: InkWell(
-                          key: const ValueKey<String>('legend-mute'),
-                          onTap: legend == null
+                      child: ControlPressClaim(onPressed: legend == null
                               ? null
                               : (allSeMuted
                                     ? legend.onUnmuteAllSe
-                                    : legend.onMuteAllSe),
+                                    : legend.onMuteAllSe), 
+                        child: InkWell(
+                          key: const ValueKey<String>('legend-mute'),
+                          onTap: silentPress(legend == null
+                              ? null
+                              : (allSeMuted
+                                    ? legend.onUnmuteAllSe
+                                    : legend.onMuteAllSe)),
                           child: Center(
                             child: legendIcon(
                               allSeMuted

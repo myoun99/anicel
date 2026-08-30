@@ -55,14 +55,22 @@ class ColorSwatchButton extends StatelessWidget {
           shape: const CircleBorder(),
           clipBehavior: Clip.antiAlias,
           child: ControlPressClaim(
+            onPressed: () => showColorPickerPopup(
+              anchorContext,
+              color: color,
+              onChanged: onChanged,
+              currentColorOf: currentColorOf,
+            ),
             child: InkWell(
               key: ValueKey<String>(keyValue),
               customBorder: const CircleBorder(),
-              onTap: () => showColorPickerPopup(
-                anchorContext,
-                color: color,
-                onChanged: onChanged,
-                currentColorOf: currentColorOf,
+              onTap: silentPress(
+                () => showColorPickerPopup(
+                  anchorContext,
+                  color: color,
+                  onChanged: onChanged,
+                  currentColorOf: currentColorOf,
+                ),
               ),
               child: SizedBox(
                 width: diameter,
@@ -172,10 +180,15 @@ class _ColorPickerBodyState extends State<_ColorPickerBody> {
           Align(
             alignment: Alignment.centerRight,
             child: ControlPressClaim(
+              onPressed: () =>
+                  _apply(HSVColor.fromColor(Color(widget.currentColorOf()))),
               child: TextButton(
                 key: const ValueKey<String>('color-picker-use-current'),
-                onPressed: () =>
-                    _apply(HSVColor.fromColor(Color(widget.currentColorOf()))),
+                onPressed: silentPress(
+                  () => _apply(
+                    HSVColor.fromColor(Color(widget.currentColorOf())),
+                  ),
+                ),
                 style: TextButton.styleFrom(
                   minimumSize: Size.zero,
                   padding: const EdgeInsets.symmetric(horizontal: 8),

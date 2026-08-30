@@ -94,9 +94,10 @@ class ExportPresetRail extends StatelessWidget {
                   onDelete: () => onDelete(preset),
                 ),
               ControlPressClaim(
+                onPressed: enabled ? onSaveCurrent : null,
                 child: InkWell(
                   key: const ValueKey<String>('export-preset-save-current'),
-                  onTap: enabled ? onSaveCurrent : null,
+                  onTap: silentPress(enabled ? onSaveCurrent : null),
                   borderRadius: BorderRadius.circular(4),
                   child: Container(
                     margin: const EdgeInsets.only(top: 2),
@@ -161,9 +162,10 @@ class _PresetEntry extends StatelessWidget {
     final theme = Theme.of(context);
     final accent = theme.colorScheme.primary;
     return ControlPressClaim(
+      onPressed: enabled ? onApply : null,
       child: InkWell(
         key: ValueKey<String>('export-preset-${preset.id.value}'),
-        onTap: enabled ? onApply : null,
+        onTap: silentPress(enabled ? onApply : null),
         borderRadius: BorderRadius.circular(4),
         child: Container(
           margin: const EdgeInsets.only(bottom: 3),
@@ -202,11 +204,12 @@ class _PresetEntry extends StatelessWidget {
                 ),
               ),
               ControlPressClaim(
+                onPressed: enabled ? onDelete : null,
                 child: InkWell(
                   key: ValueKey<String>(
                     'export-preset-delete-${preset.id.value}',
                   ),
-                  onTap: enabled ? onDelete : null,
+                  onTap: silentPress(enabled ? onDelete : null),
                   child: Padding(
                     padding: const EdgeInsets.all(2),
                     child: Icon(

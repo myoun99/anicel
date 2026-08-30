@@ -96,9 +96,9 @@ class ExportNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    Widget stepButton(String glyph, int delta, String key) => ControlPressClaim(child: InkWell(
+    Widget stepButton(String glyph, int delta, String key) => ControlPressClaim(onPressed: enabled && axis.length > 0 ? () => _step(delta) : null, child: InkWell(
       key: ValueKey<String>(key),
-      onTap: enabled && axis.length > 0 ? () => _step(delta) : null,
+      onTap: silentPress(enabled && axis.length > 0 ? () => _step(delta) : null),
       borderRadius: BorderRadius.circular(4),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),

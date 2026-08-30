@@ -162,9 +162,10 @@ class _TipSwatch extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: ControlPressClaim(
+        onPressed: onTap,
         child: InkWell(
           key: ValueKey<String>(keyValue),
-          onTap: onTap,
+          onTap: silentPress(onTap),
           borderRadius: BorderRadius.circular(4),
           child: Container(
             width: 26,
@@ -385,9 +386,10 @@ class _PickerCell extends StatelessWidget {
         color: selected ? colorScheme.surfaceContainerHigh : Colors.transparent,
         borderRadius: BorderRadius.circular(4),
         child: ControlPressClaim(
+          onPressed: onTap,
           child: InkWell(
             key: ValueKey<String>(keyValue),
-            onTap: onTap,
+            onTap: silentPress(onTap),
             borderRadius: BorderRadius.circular(4),
             child: Container(
               decoration: BoxDecoration(

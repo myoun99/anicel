@@ -411,9 +411,10 @@ class LayerTypeButton extends StatelessWidget {
     }
 
     return ControlPressClaim(
+      onPressed: onTap,
       child: InkWell(
         key: ValueKey<String>('$keyPrefix-layer-type-button-$idValue'),
-        onTap: onTap,
+        onTap: silentPress(onTap),
         customBorder: const CircleBorder(), // R26 #28
         child: SizedBox(
           width: layerTypeSlotWidth,

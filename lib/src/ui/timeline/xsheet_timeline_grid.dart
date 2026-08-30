@@ -3292,13 +3292,16 @@ class _LayerHeader extends StatelessWidget {
                   height: layerLaneToggleSlotWidth,
                   child: hasGroupFold && onToggleGroupFold != null
                       ? ControlPressClaim(
+                          onPressed: () => onToggleGroupFold!(layer.id),
                           child: InkWell(
                             key: ValueKey<String>(
                               layerKindGroupsLayers(layer.kind)
                                   ? 'xsheet-folder-twirl-${layer.id}'
                                   : 'xsheet-attach-twirl-${layer.id}',
                             ),
-                            onTap: () => onToggleGroupFold!(layer.id),
+                            onTap: silentPress(
+                              () => onToggleGroupFold!(layer.id),
+                            ),
                             customBorder: const CircleBorder(), // R26 #28
                             child: Icon(
                               layerRailTwirlIcon(expanded: groupFoldExpanded),
@@ -3444,7 +3447,17 @@ class _LayerHeader extends StatelessWidget {
     // and the rail retired exactly this shape for exactly this reason (T1).
     // The grid lays one band per contiguous run over the header strip
     // instead, through the same widget.
-    return header;
+    // 🚨★★★A LAYER'S OWN STRIP IS 「레이어 쪽」, and in the x-sheet that is
+    // this widget: the sheet is the rail TRANSPOSED, so a layer's toggles
+    // sit at the head of its column instead of along its row. The four swipe
+    // columns above are here, and so is the fold twirl that is not one.
+    //
+    // ⛔The name says "header" and the user's 「헤더쪽은 손떼면」 does NOT
+    // mean this — that is the column-title row, `timeline_layer_controls_
+    // header.dart`, which keeps the default. 유저 already reported this very
+    // strip acting late (F-26, 2026-08-24): 「레이어 탭다운이 아니라 손을
+    // 떼야 액티브레이어 … 통일화 미스가 또 여기서 발견됐네?」.
+    return PressFireScope(fireOn: PressFire.down, child: header);
   }
 
   /// The header's opacity slider, live-following the session's drag preview

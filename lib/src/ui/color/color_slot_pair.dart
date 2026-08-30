@@ -69,8 +69,9 @@ class ColorSlotPair extends StatelessWidget {
             child: Tooltip(
               message: 'Background Color (Tap to Swap)',
               child: ControlPressClaim(
+                onPressed: onBackgroundTap,
                 child: GestureDetector(
-                  onTap: onBackgroundTap,
+                  onTap: silentPress(onBackgroundTap),
                   child: swatch('$keyPrefix-background-swatch', background),
                 ),
               ),

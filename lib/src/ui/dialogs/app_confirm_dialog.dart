@@ -88,9 +88,9 @@ class _DetailsDisclosureState extends State<_DetailsDisclosure> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        ControlPressClaim(child: InkWell(
+        ControlPressClaim(onPressed: () => setState(() => _open = !_open), child: InkWell(
           key: const ValueKey<String>('app-notice-details-toggle'),
-          onTap: () => setState(() => _open = !_open),
+          onTap: silentPress(() => setState(() => _open = !_open)),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [

@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 
 import '../panels/panel_scrollbar.dart';
@@ -45,37 +46,39 @@ class AppScrollBehavior extends MaterialScrollBehavior {
   const AppScrollBehavior();
 
   /// 🚨★★★ONE RULE FOR EVERY DEVICE (유저 2026-08-29): 「펜/마우스/터치를
-  /// 스크롤 경쟁을 완벽하게 해결. 즉 셋 다 취급 통일하고 슬라이더에 대한
-  /// 조작은 슬라이더만 조작하게하고 **스크롤 애초에 발동안하도록**」.
+  /// 스크롤 경쟁을 완벽하게 해결. 즉 셋 다 취급 통일하고 슬라이더위에서
+  /// 조작은 슬라이더만 조작하게하고 **스크롤 애초에 발동 안 하도록**」.
   ///
   /// The framework leaves the mouse out because on a text-selecting page a
-  /// mouse drag means selection. This app is not that page: a mouse drag
-  /// ⛔THE MOUSE IS NOT HERE, AND IT IS NOT AN OVERSIGHT.
+  /// mouse drag means selection. This app is not that page: a mouse drag on
+  /// empty space is a scroll, and 유저 asked for it by name —
+  /// 「마우스로 드래그로 스크롤하면 편하니까 넣고싶은거고」.
   ///
-  /// It was added on 2026-08-29 because 유저 asked for it — 「마우스로도
-  /// 드래그로 스크롤하면 편하니까 넣고싶은거고」 — and it broke every mouse
-  /// click in the app: 유저 2026-08-30 「지금 버튼이 펜이랑 마우스 조작이
-  /// 바꼈어 … **펜마우스만 그자리에서 손떼야 작동함**」.
+  /// 🪦IT CAME BACK OUT ONCE, and the reason is worth keeping because it is
+  /// what the whole press-claim design had to answer. Flutter's
+  /// `computeHitSlop` hardcodes a MOUSE to `kPrecisePointerHitSlop` — ONE
+  /// pixel — and ignores the gesture settings for that kind alone, so a
+  /// `Scrollable` that takes mouse drags wins the arena a pixel into any
+  /// click. 🧪Measured then: a 2px mouse shake scrolled 1.0 and fired ZERO
+  /// taps, which is 유저 2026-08-30 「**펜마우스만 그자리에서 손떼야
+  /// 작동함**」.
   ///
-  /// 🚨THE REASON IS A FLUTTER CONSTANT, not a bug here. `computeHitSlop`
-  /// hardcodes a MOUSE to `kPrecisePointerHitSlop` — ONE pixel — and ignores
-  /// the gesture settings for that kind alone. So a `Scrollable` that takes
-  /// mouse drags wins the arena a pixel into any click, and the tap dies.
-  /// Measured with no claim in the tree at all: a 2px mouse wobble scrolled
-  /// 1.0 and fired zero taps.
+  /// ⛔A THRESHOLD WAS NOT THE ANSWER, and 유저 said so: 「왜 18px 이딴규칙
+  /// 설정하려고하는거지? 그게아니라 **클릭이 버튼이면 스크롤 절대
+  /// 발생안하게한다**고. 다음 클릭으로 빈공간을 제대로 클릭해야 스크롤
+  /// 발생하는거라고」. Raising the claim's slop only meant the scroller won
+  /// the pixel first.
   ///
-  /// ⚠️A threshold cannot separate the two: raising the CLAIM's slop (which
-  /// this round did, and which is what fixed the pen) only means the
-  /// scroller wins the pixel first. Giving the mouse a real drag threshold
-  /// needs the scrollable's own recogniser, which `ScrollBehavior` does not
-  /// expose. Boarded as its own question rather than guessed at.
-  ///
-  /// 펜·터치는 그대로 드래그로 스크롤한다 — 둘 다 18px 슬롭이라 클릭을
-  /// 먹지 않는다.
-  ///
-  /// ⇒ No `dragDevices` override at all: the framework default is pen,
-  /// touch, trackpad and inverted stylus, which is exactly the set that can
-  /// carry a drag without eating a click.
+  /// ★What made this safe is that a claimed control no longer needs the
+  /// gesture arena at all: [ControlPressClaim] takes the drag at whatever
+  /// distance the device really uses and fires the button itself, on the
+  /// press for a swipe column and on the release-inside for everything else.
+  /// So the mouse is in, and a click that wobbles is still a click.
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+    ...super.dragDevices,
+    PointerDeviceKind.mouse,
+  };
 
   @override
   Widget buildScrollbar(

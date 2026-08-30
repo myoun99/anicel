@@ -114,6 +114,19 @@ void releaseTapForControl(int pointer) {
 bool controlOwnsTap(int pointer) =>
     _tapHeld.contains(pointer) || _held.contains(pointer);
 
+/// Whether a control has ALREADY taken this press.
+///
+/// 🚨★★★A DIFFERENT QUESTION FROM [controlOwnsTap], and the difference bit:
+/// that one asks 「is this pointer any control's」 and answers yes for the
+/// STRONG claim too — so a swipe column, which mounts [DragVerbClaim] INSIDE
+/// its [ControlPressClaim], made its own claim believe something deeper had
+/// spoken for the press and stand down. 🧪Measured: every storyboard lane
+/// twirl stopped opening (`storyboard_lane_controls_test`, five cases).
+///
+/// This one asks only 「has another [ControlPressClaim] taken it」, which is
+/// what 「the deepest control wins」 needs and nothing else.
+bool pressIsSpokenFor(int pointer) => _tapHeld.contains(pointer);
+
 /// Test-only: drops every claim.
 void debugClearValueControlPointers() {
   _held.clear();

@@ -343,9 +343,14 @@ class _FieldSliderState extends State<FieldSlider> {
   ///
   /// A DISTANCE cannot express the rule, because the two cases it has to
   /// separate are not near and far — they are along and across. So there is
-  /// no tap slop any more, and no number of our own: the only threshold
-  /// left is [_scrollSlop], which belongs to the rival and is asked for by
-  /// name.
+  /// no tap slop here and no number of our own.
+  ///
+  /// ★THIS WAS THE PRECEDENT, and the whole app reached it on 2026-08-30:
+  /// 유저, on finding a device slop still being consulted for buttons —
+  /// 「**1px 이동했는지 같은 px 이동으로 판단하는거** 설마 아직도 남아있나?
+  /// 내가 다른방법 제안하지 않았어?」 · 「싹 깔끔하게 걷어내」. A button
+  /// answers 「click or not」 by where the finger came UP, a slider by which
+  /// way it went; neither needs a distance. See [ControlPressClaim].
   ///
   /// 🚨 A cancel is the NORMAL end of a tap, not an error path — a drag
   /// recognizer that never met its threshold rejects itself when the
