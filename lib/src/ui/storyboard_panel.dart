@@ -4496,6 +4496,7 @@ class _StoryboardSeLabel extends StatelessWidget {
                         layerId: layer.id,
                         mark: layer.mark,
                         onMarkSelected: onLayerMarkSelected!,
+                        isVisible: layer.isVisible,
                       )
                     : null,
                 typeButton: LayerTypeButton(
@@ -4702,6 +4703,7 @@ class _StoryboardTransitionLabel extends StatelessWidget {
                         layerId: layer.id,
                         mark: layer.mark,
                         onMarkSelected: onLayerMarkSelected!,
+                        isVisible: layer.isVisible,
                       )
                     : null,
                 typeButton: LayerTypeButton(

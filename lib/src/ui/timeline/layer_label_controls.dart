@@ -866,12 +866,28 @@ class LayerMarkChip extends StatelessWidget {
     required this.mark,
     required this.onMarkSelected,
     this.axis = Axis.horizontal,
+    this.isVisible = true,
   });
 
   final String keyPrefix;
   final LayerId layerId;
   final LayerMark mark;
   final void Function(LayerId layerId, LayerMark mark) onMarkSelected;
+
+  /// 🚨★★★HIDDEN LAYER, DIMMED MARK (유저 2026-08-31, F-56: 「레이어,
+  /// 비지블 off면 추가로 색도 비활성화색. **어니언스킨 off상태나 그런 다른
+  /// 버튼 off상태랑 동급으로** 색 바꿈」).
+  ///
+  /// ⚠️Named `isVisible` and PASSED, not re-derived: the rail already answers
+  /// 「is this row shown」 once per row and hands it down, which is the same
+  /// shape the eye button beside it uses. ⛔A `dimmed:` flag computed at each
+  /// call site would be a second place answering that question — the source
+  /// scan in `hidden_folder_is_hidden_test` named all four the moment I did.
+  ///
+  /// ⚠️Not a colour of its own either: it wears the SAME alpha the rail's other off
+  /// states wear, so 「off」 reads as one thing across the row instead of as
+  /// three separate designs.
+  final bool isVisible;
 
   /// The rail's own direction — the x-sheet's stood-up column header passes
   /// vertical, where the slot is 14px TALL and the plate wears no text.
@@ -1047,7 +1063,12 @@ class LayerMarkChip extends StatelessWidget {
           // 살리고싶어서」 — two columns keep the plate as short as one. The
           // sheet stacks instead, because there the plate is wide and short.
           child: _LabelPlate(
-            fill: layerMarkColor(mark),
+            // ⚠️0.45 is the rail's own 「off」 alpha — the same one the onion
+            // and fx icons wear — so a hidden layer reads as off in one
+            // language rather than in three.
+            fill: !isVisible
+                ? layerMarkColor(mark).withValues(alpha: 0.45)
+                : layerMarkColor(mark),
             columns: [
               layerMarkChipText(mark).process,
               layerMarkChipText(mark).revise,
