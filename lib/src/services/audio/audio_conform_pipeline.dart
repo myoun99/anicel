@@ -11,17 +11,35 @@
 /// convert on import, Premiere writes a `.cfa`, Avid transcodes to MXF —
 /// all the same move.
 ///
-/// Layout. What can be regenerated and what cannot do not live together,
-/// because they do not travel together: the sound is the user's content
-/// and rides inside the project, while a conform is a cache roughly twelve
-/// times its source's size with no business syncing to a cloud folder or
-/// following anyone to another machine.
+/// Layout. Both live in the project now, and the conform ALSO has a cache.
 ///
 /// ```
-/// 프로젝트.anicel                                the sound is IN here
+/// 프로젝트.anicel
+///   media/<hash>-대사.m4a[.z]                    the sound itself
+///   conform/<hash>-대사.m4a[.z]                  its decoded PCM
 /// <app container>/Conformed/
-///   대사.m4a.<hash>.wav                          costs only time
+///   대사.m4a.<hash>.wav[.z]                      what playback reads
 /// ```
+///
+/// 🚨★★★**THE CONFORM RIDES IN THE PROJECT** (유저 2026-08-30,
+/// `conform-in-project` = always). This paragraph used to say the opposite
+/// — that a conform is「a cache with no business following anyone to
+/// another machine」— and that was true while it cost 12× the source
+/// uncompressed. Compressed it is ~7×, which on a project that already
+/// weighs gigabytes is under a tenth, and what it buys is that opening it
+/// somewhere else PLAYS instead of decoding every sound first.
+///
+/// ⛔Do not read the cache as redundant with the carried copy. The cache is
+/// what playback reads and what the collector bounds; the carried copy is
+/// what a machine with an empty cache restores FROM. An asset with both
+/// genuinely costs both, and only the cache half is ever reclaimed.
+///
+/// ⚠️The two are kept honest by the CACHE PATH, which keys on the sample
+/// rate and audio speed. Change either and the conform for the new
+/// settings is at a different address, nothing is found there, and the
+/// save carries none — which is how the entry for the old one gets
+/// removed rather than accumulating (유저: 「레이트 변경 등 죽은파일만
+/// 깔끔하게 잘 걷어낼것」).
 ///
 /// 🔑 The cache is keyed by the SOURCE and the settings it was rendered
 /// under — never by the project, which is what an earlier layout did back
@@ -399,6 +417,7 @@ class AudioConformPipeline {
     required String sourcePath,
     required String? conformPath,
     MediaByteSource? source,
+    MediaByteSource? carriedConform,
   }) {
     // Where the bytes actually are: the file at the path unless the caller
     // says otherwise — an archive range for media the project carries.
@@ -419,7 +438,23 @@ class AudioConformPipeline {
     // happens to hold for free: ZIP wrote the CRC in the entry header).
     final stat = src.statSync();
 
-    final cached = conformPath == null ? null : _readConform(conformPath);
+    // 🚨★★★**THE PROJECT'S OWN COPY, BROUGHT IN BEFORE ANYTHING IS
+    // DECIDED.** 유저 2026-08-30 chose to carry conforms inside the
+    // `.anicel` (`conform-in-project` = always), and this is what that buys
+    // on the other machine: the cache is empty, the project holds the
+    // conform, so it is copied out VERBATIM — framed bytes stay framed, no
+    // decode, no re-encode — and every path below is then the ordinary one.
+    //
+    // ⛔It is restored, not trusted. What comes back is read by
+    // [_readConform] and judged by the same settings and fingerprint checks
+    // a locally built conform faces; a carried one that no longer matches
+    // its source is simply rebuilt over. Deciding staleness twice is how
+    // two answers drift apart.
+    var cached = conformPath == null ? null : _readConform(conformPath);
+    if (cached == null && carriedConform != null && conformPath != null) {
+      _restoreCarriedConform(carriedConform, conformPath);
+      cached = _readConform(conformPath);
+    }
     final existing = cached?.audio;
     // The file the conform was READ from — `.z` or plain. Every reuse
     // below touches THIS, never the base name it was looked up under.
@@ -621,6 +656,53 @@ class AudioConformPipeline {
       speedNumerator: speedNumerator,
       speedDenominator: speedDenominator,
     );
+  }
+
+  /// Writes the project's carried conform into the cache at [basePath], so
+  /// the ordinary reuse path can pick it up.
+  ///
+  /// The bytes go across AS THEY ARE, which is why [carried] is a stored
+  /// source rather than a decoded one: a carried conform was framed when
+  /// it went in, and decompressing it here only to compress it again would
+  /// burn the whole reason it was compressed. [MediaByteSource.storedIsFramed]
+  /// is what names the file, exactly as it names an archive entry.
+  ///
+  /// Failure is silent on purpose. This is an optimisation — the source is
+  /// still there and still decodes — so an unwritable cache costs a
+  /// re-decode, never the sound. Same reasoning as the cache write below.
+  void _restoreCarriedConform(MediaByteSource carried, String basePath) {
+    try {
+      final path = mediaPathFramed(basePath, framed: carried.storedIsFramed);
+      final directory = path.substring(
+        0,
+        path.replaceAll('\\', '/').lastIndexOf('/'),
+      );
+      Directory(directory).createSync(recursive: true);
+      // ⛔Written STRAIGHT to the final name, not through a `.part`
+      // neighbour like the staging store uses. Staging can afford one
+      // because its sweep is age-based over every file in its folder; the
+      // conform collector only ever deletes files it can PROVE are
+      // conforms, so a `.part` here would be invisible to it and sit in
+      // the user's cache folder for ever.
+      //
+      // A kill mid-write is safe without one: [decodeConformWav] breaks
+      // its chunk walk at a truncated tail and then throws「missing data
+      // chunk」, so a half-restored conform is rejected and rebuilt like
+      // any other unreadable one.
+      File(path).writeAsBytesSync(carried.readSync(), flush: true);
+    } on Object {
+      // Leave nothing half-written behind under a name the collector will
+      // later believe. The decode below is the fallback, and it always
+      // works.
+      try {
+        final path = mediaPathFramed(basePath, framed: carried.storedIsFramed);
+        if (File(path).existsSync()) {
+          File(path).deleteSync();
+        }
+      } on Object {
+        // Nothing more to try; a leftover is rejected on read anyway.
+      }
+    }
   }
 
   /// The conform cached under [basePath], and WHICH of its two names it is

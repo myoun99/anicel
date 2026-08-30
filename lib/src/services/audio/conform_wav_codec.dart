@@ -16,13 +16,19 @@
 /// standard; [AudioConformPipeline] then block-frames them
 /// ([compressMediaBlob]) before writing, because a conform is ~12× its
 /// source and zstd takes 38–51% of that back. 유저 2026-08-30 was given
-/// exactly this trade and chose it — 「다른 앱으로 들을 필요성을 못느끼겟고
-/// 그럴거면 압축해제시켜서 내보내기 기능 만들면 되는거아닌가?」 — so the
-/// listen-to-it property moved to an EXPORT rather than being dropped.
+/// exactly this trade and chose it: 「다른 앱으로 들을 필요성을 못느끼겟고
+/// 그럴거면 압축해제시켜서 내보내기 기능 만들면 되는거아닌가?」
+///
+/// ⚠️**That export does not exist yet, and this comment must not pretend
+/// it does.** What the user said is that they do not need to open a
+/// conform elsewhere, and that IF they did, an export would answer it —
+/// which is a plan, not a shipped feature. The capability is one line
+/// away (`mediaAppFileSource(path).readSync()` hands back exactly these
+/// standard bytes); what is missing is a place to put it.
 ///
 /// ⛔Do not "fix" the compression by reading this paragraph's first half
-/// alone. The standard layout still earns its keep: it is what the export
-/// hands over, and it is what makes [decodeConformWav] and
+/// alone. The standard layout still earns its keep: it is what such an
+/// export would hand over, and it is what makes [decodeConformWav] and
 /// `ConformWavStreamReader` able to read the same bytes whether they came
 /// from a file, a framed blob, or the `.anicel`.
 ///

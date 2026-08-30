@@ -93,6 +93,16 @@ class AnicelArchiveContents {
 /// bytes from a cel's by name alone.
 const String anicelMediaEntryPrefix = 'media/';
 
+/// Where a carried CONFORM lives — the decoded, resampled PCM of a piece
+/// of the project's audio.
+///
+/// 🚨★★★**A SEPARATE PREFIX BECAUSE IT IS A DIFFERENT KIND OF THING.**
+/// Media is the user's content and cannot be rebuilt; a conform is derived
+/// and can. Sharing `media/` would have made「which of these can I drop」
+/// a question nothing could answer, and dropping is the whole reason the
+/// settings-change sweep exists.
+const String anicelConformEntryPrefix = 'conform/';
+
 /// What fraction of the media a rewrite must copy for nothing has to be
 /// reclaimed before that copying is worth doing.
 ///
@@ -115,6 +125,19 @@ const double anicelMediaRewriteRatio = 0.05;
 /// indefinitely. Judging the part that actually rots keeps the threshold
 /// meaning what it always meant.
 ///
+/// 🚨**CONFORMS COUNT AS MEDIA HERE**, and the reason is the sentence
+/// above rather than what they are. What the exclusion is really about is
+/// bulk a rewrite has to copy FOR NOTHING, and a carried conform is the
+/// bulkiest thing in an audio project — an hour of dialogue is ~428MB
+/// compressed against a cel area of a few tens. Leaving it in the
+/// denominator is the same bug the media exclusion was written to fix,
+/// only larger.
+///
+/// ⚠️Unlike media, a conform CAN be shadowed: it is derived, and a rebuilt
+/// one is re-streamed under the same name. That garbage is counted like
+/// any other — it is only the denominator this changes — so a conform that
+/// really was replaced still asks for the compaction that reclaims it.
+///
 /// A named function rather than four lines inside the save isolate,
 /// because it is a rule and rules need somewhere to be checked.
 bool anicelNeedsCompaction({
@@ -127,7 +150,8 @@ bool anicelNeedsCompaction({
   var activeMediaBytes = 0;
   for (final entry in entries) {
     activeBytes += entry.length;
-    if (entry.name.startsWith(anicelMediaEntryPrefix)) {
+    if (entry.name.startsWith(anicelMediaEntryPrefix) ||
+        entry.name.startsWith(anicelConformEntryPrefix)) {
       activeMediaBytes += entry.length;
     }
   }
@@ -170,7 +194,85 @@ bool anicelNeedsCompaction({
 /// 🚨[framed] appends [mediaFramedEntrySuffix]. The name is what tells a
 /// reader whether the entry holds a framed blob or the file itself — see
 /// [MediaBlobHeader] for why it is the name and not a byte at the front.
-String anicelMediaEntryName(String poolPath, {bool framed = false}) {
+String anicelMediaEntryName(String poolPath, {bool framed = false}) =>
+    _anicelPoolEntryName(anicelMediaEntryPrefix, poolPath, framed: framed);
+
+/// The archive entry a piece of media's CONFORM is stored under.
+///
+/// The same derivation as [anicelMediaEntryName] under a different prefix,
+/// so one asset's audio and its conform sit side by side and are found the
+/// same way. 유저 2026-08-30 chose to carry these (`conform-in-project` =
+/// always): opening the project on another machine plays immediately
+/// instead of decoding every sound first.
+///
+/// 🚨★★★**THE SETTINGS ARE IN THE NAME, AND THAT IS WHAT MAKES THE SWEEP
+/// SAFE.** A conform's contents depend on the project's sample rate and
+/// audio speed, so an entry built under others is dead — and the sweep has
+/// to be able to say so without reading anything.
+///
+/// 🪦The first shape of this left them OUT and swept by「is there a
+/// conform at the current settings' cache path」. That question has two
+/// meanings and they are not the same: **the cache is also empty on a
+/// machine that has only just opened the project.** Open it somewhere new,
+/// draw one stroke, save — and every conform the file carried would have
+/// been swept as dead, on the exact journey carrying them exists to serve.
+/// One condition answering two questions is the shape this repo has been
+/// burned by before ([[never-invent-a-convenience-rule]]).
+///
+/// With the settings in the name, the two separate cleanly:
+///
+/// - **settings changed** → the current settings' name is nowhere, so
+///   nothing is carried under it and the old name is not one this project
+///   may hold. Removed.
+/// - **not built here yet** → the name is the same one the archive already
+///   holds, so the entry survives untouched, and the save streams nothing.
+///
+/// ⚠️Which also means the ONE conform per asset that this promises is a
+/// property of the SWEEP, not of the name: nothing stops a file holding
+/// two, and the incremental save is what takes the other away.
+String anicelConformEntryName(
+  String poolPath, {
+  required int sampleRate,
+  required int speedNumerator,
+  required int speedDenominator,
+  bool framed = false,
+}) => _anicelPoolEntryName(
+  anicelConformEntryPrefix,
+  poolPath,
+  framed: framed,
+  // Readable rather than folded into the hash: someone looking inside a
+  // `.anicel` should be able to see WHY there are two conforms of one
+  // sound, and the answer is right there in the name.
+  infix: '$sampleRate-${speedNumerator}x$speedDenominator',
+);
+
+/// Every name [poolPath]'s conform may legitimately wear at these settings
+/// — both spellings, because whether it compressed is a property of the
+/// bytes.
+List<String> anicelConformEntryNames(
+  String poolPath, {
+  required int sampleRate,
+  required int speedNumerator,
+  required int speedDenominator,
+}) => [
+  for (final framed in const [true, false])
+    anicelConformEntryName(
+      poolPath,
+      sampleRate: sampleRate,
+      speedNumerator: speedNumerator,
+      speedDenominator: speedDenominator,
+      framed: framed,
+    ),
+];
+
+/// One derivation for both, so a media entry and its conform can never
+/// disagree about which asset they belong to.
+String _anicelPoolEntryName(
+  String prefix,
+  String poolPath, {
+  required bool framed,
+  String infix = '',
+}) {
   final normalized = poolPath.replaceAll('\\', '/');
   var hash = 0x811c9dc5;
   for (final unit in normalized.codeUnits) {
@@ -179,7 +281,8 @@ String anicelMediaEntryName(String poolPath, {bool framed = false}) {
   }
   final base = normalized.split('/').last;
   final safe = base.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-  return '$anicelMediaEntryPrefix${hash.toRadixString(16).padLeft(8, '0')}'
+  return '$prefix${hash.toRadixString(16).padLeft(8, '0')}'
+      '${infix.isEmpty ? '' : '-$infix'}'
       '-$safe${framed ? mediaFramedEntrySuffix : ''}';
 }
 

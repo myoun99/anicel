@@ -59,7 +59,7 @@ typedef ConformCacheEntry = ({String path, int bytes, DateTime lastUsed});
 /// and unreachable by the collector, so the pile this exists to bound
 /// would have grown without a bound and without a trace.
 final RegExp _ourEntryName = RegExp(
-  r'\.[0-9a-f]{8}\.wav(\' + mediaFramedEntrySuffix + r')?$',
+  r'\.[0-9a-f]{8}\.wav(' + RegExp.escape(mediaFramedEntrySuffix) + r')?$',
 );
 final RegExp _ourLegacyFolder = RegExp(r'\.anicel\.[0-9a-f]{8}$');
 

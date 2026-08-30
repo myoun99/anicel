@@ -39,6 +39,7 @@ class AudioConformStore extends ChangeNotifier {
   AudioConformStore({
     required this.resolveConformPath,
     this.resolveByteSource,
+    this.resolveCarriedConform,
     ConformRunner? runner,
     ResampleRunner? resampleRunner,
     int Function()? resolveProjectSampleRate,
@@ -72,6 +73,14 @@ class AudioConformStore extends ChangeNotifier {
   /// path, exactly as before. Resolved per REQUEST, never held — offsets
   /// belong to one layout and a compaction moves them.
   final MediaByteSource Function(String sourcePath)? resolveByteSource;
+
+  /// The conform the PROJECT carries for [sourcePath], when it has one —
+  /// a range inside the `.anicel`. Injected for the same reason as the two
+  /// above: only the session knows the archive path and its layout.
+  ///
+  /// Resolved per REQUEST, never held: a compaction moves every byte, and
+  /// a range kept from before would read whatever landed on those offsets.
+  final MediaByteSource? Function(String sourcePath)? resolveCarriedConform;
 
   final ConformRunner _runner;
   final ResampleRunner _resampleRunner;
@@ -358,6 +367,7 @@ class AudioConformStore extends ChangeNotifier {
           sourcePath: sourcePath,
           conformPath: resolveConformPath(sourcePath),
           source: resolveByteSource?.call(sourcePath),
+          carriedConform: resolveCarriedConform?.call(sourcePath),
           projectSampleRate: projectSampleRate,
           bucketsPerSecond: bucketsPerSecond,
           speedNumerator: speed.numerator,

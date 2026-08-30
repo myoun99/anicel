@@ -53,6 +53,7 @@ class MediaPoolPanel extends StatelessWidget {
     this.missingPaths = const <String>{},
     this.modifiedTimes = const <String, DateTime>{},
     this.storedBytes = const <String, int>{},
+    this.conformBytes = const <String, int>{},
     this.onRelinkMissing,
   });
 
@@ -130,6 +131,10 @@ class MediaPoolPanel extends StatelessWidget {
   /// references, whose own file length is the honest answer.
   final Map<String, int> storedBytes;
 
+  /// Pool path → what its CONFORM occupies, for the assets that have one.
+  /// Empty for every non-audio asset, and for audio nobody has played yet.
+  final Map<String, int> conformBytes;
+
   /// PICK-5: through the grant flow rather than `file_selector`, which
   /// copies the chosen file into a temporary directory on both mobile
   /// platforms — relinking to a copy that the next cache sweep deletes is
@@ -159,7 +164,7 @@ class MediaPoolPanel extends StatelessWidget {
     onRelinkAsset(path, next, grants);
   }
 
-  /// `2.1 MB · 08-12 19:41` — as much of it as is known.
+  /// `2.1 MB + 35.7 MB · 08-12 19:41` — as much of it as is known.
   ///
   /// 🚨★★★**THE SIZE SHOWN IS THE SIZE TAKEN** (유저 2026-08-30: 「파일이
   /// 보여주는 크기는 압축된 크기를 보여주는게 맞겟지? … 아무튼 실제크기」).
@@ -180,6 +185,17 @@ class MediaPoolPanel extends StatelessWidget {
     final bytes = storedBytes[asset.path] ?? asset.identity?.lengthBytes;
     if (bytes != null && bytes > 0) {
       parts.add(byteSizeLabel(bytes));
+    }
+    // 🚨The CONFORM, asked for by name (유저 2026-08-30: 「가시화정책에 따라
+    // 미디어풀 패널에서 해당파일의 컨폼파일 크기 표시할것」). It is several
+    // times the sound itself and was invisible per-asset until now.
+    //
+    // ⛔`+` and nothing else. It says「and this much more」, which is
+    // exactly what a conform is, and a word here would be the explanatory
+    // caption this app does not put under things.
+    final conform = conformBytes[asset.path];
+    if (conform != null && conform > 0) {
+      parts.add('+ ${byteSizeLabel(conform)}');
     }
     final modified = modifiedTimes[asset.path];
     if (modified != null) {

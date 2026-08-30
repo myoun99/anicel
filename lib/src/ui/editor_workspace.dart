@@ -742,10 +742,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
           onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
         ),
         actions: [
-          ControlPressClaim(child: TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
-          )),
+          ControlPressClaim(
+            child: TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+          ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(controller.text),
             child: const Text('Rename'),
@@ -774,10 +776,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
         title: Text(AppText.strings.brDeleteTip),
         content: Text('“${tip.name}” will be removed from the library.'),
         actions: [
-          ControlPressClaim(child: TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
-          )),
+          ControlPressClaim(
+            child: TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+          ),
           FilledButton(
             key: const ValueKey<String>('delete-tip-confirm'),
             onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -858,10 +862,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
           onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
         ),
         actions: [
-          ControlPressClaim(child: TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
-          )),
+          ControlPressClaim(
+            child: TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+          ),
           FilledButton(
             key: const ValueKey<String>('register-cut-tip-confirm'),
             onPressed: () => Navigator.of(dialogContext).pop(controller.text),
@@ -2730,6 +2736,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
               // occupies compressed, rather than the length its file had
               // when it was registered.
               storedBytes: widget.session.mediaStoredBytes,
+              conformBytes: widget.session.conformStoredBytes,
               onRelinkMissing: () =>
                   runMediaRelinkFlow(context, widget.session),
               onRemoveAsset: widget.session.removeMediaAsset,
@@ -5458,15 +5465,17 @@ class _RailGroupButton extends StatelessWidget {
                   : Colors.transparent,
               clipBehavior: Clip.antiAlias,
               shape: AppShapes.control(ToolsPanel.buttonExtent),
-              child: ControlPressClaim(child: InkWell(
-                onTap: onPressed,
-                // The pair sizes itself to one button cell, so a group that
-                // wears a face is the same square as every other.
-                child: SizedBox.square(
-                  dimension: ToolsPanel.buttonExtent,
-                  child: face,
+              child: ControlPressClaim(
+                child: InkWell(
+                  onTap: onPressed,
+                  // The pair sizes itself to one button cell, so a group that
+                  // wears a face is the same square as every other.
+                  child: SizedBox.square(
+                    dimension: ToolsPanel.buttonExtent,
+                    child: face,
+                  ),
                 ),
-              )),
+              ),
             ),
           );
     if (dragging == null) {

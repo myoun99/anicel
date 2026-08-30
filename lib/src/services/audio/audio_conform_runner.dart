@@ -28,6 +28,7 @@ class ConformRequest {
     required this.sourcePath,
     required this.conformPath,
     this.source,
+    this.carriedConform,
     this.projectSampleRate = 48000,
     this.bucketsPerSecond = 80,
     this.speedNumerator = 1,
@@ -48,6 +49,14 @@ class ConformRequest {
   /// the project owns. Plain data, so it crosses the isolate like the
   /// rest of the request.
   final MediaByteSource? source;
+
+  /// The conform the PROJECT carries for this source, when it has one —
+  /// a range inside the `.anicel`. Restored into the cache before
+  /// anything is decided, so opening on a machine with an empty cache
+  /// plays at once instead of decoding every sound first.
+  ///
+  /// Plain data, so it crosses the isolate like the rest of the request.
+  final MediaByteSource? carriedConform;
 
   /// The way to read this request's bytes, wherever they are.
   MediaByteSource get effectiveSource => source ?? MediaFileBytes(sourcePath);
@@ -188,5 +197,6 @@ ConformResult runConformHere(ConformRequest request) {
     sourcePath: request.sourcePath,
     conformPath: request.conformPath,
     source: request.source,
+    carriedConform: request.carriedConform,
   );
 }

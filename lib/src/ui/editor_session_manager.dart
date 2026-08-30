@@ -205,7 +205,7 @@ import '../services/audio/conform_cache_maintenance.dart'
 import '../services/persistence/folder_grant.dart'
     show FolderGrant, FolderPicker;
 import '../services/persistence/anicel_project_archive.dart'
-    show projectMediaPaths, remapProjectMediaPaths;
+    show anicelConformEntryNames, projectMediaPaths, remapProjectMediaPaths;
 import '../services/audio/audio_peaks_extractor.dart' show AudioPeaks;
 import 'playback/audio_recorder.dart';
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
@@ -2512,6 +2512,7 @@ class EditorSessionManager extends ChangeNotifier {
             AudioConformStore(
               resolveConformPath: _conformPathFor,
               resolveByteSource: mediaByteSourceFor,
+              resolveCarriedConform: _carriedConformFor,
               resolveProjectSampleRate: () =>
                   _repository.requireProject().audioSampleRate,
               resolveAudioSpeed: () {
@@ -2529,6 +2530,9 @@ class EditorSessionManager extends ChangeNotifier {
                   ? (request) => Future.value(runConformHere(request))
                   : null,
             ))
+        // The store answers when a conform lands or is let go, which is
+        // exactly when the pool's size column stops being true.
+        ..addListener(_invalidateConformStoredBytes)
         ..addListener(notifyListeners);
 
   /// Resolved per call rather than cached: the cache root is a live
@@ -2547,6 +2551,76 @@ class EditorSessionManager extends ChangeNotifier {
       speedNumerator: project.audioSpeedNumerator,
       speedDenominator: project.audioSpeedDenominator,
     ).conformPathFor(sourcePath);
+  }
+
+  /// What a save should do about conforms — the bytes to write and the
+  /// entry names this project may hold — at the CURRENT audio settings.
+  ///
+  /// ⚠️Resolved fresh at every save, like the media sources beside it: the
+  /// archive half is a byte range, and offsets belong to one layout.
+  ProjectConforms _conformsToStore() {
+    final project = _repository.requireProject();
+    return projectConformSources(
+      project: project,
+      conformBasePathFor: _conformPathFor,
+      projectFilePath: _projectFilePath,
+      sampleRate: project.audioSampleRate,
+      speedNumerator: project.audioSpeedNumerator,
+      speedDenominator: project.audioSpeedDenominator,
+    );
+  }
+
+  /// The conform this project CARRIES for [sourcePath], as a range inside
+  /// the `.anicel`, or null when it carries none.
+  ///
+  /// 🚨★★★**WHAT `conform-in-project` = always BUYS** (유저 2026-08-30).
+  /// Open the project on another machine, or after the cache was emptied,
+  /// and the pipeline copies this out instead of decoding and resampling
+  /// every sound first. An hour of dialogue is the difference between
+  /// playing now and playing after a full pass over 55MB of compressed
+  /// audio.
+  ///
+  /// ⚠️Resolved per call and never held — the same rule
+  /// [mediaByteSourceFor] follows: a compaction moves every byte, and a
+  /// range kept from before would read whatever landed on those offsets.
+  ///
+  /// ⛔The entry name is DERIVED, not recorded. Media records its entry
+  /// names because an old project may have been written under a different
+  /// rule; a conform is younger than that problem, and recording a second
+  /// map would be a second thing to keep in step.
+  MediaByteSource? _carriedConformFor(String sourcePath) {
+    final archivePath = _projectFilePath;
+    if (archivePath == null) {
+      return null;
+    }
+    final project = _repository.requireProject();
+    try {
+      final layout = parseAnicelZipLayoutFile(archivePath);
+      // Only the names the CURRENT settings produce. A conform carried at
+      // another rate is not a conform for this project any more, and the
+      // next save is what takes it away.
+      for (final name in anicelConformEntryNames(
+        sourcePath,
+        sampleRate: project.audioSampleRate,
+        speedNumerator: project.audioSpeedNumerator,
+        speedDenominator: project.audioSpeedDenominator,
+      )) {
+        final entry = layout.entryNamed(name);
+        if (entry != null) {
+          return MediaArchiveBytes(
+            archivePath: archivePath,
+            dataOffset: entry.dataOffset,
+            length: entry.length,
+            entryCrc32: entry.crc32,
+            framed: mediaEntryIsFramed(name),
+          );
+        }
+      }
+    } on Object {
+      // A torn or momentarily unreadable archive: the decode below still
+      // works, which is the entire fallback this optimisation stands on.
+    }
+    return null;
   }
 
   /// Every audio path the project references (SE clips + the SOUND entries
@@ -17621,33 +17695,126 @@ class EditorSessionManager extends ChangeNotifier {
   /// moves every byte, so a length from before one describes nothing. The
   /// generation is the thing that already changes exactly when that
   /// happens.
-  Map<String, int> _archivedMediaBytes() {
+  Map<String, int> _archivedMediaBytes() => _archivedBytes().media;
+
+  /// The archived lengths of the media AND of the conforms, from ONE walk
+  /// of the central directory.
+  ///
+  /// 🚨★★★**ONE PARSE, BECAUSE THE SECOND ONE WAS FREE-LOOKING AND WAS
+  /// NOT.** The conform column asks the same question about the same file,
+  /// and answering it separately meant a tail parse PER ASSET — and then
+  /// again every time the conform store answered, which is once per sound
+  /// while a project is warming up. The media half was already careful
+  /// about this; the fix was to join them rather than to be careful twice.
+  ({Map<String, int> media, Map<String, int> conform}) _archivedBytes() {
     final path = _projectFilePath;
-    if (path == null || _mediaEntryNames.isEmpty) {
-      return const {};
+    if (path == null) {
+      return (media: const {}, conform: const {});
     }
-    if (_mediaStoredBytesGeneration == _completedSaveGeneration) {
-      return _mediaStoredBytes;
+    if (_archivedBytesGeneration == _completedSaveGeneration) {
+      return (media: _mediaStoredBytes, conform: _conformArchivedBytes);
     }
-    var sizes = const <String, int>{};
+    var media = const <String, int>{};
+    var conform = const <String, int>{};
     try {
       final layout = parseAnicelZipLayoutFile(path);
-      sizes = {
+      media = {
         for (final entry in _mediaEntryNames.entries)
           if (layout.entryNamed(entry.value) case final found?)
             entry.key: found.length,
+      };
+      final project = _repository.requireProject();
+      conform = {
+        for (final asset in project.mediaAssets)
+          for (final name in anicelConformEntryNames(
+            asset.path,
+            sampleRate: project.audioSampleRate,
+            speedNumerator: project.audioSpeedNumerator,
+            speedDenominator: project.audioSpeedDenominator,
+          ))
+            if (layout.entryNamed(name) case final found?)
+              asset.path: found.length,
       };
     } on Object {
       // A torn or momentarily unreadable archive answers nothing rather
       // than a wrong number; the row falls back to what it always showed.
     }
-    _mediaStoredBytes = sizes;
-    _mediaStoredBytesGeneration = _completedSaveGeneration;
-    return sizes;
+    _mediaStoredBytes = media;
+    _conformArchivedBytes = conform;
+    _archivedBytesGeneration = _completedSaveGeneration;
+    return (media: media, conform: conform);
   }
 
   Map<String, int> _mediaStoredBytes = const {};
-  int _mediaStoredBytesGeneration = -1;
+  Map<String, int> _conformArchivedBytes = const {};
+  int _archivedBytesGeneration = -1;
+
+  /// What [poolPath]'s CONFORM occupies, or null when it has none.
+  ///
+  /// 🚨★★★**ASKED FOR BY NAME** (유저 2026-08-30, answering
+  /// `conform-in-project`): 「가시화정책에 따라 미디어풀 패널에서 해당파일의
+  /// 컨폼파일 크기 표시할것」. A conform is the biggest thing an audio asset
+  /// costs — several times the sound itself — and until now it was a
+  /// number only the settings dialog knew, as one lump for the whole
+  /// container.
+  ///
+  /// The CACHE file first, the carried entry second, and they are the same
+  /// bytes: whichever is present answers. A pruned cache still has a size
+  /// to report, because the project is still carrying one.
+  ///
+  /// ⚠️Compressed size, not decoded — the same「실제크기」policy
+  /// [mediaStoredBytesFor] follows, because it is the number that says
+  /// what the disk lost.
+  int? conformStoredBytesFor(String poolPath) {
+    final base = _conformPathFor(poolPath);
+    if (base != null) {
+      for (final candidate in mediaFramedOrPlainPaths(base)) {
+        final stat = FileStat.statSync(candidate);
+        if (stat.type == FileSystemEntityType.file) {
+          return stat.size;
+        }
+      }
+    }
+    // ⛔Through the shared per-generation walk, NOT [_carriedConformFor]:
+    // that one parses the archive on the spot, which is right for a single
+    // playback request and wrong for a column drawn per asset.
+    return _archivedBytes().conform[poolPath];
+  }
+
+  /// [conformStoredBytesFor] for every asset that has one — the map the
+  /// pool panel draws from.
+  ///
+  /// 🚨★★★**MEMOISED, BECAUSE A ROW MUST NOT STAT THE DISK TO DRAW
+  /// ITSELF.** The panel reads this in `build`, and a panel is rebuilt for
+  /// reasons that have nothing to do with the file system — which is the
+  /// same reason `missingPaths` and `modifiedTimes` are handed in as maps
+  /// instead of probed per row. Without this, every repaint cost two stats
+  /// per asset.
+  ///
+  /// ⚠️Invalidated by [_invalidateConformStoredBytes] on two events and
+  /// they are BOTH needed: a completed save (the carried entry's length
+  /// moved) and the conform store answering (a conform was just built, or
+  /// dropped by [AudioConformStore.releaseDiskBacked]). Keying on the save
+  /// generation alone — what the media map does — would leave a freshly
+  /// conformed sound showing nothing until the next save.
+  Map<String, int> get conformStoredBytes {
+    final known = _conformStoredBytes;
+    if (known != null) {
+      return known;
+    }
+    final sizes = <String, int>{};
+    for (final asset in _repository.requireProject().mediaAssets) {
+      final bytes = conformStoredBytesFor(asset.path);
+      if (bytes != null && bytes > 0) {
+        sizes[asset.path] = bytes;
+      }
+    }
+    return _conformStoredBytes = Map<String, int>.unmodifiable(sizes);
+  }
+
+  Map<String, int>? _conformStoredBytes;
+
+  void _invalidateConformStoredBytes() => _conformStoredBytes = null;
 
   /// Cels the last save could not write because the file their only copy
   /// lived in had been deleted.
@@ -17909,12 +18076,14 @@ class EditorSessionManager extends ChangeNotifier {
       mediaEntryNames: _mediaEntryNames,
       staging: mediaStagingStore,
     );
+    final conforms = _conformsToStore();
     await _anicelFileService.save(
       project: _repository.requireProject(),
       brushFrameStore: brushFrameStore,
       auxCelStores: [conteInkRowStore, conteInkPageStore, envelopeInkStore],
       filePath: path,
       mediaToStore: mediaToStore,
+      conforms: conforms,
       grants: _grantsToStore(),
       mediaCrcs: _mediaCrcsToStore(),
       onProgress: onProgress,
@@ -17951,6 +18120,7 @@ class EditorSessionManager extends ChangeNotifier {
     _projectFilePath = placedPath;
     _hasUnsavedChanges = false;
     _completedSaveGeneration += 1;
+    _invalidateConformStoredBytes();
     _recoveredFromSidecar = null;
     _discardedUnsavedWork = false;
     if (previousPath != null) {
@@ -17979,6 +18149,7 @@ class EditorSessionManager extends ChangeNotifier {
   Future<void> _saveViaCoordinatedReplace(
     String filePath, {
     required Map<String, MediaByteSource> mediaToStore,
+    required ProjectConforms conforms,
     void Function(double)? onProgress,
   }) async {
     final stagingDirectory = Directory(AppSave.recoveryDirectory())
@@ -17992,6 +18163,7 @@ class EditorSessionManager extends ChangeNotifier {
       auxCelStores: [conteInkRowStore, conteInkPageStore, envelopeInkStore],
       filePath: staging,
       mediaToStore: mediaToStore,
+      conforms: conforms,
       grants: _grantsToStore(),
       mediaCrcs: _mediaCrcsToStore(),
       onProgress: onProgress,
@@ -18054,6 +18226,7 @@ class EditorSessionManager extends ChangeNotifier {
       mediaEntryNames: _mediaEntryNames,
       staging: mediaStagingStore,
     );
+    final conforms = _conformsToStore();
     try {
       celsLostToAMissingFile = await _anicelFileService.save(
         project: _repository.requireProject(),
@@ -18061,6 +18234,7 @@ class EditorSessionManager extends ChangeNotifier {
         auxCelStores: [conteInkRowStore, conteInkPageStore, envelopeInkStore],
         filePath: filePath,
         mediaToStore: mediaToStore,
+        conforms: conforms,
         grants: _grantsToStore(),
         mediaCrcs: _mediaCrcsToStore(),
         onProgress: onProgress,
@@ -18078,6 +18252,7 @@ class EditorSessionManager extends ChangeNotifier {
       await _saveViaCoordinatedReplace(
         filePath,
         mediaToStore: mediaToStore,
+        conforms: conforms,
         onProgress: onProgress,
       );
     }
@@ -18092,6 +18267,7 @@ class EditorSessionManager extends ChangeNotifier {
     _projectFilePath = filePath;
     _hasUnsavedChanges = false;
     _completedSaveGeneration += 1;
+    _invalidateConformStoredBytes();
     // The recovered work now lives in the project file, so the snapshot is
     // ordinary again and the retirement below is free to take it.
     _recoveredFromSidecar = null;
