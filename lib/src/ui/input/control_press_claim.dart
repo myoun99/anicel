@@ -125,10 +125,19 @@ VoidCallback? silentPress(VoidCallback? real) => real == null ? null : () {};
 ///
 /// ⛔It is not new and it is not this file's doing: any rival winning does
 /// it, pen and touch have done it past their own threshold all along, and
-/// what changed is only that a MOUSE now has a rival at all. Boarded with
-/// the three ways out (leave it · drive the look from here · give the mouse
-/// a drag-scroll this app owns) as `press-look-dies-on-a-wobble`, because
-/// two of the three are large and none of them is mine to pick.
+/// what changed is only that a MOUSE now has a rival at all.
+///
+/// 🚨★★★AND IT STAYS (유저 확정 2026-08-30, board `press-look-dies-on-a-wobble`,
+/// 답 `leave-it`): **동작이 우선.** The button always acts correctly; only the
+/// ink is skipped on a press that wobbles. ⛔The two ways out were both real
+/// and both are now REFUSED, so nobody re-opens this in six months:
+///
+///  * driving the pressed look from here would mean threading a states
+///    controller through ~88 call sites, and `IconButton`/`TextButton` take
+///    it through their style while a bare `InkWell` paints its own ink —
+///    two paths for one look;
+///  * giving the mouse a drag-scroll this app owns would mean rebuilding
+///    ballistics, overscroll and nested scrollers.
 class ControlPressClaim extends StatefulWidget {
   const ControlPressClaim({super.key, this.onPressed, required this.child});
 
