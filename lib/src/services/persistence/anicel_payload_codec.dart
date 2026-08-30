@@ -84,6 +84,22 @@ Uint8List decompressAnicelPayload(int codec, Uint8List payload) {
     }
     return out;
   }
-  final inflated = ZLibDecoder().convert(payload);
+  final List<int> inflated;
+  try {
+    inflated = ZLibDecoder().convert(payload);
+  } on FormatException catch (error) {
+    // 🚨zlib answers「Filter error, bad data」, which names ITS OWN internal
+    // filter and says nothing about the file. That string went straight to
+    // the screen — `_showFileError` writes `'$error'` — and 유저 2026-08-31
+    // met it on a project with nothing in it to act on.
+    //
+    // The zstd arm above already answers in the app's terms. This makes
+    // both do it, and keeps zlib's own words at the end for the person
+    // reading a bug report rather than a dialog.
+    throw FormatException(
+      'this project could not be decompressed — the file is damaged, or it '
+      'was written by a build this one cannot read (${error.message})',
+    );
+  }
   return inflated is Uint8List ? inflated : Uint8List.fromList(inflated);
 }
