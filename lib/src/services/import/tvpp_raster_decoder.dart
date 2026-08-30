@@ -52,14 +52,14 @@ typedef TvppCelTile = ({int x, int y, Uint8List pixels});
 /// worker isolate; only tiles with any opaque pixel come back (a cel
 /// covers a handful of the canvas grid). Null for a hold slot.
 List<TvppCelTile>? decodeTvppSlotTiles({
-  required Uint8List fileBytes,
+  required Uint8List recordBytes,
   required TvppSlot slot,
   required int width,
   required int height,
   int tileSize = 256,
 }) {
   final rgba = decodeTvppSlotRgba(
-    fileBytes: fileBytes,
+    recordBytes: recordBytes,
     slot: slot,
     width: width,
     height: height,
@@ -112,7 +112,7 @@ List<TvppCelTile>? decodeTvppSlotTiles({
 /// Straight RGBA bytes (width × height × 4) for [slot], or null for a
 /// hold slot (no image there by definition).
 Uint8List? decodeTvppSlotRgba({
-  required Uint8List fileBytes,
+  required Uint8List recordBytes,
   required TvppSlot slot,
   required int width,
   required int height,
@@ -122,14 +122,14 @@ Uint8List? decodeTvppSlotRgba({
   }
   final Uint8List record;
   if (slot.compressed) {
-    record = _reassembleZchk(fileBytes, slot.chunkOffset, slot.chunkLength);
+    record = _reassembleZchk(recordBytes, slot.chunkOffset, slot.chunkLength);
   } else {
     // v10 stores the record body as a bare chunk payload — its magic and
     // length live in the CHUNK header the parser already consumed.
     // Re-synthesize them so both wrappers hand the decoder the same
     // record shape (offsets in the tiled reader count from the magic).
     final body = Uint8List.sublistView(
-      fileBytes,
+      recordBytes,
       slot.chunkOffset,
       slot.chunkOffset + slot.chunkLength,
     );
@@ -157,9 +157,8 @@ Uint8List _reassembleZchk(Uint8List bytes, int offset, int length) {
   if (length < 32) {
     throw const TvppRasterDecodeException('ZCHK 페이로드가 너무 짧다.');
   }
-  final expected = ByteData.sublistView(bytes, offset + 4, offset + 8)
-          .getUint32(0) +
-      8;
+  final expected =
+      ByteData.sublistView(bytes, offset + 4, offset + 8).getUint32(0) + 8;
   final out = BytesBuilder(copy: false);
   var p = offset + 32;
   while (out.length < expected && p < end - 1) {
@@ -169,9 +168,7 @@ Uint8List _reassembleZchk(Uint8List bytes, int offset, int length) {
         continue;
       }
       try {
-        out.add(
-          ZLibDecoder().convert(Uint8List.sublistView(bytes, q, end)),
-        );
+        out.add(ZLibDecoder().convert(Uint8List.sublistView(bytes, q, end)));
         p = q + 8;
         found = true;
         break;
@@ -217,7 +214,8 @@ class _PackBits {
           throw const TvppRasterDecodeException('런 레코드가 잘렸다.');
         }
         if (out != null) {
-          final v = (data[at + 1] << 24) |
+          final v =
+              (data[at + 1] << 24) |
               (data[at + 2] << 16) |
               (data[at + 3] << 8) |
               data[at + 4];
@@ -240,7 +238,8 @@ class _PackBits {
             final q = at + 1 + k * 4;
             final i = place!(got + k);
             if (i >= 0) {
-              out[i] = (data[q] << 24) |
+              out[i] =
+                  (data[q] << 24) |
                   (data[q + 1] << 16) |
                   (data[q + 2] << 8) |
                   data[q + 3];
@@ -354,7 +353,9 @@ Uint32List _decodeTiled(Uint8List record, int width, int height) {
     for (var t = 1; t < total; t++) {
       if (pb.at + 12 <= record.length) {
         final v = ByteData.sublistView(record, pb.at, pb.at + 12);
-        if (v.getUint32(0) == 0 && v.getUint32(4) == 0 && v.getUint32(8) < total) {
+        if (v.getUint32(0) == 0 &&
+            v.getUint32(4) == 0 &&
+            v.getUint32(8) < total) {
           copyTile(t, v.getUint32(8));
           pb.at += 12;
           continue;
@@ -363,8 +364,7 @@ Uint32List _decodeTiled(Uint8List record, int width, int height) {
       if (pb.at + 4 > record.length) {
         throw const TvppRasterDecodeException('타일 크기 필드가 잘렸다.');
       }
-      final size =
-          ByteData.sublistView(record, pb.at, pb.at + 4).getUint32(0);
+      final size = ByteData.sublistView(record, pb.at, pb.at + 4).getUint32(0);
       pb.at += 4;
       tileRows(t, size);
     }
@@ -374,8 +374,11 @@ Uint32List _decodeTiled(Uint8List record, int width, int height) {
       if (pb.at + 12 > record.length) {
         break; // the encoder truncates its trailing record — measured.
       }
-      final size =
-          ByteData.sublistView(record, pb.at + 8, pb.at + 12).getUint32(0);
+      final size = ByteData.sublistView(
+        record,
+        pb.at + 8,
+        pb.at + 12,
+      ).getUint32(0);
       pb.at += 12;
       if (size == 0) {
         t += 1;

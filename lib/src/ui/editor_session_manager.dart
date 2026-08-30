@@ -8161,7 +8161,7 @@ class EditorSessionManager extends ChangeNotifier {
               return Isolate.run(() {
                 try {
                   return decodeTvppSlotTiles(
-                    fileBytes: window,
+                    recordBytes: window,
                     slot: windowSlot,
                     width: width,
                     height: height,

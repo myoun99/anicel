@@ -56,11 +56,7 @@ void main() {
     return parsed.clips.single.layers.single.slots.single;
   }
 
-  Uint8List fileWith(
-    Uint8List record, {
-    bool raw = false,
-    int blocks = 1,
-  }) {
+  Uint8List fileWith(Uint8List record, {bool raw = false, int blocks = 1}) {
     final b = TvppBuilder();
     b.clipProperties('t');
     b.clipHeader(width: w, height: h);
@@ -74,10 +70,13 @@ void main() {
     return b.bytes;
   }
 
-  void expectDecodes(Uint8List file, List<int> premul,
-      {required bool compressed}) {
+  void expectDecodes(
+    Uint8List file,
+    List<int> premul, {
+    required bool compressed,
+  }) {
     final rgba = decodeTvppSlotRgba(
-      fileBytes: file,
+      recordBytes: file,
       slot: slotFor(file, compressed: compressed),
       width: w,
       height: h,
@@ -89,11 +88,7 @@ void main() {
   group('decodeTvppSlotRgba', () {
     test('DBOD whole-canvas record (v12 zlib wrapper)', () {
       final px = testPixels();
-      expectDecodes(
-        fileWith(dbodRecord(px, w, h)),
-        px,
-        compressed: true,
-      );
+      expectDecodes(fileWith(dbodRecord(px, w, h)), px, compressed: true);
     });
 
     test('DBOD split across multiple zlib blocks', () {
@@ -107,11 +102,7 @@ void main() {
 
     test('tiled SRAW, X > 0 mode: bare tile 0, copy markers, edges', () {
       final px = testPixels();
-      expectDecodes(
-        fileWith(srawRecord(px, w, h)),
-        px,
-        compressed: true,
-      );
+      expectDecodes(fileWith(srawRecord(px, w, h)), px, compressed: true);
     });
 
     test('tiled SRAW: a copy marker reproduces a CONTENT tile', () {
@@ -154,7 +145,7 @@ void main() {
     test('a hold slot returns null', () {
       final file = fileWith(holdRecord(), raw: true);
       final rgba = decodeTvppSlotRgba(
-        fileBytes: file,
+        recordBytes: file,
         slot: slotFor(file, compressed: false),
         width: w,
         height: h,
@@ -166,7 +157,7 @@ void main() {
       final px = List<int>.filled(w * h, 0);
       final file = fileWith(srawRecord(px, w, h));
       final rgba = decodeTvppSlotRgba(
-        fileBytes: file,
+        recordBytes: file,
         slot: slotFor(file, compressed: true),
         width: w,
         height: h,
@@ -180,7 +171,7 @@ void main() {
       // walked off the record ("리터럴 레코드가 잘렸다" ×13 layers).
       final file = fileWith(blankInstanceRecord());
       final rgba = decodeTvppSlotRgba(
-        fileBytes: file,
+        recordBytes: file,
         slot: slotFor(file, compressed: true),
         width: w,
         height: h,
@@ -189,8 +180,7 @@ void main() {
       expect(rgba.every((b) => b == 0), isTrue);
     });
 
-    test('the tile path is the RGBA path cut into sparse 256px tiles',
-        () {
+    test('the tile path is the RGBA path cut into sparse 256px tiles', () {
       // 300px wide = two tile columns; ink only in the right half, so
       // tile (0,0) must be omitted, (1,0) must carry the pixels at the
       // right offsets, and the region past the 300×70 canvas must stay
@@ -206,13 +196,13 @@ void main() {
       final file = fileWith(srawRecord(px, tw, th));
       final slot = slotFor(file, compressed: true);
       final rgba = decodeTvppSlotRgba(
-        fileBytes: file,
+        recordBytes: file,
         slot: slot,
         width: tw,
         height: th,
       )!;
       final tiles = decodeTvppSlotTiles(
-        fileBytes: file,
+        recordBytes: file,
         slot: slot,
         width: tw,
         height: th,
@@ -225,8 +215,11 @@ void main() {
           final src = (y * tw + x) * 4;
           final dst = (y * 256 + (x - 256)) * 4;
           for (var c = 0; c < 4; c++) {
-            expect(tile.pixels[dst + c], rgba[src + c],
-                reason: 'pixel ($x, $y) channel $c');
+            expect(
+              tile.pixels[dst + c],
+              rgba[src + c],
+              reason: 'pixel ($x, $y) channel $c',
+            );
           }
         }
       }
@@ -235,11 +228,16 @@ void main() {
       // the entire .tvpp.
       //
       // `Isolate.run` copies what its closure captures, so a decode that
-      // takes `fileBytes` hands every worker its own copy of the file: a
-      // pool of eight meant eight whole projects resident at once, on top
-      // of the original and everything already built. That grows with the
+      // takes the WHOLE FILE hands every worker its own copy of it: a pool
+      // of eight meant eight whole projects resident at once, on top of
+      // the original and everything already built. That grows with the
       // file rather than with the work, and on a phone it is the
       // allocation that gets the app killed.
+      //
+      // ⚠️The parameter was called `fileBytes` while this paragraph stood
+      // right here saying not to pass a file. It is `recordBytes` now: a
+      // name that contradicts its own contract is not something a comment
+      // can hold, because the next caller reads the signature.
       final window = Uint8List.fromList(
         Uint8List.sublistView(
           file,
@@ -248,7 +246,7 @@ void main() {
         ),
       );
       final windowed = decodeTvppSlotTiles(
-        fileBytes: window,
+        recordBytes: window,
         slot: TvppSlot(
           kind: slot.kind,
           chunkOffset: 0,

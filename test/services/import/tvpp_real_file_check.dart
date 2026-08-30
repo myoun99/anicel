@@ -61,10 +61,7 @@ void main() {
     // plural, from the layer family that exposed it.
     expect(clip.layers.firstWhere((l) => l.name == 'TAP').visible, isFalse);
     expect(clip.layers.firstWhere((l) => l.name == 'F').visible, isTrue);
-    expect(
-      clip.layers.firstWhere((l) => l.name == 'F_nuri').visible,
-      isTrue,
-    );
+    expect(clip.layers.firstWhere((l) => l.name == 'F_nuri').visible, isTrue);
     expect(clip.layers.firstWhere((l) => l.name == 'CON').visible, isFalse);
 
     // Every cut references its rushes as its sound track.
@@ -76,12 +73,13 @@ void main() {
     // F_n's six SRAW drawings: opaque-pixel counts measured from the
     // PNG oracle during the format verification.
     const oracle = [1158, 1141, 1065, 1174, 1186, 994];
-    final imageSlots =
-        fn.slots.where((s) => s.kind == TvppSlotKind.image).toList();
+    final imageSlots = fn.slots
+        .where((s) => s.kind == TvppSlotKind.image)
+        .toList();
     expect(imageSlots, hasLength(7)); // keyframe + 6
     for (var i = 0; i < 6; i++) {
       final rgba = decodeTvppSlotRgba(
-        fileBytes: bytes,
+        recordBytes: bytes,
         slot: imageSlots[i + 1],
         width: clip.width,
         height: clip.height,
@@ -111,12 +109,14 @@ void main() {
     final clip = parsed.clips.first;
     expect(clip.width, 4671);
     expect(clip.height, 3304);
-    final withImages = clip.layers
-        .firstWhere((l) => l.slots.any((s) => s.kind == TvppSlotKind.image));
-    final slot =
-        withImages.slots.firstWhere((s) => s.kind == TvppSlotKind.image);
+    final withImages = clip.layers.firstWhere(
+      (l) => l.slots.any((s) => s.kind == TvppSlotKind.image),
+    );
+    final slot = withImages.slots.firstWhere(
+      (s) => s.kind == TvppSlotKind.image,
+    );
     final rgba = decodeTvppSlotRgba(
-      fileBytes: bytes,
+      recordBytes: bytes,
       slot: slot,
       width: clip.width,
       height: clip.height,
@@ -156,7 +156,7 @@ void main() {
         expect(slot.compressed, isTrue, reason: 'v11 wraps in ZCHK');
         expect(
           decodeTvppSlotRgba(
-            fileBytes: bytes,
+            recordBytes: bytes,
             slot: slot,
             width: clip.width,
             height: clip.height,
