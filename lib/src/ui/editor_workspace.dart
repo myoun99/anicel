@@ -65,6 +65,9 @@ import 'media/media_viewer_tab_host.dart';
 import 'layout/device_grid.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import 'widgets/app_window.dart' show AppWindowAction, AppWindowActionEmphasis;
+import '../services/audio/conform_wav_export.dart';
+import '../services/persistence/file_type_groups.dart';
+import 'dialogs/folder_pick_flow.dart';
 import 'dialogs/app_confirm_dialog.dart' show AppConfirmDialog, showAppNotice;
 import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
@@ -742,10 +745,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
           onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
         ),
         actions: [
-          ControlPressClaim(onPressed: () => Navigator.of(dialogContext).pop(), child: TextButton(
-            onPressed: silentPress(() => Navigator.of(dialogContext).pop()),
-            child: const Text('Cancel'),
-          )),
+          ControlPressClaim(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: TextButton(
+              onPressed: silentPress(() => Navigator.of(dialogContext).pop()),
+              child: const Text('Cancel'),
+            ),
+          ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(controller.text),
             child: const Text('Rename'),
@@ -774,10 +780,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
         title: Text(AppText.strings.brDeleteTip),
         content: Text('“${tip.name}” will be removed from the library.'),
         actions: [
-          ControlPressClaim(onPressed: () => Navigator.of(dialogContext).pop(false), child: TextButton(
-            onPressed: silentPress(() => Navigator.of(dialogContext).pop(false)),
-            child: const Text('Cancel'),
-          )),
+          ControlPressClaim(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: TextButton(
+              onPressed: silentPress(
+                () => Navigator.of(dialogContext).pop(false),
+              ),
+              child: const Text('Cancel'),
+            ),
+          ),
           FilledButton(
             key: const ValueKey<String>('delete-tip-confirm'),
             onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -858,10 +869,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
           onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
         ),
         actions: [
-          ControlPressClaim(onPressed: () => Navigator.of(dialogContext).pop(), child: TextButton(
-            onPressed: silentPress(() => Navigator.of(dialogContext).pop()),
-            child: const Text('Cancel'),
-          )),
+          ControlPressClaim(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: TextButton(
+              onPressed: silentPress(() => Navigator.of(dialogContext).pop()),
+              child: const Text('Cancel'),
+            ),
+          ),
           FilledButton(
             key: const ValueKey<String>('register-cut-tip-confirm'),
             onPressed: () => Navigator.of(dialogContext).pop(controller.text),
@@ -1809,6 +1823,28 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   /// though the main viewer is the floor, so a double-click still swaps
   /// the drawing away. The row menu's second entry is what opens beside
   /// the drawing instead.
+  /// The pool's「WAV로 내보내기」: the session says which conform, the flow
+  /// says where the file goes, and the writer streams it. False when the
+  /// asset has no audio — the panel turns that into words.
+  ///
+  /// ⛔The conform is BUILT if this machine has not made it yet, rather
+  /// than the item refusing on a file that simply has not been played. That
+  /// is the same `ensureFor` playback would have called.
+  Future<bool> _exportAssetWav(BuildContext context, MediaAsset asset) async {
+    final conform = await widget.session.conformPathForExport(asset.path);
+    if (conform == null || !context.mounted) {
+      return conform != null;
+    }
+    await handWrittenFileToUser(
+      context,
+      suggestedName: '${asset.name}.wav',
+      acceptedTypeGroups: const [FileTypeGroups.wav],
+      write: (path) =>
+          writeConformAsWav(conformPath: conform, destinationPath: path),
+    );
+    return true;
+  }
+
   void _openAssetInViewer(MediaAsset asset, {required String tabId}) {
     _openInViewer(
       MediaViewerRequest(path: asset.path, kind: asset.kind, name: asset.name),
@@ -2735,6 +2771,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
                   runMediaRelinkFlow(context, widget.session),
               onRemoveAsset: widget.session.removeMediaAsset,
               onPromoteAsset: widget.session.promoteMediaAssetIntoProject,
+              onExportAssetWav: (asset) => _exportAssetWav(context, asset),
               onOpenAsset: (asset) => _openAssetInViewer(
                 asset,
                 tabId: EditorWorkspace.mediaViewerTabId,
@@ -5459,15 +5496,18 @@ class _RailGroupButton extends StatelessWidget {
                   : Colors.transparent,
               clipBehavior: Clip.antiAlias,
               shape: AppShapes.control(ToolsPanel.buttonExtent),
-              child: ControlPressClaim(onPressed: onPressed, child: InkWell(
-                onTap: silentPress(onPressed),
-                // The pair sizes itself to one button cell, so a group that
-                // wears a face is the same square as every other.
-                child: SizedBox.square(
-                  dimension: ToolsPanel.buttonExtent,
-                  child: face,
+              child: ControlPressClaim(
+                onPressed: onPressed,
+                child: InkWell(
+                  onTap: silentPress(onPressed),
+                  // The pair sizes itself to one button cell, so a group that
+                  // wears a face is the same square as every other.
+                  child: SizedBox.square(
+                    dimension: ToolsPanel.buttonExtent,
+                    child: face,
+                  ),
                 ),
-              )),
+              ),
             ),
           );
     if (dragging == null) {

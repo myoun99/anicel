@@ -152,6 +152,15 @@ abstract final class FileTypeGroups {
     uniformTypeIdentifiers: [anicelProjectUti],
   );
 
+  /// A plain WAV, for the one dialog that WRITES one: the pool's conform
+  /// export. Apple publishes a UTI for this format, so unlike the TVPaint
+  /// case below there is nothing to split per platform.
+  static const XTypeGroup wav = XTypeGroup(
+    label: 'WAV audio',
+    extensions: ['wav'],
+    uniformTypeIdentifiers: ['com.microsoft.waveform-audio'],
+  );
+
   /// TVPaint project files. Same Apple-platform split as [brushesFor]:
   /// TVPaint publishes no UTI, so iOS gets `public.data` (a wrong filter
   /// greys out the very file the user came for) and macOS gets the

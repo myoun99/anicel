@@ -370,6 +370,8 @@ void main() {
     'mediaRemove': (s) => s.mediaRemove,
     'mediaRegisterInProject': (s) => s.mediaRegisterInProject,
     'mediaAlreadyInProject': (s) => s.mediaAlreadyInProject,
+    'mediaExportWav': (s) => s.mediaExportWav,
+    'mediaExportWavNoAudio': (s) => s.mediaExportWavNoAudio,
     'projectLegacyAssetsFolder': (s) => s.projectLegacyAssetsFolder,
     'mediaStillLinked': (s) => s.mediaStillLinked,
     'mediaOpenInViewer': (s) => s.mediaOpenInViewer,

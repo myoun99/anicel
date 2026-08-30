@@ -4,6 +4,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/persistence/app_documents.dart';
+import '../../services/persistence/app_support_path.dart';
 import '../../services/persistence/folder_grant.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
@@ -24,9 +25,10 @@ import 'app_confirm_dialog.dart';
 Future<String?> pickFolderForUser(
   BuildContext context, {
   String? initialDirectory,
-}) async =>
-    (await pickFolderGrantForUser(context, initialDirectory: initialDirectory))
-        ?.path;
+}) async => (await pickFolderGrantForUser(
+  context,
+  initialDirectory: initialDirectory,
+))?.path;
 
 /// Whether a folder pick has to clear a storage grant before it may even
 /// open the picker.
@@ -392,4 +394,89 @@ Future<void> _showStorageGrantNotice(BuildContext context) {
       ],
     ),
   );
+}
+
+/// Hands the user a file called [suggestedName], written by [write], and
+/// answers where it landed — or null when they cancelled or it failed.
+///
+/// 🚨★★★**THE SAME TWO HALVES AS SAVE AS, WITHOUT THE PROJECT.** Save As
+/// grew both roads and then wrapped them in project-specific work — staging
+/// the archive, adopting the placed path, minting a bookmark for later
+/// saves. An export has none of that: the file leaves and is never written
+/// to again.
+///
+/// So the roads are the same and the reasons are the ones already written
+/// down: desktop has a save panel, so [pickSaveDestinationForUser] answers
+/// with a path and this writes there. iOS has none — Apple never built one
+/// — so the file is written into the app container FIRST and
+/// [exportFileForUser] moves it where the picker says.
+///
+/// ⛔The container copy is deleted on the desktop road and MOVED on the
+/// scoped one, so neither leaves a second copy behind (유저 08-27: 「사본
+/// 남으면 진짜 용서안할게」).
+///
+/// ⚠️No bookmark comes back on purpose. A caller that wanted to write there
+/// again would be a caller that should have used Save As.
+///
+/// 🚨**[write] takes a PATH, not bytes.** Some exports are hundreds of
+/// megabytes — an hour of dialogue is 691MB of PCM — and a signature that
+/// took a `Uint8List` would have re-created, in a brand new place, exactly
+/// the whole-file allocation the carry and staging rounds spent themselves
+/// removing. It answers false when it could not produce a real file, and
+/// then nothing is handed over.
+Future<String?> handWrittenFileToUser(
+  BuildContext context, {
+  required String suggestedName,
+  required Future<bool> Function(String path) write,
+  List<XTypeGroup> acceptedTypeGroups = const [],
+}) async {
+  if (!FolderPicker.grantsAreScoped) {
+    final grant = await pickSaveDestinationForUser(
+      context,
+      suggestedName: suggestedName,
+      acceptedTypeGroups: acceptedTypeGroups,
+    );
+    final picked = grant?.path;
+    if (picked == null) {
+      return null;
+    }
+    // Straight to the destination — the desktop law, and the reason Save
+    // As stopped staging and moving (a cross-volume rename cannot work).
+    if (await write(picked)) {
+      return picked;
+    }
+    _discardQuietly(File(picked));
+    return null;
+  }
+  final staging = Directory(appSupportFilePath('Export'))
+    ..createSync(recursive: true);
+  final staged = File('${staging.path.replaceAll(r'\', '/')}/$suggestedName');
+  if (!await write(staged.path)) {
+    _discardQuietly(staged);
+    return null;
+  }
+  if (!context.mounted) {
+    _discardQuietly(staged);
+    return null;
+  }
+  final grant = await exportFileForUser(
+    context,
+    sourcePath: staged.path,
+    suggestedName: suggestedName,
+  );
+  // On success the picker MOVED it; on cancel it is still here.
+  _discardQuietly(staged);
+  return grant?.path;
+}
+
+/// A leaked staging file must never fail an export — or a cancel, which is
+/// the path that reaches it most often.
+void _discardQuietly(File file) {
+  try {
+    if (file.existsSync()) {
+      file.deleteSync();
+    }
+  } on Object {
+    // The container is the app's to sweep if this ever loses the race.
+  }
 }

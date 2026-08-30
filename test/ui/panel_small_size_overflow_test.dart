@@ -79,6 +79,7 @@ void main() {
     onRelinkAsset: (_, _, _) {},
     onRemoveAsset: (_) => true,
     onPromoteAsset: (_) async => true,
+    onExportAssetWav: (_) async => true,
     // RELINK-2: nothing missing is the default now, which is what
     // `fileExists: (_) => true` was saying.
   );
