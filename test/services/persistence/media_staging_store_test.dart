@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
+import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
 
 /// 🚨★★★**품기 HOLDS THE BYTES FROM THE MOMENT IT IS PRESSED.**
@@ -299,6 +300,54 @@ void main() {
       expect(store.list(), hasLength(1));
       expect(store.find(to), isNotNull);
       expect(store.find(from), isNull);
+    });
+  });
+
+  /// 🚨★★★**THE ROAD PRODUCTION ACTUALLY TAKES.**
+  ///
+  /// `flutter_test_config.dart` turns [MediaStagingStore.debugStageInline]
+  /// ON for the whole suite, because a `testWidgets` clock is fake and
+  /// awaiting a real isolate there is a hang rather than a wait. That is
+  /// the right trade for the widget tests — and it would leave the shipping
+  /// path with **no coverage at all** if nothing turned it back off.
+  ///
+  /// This is that something. It is a plain `test`, so the clock is real and
+  /// the isolate genuinely runs.
+  group('across a real isolate', () {
+    setUp(() => MediaStagingStore.debugStageInline = false);
+    tearDown(() => MediaStagingStore.debugStageInline = true);
+
+    test('🚨the bytes land, and they are the source\'s own', () async {
+      final path = sourceFile('take.wav');
+      final original = File(path).readAsBytesSync();
+
+      final staged = (await store.stage(path))!;
+
+      expect(File(staged.path).existsSync(), isTrue);
+      // ⛔Through the un-framing source, not [StagedMedia.readStoredSync] —
+      // that one hands back the STORED bytes on purpose, so a save can
+      // stream them into the archive without a decode-and-re-encode.
+      expect(
+        mediaAppFileSource(staged.path).readSync(),
+        original,
+        reason: 'the isolate wrote the same file the inline road does',
+      );
+    });
+
+    test('a batch crosses ONCE and every file comes back', () async {
+      final paths = [
+        sourceFile('a.wav'),
+        sourceFile('b.wav'),
+        sourceFile('c.wav'),
+      ];
+
+      final staged = await store.stageAll(paths);
+
+      expect(staged, hasLength(3));
+      expect(store.list(), hasLength(3));
+      for (final one in staged) {
+        expect(File(one.path).existsSync(), isTrue);
+      }
     });
   });
 }

@@ -294,6 +294,13 @@ void main() {
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
 
     manager.playback.stop();
+    // ⚠️The take lands a beat later now: `_onPlaybackStopped` awaits the
+    // isolate that secures the take's bytes before the command that places
+    // it runs, so the clip is not there the instant `stop()` returns. That
+    // ordering is the point — the pool must never hold an asset whose bytes
+    // are still being written — so the test waits rather than the code
+    // racing.
+    await pumpEventQueue();
     expect(manager.isVoiceRecording.value, isFalse);
     expect(
       manager.activeTrack.seLayers.first.audioClips,

@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show immutable;
+import 'package:flutter/foundation.dart' show immutable, visibleForTesting;
 
 import 'app_support_path.dart';
 import 'media_blob_codec.dart';
@@ -44,6 +44,27 @@ class MediaStagingStore {
 
   /// `<container>/Staged`, beside `Recovery` and `Conformed`.
   static String defaultDirectory() => appSupportFilePath('Staged');
+
+  /// Test seam: do the staging work HERE instead of in an isolate.
+  ///
+  /// 🚨★★★**A `testWidgets` CLOCK NEVER LETS A REAL ISOLATE FINISH.** The
+  /// widget binding runs the body in a fake-async zone, so awaiting
+  /// [Isolate.run] is a hang, not a wait — every voice-take and import
+  /// widget test stopped at「did not complete」the moment this moved off
+  /// the UI isolate. `tester.runAsync` is the other answer and it does not
+  /// fit: these tests pump between the await and the assertion.
+  ///
+  /// ⛔**Inline is not a second implementation.** The same [_stageBytes]
+  /// runs either way, and [stageAll] stays `async` either way — so the
+  /// ORDER a caller sees is identical, which is what the entrances'
+  /// invariant actually rests on.
+  ///
+  /// ⚠️`flutter_test_config.dart` turns this ON for the whole suite, so the
+  /// isolate road needs one test that turns it back OFF — see
+  /// `media_staging_store_test`. Without that, nothing would ever run the
+  /// road production takes.
+  @visibleForTesting
+  static bool debugStageInline = false;
 
   /// 🚨Separators normalised HERE, once.
   ///
@@ -138,7 +159,9 @@ class MediaStagingStore {
     // Scalars only. The closure crosses an isolate boundary, so it opens
     // its own handles over there rather than capturing any from here.
     final directory = directoryPath;
-    final written = await Isolate.run(() => _stageBytes(todo, directory));
+    final written = debugStageInline
+        ? _stageBytes(todo, directory)
+        : await Isolate.run(() => _stageBytes(todo, directory));
     for (final one in written) {
       done.add(
         StagedMedia(
