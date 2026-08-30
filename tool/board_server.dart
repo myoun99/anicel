@@ -166,32 +166,61 @@ Future<void> _handle(HttpRequest req) async {
         // because an answer is something the user said that I have to read
         // and act on. One card, one row, and the answer is where the work is.
         final origin = kind == 'decision' ? _originOfId(id) : '';
-        _append({
-          'kind': kind,
-          'id': id,
-          'answer': body['answer'] ?? '',
-          'answerNote': memo,
-          'ts': _now(),
-          'state': ticked || origin.isNotEmpty ? 'archived' : 'inbox',
-        });
+        // 🚨★★★WHAT THE USER SUBMITS IS AN ENTRY, and the entry says where the
+        // card goes. ⛔Every branch here used to write a `state` as well, and
+        // the story then overrode it — the same 「한 질문에 리더 둘」 this
+        // round is removing everywhere else. 🧪H2 proved it: a memo left on a
+        // 실기 확인 row wrote `state: "inbox"` and the card stayed in 실기
+        // 확인, because its newest 대분류 still said so.
+        //
+        // Three shapes, one rule each:
+        //  · 결정에 답함 → the answer rides the QUESTION record (archived), and
+        //    the fold puts it on the card as a `유저` entry, which is 분류 전.
+        //  · 체크 → 완료. 「봤고 문제 없음」 ends the card, and the tick is in
+        //    its story as the user's own word.
+        //  · 메모 → 유저. Something to read, so it comes back to me.
         if (origin.isNotEmpty) {
-          // ⚠️NO `state` HERE ANY MORE. The card's section is folded out of
-          // its story, and the answer — which [_foldQuestionsIntoOrigins] puts
-          // on this card as a `유저` entry — already says 분류 전. Writing it
-          // again would be a second reader for the same question, which is the
-          // exact shape this round is removing. The line stays only so the
-          // head's date moves when an answer lands.
-          _append({
-            'kind': 'item',
-            'id': origin,
-            'ts': _now(),
-          });
-        }
-        if (ticked) {
           _append({
             'kind': kind,
             'id': id,
-            'state': 'deleted',
+            'answer': body['answer'] ?? '',
+            'answerNote': memo,
+            'ts': _now(),
+            'state': 'archived',
+          });
+          // ⚠️No `state` on the card: the folded `유저` entry already says
+          // 분류 전. This line exists only so the head's date moves.
+          _append({'kind': 'item', 'id': origin, 'ts': _now()});
+        } else if (kind == 'decision') {
+          // A question nobody folded — it IS the card, so the answer stays on
+          // it and it goes to 분류 전 like any other thing the user said.
+          _append({
+            'kind': kind,
+            'id': id,
+            'answer': body['answer'] ?? '',
+            'answerNote': memo,
+            'ts': _now(),
+            'state': 'inbox',
+          });
+        } else if (ticked) {
+          // ⛔NOT `deleted`. That was safe only while a 실기 확인 row WAS a
+          // check record with nothing but a title. The section holds real
+          // cards with whole stories now, and this is the section the user
+          // sweeps many rows at a time — one click would have taken a card
+          // and its story with it. 완료 clears the list just the same.
+          _append({
+            'kind': 'item',
+            'id': id,
+            'at': '완료',
+            'said': '확인 — 문제 없음',
+            'ts': _now(),
+          });
+        } else {
+          _append({
+            'kind': 'item',
+            'id': id,
+            'at': '유저',
+            'said': memo,
             'ts': _now(),
           });
         }
