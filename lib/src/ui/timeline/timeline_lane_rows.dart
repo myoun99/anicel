@@ -28,6 +28,8 @@ import '../text/app_strings.dart' show AppText;
 import 'layer_rail_columns.dart'
     show layerRailTrailingCells, layerRailTwirlIcon;
 import 'property_lane_model.dart';
+import 'se_name_tag_lane_editing.dart' show parseArgbInput;
+import '../widgets/color_swatch_button.dart' show ColorSwatchButton;
 import 'timeline_beat_lines.dart'
     show
         TimelineBeatLinesPainter,
@@ -488,6 +490,32 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
               color: on ? colorScheme.primary : colorScheme.onSurfaceVariant,
             ),
           ),
+        ),
+      );
+    }
+    // 🚨A COLOUR IS A SWATCH, NOT A WORD (유저 2026-08-26: 「아직도 멤버의
+    // 색부분이 텍스트편집임. **색버튼으로**」). The same round control the
+    // canvas surfaces and the onion tints are chosen with, so 「how do I
+    // pick a colour」 has one answer everywhere.
+    //
+    // ⚠️`none` IS a value here, not a missing one, and the swatch says so
+    // with its own face — the box behind a name can be turned off, and
+    // [ColorSwatchButton.onNone] is the way back to that. The lane knows
+    // whether absence is possible; nothing here switches on a lane id.
+    if (lane.valueKind == PropertyLaneValueKind.color &&
+        laneEdit?.onSetValue != null) {
+      void set(String text) => laneEdit!.onSetValue!.call(
+        layer,
+        lane,
+        widget.currentFrameIndex,
+        text,
+      );
+      return Center(
+        child: ColorSwatchButton(
+          keyValue: '$_keyPrefix-lane-color-${layer.id}-${lane.laneId}',
+          color: parseArgbInput(valueLabel),
+          onChanged: (argb) => set(formatLaneColorValue(argb)),
+          onNone: lane.colorCanBeNone ? () => set('none') : null,
         ),
       );
     }

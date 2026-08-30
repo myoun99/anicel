@@ -585,6 +585,7 @@ void main() {
     'viewPasteboardColor': (s) => s.viewPasteboardColor,
     'viewBackdropColor': (s) => s.viewBackdropColor,
     'colorUseCurrent': (s) => s.colorUseCurrent,
+    'colorNone': (s) => s.colorNone,
     'tlSections': (s) => s.tlSections,
     'tlAllDisplayedLayers': (s) => s.tlAllDisplayedLayers,
     'tlShowAll': (s) => s.tlShowAll,

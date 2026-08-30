@@ -61,7 +61,9 @@ void main() {
     );
     // The key sits on the swatch's InkWell; the colour is on the control
     // around it.
-    int paperSwatch() => tester
+    // ⚠️`int?` since F-22: a swatch may hold 「없음」. The canvas surfaces
+    // never do, and the null assertion below says so out loud.
+    int? paperSwatch() => tester
         .widget<ColorSwatchButton>(
           find.ancestor(
             of: find.descendant(
@@ -76,6 +78,11 @@ void main() {
         .color;
 
     final before = paperSwatch();
+    expect(
+      before,
+      isNotNull,
+      reason: 'a canvas surface always has a colour — 「없음」 is a member state',
+    );
     session.setProjectBackground(const ProjectBackground.color(0xFF123456));
     await tester.pumpAndSettle();
 
@@ -132,7 +139,8 @@ void main() {
     expect(
       identical(viewBar(), barOnCel),
       isTrue,
-      reason: 'the view bars show viewport geometry, not the playhead — a '
+      reason:
+          'the view bars show viewport geometry, not the playhead — a '
           'frame step must not rebuild them',
     );
 

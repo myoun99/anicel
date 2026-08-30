@@ -64,8 +64,7 @@ List<String> seNameTagLaneSpan(String anchorLaneId, String headLaneId) {
 /// `none`, which is a real state (the アフレコ box turned off) rather than
 /// an absent one.
 String formatSeNameTagLaneValue(String laneId, SeNameTag resolved) {
-  String hex(int? argb) =>
-      argb == null ? 'none' : '#${(argb & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
+  const hex = formatLaneColorValue;
   return switch (laneId) {
     seNameTagSizeLaneId => _number(resolved.style.fontSize),
     seNameTagTrackingLaneId => _number(resolved.style.letterSpacing),
@@ -133,6 +132,7 @@ List<PropertyLaneRow> seNameTagPropertyLanes(
           label: seNameTagLaneLabel(laneId),
           keyedFrames: keyed(laneId),
           valueKind: seNameTagLaneValueKind(laneId),
+          colorCanBeNone: seNameTagLaneColorCanBeNone(laneId),
           valueLabel: (frame) =>
               formatSeNameTagLaneValue(laneId, resolveAt(frame)),
         ),
@@ -142,15 +142,35 @@ List<PropertyLaneRow> seNameTagPropertyLanes(
 /// What KIND of value a member holds — the one place that knows, since it
 /// is the same place that formats and parses it (F-22).
 ///
-/// ⚠️The three INK lanes are still [PropertyLaneValueKind.number] and that
-/// is deliberate, not an omission: a colour circle cannot say `none`, which
-/// the box colour really is when the アフレコ box is off, and the value
-/// editor is the only way to get back to it today. See the board.
+/// 🚨THE THREE INK LANES ARE COLOURS (유저 2026-08-26: 「아직도 멤버의
+/// 색부분이 텍스트편집임. **색버튼으로.**」).
+///
+/// ⚠️They spent a round as [PropertyLaneValueKind.number] for a reason worth
+/// keeping in view, because it was real: a colour circle cannot say `none`,
+/// which the box colour IS when the アフレコ box is off, and typing the word
+/// into the value editor was the only way back to it. Swapping the editor
+/// for a circle would have deleted a state.
+///
+/// `Q-f22-none` put that to the user and the answer was **1번** — the shared
+/// picker grows a 「없음」 row, live where absence is a real value and dead
+/// where it is not. So all three are circles and the rule is one rule.
 PropertyLaneValueKind seNameTagLaneValueKind(String laneId) => switch (laneId) {
   seNameTagBoldLaneId ||
   seNameTagShowLineLaneId => PropertyLaneValueKind.boolean,
+  seNameTagNameInkLaneId ||
+  seNameTagBoxColorLaneId ||
+  seNameTagLineInkLaneId => PropertyLaneValueKind.color,
   _ => PropertyLaneValueKind.number,
 };
+
+/// Whether this lane's colour can be ABSENT — the box behind the name is
+/// the one that can be turned off.
+///
+/// ⛔Asked of the lane, in the same file that formats and parses it, for the
+/// reason [seNameTagLaneValueKind] is: a switch on lane ids anywhere else
+/// would be a second place to keep the same knowledge.
+bool seNameTagLaneColorCanBeNone(String laneId) =>
+    laneId == seNameTagBoxColorLaneId;
 
 /// The member's name in the rail. English here like every other lane label;
 /// the localized strings are for controls a person reads as prose.
