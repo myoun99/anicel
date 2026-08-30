@@ -18,7 +18,8 @@ import 'dart:typed_data';
 
 import '../../models/project_frame_rate.dart';
 import '../../services/audio/audio_mixer_reference.dart';
-import '../../services/audio/conform_wav_stream.dart';
+import '../../services/audio/wav16_header.dart';
+import '../../services/audio/conform_pcm_stream.dart';
 import '../playback/audio_playback_schedule.dart'
     show ScheduledAudioClip, audioMixScheduleFrom;
 
@@ -34,7 +35,7 @@ typedef ExportAudioSourceResolver =
 /// for a thirty-minute track would mean holding the memory streaming
 /// exists to avoid.
 typedef ExportAudioStreamResolver =
-    ConformWavStreamReader? Function(String filePath);
+    ConformPcmStreamReader? Function(String filePath);
 
 /// Renders [schedule] to an int16 stereo WAV at [outputPath].
 ///
@@ -66,7 +67,7 @@ Future<bool> writeExportAudioMixWav({
   );
   final sources = <AudioMixSource>[];
   final resolvedIndexByOriginal = <int, int>{};
-  final streamReaderByOriginal = <int, ConformWavStreamReader>{};
+  final streamReaderByOriginal = <int, ConformPcmStreamReader>{};
   for (var index = 0; index < mix.sourcePaths.length; index += 1) {
     final path = mix.sourcePaths[index];
     // Disk-backed first (AUDIO-PRO R6): a streaming conform is read block
@@ -115,7 +116,8 @@ Future<bool> writeExportAudioMixWav({
 
   final clips = <AudioMixClip>[];
   // Streaming clips own a PRIVATE source slot each, refreshed per block.
-  final streamedClips = <({AudioMixClip clip, ConformWavStreamReader reader, int slot})>[];
+  final streamedClips =
+      <({AudioMixClip clip, ConformPcmStreamReader reader, int slot})>[];
   for (final clip in mix.clips) {
     final resident = resolvedIndexByOriginal[clip.sourceIndex];
     if (resident != null) {
@@ -127,7 +129,9 @@ Future<bool> writeExportAudioMixWav({
       continue; // unresolvable: renders silent, already logged
     }
     final slot = sources.length;
-    sources.add(AudioMixSource(samples: Float32List(0), channels: reader.channels));
+    sources.add(
+      AudioMixSource(samples: Float32List(0), channels: reader.channels),
+    );
     final rebuilt = clipWithSource(clip, slot);
     clips.add(rebuilt);
     streamedClips.add((clip: rebuilt, reader: reader, slot: slot));
@@ -140,11 +144,13 @@ Future<bool> writeExportAudioMixWav({
   final dataBytes = totalSamples * channels * 2;
   final sink = File(outputPath).openSync(mode: FileMode.write);
   try {
-    sink.writeFromSync(_wavHeader(
-      dataBytes: dataBytes,
-      sampleRate: sampleRate,
-      channels: channels,
-    ));
+    sink.writeFromSync(
+      wav16HeaderBytes(
+        dataBytes: dataBytes,
+        sampleRate: sampleRate,
+        channels: channels,
+      ),
+    );
     // Block-mixed so a long timeline never holds its whole bus in memory;
     // the buffers are reused across blocks, and streaming sources read
     // exactly one block's worth of disk at a time.
@@ -161,9 +167,11 @@ Future<bool> writeExportAudioMixWav({
           continue; // this block never reads the clip; keep whatever is there
         }
         final clipLength = clip.endSample - clip.startSample;
-        final from = clip.sourceOffset +
+        final from =
+            clip.sourceOffset +
             (position - clip.startSample).clamp(0, clipLength);
-        final to = clip.sourceOffset +
+        final to =
+            clip.sourceOffset +
             (position + count - clip.startSample).clamp(0, clipLength);
         final window = streamed.reader.readWindow(from, to - from);
         sources[streamed.slot] = AudioMixSource(
@@ -187,45 +195,16 @@ Future<bool> writeExportAudioMixWav({
           ? out
           : Int16List.sublistView(out, 0, count * channels);
       audioBusToInt16(busView, into: outView);
-      sink.writeFromSync(outView.buffer.asUint8List(
-        outView.offsetInBytes,
-        outView.lengthInBytes,
-      ));
+      sink.writeFromSync(
+        outView.buffer.asUint8List(
+          outView.offsetInBytes,
+          outView.lengthInBytes,
+        ),
+      );
       position += count;
     }
   } finally {
     sink.closeSync();
   }
   return true;
-}
-
-/// A plain 44-byte PCM WAV header — sizes are exact because the mix length
-/// is known before a single sample renders.
-Uint8List _wavHeader({
-  required int dataBytes,
-  required int sampleRate,
-  required int channels,
-}) {
-  final header = ByteData(44);
-  void ascii(int offset, String text) {
-    for (var index = 0; index < text.length; index += 1) {
-      header.setUint8(offset + index, text.codeUnitAt(index));
-    }
-  }
-
-  const bytesPerSample = 2;
-  ascii(0, 'RIFF');
-  header.setUint32(4, 36 + dataBytes, Endian.little);
-  ascii(8, 'WAVE');
-  ascii(12, 'fmt ');
-  header.setUint32(16, 16, Endian.little);
-  header.setUint16(20, 1, Endian.little); // PCM
-  header.setUint16(22, channels, Endian.little);
-  header.setUint32(24, sampleRate, Endian.little);
-  header.setUint32(28, sampleRate * channels * bytesPerSample, Endian.little);
-  header.setUint16(32, channels * bytesPerSample, Endian.little);
-  header.setUint16(34, 16, Endian.little);
-  ascii(36, 'data');
-  header.setUint32(40, dataBytes, Endian.little);
-  return header.buffer.asUint8List();
 }

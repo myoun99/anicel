@@ -4,9 +4,10 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/conform_cache_maintenance.dart';
-import 'package:anicel/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
+import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 
 /// The conform cache's lifetime, and what it is allowed to touch.
@@ -49,17 +50,38 @@ void main() {
     return file.path.replaceAll('\\', '/');
   }
 
-  /// A conform WAV, with or without the `qacf` provenance chunk that says
-  /// this app wrote it.
-  Uint8List conformBytes({required bool ours, int frames = 64}) =>
-      encodeConformWav(
+  /// 🚨**「ours」 is now the MAGIC, not a provenance chunk.**
+  ///
+  /// This used to build a WAV either way and hang the difference on our
+  /// `qacf` chunk being present — because a conform WAS a WAV, so「not
+  /// ours」 could be spelled as「the same file, minus our chunk」. It is not
+  /// a WAV any more (see [ConformHeader]), so a file we did not write has
+  /// to actually be one: a real 16-bit WAV, built by the writer the audio
+  /// export uses.
+  ///
+  /// ⛔The old spelling would now pass: a conform written with no
+  /// fingerprint still carries the magic, and it IS ours — we wrote it.
+  Uint8List conformBytes({required bool ours, int frames = 64}) {
+    if (ours) {
+      return encodeConform(
         samples: Float32List(frames),
         channels: 1,
         sampleRate: 48000,
-        fingerprint: ours
-            ? ConformSourceFingerprint(sourceLength: frames, sourceCrc32: 7)
-            : null,
+        fingerprint: ConformSourceFingerprint(
+          sourceLength: frames,
+          sourceCrc32: 7,
+        ),
       );
+    }
+    return Uint8List.fromList([
+      ...wav16HeaderBytes(
+        dataBytes: frames * 2,
+        sampleRate: 48000,
+        channels: 1,
+      ),
+      ...Uint8List(frames * 2),
+    ]);
+  }
 
   /// A REAL cache entry: the name the layout gives one, and — the part
   /// that decides everything here — the bytes, provenance chunk and all.
@@ -78,6 +100,37 @@ void main() {
   }
 
   int sizeOf(String path) => File(path).lengthSync();
+
+  test('🚨a conform from BEFORE the header is still collected', () {
+    // ⛔The gap that would have been silent. Conforms were WAVs until
+    // 2026-08-30, and every machine that ran a previous build has a cache
+    // full of them. No reader accepts one any more — it fails the magic
+    // and is rebuilt, which is right — but a file the COLLECTOR cannot
+    // recognise is a file it never deletes and never counts.
+    //
+    // ⇒ Those would have sat there for ever, invisible, which is the exact
+    // unbounded pile this whole file exists to prevent. The legacy tag
+    // check in `_isOurConform` is what stops that, and this is the only
+    // thing that would go red if somebody removed it as dead code.
+    final legacy = Uint8List.fromList([
+      0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, // RIFF ....
+      0x57, 0x41, 0x56, 0x45, // WAVE
+      0x66, 0x6d, 0x74, 0x20, 16, 0, 0, 0, // 'fmt ' + size
+      ...List<int>.filled(16, 0), // fmt body
+      0x71, 0x61, 0x63, 0x66, 4, 0, 0, 0, // 'qacf' at offset 36
+      1, 2, 3, 4,
+      ...List<int>.filled(64, 0),
+    ]);
+    final path = writeRaw('옛대사.m4a.0badf00d.wav', legacy);
+
+    expect(
+      conformCacheEntries().map((entry) => entry.path),
+      [path],
+      reason: 'unrecognised means undeletable, and it never stops growing',
+    );
+    expect(clearConformCache(), legacy.length);
+    expect(File(path).existsSync(), isFalse);
+  });
 
   test('🚨 what the LAYOUT writes is what the COLLECTOR recognises', () {
     // The seam nobody was standing on. The layout names a conform and the
@@ -109,8 +162,8 @@ void main() {
     }
     // The same seam as above, driven end to end. A conform is written
     // FRAMED when that is worth it, and the collector identifies its own
-    // files by reading `RIFF`/`WAVE`/`qacf` out of them — so a framed one
-    // looks like a block index where the guard wanted a RIFF header.
+    // files by reading the conform MAGIC out of them — so a framed one
+    // looks like a block index where the guard wanted that magic.
     //
     // ⛔The failure that would cause is silent in the worst direction: the
     // cache stops being collectable AND stops being counted, so the app
@@ -119,7 +172,7 @@ void main() {
     // that, which is exactly why it is tested here.
     final sourcePath = '${root.path}/원본.wav';
     File(sourcePath).writeAsBytesSync(
-      encodeConformWav(
+      encodeConform(
         // Long enough to cross a block boundary, and compressible — a
         // conform is PCM, and PCM is what the 38% measurement was taken on.
         samples: Float32List.fromList([
@@ -138,7 +191,7 @@ void main() {
     final result =
         AudioConformPipeline(
           decode: (bytes) {
-            final audio = decodeConformWav(bytes);
+            final audio = decodeConform(bytes);
             return (
               samples: audio.samples,
               channels: audio.channels,

@@ -3,10 +3,9 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/timeline_coverage.dart'
-    show drawingBlocks;
+import 'package:anicel/src/models/timeline_coverage.dart' show drawingBlocks;
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
-import 'package:anicel/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
@@ -96,7 +95,7 @@ void main() {
     expect(block.length, 24);
     expect(block.frameId, clip.frameId);
     // The WAV round-trips exactly as long as the recording.
-    final decoded = decodeConformWav(File(clip.filePath).readAsBytesSync());
+    final decoded = decodeConform(File(clip.filePath).readAsBytesSync());
     expect(decoded.sampleRate, 48000);
     expect(decoded.length, 48000);
 
@@ -109,42 +108,50 @@ void main() {
     manager.dispose();
   });
 
-  test('REC1-B: recording along trims the monitoring latency off the head',
-      () async {
-    final manager = session();
-    await manager.saveProjectToFile('${directory.path}/scene.anicel');
-    final lane = manager.activeTrack.seLayers.first;
+  test(
+    'REC1-B: recording along trims the monitoring latency off the head',
+    () async {
+      final manager = session();
+      await manager.saveProjectToFile('${directory.path}/scene.anicel');
+      final lane = manager.activeTrack.seLayers.first;
 
-    final placed = manager.placeVoiceRecording(
-      takeOfSeconds(1.0),
-      laneId: lane.id,
-      anchorFrame: 0,
-      headTrimSamples: 12000, // 250 ms of monitoring delay
-    );
-    expect(placed, isTrue);
-    final clip = manager.activeTrack.seLayers.first.audioClips.single;
-    final decoded = decodeConformWav(File(clip.filePath).readAsBytesSync());
-    expect(decoded.length, 48000 - 12000,
-        reason: 'the performer spoke against delayed monitoring; the take '
-            'shifts earlier by exactly that delay');
-    manager.dispose();
-  });
-
-  test('REC1-B: a take shorter than the latency it rode on places nothing',
-      () async {
-    final manager = session();
-    await manager.saveProjectToFile('${directory.path}/scene.anicel');
-    expect(
-      manager.placeVoiceRecording(
-        takeOfSeconds(0.1),
-        laneId: manager.activeTrack.seLayers.first.id,
+      final placed = manager.placeVoiceRecording(
+        takeOfSeconds(1.0),
+        laneId: lane.id,
         anchorFrame: 0,
-        headTrimSamples: 48000,
-      ),
-      isFalse,
-    );
-    manager.dispose();
-  });
+        headTrimSamples: 12000, // 250 ms of monitoring delay
+      );
+      expect(placed, isTrue);
+      final clip = manager.activeTrack.seLayers.first.audioClips.single;
+      final decoded = decodeConform(File(clip.filePath).readAsBytesSync());
+      expect(
+        decoded.length,
+        48000 - 12000,
+        reason:
+            'the performer spoke against delayed monitoring; the take '
+            'shifts earlier by exactly that delay',
+      );
+      manager.dispose();
+    },
+  );
+
+  test(
+    'REC1-B: a take shorter than the latency it rode on places nothing',
+    () async {
+      final manager = session();
+      await manager.saveProjectToFile('${directory.path}/scene.anicel');
+      expect(
+        manager.placeVoiceRecording(
+          takeOfSeconds(0.1),
+          laneId: manager.activeTrack.seLayers.first.id,
+          anchorFrame: 0,
+          headTrimSamples: 48000,
+        ),
+        isFalse,
+      );
+      manager.dispose();
+    },
+  );
 
   test('REC1-B: a second take over the first TRIMS it, tape-style — same '
       'lane, no new row, both files kept', () async {
@@ -211,7 +218,7 @@ void main() {
     final lane = manager.activeTrack.seLayers.first;
     expect(drawingBlocks(lane.timeline).single.length, 6);
     final clip = lane.audioClips.single;
-    final decoded = decodeConformWav(File(clip.filePath).readAsBytesSync());
+    final decoded = decodeConform(File(clip.filePath).readAsBytesSync());
     // 6 frames @ 24 fps @ 48 kHz = 12000 samples: capture past the
     // punch-out was context, not take.
     expect(decoded.length, 12000);
@@ -252,16 +259,11 @@ void main() {
       'ROLLS the transport, mutes the lane, and stop lands the take', () {
     final manager = session();
     // The default active row is a drawing layer: no armed destination.
-    expect(
-      manager.startVoiceRecording(),
-      VoiceRecordStartResult.needsSeLane,
-    );
+    expect(manager.startVoiceRecording(), VoiceRecordStartResult.needsSeLane);
 
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(
-      takeOfSeconds(0.5),
-    );
+    manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(0.5));
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
     // Record = play + capture: the transport rolls the whole track.
     expect(manager.playback.isPlaying, isTrue);
@@ -271,8 +273,11 @@ void main() {
 
     final message = manager.stopVoiceRecordingAndPlace();
     expect(message, isNull);
-    expect(manager.playback.isActive, isFalse,
-        reason: 'the roll this take started stops with it');
+    expect(
+      manager.playback.isActive,
+      isFalse,
+      reason: 'the roll this take started stops with it',
+    );
     expect(manager.recordingMutedLayerIds, isEmpty);
     final lane = manager.activeTrack.seLayers.first;
     expect(lane.audioClips, hasLength(1));
@@ -285,9 +290,7 @@ void main() {
     final manager = session();
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(
-      takeOfSeconds(0.5),
-    );
+    manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(0.5));
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
 
     manager.playback.stop();

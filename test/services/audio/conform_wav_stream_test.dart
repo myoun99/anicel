@@ -2,8 +2,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/services/audio/conform_wav_codec.dart';
-import 'package:anicel/src/services/audio/conform_wav_stream.dart';
+import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
+import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
 
 /// The disk half of streaming (AUDIO-PRO R6): windowed reads out of a
 /// conform WAV must return byte-for-byte what a full decode would have —
@@ -28,20 +28,20 @@ void main() {
     }
     final path = '${directory.path}/ramp.wav';
     File(path).writeAsBytesSync(
-      encodeConformWav(samples: samples, channels: 2, sampleRate: 48000),
+      encodeConform(samples: samples, channels: 2, sampleRate: 48000),
     );
     return path;
   }
 
   test('the header parses and a middle window matches the full decode', () {
     final path = writeRamp(4000);
-    final reader = ConformWavStreamReader.open(path);
+    final reader = ConformPcmStreamReader.open(path);
     expect(reader, isNotNull);
     expect(reader!.channels, 2);
     expect(reader.sampleRate, 48000);
     expect(reader.length, 4000);
 
-    final full = decodeConformWav(File(path).readAsBytesSync());
+    final full = decodeConform(File(path).readAsBytesSync());
     final window = reader.readWindow(1234, 500);
     expect(window.startSample, 1234);
     expect(window.samples, hasLength(500 * 2));
@@ -55,7 +55,7 @@ void main() {
   });
 
   test('windows clamp into the file instead of inventing samples', () {
-    final reader = ConformWavStreamReader.open(writeRamp(1000))!;
+    final reader = ConformPcmStreamReader.open(writeRamp(1000))!;
 
     final head = reader.readWindow(-50, 100);
     expect(head.startSample, 0);
@@ -79,7 +79,7 @@ void main() {
     final samples = Float32List.fromList([0.5, -0.5, 0.25, -0.25]);
     final path = '${directory.path}/tagged.wav';
     File(path).writeAsBytesSync(
-      encodeConformWav(
+      encodeConform(
         samples: samples,
         channels: 2,
         sampleRate: 48000,
@@ -89,7 +89,7 @@ void main() {
         ),
       ),
     );
-    final reader = ConformWavStreamReader.open(path)!;
+    final reader = ConformPcmStreamReader.open(path)!;
     expect(reader.length, 2);
     final window = reader.readWindow(0, 2);
     expect(window.samples[0], closeTo(0.5, 1e-4));
@@ -99,9 +99,9 @@ void main() {
   test('not a WAV: open answers null, never throws', () {
     final path = '${directory.path}/notwav.bin';
     File(path).writeAsBytesSync([1, 2, 3, 4, 5]);
-    expect(ConformWavStreamReader.open(path), isNull);
+    expect(ConformPcmStreamReader.open(path), isNull);
     expect(
-      ConformWavStreamReader.open('${directory.path}/missing.wav'),
+      ConformPcmStreamReader.open('${directory.path}/missing.wav'),
       isNull,
     );
   });

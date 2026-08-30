@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
-import 'package:anicel/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 
@@ -42,11 +42,7 @@ void main() {
     final longSamples = ramp(longFrames);
     final conformPath = '${directory.path}/long.wav.wav';
     File(conformPath).writeAsBytesSync(
-      encodeConformWav(
-        samples: longSamples,
-        channels: 1,
-        sampleRate: sampleRate,
-      ),
+      encodeConform(samples: longSamples, channels: 1, sampleRate: sampleRate),
     );
     final store = AudioConformStore(
       resolveConformPath: (_) => conformPath,
@@ -96,8 +92,11 @@ void main() {
           pan: -0.5,
           gain: 0.7,
         ),
-        ScheduledAudioClip(filePath: 'short', startFrame: 0,
-            endFrameExclusive: 10),
+        ScheduledAudioClip(
+          filePath: 'short',
+          startFrame: 0,
+          endFrameExclusive: 10,
+        ),
       ]),
       conformStore: store,
       deviceRate: sampleRate,
@@ -130,8 +129,11 @@ void main() {
 
     // The R1 controls survive the rebuild.
     expect(streamedClip.gain, 0.7);
-    expect(streamedClip.panLeft, isNot(streamedClip.panRight),
-        reason: 'the pan must not be flattened by the source remap');
+    expect(
+      streamedClip.panLeft,
+      isNot(streamedClip.panRight),
+      reason: 'the pan must not be flattened by the source remap',
+    );
     store.dispose();
   });
 
@@ -152,8 +154,11 @@ void main() {
       deviceRate: sampleRate,
       centerSample: 0, // playhead long before the clip
     )!;
-    expect(before.sources.single.sourceStart, 0,
-        reason: 'not yet started: the window covers the clip head');
+    expect(
+      before.sources.single.sourceStart,
+      0,
+      reason: 'not yet started: the window covers the clip head',
+    );
 
     final past = windowedMixUpload(
       mix: mix,
@@ -164,8 +169,11 @@ void main() {
     final tail = past.sources.single;
     // The clip spans 1200 frames = 12000 source samples; the file's extra
     // 50 are never audible through this clip and are never read.
-    expect(tail.sourceStart + tail.samples.length, 12000,
-        reason: 'played out: the window ends at the clip SPAN, not the file');
+    expect(
+      tail.sourceStart + tail.samples.length,
+      12000,
+      reason: 'played out: the window ends at the clip SPAN, not the file',
+    );
     store.dispose();
   });
 
@@ -175,8 +183,11 @@ void main() {
     expect(
       windowedMixUpload(
         mix: mixOf(const [
-          ScheduledAudioClip(filePath: 'long', startFrame: 0,
-              endFrameExclusive: 1200),
+          ScheduledAudioClip(
+            filePath: 'long',
+            startFrame: 0,
+            endFrameExclusive: 1200,
+          ),
         ]),
         conformStore: store,
         deviceRate: 44100,
@@ -193,8 +204,11 @@ void main() {
     expect(
       windowedMixUpload(
         mix: mixOf(const [
-          ScheduledAudioClip(filePath: 'never-conformed', startFrame: 0,
-              endFrameExclusive: 10),
+          ScheduledAudioClip(
+            filePath: 'never-conformed',
+            startFrame: 0,
+            endFrameExclusive: 10,
+          ),
         ]),
         conformStore: store,
         deviceRate: sampleRate,
@@ -233,13 +247,15 @@ void main() {
     expect(
       File(conformPath).deleteSync,
       returnsNormally,
-      reason: 'and the reader is closed, so the collector can actually '
+      reason:
+          'and the reader is closed, so the collector can actually '
           'remove it',
     );
     expect(
       store.resultFor('short'),
       isNotNull,
-      reason: 'resident PCM is untouched — losing the file costs it '
+      reason:
+          'resident PCM is untouched — losing the file costs it '
           'nothing until the next session',
     );
   });

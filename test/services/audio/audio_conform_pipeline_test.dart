@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_resampler_reference.dart';
-import 'package:anicel/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
     show anicelCrc32;
@@ -45,7 +45,7 @@ void main() {
       projectSampleRate: projectSampleRate,
       decode: (bytes) {
         try {
-          final audio = decodeConformWav(bytes);
+          final audio = decodeConform(bytes);
           return (
             samples: audio.samples,
             channels: audio.channels,
@@ -76,7 +76,7 @@ void main() {
   String writeSource(String name, {int rate = 48000, int channels = 1}) {
     final path = '${temp.path}/$name';
     File(path).writeAsBytesSync(
-      encodeConformWav(
+      encodeConform(
         samples: ramp(2400, channels),
         channels: channels,
         sampleRate: rate,
@@ -395,7 +395,7 @@ void main() {
       expect(log, ['44100→48000']);
 
       // And the file on disk really is at the project rate.
-      final written = decodeConformWav(
+      final written = decodeConform(
         mediaAppFileSource(result.conformPath!).readSync(),
       );
       expect(written.sampleRate, 48000);
@@ -407,7 +407,7 @@ void main() {
         sourcePath: source,
         conformPath: '${temp.path}/Conformed/fp.wav.wav',
       );
-      final written = decodeConformWav(
+      final written = decodeConform(
         mediaAppFileSource(result.conformPath!).readSync(),
       );
       expect(written.fingerprint, isNotNull);
@@ -656,10 +656,7 @@ void main() {
         reason: '44.1k PCM on a 48k schedule would shift every clip',
       );
       expect(rebuilt.sampleRate, 48000);
-      expect(
-        decodeConformWav(File(conform).readAsBytesSync()).sampleRate,
-        48000,
-      );
+      expect(decodeConform(File(conform).readAsBytesSync()).sampleRate, 48000);
     });
 
     test('a matching conform is reused instead of rebuilt', () {
@@ -693,11 +690,7 @@ void main() {
 
       // Replace the original with different content and a later mtime.
       File(source).writeAsBytesSync(
-        encodeConformWav(
-          samples: ramp(4800, 1),
-          channels: 1,
-          sampleRate: 48000,
-        ),
+        encodeConform(samples: ramp(4800, 1), channels: 1, sampleRate: 48000),
       );
       File(
         source,
@@ -719,7 +712,7 @@ void main() {
       final conform = '${temp.path}/Conformed/foreign.wav.wav';
       Directory('${temp.path}/Conformed').createSync(recursive: true);
       File(conform).writeAsBytesSync(
-        encodeConformWav(samples: ramp(100, 1), channels: 1, sampleRate: 48000),
+        encodeConform(samples: ramp(100, 1), channels: 1, sampleRate: 48000),
       );
 
       expect(

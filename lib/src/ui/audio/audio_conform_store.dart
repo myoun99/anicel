@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../services/audio/audio_conform_pipeline.dart';
 import '../../services/audio/audio_conform_runner.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
-import '../../services/audio/conform_wav_stream.dart';
+import '../../services/audio/conform_pcm_stream.dart';
 import '../../services/media/media_byte_source.dart';
 
 class _ConformFailure {
@@ -116,7 +116,7 @@ class AudioConformStore extends ChangeNotifier {
   /// changes — residency is a policy the mixer never sees.
   static const int streamingThresholdSeconds = 120;
 
-  final Map<String, ConformWavStreamReader> _streamReaders = {};
+  final Map<String, ConformPcmStreamReader> _streamReaders = {};
 
   /// Whether [sourcePath]'s conform is DISK-BACKED: usable (length, peaks
   /// and the waveform all answer) but with no resident PCM — the
@@ -132,7 +132,7 @@ class AudioConformStore extends ChangeNotifier {
   /// The windowed reader over [sourcePath]'s conform WAV, cached across
   /// reads; null when the entry is not streaming or the file will not
   /// parse (the caller stands down exactly as for missing PCM).
-  ConformWavStreamReader? streamReaderFor(String sourcePath) {
+  ConformPcmStreamReader? streamReaderFor(String sourcePath) {
     final entry = _entries[sourcePath];
     if (entry == null || !entry.isUsable || entry.conformPath == null) {
       return null;
@@ -141,7 +141,7 @@ class AudioConformStore extends ChangeNotifier {
     if (cached != null) {
       return cached;
     }
-    final reader = ConformWavStreamReader.open(entry.conformPath!);
+    final reader = ConformPcmStreamReader.open(entry.conformPath!);
     if (reader != null) {
       _streamReaders[sourcePath] = reader;
     }
@@ -167,7 +167,7 @@ class AudioConformStore extends ChangeNotifier {
   ///
   /// 🪦There used to be a mirror image on Windows — an open reader made the
   /// delete fail, so the biggest entries survived the emptying meant to
-  /// reclaim them. [ConformWavStreamReader] holds no handle any more, so
+  /// reclaim them. [ConformPcmStreamReader] holds no handle any more, so
   /// only the half above is left. ⛔Which does NOT make this optional: the
   /// half that is left is the one that goes SILENT.
   ///

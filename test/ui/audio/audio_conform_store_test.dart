@@ -5,16 +5,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_conform_runner.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
-import 'package:anicel/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 
 ConformResult _usableResult() => ConformResult(
   outcome: ConformOutcome.built,
   conformPath: '/tmp/conformed/a.wav.wav',
-  peaks: AudioPeaks(
-    bucketsPerSecond: 80,
-    peaks: Float32List.fromList([1.0]),
-  ),
+  peaks: AudioPeaks(bucketsPerSecond: 80, peaks: Float32List.fromList([1.0])),
   samples: Float32List.fromList([0.1, 0.2, 0.3, 0.4]),
   channels: 2,
   sampleRate: 48000,
@@ -180,8 +177,11 @@ void main() {
     expect(store.resultFor('a.wav')?.sampleRate, 48000);
 
     projectRate = 44100; // the setting moved (or an undo moved it back)
-    expect(store.resultFor('a.wav'), isNull,
-        reason: 'the 48k entry is stale by definition — re-kicked');
+    expect(
+      store.resultFor('a.wav'),
+      isNull,
+      reason: 'the 48k entry is stale by definition — re-kicked',
+    );
     await pumpEventQueue();
     expect(store.resultFor('a.wav')?.sampleRate, 44100);
     expect(requested, [48000, 44100]);
@@ -228,11 +228,7 @@ void main() {
       }
       final conformPath = '${directory.path}/long.wav.wav';
       File(conformPath).writeAsBytesSync(
-        encodeConformWav(
-          samples: samples,
-          channels: 1,
-          sampleRate: sampleRate,
-        ),
+        encodeConform(samples: samples, channels: 1, sampleRate: sampleRate),
       );
       return (
         conformPath,
@@ -266,10 +262,16 @@ void main() {
       await pumpEventQueue();
 
       expect(store.isStreaming('long.wav'), isTrue);
-      expect(store.samplesFor('long.wav'), isNull,
-          reason: 'the whole point: no resident PCM for a long file');
-      expect(store.peaksFor('long.wav')?.peaks, isNotEmpty,
-          reason: 'the waveform must not disappear with the samples');
+      expect(
+        store.samplesFor('long.wav'),
+        isNull,
+        reason: 'the whole point: no resident PCM for a long file',
+      );
+      expect(
+        store.peaksFor('long.wav')?.peaks,
+        isNotEmpty,
+        reason: 'the waveform must not disappear with the samples',
+      );
       expect(store.durationSecondsFor('long.wav'), result.frames / 100);
 
       final reader = store.streamReaderFor('long.wav');
@@ -283,8 +285,11 @@ void main() {
           reason: 'streamed sample ${500 + index} diverged from the decode',
         );
       }
-      expect(identical(store.streamReaderFor('long.wav'), reader), isTrue,
-          reason: 'one cached reader, not one open file per read');
+      expect(
+        identical(store.streamReaderFor('long.wav'), reader),
+        isTrue,
+        reason: 'one cached reader, not one open file per read',
+      );
 
       store.invalidate('long.wav');
       expect(store.isStreaming('long.wav'), isFalse);

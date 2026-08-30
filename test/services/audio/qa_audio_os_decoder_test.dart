@@ -7,7 +7,7 @@ import 'package:anicel/src/native/qa_audio_decoder.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_conform_runner.dart';
-import 'package:anicel/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/services/audio/wav16_header.dart';
 
 import '../../helpers/native_engine_path.dart';
 
@@ -33,8 +33,7 @@ void main() {
     debugQaEngineLibraryPathOverride = null;
   });
 
-  Uint8List fixtureBytes() =>
-      File('test/fixtures/tone.m4a').readAsBytesSync();
+  Uint8List fixtureBytes() => File('test/fixtures/tone.m4a').readAsBytesSync();
 
   test('m4a decodes through the OS codec stack where one exists — and is '
       'honestly undecodable where none does', () {
@@ -49,8 +48,11 @@ void main() {
       return;
     }
 
-    expect(decoded, isNotNull,
-        reason: 'the OS decoder should have carried this m4a');
+    expect(
+      decoded,
+      isNotNull,
+      reason: 'the OS decoder should have carried this m4a',
+    );
     expect(decoded!.format, QaAudioFormat.os);
     expect(decoded.sampleRate, 44100);
     expect(decoded.channels, 2);
@@ -67,8 +69,11 @@ void main() {
     for (var index = start; index < end; index += 1) {
       peak = math.max(peak, decoded.samples[index].abs());
     }
-    expect(peak, inInclusiveRange(0.35, 0.65),
-        reason: 'expected roughly the encoded -6 dB amplitude, got $peak');
+    expect(
+      peak,
+      inInclusiveRange(0.35, 0.65),
+      reason: 'expected roughly the encoded -6 dB amplitude, got $peak',
+    );
   }, skip: skip);
 
   test('an m4a conforms END-TO-END: OS decode, resample to the project '
@@ -82,15 +87,22 @@ void main() {
     );
 
     if (Platform.isLinux) {
-      expect(result.outcome, ConformOutcome.undecodable,
-          reason: 'no OS codec stack on the Linux runner — the definitive '
-              'answer that routes m4a to the fallback there');
+      expect(
+        result.outcome,
+        ConformOutcome.undecodable,
+        reason:
+            'no OS codec stack on the Linux runner — the definitive '
+            'answer that routes m4a to the fallback there',
+      );
       return;
     }
 
     expect(result.outcome, ConformOutcome.built);
-    expect(result.sampleRate, 48000,
-        reason: '44.1k source must land at the project rate');
+    expect(
+      result.sampleRate,
+      48000,
+      reason: '44.1k source must land at the project rate',
+    );
     expect(result.channels, 2);
     // 0.5 s at 48k = 24000 frames, with AAC priming/padding slack.
     expect(result.frames, inInclusiveRange(21000, 27500));
@@ -111,8 +123,11 @@ void main() {
     final decoded = decoder!.decode(
       File('test/fixtures/tone.ogg').readAsBytesSync(),
     );
-    expect(decoded, isNotNull,
-        reason: 'stb_vorbis is vendored — no platform stack involved');
+    expect(
+      decoded,
+      isNotNull,
+      reason: 'stb_vorbis is vendored — no platform stack involved',
+    );
     expect(decoded!.format, QaAudioFormat.vorbis);
     expect(decoded.sampleRate, 44100);
     expect(decoded.channels, 2);
@@ -130,19 +145,45 @@ void main() {
       'on its single decoder)', () {
     final decoder = QaAudioDecoder.instance;
     expect(decoder, isNotNull);
-    // A tiny valid WAV through the conform codec's encoder.
-    final wav = encodeConformWav(
-      samples: Float32List.fromList(List.filled(4410 * 2, 0.25)),
+    // A tiny valid WAV — a FOREIGN format now, built by the writer the
+    // export uses.
+    final wav = wav16(
+      Float32List.fromList(List.filled(4410 * 2, 0.25)),
       channels: 2,
-      sampleRate: 44100,
-      fingerprint: const ConformSourceFingerprint(
-        sourceLength: 1,
-        sourceCrc32: 1,
-      ),
+      rate: 44100,
     );
     final decoded = decoder!.decode(wav);
     expect(decoded, isNotNull);
-    expect(decoded!.format, QaAudioFormat.wav,
-        reason: 'WAV must stay on dr_wav on every platform');
+    expect(
+      decoded!.format,
+      QaAudioFormat.wav,
+      reason: 'WAV must stay on dr_wav on every platform',
+    );
   }, skip: skip);
+}
+
+/// A real 16-bit PCM WAV — a FOREIGN format to this app now.
+///
+/// ⚠️This used to be `encodeConformWav`, which worked only while a conform
+/// happened to be a WAV. It stopped being one on 2026-08-30, so the fixture
+/// says what it means: build the thing the decoder is supposed to read.
+Uint8List wav16(Float32List samples, {int channels = 1, int rate = 48000}) {
+  final pcm = Uint8List(samples.length * 2);
+  final view = ByteData.sublistView(pcm);
+  for (var i = 0; i < samples.length; i += 1) {
+    var v = samples[i];
+    if (v > 1.0) v = 1.0;
+    if (v < -1.0) v = -1.0;
+    var s = (v * 32768.0).round();
+    if (s > 32767) s = 32767;
+    view.setInt16(i * 2, s, Endian.little);
+  }
+  return Uint8List.fromList([
+    ...wav16HeaderBytes(
+      dataBytes: pcm.length,
+      sampleRate: rate,
+      channels: channels,
+    ),
+    ...pcm,
+  ]);
 }
