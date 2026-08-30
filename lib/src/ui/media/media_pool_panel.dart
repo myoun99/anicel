@@ -46,6 +46,7 @@ class MediaPoolPanel extends StatelessWidget {
     required this.onRelinkAsset,
     required this.onRemoveAsset,
     required this.onPromoteAsset,
+    required this.onExportAssetWav,
     this.onOpenAsset,
     this.onOpenAssetInSubViewer,
     this.onPlaceAsset,
@@ -85,6 +86,11 @@ class MediaPoolPanel extends StatelessWidget {
   /// writes its bytes inside the `.anicel`. Nothing on disk moves. False
   /// when there was nothing to promote.
   final Future<bool> Function(String path) onPromoteAsset;
+
+  /// Writes the asset's conformed audio out as a plain WAV; false when the
+  /// asset has none. The panel only reports the answer — where the file
+  /// goes is the flow's law, not this widget's.
+  final Future<bool> Function(MediaAsset asset) onExportAssetWav;
 
   /// Opens the asset in the MAIN viewer (double-click or the row menu);
   /// null hides both entrances.
@@ -255,6 +261,26 @@ class MediaPoolPanel extends StatelessWidget {
         context,
         title: AppText.strings.commonNotice,
         message: AppText.strings.mediaAlreadyInProject,
+      ),
+    );
+  }
+
+  /// Hands the asset's conformed audio out as a plain 16-bit WAV.
+  ///
+  /// The panel asks the session for the conform and the flow for the
+  /// destination; neither half lives here. What DOES live here is the
+  /// honest answer when there is nothing to export — a row with no audio
+  /// still shows the item, so it has to say why rather than do nothing.
+  Future<void> _exportWav(BuildContext context, MediaAsset asset) async {
+    final done = await onExportAssetWav(asset);
+    if (done || !context.mounted) {
+      return;
+    }
+    unawaited(
+      showAppNotice(
+        context,
+        title: AppText.strings.commonNotice,
+        message: AppText.strings.mediaExportWavNoAudio,
       ),
     );
   }
@@ -558,6 +584,19 @@ class MediaPoolPanel extends StatelessWidget {
                 keyValue: 'media-asset-menu-promote',
                 label: AppText.strings.mediaRegisterInProject,
                 onSelected: () => _promote(context, asset),
+              ),
+              // 🚨What compression took away, handed back on demand. A
+              // conform stopped being a WAV on 2026-08-30 and the user
+              // accepted that trade naming this as the replacement:
+              // 「압축해제시켜서 내보내기 기능 만들면 되는거아닌가?」.
+              //
+              // ⛔On every row, like promote above and for the same reason:
+              // a menu that changes shape per row is a menu the user cannot
+              // learn. An asset with no audio answers so out loud.
+              PanelFlyoutItem(
+                keyValue: 'media-asset-menu-export-wav',
+                label: AppText.strings.mediaExportWav,
+                onSelected: () => _exportWav(context, asset),
               ),
               PanelFlyoutItem(
                 keyValue: 'media-asset-menu-remove',

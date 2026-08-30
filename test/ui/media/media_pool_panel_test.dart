@@ -52,6 +52,7 @@ Future<void> _pump(
               callbacks.removed.add(path);
               return callbacks.removeResult;
             },
+            onExportAssetWav: (_) async => true,
             onPromoteAsset: (path) async {
               callbacks.promoted.add(path);
               return callbacks.promoteResult;

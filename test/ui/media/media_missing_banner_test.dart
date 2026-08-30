@@ -33,6 +33,7 @@ void main() {
             onRelinkAsset: (_, _, _) {},
             onRemoveAsset: (_) => true,
             onPromoteAsset: (_) async => true,
+            onExportAssetWav: (_) async => true,
             missingPaths: missingPaths,
             onRelinkMissing: onRelinkMissing,
           ),

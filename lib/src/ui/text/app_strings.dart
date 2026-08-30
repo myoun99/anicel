@@ -765,6 +765,8 @@ class AppStrings {
   String get mediaRelinkScanned => _s('mediaRelinkScanned');
   String get mediaRemove => _s('mediaRemove');
   String get mediaRegisterInProject => _s('mediaRegisterInProject');
+  String get mediaExportWav => _s('mediaExportWav');
+  String get mediaExportWavNoAudio => _s('mediaExportWavNoAudio');
   String get mediaAlreadyInProject => _s('mediaAlreadyInProject');
 
   /// Shown on opening a project written by a build that kept its media in
@@ -1511,6 +1513,8 @@ class AppStrings {
     'mediaRelinkScanned': 'Folder read',
     'mediaRemove': 'Remove',
     'mediaRegisterInProject': 'Keep inside the project file',
+    'mediaExportWav': 'Export as WAV',
+    'mediaExportWavNoAudio': 'This asset has no audio to export.',
     'mediaAlreadyInProject':
         'Nothing to take in — it is kept inside already, or it is a kind '
         'that always stays a reference (video).',
@@ -2368,6 +2372,8 @@ class AppStrings {
     'mediaRelinkScanned': '読み込みました',
     'mediaRemove': '削除',
     'mediaRegisterInProject': 'プロジェクトファイルに取り込む',
+    'mediaExportWav': 'WAVで書き出す',
+    'mediaExportWavNoAudio': 'この素材には書き出せる音声がありません。',
     'mediaAlreadyInProject':
         '取り込むものがありません — すでにファイル内にあるか、'
         '常に参照のままの種類（動画）です。',
@@ -3249,6 +3255,8 @@ class AppStrings {
     'mediaRelinkScanned': '폴더를 읽었습니다',
     'mediaRemove': '제거',
     'mediaRegisterInProject': '프로젝트 파일에 품기',
+    'mediaExportWav': 'WAV로 내보내기',
+    'mediaExportWavNoAudio': '이 소재에는 내보낼 오디오가 없습니다.',
     'mediaAlreadyInProject': '품을 것이 없습니다 — 이미 파일 안에 있거나, 항상 참조로 남는 종류(동영상)입니다.',
     'projectLegacyAssetsFolder':
         '이 프로젝트 옆에 아직 {name} 폴더가 있습니다. 이제 쓰지 않습니다 — '
@@ -4149,6 +4157,8 @@ class AppStrings {
     'mediaRelinkFound': '{m} sur {n} trouvés. Les relier ?',
     'mediaRemove': 'Retirer',
     'mediaRegisterInProject': 'Conserver dans le fichier de projet',
+    'mediaExportWav': 'Exporter en WAV',
+    'mediaExportWavNoAudio': "Cet élément n'a pas d'audio à exporter.",
     'mediaAlreadyInProject':
         "Rien à intégrer — le fichier est déjà à l'intérieur, ou son type "
         "reste toujours une référence (vidéo).",
@@ -4995,6 +5005,8 @@ class AppStrings {
     'mediaRelinkFound': '在 {n} 个中找到 {m} 个。要重新链接吗？',
     'mediaRemove': '移除',
     'mediaRegisterInProject': '收入项目文件',
+    'mediaExportWav': '导出为 WAV',
+    'mediaExportWavNoAudio': '此素材没有可导出的音频。',
     'mediaAlreadyInProject': '没有可收入的内容 — 它已在文件内，或属于始终保持引用的类型（视频）。',
     'projectLegacyAssetsFolder':
         '此项目旁边仍有 {name} 文件夹。它已不再被写入 — 保存一次后，'

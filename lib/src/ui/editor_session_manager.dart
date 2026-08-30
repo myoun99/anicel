@@ -9113,6 +9113,21 @@ class EditorSessionManager extends ChangeNotifier {
   /// ⚠️Async because securing the bytes runs in an isolate — see
   /// [stageCarriedBytes]. The answer still means「something changed」, and
   /// it is still decided before any waiting happens.
+  /// Where [path]'s conformed audio is on disk, building it if this machine
+  /// has not yet — or null when the asset has no audio to conform.
+  ///
+  /// 🔑The pool panel's export asks for this and nothing else. Reading the
+  /// conform, swapping the header and placing the file are three different
+  /// jobs living in three different places already; what was missing was
+  /// only the session saying WHICH file.
+  Future<String?> conformPathForExport(String path) async {
+    final result = await audioConformStore.ensureFor(path);
+    if (result == null || !result.isUsable) {
+      return null;
+    }
+    return result.conformPath;
+  }
+
   Future<bool> promoteMediaAssetIntoProject(String path) async {
     final pool = mediaAssets;
     var promotes = false;
