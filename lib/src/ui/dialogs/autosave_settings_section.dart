@@ -47,12 +47,9 @@ class AutosaveSettingsSection extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SettingsSectionHeading(
-              label: 'Autosave',
-              help:
-                  'Writes a recovery snapshot every so often, so a crash or '
-                  'a flat battery costs at most that much work. The project '
-                  'file itself only changes when you save.',
+            SettingsSectionHeading(
+              label: AppText.strings.autosaveTitle,
+              help: AppText.strings.autosaveSectionHelp,
             ),
             const SizedBox(height: 4),
             // 🚨F-1 (유저 2026-08-26): 「**자동저장 on off만 남기고** … 심플
@@ -61,10 +58,8 @@ class AutosaveSettingsSection extends StatelessWidget {
             // two of them named triggers that no longer exist.
             SettingsSwitchRow(
               tileKey: const ValueKey<String>('settings-autosave-enabled'),
-              label: 'Autosave',
-              help:
-                  'Off means the project only changes when you save it, and '
-                  'a crash costs everything since.',
+              label: AppText.strings.autosaveTitle,
+              help: AppText.strings.autosaveSwitchHelp,
               value: settings.periodicSnapshotMinutes != null,
               onChanged: (enabled) => session.setSaveSettings(
                 settings.copyWith(
@@ -135,12 +130,9 @@ class AutosaveSettingsSection extends StatelessWidget {
             // 「위치나 수정날짜같은거 다 있고 거기서 여러개 선택해서
             // 삭제가능하게」. The 30-day sweep handles the abandoned ones
             // on its own; this is the by-hand door for everything else.
-            const SettingsSectionHeading(
-              label: 'Recovery snapshots',
-              help:
-                  'Unsaved work autosave has written, one per project. '
-                  'Saving a project retires its snapshot; one untouched '
-                  'for 30 days is cleaned up on launch.',
+            SettingsSectionHeading(
+              label: AppText.strings.recoverySnapshotsTitle,
+              help: AppText.strings.recoverySnapshotsHelp,
             ),
             const SizedBox(height: 4),
             const _RecoverySnapshotsBlock(),
@@ -149,12 +141,9 @@ class AutosaveSettingsSection extends StatelessWidget {
             // 어차피 앱 컨테이너 파일 볼수있게 되있으니까 안되있으면
             // 되있도록하고 그거 유념」. Half of it was: the snapshots above
             // had a list and the other four tenants had none.
-            const SettingsSectionHeading(
-              label: 'App container',
-              help:
-                  'What the app keeps outside your project files: settings '
-                  'and brush tips, recovery snapshots, conformed audio, and '
-                  'media an import copied in that no save has absorbed yet.',
+            SettingsSectionHeading(
+              label: AppText.strings.appContainerTitle,
+              help: AppText.strings.appContainerHelp,
             ),
             const SizedBox(height: 4),
             const _AppContainerBlock(),
@@ -162,13 +151,9 @@ class AutosaveSettingsSection extends StatelessWidget {
             // REC1-B2: the take shelf. Mobile shows where takes land but
             // cannot move it (the app documents home is the only sane
             // place there); desktop may point it anywhere.
-            const SettingsSectionHeading(
-              label: 'Recordings folder',
-              help:
-                  'Where voice takes land. Saving copies the ones a '
-                  'project uses into the project file; every take stays '
-                  'here either way, so a recording is never in one place '
-                  'only.',
+            SettingsSectionHeading(
+              label: AppText.strings.recordingsFolderTitle,
+              help: AppText.strings.recordingsFolderHelp,
             ),
             const SizedBox(height: 4),
             Row(
@@ -254,14 +239,9 @@ class AutosaveSettingsSection extends StatelessWidget {
             // mobile the app container is the one place writable without
             // asking an OS, and a cache in a scoped folder would need a
             // grant held for a session that writes to it unannounced.
-            const SettingsSectionHeading(
-              label: 'Conform cache',
-              help:
-                  'Decoded audio, kept so a waveform and playback do not '
-                  'decode the same file twice. A conform is around twelve '
-                  'times the size of its source, so point this at a drive '
-                  'with room — and out of a cloud-synced folder. Deleting '
-                  'it costs time, never content.',
+            SettingsSectionHeading(
+              label: AppText.strings.conformCacheTitle,
+              help: AppText.strings.conformCacheHelp,
             ),
             const SizedBox(height: 4),
             Row(
@@ -441,7 +421,7 @@ class _RecoverySnapshotsBlockState extends State<_RecoverySnapshotsBlock> {
             Expanded(
               child: Text(
                 _rows.isEmpty
-                    ? 'Empty'
+                    ? AppText.strings.containerEmpty
                     : '${_rows.length} · ${byteSizeLabel(total)}',
                 key: const ValueKey<String>('settings-recovery-size'),
                 style: const TextStyle(fontSize: 12),
@@ -586,7 +566,12 @@ class _ConformCacheSizeRowState extends State<_ConformCacheSizeRow> {
       children: [
         Expanded(
           child: Text(
-            _bytes == 0 ? 'Empty' : 'Holding ${byteSizeLabel(_bytes)}',
+            _bytes == 0
+                ? AppText.strings.containerEmpty
+                : AppText.strings.conformHoldingTemplate.replaceAll(
+                    '{size}',
+                    byteSizeLabel(_bytes),
+                  ),
             key: const ValueKey<String>('settings-conform-size'),
             style: const TextStyle(fontSize: 12),
           ),

@@ -239,7 +239,7 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'Icon',
+                strings.instructionEditorIcon,
                 style: Theme.of(context).textTheme.labelSmall,
               ),
             ),
@@ -280,7 +280,7 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'Color',
+                strings.instructionEditorColor,
                 style: Theme.of(context).textTheme.labelSmall,
               ),
             ),
@@ -351,7 +351,7 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'Mark',
+                strings.instructionEditorMark,
                 style: Theme.of(context).textTheme.labelSmall,
               ),
             ),

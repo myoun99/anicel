@@ -569,6 +569,10 @@ class AppStrings {
   String get instructionEndLabel => _s('instructionEndLabel');
   String get instructionMemoLabel => _s('instructionMemoLabel');
   String get instructionEditSetButton => _s('instructionEditSetButton');
+  String get instructionEditorIcon => _s('instructionEditorIcon');
+  String get instructionEditorColor => _s('instructionEditorColor');
+  String get instructionEditorMark => _s('instructionEditorMark');
+  String get systemStatusHelp => _s('systemStatusHelp');
 
   // --- The timeline action toolbar and its flyouts ---
   String get tlAddLayerHeader => _s('tlAddLayerHeader');
@@ -852,8 +856,19 @@ class AppStrings {
   String get autosaveTitle => _s('autosaveTitle');
   String get autosaveChoose => _s('autosaveChoose');
   String get autosaveDefault => _s('autosaveDefault');
-  String get autosaveSidecarFolder => _s('autosaveSidecarFolder');
   String get autosaveEvery => _s('autosaveEvery');
+  String get autosaveSectionHelp => _s('autosaveSectionHelp');
+  String get autosaveSwitchHelp => _s('autosaveSwitchHelp');
+  String get recoverySnapshotsTitle => _s('recoverySnapshotsTitle');
+  String get recoverySnapshotsHelp => _s('recoverySnapshotsHelp');
+  String get appContainerTitle => _s('appContainerTitle');
+  String get appContainerHelp => _s('appContainerHelp');
+  String get recordingsFolderTitle => _s('recordingsFolderTitle');
+  String get recordingsFolderHelp => _s('recordingsFolderHelp');
+  String get conformCacheTitle => _s('conformCacheTitle');
+  String get conformCacheHelp => _s('conformCacheHelp');
+  String get containerEmpty => _s('containerEmpty');
+  String get conformHoldingTemplate => _s('conformHoldingTemplate');
   String get autosaveEmptyNow => _s('autosaveEmptyNow');
   String get commonMinutesShort => _s('commonMinutesShort');
 
@@ -1469,6 +1484,11 @@ class AppStrings {
     'instructionEndLabel': 'End name (B)',
     'instructionMemoLabel': 'Memo (timesheet memo band)',
     'instructionEditSetButton': 'Edit instructions…',
+    'instructionEditorIcon': 'Icon',
+    'instructionEditorColor': 'Color',
+    'instructionEditorMark': 'Mark',
+    'systemStatusHelp':
+        'Which implementation each subsystem is running right now. Fallback paths keep the app working but usually run slower — the names are searchable if you want the details.',
     'cutCommands': 'Cut commands',
     'cutAddCut': 'Add cut',
     'cutNewCut': 'New cut',
@@ -1560,9 +1580,26 @@ class AppStrings {
     'autosaveChoose': 'Choose…',
     'autosaveDefault': 'Default',
     'autosaveEvery': 'Every',
+    'autosaveSectionHelp':
+        'Writes a recovery snapshot every so often, so a crash or a flat battery costs at most that much work. The project file itself only changes when you save.',
+    'autosaveSwitchHelp':
+        'Off means the project only changes when you save it, and a crash costs everything since.',
+    'recoverySnapshotsTitle': 'Recovery snapshots',
+    'recoverySnapshotsHelp':
+        'Unsaved work autosave has written, one per project. Saving a project retires its snapshot; one untouched for 30 days is cleaned up on launch.',
+    'appContainerTitle': 'App container',
+    'appContainerHelp':
+        'What the app keeps outside your project files: settings and brush tips, recovery snapshots, conformed audio, and media an import copied in that no save has absorbed yet.',
+    'recordingsFolderTitle': 'Recordings folder',
+    'recordingsFolderHelp':
+        'Where voice takes land. Saving copies the ones a project uses into the project file; every take stays here either way, so a recording is never in one place only.',
+    'conformCacheTitle': 'Conform cache',
+    'conformCacheHelp':
+        'Decoded audio, kept so a waveform and playback do not decode the same file twice. A conform is around twelve times the size of its source, so point this at a drive with room — and out of a cloud-synced folder. Deleting it costs time, never content.',
+    'containerEmpty': 'Empty',
+    'conformHoldingTemplate': 'Holding {size}',
     'autosaveEmptyNow': 'Empty now',
     'commonMinutesShort': ' min',
-    'autosaveSidecarFolder': 'Keep sidecars in a separate folder',
     'exExport': 'Export',
     'exAddToQueue': 'Add to queue',
     'exImage': 'Image',
@@ -2003,6 +2040,9 @@ class AppStrings {
     'guideAddVanishingPoint': '消失点を追加',
     'guideMakeVertical': '完全な垂直にする',
     'recoverAutosaveTitle': '自動保存の変更を復元しますか？',
+    'recoveryDeleteTitle': '復旧スナップショットを削除',
+    'recoveryDeleteMessageTemplate':
+        '{n} 件のスナップショットに、プロジェクトファイルへ一度も保存されていない作業が入っています。削除するとその作業は元に戻せません。',
     'recoverAutosaveBody':
         'このプロジェクトには、より新しい自動保存があります。それを復元'
         'しますか、それとも最後に保存したファイルを開きますか？',
@@ -2259,6 +2299,11 @@ class AppStrings {
     'instructionEndLabel': '終点名（B）',
     'instructionMemoLabel': 'メモ（タイムシートのメモ欄）',
     'instructionEditSetButton': '指示記号を編集…',
+    'instructionEditorIcon': 'アイコン',
+    'instructionEditorColor': '色',
+    'instructionEditorMark': '記号',
+    'systemStatusHelp':
+        '各サブシステムが今どの実装で動いているかです。フォールバック経路でもアプリは動きますが、たいていは遅くなります — 詳しく知りたいときは名前で検索できます。',
     'shortcutCategory.Navigation': 'ナビゲーション',
     'shortcutCategory.Playback': '再生',
     'shortcutCategory.Edit': '編集',
@@ -2390,9 +2435,25 @@ class AppStrings {
     'autosaveChoose': '選択…',
     'autosaveDefault': '既定',
     'autosaveEvery': '間隔',
+    'autosaveSectionHelp':
+        '一定間隔で復旧用スナップショットを書き出すので、クラッシュや電池切れで失う作業は最大でもその間隔ぶんです。プロジェクトファイル自体は保存したときだけ変わります。',
+    'autosaveSwitchHelp': 'オフにすると、プロジェクトは保存したときだけ変わり、クラッシュすればそれ以降の作業はすべて失われます。',
+    'recoverySnapshotsTitle': '復旧スナップショット',
+    'recoverySnapshotsHelp':
+        '自動保存が書き出した未保存の作業で、プロジェクトごとに1つです。プロジェクトを保存するとそのスナップショットは役目を終えます。30日間触れられなかったものは起動時に整理されます。',
+    'appContainerTitle': 'アプリコンテナ',
+    'appContainerHelp':
+        'プロジェクトファイルの外にアプリが持つもの — 設定とブラシ先端、復旧スナップショット、コンフォーム済み音声、そして読み込みが取り込んだまま、まだどの保存にも吸収されていないメディアです。',
+    'recordingsFolderTitle': '録音フォルダ',
+    'recordingsFolderHelp':
+        'ボイステイクが置かれる場所です。保存すると、プロジェクトが使っているテイクはプロジェクトファイルに複製されます。どちらにせよテイクはここにも残るので、録音が1か所にしかない状態にはなりません。',
+    'conformCacheTitle': 'コンフォームキャッシュ',
+    'conformCacheHelp':
+        'デコード済みの音声で、波形と再生が同じファイルを二度デコードしないように残しています。コンフォームは元の約12倍の大きさになるので、空きのあるドライブを、そしてクラウド同期フォルダの外を指してください。消してもかかるのは時間だけで、中身は失われません。',
+    'containerEmpty': '空',
+    'conformHoldingTemplate': '{size} 使用中',
     'autosaveEmptyNow': '今すぐ空にする',
     'commonMinutesShort': ' 分',
-    'autosaveSidecarFolder': 'サイドカーを別フォルダに置く',
     'exExport': '書き出し',
     'exAddToQueue': 'キューに追加',
     'exImage': '画像',
@@ -2862,6 +2923,9 @@ class AppStrings {
     'guideAddVanishingPoint': '소실점 추가',
     'guideMakeVertical': '정확히 수직으로',
     'recoverAutosaveTitle': '자동 저장된 변경을 복구할까요?',
+    'recoveryDeleteTitle': '복구 스냅샷 삭제',
+    'recoveryDeleteMessageTemplate':
+        '스냅샷 {n}개에 프로젝트 파일로 한 번도 저장된 적 없는 작업이 들어 있습니다. 삭제하면 그 작업은 되돌릴 수 없습니다.',
     'recoverAutosaveBody':
         '이 프로젝트에 더 최신인 자동 저장이 있습니다. 그것을 복구할까요, '
         '아니면 마지막으로 저장된 파일을 열까요?',
@@ -3116,6 +3180,11 @@ class AppStrings {
     'instructionEndLabel': '끝 이름 (B)',
     'instructionMemoLabel': '메모 (타임시트 메모 칸)',
     'instructionEditSetButton': '지시 기호 편집…',
+    'instructionEditorIcon': '아이콘',
+    'instructionEditorColor': '색',
+    'instructionEditorMark': '기호',
+    'systemStatusHelp':
+        '각 서브시스템이 지금 어떤 구현으로 돌고 있는지입니다. 폴백 경로에서도 앱은 동작하지만 대개 더 느립니다 — 자세히 알고 싶으면 이름으로 검색할 수 있습니다.',
     'shortcutCategory.Navigation': '이동',
     'shortcutCategory.Playback': '재생',
     'shortcutCategory.Edit': '편집',
@@ -3243,9 +3312,25 @@ class AppStrings {
     'autosaveChoose': '선택…',
     'autosaveDefault': '기본',
     'autosaveEvery': '주기',
+    'autosaveSectionHelp':
+        '일정 주기로 복구용 스냅샷을 씁니다. 크래시나 배터리 방전으로 잃는 작업이 최대 그 주기만큼으로 줄어듭니다. 프로젝트 파일 자체는 저장할 때만 바뀝니다.',
+    'autosaveSwitchHelp': '끄면 프로젝트는 저장할 때만 바뀌고, 크래시가 나면 그 이후 작업이 전부 사라집니다.',
+    'recoverySnapshotsTitle': '복구 스냅샷',
+    'recoverySnapshotsHelp':
+        '자동 저장이 써 둔 미저장 작업으로, 프로젝트당 하나입니다. 프로젝트를 저장하면 그 스냅샷은 역할을 마칩니다. 30일 동안 손대지 않은 것은 실행할 때 정리됩니다.',
+    'appContainerTitle': '앱 컨테이너',
+    'appContainerHelp':
+        '프로젝트 파일 바깥에 앱이 두는 것 — 설정과 브러시 팁, 복구 스냅샷, 컨폼된 오디오, 그리고 가져오기가 복사해 두었지만 아직 어떤 저장에도 흡수되지 않은 미디어입니다.',
+    'recordingsFolderTitle': '녹음 폴더',
+    'recordingsFolderHelp':
+        '보이스 테이크가 놓이는 곳입니다. 저장하면 프로젝트가 쓰는 테이크가 프로젝트 파일 안으로 복사됩니다. 어느 쪽이든 테이크는 여기에도 남으므로, 녹음이 한 곳에만 있는 일은 없습니다.',
+    'conformCacheTitle': '컨폼 캐시',
+    'conformCacheHelp':
+        '디코드해 둔 오디오로, 파형과 재생이 같은 파일을 두 번 디코드하지 않게 남겨 둡니다. 컨폼은 원본의 약 12배 크기가 되므로 여유 있는 드라이브를, 그리고 클라우드 동기화 폴더 바깥을 가리키세요. 지워도 드는 것은 시간뿐이고 내용은 잃지 않습니다.',
+    'containerEmpty': '비어 있음',
+    'conformHoldingTemplate': '{size} 사용 중',
     'autosaveEmptyNow': '지금 비우기',
     'commonMinutesShort': '분',
-    'autosaveSidecarFolder': '사이드카를 별도 폴더에 보관',
     'exExport': '내보내기',
     'exAddToQueue': '큐에 추가',
     'exImage': '이미지',
@@ -3725,6 +3810,9 @@ class AppStrings {
     'guideAddVanishingPoint': 'Ajouter un point de fuite',
     'guideMakeVertical': 'Rendre exactement vertical',
     'recoverAutosaveTitle': 'Récupérer les modifications enregistrées ?',
+    'recoveryDeleteTitle': 'Supprimer les instantanés de récupération',
+    'recoveryDeleteMessageTemplate':
+        '{n} instantanés contiennent du travail jamais enregistré dans un fichier de projet. Supprimés, ce travail est irrécupérable.',
     'recoverAutosaveBody':
         'Une sauvegarde automatique plus récente existe pour ce projet. La '
         'récupérer, ou ouvrir le fichier tel quel ?',
@@ -3991,6 +4079,11 @@ class AppStrings {
     'instructionEndLabel': 'Nom de fin (B)',
     'instructionMemoLabel': 'Mémo (bande mémo de la feuille)',
     'instructionEditSetButton': 'Modifier les indications…',
+    'instructionEditorIcon': 'Icône',
+    'instructionEditorColor': 'Couleur',
+    'instructionEditorMark': 'Repère',
+    'systemStatusHelp':
+        'Quelle implémentation chaque sous-système exécute en ce moment. Les chemins de repli gardent l\'application fonctionnelle mais tournent en général plus lentement — les noms sont cherchables si vous voulez les détails.',
     'shortcutCategory.Navigation': 'Navigation',
     'shortcutCategory.Playback': 'Lecture',
     'shortcutCategory.Edit': 'Édition',
@@ -4131,10 +4224,26 @@ class AppStrings {
     'autosaveChoose': 'Choisir…',
     'autosaveDefault': 'Par défaut',
     'autosaveEvery': 'Toutes les',
+    'autosaveSectionHelp':
+        'Écrit un instantané de récupération à intervalle régulier : un plantage ou une batterie vide ne coûte au plus que cet intervalle de travail. Le fichier de projet lui-même ne change qu\'à l\'enregistrement.',
+    'autosaveSwitchHelp':
+        'Désactivé, le projet ne change qu\'à l\'enregistrement, et un plantage coûte tout ce qui a suivi.',
+    'recoverySnapshotsTitle': 'Instantanés de récupération',
+    'recoverySnapshotsHelp':
+        'Le travail non enregistré que la sauvegarde automatique a écrit, un par projet. Enregistrer un projet retire son instantané ; celui resté intact 30 jours est nettoyé au lancement.',
+    'appContainerTitle': 'Conteneur de l\'application',
+    'appContainerHelp':
+        'Ce que l\'application garde en dehors de vos fichiers de projet : réglages et pointes de brosse, instantanés de récupération, audio conformé, et les médias qu\'un import a copiés et qu\'aucun enregistrement n\'a encore absorbés.',
+    'recordingsFolderTitle': 'Dossier des enregistrements',
+    'recordingsFolderHelp':
+        'Où atterrissent les prises voix. L\'enregistrement copie dans le fichier de projet celles que le projet utilise ; chaque prise reste ici de toute façon, si bien qu\'un enregistrement n\'est jamais à un seul endroit.',
+    'conformCacheTitle': 'Cache de conformation',
+    'conformCacheHelp':
+        'Audio décodé, conservé pour qu\'une forme d\'onde et la lecture ne décodent pas deux fois le même fichier. Une conformation pèse environ douze fois sa source : visez un disque avec de la place, et hors d\'un dossier synchronisé dans le cloud. La supprimer coûte du temps, jamais du contenu.',
+    'containerEmpty': 'Vide',
+    'conformHoldingTemplate': '{size} occupés',
     'autosaveEmptyNow': 'Vider maintenant',
     'commonMinutesShort': ' min',
-    'autosaveSidecarFolder':
-        'Garder les fichiers annexes dans un dossier séparé',
     'exExport': 'Exporter',
     'exAddToQueue': 'Ajouter à la file',
     'exImage': 'Image',
@@ -4587,6 +4696,8 @@ class AppStrings {
     'guideAddVanishingPoint': '添加消失点',
     'guideMakeVertical': '设为完全垂直',
     'recoverAutosaveTitle': '要恢复自动保存的更改吗？',
+    'recoveryDeleteTitle': '删除恢复快照',
+    'recoveryDeleteMessageTemplate': '有 {n} 份快照保存着从未写入项目文件的工作。删除后这些工作将无法恢复。',
     'recoverAutosaveBody': '此项目存在更新的自动保存。是恢复它，还是打开上次保存的文件？',
     'recoverOpenSaved': '丢弃并打开',
     'recoverOpenSavedHint': '删除自动保存，并打开上次保存状态的文件。此操作无法撤销。',
@@ -4818,6 +4929,10 @@ class AppStrings {
     'instructionEndLabel': '终点名称（B）',
     'instructionMemoLabel': '备注（摄影表备注栏）',
     'instructionEditSetButton': '编辑指示记号…',
+    'instructionEditorIcon': '图标',
+    'instructionEditorColor': '颜色',
+    'instructionEditorMark': '记号',
+    'systemStatusHelp': '每个子系统当前运行的是哪一种实现。回退路径仍能让应用正常工作，但通常更慢 — 想了解细节可以按名称搜索。',
     'shortcutCategory.Navigation': '导航',
     'shortcutCategory.Playback': '播放',
     'shortcutCategory.Edit': '编辑',
@@ -4940,9 +5055,25 @@ class AppStrings {
     'autosaveChoose': '选择…',
     'autosaveDefault': '默认',
     'autosaveEvery': '间隔',
+    'autosaveSectionHelp':
+        '每隔一段时间写入一份恢复快照，崩溃或电量耗尽最多只损失这段时间的工作。项目文件本身只在保存时才会改变。',
+    'autosaveSwitchHelp': '关闭后，项目只在保存时才会改变；一旦崩溃，此后的工作将全部丢失。',
+    'recoverySnapshotsTitle': '恢复快照',
+    'recoverySnapshotsHelp':
+        '自动保存写下的未保存工作，每个项目一份。保存项目后其快照即退役；30 天未曾变动的会在启动时清理。',
+    'appContainerTitle': '应用容器',
+    'appContainerHelp':
+        '应用保存在项目文件之外的内容：设置与笔尖、恢复快照、已转换的音频，以及导入时复制进来、尚未被任何一次保存吸收的媒体。',
+    'recordingsFolderTitle': '录音文件夹',
+    'recordingsFolderHelp':
+        '配音素材落地的位置。保存时会把项目用到的素材复制进项目文件；无论如何每条素材都会留在这里，因此录音绝不会只存在于一处。',
+    'conformCacheTitle': '转换缓存',
+    'conformCacheHelp':
+        '已解码的音频，保留下来是为了让波形和播放不必把同一个文件解码两次。一次转换约为源文件的十二倍大小，因此请指向有空间的驱动器，并避开云同步文件夹。删除它只花时间，绝不会损失内容。',
+    'containerEmpty': '空',
+    'conformHoldingTemplate': '占用 {size}',
     'autosaveEmptyNow': '立即清空',
     'commonMinutesShort': ' 分钟',
-    'autosaveSidecarFolder': '将附属文件放在单独文件夹',
     'exExport': '导出',
     'exAddToQueue': '加入队列',
     'exImage': '图像',
