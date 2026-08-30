@@ -1242,22 +1242,6 @@ class TimelineLaneFrameRow extends StatelessWidget {
     bool selectionCoversRow(TimelineLaneSelection? selection) =>
         laneSelectionCoversBandRow(selection, layer.id, lane.laneId);
 
-    // The room a NAME has before the next key on this lane: a label may not
-    // run under the diamond that follows it, which is the same thing the
-    // run labels do on the frame blocks.
-    double nameRoom(int frame) {
-      var next = frameEndIndexExclusive;
-      for (final other in lane.keyedFrames) {
-        if (other > frame && other < next) {
-          next = other;
-        }
-      }
-      return ((next - frame) * cellExtent - markerSize).clamp(
-        0.0,
-        double.infinity,
-      );
-    }
-
     List<Widget> markerChildren(TimelineLaneSelection? selection) => [
       // R27 #14: the selection BAND is no longer painted here. It rides
       // the cursor overlay with the cell selection's exact geometry and
@@ -1307,10 +1291,21 @@ class TimelineLaneFrameRow extends StatelessWidget {
         for (final entry in lane.keyNames.entries)
           if (entry.key >= frameStartIndex &&
               entry.key < frameEndIndexExclusive)
-            // ㉗: a UNION's name sits in the middle of its cell, printed on
-            // the mark the way a frame block prints its cel name — the mark
-            // is the paper. A member lane keeps the label beside its
-            // diamond, where a 6px mark leaves no room to print inside.
+            // ㉗: EVERY key name sits in the middle of its cell. The two
+            // branches differ only in what they are printed ON.
+            //
+            // 🚨THE MEMBER USED TO SIT BESIDE ITS DIAMOND ON MY SAY-SO, not
+            // the user's. 유저 원문 ㉗ said 「**유니언 이름은** 오른쪽 위가
+            // 아니라 칸 중앙」 — the union only — and I extended it into a
+            // rule for members and wrote the reason here as if it were
+            // theirs. `F-17-Q1` put the real question to them on 08-26 and
+            // the answer was **B — 「마크는 그대로, 이름만 칸 중앙에」**,
+            // with the objection I had assumed waved off in one line:
+            // 「키가 있는건 글자로도 아니까 아무문제없어」.
+            //
+            // ⛔So the 6px mark stays 6px (that was option A, and it was not
+            // chosen), and the name moves to the centre over it. The word
+            // itself is what says a key is there.
             if (lane.isGroupHeader)
               Positioned(
                 left: (entry.key - frameStartIndex) * cellExtent,
@@ -1337,17 +1332,21 @@ class TimelineLaneFrameRow extends StatelessWidget {
               )
             else
               Positioned(
-                left:
-                    (entry.key - frameStartIndex) * cellExtent +
-                    cellExtent / 2 +
-                    markerSize * 0.6,
-                top: (crossExtent / 2 - markerSize / 2 - _laneKeyNameExtent)
-                    .clamp(0.0, crossExtent),
-                width: nameRoom(entry.key),
-                height: _laneKeyNameExtent,
+                left: (entry.key - frameStartIndex) * cellExtent,
+                top: 0,
+                width: cellExtent,
+                height: crossExtent,
                 // Display only: the band's own gestures (stand, select,
                 // move) own this axis, and a label is not a second grammar.
-                child: IgnorePointer(child: _LaneKeyName(text: entry.value)),
+                child: IgnorePointer(
+                  child: _LaneKeyName(
+                    text: entry.value,
+                    // ⛔The BAND's ink and the band's own small type — a
+                    // member's mark is not paper, so nothing here borrows
+                    // the union's paper rules.
+                    alignment: Alignment.center,
+                  ),
+                ),
               ),
     ];
 
@@ -1521,14 +1520,17 @@ class TimelineLaneFrameRow extends StatelessWidget {
 /// rather than as a label. The zoom itself is the gate — no separate
 /// setting, the same way the run labels fade out on their own.
 const double _laneKeyNameMinCellExtent = 14;
-const double _laneKeyNameExtent = 9;
 const double _laneKeyNameFontSize = 8;
 
-/// A named key's label at the diamond's upper right.
+/// A named key's label, centred in its cell.
 ///
-/// CLIPPED, not ellipsised: the slot IS the room before the next key, and a
-/// name that outgrows it should be cut rather than turned into "Wal…" —
-/// the first letters are what tell two names apart at a glance.
+/// CLIPPED, not ellipsised: the slot is one cell, and a name that outgrows
+/// it should be cut rather than turned into "Wal…" — the first letters are
+/// what tell two names apart at a glance.
+///
+/// 🪦`nameRoom` (the room before the next diamond) and `_laneKeyNameExtent`
+/// (a 9px strip above the mark) went with the beside-the-diamond layout
+/// they existed to serve — `F-17-Q1` 답 B.
 class _LaneKeyName extends StatelessWidget {
   const _LaneKeyName({
     required this.text,
