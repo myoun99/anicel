@@ -377,7 +377,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
                     layerId: layer.id,
                     mark: layer.mark,
                     onMarkSelected: onLayerMarkSelected,
-                    dimmed: !layer.isVisible,
+                    isVisible: layer.isVisible,
                   ),
                   // The TYPE BUTTON (UI-R24 #7): the kind icon in its OWN
                   // fixed slot, a control separate from the name (function

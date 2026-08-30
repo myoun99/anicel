@@ -34,7 +34,7 @@ void main() {
                 layerId: const LayerId('L1'),
                 mark: mark,
                 onMarkSelected: (_, _) {},
-                dimmed: dimmed,
+                isVisible: !dimmed,
               ),
             ),
           ),
