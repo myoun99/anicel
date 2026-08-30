@@ -5467,7 +5467,7 @@ class _RailGroupButton extends StatelessWidget {
                   dimension: ToolsPanel.buttonExtent,
                   child: face,
                 ),
-              ),
+              )),
             ),
           );
     if (dragging == null) {

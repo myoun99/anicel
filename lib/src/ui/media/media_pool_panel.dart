@@ -164,7 +164,11 @@ class MediaPoolPanel extends StatelessWidget {
     onRelinkAsset(path, next, grants);
   }
 
-  /// `2.1 MB + 35.7 MB · 08-12 19:41` — as much of it as is known.
+  /// `55 MB + 1.2 GB · 08-12 19:41` — as much of it as is known.
+  ///
+  /// 🪦The example used to read `2.1 MB`, which [byteSizeLabel] never
+  /// produces: megabytes are whole there and only gigabytes carry a
+  /// decimal.
   ///
   /// 🚨★★★**THE SIZE SHOWN IS THE SIZE TAKEN** (유저 2026-08-30: 「파일이
   /// 보여주는 크기는 압축된 크기를 보여주는게 맞겟지? … 아무튼 실제크기」).
@@ -183,9 +187,6 @@ class MediaPoolPanel extends StatelessWidget {
   String _subtitleFor(MediaAsset asset) {
     final parts = <String>[];
     final bytes = storedBytes[asset.path] ?? asset.identity?.lengthBytes;
-    if (bytes != null && bytes > 0) {
-      parts.add(byteSizeLabel(bytes));
-    }
     // 🚨The CONFORM, asked for by name (유저 2026-08-30: 「가시화정책에 따라
     // 미디어풀 패널에서 해당파일의 컨폼파일 크기 표시할것」). It is several
     // times the sound itself and was invisible per-asset until now.
@@ -193,8 +194,19 @@ class MediaPoolPanel extends StatelessWidget {
     // ⛔`+` and nothing else. It says「and this much more」, which is
     // exactly what a conform is, and a word here would be the explanatory
     // caption this app does not put under things.
+    //
+    // ⚠️ONE part, not two. The parts below are joined with `·`, which
+    // separates KINDS of fact — a size from a date. The conform is not
+    // another kind of fact; it is more of the same one, and `55 MB · +
+    // 660 MB` reads as a list of two sizes rather than as a total.
     final conform = conformBytes[asset.path];
-    if (conform != null && conform > 0) {
+    if (bytes != null && bytes > 0) {
+      parts.add(
+        conform != null && conform > 0
+            ? '${byteSizeLabel(bytes)} + ${byteSizeLabel(conform)}'
+            : byteSizeLabel(bytes),
+      );
+    } else if (conform != null && conform > 0) {
       parts.add('+ ${byteSizeLabel(conform)}');
     }
     final modified = modifiedTimes[asset.path];
