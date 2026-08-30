@@ -8,6 +8,7 @@ import '../dialogs/app_prompt_dialog.dart';
 import 'export_settings_modules.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
+import '../theme/app_theme.dart' show AppShapes;
 
 /// The left drawer: per-tab presets (자동 규칙만). Selection highlight is
 /// value equality against the live spec — editing any knob visibly
@@ -98,19 +99,18 @@ class ExportPresetRail extends StatelessWidget {
                 child: InkWell(
                   key: const ValueKey<String>('export-preset-save-current'),
                   onTap: silentPress(enabled ? onSaveCurrent : null),
-                  borderRadius: BorderRadius.circular(4),
+                  customBorder: AppShapes.container(AppShapes.wellRadius),
                   child: Container(
                     margin: const EdgeInsets.only(top: 2),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 7,
                       vertical: 4,
                     ),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: theme.dividerColor,
-                        style: BorderStyle.solid,
+                    decoration: ShapeDecoration(
+                      shape: AppShapes.container(
+                        AppShapes.wellRadius,
+                        side: BorderSide(color: theme.dividerColor),
                       ),
-                      borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       '+ Save current…',
@@ -166,14 +166,16 @@ class _PresetEntry extends StatelessWidget {
       child: InkWell(
         key: ValueKey<String>('export-preset-${preset.id.value}'),
         onTap: silentPress(enabled ? onApply : null),
-        borderRadius: BorderRadius.circular(4),
+        customBorder: AppShapes.container(AppShapes.wellRadius),
         child: Container(
           margin: const EdgeInsets.only(bottom: 3),
           padding: const EdgeInsets.fromLTRB(7, 3, 4, 4),
-          decoration: BoxDecoration(
+          decoration: ShapeDecoration(
             color: selected ? accent.withValues(alpha: 0.12) : null,
-            border: Border.all(color: selected ? accent : Colors.transparent),
-            borderRadius: BorderRadius.circular(4),
+            shape: AppShapes.container(
+              AppShapes.wellRadius,
+              side: BorderSide(color: selected ? accent : Colors.transparent),
+            ),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,

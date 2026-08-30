@@ -49,47 +49,52 @@ class ExportAccordion extends StatelessWidget {
     final theme = Theme.of(context);
     final dim = theme.colorScheme.onSurfaceVariant;
     return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: theme.dividerColor),
-        borderRadius: BorderRadius.circular(5),
+      decoration: ShapeDecoration(
+        shape: AppShapes.container(
+          5,
+          side: BorderSide(color: theme.dividerColor),
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ControlPressClaim(onPressed: onToggle, child: InkWell(
-            onTap: silentPress(onToggle),
-            child: Container(
-              color: AppColors.washUp.withValues(alpha: 0.5),
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      expanded ? title : '$title — $summary',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: expanded ? null : dim,
-                        fontWeight: expanded
-                            ? FontWeight.w600
-                            : FontWeight.w400,
+          ControlPressClaim(
+            onPressed: onToggle,
+            child: InkWell(
+              onTap: silentPress(onToggle),
+              child: Container(
+                color: AppColors.washUp.withValues(alpha: 0.5),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        expanded ? title : '$title — $summary',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: expanded ? null : dim,
+                          fontWeight: expanded
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                        ),
                       ),
                     ),
-                  ),
-                  if (resetEnabled != null) ...[
-                    _ResetChip(enabled: resetEnabled!, onPressed: onReset),
-                    const SizedBox(width: 6),
+                    if (resetEnabled != null) ...[
+                      _ResetChip(enabled: resetEnabled!, onPressed: onReset),
+                      const SizedBox(width: 6),
+                    ],
+                    Icon(
+                      expanded ? Icons.expand_more : Icons.chevron_right,
+                      size: 14,
+                      color: dim,
+                    ),
                   ],
-                  Icon(
-                    expanded ? Icons.expand_more : Icons.chevron_right,
-                    size: 14,
-                    color: dim,
-                  ),
-                ],
+                ),
               ),
             ),
-          )),
+          ),
           if (expanded)
             Padding(
               padding: const EdgeInsets.fromLTRB(7, 6, 7, 7),
@@ -113,23 +118,28 @@ class _ResetChip extends StatelessWidget {
     final color = enabled
         ? theme.colorScheme.onSurface
         : theme.disabledColor.withValues(alpha: 0.4);
-    return ControlPressClaim(onPressed: enabled ? onPressed : null, child: InkWell(
-      onTap: silentPress(enabled ? onPressed : null),
-      borderRadius: BorderRadius.circular(4),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: enabled ? theme.dividerColor : Colors.transparent,
+    return ControlPressClaim(
+      onPressed: enabled ? onPressed : null,
+      child: InkWell(
+        onTap: silentPress(enabled ? onPressed : null),
+        customBorder: AppShapes.container(AppShapes.wellRadius),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+          decoration: ShapeDecoration(
+            shape: AppShapes.container(
+              AppShapes.wellRadius,
+              side: BorderSide(
+                color: enabled ? theme.dividerColor : Colors.transparent,
+              ),
+            ),
           ),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(
-          'Reset',
-          style: theme.textTheme.labelSmall?.copyWith(color: color),
+          child: Text(
+            'Reset',
+            style: theme.textTheme.labelSmall?.copyWith(color: color),
+          ),
         ),
       ),
-    ));
+    );
   }
 }
 
@@ -152,30 +162,33 @@ class ExportChip extends StatelessWidget {
     final theme = Theme.of(context);
     final accent = theme.colorScheme.primary;
     final disabled = onTap == null;
-    return ControlPressClaim(onPressed: onTap, child: InkWell(
-      onTap: silentPress(onTap),
-      borderRadius: BorderRadius.circular(4),
-      child: Container(
-        padding: _chipPadding,
-        decoration: BoxDecoration(
-          color: selected ? accent.withValues(alpha: 0.14) : null,
-          border: Border.all(
-            color: selected ? accent : theme.dividerColor,
+    return ControlPressClaim(
+      onPressed: onTap,
+      child: InkWell(
+        onTap: silentPress(onTap),
+        customBorder: AppShapes.container(AppShapes.wellRadius),
+        child: Container(
+          padding: _chipPadding,
+          decoration: ShapeDecoration(
+            color: selected ? accent.withValues(alpha: 0.14) : null,
+            shape: AppShapes.container(
+              AppShapes.wellRadius,
+              side: BorderSide(color: selected ? accent : theme.dividerColor),
+            ),
           ),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(
-          label,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: disabled
-                ? theme.disabledColor
-                : selected
-                ? accent
-                : theme.colorScheme.onSurface,
+          child: Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: disabled
+                  ? theme.disabledColor
+                  : selected
+                  ? accent
+                  : theme.colorScheme.onSurface,
+            ),
           ),
         ),
       ),
-    ));
+    );
   }
 }
 
@@ -236,11 +249,12 @@ class ExportFormatCapabilities {
   /// Null = everything in the lineup is writable (the EX2 behavior).
   final bool Function(ExportStillFormat format)? stillEnabled;
   final bool Function(ExportVideoContainer container, ExportVideoCodec codec)?
-      videoEnabled;
+  videoEnabled;
   final String? Function(
     ExportVideoContainer container,
     ExportVideoCodec codec,
-  )? videoReason;
+  )?
+  videoReason;
 
   bool get hasVideo => video.isNotEmpty;
 
@@ -315,8 +329,7 @@ class ExportFormatModule extends StatelessWidget {
     final showChannels =
         selection.isStill && selection.stillFormat.supportsAlpha;
     final showBackground =
-        selection.isStill &&
-        selection.effectiveChannels == ExportChannels.rgb;
+        selection.isStill && selection.effectiveChannels == ExportChannels.rgb;
     final showBitrate = selection.isVideo && !selection.videoCodec.isProRes;
     final showQuality =
         selection.isStill && selection.stillFormat == ExportStillFormat.jpg;
@@ -343,10 +356,10 @@ class ExportFormatModule extends StatelessWidget {
                         'export-format-container-${container.jsonValue}',
                       ),
                       label: container.label,
-                      selected: selection.isVideo &&
-                          selection.container == container,
-                      onTap: enabled &&
-                              capabilities.isContainerEnabled(container)
+                      selected:
+                          selection.isVideo && selection.container == container,
+                      onTap:
+                          enabled && capabilities.isContainerEnabled(container)
                           ? () {
                               // Land on that container's first WRITABLE
                               // codec when the current one is off there.
@@ -358,14 +371,14 @@ class ExportFormatModule extends StatelessWidget {
                                 container,
                                 next.videoCodec,
                               )) {
-                                for (final codec
-                                    in capabilities.codecsFor(container)) {
+                                for (final codec in capabilities.codecsFor(
+                                  container,
+                                )) {
                                   if (capabilities.isVideoEnabled(
                                     container,
                                     codec,
                                   )) {
-                                    next =
-                                        next.copyWith(videoCodec: codec);
+                                    next = next.copyWith(videoCodec: codec);
                                     break;
                                   }
                                 }
@@ -394,8 +407,8 @@ class ExportFormatModule extends StatelessWidget {
                       'export-format-still-${still.jsonValue}',
                     ),
                     label: still.label,
-                    selected: selection.isStill &&
-                        selection.stillFormat == still,
+                    selected:
+                        selection.isStill && selection.stillFormat == still,
                     onTap: enabled && capabilities.isStillEnabled(still)
                         ? () => _change(
                             selection.copyWith(
@@ -427,13 +440,13 @@ class ExportFormatModule extends StatelessWidget {
                       ),
                       label: codec.label,
                       selected: selection.videoCodec == codec,
-                      onTap: enabled &&
+                      onTap:
+                          enabled &&
                               capabilities.isVideoEnabled(
                                 selection.container,
                                 codec,
                               )
-                          ? () =>
-                              _change(selection.copyWith(videoCodec: codec))
+                          ? () => _change(selection.copyWith(videoCodec: codec))
                           : null,
                     ),
                   ),
@@ -448,16 +461,12 @@ class ExportFormatModule extends StatelessWidget {
                 Expanded(
                   child: Slider(
                     key: const ValueKey<String>('export-format-bitrate'),
-                    value: selection.videoBitrateMbps
-                        .clamp(0, 50)
-                        .toDouble(),
+                    value: selection.videoBitrateMbps.clamp(0, 50).toDouble(),
                     max: 50,
                     divisions: 50,
                     onChanged: enabled
                         ? (value) => _change(
-                            selection.copyWith(
-                              videoBitrateMbps: value.round(),
-                            ),
+                            selection.copyWith(videoBitrateMbps: value.round()),
                           )
                         : null,
                   ),
@@ -514,8 +523,7 @@ class ExportFormatModule extends StatelessWidget {
                 ExportChip(
                   key: const ValueKey<String>('export-format-channels-rgba'),
                   label: 'RGBA',
-                  selected:
-                      selection.effectiveChannels == ExportChannels.rgba,
+                  selected: selection.effectiveChannels == ExportChannels.rgba,
                   onTap: enabled
                       ? () => _change(
                           selection.copyWith(channels: ExportChannels.rgba),
@@ -546,8 +554,9 @@ class ExportFormatModule extends StatelessWidget {
                   label: AppText.strings.exWhite,
                   selected: selection.backgroundArgb == 0xFFFFFFFF,
                   onTap: enabled
-                      ? () =>
-                          _change(selection.copyWith(backgroundArgb: 0xFFFFFFFF))
+                      ? () => _change(
+                          selection.copyWith(backgroundArgb: 0xFFFFFFFF),
+                        )
                       : null,
                 ),
                 ExportChip(
@@ -555,8 +564,9 @@ class ExportFormatModule extends StatelessWidget {
                   label: AppText.strings.exBlack,
                   selected: selection.backgroundArgb == 0xFF000000,
                   onTap: enabled
-                      ? () =>
-                          _change(selection.copyWith(backgroundArgb: 0xFF000000))
+                      ? () => _change(
+                          selection.copyWith(backgroundArgb: 0xFF000000),
+                        )
                       : null,
                 ),
               ],
@@ -667,9 +677,7 @@ class ExportSizeModule extends StatelessWidget {
                 key: const ValueKey<String>('export-size-canvas'),
                 label: canvasLabel,
                 selected: sizeMode == ExportSizeMode.canvas,
-                onTap: enabled
-                    ? () => onChanged(ExportSizeMode.canvas)
-                    : null,
+                onTap: enabled ? () => onChanged(ExportSizeMode.canvas) : null,
               ),
           ],
         ),
@@ -710,17 +718,11 @@ class ExportToggleRow extends StatelessWidget {
           SizedBox(
             height: 24,
             child: FittedBox(
-              child: Switch(
-                key: widgetKey,
-                value: value,
-                onChanged: onChanged,
-              ),
+              child: Switch(key: widgetKey, value: value, onChanged: onChanged),
             ),
           ),
           const SizedBox(width: 6),
-          Expanded(
-            child: Text(label, style: theme.textTheme.labelSmall),
-          ),
+          Expanded(child: Text(label, style: theme.textTheme.labelSmall)),
         ],
       ),
     );
@@ -944,9 +946,8 @@ class ExportCelNamingModule extends StatelessWidget {
               label: AppText.strings.exCutFolder,
               selected: naming.cutFolder,
               onTap: enabled
-                  ? () => onChanged(
-                      naming.copyWith(cutFolder: !naming.cutFolder),
-                    )
+                  ? () =>
+                        onChanged(naming.copyWith(cutFolder: !naming.cutFolder))
                   : null,
             ),
             ExportChip(

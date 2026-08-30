@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'export_job.dart';
 import 'export_preset_rail.dart' show ExportPresetRail;
 import '../input/control_press_claim.dart';
+import '../theme/app_theme.dart' show AppShapes;
 
 /// The right drawer: the render queue. EX2 ships the column and its
 /// collapsed strip; the executor (and the enabled Add to Queue) lands
@@ -52,34 +53,39 @@ class ExportQueueColumn extends StatelessWidget {
                       ),
                     ),
                   ),
-                  ControlPressClaim(onPressed: onRenderAll, child: InkWell(
-                    key: const ValueKey<String>('export-queue-render-all'),
-                    onTap: silentPress(onRenderAll),
-                    borderRadius: BorderRadius.circular(4),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 1,
-                      ),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: onRenderAll != null
-                              ? theme.dividerColor
-                              : Colors.transparent,
+                  ControlPressClaim(
+                    onPressed: onRenderAll,
+                    child: InkWell(
+                      key: const ValueKey<String>('export-queue-render-all'),
+                      onTap: silentPress(onRenderAll),
+                      customBorder: AppShapes.container(AppShapes.wellRadius),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 1,
                         ),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        'Render All',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          fontSize: 9,
-                          color: onRenderAll != null
-                              ? theme.colorScheme.onSurface
-                              : theme.disabledColor.withValues(alpha: 0.4),
+                        decoration: ShapeDecoration(
+                          shape: AppShapes.container(
+                            AppShapes.wellRadius,
+                            side: BorderSide(
+                              color: onRenderAll != null
+                                  ? theme.dividerColor
+                                  : Colors.transparent,
+                            ),
+                          ),
+                        ),
+                        child: Text(
+                          'Render All',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            fontSize: 9,
+                            color: onRenderAll != null
+                                ? theme.colorScheme.onSurface
+                                : theme.disabledColor.withValues(alpha: 0.4),
+                          ),
                         ),
                       ),
                     ),
-                  )),
+                  ),
                 ],
               ),
             ),
@@ -143,73 +149,83 @@ class _JobCard extends StatelessWidget {
     final theme = Theme.of(context);
     final accent = theme.colorScheme.primary;
     final running = job.status == ExportJobStatus.running;
-    return ControlPressClaim(onPressed: enabled && onRestore != null ? () => onRestore!(job) : null, child: InkWell(
-      key: ValueKey<String>('export-queue-job-${job.id}'),
-      onTap: silentPress(enabled && onRestore != null ? () => onRestore!(job) : null),
-      borderRadius: BorderRadius.circular(4),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 4),
-        padding: const EdgeInsets.fromLTRB(7, 4, 4, 5),
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: running ? accent : theme.dividerColor,
-          ),
-          borderRadius: BorderRadius.circular(4),
+    return ControlPressClaim(
+      onPressed: enabled && onRestore != null ? () => onRestore!(job) : null,
+      child: InkWell(
+        key: ValueKey<String>('export-queue-job-${job.id}'),
+        onTap: silentPress(
+          enabled && onRestore != null ? () => onRestore!(job) : null,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Job ${job.id} · ${ExportPresetRail.tabLabel(job.tab)}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
+        customBorder: AppShapes.container(AppShapes.wellRadius),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 4),
+          padding: const EdgeInsets.fromLTRB(7, 4, 4, 5),
+          decoration: ShapeDecoration(
+            shape: AppShapes.container(
+              AppShapes.wellRadius,
+              side: BorderSide(color: running ? accent : theme.dividerColor),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Job ${job.id} · ${ExportPresetRail.tabLabel(job.tab)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                ),
+                  Text(
+                    _statusLabel,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontSize: 9.5,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  if (!running && onRemove != null)
+                    ControlPressClaim(
+                      onPressed: enabled ? () => onRemove!(job) : null,
+                      child: InkWell(
+                        key: ValueKey<String>('export-queue-remove-${job.id}'),
+                        onTap: silentPress(
+                          enabled ? () => onRemove!(job) : null,
+                        ),
+                        child: const Padding(
+                          padding: EdgeInsets.all(2),
+                          child: Icon(Icons.close, size: 11),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              if (job.message != null)
                 Text(
-                  _statusLabel,
+                  job.message!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontSize: 9.5,
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                if (!running && onRemove != null)
-                  ControlPressClaim(onPressed: enabled ? () => onRemove!(job) : null, child: InkWell(
-                    key: ValueKey<String>('export-queue-remove-${job.id}'),
-                    onTap: silentPress(enabled ? () => onRemove!(job) : null),
-                    child: const Padding(
-                      padding: EdgeInsets.all(2),
-                      child: Icon(Icons.close, size: 11),
-                    ),
-                  )),
-              ],
-            ),
-            if (job.message != null)
-              Text(
-                job.message!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontSize: 9.5,
-                  color: theme.colorScheme.onSurfaceVariant,
+              if (running && job.total > 0) ...[
+                const SizedBox(height: 3),
+                LinearProgressIndicator(
+                  value: job.completed / job.total,
+                  minHeight: 3,
                 ),
-              ),
-            if (running && job.total > 0) ...[
-              const SizedBox(height: 3),
-              LinearProgressIndicator(
-                value: job.completed / job.total,
-                minHeight: 3,
-              ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
-    ));
+    );
   }
 }
 
@@ -232,46 +248,56 @@ class ExportDrawerStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return ControlPressClaim(onPressed: onTap, child: InkWell(
-      onTap: silentPress(onTap),
-      child: SizedBox(
-        width: 22,
-        child: Column(
-          children: [
-            const SizedBox(height: 8),
-            Icon(chevron, size: 13, color: theme.colorScheme.onSurfaceVariant),
-            if (badgeCount > 0) ...[
-              const SizedBox(height: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary,
-                  borderRadius: BorderRadius.circular(999),
+    return ControlPressClaim(
+      onPressed: onTap,
+      child: InkWell(
+        onTap: silentPress(onTap),
+        child: SizedBox(
+          width: 22,
+          child: Column(
+            children: [
+              const SizedBox(height: 8),
+              Icon(
+                chevron,
+                size: 13,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              if (badgeCount > 0) ...[
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 1,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '$badgeCount',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontSize: 8.5,
+                      color: theme.colorScheme.onPrimary,
+                    ),
+                  ),
                 ),
+              ],
+              const SizedBox(height: 8),
+              RotatedBox(
+                quarterTurns: 1,
                 child: Text(
-                  '$badgeCount',
+                  caption.toUpperCase(),
                   style: theme.textTheme.labelSmall?.copyWith(
-                    fontSize: 8.5,
-                    color: theme.colorScheme.onPrimary,
+                    fontSize: 8,
+                    letterSpacing: 1.2,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               ),
             ],
-            const SizedBox(height: 8),
-            RotatedBox(
-              quarterTurns: 1,
-              child: Text(
-                caption.toUpperCase(),
-                style: theme.textTheme.labelSmall?.copyWith(
-                  fontSize: 8,
-                  letterSpacing: 1.2,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
-    ));
+    );
   }
 }

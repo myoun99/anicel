@@ -136,7 +136,7 @@ void main() {
 /// 🆕F-23 lowered it to 74: the colour SLOT PAIR and the readout's chip
 /// were rounded rectangles, and 「색 보여주는건 싹 다 일반 동그라미로 변경」
 /// turned both into circles — which is not a corner radius at all.
-const int _knownOffenders = 51;
+const int _knownOffenders = 32;
 
 final RegExp _offending = RegExp(
   r'BorderRadius\.circular|RoundedRectangleBorder|ClipRRect',

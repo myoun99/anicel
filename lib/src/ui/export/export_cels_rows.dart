@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/attached_layer_resolve.dart';
 import '../../models/attached_mode.dart';
 import '../../models/layer.dart';
+import '../theme/app_theme.dart' show AppShapes;
 import '../input/control_press_claim.dart';
 import '../timeline/layer_label_controls.dart'
     show layerKindIcon, layerMarkColor;
@@ -56,87 +57,96 @@ class ExportLayerRow extends StatelessWidget {
         : selected
         ? accent
         : theme.colorScheme.onSurface;
-    return ControlPressClaim(onPressed: onTap, child: InkWell(
-      onTap: silentPress(onTap),
-      borderRadius: BorderRadius.circular(4),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-        decoration: BoxDecoration(
-          color: selected ? accent.withValues(alpha: 0.12) : null,
-          border: Border.all(
-            color: selected ? accent : Colors.transparent,
+    return ControlPressClaim(
+      onPressed: onTap,
+      child: InkWell(
+        onTap: silentPress(onTap),
+        customBorder: AppShapes.container(AppShapes.wellRadius),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          decoration: ShapeDecoration(
+            color: selected ? accent.withValues(alpha: 0.12) : null,
+            shape: AppShapes.container(
+              AppShapes.wellRadius,
+              side: BorderSide(color: selected ? accent : Colors.transparent),
+            ),
           ),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Row(
-          children: [
-            if (includeDot != null) ...[
-              ControlPressClaim(onPressed: onDotTap, child: InkWell(
-                key: dotKey,
-                onTap: silentPress(onDotTap),
-                child: Container(
-                  width: 9,
-                  height: 9,
-                  decoration: BoxDecoration(
-                    color: includeDot! ? accent : null,
-                    border: Border.all(
-                      color: includeDot! ? accent : theme.dividerColor,
+          child: Row(
+            children: [
+              if (includeDot != null) ...[
+                ControlPressClaim(
+                  onPressed: onDotTap,
+                  child: InkWell(
+                    key: dotKey,
+                    onTap: silentPress(onDotTap),
+                    child: Container(
+                      width: 9,
+                      height: 9,
+                      decoration: BoxDecoration(
+                        color: includeDot! ? accent : null,
+                        border: Border.all(
+                          color: includeDot! ? accent : theme.dividerColor,
+                        ),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
-                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-              )),
-              const SizedBox(width: 5),
-            ],
-            Container(
-              width: 3.5,
-              height: 11,
-              decoration: BoxDecoration(
-                // ⑳: every mark fills, `none` included — it is the paper
-                // colour now rather than an absence, so the hairline that
-                // used to outline the empty bar has nothing to outline.
-                color: markColor,
-                borderRadius: BorderRadius.circular(1),
+                const SizedBox(width: 5),
+              ],
+              Container(
+                width: 3.5,
+                height: 11,
+                decoration: ShapeDecoration(
+                  // ⑳: every mark fills, `none` included — it is the paper
+                  // colour now rather than an absence, so the hairline that
+                  // used to outline the empty bar has nothing to outline.
+                  color: markColor,
+                  shape: AppShapes.container(1),
+                ),
               ),
-            ),
-            const SizedBox(width: 4),
-            Icon(
-              layerKindIcon(layer.kind),
-              size: 10,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 4),
-            Expanded(
-              child: Text(
-                layer.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelSmall?.copyWith(color: textColor),
+              const SizedBox(width: 4),
+              Icon(
+                layerKindIcon(layer.kind),
+                size: 10,
+                color: theme.colorScheme.onSurfaceVariant,
               ),
-            ),
-            if (trailingTag != null)
-              Padding(
-                padding: const EdgeInsets.only(left: 3),
+              const SizedBox(width: 4),
+              Expanded(
                 child: Text(
-                  trailingTag!,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    fontSize: 8,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                  layer.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(color: textColor),
                 ),
               ),
-            if (onRemove != null)
-              ControlPressClaim(onPressed: onRemove, child: InkWell(
-                onTap: silentPress(onRemove),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 3),
-                  child: Icon(Icons.close, size: 10),
+              if (trailingTag != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 3),
+                  child: Text(
+                    trailingTag!,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontSize: 8,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ),
-              )),
-          ],
+              if (onRemove != null)
+                ControlPressClaim(
+                  onPressed: onRemove,
+                  child: InkWell(
+                    onTap: silentPress(onRemove),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 3),
+                      child: Icon(Icons.close, size: 10),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
-    ));
+    );
   }
 }
 
@@ -150,15 +160,15 @@ class ExportMarkSlotsRow extends StatelessWidget {
     final theme = Theme.of(context);
     Widget slot() => Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        border: Border.all(color: theme.dividerColor),
-        borderRadius: BorderRadius.circular(4),
+      decoration: ShapeDecoration(
+        shape: AppShapes.container(
+          AppShapes.wellRadius,
+          side: BorderSide(color: theme.dividerColor),
+        ),
       ),
       child: Text(
         '— ▾',
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: theme.disabledColor,
-        ),
+        style: theme.textTheme.labelSmall?.copyWith(color: theme.disabledColor),
       ),
     );
     return Tooltip(

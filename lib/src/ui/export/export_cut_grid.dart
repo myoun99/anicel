@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../models/cut_id.dart';
 import '../input/control_press_claim.dart';
+import '../theme/app_theme.dart' show AppShapes;
 
 /// One scope cut for the grid: its number and identity.
 typedef ExportCutEntry = ({CutId id, int number});
@@ -78,37 +79,42 @@ class _ExportCutGridState extends State<ExportCutGrid> {
       children: [
         Row(
           children: [
-            ControlPressClaim(onPressed: widget.enabled && anyExcluded
+            ControlPressClaim(
+              onPressed: widget.enabled && anyExcluded
                   ? widget.onAllIncluded
-                  : null, child: InkWell(
-              key: const ValueKey<String>('export-cut-grid-all'),
-              onTap: silentPress(widget.enabled && anyExcluded
-                  ? widget.onAllIncluded
-                  : null),
-              borderRadius: BorderRadius.circular(4),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 6,
-                  vertical: 1,
+                  : null,
+              child: InkWell(
+                key: const ValueKey<String>('export-cut-grid-all'),
+                onTap: silentPress(
+                  widget.enabled && anyExcluded ? widget.onAllIncluded : null,
                 ),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: anyExcluded
-                        ? theme.dividerColor
-                        : Colors.transparent,
+                customBorder: AppShapes.container(AppShapes.wellRadius),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 1,
                   ),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  'All',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: anyExcluded
-                        ? theme.colorScheme.onSurface
-                        : theme.disabledColor.withValues(alpha: 0.4),
+                  decoration: ShapeDecoration(
+                    shape: AppShapes.container(
+                      AppShapes.wellRadius,
+                      side: BorderSide(
+                        color: anyExcluded
+                            ? theme.dividerColor
+                            : Colors.transparent,
+                      ),
+                    ),
+                  ),
+                  child: Text(
+                    'All',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: anyExcluded
+                          ? theme.colorScheme.onSurface
+                          : theme.disabledColor.withValues(alpha: 0.4),
+                    ),
                   ),
                 ),
               ),
-            )),
+            ),
             const SizedBox(width: 6),
             Flexible(
               child: Text(
@@ -198,35 +204,38 @@ class _CutCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final accent = theme.colorScheme.primary;
-    return ControlPressClaim(onPressed: enabled ? onTap : null, child: InkWell(
-      onTap: silentPress(enabled ? onTap : null),
-      child: CustomPaint(
-        painter: selected
-            ? null
-            : _HatchPainter(color: theme.dividerColor.withValues(alpha: 0.7)),
-        child: Container(
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected ? accent.withValues(alpha: 0.16) : null,
-            border: Border.all(
-              color: selected
-                  ? accent.withValues(alpha: 0.55)
-                  : theme.dividerColor,
-              width: 0.8,
+    return ControlPressClaim(
+      onPressed: enabled ? onTap : null,
+      child: InkWell(
+        onTap: silentPress(enabled ? onTap : null),
+        child: CustomPaint(
+          painter: selected
+              ? null
+              : _HatchPainter(color: theme.dividerColor.withValues(alpha: 0.7)),
+          child: Container(
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected ? accent.withValues(alpha: 0.16) : null,
+              border: Border.all(
+                color: selected
+                    ? accent.withValues(alpha: 0.55)
+                    : theme.dividerColor,
+                width: 0.8,
+              ),
+              borderRadius: BorderRadius.circular(2),
             ),
-            borderRadius: BorderRadius.circular(2),
-          ),
-          child: Text(
-            '$number',
-            style: theme.textTheme.labelSmall?.copyWith(
-              fontSize: 7.5,
-              height: 1,
-              color: selected ? accent : theme.colorScheme.onSurfaceVariant,
+            child: Text(
+              '$number',
+              style: theme.textTheme.labelSmall?.copyWith(
+                fontSize: 7.5,
+                height: 1,
+                color: selected ? accent : theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
         ),
       ),
-    ));
+    );
   }
 }
 
@@ -252,6 +261,5 @@ class _HatchPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_HatchPainter oldDelegate) =>
-      oldDelegate.color != color;
+  bool shouldRepaint(_HatchPainter oldDelegate) => oldDelegate.color != color;
 }
