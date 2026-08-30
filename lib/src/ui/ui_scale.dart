@@ -39,9 +39,45 @@ class AppUiScale {
   /// The stops, ascending. Tight around 100 (90/110) because that is the
   /// range a user reaches for to make one panel comfortable; wider steps
   /// further out, where the choice is "much bigger" rather than "a little".
-  static const List<double> ladder = <double>[0.75, 0.9, 1.0, 1.1, 1.25, 1.5];
+  ///
+  /// 🆕50% (유저 2026-08-29, I-11): 「**50%같은 더 낮은수도 넣어도
+  /// 괜찮을거같은데.** 데스크톱은 쓰기 힘들지만 dpr높은 디바이스는
+  /// 쾌적하니까」 — a stop that is unusable on a monitor and comfortable on a
+  /// phone is still a stop worth having, because the phone is where a hand
+  /// reaches for it.
+  static const List<double> ladder = <double>[
+    0.5,
+    0.75,
+    0.9,
+    1.0,
+    1.1,
+    1.25,
+    1.5,
+  ];
 
   static const double defaultScale = 1.0;
+
+  /// The scale a device starts on when NOTHING HAS EVER BEEN CHOSEN.
+  ///
+  /// 유저 2026-08-29 (I-11): 「폰에서 보니까 **75% ui로 봐도 문제없고
+  /// 쾌적**해서 dpr값에 따라 ui초기값 배율 다르게하는게 좋을까싶어」, and
+  /// on how often it may decide: 「**초기값은 첫 실행 때만** 정해짐」.
+  ///
+  /// ⛔THIS IS NOT A LIVE RULE. It is read once, on the launch that finds no
+  /// settings file, and never again — not when the app moves to another
+  /// screen, not when a device is replaced. A rule that re-derived would
+  /// eventually overwrite a scale the user chose by hand, and there is no
+  /// undo for a setting that changes itself.
+  ///
+  /// ⛔AND IT ONLY KNOWS WHAT THE USER TOLD IT. They named two devices — a
+  /// desktop (uncomfortable small) and a phone (75% comfortable) — so those
+  /// are the two answers. A tablet sits at 2.0 and keeps the 100% it has
+  /// always had, because nobody said otherwise and inventing a middle step
+  /// would be inventing a preference.
+  static double firstRunScaleFor(double devicePixelRatio) =>
+      devicePixelRatio.isFinite && devicePixelRatio >= 2.5
+      ? 0.75
+      : defaultScale;
 
   /// The LIVE scale. App-wide rather than session-owned for the same reason
   /// the accents are: widgets holding no session read it, and it outlives
