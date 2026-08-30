@@ -549,11 +549,18 @@ const kSection = <String, String>{
   '나중에': 'queue',
   // 🚨실기 확인 is a SECTION now, not a kind of card — see [foldChecksIntoCards].
   '실기 확인': 'hands',
-  // 🚨A TICK ON ONE CHECK. It keeps the card exactly where it is — 실기 확인 —
-  // because the OTHER checks are still waiting. ⚠️No column of its own: 유저
-  // 2026-08-31, 「규칙 하나도 안 늘어나고 **보드에서 확인 항목만 안 보일**
-  // 뿐인 거지」. It is an entry in the story, not a place to sit.
-  '확인': 'hands',
+  // 🚨끝은 자리가 아니라 끝이다. 유저 2026-08-31: 「확인 다 끝나서 사라지는
+  // 카드는 대분류 확인이 된다고 했잖아 … **대분류 이름적으로 완료가 더
+  // 정확한데**」 — 맞다. 개별 체크 하나를 지우는  는 **소분류**라
+  // 여기 없다: 칸을 안 바꾸므로 카드는 실기 확인에 그대로 있고, 규칙은
+  // 하나도 늘지 않는다.
+  // 🚨끝은 자리가 아니라 끝이다. 유저 2026-08-31: 「확인 다 끝나서 사라지는
+  // 카드는 대분류 확인이 된다고 했잖아 … **대분류 이름적으로 완료가 더
+  // 정확한데**」 — 맞다. 그래서 카드를 끝내는 말은 `완료` 다.
+  //
+  // ⚠️개별 체크 하나를 지우는 `확인 완료` 는 **소분류라 여기 없다**: 칸을
+  // 안 바꾸므로 카드는 실기 확인에 그대로 있고, 규칙은 하나도 늘지 않는다
+  // (유저: 「규칙 하나도 안 늘어나고 보드에서 확인 항목만 안 보일 뿐」).
   '완료': 'archived',
 };
 
@@ -646,7 +653,7 @@ List<String> checksWaiting(BoardCard e) {
   for (var i = 0; i < e.log.length; i++) {
     final name = stageName(e, i);
     if (name == '실기 확인') open.add(e.log[i].ts);
-    if (name != '확인' && name != '완료') continue;
+    if (name != '확인 완료' && name != '완료') continue;
     final ref = e.log[i].ref;
     // ⚠️No `ref` on a 완료 means 「this card is done」, full stop — what every
     // 완료 written before per-check ticks existed meant.

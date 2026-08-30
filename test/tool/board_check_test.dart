@@ -384,7 +384,7 @@ void main() {
         '{"kind":"item","id":"A","at":"실기 확인","note":"$note",'
         '"ts":"${at(hhmm)}"}';
     String tick(String hhmm) =>
-        '{"kind":"item","id":"A","at":"확인","said":"확인 — 문제 없음",'
+        '{"kind":"item","id":"A","at":"확인 완료","said":"확인 — 문제 없음",'
         '"ref":"${at(hhmm)}","ts":"${at('11:00')}"}';
 
     test('🚨★★★one tick does not take the other two off the board', () {

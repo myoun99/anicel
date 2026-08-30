@@ -380,7 +380,7 @@ Future<void> _handle(HttpRequest req) async {
         _append({
           'kind': 'item',
           'id': id,
-          'at': left.isEmpty ? '완료' : '확인',
+          'at': left.isEmpty ? '완료' : '확인 완료',
           'ref': ref,
           'said': '확인 — 문제 없음',
           'ts': _now(),
@@ -1815,16 +1815,14 @@ bool _lastIsThis(BoardCard e, int i) {
   return true;
 }
 
-/// Whether the hands-on check written at [ts] already has its own 완료.
-/// ⚠️A 완료 with no `ref` is the old whole-card shape and clears everything.
-bool _cleared(BoardCard e, String ts) {
-  for (var i = 0; i < e.log.length; i++) {
-    if (stageName(e, i) != '완료') continue;
-    final ref = e.log[i].ref;
-    if (ref.isEmpty || ref == ts) return true;
-  }
-  return false;
-}
+/// Whether the hands-on check written at [ts] has already been ticked.
+///
+/// ⚠️ONE READER: [checksWaiting] is what the tick handler counts with, so the
+/// button and the word that handler writes can never disagree about which
+/// checks are still open. 🧪They DID disagree for one round — this asked only
+/// for 「완료」 and never learned about 「확인 완료」, so every button stayed
+/// on screen while the count behind them was right.
+bool _cleared(BoardCard e, String ts) => !checksWaiting(e).contains(ts);
 
 /// 🚨★★★A 대분류 IS A FOLDER, AND WHAT FOLLOWS IT LIVES INSIDE.
 ///

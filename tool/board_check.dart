@@ -230,6 +230,7 @@ Iterable<String> _sectionsTheStoryCannotName(
 /// all. A name in neither list is a typo.
 const _kSubStage = <String>{
   '작업 기록',
+  '확인 완료',
   '코드 확인',
   'AI 판단',
   '구현',
