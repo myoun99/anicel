@@ -17525,6 +17525,23 @@ class EditorSessionManager extends ChangeNotifier {
   Map<String, int> _mediaStoredBytes = const {};
   int _mediaStoredBytesGeneration = -1;
 
+  /// Cels the last save could not write because the file their only copy
+  /// lived in had been deleted.
+  ///
+  /// 🚨★★★**EMPTY IS THE ONLY ANSWER ANYBODY EXPECTED** until 유저 hit it
+  /// on an iPad (2026-08-30): open a project, delete the file in the Files
+  /// app, draw a stroke, press Save. A save turns every cel into a file ref
+  /// and drops its cold blob as「redundant with the file」, so once that
+  /// file is gone the untouched cels have their bytes nowhere — and the
+  /// save used to come apart with a raw `PathNotFoundException` carrying a
+  /// path.
+  ///
+  /// It now writes everything it can still reach and says what it could
+  /// not. ⛔The UI has to SHOW this: a save that quietly wrote fewer cels
+  /// than it holds is the shape this repo refuses for media, and a cel is
+  /// the picture itself.
+  Set<BrushFrameKey> celsLostToAMissingFile = const {};
+
   /// Every carried asset's actual size, for a list that shows sizes.
   Map<String, int> get mediaStoredBytes {
     final sizes = <String, int>{};
@@ -17913,7 +17930,7 @@ class EditorSessionManager extends ChangeNotifier {
       staging: mediaStagingStore,
     );
     try {
-      await _anicelFileService.save(
+      celsLostToAMissingFile = await _anicelFileService.save(
         project: _repository.requireProject(),
         brushFrameStore: brushFrameStore,
         auxCelStores: [conteInkRowStore, conteInkPageStore, envelopeInkStore],

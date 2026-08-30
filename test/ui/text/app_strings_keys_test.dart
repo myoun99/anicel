@@ -304,6 +304,7 @@ void main() {
     'containerAreaConformed': (s) => s.containerAreaConformed,
     'containerAreaStaged': (s) => s.containerAreaStaged,
     'containerTotal': (s) => s.containerTotal,
+    'saveCelsLostTemplate': (s) => s.saveCelsLostTemplate,
     // R11: the interface scale, in the Display section.
     'uiScaleLabel': (s) => s.uiScaleLabel,
     'accentTitle': (s) => s.accentTitle,
