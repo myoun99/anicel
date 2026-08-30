@@ -39,13 +39,13 @@ const _staleAfter = Duration(hours: 24);
 /// **nine red in a bulk run, 13/13 green alone**. A gate that goes red for
 /// reasons that have nothing to do with the board is a gate people learn to
 /// re-run instead of read.
-String boardCheckComplaints(File file) {
+String boardCheckComplaints(File file, {String linesSince = kLinesSince}) {
   final cards = readBoard(file);
   final acks = _acks(file);
   final complaints = <String>[
     ..._brokenLines(),
     ..._cardsOffTheBoard(cards, acks),
-    ..._sectionsTheStoryCannotName(file, acks),
+    ..._sectionsTheStoryCannotName(file, acks, linesSince),
     ..._workThatShipped(cards, acks),
     ..._questionsNobodyCanAnswer(cards, acks),
     ..._answersNobodyRead(cards, acks),
@@ -127,9 +127,14 @@ Iterable<String> _cardsOffTheBoard(
 /// so the offending word is in a line, and naming the line is what lets it be
 /// found. ⛔But only lines written since this rule existed — a gate that
 /// complains about corrected history forever is a gate nobody reads.
-Iterable<String> _sectionsTheStoryCannotName(File file, Set<String> acks) sync* {
+Iterable<String> _sectionsTheStoryCannotName(
+  File file,
+  Set<String> acks,
+  String linesSince,
+) sync* {
   const knownEndings = {'archived', 'deleted'};
   final unknownStage = <String>[];
+  final future = <String>[];
   final handWrittenState = <String>[];
   var n = 0;
   for (final line in file.readAsLinesSync()) {
@@ -145,7 +150,26 @@ Iterable<String> _sectionsTheStoryCannotName(File file, Set<String> acks) sync* 
     if (json['kind'] == 'law' || json['kind'] == 'meta') continue;
     final id = '${json['id'] ?? ''}';
     if (acks.contains(id)) continue;
-    if ('${json['ts'] ?? ''}'.compareTo(_gateSince) < 0) continue;
+    // ⚠️ASKED BEFORE the history cutoff below: a stamp in the future is
+    // wrong whenever it was written, and gating it would have hidden every
+    // one made before the rule existed — including the 39 that caused it.
+    // 🚨★★★A STAMP THAT HAS NOT HAPPENED YET.
+    //
+    // ⛔I wrote 39 of them on 2026-08-31 — clock times of 02·03·04·06·09·11·
+    // 12·14시 while the actual clock read 01:36, plausible-looking numbers I
+    // made up instead of reading. 유저 hit it mid-test: they ticked `C-t11`
+    // at 01:34 and the card did not leave, because my 실기 확인 stamped 14:10
+    // sorted AFTER their tick and stayed the last 대분류.
+    //
+    // `ts` is the story's ORDER now, not just a date on a panel. A stamp in
+    // the future reorders somebody else's work around a time that never was.
+    final when = DateTime.tryParse('${json['ts'] ?? ''}');
+    if (when != null &&
+        when.isAfter(_startedAt) &&
+        '${json['ts']}'.compareTo(linesSince) >= 0) {
+      future.add('$n:$id(${json['ts']})');
+    }
+    if ('${json['ts'] ?? ''}'.compareTo(linesSince) < 0) continue;
     final at = '${json['at'] ?? ''}'.trim();
     if (at.isNotEmpty && !kSection.containsKey(at) && !_kSubStage.contains(at)) {
       unknownStage.add('$n:$id($at)');
@@ -161,6 +185,13 @@ Iterable<String> _sectionsTheStoryCannotName(File file, Set<String> acks) sync* 
         '못하고, 그 카드는 **조용히 「바로 가능」에 남습니다.**\n'
         '⇒ 대분류: ${kSection.keys.join(' · ')}\n'
         '⇒ 소분류: ${_kSubStage.join(' · ')}';
+  }
+  if (future.isNotEmpty) {
+    yield '아직 오지 않은 시각이 찍힌 줄: ${future.join(', ')}\n'
+        '`ts` 는 이제 **이야기의 순서**입니다 — 미래 시각은 남의 일을 자기 '
+        '뒤로 밀어냅니다. 🧪08-31에 39줄을 그렇게 써서, 유저가 체크한 완료가 '
+        '제가 지어낸 실기 확인보다 앞으로 정렬돼 **카드가 안 사라졌습니다.**\n'
+        '⇒ 시계를 읽고 쓰세요. 지어내지 마세요.';
   }
   if (handWrittenState.isNotEmpty) {
     yield 'state 를 손으로 쓴 줄: ${handWrittenState.join(', ')}\n'
@@ -201,7 +232,30 @@ const _kSubStage = <String>{
 /// When these rules started applying. ⛔Not retroactive: 1500 lines of
 /// history were written under the old model and re-firing them all in one
 /// turn is the wall this file's own doc warns about.
-const _gateSince = '2026-08-31T12:00:00';
+/// ⛔A CUTOFF THAT IS ITSELF IN THE FUTURE JUDGES NOTHING. The first value
+/// here was 2026-08-31T12:00 — picked while I believed it was afternoon and
+/// the clock read 01:36, so every new rule sat idle for ten hours and the
+/// test fixtures had to be stamped TOMORROW to clear it. The overhaul landed
+/// on the evening of 08-30; that is the honest line.
+/// ⚠️The moment the model actually changed: PR 1398 merged 2026-08-30T12:48Z.
+/// Anything older was written under a model where it was correct.
+const _gateSince = '2026-08-30T21:48:00';
+
+/// ⚠️A SECOND LINE, for the two rules that judge a LINE rather than a card.
+///
+/// 「state 를 손으로 쓰지 말라」와 「미래 시각을 쓰지 말라」는 **이 게이트가
+/// 생기면서** 규칙이 됐다. 모델이 바뀐 시각(08-30 21:48)부터 재면, 그 사이에
+/// 쓰인 줄들이 영영 불평으로 남는다 — 덧붙여서는 고칠 수 없는 줄들이라
+/// 「고쳐라」가 아니라 「영원히 시끄럽다」가 된다. ⛔그것이 이 파일이
+/// 스스로 경고하는 「아무도 안 읽는 게이트」다.
+/// ⚠️AFTER THE LAST BOGUS STAMP I WROTE (14:10 today). Those lines cannot be
+/// unwritten and cannot be fixed by appending, so judging them would be a
+/// complaint that never clears — the 「아무도 안 읽는 게이트」 this file warns
+/// about. The rules start where my mistakes stop.
+const kLinesSince = '2026-08-31T15:00:00';
+
+/// When this process started, used as 「now」 for a future-stamp check.
+final _startedAt = DateTime.now();
 
 // ──────────────────────────────────────────── 4. 착지했는데 실기로 안 간 일
 
@@ -228,9 +282,16 @@ Iterable<String> _workThatShipped(
   for (final c in cards) {
     if (!_live(c) || acks.contains(c.id)) continue;
     if (c.prs.isNotEmpty && _recent(c)) {
-      final section = lastSection(c);
-      final where = kSection[section];
-      if (where != 'hands' && where != 'archived' && !stillOwed(c)) {
+      // ⚠️ONLY WHERE IT IS A LIE. A shipped card sitting in 바로 가능 or
+      // 나중에 says 「이건 아직 할 일」 while the work already landed. One in
+      // 분류 전 · 답할 것 · 대화 중 · 하는 중 is not lying — somebody is on
+      // it, and the card says so. 🧪Without this it named ten cards I had
+      // moved to 분류 전 minutes earlier, which is exactly where they belong.
+      // ⚠️`c.state` IS the section — `placeByStory` already folded it out of
+      // the story. Deriving it again from the stage word missed a card with
+      // NO 대분류 at all, which defaults to 바로 가능 and is the loudest case.
+      final idle = c.state == 'open' || c.state == 'queue';
+      if (idle && !stillOwed(c)) {
         shipped.add(c.id);
       }
       if (!_saysSomething(c)) bare.add(c.id);

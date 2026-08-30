@@ -62,7 +62,7 @@ String originOfId(String id, File records) {
 /// of it, then what I worked out.
 class BoardLog {
   BoardLog(this.ts, this.at, this.text,
-      {this.byUser = false, this.pr, this.how = '', this.ask});
+      {this.byUser = false, this.pr, this.how = '', this.ask, this.ref = ''});
 
   /// 🚨★★★THE QUESTION THIS ENTRY IS, when it is one (유저 2026-08-31:
   /// 「질문 자체를 대분류로 옮기고, 새로운 카드 만들어서 참조가 아니라,
@@ -116,6 +116,11 @@ class BoardLog {
   /// its `how` here. Everywhere else `how` is still the card's, which is what
   /// a hand-written 실기 확인 uses.
   final String how;
+
+  /// 🚨The entry this one ANSWERS, named by its `ts`. Only a 완료 uses it:
+  /// it says WHICH 실기 확인 was cleared, so a card holding three of them
+  /// leaves only when all three have one — see [placeByStory].
+  final String ref;
 }
 
 class BoardCard {
@@ -311,13 +316,21 @@ List<BoardCard> readBoard(File file) {
       // sat in 바로 가능 with the word written in the file. Now an unadded
       // entry leaves `at` for the next text on the line, and if nothing takes
       // it the caller writes the bare move entry.
-      if (e.log.any((l) => l.text == text)) return;
+      // 🚨★★★AND IT MUST NOT EAT AN ENTRY THAT ANSWERS SOMETHING ELSE.
+      // Three hands-on checks ticked in a row all say 「확인 — 문제 없음」,
+      // so by TEXT alone the second and third were the first one again — and
+      // the card sat there holding two cleared checks it could not see.
+      // 🧪Measured: buttons went 3 → 2 → 1 → 1 and the card never left.
+      // What makes them different is `ref`: WHICH entry each one answers.
+      final ref = '${json['ref'] ?? ''}';
+      if (e.log.any((l) => l.text == text && l.ref == ref)) return;
       final label = at.isEmpty ? fallback : at;
       at = '';
       // ⚠️The PR rides the FIRST stage this line opens, not all of them: it
       // shipped once, however many things the line had to say about it.
       e.log.add(BoardLog(ts, label, text,
-          byUser: byUser, pr: prLeft, how: prLeft == null ? '' : stageHow));
+          byUser: byUser, pr: prLeft, how: prLeft == null ? '' : stageHow,
+          ref: ref));
       prLeft = null;
     }
 
@@ -604,7 +617,40 @@ void placeByStory(BoardCard e) {
     return;
   }
   final section = kSection[lastSection(e)];
-  if (section != null) e.state = section;
+  if (section == null) return;
+  // 🚨★★★A CARD WITH SEVERAL HANDS-ON CHECKS LEAVES ONLY WHEN THEY ALL PASS
+  // (유저 2026-08-31: 「물론 실기 확인은 카드 안에 여러 개 존재하니까 **모든
+  // 게 ok일 때만 사라져야 하겠지만**」).
+  //
+  // ⛔One 완료 used to end the card whatever else it was still holding, so
+  // ticking the first of three checks took the other two off the board with
+  // it — and nothing would ever bring them back, because nothing shows them.
+  //
+  // ⚠️A 완료 answers ONE check, named by `ref` — the ts of the entry it
+  // clears. A 완료 with no `ref` is the old shape and still ends the whole
+  // card; that is what every 완료 written before this meant.
+  if (section == 'archived' && _checksLeft(e)) {
+    e.state = 'hands';
+    return;
+  }
+  e.state = section;
+}
+
+/// Whether any 실기 확인 entry on this card is still waiting for its own 완료.
+bool _checksLeft(BoardCard e) {
+  final checks = <String>{};
+  final cleared = <String>{};
+  for (var i = 0; i < e.log.length; i++) {
+    final name = stageName(e, i);
+    if (name == '실기 확인') checks.add(e.log[i].ts);
+    if (name != '완료') continue;
+    final ref = e.log[i].ref;
+    // ⚠️No `ref` means 「this card is done」, full stop. Every 완료 written
+    // before per-check ticks existed means exactly that.
+    if (ref.isEmpty) return false;
+    cleared.add(ref);
+  }
+  return !checks.every(cleared.contains);
 }
 
 /// 🚨★★★A QUESTION IS AN ENTRY ON THE CARD THAT RAISED IT — not a card of its
@@ -667,9 +713,25 @@ void foldQuestionsIntoCards(Map<String, BoardCard> byId) {
 /// Older lines predate the `ts` field entirely, and a made-up time would
 /// scatter them; leaving them where the file put them is the honest answer.
 void sortByTime(List<BoardLog> log) {
+  // 🚨★★★A TIME THAT HAS NOT HAPPENED CANNOT ORDER ANYTHING.
+  //
+  // ⛔I stamped 39 records on 2026-08-31 with clock times of 02·03·04·06·09·
+  // 11·12·14시 while the actual clock read 01:36 — plausible-looking numbers
+  // I made up instead of reading. The cost landed on 유저 mid-test: they
+  // ticked `C-t11` 완료 at 01:34 and the card did not leave, because my
+  // 실기 확인 stamped 14:10 sorted AFTER their tick and stayed the last
+  // 대분류. They saw both halves of it: 「제출 버튼 눌러도 바로 삭제
+  // 안 되네?」 and 「완료 항목은 실기 확인 다음 아닌가? 타임라인적으로?」.
+  //
+  // A future stamp is treated as NO stamp: it inherits the entry before it,
+  // which puts it in file order — and file order is the true order, because
+  // the file is append-only. ⚠️This does not hide the mistake; the gate names
+  // it (see board_check). It stops the mistake from reordering the story.
+  final now = DateTime.now();
   final keyed = <(DateTime?, int, BoardLog)>[];
   for (var i = 0; i < log.length; i++) {
-    keyed.add((DateTime.tryParse(log[i].ts), i, log[i]));
+    final t = DateTime.tryParse(log[i].ts);
+    keyed.add((t != null && t.isAfter(now) ? null : t, i, log[i]));
   }
   // A row with no time inherits the one before it, so it cannot jump.
   DateTime? carry;

@@ -357,6 +357,22 @@ Future<void> _handle(HttpRequest req) async {
       // 몰라도 된다**: the request is the entry's text, and moving the card is
       // my job. ⛔Writing 「나중에」 straight from the button would make the
       // board move a card nobody had read.
+      // 🚨★★★ONE HANDS-ON CHECK, TICKED ON ITS OWN (유저 2026-08-31: 「실기
+      // 확인은 카드 안에 여러 개 존재하니까 모든 게 ok일 때만 사라져야」).
+      //
+      // ⚠️`ref` is the ts of the 실기 확인 entry this clears — the entry has
+      // no id of its own, and within one card a ts IS its identity. A 완료
+      // with no `ref` still means 「이 카드 전부」, which is what the card's
+      // own 확인 button has always meant.
+      case '/tick':
+        _append({
+          'kind': 'item',
+          'id': body['id'],
+          'at': '완료',
+          'ref': body['ref'],
+          'said': '확인 — 문제 없음',
+          'ts': _now(),
+        });
       case '/ask-move':
         _append({
           'kind': 'item',
@@ -1759,6 +1775,21 @@ String _entryRow(BoardCard e, int i, {required bool open}) {
         'href="https://github.com/$_repo/pull/${entry.pr}">'
         'PR #${entry.pr} 열기 →</a></p>');
   }
+  // 🚨★★★EACH HANDS-ON CHECK IS TICKED ON ITS OWN (유저 2026-08-31: 「실기
+  // 확인은 카드 안에 여러 개 존재하니까 **모든 게 ok일 때만 사라져야**
+  // 하겠지만」).
+  //
+  // ⛔One 제출 on the card cleared everything it was holding, so ticking the
+  // first of three checks took the other two off the board — and nothing
+  // brings them back, because nothing shows them. The form lives on the entry
+  // now, exactly like a question's, and the card leaves when the last one is
+  // ticked.
+  if (mine == '실기 확인' && !_cleared(e, entry.ts)) {
+    b.writeln('<div class="foot">'
+        '<button onclick="tick(event,\'${_esc(e.id)}\',\'${_esc(entry.ts)}\')">'
+        '확인 — 문제 없음</button>'
+        '<span class="state"></span></div>');
+  }
   return b.toString();
 }
 
@@ -1769,6 +1800,17 @@ bool _lastIsThis(BoardCard e, int i) {
     if (kSection.containsKey(stageName(e, j))) return false;
   }
   return true;
+}
+
+/// Whether the hands-on check written at [ts] already has its own 완료.
+/// ⚠️A 완료 with no `ref` is the old whole-card shape and clears everything.
+bool _cleared(BoardCard e, String ts) {
+  for (var i = 0; i < e.log.length; i++) {
+    if (stageName(e, i) != '완료') continue;
+    final ref = e.log[i].ref;
+    if (ref.isEmpty || ref == ts) return true;
+  }
+  return false;
 }
 
 /// 🚨★★★A 대분류 IS A FOLDER, AND WHAT FOLLOWS IT LIVES INSIDE.
@@ -1793,9 +1835,16 @@ bool _lastIsThis(BoardCard e, int i) {
 String _story(BoardCard e) {
   if (e.log.isEmpty && e.rest.isEmpty) return '<p class="d">메모 없음.</p>';
   // Where each folder starts, and what falls inside it.
+  // ⚠️AN ENDING IS NOT A FOLDER (유저 2026-08-31: 「적어도 실기 확인이라는
+  // 대분류에서 **소분류로 완료라고 찍히는 게** 맞지 않을까」). A folder holds
+  // what was written AFTER it, and nothing is ever written after 완료 — so it
+  // opened a folder of one row, sitting beside the hands-on check it belonged
+  // to instead of inside it. It still ENDS the card; it just does not hold
+  // anything.
   final heads = <int>[];
   for (var i = 0; i < e.log.length; i++) {
-    if (kSection.containsKey(stageName(e, i))) heads.add(i);
+    final section = kSection[stageName(e, i)];
+    if (section != null && section != 'archived') heads.add(i);
   }
   final b = StringBuffer();
   final firstHead = heads.isEmpty ? e.log.length : heads.first;
@@ -1858,6 +1907,15 @@ function send(id){
 }
 // One press = one 유저 entry saying where the card should go. The card lands
 // in 분류 전 and I move it -- the button never moves it itself.
+// One hands-on check, ticked on its own. The card leaves only when the last
+// of them is cleared -- see `placeByStory`.
+function tick(ev, id, ref){
+  ev.stopPropagation();
+  const c = document.getElementById('c-'+id);
+  post('/tick', {id:id, ref:ref}, c)
+    .then(()=>redraw(c.id))
+    .catch(e=>stateOf(c).textContent = '실패: '+e.message);
+}
 function askMove(ev, id, to){
   ev.stopPropagation();
   const c = document.getElementById('c-'+id);
