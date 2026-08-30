@@ -5,8 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/audio_clip.dart' show AudioVolumeKey;
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/services/audio/audio_mixer_reference.dart';
-import 'package:anicel/src/services/audio/conform_wav_codec.dart';
-import 'package:anicel/src/services/audio/conform_wav_stream.dart';
+import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
+import 'package:anicel/src/services/audio/wav16_header.dart';
+import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
 import 'package:anicel/src/ui/export/export_audio_mix.dart';
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 
@@ -51,12 +52,12 @@ void main() {
     );
     expect(written, isTrue);
 
-    final wav = decodeConformWav(File(path).readAsBytesSync());
+    final wav = readWav16(File(path).readAsBytesSync());
     expect(wav.sampleRate, 48000);
     expect(wav.channels, 2);
     // 10 frames at 10fps/48k = one second exactly — nothing for ffmpeg's
     // -shortest to trim.
-    expect(wav.length, 48000);
+    expect(wav.samples.length ~/ wav.channels, 48000);
     // Before the clip: silence. Inside: the mono source on BOTH channels
     // at unity (0.5 survives the int16 round-trip bit-exactly). After:
     // silence again.
@@ -80,7 +81,7 @@ void main() {
       resolveSource: (_) async => constantSource(0.6, 48000),
       outputPath: path,
     );
-    final wav = decodeConformWav(File(path).readAsBytesSync());
+    final wav = readWav16(File(path).readAsBytesSync());
     // 0.6 + 0.6 = 1.2 on the bus; the int16 output stage clamps to just
     // under full scale (32767/32768).
     expect(wav.samples[24000], closeTo(32767 / 32768, 1e-6));
@@ -105,7 +106,7 @@ void main() {
         resolveSource: (_) async => constantSource(0.8, 48000),
         outputPath: path,
       );
-      final wav = decodeConformWav(File(path).readAsBytesSync());
+      final wav = readWav16(File(path).readAsBytesSync());
       expect(wav.samples[0], 0, reason: 'the ramp starts at silence');
       // Halfway through the 5-frame fade (~frame 2.5 = sample 12000): half
       // the level.
@@ -142,7 +143,7 @@ void main() {
       resolveSource: (_) async => constantSource(0.5, 48000),
       outputPath: path,
     );
-    final wav = decodeConformWav(File(path).readAsBytesSync());
+    final wav = readWav16(File(path).readAsBytesSync());
     // Panned clip, mid-clip sample: left = 0.5 x sqrt2, right = 0.
     expect(wav.samples[24000 * 2 - 2], closeTo(0.5 * 1.41421, 0.001));
     expect(
@@ -164,7 +165,7 @@ void main() {
     }
     final wavPath = '${directory.path}/long.wav';
     File(wavPath).writeAsBytesSync(
-      encodeConformWav(samples: ramp, channels: 1, sampleRate: 48000),
+      encodeConform(samples: ramp, channels: 1, sampleRate: 48000),
     );
     const schedule = [
       ScheduledAudioClip(
@@ -181,7 +182,11 @@ void main() {
     // The resident reference mixes the SAME int16-quantized samples the
     // stream reads off disk — parity means the same floats in, not the
     // pre-quantization ramp.
-    final quantized = decodeConformWav(File(wavPath).readAsBytesSync());
+    //
+    // ⚠️A CONFORM, not a WAV: this fixture is what the stream reader opens
+    // below, and reading it with the WAV reader would parse a 64-byte
+    // header as a 44-byte one — which is how this test first failed.
+    final quantized = decodeConform(File(wavPath).readAsBytesSync());
     final residentPath = '${directory.path}/resident.wav';
     await writeExportAudioMixWav(
       schedule: schedule,
@@ -194,7 +199,7 @@ void main() {
     );
 
     final streamedPath = '${directory.path}/streamed.wav';
-    final reader = ConformWavStreamReader.open(wavPath)!;
+    final reader = ConformPcmStreamReader.open(wavPath)!;
     final written = await writeExportAudioMixWav(
       schedule: schedule,
       rate: rate,
@@ -235,7 +240,7 @@ void main() {
       log: (_) {},
     );
     expect(written, isTrue);
-    final wav = decodeConformWav(File(path).readAsBytesSync());
+    final wav = readWav16(File(path).readAsBytesSync());
     expect(wav.samples[2 * 4800 * 2], 0.5);
     expect(wav.samples[7 * 4800 * 2], 0, reason: 'the missing clip is silent');
 
@@ -271,4 +276,26 @@ void main() {
       isFalse,
     );
   });
+}
+
+/// Reads back the WAV this export writes — a REAL WAV, which is a foreign
+/// format to the conform codec since 2026-08-30.
+///
+/// ⚠️These assertions used to call `decodeConformWav`, which worked only
+/// while a conform happened to BE a WAV. The export still writes one (its
+/// file leaves the app), so the fixture reads one — canonical 44-byte
+/// header, exactly what [wav16HeaderBytes] lays down.
+({Float32List samples, int channels, int sampleRate}) readWav16(
+  Uint8List bytes,
+) {
+  final view = ByteData.sublistView(bytes);
+  final channels = view.getUint16(22, Endian.little);
+  final sampleRate = view.getUint32(24, Endian.little);
+  final dataBytes = view.getUint32(40, Endian.little);
+  final count = dataBytes ~/ 2;
+  final samples = Float32List(count);
+  for (var i = 0; i < count; i += 1) {
+    samples[i] = view.getInt16(44 + i * 2, Endian.little) / 32768.0;
+  }
+  return (samples: samples, channels: channels, sampleRate: sampleRate);
 }

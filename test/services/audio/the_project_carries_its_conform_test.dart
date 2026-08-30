@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
-import 'package:anicel/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 
@@ -50,7 +50,7 @@ void main() {
   String writeSource(String name, {int rate = 48000, int frames = 90000}) {
     final path = '${root.path}/$name'.replaceAll(r'\', '/');
     File(path).writeAsBytesSync(
-      encodeConformWav(samples: ramp(frames), channels: 1, sampleRate: rate),
+      encodeConform(samples: ramp(frames), channels: 1, sampleRate: rate),
     );
     return path;
   }
@@ -67,7 +67,7 @@ void main() {
         projectSampleRate: projectSampleRate,
         decode: (bytes) {
           decodes.add(bytes.length);
-          final audio = decodeConformWav(bytes);
+          final audio = decodeConform(bytes);
           return (
             samples: audio.samples,
             channels: audio.channels,
@@ -152,7 +152,7 @@ void main() {
 
     // The user replaced the recording between the two machines.
     File(source).writeAsBytesSync(
-      encodeConformWav(samples: ramp(45000), channels: 1, sampleRate: 48000),
+      encodeConform(samples: ramp(45000), channels: 1, sampleRate: 48000),
     );
 
     final second = pipelineAt(48000);

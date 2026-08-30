@@ -60,7 +60,7 @@ import '../persistence/anicel_incremental_writer.dart' show anicelCrc32;
 import '../persistence/app_save_settings.dart' show AppSave;
 import '../persistence/media_blob_codec.dart';
 import 'audio_peaks_extractor.dart';
-import 'conform_wav_codec.dart';
+import 'conform_pcm_codec.dart';
 
 /// Decodes container bytes to PCM at the file's own rate. The native
 /// dr_libs path supplies this; tests supply a fake so the pipeline's logic
@@ -585,11 +585,11 @@ class AudioConformPipeline {
     // (see [compressMediaBlob]). 유저 2026-08-30 chose this against the
     // alternative — 「다른 앱으로 들을 필요성을 못느끼겟고 그럴거면
     // 압축해제시켜서 내보내기 기능 만들면 되는거아닌가?」 — which is why
-    // `conform_wav_codec.dart`'s「any audio tool can open it」is now a
+    // `conform_pcm_codec.dart`'s「any audio tool can open it」is now a
     // property of the EXPORT, not of the cache file.
     //
     // ⛔Block-framed, never one frame: a long conform is read as a sliding
-    // WINDOW by [ConformWavStreamReader], and a whole frame has no random
+    // WINDOW by [ConformPcmStreamReader], and a whole frame has no random
     // access. This is the same codec media uses, so「how do I read this」
     // has one answer for both.
     var cachedAt = conformPath;
@@ -601,7 +601,7 @@ class AudioConformPipeline {
           conformPath.replaceAll('\\', '/').lastIndexOf('/'),
         );
         Directory(directory).createSync(recursive: true);
-        final wav = encodeConformWav(
+        final wav = encodeConform(
           samples: converted,
           channels: decoded.channels,
           sampleRate: projectSampleRate,
@@ -685,7 +685,7 @@ class AudioConformPipeline {
       // conforms, so a `.part` here would be invisible to it and sit in
       // the user's cache folder for ever.
       //
-      // A kill mid-write is safe without one: [decodeConformWav] breaks
+      // A kill mid-write is safe without one: [decodeConform] breaks
       // its chunk walk at a truncated tail and then throws「missing data
       // chunk」, so a half-restored conform is rejected and rebuilt like
       // any other unreadable one.
@@ -718,9 +718,7 @@ class AudioConformPipeline {
         continue;
       }
       try {
-        final audio = decodeConformWav(
-          mediaAppFileSource(candidate).readSync(),
-        );
+        final audio = decodeConform(mediaAppFileSource(candidate).readSync());
         return (audio: audio, path: candidate);
       } on Object {
         // Unreadable, foreign, or framed with no engine on this build:

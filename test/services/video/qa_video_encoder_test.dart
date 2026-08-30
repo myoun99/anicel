@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_video_encoder.dart';
-import 'package:anicel/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
 
 import '../../helpers/native_engine_path.dart';
@@ -57,13 +57,15 @@ void main() {
       return false;
     }
     // ftyp right after the first box size, moov somewhere (finalized).
-    final ftyp = bytes[4] == 0x66 &&
+    final ftyp =
+        bytes[4] == 0x66 &&
         bytes[5] == 0x74 &&
         bytes[6] == 0x79 &&
         bytes[7] == 0x70;
     var moov = false;
     for (var index = 0; index + 4 <= bytes.length && !moov; index += 1) {
-      moov = bytes[index] == 0x6D &&
+      moov =
+          bytes[index] == 0x6D &&
           bytes[index + 1] == 0x6F &&
           bytes[index + 2] == 0x6F &&
           bytes[index + 3] == 0x76;
@@ -74,9 +76,13 @@ void main() {
   test('the capability answer matches the OS', () {
     final encoder = QaVideoEncoder.instance;
     expect(encoder, isNotNull, reason: 'the binary did not bind');
-    expect(encoder!.isSupported, osHasEncoder,
-        reason: 'Windows/Apple encode natively; elsewhere the ffmpeg '
-            'fallback carries the export');
+    expect(
+      encoder!.isSupported,
+      osHasEncoder,
+      reason:
+          'Windows/Apple encode natively; elsewhere the ffmpeg '
+          'fallback carries the export',
+    );
   }, skip: skip);
 
   test('a real MP4 comes out: video + AAC audio, finalized and playable-'
@@ -101,20 +107,29 @@ void main() {
     );
     const samplesPerFrame = 48000 ~/ 24;
     for (var frame = 0; frame < 24; frame += 1) {
-      expect(encoder.writeFrame(rgbaFrame(64, 48, frame)), isTrue,
-          reason: 'frame $frame: ${encoder.lastError}');
+      expect(
+        encoder.writeFrame(rgbaFrame(64, 48, frame)),
+        isTrue,
+        reason: 'frame $frame: ${encoder.lastError}',
+      );
       final pcm = Int16List(samplesPerFrame * 2);
       for (var index = 0; index < samplesPerFrame; index += 1) {
         final value = (8000 * (index % 100) / 100).round();
         pcm[index * 2] = value;
         pcm[index * 2 + 1] = -value;
       }
-      expect(encoder.writeAudio(pcm, samplesPerFrame), isTrue,
-          reason: 'audio $frame: ${encoder.lastError}');
+      expect(
+        encoder.writeAudio(pcm, samplesPerFrame),
+        isTrue,
+        reason: 'audio $frame: ${encoder.lastError}',
+      );
     }
     expect(encoder.finish(), isTrue, reason: encoder.lastError);
-    expect(looksLikeMp4(path), isTrue,
-        reason: 'the file is not a finalized MP4');
+    expect(
+      looksLikeMp4(path),
+      isTrue,
+      reason: 'the file is not a finalized MP4',
+    );
     expect(File(path).lengthSync(), greaterThan(2000));
   }, skip: skip);
 
@@ -201,7 +216,7 @@ void main() {
     }
     final mixPath = '${directory.path}/mix.wav';
     File(mixPath).writeAsBytesSync(
-      encodeConformWav(samples: mixSamples, channels: 2, sampleRate: 48000),
+      encodeConform(samples: mixSamples, channels: 2, sampleRate: 48000),
     );
 
     Future<ui.Image?> render(int index) async {

@@ -9,7 +9,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import '../../models/export_format_selection.dart';
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_video_encoder.dart';
-import '../../services/audio/conform_wav_stream.dart';
+import '../../services/audio/conform_pcm_stream.dart';
 import 'png_sequence_export_service.dart' show ExportWriteSummary;
 
 /// The ABI v21 integers the native encoder speaks (qa_video_encode.c).
@@ -277,7 +277,7 @@ class VideoExportService {
 
     final audio = audioMixPath == null
         ? null
-        : ConformWavStreamReader.open(audioMixPath);
+        : ConformPcmStreamReader.open(audioMixPath);
     if (!encoder.open(
       path: outputFilePath,
       width: first.width,

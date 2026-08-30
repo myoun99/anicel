@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_audio_decoder.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/services/audio/wav16_header.dart';
 
 import '../../helpers/native_engine_path.dart';
 
@@ -52,9 +52,7 @@ void main() {
     test('mono samples survive the loop', () {
       final decoder = requireDecoder();
       final samples = ramp(480);
-      final decoded = decoder.decode(
-        encodeConformWav(samples: samples, channels: 1, sampleRate: 48000),
-      );
+      final decoded = decoder.decode(wav16(samples, channels: 1, rate: 48000));
 
       expect(decoded, isNotNull);
       expect(decoded!.format, QaAudioFormat.wav);
@@ -81,9 +79,7 @@ void main() {
         samples[index * 2] = index / 100.0;
         samples[index * 2 + 1] = -(index / 100.0);
       }
-      final decoded = decoder.decode(
-        encodeConformWav(samples: samples, channels: 2, sampleRate: 44100),
-      )!;
+      final decoded = decoder.decode(wav16(samples, channels: 2, rate: 44100))!;
 
       expect(decoded.channels, 2);
       expect(decoded.sampleRate, 44100);
@@ -94,32 +90,13 @@ void main() {
       }
     });
 
-    test('a conform carrying our provenance chunk still decodes', () {
-      // dr_wav must step over the custom `qacf` chunk the same way our own
-      // reader steps over foreign ones.
-      final decoder = requireDecoder();
-      final decoded = decoder.decode(
-        encodeConformWav(
-          samples: ramp(64),
-          channels: 1,
-          sampleRate: 48000,
-          fingerprint: const ConformSourceFingerprint(
-            sourceLength: 4242,
-            sourceCrc32: 0x1784ABCD,
-          ),
-        ),
-      )!;
-      expect(decoded.length, 64);
-      expect(decoded.format, QaAudioFormat.wav);
-    });
-
     test('sample rates pass through untouched — no hidden resampling', () {
       // Resampling to the project rate is a separate, visible step. If a
       // decode ever started doing it silently, this fails.
       final decoder = requireDecoder();
       for (final rate in const [8000, 22050, 44100, 48000, 96000]) {
         final decoded = decoder.decode(
-          encodeConformWav(samples: ramp(96), channels: 1, sampleRate: rate),
+          wav16(ramp(96), channels: 1, rate: rate),
         )!;
         expect(decoded.sampleRate, rate, reason: 'rate $rate');
         expect(decoded.length, 96);
@@ -143,11 +120,7 @@ void main() {
 
     test('a truncated WAV header does not take the process down', () {
       final decoder = requireDecoder();
-      final good = encodeConformWav(
-        samples: ramp(64),
-        channels: 1,
-        sampleRate: 48000,
-      );
+      final good = wav16(ramp(64), channels: 1, rate: 48000);
       // Every prefix: whatever dr_wav makes of it, it must return rather
       // than read past the buffer.
       for (final cut in const [4, 12, 20, 40, 44]) {
@@ -159,4 +132,30 @@ void main() {
       }
     });
   }, skip: skip);
+}
+
+/// A real 16-bit PCM WAV — a FOREIGN format to this app now.
+///
+/// ⚠️This used to be `encodeConformWav`, which worked only while a conform
+/// happened to be a WAV. It stopped being one on 2026-08-30, so the fixture
+/// says what it means: build the thing the decoder is supposed to read.
+Uint8List wav16(Float32List samples, {int channels = 1, int rate = 48000}) {
+  final pcm = Uint8List(samples.length * 2);
+  final view = ByteData.sublistView(pcm);
+  for (var i = 0; i < samples.length; i += 1) {
+    var v = samples[i];
+    if (v > 1.0) v = 1.0;
+    if (v < -1.0) v = -1.0;
+    var s = (v * 32768.0).round();
+    if (s > 32767) s = 32767;
+    view.setInt16(i * 2, s, Endian.little);
+  }
+  return Uint8List.fromList([
+    ...wav16HeaderBytes(
+      dataBytes: pcm.length,
+      sampleRate: rate,
+      channels: channels,
+    ),
+    ...pcm,
+  ]);
 }

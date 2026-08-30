@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
-import 'package:anicel/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
@@ -57,8 +57,9 @@ void main() {
     const settings = AudioSyncSettings(denoiseVoice: true);
     expect(AudioSyncSettings.fromJson(settings.toJson()), settings);
     expect(
-      AudioSyncSettings.fromJson(const AudioSyncSettings().toJson())
-          .denoiseVoice,
+      AudioSyncSettings.fromJson(
+        const AudioSyncSettings().toJson(),
+      ).denoiseVoice,
       isFalse,
     );
   });
@@ -126,7 +127,7 @@ void main() {
     expect(seenRate, 48000);
     // ...and the file carries the suppressed samples (0.5, not 0.25).
     final clip = manager.activeTrack.seLayers.first.audioClips.single;
-    final decoded = decodeConformWav(File(clip.filePath).readAsBytesSync());
+    final decoded = decodeConform(File(clip.filePath).readAsBytesSync());
     expect(decoded.samples.first, closeTo(0.5, 1e-3));
     manager.dispose();
   });
@@ -154,7 +155,7 @@ void main() {
     );
     expect(calls, 1);
     var clip = manager.activeTrack.seLayers.first.audioClips.single;
-    var decoded = decodeConformWav(File(clip.filePath).readAsBytesSync());
+    var decoded = decodeConform(File(clip.filePath).readAsBytesSync());
     expect(decoded.samples.first, closeTo(0.25, 1e-3));
 
     expect(

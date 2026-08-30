@@ -3,8 +3,8 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
-import 'package:anicel/src/services/audio/conform_wav_codec.dart';
-import 'package:anicel/src/services/audio/conform_wav_stream.dart';
+import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
+import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 
@@ -47,7 +47,7 @@ void main() {
       samples[index * 2] = ((index % 4096) / 4096.0) - 0.5;
       samples[index * 2 + 1] = 0.5 - ((index % 4096) / 4096.0);
     }
-    return encodeConformWav(
+    return encodeConform(
       samples: samples,
       channels: 2,
       sampleRate: 48000,
@@ -82,8 +82,8 @@ void main() {
     File(plainPath).writeAsBytesSync(wav);
     File(framedPath).writeAsBytesSync(framedBytes!);
 
-    final plain = ConformWavStreamReader.open(plainPath)!;
-    final framed = ConformWavStreamReader.open(framedPath)!;
+    final plain = ConformPcmStreamReader.open(plainPath)!;
+    final framed = ConformPcmStreamReader.open(framedPath)!;
 
     expect(framed.channels, plain.channels);
     expect(framed.sampleRate, plain.sampleRate);
@@ -134,7 +134,7 @@ void main() {
     // read FUNCTION — which is exactly why `MediaFramedBytes.reading`
     // takes one. Without an instrument here every assertion above would
     // also pass on a reader that pulls the whole entry each time.
-    final reader = ConformWavStreamReader.over(
+    final reader = ConformPcmStreamReader.over(
       MediaFramedBytes.reading(
         readStored: (buffer, position, size) {
           if (position < 0 || position >= entry.length || size <= 0) {
@@ -174,7 +174,7 @@ void main() {
     final wrong = '${directory.path}/mislabelled.aaaabbbb.wav';
     File(wrong).writeAsBytesSync(compressMediaBlob(wav)!);
     expect(
-      ConformWavStreamReader.open(wrong),
+      ConformPcmStreamReader.open(wrong),
       isNull,
       reason: 'a block index is not a RIFF header, and open says so',
     );
@@ -184,6 +184,6 @@ void main() {
         '${directory.path}/plain.aaaabbbb.wav'
         '$mediaFramedEntrySuffix';
     File(alsoWrong).writeAsBytesSync(wav);
-    expect(ConformWavStreamReader.open(alsoWrong), isNull);
+    expect(ConformPcmStreamReader.open(alsoWrong), isNull);
   });
 }

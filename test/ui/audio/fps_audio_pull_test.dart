@@ -15,7 +15,7 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
-import 'package:anicel/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/dialogs/fps_audio_choice_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -116,9 +116,10 @@ void main() {
           );
         },
         runner: (request) async {
-          requestedSpeeds.add(
-            (request.speedNumerator, request.speedDenominator),
-          );
+          requestedSpeeds.add((
+            request.speedNumerator,
+            request.speedDenominator,
+          ));
           return ConformResult(
             outcome: ConformOutcome.built,
             samples: Float32List(4),
@@ -155,16 +156,17 @@ void main() {
       expect(undone.frameRate, const ProjectFrameRate.ntsc(24));
       expect(undone.audioSpeedNumerator, 1);
       expect(undone.audioSpeedDenominator, 1);
-      expect(store.resultFor('v.wav'), isNull,
-          reason: 'the pulled entry must not serve an unpulled project');
+      expect(
+        store.resultFor('v.wav'),
+        isNull,
+        reason: 'the pulled entry must not serve an unpulled project',
+      );
 
       // Going the other way pulls back and CANCELS to unity.
       session.setProjectFrameRateWithAudioPull(
         const ProjectFrameRate.integer(24),
       );
-      session.setProjectFrameRateWithAudioPull(
-        const ProjectFrameRate.ntsc(24),
-      );
+      session.setProjectFrameRateWithAudioPull(const ProjectFrameRate.ntsc(24));
       final roundTripped = session.repository.requireProject();
       expect(roundTripped.audioSpeedNumerator, 1);
       expect(roundTripped.audioSpeedDenominator, 1);
@@ -192,11 +194,8 @@ void main() {
       final resampled = <String>[];
       AudioConformPipeline pipelineWith({int num = 1, int den = 1}) =>
           AudioConformPipeline(
-            decode: (bytes) => (
-              samples: Float32List(4800),
-              channels: 1,
-              sampleRate: 48000,
-            ),
+            decode: (bytes) =>
+                (samples: Float32List(4800), channels: 1, sampleRate: 48000),
             resample:
                 ({
                   required samples,
@@ -212,16 +211,13 @@ void main() {
           );
 
       // Unity at the project rate: bit-exact skip, no filter.
-      pipelineWith().ensureConform(
-        sourcePath: 'x.wav',
-        conformPath: null,
-      );
+      pipelineWith().ensureConform(sourcePath: 'x.wav', conformPath: null);
       // (sourceMissing — the fake path never resolves; use the encode
       // surface instead for the chunk check below.)
 
       // The pull reinterprets BOTH sides by the rational: 48k pulled by
       // 1001/1000 resamples 48048000→48000000.
-      final wav = encodeConformWav(
+      final wav = encodeConform(
         samples: Float32List(10),
         channels: 1,
         sampleRate: 48000,
@@ -232,13 +228,13 @@ void main() {
         speedNumerator: 1001,
         speedDenominator: 1000,
       );
-      final decoded = decodeConformWav(wav);
+      final decoded = decodeConform(wav);
       expect(decoded.speedNumerator, 1001);
       expect(decoded.speedDenominator, 1000);
 
       // A conform written BEFORE the field existed reads as unity.
-      final legacy = decodeConformWav(
-        encodeConformWav(
+      final legacy = decodeConform(
+        encodeConform(
           samples: Float32List(10),
           channels: 1,
           sampleRate: 48000,

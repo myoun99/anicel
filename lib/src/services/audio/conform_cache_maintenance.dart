@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import '../media/media_byte_source.dart';
 import '../persistence/app_save_settings.dart';
 import '../persistence/media_blob_codec.dart';
+import 'conform_pcm_codec.dart';
 
 /// How much conform cache is allowed to accumulate before the least
 /// recently used entries are dropped.
@@ -38,9 +39,14 @@ typedef ConformCacheEntry = ({String path, int bytes, DateTime lastUsed});
 /// was counted as cache and evicted. A guess that is usually right is the
 /// worst kind of guard, because the case it gets wrong is somebody's work.
 ///
-/// So a FILE is ours only if it says so in its own bytes: our conforms are
-/// WAVs carrying the `qacf` provenance chunk, written immediately after
-/// `fmt ` (see `conform_wav_codec.dart`), which nothing else produces.
+/// So a FILE is ours only if it says so in its own bytes: a conform opens
+/// with [ConformHeader.magic], eight bytes nobody else writes.
+///
+/// 🆕**That used to be an ASSUMPTION rather than proof.** A conform was a
+/// WAV, and the test was `RIFF` + `WAVE` + our own `qacf` chunk landing at
+/// offset 36 — which is the claim「no other tool writes that combination」,
+/// and the paragraph above is a list of what such claims have cost this
+/// file. A private magic is not a guess.
 ///
 /// A DIRECTORY cannot be asked, so the rule there is narrow instead: the
 /// exact shape `AppSave.encodeProjectKey` used to write — a project file
@@ -63,12 +69,27 @@ final RegExp _ourEntryName = RegExp(
 );
 final RegExp _ourLegacyFolder = RegExp(r'\.anicel\.[0-9a-f]{8}$');
 
-/// `RIFF....WAVE` then `fmt ` (24 bytes) then our `qacf` at offset 36.
-const List<int> _riffTag = [0x52, 0x49, 0x46, 0x46];
-const List<int> _waveTag = [0x57, 0x41, 0x56, 0x45];
-const List<int> _qacfTag = [0x71, 0x61, 0x63, 0x66];
+/// The shape a conform wore before it had a header of its own: `RIFF` at 0,
+/// `WAVE` at 8, our `qacf` chunk at 36.
+///
+/// 🚨★★★**KEPT ONLY SO THE OLD ONES CAN STILL BE COLLECTED.** Nothing
+/// writes this any more, and no reader accepts it — an old conform fails
+/// [ConformHeader.parse] and is rebuilt. But a file the collector cannot
+/// RECOGNISE is a file it never deletes, and every conform on every machine
+/// that ran a previous build is one of those. Dropping this check would
+/// have left them sitting in the cache for ever, uncounted, which is the
+/// exact unbounded pile this file exists to prevent.
+///
+/// ⇒ Delete this when those are gone. It is a collector, not a reader:
+/// recognising a legacy conform means「take it away」, never「play it」.
+const List<int> _legacyRiff = [0x52, 0x49, 0x46, 0x46]; // RIFF
+const List<int> _legacyWave = [0x57, 0x41, 0x56, 0x45]; // WAVE
+const List<int> _legacyQacf = [0x71, 0x61, 0x63, 0x66]; // qacf
 
 bool _tagAt(List<int> bytes, int offset, List<int> tag) {
+  if (bytes.length < offset + tag.length) {
+    return false;
+  }
   for (var index = 0; index < tag.length; index += 1) {
     if (bytes[offset + index] != tag[index]) {
       return false;
@@ -77,9 +98,8 @@ bool _tagAt(List<int> bytes, int offset, List<int> tag) {
   return true;
 }
 
-/// Whether [path] is a conform THIS app wrote, decided by reading the
-/// first forty bytes of the WAV it holds rather than by looking at its
-/// name.
+/// Whether [path] is a conform THIS app wrote — decided by reading its
+/// first forty bytes rather than by looking at its name.
 bool _isOurConform(String path) {
   if (!_ourEntryName.hasMatch(path)) {
     return false; // Cheap reject; the read below is the actual answer.
@@ -90,15 +110,19 @@ bool _isOurConform(String path) {
     // FIRST BLOCK and nothing else — 512KB, under a millisecond — so the
     // proof stays exactly as strong as it was when the bytes were plain.
     // Reading the file raw instead would see a block index where it wanted
-    // `RIFF` and quietly answer「not ours」to every file this app now
-    // writes.
+    // the magic and quietly answer「not ours」to every file this app writes.
     final head = Uint8List(40);
-    if (mediaAppFileSource(path).readIntoSync(head, 0, head.length) < 40) {
+    final got = mediaAppFileSource(path).readIntoSync(head, 0, head.length);
+    if (got < ConformHeader.magic.length) {
       return false;
     }
-    return _tagAt(head, 0, _riffTag) &&
-        _tagAt(head, 8, _waveTag) &&
-        _tagAt(head, 36, _qacfTag);
+    if (looksLikeConform(head)) {
+      return true;
+    }
+    return got >= 40 &&
+        _tagAt(head, 0, _legacyRiff) &&
+        _tagAt(head, 8, _legacyWave) &&
+        _tagAt(head, 36, _legacyQacf);
   } on Object {
     return false; // Unreadable is not ours as far as deleting goes.
   }
@@ -203,7 +227,7 @@ int pruneConformCache({int budgetBytes = conformCacheBudgetBytes}) {
 ///
 /// 🪦Windows used to have a mirror of this — an open reader blocked the
 /// delete, so the biggest entries survived the emptying meant to reclaim
-/// them. `ConformWavStreamReader` holds no handle now, so that half is
+/// them. `ConformPcmStreamReader` holds no handle now, so that half is
 /// gone. The silence half is not, which is why this stays mandatory.
 ///
 /// ⛔ So never call this without `AudioConformStore.releaseDiskBacked()`

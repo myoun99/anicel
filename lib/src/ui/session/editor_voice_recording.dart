@@ -30,7 +30,7 @@ import '../../services/audio/audio_mixer_reference.dart'
     show AudioMixClip, AudioMixSource;
 import '../playback/audio_input_monitor.dart';
 import '../playback/audio_playback_schedule.dart' show ScheduledAudioClip;
-import '../../services/audio/conform_wav_codec.dart' show encodeConformWav;
+import '../../services/audio/conform_pcm_codec.dart' show encodeConform;
 import '../../services/commands/update_media_assets_command.dart';
 import '../../models/se_take_placement.dart';
 import '../../services/audio/audio_peaks_extractor.dart' show AudioPeaks;
@@ -289,7 +289,7 @@ class EditorVoiceRecording {
         }
         samples[sample] = value;
       }
-      final wav = encodeConformWav(
+      final wav = encodeConform(
         samples: samples,
         channels: 1,
         sampleRate: sampleRate,
@@ -1018,7 +1018,7 @@ class EditorVoiceRecording {
         }
       }
     }
-    final wav = encodeConformWav(
+    final wav = encodeConform(
       samples: samples,
       channels: channels,
       sampleRate: recording.sampleRate,
