@@ -131,9 +131,11 @@ class _EntryRow extends StatelessWidget {
     return Container(
       key: ValueKey<String>('system-status-${entry.subsystem}'),
       padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        border: Border.all(color: AppColors.hairline),
-        borderRadius: BorderRadius.circular(4),
+      decoration: ShapeDecoration(
+        shape: AppShapes.container(
+          AppShapes.wellRadius,
+          side: const BorderSide(color: AppColors.hairline),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -151,9 +153,11 @@ class _EntryRow extends StatelessWidget {
           // The active-path chip sits on its own line — the names are
           // long on purpose (searchable), so they wrap instead of clip.
           DecoratedBox(
-            decoration: BoxDecoration(
-              border: Border.all(color: stateColor),
-              borderRadius: BorderRadius.circular(3),
+            decoration: ShapeDecoration(
+              shape: AppShapes.container(
+                3,
+                side: BorderSide(color: stateColor),
+              ),
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

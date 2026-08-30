@@ -11,7 +11,7 @@ import '../../models/brush_preset_id.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_prompt_dialog.dart';
 import '../panels/editor_panel_frame.dart';
-import '../theme/app_theme.dart' show AppColors;
+import '../theme/app_theme.dart' show AppColors, AppShapes;
 import '../widgets/app_window.dart';
 import '../widgets/instant_tap_region.dart';
 import '../widgets/panel_flyout.dart';
@@ -1031,7 +1031,7 @@ class _BrushGroupTab extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final body = Material(
       color: selected ? colorScheme.surfaceContainerHigh : Colors.transparent,
-      borderRadius: BorderRadius.circular(4),
+      shape: AppShapes.container(AppShapes.wellRadius),
       child: InkWell(
         key: ValueKey<String>(keyValue),
         // The switch rides the raw pointer (R10) — see the wrapper below.
@@ -1039,17 +1039,19 @@ class _BrushGroupTab extends StatelessWidget {
         // stay, the same shape the timeline cells use.
         onTap: () {},
         onDoubleTap: onEdit,
-        borderRadius: BorderRadius.circular(4),
+        customBorder: AppShapes.container(AppShapes.wellRadius),
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 1),
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: selected
-                  ? colorScheme.primary
-                  : colorScheme.outlineVariant,
-              width: selected ? 1.5 : 1,
+          decoration: ShapeDecoration(
+            shape: AppShapes.container(
+              AppShapes.wellRadius,
+              side: BorderSide(
+                color: selected
+                    ? colorScheme.primary
+                    : colorScheme.outlineVariant,
+                width: selected ? 1.5 : 1,
+              ),
             ),
-            borderRadius: BorderRadius.circular(4),
           ),
           clipBehavior: Clip.antiAlias,
           child: Row(
@@ -1121,22 +1123,24 @@ class _GroupIconPicker extends StatelessWidget {
         child: InkWell(
           key: ValueKey<String>(keyValue),
           onTap: silentPress(onTap),
-          borderRadius: BorderRadius.circular(4),
+          customBorder: AppShapes.container(AppShapes.wellRadius),
           child: Container(
             width: 26,
             height: 26,
-            decoration: BoxDecoration(
+            decoration: ShapeDecoration(
               // Selection reads as colour only, never a checkmark.
               color: isSelected
                   ? colorScheme.surfaceContainerHigh
                   : Colors.transparent,
-              border: Border.all(
-                color: isSelected
-                    ? colorScheme.primary
-                    : colorScheme.outlineVariant,
-                width: isSelected ? 1.5 : 1,
+              shape: AppShapes.container(
+                AppShapes.wellRadius,
+                side: BorderSide(
+                  color: isSelected
+                      ? colorScheme.primary
+                      : colorScheme.outlineVariant,
+                  width: isSelected ? 1.5 : 1,
+                ),
               ),
-              borderRadius: BorderRadius.circular(4),
             ),
             child: child,
           ),
@@ -1244,11 +1248,11 @@ class _BrushPresetRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 1),
       child: Material(
         color: selected ? colorScheme.surfaceContainerHigh : Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
+        shape: AppShapes.container(AppShapes.windowRadius),
         child: InkWell(
           // Key kept from the former chip UI so existing flows/tests hold.
           key: ValueKey<String>('brush-preset-chip-${preset.id.value}'),
-          borderRadius: BorderRadius.circular(6),
+          customBorder: AppShapes.container(AppShapes.windowRadius),
           onTap: onApplied == null ? null : () => onApplied!(preset),
           child: SizedBox(
             height: 34,
@@ -1261,9 +1265,9 @@ class _BrushPresetRow extends StatelessWidget {
                           child: Container(
                             width: 2,
                             height: 22,
-                            decoration: BoxDecoration(
+                            decoration: ShapeDecoration(
                               color: colorScheme.primary,
-                              borderRadius: BorderRadius.circular(1),
+                              shape: AppShapes.container(1),
                             ),
                           ),
                         )
@@ -1273,10 +1277,12 @@ class _BrushPresetRow extends StatelessWidget {
                   Container(
                     width: 24,
                     height: 24,
-                    decoration: BoxDecoration(
+                    decoration: ShapeDecoration(
                       color: colorScheme.surfaceContainerHighest,
-                      border: Border.all(color: colorScheme.outlineVariant),
-                      borderRadius: BorderRadius.circular(4),
+                      shape: AppShapes.container(
+                        AppShapes.wellRadius,
+                        side: BorderSide(color: colorScheme.outlineVariant),
+                      ),
                     ),
                     clipBehavior: Clip.antiAlias,
                     child: BrushTipPreview(settings: preset.settings),
@@ -1328,13 +1334,13 @@ class _BrushPresetRow extends StatelessWidget {
               constraints: const BoxConstraints(maxWidth: 132),
               margin: const EdgeInsets.only(right: 4),
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-              decoration: BoxDecoration(
+              decoration: ShapeDecoration(
                 color:
                     (selected
                             ? colorScheme.surfaceContainerHigh
                             : colorScheme.surface)
                         .withValues(alpha: 0.78),
-                borderRadius: BorderRadius.circular(3),
+                shape: AppShapes.container(3),
               ),
               child: Text(
                 preset.name,

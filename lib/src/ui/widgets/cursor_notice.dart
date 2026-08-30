@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 /// The app's shared "why nothing happened" channel (R26 #35/#13).
 ///
@@ -180,10 +181,10 @@ class _NoticePill extends StatelessWidget {
         key: const ValueKey<String>('cursor-notice-pill'),
         constraints: const BoxConstraints(maxWidth: 240),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
+        decoration: ShapeDecoration(
           color: colorScheme.inverseSurface.withValues(alpha: 0.92),
-          borderRadius: BorderRadius.circular(6),
-          boxShadow: const [
+          shape: AppShapes.container(AppShapes.windowRadius),
+          shadows: const [
             BoxShadow(
               color: Colors.black38,
               blurRadius: 6,
