@@ -598,7 +598,17 @@ ThemeData buildAppTheme() {
     // A tooltip carries a SHAPE now rather than a BoxDecoration's radius,
     // which is the only way a Material tooltip can wear a superellipse.
     tooltipTheme: TooltipThemeData(
-      waitDuration: const Duration(milliseconds: 400),
+      // 🚨★★★NO WAIT (유저 2026-08-31, F-53: 「안내창 열리는 대기시간 삭제.
+      // 400ms였나? … 그냥 대기하지 않고 **바로** 뜨게 하고 싶음. 그게
+      // 직관적이고 사용감이 좋음」).
+      //
+      // ⚠️Material's own default is 0 and this theme had raised it to 400ms.
+      // The wait exists to stop tooltips firing as a pointer sweeps ACROSS
+      // controls on the way somewhere — but this app's controls are large and
+      // deliberately aimed at, and a pen or a finger does not sweep at all.
+      // What the delay actually bought was a beat of nothing after you had
+      // already stopped and looked.
+      waitDuration: Duration.zero,
       decoration: ShapeDecoration(
         // ⛔It named [AppColors.surfaceHigh] itself — a grey, while the menu
         // beside it was charcoal. 유저 2026-08-28: 「이 색을 바탕으로 공통창
