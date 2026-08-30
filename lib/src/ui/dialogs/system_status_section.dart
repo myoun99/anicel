@@ -4,6 +4,7 @@ import '../diagnostics/memory_census.dart';
 import '../editor_session_manager.dart';
 import '../../services/diagnostics/memory_black_box.dart';
 import '../../services/runtime_path_report.dart';
+import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
 
 /// Preferences ▸ System: the live runtime-path report — which
@@ -29,11 +30,9 @@ class SystemStatusSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text(
-          'Which implementation each subsystem is running right now. '
-          'Fallback paths keep the app working but usually run slower — '
-          'the names are searchable if you want the details.',
-          style: TextStyle(fontSize: 11, color: AppColors.textDim),
+        Text(
+          AppText.strings.systemStatusHelp,
+          style: const TextStyle(fontSize: 11, color: AppColors.textDim),
         ),
         const SizedBox(height: 10),
         // ⚠️REVERSED, and the original reason is kept because it was not
