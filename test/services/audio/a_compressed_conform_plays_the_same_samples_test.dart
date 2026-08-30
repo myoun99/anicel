@@ -2,6 +2,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/framed_media_fixture.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
@@ -70,7 +72,7 @@ void main() {
     final perBlock = samplesPerBlock(mediaBlockBytes);
     // Two blocks and a bit, so there is a real boundary to cross.
     final wav = rampWav(perBlock * 2 + 5000);
-    final framedBytes = compressMediaBlob(wav);
+    final framedBytes = framedEntryBytes(wav);
     expect(
       framedBytes,
       isNotNull,
@@ -128,7 +130,7 @@ void main() {
       return;
     }
     final perBlock = samplesPerBlock(mediaBlockBytes);
-    final entry = compressMediaBlob(rampWav(perBlock * 3))!;
+    final entry = framedEntryBytes(rampWav(perBlock * 3))!;
     var bytesRead = 0;
     // 🚨[MediaByteSource] is sealed, so counting has to go through the
     // read FUNCTION — which is exactly why `MediaFramedBytes.reading`
@@ -172,7 +174,7 @@ void main() {
     // Framed bytes under the PLAIN name: nothing says to decompress them,
     // so this must not be mistaken for a WAV.
     final wrong = '${directory.path}/mislabelled.aaaabbbb.wav';
-    File(wrong).writeAsBytesSync(compressMediaBlob(wav)!);
+    File(wrong).writeAsBytesSync(framedEntryBytes(wav)!);
     expect(
       ConformPcmStreamReader.open(wrong),
       isNull,

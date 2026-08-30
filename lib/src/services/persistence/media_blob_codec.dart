@@ -90,7 +90,7 @@
 /// an uncompressed object structure, a JPEG's entropy coding leaves plenty
 /// on the table, and even H.264 gives a few percent.
 ///
-/// ⇒ [compressMediaBlob] tries and keeps the result only when it actually
+/// ⇒ [writeMediaBlob] tries and keeps the result only when it actually
 /// got smaller ([mediaCompressionWorthIt]). A rule about file EXTENSIONS
 /// would have thrown away 40% of a conte and 21% of a photo.
 ///
@@ -100,6 +100,7 @@
 /// to read a second of it.
 library;
 
+import 'dart:io';
 import 'dart:typed_data';
 
 import '../../native/qa_cel_compressor.dart';
@@ -267,62 +268,206 @@ class MediaBlobHeader {
   }
 }
 
-/// Compresses [bytes] for a media entry, or answers null when it is not
-/// worth it — an already-compressed format, or a build with no zstd.
+/// Writes the entry for [length] bytes at [basePath] — framed when framing
+/// actually pays — and answers where it landed.
 ///
-/// ⛔The deflate floor is deliberately NOT used here, unlike
-/// [compressAnicelPayload]. A cel MUST be readable by any build because it
-/// is the picture; a media entry has an alternative that costs nothing —
-/// storing the file as it is — so a build without zstd simply stores, and
-/// no .anicel ever needs a library to give its media back.
+/// 🚨★★★**IT NEVER HOLDS THE ASSET, AND IT IS THE ONLY THING THAT WRITES
+/// THIS FORMAT.**
 ///
-/// [blockBytes] is the size THIS entry is written at, and it is recorded in
-/// the entry's own header. It is a parameter rather than a constant read
-/// here because the constant has moved once already and will read back
-/// entries written at the old size forever — a reader that assumed it
-/// would serve the wrong bytes, so the format is built so that assuming it
-/// is not even possible.
-Uint8List? compressMediaBlob(
-  Uint8List bytes, {
+/// The first version took the whole file as one `Uint8List` and built every
+/// compressed block beside it before judging the total — on a 4GB movie
+/// that is the asset twice over, resident at once, on the UI isolate, to
+/// settle a question the first few blocks already answer. 유저 2026-08-27
+/// named the shape this must not have — 「3기가 영상파일도 볼거라서 결국
+/// 그게 그대로 메모리에 올라가면 문제되는데」 — about READS, and the write
+/// had it anyway. This holds one block in and one block out, whatever the
+/// file weighs.
+///
+/// ⛔That version is DELETED rather than kept for the callers that could
+/// afford it. Two writers of one format drift, and this one is read back
+/// byte by byte — see `test/helpers/framed_media_fixture.dart`, which
+/// builds its fixtures by calling this and reading the file, so the tests
+/// measure the layout that ships.
+///
+/// ⚡**It also stops once framing cannot win.** The index length is known
+/// before the first read ([MediaBlobHeader.prefixLength] plus four bytes a
+/// block, and the block count follows from [length]), so the weight a
+/// framed entry has to come in under is known too, and the loop abandons
+/// framing the moment the blocks behind it have spent that allowance.
+///
+/// ⚠️**Do not read that as「a PNG costs a handful of blocks」— I wrote that
+/// first and then measured it.** Noise compresses to about 1.00×, so the
+/// allowance ([mediaCompressionWorthIt], 0.95) is not spent until most of
+/// the file has gone through: **95.0% of a noise file was compressed
+/// before the exit fired** (20 blocks of 64KB, measured). The exit saves
+/// the last few percent and the writes that would have been thrown away.
+/// It is NOT a sampling heuristic and must not become one — the top of
+/// this file records why the decision asks each FILE rather than believing
+/// something about it.
+///
+/// ⚠️So an entry that ends up stored is READ TWICE — once trying, once
+/// copying. That is disk, and the alternative it replaced was holding the
+/// asset and every compressed block of it in memory at the same time.
+///
+/// [readInto] is `MediaByteSource.readIntoSync`'s shape — the one the
+/// archive writer already streams through — so a caller holding an open
+/// handle passes it straight in rather than reopening once a block.
+({String path, bool framed}) writeMediaBlob({
+  required String basePath,
+  required int length,
+  required int Function(Uint8List buffer, int position, int size) readInto,
   int blockBytes = mediaBlockBytes,
 }) {
-  final compressor = QaCelCompressor.instance;
-  if (compressor == null || !compressor.isSupported || bytes.isEmpty) {
-    return null;
+  // ⛔Written to a neighbour and renamed, and here that is not only about
+  // torn files: framedness is not known until the last block, so the bytes
+  // have to be somewhere nameless while it is still being decided.
+  final part = File('$basePath.part');
+  part.parent.createSync(recursive: true);
+  final out = part.openSync(mode: FileMode.write);
+  bool framed;
+  try {
+    framed = _writeFramedBlocks(out, length, readInto, blockBytes);
+    if (!framed) {
+      out.setPositionSync(0);
+      out.truncateSync(0);
+      _writeVerbatim(out, length, readInto, blockBytes);
+    }
+  } finally {
+    out.closeSync();
   }
-  final blocks = <Uint8List>[];
-  var packed = 0;
-  for (var at = 0; at < bytes.length; at += blockBytes) {
-    final end = at + blockBytes > bytes.length ? bytes.length : at + blockBytes;
+  final path = mediaPathFramed(basePath, framed: framed);
+  // Windows refuses a rename onto an existing name, and a rebuild — a
+  // conform whose settings changed, a re-staged asset — lands on one.
+  final existing = File(path);
+  if (existing.existsSync()) {
+    existing.deleteSync();
+  }
+  part.renameSync(path);
+  return (path: path, framed: framed);
+}
+
+/// [writeMediaBlob]'s [readInto] over bytes that are already in memory.
+///
+/// The conform pipeline is why this exists: its PCM was just computed, so
+/// it has no file to stream from — but the compressed blocks are still
+/// worth never holding, and the writer only asks for a window at a time.
+int Function(Uint8List, int, int) mediaBytesReader(Uint8List bytes) =>
+    (buffer, position, size) {
+      final end = position + size > bytes.length
+          ? bytes.length
+          : position + size;
+      final got = end - position;
+      if (got <= 0) {
+        return 0;
+      }
+      buffer.setRange(0, got, bytes, position);
+      return got;
+    };
+
+/// Fills [buffer] from [at], looping because a source promises only「up
+/// to」[want] bytes. Answers how many landed — short only at the end.
+int _fill(
+  Uint8List buffer,
+  int at,
+  int want,
+  int Function(Uint8List, int, int) readInto,
+) {
+  var got = 0;
+  while (got < want) {
+    final read = readInto(
+      Uint8List.sublistView(buffer, got),
+      at + got,
+      want - got,
+    );
+    if (read <= 0) {
+      break;
+    }
+    got += read;
+  }
+  return got;
+}
+
+/// The framed road: the index's room is reserved, the blocks are appended,
+/// and the index is written into that room last — the only order that does
+/// not need every block's length before the first one is compressed.
+///
+/// False means「do not frame this」, and the caller writes the same file
+/// verbatim over the top. Every exit takes it: no engine, a short source, a
+/// block the engine refused, or an allowance already spent.
+bool _writeFramedBlocks(
+  RandomAccessFile out,
+  int length,
+  int Function(Uint8List, int, int) readInto,
+  int blockBytes,
+) {
+  final compressor = QaCelCompressor.instance;
+  if (compressor == null || !compressor.isSupported || length <= 0) {
+    return false;
+  }
+  final blockCount = (length + blockBytes - 1) ~/ blockBytes;
+  final headerLength = MediaBlobHeader.prefixLength + 4 * blockCount;
+  // 🚨The INDEX is spent before a byte is compressed, so it comes out of
+  // the allowance first — judged on the WHOLE entry, the way the in-memory
+  // codec judges it, because that is what the file pays.
+  var allowance = (length * mediaCompressionWorthIt).floor() - headerLength;
+  if (allowance <= 0) {
+    return false;
+  }
+  out.setPositionSync(headerLength);
+  final buffer = Uint8List(blockBytes);
+  final blockLengths = <int>[];
+  var at = 0;
+  while (at < length) {
+    final want = length - at < blockBytes ? length - at : blockBytes;
+    if (_fill(buffer, at, want, readInto) != want) {
+      return false; // The source ran short — verbatim says what is there.
+    }
     final block = compressor.compress(
-      Uint8List.sublistView(bytes, at, end),
+      Uint8List.sublistView(buffer, 0, want),
       level: anicelZstdLevel,
     );
     if (block == null) {
-      return null; // The engine gave up mid-file: store the original.
+      return false;
     }
-    blocks.add(block);
-    packed += block.length;
+    allowance -= block.length;
+    if (allowance < 0) {
+      return false;
+    }
+    out.writeFromSync(block);
+    blockLengths.add(block.length);
+    at += want;
   }
-  final header = MediaBlobHeader(
-    blockBytes: blockBytes,
-    totalLength: bytes.length,
-    blockLengths: [for (final block in blocks) block.length],
+  out.setPositionSync(0);
+  out.writeFromSync(
+    MediaBlobHeader(
+      blockBytes: blockBytes,
+      totalLength: length,
+      blockLengths: blockLengths,
+    ).toBytes(),
   );
-  final total = header.length + packed;
-  // 🚨Judged on the WHOLE entry including its index, because that is what
-  // the file pays. A saving the block index eats is not a saving.
-  if (total >= bytes.length * mediaCompressionWorthIt) {
-    return null;
+  return true;
+}
+
+/// The verbatim road, in the same block-sized bites. What this writes IS
+/// the asset, byte for byte — that is what lets a stored entry be handed
+/// out later as a plain byte range.
+void _writeVerbatim(
+  RandomAccessFile out,
+  int length,
+  int Function(Uint8List, int, int) readInto,
+  int chunkBytes,
+) {
+  final buffer = Uint8List(chunkBytes);
+  var at = 0;
+  while (at < length) {
+    final want = length - at < chunkBytes ? length - at : chunkBytes;
+    final got = _fill(buffer, at, want, readInto);
+    if (got <= 0) {
+      break;
+    }
+    out.writeFromSync(buffer, 0, got);
+    at += got;
   }
-  final out = Uint8List(total);
-  out.setAll(0, header.toBytes());
-  var at = header.length;
-  for (final block in blocks) {
-    out.setAll(at, block);
-    at += block.length;
-  }
-  return out;
 }
 
 /// The whole file back from a framed entry.

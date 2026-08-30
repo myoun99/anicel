@@ -101,21 +101,34 @@ class MediaStagingStore {
       return null;
     }
     Directory(directoryPath).createSync(recursive: true);
-    final bytes = source.readAsBytesSync();
-    final framed = compressMediaBlob(bytes);
-    final path = pathFor(poolPath, framed: framed != null);
-    // ⛔Written to a neighbour and renamed, so a staged file is either
-    // complete or absent. A half-written one would be indistinguishable
-    // from a whole one, and the whole point is that these bytes are the
-    // ones the project keeps.
-    final temp = File('$path.part');
-    temp.writeAsBytesSync(framed ?? bytes, flush: true);
-    temp.renameSync(path);
+    // 🚨★★★**THE ASSET IS NEVER RESIDENT.** This read the file whole and
+    // handed it to the in-memory codec, which built every compressed block
+    // beside it before judging the total — a 4GB movie was the file twice
+    // over, on the UI isolate, at the moment 품기 is pressed. Streaming is
+    // not an optimisation here: it is the difference between carrying a
+    // big movie and being killed for trying.
+    final handle = source.openSync();
+    final ({String path, bool framed}) written;
+    try {
+      written = writeMediaBlob(
+        basePath: _basePathFor(poolPath),
+        length: handle.lengthSync(),
+        // ONE handle for the whole file. `MediaFileBytes.readIntoSync`
+        // opens and closes per call, which a 4GB asset would pay eight
+        // thousand times.
+        readInto: (buffer, position, size) {
+          handle.setPositionSync(position);
+          return handle.readIntoSync(buffer, 0, size);
+        },
+      );
+    } finally {
+      handle.closeSync();
+    }
     return StagedMedia(
       poolPath: poolPath,
-      path: path,
-      framed: framed != null,
-      storedLength: (framed ?? bytes).length,
+      path: written.path,
+      framed: written.framed,
+      storedLength: File(written.path).lengthSync(),
     );
   }
 

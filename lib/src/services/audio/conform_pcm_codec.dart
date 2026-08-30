@@ -12,7 +12,7 @@
 /// can open it, which makes a suspect conform something you can listen to
 /// instead of something you have to reason about」. Compressing the cache
 /// killed that: what lands on disk is a zstd block blob
-/// ([compressMediaBlob]), so no tool opens it as anything.
+/// ([writeMediaBlob]), so no tool opens it as anything.
 ///
 /// 유저 2026-08-30 asked the question that follows from it — 「애초에 다른
 /// 프로그램에서 열 이유가 없다면 wav로 디코드? 할 이유가있나?」 — and the

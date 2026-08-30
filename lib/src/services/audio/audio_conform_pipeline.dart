@@ -582,7 +582,7 @@ class AudioConformPipeline {
     //
     // 🚨★★★**AND IT IS WRITTEN COMPRESSED.** A conform is ~12× its source
     // and zstd takes 38–51% of it back, measured on the user's own audio
-    // (see [compressMediaBlob]). 유저 2026-08-30 chose this against the
+    // (see [writeMediaBlob]). 유저 2026-08-30 chose this against the
     // alternative — 「다른 앱으로 들을 필요성을 못느끼겟고 그럴거면
     // 압축해제시켜서 내보내기 기능 만들면 되는거아닌가?」 — which is why
     // `conform_pcm_codec.dart`'s「any audio tool can open it」is now a
@@ -621,9 +621,15 @@ class AudioConformPipeline {
           speedNumerator: speedNumerator,
           speedDenominator: speedDenominator,
         );
-        final framed = compressMediaBlob(wav);
-        cachedAt = mediaPathFramed(conformPath, framed: framed != null);
-        File(cachedAt).writeAsBytesSync(framed ?? wav, flush: true);
+        // Streamed out rather than compressed whole: an hour of dialogue
+        // is hundreds of megabytes, and holding every compressed block
+        // beside the PCM to find out whether they were worth keeping is
+        // the allocation this build exists not to make.
+        cachedAt = writeMediaBlob(
+          basePath: conformPath,
+          length: wav.length,
+          readInto: mediaBytesReader(wav),
+        ).path;
         // ⛔The OTHER spelling goes. A rebuild that flips framedness — a
         // build without an engine, or audio that stopped shrinking — would
         // otherwise leave both, and [mediaFramedOrPlainPaths] asks framed

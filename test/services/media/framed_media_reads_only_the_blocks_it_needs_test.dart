@@ -2,6 +2,8 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/framed_media_fixture.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
@@ -41,7 +43,7 @@ void main() {
     }
     // Three blocks and a tail.
     final source = sourceOf(mediaBlockBytes * 3 + 1000);
-    final entry = compressMediaBlob(source);
+    final entry = framedEntryBytes(source);
     expect(entry, isNotNull, reason: 'fixture: this data compresses');
 
     final stored = _CountingBytes(entry!);
@@ -79,7 +81,7 @@ void main() {
       return;
     }
     final source = sourceOf(mediaBlockBytes * 3 + 1000);
-    final entry = compressMediaBlob(source)!;
+    final entry = framedEntryBytes(source)!;
     final stored = _CountingBytes(entry);
     final framed = _framed(stored);
     final index = framed.header;
@@ -102,7 +104,7 @@ void main() {
       return;
     }
     final source = sourceOf(mediaBlockBytes * 2 + 77);
-    final framed = _framed(_CountingBytes(compressMediaBlob(source)!));
+    final framed = _framed(_CountingBytes(framedEntryBytes(source)!));
     expect(framed.readSync(), source);
   });
 
@@ -112,7 +114,7 @@ void main() {
       return;
     }
     final source = sourceOf(200 * 1024);
-    final framed = _framed(_CountingBytes(compressMediaBlob(source)!));
+    final framed = _framed(_CountingBytes(framedEntryBytes(source)!));
     final window = Uint8List(500);
     final read = framed.readIntoSync(window, source.length - 100, 500);
     expect(read, 100);
@@ -128,7 +130,7 @@ void main() {
       return;
     }
     final source = sourceOf(mediaBlockBytes * 2 + 10);
-    final stored = _CountingBytes(compressMediaBlob(source)!);
+    final stored = _CountingBytes(framedEntryBytes(source)!);
     final framed = _framed(stored);
     framed.header;
     final afterFirst = stored.reads;
@@ -147,7 +149,7 @@ void main() {
       return;
     }
     final framed = _framed(
-      _CountingBytes(compressMediaBlob(sourceOf(64 * 1024))!),
+      _CountingBytes(framedEntryBytes(sourceOf(64 * 1024))!),
     );
     expect(
       framed.knownCrc32,
@@ -164,7 +166,7 @@ void main() {
       markTestSkipped('no engine on this run');
       return;
     }
-    final entry = compressMediaBlob(sourceOf(300 * 1024))!;
+    final entry = framedEntryBytes(sourceOf(300 * 1024))!;
     final cut = Uint8List.sublistView(entry, 0, entry.length - 100);
     final framed = _framed(_CountingBytes(cut));
     expect(
@@ -192,7 +194,7 @@ void main() {
       reason: 'fixture: the point is that the two disagree',
     );
     final source = sourceOf(wasBlockBytes * 2 + 500);
-    final entry = compressMediaBlob(source, blockBytes: wasBlockBytes)!;
+    final entry = framedEntryBytes(source, blockBytes: wasBlockBytes)!;
     expect(MediaBlobHeader.parse(entry).blockBytes, wasBlockBytes);
     expect(MediaBlobHeader.parse(entry).blockCount, 3);
 
@@ -225,7 +227,7 @@ void main() {
       List<int>.generate(128 * 1024, (_) => random.nextInt(256)),
     );
     expect(
-      compressMediaBlob(noise),
+      framedEntryBytes(noise),
       isNull,
       reason:
           'a file zstd cannot improve keeps a plain seek — the framed '
