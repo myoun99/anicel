@@ -149,6 +149,41 @@ void main() {
     );
   }
 
+  /// 🚨**THE BAR HAS TO KNOW THE CONFORMS ARE COMING.**
+  ///
+  /// A full rewrite writes the conforms LAST and they are the largest
+  /// entries in the file — an hour of dialogue against a few cels. A
+  /// denominator that counts only the cels and the media therefore reaches
+  /// 1.0 before the biggest write begins, and the window sits at 100%
+  /// through the whole of it. That is the same defect the append path was
+  /// fixed for, and this asserts the property `_SaveProgress.finish` names:
+  /// **the bar arrives at the end exactly once.** Arriving twice is what an
+  /// end announced early looks like from outside.
+  test('🚨 a full rewrite counts the conforms it is about to write', () async {
+    final p = project();
+    final reports = <double>[];
+    await p.service.save(
+      project: createDefaultProject(),
+      brushFrameStore: p.store,
+      filePath: p.path,
+      mediaToStore: {p.audio: MediaFileBytes(p.audio)},
+      // Large on purpose: the conform has to be worth several reports of
+      // its own, or a short denominator could hide inside the rounding.
+      conforms: carrying(p.audio, writeConform('a.conform', 4 << 20, 7)),
+      onProgress: reports.add,
+    );
+
+    expect(reports, isNotEmpty, reason: 'nothing crossed the port at all');
+    expect(reports.last, 1.0);
+    expect(
+      reports.where((value) => value >= 1.0).length,
+      1,
+      reason:
+          'the bar reached the end more than once — the denominator forgot '
+          'an entry, so the rest of the write ran behind a full bar',
+    );
+  });
+
   test('🚨a conform built at OTHER settings leaves the archive', () async {
     final p = project();
     await p.service.save(
