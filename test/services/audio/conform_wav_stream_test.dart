@@ -52,7 +52,6 @@ void main() {
         reason: 'streamed sample $index diverged from the resident decode',
       );
     }
-    reader.close();
   });
 
   test('windows clamp into the file instead of inventing samples', () {
@@ -64,12 +63,14 @@ void main() {
 
     final tail = reader.readWindow(950, 100);
     expect(tail.startSample, 950);
-    expect(tail.samples, hasLength(50 * 2),
-        reason: 'only 50 samples exist past 950');
+    expect(
+      tail.samples,
+      hasLength(50 * 2),
+      reason: 'only 50 samples exist past 950',
+    );
 
     final past = reader.readWindow(5000, 100);
     expect(past.samples, isEmpty);
-    reader.close();
   });
 
   test('a provenance chunk before the data does not shift the window', () {
@@ -93,7 +94,6 @@ void main() {
     final window = reader.readWindow(0, 2);
     expect(window.samples[0], closeTo(0.5, 1e-4));
     expect(window.samples[2], closeTo(0.25, 1e-4));
-    reader.close();
   });
 
   test('not a WAV: open answers null, never throws', () {

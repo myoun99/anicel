@@ -10,6 +10,7 @@ import '../../models/project.dart';
 import '../brush_frame_store.dart';
 import '../media/media_byte_source.dart';
 import '../media/media_fingerprints.dart';
+import '../media/project_media_sources.dart' show ProjectConforms;
 import 'brush_drawing_binary_codec.dart';
 import 'anicel_incremental_writer.dart';
 import 'anicel_project_archive.dart';
@@ -482,6 +483,11 @@ class AnicelFileService {
     required String filePath,
     Map<String, MediaByteSource> mediaToStore = const {},
 
+    /// Pool path → the conform to carry alongside it, taken AS IT SITS
+    /// (framed stays framed). Whatever is absent here has its conform
+    /// entry REMOVED — that is the settings-change sweep.
+    ProjectConforms conforms = const ProjectConforms.none(),
+
     /// The security-scoped tokens for referenced media, already reduced to
     /// JSON by the session — see [buildAnicelProjectJsonBytes].
     List<Map<String, Object?>> grants = const [],
@@ -575,6 +581,7 @@ class AnicelFileService {
         filePath: filePath,
         saveDirectory: saveDirectory,
         mediaToStore: mediaToStore,
+        conforms: conforms,
         grants: grants,
         mediaCrcs: mediaCrcs,
         onProgress: onProgress,
@@ -593,6 +600,7 @@ class AnicelFileService {
       filePath: filePath,
       saveDirectory: saveDirectory,
       mediaToStore: mediaToStore,
+      conforms: conforms,
       grants: grants,
       mediaCrcs: mediaCrcs,
       onProgress: onProgress,
@@ -657,6 +665,11 @@ class AnicelFileService {
     List<Map<String, Object?>> grants = const [],
     Map<String, Object?> mediaCrcs = const {},
     Map<String, MediaByteSource> mediaToStore = const {},
+
+    /// Pool path → the conform to carry alongside it, taken AS IT SITS
+    /// (framed stays framed). Whatever is absent here has its conform
+    /// entry REMOVED — that is the settings-change sweep.
+    ProjectConforms conforms = const ProjectConforms.none(),
     void Function(double)? onProgress,
   }) async {
     final works = <_CelWork>[];
@@ -782,6 +795,27 @@ class AnicelFileService {
                 readInto: entry.value.readIntoSync,
               ),
         ];
+        // A conform, unlike media, CAN be replaced under the same name: it
+        // is derived, and a rebuilt one lands at the same cache address.
+        // So presence is not enough — the LENGTH has to agree too.
+        //
+        // 🚨What being wrong costs, stated honestly: two different conforms
+        // of one source at one setting that happen to compress to the exact
+        // same byte count would leave the stale one carried. The pipeline
+        // checks the source fingerprint before it uses a conform, so that
+        // costs dead bytes until the next differing save and can never
+        // play the wrong sound. Re-streaming every conform on every save
+        // instead would rewrite hundreds of megabytes to change one line
+        // of dialogue.
+        final newConforms = [
+          for (final entry in conforms.entries.entries)
+            if (_needsRestreaming(layout, entry.key, entry.value))
+              AnicelStreamedEntry(
+                name: entry.key,
+                length: entry.value.lengthSync(),
+                readInto: entry.value.readIntoSync,
+              ),
+        ];
         // ⚠️ Media counts once PER PASS, not once. This writer reads every
         // streamed entry twice (checksum, then copy), and counting it once
         // put `_done` at `_total` when the checksum pass ended — the window
@@ -789,7 +823,9 @@ class AnicelFileService {
         // a large import is most of the wait.
         final progress = _SaveProgress(
           port,
-          1 + works.length + newMedia.length * anicelAppendStreamPasses,
+          1 +
+              works.length +
+              (newMedia.length + newConforms.length) * anicelAppendStreamPasses,
         );
         final projectEntry = buildAnicelProjectEntry(
           project: project,
@@ -825,15 +861,38 @@ class AnicelFileService {
                 !wantedMediaNames.contains(entry.name))
               entry.name,
         };
+        // 🚨★★★**THIS IS THE SETTINGS-CHANGE SWEEP** (유저 2026-08-30:
+        // 「레이트 변경 등 죽은파일만 깔끔하게 잘 걷어낼것」).
+        //
+        // ⛔Against [ProjectConforms.liveNames], NOT against what is being
+        // written. Those are different sets and the difference is the bug
+        // this shape exists to avoid: a machine that has only just opened
+        // the project writes NOTHING (its cache is empty and the bytes are
+        // already in the file), and sweeping by「what was written」would
+        // have taken every conform the project carried on exactly that
+        // journey. `liveNames` says what the project may legitimately
+        // HOLD at the current settings; a conform built under others is
+        // under a name outside it, and that is the whole test.
+        final staleConformNames = {
+          for (final entry in layout.entries)
+            if (entry.name.startsWith(anicelConformEntryPrefix) &&
+                !conforms.entries.containsKey(entry.name))
+              entry.name,
+        };
         final appended = appendAnicelEntries(
           path: filePath,
           newEntries: {
             projectEntry.name: projectEntry.bytes,
             for (final (_, name, blob) in blobs) name: blob.bytes,
           },
-          removeNames: {...removeNames, ...staleMediaNames},
+          removeNames: {
+            ...removeNames,
+            ...staleMediaNames,
+            ...staleConformNames,
+          },
           streamedEntries: [
             for (final entry in newMedia) _progressed(entry, progress),
+            for (final entry in newConforms) _progressed(entry, progress),
           ],
         );
         progress.finish();
@@ -849,6 +908,20 @@ class AnicelFileService {
         };
       }),
     );
+  }
+
+  /// Whether the entry called [name] has to be streamed again.
+  ///
+  /// Absent, or present at a different length. Media never takes the
+  /// second branch — an asset is written once and never edited — but a
+  /// conform is derived and a rebuilt one lands under the same name.
+  static bool _needsRestreaming(
+    AnicelZipLayout layout,
+    String name,
+    MediaByteSource source,
+  ) {
+    final existing = layout.entryNamed(name);
+    return existing == null || existing.length != source.lengthSync();
   }
 
   /// Full atomic rewrite (first save, save-as, compaction, recovery):
@@ -870,6 +943,11 @@ class AnicelFileService {
     List<Map<String, Object?>> grants = const [],
     Map<String, Object?> mediaCrcs = const {},
     Map<String, MediaByteSource> mediaToStore = const {},
+
+    /// Pool path → the conform to carry alongside it, taken AS IT SITS
+    /// (framed stays framed). Whatever is absent here has its conform
+    /// entry REMOVED — that is the settings-change sweep.
+    ProjectConforms conforms = const ProjectConforms.none(),
     void Function(double)? onProgress,
   }) async {
     final allKeys = <BrushFrameKey>{
@@ -922,6 +1000,7 @@ class AnicelFileService {
         saveDirectory: saveDirectory,
         works: works,
         mediaToStore: mediaToStore,
+        conforms: conforms,
         grants: grants,
         mediaCrcs: mediaCrcs,
         onProgress: onProgress,
@@ -997,6 +1076,7 @@ class AnicelFileService {
     required String saveDirectory,
     required List<_CelWork> works,
     required Map<String, MediaByteSource> mediaToStore,
+    required ProjectConforms conforms,
     // Plain maps, so the closure carries values the port can copy — the
     // picker's grant type could not cross this boundary at all.
     required List<Map<String, Object?>> grants,
@@ -1067,6 +1147,19 @@ class AnicelFileService {
                     entry.key,
                     framed: entry.value.storedIsFramed,
                   ),
+                  length: entry.value.lengthSync(),
+                  readInto: entry.value.readIntoSync,
+                ),
+                progress,
+              ),
+            // Conforms the same way, under their own prefix. A full
+            // rewrite has no survivors to inherit from, so the sweep here
+            // needs no removal list: an entry nothing hands over simply is
+            // not written.
+            for (final entry in conforms.entries.entries)
+              _progressed(
+                AnicelStreamedEntry(
+                  name: entry.key,
                   length: entry.value.lengthSync(),
                   readInto: entry.value.readIntoSync,
                 ),

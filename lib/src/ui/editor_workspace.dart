@@ -2730,6 +2730,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
               // occupies compressed, rather than the length its file had
               // when it was registered.
               storedBytes: widget.session.mediaStoredBytes,
+              conformBytes: widget.session.conformStoredBytes,
               onRelinkMissing: () =>
                   runMediaRelinkFlow(context, widget.session),
               onRemoveAsset: widget.session.removeMediaAsset,

@@ -173,6 +173,47 @@ void main() {
       reason: 'a short block is a broken file, not an empty one',
     );
   });
+  test('🚨an entry written at ANOTHER block size still windows correctly', () {
+    if (!engineHere()) {
+      markTestSkipped('no engine on this run');
+      return;
+    }
+    // 4MB is what this app wrote until the decompression measurement moved
+    // [mediaBlockBytes] to 512KB, and those entries live in .anicel files
+    // that are already on people's disks. The reader's authority is the
+    // ENTRY's header, so this pins that the constant is a writer's default
+    // and nothing more — mutate [MediaFramedBytes] to divide by
+    // `mediaBlockBytes` instead of `index.blockBytes` and only this goes
+    // red.
+    const wasBlockBytes = 4 * 1024 * 1024;
+    expect(
+      wasBlockBytes,
+      isNot(mediaBlockBytes),
+      reason: 'fixture: the point is that the two disagree',
+    );
+    final source = sourceOf(wasBlockBytes * 2 + 500);
+    final entry = compressMediaBlob(source, blockBytes: wasBlockBytes)!;
+    expect(MediaBlobHeader.parse(entry).blockBytes, wasBlockBytes);
+    expect(MediaBlobHeader.parse(entry).blockCount, 3);
+
+    final stored = _CountingBytes(entry);
+    final framed = _framed(stored);
+    final index = framed.header;
+    stored.reset();
+
+    // Deep inside the LAST full block — the offset the current constant
+    // would place in block 16.
+    final at = wasBlockBytes + 4096;
+    final window = Uint8List(256);
+    expect(framed.readIntoSync(window, at, window.length), window.length);
+    expect(window, Uint8List.sublistView(source, at, at + window.length));
+    expect(
+      stored.bytesRead,
+      index.blockLengths[1],
+      reason: 'one block, chosen by the size the ENTRY records',
+    );
+  });
+
   test('incompressible bytes are stored, so a window into them never comes '
       'here at all', () {
     if (!engineHere()) {

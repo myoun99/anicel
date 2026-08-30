@@ -4,6 +4,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
+import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Project projectWithMediaPaths(List<String> paths) =>
@@ -14,12 +15,13 @@ Project projectWithMediaPaths(List<String> paths) =>
       ],
     );
 
-/// The archive learning to hold media: what an asset's entry is called,
-/// which of the two manifests describes it, and when a file full of media
-/// is worth compacting.
+/// The archive holding media: what an asset's entry is called, which of
+/// the two manifests describes it, and when a file full of media is worth
+/// compacting.
 ///
-/// Nothing writes media into a `.anicel` yet — that is the next change.
-/// This is the container being able to.
+/// 🪦This used to end「Nothing writes media into a `.anicel` yet — that is
+/// the next change」. It has been the ordinary way a project carries its
+/// sound for a long time, and a conform rides beside it now.
 void main() {
   group('entry names', () {
     test('the same asset lands on the same name every save', () {
@@ -53,9 +55,86 @@ void main() {
       final name = anicelMediaEntryName('/work/내 작업/대사 01.m4a');
       expect(name, startsWith(anicelMediaEntryPrefix));
       expect(name, contains('.m4a'));
-      expect(name.substring(anicelMediaEntryPrefix.length), isNot(contains('/')));
-      expect(RegExp(r'^media/[0-9a-f]{8}-[A-Za-z0-9._-]+$').hasMatch(name), isTrue,
-          reason: name);
+      expect(
+        name.substring(anicelMediaEntryPrefix.length),
+        isNot(contains('/')),
+      );
+      expect(
+        RegExp(r'^media/[0-9a-f]{8}-[A-Za-z0-9._-]+$').hasMatch(name),
+        isTrue,
+        reason: name,
+      );
+    });
+
+    String conformAt(
+      String asset, {
+      int sampleRate = 48000,
+      int speedNumerator = 1,
+      int speedDenominator = 1,
+      bool framed = false,
+    }) => anicelConformEntryName(
+      asset,
+      sampleRate: sampleRate,
+      speedNumerator: speedNumerator,
+      speedDenominator: speedDenominator,
+      framed: framed,
+    );
+
+    test('🚨a CONFORM carries the SETTINGS it was built at', () {
+      // ⛔This is not decoration. The sweep asks「is this entry one the
+      // project may hold right now」, and without the settings in the name
+      // that question collapses into「is there a conform in the cache」 —
+      // which is ALSO false on a machine that has merely just opened the
+      // file, so every carried conform would be swept on the first save
+      // there. See [anicelConformEntryName].
+      const asset = '/work/내 작업/대사 01.m4a';
+      expect(conformAt(asset), contains('48000'));
+      expect(
+        conformAt(asset, sampleRate: 44100),
+        isNot(conformAt(asset)),
+        reason: 'a 44.1k conform is not a 48k one, and the NAME says so',
+      );
+      expect(
+        conformAt(asset, speedNumerator: 1001, speedDenominator: 1000),
+        isNot(conformAt(asset)),
+        reason: 'the NTSC pull changes every sample; it is not the same file',
+      );
+    });
+
+    test('an asset and its CONFORM share a hash and differ by prefix', () {
+      // One derivation, two prefixes. Sharing the hash is what lets a
+      // reader line the two up without recording anything; the separate
+      // prefix is what lets the save drop one and keep the other.
+      const asset = '/work/내 작업/대사 01.m4a';
+      final media = anicelMediaEntryName(asset);
+      final conform = conformAt(asset);
+      expect(conform, startsWith(anicelConformEntryPrefix));
+      expect(
+        conform.substring(anicelConformEntryPrefix.length),
+        startsWith(media.substring(anicelMediaEntryPrefix.length, 8)),
+        reason:
+            'same asset, same hash — only the settings and the folder '
+            'differ',
+      );
+      expect(conformAt(asset, framed: true), endsWith(mediaFramedEntrySuffix));
+      expect(
+        conformAt('/work/other.m4a'),
+        isNot(conform),
+        reason: 'two sounds must not share one conform entry',
+      );
+    });
+
+    test('both spellings of one conform, and nothing else', () {
+      const asset = '/work/대사.m4a';
+      final names = anicelConformEntryNames(
+        asset,
+        sampleRate: 48000,
+        speedNumerator: 1,
+        speedDenominator: 1,
+      );
+      expect(names, hasLength(2));
+      expect(names, contains(conformAt(asset)));
+      expect(names, contains(conformAt(asset, framed: true)));
     });
   });
 
@@ -67,14 +146,15 @@ void main() {
     }) {
       final project = projectWithMediaPaths(mediaPaths);
       return jsonDecode(
-        utf8.decode(
-          buildAnicelProjectJsonBytes(
-            project: project,
-            saveDirectory: saveDirectory,
-            mediaInArchive: inArchive,
-          ),
-        ),
-      ) as Map<String, dynamic>;
+            utf8.decode(
+              buildAnicelProjectJsonBytes(
+                project: project,
+                saveDirectory: saveDirectory,
+                mediaInArchive: inArchive,
+              ),
+            ),
+          )
+          as Map<String, dynamic>;
     }
 
     test('media inside is recorded by ENTRY, not by path', () {
@@ -84,8 +164,9 @@ void main() {
         saveDirectory: '/work',
       );
       expect(decoded['mediaEntries'], {
-        '/work/scene.assets/Media/bgm.wav':
-            anicelMediaEntryName('/work/scene.assets/Media/bgm.wav'),
+        '/work/scene.assets/Media/bgm.wav': anicelMediaEntryName(
+          '/work/scene.assets/Media/bgm.wav',
+        ),
       });
       // And ONLY by entry: a path recorded as well would let a stale file
       // at the old location win over the copy the project carries.
@@ -93,10 +174,9 @@ void main() {
     });
 
     test('media outside keeps the relative path it always had', () {
-      final decoded = jsonFor(
-        ['/work/scene.assets/Media/bgm.wav'],
-        saveDirectory: '/work',
-      );
+      final decoded = jsonFor([
+        '/work/scene.assets/Media/bgm.wav',
+      ], saveDirectory: '/work');
       expect(decoded['mediaPaths'], {
         '/work/scene.assets/Media/bgm.wav': 'scene.assets/Media/bgm.wav',
       });
@@ -129,6 +209,46 @@ void main() {
         (name: 'cels/x.celz', length: length);
     ({String name, int length}) media(int length) =>
         (name: '${anicelMediaEntryPrefix}0badf00d-a.wav', length: length);
+    ({String name, int length}) conform(int length) =>
+        (name: '${anicelConformEntryPrefix}0badf00d-a.wav', length: length);
+
+    test('🚨a CONFORM counts as media here, or an audio project stops '
+        'compacting', () {
+      // The exclusion is about bulk a rewrite copies FOR NOTHING, and a
+      // carried conform is the bulkiest thing an audio project holds — an
+      // hour of dialogue is ~428MB compressed against a cel area of tens.
+      // Left in the denominator it dilutes the ratio exactly as media did.
+      const conformBytes = 500 * 1024 * 1024;
+      final mostlyConform = [conform(conformBytes), cel(2048)];
+      expect(
+        anicelNeedsCompaction(
+          fileLength: conformBytes + 2048 + 4096,
+          entries: mostlyConform,
+        ),
+        isFalse,
+        reason: '4KB of dead project.json is not worth 500MB of copying',
+      );
+      expect(
+        anicelNeedsCompaction(
+          fileLength: conformBytes + 2048 + 2048,
+          entries: mostlyConform,
+        ),
+        isFalse,
+      );
+      // And a cel area that IS mostly garbage still asks, which is the
+      // half the exclusion exists to protect.
+      expect(
+        anicelNeedsCompaction(
+          fileLength: conformBytes + 2048 + 40 * 1024 * 1024,
+          entries: mostlyConform,
+        ),
+        isTrue,
+        reason:
+            'measured against the FILE this disappears into rounding — '
+            'which is the bug the media exclusion was written to fix, and '
+            'a conform is larger than the media',
+      );
+    });
 
     test('half the cel area dead is the threshold, as it always was', () {
       // A project with no media is untouched by the rewrite floor below —

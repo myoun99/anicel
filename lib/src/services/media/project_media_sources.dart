@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show immutable;
+
 import '../../models/project.dart';
 import '../persistence/anicel_incremental_writer.dart';
 import '../persistence/anicel_project_archive.dart';
@@ -85,7 +87,7 @@ Map<String, MediaByteSource> projectMediaSources({
     // when that was worth it. They go in AS THEY ARE.
     final staged = staging?.find(path);
     if (staged != null) {
-      sources[path] = MediaStagedBytes(
+      sources[path] = MediaAppFileBytes(
         path: staged.path,
         framed: staged.framed,
       );
@@ -112,6 +114,154 @@ Map<String, MediaByteSource> projectMediaSources({
     }
   }
   return sources;
+}
+
+/// Which of the project's media have a CONFORM to carry, and where its
+/// bytes are right now.
+///
+/// 🚨★★★**TWO PLACES, IN THIS ORDER: THE CACHE, THEN THE ARCHIVE.** The
+/// cache holds a conform this machine has built; the archive holds one the
+/// project carried here from somewhere else. Asking only the cache — the
+/// first shape of this — meant a machine that had just OPENED the project
+/// answered「nothing」for every sound, and the save then swept every
+/// conform the file was carrying. The journey carrying them exists to
+/// serve was the one that destroyed them.
+///
+/// 🔑The settings live in the ENTRY NAME ([anicelConformEntryName]), so
+///「built at other settings」and「not built here yet」stop being the same
+/// answer: a stale conform is under a name this walk never asks for, and a
+/// current one is under the name it does. What comes back IS the keep set
+/// — the sweep is everything under `conform/` that is not a key of it.
+///
+/// ⛔Bytes are taken AS THEY ARE, framed or not — the same rule staged
+/// media follows. Decompressing a conform to re-compress it into the
+/// archive would burn the whole reason it was compressed.
+///
+/// ⚠️A conform whose source has since been replaced can still be carried
+/// here; it is the pipeline that validates the fingerprint on read and
+/// rebuilds. Deciding that twice is how two answers drift apart.
+///
+/// ⛔**CARRIED MEDIA ONLY**, which is why this walks
+/// [projectArchivedMediaPaths] rather than every audio path the project
+/// touches. A conform IS the audio — decoded, but every sample of it — so
+/// carrying the conform of a REFERENCED sound would put that sound inside
+/// the project after the user said to leave it linked. That the copy
+/// would be in another format changes nothing about what it is.
+ProjectConforms projectConformSources({
+  required Project project,
+  required String? Function(String poolPath) conformBasePathFor,
+  required int sampleRate,
+  required int speedNumerator,
+  required int speedDenominator,
+  String? projectFilePath,
+}) {
+  final wanted = projectArchivedMediaPaths(project);
+  if (wanted.isEmpty) {
+    return const ProjectConforms.none();
+  }
+  // The archive's current layout, read once — the same tail-only parse
+  // `projectMediaSources` makes, and for the same reason: a conform
+  // already inside is where its bytes are.
+  AnicelZipLayout? layout;
+  if (projectFilePath != null && File(projectFilePath).existsSync()) {
+    try {
+      layout = parseAnicelZipLayoutFile(projectFilePath);
+    } on Object {
+      layout = null; // A torn tail carries nothing forward; it rebuilds.
+    }
+  }
+
+  final sources = <String, MediaByteSource>{};
+  for (final path in wanted) {
+    final names = anicelConformEntryNames(
+      path,
+      sampleRate: sampleRate,
+      speedNumerator: speedNumerator,
+      speedDenominator: speedDenominator,
+    );
+    String nameFor({required bool framed}) => anicelConformEntryName(
+      path,
+      sampleRate: sampleRate,
+      speedNumerator: speedNumerator,
+      speedDenominator: speedDenominator,
+      framed: framed,
+    );
+
+    final base = conformBasePathFor(path);
+    if (base != null) {
+      final cached = mediaFramedOrPlainPaths(
+        base,
+      ).where((candidate) => File(candidate).existsSync()).firstOrNull;
+      if (cached != null) {
+        final framed = mediaEntryIsFramed(cached);
+        sources[nameFor(framed: framed)] = MediaAppFileBytes(
+          path: cached,
+          framed: framed,
+        );
+        continue;
+      }
+    }
+    // 🚨Not in the cache, but the project may already be carrying it —
+    // which is the ORDINARY state on a machine that just opened the file,
+    // and on one whose cache was emptied. Handing the archive's own bytes
+    // back is what lets a full rewrite (Save As, a compaction) keep them
+    // instead of dropping what it was not given.
+    if (layout != null) {
+      for (final name in names) {
+        final entry = layout.entryNamed(name);
+        if (entry != null) {
+          sources[name] = MediaArchiveBytes(
+            archivePath: projectFilePath!,
+            dataOffset: entry.dataOffset,
+            length: entry.length,
+            entryCrc32: entry.crc32,
+            framed: mediaEntryIsFramed(name),
+          );
+          break;
+        }
+      }
+    }
+  }
+  return ProjectConforms(sources);
+}
+
+/// What a save should do about conforms: the entries to hold, and where
+/// each one's bytes are right now.
+///
+/// 🚨★★★**ONE MAP, AND ITS KEYS ARE THE WHOLE ANSWER.** A conform entry
+/// survives a save if and only if it is named here; everything else under
+/// `conform/` is swept. That works because [entries] is resolved from BOTH
+/// places a conform can be — the cache and the archive itself — so
+/// "nothing here" really does mean "nothing this project should hold",
+/// rather than "this machine has not built it yet".
+///
+/// 🪦An earlier shape carried a second set, `liveNames`, listing both
+/// framed spellings per asset so an un-built conform would not be swept.
+/// It was answering a question [entries] already answers, and it leaked:
+/// a project saved once by a build WITHOUT zstd and again by one with it
+/// would keep both the plain and the framed conform, since both spellings
+/// were live. One field cannot disagree with itself.
+///
+/// ⚠️A separate TYPE rather than a bare map, because the map beside it in
+/// every signature ([AnicelFileService.save]'s `mediaToStore`) is keyed by
+/// POOL PATH. Two maps of the same Dart type meaning different things is
+/// how a call site gets them the wrong way round.
+@immutable
+class ProjectConforms {
+  const ProjectConforms(this.entries);
+
+  /// Nothing to hold: every conform entry in the file is stale. The
+  /// default for callers that do not manage conforms — recovery overlays
+  /// and tests — which also never see a conform entry to sweep.
+  const ProjectConforms.none() : entries = const {};
+
+  /// **Archive ENTRY NAME** → where those bytes are right now: the cache,
+  /// or the entry the project already carries.
+  ///
+  /// Keyed by the name rather than by the pool path because the name is
+  /// what the writer needs, and deriving it there would mean deriving it
+  /// again from settings that would have to be handed over separately.
+  final Map<String, MediaByteSource> entries;
 }
 
 /// What the project should record as living inside it, after a save that

@@ -31,6 +31,8 @@ Future<void> _pump(
   _Callbacks callbacks, {
   List<MediaAsset> assets = const [],
   Future<String?> Function()? picker,
+  Map<String, int> storedBytes = const {},
+  Map<String, int> conformBytes = const {},
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -56,6 +58,8 @@ Future<void> _pump(
             },
             onOpenAsset: callbacks.opened.add,
             audioFilePicker: picker,
+            storedBytes: storedBytes,
+            conformBytes: conformBytes,
             // RELINK-2: the panel no longer probes the disk — the session
             // caches the answer and hands down the MISSING set. The suite
             // still declares which paths exist, so the inversion happens
@@ -300,6 +304,41 @@ void main() {
 
       expect(callbacks.promoted, [foot]);
       expect(find.textContaining('Nothing to take in'), findsOneWidget);
+    });
+  });
+
+  group('what a row says a file costs', () {
+    testWidgets('🚨the CONFORM is shown beside the sound', (tester) async {
+      // 유저 2026-08-30, answering `conform-in-project`: 「가시화정책에 따라
+      // 미디어풀 패널에서 해당파일의 컨폼파일 크기 표시할것」. A conform is
+      // several times the sound itself, and until now it was a number only
+      // the settings dialog knew — as one lump for the whole container.
+      await _pump(
+        tester,
+        _Callbacks()..existingPaths = {foot},
+        assets: const [MediaAsset(path: foot, name: 'foot.wav')],
+        storedBytes: const {foot: 55 * 1024 * 1024},
+        conformBytes: const {foot: 660 * 1024 * 1024},
+      );
+
+      expect(find.textContaining('55 MB + 660 MB'), findsOneWidget);
+    });
+
+    testWidgets('and a file with no conform says only its own size', (
+      tester,
+    ) async {
+      // ⛔Not a dash, not a zero. Most of the pool is images, and a column
+      // that announced「+ 0 KB」on every one of them would be noise about
+      // something that does not apply.
+      await _pump(
+        tester,
+        _Callbacks()..existingPaths = {foot},
+        assets: const [MediaAsset(path: foot, name: 'foot.wav')],
+        storedBytes: const {foot: 55 * 1024 * 1024},
+      );
+
+      expect(find.textContaining('55 MB'), findsOneWidget);
+      expect(find.textContaining('+'), findsNothing);
     });
   });
 }

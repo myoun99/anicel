@@ -388,8 +388,15 @@ class MediaFramedBytes extends MediaByteSource {
 /// ⚠️Its bytes may be [framed]; the save writes them AS THEY ARE and names
 /// the entry accordingly. Decoding a staged blob only to re-encode it
 /// would burn the whole point of having compressed it at import.
-class MediaStagedBytes extends MediaByteSource {
-  const MediaStagedBytes({required this.path, required this.framed});
+///
+/// 🚨★★★**AND A CONFORM IS THE SAME KIND OF FILE**, which is why this is
+/// not called `MediaStagedBytes` any more. Both are files THIS APP wrote
+/// into its own space, both may be framed, and both have the same answer
+/// to [statSync] — see below. Two classes for that would have been two
+/// spellings of one thing, and the second one would have been the one that
+/// forgot [storedIsFramed].
+class MediaAppFileBytes extends MediaByteSource {
+  const MediaAppFileBytes({required this.path, required this.framed});
 
   final String path;
   final bool framed;
@@ -417,22 +424,26 @@ class MediaStagedBytes extends MediaByteSource {
   @override
   bool existsSync() => File(path).existsSync();
 
-  /// No stat offered: the staged file's mtime is when the IMPORT ran, not
-  /// anything about the media, and the conform pipeline compares stamps
-  /// against the source it was told about.
+  /// No stat offered: this file's mtime is when WE wrote it — the import,
+  /// or the conform build — not anything about the media it stands for,
+  /// and [statSync] exists to answer "has the source changed underneath
+  /// us". Offering a mtime that answers a different question is how a
+  /// cache serves stale audio.
   @override
   MediaSourceStamp? statSync() => null;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is MediaStagedBytes && other.path == path && other.framed == framed;
+      other is MediaAppFileBytes &&
+          other.path == path &&
+          other.framed == framed;
 
   @override
   int get hashCode => Object.hash(path, framed);
 
   @override
-  String toString() => 'MediaStagedBytes($path${framed ? " framed" : ""})';
+  String toString() => 'MediaAppFileBytes($path${framed ? " framed" : ""})';
 }
 
 /// The source a CONSUMER should read: a framed entry seen as the file it
@@ -450,3 +461,15 @@ class MediaStagedBytes extends MediaByteSource {
 /// sources on purpose.
 MediaByteSource mediaSourceDecodingFrames(MediaByteSource stored) =>
     stored.storedIsFramed ? MediaFramedBytes(stored) : stored;
+
+/// The readable bytes of a file THIS APP wrote at [path] — a staged import
+/// copy, or a conform.
+///
+/// 🚨★★★**THE NAME DECIDES, AND ONLY HERE.** Framed-or-not is written into
+/// the file's name ([mediaFramedEntrySuffix]) exactly as it is into an
+/// archive entry's, so「is this compressed」and「how do I read it」are one
+/// question with one answer. Spelling it at the call site is how the
+/// conform reader and the staging reader would come to disagree.
+MediaByteSource mediaAppFileSource(String path) => mediaSourceDecodingFrames(
+  MediaAppFileBytes(path: path, framed: mediaEntryIsFramed(path)),
+);

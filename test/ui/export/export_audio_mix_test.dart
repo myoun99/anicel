@@ -1,9 +1,8 @@
-﻿import 'dart:io';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/audio_clip.dart'
-    show AudioVolumeKey;
+import 'package:anicel/src/models/audio_clip.dart' show AudioVolumeKey;
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/services/audio/audio_mixer_reference.dart';
 import 'package:anicel/src/services/audio/conform_wav_codec.dart';
@@ -87,32 +86,34 @@ void main() {
     expect(wav.samples[24000], closeTo(32767 / 32768, 1e-6));
   });
 
-  test('a fade-in ramps from silence exactly like the playback envelope',
-      () async {
-    final path = '${directory.path}/mix.wav';
-    await writeExportAudioMixWav(
-      schedule: const [
-        ScheduledAudioClip(
-          filePath: 'a',
-          startFrame: 0,
-          endFrameExclusive: 10,
-          fadeInFrames: 5,
-        ),
-      ],
-      rate: rate,
-      totalFrames: 10,
-      sampleRate: 48000,
-      resolveSource: (_) async => constantSource(0.8, 48000),
-      outputPath: path,
-    );
-    final wav = decodeConformWav(File(path).readAsBytesSync());
-    expect(wav.samples[0], 0, reason: 'the ramp starts at silence');
-    // Halfway through the 5-frame fade (~frame 2.5 = sample 12000): half
-    // the level.
-    expect(wav.samples[12000 * 2], closeTo(0.4, 0.01));
-    // Past the fade: full level.
-    expect(wav.samples[8 * 4800 * 2], closeTo(0.8, 0.001));
-  });
+  test(
+    'a fade-in ramps from silence exactly like the playback envelope',
+    () async {
+      final path = '${directory.path}/mix.wav';
+      await writeExportAudioMixWav(
+        schedule: const [
+          ScheduledAudioClip(
+            filePath: 'a',
+            startFrame: 0,
+            endFrameExclusive: 10,
+            fadeInFrames: 5,
+          ),
+        ],
+        rate: rate,
+        totalFrames: 10,
+        sampleRate: 48000,
+        resolveSource: (_) async => constantSource(0.8, 48000),
+        outputPath: path,
+      );
+      final wav = decodeConformWav(File(path).readAsBytesSync());
+      expect(wav.samples[0], 0, reason: 'the ramp starts at silence');
+      // Halfway through the 5-frame fade (~frame 2.5 = sample 12000): half
+      // the level.
+      expect(wav.samples[12000 * 2], closeTo(0.4, 0.01));
+      // Past the fade: full level.
+      expect(wav.samples[8 * 4800 * 2], closeTo(0.8, 0.001));
+    },
+  );
 
   test('pan and the volume envelope survive into the render — the R1 '
       'controls must not exist only in the preview', () async {
@@ -132,9 +133,7 @@ void main() {
           filePath: 'a',
           startFrame: 5,
           endFrameExclusive: 10,
-          volumeKeys: [
-            AudioVolumeKey(frame: 0, gain: 0.5),
-          ],
+          volumeKeys: [AudioVolumeKey(frame: 0, gain: 0.5)],
         ),
       ],
       rate: rate,
@@ -146,8 +145,11 @@ void main() {
     final wav = decodeConformWav(File(path).readAsBytesSync());
     // Panned clip, mid-clip sample: left = 0.5 x sqrt2, right = 0.
     expect(wav.samples[24000 * 2 - 2], closeTo(0.5 * 1.41421, 0.001));
-    expect(wav.samples[24000 * 2 - 1], 0,
-        reason: 'a hard-left clip must leave the right channel empty');
+    expect(
+      wav.samples[24000 * 2 - 1],
+      0,
+      reason: 'a hard-left clip must leave the right channel empty',
+    );
     // Enveloped clip: half gain on both sides.
     expect(wav.samples[7 * 4800 * 2], closeTo(0.25, 0.001));
   });
@@ -203,7 +205,7 @@ void main() {
       resolveStreamReader: (_) => reader,
       outputPath: streamedPath,
     );
-    reader.close();
+
     expect(written, isTrue);
     expect(
       File(streamedPath).readAsBytesSync(),

@@ -5,7 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/conform_cache_maintenance.dart';
 import 'package:anicel/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
+import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 
 /// The conform cache's lifetime, and what it is allowed to touch.
 ///
@@ -23,9 +25,7 @@ void main() {
   setUp(() {
     root = Directory.systemTemp.createTempSync('qa_conform_cache_');
     AppSave.settings.value = AppSaveSettings(
-      conformDirectory: GrantedDirectory(
-        path: root.path.replaceAll('\\', '/'),
-      ),
+      conformDirectory: GrantedDirectory(path: root.path.replaceAll('\\', '/')),
     );
   });
 
@@ -95,9 +95,89 @@ void main() {
     expect(
       conformCacheEntries().map((entry) => entry.path),
       [path.replaceAll('\\', '/')],
-      reason: 'a file written at the layout\'s own address, with the '
+      reason:
+          'a file written at the layout\'s own address, with the '
           'bytes the pipeline writes, has to be collectable',
     );
+  });
+
+  test('🚨 …INCLUDING when the pipeline compressed it', () {
+    final compressor = QaCelCompressor.instance;
+    if (compressor == null || !compressor.isSupported) {
+      markTestSkipped('no engine on this run');
+      return;
+    }
+    // The same seam as above, driven end to end. A conform is written
+    // FRAMED when that is worth it, and the collector identifies its own
+    // files by reading `RIFF`/`WAVE`/`qacf` out of them — so a framed one
+    // looks like a block index where the guard wanted a RIFF header.
+    //
+    // ⛔The failure that would cause is silent in the worst direction: the
+    // cache stops being collectable AND stops being counted, so the app
+    // container grows without bound while the settings panel reports it as
+    // empty. Neither the pipeline's tests nor the collector's own can see
+    // that, which is exactly why it is tested here.
+    final sourcePath = '${root.path}/원본.wav';
+    File(sourcePath).writeAsBytesSync(
+      encodeConformWav(
+        // Long enough to cross a block boundary, and compressible — a
+        // conform is PCM, and PCM is what the 38% measurement was taken on.
+        samples: Float32List.fromList([
+          for (var index = 0; index < 400000; index += 1)
+            (index % 4096) / 4096.0 - 0.5,
+        ]),
+        channels: 1,
+        sampleRate: 48000,
+      ),
+    );
+    final layout = ConformCacheLayout.forAudio(
+      sampleRate: 48000,
+      speedNumerator: 1,
+      speedDenominator: 1,
+    );
+    final result =
+        AudioConformPipeline(
+          decode: (bytes) {
+            final audio = decodeConformWav(bytes);
+            return (
+              samples: audio.samples,
+              channels: audio.channels,
+              sampleRate: audio.sampleRate,
+            );
+          },
+          resample:
+              ({
+                required samples,
+                required channels,
+                required inputRate,
+                required outputRate,
+              }) => samples,
+        ).ensureConform(
+          sourcePath: sourcePath,
+          conformPath: layout.conformPathFor(sourcePath),
+        );
+
+    expect(result.outcome, ConformOutcome.built);
+    expect(
+      result.conformPath,
+      endsWith(mediaFramedEntrySuffix),
+      reason: 'fixture: this audio compresses, so the write framed it',
+    );
+    final entries = conformCacheEntries();
+    expect(
+      entries.map((entry) => entry.path),
+      contains(result.conformPath),
+      reason: 'the collector has to recognise what the pipeline wrote',
+    );
+    expect(
+      conformCacheBytes(),
+      greaterThan(0),
+      reason:
+          'and count it, or the panel shows an empty container that '
+          'is not empty',
+    );
+    expect(clearConformCache(), greaterThan(0));
+    expect(File(result.conformPath!).existsSync(), isFalse);
   });
 
   test('the SHIPPED budget is 2GB', () {
@@ -147,7 +227,8 @@ void main() {
     expect(
       conformCacheBytes(),
       ourBytes,
-      reason: 'a size counting their files promises to reclaim what it '
+      reason:
+          'a size counting their files promises to reclaim what it '
           'must never touch',
     );
 
@@ -170,9 +251,7 @@ void main() {
     // a mutation of it survive. (Both layers have to be defeated for a
     // test to be measuring the one it names.)
     final dated = Directory('${root.path}/믹스.20260813')..createSync();
-    File('${dated.path}/믹스_v3.wav').writeAsBytesSync(
-      conformBytes(ours: false),
-    );
+    File('${dated.path}/믹스_v3.wav').writeAsBytesSync(conformBytes(ours: false));
 
     pruneConformCache();
 
@@ -180,16 +259,15 @@ void main() {
     expect(File('${dated.path}/믹스_v3.wav').existsSync(), isTrue);
   });
 
-  test('🚨 a folder named like ours but holding anything else stays whole',
-      () {
+  test('🚨 a folder named like ours but holding anything else stays whole', () {
     // The folder name is a strong hint and not proof — a directory cannot
     // be asked what wrote it. So the contents have to agree: an old cache
     // folder holds conforms and nothing else.
     final imposter = Directory('${root.path}/scene.anicel.0badf00d')
       ..createSync();
-    File('${imposter.path}/대사.m4a.wav').writeAsBytesSync(
-      conformBytes(ours: true),
-    );
+    File(
+      '${imposter.path}/대사.m4a.wav',
+    ).writeAsBytesSync(conformBytes(ours: true));
     File('${imposter.path}/작업.psd').writeAsBytesSync(const [8, 8, 8]);
 
     pruneConformCache();
@@ -198,7 +276,8 @@ void main() {
     expect(
       File('${imposter.path}/대사.m4a.wav').existsSync(),
       isTrue,
-      reason: 'not even the part that does look like ours — the folder is '
+      reason:
+          'not even the part that does look like ours — the folder is '
           'evidently somebody else\'s',
     );
   });
