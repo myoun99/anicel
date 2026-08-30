@@ -245,7 +245,7 @@ class BoardCard {
 /// Stop hook that cost 2.4s of every turn to answer the same question.
 List<int> badLines = const [];
 
-List<BoardCard> readBoard(File file) {
+List<BoardCard> readBoard(File file, {DateTime? now}) {
   final bad = <int>[];
   final byId = <String, BoardCard>{};
   final order = <String>[];
@@ -484,10 +484,14 @@ List<BoardCard> readBoard(File file) {
     if (e.kind == 'law' || e.tag.isEmpty || e.tags.contains(e.tag)) continue;
     e.tags = [...e.tags, e.tag];
   }
-  foldQuestionsIntoCards(byId);
-  foldChecksIntoCards(byId);
-  // 🚨★★★AND ONLY NOW IS THE CARD PLACED. Every entry is in, so the walk
-  // backwards can see the whole story — see [placeByStory].
+  foldQuestionsIntoCards(byId, now);
+  // 🚨★★★PLACED BEFORE THE CHECKS FOLD, because that fold has to know which
+  // hosts are still on the board — see [foldChecksIntoCards]. Then placed
+  // again, because the fold adds entries that decide where a card sits.
+  for (final e in byId.values) {
+    placeByStory(e);
+  }
+  foldChecksIntoCards(byId, now);
   for (final e in byId.values) {
     placeByStory(e);
   }
@@ -674,7 +678,7 @@ bool _checksLeft(BoardCard e) {
 /// 답할 것 while its newest word is a question and moves to 분류 전 the moment
 /// one is answered — the sections fall out of the story instead of being
 /// maintained beside it, and `_asking` stopped being needed at all.
-void foldQuestionsIntoCards(Map<String, BoardCard> byId) {
+void foldQuestionsIntoCards(Map<String, BoardCard> byId, [DateTime? now]) {
   for (final q in byId.values.toList()) {
     if (q.kind != 'decision') continue;
     final (of, _) = asksOf(q);
@@ -705,14 +709,18 @@ void foldQuestionsIntoCards(Map<String, BoardCard> byId) {
     origin.log.add(BoardLog(at, '유저', text, byUser: true));
   }
   for (final e in byId.values) {
-    sortByTime(e.log);
+    sortByTime(e.log, now);
   }
 }
 
 /// ⚠️STABLE, and unparseable timestamps keep the position they were read in.
 /// Older lines predate the `ts` field entirely, and a made-up time would
 /// scatter them; leaving them where the file put them is the honest answer.
-void sortByTime(List<BoardLog> log) {
+/// ⚠️[now] is an ARGUMENT so a test can pin it. Taking the wall clock here
+/// made every fixture stamped 「later today」 read as the future, which the
+/// clamp below then flattened into file order — a suite that passed or failed
+/// by what time of day it ran.
+void sortByTime(List<BoardLog> log, [DateTime? now]) {
   // 🚨★★★A TIME THAT HAS NOT HAPPENED CANNOT ORDER ANYTHING.
   //
   // ⛔I stamped 39 records on 2026-08-31 with clock times of 02·03·04·06·09·
@@ -727,11 +735,11 @@ void sortByTime(List<BoardLog> log) {
   // which puts it in file order — and file order is the true order, because
   // the file is append-only. ⚠️This does not hide the mistake; the gate names
   // it (see board_check). It stops the mistake from reordering the story.
-  final now = DateTime.now();
+  final clock = now ?? DateTime.now();
   final keyed = <(DateTime?, int, BoardLog)>[];
   for (var i = 0; i < log.length; i++) {
     final t = DateTime.tryParse(log[i].ts);
-    keyed.add((t != null && t.isAfter(now) ? null : t, i, log[i]));
+    keyed.add((t != null && t.isAfter(clock) ? null : t, i, log[i]));
   }
   // A row with no time inherits the one before it, so it cannot jump.
   DateTime? carry;
@@ -760,7 +768,7 @@ void sortByTime(List<BoardLog> log) {
 /// ⚠️A check that names the card it belongs to (`under`) folds into it. One
 /// that names nothing IS its own card, and gets the 실기 확인 entry written
 /// onto itself so the section falls out of its story like every other card's.
-void foldChecksIntoCards(Map<String, BoardCard> byId) {
+void foldChecksIntoCards(Map<String, BoardCard> byId, [DateTime? now]) {
   final byPr = <int, BoardCard>{};
   for (final e in byId.values) {
     for (final n in e.prs) {
@@ -774,7 +782,24 @@ void foldChecksIntoCards(Map<String, BoardCard> byId) {
     // `under` is a PR NUMBER, and the card that shipped it is the one this
     // check belongs to.
     final host = c.under == null ? null : byPr[c.under];
-    if (host != null && host.id != c.id) {
+    // 🚨★★★A CHECK NEVER GOES DOWN WITH ITS HOST.
+    //
+    // ⛔Folding put the check INSIDE the card that shipped its PR, and if that
+    // card had ended the check went with it — still unticked, and now on no
+    // list at all, so nothing could ever bring it back. 🧪TEN of them: the
+    // 4GB save check rode `stop-gate-was-dead` into the archive, four buffer
+    // checks rode `scroll-the-buffer-on-a-pan`, two rode a deleted round.
+    // 유저 found the symptom from the other side — 「실기 확인에 등장 안 하는
+    // 카드가 있어」 — and it is the same law they had just stated about ticks:
+    // **something else finishing is not this check passing.**
+    //
+    // ⇒ A check whose host has ended stands as its own card. That is what it
+    // was before the fold and it is where a person can still act on it.
+    final hostGone = host != null &&
+        (host.state == 'archived' ||
+            host.state == 'deleted' ||
+            host.foldedInto != null);
+    if (host != null && host.id != c.id && !hostGone) {
       c.foldedInto = host.id;
       host.log.add(BoardLog(at, '실기 확인', text.isEmpty ? c.id : text));
       continue;
@@ -783,7 +808,7 @@ void foldChecksIntoCards(Map<String, BoardCard> byId) {
     c.log.add(BoardLog(at, '실기 확인', text.isEmpty ? c.id : text));
   }
   for (final e in byId.values) {
-    sortByTime(e.log);
+    sortByTime(e.log, now);
   }
 }
 
