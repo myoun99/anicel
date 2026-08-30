@@ -175,10 +175,15 @@ Future<void> _handle(HttpRequest req) async {
           'state': ticked || origin.isNotEmpty ? 'archived' : 'inbox',
         });
         if (origin.isNotEmpty) {
+          // ⚠️NO `state` HERE ANY MORE. The card's section is folded out of
+          // its story, and the answer — which [_foldQuestionsIntoOrigins] puts
+          // on this card as a `유저` entry — already says 분류 전. Writing it
+          // again would be a second reader for the same question, which is the
+          // exact shape this round is removing. The line stays only so the
+          // head's date moves when an answer lands.
           _append({
             'kind': 'item',
             'id': origin,
-            'state': 'inbox',
             'ts': _now(),
           });
         }
@@ -447,7 +452,23 @@ List<String> _shotsFor(String id) {
 /// of it, then what I worked out.
 class _Log {
   _Log(this.ts, this.at, this.text,
-      {this.byUser = false, this.pr, this.how = ''});
+      {this.byUser = false, this.pr, this.how = '', this.ask});
+
+  /// 🚨★★★THE QUESTION THIS ENTRY IS, when it is one (유저 2026-08-31:
+  /// 「질문 자체를 대분류로 옮기고, 새로운 카드 만들어서 참조가 아니라,
+  /// **해당 원본 카드 내에서** 질문 카드를 만드는? 질문 여러 개일 수 있잖아.
+  /// 그래서 카드 내에 질문이 생기는 거지」).
+  ///
+  /// ⛔A question used to be a CARD of its own — its own id, its own panel in
+  /// 답할 것, a link back to the card that raised it, and a second block
+  /// rendered under that card's story. So one subject had two rows, and the
+  /// answer landed outside the timeline no matter when it arrived.
+  ///
+  /// ⚠️Held BY REFERENCE, never copied: the entry keeps the question entry
+  /// itself, so the options and the answer are read live. Copying them in
+  /// would put one fact in two records, which is the failure this whole board
+  /// keeps being redesigned around.
+  final _Entry? ask;
   final String ts;
 
   /// 🚨The PR this stage shipped, when it is a 구현 stage (유저 2026-08-26:
@@ -514,6 +535,15 @@ class _Entry {
   /// ⚠️Empty when no record for this card carried a `ts` — older lines
   /// predate the field, and a made-up date is worse than none.
   String updated = '';
+
+  /// The FIRST ts any record for this card carried — when it was raised.
+  /// [updated] is last-wins and cannot answer that, and a question folded into
+  /// its card has to land in the story at the moment it was ASKED.
+  String created = '';
+
+  /// Set when this record has been folded into another card as an entry, so it
+  /// no longer stands as a card of its own — see [_foldQuestionsIntoOrigins].
+  String? foldedInto;
 
   /// 🚨★★★EVERY WORD THIS CARD HAS EVER CARRIED, oldest first (유저
   /// 2026-08-26: 「각 공정마다 원문을 무조건 남길것. 패널내용이 길어지는건
@@ -667,6 +697,7 @@ List<_Entry> _readRecords(File file) {
     // Last line wins: the head shows when this card last moved.
     final ts = '${json['ts'] ?? ''}';
     if (ts.isNotEmpty) e.updated = ts;
+    if (ts.isNotEmpty && e.created.isEmpty) e.created = ts;
     // ⚠️Recorded BEFORE `note` is merged, so the list keeps what each line
     // said rather than what the card ended up saying. A line that repeats the
     // note verbatim adds nothing and is skipped — amendments that touch only
@@ -840,6 +871,9 @@ List<_Entry> _readRecords(File file) {
     e.log.removeWhere((l) => l.pr != null && told.contains(l.pr) &&
         l.text == 'PR #${l.pr}');
   }
+  // 🚨A question is an entry on its card, folded in before anything is placed
+  // — the section it lands in depends on it. See [_foldQuestionsIntoOrigins].
+  _foldQuestionsIntoOrigins(byId);
   // 🚨★★★AND ONLY NOW IS THE CARD PLACED. Every entry is in, so the walk
   // backwards can see the whole story — see [_placeByStory].
   for (final e in byId.values) {
@@ -1119,6 +1153,14 @@ const _sectionState = <String, String>{
   // 🚨남은 것 IS the 바로 가능 column: the entry says WHAT is left, the column
   // says WHERE it waits. Two of these rows differ that way on purpose.
   '남은 것': 'open',
+  // 🚨A question I raised puts the card in 답할 것; the user's answer hands it
+  // straight back to me. Both are 대분류, so the two sections fall out of the
+  // story in time order instead of being maintained beside it.
+  // ⚠️`유저` is the NEW name and the only one mapped. The legacy labels
+  // (유저 메모 · 유저 피드백 · 유저 대답) stay 소분류 on purpose — mapping
+  // them would drag every card that ever heard from the user back to 분류 전.
+  '질문': 'ask',
+  '유저': 'inbox',
   '착수': 'open',
   '순서 대기': 'queue',
   '상담 대기': 'gate',
@@ -1176,6 +1218,75 @@ void _placeByStory(_Entry e) {
   if (section != null) e.state = section;
 }
 
+/// 🚨★★★A QUESTION IS AN ENTRY ON THE CARD THAT RAISED IT — not a card of its
+/// own (유저 2026-08-31: 「질문이 생기면 참조카드 + 원본카드 여러 개 생기는
+/// 게 아니라 **원본 카드 안에 질문 UI 같은 거 만들어서** 답할 것 대분류로
+/// 옮기는 거지」).
+///
+/// ⛔The old shape put ONE SUBJECT IN TWO ROWS: a `X-Q1` card in 답할 것, the
+/// origin card in 대기, a link each way, and a third rendering of the same
+/// question in a block under the origin's story. The answer then sat below the
+/// whole story no matter when it was given, which is what 유저 found:
+/// 「대답한 거는 무조건 아래 고정인가? … 별개로 두는 것 좀 절대로 없게 해.」
+///
+/// ⚠️NO MIGRATION. The old records stay exactly as they are and are folded on
+/// the way to the screen — the file is the record, and rewriting history to
+/// suit a renderer is how a board starts lying about what happened.
+///
+/// ⚠️The answer is folded as `유저`, which IS a 대분류 (→ 분류 전): an answer
+/// hands the card back to me to act on, and that has been the law since
+/// 2026-08-26. The question folds as `질문` (→ 답할 것). So a card sits in
+/// 답할 것 while its newest word is a question and moves to 분류 전 the moment
+/// one is answered — the sections fall out of the story instead of being
+/// maintained beside it, and `_asking` stopped being needed at all.
+void _foldQuestionsIntoOrigins(Map<String, _Entry> byId) {
+  for (final q in byId.values.toList()) {
+    if (q.kind != 'decision') continue;
+    final (of, _) = _asks(q);
+    final origin = of.isEmpty ? null : byId[of];
+    // A question whose origin is not in the file IS the card. Nothing to fold.
+    if (origin == null) continue;
+    q.foldedInto = origin.id;
+    final raised = q.created.isNotEmpty ? q.created : q.updated;
+    origin.log.add(_Log(raised, '질문', q.title, ask: q));
+    if (q.answer == null) continue;
+    // The answer already exists as an entry on the question, written when it
+    // was submitted. Its TIME is the thing worth keeping — that is the whole
+    // point of putting it in the stream.
+    final said = q.log.where((l) => l.byUser).toList();
+    final at = said.isEmpty ? q.updated : said.last.ts;
+    final text = said.isEmpty ? q.answer! : said.last.text;
+    origin.log.add(_Log(at, '유저', text, byUser: true));
+  }
+  for (final e in byId.values) {
+    _sortByTime(e.log);
+  }
+}
+
+/// ⚠️STABLE, and unparseable timestamps keep the position they were read in.
+/// Older lines predate the `ts` field entirely, and a made-up time would
+/// scatter them; leaving them where the file put them is the honest answer.
+void _sortByTime(List<_Log> log) {
+  final keyed = <(DateTime?, int, _Log)>[];
+  for (var i = 0; i < log.length; i++) {
+    keyed.add((DateTime.tryParse(log[i].ts), i, log[i]));
+  }
+  // A row with no time inherits the one before it, so it cannot jump.
+  DateTime? carry;
+  final settled = <(DateTime, int, _Log)>[];
+  for (final (t, i, l) in keyed) {
+    carry = t ?? carry;
+    settled.add((carry ?? DateTime(1970), i, l));
+  }
+  settled.sort((a, b) {
+    final c = a.$1.compareTo(b.$1);
+    return c != 0 ? c : a.$2.compareTo(b.$2);
+  });
+  log
+    ..clear()
+    ..addAll(settled.map((e) => e.$3));
+}
+
 String _esc(String s) => const HtmlEscape().convert(s);
 
 String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
@@ -1184,8 +1295,13 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   // words for two different endings, kept apart on purpose: 「archived」 is I
   // put this away, 「deleted」 is the user ticked it and it is finished. The
   // file keeps both lines either way.
-  final alive =
-      entries.where((e) => e.state != 'archived' && e.state != 'deleted').toList();
+  // ⚠️And a record folded into another card is not a card here either — see
+  // [_foldQuestionsIntoOrigins]. It is still reachable through the entry that
+  // holds it, which is the only place it should now be seen.
+  final alive = entries
+      .where((e) =>
+          e.state != 'archived' && e.state != 'deleted' && e.foldedInto == null)
+      .toList();
   // Laws are not work: they never appear as a card of their own, they attach
   // to the cards whose tag they name. Set before anything renders.
   _laws = alive.where((e) => e.kind == 'law').toList();
@@ -1207,20 +1323,21 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
     });
   }
   _byOrigin = byOrigin;
-  // ⚠️An ARCHIVED question no longer blocks — I put it away because it was
-  // dealt with. Only a live, unanswered one holds the card.
-  _asking = {
-    for (final entry in byOrigin.entries)
-      if (entry.value.any((q) =>
-          q.answer == null && q.state != 'archived' && q.state != 'deleted'))
-        entry.key,
-  };
   final inbox = alive.where((e) => e.state == 'inbox').toList();
-  // 답할 것 holds only what is still unanswered. An answered question leaves
-  // for 분류 전 — see `/submit` for why that is the same section and not a
-  // second one.
+  // 🚨★★★답할 것 LISTS CARDS, NOT QUESTIONS (유저 2026-08-31: 「질문이
+  // 생기면 참조카드 + 원본카드 여러 개 생기는 게 아니라 원본 카드 안에
+  // 질문 UI 같은 거 만들어서 답할 것 대분류로 옮기는 거지」).
+  //
+  // The card is here because its newest 대분류 is a 질문 — see
+  // [_foldQuestionsIntoOrigins]. ⛔No second reader: this does NOT ask 「does
+  // it have an unanswered question」 anywhere. The story already answered.
+  //
+  // ⚠️A question whose origin is not in the file was never folded, so it still
+  // stands as a card of its own — that is what `foldedInto == null` keeps.
   final asks = alive
-      .where((e) => e.kind == 'decision' && e.answer == null)
+      .where((e) =>
+          e.foldedInto == null &&
+          (e.state == 'ask' || (e.kind == 'decision' && e.answer == null)))
       .toList();
   final checks = alive.where((e) => e.kind == 'check' && e.answer == null).toList();
 
@@ -1427,6 +1544,10 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
       .where((e) =>
           e.kind == 'item' &&
           e.state != 'inbox' &&
+          // A card whose newest 대분류 is a 질문 is drawn in 답할 것, with the
+          // question open inside it. Listing it here too would be one subject
+          // in two rows — the shape this round exists to end.
+          e.state != 'ask' &&
           // An answered item has been looked at and reported on; it belongs in
           // its own story now, not back in 착수 가능 claiming to be unstarted.
           e.answer == null &&
@@ -1440,12 +1561,8 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
   // be unstarted, which is the one thing they are not.
   final underway = loose.where((e) => e.state == 'wip').toList();
   final rest = loose.where((e) => e.state != 'wip').toList();
-  final ready = rest
-      .where((e) => !_waiting.contains(e.state) && !_asking.contains(e.id))
-      .toList();
-  final waiting = rest
-      .where((e) => _waiting.contains(e.state) || _asking.contains(e.id))
-      .toList();
+  final ready = rest.where((e) => !_waiting.contains(e.state)).toList();
+  final waiting = rest.where((e) => _waiting.contains(e.state)).toList();
   now.addAll(underway.map(_itemPanel));
 
   final b = StringBuffer();
@@ -1472,7 +1589,8 @@ String _render(List<_Entry> entries, _Gh gh, List<_Checkout> gits,
 
   b.write(_intakeForm());
   b.write(_group('분류 전', inbox.length, '내가 읽고 분류한다', inbox.map(_itemPanel)));
-  b.write(_group('답할 것', asks.length, '고르고 제출', asks.map(_askPanel)));
+  b.write(_group('답할 것', asks.length, '고르고 제출',
+      asks.map((e) => e.kind == 'decision' ? _askPanel(e) : _itemPanel(e))));
   // The refresh lives here because this is the only section it changes, and a
   // control parked away from what it affects is a control you have to remember
   // the meaning of.
@@ -1677,15 +1795,6 @@ final _qName = RegExp(r'^(.+)-Q(\d+)$');
 /// a ticked landing came back: `alive` filters out precisely what you need.)
 Map<String, List<_Entry>> _byOrigin = const {};
 
-/// 🚨★★★Cards with a question still unanswered — they are NOT 착수 가능
-/// (유저 2026-08-26: 「결정대기가 남아있으면 대기중항목인게 맞지않냐?」).
-///
-/// The law was already written — CLAUDE.md: 「⛔미결이 남은 칸은 착수 가능이
-/// 아니다」 — and F-17 broke it the moment I raised F-17-Q1, because nothing
-/// moved the card. **A law nobody can forget is one the code applies**, so
-/// this is derived from the questions themselves rather than kept as a state
-/// I would have to remember to set and, worse, remember to unset.
-Set<String> _asking = const {};
 
 /// What `gh` says each PR is doing, so a 구현 stage can say it (유저
 /// 2026-08-27: 「지금을 만드는게 아니라 구현항목을 잘 활용하면 될거같은데」).
@@ -1713,72 +1822,22 @@ String _origin(_Entry e) {
       'onclick="jump(\'${_esc(of)}\');return false;">↑ ${_esc(of)} 에서 나온 질문</a></p>';
 }
 
-/// 🚨★★★THE OTHER HALF OF THE LINK — the card's own list of its questions
-/// (유저 2026-08-26: 「답할것 발생할때마다 대기중 패널에 Q1 Q2 이렇게 항목
-/// 만들어서 그거누르면 해당패널로 이동하게. 대답하면 그 항목에 대답 이식되고」).
-///
-/// ⛔NOT transplanted, and that is the improvement on the ask. Copying the
-/// answer into the origin would put one fact in two records, and the day one
-/// of them is edited they disagree — the failure this whole board keeps being
-/// redesigned around. Rendered by reference, the card cannot show a stale
-/// answer, because it is not holding one.
-String _questions(_Entry e) {
-  final mine = _byOrigin[e.id];
-  if (mine == null || mine.isEmpty) return '';
-  final b = StringBuffer();
-  for (var i = 0; i < mine.length; i++) {
-    final q = mine[i];
-    final (_, n) = _asks(q);
-    final label = 'Q${n == 0 ? i + 1 : n}';
-    final answered = q.answer != null;
-    final picked = answered
-        ? q.options.firstWhere((o) => o['key'] == q.answer,
-            orElse: () => <String, dynamic>{'label': q.answer})
-        : const <String, dynamic>{};
-    b.writeln('<details class="lg q">');
-    b.writeln('<summary><span class="lgk">$label</span>'
-        '<span class="lgp">${_esc(q.title)}</span>'
-        '<span class="chip ${answered ? 'ok' : 'run'}">'
-        '${answered ? '답함' : '대기'}</span></summary>');
-    if (answered) {
-      final said = '${picked['label'] ?? q.answer}';
-      if (said.isNotEmpty && said != 'ok') {
-        b.writeln('<p class="d"><b>→ ${_esc(said)}</b></p>');
-      }
-      if (q.answerNote.isNotEmpty) {
-        b.writeln('<p class="d">${_esc(q.answerNote)}</p>');
-      }
-    } else if (q.why.isNotEmpty) {
-      b.writeln('<p class="d">${_esc(q.why)}</p>');
-    }
-    // ⛔No link once the question is put away: its panel is no longer drawn,
-    // and a link to a row that is not on the page does nothing when clicked,
-    // which reads as broken rather than as finished. The row above already
-    // carries the whole question and its answer, so nothing is lost by
-    // dropping the link — that is the point of rendering by reference.
-    final reachable = q.state != 'archived' && q.state != 'deleted';
-    b.writeln(reachable
-        ? '<p class="d"><a class="chip link" href="#c-${_esc(q.id)}" '
-            'onclick="jump(\'${_esc(q.id)}\');return false;">'
-            '${_esc(q.id)} 로 이동 →</a></p>'
-        : '<p class="d mono">${_esc(q.id)} · 처리 완료</p>');
-    b.writeln('</details>');
-  }
-  return b.toString();
-}
 
-String _askPanel(_Entry d) {
+/// 🚨★★★THE QUESTION ITSELF — where it is asked, why it is stuck, the
+/// options, and the box to answer in. Rendered INSIDE the story of the card
+/// that raised it (유저 2026-08-31: 「원본 카드 안에 질문 UI 같은 거 만들어서
+/// 답할 것 대분류로 옮기는 거지」).
+///
+/// ⚠️`data-kind="decision"` and the radio name both key off the QUESTION's own
+/// id, not the card's — so one card can carry several questions and each
+/// submits on its own. The `/submit` contract is untouched: it still receives
+/// the question's id and still hands the card back to me.
+///
+/// ⛔This used to be the whole of `_askPanel`, a panel of its own with its own
+/// head and its own row in 답할 것. Splitting the body out is what let one
+/// subject stop being two rows.
+String _askBody(_Entry d, {required bool answered}) {
   final b = StringBuffer();
-  b.writeln('<details class="p ask" id="c-${_esc(d.id)}" data-kind="decision">');
-  // ⛔No 미제출 badge. Every card in this section is unanswered by
-  // construction now — an answered one leaves for 분류 전 — so the badge was
-  // labelling the section on every row (유저 2026-08-26: 「답할것도 미제출태그
-  // 필요없어질테니」).
-  b.writeln(_head(d.id, d.title, d.tags, '', '', date: d.updated));
-  b.writeln('<div class="body">');
-  b.writeln(_care(d));
-  b.writeln(_recordPanels(d));
-  b.writeln(_origin(d));
   if (d.where.isNotEmpty) {
     b.writeln('<p class="d"><b>화면에서</b> — ${_esc(d.where)}</p>');
   }
@@ -1792,14 +1851,22 @@ String _askPanel(_Entry d) {
   // into it on 2026-08-28 and the user never saw a word. ⛔Silence is the
   // wrong failure: show the text and say it is misplaced, so the author
   // finds out and the reader still gets the sentence.
-  final recommendsAnOption =
-      d.options.any((o) => '${o['key']}' == d.recommend);
-  if (d.recommend != null &&
-      d.recommend!.isNotEmpty &&
-      !recommendsAnOption) {
+  final recommendsAnOption = d.options.any((o) => '${o['key']}' == d.recommend);
+  if (d.recommend != null && d.recommend!.isNotEmpty && !recommendsAnOption) {
     b.writeln('<p class="d"><b>⚠️추천</b> — ${_esc(d.recommend!)}'
         '<br><i>(선택지 키가 아니라 문장이 들어 있어 추천 표시가 안 붙습니다 '
         '— `recommend` 에는 선택지의 번호를 씁니다)</i></p>');
+  }
+  // ⚠️An ANSWERED question keeps its options on screen but loses the form:
+  // the answer is already an entry further down the story, and a live radio
+  // beside it would invite a second answer to a settled question.
+  if (answered) {
+    final picked = d.options.firstWhere(
+      (o) => '${o['key']}' == d.answer,
+      orElse: () => <String, dynamic>{'label': d.answer},
+    );
+    b.writeln('<p class="d"><b>→ ${_esc('${picked['label']}')}</b></p>');
+    return b.toString();
   }
   for (final o in d.options) {
     final key = '${o['key']}';
@@ -1823,6 +1890,20 @@ String _askPanel(_Entry d) {
   b.writeln(_shotStrip(d.id));
   b.writeln('<div class="foot"><button onclick="send(\'${_esc(d.id)}\')">제출</button>'
       '<span class="state"></span></div>');
+  return b.toString();
+}
+
+/// A question whose origin is not in the file is a card in its own right —
+/// nothing folded it, so it still needs a panel. ⚠️Every other question is
+/// drawn by [_story] as an entry.
+String _askPanel(_Entry d) {
+  final b = StringBuffer();
+  b.writeln('<details class="p ask" id="c-${_esc(d.id)}" data-kind="decision">');
+  b.writeln(_head(d.id, d.title, d.tags, '', '', date: d.updated));
+  b.writeln('<div class="body">');
+  b.writeln(_care(d));
+  b.writeln(_recordPanels(d));
+  b.writeln(_askBody(d, answered: d.answer != null));
   b.writeln('</div></details>');
   return b.toString();
 }
@@ -1908,7 +1989,6 @@ String _checkRow(_Entry c, {_Pr? pr, List<_Entry> subs = const []}) {
   b.writeln(_story(c));
   // Its questions come with it to 확인할 것 — 「무엇을 물었고 무엇으로 정했나」
   // is half of knowing whether the thing in front of you is right.
-  b.writeln(_questions(c));
   b.writeln('<textarea rows="2" placeholder="문제가 있으면 적어 주세요 — 비워 두면 OK '
       '(스크린샷은 Ctrl+V)"></textarea>');
   b.writeln(_shotStrip(c.id));
@@ -1958,12 +2038,12 @@ String _itemPanel(_Entry e) {
   // hidden.
   final answeredQuestion =
       (_byOrigin[e.id] ?? const <_Entry>[]).any((q) => q.answer != null);
-  // 대기 중 promises that 「배지가 무엇을 기다리는지 말한다」, and an unanswered
-  // question outranks whatever the state says: it is the thing actually
-  // holding the card, and it is the one the user can clear.
-  final badge = _asking.contains(e.id)
-      ? '답 대기'
-      : (e.state == 'open' || inbox) ? '' : (_stateLabels[e.state] ?? e.state);
+  // 대기 중 promises that 「배지가 무엇을 기다리는지 말한다」, and the state
+  // it names is folded straight out of the story now — an unanswered question
+  // makes the card's newest 대분류 a 질문, which IS the 답할 것 section.
+  // ⛔`_asking` was a second reader for that and is gone.
+  final badge =
+      (e.state == 'open' || inbox) ? '' : (_stateLabels[e.state] ?? e.state);
   // 분류 전 now receives three different arrivals, and which one a row is
   // decides what I do with it. The chip says so on the row (유저 2026-08-26:
   // 「분류전으로 옮기고 대답 태그 붙이면」). ⚠️Plain feedback and ideas already
@@ -2030,7 +2110,6 @@ String _itemPanel(_Entry e) {
           '그대로입니다.</p>');
     }
     b.writeln(_story(e));
-    b.writeln(_questions(e));
     b.writeln(_shotStrip(e.id));
     // 🚨EVERY CARD TAKES FEEDBACK, not just the ones in 확인할 것 (유저
     // 2026-08-26, looking at a card that had just moved OUT of that section:
@@ -2260,15 +2339,30 @@ String _story(_Entry e) {
     // 펼치기 상태로 두는거고」). It used to add `|| live`, which is now the
     // same condition anyway — kept out so the next reader cannot make them
     // disagree again.
+    // 🚨★★★A QUESTION IS AN ENTRY, and it brings its own form with it — the
+    // radios, the memo box and the submit all live here now (유저 2026-08-31:
+    // 「원본 카드 안에 질문 UI 같은 거 만들어서」). ⛔It used to be a whole
+    // second block under the story, so an answer sat below everything no
+    // matter when it arrived.
+    final ask = entry.ask;
+    final answered = ask?.answer != null;
     b.writeln('<details class="lg'
         '${entry.byUser || mine.startsWith('유저') ? ' says' : ''}'
+        '${ask != null && !answered ? ' q' : ''}'
         '${live ? ' todo' : ''}${leftover && !live ? ' done' : ''}"'
-        '${newest ? ' open' : ''}>');
+        '${newest ? ' open' : ''}'
+        '${ask == null ? '' : ' id="c-${_esc(ask.id)}" data-kind="decision"'}>');
     b.writeln('<summary><span class="lgk">${_esc(mine)}</span>'
         '<span class="lgp">${_esc(peek)}</span>'
+        '${ask == null ? '' : '<span class="chip ${answered ? 'ok' : 'run'}">'
+            '${answered ? '답함' : '대기'}</span>'}'
         '${entry.pr == null ? '' : _prChip(entry.pr!)}'
         '<span class="when">${_esc(_day(entry.ts))}</span></summary>');
-    b.writeln('<p class="d">${_esc(entry.text)}</p>');
+    if (ask == null) {
+      b.writeln('<p class="d">${_esc(entry.text)}</p>');
+    } else {
+      b.writeln(_askBody(ask, answered: answered));
+    }
     if (entry.how.isNotEmpty) {
       b.writeln('<p class="d"><b>이렇게 확인한다</b> — ${_esc(entry.how)}</p>');
     }
