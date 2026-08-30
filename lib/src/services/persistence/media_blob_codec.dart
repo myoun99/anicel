@@ -30,10 +30,45 @@
 /// Media compresses LOCALLY — a PDF's streams, a JPEG's scans, a movie's
 /// frames — so a boundary costs it essentially nothing.
 ///
-/// ⇒ 4MB is comfortable rather than tight: the measurement says a smaller
-/// block would also be nearly free here, and a smaller block means a finer
-/// window. Left at 4MB because that is the size the numbers above were
-/// taken at.
+/// 🚨★★★**AND THE BLOCK SIZE IS DECIDED BY THE READ, NOT BY THE RATIO.**
+///
+/// The table above measures ONE axis — how much a boundary costs the
+/// compressed size — and 4MB won it, so 4MB is what this constant held.
+/// That was measuring the wrong thing. A block exists to serve a WINDOW,
+/// and what a window pays is DECOMPRESSION. Measured on a real 3.84MB
+/// conform (the user's own MP3, level 9, Release engine, best of two
+/// passes, buffers allocated outside the loop):
+///
+/// | block | decompress | size cost vs whole |
+/// |---|---|---|
+/// | 256KB | 585 · 548 MB/s | +1.33% |
+/// | **512KB** | **608 · 610 MB/s** | **+1.07%** |
+/// | 1MB | 502 · 667 MB/s | +0.66% |
+/// | 2MB | 206 · 194 MB/s | ~+0.3% |
+/// | 4MB | **91 · 118 MB/s** | +0.00% |
+///
+/// ⇒ **A cliff between 1MB and 2MB, and 4MB sat on the wrong side of it.**
+/// A 100KB read cost 40ms at 4MB and costs 1.7ms at 512KB — 23×, from the
+/// speed and from decompressing an eighth as much to serve the same bytes.
+///
+/// 🔑**The cause is CACHE, which is why the number is 512KB and not 1MB.**
+/// Level 9 matches against a 2MB window; once the block is big enough that
+/// the window stops living in cache, every match is a memory round trip.
+/// A machine with LESS cache meets that cliff SOONER — and the devices
+/// this app promises not to lag on are exactly the ones with less
+/// ([[old-device-support-policy]]). 512KB and 1MB decompress the same
+/// within noise, so the tie goes to the one with room underneath it.
+///
+/// ⛔**Parallel block decompression is NOT the answer to this** and was
+/// considered: the bottleneck this measures is memory bandwidth, so cores
+/// pulling at once contend for the same cache instead of scaling.
+///
+/// ⚠️The size is written in every entry's header, so entries already
+/// written at 4MB keep reading — [MediaBlobHeader.blockBytes] is the
+/// reader's authority, never this constant.
+///
+/// 유저 2026-08-30, told the measurement: 「4mb 아니어도 되고 1퍼센트
+/// 용량늘어나는거 전혀 문업없으니까 알아서 판단한 크기로 통일해줘」.
 ///
 /// 🚨**AND THE FORMAT DOES NOT DECIDE — THE MEASUREMENT DOES.**
 ///
@@ -70,8 +105,12 @@ import 'dart:typed_data';
 import '../../native/qa_cel_compressor.dart';
 import 'anicel_payload_codec.dart';
 
-/// Uncompressed bytes per block. See the doc above for the measurement.
-const int mediaBlockBytes = 4 * 1024 * 1024;
+/// Uncompressed bytes per block, for entries written from now on.
+///
+/// ⛔**A READER MUST NOT USE THIS.** Ask the entry — [MediaBlobHeader]
+/// carries the size it was written at, and the value here has changed
+/// once already. See the doc above for the measurement that chose it.
+const int mediaBlockBytes = 512 * 1024;
 
 /// What a framed entry's name ends with.
 ///
@@ -214,17 +253,25 @@ class MediaBlobHeader {
 /// is the picture; a media entry has an alternative that costs nothing —
 /// storing the file as it is — so a build without zstd simply stores, and
 /// no .anicel ever needs a library to give its media back.
-Uint8List? compressMediaBlob(Uint8List bytes) {
+///
+/// [blockBytes] is the size THIS entry is written at, and it is recorded in
+/// the entry's own header. It is a parameter rather than a constant read
+/// here because the constant has moved once already and will read back
+/// entries written at the old size forever — a reader that assumed it
+/// would serve the wrong bytes, so the format is built so that assuming it
+/// is not even possible.
+Uint8List? compressMediaBlob(
+  Uint8List bytes, {
+  int blockBytes = mediaBlockBytes,
+}) {
   final compressor = QaCelCompressor.instance;
   if (compressor == null || !compressor.isSupported || bytes.isEmpty) {
     return null;
   }
   final blocks = <Uint8List>[];
   var packed = 0;
-  for (var at = 0; at < bytes.length; at += mediaBlockBytes) {
-    final end = at + mediaBlockBytes > bytes.length
-        ? bytes.length
-        : at + mediaBlockBytes;
+  for (var at = 0; at < bytes.length; at += blockBytes) {
+    final end = at + blockBytes > bytes.length ? bytes.length : at + blockBytes;
     final block = compressor.compress(
       Uint8List.sublistView(bytes, at, end),
       level: anicelZstdLevel,
@@ -236,7 +283,7 @@ Uint8List? compressMediaBlob(Uint8List bytes) {
     packed += block.length;
   }
   final header = MediaBlobHeader(
-    blockBytes: mediaBlockBytes,
+    blockBytes: blockBytes,
     totalLength: bytes.length,
     blockLengths: [for (final block in blocks) block.length],
   );
