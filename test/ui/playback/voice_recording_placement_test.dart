@@ -62,7 +62,7 @@ void main() {
     await manager.saveProjectToFile('${directory.path}/scene.anicel');
     final lane = manager.activeTrack.seLayers.first;
 
-    final placed = manager.placeVoiceRecording(
+    final placed = await manager.placeVoiceRecording(
       takeOfSeconds(1.0),
       laneId: lane.id,
       anchorFrame: 0,
@@ -115,7 +115,7 @@ void main() {
       await manager.saveProjectToFile('${directory.path}/scene.anicel');
       final lane = manager.activeTrack.seLayers.first;
 
-      final placed = manager.placeVoiceRecording(
+      final placed = await manager.placeVoiceRecording(
         takeOfSeconds(1.0),
         laneId: lane.id,
         anchorFrame: 0,
@@ -141,7 +141,7 @@ void main() {
       final manager = session();
       await manager.saveProjectToFile('${directory.path}/scene.anicel');
       expect(
-        manager.placeVoiceRecording(
+        await manager.placeVoiceRecording(
           takeOfSeconds(0.1),
           laneId: manager.activeTrack.seLayers.first.id,
           anchorFrame: 0,
@@ -161,7 +161,7 @@ void main() {
     final rowsBefore = manager.activeTrack.seLayers.length;
 
     expect(
-      manager.placeVoiceRecording(
+      await manager.placeVoiceRecording(
         takeOfSeconds(1.0), // 24 frames
         laneId: laneId,
         anchorFrame: 0,
@@ -169,7 +169,7 @@ void main() {
       isTrue,
     );
     expect(
-      manager.placeVoiceRecording(
+      await manager.placeVoiceRecording(
         takeOfSeconds(0.5), // 12 frames over the first take's tail
         laneId: laneId,
         anchorFrame: 12,
@@ -207,7 +207,7 @@ void main() {
     final laneId = manager.activeTrack.seLayers.first.id;
 
     expect(
-      manager.placeVoiceRecording(
+      await manager.placeVoiceRecording(
         takeOfSeconds(1.0), // would cover 24 frames
         laneId: laneId,
         anchorFrame: 0,
@@ -226,9 +226,9 @@ void main() {
   });
 
   test('REC1-B: an unsaved project still records — the WAV degrades to '
-      'temp, like an import', () {
+      'temp, like an import', () async {
     final manager = session();
-    final placed = manager.placeVoiceRecording(
+    final placed = await manager.placeVoiceRecording(
       takeOfSeconds(0.5),
       laneId: manager.activeTrack.seLayers.first.id,
       anchorFrame: 0,
@@ -245,7 +245,7 @@ void main() {
     final manager = session();
     await manager.saveProjectToFile('${directory.path}/scene.anicel');
     expect(
-      manager.placeVoiceRecording(
+      await manager.placeVoiceRecording(
         takeOfSeconds(0.5),
         laneId: null,
         anchorFrame: 0,
@@ -256,7 +256,7 @@ void main() {
   });
 
   test('REC1-B: start refuses without an armed SE lane; an armed start '
-      'ROLLS the transport, mutes the lane, and stop lands the take', () {
+      'ROLLS the transport, mutes the lane, and stop lands the take', () async {
     final manager = session();
     // The default active row is a drawing layer: no armed destination.
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.needsSeLane);
@@ -271,7 +271,7 @@ void main() {
     // The armed lane yields to the microphone (DAW armed-track rule).
     expect(manager.recordingMutedLayerIds, {laneId});
 
-    final message = manager.stopVoiceRecordingAndPlace();
+    final message = await manager.stopVoiceRecordingAndPlace();
     expect(message, isNull);
     expect(
       manager.playback.isActive,
@@ -286,7 +286,7 @@ void main() {
   });
 
   test('REC1-B: transport stop mid-take finishes the take through the '
-      'notice channel', () {
+      'notice channel', () async {
     final manager = session();
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);

@@ -63,11 +63,11 @@ void main() {
   }
 
   test('an unsaved project records onto the app shelf, and the walk '
-      'continues past an earlier session\'s takes', () {
+      'continues past an earlier session\'s takes', () async {
     final first = session();
     final lane = first.activeTrack.seLayers.first;
     expect(
-      first.placeVoiceRecording(
+      await first.placeVoiceRecording(
         takeOfSeconds(1.0),
         laneId: lane.id,
         anchorFrame: 0,
@@ -85,7 +85,7 @@ void main() {
     final second = session();
     final laneB = second.activeTrack.seLayers.first;
     expect(
-      second.placeVoiceRecording(
+      await second.placeVoiceRecording(
         takeOfSeconds(1.0),
         laneId: laneB.id,
         anchorFrame: 0,
@@ -111,7 +111,7 @@ void main() {
     // cannot be made again.
     final manager = session();
     final lane = manager.activeTrack.seLayers.first;
-    manager.placeVoiceRecording(
+    await manager.placeVoiceRecording(
       takeOfSeconds(1.0),
       laneId: lane.id,
       anchorFrame: 0,
@@ -152,7 +152,7 @@ void main() {
     expect(manager.mediaAssets, isEmpty);
 
     // And the take numbering keeps walking on the shelf.
-    manager.placeVoiceRecording(
+    await manager.placeVoiceRecording(
       takeOfSeconds(1.0),
       laneId: lane.id,
       anchorFrame: 0,
@@ -168,7 +168,7 @@ void main() {
       'the project still references', () async {
     final manager = session();
     final lane = manager.activeTrack.seLayers.first;
-    manager.placeVoiceRecording(
+    await manager.placeVoiceRecording(
       takeOfSeconds(1.0),
       laneId: lane.id,
       anchorFrame: 0,
@@ -179,8 +179,11 @@ void main() {
 
     await manager.saveProjectToFile('${directory.path}/scene.anicel');
 
-    expect(File(shelfPath).existsSync(), isTrue,
-        reason: 'a discarded take is still findable on the shelf');
+    expect(
+      File(shelfPath).existsSync(),
+      isTrue,
+      reason: 'a discarded take is still findable on the shelf',
+    );
     final media = Directory(
       ProjectAssetLayout('${directory.path}/scene.anicel').mediaDirectory,
     );
@@ -193,13 +196,15 @@ void main() {
   });
 
   test('a custom recordings folder (desktop setting) replaces the '
-      'default shelf', () {
+      'default shelf', () async {
     final custom = '${directory.path.replaceAll('\\', '/')}/my-takes';
-    AppSave.settings.value = AppSaveSettings(recordingsDirectory: GrantedDirectory(path: custom));
+    AppSave.settings.value = AppSaveSettings(
+      recordingsDirectory: GrantedDirectory(path: custom),
+    );
     final manager = session();
     final lane = manager.activeTrack.seLayers.first;
     expect(
-      manager.placeVoiceRecording(
+      await manager.placeVoiceRecording(
         takeOfSeconds(1.0),
         laneId: lane.id,
         anchorFrame: 0,

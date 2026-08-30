@@ -11,8 +11,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/timeline_coverage.dart'
-    show drawingBlocks;
+import 'package:anicel/src/models/timeline_coverage.dart' show drawingBlocks;
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -213,8 +212,8 @@ void main() {
 
     // Import to browse: the pool holds the file, nothing is linked yet;
     // re-adding a known path is a no-op.
-    session.addMediaAssets([foot]);
-    session.addMediaAssets([foot]);
+    await session.addMediaAssets([foot]);
+    await session.addMediaAssets([foot]);
     expect(session.mediaAssets.single.name, 'foot.wav');
     expect(seLayer().audioClips, isEmpty);
     expect(session.isMediaAssetReferenced(foot), isFalse);
@@ -251,7 +250,7 @@ void main() {
 
     // Rename survives a relink; the relink rewrites every clip.
     session.renameMediaAsset(foot, '발소리');
-    session.relinkMediaAsset(foot, moved);
+    await session.relinkMediaAsset(foot, moved);
     expect(session.mediaAssets.single.path, moved);
     expect(session.mediaAssets.single.name, '발소리');
     expect(
@@ -427,10 +426,7 @@ void main() {
                       ),
                     },
                     audioClips: const [
-                      AudioClip(
-                        filePath: foot,
-                        frameId: FrameId('prune-f1'),
-                      ),
+                      AudioClip(filePath: foot, frameId: FrameId('prune-f1')),
                     ],
                   ),
                 ],
@@ -441,7 +437,7 @@ void main() {
       ),
     );
     await _pumpHost(tester, session);
-    session.addMediaAssets([foot]);
+    await session.addMediaAssets([foot]);
     expect(session.isMediaAssetReferenced(foot), isTrue);
     expect(session.removeMediaAsset(foot), isFalse);
 
@@ -505,7 +501,7 @@ void main() {
       ),
     );
     await _pumpHost(tester, session);
-    session.addMediaAssets([foot]);
+    await session.addMediaAssets([foot]);
     // The dangling link is inaudible everywhere — it must not count as a
     // reference, and removal must succeed.
     expect(session.isMediaAssetReferenced(foot), isFalse);
@@ -535,9 +531,8 @@ void main() {
       return session;
     }
 
-    List<AudioClip> clipsOf(EditorSessionManager session) => session.layers
-        .firstWhere((layer) => layer.id == _seLayerId)
-        .audioClips;
+    List<AudioClip> clipsOf(EditorSessionManager session) =>
+        session.layers.firstWhere((layer) => layer.id == _seLayerId).audioClips;
 
     testWidgets('names the sound and unlinks it on OK', (tester) async {
       final session = await withLinkedSound(tester);

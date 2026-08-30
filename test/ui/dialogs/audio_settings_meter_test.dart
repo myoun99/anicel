@@ -24,7 +24,7 @@ void main() {
     ),
   );
 
-  test('REC1-D2: a device-less monitor stays inert and safe', () {
+  test('REC1-D2: a device-less monitor stays inert and safe', () async {
     final monitor = AudioInputMonitor();
     expect(monitor.start(), isFalse);
     expect(monitor.isRunning, isFalse);
@@ -34,20 +34,26 @@ void main() {
   });
 
   test('REC1-D2: the meter yields to the recorder and the session cleans '
-      'up on detach', () {
+      'up on detach', () async {
     final manager = session();
     final monitor = manager.attachInputMeter();
-    expect(identical(manager.attachInputMeter(), monitor), isTrue,
-        reason: 'one monitor per session');
+    expect(
+      identical(manager.attachInputMeter(), monitor),
+      isTrue,
+      reason: 'one monitor per session',
+    );
     // Arming a take (fake recorder) must not fight the meter.
     manager.selectLayer(manager.activeTrack.seLayers.first.id);
     manager.debugVoiceRecorderFactory = () => _FakeRecorder();
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
     expect(monitor.isRunning, isFalse, reason: 'the recorder owns the mic');
-    manager.stopVoiceRecordingAndPlace();
+    await manager.stopVoiceRecordingAndPlace();
     manager.detachInputMeter();
-    expect(manager.playOutputTestTone(), isFalse,
-        reason: 'graceful absence: no device in tests');
+    expect(
+      manager.playOutputTestTone(),
+      isFalse,
+      reason: 'graceful absence: no device in tests',
+    );
     manager.dispose();
   });
 

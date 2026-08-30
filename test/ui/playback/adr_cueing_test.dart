@@ -40,7 +40,7 @@ void main() {
     );
   }
 
-  test('REC1-E: the cueing settings round-trip and clamp', () {
+  test('REC1-E: the cueing settings round-trip and clamp', () async {
     const settings = AudioSyncSettings(
       countInSeconds: 3,
       cueBeeps: false,
@@ -57,7 +57,7 @@ void main() {
   });
 
   test('REC1-E: a punch ahead of the roll builds three beeps counting '
-      'down INTO it, and the streamer window covers the approach', () {
+      'down INTO it, and the streamer window covers the approach', () async {
     final manager = session();
     manager.setProjectFps(4); // 1 s = 4 frames: three beeps fit a run-up.
     final laneId = manager.activeTrack.seLayers.first.id;
@@ -77,23 +77,27 @@ void main() {
 
     final beeps = manager.voiceRecordCueClips;
     expect(beeps, hasLength(3));
-    expect(beeps.map((clip) => clip.startFrame), [1, 5, 9],
-        reason: 'punch at 13, one second (4 frames) apart, ending 1 s '
-            'before it — the imaginary fourth beep IS the punch');
+    expect(
+      beeps.map((clip) => clip.startFrame),
+      [1, 5, 9],
+      reason:
+          'punch at 13, one second (4 frames) apart, ending 1 s '
+          'before it — the imaginary fourth beep IS the punch',
+    );
     expect(beeps.first.filePath, endsWith('cue-beep.wav'));
     final window = manager.voiceRecordStreamerWindow;
     expect(window, isNotNull);
     expect(window!.startFrame, 1);
     expect(window.punchFrame, 13);
 
-    final message = manager.stopVoiceRecordingAndPlace();
+    final message = await manager.stopVoiceRecordingAndPlace();
     expect(message, isNull);
     expect(manager.voiceRecordCueClips, isEmpty);
     expect(manager.voiceRecordStreamerWindow, isNull);
     manager.dispose();
   });
 
-  test('REC1-E: the toggles silence the beeps and hide the streamer', () {
+  test('REC1-E: the toggles silence the beeps and hide the streamer', () async {
     final manager = session();
     manager.setProjectFps(4);
     manager.setAudioSyncSettings(
@@ -110,13 +114,11 @@ void main() {
       startIndex: 13,
       endIndexExclusive: 16,
     );
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(
-      takeOfSeconds(1.0),
-    );
+    manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(1.0));
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
     expect(manager.voiceRecordCueClips, isEmpty);
     expect(manager.voiceRecordStreamerWindow, isNull);
-    manager.stopVoiceRecordingAndPlace();
+    await manager.stopVoiceRecordingAndPlace();
     manager.dispose();
   });
 
@@ -133,21 +135,28 @@ void main() {
       takeOfSeconds(2.5), // 2 s of count-in ride the head trim.
     );
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
-    expect(manager.playback.isActive, isFalse,
-        reason: 'the transport waits out the count-in');
+    expect(
+      manager.playback.isActive,
+      isFalse,
+      reason: 'the transport waits out the count-in',
+    );
     await tester.pump(const Duration(milliseconds: 2100));
-    expect(manager.playback.isPlaying, isTrue,
-        reason: 'the count-in elapsed: the roll begins');
+    expect(
+      manager.playback.isPlaying,
+      isTrue,
+      reason: 'the count-in elapsed: the roll begins',
+    );
 
-    expect(manager.stopVoiceRecordingAndPlace(), isNull);
+    expect(await manager.stopVoiceRecordingAndPlace(), isNull);
     final lane = manager.activeTrack.seLayers.first;
     // 2.5 s captured - 2 s count-in = 0.5 s of take (12 frames @ 24).
     expect(lane.audioClips, hasLength(1));
     await tester.pumpAndSettle();
   });
 
-  testWidgets('REC1-E: the streamer sweeps only inside the approach',
-      (tester) async {
+  testWidgets('REC1-E: the streamer sweeps only inside the approach', (
+    tester,
+  ) async {
     final manager = session();
     addTearDown(manager.dispose);
     manager.setProjectFps(4);
@@ -159,9 +168,7 @@ void main() {
       startIndex: 13,
       endIndexExclusive: 16,
     );
-    manager.debugVoiceRecorderFactory = () => _FakeRecorder(
-      takeOfSeconds(1.0),
-    );
+    manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(1.0));
 
     await tester.pumpWidget(
       MaterialApp(
@@ -193,7 +200,7 @@ void main() {
       findsNothing,
       reason: 'past the punch the scribe is gone',
     );
-    manager.stopVoiceRecordingAndPlace();
+    await manager.stopVoiceRecordingAndPlace();
     await tester.pumpAndSettle();
   });
 }

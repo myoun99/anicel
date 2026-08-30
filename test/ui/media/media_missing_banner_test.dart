@@ -32,7 +32,7 @@ void main() {
             onRenameAsset: (_, _) {},
             onRelinkAsset: (_, _, _) {},
             onRemoveAsset: (_) => true,
-            onPromoteAsset: (_) => true,
+            onPromoteAsset: (_) async => true,
             missingPaths: missingPaths,
             onRelinkMissing: onRelinkMissing,
           ),
@@ -42,11 +42,7 @@ void main() {
   );
 
   testWidgets('nothing missing shows no banner at all', (tester) async {
-    await pump(
-      tester,
-      assets: [asset('/m/a.wav')],
-      missingPaths: const {},
-    );
+    await pump(tester, assets: [asset('/m/a.wav')], missingPaths: const {});
     expect(find.byKey(banner), findsNothing);
   });
 

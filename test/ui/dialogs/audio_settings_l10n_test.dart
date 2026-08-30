@@ -61,11 +61,14 @@ void main() {
       const AppLanguageSettings(programLanguage: AppLanguage.ja),
     );
     // Stopping with nothing armed is the simplest message-producing path.
-    expect(manager.stopVoiceRecordingAndPlace(), '録音中ではありません。');
+    expect(await manager.stopVoiceRecordingAndPlace(), '録音中ではありません。');
     manager.setLanguageSettings(
       const AppLanguageSettings(programLanguage: AppLanguage.en),
     );
-    expect(manager.stopVoiceRecordingAndPlace(), 'Nothing was recording.');
+    expect(
+      await manager.stopVoiceRecordingAndPlace(),
+      'Nothing was recording.',
+    );
     manager.dispose();
   });
 }

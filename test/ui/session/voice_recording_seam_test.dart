@@ -49,7 +49,7 @@ void main() {
   }
 
   test('a stopped roll anchors on the EDITING playhead, which is not the '
-      "active cut's start once a project has two cuts", () {
+      "active cut's start once a project has two cuts", () async {
     final manager = session();
     addTearDown(manager.dispose);
     manager.createCut();
@@ -73,14 +73,14 @@ void main() {
 
     manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(1.0));
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
-    manager.stopVoiceRecordingAndPlace();
+    await manager.stopVoiceRecordingAndPlace();
 
     final lane = manager.activeTrack.seLayers.first;
     expect(drawingBlocks(lane.timeline).single.startIndex, playhead);
   });
 
   test("a punch window maps through the active cut's start, which is not "
-      'the editing playhead', () {
+      'the editing playhead', () async {
     final manager = session();
     addTearDown(manager.dispose);
     manager.createCut();
@@ -110,7 +110,7 @@ void main() {
 
     manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(2.0));
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
-    manager.stopVoiceRecordingAndPlace();
+    await manager.stopVoiceRecordingAndPlace();
 
     final lane = manager.activeTrack.seLayers.first;
     expect(drawingBlocks(lane.timeline).single.startIndex, cutStart + 6);

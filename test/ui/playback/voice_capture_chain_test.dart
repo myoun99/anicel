@@ -63,7 +63,7 @@ void main() {
     final laneId = manager.activeTrack.seLayers.first.id;
 
     expect(
-      manager.placeVoiceRecording(
+      await manager.placeVoiceRecording(
         takeOf(0.25),
         laneId: laneId,
         anchorFrame: 0,
@@ -93,7 +93,7 @@ void main() {
     manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOf(0.6));
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
     // The armed snapshot reads settings at start: raise gain BEFORE.
-    var message = manager.stopVoiceRecordingAndPlace();
+    var message = await manager.stopVoiceRecordingAndPlace();
     expect(message, isNull, reason: 'gain 0: nothing clipped');
 
     manager.setAudioSyncSettings(
@@ -101,7 +101,7 @@ void main() {
     );
     manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOf(0.6));
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
-    message = manager.stopVoiceRecordingAndPlace();
+    message = await manager.stopVoiceRecordingAndPlace();
     expect(
       message,
       isNull,
@@ -116,13 +116,13 @@ void main() {
     );
     manager.debugVoiceRecorderFactory = () => _FakeRecorder(takeOf(0.6));
     expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
-    message = manager.stopVoiceRecordingAndPlace();
+    message = await manager.stopVoiceRecordingAndPlace();
     expect(message, manager.uiStrings.recordTakeClipped);
     manager.dispose();
   });
 
   test('REC1-D: the clip light latches from the live tap and re-arms per '
-      'take', () {
+      'take', () async {
     final manager = session();
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
@@ -140,7 +140,7 @@ void main() {
     manager.debugIngestVoiceRecordChunk(chunk, 1);
     expect(manager.voiceRecordClipLit.value, isTrue);
 
-    manager.stopVoiceRecordingAndPlace();
+    await manager.stopVoiceRecordingAndPlace();
     expect(manager.voiceRecordClipLit.value, isFalse);
     manager.dispose();
   });

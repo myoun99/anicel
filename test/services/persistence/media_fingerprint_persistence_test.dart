@@ -77,7 +77,8 @@ void main() {
     expect(
       s.hasUnsavedChanges,
       isFalse,
-      reason: 'looking at a file is not editing the project — a save prompt '
+      reason:
+          'looking at a file is not editing the project — a save prompt '
           'here is the failure this design exists to prevent',
     );
     s.dispose();
@@ -99,7 +100,8 @@ void main() {
     expect(
       identity!.crc32,
       anicelCrc32(File(movie).readAsBytesSync()),
-      reason: 'it has to be the CRC of the actual bytes, not merely some '
+      reason:
+          'it has to be the CRC of the actual bytes, not merely some '
           'number that survived the round trip',
     );
     expect(identity.lengthBytes, 512);
@@ -126,7 +128,8 @@ void main() {
     expect(
       identity.lengthBytes,
       900,
-      reason: 'the fingerprint answers with its OWN length, not the stale '
+      reason:
+          'the fingerprint answers with its OWN length, not the stale '
           'one the import imprinted',
     );
     expect(identity.crc32, anicelCrc32(File(movie).readAsBytesSync()));
@@ -146,7 +149,7 @@ void main() {
     final recorded = s.recordedMediaIdentity(was)!;
 
     final now = makeFile('옮긴영상.mp4', 7);
-    s.relinkMediaAsset(was, now);
+    await s.relinkMediaAsset(was, now);
     await s.saveProjectToFile(projectPath);
     s.dispose();
 
@@ -160,45 +163,51 @@ void main() {
     reopened.dispose();
   });
 
-  test('an asset REMOVED from the pool takes its fingerprint with it', () async {
-    // Otherwise the file grows one row per asset the project has ever
-    // held, and a path the project stopped using keeps describing bytes
-    // nothing asks about.
-    final s = session();
-    final movie = makeFile('참고영상.mp4', 7);
-    s.importMediaFiles([movie], copyIntoProject: false);
-    fingerprint(s, movie);
-    await s.saveProjectToFile(projectPath);
+  test(
+    'an asset REMOVED from the pool takes its fingerprint with it',
+    () async {
+      // Otherwise the file grows one row per asset the project has ever
+      // held, and a path the project stopped using keeps describing bytes
+      // nothing asks about.
+      final s = session();
+      final movie = makeFile('참고영상.mp4', 7);
+      s.importMediaFiles([movie], copyIntoProject: false);
+      fingerprint(s, movie);
+      await s.saveProjectToFile(projectPath);
 
-    s.removeMediaAsset(movie);
-    await s.saveProjectToFile(projectPath);
-    s.dispose();
+      s.removeMediaAsset(movie);
+      await s.saveProjectToFile(projectPath);
+      s.dispose();
 
-    final reopened = session();
-    await reopened.openProjectFromFile(projectPath);
-    expect(reopened.debugMediaFingerprints.isEmpty, isTrue);
-    reopened.dispose();
-  });
+      final reopened = session();
+      await reopened.openProjectFromFile(projectPath);
+      expect(reopened.debugMediaFingerprints.isEmpty, isTrue);
+      reopened.dispose();
+    },
+  );
 
-  test('a project with no fingerprints writes no key, and still opens', () async {
-    // Every project written before this existed. The absence has to be an
-    // ordinary state, not a missing field somebody has to handle.
-    final s = session();
-    s.importMediaFiles([makeFile('참고영상.mp4', 7)], copyIntoProject: false);
-    await s.saveProjectToFile(projectPath);
-    s.dispose();
+  test(
+    'a project with no fingerprints writes no key, and still opens',
+    () async {
+      // Every project written before this existed. The absence has to be an
+      // ordinary state, not a missing field somebody has to handle.
+      final s = session();
+      s.importMediaFiles([makeFile('참고영상.mp4', 7)], copyIntoProject: false);
+      await s.saveProjectToFile(projectPath);
+      s.dispose();
 
-    expect(
-      projectJsonOf(projectPath).containsKey('mediaCrcs'),
-      isFalse,
-      reason: 'nothing to say, so nothing written',
-    );
+      expect(
+        projectJsonOf(projectPath).containsKey('mediaCrcs'),
+        isFalse,
+        reason: 'nothing to say, so nothing written',
+      );
 
-    final reopened = session();
-    await reopened.openProjectFromFile(projectPath);
-    expect(reopened.debugMediaFingerprints.isEmpty, isTrue);
-    reopened.dispose();
-  });
+      final reopened = session();
+      await reopened.openProjectFromFile(projectPath);
+      expect(reopened.debugMediaFingerprints.isEmpty, isTrue);
+      reopened.dispose();
+    },
+  );
 
   // ⚠️ "an import fingerprints for free" is asserted in
   // `test/ui/media_import_session_test.dart` instead — that file already
