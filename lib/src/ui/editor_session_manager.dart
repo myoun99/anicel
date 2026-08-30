@@ -8776,6 +8776,14 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Removes the [path] asset from the pool; refuses while any clip still
   /// references it (returns false). One undo step.
+  ///
+  /// ⛔**It does NOT retire the staged copy, and that is deliberate.** This
+  /// is UNDOABLE — the description above makes an undo entry — so throwing
+  /// the bytes away here would mean an undo brings the asset back empty
+  /// whenever the original file is also gone, which is precisely the case
+  /// 품기 exists for. The 30-day sweep owns them instead
+  /// ([MediaStagingStore.sweepAbandoned]): waiting costs a file in the
+  /// container, and not waiting costs the picture.
   bool removeMediaAsset(String path) {
     if (isMediaAssetReferenced(path)) {
       return false;
@@ -8934,6 +8942,15 @@ class EditorSessionManager extends ChangeNotifier {
     if (!promotes) {
       return false;
     }
+    // 🚨★★★**THE SAME LAW AS AN IMPORT THAT CARRIED FROM THE START.**
+    //
+    // This verb is the user saying「actually, keep this inside」— which is
+    // the same sentence the import window's Keep inside says, so it must
+    // mean the same thing: the bytes are held from the moment it is
+    // pressed. Setting only the FLAG here left one entrance on the old
+    // behaviour, where the promise was kept at save time and deleting the
+    // original in between quietly emptied it.
+    mediaStagingStore.stage(path);
     _cutCommandCoordinator.updateMediaAssets([
       for (final asset in pool)
         asset.path == path ? asset.copyWith(carried: true) : asset,
