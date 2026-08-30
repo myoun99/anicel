@@ -231,6 +231,8 @@ import 'timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
 import 'timeline/layer_timeline_display_adapter.dart'
     show horizontalLayerDisplayOrder;
 import 'timeline/timeline_cell_exposure_state.dart';
+import 'timeline/timeline_instruction_row_visual.dart'
+    show instructionCellExposureState;
 import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_section_policy.dart';
 import 'timeline/effect_lane_editing.dart'
@@ -19251,7 +19253,16 @@ class EditorSessionManager extends ChangeNotifier {
         layer.id,
       ).any((member) => celHasContentForLayer(member, frameIndex));
     }
-    if (timelineSectionForLayerKind(layer.kind) != TimelineSection.drawing) {
+    // 🚨THE QUESTION IS 「CAN THIS ROW HOLD A PICTURE」, not 「is it in the
+    // drawing SECTION」 (유저 2026-08-27, R27 #16: 「추가로 **없으면 블록을
+    // 회색으로**. 로직은 통일」). The direction row is a camera-section row
+    // that holds cels, so the section test answered `true` — no tint — and
+    // an empty block there was indistinguishable from a full one.
+    //
+    // ⛔The two only looked like one question while every cel-holding row
+    // happened to sit in the drawing section, which is the same trap R27
+    // #16 found in `layerKindCarriesInstructions`.
+    if (!layerKindIsDrawingCel(layer.kind)) {
       return true;
     }
     final cut = activeCutOrNull;
@@ -19263,7 +19274,20 @@ class EditorSessionManager extends ChangeNotifier {
       frameIndex: frameIndex,
     );
     if (frame == null) {
-      return true;
+      // 🚨A SPAN-COVERED CELL ON A DIRECTION ROW IS A BLOCK — it simply has
+      // no cel behind it yet, which is the state 유저 asked to see: 「추가로
+      // **없으면 블록을 회색으로**」. Everywhere else a cell with no frame
+      // is not a block at all, so there is nothing to tint and `true` is
+      // the right answer.
+      //
+      // ⛔It asks the span ADAPTER rather than reading `layer.instructions`
+      // again — 「is this frame under a span」 has one home, and the band
+      // that draws the block reads the same one ([[no-copy-to-share]]).
+      if (!layerKindCarriesInstructions(layer.kind)) {
+        return true;
+      }
+      return instructionCellExposureState(layer, frameIndex) ==
+          TimelineCellExposureState.uncovered;
     }
     // A LIVE stroke already counts. The store only learns about pixels at
     // commit (`markCelEdited` on pen-up), so waiting for it left the block

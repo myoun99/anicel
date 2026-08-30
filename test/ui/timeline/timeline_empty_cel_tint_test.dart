@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -112,8 +113,10 @@ void main() {
 
     test('no resolver = no tint (every block keeps the plain paper)', () {
       final painter = painterFor(twoBlockLayer());
-      expect(painter.resolvedCellStyleFor(0).background,
-          timelineDrawingStartColor);
+      expect(
+        painter.resolvedCellStyleFor(0).background,
+        timelineDrawingStartColor,
+      );
     });
   });
 
@@ -129,11 +132,15 @@ void main() {
 
     test('a marked layer\'s blocks take the mark', () {
       final painter = painterFor(
-        twoBlockLayer().copyWith(mark: const LayerMark(process: LayerProcess.layout)),
+        twoBlockLayer().copyWith(
+          mark: const LayerMark(process: LayerProcess.layout),
+        ),
       );
 
-      expect(painter.resolvedCellStyleFor(0).background,
-          layerMarkColor(const LayerMark(process: LayerProcess.layout)));
+      expect(
+        painter.resolvedCellStyleFor(0).background,
+        layerMarkColor(const LayerMark(process: LayerProcess.layout)),
+      );
       expect(
         painter.resolvedCellStyleFor(1).background,
         layerMarkColor(const LayerMark(process: LayerProcess.layout)),
@@ -149,15 +156,25 @@ void main() {
     test('the unworked-cel tint is the MARK at low opacity, not the old '
         'grey', () {
       final painter = painterFor(
-        twoBlockLayer().copyWith(mark: const LayerMark(process: LayerProcess.conte)),
+        twoBlockLayer().copyWith(
+          mark: const LayerMark(process: LayerProcess.conte),
+        ),
         celHasContentForLayer: (layer, frameIndex) => frameIndex >= 2,
       );
 
       final tinted = painter.resolvedCellStyleFor(0).background;
-      expect(tinted, timelineEmptyCelPaperColor(layerMarkColor(const LayerMark(process: LayerProcess.conte))));
+      expect(
+        tinted,
+        timelineEmptyCelPaperColor(
+          layerMarkColor(const LayerMark(process: LayerProcess.conte)),
+        ),
+      );
       // Derived from the paper, not a second colour beside it: same hue,
       // the transparency is the only difference.
-      expect(tinted.r, layerMarkColor(const LayerMark(process: LayerProcess.conte)).r);
+      expect(
+        tinted.r,
+        layerMarkColor(const LayerMark(process: LayerProcess.conte)).r,
+      );
       expect(tinted.a, lessThan(1));
       expect(
         painter.resolvedCellStyleFor(2).background,
@@ -209,10 +226,47 @@ void main() {
         reason: 'the timeline has to be TOLD; that is the whole fix',
       );
 
-      // CAM rows never tint — the fact never renders outside the ACTION
-      // section.
+      // A row with no cels of its own never tints — the camera row mirrors
+      // keyframes and has no block to grey.
       final camera = s.layers.firstWhere((l) => l.kind == LayerKind.camera);
       expect(s.celHasContentForLayer(camera, 0), isTrue);
+    });
+
+    test('🚨R27 #16: a DIRECTION span with no cel behind it is grey', () {
+      // 유저 2026-08-27: 「그림 그릴 수 있는 기능(추가로 **없으면 블록을
+      // 회색으로**. 로직은 통일)만 추가하라했지」.
+      //
+      // ⚠️THE SECOND LAYER OF THE SAME BUG. The section test above this
+      // used to send every CAM row home with `true`, so a direction row
+      // could never tint — and even once it could, a span-covered cell
+      // resolves NO FRAME, which every other row is right to call 「not a
+      // block, nothing to tint」. On this row the span IS the block.
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      final row = s.layers.firstWhere((l) => l.kind == LayerKind.instruction);
+      final withSpan = row.copyWith(
+        instructions: {
+          2: const InstructionEvent(instructionId: 'fi', length: 3),
+        },
+      );
+
+      expect(
+        s.celHasContentForLayer(withSpan, 2),
+        isFalse,
+        reason: 'the span start is a block, and it holds no picture',
+      );
+      expect(
+        s.celHasContentForLayer(withSpan, 4),
+        isFalse,
+        reason: 'and so is the rest of its run',
+      );
+      expect(
+        s.celHasContentForLayer(withSpan, 9),
+        isTrue,
+        reason:
+            '⛔off the span there is no block, so nothing to grey — a '
+            'row washed grey end to end is not what was asked for',
+      );
     });
 
     test('the block goes white when the LINE STARTS, not when the pen '
@@ -346,8 +400,11 @@ void main() {
 
       // Same inputs = memo hit: the row (and its painter) is reused.
       await tester.pumpWidget(body());
-      expect(identical(painterOf(), first), isTrue,
-          reason: 'unchanged inputs must reuse the cached row');
+      expect(
+        identical(painterOf(), first),
+        isTrue,
+        reason: 'unchanged inputs must reuse the cached row',
+      );
       expect(first.celContentRevision, 0);
 
       // A cel gains pixels: store state moves and the revision announces

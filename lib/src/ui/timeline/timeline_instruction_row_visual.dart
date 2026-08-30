@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
+import '../../models/layer_kind.dart'
+    show layerKindBandIsInstructionsOnly, layerKindCarriesInstructions;
 import '../../models/timeline_coverage.dart' show TimelineBlockEdge;
 import '../text/vertical_writing_text.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -51,6 +53,41 @@ TimelineCellExposureState instructionCellExposureState(
   return frameIndex < startKey + event.length
       ? TimelineCellExposureState.held
       : TimelineCellExposureState.uncovered;
+}
+
+/// What an instruction row's BAND shows: its own cels where it has them,
+/// its instruction spans everywhere else.
+///
+/// 🚨R27 #16 LEFT THE BAND EMPTY (유저 2026-08-27: 「지금 스샷보면 **블록의
+/// 배경색 흰색이 사라졌는데?**」). Giving the direction row cels flipped
+/// `layerKindBandIsInstructionsOnly` to false, so the band stopped reading
+/// the span adapter — and started reading cels the row did not have yet.
+/// Nothing was drawn at all. The row did not gain a feature; it lost its
+/// blocks.
+///
+/// ★A UNION, not a choice, because both are true of that row now: the
+/// spans are why it exists and the cels are what R27 #16 gave it. Its own
+/// cels win where it has them (a drawing that starts mid-span really does
+/// start a block there); the spans fill the rest, exactly as before.
+///
+/// ⛔ONE FUNCTION, because there are TWO readers — the cells row and the
+/// cursor layer's range measure — and a row that DRAWS a block it will not
+/// SELECT is worse than one that draws none ([[no-copy-to-share]]).
+TimelineCellExposureState bandExposureState(
+  Layer layer,
+  int frameIndex, {
+  required TimelineCellExposureState Function(Layer, int) ownCels,
+}) {
+  if (!layerKindCarriesInstructions(layer.kind)) {
+    return ownCels(layer, frameIndex);
+  }
+  if (layerKindBandIsInstructionsOnly(layer.kind)) {
+    return instructionCellExposureState(layer, frameIndex);
+  }
+  final own = ownCels(layer, frameIndex);
+  return own == TimelineCellExposureState.uncovered
+      ? instructionCellExposureState(layer, frameIndex)
+      : own;
 }
 
 /// The mark/label overlays for every instruction span intersecting the
