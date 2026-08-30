@@ -136,6 +136,7 @@ import 'timeline/timeline_se_row_visual.dart'
     show SePaperSpan, SeSpanVisual, timelineRowClipMarkerOverlays;
 import 'timeline/timeline_zoom_anchor_policy.dart';
 import 'layout/device_grid_scroll_controller.dart';
+import 'text/app_strings.dart' show AppText;
 
 /// One row of the storyboard rail, as the shared swipe sees it.
 ///
@@ -2144,7 +2145,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                     'storyboard-lane-label-'
                     '${track.id.value}'
                     '-s${slot + 1}-audio',
-                label: 'Audio',
+                label: AppText.strings.tlAudioLane,
                 icon: Icons.graphic_eq,
                 height: _audioLaneHeight,
               ),
@@ -2516,7 +2517,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               height: bottom - top,
               child: Semantics(
                 key: const ValueKey<String>('storyboard-lane-range-selection'),
-                label: 'selected lane range',
+                label: AppText.strings.tlSelectedLaneRange,
                 container: true,
                 child: DecoratedBox(
                   decoration: timelineRangeSelectionBandDecoration,
@@ -2620,7 +2621,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             );
             final ring = Semantics(
               key: const ValueKey<String>('storyboard-standing-cell'),
-              label: 'selected cell',
+              label: AppText.strings.tlSelectedCell,
               container: true,
               // On a block the OUTLINE is the standing visual; the ring
               // would draw a second one inside it (the timeline's UI-R10
@@ -2802,7 +2803,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               height: bottom - top,
               child: Semantics(
                 key: const ValueKey<String>('storyboard-frame-range-selection'),
-                label: 'selected frame range',
+                label: AppText.strings.tlSelectedFrameRange,
                 container: true,
                 child: DecoratedBox(
                   decoration: timelineRangeSelectionBandDecoration,
@@ -4433,7 +4434,9 @@ class _StoryboardSeLabel extends StatelessWidget {
           key: active
               ? const ValueKey<String>('storyboard-selected-row')
               : null,
-          label: active ? 'selected layer' : 'layer',
+          label: active
+              ? AppText.strings.semSelectedLayer
+              : AppText.strings.semLayer,
           container: true,
           explicitChildNodes: true,
           // The timeline rail's slot grid VERBATIM (UI-R5 unification):
@@ -4676,7 +4679,9 @@ class _StoryboardTransitionLabel extends StatelessWidget {
           key: active
               ? const ValueKey<String>('storyboard-selected-row')
               : null,
-          label: active ? 'selected layer' : 'layer',
+          label: active
+              ? AppText.strings.semSelectedLayer
+              : AppText.strings.semLayer,
           container: true,
           explicitChildNodes: true,
           child: Row(
@@ -5830,7 +5835,9 @@ class StoryboardTrackLabelRow extends StatelessWidget {
           key: active
               ? const ValueKey<String>('storyboard-selected-row')
               : null,
-          label: active ? 'selected track' : 'track',
+          label: active
+              ? AppText.strings.semSelectedTrack
+              : AppText.strings.semTrack,
           container: true,
           explicitChildNodes: true,
           child: Row(
@@ -5874,7 +5881,7 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                   keyPrefix: 'storyboard',
                   idValue: 'v-${track.id.value}',
                   icon: Icons.movie_outlined,
-                  semanticLabel: 'Video track',
+                  semanticLabel: AppText.strings.sbVideoTrack,
                   onTap: onSelectTrack,
                 ),
               ),
@@ -6625,7 +6632,7 @@ class _StoryboardTrackRow extends StatelessWidget {
                               key: const ValueKey<String>(
                                 'storyboard-strip-range-selection',
                               ),
-                              label: 'selected panel range',
+                              label: AppText.strings.tlSelectedPanelRange,
                               container: true,
                               child: DecoratedBox(
                                 decoration:

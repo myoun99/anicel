@@ -343,13 +343,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// 유저 확정 08-18 (R6q2): camera view OFF never fits — the user's framing
   /// is the framing.
   Rect? _playbackFramingRect() {
-    if (!widget.cameraViewEnabled.value ||
-        !widget.session.playback.isActive) {
+    if (!widget.cameraViewEnabled.value || !widget.session.playback.isActive) {
       return null;
     }
     final frame = widget.session.cameraFrameSize;
-    return Offset.zero &
-        Size(frame.width.toDouble(), frame.height.toDouble());
+    return Offset.zero & Size(frame.width.toDouble(), frame.height.toDouble());
   }
 
   @override
@@ -637,8 +635,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     // own (through the frame painter), so this stands down there exactly
     // like the other editing chrome.
     final activeCutForTags = session.activeCutOrNull;
-    final seNameTags =
-        isPlaybackActive || activeCutForTags == null
+    final seNameTags = isPlaybackActive || activeCutForTags == null
         ? const <ResolvedSeNameTag>[]
         : session.seNameTagsForCutFrame(
             activeCutForTags,
@@ -922,9 +919,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 onOpenRegion: () => showAppNotice(
                   context,
                   title: AppText.strings.commonNotice,
-                  message:
-                      'Region is not closed — nothing filled '
-                      '(Fill Beyond Canvas needs an enclosed area).',
+                  message: AppText.strings.noticeFillRegionOpen,
                 ),
               ),
               // The SHAPE fill's dab. No cut, no frame, no surfaces: a
@@ -1119,7 +1114,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                                       }
                                       return CameraFrameOverlay(
                                         pose: pose,
-                                        cameraFrameSize: session.cameraFrameSize,
+                                        cameraFrameSize:
+                                            session.cameraFrameSize,
                                         viewport: viewport,
                                         // Dim belongs to camera-view mode;
                                         // plain manipulation keeps the
@@ -1143,38 +1139,37 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                             // one member per handle. No cut pose to ride any
                             // more: the V row's transform is gone.
                             child: LayerTransformBox(
-                                bounds: transformBoxBounds,
-                                pose: session.layerPoseAtFrame(
-                                  activeLayer,
-                                  session.currentFrameIndex,
-                                ),
-                                anchorPoint: session.layerAnchorPointAtFrame(
-                                  activeLayer,
-                                  session.currentFrameIndex,
-                                ),
-                                canvasSize: canvasSize,
-                                viewport: viewport,
-                                onScaleCommitted: (zoom) =>
-                                    session.updateLayerTransformTrack(
-                                      activeLayer.id,
-                                      transformTrackWithScaleDragged(
-                                        activeLayer.transformTrack,
-                                        frameIndex: session.currentFrameIndex,
-                                        zoom: zoom,
-                                      ),
-                                      description: 'Scale ${activeLayer.name}',
+                              bounds: transformBoxBounds,
+                              pose: session.layerPoseAtFrame(
+                                activeLayer,
+                                session.currentFrameIndex,
+                              ),
+                              anchorPoint: session.layerAnchorPointAtFrame(
+                                activeLayer,
+                                session.currentFrameIndex,
+                              ),
+                              canvasSize: canvasSize,
+                              viewport: viewport,
+                              onScaleCommitted: (zoom) =>
+                                  session.updateLayerTransformTrack(
+                                    activeLayer.id,
+                                    transformTrackWithScaleDragged(
+                                      activeLayer.transformTrack,
+                                      frameIndex: session.currentFrameIndex,
+                                      zoom: zoom,
                                     ),
-                                onRotationCommitted: (degrees) =>
-                                    session.updateLayerTransformTrack(
-                                      activeLayer.id,
-                                      transformTrackWithRotationDragged(
-                                        activeLayer.transformTrack,
-                                        frameIndex: session.currentFrameIndex,
-                                        rotationDegrees: degrees,
-                                      ),
-                                      description:
-                                          'Rotate ${activeLayer.name}',
+                                    description: 'Scale ${activeLayer.name}',
+                                  ),
+                              onRotationCommitted: (degrees) =>
+                                  session.updateLayerTransformTrack(
+                                    activeLayer.id,
+                                    transformTrackWithRotationDragged(
+                                      activeLayer.transformTrack,
+                                      frameIndex: session.currentFrameIndex,
+                                      rotationDegrees: degrees,
                                     ),
+                                    description: 'Rotate ${activeLayer.name}',
+                                  ),
                             ),
                           ),
                         if (showPositionGizmo)
@@ -1184,23 +1179,23 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                             // canvas space and the committed Position needs no
                             // un-posing.
                             child: LayerPositionGizmo(
-                                pose: session.layerPoseAtFrame(
-                                  activeLayer,
-                                  session.currentFrameIndex,
-                                ),
-                                viewport: viewport,
-                                // ONE key at the playhead per drag (AE rule,
-                                // one undo).
-                                onPositionCommitted: (position) =>
-                                    session.updateLayerTransformTrack(
-                                      activeLayer.id,
-                                      transformTrackWithPositionDragged(
-                                        activeLayer.transformTrack,
-                                        frameIndex: session.currentFrameIndex,
-                                        position: position,
-                                      ),
-                                      description: 'Move ${activeLayer.name}',
+                              pose: session.layerPoseAtFrame(
+                                activeLayer,
+                                session.currentFrameIndex,
+                              ),
+                              viewport: viewport,
+                              // ONE key at the playhead per drag (AE rule,
+                              // one undo).
+                              onPositionCommitted: (position) =>
+                                  session.updateLayerTransformTrack(
+                                    activeLayer.id,
+                                    transformTrackWithPositionDragged(
+                                      activeLayer.transformTrack,
+                                      frameIndex: session.currentFrameIndex,
+                                      position: position,
                                     ),
+                                    description: 'Move ${activeLayer.name}',
+                                  ),
                             ),
                           ),
                         if (showAnchorGizmo)
@@ -1208,22 +1203,21 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                             // Unwrapped like the position handle, for the same
                             // reason.
                             child: LayerAnchorGizmo(
-                                anchorPoint: session.layerAnchorPointAtFrame(
-                                  activeLayer,
-                                  session.currentFrameIndex,
-                                ),
-                                viewport: viewport,
-                                onAnchorCommitted: (anchorPoint) =>
-                                    session.updateLayerTransformTrack(
-                                      activeLayer.id,
-                                      transformTrackWithAnchorDragged(
-                                        activeLayer.transformTrack,
-                                        frameIndex: session.currentFrameIndex,
-                                        anchorPoint: anchorPoint,
-                                      ),
-                                      description:
-                                          'Anchor ${activeLayer.name}',
+                              anchorPoint: session.layerAnchorPointAtFrame(
+                                activeLayer,
+                                session.currentFrameIndex,
+                              ),
+                              viewport: viewport,
+                              onAnchorCommitted: (anchorPoint) =>
+                                  session.updateLayerTransformTrack(
+                                    activeLayer.id,
+                                    transformTrackWithAnchorDragged(
+                                      activeLayer.transformTrack,
+                                      frameIndex: session.currentFrameIndex,
+                                      anchorPoint: anchorPoint,
                                     ),
+                                    description: 'Anchor ${activeLayer.name}',
+                                  ),
                             ),
                           ),
                       ],

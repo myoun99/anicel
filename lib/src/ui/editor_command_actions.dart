@@ -123,7 +123,7 @@ void copyCameraAeKeyframes(BuildContext context, EditorSessionManager session) {
     showAppNotice(
       context,
       title: AppText.strings.commonNotice,
-      message: 'Camera keyframes copied for After Effects.',
+      message: AppText.strings.noticeCameraKeysCopied,
     ),
   );
 }

@@ -588,6 +588,14 @@ class AppStrings {
   String get tlSelectedFrameRange => _s('tlSelectedFrameRange');
   String get tlSelectedLaneRange => _s('tlSelectedLaneRange');
   String get tlSelectedCell => _s('tlSelectedCell');
+  String get tlSelectedPanelRange => _s('tlSelectedPanelRange');
+  String get semLayer => _s('semLayer');
+  String get semSelectedLayer => _s('semSelectedLayer');
+  String get semTrack => _s('semTrack');
+  String get semSelectedTrack => _s('semSelectedTrack');
+  String get sbVideoTrack => _s('sbVideoTrack');
+  String get noticeFillRegionOpen => _s('noticeFillRegionOpen');
+  String get noticeCameraKeysCopied => _s('noticeCameraKeysCopied');
   String get tlSameAsSelected => _s('tlSameAsSelected');
   String get tlKindAnimation => _s('tlKindAnimation');
   String get tlKindStoryboard => _s('tlKindStoryboard');
@@ -1898,6 +1906,15 @@ class AppStrings {
     'tlSelectedFrameRange': 'selected frame range',
     'tlSelectedLaneRange': 'selected lane range',
     'tlSelectedCell': 'selected cell',
+    'tlSelectedPanelRange': 'selected panel range',
+    'semLayer': 'layer',
+    'semSelectedLayer': 'selected layer',
+    'semTrack': 'track',
+    'semSelectedTrack': 'selected track',
+    'sbVideoTrack': 'Video track',
+    'noticeFillRegionOpen':
+        'Region is not closed — nothing filled (Fill Beyond Canvas needs an enclosed area).',
+    'noticeCameraKeysCopied': 'Camera keyframes copied for After Effects.',
     'tlSameAsSelected': 'Same as selected',
     'tlKindAnimation': 'Animation',
     'tlKindStoryboard': 'Storyboard',
@@ -2845,6 +2862,14 @@ class AppStrings {
     'tlSelectedFrameRange': '選択中のフレーム範囲',
     'tlSelectedLaneRange': '選択中のレーン範囲',
     'tlSelectedCell': '選択中のセル',
+    'tlSelectedPanelRange': '選択中のコマ範囲',
+    'semLayer': 'レイヤー',
+    'semSelectedLayer': '選択中のレイヤー',
+    'semTrack': 'トラック',
+    'semSelectedTrack': '選択中のトラック',
+    'sbVideoTrack': '映像トラック',
+    'noticeFillRegionOpen': '領域が閉じていないため塗りつぶせません（キャンバス外まで塗るには囲まれた領域が必要です）。',
+    'noticeCameraKeysCopied': 'カメラのキーフレームを After Effects 用にコピーしました。',
     'tlSameAsSelected': '選択中と同じ種類',
     'tlKindAnimation': '動画',
     'tlKindStoryboard': '絵コンテ',
@@ -3783,6 +3808,15 @@ class AppStrings {
     'tlSelectedFrameRange': '선택된 프레임 범위',
     'tlSelectedLaneRange': '선택된 레인 범위',
     'tlSelectedCell': '선택된 칸',
+    'tlSelectedPanelRange': '선택된 컷 범위',
+    'semLayer': '레이어',
+    'semSelectedLayer': '선택된 레이어',
+    'semTrack': '트랙',
+    'semSelectedTrack': '선택된 트랙',
+    'sbVideoTrack': '영상 트랙',
+    'noticeFillRegionOpen':
+        '영역이 닫혀 있지 않아 채우지 못했습니다 (캔버스 밖까지 채우려면 둘러싸인 영역이 필요합니다).',
+    'noticeCameraKeysCopied': '카메라 키프레임을 After Effects 용으로 복사했습니다.',
     'tlSameAsSelected': '선택한 것과 같은 종류',
     'tlKindAnimation': '동화',
     'tlKindStoryboard': '콘티',
@@ -4747,6 +4781,16 @@ class AppStrings {
     'tlSelectedFrameRange': 'plage d\'images sélectionnée',
     'tlSelectedLaneRange': 'plage de piste sélectionnée',
     'tlSelectedCell': 'cellule sélectionnée',
+    'tlSelectedPanelRange': 'plage de cases sélectionnée',
+    'semLayer': 'calque',
+    'semSelectedLayer': 'calque sélectionné',
+    'semTrack': 'piste',
+    'semSelectedTrack': 'piste sélectionnée',
+    'sbVideoTrack': 'Piste vidéo',
+    'noticeFillRegionOpen':
+        'La zone n\'est pas fermée — rien n\'a été rempli (le remplissage hors toile exige une zone close).',
+    'noticeCameraKeysCopied':
+        'Images clés de caméra copiées pour After Effects.',
     'tlSameAsSelected': 'Comme la sélection',
     'tlKindAnimation': 'Animation',
     'tlKindStoryboard': 'Storyboard',
@@ -5615,6 +5659,14 @@ class AppStrings {
     'tlSelectedFrameRange': '选中的帧范围',
     'tlSelectedLaneRange': '选中的轨道范围',
     'tlSelectedCell': '选中的单元格',
+    'tlSelectedPanelRange': '选中的分镜范围',
+    'semLayer': '图层',
+    'semSelectedLayer': '选中的图层',
+    'semTrack': '轨道',
+    'semSelectedTrack': '选中的轨道',
+    'sbVideoTrack': '视频轨道',
+    'noticeFillRegionOpen': '区域未闭合，未进行填充（画布外填充需要一个封闭区域）。',
+    'noticeCameraKeysCopied': '已为 After Effects 复制摄像机关键帧。',
     'tlSameAsSelected': '与所选相同',
     'tlKindAnimation': '动画',
     'tlKindStoryboard': '分镜',
