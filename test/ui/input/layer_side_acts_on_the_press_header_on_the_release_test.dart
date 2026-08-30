@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
@@ -21,23 +24,17 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 /// So this asks the only question that catches it: **had it already happened
 /// before the finger came up?**
 ///
-/// ⚠️WHAT THIS DOES NOT COVER, so nobody reads it as more than it is: the
-/// ROW-level `PressFireScope` mounts (`TimelineLayerControlsRow`, the lane
-/// rows, the x-sheet's layer strip) are not isolated by any test here. They
-/// exist for the buttons in a row that are NOT swipe columns — the fold
-/// twirls, the lane navigators — and every attempt to pin them measured the
-/// COLUMN's own scope instead:
+/// 🚨HOW THE ROW-LEVEL SCOPE IS PINNED, because two obvious ways do not work
+/// and the next reader would try them:
 ///
 /// * 🧪`find.descendant` from the row also finds the scope each swipe column
 ///   mounts, so deleting the row's left it green (measured, twice);
-/// * `find.ancestor` from a column would isolate it, but no
-///   `RailSwipeColumnPointer` descends from the row widget in this fixture —
-///   the rail builds the columns and hands them in.
+/// * 🧪pressing an eye or an fx proves nothing either — those ARE columns.
 ///
-/// ⇒ The mechanism is proven (`a_button_still_fires_when_the_hand_shakes`),
-/// and a rail button acting on the press is proven below. That a row's
-/// NON-column buttons join it is construction, not coverage. 🔜The honest
-/// way to close it is a fixture with a folded group in it.
+/// ⇒ The case below asks about a button that is in the row and is NOT a
+/// column: the lane group's twirl, a bare [ControlPressClaim] standing beside
+/// them. Deleting the row's scope turns it red, which is what makes it a
+/// test rather than a hope.
 void main() {
   setUp(debugClearValueControlPointers);
   tearDown(debugClearValueControlPointers);
@@ -127,5 +124,61 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
     expect(entry, findsOneWidget, reason: 'and the release opens it');
+  });
+
+  testWidgets('🚨a rail ROW puts its non-column buttons on the press too', (
+    tester,
+  ) async {
+    // ⛔THE CASE THE SWIPE COLUMNS CANNOT ANSWER. A column mounts a scope of
+    // its own, so pressing an eye or an fx proves nothing about the row —
+    // 🧪measured twice: deleting the row's scope left every other case green.
+    // What the row uniquely covers is the buttons that are NOT columns, and
+    // the lane group's twirl is one: a bare [ControlPressClaim] sitting in
+    // the row beside the columns.
+    await tester.binding.setSurfaceSize(const Size(1280, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byKey(const ValueKey<String>('dock-resize-bottom')),
+      const Offset(0, -520),
+    );
+    await tester.pumpAndSettle();
+
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    final layerId = session.activeLayerId!;
+    final laneToggle = find.byKey(
+      ValueKey<String>('timeline-lane-toggle-$layerId'),
+    );
+    await tester.ensureVisible(laneToggle);
+    await tester.pumpAndSettle();
+    await tester.tap(laneToggle);
+    await tester.pumpAndSettle();
+
+    final twirl = find.byKey(
+      ValueKey<String>('timeline-lane-group-toggle-$layerId-transform-group'),
+    );
+    expect(
+      twirl,
+      findsOneWidget,
+      reason: 'the transform group lost its twirl — this measures nothing',
+    );
+    expect(
+      find.ancestor(
+        of: twirl,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is PressFireScope && widget.fireOn == PressFire.down,
+        ),
+      ),
+      findsWidgets,
+      reason:
+          '유저: 「레이어 쪽 버튼은 탭다운」 — this one is not a swipe column, '
+          'so only the ROW can put it on the press',
+    );
   });
 }
