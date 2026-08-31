@@ -41,13 +41,27 @@ class QaDecodedAudio {
 /// Decoding runs ONCE at import — that is what conforming means, and why a
 /// variable-length codec never has to finish inside an audio callback.
 ///
-/// The bytes are read on the Dart side and handed over as MEMORY, never as
-/// a path: Dart already opens files correctly on every platform, whereas a
-/// `const char*` would drag in the question of whether a Windows path is
-/// UTF-8 or the local codepage — and a Korean filename would settle it the
-/// hard way.
+/// Two doors, and the only difference is where the bytes are.
+///
+/// [decodeRange] is the one to reach for: a container is [length] bytes of a
+/// file starting at [offset], which is what a sound inside the project file
+/// looks like AND what a plain file looks like (offset 0, the whole length).
+/// 🚨Nothing on that path holds the container, which is why a movie's sound
+/// can be conformed at all — reading a three-gigabyte reference video into a
+/// `Uint8List` first was the reason it could not be.
+///
+/// [decode] takes assembled bytes, and stays for the case that genuinely has
+/// them: a FRAMED archive entry is stored in pieces, so there is no range to
+/// point at.
+///
+/// 🪦Handing C a path was refused for a year because 「a `const char*` would
+/// drag in the question of whether a Windows path is UTF-8 or the local
+/// codepage, and a Korean filename would settle it the hard way」. The video
+/// decoder had to answer that question and did — UTF-8 in, widened once, in
+/// `qa_platform_path.h` — so the hazard is now handled in one place instead
+/// of avoided in two.
 final class QaAudioDecoder {
-  QaAudioDecoder._(this._decode, this._free);
+  QaAudioDecoder._(this._decode, this._decodeRange, this._free);
 
   final int Function(
     Pointer<Uint8>,
@@ -58,6 +72,16 @@ final class QaAudioDecoder {
     Pointer<Int32>,
   )
   _decode;
+  final int Function(
+    Pointer<Utf8>,
+    int,
+    int,
+    Pointer<Pointer<Float>>,
+    Pointer<Int64>,
+    Pointer<Int32>,
+    Pointer<Int32>,
+  )
+  _decodeRange;
   final void Function(Pointer<Float>) _free;
 
   static QaAudioDecoder? _instance;
@@ -103,6 +127,26 @@ final class QaAudioDecoder {
           )
         >('qa_audio_decode_memory'),
         library.lookupFunction<
+          Int32 Function(
+            Pointer<Utf8>,
+            Int64,
+            Int64,
+            Pointer<Pointer<Float>>,
+            Pointer<Int64>,
+            Pointer<Int32>,
+            Pointer<Int32>,
+          ),
+          int Function(
+            Pointer<Utf8>,
+            int,
+            int,
+            Pointer<Pointer<Float>>,
+            Pointer<Int64>,
+            Pointer<Int32>,
+            Pointer<Int32>,
+          )
+        >('qa_audio_decode_range'),
+        library.lookupFunction<
           Void Function(Pointer<Float>),
           void Function(Pointer<Float>)
         >('qa_audio_decode_free'),
@@ -113,20 +157,77 @@ final class QaAudioDecoder {
   }
 
   /// Decodes [bytes]; null when no decoder recognized the container.
+  ///
+  /// ⚠️Prefer [decodeRange] when the bytes are a file: this one has to hold
+  /// the whole container, and for a movie that is the file's whole size.
   QaDecodedAudio? decode(Uint8List bytes) {
     if (bytes.isEmpty) {
       return null;
     }
     final data = calloc<Uint8>(bytes.length);
+    try {
+      data.asTypedList(bytes.length).setAll(0, bytes);
+      return _harvest(
+        (samplesOut, frameCountOut, channelsOut, sampleRateOut) => _decode(
+          data,
+          bytes.length,
+          samplesOut,
+          frameCountOut,
+          channelsOut,
+          sampleRateOut,
+        ),
+      );
+    } finally {
+      calloc.free(data);
+    }
+  }
+
+  /// Decodes [length] bytes of [path] starting at [offset]; null when no
+  /// decoder recognized the container, the range is not inside the file, or
+  /// the file will not open.
+  ///
+  /// A whole file is `offset: 0` with its own length — the ordinary case
+  /// goes through the same door as a carried one, so no caller has to know
+  /// which it has.
+  QaDecodedAudio? decodeRange(String path, {int offset = 0, required int length}) {
+    if (path.isEmpty || offset < 0 || length <= 0) {
+      return null;
+    }
+    final native = path.toNativeUtf8();
+    try {
+      return _harvest(
+        (samplesOut, frameCountOut, channelsOut, sampleRateOut) => _decodeRange(
+          native,
+          offset,
+          length,
+          samplesOut,
+          frameCountOut,
+          channelsOut,
+          sampleRateOut,
+        ),
+      );
+    } finally {
+      calloc.free(native);
+    }
+  }
+
+  /// The four out-parameters, and what to do with what comes back — written
+  /// once so the two doors above cannot drift into two answers.
+  QaDecodedAudio? _harvest(
+    int Function(
+      Pointer<Pointer<Float>>,
+      Pointer<Int64>,
+      Pointer<Int32>,
+      Pointer<Int32>,
+    )
+    call,
+  ) {
     final samplesOut = calloc<Pointer<Float>>();
     final frameCountOut = calloc<Int64>();
     final channelsOut = calloc<Int32>();
     final sampleRateOut = calloc<Int32>();
     try {
-      data.asTypedList(bytes.length).setAll(0, bytes);
-      final format = _decode(
-        data,
-        bytes.length,
+      final format = call(
         samplesOut,
         frameCountOut,
         channelsOut,
@@ -162,7 +263,6 @@ final class QaAudioDecoder {
       calloc.free(channelsOut);
       calloc.free(frameCountOut);
       calloc.free(samplesOut);
-      calloc.free(data);
     }
   }
 }

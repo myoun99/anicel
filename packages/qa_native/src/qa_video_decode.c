@@ -300,6 +300,11 @@ static void qa_rotate_rgba(const uint8_t* stored,
 #include <mfreadwrite.h>
 #include <mferror.h>
 
+// ⚠️AFTER windows.h on purpose: this TU sets COBJMACROS before including it,
+// and a header that pulled windows.h in earlier would settle that question
+// with the macro undefined.
+#include "qa_platform_path.h"
+
 /// The Windows half of opening a movie inside another file — see
 /// `qa_win_range_stream.c` for why Media Foundation needs one written by
 /// hand. NULL when the range is not inside the file.
@@ -339,8 +344,7 @@ static int32_t qa_backend_open(const char* path,
                                int64_t offset,
                                int64_t length) {
   wchar_t wide[1024];
-  if (MultiByteToWideChar(CP_UTF8, 0, path, -1, wide,
-                          (int)(sizeof(wide) / sizeof(wide[0]))) == 0) {
+  if (!qa_widen_path(path, wide, (int)(sizeof(wide) / sizeof(wide[0])))) {
     qa_decode_set_error("path is not valid UTF-8");
     return 0;
   }
