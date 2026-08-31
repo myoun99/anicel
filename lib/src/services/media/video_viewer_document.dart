@@ -19,13 +19,16 @@ import 'viewer_document.dart';
 /// the whole reason [ViewerDocument] was worth extracting. Playing is then
 /// just turning pages on a timer — the viewer owns that, not this.
 ///
-/// ⚠️**ONE document at a time.** `QaVideoDecoder` holds a single native
-/// document by design (「스크럽하는 프리뷰가 주 용례고 그건 영화 하나를
-///본다」), so opening here is also what closes the import preview's. That
-/// is a property of the decoder, not a rule invented here — [dispose]
-/// closes, and a second open replaces.
+/// ⚠️**ONE document at a time**, still — `QaVideoDecoder` holds a single
+/// native document by design (「스크럽하는 프리뷰가 주 용례고 그건 영화
+/// 하나를 본다」). 🪦What this paragraph used to say next was that opening
+/// here 「is also what closes the import preview's」, stated as a property to
+/// live with. It was a bug: the other consumer's movie went blank with no
+/// error, and so did this one when theirs opened. The decoder takes a
+/// HANDLE now and puts your movie back when somebody else's is loaded —
+/// see [QaVideoDecoder.frameOf].
 final class VideoViewerDocument implements ViewerDocument {
-  VideoViewerDocument._(this._info);
+  VideoViewerDocument._(this._document);
 
   /// Opens [path]. Returns null when this build has **no reader at all**,
   /// and THROWS when there is a reader that could not read this file.
@@ -62,8 +65,8 @@ final class VideoViewerDocument implements ViewerDocument {
   }) async {
     final decoder = QaVideoDecoder.instance;
     final hasReader = decoder != null && decoder.isSupported;
-    final info = hasReader ? decoder.open(path, range: range) : null;
-    switch (viewerOpenOutcome(hasReader: hasReader, opened: info != null)) {
+    final document = hasReader ? decoder.openDocument(path, range: range) : null;
+    switch (viewerOpenOutcome(hasReader: hasReader, opened: document != null)) {
       case ViewerOpenOutcome.noReaderInThisBuild:
         return null;
       case ViewerOpenOutcome.unreadable:
@@ -78,11 +81,13 @@ final class VideoViewerDocument implements ViewerDocument {
           reason.isEmpty ? 'that movie could not be read' : reason,
         );
       case ViewerOpenOutcome.opened:
-        return VideoViewerDocument._(info!);
+        return VideoViewerDocument._(document!);
     }
   }
 
-  final QaVideoInfo _info;
+  final QaVideoDocument _document;
+
+  QaVideoInfo get _info => _document.info;
 
   /// ONE buffer for the movie, not one per frame — see [QaVideoDecoder.frame].
   /// ⚠️Safe only because every consumer copies it synchronously; holding it
@@ -116,10 +121,12 @@ final class VideoViewerDocument implements ViewerDocument {
     // movie's size, so the shrink happens in the DECODE — the picture the
     // cache keeps is the one on screen. The full-size buffer it arrives in
     // is allocated ONCE for the document, not once per frame.
-    final rgba = decoder?.frame(
+    //
+    // 🚨Through the DOCUMENT, so the import window scrubbing a different
+    // movie does not turn this one into a still picture with no error.
+    final rgba = decoder?.frameOf(
+      _document,
       pageIndex,
-      width: _info.width,
-      height: _info.height,
       into: _frameBytes ??= Uint8List(_info.width * _info.height * 4),
     );
     if (rgba == null) {
@@ -137,6 +144,10 @@ final class VideoViewerDocument implements ViewerDocument {
     return completer.future;
   }
 
+  /// ⛔Closes only if THIS document is the one loaded. A bare close would
+  /// take the import preview's movie with it — the same bug as the silent
+  /// replace, wearing the other hat.
   @override
-  Future<void> dispose() async => QaVideoDecoder.instance?.close();
+  Future<void> dispose() async =>
+      QaVideoDecoder.instance?.closeDocument(_document);
 }
