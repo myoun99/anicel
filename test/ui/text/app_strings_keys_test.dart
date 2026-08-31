@@ -749,8 +749,6 @@ void main() {
     'tlAttachDropsFxTitle': (s) => s.tlAttachDropsFxTitle,
     'tlAttachDropsFxBody': (s) => s.tlAttachDropsFxBody,
     'tlSharedCut': (s) => s.tlSharedCut,
-    'tlDuplicateFrame': (s) => s.tlDuplicateFrame,
-    'tlLinkDuplicateFrame': (s) => s.tlLinkDuplicateFrame,
     'tlSelectRowSpan': (s) => s.tlSelectRowSpan,
     'tlSharedCopy': (s) => s.tlSharedCopy,
     'tlSharedPasteLinked': (s) => s.tlSharedPasteLinked,
