@@ -60,7 +60,14 @@ const _ghCacheSeconds = 20;
 const _koTrailer = 'Board-ko:';
 
 late final String _recordsPath;
-late final String _shotsDir;
+
+/// ⚠️NOT `late final`, so the page can be drawn without a server behind it.
+/// `_shotsFor` reads this on every card; as a `late` it threw the moment a
+/// test imported this file, which is a large part of why the renderer had no
+/// tests at all while three of its bugs shipped in one day. Empty means 「no
+/// shots directory」 and [_shotsFor] already answers that with `const []` —
+/// the same answer it gives for a directory that is not there yet.
+String _shotsDir = '';
 late final String _ghPath;
 late final String _gitRoot;
 
@@ -913,6 +920,20 @@ const _waiting = <String>{'ask', 'gate', 'queue', 'mine'};
 
 
 String _esc(String s) => const HtmlEscape().convert(s);
+
+/// 🚨★★★THE PAGE, FROM CARDS ALONE — the one public way in, so a test can
+/// look at WHAT THE BOARD DRAWS.
+///
+/// ⛔Every board bug on 2026-08-31 was in here and none of them could be
+/// caught: a question drawn as an ordinary row, a hands-on check with no memo
+/// box, a memo box holding words it no longer edits. The model was right each
+/// time. `test/tool/` covered the model and could not see the screen.
+///
+/// ⚠️It takes cards and nothing else. gh and git status are what a server
+/// fetches; a page with neither still has to be correct, and that is exactly
+/// the page a test should assert on.
+String renderBoard(List<BoardCard> entries) =>
+    _render(entries, _Gh(const [], ok: false), const []);
 
 String _render(List<BoardCard> entries, _Gh gh, List<_Checkout> gits,
     {int landedPage = 1}) {
