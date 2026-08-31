@@ -377,14 +377,44 @@ Future<void> _handle(HttpRequest req) async {
         final left = card == null
             ? const <String>[]
             : checksWaiting(card).where((ts) => ts != ref).toList();
+        final note = '${body['note'] ?? ''}'.trim();
+        // 🚨★★★A CHECK TICKED WITH WORDS IS 분류 전, NOT 완료.
+        //
+        // ⛔This is the board's own law — 「유저가 적은 것은 언제나 분류 전」
+        // — and it is here because breaking it cost four reports. H24, F-28,
+        // F-22-rest and R27-rest were all ticked `ok` WITH a memo saying what
+        // was still wrong; the tick cleared the row, the words went with it,
+        // and nothing on the board said they existed. They surfaced on
+        // 2026-08-31 only because I went looking through the file.
+        //
+        // ⚠️An empty memo still means 문제 없음, so the quiet path is exactly
+        // what it was: 확인 완료 while checks remain, 완료 on the last one.
+        // ⛔TWO LINES, because they are two facts and only one of them
+        // clears the check. `checksWaiting` clears on 확인 완료 / 완료 and on
+        // nothing else — a single 유저 line would have left the button on
+        // screen looking like the tick never landed. 🧪Caught before it
+        // shipped by reading that function rather than assuming it.
         _append({
           'kind': 'item',
           'id': id,
           'at': left.isEmpty ? '완료' : '확인 완료',
           'ref': ref,
-          'said': '확인 — 문제 없음',
+          'said': note.isEmpty ? '확인 — 문제 없음' : '확인함',
           'ts': _now(),
         });
+        if (note.isNotEmpty) {
+          // ⚠️Carries the same `ref`: the dedupe key is (text, ref), and two
+          // checks answered with the SAME words would otherwise collapse
+          // into one — the bug `ref` was added to fix, one row down.
+          _append({
+            'kind': 'item',
+            'id': id,
+            'at': '유저',
+            'ref': ref,
+            'said': note,
+            'ts': _now(),
+          });
+        }
       case '/ask-move':
         _append({
           'kind': 'item',
@@ -1798,10 +1828,24 @@ String _entryRow(BoardCard e, int i, {required bool open}) {
   // now, exactly like a question's, and the card leaves when the last one is
   // ticked.
   if (mine == '실기 확인' && !_cleared(e, entry.ts)) {
+    // 🚨★★★A MEMO PER CHECK (유저 2026-08-31: 「실기확인 항목마다 메모란도
+    // 존재해야하지않을까? **원래 실기확인은 그렇잖아**」).
+    //
+    // ⛔The card-level box could not answer this: three checks share it, so
+    // 「the 73rd frame is white」 written against check 2 arrived attached to
+    // nothing. What you saw belongs to the thing you were looking at.
+    //
+    // ⚠️Same words as the card's own box on purpose — 「문제가 있으면 적어
+    // 주세요 — 비워 두면 문제 없음」 is already the sentence this board uses
+    // for 「tick, and tell me only if there is something to tell」.
+    b.writeln('<div class="tick">');
+    b.writeln('<textarea rows="2" placeholder="문제가 있으면 적어 주세요 — '
+        '비워 두면 문제 없음 (스크린샷은 Ctrl+V)"></textarea>');
     b.writeln('<div class="foot">'
         '<button onclick="tick(event,\'${_esc(e.id)}\',\'${_esc(entry.ts)}\')">'
-        '확인 — 문제 없음</button>'
+        '확인</button>'
         '<span class="state"></span></div>');
+    b.writeln('</div>');
   }
   return b.toString();
 }
@@ -1923,7 +1967,12 @@ function send(id){
 function tick(ev, id, ref){
   ev.stopPropagation();
   const c = document.getElementById('c-'+id);
-  post('/tick', {id:id, ref:ref}, c)
+  // The box beside THIS button, not the card's shared one -- a card can hold
+  // several checks and each carries its own words.
+  const box = ev.target.closest('.tick');
+  const t = box ? box.querySelector('textarea') : null;
+  const note = t ? (t.value||'').trim() : '';
+  post('/tick', {id:id, ref:ref, note:note}, c)
     .then(()=>redraw(c.id))
     .catch(e=>stateOf(c).textContent = '실패: '+e.message);
 }
