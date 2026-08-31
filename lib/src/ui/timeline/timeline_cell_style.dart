@@ -20,7 +20,23 @@ class TimelineCellStyleColors {
 /// The DEFAULT paper — since ⑲/⑳ a block takes its layer's colour label
 /// instead, and [LayerMark.none] resolves to exactly this, so a row with no
 /// label is painted by the same number it always was.
-const Color timelineDrawingHeldColor = Color(0xFFE9E7E2);
+///
+/// 🚨★★★F-64 (유저 2026-09-01): 「레이어 색라벨의 **라벨없음색, LO랑 똑같이
+/// 완전흰색으로 둠.** 다 감안하고 말하는거니 **반박/대가 안받음**」.
+///
+/// ⇒ Literally LO's number (`_processColors[LayerProcess.layout]`,
+/// 0xFFFFFDF7), not a white of my own choosing: 「똑같이」 is the instruction,
+/// and picking 0xFFFFFFFF instead would be me deciding that LO is not quite
+/// what the user meant by 완전흰색.
+///
+/// ⚠️It was 0xFFE9E7E2, a warm light grey — so unlabelled blocks now read as
+/// paper rather than as a shade, which is the point.
+/// ⛔The two values are written twice on purpose and that is NOT a copy to
+/// unify: this file owns CHROME and `layer_mark_palette.dart` owns LABELS,
+/// and the palette's own doc says the paper is 「Passed in rather than named
+/// here so the theme keeps owning it」. They agree today because the user
+/// asked them to, not because one derives from the other.
+const Color timelineDrawingHeldColor = Color(0xFFFFFDF7);
 const Color timelineDrawingStartColor = timelineDrawingHeldColor;
 const Color timelineDrawingStartBorderColor = AppColors.hairlineStrong;
 
@@ -134,7 +150,19 @@ Color timelineInBlockInk({bool dimmed = false}) => dimmed
 /// resolves to a distinctly greyer, see-through paper, which the old
 /// near-white 0xFFD7D5D0 never managed. Painting a translucent colour
 /// costs the same as an opaque one, so this stays free.
-const Color timelineEmptyCelBlockColor = Color(0x6EE9E7E2);
+/// 🚨★★★THE ALPHA IS THE FACT; the colour is derived from the paper.
+///
+/// ⛔This used to be spelled `Color(0x6EE9E7E2)` — the default paper's RGB
+/// written a SECOND time, beside the paper itself. The two agreed only by
+/// coincidence, and 🧪F-64 proved it: moving the paper to LO's white left
+/// this one on the old grey, and three tests went red saying so.
+const double timelineEmptyCelAlpha = 0x6E / 0xFF;
+
+/// The DEFAULT paper's empty-cel look — [timelineEmptyCelPaperColor] of the
+/// paper an unlabelled row wears, so it can never drift from it again.
+final Color timelineEmptyCelBlockColor = timelineEmptyCelPaperColor(
+  timelineDrawingHeldColor,
+);
 
 /// The empty-cel look of an arbitrary [paper] — the alpha above, applied to
 /// whatever colour the row's block is made of (⑲).
@@ -143,7 +171,7 @@ const Color timelineEmptyCelBlockColor = Color(0x6EE9E7E2);
 /// paper, so it has to be derived from the paper and not be a second colour
 /// that happens to match it.
 Color timelineEmptyCelPaperColor(Color paper) =>
-    paper.withValues(alpha: timelineEmptyCelBlockColor.a);
+    paper.withValues(alpha: timelineEmptyCelAlpha);
 
 /// The PLAIN (non-block) frame grid's border alpha (UI-R14 #4): ONE
 /// faint value for every surface — the painterized drawing rows, the
