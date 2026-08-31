@@ -7,13 +7,20 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// What the session actually hands the conform pipeline when it warms.
 ///
-/// The kind filter itself is pinned as a pure function in
+/// The walk itself is pinned as a pure function in
 /// `test/services/project_lookup_test.dart`; this pins the WIRING, because
-/// the two fail apart: a session that stopped calling the filtered walk —
-/// or went back to iterating `mediaAssets` inline — leaves every pure test
-/// green while a 3GB reference video is read into memory on open again.
-/// Recording the runner is the honest observation point: a conform request
-/// IS the read.
+/// the two fail apart — a session that stopped calling the shared walk, or
+/// went back to iterating `mediaAssets` inline with a rule of its own,
+/// leaves every pure test green. Recording the runner is the honest
+/// observation point: a conform request IS the ask.
+///
+/// 🪦This file was `warm_conform_kind_filter_test` and asserted that a movie
+/// was NEVER asked for. That was a scar from when a conform read the whole
+/// container into memory before any decoder saw it — a 3GB reference video,
+/// on every project open. The decoder takes a path and a span now, so the
+/// read is gone, and with it the reason to keep a movie's soundtrack
+/// unreachable. What survived the round is the OTHER half of that rule: a
+/// still has nowhere to put an audio track, so it is still left alone.
 void main() {
   late List<String> conformed;
 
@@ -44,7 +51,8 @@ void main() {
     );
   }
 
-  test('warming asks for the sound and never opens the movie', () {
+  test('warming asks for the movie too — its soundtrack is a sound this '
+      'project references', () {
     final session = sessionWith([
       const MediaAsset(
         path: 'dialogue.wav',
@@ -60,11 +68,15 @@ void main() {
 
     warm(session);
 
-    expect(conformed, ['dialogue.wav']);
+    expect(conformed, containsAll(['dialogue.wav', 'reference.mp4']));
     session.dispose();
   });
 
-  test('a pool of stills and documents warms nothing at all', () {
+  test('a pool of stills and documents asks for nothing — they have nowhere '
+      'to put a soundtrack', () {
+    // ⛔Not a saving, a fact. And the cost it avoids is not one read: a
+    // source with no conform can never match one, so a still asked once is
+    // a still asked on every open, forever.
     final session = sessionWith([
       const MediaAsset(
         path: 'layout.png',
@@ -77,6 +89,15 @@ void main() {
         kind: MediaAssetKind.pdf,
       ),
     ]);
+
+    warm(session);
+
+    expect(conformed, isEmpty);
+    session.dispose();
+  });
+
+  test('an empty pool asks for nothing — the walk is not a fixed list', () {
+    final session = sessionWith(const []);
 
     warm(session);
 

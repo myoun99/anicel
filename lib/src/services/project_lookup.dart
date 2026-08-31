@@ -110,23 +110,41 @@ Layer requireLayerAnywhere(Project project, LayerId layerId) {
   return layer;
 }
 
-/// Every path in [project] the audio conform can serve: the SE clips, which
-/// are sound by construction, plus the media pool entries whose kind says
-/// they are.
+/// Whether a file of this [kind] can hold sound at all.
 ///
-/// The kind filter is the whole point. The pool registers movies, stills and
-/// PDFs too, and a conform request reads the WHOLE file into a `Uint8List`
-/// before the decoder is handed anything to look at
-/// (`audio_conform_pipeline.dart`'s `readAsBytesSync`) — so warming a pool
-/// blind meant a 3GB reference video was read into memory on every project
-/// open, and again on every frame-rate or sample-rate change, only to be
-/// rejected for a reason its extension already gave away.
+/// 🚨★★★**A MOVIE HAS A SOUNDTRACK. A STILL DOES NOT.** That is a fact about
+/// the formats, not a preference — a PNG has nowhere to put an audio track —
+/// and it is the whole rule behind which pool entries the conform is offered.
+///
+/// 🪦What stood here before was `kind == audio`, and it was a SCAR. A conform
+/// used to read the whole container into a `Uint8List` before any decoder
+/// saw it, so warming a pool blind meant a 3GB reference video read into
+/// memory on every project open — the filter made that stop, and it also
+/// made a movie's sound unreachable. 「The importer cannot see video audio」
+/// stood as a bug for months while its cause sat here looking like a
+/// decision. The cause is gone: the decoder takes a path plus a span
+/// ([MediaByteSource.range]), and the identity check in front of it streams.
+///
+/// ⛔Dropping the filter ENTIRELY was the first attempt and it was wrong in
+/// the other direction: a still with no conform can never match one, so
+/// every open would fingerprint every PNG and PDF in the pool, forever, to
+/// learn what its format already says. A predicate rather than the old
+/// inline test, so a new kind has to answer this instead of inheriting an
+/// answer nobody chose for it.
+bool mediaKindCanCarrySound(MediaAssetKind kind) => switch (kind) {
+  MediaAssetKind.audio || MediaAssetKind.video => true,
+  MediaAssetKind.image || MediaAssetKind.pdf => false,
+};
+
+/// Every path in [project] the audio conform can serve: the SE clips, which
+/// are sound by construction, plus the pool entries whose kind can hold it —
+/// a movie among them, because a movie has a soundtrack.
 Set<String> projectAudioSourcePaths(Project project) => {
   for (final track in project.tracks)
     for (final layer in track.seLayers)
       for (final clip in layer.audioClips) clip.filePath,
   for (final asset in project.mediaAssets)
-    if (asset.kind == MediaAssetKind.audio) asset.path,
+    if (mediaKindCanCarrySound(asset.kind)) asset.path,
 };
 
 /// Whether an asset of this [kind] is carried by DEFAULT.

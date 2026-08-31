@@ -190,7 +190,8 @@ void main() {
     );
     final result =
         AudioConformPipeline(
-          decode: (bytes) {
+          decode: (source) {
+            final bytes = source.readSync();
             final audio = decodeConform(bytes);
             return (
               samples: audio.samples,

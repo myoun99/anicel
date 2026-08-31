@@ -8,6 +8,7 @@ import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_conform_runner.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
+import 'package:anicel/src/services/media/media_byte_source.dart';
 
 import '../../helpers/native_engine_path.dart';
 
@@ -259,6 +260,141 @@ void main() {
       inInclusiveRange(0.35, 0.65),
       reason: 'the range must carry the same sine, not the junk around it',
     );
+  }, skip: skip);
+
+  test('a sound INSIDE the project file conforms end to end — source range, '
+      'streamed fingerprint, decode in place', () {
+    // 🚨★★★THE WHOLE CHAIN THIS ROUND EXISTS FOR, in one call: the source
+    // says where its bytes are, the identity check streams them, and the
+    // decoder is pointed at the span rather than handed a copy. A movie's
+    // soundtrack is this same case with a bigger container.
+    final at = buried(fixtureBytes(), 'carried.m4a');
+    final result = runConformHere(
+      ConformRequest(
+        sourcePath: 'carried.m4a',
+        conformPath: null, // memory-only, like an unsaved project
+        source: MediaArchiveBytes(
+          archivePath: at.path,
+          dataOffset: at.offset,
+          length: at.length,
+        ),
+        libraryPathOverride: libraryPath,
+      ),
+    );
+
+    if (Platform.isLinux) {
+      expect(result.outcome, ConformOutcome.undecodable);
+      return;
+    }
+
+    expect(
+      result.outcome,
+      ConformOutcome.built,
+      reason: 'reason: ${result.error}',
+    );
+    expect(result.sampleRate, 48000, reason: 'lands at the project rate');
+    expect(result.channels, 2);
+    expect(result.frames, inInclusiveRange(21000, 27500));
+    var peak = 0.0;
+    for (final value in result.peaks!.peaks) {
+      peak = math.max(peak, value);
+    }
+    expect(
+      peak,
+      inInclusiveRange(0.35, 0.65),
+      reason: 'the -6 dB sine has to survive being read out of the middle '
+          'of a bigger file',
+    );
+  }, skip: skip);
+
+  test('a movie WITH A VIDEO TRACK gives up its soundtrack — whole file and '
+      'from a range', () {
+    // 🚨★★★**THE ONE THING THE m4a FIXTURE COULD NOT PROVE.** Every other
+    // test here uses audio-only containers, so 「the OS reader picks the
+    // AUDIO stream out of a file that also has video」 was standard
+    // behaviour this repo had never run — and it is the entire point of
+    // letting the conform see a movie. `tone_with_video.mp4` is 0.5 s of
+    // 64x48 H.264 with the same 440 Hz sine at -6 dB, written by this app's
+    // OWN encoder so the fixture needs no outside tool to regenerate.
+    final decoder = QaAudioDecoder.instance;
+    expect(decoder, isNotNull);
+    final bytes = File('test/fixtures/tone_with_video.mp4').readAsBytesSync();
+    final at = buried(bytes, 'carried.mp4');
+
+    final whole = decoder!.decode(bytes);
+    final ranged = decoder.decodeRange(
+      at.path,
+      offset: at.offset,
+      length: at.length,
+    );
+
+    if (Platform.isLinux) {
+      // No OS codec stack — the same honest answer as every other AAC here.
+      expect(whole, isNull);
+      expect(ranged, isNull);
+      return;
+    }
+
+    for (final (what, decoded) in [
+      ('the whole file', whole),
+      ('a range inside a bigger file', ranged),
+    ]) {
+      expect(decoded, isNotNull, reason: '$what: nothing came back');
+      expect(decoded!.format, QaAudioFormat.os, reason: what);
+      expect(decoded.sampleRate, 44100, reason: what);
+      expect(decoded.channels, 2, reason: what);
+      expect(decoded.length, inInclusiveRange(19000, 25000), reason: what);
+      var peak = 0.0;
+      final start = (decoded.length ~/ 4) * decoded.channels;
+      final end = (3 * decoded.length ~/ 4) * decoded.channels;
+      for (var index = start; index < end; index += 1) {
+        peak = math.max(peak, decoded.samples[index].abs());
+      }
+      expect(
+        peak,
+        inInclusiveRange(0.35, 0.65),
+        reason: '$what: expected the -6 dB sine, got $peak — a reader that '
+            'handed back the VIDEO stream, or silence, fails here',
+      );
+    }
+  }, skip: skip);
+
+  test('a movie conforms like any other sound — the round\'s whole claim, '
+      'end to end', () {
+    final at = buried(
+      File('test/fixtures/tone_with_video.mp4').readAsBytesSync(),
+      'carried.mp4',
+    );
+    final result = runConformHere(
+      ConformRequest(
+        sourcePath: 'reference.mp4',
+        conformPath: null,
+        source: MediaArchiveBytes(
+          archivePath: at.path,
+          dataOffset: at.offset,
+          length: at.length,
+        ),
+        libraryPathOverride: libraryPath,
+      ),
+    );
+
+    if (Platform.isLinux) {
+      expect(result.outcome, ConformOutcome.undecodable);
+      return;
+    }
+
+    expect(
+      result.outcome,
+      ConformOutcome.built,
+      reason: 'reason: ${result.error}',
+    );
+    expect(result.sampleRate, 48000);
+    expect(result.channels, 2);
+    var peak = 0.0;
+    for (final value in result.peaks!.peaks) {
+      peak = math.max(peak, value);
+    }
+    expect(peak, inInclusiveRange(0.35, 0.65));
   }, skip: skip);
 
   test('a range that is not inside the file is refused, and the junk around '

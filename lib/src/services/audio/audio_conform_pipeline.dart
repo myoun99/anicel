@@ -56,18 +56,27 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../media/media_byte_source.dart';
-import '../persistence/anicel_incremental_writer.dart' show anicelCrc32;
+import '../persistence/anicel_incremental_writer.dart'
+    show anicelCrc32, anicelCrc32Finish, anicelCrc32Start, anicelCrc32Update;
 import '../persistence/app_save_settings.dart' show AppSave;
 import '../persistence/media_blob_codec.dart';
 import 'audio_peaks_extractor.dart';
 import 'conform_pcm_codec.dart';
 
-/// Decodes container bytes to PCM at the file's own rate. The native
-/// dr_libs path supplies this; tests supply a fake so the pipeline's logic
-/// is exercised without a binary.
+/// Decodes a container to PCM at the file's own rate. The native decoder
+/// supplies this; tests supply a fake so the pipeline's logic is exercised
+/// without a binary.
+///
+/// 🚨★★★**IT TAKES THE SOURCE, NOT THE BYTES.** It used to take a
+/// `Uint8List`, which meant the whole container was in memory before any
+/// decoder was asked to look at it — and that, not the decoders, is why a
+/// movie's soundtrack could not be conformed: a three-gigabyte reference
+/// video is not a byte array. A source can name itself as a path plus a
+/// span ([MediaByteSource.range]), and the native decoder takes exactly
+/// that.
 typedef AudioDecodeCallback =
     ({Float32List samples, int channels, int sampleRate})? Function(
-      Uint8List bytes,
+      MediaByteSource source,
     );
 
 /// Converts PCM to the project rate. The native polyphase resampler
@@ -327,13 +336,89 @@ class AudioConformPipeline {
   /// so it survives being copied to another machine.
   ///
   /// Takes BYTES rather than a path because the fingerprint is content, and
-  /// because the caller that needs one is about to decode those bytes
-  /// anyway: this costs a pass over what is already in hand.
+  /// because a caller holding bytes has already paid for them.
   static ConformSourceFingerprint fingerprintOf(Uint8List sourceBytes) =>
       ConformSourceFingerprint(
         sourceLength: sourceBytes.length,
         sourceCrc32: anicelCrc32(sourceBytes),
       );
+
+  /// The same identity, without holding the source.
+  ///
+  /// 🚨★★★**A FINGERPRINT MUST NOT COST AN ALLOCATION THE SIZE OF THE FILE.**
+  /// This is the identity of a possibly-enormous container, and the whole
+  /// point of the range decode is undone if the check in front of it reads
+  /// the file into memory first. `anicelCrc32Update` exists for exactly this
+  /// — the archive writer folds a streamed entry the same way, for the same
+  /// reason.
+  ///
+  /// ⚠️Falls back to bytes for a FRAMED source, and that is not a shortcut:
+  /// its stored blocks are compressed, so the only way to see its content is
+  /// to have it assembled. Nothing enormous is stored framed — compression
+  /// is decided per file by measurement, and a movie does not shrink.
+  static ConformSourceFingerprint fingerprintOfSource(MediaByteSource source) {
+    final span = source.range;
+    if (span == null) {
+      return fingerprintOf(source.readSync());
+    }
+    var state = anicelCrc32Start;
+    final buffer = Uint8List(_fingerprintChunkBytes);
+    var read = 0;
+    final handle = File(span.path).openSync();
+    try {
+      handle.setPositionSync(span.offset);
+      while (read < span.length) {
+        final want = span.length - read < buffer.length
+            ? span.length - read
+            : buffer.length;
+        final got = handle.readIntoSync(buffer, 0, want);
+        if (got <= 0) {
+          break;
+        }
+        state = anicelCrc32Update(
+          state,
+          got == buffer.length ? buffer : Uint8List.sublistView(buffer, 0, got),
+        );
+        read += got;
+      }
+    } finally {
+      handle.closeSync();
+    }
+    return ConformSourceFingerprint(
+      sourceLength: read,
+      sourceCrc32: anicelCrc32Finish(state),
+    );
+  }
+
+  /// The refusal owed when an archive range no longer holds what it did, or
+  /// null when it still does.
+  ///
+  /// ⛔ONE function because it is asked from two places now — before the
+  /// decode when a reuse is possible, and after it when one was not. Two
+  /// copies of a tripwire is one copy of a tripwire.
+  static ConformResult? _archiveMovedUnderUs(
+    int? knownCrc,
+    ConformSourceFingerprint fingerprint,
+  ) {
+    // An archive range read under a COMPACTION reads whatever moved into
+    // those bytes — the offsets were resolved when the request was built.
+    // A mismatch is transient (the next attempt resolves fresh offsets),
+    // never a decode of the wrong sound.
+    if (knownCrc == null || fingerprint.sourceCrc32 == knownCrc) {
+      return null;
+    }
+    return const ConformResult(
+      outcome: ConformOutcome.sourceUnreadable,
+      error: 'the archive changed underneath this read (retrying)',
+    );
+  }
+
+  /// How much of a source is held at once while fingerprinting it.
+  ///
+  /// ⚠️Small on purpose: this runs on an import isolate on a tablet, and the
+  /// number that matters is the PEAK, not the throughput — a 64KB window
+  /// reads a gigabyte just as correctly as a 16MB one.
+  static const int _fingerprintChunkBytes = 64 * 1024;
 
   /// What `stat` says about [sourcePath], or null when it is not there.
   ///
@@ -507,41 +592,86 @@ class AudioConformPipeline {
     // restored or re-synced project gets fresh timestamps with identical
     // bytes, and that is exactly what a timestamp identity used to answer
     // wrong. The content decides.
-    final Uint8List sourceBytes;
+    //
+    // 🚨★★★**THE FINGERPRINT IS ONLY TAKEN WHEN IT CAN CHANGE THE ANSWER.**
+    // It is a full pass over the source, and the decode below is a second
+    // one — so on a FIRST conform, where there is nothing to be reused, the
+    // first pass buys nothing at all. On a three-gigabyte movie that is
+    // three gigabytes of reading to learn what the next line was going to do
+    // anyway. It is taken after the decode instead, where it is still needed
+    // (the conform records it, so the next open can skip both passes).
+    //
+    // ⚠️The archive tripwire moves with it, and stays a tripwire: what it
+    // promises is that a compaction that moved bytes under a resolved offset
+    // never becomes a WRONG SOUND, and checking after the decode still keeps
+    // that promise — the decode is thrown away.
+    // ⚠️`settingsMatch` already says there IS an existing conform — it is
+    // defined as `existing != null && …`. A second null test here reads as
+    // if it could be otherwise.
+    ConformSourceFingerprint? fingerprint;
+    if (settingsMatch) {
+      try {
+        fingerprint = fingerprintOfSource(src);
+      } on Object catch (error) {
+        // It EXISTS — the check above just said so — so this is transient:
+        // an unhydrated cloud placeholder, or a handle held elsewhere.
+        // Calling it "missing" spends one of three attempts on a file that
+        // is fine, and three of those silence the clip for the session.
+        return ConformResult(
+          outcome: ConformOutcome.sourceUnreadable,
+          error: 'could not read the source (retrying): $error',
+        );
+      }
+      final wrongBytes = _archiveMovedUnderUs(knownCrc, fingerprint);
+      if (wrongBytes != null) {
+        return wrongBytes;
+      }
+      if (conformMatchesSource(existing, fingerprint)) {
+        return _reuse(existing, reusableAt);
+      }
+    }
+
+    // 🚨★★★**IS IT READABLE RIGHT NOW — asked in one byte.**
+    //
+    // The fingerprint used to answer this on its way past, and moving it
+    // after the decode took the answer with it. It matters more than it
+    // looks: 「could not read it right now」 is TRANSIENT (a cloud placeholder
+    // that has not hydrated, a handle held elsewhere) and must be retried,
+    // while 「no decoder recognized it」 is DEFINITIVE and must not be. The
+    // decoder cannot tell them apart — it answers null either way — so three
+    // ticks would have silenced a file that was merely still downloading.
+    //
+    // ⚠️One byte, not one pass: whatever makes a source unreadable makes the
+    // first byte unreadable.
     try {
-      sourceBytes = src.readSync();
+      src.readIntoSync(Uint8List(1), 0, 1);
     } on Object catch (error) {
-      // It EXISTS — the check above just said so — so this is transient:
-      // an unhydrated cloud placeholder, or a handle held elsewhere.
-      // Calling it "missing" spends one of three attempts on a file that
-      // is fine, and three of those silence the clip for the session.
       return ConformResult(
         outcome: ConformOutcome.sourceUnreadable,
         error: 'could not read the source (retrying): $error',
       );
     }
-    // An archive range read under a COMPACTION reads whatever moved into
-    // those bytes — the offsets were resolved when the request was built.
-    // The entry CRC is the tripwire: a mismatch is transient (the next
-    // attempt resolves fresh offsets), never a decode of the wrong sound.
-    if (knownCrc != null && anicelCrc32(sourceBytes) != knownCrc) {
-      return const ConformResult(
-        outcome: ConformOutcome.sourceUnreadable,
-        error: 'the archive changed underneath this read (retrying)',
-      );
-    }
-    final fingerprint = fingerprintOf(sourceBytes);
 
-    if (settingsMatch && conformMatchesSource(existing, fingerprint)) {
-      return _reuse(existing, reusableAt);
-    }
-
-    final decoded = decode(sourceBytes);
+    final decoded = decode(src);
     if (decoded == null || decoded.channels <= 0 || decoded.sampleRate <= 0) {
       return const ConformResult(
         outcome: ConformOutcome.undecodable,
         error: 'no decoder recognized this file',
       );
+    }
+    if (fingerprint == null) {
+      try {
+        fingerprint = fingerprintOfSource(src);
+      } on Object catch (error) {
+        return ConformResult(
+          outcome: ConformOutcome.sourceUnreadable,
+          error: 'could not read the source (retrying): $error',
+        );
+      }
+      final wrongBytes = _archiveMovedUnderUs(knownCrc, fingerprint);
+      if (wrongBytes != null) {
+        return wrongBytes;
+      }
     }
 
     // Equal rates at unity speed skip the filter entirely and stay
