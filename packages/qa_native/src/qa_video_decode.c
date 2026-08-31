@@ -73,6 +73,10 @@ typedef struct {
   int32_t fps_den;
   int64_t duration_100ns;
   int64_t frame_count;
+  /// The frame index the reader is positioned to deliver next, or -1 when
+  /// that is not known. Sequential playback asks for exactly this one, and
+  /// then no seek is needed — see [qa_video_decode_frame].
+  int64_t next_index;
   // Negative in the media type means the picture is stored bottom-up; the
   // magnitude is the row pitch either way.
   int32_t stride;
@@ -93,6 +97,9 @@ static void qa_video_decode_teardown(void) {
     g_dec.mf_started = 0;
   }
   g_dec.open = 0;
+  // ⛔A closed reader is positioned nowhere. Leaving this set would let
+  // the next OPEN skip a seek on the strength of the previous file.
+  g_dec.next_index = -1;
 }
 
 QA_EXPORT int32_t qa_video_decode_supported(void) { return 1; }
@@ -210,17 +217,46 @@ QA_EXPORT int32_t qa_video_decode_open(const char* path) {
   g_dec.bottom_up = stride < 0 ? 1 : 0;
   g_dec.stride = stride < 0 ? -stride : stride;
 
+  // The VIDEO STREAM's duration, and the presentation's only as a
+  // fallback.
+  //
+  // 🚨★★★**THE PRESENTATION IS AS LONG AS ITS LONGEST TRACK, AND THAT IS
+  // ALMOST NEVER THE VIDEO.** AAC frames are 1024 samples, so an MP4's
+  // audio ends a few tens of milliseconds past the last picture — and the
+  // count below turned that overshoot into a frame that has no picture in
+  // it. 유저 2026-08-31: 「72프레임짜리 비디오인데 73프레임째의 빈 화면이
+  // 생성되어있음」.
+  //
+  // ⚠️They also saw it differ by platform — 「아이패드에선 73번째 프레임이
+  // 존재하는데 윈도우에선 흰화면」 — and that is the SAME bug wearing two
+  // failure modes: Media Foundation has no sample past the video's end and
+  // hands back nothing (white), while AVFoundation's image generator
+  // clamps and hands back the last picture again. Asking the video track
+  // is what makes the two agree, so it is done on both sides.
   PROPVARIANT duration;
   PropVariantInit(&duration);
   g_dec.duration_100ns = 0;
   if (SUCCEEDED(IMFSourceReader_GetPresentationAttribute(
-          g_dec.reader, (DWORD)MF_SOURCE_READER_MEDIASOURCE, &MF_PD_DURATION,
-          &duration))) {
-    if (duration.vt == VT_UI8) {
-      g_dec.duration_100ns = (int64_t)duration.uhVal.QuadPart;
-    }
+          g_dec.reader, (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+          &MF_PD_DURATION, &duration)) &&
+      duration.vt == VT_UI8 && (int64_t)duration.uhVal.QuadPart > 0) {
+    g_dec.duration_100ns = (int64_t)duration.uhVal.QuadPart;
   }
   PropVariantClear(&duration);
+  if (g_dec.duration_100ns <= 0) {
+    // ⛔Not every source answers per stream. Falling back to the
+    // presentation keeps the old behaviour for those rather than counting
+    // zero frames, which would be a worse bug than the one above.
+    PropVariantInit(&duration);
+    if (SUCCEEDED(IMFSourceReader_GetPresentationAttribute(
+            g_dec.reader, (DWORD)MF_SOURCE_READER_MEDIASOURCE, &MF_PD_DURATION,
+            &duration))) {
+      if (duration.vt == VT_UI8) {
+        g_dec.duration_100ns = (int64_t)duration.uhVal.QuadPart;
+      }
+    }
+    PropVariantClear(&duration);
+  }
 
   // 10,000,000 hundred-nanosecond ticks in a second.
   g_dec.frame_count =
@@ -231,6 +267,7 @@ QA_EXPORT int32_t qa_video_decode_open(const char* path) {
   if (g_dec.frame_count < 1) {
     g_dec.frame_count = 1;
   }
+  g_dec.next_index = -1;
   g_dec.open = 1;
   return 1;
 }
@@ -291,15 +328,36 @@ QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
       (10000000LL * (int64_t)g_dec.fps_den) / (int64_t)g_dec.fps_num;
   const int64_t target = index * frame_100ns;
 
-  PROPVARIANT position;
-  PropVariantInit(&position);
-  position.vt = VT_I8;
-  position.hVal.QuadPart = target;
-  // A seek lands on the nearest KEYFRAME at or before the target, so the
-  // reader then decodes forward to the frame that was asked for. That is
-  // the whole reason this loop exists rather than one ReadSample.
-  IMFSourceReader_SetCurrentPosition(g_dec.reader, &GUID_NULL, &position);
-  PropVariantClear(&position);
+  // 🚨★★★**PLAYING FORWARD DOES NOT SEEK.**
+  //
+  // A seek lands on the nearest KEYFRAME at or before the target and the
+  // reader then decodes forward, which is why the loop below exists rather
+  // than one ReadSample. Doing it for EVERY frame made sequential playback
+  // quadratic in the GOP: frame n re-decoded everything since its keyframe,
+  // so a 48-frame GOP cost 24 decodes per displayed frame on average.
+  //
+  // 유저 2026-08-31 saw both ends of that: 「첫 재생때 아마 파일이 제대로
+  // 로드안되서 흰 화면이 엄청나게 깜빡이면서 재생됨. 두번째 재생부터 점점
+  // 나아짐」 — the viewer advances the playhead on a wall clock and draws
+  // whatever raster has landed, so a decoder that cannot keep up shows
+  // white until the cache is warm — and 「재생하고있는데 화면이 첫 프레임
+  // 그림에서 전혀안바뀜」, which is the same thing when it never catches up
+  // at all.
+  //
+  // The reader is already positioned to deliver the next frame after the
+  // one it just gave, so asking for that frame needs no seek at all.
+  if (index != g_dec.next_index) {
+    PROPVARIANT position;
+    PropVariantInit(&position);
+    position.vt = VT_I8;
+    position.hVal.QuadPart = target;
+    IMFSourceReader_SetCurrentPosition(g_dec.reader, &GUID_NULL, &position);
+    PropVariantClear(&position);
+  }
+  // ⛔Cleared BEFORE the read, not after a success. A failed or abandoned
+  // read leaves the reader somewhere this function cannot name, and a
+  // stale「next」would then skip the seek that would have recovered it.
+  g_dec.next_index = -1;
 
   int32_t wrote = 0;
   for (int guard = 0; guard < 600; guard += 1) {
@@ -348,6 +406,11 @@ QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
       IMFMediaBuffer_Release(buffer);
     }
     IMFSample_Release(sample);
+    if (wrote) {
+      // The reader is now positioned on the frame AFTER this one, so the
+      // next request for it can skip the seek entirely.
+      g_dec.next_index = index + 1;
+    }
     break;
   }
   return wrote;
@@ -541,6 +604,9 @@ typedef struct {
   int32_t fps_num;
   int32_t fps_den;
   int64_t frame_count;
+  /// The frame index the codec is positioned to deliver next, or -1 when
+  /// that is not known — see the Windows twin above.
+  int64_t next_index;
   int32_t open;
 } qa_video_droid_decode;
 
@@ -557,6 +623,8 @@ QA_EXPORT void qa_video_decode_close(void) {
     g_droid_dec.extractor = NULL;
   }
   g_droid_dec.open = 0;
+  // ⛔A closed codec is positioned nowhere — see the Windows twin.
+  g_droid_dec.next_index = -1;
 }
 
 QA_EXPORT int32_t qa_video_decode_supported(void) {
@@ -656,6 +724,7 @@ QA_EXPORT int32_t qa_video_decode_open(const char* path) {
   if (g_droid_dec.frame_count < 1) {
     g_droid_dec.frame_count = 1;
   }
+  g_droid_dec.next_index = -1;
   g_droid_dec.open = 1;
   return 1;
 }
@@ -746,12 +815,23 @@ QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
       (1000000LL * (int64_t)g_droid_dec.fps_den) /
       (int64_t)g_droid_dec.fps_num;
 
-  // The extractor seeks to a SYNC frame at or before the target; the codec
-  // then decodes forward. Flushing first is what stops the frames from
-  // before the seek coming out of the other end.
-  g_ndk_dec.extractor_seek_to(g_droid_dec.extractor, target_us,
-                              QA_SEEK_PREVIOUS_SYNC);
-  g_ndk_dec.codec_flush(g_droid_dec.codec);
+  // 🚨★★★**PLAYING FORWARD DOES NOT SEEK** — the same law the Windows
+  // reader follows above, for the same reason and with the same cost when
+  // it is broken: the extractor seeks to a SYNC frame at or before the
+  // target and the codec decodes forward, so doing it every frame made
+  // sequential playback quadratic in the GOP.
+  //
+  // ⛔The flush goes with the seek. Flushing without seeking would throw
+  // away the very frames the codec is holding for us, which is the whole
+  // saving.
+  if (index != g_droid_dec.next_index) {
+    g_ndk_dec.extractor_seek_to(g_droid_dec.extractor, target_us,
+                                QA_SEEK_PREVIOUS_SYNC);
+    g_ndk_dec.codec_flush(g_droid_dec.codec);
+  }
+  // Cleared before the work, not after a success: a read that gives up
+  // leaves the codec somewhere this function cannot name.
+  g_droid_dec.next_index = -1;
 
   int32_t wrote = 0;
   int input_done = 0;
@@ -822,6 +902,9 @@ QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
           out_buffer, stride, slice,
           colour == QA_COLOR_FORMAT_YUV420_SEMIPLANAR ? 1 : 0, rgba);
       wrote = 1;
+      // Positioned on the frame after this one, so the next request for
+      // it needs no seek and no flush.
+      g_droid_dec.next_index = index + 1;
     } else {
       qa_decode_set_error("this device's decoder uses a colour format we "
                           "do not read");

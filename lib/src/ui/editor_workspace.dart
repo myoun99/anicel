@@ -472,6 +472,29 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     widget.session.respondToMemoryPressure();
   }
 
+  /// 🚨★★★**COMING BACK IS WHEN THE FILE MAY HAVE GONE.**
+  ///
+  /// 유저 2026-08-31, having lost 94 cels: 「이 문제 발생시 **해결법이
+  /// 없기때문**」. A save turns every clean cel into a ref into the project
+  /// file and drops its cold blob, so deleting that file — in Explorer, in
+  /// the Files app, in Drive — takes those pixels with it. The app only
+  /// found out at the next save, by which time the recycle bin had usually
+  /// been emptied and the person had done an hour of work on a project
+  /// that could no longer be written whole.
+  ///
+  /// ⛔The bytes cannot be recovered from here; nothing can. What CAN be
+  /// recovered is the FILE, and only while it is still in a trash somewhere
+  /// — which is exactly the window this notice exists to open.
+  ///
+  /// The observer was already here for memory pressure; resuming is the
+  /// moment a person comes back from the file manager they just used.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_warnIfProjectFileVanished());
+    }
+  }
+
   /// The factory-default arrangement (also the validation baseline when a
   /// saved layout is restored: it names every known tab and its home dock).
   ///
@@ -1825,6 +1848,30 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   /// though the main viewer is the floor, so a double-click still swaps
   /// the drawing away. The row menu's second entry is what opens beside
   /// the drawing instead.
+  /// Said ONCE per disappearance, not once per resume: a person who has
+  /// read it and chosen to carry on must not be asked again every time
+  /// they alt-tab.
+  bool _toldProjectFileVanished = false;
+
+  Future<void> _warnIfProjectFileVanished() async {
+    if (!widget.session.projectFileHasVanished()) {
+      // Back again — restored from a trash, or re-synced. The next
+      // disappearance is worth saying out loud too.
+      _toldProjectFileVanished = false;
+      return;
+    }
+    if (_toldProjectFileVanished || !mounted) {
+      return;
+    }
+    _toldProjectFileVanished = true;
+    await showAppNotice(
+      context,
+      windowKey: const ValueKey<String>('project-file-vanished-notice'),
+      title: AppText.strings.commonNotice,
+      message: AppText.strings.projectFileVanished,
+    );
+  }
+
   /// The pool's「WAV로 내보내기」: the session says which conform, the flow
   /// says where the file goes, and the writer streams it. False when the
   /// asset has no audio — the panel turns that into words.

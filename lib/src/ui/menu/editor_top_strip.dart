@@ -1814,12 +1814,24 @@ Future<void> promptSaveProjectAs(
       // the spot — behind the same progress window a save wears, because
       // a long-drawn session serializing whole is a save-sized wait and a
       // frozen screen before a picker reads as a hang.
+      // 🚨★★★**THIS WINDOW SAYS「READY」, NOT「SAVED」.**
+      //
+      // 유저 2026-08-31, on an iPad: 「로딩창뜨고 저장이 완료됬습니다 뜨고
+      // 픽커 뜨는데, 그게아니라 로딩창뜨고, **준비가 완료됐습니다** 띄우고
+      // … 픽커 완료되고 나서 로딩/저장완료 안내창 띄우는게 직관적」.
+      //
+      // They are right, and it was a lie: nothing has been saved when this
+      // finishes. iOS has no save panel, so the archive is written into
+      // the app container FIRST and the picker then places it — and if the
+      // person cancels there, the file this window just announced as
+      // 「saved」is deleted. Announcing the end of the WRITE as the end of
+      // the SAVE told them a thing that could still be undone.
       stageArchive: (stagingPath) => runWithAppProgress<void>(
         context: context,
         title: AppText.strings.commonSave,
         titleIcon: Icons.save_outlined,
-        runningLabel: AppText.strings.saveProgressRunning,
-        doneLabel: AppText.strings.saveProgressDone,
+        runningLabel: AppText.strings.savePrepareRunning,
+        doneLabel: AppText.strings.savePrepareDone,
         windowKey: const ValueKey<String>('save-progress-dialog'),
         task: (report) async {
           staged = await session.writeArchiveCopy(
@@ -1850,6 +1862,22 @@ Future<void> promptSaveProjectAs(
     recordRecentProject(
       RecentProject(path: path, folderBookmark: pick.folderBookmark),
     );
+    // 🚨AND NOW it is saved — so now is when it says so. The staging window
+    // above said 「Ready」; this is the other half of the order 유저
+    // 2026-08-31 asked for, and the only moment at which the sentence is
+    // true. There is no work left to do, so the window is a confirmation
+    // and lingers exactly as long as any other save's does.
+    if (context.mounted) {
+      await runWithAppProgress<void>(
+        context: context,
+        title: AppText.strings.commonSave,
+        titleIcon: Icons.save_outlined,
+        runningLabel: AppText.strings.saveProgressRunning,
+        doneLabel: AppText.strings.saveProgressDone,
+        windowKey: const ValueKey<String>('save-placed-dialog'),
+        task: (report) async => report(1),
+      );
+    }
     return;
   }
   if (await saveProjectShowingProgress(context, session, path)) {

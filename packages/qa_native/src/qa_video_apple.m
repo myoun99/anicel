@@ -486,7 +486,25 @@ int32_t qa_video_apple_decode_open(const char* utf8_path,
       g_decode_fps_den = 1001;
     }
 
-    Float64 seconds = CMTimeGetSeconds(asset.duration);
+    // 🚨★★★**THE VIDEO TRACK'S duration, not the ASSET'S.** An asset is as
+    // long as its longest track and that is almost never the video: AAC
+    // frames are 1024 samples, so an MP4's audio ends tens of milliseconds
+    // past the last picture. Counting from the asset turned that overshoot
+    // into a frame with no picture in it — 유저 2026-08-31: 「72프레임짜리
+    // 비디오인데 73프레임째의 빈 화면이 생성되어있음」.
+    //
+    // ⚠️It read as a PLATFORM difference — 「아이패드에선 73번째 프레임이
+    // 존재하는데 윈도우에선 흰화면」 — because the two ends fail
+    // differently: the image generator clamps and returns the last picture
+    // again, while Media Foundation has no sample there and returns
+    // nothing. Same wrong count, two symptoms; `qa_video_decode.c` asks
+    // its video stream for the same reason.
+    Float64 seconds = CMTimeGetSeconds(track.timeRange.duration);
+    if (!isfinite(seconds) || seconds <= 0) {
+      // ⛔A track with no usable range still has pictures. The asset's
+      // duration is the honest upper bound rather than zero frames.
+      seconds = CMTimeGetSeconds(asset.duration);
+    }
     if (!isfinite(seconds) || seconds <= 0) {
       seconds = 0;
     }
@@ -496,6 +514,20 @@ int32_t qa_video_apple_decode_open(const char* utf8_path,
       g_decode_frames = 1;
     }
 
+    // 🔜**SEQUENTIAL PLAYBACK STILL PAYS A RANDOM ACCESS HERE.**
+    //
+    // The Windows and Android readers now skip the seek when the frame
+    // asked for is the one they are already positioned to deliver, which
+    // is what made a first play stop flashing white
+    // (`qa_video_decode.c`). This generator has no such position to reuse:
+    // `copyCGImageAtTime` IS a random access, and Apple's sequential
+    // answer is a different class (`AVAssetReader`) rather than a flag.
+    //
+    // ⛔Left as it is rather than half-done. Swapping in a reader means
+    // owning「am I positioned for this index」and a fallback for backward
+    // scrubs, which is the whole shape the other two just grew — and doing
+    // it blind, with no Apple device to measure on, is how the two ends
+    // drift apart again.
     AVAssetImageGenerator* generator =
         [AVAssetImageGenerator assetImageGeneratorWithAsset:asset];
     generator.appliesPreferredTrackTransform = YES;

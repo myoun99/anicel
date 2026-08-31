@@ -9115,6 +9115,20 @@ class EditorSessionManager extends ChangeNotifier {
   /// ⚠️Async because securing the bytes runs in an isolate — see
   /// [stageCarriedBytes]. The answer still means「something changed」, and
   /// it is still decided before any waiting happens.
+  /// Whether this project HAS a file on disk and that file is gone.
+  ///
+  /// 🚨A clean cel lives as a ref into the project file — the store drops
+  /// its cold blob on adoption — so the file disappearing takes those
+  /// pixels with it. Nothing here can bring them back; the point of asking
+  /// is to say so while the FILE can still be restored from a trash.
+  ///
+  /// ⛔False for a never-saved project. There is no file to have lost, and
+  /// a session with nothing on disk is the ordinary state.
+  bool projectFileHasVanished() {
+    final path = _projectFilePath;
+    return path != null && !File(path).existsSync();
+  }
+
   /// Where [path]'s conformed audio is on disk, building it if this machine
   /// has not yet — or null when the asset has no audio to conform.
   ///
@@ -18369,6 +18383,16 @@ class EditorSessionManager extends ChangeNotifier {
         grants: _grantsToStore(),
         mediaCrcs: _mediaCrcsToStore(),
         onProgress: onProgress,
+        // 🚨A Save As is「writing somewhere else」and nothing more subtle:
+        // the target is not the file this session has been saving to. 유저
+        // 2026-08-31 asked for it to be a full write every time — 「기존
+        // 파일에 저장 덮어씌우기를 하더라도 고치기위해 풀저장」 — and the
+        // case that was NOT already whole is exactly this one, an overwrite
+        // onto an older copy of the same project.
+        rewriteWhole:
+            previousPath != null &&
+            previousPath.replaceAll(r'\', '/') !=
+                filePath.replaceAll(r'\', '/'),
       );
     } on FileSystemException {
       // 실측 (08-26, iPhone + Google Drive): a File Provider can refuse

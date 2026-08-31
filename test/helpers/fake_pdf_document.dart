@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:anicel/src/services/media/viewer_document.dart';
@@ -36,6 +37,24 @@ class FakePdfDocument implements ViewerDocument {
   static ui.Color pageColor(int pageIndex) =>
       ui.Color(0xFF000033 | (((0x35 * (pageIndex + 1)) % 0xFF) << 16));
 
+  /// Held renders, keyed by page — a test that needs「this page has not
+  /// landed yet」completes them by hand.
+  ///
+  /// 🚨Without this every render finishes inside the same pump, so the
+  /// state a viewer is in WHILE a page is decoding — the one a movie
+  /// spends most of its first play in — was unreachable from a test.
+  final Map<int, Completer<void>> renderGates = {};
+
+  /// Makes [pageIndex] wait until [releaseRender] is called for it.
+  void holdRender(int pageIndex) => renderGates[pageIndex] = Completer<void>();
+
+  void releaseRender(int pageIndex) {
+    final gate = renderGates.remove(pageIndex);
+    if (gate != null && !gate.isCompleted) {
+      gate.complete();
+    }
+  }
+
   @override
   Future<ui.Image> renderPage(
     int pageIndex, {
@@ -43,6 +62,10 @@ class FakePdfDocument implements ViewerDocument {
     required int height,
   }) async {
     renderRequests.add((pageIndex, width, height));
+    final gate = renderGates[pageIndex];
+    if (gate != null) {
+      await gate.future;
+    }
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
     canvas.drawRect(
