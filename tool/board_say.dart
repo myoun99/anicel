@@ -75,6 +75,58 @@ String? recordRefusal(Map<String, dynamic> json, int lineNo) {
   return null;
 }
 
+/// What is wrong with writing this record onto a card that ALREADY EXISTS,
+/// or null if there is nothing wrong.
+///
+/// 🚨★★★A CARD THAT HAS ENDED DOES NOT TAKE A NEW SUBJECT.
+///
+/// ⛔I did this twice in one hour on 2026-09-01, and both times the words
+/// landed somewhere nobody could see:
+/// · `board-exe-goes-stale` had finished at 03:20 and carried an explicit
+///   `state:"archived"`, which the story cannot overturn. Three lines about
+///   #1434 went onto an invisible card.
+/// · `memory-usage-panel-Q1` was a question from 08-28 that 유저 HAD ALREADY
+///   ANSWERED. My new question merged onto an answered card, so it never
+///   reached 답할 것 — 유저 found it: 「메모리는 질문으로 안올라와있어」.
+///   ⚠️And the answer had been there all along, so the question was never
+///   needed.
+///
+/// ⚠️AMENDING an ended card is legitimate — a correction, a pointer to where
+/// the subject moved. That is what `정정` is for, and saying it is the whole
+/// difference between 「I know this card is finished」 and 「I did not look」.
+/// ⛔So this is not an escape hatch bolted on: it is the one word that makes
+/// the intent explicit, and the refusal names it.
+String? endedCardRefusal(
+  Map<String, dynamic> json,
+  int lineNo,
+  Map<String, String> endedWhy,
+) {
+  final id = '${json['id'] ?? ''}';
+  final why = endedWhy[id];
+  if (why == null) return null;
+  final at = '${json['at'] ?? ''}'.trim();
+  if (at == '정정') return null;
+  return '$lineNo번째 줄: 「$id」 는 이미 끝난 카드입니다 ($why).\n'
+      '  거기 적은 말은 화면에 안 뜹니다 — 끝난 카드는 보드가 안 그립니다.\n'
+      '  ⇒ 새 주제면 **새 id** 를 쓰세요. 정말 이 카드를 고치는 것이면 '
+      '`"at":"정정"` 을 붙이세요.';
+}
+
+/// Which cards have ended, and why — read once, in [main], from the board.
+///
+/// ⚠️A question that already carries an ANSWER counts as ended too. It is not
+/// archived by state, but writing a NEW question onto it is the same mistake:
+/// the panel shows the old answer and the new words never become a question.
+Map<String, String> endedCards(List<BoardCard> cards) => {
+      for (final c in cards)
+        if (c.state == 'archived')
+          c.id: '완료'
+        else if (c.state == 'deleted')
+          c.id: '삭제됨'
+        else if (c.answer != null)
+          c.id: '이미 답이 나온 질문',
+    };
+
 /// The bytes to append, or the reason there are none — NEVER both.
 ///
 /// 🚨★★★THE SHAPE IS THE INVARIANT. 「a bad line writes nothing」 is not a
@@ -87,8 +139,9 @@ String? recordRefusal(Map<String, dynamic> json, int lineNo) {
 /// [main], and nowhere else.
 ({String? refusal, String? bytes}) boardSayAppend(
   List<String> lines,
-  DateTime now,
-) {
+  DateTime now, {
+  Map<String, String> ended = const {},
+}) {
   final records = <Map<String, dynamic>>[];
   var lineNo = 0;
   for (final raw in lines) {
@@ -101,7 +154,8 @@ String? recordRefusal(Map<String, dynamic> json, int lineNo) {
     } catch (e) {
       return (refusal: '$lineNo번째 줄이 JSON 이 아닙니다 — $e', bytes: null);
     }
-    final why = recordRefusal(json, lineNo);
+    final why = recordRefusal(json, lineNo) ??
+        endedCardRefusal(json, lineNo, ended);
     if (why != null) return (refusal: why, bytes: null);
     records.add(json);
   }
@@ -127,7 +181,11 @@ void main(List<String> args) {
   // 🚨THE CLOCK, ONCE, HERE — the only place this program asks what time it
   // is, and the only place it was ever possible to get wrong.
   final now = DateTime.now();
-  final result = boardSayAppend(File(args[1]).readAsLinesSync(), now);
+  final result = boardSayAppend(
+    File(args[1]).readAsLinesSync(),
+    now,
+    ended: endedCards(readBoard(File(args[0]))),
+  );
   if (result.refusal != null) {
     stderr.writeln('board_say: ${result.refusal}');
     exit(2);
