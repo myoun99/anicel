@@ -85,8 +85,14 @@ List<RuntimePathEntry> collectRuntimePathReport() {
     ),
   );
 
-  // --- Audio import decoder: bundled decoders + the OS codec stack;
-  // absence drops the importer to the ffmpeg conform fallback.
+  // --- Audio import decoder: bundled decoders + the OS codec stack.
+  //
+  // 🪦This used to say absence "drops the importer to the ffmpeg conform
+  // fallback", and print `ffmpeg fallback` on the panel. There is no such
+  // path: the EXPORT-AUDIO round took ffmpeg out of every audio path, and
+  // the only two places in `lib/` that start a process are both video
+  // export. Naming a fallback that is gone is worse than naming none — it
+  // reads as "something still works".
   final decoder = QaAudioDecoder.instance;
   entries.add(
     RuntimePathEntry(
@@ -94,12 +100,14 @@ List<RuntimePathEntry> collectRuntimePathReport() {
       active: decoder != null
           ? 'Native (dr_libs WAV/FLAC/MP3, stb_vorbis OGG, '
                 '${_osAudioCodecName()} for AAC/M4A)'
-          : 'ffmpeg fallback',
+          : 'none — audio does not conform',
       isPrimary: decoder != null,
       detail:
           'Audio files decode ONCE at import (conform). Bundled '
           'decoders read WAV/FLAC/MP3/OGG; AAC goes through the '
-          'operating system codec stack.',
+          'operating system codec stack. Without the native core there '
+          'is no second decoder: waveforms stay blank and clips are '
+          'silent.',
     ),
   );
 

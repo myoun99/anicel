@@ -103,8 +103,20 @@ void main() {
   test('no test spawns a process — the bulk run is the wrong place to '
       'compete for the machine', () {
     const spawns = ['Process.run', 'Process.start', 'Process.runSync'];
+    // ⚠️A test that SCANS for these names is not a test that calls them.
+    // `the_report_names_only_fallbacks_that_exist_test` keeps the System
+    // panel from advertising an ffmpeg audio path that was deleted, and the
+    // only way to ask 「does anything start a process here?」 is to hold the
+    // words. Excluded by NAME rather than by a comment trick, so the
+    // exception is visible and has to be argued for.
+    //
+    // ⛔Only for THIS law — the file is still held to every other one.
+    const scannersNotSpawners = ['the_report_names_only_fallbacks_that_exist'];
     final offenders = <String>[];
     for (final file in testFiles()) {
+      if (scannersNotSpawners.any(file.path.contains)) {
+        continue;
+      }
       for (final line in file.readAsLinesSync()) {
         final trimmed = line.trim();
         if (trimmed.startsWith('//') || trimmed.startsWith('///')) {

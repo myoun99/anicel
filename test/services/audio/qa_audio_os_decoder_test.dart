@@ -43,7 +43,7 @@ void main() {
 
     if (Platform.isLinux) {
       // Not a shipping platform and no OS codec to lean on: undecodable,
-      // which is exactly what routes the file to the ffmpeg fallback.
+      // which is the definitive answer that leaves the waveform blank.
       expect(decoded, isNull);
       return;
     }
