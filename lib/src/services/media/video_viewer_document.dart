@@ -46,10 +46,23 @@ final class VideoViewerDocument implements ViewerDocument {
   /// 🧪The decision is [viewerOpenOutcome] rather than an `if` here, because
   /// a widget test cannot conjure a native decoder — and the truth table is
   /// exactly what went wrong.
-  static Future<VideoViewerDocument?> open(String path) async {
+  ///
+  /// [range] opens a movie that lives INSIDE [path] — a carried video, whose
+  /// bytes are a stretch of the `.anicel` and which therefore has no path of
+  /// its own. ⛔Never a temp copy: 유저 2026-08-27 「사본 남으면 진짜
+  /// 용서안할게」.
+  ///
+  /// ⚠️A range that this platform cannot open is 「unreadable」, not 「no
+  /// reader」 — Windows and Apple refuse a range by name while decoding
+  /// paths perfectly well, and telling the user their build has no decoder
+  /// would be the exact lie this function was just fixed for.
+  static Future<VideoViewerDocument?> open(
+    String path, {
+    ({int offset, int length})? range,
+  }) async {
     final decoder = QaVideoDecoder.instance;
     final hasReader = decoder != null && decoder.isSupported;
-    final info = hasReader ? decoder.open(path) : null;
+    final info = hasReader ? decoder.open(path, range: range) : null;
     switch (viewerOpenOutcome(hasReader: hasReader, opened: info != null)) {
       case ViewerOpenOutcome.noReaderInThisBuild:
         return null;
