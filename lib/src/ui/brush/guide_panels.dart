@@ -414,14 +414,15 @@ class GuideSettings extends StatelessWidget {
   ) {
     final strings = AppText.strings;
     return [
-      SettingsSwitchRow(
-        tileKey: const ValueKey<String>('guide-snap'),
-        label: strings.guideSnap,
-        help: strings.guideSnapNote,
-        value: shape.snapEnabled,
-        onChanged: (value) =>
-            _replaceShape(guide, shape.copyWith(snapEnabled: value)),
-      ),
+      // ⛔THE SNAP SWITCH IS GONE FROM HERE (유저 2026-09-01, guide-sym):
+      // 「퍼스자의 툴설정에 있는 스냅버튼, **이거 중복되니까 삭제. 퍼스자
+      // 이름 왼쪽에 이미 존재**」.
+      //
+      // The row's own acting button IS this value — `_GuideRow(acting:
+      // shape.snapEnabled, onActingChanged: …)` — so the panel was offering
+      // one fact twice, and the two could disagree only in how far the user
+      // had to look. ⚠️`snapEnabled` itself is untouched; what went is the
+      // second control for it.
       SettingsSwitchRow(
         tileKey: const ValueKey<String>('guide-eye-level-visible'),
         label: strings.guideEyeLevelShow,

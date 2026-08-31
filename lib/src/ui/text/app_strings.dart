@@ -321,8 +321,6 @@ class AppStrings {
   String get guideMirrorMode => _s('guideMirrorMode');
   String get guideMirrorModeOn => _s('guideMirrorModeOn');
   String get guideMirrorModeOff => _s('guideMirrorModeOff');
-  String get guideSnap => _s('guideSnap');
-  String get guideSnapNote => _s('guideSnapNote');
   String get guideEyeLevelShow => _s('guideEyeLevelShow');
   String get guideConstrainToEyeLevel => _s('guideConstrainToEyeLevel');
   String get guideConstrainToEyeLevelNote => _s('guideConstrainToEyeLevelNote');
@@ -1320,10 +1318,6 @@ class AppStrings {
     'guideMirrorMode': 'Line symmetry',
     'guideMirrorModeOn': 'Copies alternate handedness (a true mirror).',
     'guideMirrorModeOff': 'Copies are rotations — nothing is mirrored.',
-    'guideSnap': 'Snap strokes',
-    'guideSnapNote':
-        'Several perspective guides can snap at once; switch off the ones '
-        'you are not drawing.',
     'guideEyeLevelShow': 'Show eye level',
     'guideConstrainToEyeLevel': 'Hold vanishing points on the eye level',
     'guideConstrainToEyeLevelNote':
@@ -2171,8 +2165,6 @@ class AppStrings {
     'guideMirrorMode': '線対称',
     'guideMirrorModeOn': 'コピーが左右反転します（本当の鏡）。',
     'guideMirrorModeOff': 'コピーは回転のみ — 反転しません。',
-    'guideSnap': 'スナップ',
-    'guideSnapNote': 'パースガイドは複数同時にスナップできます。描かないものはオフに。',
     'guideEyeLevelShow': 'アイレベルを表示',
     'guideConstrainToEyeLevel': '消失点をアイレベル上に固定',
     'guideConstrainToEyeLevelNote': '次のドラッグに効きます。すでに置いたものは動きません。',
@@ -3126,8 +3118,6 @@ class AppStrings {
     'guideMirrorModeOn': '사본이 좌우로 뒤집힙니다(진짜 거울).',
     'guideMirrorMode': '선대칭',
     'guideMirrorModeOff': '사본은 회전일 뿐 — 뒤집히지 않습니다.',
-    'guideSnap': '스냅',
-    'guideSnapNote': '퍼스 가이드는 여러 개가 동시에 스냅합니다. 안 그리는 건 꺼두세요.',
     'guideEyeLevelShow': '아이레벨 표시',
     'guideConstrainToEyeLevel': '소실점을 아이레벨에 고정',
     'guideConstrainToEyeLevelNote': '다음 드래그부터 적용됩니다. 이미 놓인 것은 움직이지 않습니다.',
@@ -4085,10 +4075,6 @@ class AppStrings {
     'guideMirrorModeOn': 'Les copies sont inversées (un vrai miroir).',
     'guideMirrorModeOff':
         'Les copies sont des rotations — rien n\'est inversé.',
-    'guideSnap': 'Aimanter les traits',
-    'guideSnapNote':
-        'Plusieurs repères de perspective peuvent aimanter à la fois ; '
-        'désactivez ceux que vous ne dessinez pas.',
     'guideEyeLevelShow': 'Afficher la ligne d\'horizon',
     'guideConstrainToEyeLevel': 'Garder les points de fuite sur l\'horizon',
     'guideConstrainToEyeLevelNote':
@@ -5053,8 +5039,6 @@ class AppStrings {
     'guideMirrorMode': '轴对称',
     'guideMirrorModeOn': '副本左右翻转（真正的镜像）。',
     'guideMirrorModeOff': '副本只是旋转 — 不会翻转。',
-    'guideSnap': '吸附笔画',
-    'guideSnapNote': '多条透视参考线可同时吸附；把不画的关掉。',
     'guideEyeLevelShow': '显示视平线',
     'guideConstrainToEyeLevel': '将消失点固定在视平线上',
     'guideConstrainToEyeLevelNote': '对下一次拖动生效；不会移动已放置的。',

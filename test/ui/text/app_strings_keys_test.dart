@@ -157,8 +157,6 @@ void main() {
     'guideMirrorMode': (s) => s.guideMirrorMode,
     'guideMirrorModeOn': (s) => s.guideMirrorModeOn,
     'guideMirrorModeOff': (s) => s.guideMirrorModeOff,
-    'guideSnap': (s) => s.guideSnap,
-    'guideSnapNote': (s) => s.guideSnapNote,
     'guideEyeLevelShow': (s) => s.guideEyeLevelShow,
     'guideConstrainToEyeLevel': (s) => s.guideConstrainToEyeLevel,
     'guideConstrainToEyeLevelNote': (s) => s.guideConstrainToEyeLevelNote,
