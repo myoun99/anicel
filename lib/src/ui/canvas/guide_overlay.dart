@@ -479,7 +479,7 @@ CutGuides dragGuideHandle(
 }
 
 /// The pointer layer that edits guides — mounted ONLY while the guide tool
-/// is active, so it never stands between the brush and the canvas.
+/// is active, and while it is, IT OWNS THE CANVAS.
 ///
 /// It is a thin translator: it turns a press into a handle, a move into
 /// [dragGuideHandle], and a release into one commit. The edited value is
@@ -537,7 +537,23 @@ class _GuideEditLayerState extends State<GuideEditLayer> {
   @override
   Widget build(BuildContext context) {
     return Listener(
-      behavior: HitTestBehavior.translucent,
+      // 🚨★★★OPAQUE — 유저 (guide-sym): 「가이드툴이 선택된 상태로 **그림이
+      // 그려짐**」.
+      //
+      // ⛔Translucent meant a press that grabbed no handle fell through to
+      // the stroke pipeline in the Stack below, so the guide tool drew.
+      // ★The law the rest of the canvas already keeps: the tool in hand
+      // owns the canvas. The selection tools mount the interaction layer,
+      // the eyedropper and the fill mount `canvas-tool-tap-layer` (opaque,
+      // "so no stroke starts"); this layer was the one exception.
+      //
+      // ⚠️This hides only what is BELOW it in that Stack. Panning, zooming
+      // and the flip live in `CanvasViewportGestureLayer`, an ANCESTOR, and
+      // an opaque sibling never hides an ancestor — so navigation over the
+      // paper keeps working with the guide tool out. I had recorded the
+      // opposite as a reason not to do this; the test next door now asserts
+      // the ancestor still hears every press.
+      behavior: HitTestBehavior.opaque,
       onPointerDown: (event) {
         if (_pointer != null) return;
         // TS9: same door as every other tool input layer — a finger is
