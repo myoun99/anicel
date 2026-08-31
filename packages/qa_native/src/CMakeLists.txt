@@ -36,6 +36,14 @@ if(APPLE)
   target_sources(qa_engine PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/qa_video_apple.m")
 endif()
+# ⛔WIN32 only, for the same reason the Apple source above is: an
+# `IMFByteStream` over a range is Media Foundation's problem and nobody
+# else's, and a translation unit that compiles to nothing elsewhere is a
+# warning waiting to happen.
+if(WIN32)
+  target_sources(qa_engine PRIVATE
+    "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream.c")
+endif()
 
 set_target_properties(qa_engine PROPERTIES
   C_STANDARD 99
@@ -70,6 +78,23 @@ if(NOT ANDROID AND NOT IOS)
     PRIVATE QA_DECODE_LAW_ONLY=1)
   enable_testing()
   add_test(NAME qa_video_decode_law COMMAND qa_video_decode_law_test)
+endif()
+
+# The range byte stream, driven for real. ⚠️Unlike the law test above, this
+# one WANTS its platform: the object under test IS Media Foundation's
+# interface, so there is nothing portable to check and the MF libraries are
+# exactly what it needs.
+if(WIN32)
+  add_executable(qa_win_range_stream_test
+    "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream_test.c"
+    "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream.c")
+  set_target_properties(qa_win_range_stream_test PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED ON
+  )
+  target_link_libraries(qa_win_range_stream_test mfplat mfuuid ole32)
+  enable_testing()
+  add_test(NAME qa_win_range_stream COMMAND qa_win_range_stream_test)
 endif()
 
 # The pen sidecars (pen program) — Windows only, one DLL:
