@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/canvas_size.dart';
+import '../../models/rgba_image_bytes.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/media_asset.dart';
 import '../../native/qa_native_engine.dart';
@@ -245,10 +247,29 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   ViewerDocument? _document;
   final Map<int, _RenderedPage> _pageCache = {};
 
-  /// The last page index whose raster actually reached the screen — what a
-  /// page with nothing rendered yet falls back to. ⛔Reset with the cache:
-  /// an index from the previous document names an image that is gone.
-  int _lastDrawnPage = 0;
+  /// 🪦A `_lastDrawnPage` stood here: when a page's raster had not landed,
+  /// the painter was handed the LAST one instead, so playback kept moving
+  /// while the picture did not.
+  ///
+  /// 🚨★★★**A HELD PICTURE IS INDISTINGUISHABLE FROM A HOLD THE ANIMATOR
+  /// DREW**, which is the one judgement this panel exists to support. 유저
+  /// 2026-08-31: 「직전그림을 유지하게 하는건 진짜 아니라고 생각하거든? …
+  /// 유지하지말고 **로드할때까지 멈춰있어야지**」— and then, correcting the
+  /// word for it: 「그림을 유지한다는게 아니라 **그 곳에 멈춘다**는거야」.
+  ///
+  /// That distinction is the whole fix. The playhead PARKS; the picture
+  /// stays because the playhead is genuinely on that frame, not because an
+  /// old one was kept. ⛔The scale-axis rule is untouched — a blurrier
+  /// render of the SAME page is not a lie about which frame this is.
+
+  /// The render scale the last build chose. The buffer measures readiness
+  /// in the unit [_pageCache] is keyed by, and only build knows the zoom —
+  /// the timer that asks cannot work it out.
+  double? _renderScale;
+
+  /// True while the playhead is parked waiting for its cushion to refill.
+  /// ⛔Reset with the cache: it is a fact about a document that is gone.
+  bool _buffering = false;
   String? _message;
 
   /// What this device affords the page cache, and where a memory warning
@@ -273,6 +294,24 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   /// ⚠️Bytes, not entries. Four pages meant a quarter of a gigabyte for a
   /// big PDF and under a megabyte for thumbnails; the bound has to be in
   /// the unit that runs out.
+  /// How far a cached page is from being wanted again.
+  ///
+  /// 🚨**PLAYBACK ONLY MOVES FORWARD**, so a page already shown is never
+  /// wanted again and is farther than any page ahead. Measuring both with
+  /// `abs()` — which is what stood here — made the read-ahead buffer evict
+  /// ITSELF to keep frames that had just been displayed: a page five ahead
+  /// and a page five behind tied, and the tie went to whichever the map
+  /// listed first.
+  ///
+  /// ⚠️Paging by hand is a different question and keeps `abs()`: someone
+  /// stepping through a PDF is as likely to go back as forward.
+  int _evictionDistance(int page) {
+    if (!_playing) {
+      return (page - _page).abs();
+    }
+    return page >= _page ? page - _page : _pageCount + (_page - page);
+  }
+
   void _evictToBudget({required int keeping}) {
     var total = 0;
     for (final page in _pageCache.values) {
@@ -286,7 +325,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       // outcome this method exists to prevent.
       final farthest = _pageCache.keys
           .where((page) => page != keeping)
-          .reduce((a, b) => (a - _page).abs() >= (b - _page).abs() ? a : b);
+          .reduce((a, b) => _evictionDistance(a) >= _evictionDistance(b)
+              ? a
+              : b);
       final dropped = _pageCache.remove(farthest)!;
       total -= ViewerRasterBudget.costOf(dropped.image);
       dropped.image.dispose();
@@ -404,7 +445,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       page.image.dispose();
     }
     _pageCache.clear();
-    _lastDrawnPage = 0;
+    _buffering = false;
+    _renderScale = null;
     widget.session.viewerRasterBytesByViewer[widget.viewerId] = 0;
     _rendersInFlight.clear();
     final document = _document;
@@ -551,9 +593,100 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
 
   bool get _playing => _playTimer != null;
 
+  // --- The playback buffer (a player, not a slideshow) --------------------
+
+  /// How much movie the read-ahead tries to keep ready, in SECONDS.
+  ///
+  /// 유저 2026-08-31: 「10초? 5초? **메모리 제한에 맞춰서 알아서** 로드하고」
+  /// — so this is a ceiling, not the number that usually decides. On any
+  /// document big enough to matter [_bufferAheadPages] hits the byte budget
+  /// first, and the budget is the one that knows the device.
+  static const double _bufferAheadSeconds = 5;
+
+  /// Frames of read-ahead this document affords: whichever of the time
+  /// window and the memory budget runs out first, and zero when nothing is
+  /// playing (paging by hand needs no cushion).
+  ///
+  /// 🚨The budget has to hold the frame being LOOKED AT as well, so the
+  /// read-ahead gets what is left after it. Without that subtraction the
+  /// buffer fetches exactly enough to evict its own oldest entry, and the
+  /// eviction re-issues the render it just dropped.
+  int _bufferAheadPages() {
+    final document = _document;
+    final scale = _renderScale;
+    if (document == null || scale == null || !_playing) {
+      return 0;
+    }
+    final fps = document.framesPerSecond ?? 0;
+    final size = document.pageSize(_page);
+    final bytes = estimatedImageBytes(
+      (size.width * scale).round().clamp(1, 1 << 13).toInt(),
+      (size.height * scale).round().clamp(1, 1 << 13).toInt(),
+    );
+    final affordable = bytes <= 0 ? 0 : (_budget.byteBudget ~/ bytes) - 1;
+    final window = (fps * _bufferAheadSeconds).round();
+    return math.max(0, math.min(affordable, window));
+  }
+
+  /// How many consecutive frames from [from] are ready to draw at the scale
+  /// the last build chose.
+  int _readyFramesFrom(int from) {
+    final scale = _renderScale;
+    if (scale == null) {
+      return 0;
+    }
+    var ready = 0;
+    while (from + ready < _pageCount) {
+      final cached = _pageCache[from + ready];
+      if (cached == null || cached.scale != scale) {
+        break;
+      }
+      ready += 1;
+    }
+    return ready;
+  }
+
+  /// What the buffer must hold before a parked playhead moves again.
+  ///
+  /// 유저 2026-08-31: 「로드가 안되고있으면 5초분만큼? 로드될떄까지 멈추는?」
+  /// — resuming on ONE ready frame is the stutter this replaces: play a
+  /// frame, run dry, park, play a frame. It is the SAME cushion
+  /// [_bufferAheadPages] fills, capped by what is left of the movie so the
+  /// last seconds do not become unplayable.
+  int _resumeAfterFrames() =>
+      math.min(_bufferAheadPages(), _pageCount - _page - 1);
+
+  /// Issues the NEXT missing raster the playhead will need, one at a time.
+  ///
+  /// ⛔Not all of them at once: both decoders behind [ViewerDocument] are
+  /// serial (PDFium runs one worker, and the video decoder's fast path is
+  /// sequential reads), so a hundred outstanding requests would finish in
+  /// the same order and the same time while holding a hundred futures. Each
+  /// landing rebuilds, which issues the next — the queue walks forward on
+  /// its own.
+  void _fillPlaybackBuffer() {
+    final scale = _renderScale;
+    if (scale == null || _rendersInFlight.isNotEmpty) {
+      return;
+    }
+    final ahead = _bufferAheadPages();
+    for (var offset = 1; offset <= ahead; offset += 1) {
+      final page = _page + offset;
+      if (page >= _pageCount) {
+        return;
+      }
+      final cached = _pageCache[page];
+      if (cached == null || cached.scale != scale) {
+        _ensurePageRendered(page, scale);
+        return;
+      }
+    }
+  }
+
   void _stopPlaying() {
     _playTimer?.cancel();
     _playTimer = null;
+    _buffering = false;
   }
 
   void _togglePlaying() {
@@ -575,17 +708,40 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       _playTimer = Timer.periodic(
         Duration(microseconds: (1000000 / fps).round().clamp(1, 1000000)),
         (_) {
-          // ⚠️Best effort, deliberately. The decode is async and may not
-          // keep up at the movie's rate; the page advances on the clock and
-          // whichever raster has landed is what draws (the cache is
-          // stale-while-revalidate already). ⛔The alternative — waiting for
-          // each frame — makes playback run at the decoder's speed and drift
-          // away from the audio nobody has wired yet.
+          // 🚨★★★**THE PLAYHEAD WAITS. IT DOES NOT WALK PAST A FRAME THAT
+          // IS NOT THERE.**
+          //
+          // This used to be 「best effort, deliberately」: the page advanced
+          // on the clock and whichever raster had landed was drawn. What
+          // that produced was a picture standing still while the playhead
+          // moved — and a held picture cannot be told apart from a hold the
+          // animator DREW, which is the one judgement this panel exists to
+          // support. 유저 2026-08-31: 「유지하지말고 로드할때까지
+          // 멈춰있어야지」, and 「그림을 유지한다는게 아니라 그 곳에
+          // 멈춘다는거야」.
+          //
+          // ⚠️The CANVAS does the opposite and that is also right: it
+          // judges TIMING against sound, so it holds real time and drops
+          // frames — `AudioPlaybackSync` says so in one line, 「frames drop,
+          // time never stretches」. This is a player looking at reference,
+          // where nothing is riding on the clock, so it buffers.
           if (!mounted) {
             return;
           }
           if (_page >= _pageCount - 1) {
             setState(_stopPlaying);
+            return;
+          }
+          final ready = _readyFramesFrom(_page + 1);
+          if (_buffering) {
+            // ⛔Not「one frame is ready, go」: that plays a frame, runs dry
+            // and parks again, which is a stutter rather than playback.
+            if (ready < _resumeAfterFrames()) {
+              return;
+            }
+            setState(() => _buffering = false);
+          } else if (ready < 1) {
+            setState(() => _buffering = true);
             return;
           }
           _turnToPage(_page + 1);
@@ -736,29 +892,21 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
         CanvasZoomScale.of(context).display(zoom),
         docSize,
       );
+      // 🚨THE SCALE AXIS ONLY. [_RenderedPage] says a wrong-SCALE image
+      // draws while the right one renders — a blurrier render of the SAME
+      // page is not a lie about which frame this is.
+      //
+      // 🪦A page-axis twin stood here and drew the LAST page when this
+      // one's raster had not landed. It was answering the white flashes
+      // 유저 2026-08-31 reported 「첫 재생때 … 흰 화면이 엄청나게
+      // 깜빡이면서 재생됨」, and it answered them by making the picture lie
+      // instead. The flashes are gone for the right reason now: the
+      // playhead does not reach a frame that is not there, so what is on
+      // screen is the frame the playhead is on.
+      _renderScale = scale;
       _ensurePageRendered(pageIndex, scale);
+      _fillPlaybackBuffer();
       pageImage = _pageCache[pageIndex]?.image;
-      // 🚨★★★**STALE ACROSS PAGES, NOT ONLY ACROSS SCALES.**
-      //
-      // [_RenderedPage] already says a wrong-SCALE image draws while the
-      // right one renders. The page axis had no such rule, so a page whose
-      // raster had not landed drew NOTHING — and playback advances the
-      // playhead on a wall clock whether or not the decoder kept up.
-      //
-      // 유저 2026-08-31: 「첫 재생때 … 흰 화면이 엄청나게 깜빡이면서
-      // 재생됨. 두번째 재생부터 점점 나아짐. 세번째부터는 흰 화면 없이
-      // 정상재생」 — the flashes ARE the cold cache, one white frame per
-      // miss, disappearing as the pages fill in.
-      //
-      // ⛔The last picture is not a guess about this page; it is the last
-      // true thing this viewer showed, which is what every video player
-      // holds on a late frame. `_ensurePageRendered` above is still
-      // running, so the right one replaces it the moment it lands.
-      if (pageImage != null) {
-        _lastDrawnPage = pageIndex;
-      } else {
-        pageImage = _pageCache[_lastDrawnPage]?.image;
-      }
     }
 
     final message = request == null ? strings.mediaViewerEmpty : _message;
