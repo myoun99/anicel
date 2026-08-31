@@ -14,7 +14,11 @@
 //   Windows  — Media Foundation's Source Reader, which also converts to
 //              RGB32 for us (the advanced video processing attribute), so
 //              our only pixel job is BGRA → RGBA and the stride.
-//   Apple    — AVAssetImageGenerator, forwarded to qa_video_apple.m.
+//   Apple    — AVAssetReader, forwarded to qa_video_apple.m. It said
+//              「AVAssetImageGenerator」 until 2026-09-01; the premise that
+//              chose the generator — 「the only question this app asks is
+//              the picture at frame N」 — stopped being true when the
+//              viewer grew a play button.
 //   Android  — NDK AMediaExtractor + AMediaCodec, resolved with dlsym, so
 //              support is what libmediandk.so actually answers.
 //
@@ -569,14 +573,24 @@ extern int32_t qa_video_apple_decode_open(const char* utf8_path,
 extern int32_t qa_video_apple_decode_info(int32_t* stored_width,
                                           int32_t* stored_height,
                                           int32_t* rotation,
-                                          int64_t* frame_count,
-                                          int32_t* fps_num,
-                                          int32_t* fps_den);
-extern int32_t qa_video_apple_decode_frame(int64_t index,
-                                           uint8_t* rgba,
-                                           int32_t capacity,
-                                           char* error,
-                                           int32_t error_capacity);
+                                          int64_t* duration_us,
+                                          double* nominal_rate);
+extern int32_t qa_video_apple_decode_reposition(int64_t index,
+                                                int32_t fps_num,
+                                                int32_t fps_den,
+                                                char* error,
+                                                int32_t error_capacity);
+extern int32_t qa_video_apple_decode_read(
+    int64_t index,
+    int32_t fps_num,
+    int32_t fps_den,
+    uint8_t* rgba,
+    int32_t capacity,
+    int32_t (*reaches_target)(int64_t stamp_us,
+                              int64_t target_us,
+                              int64_t frame_us),
+    char* error,
+    int32_t error_capacity);
 extern void qa_video_apple_decode_close(void);
 
 static int32_t qa_backend_supported(void) { return 1; }
@@ -588,33 +602,48 @@ static int32_t qa_backend_open(const char* path) {
                                   (int32_t)sizeof(g_decode_error))) {
     return 0;
   }
-  return qa_video_apple_decode_info(&g_doc.stored_width, &g_doc.stored_height,
-                                    &g_doc.rotation, &g_doc.frame_count,
-                                    &g_doc.fps_num, &g_doc.fps_den);
+  int64_t duration_us = 0;
+  double nominal_rate = 0.0;
+  if (!qa_video_apple_decode_info(&g_doc.stored_width, &g_doc.stored_height,
+                                  &g_doc.rotation, &duration_us,
+                                  &nominal_rate)) {
+    return 0;
+  }
+  // ⚠️The rate and the count are worked out HERE, from what the backend
+  // knows — this file used to carry its own copy of both, and the count's
+  // copy took seconds as a double, which is how a whole number of frames
+  // comes back one short.
+  qa_rate_to_fraction(nominal_rate, &g_doc.fps_num, &g_doc.fps_den);
+  g_doc.frame_count = qa_frame_count_for(duration_us, 1000000LL,
+                                         g_doc.fps_num, g_doc.fps_den);
+  return 1;
 }
 
-/// 🔜**A NO-OP, AND THAT IS THE BUG THIS SHAPE NOW NAMES.**
-///
-/// `AVAssetImageGenerator` holds no position: every `copyCGImageAtTime:` IS
-/// a random access, so there is nothing here to reposition and nothing for
-/// sequential playback to reuse. The other two backends skip a real seek
-/// when they are already where they are wanted, which is what stopped a
-/// first play flashing white; Apple pays the seek on every single frame.
-///
-/// Apple's sequential answer is a different class — `AVAssetReader` — and
-/// swapping it in is exactly「reposition = start a new reader at that
-/// time」, which is why this hook exists before that work rather than after.
-/// See the `decode-seek-rule-is-written-twice` card.
+/// 🚨**REPOSITIONING IS BUILDING A NEW READER.** An `AVAssetReader` walks
+/// forward over the range it was started with and cannot be rewound — so
+/// this is a real cost, paid once per jump, and the law's 「already
+/// positioned」 rule is what keeps a play from paying it per frame.
 static int32_t qa_backend_reposition(int64_t index) {
-  (void)index;
-  return 1;
+  return qa_video_apple_decode_reposition(index, g_doc.fps_num, g_doc.fps_den,
+                                          g_decode_error,
+                                          (int32_t)sizeof(g_decode_error));
+}
+
+/// The slack rule goes DOWN to the backend rather than being spelled again
+/// inside it — Objective-C cannot see a `static` in this file, and a second
+/// copy of 「half a frame」 is exactly what this round exists to remove.
+static int32_t qa_sample_reaches_hook(int64_t stamp,
+                                      int64_t target,
+                                      int64_t frame_ticks) {
+  return qa_sample_reaches(stamp, target, frame_ticks);
 }
 
 static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
   // ⚠️STORED size: this writes the picture the file holds, and the law
   // turns it upright afterwards.
-  return qa_video_apple_decode_frame(
-      index, rgba, g_doc.stored_width * g_doc.stored_height * 4,
+  return qa_video_apple_decode_read(
+      index, g_doc.fps_num, g_doc.fps_den, rgba,
+      g_doc.stored_width * g_doc.stored_height * 4, qa_sample_reaches_hook,
       g_decode_error, (int32_t)sizeof(g_decode_error));
 }
 
