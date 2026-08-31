@@ -1459,7 +1459,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     );
     // Tips first: presets reference them by id, so the library has to be
     // able to answer before the presets that ask are read.
-    unawaited(_tipLibrary.load().then((_) => _presetLibrary.load()));
+    unawaited(
+      _tipLibrary
+          .load()
+          .then((_) => _presetLibrary.load())
+          .then((_) => _selectOpeningPreset()),
+    );
     // Warm the conte's embedded faces so the sheet opens with its type
     // ready (the tab host still awaits, for the cold path).
     unawaited(ensureConteFontsLoaded());
@@ -2275,6 +2280,43 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     );
     _activePresetByTool[targetTool] = preset.id;
     _presetLibrary.markActive(preset.id);
+  }
+
+  /// 🚨★★★THE LIBRARY OPENS SHOWING THE BRUSH THAT IS IN HAND.
+  ///
+  /// 유저 (F-63): 「브러시/지우개에서, 브러시 라이브러리에서 **초기값이
+  /// 아무것도 선택안된 UI**인데, 브러시는 그려지는거 보니 **초기 브러시자체는
+  /// 정해져있는거같음.** 그게 ui에도 연동되있도록」.
+  ///
+  /// ⛔They are exactly right, and the cause is that there were TWO facts:
+  /// `PaintToolStateNotifier` opened with baked-in settings while
+  /// `_activePresetByTool` opened EMPTY, so the app drew with a brush the
+  /// library could not name. Nothing was persisted either way — the map is
+  /// not saved — so no remembered choice is being overwritten here.
+  ///
+  /// ⇒ Applying a preset makes them ONE fact: the tool takes its settings,
+  /// the panel highlights it, and H25's per-brush size/opacity comes back
+  /// with it. ⚠️Through `_applyPreset`, not by writing the map — writing
+  /// only the id would put the highlight on a brush the tool is not holding,
+  /// which is the same disagreement pointing the other way.
+  ///
+  /// ⚠️Silent when the library is empty (a reset that saved nothing) and
+  /// when a tool already has a preset — a load that lands after the user has
+  /// picked must not overrule them.
+  void _selectOpeningPreset() {
+    if (!mounted) {
+      return;
+    }
+    final tool = _brushTool.value.tool;
+    final preset = openingPresetFor(
+      presets: _presetLibrary.presets,
+      toolPaints: canvasToolPaints(tool),
+      alreadyChosen: _activePresetByTool[tool] != null,
+    );
+    if (preset == null) {
+      return;
+    }
+    _applyPreset(preset);
   }
 
   /// The group the tool's active preset sits in — where a newly saved
