@@ -88,8 +88,24 @@ QA_EXPORT const char* qa_video_decode_last_error(void) {
 
 /// What every backend fills in and the portable law reads back.
 typedef struct {
+  /// The size a CALLER sees — the picture the right way up. For a quarter
+  /// turn this is the stored size with the sides swapped.
   int32_t width;
   int32_t height;
+  /// The size the backend decodes into, before the display transform.
+  int32_t stored_width;
+  int32_t stored_height;
+  /// The clockwise turn the container asks for: 0, 90, 180 or 270.
+  ///
+  /// 🚨★★★**A PHONE HOLDS ITS SENSOR SIDEWAYS AND WRITES THE TURN DOWN.**
+  /// Video shot upright is stored 1920x1080 with a 90° rotation, and a
+  /// decoder that ignores that hands back a picture lying on its side.
+  /// Apple's image generator applied this for us and NOBODY ELSE DID —
+  /// `qa_video_decode.c` did not contain the word 「rotation」 until now, so
+  /// the same file played upright on an iPad and sideways on Windows and
+  /// Android. That was not a decision anyone made; it was one backend's
+  /// author knowing something the other two's did not.
+  int32_t rotation;
   int32_t fps_num;
   int32_t fps_den;
   int64_t frame_count;
@@ -101,6 +117,12 @@ typedef struct {
 } qa_decode_doc;
 
 static qa_decode_doc g_doc;
+
+/// Where a rotated frame is decoded before it is turned upright. Grown on
+/// demand and kept across frames — a movie's size does not change, so this
+/// allocates once per document at most. ⛔Freed on close, not per frame.
+static uint8_t* g_rotate_scratch;
+static int64_t g_rotate_scratch_bytes;
 
 /// Whether this build has a reader at all. Android answers by `dlsym`, so
 /// this is a hook rather than a constant.
@@ -181,6 +203,66 @@ static int32_t qa_sample_reaches(int64_t stamp,
                                  int64_t target,
                                  int64_t frame_ticks) {
   return stamp + frame_ticks / 2 >= target;
+}
+
+/// A rotation in degrees, folded into the four the containers can mean.
+/// Negatives are how Android spells a counter-clockwise turn.
+static int32_t qa_rotation_quarter(int32_t degrees) {
+  int32_t turns = (degrees / 90) % 4;
+  if (turns < 0) {
+    turns += 4;
+  }
+  return turns * 90;
+}
+
+/// Copies [stored] (stored_w x stored_h, RGBA) into [out] turned clockwise
+/// by [rotation], which must be one of 0/90/180/270.
+///
+/// ⚠️[out] is the DISPLAY size: for a quarter turn its width is stored_h.
+/// ⛔Never in place — the source and destination differ in shape for the
+/// quarter turns, and for 180 a same-buffer walk would overwrite the rows
+/// it still has to read.
+static void qa_rotate_rgba(const uint8_t* stored,
+                           int32_t stored_w,
+                           int32_t stored_h,
+                           int32_t rotation,
+                           uint8_t* out) {
+  for (int32_t y = 0; y < stored_h; y += 1) {
+    for (int32_t x = 0; x < stored_w; x += 1) {
+      int32_t dx;
+      int32_t dy;
+      int32_t dw;
+      switch (rotation) {
+        case 90:
+          // The top-left of the stored picture becomes the top-RIGHT.
+          dx = stored_h - 1 - y;
+          dy = x;
+          dw = stored_h;
+          break;
+        case 180:
+          dx = stored_w - 1 - x;
+          dy = stored_h - 1 - y;
+          dw = stored_w;
+          break;
+        case 270:
+          dx = y;
+          dy = stored_w - 1 - x;
+          dw = stored_h;
+          break;
+        default:
+          dx = x;
+          dy = y;
+          dw = stored_w;
+          break;
+      }
+      const uint8_t* src = stored + ((int64_t)y * stored_w + x) * 4;
+      uint8_t* dst = out + ((int64_t)dy * dw + dx) * 4;
+      dst[0] = src[0];
+      dst[1] = src[1];
+      dst[2] = src[2];
+      dst[3] = src[3];
+    }
+  }
 }
 
 // 🚨**QA_DECODE_LAW_ONLY: the law without a platform under it.**
@@ -313,12 +395,22 @@ static int32_t qa_backend_open(const char* path) {
                                     (UINT32*)&stride))) {
     stride = (INT32)(width * 4);
   }
+  // 🚨MF_MT_VIDEO_ROTATION is an MFVideoRotationFormat, whose values ARE the
+  // clockwise angle in degrees. Absent means none, which is what a file
+  // with no transform says — and what every file said to this reader until
+  // now, because nothing here asked.
+  UINT32 rotation = 0;
+  if (FAILED(IMFMediaType_GetUINT32(current, &MF_MT_VIDEO_ROTATION,
+                                    &rotation))) {
+    rotation = 0;
+  }
   IMFMediaType_Release(current);
 
   // ⛔The size and rate checks that stood here are gone, not relaxed: the
   // portable open makes both, for every backend, in one place.
-  g_doc.width = (int32_t)width;
-  g_doc.height = (int32_t)height;
+  g_doc.stored_width = (int32_t)width;
+  g_doc.stored_height = (int32_t)height;
+  g_doc.rotation = (int32_t)rotation;
   // Media Foundation hands the rate over as a ratio already, so this is the
   // one backend that has nothing to reconstruct.
   g_doc.fps_num = (int32_t)fps_num;
@@ -376,8 +468,8 @@ static int32_t qa_backend_open(const char* path) {
 }
 
 static void qa_video_copy_rgba(const uint8_t* source, uint8_t* out) {
-  const int32_t width = g_doc.width;
-  const int32_t height = g_doc.height;
+  const int32_t width = g_doc.stored_width;
+  const int32_t height = g_doc.stored_height;
   const int32_t pitch = g_dec.stride;
   for (int32_t y = 0; y < height; y += 1) {
     // A bottom-up buffer stores the LAST row first; reading it forwards is
@@ -449,7 +541,7 @@ static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
       DWORD length = 0;
       if (SUCCEEDED(IMFMediaBuffer_Lock(buffer, &data, NULL, &length))) {
         if ((int64_t)length >=
-            (int64_t)g_dec.stride * (int64_t)g_doc.height) {
+            (int64_t)g_dec.stride * (int64_t)g_doc.stored_height) {
           qa_video_copy_rgba(data, rgba);
           wrote = 1;
         } else {
@@ -474,8 +566,9 @@ static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
 extern int32_t qa_video_apple_decode_open(const char* utf8_path,
                                           char* error,
                                           int32_t error_capacity);
-extern int32_t qa_video_apple_decode_info(int32_t* width,
-                                          int32_t* height,
+extern int32_t qa_video_apple_decode_info(int32_t* stored_width,
+                                          int32_t* stored_height,
+                                          int32_t* rotation,
                                           int64_t* frame_count,
                                           int32_t* fps_num,
                                           int32_t* fps_den);
@@ -495,9 +588,9 @@ static int32_t qa_backend_open(const char* path) {
                                   (int32_t)sizeof(g_decode_error))) {
     return 0;
   }
-  return qa_video_apple_decode_info(&g_doc.width, &g_doc.height,
-                                    &g_doc.frame_count, &g_doc.fps_num,
-                                    &g_doc.fps_den);
+  return qa_video_apple_decode_info(&g_doc.stored_width, &g_doc.stored_height,
+                                    &g_doc.rotation, &g_doc.frame_count,
+                                    &g_doc.fps_num, &g_doc.fps_den);
 }
 
 /// 🔜**A NO-OP, AND THAT IS THE BUG THIS SHAPE NOW NAMES.**
@@ -518,9 +611,11 @@ static int32_t qa_backend_reposition(int64_t index) {
 }
 
 static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
+  // ⚠️STORED size: this writes the picture the file holds, and the law
+  // turns it upright afterwards.
   return qa_video_apple_decode_frame(
-      index, rgba, g_doc.width * g_doc.height * 4, g_decode_error,
-      (int32_t)sizeof(g_decode_error));
+      index, rgba, g_doc.stored_width * g_doc.stored_height * 4,
+      g_decode_error, (int32_t)sizeof(g_decode_error));
 }
 
 #elif defined(__ANDROID__) && !defined(QA_DECODE_LAW_ONLY)
@@ -567,6 +662,9 @@ typedef struct {
 #define QA_KEY_COLOR_FORMAT "color-format"
 #define QA_KEY_STRIDE "stride"
 #define QA_KEY_SLICE_HEIGHT "slice-height"
+/// MediaFormat.KEY_ROTATION. ⚠️Set on the EXTRACTOR's track format, not on
+/// the codec's output — the codec has already forgotten it.
+#define QA_KEY_ROTATION "rotation-degrees"
 
 #define QA_COLOR_FORMAT_YUV420_PLANAR 19
 #define QA_COLOR_FORMAT_YUV420_SEMIPLANAR 21
@@ -750,6 +848,10 @@ static int32_t qa_backend_open(const char* path) {
     g_ndk_dec.format_get_float(format, QA_KEY_FRAME_RATE, &rate_f);
   }
   g_ndk_dec.format_get_int64(format, QA_KEY_DURATION, &duration_us);
+  // Absent on a file with no transform, which is most of them — and what
+  // every file looked like to this reader before the law asked.
+  int32_t rotation = 0;
+  g_ndk_dec.format_get_int32(format, QA_KEY_ROTATION, &rotation);
 
   AMediaCodec* codec = g_ndk_dec.codec_create_decoder(mime);
   if (codec == NULL ||
@@ -771,8 +873,9 @@ static int32_t qa_backend_open(const char* path) {
   g_droid_dec.extractor = extractor;
   g_droid_dec.codec = codec;
   g_droid_dec.track = video_track;
-  g_doc.width = width;
-  g_doc.height = height;
+  g_doc.stored_width = width;
+  g_doc.stored_height = height;
+  g_doc.rotation = rotation;
   // 🚨★★★**29.97 IS NOT 30, AND THIS BACKEND USED TO SAY IT WAS.**
   //
   // `frame-rate` was read with `format_get_int32` alone and the denominator
@@ -800,8 +903,8 @@ static void qa_droid_yuv_to_rgba(const uint8_t* data,
                                  int32_t slice,
                                  int semi_planar,
                                  uint8_t* rgba) {
-  const int32_t width = g_doc.width;
-  const int32_t height = g_doc.height;
+  const int32_t width = g_doc.stored_width;
+  const int32_t height = g_doc.stored_height;
   const uint8_t* y_plane = data;
   const uint8_t* u_plane = data + (int64_t)stride * slice;
   const uint8_t* v_plane =
@@ -902,8 +1005,8 @@ static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
     AMediaFormat* out_format =
         g_ndk_dec.codec_output_format(g_droid_dec.codec);
     int32_t colour = QA_COLOR_FORMAT_YUV420_FLEXIBLE;
-    int32_t stride = g_doc.width;
-    int32_t slice = g_doc.height;
+    int32_t stride = g_doc.stored_width;
+    int32_t slice = g_doc.stored_height;
     if (out_format != NULL) {
       g_ndk_dec.format_get_int32(out_format, QA_KEY_COLOR_FORMAT,
                                  &colour);
@@ -913,11 +1016,11 @@ static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
                                  &slice);
       g_ndk_dec.format_delete(out_format);
     }
-    if (stride < g_doc.width) {
-      stride = g_doc.width;
+    if (stride < g_doc.stored_width) {
+      stride = g_doc.stored_width;
     }
-    if (slice < g_doc.height) {
-      slice = g_doc.height;
+    if (slice < g_doc.stored_height) {
+      slice = g_doc.stored_height;
     }
     if (out_buffer != NULL &&
         (colour == QA_COLOR_FORMAT_YUV420_PLANAR ||
@@ -984,6 +1087,9 @@ QA_EXPORT int32_t qa_video_decode_supported(void) {
 
 QA_EXPORT void qa_video_decode_close(void) {
   qa_backend_close();
+  free(g_rotate_scratch);
+  g_rotate_scratch = NULL;
+  g_rotate_scratch_bytes = 0;
   memset(&g_doc, 0, sizeof(g_doc));
   // ⛔A closed reader is positioned nowhere. Zeroing above leaves this 0,
   // which names frame 0 — the one index a stale「next」could wrongly claim.
@@ -1001,11 +1107,17 @@ QA_EXPORT int32_t qa_video_decode_open(const char* path) {
     qa_video_decode_close();
     return 0;
   }
-  if (g_doc.width <= 0 || g_doc.height <= 0) {
+  if (g_doc.stored_width <= 0 || g_doc.stored_height <= 0) {
     qa_decode_set_error("the video stream has no frame size");
     qa_video_decode_close();
     return 0;
   }
+  // The display size is the law's answer, not each backend's. A quarter
+  // turn swaps the sides; a half turn does not.
+  g_doc.rotation = qa_rotation_quarter(g_doc.rotation);
+  const int32_t quarter = g_doc.rotation == 90 || g_doc.rotation == 270;
+  g_doc.width = quarter ? g_doc.stored_height : g_doc.stored_width;
+  g_doc.height = quarter ? g_doc.stored_width : g_doc.stored_height;
   if (g_doc.fps_num <= 0 || g_doc.fps_den <= 0) {
     g_doc.fps_num = 24;
     g_doc.fps_den = 1;
@@ -1076,8 +1188,34 @@ QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
   // read leaves the backend somewhere this function cannot name, and a stale
   //「next」would then skip the reposition that would have recovered it.
   g_doc.next_index = -1;
-  if (!qa_backend_read(index, rgba)) {
+  // ⛔The turn is applied HERE, once, for every backend — not by whichever
+  // backend's author happened to know about it. A backend decodes into
+  // STORED orientation and says nothing more about it.
+  //
+  // ⚠️The scratch exists only when there is a turn: an upright video is the
+  // overwhelming case and it must not pay a whole-frame copy for the
+  // sideways one.
+  uint8_t* target = rgba;
+  if (g_doc.rotation != 0) {
+    const int64_t needed =
+        (int64_t)g_doc.stored_width * g_doc.stored_height * 4;
+    if (g_rotate_scratch_bytes < needed) {
+      uint8_t* grown = (uint8_t*)realloc(g_rotate_scratch, (size_t)needed);
+      if (grown == NULL) {
+        qa_decode_set_error("out of memory turning the frame upright");
+        return 0;
+      }
+      g_rotate_scratch = grown;
+      g_rotate_scratch_bytes = needed;
+    }
+    target = g_rotate_scratch;
+  }
+  if (!qa_backend_read(index, target)) {
     return 0;
+  }
+  if (g_doc.rotation != 0) {
+    qa_rotate_rgba(target, g_doc.stored_width, g_doc.stored_height,
+                   g_doc.rotation, rgba);
   }
   // Positioned on the frame AFTER this one, so the next request for it can
   // skip the reposition entirely.

@@ -85,6 +85,64 @@ int main(void) {
   expect_int("a sample more than half a frame early does NOT",
              qa_sample_reaches(840, 900, 100), 0);
 
+  // 🚨THE ONE THAT ONLY APPLE KNEW. A phone holds its sensor sideways and
+  // writes the turn down; a decoder that ignores it hands back a picture on
+  // its side. Negatives are how Android spells counter-clockwise.
+  expect_int("no transform is no turn", qa_rotation_quarter(0), 0);
+  expect_int("90 stays 90", qa_rotation_quarter(90), 90);
+  expect_int("-90 is 270", qa_rotation_quarter(-90), 270);
+  expect_int("360 folds to 0", qa_rotation_quarter(360), 0);
+  expect_int("450 folds to 90", qa_rotation_quarter(450), 90);
+  expect_int("-270 is 90", qa_rotation_quarter(-270), 90);
+
+  // A 3x2 picture, so a quarter turn is visibly a DIFFERENT SHAPE and the
+  // test would notice a rotation that only moved pixels around inside the
+  // old one. Values are the pixel index, in the red channel.
+  //   stored          0 1 2
+  //                   3 4 5
+  {
+    uint8_t stored[3 * 2 * 4];
+    for (int32_t i = 0; i < 6; i += 1) {
+      stored[i * 4 + 0] = (uint8_t)i;
+      stored[i * 4 + 1] = 0;
+      stored[i * 4 + 2] = 0;
+      stored[i * 4 + 3] = 255;
+    }
+    uint8_t out[3 * 2 * 4];
+
+    // 90° clockwise — 2 columns become 2 rows, top-left goes to top-right:
+    //   3 0
+    //   4 1
+    //   5 2
+    const uint8_t want90[6] = {3, 0, 4, 1, 5, 2};
+    qa_rotate_rgba(stored, 3, 2, 90, out);
+    for (int32_t i = 0; i < 6; i += 1) {
+      expect_int("90 turns the picture clockwise", out[i * 4], want90[i]);
+    }
+
+    // 180° — the whole thing reversed.
+    const uint8_t want180[6] = {5, 4, 3, 2, 1, 0};
+    qa_rotate_rgba(stored, 3, 2, 180, out);
+    for (int32_t i = 0; i < 6; i += 1) {
+      expect_int("180 reverses the picture", out[i * 4], want180[i]);
+    }
+
+    // 270° — the other quarter, and the inverse of 90.
+    const uint8_t want270[6] = {2, 5, 1, 4, 0, 3};
+    qa_rotate_rgba(stored, 3, 2, 270, out);
+    for (int32_t i = 0; i < 6; i += 1) {
+      expect_int("270 turns it the other way", out[i * 4], want270[i]);
+    }
+
+    // ⚠️And the alpha rides along. A rotation that moved only RGB would
+    // pass every check above and hand back a transparent picture.
+    qa_rotate_rgba(stored, 3, 2, 90, out);
+    for (int32_t i = 0; i < 6; i += 1) {
+      expect_int("every channel is carried, alpha included", out[i * 4 + 3],
+                 255);
+    }
+  }
+
   if (g_failures == 0) {
     printf("qa_video_decode law: all checks passed\n");
     return 0;
