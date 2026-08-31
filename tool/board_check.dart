@@ -466,7 +466,23 @@ Iterable<String> _workThatShipped(
         shipped.add(c.id);
       }
       if (!_saysSomething(c)) bare.add(c.id);
-    } else if (_recent(c, since) && _prInProse.hasMatch(c.note)) {
+    } else if (_recent(c, since) &&
+        c.log.any((l) =>
+            !l.byUser && l.pr == null && _prInProse.hasMatch(l.text))) {
+      // 🚨★★★THE STORY, NOT THE HEAD — the last piece of `board-one-stream`
+      // (「note·said·title 은 아직 마지막값이 이기는 필드다 — 항목으로 접는
+      // 것이 이 개편의 마지막 조각이다」).
+      //
+      // ⛔This read `c.note`, which is LAST-WINS, so a PR written into an
+      // EARLIER note was invisible the moment any later line carried a note.
+      // 🧪Measured before changing it: the same card, same prose, complained
+      // when the PR line was last and went silent when one more note
+      // followed it. That is not a gate, that is a coin toss on ordering.
+      //
+      // ⚠️`!l.byUser` keeps the meaning it always had: the complaint is 「내가
+      // 본문에 적었다」, and the user quoting a number in their own feedback
+      // is not that. `l.pr == null` says the same thing the branch already
+      // says — an entry that CLAIMS its PR properly is the correct shape.
       prose.add(c.id);
     }
     final rest = c.rest.trim();
