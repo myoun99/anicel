@@ -92,17 +92,64 @@ late final String _gitRoot;
 /// ⚠️Silent when the copy is missing, which is what `dart run` looks like: a
 /// development run must not blow itself up mid-probe.
 File? _builtFrom;
-File? _liveSource;
+List<File>? _liveSources;
 
-/// The source this exe was built from, and the source as it is now — set once
-/// at startup so a request only pays the compare.
+/// EVERY source this exe is compiled from — the entry file and the `tool/`
+/// files it imports, sorted so the order cannot drift.
+///
+/// 🚨★★★AN EXE IS MADE OF MORE THAN ITS ENTRY FILE, and forgetting that made
+/// this whole mechanism a lie for any change that did not touch the entry.
+/// 🧪2026-08-31: #1433 changed only `board_model.dart` — which BOTH binaries
+/// compile in — and the running board kept serving code built from the
+/// previous one. No rebuild, no notice, nothing to look at. That is exactly
+/// the failure the self-replace above was written to end, one level down.
+///
+/// ⚠️ONE LEVEL is the whole graph here: each entry imports `board_model.dart`
+/// and that imports nothing of ours. Derived rather than listed, because a
+/// listed name is a word somebody has to remember — and this file has spent
+/// the day removing those.
+///
+/// ⛔THE SAME RULE LIVES IN `board_up.sh` (`sources_of`), because that is what
+/// WRITES the stamp. Two spellings of one rule: change both or neither.
+List<File> sourcesOfEntry(File entry) {
+  final dir = entry.parent.path;
+  final out = <String>{entry.path.replaceAll('\\', '/')};
+  final imports = RegExp(r"^import '([A-Za-z0-9_]+\.dart)';", multiLine: true);
+  for (final m in imports.allMatches(entry.readAsStringSync())) {
+    out.add('${dir.replaceAll('\\', '/')}/${m.group(1)}');
+  }
+  final paths = out.toList()..sort();
+  return [for (final p in paths) File(p)];
+}
+
+/// The stamp this exe was built with, and the sources as they are now — set
+/// once at startup so a request only pays the compare.
+///
+/// 🚨★★★A NEW FILE NAME, and that is the whole point. `.src` held a COPY OF
+/// THE ENTRY FILE; this holds the concatenation of every source. Those two
+/// answers to 「what is this exe made of」 cannot both live in one path,
+/// because the writer (`board_up.sh`, in the memory folder) and the reader
+/// (this file, in the repo) **cannot land in the same instant**.
+///
+/// 🧪2026-08-31, and I did it to the live board: I patched the shell first,
+/// the Stop hook ran it, and the running server — still comparing the entry
+/// file alone — found the concatenation different on EVERY request and took
+/// itself down every time. Not a stale board: a board that would not stay up.
+///
+/// ⇒ With a new name the order stops mattering. An old exe keeps reading
+/// `.src` and is happy; a new exe finds no `.srcs` yet and stays silent,
+/// which is exactly what this function already does for a missing stamp
+/// (「⚠️Silent when the copy is missing, which is what `dart run` looks
+/// like」). Neither can loop.
 void _findOwnSource() {
-  final stamp = File('${Platform.resolvedExecutable}.src');
+  final stamp = File('${Platform.resolvedExecutable}.srcs');
   if (!stamp.existsSync()) return;
-  final live = File('$_gitRoot/tool/board_server.dart');
-  if (!live.existsSync()) return;
+  final entry = File('$_gitRoot/tool/board_server.dart');
+  if (!entry.existsSync()) return;
+  final sources = sourcesOfEntry(entry);
+  if (sources.any((f) => !f.existsSync())) return;
   _builtFrom = stamp;
-  _liveSource = live;
+  _liveSources = sources;
 }
 
 /// ⚠️Bytes, not a hash and NOT mtime. mtime was measured wrong on this very
@@ -111,10 +158,11 @@ void _findOwnSource() {
 /// holds. A hash would work too but needs a package; the build already keeps
 /// the copy, so comparing it is exact and costs nothing to maintain.
 bool _sourceMoved() {
-  final was = _builtFrom, now = _liveSource;
+  final was = _builtFrom, now = _liveSources;
   if (was == null || now == null) return false;
   try {
-    final a = was.readAsBytesSync(), b = now.readAsBytesSync();
+    final a = was.readAsBytesSync();
+    final b = <int>[for (final f in now) ...f.readAsBytesSync()];
     if (a.length != b.length) return true;
     for (var i = 0; i < a.length; i++) {
       if (a[i] != b[i]) return true;
