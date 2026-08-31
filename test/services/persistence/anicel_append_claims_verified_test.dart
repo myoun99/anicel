@@ -75,9 +75,7 @@ void main() {
     theirStore.storeBakedSurface(key('theirs', 'f1'), inked(3));
     theirStore.storeBakedSurface(key('theirs', 'f2'), inked(5));
     await service.save(
-      project: createDefaultProject().copyWith(
-        id: const ProjectId('theirs'),
-      ),
+      project: createDefaultProject().copyWith(id: const ProjectId('theirs')),
       brushFrameStore: theirStore,
       filePath: path,
     );
@@ -101,7 +99,8 @@ void main() {
     expect(
       {for (final entry in replaced.entries) entry.name},
       {anicelProjectEntryNameCompressed, ourCelName},
-      reason: 'replace means REPLACE — an append here would have kept every '
+      reason:
+          'replace means REPLACE — an append here would have kept every '
           'foreign cel alive under the new project.json, quietly retaining '
           'the other project\'s content (and its bytes for anyone with an '
           'unzip tool)',
@@ -187,16 +186,13 @@ void main() {
     final foreignStore = BrushFrameStore();
     foreignStore.storeBakedSurface(key('theirs', 'g1'), inked(7));
     await service.save(
-      project: createDefaultProject().copyWith(
-        id: const ProjectId('theirs'),
-      ),
+      project: createDefaultProject().copyWith(id: const ProjectId('theirs')),
       brushFrameStore: foreignStore,
       filePath: foreignPath,
     );
-    File(path).writeAsBytesSync(
-      File(foreignPath).readAsBytesSync(),
-      flush: true,
-    );
+    File(
+      path,
+    ).writeAsBytesSync(File(foreignPath).readAsBytesSync(), flush: true);
 
     store.storeBakedSurface(key('ours', 'f2'), inked(9));
 
@@ -220,52 +216,123 @@ void main() {
           path,
         ).entryNamed(anicelCelEntryName(key('ours', 'f1'))),
         isNotNull,
-        reason: 'a completed save must carry the clean cel — a hollow '
+        reason:
+            'a completed save must carry the clean cel — a hollow '
             'append would have written only the dirty one',
       );
     }
   });
 
-  test('🚨an ordinary re-save APPENDS — it does not rewrite the file whole',
-      () async {
-    // The regression this pins: compressing the manifest made the
-    // ownership check (which reads the target's project id) parse deflate
-    // bytes as UTF-8, throw, and fall back to「replace, don't append」. Every
-    // save became a full rewrite — on a project carrying media that means
-    // re-streaming every megabyte on every Ctrl+S, silently.
-    //
-    // ⛔A size assertion is what catches it, because nothing else does: the
-    // file is still correct after a full rewrite, just written the
-    // expensive way.
-    const service = AnicelFileService();
-    final store = BrushFrameStore();
-    final path = '${directory.path}/append.anicel';
-    final project = createDefaultProject();
+  test(
+    '🚨an ordinary re-save APPENDS — it does not rewrite the file whole',
+    () async {
+      // The regression this pins: compressing the manifest made the
+      // ownership check (which reads the target's project id) parse deflate
+      // bytes as UTF-8, throw, and fall back to「replace, don't append」. Every
+      // save became a full rewrite — on a project carrying media that means
+      // re-streaming every megabyte on every Ctrl+S, silently.
+      //
+      // ⛔A size assertion is what catches it, because nothing else does: the
+      // file is still correct after a full rewrite, just written the
+      // expensive way.
+      const service = AnicelFileService();
+      final store = BrushFrameStore();
+      final path = '${directory.path}/append.anicel';
+      final project = createDefaultProject();
 
-    store.storeBakedSurface(key('a', 'f1'), inked(1));
-    await service.save(
-      project: project,
-      brushFrameStore: store,
-      filePath: path,
-    );
-    final first = File(path).lengthSync();
+      store.storeBakedSurface(key('a', 'f1'), inked(1));
+      await service.save(
+        project: project,
+        brushFrameStore: store,
+        filePath: path,
+      );
+      final first = File(path).lengthSync();
 
-    // ⚠️The SAME cel, re-inked: that kills its file ref, so there are ZERO
-    // clean refs and the save takes the ownership-check branch — which is
-    // the one that reads the manifest, and the one the regression broke.
-    store.storeBakedSurface(key('a', 'f1'), inked(2));
-    await service.save(
-      project: project,
-      brushFrameStore: store,
-      filePath: path,
-    );
+      // ⚠️The SAME cel, re-inked: that kills its file ref, so there are ZERO
+      // clean refs and the save takes the ownership-check branch — which is
+      // the one that reads the manifest, and the one the regression broke.
+      store.storeBakedSurface(key('a', 'f1'), inked(2));
+      await service.save(
+        project: project,
+        brushFrameStore: store,
+        filePath: path,
+      );
 
-    expect(
-      File(path).lengthSync(),
-      greaterThan(first),
-      reason:
-          'an append leaves the superseded bytes behind, so the file GROWS. '
-          'A full rewrite would land at roughly the same size and look fine.',
-    );
-  });
+      expect(
+        File(path).lengthSync(),
+        greaterThan(first),
+        reason:
+            'an append leaves the superseded bytes behind, so the file GROWS. '
+            'A full rewrite would land at roughly the same size and look fine.',
+      );
+    },
+  );
+
+  /// 🚨★★★**AND A SAVE AS IS A FULL WRITE, EVEN ONTO AN EXISTING NAME.**
+  ///
+  /// 유저 2026-08-31: 「다른이름저장은 항상 무조건 풀저장으로 작동하는게
+  /// 좋을거같음 … 기존 파일에 저장 덮어씌우기를 하더라도 고장난 프로젝트를
+  /// 고치기위해 풀저장 시키는게 맞다고 생각됨」.
+  ///
+  /// Onto a NEW name it always was — there is no file to append to. The
+  /// hole was an overwrite onto an OLDER COPY OF THE SAME PROJECT: with
+  /// every cel dirty the soundness test passes, the ownership check sees
+  /// its own project id, and the write appends. The result opens fine and
+  /// carries the old copy's entries underneath as dead bytes, which is the
+  /// opposite of what「고치기 위해」asks for.
+  test(
+    '🚨a Save As onto an older copy of the same project REWRITES it',
+    () async {
+      const service = AnicelFileService();
+      final project = createDefaultProject();
+      final path = '${directory.path}/older copy.anicel';
+
+      // An older, fatter copy of this project: several cels, then one of
+      // them re-inked so the file carries superseded bytes too.
+      final past = BrushFrameStore();
+      for (final frame in ['f1', 'f2', 'f3', 'f4']) {
+        past.storeBakedSurface(key('a', frame), inked(frame.hashCode & 7));
+      }
+      await service.save(
+        project: project,
+        brushFrameStore: past,
+        filePath: path,
+      );
+      past.storeBakedSurface(key('a', 'f1'), inked(6));
+      await service.save(
+        project: project,
+        brushFrameStore: past,
+        filePath: path,
+      );
+      final fat = File(path).lengthSync();
+
+      // Now a DIFFERENT session of the same project — one small cel, all of
+      // it dirty, no refs anywhere — is saved over that name.
+      final ours = BrushFrameStore();
+      ours.storeBakedSurface(key('a', 'f1'), inked(2));
+      await service.save(
+        project: project,
+        brushFrameStore: ours,
+        filePath: path,
+        rewriteWhole: true,
+      );
+
+      expect(
+        {
+          for (final entry in parseAnicelZipLayoutFile(path).entries)
+            entry.name,
+        },
+        {anicelProjectEntryNameCompressed, anicelCelEntryName(key('a', 'f1'))},
+        reason:
+            'appending would have kept f2..f4 and the superseded f1 alive '
+            'under the new manifest — a file that opens correctly while '
+            'carrying a whole other session of garbage',
+      );
+      expect(
+        File(path).lengthSync(),
+        lessThan(fat),
+        reason: 'and the rewrite is what actually reclaims those bytes',
+      );
+    },
+  );
 }

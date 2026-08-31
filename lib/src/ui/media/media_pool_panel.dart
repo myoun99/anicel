@@ -192,6 +192,19 @@ class MediaPoolPanel extends StatelessWidget {
   /// row touch the disk to draw itself.
   String _subtitleFor(MediaAsset asset) {
     final parts = <String>[];
+    // 🚨★★★**WHICH ONE IT IS, FIRST.** 유저 2026-08-31: 「해당 파일이
+    // 품어진 상태인지 참조인지 모르겠음. **그걸 텍스트로 적어두고**」.
+    //
+    // Every other fact on this line — the size, the date — reads the same
+    // whether the project owns the bytes or merely points at them, and
+    // that is the one difference that decides what happens when the
+    // original moves. It leads because it is the row's subject, not a
+    // detail of it.
+    parts.add(
+      asset.carried
+          ? AppText.strings.mediaCarriedState
+          : AppText.strings.mediaReferencedState,
+    );
     final bytes = storedBytes[asset.path] ?? asset.identity?.lengthBytes;
     // 🚨The CONFORM, asked for by name (유저 2026-08-30: 「가시화정책에 따라
     // 미디어풀 패널에서 해당파일의 컨폼파일 크기 표시할것」). It is several
@@ -226,7 +239,15 @@ class MediaPoolPanel extends StatelessWidget {
     }
     // Nothing known yet (a fresh pool before the first sweep): the path is
     // better than an empty line.
-    return parts.isEmpty ? asset.path : parts.join(' · ');
+    //
+    // ⚠️Counted against ONE, not zero. The carried/linked word above always
+    // lands, so「empty」stopped being reachable the moment it was added —
+    // and a row that said only「Linked」would have dropped the path a fresh
+    // pool has nothing else to show.
+    if (parts.length == 1) {
+      parts.add(asset.path);
+    }
+    return parts.join(' · ');
   }
 
   Future<void> _rename(BuildContext context, MediaAsset asset) async {
@@ -240,30 +261,23 @@ class MediaPoolPanel extends StatelessWidget {
     onRenameAsset(asset.path, name);
   }
 
-  /// ⚠️Async because carrying an asset now secures its bytes in an isolate
-  /// and the answer waits for that — so the notice below crosses an await,
-  /// and this panel is a `StatelessWidget` with no `mounted` of its own.
-  /// `context.mounted` is the guard: a pool row can be gone by the time a
-  /// big file finishes, and showing a dialog on a dead context throws.
-  Future<void> _promote(BuildContext context, MediaAsset asset) async {
-    if (await onPromoteAsset(asset.path)) {
-      return;
-    }
-    if (!context.mounted) {
-      return;
-    }
-    // Already carried. (This used to say「or a kind that never is」 — the
-    // per-kind ceiling died 2026-08-14 and every kind carries now.)
-    // Saying nothing would read
-    // as a menu item that does not work.
-    unawaited(
-      showAppNotice(
-        context,
-        title: AppText.strings.commonNotice,
-        message: AppText.strings.mediaAlreadyInProject,
-      ),
-    );
-  }
+  /// 🪦**The「already carried」notice is GONE, not reworded.**
+  ///
+  /// It said「이미 파일 안에 있거나, **항상 참조로 남는 종류(동영상)**
+  /// 입니다」— and that second half had been false since 2026-08-14, when
+  /// the per-kind ceiling died and every kind became carryable. 유저
+  /// 2026-08-31 met it and reported it as a 낡은 안내창.
+  ///
+  /// Rewording it would have kept a notice whose only remaining job was to
+  /// explain a menu item that should not have been there. The item is now
+  /// hidden on a carried row, so the false branch below cannot be reached
+  /// by pressing anything — and an answer nobody can ask for is not an
+  /// answer worth translating into five languages.
+  ///
+  /// ⚠️Async because carrying secures the bytes in an isolate and the
+  /// answer waits for that.
+  Future<void> _promote(BuildContext context, MediaAsset asset) =>
+      onPromoteAsset(asset.path);
 
   /// Hands the asset's conformed audio out as a plain 16-bit WAV.
   ///
@@ -576,15 +590,21 @@ class MediaPoolPanel extends StatelessWidget {
               ),
               // The other half of importing by reference: the moment the
               // user decides the project should own this file after all.
-              // Offered on every row rather than only on references — a
-              // file already carried answers "nothing to do" honestly,
-              // and hiding it would mean the row's menu changes shape for
-              // a reason the user cannot see.
-              PanelFlyoutItem(
-                keyValue: 'media-asset-menu-promote',
-                label: AppText.strings.mediaRegisterInProject,
-                onSelected: () => _promote(context, asset),
-              ),
+              //
+              // 🪦It used to be offered on EVERY row, on the grounds that
+              // hiding it would change the menu's shape「for a reason the
+              // user cannot see」. 유저 2026-08-31 removed that ground and
+              // asked for both halves together: 「그걸 텍스트로 적어두고
+              // **품어진 파일이면 프로젝트 파일에 품기 안뜨도록**」. The
+              // row now SAYS which one it is, so the reason is on screen —
+              // and an item whose only possible answer is「nothing to do」
+              // is not a verb.
+              if (!asset.carried)
+                PanelFlyoutItem(
+                  keyValue: 'media-asset-menu-promote',
+                  label: AppText.strings.mediaRegisterInProject,
+                  onSelected: () => _promote(context, asset),
+                ),
               // 🚨What compression took away, handed back on demand. A
               // conform stopped being a WAV on 2026-08-30 and the user
               // accepted that trade naming this as the replacement:

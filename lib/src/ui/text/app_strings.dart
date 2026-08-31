@@ -361,6 +361,8 @@ class AppStrings {
   /// a question the app never used to answer at all.
   String get saveProgressRunning => _s('saveProgressRunning');
   String get saveProgressDone => _s('saveProgressDone');
+  String get savePrepareRunning => _s('savePrepareRunning');
+  String get savePrepareDone => _s('savePrepareDone');
   String get openProgressRunning => _s('openProgressRunning');
   String get openProgressDone => _s('openProgressDone');
 
@@ -524,6 +526,7 @@ class AppStrings {
   String get containerAreaStaged => _s('containerAreaStaged');
   String get containerTotal => _s('containerTotal');
   String get saveCelsLostTemplate => _s('saveCelsLostTemplate');
+  String get projectFileVanished => _s('projectFileVanished');
 
   // --- Display (R11) ---
   String get uiScaleLabel => _s('uiScaleLabel');
@@ -787,7 +790,8 @@ class AppStrings {
   String get mediaRegisterInProject => _s('mediaRegisterInProject');
   String get mediaExportWav => _s('mediaExportWav');
   String get mediaExportWavNoAudio => _s('mediaExportWavNoAudio');
-  String get mediaAlreadyInProject => _s('mediaAlreadyInProject');
+  String get mediaCarriedState => _s('mediaCarriedState');
+  String get mediaReferencedState => _s('mediaReferencedState');
 
   /// Shown on opening a project written by a build that kept its media in
   /// a sibling folder. `{name}` is that folder.
@@ -1348,6 +1352,8 @@ class AppStrings {
     'commonSaveAs': 'Save as…',
     'saveProgressRunning': 'Saving…',
     'saveProgressDone': 'Saved',
+    'savePrepareRunning': 'Preparing…',
+    'savePrepareDone': 'Ready',
     'openProgressRunning': 'Opening…',
     'openProgressDone': 'Opened',
     'openWaitingCloudTemplate': 'Downloading from the cloud · {sec}s',
@@ -1512,6 +1518,10 @@ class AppStrings {
     'saveCelsLostTemplate':
         'Saved, but {count} drawing(s) could not be included: the project '
         'file they were stored in was removed while the project was open.',
+    'projectFileVanished':
+        "This project's file is no longer there — deleted or moved. Restore "
+        'it now if it is still in a trash: the drawings already saved live '
+        'only inside that file, and saving would lose them.',
     'uiScaleLabel': 'Interface scale',
     'accentTitle': 'Accent colors',
     'accent1Label': 'Accent 1',
@@ -1579,9 +1589,8 @@ class AppStrings {
     'mediaRegisterInProject': 'Keep inside the project file',
     'mediaExportWav': 'Export as WAV',
     'mediaExportWavNoAudio': 'This asset has no audio to export.',
-    'mediaAlreadyInProject':
-        'Nothing to take in — it is kept inside already, or it is a kind '
-        'that always stays a reference (video).',
+    'mediaCarriedState': 'In the project',
+    'mediaReferencedState': 'Linked',
     'projectLegacyAssetsFolder':
         'This project still has a {name} folder beside it. Nothing writes '
         'there any more — save once and its media moves inside the project '
@@ -2190,6 +2199,8 @@ class AppStrings {
     'commonSaveAs': '名前を付けて保存…',
     'saveProgressRunning': '保存中…',
     'saveProgressDone': '保存しました',
+    'savePrepareRunning': '準備中…',
+    'savePrepareDone': '準備完了',
     'openProgressRunning': '読み込み中…',
     'openProgressDone': '読み込みました',
     'openWaitingCloudTemplate': 'クラウドから受信中 · {sec}秒',
@@ -2398,6 +2409,8 @@ class AppStrings {
     'containerTotal': '合計',
     'saveCelsLostTemplate':
         '保存しましたが、{count} 枚の絵を含められませんでした。それらが入っていたプロジェクトファイルが、開いている間に削除されました。',
+    'projectFileVanished':
+        'このプロジェクトのファイルが見つかりません — 削除か移動された可能性があります。ゴミ箱に残っていれば今すぐ戻してください。保存済みの絵はそのファイルの中にしかなく、このまま保存すると失われます。',
     'uiScaleLabel': 'UIの大きさ',
     'accentTitle': 'アクセントカラー',
     'accent1Label': 'アクセント1',
@@ -2510,9 +2523,8 @@ class AppStrings {
     'mediaRegisterInProject': 'プロジェクトファイルに取り込む',
     'mediaExportWav': 'WAVで書き出す',
     'mediaExportWavNoAudio': 'この素材には書き出せる音声がありません。',
-    'mediaAlreadyInProject':
-        '取り込むものがありません — すでにファイル内にあるか、'
-        '常に参照のままの種類（動画）です。',
+    'mediaCarriedState': 'プロジェクト内',
+    'mediaReferencedState': 'リンク',
     'projectLegacyAssetsFolder':
         'このプロジェクトの隣にまだ {name} フォルダーがあります。'
         'もう使われません — 一度保存すると中のメディアはプロジェクト'
@@ -3144,6 +3156,8 @@ class AppStrings {
     'commonSaveAs': '다른 이름으로 저장…',
     'saveProgressRunning': '저장 중…',
     'saveProgressDone': '저장 완료',
+    'savePrepareRunning': '준비 중…',
+    'savePrepareDone': '준비 완료',
     'openProgressRunning': '여는 중…',
     'openProgressDone': '열기 완료',
     'openWaitingCloudTemplate': '클라우드에서 내려받는 중 · {sec}초',
@@ -3350,6 +3364,8 @@ class AppStrings {
     'containerTotal': '합계',
     'saveCelsLostTemplate':
         '저장했지만 그림 {count}장을 담지 못했습니다. 그 그림들이 들어 있던 프로젝트 파일이 열려 있는 동안 삭제되었습니다.',
+    'projectFileVanished':
+        '이 프로젝트의 파일이 사라졌습니다 — 지워졌거나 옮겨졌습니다. 휴지통에 아직 있다면 지금 되살리세요. 이미 저장했던 그림들은 그 파일 안에만 있어서, 이대로 저장하면 잃습니다.',
     'uiScaleLabel': 'UI 크기',
     'accentTitle': '강조 색상',
     'accent1Label': '강조색 1',
@@ -3462,7 +3478,8 @@ class AppStrings {
     'mediaRegisterInProject': '프로젝트 파일에 품기',
     'mediaExportWav': 'WAV로 내보내기',
     'mediaExportWavNoAudio': '이 소재에는 내보낼 오디오가 없습니다.',
-    'mediaAlreadyInProject': '품을 것이 없습니다 — 이미 파일 안에 있거나, 항상 참조로 남는 종류(동영상)입니다.',
+    'mediaCarriedState': '품음',
+    'mediaReferencedState': '참조',
     'projectLegacyAssetsFolder':
         '이 프로젝트 옆에 아직 {name} 폴더가 있습니다. 이제 쓰지 않습니다 — '
         '한 번 저장하면 안의 미디어가 프로젝트 파일로 들어가고, 그 뒤엔 폴더를 지워도 됩니다.',
@@ -4106,6 +4123,8 @@ class AppStrings {
     'commonSaveAs': 'Enregistrer sous…',
     'saveProgressRunning': 'Enregistrement…',
     'saveProgressDone': 'Enregistré',
+    'savePrepareRunning': 'Préparation…',
+    'savePrepareDone': 'Prêt',
     'resizeProgressRunning': 'Redimensionnement…',
     'resizeProgressDone': 'Redimensionné',
     'unsavedAutosaveTitle': 'Enregistrez votre projet',
@@ -4321,6 +4340,11 @@ class AppStrings {
         'Enregistré, mais {count} dessin(s) manquent : le fichier de projet '
         'qui les contenait a été supprimé pendant que le projet était '
         'ouvert.',
+    'projectFileVanished':
+        "Le fichier de ce projet n'est plus là — supprimé ou déplacé. "
+        "Restaurez-le maintenant s'il est encore dans une corbeille : les "
+        'dessins déjà enregistrés ne vivent que dans ce fichier, et un '
+        'enregistrement les perdrait.',
     'accentTitle': "Couleurs d'accent",
     'accent1Label': 'Accent 1',
     'accent1Help': 'Sélection, tête de lecture, bascules actives.',
@@ -4434,9 +4458,8 @@ class AppStrings {
     'mediaRegisterInProject': 'Conserver dans le fichier de projet',
     'mediaExportWav': 'Exporter en WAV',
     'mediaExportWavNoAudio': "Cet élément n'a pas d'audio à exporter.",
-    'mediaAlreadyInProject':
-        "Rien à intégrer — le fichier est déjà à l'intérieur, ou son type "
-        "reste toujours une référence (vidéo).",
+    'mediaCarriedState': 'Dans le projet',
+    'mediaReferencedState': 'Lié',
     'projectLegacyAssetsFolder':
         "Ce projet a encore un dossier {name} à côté de lui. Plus rien n'y "
         "est écrit — enregistrez une fois et ses médias passent dans le "
@@ -5061,6 +5084,8 @@ class AppStrings {
     'commonSaveAs': '另存为…',
     'saveProgressRunning': '正在保存…',
     'saveProgressDone': '已保存',
+    'savePrepareRunning': '正在准备…',
+    'savePrepareDone': '准备完成',
     'resizeProgressRunning': '正在调整尺寸…',
     'resizeProgressDone': '已调整尺寸',
     'unsavedAutosaveTitle': '保存你的项目',
@@ -5247,6 +5272,8 @@ class AppStrings {
     'containerAreaStaged': '暂存媒体',
     'containerTotal': '合计',
     'saveCelsLostTemplate': '已保存，但有 {count} 张画面未能包含：存放它们的项目文件在项目打开期间被删除了。',
+    'projectFileVanished':
+        '此项目的文件已不在原处 — 可能被删除或移动了。若还能从回收站恢复，请现在恢复：已保存过的画面只存在于该文件中，此后保存会丢失它们。',
     'accentTitle': '强调色',
     'accent1Label': '强调色 1',
     'accent1Help': '用于选区、播放头和已启用的开关。',
@@ -5355,7 +5382,8 @@ class AppStrings {
     'mediaRegisterInProject': '收入项目文件',
     'mediaExportWav': '导出为 WAV',
     'mediaExportWavNoAudio': '此素材没有可导出的音频。',
-    'mediaAlreadyInProject': '没有可收入的内容 — 它已在文件内，或属于始终保持引用的类型（视频）。',
+    'mediaCarriedState': '在项目内',
+    'mediaReferencedState': '链接',
     'projectLegacyAssetsFolder':
         '此项目旁边仍有 {name} 文件夹。它已不再被写入 — 保存一次后，'
         '其中的媒体会进入项目文件，之后即可删除该文件夹。',

@@ -506,6 +506,26 @@ class AnicelFileService {
     /// is about to be MOVED by a document picker, and refs adopted into a
     /// path that is about to stop existing are every cel dying at once.
     bool adoptRefs = true,
+
+    /// 🚨★★★**TRUE FOR A SAVE AS, ALWAYS.**
+    ///
+    /// 유저 2026-08-31: 「다른이름저장은 항상 무조건 풀저장으로 작동하는게
+    /// 좋을거같음 … 다른이름저장은 기본적으로 첫 저장이나 마찬가지니까.
+    /// 기존 파일에 저장 덮어씌우기를 하더라도 고장난 프로젝트를 고치기위해
+    /// 풀저장 시키는게 맞다고 생각됨」.
+    ///
+    /// A Save As onto a NEW name already rewrote — the file is not there to
+    /// append to. The hole was Save As ONTO AN EXISTING copy of the same
+    /// project: with every cel dirty the soundness test below passes, so
+    /// the write APPENDED and the old copy's entries stayed underneath as
+    /// dead bytes. The file opened correctly and carried a second project's
+    /// worth of garbage, which is the opposite of what「고치기 위해」means.
+    ///
+    /// ⛔It does NOT rescue cels whose bytes are already gone. A clean cel
+    /// lives as a ref into the file it was last written to — the store
+    /// drops the cold blob on adoption — so ANY write, whole or appended,
+    /// has to read it back from there. Rewriting reads MORE, not less.
+    bool rewriteWhole = false,
   }) async {
     // Aux stores (the conte sheet ink, R5) ride the same archive: their
     // keys live in their own namespace, so the snapshots merge without
@@ -555,6 +575,7 @@ class AnicelFileService {
         if (_samePath(entry.value.filePath, filePath)) entry.key,
     };
     final sound =
+        !rewriteWhole &&
         File(filePath).existsSync() &&
         allKeys.every((key) => dirty.contains(key) || refsHere.contains(key));
 

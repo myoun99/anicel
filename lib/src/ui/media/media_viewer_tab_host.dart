@@ -244,6 +244,11 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   /// had to ask which was live. See [ViewerDocument].
   ViewerDocument? _document;
   final Map<int, _RenderedPage> _pageCache = {};
+
+  /// The last page index whose raster actually reached the screen — what a
+  /// page with nothing rendered yet falls back to. ⛔Reset with the cache:
+  /// an index from the previous document names an image that is gone.
+  int _lastDrawnPage = 0;
   String? _message;
 
   /// What this device affords the page cache, and where a memory warning
@@ -399,6 +404,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       page.image.dispose();
     }
     _pageCache.clear();
+    _lastDrawnPage = 0;
     widget.session.viewerRasterBytesByViewer[widget.viewerId] = 0;
     _rendersInFlight.clear();
     final document = _document;
@@ -732,6 +738,27 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       );
       _ensurePageRendered(pageIndex, scale);
       pageImage = _pageCache[pageIndex]?.image;
+      // 🚨★★★**STALE ACROSS PAGES, NOT ONLY ACROSS SCALES.**
+      //
+      // [_RenderedPage] already says a wrong-SCALE image draws while the
+      // right one renders. The page axis had no such rule, so a page whose
+      // raster had not landed drew NOTHING — and playback advances the
+      // playhead on a wall clock whether or not the decoder kept up.
+      //
+      // 유저 2026-08-31: 「첫 재생때 … 흰 화면이 엄청나게 깜빡이면서
+      // 재생됨. 두번째 재생부터 점점 나아짐. 세번째부터는 흰 화면 없이
+      // 정상재생」 — the flashes ARE the cold cache, one white frame per
+      // miss, disappearing as the pages fill in.
+      //
+      // ⛔The last picture is not a guess about this page; it is the last
+      // true thing this viewer showed, which is what every video player
+      // holds on a late frame. `_ensurePageRendered` above is still
+      // running, so the right one replaces it the moment it lands.
+      if (pageImage != null) {
+        _lastDrawnPage = pageIndex;
+      } else {
+        pageImage = _pageCache[_lastDrawnPage]?.image;
+      }
     }
 
     final message = request == null ? strings.mediaViewerEmpty : _message;

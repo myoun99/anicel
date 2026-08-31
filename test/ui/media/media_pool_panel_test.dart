@@ -105,7 +105,10 @@ void main() {
     );
 
     expect(find.text('발소리'), findsOneWidget);
-    expect(find.text(foot), findsOneWidget);
+    // The subtitle now leads with which one it is (유저 2026-08-31), so the
+    // path rides behind it rather than standing alone.
+    expect(find.textContaining(foot), findsOneWidget);
+    expect(find.textContaining('Linked'), findsWidgets);
     expect(
       find.byKey(const ValueKey<String>('media-asset-missing-$foot')),
       findsOneWidget,
@@ -287,24 +290,37 @@ void main() {
       expect(find.textContaining('Nothing to take in'), findsNothing);
     });
 
-    testWidgets('a refusal explains itself rather than looking broken', (
-      tester,
-    ) async {
-      // Already carried, or a movie — which is never carried whatever
-      // anyone picks. The item is offered on every row on purpose, so a
-      // refusal has to speak; a menu item that silently does nothing
-      // reads as a bug.
-      final callbacks = _Callbacks()..promoteResult = false;
+    /// 🪦**This used to assert a REFUSAL NOTICE, and both halves of that
+    /// are gone.**
+    ///
+    /// The notice said「이미 파일 안에 있거나, 항상 참조로 남는 종류
+    /// (동영상)」— false since 2026-08-14, when the per-kind ceiling died —
+    /// and it existed only to explain a menu item offered on rows that had
+    /// nothing to promote. 유저 2026-08-31 reported the wording as a 낡은
+    /// 안내창 and asked for the item to go instead: 「그걸 텍스트로 적어두고
+    /// 품어진 파일이면 프로젝트 파일에 품기 안뜨도록」.
+    ///
+    /// So the assertion moved with the design: a carried row does not
+    /// OFFER the verb, which is a stronger property than explaining it.
+    testWidgets('a carried row does not offer the verb at all', (tester) async {
+      final callbacks = _Callbacks();
       await _pump(
         tester,
         callbacks,
-        assets: const [MediaAsset(path: foot, name: 'foot.wav')],
+        assets: const [MediaAsset(path: foot, name: 'foot.wav', carried: true)],
       );
 
-      await tapPromote(tester);
+      await tester.tap(find.byIcon(Icons.more_vert).first);
+      await tester.pumpAndSettle();
 
-      expect(callbacks.promoted, [foot]);
-      expect(find.textContaining('Nothing to take in'), findsOneWidget);
+      expect(
+        find.text('Keep inside the project file'),
+        findsNothing,
+        reason:
+            'the row already says「In the project」— an item whose only '
+            'possible answer is「nothing to do」is not a verb',
+      );
+      expect(callbacks.promoted, isEmpty);
     });
   });
 
