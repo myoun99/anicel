@@ -396,7 +396,10 @@ void main() {
         reason: 'a tap or a plain pan must never flash it',
       );
 
-      await finger.moveBy(const Offset(30, 2));
+      // ⚠️H30: the lock waits for the first flip STEP now, so a distance
+      // literal here would silently stop reaching it. Expressed against
+      // the constant so it cannot drift again.
+      await finger.moveBy(Offset(CanvasViewportGestureLayer.flipStepExtent + 12, 2));
       await tester.pump();
       expect(controller.visible, isTrue);
       expect(controller.axis, FlipHudAxis.frame);
@@ -460,7 +463,7 @@ void main() {
         const Offset(300, 400),
         kind: PointerDeviceKind.touch,
       );
-      await finger.moveBy(const Offset(2, -30));
+      await finger.moveBy(Offset(2, -(CanvasViewportGestureLayer.flipStepExtent + 12)));
       await tester.pump();
 
       expect(controller.axis, FlipHudAxis.row);
@@ -479,7 +482,10 @@ void main() {
         const Offset(300, 400),
         kind: PointerDeviceKind.touch,
       );
-      await finger.moveBy(const Offset(30, 2));
+      // ⚠️H30: the lock waits for the first flip STEP now, so a distance
+      // literal here would silently stop reaching it. Expressed against
+      // the constant so it cannot drift again.
+      await finger.moveBy(Offset(CanvasViewportGestureLayer.flipStepExtent + 12, 2));
       await tester.pump();
       expect(controller.frameStep, isFalse);
 

@@ -131,7 +131,9 @@ void main() {
       kind: PointerDeviceKind.touch,
     );
     // Lock the horizontal axis without completing a step...
-    await finger.moveBy(const Offset(-30, 2));
+    // ⚠️H30: past the first flip STEP, which is where the group locks and
+    // the HUD begins.
+    await finger.moveBy(Offset(-(CanvasViewportGestureLayer.flipStepExtent + 12), 2));
     await tester.pump();
     expect(hud.displayAxis, isNotNull, reason: 'the window opened on the lock');
 

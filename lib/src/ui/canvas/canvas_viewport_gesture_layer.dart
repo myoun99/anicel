@@ -30,6 +30,13 @@ import 'flip_hud_controller.dart';
 /// mid-draw. Two-finger touch navigation deliberately bypasses that gate:
 /// the second finger IS the cancel-and-navigate signal.
 class CanvasViewportGestureLayer extends StatefulWidget {
+  /// One flip step per this many pixels along the locked axis — and, since
+  /// H30, the distance a one-finger group must travel before it is DECIDED.
+  ///
+  /// Public because a test that drives a real flip has to reach it, and a
+  /// literal in the test would go stale the moment this moves.
+  static const double flipStepExtent = 48;
+
   const CanvasViewportGestureLayer({
     super.key,
     required this.viewport,
@@ -255,7 +262,15 @@ class _CanvasViewportGestureLayerState
   static const double _touchSlop = 18;
 
   /// One flip step per this many pixels along the locked axis.
-  static const double flipStepExtent = 48;
+  ///
+  /// ⚠️Reads the WIDGET's constant rather than holding its own: a flip's
+  /// step distance is also its LOCK distance (H30), and a test that has to
+  /// reach that point needs to name the same number. Two spellings would
+  /// let a moved lock slip past a test that still walked the old distance —
+  /// 🧪which is exactly what happened when the lock moved and four HUD
+  /// tests stopped reaching it.
+  static const double flipStepExtent =
+      CanvasViewportGestureLayer.flipStepExtent;
 
   final List<int> _groupPointers = <int>[];
   final Map<int, Offset> _groupDownPositions = <int, Offset>{};
@@ -345,10 +360,14 @@ class _CanvasViewportGestureLayerState
     }
     if (!_groupLocked) {
       final down = _groupDownPositions[event.pointer];
-      if (down == null || (event.localPosition - down).distance < _touchSlop) {
+      if (down == null) {
         return;
       }
-      _lockGroup(firstMovedDelta: event.localPosition - down);
+      final moved = event.localPosition - down;
+      if (moved.distance < _lockDistanceFor(_groupPointers.length)) {
+        return;
+      }
+      _lockGroup(firstMovedDelta: moved);
     }
     _scheduleGroupUpdate();
   }
@@ -387,6 +406,34 @@ class _CanvasViewportGestureLayerState
       }
       _dispatchGroupUpdate();
     });
+  }
+
+  /// How far a finger must travel before a group of [fingers] is DECIDED.
+  ///
+  /// 🚨★★★H30 (유저): 「지인이 아이패드로 작업중인데, 두손핑거로 캔버스
+  /// 컨트롤하려다 **레이어이동, 즉 1핑거로 인식하는경우**가 종종 있는거같아.
+  /// 아마 두손가락을 **동시에 착지안하고 따로따로 착지**하는게 버릇인거같은데」.
+  ///
+  /// ⛔A staggered LAND was already fine — PEN-8 #3 removed the simultaneity
+  /// window, so a finger arriving 400ms later still joins. What was not fine
+  /// is a finger arriving after the first one MOVED: the group locked the
+  /// instant anything crossed the slop, and from then on late fingers could
+  /// only be modifiers. A twitch of 20px had decided the gesture.
+  ///
+  /// ★THE LAW IS ONE SENTENCE AND EACH ACTION ANSWERS IT: lock when this
+  /// gesture would first DO something. ⛔Not 「flip is special」 — flip is
+  /// simply the only action whose first effect is not its first pixel. A
+  /// navigate pans by that pixel, a brush-size drag resizes by it, and a
+  /// draw inks it; for those the slop already IS the first effect, so they
+  /// are unchanged.
+  ///
+  /// ⚠️Until the lock the group is 「분류 전」, not misclassified — a late
+  /// finger JOINS (the `_controlTouchDown` branch above already allows it
+  /// while unlocked). The lock-then-modify rule itself is untouched.
+  double _lockDistanceFor(int fingers) {
+    return AppInput.touchDragActionFor(fingers) == CanvasTouchDragAction.flip
+        ? flipStepExtent
+        : _touchSlop;
   }
 
   void _lockGroup({required Offset firstMovedDelta}) {
