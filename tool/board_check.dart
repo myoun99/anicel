@@ -62,6 +62,7 @@ String boardCheckComplaints(
   final complaints = <String>[
     ..._brokenLines(),
     ..._wordsNobodyReads(acks),
+    ..._pointersToNothing(cards, acks),
     ..._cardsOffTheBoard(cards, acks, since),
     ..._sectionsTheStoryCannotName(file, acks, since, now, linesSince),
     ..._workThatShipped(cards, acks, since),
@@ -174,6 +175,73 @@ Iterable<String> _wordsNobodyReads(Set<String> acks) sync* {
       '데이터는 파일에 있고 화면에는 없습니다.\n'
       '⇒ 읽는 키: ${kReadFields.join(' · ')}\n'
       '⇒ 읽는 kind: ${kKinds.join(' · ')}';
+}
+
+// ────────────────────────────────── 1c. 가리키는 곳이 없는 값
+
+/// 🚨★★★A POINTER THAT POINTS AT NOTHING.
+///
+/// The same law as [_wordsNobodyReads], one level in: the key WAS read and
+/// the value WAS used — and it resolved to nothing, silently. 🧪All four
+/// measured on fixtures before this was written; every one produced a
+/// plausible-looking board and no complaint at all.
+///
+/// · `ref` on a 확인 완료 that clears no check ⇒ the tick button stays on
+///   screen and the card never leaves 실기 확인. (I shipped a one-line
+///   version of this on 2026-08-31 and had to probe `waiting=1` to see it.)
+/// · `of` — or a `<원본>-Q<번호>` name — whose origin is not in the file ⇒
+///   the question stands alone and the answer has nowhere to go back to.
+///   ⚠️Standing alone is CORRECT for a question that names no origin at all;
+///   the defect is naming one that does not exist.
+/// · a `law`'s `tag` that no card carries ⇒ 「손대기 전에」 is written and
+///   appears on nothing, while the law itself sits in 착수 가능 as work.
+/// ⛔NOT `answer`, though it looks like the fourth of these and I wrote it
+/// that way first. 🧪The live file produced 25 hits and every one of them was
+/// correct: the panel renders a radio with `value="other"` for a free answer,
+/// and `_askPanel` falls back to `{'label': d.answer}` ON PURPOSE so an
+/// answer naming no option still shows. An answer is the USER's word, not a
+/// key I get to constrain. **The baseline is what caught it** — the check was
+/// written, plausible, and would have complained about 25 correct records.
+///
+/// ⚠️Baseline measured on the live file before shipping, exactly as for
+/// [_wordsNobodyReads]. A complaint here is about a line somebody just wrote.
+Iterable<String> _pointersToNothing(
+  List<BoardCard> cards,
+  Set<String> acks,
+) sync* {
+  final byId = {for (final c in cards) c.id: c};
+  // ⚠️A law's own `tag` is not use — it is the thing being pointed WITH.
+  final tagsInUse = <String>{
+    for (final c in cards)
+      if (c.kind != 'law') ...c.tags,
+  };
+  final dangling = <String>[];
+  for (final c in cards) {
+    if (acks.contains(c.id)) continue;
+    final stamps = {for (final l in c.log) l.ts};
+    for (final l in c.log) {
+      if (l.ref.isEmpty || stamps.contains(l.ref)) continue;
+      dangling.add('${c.id}: ref→${l.ref}');
+    }
+    if (cardAsks(c)) {
+      final (of, _) = asksOf(c);
+      if (of.isNotEmpty && !byId.containsKey(of)) {
+        dangling.add('${c.id}: of→$of');
+      }
+    }
+    if (c.kind == 'law' && c.tag.isNotEmpty && !tagsInUse.contains(c.tag)) {
+      dangling.add('${c.id}: tag→${c.tag}');
+    }
+  }
+  if (dangling.isEmpty) return;
+  final shown = dangling.take(12).join(', ');
+  final more =
+      dangling.length > 12 ? ' … 외 ${dangling.length - 12}개' : '';
+  yield '가리키는 곳이 없는 값: $shown$more\n'
+      '키는 읽혔고 값도 쓰였는데 **가리킨 자리에 아무것도 없습니다** — '
+      '화면은 멀쩡해 보이고 그 값만 아무 일도 안 합니다.\n'
+      '⇒ ref = 지울 실기 확인 항목의 `ts` · of = 원본 카드 id · '
+      'tag = 카드가 실제로 쓰는 태그';
 }
 
 // ─────────────────────────────────────── 2. 어느 칸에도 못 서는 카드
