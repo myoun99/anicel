@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# 🚨★★★THE GATE FOR A PUSH STRAIGHT TO master.
+#
+# 유저 2026-08-31: 「pr없이 가도 되는거아닌가?」 — for a board-only change,
+# yes: CI runs on a master push exactly as it runs on a PR, so the only thing
+# a PR was buying was the WAIT. What it also bought was 「master never goes
+# red」, and the answer to 「위험 하나도 해결하는 방식으로 가자」 is not me
+# remembering to run the gate first. It is this file refusing the push.
+#
+# ⛔A rule I have to remember is the failure mode this project keeps hitting.
+# The machine says no, or it is not solved.
+#
+# WHAT IT DOES, only for a push whose remote ref is master:
+#   · anything outside the board's own files  → REFUSED, use a PR;
+#   · board-only                              → `flutter analyze` (no
+#     arguments, the real gate) and the board tests must pass first.
+# Every other ref — a work/ branch, a tag — walks straight through.
+#
+# ⚠️`--no-verify` skips this, and CLAUDE.md already says not to use it unless
+# 유저 asks. That is the escape hatch git already has; inventing a second one
+# would just be a way to not think.
+set -u
+
+ZERO='0000000000000000000000000000000000000000'
+# Board files, and nothing else. ⚠️Kept in step with ci.yml's `scope` job —
+# they answer the same question and a difference between them would mean a
+# push the CI filter thinks is an app change, or the other way round.
+BOARD='^(tool/board_[a-z_]+\.dart|test/tool/)'
+
+fail() {
+  printf '\n\033[31m✖ pre-push: %s\033[0m\n' "$1" >&2
+  shift
+  for line in "$@"; do printf '  %s\n' "$line" >&2; done
+  printf '\n'
+  exit 1
+}
+
+while read -r _local_ref local_sha remote_ref remote_sha; do
+  [ "$remote_ref" = 'refs/heads/master' ] || continue
+  # Deleting master is not something this hook has an opinion about.
+  [ "$local_sha" = "$ZERO" ] && continue
+
+  if [ "$remote_sha" = "$ZERO" ]; then
+    files=$(git diff --name-only "$(git hash-object -t tree /dev/null)" "$local_sha")
+  else
+    files=$(git diff --name-only "$remote_sha" "$local_sha")
+  fi
+
+  # ⛔FAIL-SAFE: an empty read means we could not tell what changed, and the
+  # answer to 「I do not know」 is the careful branch, not the cheap one.
+  if [ -z "$files" ]; then
+    fail "무엇이 바뀌었는지 못 읽었습니다 — master 직접 푸시는 막습니다." \
+      "PR 로 보내거나, 정말 확실하면 --no-verify 를 씁니다."
+  fi
+
+  outside=$(printf '%s\n' "$files" | grep -vE "$BOARD" || true)
+  if [ -n "$outside" ]; then
+    fail "보드 밖 파일이 있어 master 직접 푸시를 막습니다 — PR 로 보내세요." \
+      "$(printf '%s\n' "$outside" | head -5)"
+  fi
+
+  printf '\033[36m▶ pre-push: 보드 전용 푸시 — 게이트를 돌립니다\033[0m\n'
+
+  printf '  flutter analyze …\n'
+  if ! analyze=$(flutter analyze 2>&1); then
+    fail "flutter analyze 가 빨갛습니다." "$(printf '%s' "$analyze" | tail -5)"
+  fi
+  # 🚨analyze EXITS 0 ON INFOS. 「No issues found!」 is the only line that
+  # means clean, and this gate exists precisely so a board push cannot leave
+  # master with a warning the other session then has to look at.
+  if ! printf '%s' "$analyze" | grep -q 'No issues found!'; then
+    fail "flutter analyze 가 할 말이 남았습니다." "$(printf '%s' "$analyze" | tail -5)"
+  fi
+
+  printf '  flutter test test/tool …\n'
+  if ! tests=$(flutter test test/tool 2>&1); then
+    fail "보드 테스트가 빨갛습니다." "$(printf '%s' "$tests" | tail -5)"
+  fi
+
+  printf '\033[32m✔ pre-push: 초록 — 보냅니다\033[0m\n'
+done
+
+exit 0

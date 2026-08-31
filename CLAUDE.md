@@ -48,7 +48,12 @@
 - **적대검증·뮤테이션은 선택이 아니다.** 「테스트가 통과한다」는 증거가 아니다 —
   **제품 코드를 껐을 때 빨개지는지**가 증거다.
   뮤테이션은 「돌렸다」가 아니라 **「바뀐 줄을 `git diff` 로 봤다」**로 센다.
-- `bash tool/merge_check.sh <PR번호>` 가 **exit 0** 일 때만 머지한다.
+- **보드 전용**(`tool/board_*.dart` · `test/tool/`)은 **master 직접 푸시.**
+  PR이 사 주던 건 기다림뿐이다 — CI는 master 푸시에도 돈다.
+  게이트는 `.githooks/pre-push` 가 **강제**한다: 보드 밖 파일이 끼면 거부, 보드 전용이면
+  analyze+보드 테스트를 돌려 빨가면 거부. 새 체크아웃에서 한 번:
+  `git config core.hooksPath .githooks`.
+- **그 외에는** `bash tool/merge_check.sh <PR번호>` 가 **exit 0** 일 때만 머지한다.
 
 ## UI 컨벤션
 
