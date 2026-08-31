@@ -95,9 +95,20 @@ fi
 # branch. The same confusion cost an hour on 2026-08-15 elsewhere: a hung
 # job shows up as `pending 0` in `gh pr checks`, indistinguishable from one
 # that has not started.
+#
+# 🚨SKIPPED IS NOT FAILED. A job that stood down because the workflow's own
+# `if:` said so has a conclusion of SKIPPED, and this counted every one of
+# them as a failure — it would have blocked every board-only PR the moment
+# `scope` started standing the app builds down.
+#
+# ⚠️This is NOT the same as 「체크 0개」, which stays 「unverified」 and is
+# still not green: a skip is a DECISION the workflow made, in a file that
+# went through review, and it says which jobs and why. No check at all says
+# nothing at all.
 total=$(printf '%s' "$checks" | tr ',' '\n' | grep -c .)
 pending=$(printf '%s' "$checks" | tr ',' '\n' | grep -c '^PENDING$')
-failed=$(printf '%s' "$checks" | tr ',' '\n' | grep -cv '^SUCCESS$\|^PENDING$')
+failed=$(printf '%s' "$checks" | tr ',' '\n' \
+  | grep -cv '^SUCCESS$\|^PENDING$\|^SKIPPED$\|^NEUTRAL$')
 # The verdict below still turns on "not green", which is both of them.
 bad=$((pending + failed))
 # Compared the other way round on purpose: base=branch, head=master makes

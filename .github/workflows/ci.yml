@@ -26,6 +26,65 @@ env:
   FLUTTER_VERSION: '3.44.2'
 
 jobs:
+  # 🚨★★★DOES THIS CHANGE TOUCH THE APP AT ALL?
+  #
+  # 유저 2026-08-31: 「무슨 보드는 내 컴퓨터에서만 하는데 안드로이드 빌드
+  # 네이티브c 이딴게 왜필요한거야?」 — it does not. `tool/board_*.dart` is a
+  # dev script that runs on one machine and ships in nothing; a one-file edit
+  # to it was buying an Android build, a Windows app build, a native C
+  # portability check and six Windows shards. Twelve checks for a page nobody
+  # else ever loads.
+  #
+  # ⚠️`analyze + full test suite` STILL RUNS, always. It is the merge gate
+  # (`flutter analyze` with no arguments) and it runs the 105 board tests. The
+  # jobs that stand down are the ones whose whole question is 「does the APP
+  # still compile and link」, which a board edit cannot affect.
+  #
+  # ⛔FAIL-SAFE: anything this cannot work out means `app=true`. A shallow
+  # clone, a force-push, a workflow_dispatch with no diff to read — every one
+  # of those runs everything, because the cost of a needless build is minutes
+  # and the cost of a skipped one is a broken master.
+  #
+  # ⚠️Job-level `if`, not a workflow-level `paths:` filter. A filtered-out
+  # workflow reports NO check at all, and 「체크 0개」 is not green, it is
+  # unverified — `merge_check.sh` counts checks and would have to learn a
+  # second meaning for zero. A skipped JOB still posts its check.
+  scope:
+    name: what changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      app: ${{ steps.what.outputs.app }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: what
+        shell: bash
+        run: |
+          app=true
+          base=""
+          head="${{ github.sha }}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            base="${{ github.event.before }}"
+          fi
+          if git cat-file -e "$base^{commit}" 2>/dev/null \
+            && git cat-file -e "$head^{commit}" 2>/dev/null; then
+            files=$(git diff --name-only "$base" "$head" || true)
+            if [ -n "$files" ]; then
+              # Everything outside the board's own files makes it an app change.
+              if ! printf '%s\n' "$files" \
+                | grep -qvE '^(tool/board_[a-z_]+\.dart|test/tool/)'; then
+                app=false
+              fi
+            fi
+          fi
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+          echo "app=$app  (${files:-<no diff read>})"
+
   # The C core compiled by a THIRD compiler (gcc) on a different OS —
   # the fastest way to catch portability breakage before the platform
   # builds get involved. Two minutes, every push.
@@ -46,6 +105,8 @@ jobs:
   # near the healthy range, it is several times past it.
   native-portability:
     name: native C (gcc + clang)
+    needs: scope
+    if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -146,6 +207,8 @@ jobs:
 
   android:
     name: Android build
+    needs: scope
+    if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -184,6 +247,8 @@ jobs:
   # were blocked on.
   windows-app:
     name: Windows app build
+    needs: scope
+    if: needs.scope.outputs.app == 'true'
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -231,6 +296,10 @@ jobs:
   # fits one batch, and it is the floor for that reason and no other.
   windows:
     name: Windows + native DLL (shard ${{ matrix.shard }})
+    # ⚠️These run the suite against the NATIVE DLL — the parity watch. Board
+    # tests are pure Dart and are covered by the Linux shards either way.
+    needs: scope
+    if: needs.scope.outputs.app == 'true'
     runs-on: windows-latest
     timeout-minutes: 25
     strategy:
