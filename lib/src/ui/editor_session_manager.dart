@@ -11100,7 +11100,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// Split out of [_pasteRun] when the paste learned the band: the
   /// independent branch mints PER LAYER, so the arithmetic stopped being
   /// something one row could keep inline.
-  ({TimelineClipRow clip, List<Frame> born}) _placedClipFor({
+  ({
+    TimelineClipRow clip,
+    List<Frame> born,
+    Map<FrameId, FrameId> minted,
+  })
+  _placedClipFor({
     required Layer layer,
     required TimelineClipRow clip,
     required _CopiedFrameReference copied,
@@ -11116,7 +11121,7 @@ class EditorSessionManager extends ChangeNotifier {
           if (!layer.frames.any((frame) => frame.id == cel.id)) cel,
     ];
     if (!independent) {
-      return (clip: clip, born: born);
+      return (clip: clip, born: born, minted: const {});
     }
     final minted = <FrameId, FrameId>{};
     final exposures = <int, TimelineExposure>{};
@@ -11173,6 +11178,16 @@ class EditorSessionManager extends ChangeNotifier {
     return (
       clip: TimelineClipRow(exposures: exposures, length: clip.length),
       born: born,
+      // 🚨★★★WHICH CEL CAME FROM WHICH — the picture needs it.
+      //
+      // ⛔`duplicateFrameContent` deep-copies `strokes`, and for a while that
+      // read like 「the copy owes the source nothing」. It does not copy the
+      // PICTURE: pixels live in `brushFrameStore` under a key that carries
+      // the frame ID, so a minted cel resolves to an empty surface.
+      // 유저 (F-62): 「프레임 복사후 독립붙여넣기시, **그림이 복제되지않음**」.
+      //
+      // The caller copies the baked surface across this map after the splice.
+      minted: minted,
     );
   }
 
@@ -11218,6 +11233,10 @@ class EditorSessionManager extends ChangeNotifier {
             List<Frame> bornFrames,
           })
         >[];
+    // Which minted cel came from which source, per row — the pictures move
+    // across this after the splice (F-62). Empty for a LINKED paste, which
+    // mints nothing.
+    final mintedByLayer = <(LayerId, Map<FrameId, FrameId>)>[];
     final targets = <Layer>[layer, ..._pasteTargetRowsBesides(layer)];
     for (var i = 0; i < targets.length; i += 1) {
       final target = targets[i];
@@ -11255,6 +11274,9 @@ class EditorSessionManager extends ChangeNotifier {
         ),
         independent: independent,
       );
+      if (placed.minted.isNotEmpty) {
+        mintedByLayer.add((target.id, placed.minted));
+      }
       runs.add((
         layerId: target.id,
         // Each row resolves the band's start against ITS OWN blocks: a
@@ -11272,6 +11294,37 @@ class EditorSessionManager extends ChangeNotifier {
       runs: runs,
       description: independent ? 'Paste frames' : 'Paste linked frames',
     );
+    // 🚨★★★AND THE PICTURES COME WITH THEM (F-62).
+    //
+    // ⚠️Surfaces are IMMUTABLE with structural tile sharing, so storing the
+    // same object under the new key IS the copy — the same reasoning
+    // `UnlinkLayerCommand` states where it forks a linked member's cels.
+    //
+    // ⛔A LINKED paste copies nothing on purpose: it points the new
+    // exposures at the cels that already exist, which is what 「링크」 means.
+    // `minted` is empty there, so this loop is the independent branch only
+    // without a second flag saying so.
+    //
+    // ⚠️After the splice, not before: the born cels have to be in the layer
+    // for the key to name something the app will read back.
+    final cut = activeCutOrNull;
+    for (final (targetId, minted) in mintedByLayer) {
+      if (cut == null) {
+        break; // Gap state: no cut, so no key to store a picture under.
+      }
+      for (final entry in minted.entries) {
+        final surface = brushFrameStore.bakedSurfaceOrNull(
+          brushFrameKeyForCut(cut, copied.layerId, entry.key),
+        );
+        if (surface == null) {
+          continue;
+        }
+        brushFrameStore.storeBakedSurface(
+          brushFrameKeyForCut(cut, targetId, entry.value),
+          surface,
+        );
+      }
+    }
     if (replacing) {
       clearFrameRangeSelection();
     }
