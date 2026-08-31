@@ -685,9 +685,26 @@ List<String> checksWaiting(BoardCard e) {
 /// 답할 것 while its newest word is a question and moves to 분류 전 the moment
 /// one is answered — the sections fall out of the story instead of being
 /// maintained beside it, and `_asking` stopped being needed at all.
+/// Whether this card ASKS something — it carries options to pick from.
+///
+/// 🚨⛔NOT `kind == 'decision'`, and that is the whole point (유저 2026-08-31:
+/// 「질문으로 옮김이라는 내용만 있는 질문항목이야. 질문의 내용이없어. 다른
+/// 질문들이랑 뭐가 다르길래 이렇게 작동하지? **통일하고 이런일 없도록
+/// 구조변경해도되**」).
+///
+/// `kind` was a WORD A WRITER HAD TO REMEMBER, and I forgot it six times in
+/// one day: six question cards written as `item` reached 답할 것 and rendered
+/// as ordinary rows — 「질문으로 옮김」 and no question inside. Nothing was
+/// wrong with the data; the reader was asking the wrong thing about it.
+///
+/// ⚠️A card with options IS a question, whatever anyone called it. The legacy
+/// `decision` kind still counts so nothing written before this loses its
+/// panel.
+bool cardAsks(BoardCard c) => c.options.isNotEmpty || c.kind == 'decision';
+
 void foldQuestionsIntoCards(Map<String, BoardCard> byId, [DateTime? now]) {
   for (final q in byId.values.toList()) {
-    if (q.kind != 'decision') continue;
+    if (!cardAsks(q)) continue;
     final (of, _) = asksOf(q);
     final origin = of.isEmpty ? null : byId[of];
     // A question whose origin is not in the file IS the card. Nothing folds,

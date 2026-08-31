@@ -427,10 +427,20 @@ Future<void> _handle(HttpRequest req) async {
         newId = _intake(body);
       case '/edit':
         final text = '${body['text'] ?? ''}'.trim();
+        // ⛔A GUARD ONLY THE PAGE ENFORCES IS A GUARD THAT CAN BE SKIPPED.
+        // An empty write here sets `said` and `title` to '' — the card loses
+        // its own words. The box is empty by default now, so this is one
+        // stray Enter away rather than something nobody would ever send.
+        if (text.isEmpty) break;
         final first = text.split('\n').first;
-        // The user fixing their own filing — still their words, so still
-        // `said`. ⚠️This overwrites rather than appending a second entry: a
-        // typo corrected a minute later is not a new stage in the story.
+        // Still the user's own words, so still `said` — and `said` does
+        // TWO things, which is why this looked like an edit box for so long.
+        // ⚠️The HEAD is last-wins: `said` and `title` become this text, so
+        // the card's one-line summary is whatever was written most recently.
+        // 🚨The STORY appends: `readBoard` runs every distinct `said` through
+        // `stage(..., '유저 메모')`, so each press leaves its own dated line
+        // (identical text is deduped, which is why re-submitting an unchanged
+        // box used to look like nothing happened).
         _append({
           'kind': 'item',
           'id': body['id'],
@@ -925,7 +935,7 @@ String _render(List<BoardCard> entries, _Gh gh, List<_Checkout> gits,
   // reads `entries` and not `alive`.
   final byOrigin = <String, List<BoardCard>>{};
   for (final e in entries) {
-    if (e.kind != 'decision') continue;
+    if (!cardAsks(e)) continue;
     final (of, _) = asksOf(e);
     if (of.isEmpty) continue;
     (byOrigin[of] ??= []).add(e);
@@ -952,7 +962,7 @@ String _render(List<BoardCard> entries, _Gh gh, List<_Checkout> gits,
   final asks = alive
       .where((e) =>
           e.foldedInto == null &&
-          (e.state == 'ask' || (e.kind == 'decision' && e.answer == null)))
+          (e.state == 'ask' || (cardAsks(e) && e.answer == null)))
       .toList();
   // 🚨★★★실기 확인 = cards whose newest 대분류 says so. Nothing lands here by
   // merging any more (유저 2026-08-31: 「머지는 PR마다 여러 번 되는데 실기
@@ -1143,7 +1153,7 @@ String _render(List<BoardCard> entries, _Gh gh, List<_Checkout> gits,
   // 질문 → 답할 것, 남은 것 → 바로 가능.
   b.write(_group('분류 전', inbox.length, '내가 읽고 분류한다', inbox.map(_itemPanel)));
   b.write(_group('답할 것', asks.length, '고르고 제출',
-      asks.map((e) => e.kind == 'decision' ? _askPanel(e) : _itemPanel(e))));
+      asks.map((e) => cardAsks(e) ? _askPanel(e) : _itemPanel(e))));
   // The refresh lives here because this is the only section it changes, and a
   // control parked away from what it affects is a control you have to remember
   // the meaning of.
@@ -1592,13 +1602,26 @@ String _itemPanel(BoardCard e) {
       date: e.updated));
   b.writeln('<div class="body">');
   if (editable) {
-    // Still editable, because a filing made mid-thought is usually wrong in
-    // some small way and the moment to fix it is when you notice.
-    b.writeln('<textarea rows="4">'
-        '${_esc(e.said.isEmpty ? e.note : e.said)}</textarea>');
+    // 🚨★★★EMPTY, because what this button does is ADD (유저 2026-08-31:
+    // 「지금은 그게아니라 **추가로 메모다는거잖아. 그 구조는 좋은데**
+    // 메모입력란에 과거에 입력한 텍스트가 그대로 남아있으니까 입력한
+    // 메모를 수정하는건가 처럼 느껴져. 그러니 **메모란 비어있도록**」).
+    //
+    // ⛔It was prefilled with the last thing said, from when this really
+    // was an edit box. `/edit` has appended to the story for a while now
+    // (each distinct text becomes its own dated 유저 메모 line), so the old
+    // words sitting in the box were the control describing an action it no
+    // longer takes — and pressing it unchanged wrote nothing at all, because
+    // identical text dedupes.
+    //
+    // ⚠️Empty box ⇒ empty submit must be REFUSED. The head fields ARE
+    // last-wins, so a blank press would leave the card with no summary and
+    // no title. The story is right above; this box is only its next line.
+    b.writeln('<textarea rows="4" placeholder="덧붙일 말 — 위의 이야기에 '
+        '한 줄로 붙습니다 (스크린샷은 Ctrl+V)"></textarea>');
     b.writeln(_shotStrip(e.id));
     b.writeln('<div class="foot">'
-        '<button onclick="save(\'${_esc(e.id)}\')">저장</button>'
+        '<button onclick="save(\'${_esc(e.id)}\')">추가</button>'
         '<button class="ghost" onclick="purge(\'${_esc(e.id)}\')">삭제</button>'
         '<span class="state"></span></div>');
     // 🚨★★★AND ITS STORY, ALWAYS. A card in 분류 전 used to show the edit box
@@ -2003,7 +2026,11 @@ function drop(id){
 }
 function save(id){
   const c = document.getElementById('c-'+id);
-  post('/edit', {id:id, text:(c.querySelector('textarea').value||'')}, c)
+  const text = (c.querySelector('textarea').value||'').trim();
+  // The box starts empty now, so an empty press is a press with nothing to
+  // say -- and sending it would blank the card's own words and title.
+  if(!text){ stateOf(c).textContent = '적을 내용이 있어야 추가됩니다'; return; }
+  post('/edit', {id:id, text:text}, c)
     .then(()=>redraw(c.id))
     .catch(e=>stateOf(c).textContent = '실패: '+e.message);
 }
