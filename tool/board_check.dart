@@ -63,6 +63,7 @@ String boardCheckComplaints(
     ..._brokenLines(),
     ..._wordsNobodyReads(acks),
     ..._pointersToNothing(cards, acks),
+    ..._stampsTheFileContradicts(file, cards, acks),
     ..._cardsOffTheBoard(cards, acks, since),
     ..._sectionsTheStoryCannotName(file, acks, since, now, linesSince),
     ..._workThatShipped(cards, acks, since),
@@ -242,6 +243,74 @@ Iterable<String> _pointersToNothing(
       '화면은 멀쩡해 보이고 그 값만 아무 일도 안 합니다.\n'
       '⇒ ref = 지울 실기 확인 항목의 `ts` · of = 원본 카드 id · '
       'tag = 카드가 실제로 쓰는 태그';
+}
+
+// ────────────────────── 1d. 파일 순서가 부정하는 시각
+
+/// 🚨★★★A LATER LINE WITH AN EARLIER STAMP. The file is append-only, so its
+/// ORDER is a fact — and a `ts` that disagrees with it is a lie the clock
+/// cannot expose.
+///
+/// ⛔THE FUTURE-STAMP RULE GOES BLIND. It asks 「is this later than now」, so
+/// a stamp of 14:10 written at 01:36 is caught for eight hours and then
+/// becomes ordinary history. 🧪Exactly what happened: I stamped `C-t11` and
+/// `C-t12` 실기 확인 at 14:10 while the clock read 01:36; 유저 ticked them
+/// 완료 at 01:34 and 01:39; their real completions sorted BEFORE my invented
+/// stamp, so the last 대분류 stayed 실기 확인 and the cards would not leave
+/// the board. 유저 found them today and asked why 「내용은 완료인 상태인데
+/// 왜 실기확인으로 옮긴건지」. The future check had long since stopped
+/// looking.
+///
+/// ⚠️This one never stops looking, because it reads no clock at all: it
+/// compares the card's last 대분류 BY FILE ORDER against its last 대분류 BY
+/// STAMP. Those are the same question asked two ways, and the board answers
+/// with the second.
+///
+/// ⛔Only cards that are still DRAWN. A finished card is off the board
+/// whichever way it is read, and complaining about history is how a gate
+/// stops being read.
+Iterable<String> _stampsTheFileContradicts(
+  File file,
+  List<BoardCard> cards,
+  Set<String> acks,
+) sync* {
+  final byId = {for (final c in cards) c.id: c};
+  final byFile = <String, String>{};
+  final stamped = <String, List<List<String>>>{};
+  for (final line in file.readAsLinesSync()) {
+    final t = line.trim();
+    if (t.isEmpty) continue;
+    Map<String, dynamic> json;
+    try {
+      json = jsonDecode(t) as Map<String, dynamic>;
+    } catch (_) {
+      continue;
+    }
+    final id = '${json['id'] ?? ''}';
+    final at = '${json['at'] ?? ''}'.trim();
+    if (id.isEmpty || at.isEmpty || !kSection.containsKey(at)) continue;
+    byFile[id] = at;
+    (stamped[id] ??= []).add(['${json['ts'] ?? ''}', at]);
+  }
+  final wrong = <String>[];
+  for (final e in stamped.entries) {
+    if (acks.contains(e.key)) continue;
+    final c = byId[e.key];
+    if (c == null || !_live(c) || c.foldedInto != null) continue;
+    final sorted = [...e.value]..sort((x, y) => x[0].compareTo(y[0]));
+    final byStamp = sorted.last[1];
+    if (byStamp == byFile[e.key]) continue;
+    wrong.add('${e.key}(파일은 「${byFile[e.key]}」, 시각으로는 「$byStamp」)');
+  }
+  if (wrong.isEmpty) return;
+  yield '적힌 순서와 시각이 다른 카드: ${wrong.join(', ')}\n'
+      '파일은 추가 전용이라 **줄 순서가 곧 사실**입니다 — 시각이 그것과 '
+      '다르면 그 카드는 화면에서 엉뚱한 칸에 앉습니다.\n'
+      '🧪C-t11·C-t12 가 그랬습니다: 제가 14:10 을 지어냈고 유저는 01:34 에 '
+      '완료를 눌렀는데, 완료가 앞으로 정렬돼 **카드가 안 사라졌습니다.**\n'
+      '⇒ 그 줄의 `ts` 를 이웃 줄 사이의 값으로 고치세요. '
+      '⛔그리고 앞으로는 `dart run tool/board_say.dart` 로 적으세요 — '
+      '`ts` 를 직접 쓰지 않으면 이 일이 아예 안 생깁니다.';
 }
 
 // ─────────────────────────────────────── 2. 어느 칸에도 못 서는 카드
