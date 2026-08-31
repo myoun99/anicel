@@ -390,6 +390,29 @@ class AudioConformPipeline {
     );
   }
 
+  /// The refusal owed when an archive range no longer holds what it did, or
+  /// null when it still does.
+  ///
+  /// ⛔ONE function because it is asked from two places now — before the
+  /// decode when a reuse is possible, and after it when one was not. Two
+  /// copies of a tripwire is one copy of a tripwire.
+  static ConformResult? _archiveMovedUnderUs(
+    int? knownCrc,
+    ConformSourceFingerprint fingerprint,
+  ) {
+    // An archive range read under a COMPACTION reads whatever moved into
+    // those bytes — the offsets were resolved when the request was built.
+    // A mismatch is transient (the next attempt resolves fresh offsets),
+    // never a decode of the wrong sound.
+    if (knownCrc == null || fingerprint.sourceCrc32 == knownCrc) {
+      return null;
+    }
+    return const ConformResult(
+      outcome: ConformOutcome.sourceUnreadable,
+      error: 'the archive changed underneath this read (retrying)',
+    );
+  }
+
   /// How much of a source is held at once while fingerprinting it.
   ///
   /// ⚠️Small on purpose: this runs on an import isolate on a tablet, and the
@@ -569,45 +592,86 @@ class AudioConformPipeline {
     // restored or re-synced project gets fresh timestamps with identical
     // bytes, and that is exactly what a timestamp identity used to answer
     // wrong. The content decides.
-    final ConformSourceFingerprint fingerprint;
+    //
+    // 🚨★★★**THE FINGERPRINT IS ONLY TAKEN WHEN IT CAN CHANGE THE ANSWER.**
+    // It is a full pass over the source, and the decode below is a second
+    // one — so on a FIRST conform, where there is nothing to be reused, the
+    // first pass buys nothing at all. On a three-gigabyte movie that is
+    // three gigabytes of reading to learn what the next line was going to do
+    // anyway. It is taken after the decode instead, where it is still needed
+    // (the conform records it, so the next open can skip both passes).
+    //
+    // ⚠️The archive tripwire moves with it, and stays a tripwire: what it
+    // promises is that a compaction that moved bytes under a resolved offset
+    // never becomes a WRONG SOUND, and checking after the decode still keeps
+    // that promise — the decode is thrown away.
+    // ⚠️`settingsMatch` already says there IS an existing conform — it is
+    // defined as `existing != null && …`. A second null test here reads as
+    // if it could be otherwise.
+    ConformSourceFingerprint? fingerprint;
+    if (settingsMatch) {
+      try {
+        fingerprint = fingerprintOfSource(src);
+      } on Object catch (error) {
+        // It EXISTS — the check above just said so — so this is transient:
+        // an unhydrated cloud placeholder, or a handle held elsewhere.
+        // Calling it "missing" spends one of three attempts on a file that
+        // is fine, and three of those silence the clip for the session.
+        return ConformResult(
+          outcome: ConformOutcome.sourceUnreadable,
+          error: 'could not read the source (retrying): $error',
+        );
+      }
+      final wrongBytes = _archiveMovedUnderUs(knownCrc, fingerprint);
+      if (wrongBytes != null) {
+        return wrongBytes;
+      }
+      if (conformMatchesSource(existing, fingerprint)) {
+        return _reuse(existing, reusableAt);
+      }
+    }
+
+    // 🚨★★★**IS IT READABLE RIGHT NOW — asked in one byte.**
+    //
+    // The fingerprint used to answer this on its way past, and moving it
+    // after the decode took the answer with it. It matters more than it
+    // looks: 「could not read it right now」 is TRANSIENT (a cloud placeholder
+    // that has not hydrated, a handle held elsewhere) and must be retried,
+    // while 「no decoder recognized it」 is DEFINITIVE and must not be. The
+    // decoder cannot tell them apart — it answers null either way — so three
+    // ticks would have silenced a file that was merely still downloading.
+    //
+    // ⚠️One byte, not one pass: whatever makes a source unreadable makes the
+    // first byte unreadable.
     try {
-      fingerprint = fingerprintOfSource(src);
+      src.readIntoSync(Uint8List(1), 0, 1);
     } on Object catch (error) {
-      // It EXISTS — the check above just said so — so this is transient:
-      // an unhydrated cloud placeholder, or a handle held elsewhere.
-      // Calling it "missing" spends one of three attempts on a file that
-      // is fine, and three of those silence the clip for the session.
       return ConformResult(
         outcome: ConformOutcome.sourceUnreadable,
         error: 'could not read the source (retrying): $error',
       );
     }
-    // An archive range read under a COMPACTION reads whatever moved into
-    // those bytes — the offsets were resolved when the request was built.
-    // The entry CRC is the tripwire: a mismatch is transient (the next
-    // attempt resolves fresh offsets), never a decode of the wrong sound.
-    if (knownCrc != null && fingerprint.sourceCrc32 != knownCrc) {
-      return const ConformResult(
-        outcome: ConformOutcome.sourceUnreadable,
-        error: 'the archive changed underneath this read (retrying)',
-      );
-    }
 
-    if (settingsMatch && conformMatchesSource(existing, fingerprint)) {
-      return _reuse(existing, reusableAt);
-    }
-
-    // ⚠️A SECOND pass over the source, and deliberately so: the check above
-    // had to see the content before anyone decided to decode, and holding it
-    // in between is the allocation this whole path exists to avoid. Two
-    // reads of a warm file beat one copy the size of a movie — the archive
-    // writer settled the same trade for the same reason.
     final decoded = decode(src);
     if (decoded == null || decoded.channels <= 0 || decoded.sampleRate <= 0) {
       return const ConformResult(
         outcome: ConformOutcome.undecodable,
         error: 'no decoder recognized this file',
       );
+    }
+    if (fingerprint == null) {
+      try {
+        fingerprint = fingerprintOfSource(src);
+      } on Object catch (error) {
+        return ConformResult(
+          outcome: ConformOutcome.sourceUnreadable,
+          error: 'could not read the source (retrying): $error',
+        );
+      }
+      final wrongBytes = _archiveMovedUnderUs(knownCrc, fingerprint);
+      if (wrongBytes != null) {
+        return wrongBytes;
+      }
     }
 
     // Equal rates at unity speed skip the filter entirely and stay
