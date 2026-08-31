@@ -28,6 +28,15 @@ static void expect_int(const char* what, int64_t got, int64_t want) {
   g_failures += 1;
 }
 
+static void expect_text(const char* what, const char* got, const char* want) {
+  if (got != NULL && strcmp(got, want) == 0) {
+    return;
+  }
+  printf("FAIL %s: got \"%s\", want \"%s\"\n", what, got == NULL ? "" : got,
+         want);
+  g_failures += 1;
+}
+
 static void expect_rate(const char* what,
                         double rate,
                         int32_t want_num,
@@ -142,6 +151,27 @@ int main(void) {
                  255);
     }
   }
+
+  // 🚨A RANGE IS CHECKED BEFORE ANY BACKEND SEES IT, and the two refusals
+  // say different things. That distinction is the same one the viewer got
+  // wrong in Dart — 「no decoder in this build」 for a file the decoder
+  // simply would not read — and it is worth pinning on this side too.
+  expect_int("a negative offset is refused",
+             qa_video_decode_open_range("movie.anicel", -1, 10), 0);
+  expect_text("and says the range is wrong, not that a decoder is missing",
+              qa_video_decode_last_error(),
+              "that range is not inside the file");
+  expect_int("a zero length is refused",
+             qa_video_decode_open_range("movie.anicel", 0, 0), 0);
+  expect_text("same reason", qa_video_decode_last_error(),
+              "that range is not inside the file");
+  // ⚠️This build has the「no decoder」backend, so a WELL-FORMED range gets
+  // past the check and is refused for the other reason. Both fail; only the
+  // sentence tells them apart, which is the point.
+  expect_int("a well-formed range reaches the backend",
+             qa_video_decode_open_range("movie.anicel", 4096, 10), 0);
+  expect_text("and the backend's own reason is what comes back",
+              qa_video_decode_last_error(), "no video decoder in this build");
 
   if (g_failures == 0) {
     printf("qa_video_decode law: all checks passed\n");

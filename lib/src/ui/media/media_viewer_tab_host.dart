@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -11,6 +12,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/media_asset.dart';
 import '../../native/qa_native_engine.dart';
 import '../../services/media/image_viewer_document.dart';
+import '../../services/media/media_byte_source.dart';
 import '../../services/media/video_viewer_document.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/pdf/pdf_render_service.dart';
@@ -519,6 +521,42 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
 
   /// Opens whatever [request] names, or null when this medium has nothing
   /// to show — the one place that knows which document a kind makes.
+  /// Where a CARRIED movie's bytes are when the file it was imported from is
+  /// gone — or null when the ordinary path is the right answer.
+  ///
+  /// 🚨★★★**CARRYING WAS ONLY HALF TRUE FOR MOVIES.** The project keeps the
+  /// bytes, and every other medium reads them back through
+  /// [EditorSessionManager.mediaByteSourceFor]; a movie could not, because
+  /// the OS decoders take a PATH and the bytes are a stretch of the
+  /// `.anicel`. Deleting the import original — the exact act carrying exists
+  /// to survive — left a video the project plainly contains unviewable
+  /// (card `carried-video-cannot-be-viewed`).
+  ///
+  /// ⛔The original wins whenever it is still there: an OS opening a file
+  /// for itself beats any range wrapped around one, and this path exists
+  /// for the case where there is no file to open.
+  ///
+  /// ⚠️A FRAMED entry answers null, and that is not a gap being papered
+  /// over: [EditorSessionManager.mediaByteSourceFor] wraps those in a
+  /// decoder, so what comes back is not a plain range and no OS reader can
+  /// be pointed at it. The archive side is what keeps a movie addressable.
+  ({String archivePath, int offset, int length})? _carriedMovieRange(
+    String path,
+  ) {
+    if (File(path).existsSync()) {
+      return null;
+    }
+    final source = widget.session.mediaByteSourceFor(path);
+    if (source is! MediaArchiveBytes) {
+      return null;
+    }
+    return (
+      archivePath: source.archivePath,
+      offset: source.dataOffset,
+      length: source.length,
+    );
+  }
+
   Future<ViewerDocument?> _openDocument(MediaViewerRequest request) async {
     switch (request.kind) {
       case MediaAssetKind.image:
@@ -526,7 +564,13 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       case MediaAssetKind.pdf:
         return PdfRenderService.open(request.path);
       case MediaAssetKind.video:
-        return VideoViewerDocument.open(request.path);
+        final carried = _carriedMovieRange(request.path);
+        return carried == null
+            ? VideoViewerDocument.open(request.path)
+            : VideoViewerDocument.open(
+                carried.archivePath,
+                range: (offset: carried.offset, length: carried.length),
+              );
       case MediaAssetKind.audio:
         // Sound has no picture — the one medium that stays absent.
         return null;

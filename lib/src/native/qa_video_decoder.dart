@@ -51,6 +51,11 @@ final class QaVideoDecoder {
       .lookupFunction<Int32 Function(Pointer<Utf8>), int Function(Pointer<Utf8>)>(
         'qa_video_decode_open',
       );
+  late final _openRange = _library
+      .lookupFunction<
+        Int32 Function(Pointer<Utf8>, Int64, Int64),
+        int Function(Pointer<Utf8>, int, int)
+      >('qa_video_decode_open_range');
   late final _info = _library
       .lookupFunction<
         Int32 Function(
@@ -94,10 +99,20 @@ final class QaVideoDecoder {
 
   /// Opens [path], replacing whatever was open. Null when it cannot be
   /// read — [lastError] says why.
-  QaVideoInfo? open(String path) {
+  ///
+  /// [range] opens a MOVIE THAT LIVES INSIDE [path] rather than the file
+  /// itself — the shape a carried video has, since its bytes are a stretch
+  /// of the `.anicel` and there is no path pointing at the movie. ⛔The
+  /// range must be the movie's own bytes, contiguous and unmodified; the
+  /// native side says why in its own comment, and the short version is that
+  /// Android below API 28 has no other way to open one.
+  QaVideoInfo? open(String path, {({int offset, int length})? range}) {
     final utf8Path = path.toNativeUtf8(allocator: malloc);
     try {
-      if (_open(utf8Path) == 0) {
+      final opened = range == null
+          ? _open(utf8Path)
+          : _openRange(utf8Path, range.offset, range.length);
+      if (opened == 0) {
         return null;
       }
     } finally {

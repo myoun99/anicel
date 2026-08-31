@@ -134,7 +134,14 @@ static int32_t qa_backend_supported(void);
 
 /// Opens [path] and fills the size/rate/length fields of [g_doc]. Reports
 /// its own reason through [qa_decode_set_error] on failure.
-static int32_t qa_backend_open(const char* path);
+///
+/// ⚠️[offset]/[length] name a RANGE inside [path] rather than the whole
+/// file — see [qa_video_decode_open_range]. A whole-file open passes
+/// `0, 0`, and a backend that has a plain path form should use it: the OS
+/// opening a file for itself beats anything wrapped around it.
+static int32_t qa_backend_open(const char* path,
+                               int64_t offset,
+                               int64_t length);
 
 /// Releases whatever [qa_backend_open] took. Called before every open and
 /// on close; must tolerate never having opened anything.
@@ -148,6 +155,11 @@ static int32_t qa_backend_reposition(int64_t index);
 /// Decodes forward until the picture for [index] is in hand and writes it
 /// to [rgba] as straight RGBA at the document's size.
 static int32_t qa_backend_read(int64_t index, uint8_t* rgba);
+
+/// The half of opening that is the same for a whole file and for a range.
+static int32_t qa_decode_finish_open(const char* path,
+                                     int64_t offset,
+                                     int64_t length);
 
 /// A rate as an exact fraction. 🚨**30000/1001 IS NOT 29.97**, and rounding
 /// it is how a frame index drifts a second out over a long take — Apple
@@ -316,8 +328,26 @@ static void qa_backend_close(void) {
   memset(&g_dec, 0, sizeof(g_dec));
 }
 
-static int32_t qa_backend_open(const char* path) {
+static int32_t qa_backend_open(const char* path,
+                               int64_t offset,
+                               int64_t length) {
   wchar_t wide[1024];
+  // 🔜**A RANGE NEEDS AN `IMFByteStream`, AND THIS BACKEND HAS NONE YET.**
+  //
+  // Media Foundation opens a URL or a byte stream, and there is no built-in
+  // stream over a SUB-RANGE of a file: `MFCreateFile` covers the whole
+  // thing. What is missing is a small `IMFByteStream` that clamps to
+  // [offset, offset+length) — a COM object written by hand in C, which is
+  // its own piece of work rather than a line in this one.
+  //
+  // ⛔Refused by name rather than opened wrong: a whole-archive open would
+  // hand the reader a ZIP and let it fail somewhere less legible.
+  (void)offset;
+  if (length > 0) {
+    qa_decode_set_error(
+        "this build cannot open a movie from inside another file");
+    return 0;
+  }
   if (MultiByteToWideChar(CP_UTF8, 0, path, -1, wide,
                           (int)(sizeof(wide) / sizeof(wide[0]))) == 0) {
     qa_decode_set_error("path is not valid UTF-8");
@@ -597,7 +627,22 @@ static int32_t qa_backend_supported(void) { return 1; }
 
 static void qa_backend_close(void) { qa_video_apple_decode_close(); }
 
-static int32_t qa_backend_open(const char* path) {
+static int32_t qa_backend_open(const char* path,
+                               int64_t offset,
+                               int64_t length) {
+  // 🔜**A RANGE NEEDS AN `AVAssetResourceLoader`, AND THIS BACKEND HAS NONE
+  // YET.** `AVURLAsset` takes a URL and nothing else: there is no offset to
+  // give it. Apple's answer is a custom scheme plus a resource-loader
+  // delegate that serves the bytes — its own piece of work, and one no
+  // local compiler here can even check.
+  //
+  // ⛔Refused by name rather than opened wrong.
+  (void)offset;
+  if (length > 0) {
+    qa_decode_set_error(
+        "this build cannot open a movie from inside another file");
+    return 0;
+  }
   if (!qa_video_apple_decode_open(path, g_decode_error,
                                   (int32_t)sizeof(g_decode_error))) {
     return 0;
@@ -663,6 +708,9 @@ static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
 // noise.
 
 #include <dlfcn.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <unistd.h>
 #include <stdbool.h>  // the release/advance signatures
 
 // No NDK media headers, exactly like the encoder half: dlsym means no
@@ -704,6 +752,10 @@ typedef struct {
   AMediaExtractor* (*extractor_new)(void);
   int32_t (*extractor_delete)(AMediaExtractor*);
   int32_t (*extractor_set_source)(AMediaExtractor*, const char*);
+  /// ⚠️`__INTRODUCED_IN(21)` — the ONLY byte-range open every supported
+  /// Android device has. `setDataSourceCustom` (an arbitrary source) is
+  /// `(28)`, and this app's `minSdk` is 21.
+  int32_t (*extractor_set_source_fd)(AMediaExtractor*, int, off64_t, off64_t);
   size_t (*extractor_track_count)(AMediaExtractor*);
   AMediaFormat* (*extractor_track_format)(AMediaExtractor*, size_t);
   int32_t (*extractor_select_track)(AMediaExtractor*, size_t);
@@ -756,6 +808,7 @@ static int qa_ndk_decode_load(void) {
   QA_SYM(extractor_new, "AMediaExtractor_new")
   QA_SYM(extractor_delete, "AMediaExtractor_delete")
   QA_SYM(extractor_set_source, "AMediaExtractor_setDataSource")
+  QA_SYM(extractor_set_source_fd, "AMediaExtractor_setDataSourceFd")
   QA_SYM(extractor_track_count, "AMediaExtractor_getTrackCount")
   QA_SYM(extractor_track_format, "AMediaExtractor_getTrackFormat")
   QA_SYM(extractor_select_track, "AMediaExtractor_selectTrack")
@@ -817,7 +870,9 @@ static void qa_backend_close(void) {
 
 static int32_t qa_backend_supported(void) { return qa_ndk_decode_load(); }
 
-static int32_t qa_backend_open(const char* path) {
+static int32_t qa_backend_open(const char* path,
+                               int64_t offset,
+                               int64_t length) {
   if (!qa_ndk_decode_load()) {
     qa_decode_set_error("no video decoder in this build");
     return 0;
@@ -831,7 +886,25 @@ static int32_t qa_backend_open(const char* path) {
     qa_decode_set_error("could not open the container");
     return 0;
   }
-  if (g_ndk_dec.extractor_set_source(extractor, path) != QA_AMEDIA_OK) {
+  // A RANGE opens by descriptor; a whole file opens by path. Both are the
+  // extractor's own front doors — nothing is wrapped, copied or unpacked.
+  int32_t sourced;
+  if (length > 0) {
+    const int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+      g_ndk_dec.extractor_delete(extractor);
+      qa_decode_set_error("could not open the container");
+      return 0;
+    }
+    sourced = g_ndk_dec.extractor_set_source_fd(extractor, fd, (off64_t)offset,
+                                                (off64_t)length);
+    // ⚠️CLOSED EITHER WAY. `setDataSourceFd` dups what it needs, so holding
+    // this open would leak one descriptor per movie opened.
+    close(fd);
+  } else {
+    sourced = g_ndk_dec.extractor_set_source(extractor, path);
+  }
+  if (sourced != QA_AMEDIA_OK) {
     g_ndk_dec.extractor_delete(extractor);
     qa_decode_set_error("could not open the container");
     return 0;
@@ -1085,8 +1158,12 @@ static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
 
 static int32_t qa_backend_supported(void) { return 0; }
 
-static int32_t qa_backend_open(const char* path) {
+static int32_t qa_backend_open(const char* path,
+                               int64_t offset,
+                               int64_t length) {
   (void)path;
+  (void)offset;
+  (void)length;
   qa_decode_set_error("no video decoder in this build");
   return 0;
 }
@@ -1125,6 +1202,39 @@ QA_EXPORT void qa_video_decode_close(void) {
   g_doc.next_index = -1;
 }
 
+/// 🚨★★★**A MOVIE INSIDE THE PROJECT FILE IS A RANGE, NOT A PATH.**
+///
+/// A carried video's bytes live in the `.anicel` the project travels as, so
+/// there is no path pointing at the movie — and until this existed, losing
+/// the original meant losing the ability to view it, in a file that plainly
+/// contained it (card `carried-video-cannot-be-viewed`).
+///
+/// ⛔The alternative was unpacking it to a temp file, which leaves a COPY
+/// (유저 2026-08-27: 「사본 남으면 진짜 용서안할게」).
+///
+/// ⚠️**THE RANGE MUST BE THE MOVIE'S OWN BYTES, contiguous and unmodified.**
+/// That is not a convenience: Android below API 28 has no arbitrary byte
+/// source at all — `AMediaExtractor_setDataSourceFd` is `__INTRODUCED_IN(21)`
+/// and `setDataSourceCustom` is `(28)`, while this app's `minSdk` is 21 —
+/// so 「a file descriptor and a range」 is the only shape every supported
+/// device can open. The archive side keeps such entries addressable for
+/// exactly this reason.
+QA_EXPORT int32_t qa_video_decode_open_range(const char* path,
+                                             int64_t offset,
+                                             int64_t length) {
+  qa_video_decode_close();
+  qa_decode_set_error(NULL);
+  if (path == NULL || path[0] == '\0') {
+    qa_decode_set_error("no path");
+    return 0;
+  }
+  if (offset < 0 || length <= 0) {
+    qa_decode_set_error("that range is not inside the file");
+    return 0;
+  }
+  return qa_decode_finish_open(path, offset, length);
+}
+
 QA_EXPORT int32_t qa_video_decode_open(const char* path) {
   qa_video_decode_close();
   qa_decode_set_error(NULL);
@@ -1132,7 +1242,16 @@ QA_EXPORT int32_t qa_video_decode_open(const char* path) {
     qa_decode_set_error("no path");
     return 0;
   }
-  if (!qa_backend_open(path)) {
+  return qa_decode_finish_open(path, 0, 0);
+}
+
+/// Everything both opens do once the backend has answered — one copy, so
+/// 「open a file」 and 「open a range in a file」 cannot drift into meaning
+/// different things about rotation, rate or length.
+static int32_t qa_decode_finish_open(const char* path,
+                                     int64_t offset,
+                                     int64_t length) {
+  if (!qa_backend_open(path, offset, length)) {
     qa_video_decode_close();
     return 0;
   }
