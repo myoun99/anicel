@@ -100,6 +100,10 @@ if(NOT ANDROID AND NOT IOS)
     C_STANDARD 99
     C_STANDARD_REQUIRED ON
   )
+  # ⚠️stb_vorbis calls `sin`, `pow`, `log`. On Linux those live in libm and
+  # nothing pulls it in implicitly — qa_engine has always linked it, and the
+  # first CI run of this target found out the hard way that a target which
+  # compiles the same source needs the same libraries.
   if(APPLE)
     target_link_libraries(qa_audio_range_test
       "-framework CoreFoundation" "-framework AudioToolbox")
@@ -110,6 +114,11 @@ if(NOT ANDROID AND NOT IOS)
       "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream.c")
     target_link_libraries(qa_audio_range_test
       mfplat mfreadwrite mfuuid shlwapi ole32)
+  else()
+    find_library(QA_M_LIB m)
+    if(QA_M_LIB)
+      target_link_libraries(qa_audio_range_test ${QA_M_LIB})
+    endif()
   endif()
   if(MSVC)
     target_compile_options(qa_audio_range_test
