@@ -128,15 +128,14 @@ class BoardCard {
 
   final String id;
   String kind;
+  /// The card's NAME. ⚠️Still a field, and deliberately: a name is not a
+  /// stage in a story, and 「the last line that named it」 is what a name IS.
+  /// 🧪`note` and `said` were the two that made 「머리에 보이는 문장과 이야기
+  /// 의 마지막 문장이 다르다」 possible, and both are gone now — the head
+  /// carries a name, the story carries the sentences.
   String title = '';
   List<String> tags = const [];
   String state = 'open';
-  String note = '';
-
-  /// The user's own current words on this card — what the inbox editor edits.
-  /// Kept apart from [note] (mine) so a status line can never overwrite a
-  /// filing, which is the bug this whole board grew out of.
-  String said = '';
 
   /// 🚨When this card last moved — the date the head row shows, at the far
   /// right after the tags (유저 2026-08-26).
@@ -450,8 +449,15 @@ List<BoardCard> readBoard(File file, {DateTime? now}) {
     }
     if (json['title'] != null) e.title = json['title'] as String;
     if (json['state'] != null) e.state = json['state'] as String;
-    if (json['note'] != null) e.note = json['note'] as String;
-    if (json['said'] != null) e.said = json['said'] as String;
+    // ⛔`note` and `said` are NOT stored on the card. They are stages, and
+    // `stage(...)` below puts each one in the log where it happened —
+    // 「저장하는 것은 사건뿐, 나머지는 접어서 만든다」, the last piece of
+    // `board-one-stream`.
+    //
+    // 🚨THEY WERE LAST-WINS FIELDS AND THAT COST A REAL BLIND SPOT: the
+    // gate's 「PR을 본문에만 적은 카드」 read `c.note`, so a PR written into
+    // an earlier note went silent the moment one more note followed it.
+    // 🧪Measured, then folded — the check reads the log now.
     if (json['care'] != null) e.care = json['care'] as String;
     if (json['tag'] != null) e.tag = json['tag'] as String;
     if (json['where'] != null) e.where = json['where'] as String;
