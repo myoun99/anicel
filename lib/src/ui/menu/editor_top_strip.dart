@@ -68,8 +68,6 @@ class EditorTopStrip extends StatelessWidget {
     this.colorPalette,
     this.onColorPaletteChanged,
     this.shortcuts,
-    this.anicelOpenFilePicker,
-    this.anicelSaveFilePicker,
   });
 
   final EditorSessionManager session;
@@ -96,9 +94,16 @@ class EditorTopStrip extends StatelessWidget {
   /// strip must not learn where a palette file lives.
   final ValueChanged<ColorPaletteState>? onColorPaletteChanged;
 
-  /// Injectable for tests; default to the platform file dialogs.
-  final Future<String?> Function()? anicelOpenFilePicker;
-  final Future<String?> Function(String suggestedName)? anicelSaveFilePicker;
+  /// 🪦Two picker seams stood here — `anicelOpenFilePicker` and
+  /// `anicelSaveFilePicker`, both「injectable for tests」. **Nothing ever
+  /// supplied either one**, in `lib/` or in `test/`, and each bought a
+  /// branch that no run took. Faking a picker already has a home that the
+  /// platform code shares: `FolderPicker.debugFilePicker` /
+  /// `debugFileExporter` / `debugSaveDestinationPicker`, which
+  /// `project_pickers_test` drives. A second way in would have been a
+  /// copy — and the save one was worse than dead, because its `String?`
+  /// could not say `placed`, so injecting it silently took the DESKTOP
+  /// branch and skipped the very ordering F-57 fixed.
 
   /// The customizable shortcut bindings (P1); null hides the shortcut
   /// labels and disables the settings entry (focused widget tests).
@@ -139,15 +144,7 @@ class EditorTopStrip extends StatelessWidget {
   }
 
   Future<void> _openProject(BuildContext context) async {
-    final ProjectPick? pick;
-    if (anicelOpenFilePicker != null) {
-      final injected = await anicelOpenFilePicker!();
-      pick = injected == null
-          ? null
-          : (path: injected, folderBookmark: null, placed: false);
-    } else {
-      pick = await pickProjectToOpen(context);
-    }
+    final pick = await pickProjectToOpen(context);
     if (pick == null || !context.mounted) {
       return;
     }
@@ -441,7 +438,7 @@ class EditorTopStrip extends StatelessWidget {
   }
 
   Future<void> _saveProjectAs(BuildContext context) =>
-      promptSaveProjectAs(context, session, savePicker: anicelSaveFilePicker);
+      promptSaveProjectAs(context, session);
 
   Future<void> _saveProject(BuildContext context) async {
     final path = session.projectFilePath;
@@ -1771,77 +1768,89 @@ Future<bool> saveProjectShowingProgress(
   }
 }
 
+/// Writes the whole live session to [stagingPath] and answers what media it
+/// stored — [EditorSessionManager.writeArchiveCopy] in production.
+///
+/// 🚨★★★**A SEAM BECAUSE THE WRITER CANNOT RUN UNDER A FAKE CLOCK**, not
+/// because anyone wanted a choice about who writes the archive.
+/// `AnicelFileService.save` goes through `Isolate.run` four times, and
+/// `testWidgets` runs in a fake-async zone where awaiting a real isolate is
+/// a HANG rather than a wait. Without this the ordering below — 「Ready」
+/// before the picker and 「Saved」only after it — had no test that could
+/// even reach it, which is how F-57 shipped with the wrong word for a day.
+///
+/// ⛔The picker is NOT a seam here, and that is deliberate: faking one
+/// already has a home the platform code shares
+/// ([FolderPicker.debugFileExporter] and friends). See the gravestone on
+/// [EditorTopStrip].
+typedef ProjectArchiveWriter =
+    Future<Map<String, String>> Function(
+      String stagingPath,
+      void Function(double) report,
+    );
+
 Future<void> promptSaveProjectAs(
   BuildContext context,
   EditorSessionManager session, {
-  Future<String?> Function(String suggestedName)? savePicker,
+  ProjectArchiveWriter? writeArchive,
 }) async {
   final suggested =
       '${sanitizeExportFileComponent(session.repository.requireProject().name)}'
       '$anicelProjectSuffix';
   final currentPath = session.projectFilePath?.replaceAll('\\', '/');
+  // 🚨THE SYNC TWIN, like [pickProjectToOpen] twenty lines up — one file
+  // asking one question one way. The async spelling stood here and it is
+  // documented as unusable from a widget test: 「sync dart:io works under
+  // the widget-test clock; async never completes there」. So the FIRST LINE
+  // of the flow whose ordering F-57 is about could never be reached by a
+  // test, whatever seam it was given.
   final initialDirectory = currentPath != null && currentPath.contains('/')
       ? currentPath.substring(0, currentPath.lastIndexOf('/'))
-      : await ensuredAppDocumentsDirectory();
-  if (!context.mounted) {
-    return;
-  }
-  final ProjectPick? pick;
+      : ensuredAppDocumentsDirectorySync();
   // The media the staged archive stored, kept from the staging call to the
   // adoption below — the two are one decision ("this file is the project
   // now") split across the picker that sits between them.
   Map<String, String>? staged;
-  if (savePicker != null) {
-    final injected = await savePicker(suggested);
-    // The injected picker places no staged file, so it answers the suffix
-    // question the plain way — but it still has to ANSWER it, because the
-    // caller below no longer does (F-14).
-    pick = injected == null
-        ? null
-        : (
-            path: injected.toLowerCase().endsWith(anicelProjectSuffix)
-                ? injected
-                : '$injected$anicelProjectSuffix',
-            folderBookmark: null,
-            placed: false,
-          );
-  } else {
-    pick = await pickProjectSaveTarget(
-      context,
-      suggested,
-      initialDirectory,
-      // What a scoped platform stages: the whole live session, written on
-      // the spot — behind the same progress window a save wears, because
-      // a long-drawn session serializing whole is a save-sized wait and a
-      // frozen screen before a picker reads as a hang.
-      // 🚨★★★**THIS WINDOW SAYS「READY」, NOT「SAVED」.**
-      //
-      // 유저 2026-08-31, on an iPad: 「로딩창뜨고 저장이 완료됬습니다 뜨고
-      // 픽커 뜨는데, 그게아니라 로딩창뜨고, **준비가 완료됐습니다** 띄우고
-      // … 픽커 완료되고 나서 로딩/저장완료 안내창 띄우는게 직관적」.
-      //
-      // They are right, and it was a lie: nothing has been saved when this
-      // finishes. iOS has no save panel, so the archive is written into
-      // the app container FIRST and the picker then places it — and if the
-      // person cancels there, the file this window just announced as
-      // 「saved」is deleted. Announcing the end of the WRITE as the end of
-      // the SAVE told them a thing that could still be undone.
-      stageArchive: (stagingPath) => runWithAppProgress<void>(
-        context: context,
-        title: AppText.strings.commonSave,
-        titleIcon: Icons.save_outlined,
-        runningLabel: AppText.strings.savePrepareRunning,
-        doneLabel: AppText.strings.savePrepareDone,
-        windowKey: const ValueKey<String>('save-progress-dialog'),
-        task: (report) async {
-          staged = await session.writeArchiveCopy(
-            stagingPath,
-            onProgress: report,
-          );
-        },
-      ),
-    );
-  }
+  final write =
+      writeArchive ??
+      (String path, void Function(double) report) =>
+          session.writeArchiveCopy(path, onProgress: report);
+  // 🪦ONE CALL, not two. An injected picker used to get its own branch
+  // here, and that branch re-answered the suffix question the pick already
+  // answers (F-14) — a second spelling of one law, kept alive by a seam
+  // nothing supplied.
+  final pick = await pickProjectSaveTarget(
+    context,
+    suggested,
+    initialDirectory,
+    // What a scoped platform stages: the whole live session, written on
+    // the spot — behind the same progress window a save wears, because
+    // a long-drawn session serializing whole is a save-sized wait and a
+    // frozen screen before a picker reads as a hang.
+    // 🚨★★★**THIS WINDOW SAYS「READY」, NOT「SAVED」.**
+    //
+    // 유저 2026-08-31, on an iPad: 「로딩창뜨고 저장이 완료됬습니다 뜨고
+    // 픽커 뜨는데, 그게아니라 로딩창뜨고, **준비가 완료됐습니다** 띄우고
+    // … 픽커 완료되고 나서 로딩/저장완료 안내창 띄우는게 직관적」.
+    //
+    // They are right, and it was a lie: nothing has been saved when this
+    // finishes. iOS has no save panel, so the archive is written into
+    // the app container FIRST and the picker then places it — and if the
+    // person cancels there, the file this window just announced as
+    // 「saved」is deleted. Announcing the end of the WRITE as the end of
+    // the SAVE told them a thing that could still be undone.
+    stageArchive: (stagingPath) => runWithAppProgress<void>(
+      context: context,
+      title: AppText.strings.commonSave,
+      titleIcon: Icons.save_outlined,
+      runningLabel: AppText.strings.savePrepareRunning,
+      doneLabel: AppText.strings.savePrepareDone,
+      windowKey: const ValueKey<String>('save-progress-dialog'),
+      task: (report) async {
+        staged = await write(stagingPath, report);
+      },
+    ),
+  );
   if (pick == null || !context.mounted) {
     return;
   }
