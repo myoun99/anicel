@@ -123,7 +123,14 @@ Map<String, String> endedCards(List<BoardCard> cards) => {
           c.id: '완료'
         else if (c.state == 'deleted')
           c.id: '삭제됨'
-        else if (c.answer != null)
+        // 🚨★★★A QUESTION, not merely a card carrying an `answer`.
+        // ⛔`R27-rest` is an ordinary work card whose old `/submit` left
+        // `answer:"ok"` on it, and the first version of this guard read that
+        // as 「answered question」 and refused to let me record findings on
+        // live work. Measured within the hour of shipping it.
+        // ⚠️`cardAsks` is the same reader the board draws by, so this cannot
+        // drift into a second opinion about what a question is.
+        else if (cardAsks(c) && c.answer != null)
           c.id: '이미 답이 나온 질문',
     };
 

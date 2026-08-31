@@ -54,6 +54,20 @@ void main() {
       expect(ended['W-Q1'], contains('답'));
     });
 
+    test('⛔★★★질문이 아닌 카드의 `answer` 는 끝이 아니다', () {
+      // 🚨MEASURED WITHIN THE HOUR OF SHIPPING THIS GUARD. `R27-rest` is
+      // ordinary work whose old `/submit` left `answer:"ok"` on it, and the
+      // first version read that as 「answered question」 — refusing to let me
+      // record findings on a live card that 유저 had just given new work.
+      // ⛔An `answer` field is not a question; `cardAsks` is.
+      final ended = endedFrom([
+        '{"kind":"item","id":"W","at":"남은 것","title":"작업","rest":"할 것",'
+            '"ts":"2026-08-31T01:00:00Z"}',
+        '{"kind":"item","id":"W","answer":"ok","ts":"2026-08-31T02:00:00Z"}',
+      ]);
+      expect(ended.containsKey('W'), isFalse);
+    });
+
     test('⛔살아 있는 카드는 끝난 것이 아니다', () {
       final ended = endedFrom([
         '{"kind":"item","id":"W","at":"남은 것","title":"작업","rest":"할 것",'
