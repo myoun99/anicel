@@ -166,7 +166,16 @@ const double timelineBaseGridAlpha = 0.20;
 /// ⛔The order now comes from ONE ink and two alphas rather than from two
 /// colours that happened to differ — a value the next person can move
 /// without re-deriving which chrome grey multiplies darker.
-const double timelineSixGridAlpha = 0.5;
+/// 🚨★★★F-41 AGAIN (유저 2026-09-01): 「이번엔 **너무 인식이 안된다.** 6f선을
+/// 지금의 1초선이랑 **동일하게** 하고, 지금의 1초선은 지금보다 **1.75배**
+/// 정도 강하게」.
+///
+/// ⚠️The previous round chased the OPPOSITE complaint — the 6f line was
+/// darker than the second and cut every block into sixes — and the fix went
+/// one step too far the other way. Both readings are the user's, and the
+/// second one is the current one: 6f takes the number the second line has
+/// been wearing.
+const double timelineSixGridAlpha = 0.85;
 
 /// The SECOND line's alpha (F-41, second half).
 ///
@@ -186,7 +195,24 @@ const double timelineSixGridAlpha = 0.5;
 /// timeline, the X-sheet, the storyboard, the folded row and the lane
 /// rows together. Anything that made only one of them lighter would be
 /// the copy F-18 just finished removing.
-const double timelineSecondGridAlpha = 0.85;
+/// 🚨★★★F-41 AGAIN, and this half could NOT be done as asked (유저
+/// 2026-09-01: 「지금의 1초선은 지금보다 1.75배 정도 강하게」).
+///
+/// ⛔0.85 × 1.75 = 1.4875, and alpha stops at 1.0. So this goes to the
+/// ceiling of the ink it already uses, which is 1.18× — not 1.75×.
+///
+/// 🧪Measured darkening on the block's paper (L=0.906), so the gap is a
+/// number and not an impression: base 0.141 · 6f 0.383 (was 0.225) ·
+/// second 0.451 (was 0.383). The order base < 6f < second survives, and 6f
+/// now lands exactly where the second line was — which is the half the user
+/// specified exactly.
+///
+/// ⛔The rest needs a DECISION, not a guess: a darker ink (the old
+/// `colorScheme.outline` measured 0.649 ≈ 1.7× and is the only thing that
+/// reaches 1.75×, but it reintroduces the two-colour order this file just
+/// removed) or a wider stroke. Raised on the board as `F-41-Q1` rather than
+/// picked here.
+const double timelineSecondGridAlpha = 1.0;
 
 /// The base grid's line CADENCE at [frameCellExtent] (UI-R18 #8/#12, the
 /// storyboard recipe adopted everywhere): instead of alpha-fading away at
