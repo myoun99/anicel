@@ -318,7 +318,6 @@ Future<void> _handle(HttpRequest req) async {
         // (「되돌리기못해도되니까」).
         final kind = '${body['kind'] ?? 'decision'}';
         final memo = '${body['memo'] ?? ''}'.trim();
-        final ticked = kind == 'check' && memo.isEmpty;
         final id = '${body['id']}';
         // 🚨AN ANSWERED QUESTION STOPS BEING A CARD (유저 2026-08-27: 「답할
         // 것의 카드는 애초에 원본 카드에서 파생?되서 이어지는 카드아닌가?
@@ -370,20 +369,12 @@ Future<void> _handle(HttpRequest req) async {
             'answerNote': memo,
             'ts': _now(),
           });
-        } else if (ticked) {
-          // ⛔NOT `deleted`. That was safe only while a 실기 확인 row WAS a
-          // check record with nothing but a title. The section holds real
-          // cards with whole stories now, and this is the section the user
-          // sweeps many rows at a time — one click would have taken a card
-          // and its story with it. 완료 clears the list just the same.
-          _append({
-            'kind': 'item',
-            'id': id,
-            'at': '완료',
-            'said': '확인 — 문제 없음',
-            'ts': _now(),
-          });
         } else {
+          // ⛔THE CLEAN-TICK BRANCH IS GONE, and with it the card-level 제출
+          // on a check card. `/tick` owns that answer now: it clears ONE
+          // check by `ref`, which is the difference a card-level button could
+          // never express. ⚠️A stale page that still posts here lands in the
+          // line below — 유저 memo → 분류 전, which is the safe half.
           _append({
             'kind': 'item',
             'id': id,
@@ -1571,13 +1562,22 @@ String _checkRow(BoardCard c) {
   // started it, the answers along the way, what the fix turned out to be. All
   // of that is what the card carried on its way here, so all of it comes with.
   b.writeln(_story(c));
-  // Its questions come with it to 확인할 것 — 「무엇을 물었고 무엇으로 정했나」
-  // is half of knowing whether the thing in front of you is right.
-  b.writeln('<textarea rows="2" placeholder="문제가 있으면 적어 주세요 — 비워 두면 OK '
-      '(스크린샷은 Ctrl+V)"></textarea>');
+  // 🚨★★★ONE CHECK, ONE BOX. This card used to carry a second memo box of
+  // its own under the story, with its own wording (「비워 두면 OK」) and its
+  // own button (제출). When every 실기 확인 entry grew its own box (#1427),
+  // that made TWO boxes asking one question — and `send()` reads
+  // `c.querySelector('textarea')`, THE FIRST ONE IN THE CARD.
+  //
+  // ⛔So typing 「73프레임이 하얗다」 into the lower box and pressing 제출 read
+  // the EMPTY upper box, decided the tick was clean, and wrote 「확인 — 문제
+  // 없음」. The words were gone and the card closed as fine. That is precisely
+  // the failure #1427 existed to end, reintroduced by #1427.
+  //
+  // ⚠️Nothing is stranded: measured on the live board, all 57 check cards
+  // carry at least one per-entry 확인 (55 have one, 2 have two). The control
+  // moved INTO the check it answers, which is where 유저 asked for it —
+  // 「실기확인 항목마다 메모란도 존재해야하지않을까? 원래 실기확인은 그렇잖아」.
   b.writeln(_shotStrip(c.id));
-  b.writeln('<div class="foot"><button onclick="send(\'${_esc(c.id)}\')">제출</button>'
-      '<span class="state"></span></div>');
   b.writeln('</div></details>');
   return b.toString();
 }
@@ -2302,7 +2302,13 @@ document.addEventListener('paste', function(e){
     e.preventDefault();
     const reader = new FileReader();
     reader.onload = function(){
-      const card = ta.closest('details');
+      // 🚨THE CARD, not the entry. Entries are `<details class="lg">` with
+      // NO id, so once a textarea lived inside one (#1427) this found the
+      // entry and posted an empty id — a screenshot pasted into a per-check
+      // memo box went nowhere and said nothing. Cards are the ones named
+      // `c-<id>`, including intake (`c-intake`).
+      const card = ta.closest('details[id^="c-"]');
+      if(!card) return;
       const id = card.id.replace(/^c-/, '');
       if(id === 'intake'){
         queued.push(reader.result);
