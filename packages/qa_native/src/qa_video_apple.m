@@ -438,8 +438,129 @@ void qa_video_apple_abort(void) {
 //
 // One document at a time, matching qa_video_decode.c's contract.
 
+// ---------------------------------------------------------------------------
+// Serving a RANGE of a file to AVFoundation.
+//
+// 🚨★★★**AVFoundation HAS NO 「open this file from byte N」.** `AVURLAsset`
+// takes a URL; there is no offset parameter anywhere. Its answer is a URL
+// with a scheme it does not recognise plus a delegate that answers every
+// request for it — so where Windows writes an `IMFByteStream` and Android
+// passes a descriptor with a range, Apple SERVES the bytes.
+//
+// ⛔The file handle is opened once and kept: a resource loader is asked for
+// small ranges constantly while a movie plays, and opening the archive per
+// request would turn playback into a stream of opens.
+@interface QaRangeResourceLoader : NSObject <AVAssetResourceLoaderDelegate>
+@property(nonatomic, readonly) BOOL opened;
+@property(nonatomic, readonly) dispatch_queue_t queue;
+- (instancetype)initWithPath:(NSString*)path
+                      offset:(int64_t)offset
+                      length:(int64_t)length;
+- (void)close;
+@end
+
+@implementation QaRangeResourceLoader {
+  NSFileHandle* _file;
+  int64_t _base;
+  int64_t _length;
+}
+
+- (instancetype)initWithPath:(NSString*)path
+                      offset:(int64_t)offset
+                      length:(int64_t)length {
+  self = [super init];
+  if (self == nil) {
+    return nil;
+  }
+  _base = offset;
+  _length = length;
+  _queue = dispatch_queue_create("qa.range.loader", DISPATCH_QUEUE_SERIAL);
+  _file = [NSFileHandle fileHandleForReadingAtPath:path];
+  if (_file == nil || offset < 0 || length <= 0) {
+    _opened = NO;
+    return self;
+  }
+  // ⛔The range must be INSIDE the file. A loader that promises bytes the
+  // file cannot supply produces a truncated movie, which reads as a corrupt
+  // one rather than as a range that was wrong.
+  NSDictionary* attributes = [[NSFileManager defaultManager]
+      attributesOfItemAtPath:path
+                       error:nil];
+  const int64_t size = (int64_t)[attributes fileSize];
+  _opened = (offset + length <= size);
+  return self;
+}
+
+- (void)close {
+  [_file closeFile];
+  _file = nil;
+}
+
+/// What the range looks like from outside: a file of [_length] bytes whose
+/// type AVFoundation must guess, because a URL with our own scheme carries
+/// no extension it could read one from.
+- (void)fillInformation:(AVAssetResourceLoadingRequest*)request {
+  request.contentInformationRequest.contentLength = _length;
+  request.contentInformationRequest.byteRangeAccessSupported = YES;
+  // ⚠️`public.movie` rather than a precise type: this backend is handed a
+  // range, not a name, and claiming a specific container we have not parsed
+  // would be a guess AVFoundation then has to live with. The generic type
+  // lets it sniff the bytes it is about to be given.
+  request.contentInformationRequest.contentType = @"public.movie";
+}
+
+- (BOOL)resourceLoader:(AVAssetResourceLoader*)resourceLoader
+    shouldWaitForLoadingOfRequestedResource:
+        (AVAssetResourceLoadingRequest*)loadingRequest {
+  (void)resourceLoader;
+  if (_file == nil) {
+    return NO;
+  }
+  if (loadingRequest.contentInformationRequest != nil) {
+    [self fillInformation:loadingRequest];
+  }
+  AVAssetResourceLoadingDataRequest* data = loadingRequest.dataRequest;
+  if (data == nil) {
+    [loadingRequest finishLoading];
+    return YES;
+  }
+  int64_t wanted = data.requestedOffset;
+  if (data.currentOffset > wanted) {
+    wanted = data.currentOffset;
+  }
+  if (wanted < 0 || wanted >= _length) {
+    [loadingRequest finishLoading];
+    return YES;
+  }
+  int64_t take = data.requestedLength;
+  if (data.requestsAllDataToEndOfResource) {
+    take = _length - wanted;
+  }
+  if (take > _length - wanted) {
+    take = _length - wanted;
+  }
+  // 🚨base + wanted. Reading at `wanted` alone hands back the archive's own
+  // header as if it were the movie — the same arithmetic the other two
+  // backends have to get right, in the same one place each.
+  @try {
+    [_file seekToFileOffset:(unsigned long long)(_base + wanted)];
+    NSData* bytes = [_file readDataOfLength:(NSUInteger)take];
+    [data respondWithData:bytes];
+    [loadingRequest finishLoading];
+  } @catch (NSException* failure) {
+    [loadingRequest finishLoadingWithError:nil];
+  }
+  return YES;
+}
+
+@end
+
 static AVAsset* g_decode_asset = nil;
 static AVAssetTrack* g_decode_track = nil;
+/// Held for as long as the asset is open — AVFoundation keeps only a WEAK
+/// reference to a resource-loader delegate, so letting this go is how a
+/// carried movie stops answering mid-play.
+static QaRangeResourceLoader* g_decode_serving = nil;
 static AVAssetReader* g_decode_reader = nil;
 static AVAssetReaderTrackOutput* g_decode_output = nil;
 static int32_t g_decode_width = 0;
@@ -462,6 +583,11 @@ void qa_video_apple_decode_close(void) {
   qa_apple_decode_release_reader();
   g_decode_track = nil;
   g_decode_asset = nil;
+  // ⚠️The reader goes FIRST: it is what is still asking the loader for
+  // bytes, and closing the file under a live reader is a read on a closed
+  // handle rather than a clean stop.
+  [g_decode_serving close];
+  g_decode_serving = nil;
   g_decode_width = 0;
   g_decode_height = 0;
   g_decode_duration_us = 0;
@@ -470,6 +596,8 @@ void qa_video_apple_decode_close(void) {
 }
 
 int32_t qa_video_apple_decode_open(const char* utf8_path,
+                                   int64_t range_offset,
+                                   int64_t range_length,
                                    char* error,
                                    int32_t error_capacity) {
   @autoreleasepool {
@@ -479,8 +607,39 @@ int32_t qa_video_apple_decode_open(const char* utf8_path,
       return 0;
     }
     NSString* path = [NSString stringWithUTF8String:utf8_path];
-    NSURL* url = [NSURL fileURLWithPath:path];
-    AVAsset* asset = [AVAsset assetWithURL:url];
+    AVAsset* asset;
+    if (range_length > 0) {
+      // 🚨★★★**A RANGE REACHES AVFOUNDATION AS A URL IT CANNOT RESOLVE.**
+      //
+      // `AVURLAsset` takes a URL and nothing else — there is no offset to
+      // give it — so the range is served rather than addressed: the asset is
+      // built on a URL with a scheme AVFoundation does not know, and the
+      // resource loader below answers every request for it out of the file.
+      // That indirection IS Apple's byte-stream equivalent; Windows writes
+      // an `IMFByteStream`, Android hands over a descriptor and a range.
+      //
+      // ⚠️The scheme must be one nothing else claims. A recognised one (a
+      // `file:` URL, say) is loaded by AVFoundation itself and the delegate
+      // is never asked.
+      g_decode_serving =
+          [[QaRangeResourceLoader alloc] initWithPath:path
+                                               offset:range_offset
+                                               length:range_length];
+      if (g_decode_serving == nil || !g_decode_serving.opened) {
+        g_decode_serving = nil;
+        qa_apple_set_error(error, error_capacity,
+                           "that range is not inside the file");
+        return 0;
+      }
+      NSURL* served =
+          [NSURL URLWithString:@"qa-anicel-range:///movie"];
+      AVURLAsset* urlAsset = [AVURLAsset URLAssetWithURL:served options:nil];
+      [urlAsset.resourceLoader setDelegate:g_decode_serving
+                                     queue:g_decode_serving.queue];
+      asset = urlAsset;
+    } else {
+      asset = [AVAsset assetWithURL:[NSURL fileURLWithPath:path]];
+    }
     NSArray<AVAssetTrack*>* tracks =
         [asset tracksWithMediaType:AVMediaTypeVideo];
     if (asset == nil || tracks.count == 0) {

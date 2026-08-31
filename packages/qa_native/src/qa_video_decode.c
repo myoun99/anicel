@@ -300,6 +300,13 @@ static void qa_rotate_rgba(const uint8_t* stored,
 #include <mfreadwrite.h>
 #include <mferror.h>
 
+/// The Windows half of opening a movie inside another file — see
+/// `qa_win_range_stream.c` for why Media Foundation needs one written by
+/// hand. NULL when the range is not inside the file.
+extern IMFByteStream* qa_win_range_stream_create(const wchar_t* path,
+                                                 int64_t offset,
+                                                 int64_t length);
+
 /// ⚠️What is left here is the PLATFORM's own state — the reader itself and
 /// how Media Foundation lays out its rows. Size, rate, length and 「where am
 /// I positioned」 moved to [g_doc], where every backend answers the same way.
@@ -332,22 +339,6 @@ static int32_t qa_backend_open(const char* path,
                                int64_t offset,
                                int64_t length) {
   wchar_t wide[1024];
-  // 🔜**A RANGE NEEDS AN `IMFByteStream`, AND THIS BACKEND HAS NONE YET.**
-  //
-  // Media Foundation opens a URL or a byte stream, and there is no built-in
-  // stream over a SUB-RANGE of a file: `MFCreateFile` covers the whole
-  // thing. What is missing is a small `IMFByteStream` that clamps to
-  // [offset, offset+length) — a COM object written by hand in C, which is
-  // its own piece of work rather than a line in this one.
-  //
-  // ⛔Refused by name rather than opened wrong: a whole-archive open would
-  // hand the reader a ZIP and let it fail somewhere less legible.
-  (void)offset;
-  if (length > 0) {
-    qa_decode_set_error(
-        "this build cannot open a movie from inside another file");
-    return 0;
-  }
   if (MultiByteToWideChar(CP_UTF8, 0, path, -1, wide,
                           (int)(sizeof(wide) / sizeof(wide[0]))) == 0) {
     qa_decode_set_error("path is not valid UTF-8");
@@ -372,7 +363,26 @@ static int32_t qa_backend_open(const char* path,
   IMFAttributes_SetUINT32(
       attributes, &MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, TRUE);
 
-  HRESULT hr = MFCreateSourceReaderFromURL(wide, attributes, &g_dec.reader);
+  // A RANGE goes through a byte stream; a whole file goes through the URL.
+  // ⛔The URL form is not a shortcut being kept for its own sake — it lets
+  // Media Foundation open the file itself, which is faster and better tested
+  // than anything wrapped around one, and the range form exists only where
+  // there is no file to name.
+  HRESULT hr;
+  if (length > 0) {
+    IMFByteStream* stream =
+        qa_win_range_stream_create(wide, offset, length);
+    if (stream == NULL) {
+      qa_decode_set_error("that range is not inside the file");
+      qa_backend_close();
+      return 0;
+    }
+    hr = MFCreateSourceReaderFromByteStream(stream, attributes, &g_dec.reader);
+    // The reader holds its own reference; ours is done either way.
+    IMFByteStream_Release(stream);
+  } else {
+    hr = MFCreateSourceReaderFromURL(wide, attributes, &g_dec.reader);
+  }
   IMFAttributes_Release(attributes);
   if (FAILED(hr) || g_dec.reader == NULL) {
     qa_decode_set_error("this file has no readable video stream");
@@ -598,6 +608,8 @@ static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
 // surface in one portable TU, exactly as the export half does.
 
 extern int32_t qa_video_apple_decode_open(const char* utf8_path,
+                                          int64_t range_offset,
+                                          int64_t range_length,
                                           char* error,
                                           int32_t error_capacity);
 extern int32_t qa_video_apple_decode_info(int32_t* stored_width,
@@ -630,20 +642,10 @@ static void qa_backend_close(void) { qa_video_apple_decode_close(); }
 static int32_t qa_backend_open(const char* path,
                                int64_t offset,
                                int64_t length) {
-  // 🔜**A RANGE NEEDS AN `AVAssetResourceLoader`, AND THIS BACKEND HAS NONE
-  // YET.** `AVURLAsset` takes a URL and nothing else: there is no offset to
-  // give it. Apple's answer is a custom scheme plus a resource-loader
-  // delegate that serves the bytes — its own piece of work, and one no
-  // local compiler here can even check.
-  //
-  // ⛔Refused by name rather than opened wrong.
-  (void)offset;
-  if (length > 0) {
-    qa_decode_set_error(
-        "this build cannot open a movie from inside another file");
-    return 0;
-  }
-  if (!qa_video_apple_decode_open(path, g_decode_error,
+  // ⚠️A range reaches AVFoundation through a resource loader rather than a
+  // URL — see `qa_video_apple.m`, which is also the only compiler that ever
+  // sees it.
+  if (!qa_video_apple_decode_open(path, offset, length, g_decode_error,
                                   (int32_t)sizeof(g_decode_error))) {
     return 0;
   }
