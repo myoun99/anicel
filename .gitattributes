@@ -1,0 +1,14 @@
+# 🚨★★★A SHELL SCRIPT WITH CRLF DOES NOT RUN.
+#
+# `core.autocrlf` is on for this checkout, so git offered to hand
+# `.githooks/pre-push` back with Windows line endings — and bash reads the
+# trailing `\r` as part of the command, so the very first line becomes
+# `#!/usr/bin/env bash\r` and the hook dies before it can refuse anything.
+# ⛔A gate that silently stops working is worse than no gate: nothing would
+# have said so, and a board push would have sailed past the check that exists
+# to keep master green.
+#
+# ⚠️Everything git executes as a script gets the same treatment, not just the
+# hook — `tool/*.sh` is run by the merge gate and by the Stop hook.
+.githooks/** text eol=lf
+*.sh text eol=lf
