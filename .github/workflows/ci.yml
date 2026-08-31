@@ -121,6 +121,19 @@ jobs:
           cmake -S packages/qa_native/src -B build/ci-clang -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER=clang
           cmake --build build/ci-clang --config Release
+      # 🚨★★★**THE FIRST NATIVE CODE THIS REPO EVER RAN IN CI.** This job
+      # built the library twice and then printed `ls -la` — 「it compiles on
+      # two compilers」 is a real answer to a real question, and it was the
+      # ONLY question being asked. Both, because the point of two compilers
+      # is that they can disagree, and that goes for behaviour too.
+      #
+      # ⚠️If this ever says 「No tests were found」, that is a FAILURE wearing
+      # a success: `--output-on-failure` prints nothing when nothing ran, and
+      # a job that runs no tests looks exactly like a job that passes them.
+      - name: Run the native law tests (gcc)
+        run: ctest --test-dir build/ci-gcc --output-on-failure --no-tests=error
+      - name: Run the native law tests (clang)
+        run: ctest --test-dir build/ci-clang --output-on-failure --no-tests=error
       - name: Show artifacts
         run: ls -la build/ci-gcc build/ci-clang
 

@@ -56,6 +56,133 @@ QA_EXPORT const char* qa_video_decode_last_error(void) {
   return g_decode_error;
 }
 
+// ---------------------------------------------------------------------------
+// 🚨★★★**THE LAW IS WRITTEN ONCE; THE PLATFORMS ONLY SAY HOW.**
+//
+// This file used to hold three whole decoders, and the same rules were
+// spelled out in each of them. Measured 2026-08-31, before this split:
+//
+//   written THREE times  index<0 clamp · the capacity check · 「a document
+//                        has at least one frame」 · 「no declared rate means
+//                        24」 · frame_count = duration x rate · the info()
+//                        getters
+//   written TWICE        the 「already positioned, do not seek」 state
+//                        machine (Windows and Android; APPLE HAD NONE, so a
+//                        first play there paid a random access per frame)
+//   written ONCE         the display rotation (Apple only, so upright phone
+//                        video lay on its side everywhere else) and the rate
+//                        as a FRACTION (Android read `frame-rate` as an
+//                        int32 and pinned the denominator to 1, so 29.97
+//                        became 30 and every target drifted)
+//
+// The last group is the point: a rule that exists in one backend is not a
+// rule, it is an accident of who wrote that backend. Below, each platform
+// implements four hooks and answers nothing else — and 「what is left」 is
+// the honest platform surface: opening a container, repositioning, pulling
+// one decoded picture, and converting its pixels.
+//
+// ⚠️None of this is reachable by any test today (2026-08-31: the CI job
+// that touches this file COMPILES it and runs nothing, and the arithmetic
+// above lived inside `#if` blocks Linux never even compiled). Pulling it out
+// here is what makes a test possible at all.
+
+/// What every backend fills in and the portable law reads back.
+typedef struct {
+  int32_t width;
+  int32_t height;
+  int32_t fps_num;
+  int32_t fps_den;
+  int64_t frame_count;
+  /// The frame index the backend is positioned to deliver next, or -1 when
+  /// that is not known. Sequential playback asks for exactly this one, and
+  /// then no reposition is needed — see [qa_video_decode_frame].
+  int64_t next_index;
+  int32_t open;
+} qa_decode_doc;
+
+static qa_decode_doc g_doc;
+
+/// Whether this build has a reader at all. Android answers by `dlsym`, so
+/// this is a hook rather than a constant.
+static int32_t qa_backend_supported(void);
+
+/// Opens [path] and fills the size/rate/length fields of [g_doc]. Reports
+/// its own reason through [qa_decode_set_error] on failure.
+static int32_t qa_backend_open(const char* path);
+
+/// Releases whatever [qa_backend_open] took. Called before every open and
+/// on close; must tolerate never having opened anything.
+static void qa_backend_close(void);
+
+/// Positions the reader so the next [qa_backend_read] can reach [index].
+/// ⛔NOT 「decode index」 — a seek lands on the sync frame at or before the
+/// target on every one of these APIs, and the read below walks forward.
+static int32_t qa_backend_reposition(int64_t index);
+
+/// Decodes forward until the picture for [index] is in hand and writes it
+/// to [rgba] as straight RGBA at the document's size.
+static int32_t qa_backend_read(int64_t index, uint8_t* rgba);
+
+/// A rate as an exact fraction. 🚨**30000/1001 IS NOT 29.97**, and rounding
+/// it is how a frame index drifts a second out over a long take — Apple
+/// carried this and Android did not, which is the whole reason it is here
+/// instead of in a backend.
+static void qa_rate_to_fraction(double rate, int32_t* num, int32_t* den) {
+  if (!(rate > 0.0) || rate != rate || rate > 1000.0) {
+    // No usable rate. 24 is the honest guess for the material this app takes
+    // in, and the caller can say so.
+    *num = 24;
+    *den = 1;
+    return;
+  }
+  const double rounded = (double)(int32_t)(rate + 0.5);
+  if (rate - rounded < 0.001 && rounded - rate < 0.001) {
+    *num = (int32_t)rounded;
+    *den = 1;
+    return;
+  }
+  // The NTSC family: every non-integer rate this app meets is n/1.001.
+  *num = (int32_t)(rate * 1001.0 + 0.5);
+  *den = 1001;
+}
+
+/// How many frames a picture of [duration_ticks] holds at this rate — at
+/// least one, because a document that opened has a picture in it.
+///
+/// 🚨**TICKS AND THEIR RATE, NOT SECONDS.** The first draft of this helper
+/// took a `double` of seconds, and the law test caught what that costs
+/// immediately: 1.001 seconds at 30000/1001 is EXACTLY thirty frames, and
+/// in floating point it is 29.999999… which truncates to 29. A movie whose
+/// duration is a whole number of frames would have reported one short —
+/// the same class of miscount as 유저 2026-08-31's 「72프레임짜리 비디오인데
+/// 73프레임째의 빈 화면」, only in the other direction. Media Foundation's
+/// path had always done this in integers; passing through seconds would
+/// have been a REGRESSION dressed as unification.
+static int64_t qa_frame_count_for(int64_t duration_ticks,
+                                  int64_t ticks_per_second,
+                                  int32_t fps_num,
+                                  int32_t fps_den) {
+  if (duration_ticks <= 0 || ticks_per_second <= 0 || fps_den <= 0 ||
+      fps_num <= 0) {
+    return 1;
+  }
+  const int64_t count = (duration_ticks * (int64_t)fps_num) /
+                        (ticks_per_second * (int64_t)fps_den);
+  return count < 1 ? 1 : count;
+}
+
+/// Whether a sample at [stamp] has reached [target], with **half a frame of
+/// slack**: a timestamp lands ON the frame it belongs to, and asking for
+/// exact equality misses on every source whose rate is not an integer.
+///
+/// ⚠️Ticks, not seconds — each backend passes its own unit (Media Foundation
+/// counts 100ns, MediaCodec counts µs) and the rule is the same either way.
+static int32_t qa_sample_reaches(int64_t stamp,
+                                 int64_t target,
+                                 int64_t frame_ticks) {
+  return stamp + frame_ticks / 2 >= target;
+}
+
 #if defined(_WIN32)
 
 #define COBJMACROS
@@ -65,29 +192,23 @@ QA_EXPORT const char* qa_video_decode_last_error(void) {
 #include <mfreadwrite.h>
 #include <mferror.h>
 
+/// ⚠️What is left here is the PLATFORM's own state — the reader itself and
+/// how Media Foundation lays out its rows. Size, rate, length and 「where am
+/// I positioned」 moved to [g_doc], where every backend answers the same way.
 typedef struct {
   IMFSourceReader* reader;
-  int32_t width;
-  int32_t height;
-  int32_t fps_num;
-  int32_t fps_den;
-  int64_t duration_100ns;
-  int64_t frame_count;
-  /// The frame index the reader is positioned to deliver next, or -1 when
-  /// that is not known. Sequential playback asks for exactly this one, and
-  /// then no seek is needed — see [qa_video_decode_frame].
-  int64_t next_index;
   // Negative in the media type means the picture is stored bottom-up; the
   // magnitude is the row pitch either way.
   int32_t stride;
   int32_t bottom_up;
-  int32_t open;
   int32_t mf_started;
 } qa_video_decode_state;
 
 static qa_video_decode_state g_dec;
 
-static void qa_video_decode_teardown(void) {
+static int32_t qa_backend_supported(void) { return 1; }
+
+static void qa_backend_close(void) {
   if (g_dec.reader != NULL) {
     IMFSourceReader_Release(g_dec.reader);
     g_dec.reader = NULL;
@@ -96,24 +217,10 @@ static void qa_video_decode_teardown(void) {
     MFShutdown();
     g_dec.mf_started = 0;
   }
-  g_dec.open = 0;
-  // ⛔A closed reader is positioned nowhere. Leaving this set would let
-  // the next OPEN skip a seek on the strength of the previous file.
-  g_dec.next_index = -1;
+  memset(&g_dec, 0, sizeof(g_dec));
 }
 
-QA_EXPORT int32_t qa_video_decode_supported(void) { return 1; }
-
-QA_EXPORT void qa_video_decode_close(void) { qa_video_decode_teardown(); }
-
-QA_EXPORT int32_t qa_video_decode_open(const char* path) {
-  qa_video_decode_teardown();
-  qa_decode_set_error(NULL);
-  if (path == NULL || path[0] == '\0') {
-    qa_decode_set_error("no path");
-    return 0;
-  }
-
+static int32_t qa_backend_open(const char* path) {
   wchar_t wide[1024];
   if (MultiByteToWideChar(CP_UTF8, 0, path, -1, wide,
                           (int)(sizeof(wide) / sizeof(wide[0]))) == 0) {
@@ -133,7 +240,7 @@ QA_EXPORT int32_t qa_video_decode_open(const char* path) {
   IMFAttributes* attributes = NULL;
   if (FAILED(MFCreateAttributes(&attributes, 1))) {
     qa_decode_set_error("MFCreateAttributes failed");
-    qa_video_decode_teardown();
+    qa_backend_close();
     return 0;
   }
   IMFAttributes_SetUINT32(
@@ -143,7 +250,7 @@ QA_EXPORT int32_t qa_video_decode_open(const char* path) {
   IMFAttributes_Release(attributes);
   if (FAILED(hr) || g_dec.reader == NULL) {
     qa_decode_set_error("this file has no readable video stream");
-    qa_video_decode_teardown();
+    qa_backend_close();
     return 0;
   }
 
@@ -157,7 +264,7 @@ QA_EXPORT int32_t qa_video_decode_open(const char* path) {
   IMFMediaType* wanted = NULL;
   if (FAILED(MFCreateMediaType(&wanted))) {
     qa_decode_set_error("MFCreateMediaType failed");
-    qa_video_decode_teardown();
+    qa_backend_close();
     return 0;
   }
   IMFMediaType_SetGUID(wanted, &MF_MT_MAJOR_TYPE, &MFMediaType_Video);
@@ -167,7 +274,7 @@ QA_EXPORT int32_t qa_video_decode_open(const char* path) {
   IMFMediaType_Release(wanted);
   if (FAILED(hr)) {
     qa_decode_set_error("no RGB conversion for this codec");
-    qa_video_decode_teardown();
+    qa_backend_close();
     return 0;
   }
 
@@ -176,7 +283,7 @@ QA_EXPORT int32_t qa_video_decode_open(const char* path) {
           g_dec.reader, (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
           &current))) {
     qa_decode_set_error("the reader would not describe its output");
-    qa_video_decode_teardown();
+    qa_backend_close();
     return 0;
   }
 
@@ -198,22 +305,14 @@ QA_EXPORT int32_t qa_video_decode_open(const char* path) {
   }
   IMFMediaType_Release(current);
 
-  if (width == 0 || height == 0) {
-    qa_decode_set_error("the video stream has no frame size");
-    qa_video_decode_teardown();
-    return 0;
-  }
-  if (fps_num == 0 || fps_den == 0) {
-    // A file with no declared rate still has frames; 24 is the honest
-    // guess for the material this app takes in, and the caller can say so.
-    fps_num = 24;
-    fps_den = 1;
-  }
-
-  g_dec.width = (int32_t)width;
-  g_dec.height = (int32_t)height;
-  g_dec.fps_num = (int32_t)fps_num;
-  g_dec.fps_den = (int32_t)fps_den;
+  // ⛔The size and rate checks that stood here are gone, not relaxed: the
+  // portable open makes both, for every backend, in one place.
+  g_doc.width = (int32_t)width;
+  g_doc.height = (int32_t)height;
+  // Media Foundation hands the rate over as a ratio already, so this is the
+  // one backend that has nothing to reconstruct.
+  g_doc.fps_num = (int32_t)fps_num;
+  g_doc.fps_den = (int32_t)fps_den;
   g_dec.bottom_up = stride < 0 ? 1 : 0;
   g_dec.stride = stride < 0 ? -stride : stride;
 
@@ -235,15 +334,15 @@ QA_EXPORT int32_t qa_video_decode_open(const char* path) {
   // is what makes the two agree, so it is done on both sides.
   PROPVARIANT duration;
   PropVariantInit(&duration);
-  g_dec.duration_100ns = 0;
+  int64_t duration_100ns = 0;
   if (SUCCEEDED(IMFSourceReader_GetPresentationAttribute(
           g_dec.reader, (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
           &MF_PD_DURATION, &duration)) &&
       duration.vt == VT_UI8 && (int64_t)duration.uhVal.QuadPart > 0) {
-    g_dec.duration_100ns = (int64_t)duration.uhVal.QuadPart;
+    duration_100ns = (int64_t)duration.uhVal.QuadPart;
   }
   PropVariantClear(&duration);
-  if (g_dec.duration_100ns <= 0) {
+  if (duration_100ns <= 0) {
     // ⛔Not every source answers per stream. Falling back to the
     // presentation keeps the old behaviour for those rather than counting
     // zero frames, which would be a worse bug than the one above.
@@ -252,46 +351,23 @@ QA_EXPORT int32_t qa_video_decode_open(const char* path) {
             g_dec.reader, (DWORD)MF_SOURCE_READER_MEDIASOURCE, &MF_PD_DURATION,
             &duration))) {
       if (duration.vt == VT_UI8) {
-        g_dec.duration_100ns = (int64_t)duration.uhVal.QuadPart;
+        duration_100ns = (int64_t)duration.uhVal.QuadPart;
       }
     }
     PropVariantClear(&duration);
   }
 
-  // 10,000,000 hundred-nanosecond ticks in a second.
-  g_dec.frame_count =
-      g_dec.duration_100ns <= 0
-          ? 0
-          : (g_dec.duration_100ns * (int64_t)fps_num) /
-                ((int64_t)fps_den * 10000000LL);
-  if (g_dec.frame_count < 1) {
-    g_dec.frame_count = 1;
-  }
-  g_dec.next_index = -1;
-  g_dec.open = 1;
-  return 1;
-}
-
-QA_EXPORT int32_t qa_video_decode_info(int32_t* width,
-                                       int32_t* height,
-                                       int64_t* frame_count,
-                                       int32_t* fps_num,
-                                       int32_t* fps_den) {
-  if (!g_dec.open) {
-    qa_decode_set_error("no document is open");
-    return 0;
-  }
-  if (width != NULL) *width = g_dec.width;
-  if (height != NULL) *height = g_dec.height;
-  if (frame_count != NULL) *frame_count = g_dec.frame_count;
-  if (fps_num != NULL) *fps_num = g_dec.fps_num;
-  if (fps_den != NULL) *fps_den = g_dec.fps_den;
+  // 10,000,000 hundred-nanosecond ticks in a second. ⛔The 「at least one
+  // frame」 clamp is NOT repeated here — [qa_frame_count_for] carries it for
+  // every backend, which is the only way three of them can agree.
+  g_doc.frame_count = qa_frame_count_for(duration_100ns, 10000000LL,
+                                         g_doc.fps_num, g_doc.fps_den);
   return 1;
 }
 
 static void qa_video_copy_rgba(const uint8_t* source, uint8_t* out) {
-  const int32_t width = g_dec.width;
-  const int32_t height = g_dec.height;
+  const int32_t width = g_doc.width;
+  const int32_t height = g_doc.height;
   const int32_t pitch = g_dec.stride;
   for (int32_t y = 0; y < height; y += 1) {
     // A bottom-up buffer stores the LAST row first; reading it forwards is
@@ -309,55 +385,26 @@ static void qa_video_copy_rgba(const uint8_t* source, uint8_t* out) {
   }
 }
 
-QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
-                                        uint8_t* rgba,
-                                        int32_t capacity) {
-  if (!g_dec.open) {
-    qa_decode_set_error("no document is open");
-    return 0;
-  }
-  if (rgba == NULL || capacity < g_dec.width * g_dec.height * 4) {
-    qa_decode_set_error("frame buffer too small");
-    return 0;
-  }
-  if (index < 0) {
-    index = 0;
-  }
+/// The presentation time of [index] in Media Foundation's 100ns ticks.
+static int64_t qa_win_target(int64_t index) {
+  return index * ((10000000LL * (int64_t)g_doc.fps_den) /
+                  (int64_t)g_doc.fps_num);
+}
 
+static int32_t qa_backend_reposition(int64_t index) {
+  PROPVARIANT position;
+  PropVariantInit(&position);
+  position.vt = VT_I8;
+  position.hVal.QuadPart = qa_win_target(index);
+  IMFSourceReader_SetCurrentPosition(g_dec.reader, &GUID_NULL, &position);
+  PropVariantClear(&position);
+  return 1;
+}
+
+static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
   const int64_t frame_100ns =
-      (10000000LL * (int64_t)g_dec.fps_den) / (int64_t)g_dec.fps_num;
-  const int64_t target = index * frame_100ns;
-
-  // 🚨★★★**PLAYING FORWARD DOES NOT SEEK.**
-  //
-  // A seek lands on the nearest KEYFRAME at or before the target and the
-  // reader then decodes forward, which is why the loop below exists rather
-  // than one ReadSample. Doing it for EVERY frame made sequential playback
-  // quadratic in the GOP: frame n re-decoded everything since its keyframe,
-  // so a 48-frame GOP cost 24 decodes per displayed frame on average.
-  //
-  // 유저 2026-08-31 saw both ends of that: 「첫 재생때 아마 파일이 제대로
-  // 로드안되서 흰 화면이 엄청나게 깜빡이면서 재생됨. 두번째 재생부터 점점
-  // 나아짐」 — the viewer advances the playhead on a wall clock and draws
-  // whatever raster has landed, so a decoder that cannot keep up shows
-  // white until the cache is warm — and 「재생하고있는데 화면이 첫 프레임
-  // 그림에서 전혀안바뀜」, which is the same thing when it never catches up
-  // at all.
-  //
-  // The reader is already positioned to deliver the next frame after the
-  // one it just gave, so asking for that frame needs no seek at all.
-  if (index != g_dec.next_index) {
-    PROPVARIANT position;
-    PropVariantInit(&position);
-    position.vt = VT_I8;
-    position.hVal.QuadPart = target;
-    IMFSourceReader_SetCurrentPosition(g_dec.reader, &GUID_NULL, &position);
-    PropVariantClear(&position);
-  }
-  // ⛔Cleared BEFORE the read, not after a success. A failed or abandoned
-  // read leaves the reader somewhere this function cannot name, and a
-  // stale「next」would then skip the seek that would have recovered it.
-  g_dec.next_index = -1;
+      (10000000LL * (int64_t)g_doc.fps_den) / (int64_t)g_doc.fps_num;
+  const int64_t target = qa_win_target(index);
 
   int32_t wrote = 0;
   for (int guard = 0; guard < 600; guard += 1) {
@@ -381,10 +428,7 @@ QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
     if (sample == NULL) {
       continue; // A gap or a format change: keep reading.
     }
-    // Half a frame of slack: a timestamp lands ON the frame it belongs to,
-    // and asking for exact equality misses on every source whose rate is
-    // not an integer.
-    if (timestamp + frame_100ns / 2 < target) {
+    if (!qa_sample_reaches((int64_t)timestamp, target, frame_100ns)) {
       IMFSample_Release(sample);
       continue;
     }
@@ -395,7 +439,7 @@ QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
       DWORD length = 0;
       if (SUCCEEDED(IMFMediaBuffer_Lock(buffer, &data, NULL, &length))) {
         if ((int64_t)length >=
-            (int64_t)g_dec.stride * (int64_t)g_dec.height) {
+            (int64_t)g_dec.stride * (int64_t)g_doc.height) {
           qa_video_copy_rgba(data, rgba);
           wrote = 1;
         } else {
@@ -406,11 +450,6 @@ QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
       IMFMediaBuffer_Release(buffer);
     }
     IMFSample_Release(sample);
-    if (wrote) {
-      // The reader is now positioned on the frame AFTER this one, so the
-      // next request for it can skip the seek entirely.
-      g_dec.next_index = index + 1;
-    }
     break;
   }
   return wrote;
@@ -437,30 +476,42 @@ extern int32_t qa_video_apple_decode_frame(int64_t index,
                                            int32_t error_capacity);
 extern void qa_video_apple_decode_close(void);
 
-QA_EXPORT int32_t qa_video_decode_supported(void) { return 1; }
+static int32_t qa_backend_supported(void) { return 1; }
 
-QA_EXPORT int32_t qa_video_decode_open(const char* path) {
-  return qa_video_apple_decode_open(path, g_decode_error,
-                                    (int32_t)sizeof(g_decode_error));
+static void qa_backend_close(void) { qa_video_apple_decode_close(); }
+
+static int32_t qa_backend_open(const char* path) {
+  if (!qa_video_apple_decode_open(path, g_decode_error,
+                                  (int32_t)sizeof(g_decode_error))) {
+    return 0;
+  }
+  return qa_video_apple_decode_info(&g_doc.width, &g_doc.height,
+                                    &g_doc.frame_count, &g_doc.fps_num,
+                                    &g_doc.fps_den);
 }
 
-QA_EXPORT int32_t qa_video_decode_info(int32_t* width,
-                                       int32_t* height,
-                                       int64_t* frame_count,
-                                       int32_t* fps_num,
-                                       int32_t* fps_den) {
-  return qa_video_apple_decode_info(width, height, frame_count, fps_num,
-                                    fps_den);
+/// 🔜**A NO-OP, AND THAT IS THE BUG THIS SHAPE NOW NAMES.**
+///
+/// `AVAssetImageGenerator` holds no position: every `copyCGImageAtTime:` IS
+/// a random access, so there is nothing here to reposition and nothing for
+/// sequential playback to reuse. The other two backends skip a real seek
+/// when they are already where they are wanted, which is what stopped a
+/// first play flashing white; Apple pays the seek on every single frame.
+///
+/// Apple's sequential answer is a different class — `AVAssetReader` — and
+/// swapping it in is exactly「reposition = start a new reader at that
+/// time」, which is why this hook exists before that work rather than after.
+/// See the `decode-seek-rule-is-written-twice` card.
+static int32_t qa_backend_reposition(int64_t index) {
+  (void)index;
+  return 1;
 }
 
-QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
-                                        uint8_t* rgba,
-                                        int32_t capacity) {
-  return qa_video_apple_decode_frame(index, rgba, capacity, g_decode_error,
-                                     (int32_t)sizeof(g_decode_error));
+static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
+  return qa_video_apple_decode_frame(
+      index, rgba, g_doc.width * g_doc.height * 4, g_decode_error,
+      (int32_t)sizeof(g_decode_error));
 }
-
-QA_EXPORT void qa_video_decode_close(void) { qa_video_apple_decode_close(); }
 
 #elif defined(__ANDROID__)
 // ---------------------------------------------------------------------------
@@ -541,6 +592,8 @@ typedef struct {
   int32_t (*codec_release_output)(AMediaCodec*, size_t, bool);
   AMediaFormat* (*codec_output_format)(AMediaCodec*);
   bool (*format_get_int32)(AMediaFormat*, const char*, int32_t*);
+  /// ⚠️May be NULL — resolved separately from the required set below.
+  bool (*format_get_float)(AMediaFormat*, const char*, float*);
   bool (*format_get_int64)(AMediaFormat*, const char*, int64_t*);
   bool (*format_get_string)(AMediaFormat*, const char*, const char**);
   int32_t (*format_delete)(AMediaFormat*);
@@ -591,28 +644,28 @@ static int qa_ndk_decode_load(void) {
   QA_SYM(format_get_string, "AMediaFormat_getString")
   QA_SYM(format_delete, "AMediaFormat_delete")
 #undef QA_SYM
+  // ⚠️OPTIONAL, unlike everything above: a missing float getter costs the
+  // exact frame rate, not the decoder. `QA_SYM` refuses the whole library
+  // when a symbol is absent, and refusing to play video at all because one
+  // rate would be rounded is the wrong trade — absence is an ANSWER here
+  // too, and [qa_backend_open] falls back to the int32 spelling.
+  *(void**)(&g_ndk_dec.format_get_float) =
+      dlsym(handle, "AMediaFormat_getFloat");
   g_ndk_dec.handle = handle;
   return 1;
 }
 
+/// ⚠️The PLATFORM's own state only — size, rate, length and 「where am I
+/// positioned」 live in [g_doc], where all three backends answer alike.
 typedef struct {
   AMediaExtractor* extractor;
   AMediaCodec* codec;
   int32_t track;
-  int32_t width;
-  int32_t height;
-  int32_t fps_num;
-  int32_t fps_den;
-  int64_t frame_count;
-  /// The frame index the codec is positioned to deliver next, or -1 when
-  /// that is not known — see the Windows twin above.
-  int64_t next_index;
-  int32_t open;
 } qa_video_droid_decode;
 
 static qa_video_droid_decode g_droid_dec;
 
-QA_EXPORT void qa_video_decode_close(void) {
+static void qa_backend_close(void) {
   if (g_droid_dec.codec != NULL) {
     g_ndk_dec.codec_stop(g_droid_dec.codec);
     g_ndk_dec.codec_delete(g_droid_dec.codec);
@@ -622,18 +675,12 @@ QA_EXPORT void qa_video_decode_close(void) {
     g_ndk_dec.extractor_delete(g_droid_dec.extractor);
     g_droid_dec.extractor = NULL;
   }
-  g_droid_dec.open = 0;
-  // ⛔A closed codec is positioned nowhere — see the Windows twin.
-  g_droid_dec.next_index = -1;
+  memset(&g_droid_dec, 0, sizeof(g_droid_dec));
 }
 
-QA_EXPORT int32_t qa_video_decode_supported(void) {
-  return qa_ndk_decode_load();
-}
+static int32_t qa_backend_supported(void) { return qa_ndk_decode_load(); }
 
-QA_EXPORT int32_t qa_video_decode_open(const char* path) {
-  qa_video_decode_close();
-  qa_decode_set_error(NULL);
+static int32_t qa_backend_open(const char* path) {
   if (!qa_ndk_decode_load()) {
     qa_decode_set_error("no video decoder in this build");
     return 0;
@@ -682,10 +729,16 @@ QA_EXPORT int32_t qa_video_decode_open(const char* path) {
   int32_t width = 0;
   int32_t height = 0;
   int32_t rate = 0;
+  float rate_f = 0.0f;
   int64_t duration_us = 0;
   g_ndk_dec.format_get_int32(format, QA_KEY_WIDTH, &width);
   g_ndk_dec.format_get_int32(format, QA_KEY_HEIGHT, &height);
   g_ndk_dec.format_get_int32(format, QA_KEY_FRAME_RATE, &rate);
+  // ⚠️READ BEFORE THE FORMAT IS RELEASED, and as a FLOAT — see the rate
+  // conversion below for why the int32 alone was wrong.
+  if (g_ndk_dec.format_get_float != NULL) {
+    g_ndk_dec.format_get_float(format, QA_KEY_FRAME_RATE, &rate_f);
+  }
   g_ndk_dec.format_get_int64(format, QA_KEY_DURATION, &duration_us);
 
   AMediaCodec* codec = g_ndk_dec.codec_create_decoder(mime);
@@ -703,46 +756,28 @@ QA_EXPORT int32_t qa_video_decode_open(const char* path) {
   g_ndk_dec.format_delete(format);
   g_ndk_dec.extractor_select_track(extractor, (size_t)video_track);
 
-  if (width <= 0 || height <= 0) {
-    g_ndk_dec.codec_delete(codec);
-    g_ndk_dec.extractor_delete(extractor);
-    qa_decode_set_error("the video stream has no frame size");
-    return 0;
-  }
-  if (rate <= 0) {
-    rate = 24;
-  }
+  // ⛔The size check that stood here is gone, not relaxed — the portable
+  // open makes it for every backend.
   g_droid_dec.extractor = extractor;
   g_droid_dec.codec = codec;
   g_droid_dec.track = video_track;
-  g_droid_dec.width = width;
-  g_droid_dec.height = height;
-  g_droid_dec.fps_num = rate;
-  g_droid_dec.fps_den = 1;
-  g_droid_dec.frame_count =
-      duration_us <= 0 ? 1 : (duration_us * (int64_t)rate) / 1000000LL;
-  if (g_droid_dec.frame_count < 1) {
-    g_droid_dec.frame_count = 1;
-  }
-  g_droid_dec.next_index = -1;
-  g_droid_dec.open = 1;
-  return 1;
-}
-
-QA_EXPORT int32_t qa_video_decode_info(int32_t* width,
-                                       int32_t* height,
-                                       int64_t* frame_count,
-                                       int32_t* fps_num,
-                                       int32_t* fps_den) {
-  if (!g_droid_dec.open) {
-    qa_decode_set_error("no document is open");
-    return 0;
-  }
-  if (width != NULL) *width = g_droid_dec.width;
-  if (height != NULL) *height = g_droid_dec.height;
-  if (frame_count != NULL) *frame_count = g_droid_dec.frame_count;
-  if (fps_num != NULL) *fps_num = g_droid_dec.fps_num;
-  if (fps_den != NULL) *fps_den = g_droid_dec.fps_den;
+  g_doc.width = width;
+  g_doc.height = height;
+  // 🚨★★★**29.97 IS NOT 30, AND THIS BACKEND USED TO SAY IT WAS.**
+  //
+  // `frame-rate` was read with `format_get_int32` alone and the denominator
+  // was pinned to 1, so an NTSC-rate source became 29 or 30 — and every
+  // `target_us` below, plus the frame COUNT, drifted with it. Apple has
+  // carried the fraction since it was written; this backend simply never
+  // asked. The float getter is the same `dlsym` shape as everything else
+  // here (`AMediaFormat_getFloat`, API 21), and the conversion is the
+  // portable one both backends now share.
+  // ⚠️Some extractors store the key as an int32 and the float getter then
+  // refuses it; the integer is still the honest answer for those.
+  qa_rate_to_fraction(rate_f > 0.0f ? (double)rate_f : (double)rate,
+                      &g_doc.fps_num, &g_doc.fps_den);
+  g_doc.frame_count = qa_frame_count_for(duration_us, 1000000LL,
+                                         g_doc.fps_num, g_doc.fps_den);
   return 1;
 }
 
@@ -755,8 +790,8 @@ static void qa_droid_yuv_to_rgba(const uint8_t* data,
                                  int32_t slice,
                                  int semi_planar,
                                  uint8_t* rgba) {
-  const int32_t width = g_droid_dec.width;
-  const int32_t height = g_droid_dec.height;
+  const int32_t width = g_doc.width;
+  const int32_t height = g_doc.height;
   const uint8_t* y_plane = data;
   const uint8_t* u_plane = data + (int64_t)stride * slice;
   const uint8_t* v_plane =
@@ -793,45 +828,25 @@ static void qa_droid_yuv_to_rgba(const uint8_t* data,
   }
 }
 
-QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
-                                        uint8_t* rgba,
-                                        int32_t capacity) {
-  if (!g_droid_dec.open) {
-    qa_decode_set_error("no document is open");
-    return 0;
-  }
-  if (rgba == NULL ||
-      capacity < g_droid_dec.width * g_droid_dec.height * 4) {
-    qa_decode_set_error("frame buffer too small");
-    return 0;
-  }
-  if (index < 0) {
-    index = 0;
-  }
-  const int64_t target_us =
-      (index * 1000000LL * (int64_t)g_droid_dec.fps_den) /
-      (int64_t)g_droid_dec.fps_num;
-  const int64_t frame_us =
-      (1000000LL * (int64_t)g_droid_dec.fps_den) /
-      (int64_t)g_droid_dec.fps_num;
+/// The presentation time of [index] in MediaCodec's microseconds.
+static int64_t qa_droid_target(int64_t index) {
+  return (index * 1000000LL * (int64_t)g_doc.fps_den) /
+         (int64_t)g_doc.fps_num;
+}
 
-  // 🚨★★★**PLAYING FORWARD DOES NOT SEEK** — the same law the Windows
-  // reader follows above, for the same reason and with the same cost when
-  // it is broken: the extractor seeks to a SYNC frame at or before the
-  // target and the codec decodes forward, so doing it every frame made
-  // sequential playback quadratic in the GOP.
-  //
-  // ⛔The flush goes with the seek. Flushing without seeking would throw
-  // away the very frames the codec is holding for us, which is the whole
-  // saving.
-  if (index != g_droid_dec.next_index) {
-    g_ndk_dec.extractor_seek_to(g_droid_dec.extractor, target_us,
-                                QA_SEEK_PREVIOUS_SYNC);
-    g_ndk_dec.codec_flush(g_droid_dec.codec);
-  }
-  // Cleared before the work, not after a success: a read that gives up
-  // leaves the codec somewhere this function cannot name.
-  g_droid_dec.next_index = -1;
+/// ⛔The flush goes WITH the seek. Flushing without seeking would throw away
+/// the very frames the codec is holding for us, which is the whole saving.
+static int32_t qa_backend_reposition(int64_t index) {
+  g_ndk_dec.extractor_seek_to(g_droid_dec.extractor, qa_droid_target(index),
+                              QA_SEEK_PREVIOUS_SYNC);
+  g_ndk_dec.codec_flush(g_droid_dec.codec);
+  return 1;
+}
+
+static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
+  const int64_t target_us = qa_droid_target(index);
+  const int64_t frame_us =
+      (1000000LL * (int64_t)g_doc.fps_den) / (int64_t)g_doc.fps_num;
 
   int32_t wrote = 0;
   int input_done = 0;
@@ -865,8 +880,8 @@ QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
     if (out_index < 0) {
       continue; // Try again, or a format change we read below.
     }
-    // Half a frame of slack, for the same reason the Windows path has it.
-    if (info.presentationTimeUs + frame_us / 2 < target_us) {
+    if (!qa_sample_reaches((int64_t)info.presentationTimeUs, target_us,
+                           frame_us)) {
       g_ndk_dec.codec_release_output(g_droid_dec.codec, (size_t)out_index,
                                      false);
       continue;
@@ -877,8 +892,8 @@ QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
     AMediaFormat* out_format =
         g_ndk_dec.codec_output_format(g_droid_dec.codec);
     int32_t colour = QA_COLOR_FORMAT_YUV420_FLEXIBLE;
-    int32_t stride = g_droid_dec.width;
-    int32_t slice = g_droid_dec.height;
+    int32_t stride = g_doc.width;
+    int32_t slice = g_doc.height;
     if (out_format != NULL) {
       g_ndk_dec.format_get_int32(out_format, QA_KEY_COLOR_FORMAT,
                                  &colour);
@@ -888,11 +903,11 @@ QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
                                  &slice);
       g_ndk_dec.format_delete(out_format);
     }
-    if (stride < g_droid_dec.width) {
-      stride = g_droid_dec.width;
+    if (stride < g_doc.width) {
+      stride = g_doc.width;
     }
-    if (slice < g_droid_dec.height) {
-      slice = g_droid_dec.height;
+    if (slice < g_doc.height) {
+      slice = g_doc.height;
     }
     if (out_buffer != NULL &&
         (colour == QA_COLOR_FORMAT_YUV420_PLANAR ||
@@ -902,9 +917,6 @@ QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
           out_buffer, stride, slice,
           colour == QA_COLOR_FORMAT_YUV420_SEMIPLANAR ? 1 : 0, rgba);
       wrote = 1;
-      // Positioned on the frame after this one, so the next request for
-      // it needs no seek and no flush.
-      g_droid_dec.next_index = index + 1;
     } else {
       qa_decode_set_error("this device's decoder uses a colour format we "
                           "do not read");
@@ -924,13 +936,76 @@ QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
 // Linux and anything else: no OS reader this app can lean on. The answer
 // is 0, and the window says "no decoder in this build" rather than failing
 // as a corrupt file.
+//
+// ⚠️This branch is the one the portability CI compiles, so it is also where
+// the shared law above gets its only compiler. That is not an accident any
+// more — it is why the law lives outside the `#if`.
 
-QA_EXPORT int32_t qa_video_decode_supported(void) { return 0; }
+static int32_t qa_backend_supported(void) { return 0; }
 
-QA_EXPORT int32_t qa_video_decode_open(const char* path) {
+static int32_t qa_backend_open(const char* path) {
   (void)path;
   qa_decode_set_error("no video decoder in this build");
   return 0;
+}
+
+static void qa_backend_close(void) {}
+
+static int32_t qa_backend_reposition(int64_t index) {
+  (void)index;
+  return 0;
+}
+
+static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
+  (void)index;
+  (void)rgba;
+  return 0;
+}
+
+#endif
+
+// ---------------------------------------------------------------------------
+// The portable law. Every backend above answers the four hooks and nothing
+// below is written twice.
+
+QA_EXPORT int32_t qa_video_decode_supported(void) {
+  return qa_backend_supported();
+}
+
+QA_EXPORT void qa_video_decode_close(void) {
+  qa_backend_close();
+  memset(&g_doc, 0, sizeof(g_doc));
+  // ⛔A closed reader is positioned nowhere. Zeroing above leaves this 0,
+  // which names frame 0 — the one index a stale「next」could wrongly claim.
+  g_doc.next_index = -1;
+}
+
+QA_EXPORT int32_t qa_video_decode_open(const char* path) {
+  qa_video_decode_close();
+  qa_decode_set_error(NULL);
+  if (path == NULL || path[0] == '\0') {
+    qa_decode_set_error("no path");
+    return 0;
+  }
+  if (!qa_backend_open(path)) {
+    qa_video_decode_close();
+    return 0;
+  }
+  if (g_doc.width <= 0 || g_doc.height <= 0) {
+    qa_decode_set_error("the video stream has no frame size");
+    qa_video_decode_close();
+    return 0;
+  }
+  if (g_doc.fps_num <= 0 || g_doc.fps_den <= 0) {
+    g_doc.fps_num = 24;
+    g_doc.fps_den = 1;
+  }
+  if (g_doc.frame_count < 1) {
+    g_doc.frame_count = 1;
+  }
+  g_doc.next_index = -1;
+  g_doc.open = 1;
+  return 1;
 }
 
 QA_EXPORT int32_t qa_video_decode_info(int32_t* width,
@@ -938,25 +1013,64 @@ QA_EXPORT int32_t qa_video_decode_info(int32_t* width,
                                        int64_t* frame_count,
                                        int32_t* fps_num,
                                        int32_t* fps_den) {
-  (void)width;
-  (void)height;
-  (void)frame_count;
-  (void)fps_num;
-  (void)fps_den;
-  qa_decode_set_error("no video decoder in this build");
-  return 0;
+  if (!g_doc.open) {
+    qa_decode_set_error("no document is open");
+    return 0;
+  }
+  if (width != NULL) *width = g_doc.width;
+  if (height != NULL) *height = g_doc.height;
+  if (frame_count != NULL) *frame_count = g_doc.frame_count;
+  if (fps_num != NULL) *fps_num = g_doc.fps_num;
+  if (fps_den != NULL) *fps_den = g_doc.fps_den;
+  return 1;
 }
 
 QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
                                         uint8_t* rgba,
                                         int32_t capacity) {
-  (void)index;
-  (void)rgba;
-  (void)capacity;
-  qa_decode_set_error("no video decoder in this build");
-  return 0;
+  if (!g_doc.open) {
+    qa_decode_set_error("no document is open");
+    return 0;
+  }
+  if (rgba == NULL || capacity < g_doc.width * g_doc.height * 4) {
+    qa_decode_set_error("frame buffer too small");
+    return 0;
+  }
+  if (index < 0) {
+    index = 0;
+  }
+
+  // 🚨★★★**PLAYING FORWARD DOES NOT SEEK.**
+  //
+  // A reposition lands on the nearest KEYFRAME at or before the target and
+  // the backend then decodes forward, which is why [qa_backend_read] is a
+  // walk rather than one sample. Doing it for EVERY frame made sequential
+  // playback quadratic in the GOP: frame n re-decoded everything since its
+  // keyframe, so a 48-frame GOP cost 24 decodes per displayed frame on
+  // average.
+  //
+  // 유저 2026-08-31 saw both ends of that: 「첫 재생때 아마 파일이 제대로
+  // 로드안되서 흰 화면이 엄청나게 깜빡이면서 재생됨. 두번째 재생부터 점점
+  // 나아짐」 — the viewer advances the playhead on a wall clock and draws
+  // whatever raster has landed, so a decoder that cannot keep up shows white
+  // until the cache is warm — and 「재생하고있는데 화면이 첫 프레임 그림에서
+  // 전혀안바뀜」, which is the same thing when it never catches up at all.
+  //
+  // The backend is already positioned to deliver the frame after the one it
+  // just gave, so asking for that frame needs no reposition at all.
+  if (index != g_doc.next_index && !qa_backend_reposition(index)) {
+    g_doc.next_index = -1;
+    return 0;
+  }
+  // ⛔Cleared BEFORE the read, not after a success. A failed or abandoned
+  // read leaves the backend somewhere this function cannot name, and a stale
+  //「next」would then skip the reposition that would have recovered it.
+  g_doc.next_index = -1;
+  if (!qa_backend_read(index, rgba)) {
+    return 0;
+  }
+  // Positioned on the frame AFTER this one, so the next request for it can
+  // skip the reposition entirely.
+  g_doc.next_index = index + 1;
+  return 1;
 }
-
-QA_EXPORT void qa_video_decode_close(void) {}
-
-#endif
