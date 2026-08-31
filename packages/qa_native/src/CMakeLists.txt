@@ -42,6 +42,36 @@ set_target_properties(qa_engine PROPERTIES
   C_STANDARD_REQUIRED ON
 )
 
+# 🚨★★★**THE FIRST NATIVE CODE CI ACTUALLY RUNS.**
+#
+# The portability job built this library with two compilers and then printed
+# a directory listing — a real check for「does it compile everywhere」and no
+# check at all for「is the arithmetic right」. That was not laziness: until
+# the decode law was lifted out of the per-OS `#if` blocks, there was nothing
+# a Linux runner could execute. Now there is, and the rules it covers are
+# exactly the ones the three decoders had disagreed about.
+#
+# ⚠️Built only where the target is the host, because it is meant to be RUN.
+# ⛔Not linked against qa_engine: the law is `static`, and the test includes
+# the translation unit instead — see the file's own header.
+if(NOT ANDROID AND NOT IOS)
+  add_executable(qa_video_decode_law_test
+    "${CMAKE_CURRENT_LIST_DIR}/qa_video_decode_law_test.c")
+  set_target_properties(qa_video_decode_law_test PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED ON
+  )
+  # ⛔NO PLATFORM UNDER IT. The first try let the host's backend come along
+  # and paid for it per host — Media Foundation libraries on Windows, and on
+  # Apple a link failure, because that backend lives in a `.m` this target
+  # does not compile. The law is the same everywhere; the test that proves
+  # it compiles the same everywhere.
+  target_compile_definitions(qa_video_decode_law_test
+    PRIVATE QA_DECODE_LAW_ONLY=1)
+  enable_testing()
+  add_test(NAME qa_video_decode_law COMMAND qa_video_decode_law_test)
+endif()
+
 # The pen sidecars (pen program) — Windows only, one DLL:
 #   qa_tablet_win.c  PEN-2, talks to the tablet driver through wintab32.dll
 #   qa_penraw_win.c  reads the HID digitizer report through Raw Input
