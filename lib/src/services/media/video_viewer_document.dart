@@ -27,20 +27,46 @@ import 'viewer_document.dart';
 final class VideoViewerDocument implements ViewerDocument {
   VideoViewerDocument._(this._info);
 
-  /// Opens [path], or null when this build has no reader for movies — the
-  /// viewer turns that into its honest-absence message rather than an
-  /// empty frame.
+  /// Opens [path]. Returns null when this build has **no reader at all**,
+  /// and THROWS when there is a reader that could not read this file.
+  ///
+  /// 🚨★★★**ONE `null` USED TO ANSWER TWO QUESTIONS.**
+  ///
+  /// Both arms returned null, and the viewer turns null into 「No video
+  /// decoder in this build — movies cannot be shown.」 So opening an `.mkv`
+  /// on an iPad — where the decoder is right there and AVFoundation simply
+  /// does not read Matroska — told the user to go find a different BUILD.
+  /// They would hunt for a codec they already have.
+  ///
+  /// ⚠️The two states already existed in the caller: [MediaViewerTabHost]
+  /// prints the honest-absence message for null and its could-not-read
+  /// message for a throw. Nothing there needed inventing; this function was
+  /// simply answering the wrong one of the two.
+  ///
+  /// 🧪The decision is [viewerOpenOutcome] rather than an `if` here, because
+  /// a widget test cannot conjure a native decoder — and the truth table is
+  /// exactly what went wrong.
   static Future<VideoViewerDocument?> open(String path) async {
     final decoder = QaVideoDecoder.instance;
-    if (decoder == null || !decoder.isSupported) {
-      return null;
+    final hasReader = decoder != null && decoder.isSupported;
+    final info = hasReader ? decoder.open(path) : null;
+    switch (viewerOpenOutcome(hasReader: hasReader, opened: info != null)) {
+      case ViewerOpenOutcome.noReaderInThisBuild:
+        return null;
+      case ViewerOpenOutcome.unreadable:
+        // The decoders answer WITH A REASON — 「this file has no readable
+        // video stream」, 「no decoder for this codec」 — and [lastError] has
+        // been documented as saying why since it was written. Nobody read
+        // it. The export path already surfaces the encoder's twin
+        // (`video_export_service.dart`), so this is the same move.
+        final reason = decoder!.lastError;
+        decoder.close();
+        throw ViewerDocumentException(
+          reason.isEmpty ? 'that movie could not be read' : reason,
+        );
+      case ViewerOpenOutcome.opened:
+        return VideoViewerDocument._(info!);
     }
-    final info = decoder.open(path);
-    if (info == null) {
-      decoder.close();
-      return null;
-    }
-    return VideoViewerDocument._(info);
   }
 
   final QaVideoInfo _info;

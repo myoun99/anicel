@@ -23,6 +23,52 @@ import 'dart:ui' as ui;
 /// [pageSize] is the page's own size — PDF points, image pixels, video
 /// frame pixels. The viewer uses it for layout and for capping the render,
 /// never as the size to render at.
+/// What an open attempt meant. ⛔`null` used to mean two of these, and the
+/// viewer printed the wrong one.
+enum ViewerOpenOutcome {
+  /// A document is in hand.
+  opened,
+
+  /// This build carries no engine for the medium at all. The viewer says so
+  /// by name, because a different build is the thing that fixes it.
+  noReaderInThisBuild,
+
+  /// The engine is present and refused THIS file — an unsupported container
+  /// on this platform, a corrupt header, a stream that is not there.
+  unreadable,
+}
+
+/// The truth table, apart from any engine, so a test can reach it.
+///
+/// 🚨A reader that is present and failed is NOT 「no reader」. Collapsing the
+/// two is what told an iPad user hunting a codec that their build had no
+/// video decoder, while the decoder sat right there refusing an `.mkv`
+/// AVFoundation has never read.
+ViewerOpenOutcome viewerOpenOutcome({
+  required bool hasReader,
+  required bool opened,
+}) {
+  if (!hasReader) {
+    return ViewerOpenOutcome.noReaderInThisBuild;
+  }
+  return opened ? ViewerOpenOutcome.opened : ViewerOpenOutcome.unreadable;
+}
+
+/// A document that could not be read, carrying the reason the engine gave.
+///
+/// ⚠️The reason is the NATIVE decoder's own sentence and is not translated —
+/// the same choice `VideoExportException` already makes with the encoder's.
+/// It rides UNDER a localized line rather than replacing it, so the reader
+/// gets a sentence they know plus a detail they can quote.
+class ViewerDocumentException implements Exception {
+  const ViewerDocumentException(this.reason);
+
+  final String reason;
+
+  @override
+  String toString() => reason;
+}
+
 abstract class ViewerDocument {
   /// Number of pages (§6-k: 1 page = 1 frame when placed).
   int get pageCount;

@@ -269,9 +269,15 @@ void main() {
       path: '${tempDir.path}${Platform.pathSeparator}gone.png',
       kind: MediaAssetKind.image,
     );
+    // ⚠️CONTAINS, not equals. The message carries the engine's own reason
+    // under the localized sentence now, so an exact match asserts the
+    // absence of a detail this test never cared about — see
+    // `no_reader_is_not_cannot_read_test`.
     await settleAsync(
       tester,
-      () => tester.any(find.text(AppText.strings.mediaViewerLoadFailed)),
+      () => tester.any(
+        find.textContaining(AppText.strings.mediaViewerLoadFailed),
+      ),
     );
   });
 
