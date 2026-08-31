@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/debug/repaint_cause.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
+import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 
 import '../../helpers/panel_finders.dart';
@@ -201,11 +202,42 @@ void main() {
     };
     expect(before, isNotEmpty);
 
+    // ⛔A point on the VISIBLE canvas, not a hardcoded one — the SAME trap
+    // the sibling test below already wrote down, still sprung here.
+    // (800, 500) plus twelve steps of (4, 3) ends at (844, 533), and the
+    // timeline's action toolbar occupies y 528–556: the sweep finished
+    // INSIDE the bar. It passed only because nothing hoverable happened to
+    // sit at that x, so the day a button was added to the frame pill this
+    // went red — reporting a re-bake that is the design working (the very
+    // next test asserts that a pointer-caused bake is legitimate and says
+    // so). 🧪Measured before changing it: the same build re-bakes on the
+    // old path and not once on a path that stays on the canvas.
+    final start = visibleCanvasPoint(tester);
     final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
-    await gesture.addPointer(location: const Offset(800, 500));
+    await gesture.addPointer(location: start);
     addTearDown(gesture.removePointer);
     for (var i = 0; i < 12; i += 1) {
-      await gesture.moveTo(Offset(800 + i * 4, 500 + i * 3));
+      final at = start + Offset(i * 4, i * 3);
+      // ★The premise, every step, and it names the hazard rather than the
+      // happy case: 「main-canvas-brush-host」 spans the whole workspace
+      // column INCLUDING the action bar, so asking whether the point is
+      // inside it would have been true of the old path as well and would
+      // have guarded nothing.
+      expect(
+        find.byType(TimelineActionToolbar).evaluate(),
+        isNotEmpty,
+        reason: 'the bar is on screen, so the check below means something',
+      );
+      for (final bar in find.byType(TimelineActionToolbar).evaluate()) {
+        final box = bar.renderObject! as RenderBox;
+        final rect = box.localToGlobal(Offset.zero) & box.size;
+        expect(
+          rect.contains(at),
+          isFalse,
+          reason: 'step $i at $at is inside an action bar ($rect)',
+        );
+      }
+      await gesture.moveTo(at);
       await tester.pump();
     }
 
