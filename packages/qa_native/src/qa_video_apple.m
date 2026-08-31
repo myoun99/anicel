@@ -411,34 +411,62 @@ void qa_video_apple_abort(void) {
 }
 
 // ---------------------------------------------------------------------------
-// The DECODE half (ABI v27): AVAssetImageGenerator.
+// The DECODE half (ABI v27): AVAssetReader, positioned by the shared law.
 //
-// The reader half of this file is deliberately NOT AVAssetReader. A reader
-// is sequential — it is the right tool for "play this through once" and
-// the wrong one for "the picture at frame N", which is the only question
-// this app asks. The image generator seeks for us and, with both
-// tolerances set to zero, returns the exact frame rather than the nearest
-// keyframe. That "exact" is not free (it decodes forward from the keyframe
-// internally), and it is the same work the Windows path does by hand.
+// 🔄**THIS USED TO SAY THE OPPOSITE, AND THE PREMISE IT RESTED ON IS GONE.**
+// It read: 「the reader half of this file is deliberately NOT AVAssetReader.
+// A reader is sequential — it is the right tool for 『play this through
+// once』 and the wrong one for 『the picture at frame N』, which is the only
+// question this app asks.」 That last clause stopped being true the day the
+// viewer grew a play button: playing IS asking for frame N, then N+1, then
+// N+2, and `copyCGImageAtTime` answers each of them with a fresh random
+// access. 유저 2026-08-31: 「재생하고있는데 화면이 첫 프레임 그림에서 전혀
+// 안바뀜」 — a decoder that cannot keep up, on the platform that was paying
+// a seek per frame while the other two had stopped.
+//
+// The generator's real advantage — exact frames rather than the nearest
+// keyframe — is not lost: a reader started at frame N's time delivers the
+// pictures from N onward in order, and `qa_video_decode.c` matches each one
+// by its presentation stamp with the same half-frame slack Media Foundation
+// and MediaCodec use. The generator's zero tolerances did that work
+// internally; now it is done once, where all three platforms can see it.
+//
+// ⛔A reader cannot seek: it is started over a time RANGE and walks
+// forward. That is exactly the `reposition` hook — repositioning here means
+// building a new reader — and it is why the hook existed before this file
+// changed rather than being invented with it.
 //
 // One document at a time, matching qa_video_decode.c's contract.
 
 static AVAsset* g_decode_asset = nil;
-static AVAssetImageGenerator* g_decode_generator = nil;
+static AVAssetTrack* g_decode_track = nil;
+static AVAssetReader* g_decode_reader = nil;
+static AVAssetReaderTrackOutput* g_decode_output = nil;
 static int32_t g_decode_width = 0;
 static int32_t g_decode_height = 0;
-static int32_t g_decode_fps_num = 0;
-static int32_t g_decode_fps_den = 0;
-static int64_t g_decode_frames = 0;
+static int64_t g_decode_duration_us = 0;
 static int32_t g_decode_rotation = 0;
+static double g_decode_nominal_rate = 0.0;
+
+/// Tears down the reader without touching the asset — [qa_backend_reposition]
+/// builds a fresh one over the same asset for every jump.
+static void qa_apple_decode_release_reader(void) {
+  if (g_decode_reader != nil) {
+    [g_decode_reader cancelReading];
+  }
+  g_decode_reader = nil;
+  g_decode_output = nil;
+}
 
 void qa_video_apple_decode_close(void) {
-  g_decode_generator = nil;
+  qa_apple_decode_release_reader();
+  g_decode_track = nil;
   g_decode_asset = nil;
   g_decode_width = 0;
   g_decode_height = 0;
-  g_decode_frames = 0;
+  g_decode_duration_us = 0;
   g_decode_rotation = 0;
+  g_decode_nominal_rate = 0.0;
 }
 
 int32_t qa_video_apple_decode_open(const char* utf8_path,
@@ -491,19 +519,12 @@ int32_t qa_video_apple_decode_open(const char* utf8_path,
       return 0;
     }
 
+    // ⚠️The rate goes back RAW. The fraction this file used to reconstruct
+    // here is now `qa_rate_to_fraction` in `qa_video_decode.c`, where every
+    // backend shares it — Android had no such conversion at all and turned
+    // 29.97 into 30 for exactly as long as this one had its own copy.
     float rate = track.nominalFrameRate;
-    if (rate <= 0) {
-      rate = 24.0f;
-    }
-    // A fraction, not a float: 30000/1001 is not 29.97, and rounding it is
-    // how a frame index drifts a second out over a long take.
-    if (fabsf(rate - roundf(rate)) < 0.001f) {
-      g_decode_fps_num = (int32_t)roundf(rate);
-      g_decode_fps_den = 1;
-    } else {
-      g_decode_fps_num = (int32_t)roundf(rate * 1001.0f);
-      g_decode_fps_den = 1001;
-    }
+    g_decode_nominal_rate = (double)rate;
 
     // 🚨★★★**THE VIDEO TRACK'S duration, not the ASSET'S.** An asset is as
     // long as its longest track and that is almost never the video: AAC
@@ -527,117 +548,212 @@ int32_t qa_video_apple_decode_open(const char* utf8_path,
     if (!isfinite(seconds) || seconds <= 0) {
       seconds = 0;
     }
-    g_decode_frames =
-        (int64_t)(seconds * (double)g_decode_fps_num / (double)g_decode_fps_den);
-    if (g_decode_frames < 1) {
-      g_decode_frames = 1;
-    }
+    // ⚠️The COUNT is not computed here any more. It was the third copy of
+    // one sum, and the copy that took seconds as a double — which is how a
+    // whole number of frames comes back one short (`qa_frame_count_for`
+    // carries the case now, in integers, for all three).
+    g_decode_duration_us = (int64_t)(seconds * 1000000.0 + 0.5);
 
-    // 🔜**SEQUENTIAL PLAYBACK STILL PAYS A RANDOM ACCESS HERE.**
-    //
-    // The Windows and Android readers now skip the seek when the frame
-    // asked for is the one they are already positioned to deliver, which
-    // is what made a first play stop flashing white
-    // (`qa_video_decode.c`). This generator has no such position to reuse:
-    // `copyCGImageAtTime` IS a random access, and Apple's sequential
-    // answer is a different class (`AVAssetReader`) rather than a flag.
-    //
-    // ⛔Left as it is rather than half-done. Swapping in a reader means
-    // owning「am I positioned for this index」and a fallback for backward
-    // scrubs, which is the whole shape the other two just grew — and doing
-    // it blind, with no Apple device to measure on, is how the two ends
-    // drift apart again.
-    AVAssetImageGenerator* generator =
-        [AVAssetImageGenerator assetImageGeneratorWithAsset:asset];
-    // ⛔NO, and that is the point of this round. The generator applying the
-    // transform is what made rotation invisible to `qa_video_decode.c` —
-    // and therefore absent on the other two platforms. It reports the turn
-    // now and the portable law performs it. See the open above.
-    generator.appliesPreferredTrackTransform = NO;
-    generator.requestedTimeToleranceBefore = kCMTimeZero;
-    generator.requestedTimeToleranceAfter = kCMTimeZero;
+    // ⛔No reader is built HERE. A reader owns a time RANGE, and which
+    // range depends on the frame asked for — so it belongs in
+    // `qa_video_apple_decode_reposition`, which the portable law calls
+    // exactly when the position it wants is not the one already loaded.
     g_decode_asset = asset;
-    g_decode_generator = generator;
+    g_decode_track = track;
     return 1;
   }
 }
 
+/// Starts a fresh reader delivering pictures from [start] onward.
+///
+/// 🚨★★★**REPOSITIONING IS BUILDING A NEW READER — there is no seek.** An
+/// `AVAssetReader` walks forward from the range it was started over and
+/// cannot be rewound, which is exactly why the portable law asks for a
+/// reposition ONLY when the index it wants is not the one the backend is
+/// already standing on. Sequential playback therefore builds one reader per
+/// PLAY, not one per frame.
+///
+/// ⚠️`kCMTimePositiveInfinity` for the duration: the range is 「from here to
+/// the end」, and asking for a finite one would need the length again.
+static int32_t qa_apple_start_reader(CMTime start,
+                                     char* error,
+                                     int32_t error_capacity) {
+  qa_apple_decode_release_reader();
+  if (g_decode_asset == nil || g_decode_track == nil) {
+    qa_apple_set_error(error, error_capacity, "no document is open");
+    return 0;
+  }
+  NSError* failure = nil;
+  AVAssetReader* reader = [[AVAssetReader alloc] initWithAsset:g_decode_asset
+                                                         error:&failure];
+  if (reader == nil) {
+    qa_apple_set_error(error, error_capacity,
+                       failure == nil
+                           ? "that movie could not be read"
+                           : failure.localizedDescription.UTF8String);
+    return 0;
+  }
+  reader.timeRange = CMTimeRangeMake(start, kCMTimePositiveInfinity);
+  // 32BGRA so the pixel job is the byte swap Media Foundation's path
+  // already does — one conversion shape rather than a second one written
+  // in Core Graphics.
+  AVAssetReaderTrackOutput* output = [AVAssetReaderTrackOutput
+      assetReaderTrackOutputWithTrack:g_decode_track
+                       outputSettings:@{
+                         (id)kCVPixelBufferPixelFormatTypeKey :
+                             @(kCVPixelFormatType_32BGRA)
+                       }];
+  // ⛔The buffer is read and copied out before the next pull, so there is
+  // nothing to protect from being reused.
+  output.alwaysCopiesSampleData = NO;
+  if (![reader canAddOutput:output]) {
+    qa_apple_set_error(error, error_capacity,
+                       "no decoder for this codec");
+    return 0;
+  }
+  [reader addOutput:output];
+  if (![reader startReading]) {
+    qa_apple_set_error(error, error_capacity,
+                       reader.error == nil
+                           ? "that movie could not be read"
+                           : reader.error.localizedDescription.UTF8String);
+    return 0;
+  }
+  g_decode_reader = reader;
+  g_decode_output = output;
+  return 1;
+}
+
+int32_t qa_video_apple_decode_reposition(int64_t index,
+                                         int32_t fps_num,
+                                         int32_t fps_den,
+                                         char* error,
+                                         int32_t error_capacity) {
+  @autoreleasepool {
+    if (fps_num <= 0 || fps_den <= 0) {
+      qa_apple_set_error(error, error_capacity, "no document is open");
+      return 0;
+    }
+    return qa_apple_start_reader(
+        CMTimeMake(index * (int64_t)fps_den, fps_num), error, error_capacity);
+  }
+}
+
+/// What this backend KNOWS, not what it concluded.
+///
 /// ⚠️[stored_width]/[stored_height] are the size the pictures come out at,
 /// BEFORE the display transform, and [rotation] is that transform in
-/// degrees. `qa_video_decode.c` turns the frame and works out what a caller
-/// sees — the same way it does for the other two backends.
+/// degrees. 🚨[duration_us] and [nominal_rate] are RAW: the frame count and
+/// the rate-as-a-fraction were both computed here once, and both were the
+/// third copy of a sum `qa_video_decode.c` now owns for every backend.
 int32_t qa_video_apple_decode_info(int32_t* stored_width,
                                    int32_t* stored_height,
                                    int32_t* rotation,
-                                   int64_t* frame_count,
-                                   int32_t* fps_num,
-                                   int32_t* fps_den) {
-  if (g_decode_generator == nil) {
+                                   int64_t* duration_us,
+                                   double* nominal_rate) {
+  if (g_decode_track == nil) {
     return 0;
   }
   if (stored_width != NULL) *stored_width = g_decode_width;
   if (stored_height != NULL) *stored_height = g_decode_height;
   if (rotation != NULL) *rotation = g_decode_rotation;
-  if (frame_count != NULL) *frame_count = g_decode_frames;
-  if (fps_num != NULL) *fps_num = g_decode_fps_num;
-  if (fps_den != NULL) *fps_den = g_decode_fps_den;
+  if (duration_us != NULL) *duration_us = g_decode_duration_us;
+  if (nominal_rate != NULL) *nominal_rate = g_decode_nominal_rate;
   return 1;
 }
 
-int32_t qa_video_apple_decode_frame(int64_t index,
-                                    uint8_t* rgba,
-                                    int32_t capacity,
-                                    char* error,
-                                    int32_t error_capacity) {
+/// Copies one BGRA pixel buffer out as straight RGBA at the stored size.
+///
+/// ⚠️`bytesPerRow` is NOT width×4. A hardware decoder pads rows, and reading
+/// them as if it did not is the Apple twin of the stride bug the Windows
+/// path already carries a comment about.
+static void qa_apple_copy_bgra(CVPixelBufferRef buffer, uint8_t* rgba) {
+  CVPixelBufferLockBaseAddress(buffer, kCVPixelBufferLock_ReadOnly);
+  const uint8_t* base = (const uint8_t*)CVPixelBufferGetBaseAddress(buffer);
+  const size_t pitch = CVPixelBufferGetBytesPerRow(buffer);
+  const int32_t width = g_decode_width;
+  const int32_t height = g_decode_height;
+  for (int32_t y = 0; y < height; y += 1) {
+    const uint8_t* row = base + (size_t)y * pitch;
+    uint8_t* out = rgba + (size_t)y * (size_t)width * 4;
+    for (int32_t x = 0; x < width; x += 1) {
+      out[x * 4 + 0] = row[x * 4 + 2];
+      out[x * 4 + 1] = row[x * 4 + 1];
+      out[x * 4 + 2] = row[x * 4 + 0];
+      out[x * 4 + 3] = 255;
+    }
+  }
+  CVPixelBufferUnlockBaseAddress(buffer, kCVPixelBufferLock_ReadOnly);
+}
+
+/// Walks the reader forward until the picture for [index] is in hand.
+///
+/// 🚨★★★**FORWARD, NOT A SEEK.** The generator this replaces answered every
+/// call with a fresh random access — correct for one frame, quadratic for
+/// playback, and the reason 유저 2026-08-31 saw a first play stall on Apple
+/// while the other two had stopped flashing. The reader is already standing
+/// on the next picture whenever the law asks for it, which is what makes
+/// the walk below empty in the common case.
+///
+/// ⚠️The half-frame slack is [qa_video_decode.c]'s, passed in as
+/// [reaches_target]: this file must not grow a second spelling of the rule
+/// Media Foundation and MediaCodec already share.
+int32_t qa_video_apple_decode_read(int64_t index,
+                                   int32_t fps_num,
+                                   int32_t fps_den,
+                                   uint8_t* rgba,
+                                   int32_t capacity,
+                                   int32_t (*reaches_target)(int64_t stamp_us,
+                                                             int64_t target_us,
+                                                             int64_t frame_us),
+                                   char* error,
+                                   int32_t error_capacity) {
   @autoreleasepool {
-    if (g_decode_generator == nil) {
+    if (g_decode_output == nil || g_decode_reader == nil) {
       qa_apple_set_error(error, error_capacity, "no document is open");
       return 0;
     }
     const int32_t needed = g_decode_width * g_decode_height * 4;
-    if (rgba == NULL || capacity < needed) {
+    if (rgba == NULL || capacity < needed || fps_num <= 0 || fps_den <= 0) {
       qa_apple_set_error(error, error_capacity, "frame buffer too small");
       return 0;
     }
-    if (index < 0) {
-      index = 0;
-    }
-    CMTime time = CMTimeMake(index * (int64_t)g_decode_fps_den,
-                             g_decode_fps_num);
-    NSError* failure = nil;
-    CGImageRef image = [g_decode_generator copyCGImageAtTime:time
-                                                  actualTime:NULL
-                                                       error:&failure];
-    if (image == NULL) {
-      qa_apple_set_error(
-          error, error_capacity,
-          failure == nil ? "that frame could not be read"
-                         : failure.localizedDescription.UTF8String);
-      return 0;
-    }
+    const int64_t frame_us = (1000000LL * (int64_t)fps_den) / (int64_t)fps_num;
+    const int64_t target_us =
+        (index * 1000000LL * (int64_t)fps_den) / (int64_t)fps_num;
 
-    // Straight into RGBA: a CGBitmapContext converts colour space and
-    // component order for us, which is the same job the Windows path does
-    // by hand on BGRA rows.
-    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
-    CGContextRef context = CGBitmapContextCreate(
-        rgba, (size_t)g_decode_width, (size_t)g_decode_height, 8,
-        (size_t)g_decode_width * 4, space,
-        kCGImageAlphaNoneSkipLast | kCGBitmapByteOrder32Big);
-    CGColorSpaceRelease(space);
-    if (context == NULL) {
-      CGImageRelease(image);
-      qa_apple_set_error(error, error_capacity, "could not make a bitmap");
-      return 0;
+    // The same guard the other two carry: a stream that never reaches the
+    // target must end rather than spin.
+    for (int guard = 0; guard < 600; guard += 1) {
+      CMSampleBufferRef sample = [g_decode_output copyNextSampleBuffer];
+      if (sample == NULL) {
+        qa_apple_set_error(error, error_capacity,
+                           g_decode_reader.status == AVAssetReaderStatusFailed
+                               ? "the reader failed mid-stream"
+                               : "past the end of the stream");
+        return 0;
+      }
+      const CMTime stamp = CMSampleBufferGetPresentationTimeStamp(sample);
+      const int64_t stamp_us =
+          CMTIME_IS_NUMERIC(stamp)
+              ? (int64_t)(CMTimeGetSeconds(stamp) * 1000000.0 + 0.5)
+              : target_us;
+      if (!reaches_target(stamp_us, target_us, frame_us)) {
+        CFRelease(sample);
+        continue;
+      }
+      CVPixelBufferRef pixels = CMSampleBufferGetImageBuffer(sample);
+      if (pixels == NULL) {
+        CFRelease(sample);
+        qa_apple_set_error(error, error_capacity,
+                           "that frame could not be read");
+        return 0;
+      }
+      qa_apple_copy_bgra(pixels, rgba);
+      CFRelease(sample);
+      return 1;
     }
-    CGContextDrawImage(
-        context, CGRectMake(0, 0, g_decode_width, g_decode_height), image);
-    CGContextRelease(context);
-    CGImageRelease(image);
-    // The context skipped alpha; the app's convention is opaque 255.
-    for (int32_t i = 0; i < g_decode_width * g_decode_height; i += 1) {
-      rgba[i * 4 + 3] = 255;
-    }
-    return 1;
+    qa_apple_set_error(error, error_capacity, "that frame could not be read");
+    return 0;
   }
 }
