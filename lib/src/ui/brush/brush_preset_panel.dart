@@ -773,7 +773,37 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         buildDefaultDragHandles: false,
         itemCount: tabs.length,
         onReorderStart: (_) => setState(() => _railDragging = true),
-        onReorderEnd: (_) => setState(() => _railDragging = false),
+        // 🚨★★★THE FLAG OUTLIVES THE DROP BY A FRAME (유저 2026-09-01,
+        // F-60, with the recipe: 「3번째 브러시 그룹을 드래그해서 4번째랑
+        // 자리바꾸기 … 커밋될때? 끝날때 빨간화면떴어」).
+        //
+        // ⛔Clearing it here — synchronously — put the tooltips back in the
+        // SAME frame that `ReorderableListView` revives the dragged item
+        // from the inactive list by global key. Flutter named the collision
+        // itself:
+        //
+        //   A _RenderLayoutBuilder was mutated in performLayout.
+        //   _RenderTheater._addDeferredChild ← _OverlayEntryLocation._activate
+        //     ← _OverlayPortalElement.activate ← Element._activateRecursively
+        //   error-causing widget: ReorderableListView-[brush-preset-tab-rail]
+        //
+        // A `Tooltip` is an `OverlayPortal`; reviving one adds a deferred
+        // child to the theater, and that is illegal inside the panel's
+        // `LayoutBuilder` layout callback. Everything after it in 유저's log
+        // — the ink `referenceBox.attached` asserts, the semantics
+        // `traversalParentIdentifier` failure, buttons vanishing on hover
+        // across the whole app — is the wreckage of that one frame.
+        //
+        // ⚠️A post-frame callback, not a timer: the next frame is exactly
+        // when the revival is over and no more than that.
+        onReorderEnd: (_) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) {
+              return;
+            }
+            setState(() => _railDragging = false);
+          });
+        },
         onReorderItem: _handleTabReorder,
         itemBuilder: (context, index) {
           final group = tabs[index];
