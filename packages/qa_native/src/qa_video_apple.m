@@ -430,6 +430,7 @@ static int32_t g_decode_height = 0;
 static int32_t g_decode_fps_num = 0;
 static int32_t g_decode_fps_den = 0;
 static int64_t g_decode_frames = 0;
+static int32_t g_decode_rotation = 0;
 
 void qa_video_apple_decode_close(void) {
   g_decode_generator = nil;
@@ -437,6 +438,7 @@ void qa_video_apple_decode_close(void) {
   g_decode_width = 0;
   g_decode_height = 0;
   g_decode_frames = 0;
+  g_decode_rotation = 0;
 }
 
 int32_t qa_video_apple_decode_open(const char* utf8_path,
@@ -460,12 +462,29 @@ int32_t qa_video_apple_decode_open(const char* utf8_path,
     }
     AVAssetTrack* track = tracks.firstObject;
     CGSize size = track.naturalSize;
-    // The stored size is before the display transform: a phone video
-    // recorded upright is 1920x1080 with a 90° rotation, and a decoder
-    // that ignores that hands back a sideways picture.
-    CGSize display = CGSizeApplyAffineTransform(size, track.preferredTransform);
-    g_decode_width = (int32_t)fabs(display.width);
-    g_decode_height = (int32_t)fabs(display.height);
+    // 🚨★★★**THE STORED SIZE, AND THE TURN REPORTED SEPARATELY.**
+    //
+    // This used to hand back the DISPLAY size and let the image generator
+    // apply the transform for us (`appliesPreferredTrackTransform`). It was
+    // correct and it was the only place in the program that was: Media
+    // Foundation and MediaCodec never asked about rotation at all, so one
+    // phone video played upright here and sideways on the other two.
+    //
+    // ⛔Fixing that by teaching the other two to pre-apply would have made
+    // the same knowledge live in three places. The turn is now a FACT this
+    // backend reports and `qa_video_decode.c` acts on, once, for everyone.
+    //
+    // ⚠️It also has to happen BEFORE `AVAssetReader` replaces the generator:
+    // a reader's track output does not apply the transform either, so a
+    // swap made first would have taken the one working rotation away.
+    g_decode_width = (int32_t)fabs(size.width);
+    g_decode_height = (int32_t)fabs(size.height);
+    // atan2 over the matrix rather than four hard-coded shapes: it reads a
+    // rotation that carries a scale or a flip alongside it, which the
+    // literal comparisons quietly answered「none」for.
+    const CGAffineTransform transform = track.preferredTransform;
+    const double radians = atan2((double)transform.b, (double)transform.a);
+    g_decode_rotation = (int32_t)lround(radians * 180.0 / M_PI);
     if (g_decode_width <= 0 || g_decode_height <= 0) {
       qa_apple_set_error(error, error_capacity,
                          "the video stream has no frame size");
@@ -530,7 +549,11 @@ int32_t qa_video_apple_decode_open(const char* utf8_path,
     // drift apart again.
     AVAssetImageGenerator* generator =
         [AVAssetImageGenerator assetImageGeneratorWithAsset:asset];
-    generator.appliesPreferredTrackTransform = YES;
+    // ⛔NO, and that is the point of this round. The generator applying the
+    // transform is what made rotation invisible to `qa_video_decode.c` —
+    // and therefore absent on the other two platforms. It reports the turn
+    // now and the portable law performs it. See the open above.
+    generator.appliesPreferredTrackTransform = NO;
     generator.requestedTimeToleranceBefore = kCMTimeZero;
     generator.requestedTimeToleranceAfter = kCMTimeZero;
     g_decode_asset = asset;
@@ -539,16 +562,22 @@ int32_t qa_video_apple_decode_open(const char* utf8_path,
   }
 }
 
-int32_t qa_video_apple_decode_info(int32_t* width,
-                                   int32_t* height,
+/// ⚠️[stored_width]/[stored_height] are the size the pictures come out at,
+/// BEFORE the display transform, and [rotation] is that transform in
+/// degrees. `qa_video_decode.c` turns the frame and works out what a caller
+/// sees — the same way it does for the other two backends.
+int32_t qa_video_apple_decode_info(int32_t* stored_width,
+                                   int32_t* stored_height,
+                                   int32_t* rotation,
                                    int64_t* frame_count,
                                    int32_t* fps_num,
                                    int32_t* fps_den) {
   if (g_decode_generator == nil) {
     return 0;
   }
-  if (width != NULL) *width = g_decode_width;
-  if (height != NULL) *height = g_decode_height;
+  if (stored_width != NULL) *stored_width = g_decode_width;
+  if (stored_height != NULL) *stored_height = g_decode_height;
+  if (rotation != NULL) *rotation = g_decode_rotation;
   if (frame_count != NULL) *frame_count = g_decode_frames;
   if (fps_num != NULL) *fps_num = g_decode_fps_num;
   if (fps_den != NULL) *fps_den = g_decode_fps_den;
