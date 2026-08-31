@@ -46,6 +46,39 @@ Future<BrushFilePick?> _openBrushFileDialog() async {
 /// fire-and-forget persistence to the app-level preset file. Pure data
 /// controller; user messaging stays with the UI (mutations that want a
 /// snackbar return the message text).
+/// Which preset the library should open SHOWING, or null to leave the
+/// selection alone.
+///
+/// 🚨★★★A BRUSH IN HAND THAT THE LIBRARY CANNOT NAME (유저, F-63):
+/// 「브러시 라이브러리에서 **초기값이 아무것도 선택안된 UI**인데, 브러시는
+/// 그려지는거 보니 **초기 브러시자체는 정해져있는거같음.** 그게 ui에도
+/// 연동되있도록」.
+///
+/// ⛔The app opened with TWO facts: the paint tool carried baked-in settings
+/// while the active-preset map was EMPTY, so it drew with a brush the panel
+/// could not point at.
+///
+/// ⚠️A function rather than three lines inside the workspace, so the rule can
+/// be read and tested without standing up an editor.
+BrushPreset? openingPresetFor({
+  required List<BrushPreset> presets,
+  required bool toolPaints,
+  required bool alreadyChosen,
+}) {
+  // ⛔Never overrule a choice: a load that lands after the user has picked
+  // must leave their brush alone.
+  if (alreadyChosen) {
+    return null;
+  }
+  // ⛔And never move the hand. From a non-painting tool, applying a preset
+  // arms the brush — at startup that would change the tool the app opens
+  // with, which nobody asked for.
+  if (!toolPaints || presets.isEmpty) {
+    return null;
+  }
+  return presets.first;
+}
+
 class BrushPresetLibrary extends ChangeNotifier {
   BrushPresetLibrary({
     BrushPresetFileService? fileService,
