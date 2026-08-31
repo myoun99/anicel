@@ -183,7 +183,17 @@ static int32_t qa_sample_reaches(int64_t stamp,
   return stamp + frame_ticks / 2 >= target;
 }
 
-#if defined(_WIN32)
+// 🚨**QA_DECODE_LAW_ONLY: the law without a platform under it.**
+//
+// `qa_video_decode_law_test.c` includes this translation unit to reach the
+// rules above, which are `static` on purpose. Without this it drags in
+// whichever backend the HOST has — and then the test needs that platform's
+// libraries to link: Media Foundation on Windows, and on Apple a separate
+// `.m` it cannot see at all (CI found that one, having compiled the Windows
+// half green). ⛔The answer is not a longer link list per host. The law is
+// the same everywhere, so the test that proves it must compile the same
+// everywhere; below, the「no decoder in this build」backend is what it gets.
+#if defined(_WIN32) && !defined(QA_DECODE_LAW_ONLY)
 
 #define COBJMACROS
 #include <windows.h>
@@ -455,7 +465,7 @@ static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
   return wrote;
 }
 
-#elif defined(__APPLE__)
+#elif defined(__APPLE__) && !defined(QA_DECODE_LAW_ONLY)
 // ---------------------------------------------------------------------------
 // Apple: AVAssetImageGenerator, implemented in qa_video_apple.m
 // (Objective-C — the API is). This file only forwards, keeping the decode
@@ -513,7 +523,7 @@ static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
       (int32_t)sizeof(g_decode_error));
 }
 
-#elif defined(__ANDROID__)
+#elif defined(__ANDROID__) && !defined(QA_DECODE_LAW_ONLY)
 // ---------------------------------------------------------------------------
 // Android: NDK AMediaExtractor + AMediaCodec, resolved with dlsym exactly
 // like the encoder half — libmediandk.so ships on every API 21+ device,

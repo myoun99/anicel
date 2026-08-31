@@ -61,14 +61,13 @@ if(NOT ANDROID AND NOT IOS)
     C_STANDARD 99
     C_STANDARD_REQUIRED ON
   )
-  if(WIN32)
-    # Including the translation unit brings the Media Foundation backend
-    # with it, so the test needs the same libraries the engine does. Worth
-    # it: this is what makes the law run on the Windows runner as well as
-    # the Linux one, and the law is the thing both have to agree on.
-    target_link_libraries(qa_video_decode_law_test
-      mfplat mfreadwrite mfuuid shlwapi ole32)
-  endif()
+  # ⛔NO PLATFORM UNDER IT. The first try let the host's backend come along
+  # and paid for it per host — Media Foundation libraries on Windows, and on
+  # Apple a link failure, because that backend lives in a `.m` this target
+  # does not compile. The law is the same everywhere; the test that proves
+  # it compiles the same everywhere.
+  target_compile_definitions(qa_video_decode_law_test
+    PRIVATE QA_DECODE_LAW_ONLY=1)
   enable_testing()
   add_test(NAME qa_video_decode_law COMMAND qa_video_decode_law_test)
 endif()
