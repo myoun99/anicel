@@ -160,14 +160,23 @@ void main() {
   });
 
   group('projectAudioSourcePaths', () {
-    // A conform reads the WHOLE source into memory before the decoder can
-    // reject it, so handing the pool over blind cost a full read of every
-    // movie and still on project open. One case per kind: the table is the
-    // contract, and adding a kind without deciding this is a failing test
-    // rather than a silent 3GB read.
+    // 🪦This table used to say audio-only, and half its reason was real: a
+    // conform read the WHOLE source into memory before any decoder could
+    // reject it, so warming the pool blind cost a full read of every movie
+    // on project open. The decoder takes a path and a span now, so that
+    // half is gone — and a MOVIE HAS A SOUNDTRACK, which the old answer
+    // had made unreachable.
+    //
+    // ⛔A still and a PDF are still left alone, and not to save a read:
+    // they have nowhere to PUT an audio track. Warming one could only ever
+    // learn what its format already says, and it would learn it again on
+    // every open, because a source with no conform can never match one.
+    //
+    // The table is the contract: adding a kind without deciding this is a
+    // failing test rather than a silent cost.
     for (final (kind, warmed) in const [
       (MediaAssetKind.audio, true),
-      (MediaAssetKind.video, false),
+      (MediaAssetKind.video, true),
       (MediaAssetKind.image, false),
       (MediaAssetKind.pdf, false),
     ]) {
@@ -181,6 +190,18 @@ void main() {
         );
       });
     }
+
+    test('every kind has an answer — a new one cannot inherit somebody '
+        'else\'s', () {
+      // 🚨The predicate is exhaustive by switch, so this passes today by
+      // construction. It is here for the day the enum grows in a branch
+      // that did not touch this file: the table above would still be four
+      // rows, and this is what notices.
+      expect(
+        MediaAssetKind.values.map(mediaKindCanCarrySound).length,
+        MediaAssetKind.values.length,
+      );
+    });
 
     test('SE clips are warmed whatever the pool holds, and a path in both '
         'appears once', () {
@@ -201,6 +222,11 @@ void main() {
         'shared.wav',
         'footstep.wav',
         'bgm.wav',
+        // 🚨The movie is IN here, and that is the point of the round: its
+        // soundtrack is a sound the project references, and a filter that
+        // kept it out was the reason 「the importer cannot see video audio」
+        // stood as a bug for months.
+        'reference.mp4',
       });
     });
   });

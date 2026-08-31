@@ -8,6 +8,7 @@ import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_conform_runner.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
+import 'package:anicel/src/services/media/media_byte_source.dart';
 
 import '../../helpers/native_engine_path.dart';
 
@@ -258,6 +259,51 @@ void main() {
       peak,
       inInclusiveRange(0.35, 0.65),
       reason: 'the range must carry the same sine, not the junk around it',
+    );
+  }, skip: skip);
+
+  test('a sound INSIDE the project file conforms end to end — source range, '
+      'streamed fingerprint, decode in place', () {
+    // 🚨★★★THE WHOLE CHAIN THIS ROUND EXISTS FOR, in one call: the source
+    // says where its bytes are, the identity check streams them, and the
+    // decoder is pointed at the span rather than handed a copy. A movie's
+    // soundtrack is this same case with a bigger container.
+    final at = buried(fixtureBytes(), 'carried.m4a');
+    final result = runConformHere(
+      ConformRequest(
+        sourcePath: 'carried.m4a',
+        conformPath: null, // memory-only, like an unsaved project
+        source: MediaArchiveBytes(
+          archivePath: at.path,
+          dataOffset: at.offset,
+          length: at.length,
+        ),
+        libraryPathOverride: libraryPath,
+      ),
+    );
+
+    if (Platform.isLinux) {
+      expect(result.outcome, ConformOutcome.undecodable);
+      return;
+    }
+
+    expect(
+      result.outcome,
+      ConformOutcome.built,
+      reason: 'reason: ${result.error}',
+    );
+    expect(result.sampleRate, 48000, reason: 'lands at the project rate');
+    expect(result.channels, 2);
+    expect(result.frames, inInclusiveRange(21000, 27500));
+    var peak = 0.0;
+    for (final value in result.peaks!.peaks) {
+      peak = math.max(peak, value);
+    }
+    expect(
+      peak,
+      inInclusiveRange(0.35, 0.65),
+      reason: 'the -6 dB sine has to survive being read out of the middle '
+          'of a bigger file',
     );
   }, skip: skip);
 

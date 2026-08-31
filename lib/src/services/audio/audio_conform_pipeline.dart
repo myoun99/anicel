@@ -56,18 +56,27 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../media/media_byte_source.dart';
-import '../persistence/anicel_incremental_writer.dart' show anicelCrc32;
+import '../persistence/anicel_incremental_writer.dart'
+    show anicelCrc32, anicelCrc32Finish, anicelCrc32Start, anicelCrc32Update;
 import '../persistence/app_save_settings.dart' show AppSave;
 import '../persistence/media_blob_codec.dart';
 import 'audio_peaks_extractor.dart';
 import 'conform_pcm_codec.dart';
 
-/// Decodes container bytes to PCM at the file's own rate. The native
-/// dr_libs path supplies this; tests supply a fake so the pipeline's logic
-/// is exercised without a binary.
+/// Decodes a container to PCM at the file's own rate. The native decoder
+/// supplies this; tests supply a fake so the pipeline's logic is exercised
+/// without a binary.
+///
+/// 🚨★★★**IT TAKES THE SOURCE, NOT THE BYTES.** It used to take a
+/// `Uint8List`, which meant the whole container was in memory before any
+/// decoder was asked to look at it — and that, not the decoders, is why a
+/// movie's soundtrack could not be conformed: a three-gigabyte reference
+/// video is not a byte array. A source can name itself as a path plus a
+/// span ([MediaByteSource.range]), and the native decoder takes exactly
+/// that.
 typedef AudioDecodeCallback =
     ({Float32List samples, int channels, int sampleRate})? Function(
-      Uint8List bytes,
+      MediaByteSource source,
     );
 
 /// Converts PCM to the project rate. The native polyphase resampler
@@ -327,13 +336,66 @@ class AudioConformPipeline {
   /// so it survives being copied to another machine.
   ///
   /// Takes BYTES rather than a path because the fingerprint is content, and
-  /// because the caller that needs one is about to decode those bytes
-  /// anyway: this costs a pass over what is already in hand.
+  /// because a caller holding bytes has already paid for them.
   static ConformSourceFingerprint fingerprintOf(Uint8List sourceBytes) =>
       ConformSourceFingerprint(
         sourceLength: sourceBytes.length,
         sourceCrc32: anicelCrc32(sourceBytes),
       );
+
+  /// The same identity, without holding the source.
+  ///
+  /// 🚨★★★**A FINGERPRINT MUST NOT COST AN ALLOCATION THE SIZE OF THE FILE.**
+  /// This is the identity of a possibly-enormous container, and the whole
+  /// point of the range decode is undone if the check in front of it reads
+  /// the file into memory first. `anicelCrc32Update` exists for exactly this
+  /// — the archive writer folds a streamed entry the same way, for the same
+  /// reason.
+  ///
+  /// ⚠️Falls back to bytes for a FRAMED source, and that is not a shortcut:
+  /// its stored blocks are compressed, so the only way to see its content is
+  /// to have it assembled. Nothing enormous is stored framed — compression
+  /// is decided per file by measurement, and a movie does not shrink.
+  static ConformSourceFingerprint fingerprintOfSource(MediaByteSource source) {
+    final span = source.range;
+    if (span == null) {
+      return fingerprintOf(source.readSync());
+    }
+    var state = anicelCrc32Start;
+    final buffer = Uint8List(_fingerprintChunkBytes);
+    var read = 0;
+    final handle = File(span.path).openSync();
+    try {
+      handle.setPositionSync(span.offset);
+      while (read < span.length) {
+        final want = span.length - read < buffer.length
+            ? span.length - read
+            : buffer.length;
+        final got = handle.readIntoSync(buffer, 0, want);
+        if (got <= 0) {
+          break;
+        }
+        state = anicelCrc32Update(
+          state,
+          got == buffer.length ? buffer : Uint8List.sublistView(buffer, 0, got),
+        );
+        read += got;
+      }
+    } finally {
+      handle.closeSync();
+    }
+    return ConformSourceFingerprint(
+      sourceLength: read,
+      sourceCrc32: anicelCrc32Finish(state),
+    );
+  }
+
+  /// How much of a source is held at once while fingerprinting it.
+  ///
+  /// ⚠️Small on purpose: this runs on an import isolate on a tablet, and the
+  /// number that matters is the PEAK, not the throughput — a 64KB window
+  /// reads a gigabyte just as correctly as a 16MB one.
+  static const int _fingerprintChunkBytes = 64 * 1024;
 
   /// What `stat` says about [sourcePath], or null when it is not there.
   ///
@@ -507,9 +569,9 @@ class AudioConformPipeline {
     // restored or re-synced project gets fresh timestamps with identical
     // bytes, and that is exactly what a timestamp identity used to answer
     // wrong. The content decides.
-    final Uint8List sourceBytes;
+    final ConformSourceFingerprint fingerprint;
     try {
-      sourceBytes = src.readSync();
+      fingerprint = fingerprintOfSource(src);
     } on Object catch (error) {
       // It EXISTS — the check above just said so — so this is transient:
       // an unhydrated cloud placeholder, or a handle held elsewhere.
@@ -524,19 +586,23 @@ class AudioConformPipeline {
     // those bytes — the offsets were resolved when the request was built.
     // The entry CRC is the tripwire: a mismatch is transient (the next
     // attempt resolves fresh offsets), never a decode of the wrong sound.
-    if (knownCrc != null && anicelCrc32(sourceBytes) != knownCrc) {
+    if (knownCrc != null && fingerprint.sourceCrc32 != knownCrc) {
       return const ConformResult(
         outcome: ConformOutcome.sourceUnreadable,
         error: 'the archive changed underneath this read (retrying)',
       );
     }
-    final fingerprint = fingerprintOf(sourceBytes);
 
     if (settingsMatch && conformMatchesSource(existing, fingerprint)) {
       return _reuse(existing, reusableAt);
     }
 
-    final decoded = decode(sourceBytes);
+    // ⚠️A SECOND pass over the source, and deliberately so: the check above
+    // had to see the content before anyone decided to decode, and holding it
+    // in between is the allocation this whole path exists to avoid. Two
+    // reads of a warm file beat one copy the size of a movie — the archive
+    // writer settled the same trade for the same reason.
+    final decoded = decode(src);
     if (decoded == null || decoded.channels <= 0 || decoded.sampleRate <= 0) {
       return const ConformResult(
         outcome: ConformOutcome.undecodable,

@@ -194,7 +194,7 @@ void main() {
       final resampled = <String>[];
       AudioConformPipeline pipelineWith({int num = 1, int den = 1}) =>
           AudioConformPipeline(
-            decode: (bytes) =>
+            decode: (source) =>
                 (samples: Float32List(4800), channels: 1, sampleRate: 48000),
             resample:
                 ({

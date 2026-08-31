@@ -151,8 +151,21 @@ void _applyLibraryOverride(String? override) {
 ConformResult runConformHere(ConformRequest request) {
   _applyLibraryOverride(request.libraryPathOverride);
   final pipeline = AudioConformPipeline(
-    decode: (bytes) {
-      final decoded = QaAudioDecoder.instance?.decode(bytes);
+    decode: (source) {
+      // 🚨★★★**THE RANGE DOOR FIRST, AND THE BYTES ONLY WHEN THERE IS NO
+      // RANGE.** Every source that is a plain span of a file — a loose file,
+      // a movie carried whole inside the project — decodes in place. Only a
+      // FRAMED entry, whose stored blocks are compressed, has to be
+      // assembled first, and nothing enormous is stored framed.
+      final decoder = QaAudioDecoder.instance;
+      final span = source.range;
+      final decoded = span == null
+          ? decoder?.decode(source.readSync())
+          : decoder?.decodeRange(
+              span.path,
+              offset: span.offset,
+              length: span.length,
+            );
       if (decoded == null) {
         return null;
       }

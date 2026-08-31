@@ -65,7 +65,8 @@ void main() {
       decodes: decodes,
       pipeline: AudioConformPipeline(
         projectSampleRate: projectSampleRate,
-        decode: (bytes) {
+        decode: (source) {
+          final bytes = source.readSync();
           decodes.add(bytes.length);
           final audio = decodeConform(bytes);
           return (

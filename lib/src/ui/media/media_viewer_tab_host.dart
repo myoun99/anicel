@@ -540,21 +540,17 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   /// over: [EditorSessionManager.mediaByteSourceFor] wraps those in a
   /// decoder, so what comes back is not a plain range and no OS reader can
   /// be pointed at it. The archive side is what keeps a movie addressable.
-  ({String archivePath, int offset, int length})? _carriedMovieRange(
-    String path,
-  ) {
+  ///
+  /// 🪦This used to reach into `MediaArchiveBytes` and rebuild the triple by
+  /// hand — a type test plus three field reads, which is a copy of the law
+  /// waiting for the archive layout to change under it. The source answers
+  /// [MediaByteSource.range] itself now, and the conform asks the same
+  /// question through the same door.
+  ({String path, int offset, int length})? _carriedMovieRange(String path) {
     if (File(path).existsSync()) {
       return null;
     }
-    final source = widget.session.mediaByteSourceFor(path);
-    if (source is! MediaArchiveBytes) {
-      return null;
-    }
-    return (
-      archivePath: source.archivePath,
-      offset: source.dataOffset,
-      length: source.length,
-    );
+    return widget.session.mediaByteSourceFor(path).range;
   }
 
   Future<ViewerDocument?> _openDocument(MediaViewerRequest request) async {
@@ -568,7 +564,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
         return carried == null
             ? VideoViewerDocument.open(request.path)
             : VideoViewerDocument.open(
-                carried.archivePath,
+                carried.path,
                 range: (offset: carried.offset, length: carried.length),
               );
       case MediaAssetKind.audio:

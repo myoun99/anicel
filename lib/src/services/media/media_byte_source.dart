@@ -81,6 +81,25 @@ sealed class MediaByteSource {
   /// only thing that knows: a save asks each one what it is handing over
   /// and names the entry accordingly, rather than deciding twice.
   bool get storedIsFramed => false;
+
+  /// Where these bytes live as a plain span of a file, or null when they
+  /// are not one.
+  ///
+  /// 🚨★★★**THE ANSWER TO 「decode this without holding it」.** The native
+  /// decoders take a path plus an offset and a length, so anything that can
+  /// name itself this way never has to become a `Uint8List` first — which is
+  /// the difference between a movie's soundtrack being conformable and a
+  /// three-gigabyte allocation.
+  ///
+  /// ⛔Null is an ANSWER, not a gap: a framed entry is stored in compressed
+  /// blocks, so the bytes at that span are not the container and reading
+  /// them as one would decode noise. Callers fall back to [readSync], which
+  /// is correct there and only there.
+  ///
+  /// ⚠️It lives on the source for the same reason [storedIsFramed] does —
+  /// the source is the only thing that knows. Every caller that rebuilt this
+  /// triple by hand was one archive-layout change from being wrong.
+  ({String path, int offset, int length})? get range => null;
 }
 
 /// Cheap facts about a source, from `stat` alone.
@@ -104,6 +123,25 @@ class MediaSourceStamp {
   int get hashCode => Object.hash(lengthBytes, modifiedMicros);
 }
 
+/// The whole of [path] as a range, or null when there is no file there.
+///
+/// 🚨★★★**[MediaByteSource.range] MUST NOT THROW.** It is asked as a
+/// QUESTION — 「can you be decoded in place?」 — and every caller treats null
+/// as 「no」. A missing original is the ordinary case at exactly the call
+/// sites that ask: the viewer asks precisely because the import original is
+/// gone. Letting `lengthSync` throw out of a getter turned that into an
+/// exception on a path whose whole job is to answer 「not this way」.
+///
+/// ⚠️A try rather than an `existsSync` in front: that is one stat instead of
+/// two, and it is also the only version without a race between the two.
+({String path, int offset, int length})? _wholeFileRange(String path) {
+  try {
+    return (path: path, offset: 0, length: File(path).lengthSync());
+  } on Object {
+    return null;
+  }
+}
+
 /// A file on disk — every source today, and still the answer for the media
 /// that stays outside once the rest moves in (video is reference-only by
 /// kind, and the user may keep anything else linked too).
@@ -117,6 +155,12 @@ class MediaFileBytes extends MediaByteSource {
 
   @override
   int lengthSync() => File(path).lengthSync();
+
+  /// A whole file IS a range — offset 0, its own length. ⛔Saying null here
+  /// because 「it is not inside anything」 would make every caller carry a
+  /// second path for the ordinary case.
+  @override
+  ({String path, int offset, int length})? get range => _wholeFileRange(path);
 
   @override
   int readIntoSync(Uint8List buffer, int position, int size) {
@@ -229,6 +273,13 @@ class MediaArchiveBytes extends MediaByteSource {
 
   @override
   bool get storedIsFramed => framed;
+
+  /// ⛔Null when [framed] — those bytes are compressed blocks, not the
+  /// container. Otherwise this is the case the whole idea exists for: a
+  /// movie carried inside the project file, decodable in place.
+  @override
+  ({String path, int offset, int length})? get range =>
+      framed ? null : (path: archivePath, offset: dataOffset, length: length);
 
   /// Clamped to the entry, so a caller asking past the end of its media
   /// gets a short read rather than the bytes of whatever follows it in the
@@ -409,6 +460,13 @@ class MediaAppFileBytes extends MediaByteSource {
 
   @override
   int lengthSync() => File(path).lengthSync();
+
+  /// ⛔Null when [framed]: the file then holds compressed blocks, and the
+  /// bytes at that span are not the container. Same rule as the archive
+  /// entry next door, for the same reason.
+  @override
+  ({String path, int offset, int length})? get range =>
+      framed ? null : _wholeFileRange(path);
 
   @override
   int readIntoSync(Uint8List buffer, int position, int size) {
