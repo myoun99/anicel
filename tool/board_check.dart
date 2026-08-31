@@ -61,6 +61,7 @@ String boardCheckComplaints(
   final acks = _acks(file);
   final complaints = <String>[
     ..._brokenLines(),
+    ..._wordsNobodyReads(acks),
     ..._cardsOffTheBoard(cards, acks, since),
     ..._sectionsTheStoryCannotName(file, acks, since, now, linesSince),
     ..._workThatShipped(cards, acks, since),
@@ -72,12 +73,58 @@ String boardCheckComplaints(
   return complaints.join('\n');
 }
 
+/// 🚨★★★A GATE THAT CANNOT SAY 「나는 아무것도 안 읽었다」 IS WORSE THAN NO
+/// GATE — it reports all-clear on a board it never opened.
+///
+/// ⛔It used to `return` on no arguments and on a missing file. Both look
+/// exactly like 「문제 없음」 from the outside. 🧪2026-08-31: I ran
+/// `board_check.exe --records <path>` — `args.first` was `--records`, which
+/// is not a file, so it read nothing and exited 0. I believed it, and the
+/// board had **five** complaints waiting, including two cards I had written
+/// twenty minutes earlier.
+///
+/// ⚠️This is the same defect the checks below are about, committed by the
+/// checker itself: an input it did not understand, silently dropped.
+/// ⇒ It takes ONE positional path. Anything else is said out loud on stderr
+/// and exits 2, which no amount of squinting reads as green.
+///
+/// 🚨EXIT CODES: 0 clear · 1 complaints (they are on stdout) · 2 could not
+/// run. ⚠️`board_gate.sh` reads stdout and ignores the code, so 1 changes
+/// nothing there — it is for every other caller, and for me.
+/// Why this run cannot happen, or null if it can.
+///
+/// ⚠️SEPARATE FROM [main] so a test can see it. The old refusals were three
+/// bare `return`s inside `main`, which is precisely why nothing caught them:
+/// there was no value to assert on, and the only observable behaviour was
+/// silence — the same silence a clean board produces.
+String? boardCheckRefusal(List<String> args, {bool Function(String)? exists}) {
+  final there = exists ?? (p) => File(p).existsSync();
+  if (args.length != 1) {
+    return 'board_check: 인자는 board.jsonl 경로 하나입니다 '
+        '(${args.length}개 받음: ${args.join(' ')})\n'
+        '⛔옵션은 없습니다. `--records <경로>` 로 부르면 `--records` 를 '
+        '파일 이름으로 읽고 아무것도 검사하지 못합니다.';
+  }
+  if (args.first.startsWith('-')) {
+    return 'board_check: 「${args.first}」 는 옵션처럼 보입니다 — 이 도구는 '
+        '옵션을 받지 않습니다. 경로 하나만 주세요.';
+  }
+  if (!there(args.first)) {
+    return 'board_check: 파일이 없습니다 — ${args.first}';
+  }
+  return null;
+}
+
 void main(List<String> args) {
-  if (args.isEmpty) return;
-  final file = File(args.first);
-  if (!file.existsSync()) return;
-  final out = boardCheckComplaints(file);
-  if (out.isNotEmpty) stdout.write(out);
+  final refusal = boardCheckRefusal(args);
+  if (refusal != null) {
+    stderr.writeln(refusal);
+    exit(2);
+  }
+  final out = boardCheckComplaints(File(args.first));
+  if (out.isEmpty) return;
+  stdout.write(out);
+  exit(1);
 }
 
 // ─────────────────────────────────────────────────────── 1. 읽히지 않는 줄
@@ -93,6 +140,40 @@ Iterable<String> _brokenLines() sync* {
   yield '${badLines.length}개 줄이 깨졌습니다 (줄 ${badLines.join(', ')})\n'
       '보드는 못 읽은 줄을 건너뛰고 나머지를 그립니다 — 그 항목은 화면에 '
       '아예 없습니다.';
+}
+
+// ──────────────────────────────── 1b. 적어 놓았는데 아무도 안 읽는 말
+
+/// 🚨★★★A WORD THE WRITER HAD TO REMEMBER IS THE DEFECT THIS BOARD KEEPS
+/// HAVING. Every one of them looked like this: the data was there, no reader
+/// looked at it, and nothing anywhere said so.
+///
+/// 🧪The actual history, all of it this shape:
+/// · `kind` forgotten on six questions ⇒ they drew as ordinary rows with the
+///   question missing, on the board, in the right section, right title.
+/// · a PR written into the note body instead of `pr` ⇒ 「카드 없음」.
+/// · `item` + `ask` ⇒ the card does not appear at all.
+/// · `state:"done"` ⇒ 77 cards fell into 착수 가능 (2026-08-30).
+///
+/// ⛔The old answer was to write the rule down somewhere and remember it.
+/// That is not an answer — [kReadFields] is the set of keys any reader looks
+/// at, so anything else in a record is **provably** unread, and saying so
+/// costs one pass over keys already parsed.
+///
+/// ⚠️Baseline measured before shipping: the live 1839-line file reports ZERO.
+/// That is why this needs no history cutoff, unlike the rules below it — a
+/// complaint here is always about a line somebody just wrote.
+Iterable<String> _wordsNobodyReads(Set<String> acks) sync* {
+  final live =
+      unreadFields.where((u) => !acks.contains(u.id)).toList(growable: false);
+  if (live.isEmpty) return;
+  final shown = live.take(12).map((u) => '${u.line}:${u.id}(${u.field})');
+  final more = live.length > 12 ? ' … 외 ${live.length - 12}개' : '';
+  yield '아무도 안 읽는 말이 적힌 줄: ${shown.join(', ')}$more\n'
+      '보드는 아는 키만 읽습니다 — 모르는 키는 **조용히 버려집니다.** '
+      '데이터는 파일에 있고 화면에는 없습니다.\n'
+      '⇒ 읽는 키: ${kReadFields.join(' · ')}\n'
+      '⇒ 읽는 kind: ${kKinds.join(' · ')}';
 }
 
 // ─────────────────────────────────────── 2. 어느 칸에도 못 서는 카드

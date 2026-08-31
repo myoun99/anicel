@@ -245,8 +245,42 @@ class BoardCard {
 /// Stop hook that cost 2.4s of every turn to answer the same question.
 List<int> badLines = const [];
 
+/// 🚨★★★EVERY KEY ANY READER LOOKS AT. Nothing else in a record is read.
+///
+/// ⛔This board's whole failure history is one shape: **a word the writer had
+/// to remember**, spelled slightly wrong, silently doing nothing. `ask` in
+/// place of `options`. A PR in the note body instead of `pr`. `kind` forgotten
+/// on a question. Every time, the data was there and no reader looked at it,
+/// and nothing anywhere said so.
+///
+/// ⚠️THIS SET IS NOT MAINTAINED BY HAND — that would be one more word to
+/// remember, which is the defect. `a_record_says_nothing_unread_test` reads
+/// the `json['…']` sites out of this file and fails if they disagree.
+const kReadFields = <String>{
+  'answer', 'answerNote', 'at', 'care', 'how', 'id', 'kind', 'note', 'of',
+  'options', 'pr', 'recommend', 'ref', 'rest', 'said', 'state', 'tag', 'tags',
+  'think', 'title', 'ts', 'under', 'where', 'why',
+};
+
+/// The `kind` values a reader treats specially. Anything else is a plain card
+/// — which is usually a typo, and always silent.
+const kKinds = <String>{'item', 'decision', 'law', 'meta', 'check', 'record'};
+
+/// One thing a record said that nobody reads. ⚠️Three fields rather than one
+/// formatted string, because the gate has to ANSWER WITH THEM: the id to
+/// match an ack, the line to be findable, the field to be fixed.
+typedef UnreadField = ({int line, String id, String field});
+
+/// 🚨★★★WHAT A RECORD SAID THAT NOBODY READ.
+///
+/// Filled by [readBoard] beside [badLines], for the same reason: the screen
+/// carries on without it, and the gate is where 「그건 아무도 안 읽습니다」
+/// gets said out loud.
+List<UnreadField> unreadFields = const [];
+
 List<BoardCard> readBoard(File file, {DateTime? now}) {
   final bad = <int>[];
+  final unread = <UnreadField>[];
   final byId = <String, BoardCard>{};
   final order = <String>[];
   var lineNo = 0;
@@ -263,6 +297,25 @@ List<BoardCard> readBoard(File file, {DateTime? now}) {
       continue;
     }
     final kind = json['kind'] as String? ?? '';
+    // ⛔EXCEPT `meta`, and not as a convenience: a meta line is a note to
+    // self that carries whatever that note needs, and **this file is not its
+    // only reader**. 🧪Measured: `landedSince` looked dead to every `json['…']`
+    // site in tool/, and `board_gate.sh:223` greps it out of the file with
+    // `grep -o '"landedSince":"[^"]*"'`. Flagging those two lines would have
+    // taught the reader to ignore this check on its first run.
+    //
+    // ⚠️`law` IS checked — it is a card the board draws, not a note.
+    // The id may be missing; the line number is what makes it findable.
+    if (kind != 'meta') {
+      for (final k in json.keys) {
+        if (kReadFields.contains(k)) continue;
+        unread.add((line: lineNo, id: '${json['id'] ?? '-'}', field: k));
+      }
+      if (kind.isNotEmpty && !kKinds.contains(kind)) {
+        unread.add(
+            (line: lineNo, id: '${json['id'] ?? '-'}', field: 'kind=$kind'));
+      }
+    }
     if (kind == 'meta') {
       // meta lines are notes to self and carry no id.
       continue;
@@ -451,6 +504,7 @@ List<BoardCard> readBoard(File file, {DateTime? now}) {
     }
   }
   badLines = bad;
+  unreadFields = unread;
   // ⚠️Drop the bare 「PR #N」 placeholder once a real 구현 for that same PR has
   // arrived. A line that claims a PR and says nothing still deserves a stage —
   // it happened — but the moment someone writes what it DID, keeping both
