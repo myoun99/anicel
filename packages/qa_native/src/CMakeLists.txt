@@ -76,8 +76,59 @@ if(NOT ANDROID AND NOT IOS)
   # it compiles the same everywhere.
   target_compile_definitions(qa_video_decode_law_test
     PRIVATE QA_DECODE_LAW_ONLY=1)
+  # /utf-8 for the same reason qa_engine has it: these sources carry Korean
+  # comments, and without it MSVC reads them in the machine's code page and
+  # floods C4819 on every Japanese or Korean Windows build.
+  if(MSVC)
+    target_compile_options(qa_video_decode_law_test PRIVATE /utf-8)
+  endif()
   enable_testing()
   add_test(NAME qa_video_decode_law COMMAND qa_video_decode_law_test)
+endif()
+
+# Decoding a container that is a RANGE of a file. ⚠️This one carries the
+# WHOLE decoder — dr_libs, stb_vorbis and whatever OS stack the host has —
+# because the thing under test is the dispatch itself: the same chain has to
+# reach the same answer whether the bytes are in memory or in the middle of a
+# project file. The fixture is a WAV it writes itself, so the checks are the
+# same everywhere even though the platforms underneath are not.
+if(NOT ANDROID AND NOT IOS)
+  add_executable(qa_audio_range_test
+    "${CMAKE_CURRENT_LIST_DIR}/qa_audio_range_test.c"
+    "${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c")
+  set_target_properties(qa_audio_range_test PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED ON
+  )
+  # ⚠️stb_vorbis calls `sin`, `pow`, `log`. On Linux those live in libm and
+  # nothing pulls it in implicitly — qa_engine has always linked it, and the
+  # first CI run of this target found out the hard way that a target which
+  # compiles the same source needs the same libraries.
+  if(APPLE)
+    target_link_libraries(qa_audio_range_test
+      "-framework CoreFoundation" "-framework AudioToolbox")
+  elseif(WIN32)
+    # The Windows range origin hands Media Foundation the video decoder's
+    # byte stream, so the test needs that translation unit too.
+    target_sources(qa_audio_range_test PRIVATE
+      "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream.c")
+    target_link_libraries(qa_audio_range_test
+      mfplat mfreadwrite mfuuid shlwapi ole32)
+  else()
+    find_library(QA_M_LIB m)
+    if(QA_M_LIB)
+      target_link_libraries(qa_audio_range_test ${QA_M_LIB})
+    endif()
+  endif()
+  if(MSVC)
+    target_compile_options(qa_audio_range_test
+      PRIVATE /utf-8 /wd4267 /wd4244 /wd4996 /wd4018 /wd4389)
+  else()
+    target_compile_options(qa_audio_range_test
+      PRIVATE -Wno-conversion -Wno-unused-function)
+  endif()
+  enable_testing()
+  add_test(NAME qa_audio_range COMMAND qa_audio_range_test)
 endif()
 
 # The range byte stream, driven for real. ⚠️Unlike the law test above, this
@@ -93,6 +144,9 @@ if(WIN32)
     C_STANDARD_REQUIRED ON
   )
   target_link_libraries(qa_win_range_stream_test mfplat mfuuid ole32)
+  if(MSVC)
+    target_compile_options(qa_win_range_stream_test PRIVATE /utf-8)
+  endif()
   enable_testing()
   add_test(NAME qa_win_range_stream COMMAND qa_win_range_stream_test)
 endif()

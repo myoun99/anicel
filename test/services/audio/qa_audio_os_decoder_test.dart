@@ -160,6 +160,127 @@ void main() {
       reason: 'WAV must stay on dr_wav on every platform',
     );
   }, skip: skip);
+
+  // -------------------------------------------------------------------------
+  // A container that is a RANGE of a file.
+  //
+  // 🚨★★★What the C test next door CANNOT reach: it builds a WAV, so it never
+  // gets past dr_wav and the OS stack's own range plumbing — an
+  // `IMFByteStream` on Windows, resource-loader callbacks on Apple — is never
+  // asked anything. These fixtures are real encoded files, so they are.
+
+  /// Writes [bytes] into a file with junk on both sides, and says where they
+  /// landed. The junk is the point: an offset that is ignored reads it.
+  ({String path, int offset, int length}) buried(
+    Uint8List bytes,
+    String name,
+  ) {
+    const prefix = 4096;
+    final directory = Directory.systemTemp.createTempSync('qa_range');
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final path = '${directory.path}${Platform.pathSeparator}$name';
+    final sink = File(path).openSync(mode: FileMode.write);
+    sink.writeFromSync(
+      Uint8List.fromList(List.generate(prefix, (i) => (i * 13 + 7) & 0xFF)),
+    );
+    sink.writeFromSync(bytes);
+    sink.writeFromSync(
+      Uint8List.fromList(List.generate(512, (i) => (i * 29 + 3) & 0xFF)),
+    );
+    sink.closeSync();
+    return (path: path, offset: prefix, length: bytes.length);
+  }
+
+  test('an ogg inside a bigger file decodes from its RANGE, identically to '
+      'the same bytes in memory', () {
+    final decoder = QaAudioDecoder.instance;
+    expect(decoder, isNotNull);
+    final bytes = File('test/fixtures/tone.ogg').readAsBytesSync();
+    final at = buried(bytes, 'carried.ogg');
+
+    final ranged = decoder!.decodeRange(
+      at.path,
+      offset: at.offset,
+      length: at.length,
+    );
+    expect(
+      ranged,
+      isNotNull,
+      reason: 'stb_vorbis reads a FILE section — no platform stack involved, '
+          'so this must hold on every runner including Linux',
+    );
+    expect(ranged!.format, QaAudioFormat.vorbis);
+
+    // Byte-for-byte the same answer as the memory door. ⛔If these ever
+    // differ, the range path has quietly become a second decoder.
+    final assembled = decoder.decode(bytes)!;
+    expect(ranged.channels, assembled.channels);
+    expect(ranged.sampleRate, assembled.sampleRate);
+    expect(ranged.samples.length, assembled.samples.length);
+    expect(ranged.samples, orderedEquals(assembled.samples));
+  }, skip: skip);
+
+  test('an m4a inside a bigger file decodes from its RANGE through the OS '
+      'codec stack', () {
+    final decoder = QaAudioDecoder.instance;
+    expect(decoder, isNotNull);
+    final at = buried(fixtureBytes(), 'carried.m4a');
+    final ranged = decoder!.decodeRange(
+      at.path,
+      offset: at.offset,
+      length: at.length,
+    );
+
+    if (Platform.isLinux) {
+      // No OS codec to lean on — undecodable, the same honest answer the
+      // memory door gives there.
+      expect(ranged, isNull);
+      return;
+    }
+
+    expect(
+      ranged,
+      isNotNull,
+      reason: 'the OS decoder must reach a container that starts at an '
+          'offset — this is the whole carried-media case',
+    );
+    expect(ranged!.format, QaAudioFormat.os);
+    expect(ranged.sampleRate, 44100);
+    expect(ranged.channels, 2);
+    expect(ranged.length, inInclusiveRange(19000, 25000));
+    var peak = 0.0;
+    final start = (ranged.length ~/ 4) * ranged.channels;
+    final end = (3 * ranged.length ~/ 4) * ranged.channels;
+    for (var index = start; index < end; index += 1) {
+      peak = math.max(peak, ranged.samples[index].abs());
+    }
+    expect(
+      peak,
+      inInclusiveRange(0.35, 0.65),
+      reason: 'the range must carry the same sine, not the junk around it',
+    );
+  }, skip: skip);
+
+  test('a range that is not inside the file is refused, and the junk around '
+      'a container is not audio', () {
+    final decoder = QaAudioDecoder.instance;
+    expect(decoder, isNotNull);
+    final bytes = File('test/fixtures/tone.ogg').readAsBytesSync();
+    final at = buried(bytes, 'carried.ogg');
+
+    expect(
+      decoder!.decodeRange(at.path, offset: at.offset, length: at.length + 4096),
+      isNull,
+      reason: 'a container cut short decodes as corrupt — refusing says what '
+          'actually went wrong',
+    );
+    // ⛔The assertion the offset dies on: reading from the start of the file
+    // finds the junk, not the ogg.
+    expect(
+      decoder.decodeRange(at.path, offset: 0, length: at.length),
+      isNull,
+    );
+  }, skip: skip);
 }
 
 /// A real 16-bit PCM WAV — a FOREIGN format to this app now.

@@ -6,10 +6,20 @@
 // engine would slow every build of the hot loops and mix third-party
 // warnings into ours.
 //
-// This decodes from MEMORY, never from a path. Dart already opens files
-// correctly on every platform; handing C a `const char*` would drag in the
-// whole Windows question of whether that path is UTF-8 or the local
-// codepage, and a Korean filename would decide it the hard way.
+// 🪦This USED to decode from memory and never from a path, because "handing
+// C a `const char*` would drag in the whole Windows question of whether that
+// path is UTF-8 or the local codepage, and a Korean filename would decide it
+// the hard way". ⚠️THE HAZARD IS REAL AND THE REASON IS NOT ANY MORE: the
+// video decoder answered that question — UTF-8 in, `MultiByteToWideChar`
+// once, wide the rest of the way — and `qa_platform_path.h` is that answer
+// as ONE piece of code both decoders call. A second copy of it here is the
+// only way the Korean filename comes back.
+//
+// Why a path at all: a container inside the project file is a RANGE of one,
+// and the whole point is not to hold the container in memory to decode it.
+// A three-gigabyte movie whose sound we want cannot arrive as a `Uint8List`.
+// Memory stays a first-class origin — a FRAMED archive entry is not a
+// contiguous range, so its bytes genuinely arrive assembled.
 //
 // Nothing here is realtime. Decoding happens ONCE at import, which is the
 // entire point of conforming — a variable-length codec cannot promise to
@@ -40,16 +50,26 @@
 #include <AudioToolbox/AudioToolbox.h>
 #elif defined(__ANDROID__)
 #include <dlfcn.h>
+#include <fcntl.h>
+#include <unistd.h>
 #endif
+
+// ⚠️AFTER the block above, for the same reason the comment there gives: this
+// TU decides COBJMACROS and WIN32_LEAN_AND_MEAN, and a header that reached
+// windows.h first would settle both with the wrong answer.
+#include "qa_platform_path.h"
 
 // One implementation of each, here and nowhere else.
 #define DR_WAV_IMPLEMENTATION
 #define DR_FLAC_IMPLEMENTATION
 #define DR_MP3_IMPLEMENTATION
 
-// We never decode from a path (see the note above), so drop the stdio
-// backends entirely — less code, and no way to accidentally reintroduce
-// the encoding problem.
+// ⛔Still off after the range open arrived, and now for a BETTER reason than
+// 「we never decode from a path」: these three take read/seek callbacks, so
+// they reach a file through the one cursor below and their own stdio
+// backends would be a second way to do it — with `fopen` and a narrow path,
+// which is exactly the encoding problem. stb_vorbis is the exception and
+// says why where it is included.
 #define DR_WAV_NO_STDIO
 #define DR_FLAC_NO_STDIO
 #define DR_MP3_NO_STDIO
@@ -61,8 +81,29 @@
 // ogg/vorbis — the one container the dr_libs family does not read. Same
 // vendoring rules (see third_party/stb/PROVENANCE.md): unmodified, pinned,
 // public domain.
-#define STB_VORBIS_NO_STDIO
+//
+// 🚨★★★**STDIO STAYS ON HERE AND NOWHERE ELSE, AND THAT IS NOT A RELAXATION.**
+// stb_vorbis has no callback form: it reads a memory block or a `FILE*`, and
+// `stb_vorbis_open_file_section` — a FILE positioned anywhere plus a length —
+// IS the range API this file needs. Without it the vorbis attempt would be
+// the one decoder that had to hold the whole container in memory, which is
+// the entire thing a range open exists to avoid: a three-gigabyte movie would
+// be read in full just to learn it is not an ogg.
+//
+// ⛔What the old `STB_VORBIS_NO_STDIO` was protecting is still protected, by
+// construction rather than by absence: the FILE is opened HERE, through
+// `qa_open_path_read`, which is `_wfopen` on Windows. The door that define
+// closed was `stb_vorbis_open_filename` taking a `const char*` — poisoned
+// below so it cannot be walked through by accident.
 #include "third_party/stb/stb_vorbis.c"
+
+// ⛔The one stdio entry that would reintroduce the Korean-filename bug: it
+// takes a narrow path and hands it to `fopen`, which on Windows reads the
+// machine's local codepage. A call fails to compile with a name that says
+// why. ⚠️Defined AFTER the include so the library's own definition of it is
+// untouched (vendored sources are never edited — see PROVENANCE.md).
+#define stb_vorbis_open_filename \
+  qa_stb_open_filename_is_poisoned_use_qa_open_path_read
 
 // Which decoder produced the samples — reported back so the caller can say
 // so in a log, and so a test can prove the right one was chosen.
@@ -111,6 +152,132 @@ static int qa_pcm_append(qa_pcm_accumulator* accumulator,
 }
 
 // ---------------------------------------------------------------------------
+// 🚨★★★**WHERE THE BYTES ARE — ONE CURSOR, TWO ORIGINS, NO SECOND DISPATCH.**
+//
+// A container arrives either assembled in memory or as a range of a file, and
+// the naive shape is two of everything: two dispatch chains, two of each
+// decoder's setup, two places to forget a format. The decoders all take
+// read/seek callbacks, so instead there is one cursor and the origin is a
+// field in it. ⛔A `qa_audio_decode_range` that repeated the chain would be
+// exactly the copy this repo keeps deleting.
+//
+// ⚠️Positions are RELATIVE TO THE CONTAINER, never to the file. A decoder
+// that seeks to 0 must land on the container's first byte, not the archive's
+// — which for a carried sound is thousands of bytes earlier, and reads as a
+// corrupt file rather than as the arithmetic bug it is.
+typedef struct {
+  /// Memory origin: the whole container. NULL when the origin is a file.
+  const uint8_t* data;
+  /// File origin: an open handle. NULL when the origin is memory.
+  FILE* file;
+  /// File origin: the same file's path, UTF-8. ⚠️Carried as well as the
+  /// handle because the OS decoders below do not take a `FILE*`: Media
+  /// Foundation wants a byte stream over a wide path, and the NDK extractor
+  /// wants a descriptor. Only AudioToolbox reads through the handle.
+  const char* path;
+  /// File origin: where the container starts in that file.
+  int64_t base;
+  /// How many bytes the container has, either way.
+  int64_t size;
+  /// Where the next read starts, 0..size.
+  int64_t position;
+} qa_audio_cursor;
+
+/// Reads up to [want] bytes into [out], returning how many. Short at the end
+/// of the container, and 0 past it — every decoder here treats that as EOF.
+static size_t qa_cursor_read(void* user, void* out, size_t want) {
+  qa_audio_cursor* cursor = (qa_audio_cursor*)user;
+  if (cursor->position >= cursor->size) {
+    return 0;
+  }
+  const int64_t left = cursor->size - cursor->position;
+  size_t take = want;
+  if ((int64_t)take > left) {
+    take = (size_t)left;
+  }
+  if (cursor->data != NULL) {
+    memcpy(out, cursor->data + cursor->position, take);
+  } else {
+    if (!qa_seek_absolute(cursor->file, cursor->base + cursor->position)) {
+      return 0;
+    }
+    take = fread(out, 1, take, cursor->file);
+  }
+  cursor->position += (int64_t)take;
+  return take;
+}
+
+/// Moves the cursor. [origin] is 0/1/2 — set, current, end — which is the
+/// value every one of the three dr_libs enums uses for those names.
+///
+/// ⚠️Seeking exactly TO the end is legal (a decoder measuring the container
+/// does it); past it is not.
+static int qa_cursor_seek(void* user, int64_t offset, int origin) {
+  qa_audio_cursor* cursor = (qa_audio_cursor*)user;
+  int64_t target = offset;
+  if (origin == 1) {
+    target += cursor->position;
+  } else if (origin == 2) {
+    target += cursor->size;
+  }
+  if (target < 0 || target > cursor->size) {
+    return 0;
+  }
+  cursor->position = target;
+  return 1;
+}
+
+static int64_t qa_cursor_tell(void* user) {
+  return ((const qa_audio_cursor*)user)->position;
+}
+
+// The three libraries want the same three functions under their own types.
+// ⛔Not one function pointer cast three ways: that is undefined behaviour,
+// and these adapters cost a jump the decode never notices.
+static size_t qa_dr_read(void* user, void* out, size_t want) {
+  return qa_cursor_read(user, out, want);
+}
+
+static drwav_bool32 qa_wav_seek(void* user, int offset,
+                                drwav_seek_origin origin) {
+  return (drwav_bool32)qa_cursor_seek(user, offset, (int)origin);
+}
+
+static drwav_bool32 qa_wav_tell(void* user, drwav_int64* cursor) {
+  *cursor = (drwav_int64)qa_cursor_tell(user);
+  return DRWAV_TRUE;
+}
+
+static drflac_bool32 qa_flac_seek(void* user, int offset,
+                                  drflac_seek_origin origin) {
+  return (drflac_bool32)qa_cursor_seek(user, offset, (int)origin);
+}
+
+static drflac_bool32 qa_flac_tell(void* user, drflac_int64* cursor) {
+  *cursor = (drflac_int64)qa_cursor_tell(user);
+  return DRFLAC_TRUE;
+}
+
+static drmp3_bool32 qa_mp3_seek(void* user, int offset,
+                                drmp3_seek_origin origin) {
+  return (drmp3_bool32)qa_cursor_seek(user, offset, (int)origin);
+}
+
+static drmp3_bool32 qa_mp3_tell(void* user, drmp3_int64* cursor) {
+  *cursor = (drmp3_int64)qa_cursor_tell(user);
+  return DRMP3_TRUE;
+}
+
+/// Puts the cursor back at the container's first byte.
+///
+/// 🚨Every attempt in the dispatch chain starts from zero. A decoder that
+/// declined a container left the cursor wherever it gave up, and the next one
+/// would then read from the middle and decline for the wrong reason.
+static void qa_cursor_rewind(qa_audio_cursor* cursor) {
+  cursor->position = 0;
+}
+
+// ---------------------------------------------------------------------------
 // The OS decoder (AAC/m4a and friends). One entry point per platform, all
 // with the same contract as the dr_libs path: interleaved float32 at the
 // file's own rate, malloc-owned (qa_audio_decode_free releases it — every
@@ -123,18 +290,32 @@ static int qa_pcm_append(qa_pcm_accumulator* accumulator,
 
 #if defined(_WIN32)
 
-// Media Foundation source reader over an in-memory stream (headers at the
+// The video decoder's range stream, shared rather than written twice — see
+// qa_win_range_stream.c. ⛔A second `IMFByteStream` over a range is the one
+// thing this must not become: it is 200 lines of hand-written COM whose
+// whole job is `base + position`, and two of those drift.
+extern IMFByteStream* qa_win_range_stream_create(const wchar_t* path,
+                                                 int64_t offset,
+                                                 int64_t length);
+
+// Media Foundation source reader over the container's bytes (headers at the
 // top of the file). MF inserts the AAC (or WMA, ...) decoder and its
 // float converter for us; the output media type asks for float PCM and
 // leaves rate/channels at the source's own, which is exactly the conform
 // contract.
-static int32_t qa_audio_decode_os_memory(const uint8_t* data,
-                                         int64_t size,
-                                         float** out_samples,
-                                         int64_t* out_frame_count,
-                                         int32_t* out_channels,
-                                         int32_t* out_sample_rate) {
-  if (size > 0x7FFFFFFF) {
+//
+// 🚨MF opens a URL or a byte stream and nothing else, which is why BOTH
+// origins arrive here as an `IMFByteStream` and everything after the open is
+// one code path: memory gets `SHCreateMemStream`, a file range gets the
+// stream the video decoder already had.
+static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
+                                  float** out_samples,
+                                  int64_t* out_frame_count,
+                                  int32_t* out_channels,
+                                  int32_t* out_sample_rate) {
+  const uint8_t* data = src->data;
+  const int64_t size = src->size;
+  if (data != NULL && size > 0x7FFFFFFF) {
     return QA_AUDIO_FORMAT_UNKNOWN;  // SHCreateMemStream takes a UINT.
   }
   // Per-thread COM, balanced on exit; RPC_E_CHANGED_MODE means the thread
@@ -160,12 +341,24 @@ static int32_t qa_audio_decode_os_memory(const uint8_t* data,
   }
   mf_started = 1;
 
-  stream = SHCreateMemStream(data, (UINT)size);
-  if (stream == NULL) {
-    goto done;
-  }
-  if (FAILED(MFCreateMFByteStreamOnStream(stream, &byte_stream))) {
-    goto done;
+  if (data != NULL) {
+    stream = SHCreateMemStream(data, (UINT)size);
+    if (stream == NULL) {
+      goto done;
+    }
+    if (FAILED(MFCreateMFByteStreamOnStream(stream, &byte_stream))) {
+      goto done;
+    }
+  } else {
+    wchar_t wide[1024];
+    if (!qa_widen_path(src->path, wide,
+                       (int)(sizeof(wide) / sizeof(wide[0])))) {
+      goto done;
+    }
+    byte_stream = qa_win_range_stream_create(wide, src->base, size);
+    if (byte_stream == NULL) {
+      goto done;
+    }
   }
   if (FAILED(MFCreateSourceReaderFromByteStream(byte_stream, NULL, &reader))) {
     goto done;
@@ -273,38 +466,34 @@ done:
 // ExtAudioFile fronts the OS codec (AAC, ALAC, ...) and converts to the
 // client format we ask for: float32 interleaved at the file's own rate
 // and channel count.
-typedef struct {
-  const uint8_t* data;
-  int64_t size;
-} qa_audio_blob;
-
+// 🚨AudioToolbox was ALREADY callback-shaped, so a range costs nothing here:
+// the callbacks stop reading out of a memory block and start reading out of
+// the container, wherever it happens to live. That is the whole Apple half
+// of「decode a movie's sound without holding the movie」.
 static OSStatus qa_blob_read(void* user, SInt64 position, UInt32 request,
                              void* buffer, UInt32* actual) {
-  const qa_audio_blob* blob = (const qa_audio_blob*)user;
-  if (position < 0 || position >= blob->size) {
+  qa_audio_cursor* cursor = (qa_audio_cursor*)user;
+  if (position < 0 || position >= cursor->size) {
     *actual = 0;
-    return position > blob->size ? kAudioFileEndOfFileError : noErr;
+    return position > cursor->size ? kAudioFileEndOfFileError : noErr;
   }
-  UInt32 available = (UInt32)(blob->size - position);
-  if (request < available) {
-    available = request;
-  }
-  memcpy(buffer, blob->data + position, available);
-  *actual = available;
+  cursor->position = (int64_t)position;
+  *actual = (UInt32)qa_cursor_read(cursor, buffer, (size_t)request);
   return noErr;
 }
 
 static SInt64 qa_blob_size(void* user) {
-  return ((const qa_audio_blob*)user)->size;
+  return (SInt64)((const qa_audio_cursor*)user)->size;
 }
 
-static int32_t qa_audio_decode_os_memory(const uint8_t* data,
-                                         int64_t size,
-                                         float** out_samples,
-                                         int64_t* out_frame_count,
-                                         int32_t* out_channels,
-                                         int32_t* out_sample_rate) {
-  qa_audio_blob blob = {data, size};
+static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
+                                  float** out_samples,
+                                  int64_t* out_frame_count,
+                                  int32_t* out_channels,
+                                  int32_t* out_sample_rate) {
+  // ⚠️A COPY, because the callbacks move the cursor and this function was
+  // handed a read-only view of the caller's.
+  qa_audio_cursor blob = *src;
   AudioFileID file = NULL;
   ExtAudioFileRef ext = NULL;
   qa_pcm_accumulator pcm = {NULL, 0, 0};
@@ -393,10 +582,26 @@ done:
 #elif defined(__ANDROID__)
 
 // NDK MediaCodec + MediaExtractor, resolved with dlsym rather than linked
-// (dlfcn.h at the top of the file): the in-memory AMediaDataSource entry
-// points are API 23+, and dlsym returning NULL on an older device IS the
-// graceful capability check — no weak-symbol machinery, no crash, the
+// (dlfcn.h at the top of the file): dlsym returning NULL on an older device
+// IS the graceful capability check — no weak-symbol machinery, no crash, the
 // file just reports undecodable and rides the fallback.
+//
+// 🚨★★★**THE FLOOR IS API 21 AGAIN, AND IT USED TO BE 28.**
+// The comment here said the AMediaDataSource entry points were「API 23+」.
+// They are `__INTRODUCED_IN(28)`, they were REQUIRED symbols, and one missing
+// symbol rejects the whole library below — so on Android 5.0 through 8.1,
+// with a `minSdk` of 21, the OS codec path was not degraded, it was ABSENT.
+// wav/flac/mp3/ogg kept working through the bundled decoders and every AAC
+// file — every m4a, every movie's soundtrack — came back「no decoder
+// recognized this file」. Nobody saw an error; a waveform simply never drew.
+//
+// The fix is the one the video decoder already found:
+// `AMediaExtractor_setDataSourceFd(fd, offset, length)` is API 21 and takes a
+// RANGE, which is both what every supported device can open and exactly the
+// shape a container inside the project file needs. So the descriptor form is
+// now the required one, and the data-source form is OPTIONAL — kept only
+// because a framed archive entry arrives assembled in memory and has no
+// range to point at. ⛔It must never go back to being required.
 typedef struct AMediaExtractor AMediaExtractor;
 typedef struct AMediaDataSource AMediaDataSource;
 typedef struct AMediaFormat AMediaFormat;
@@ -418,6 +623,9 @@ typedef struct {
   void* library;
   AMediaExtractor* (*extractor_new)(void);
   int (*extractor_delete)(AMediaExtractor*);
+  /// API 21 — the floor, and the reason this build runs on Android 5.0.
+  int (*extractor_set_data_source_fd)(AMediaExtractor*, int, off64_t, off64_t);
+  /// API 28 — OPTIONAL, see the section comment. NULL on an older device.
   int (*extractor_set_data_source_custom)(AMediaExtractor*, AMediaDataSource*);
   size_t (*extractor_track_count)(AMediaExtractor*);
   AMediaFormat* (*extractor_track_format)(AMediaExtractor*, size_t);
@@ -466,19 +674,27 @@ static int qa_ndk_media_load(qa_ndk_media* ndk) {
   }
   QA_SYM(extractor_new, "AMediaExtractor_new")
   QA_SYM(extractor_delete, "AMediaExtractor_delete")
-  QA_SYM(extractor_set_data_source_custom,
-         "AMediaExtractor_setDataSourceCustom")
+  QA_SYM(extractor_set_data_source_fd, "AMediaExtractor_setDataSourceFd")
   QA_SYM(extractor_track_count, "AMediaExtractor_getTrackCount")
   QA_SYM(extractor_track_format, "AMediaExtractor_getTrackFormat")
   QA_SYM(extractor_select_track, "AMediaExtractor_selectTrack")
   QA_SYM(extractor_read_sample, "AMediaExtractor_readSampleData")
   QA_SYM(extractor_sample_time, "AMediaExtractor_getSampleTime")
   QA_SYM(extractor_advance, "AMediaExtractor_advance")
-  QA_SYM(source_new, "AMediaDataSource_new")
-  QA_SYM(source_delete, "AMediaDataSource_delete")
-  QA_SYM(source_set_userdata, "AMediaDataSource_setUserdata")
-  QA_SYM(source_set_read_at, "AMediaDataSource_setReadAt")
-  QA_SYM(source_set_get_size, "AMediaDataSource_setGetSize")
+  // ⛔OPTIONAL — API 28. Resolved with the plain dlsym, NOT with QA_SYM:
+  // making these required is what silenced AAC on every Android below 9.
+  // The memory origin checks them before use; the range origin never needs
+  // them. See the section comment.
+#define QA_SYM_OPTIONAL(field, name) \
+  *(void**)(&ndk->field) = dlsym(ndk->library, name);
+  QA_SYM_OPTIONAL(extractor_set_data_source_custom,
+                  "AMediaExtractor_setDataSourceCustom")
+  QA_SYM_OPTIONAL(source_new, "AMediaDataSource_new")
+  QA_SYM_OPTIONAL(source_delete, "AMediaDataSource_delete")
+  QA_SYM_OPTIONAL(source_set_userdata, "AMediaDataSource_setUserdata")
+  QA_SYM_OPTIONAL(source_set_read_at, "AMediaDataSource_setReadAt")
+  QA_SYM_OPTIONAL(source_set_get_size, "AMediaDataSource_setGetSize")
+#undef QA_SYM_OPTIONAL
   QA_SYM(format_delete, "AMediaFormat_delete")
   QA_SYM(format_get_string, "AMediaFormat_getString")
   QA_SYM(format_get_int32, "AMediaFormat_getInt32")
@@ -505,54 +721,74 @@ typedef struct {
 
 static ssize_t qa_blob_read_at(void* user, off_t offset, void* buffer,
                                size_t size) {
-  const qa_audio_blob* blob = (const qa_audio_blob*)user;
-  if (offset < 0 || offset >= blob->size) {
+  qa_audio_cursor* cursor = (qa_audio_cursor*)user;
+  if (offset < 0 || offset >= cursor->size) {
     return -1;  // EOS per the AMediaDataSource contract
   }
-  size_t available = (size_t)(blob->size - offset);
-  if (size < available) {
-    available = size;
-  }
-  memcpy(buffer, blob->data + (size_t)offset, available);
-  return (ssize_t)available;
+  cursor->position = (int64_t)offset;
+  return (ssize_t)qa_cursor_read(cursor, buffer, size);
 }
 
 static ssize_t qa_blob_get_size(void* user) {
-  return (ssize_t)((const qa_audio_blob*)user)->size;
+  return (ssize_t)((const qa_audio_cursor*)user)->size;
 }
 
-static int32_t qa_audio_decode_os_memory(const uint8_t* data,
-                                         int64_t size,
-                                         float** out_samples,
-                                         int64_t* out_frame_count,
-                                         int32_t* out_channels,
-                                         int32_t* out_sample_rate) {
+static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
+                                  float** out_samples,
+                                  int64_t* out_frame_count,
+                                  int32_t* out_channels,
+                                  int32_t* out_sample_rate) {
   qa_ndk_media ndk;
   if (!qa_ndk_media_load(&ndk)) {
     return QA_AUDIO_FORMAT_UNKNOWN;
   }
 
-  qa_audio_blob blob = {data, size};
+  // ⚠️A COPY — the read callback moves the cursor, and this was handed a
+  // read-only view of the caller's.
+  qa_audio_cursor blob = *src;
   int32_t result = QA_AUDIO_FORMAT_UNKNOWN;
   AMediaExtractor* extractor = NULL;
   AMediaDataSource* source = NULL;
   AMediaCodec* codec = NULL;
   AMediaFormat* track_format = NULL;
   qa_pcm_accumulator pcm = {NULL, 0, 0};
+  int descriptor = -1;
   int32_t channels = 0;
   int32_t sample_rate = 0;
   int32_t pcm_encoding = 2;  // ENCODING_PCM_16BIT — MediaCodec's default
 
   extractor = ndk.extractor_new();
-  source = ndk.source_new();
-  if (extractor == NULL || source == NULL) {
+  if (extractor == NULL) {
     goto done;
   }
-  ndk.source_set_userdata(source, &blob);
-  ndk.source_set_read_at(source, qa_blob_read_at);
-  ndk.source_set_get_size(source, qa_blob_get_size);
-  if (ndk.extractor_set_data_source_custom(extractor, source) != 0) {
-    goto done;
+  if (src->data == NULL) {
+    // The API-21 form, and the one every supported device has.
+    descriptor = open(src->path, O_RDONLY);
+    if (descriptor < 0) {
+      goto done;
+    }
+    if (ndk.extractor_set_data_source_fd(extractor, descriptor,
+                                         (off64_t)src->base,
+                                         (off64_t)src->size) != 0) {
+      goto done;
+    }
+  } else {
+    // Assembled bytes with no range to point at — a framed archive entry.
+    // ⛔Absent below API 28, and that is an ANSWER: undecodable, the same
+    // one the caller already handles, not a crash and not a required symbol.
+    if (ndk.source_new == NULL || ndk.extractor_set_data_source_custom == NULL) {
+      goto done;
+    }
+    source = ndk.source_new();
+    if (source == NULL) {
+      goto done;
+    }
+    ndk.source_set_userdata(source, &blob);
+    ndk.source_set_read_at(source, qa_blob_read_at);
+    ndk.source_set_get_size(source, qa_blob_get_size);
+    if (ndk.extractor_set_data_source_custom(extractor, source) != 0) {
+      goto done;
+    }
   }
 
   const size_t tracks = ndk.extractor_track_count(extractor);
@@ -696,6 +932,12 @@ done:
   if (source != NULL) {
     ndk.source_delete(source);
   }
+  // ⚠️After the extractor, not before: it reads through this descriptor for
+  // as long as it lives, and closing first turns a decode into a read error
+  // somewhere with no name on it.
+  if (descriptor >= 0) {
+    close(descriptor);
+  }
   dlclose(ndk.library);
   return result;
 }
@@ -705,14 +947,12 @@ done:
 // No OS codec stack to lean on (CI's Linux runner — not a shipping
 // platform). dr_libs formats keep working; everything else reports
 // undecodable and rides the caller's fallback.
-static int32_t qa_audio_decode_os_memory(const uint8_t* data,
-                                         int64_t size,
-                                         float** out_samples,
-                                         int64_t* out_frame_count,
-                                         int32_t* out_channels,
-                                         int32_t* out_sample_rate) {
-  (void)data;
-  (void)size;
+static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
+                                  float** out_samples,
+                                  int64_t* out_frame_count,
+                                  int32_t* out_channels,
+                                  int32_t* out_sample_rate) {
+  (void)src;
   (void)out_samples;
   (void)out_frame_count;
   (void)out_channels;
@@ -722,9 +962,10 @@ static int32_t qa_audio_decode_os_memory(const uint8_t* data,
 
 #endif
 
-// Decodes a whole audio file held in memory to interleaved float32 at its
-// OWN sample rate. Resampling to the project rate is a separate step: it
-// is a quality decision, and burying it here would make it invisible.
+// Decodes a whole container — wherever its bytes are — to interleaved
+// float32 at its OWN sample rate. Resampling to the project rate is a
+// separate step: it is a quality decision, and burying it here would make it
+// invisible.
 //
 // Format is detected by TRYING each decoder rather than sniffing magic
 // bytes — a WAV with a junk chunk before `fmt `, or an MP3 with a fat ID3
@@ -734,33 +975,21 @@ static int32_t qa_audio_decode_os_memory(const uint8_t* data,
 // Returns the QA_AUDIO_FORMAT_* that succeeded, or 0 when nothing could
 // read it. On success the caller owns *out_samples and must release it
 // with qa_audio_decode_free.
-QA_EXPORT int32_t qa_audio_decode_memory(
-    const uint8_t* data,
-    int64_t size,
+static int32_t qa_audio_decode_cursor(
+    qa_audio_cursor* cursor,
     float** out_samples,
     int64_t* out_frame_count,
     int32_t* out_channels,
     int32_t* out_sample_rate) {
-  if (out_samples == NULL || out_frame_count == NULL || out_channels == NULL ||
-      out_sample_rate == NULL) {
-    return QA_AUDIO_FORMAT_UNKNOWN;
-  }
-  *out_samples = NULL;
-  *out_frame_count = 0;
-  *out_channels = 0;
-  *out_sample_rate = 0;
-  if (data == NULL || size <= 0) {
-    return QA_AUDIO_FORMAT_UNKNOWN;
-  }
-
-  const size_t byte_count = (size_t)size;
   unsigned int channels = 0;
   unsigned int sample_rate = 0;
 
   {
     drwav_uint64 frames = 0;
-    float* samples = drwav_open_memory_and_read_pcm_frames_f32(
-        data, byte_count, &channels, &sample_rate, &frames, NULL);
+    qa_cursor_rewind(cursor);
+    float* samples = drwav_open_and_read_pcm_frames_f32(
+        qa_dr_read, qa_wav_seek, qa_wav_tell, cursor, &channels, &sample_rate,
+        &frames, NULL);
     if (samples != NULL) {
       *out_samples = samples;
       *out_frame_count = (int64_t)frames;
@@ -771,8 +1000,10 @@ QA_EXPORT int32_t qa_audio_decode_memory(
   }
   {
     drflac_uint64 frames = 0;
-    float* samples = drflac_open_memory_and_read_pcm_frames_f32(
-        data, byte_count, &channels, &sample_rate, &frames, NULL);
+    qa_cursor_rewind(cursor);
+    float* samples = drflac_open_and_read_pcm_frames_f32(
+        qa_dr_read, qa_flac_seek, qa_flac_tell, cursor, &channels, &sample_rate,
+        &frames, NULL);
     if (samples != NULL) {
       *out_samples = samples;
       *out_frame_count = (int64_t)frames;
@@ -785,10 +1016,26 @@ QA_EXPORT int32_t qa_audio_decode_memory(
   // strict recognizer, while dr_mp3's frame-sync scan is the most
   // permissive of the bunch — it must always try LAST of the bundled
   // decoders or it will happily "decode" someone else's container.
-  if (size <= 0x7FFFFFFF) {
+  //
+  // ⚠️The one decoder with no callback form: memory or a `FILE*`, so the two
+  // origins are two OPENS and everything after them is shared. The FILE form
+  // is `_section`, which is a position plus a length — a range, exactly.
+  if (cursor->size <= 0x7FFFFFFF) {
     int vorbis_error = 0;
-    stb_vorbis* vorbis =
-        stb_vorbis_open_memory(data, (int)size, &vorbis_error, NULL);
+    stb_vorbis* vorbis = NULL;
+    if (cursor->data != NULL) {
+      vorbis = stb_vorbis_open_memory(cursor->data, (int)cursor->size,
+                                      &vorbis_error, NULL);
+    } else if (cursor->base <= 0x7FFFFFFF &&
+               qa_seek_absolute(cursor->file, cursor->base)) {
+      // ⚠️The 2GB guard is stb's, not ours: it remembers where a section
+      // started with `ftell`, whose `long` is 32 bits on Windows. Past that
+      // it would read from the wrong place rather than fail, so the attempt
+      // is skipped instead — an ogg carried past the 2GB mark of a project
+      // file decodes as「not an ogg」, and no other format is affected.
+      vorbis = stb_vorbis_open_file_section(cursor->file, 0, &vorbis_error,
+                                            NULL, (unsigned)cursor->size);
+    }
     if (vorbis != NULL) {
       const stb_vorbis_info info = stb_vorbis_get_info(vorbis);
       if (info.channels > 0 && info.sample_rate > 0) {
@@ -829,8 +1076,9 @@ QA_EXPORT int32_t qa_audio_decode_memory(
     drmp3_config config;
     memset(&config, 0, sizeof(config));
     drmp3_uint64 frames = 0;
-    float* samples = drmp3_open_memory_and_read_pcm_frames_f32(
-        data, byte_count, &config, &frames, NULL);
+    qa_cursor_rewind(cursor);
+    float* samples = drmp3_open_and_read_pcm_frames_f32(
+        qa_dr_read, qa_mp3_seek, qa_mp3_tell, cursor, &config, &frames, NULL);
     if (samples != NULL) {
       *out_samples = samples;
       *out_frame_count = (int64_t)frames;
@@ -842,8 +1090,100 @@ QA_EXPORT int32_t qa_audio_decode_memory(
   // Nothing dr_libs reads: hand the container to the OS codec stack
   // (AAC/m4a per the decided format table). The OS path allocates with
   // malloc, so the one qa_audio_decode_free below releases either origin.
-  return qa_audio_decode_os_memory(data, size, out_samples, out_frame_count,
-                                   out_channels, out_sample_rate);
+  qa_cursor_rewind(cursor);
+  return qa_audio_decode_os(cursor, out_samples, out_frame_count, out_channels,
+                            out_sample_rate);
+}
+
+/// The two entry points, and the ONLY difference between them is where the
+/// bytes are. ⛔Neither repeats the chain above.
+static int32_t qa_audio_decode_begin(float** out_samples,
+                                     int64_t* out_frame_count,
+                                     int32_t* out_channels,
+                                     int32_t* out_sample_rate) {
+  if (out_samples == NULL || out_frame_count == NULL || out_channels == NULL ||
+      out_sample_rate == NULL) {
+    return 0;
+  }
+  *out_samples = NULL;
+  *out_frame_count = 0;
+  *out_channels = 0;
+  *out_sample_rate = 0;
+  return 1;
+}
+
+/// A container the caller already holds. ⚠️Still needed after the range form
+/// arrived: a FRAMED archive entry is stored in pieces, so its bytes are
+/// genuinely assembled before anyone can decode them.
+QA_EXPORT int32_t qa_audio_decode_memory(
+    const uint8_t* data,
+    int64_t size,
+    float** out_samples,
+    int64_t* out_frame_count,
+    int32_t* out_channels,
+    int32_t* out_sample_rate) {
+  if (!qa_audio_decode_begin(out_samples, out_frame_count, out_channels,
+                             out_sample_rate)) {
+    return QA_AUDIO_FORMAT_UNKNOWN;
+  }
+  if (data == NULL || size <= 0) {
+    return QA_AUDIO_FORMAT_UNKNOWN;
+  }
+  qa_audio_cursor cursor;
+  memset(&cursor, 0, sizeof(cursor));
+  cursor.data = data;
+  cursor.size = size;
+  return qa_audio_decode_cursor(&cursor, out_samples, out_frame_count,
+                                out_channels, out_sample_rate);
+}
+
+/// A container that is [length] bytes of [path] starting at [offset] — the
+/// shape a sound inside the project file has, and the shape a movie whose
+/// soundtrack we want has whether it is carried or referenced.
+///
+/// 🚨★★★**THE POINT IS WHAT IS NOT HERE: a `Uint8List`.** The conform used to
+/// read the whole container into memory before a decoder was handed anything,
+/// which is why a three-gigabyte reference movie could not be asked for its
+/// sound at all. Nothing on this path holds more than a decode buffer.
+///
+/// [offset] `0` with [length] the file's own size is a whole file, and that
+/// is the ordinary case — a range is not an archive-only idea.
+QA_EXPORT int32_t qa_audio_decode_range(
+    const char* path,
+    int64_t offset,
+    int64_t length,
+    float** out_samples,
+    int64_t* out_frame_count,
+    int32_t* out_channels,
+    int32_t* out_sample_rate) {
+  if (!qa_audio_decode_begin(out_samples, out_frame_count, out_channels,
+                             out_sample_rate)) {
+    return QA_AUDIO_FORMAT_UNKNOWN;
+  }
+  if (path == NULL || offset < 0 || length <= 0) {
+    return QA_AUDIO_FORMAT_UNKNOWN;
+  }
+  FILE* file = qa_open_path_read(path);
+  if (file == NULL) {
+    return QA_AUDIO_FORMAT_UNKNOWN;
+  }
+  // ⛔A range that runs past the end is refused rather than clamped: a short
+  // container decodes as a corrupt file, which is a much worse answer than
+  // 「that range is not in there」.
+  int32_t result = QA_AUDIO_FORMAT_UNKNOWN;
+  const int64_t total = qa_file_size(file);
+  if (total >= 0 && offset + length <= total) {
+    qa_audio_cursor cursor;
+    memset(&cursor, 0, sizeof(cursor));
+    cursor.file = file;
+    cursor.path = path;
+    cursor.base = offset;
+    cursor.size = length;
+    result = qa_audio_decode_cursor(&cursor, out_samples, out_frame_count,
+                                    out_channels, out_sample_rate);
+  }
+  fclose(file);
+  return result;
 }
 
 // Releases a buffer from qa_audio_decode_memory. All three libraries route
