@@ -522,33 +522,21 @@ class TimelineActionToolbar extends StatelessWidget {
       // means — the button asks what is selected instead of the reach
       // deciding for it.
       //
-      // 🚨T2 복제 — and THIS is what the menu is for. 유저 확정 2026-08-13:
-      // 「복제는 현재 액티브인 대상을 상대로 적용하는 것 … 각각 독립복제 /
-      // 링크복제」, per noun, which is why it is here and not on the shared
-      // pill. The layer's pair and the cut's already lived in their own
-      // menus; the frame's had nowhere to be until T24 kept this `▾`
-      // (유저: 「남기고 나중에 기능추가할거야」).
-      // B8: 「복제는 현재 액티브인 대상」 — the active BLOCK is the cut
-      // timeline's noun, so the storyboard's menu greys the pair out
-      // (no block-under-cursor duplicate exists on the global axis yet).
-      PanelFlyoutItem(
-        keyValue: 'duplicate-frame-button',
-        label: AppText.strings.tlDuplicateFrame,
-        icon: Icons.copy_all_outlined,
-        enabled:
-            panelContext.servesActiveLayerVerbs &&
-            session.canDuplicateActiveBlock,
-        onSelected: () => session.duplicateActiveBlock(linked: false),
-      ),
-      PanelFlyoutItem(
-        keyValue: 'link-duplicate-frame-button',
-        label: AppText.strings.tlLinkDuplicateFrame,
-        icon: Icons.link,
-        enabled:
-            panelContext.servesActiveLayerVerbs &&
-            session.canDuplicateActiveBlock,
-        onSelected: () => session.duplicateActiveBlock(linked: true),
-      ),
+      // ⛔THE FRAME'S DUPLICATE PAIR IS GONE (유저 2026-09-01, F-62):
+      // 「프레임 버튼 안에 있는 **복제/링크복제 버튼삭제. 쓸일없음.**
+      // 잔재도제거」.
+      //
+      // ⚠️This REVERSES 유저 확정 2026-08-13 (「복제는 현재 액티브인 대상을
+      // 상대로 적용하는 것 … 각각 독립복제 / 링크복제」, per noun) and T24's
+      // 「남기고 나중에 기능추가할거야」 — kept here rather than deleted
+      // silently, because the next reader would otherwise find the old
+      // decision and put the pair back.
+      //
+      // ⚠️`duplicateActiveBlock` STAYS. It is not the button's leftover: the
+      // splice tests drive it directly, and F-62's other half (「프레임
+      // 복사후 독립붙여넣기시 그림이 복제되지 않는다」) is about the same
+      // machinery. A verb with no button is not dead code here — it is the
+      // verb the paste path needs.
       // D40: the whole-row select. ⛔NOT gated on servesActiveLayerVerbs —
       // the storyboard half is the point (컷블록도 동일 작동): each panel
       // context resolves its OWN standing row, cut row included.
