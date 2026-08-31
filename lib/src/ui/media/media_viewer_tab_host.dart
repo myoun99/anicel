@@ -478,9 +478,15 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     final ViewerDocument? document;
     try {
       document = await _openDocument(request);
-    } on Object {
+    } on Object catch (error) {
       if (mounted && generation == _generation) {
-        setState(() => _message = strings.mediaViewerLoadFailed);
+        // 🚨WHY, under the sentence that says WHAT. The engines answer with
+        // a reason — 「this file has no readable video stream」, 「no decoder
+        // for this codec」 — and this arm used to drop it on the floor, so
+        // every unreadable file looked identical to every other one.
+        // ⚠️The detail is the engine's own words and is not translated; the
+        // export path made the same call with the encoder's.
+        setState(() => _message = '${strings.mediaViewerLoadFailed}\n$error');
       }
       return;
     }
